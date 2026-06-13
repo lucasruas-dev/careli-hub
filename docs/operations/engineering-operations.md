@@ -37026,3 +37026,42 @@ Conclusao:
 - Precisa de acao agora: Lucas precisa autorizar novo deploy para aplicar em producao.
 - Quem deve agir agora: Zeus aguarda autorizacao de deploy.
 - Proximo passo: publicar e validar no topbar se cada opcao permanece selecionada apos o clique.
+
+### Complemento 2026-06-13 10:56:07 -03:00 - OP-013 politica de presenca 5/10
+
+- Status atualizado: `VALIDADO_LOCAL / AUTORIZADO_PARA_PRODUCAO / AGUARDANDO_DEPLOY`.
+- Protocolo: `OP-20260611-013-HOME-AVAILABILITY-STRATEGY`.
+- Autorizacao:
+  - Lucas autorizou explicitamente a alteracao e publicacao: `vamos trabalhar 5-10, 5 ausente e 10 logout e pode subir`.
+- Contexto:
+  - a regra de 3 minutos para `ausente` e 5 minutos para logout automatico ficou agressiva para o uso real do Panteon;
+  - Lucas pediu a nova janela operacional: `5 minutos` para marcar `ausente` e `10 minutos` para logout automatico.
+- Implementacao local:
+  - `apps/hub/lib/hub-presence-policy.ts` passou de `3/5` para `5/10`;
+  - `HUB_IDLE_TIMEOUT_MS` agora e `5 * 60 * 1000`;
+  - `HUB_AUTO_LOGOUT_TIMEOUT_MS` agora e `10 * 60 * 1000`;
+  - `HUB_PRESENCE_POLICY_LABEL` foi atualizado para `ausente apos 5 min / logout 10 min`;
+  - o pacote tambem inclui o refinamento anterior ja validado para segurar selecoes manuais de presenca.
+- Regra de negocio vigente:
+  - `online` sem atividade real no Panteon vira `ausente` apos 5 minutos;
+  - logout automatico ocorre apos 10 minutos sem atividade;
+  - `agenda` manual ou automatica continua sem penalidade de ausencia/logout;
+  - `almoco` manual continua protegido;
+  - `ausente` manual permanece selecionavel e pode seguir para logout se nao houver atividade ate o limite.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte;
+  - `git diff --check`: PASS, apenas aviso conhecido de CRLF.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado.
+- Risco residual:
+  - a validacao funcional final precisa observar ciclo real de 5 e 10 minutos em producao.
+
+Conclusao:
+
+- O que aconteceu: a politica de presenca foi ajustada para uma janela menos agressiva.
+- Impacto pratico: o colaborador so sera marcado ausente apos 5 minutos e deslogado apos 10 minutos, salvo status protegidos.
+- Precisa de acao agora: Zeus deve publicar o hotfix autorizado em producao.
+- Quem deve agir agora: Zeus executa deploy e valida aliases `c2x`/`ops`.
+- Proximo passo: publicar, registrar deployment e validar em producao.
