@@ -3,7 +3,7 @@
   "module": "Hermes",
   "owner": "Zeus / Hermes",
   "createdAt": "2026-06-13T14:42:37-03:00",
-  "status": "VALIDADO_LOCAL / AGUARDANDO_PREVIEW",
+  "status": "PREVIEW_PUBLICADO / AGUARDANDO_VALIDACAO_LUCAS",
   "summary": "Libera anexos de documentos no composer de respostas do Hermes, mantendo o contrato existente HermesMessageAttachment e sem alterar schema, banco, env ou producao.",
   "authorization": {
     "requestedBy": "Lucas",
@@ -25,8 +25,28 @@
     "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
     "npm.cmd run lint:hub: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
     "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria.",
-    "git diff --check: PASS, apenas avisos CRLF esperados no Windows."
+    "git diff --check: PASS, apenas avisos CRLF esperados no Windows.",
+    "npx.cmd vercel deploy --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes em pacote limpo por git archive do commit bc6ef29a: PASS, Ready em dpl_Ci8t8QhRw7VgPV4yxcjtk1YDiS9z, target preview.",
+    "npx.cmd vercel inspect https://careli-hub-hub-i2bs-gewr18b0e-lucasruas-devs-projects.vercel.app --scope lucasruas-devs-projects: Ready em dpl_Ci8t8QhRw7VgPV4yxcjtk1YDiS9z.",
+    "GET https://careli-hub-hub-i2bs-gewr18b0e-lucasruas-devs-projects.vercel.app/login: PASS 200.",
+    "GET https://c2x.app.br/login: PASS 200.",
+    "GET https://ops.c2x.app.br/login: PASS 200.",
+    "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
   ],
+  "deployment": {
+    "publishedAt": "2026-06-13T14:48:29-03:00",
+    "commit": "bc6ef29a",
+    "branch": "codex/hermes/reply-document-attachments-20260613",
+    "deploymentId": "dpl_Ci8t8QhRw7VgPV4yxcjtk1YDiS9z",
+    "previewUrl": "https://careli-hub-hub-i2bs-gewr18b0e-lucasruas-devs-projects.vercel.app",
+    "inspectorUrl": "https://vercel.com/lucasruas-devs-projects/careli-hub-hub-i2bs/Ci8t8QhRw7VgPV4yxcjtk1YDiS9z",
+    "target": "preview",
+    "package": "%TEMP%/panteon-hermes-reply-attachments-preview-bc6ef29-20260613-144530/source",
+    "productionAliases": {
+      "c2x.app.br": "dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp",
+      "ops.c2x.app.br": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj"
+    }
+  },
   "safety": [
     "Nenhum env, secret, migration, schema, Supabase manual, banco, dominio, alias ou deploy de producao foi executado.",
     "O recorte altera apenas o composer de respostas Hermes e documentacao operacional.",
