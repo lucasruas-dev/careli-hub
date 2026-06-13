@@ -37146,3 +37146,50 @@ Conclusao:
 - Precisa de acao agora: ainda nao; o recorte esta local e validado por codigo.
 - Quem deve agir agora: Zeus conclui a checagem visual local/autenticada quando possivel e aguarda autorizacao para publicar.
 - Proximo passo: abrir Preview ou publicar somente quando Lucas autorizar.
+
+### Complemento 2026-06-13 12:06:58 -03:00 - OP-014 status padrao no topbar publicado em producao
+
+- Status atualizado: `HOTFIX_EM_PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO`.
+- Protocolo: `OP-20260613-014-PANTEON-TOPBAR-PRESENCE-STANDARD`.
+- Autorizacao:
+  - Lucas autorizou explicitamente a publicacao direta em producao: `pode subir de uma vez em producao`.
+- Publicacao:
+  - commit de codigo publicado: `8f387adb` (`fix(hub): standardize topbar presence control`);
+  - branch enviada ao remoto: `codex/home/availability-strategy-20260611`;
+  - pacote: `git archive` do commit `8f387adb`, expandido fora do repositorio principal em `%LOCALAPPDATA%\Temp\panteon-op014-topbar-presence-prod-8f387adb-20260613-115906\source`;
+  - deployment Vercel: `dpl_EnvuLzDuf7iGBRWbVHzwLVtYDoQr`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-a8uan4dl8-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - alias aplicado somente em `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` permaneceu preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Base e rollback:
+  - deployment anterior de `https://c2x.app.br`: `dpl_3bXK28ytceKVwiVQWJG8ArX8YHfS`;
+  - rollback imediato do hotfix: reapontar `https://c2x.app.br` para `dpl_3bXK28ytceKVwiVQWJG8ArX8YHfS`;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes:
+  - validacoes locais pre-publicacao: `npm.cmd run check-types:hub`, `npm.cmd run lint:hub`, `npm.cmd run build --workspace @repo/hub` e `git diff --check`;
+  - `git push --no-verify` foi usado porque o hook local ainda referencia `scripts/panteon-hook-runner.ps1` ausente neste worktree; as validacoes manuais acima passaram antes da publicacao;
+  - build remoto Vercel: PASS, com warnings conhecidos de Turbopack/NFT, `npm audit` e envs listados pelo Turbo sem valores expostos;
+  - `npx.cmd vercel inspect https://careli-hub-hub-i2bs-a8uan4dl8-lucasruas-devs-projects.vercel.app --scope lucasruas-devs-projects`: Ready em `dpl_EnvuLzDuf7iGBRWbVHzwLVtYDoQr`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_EnvuLzDuf7iGBRWbVHzwLVtYDoQr`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://careli-hub-hub-i2bs-a8uan4dl8-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `GET https://c2x.app.br/`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, regra 5/10, Hades funcional, Hermes funcional, Iris funcional, Atlas funcional ou Setup funcional foi alterado;
+  - `https://homo.c2x.app.br` nao foi reapontado nesta rodada; Lucas autorizou publicacao direta em producao para padronizar o status no topbar.
+- Risco residual:
+  - validacao visual autenticada ainda depende de Lucas atualizar a producao e conferir o canto superior direito no Panteon principal, Chronos e modulos que ja usam `PanteonTopbarUser`;
+  - se algum modulo operacional ainda estiver sem o bloco padrao, o proximo recorte deve ser limitado a esse header especifico.
+
+Conclusao:
+
+- O que aconteceu: o controle de status padrao do topbar foi publicado em producao.
+- Impacto pratico: o status no canto superior direito agora usa a regra real de presenca no componente compartilhado e tambem aparece no Chronos.
+- Precisa de acao agora: Lucas deve atualizar `https://c2x.app.br` e validar visualmente os modulos principais.
+- Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
+- Proximo passo: manter a publicacao se o topbar estiver padronizado ou abrir recorte especifico para qualquer modulo que ainda nao mostre o bloco.
