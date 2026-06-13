@@ -37012,7 +37012,9 @@ Conclusao:
   - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
   - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
   - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte;
-  - `git diff --check`: PASS, apenas aviso conhecido de CRLF.
+  - `git diff --check`: PASS, apenas aviso conhecido de CRLF;
+  - `http://localhost:3001/login`: 200 OK em dev server local;
+  - `http://localhost:3001/chronos`: redirecionou para `/login` no Browser interno, sem sessao local autenticada disponivel para validacao visual completa.
 - Fora do escopo:
   - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Hermes, Iris, Atlas, Setup ou Chronos funcional foi alterado;
   - nenhuma limpeza retroativa foi executada em `hub_presence_events`.
@@ -37107,3 +37109,40 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar o Panteon e observar um ciclo real de inatividade.
 - Quem deve agir agora: Lucas valida; Zeus/Hefesto ficam prontos para rollback se houver regressao critica.
 - Proximo passo: manter o hotfix se o comportamento 5/10 estiver correto.
+
+### Complemento 2026-06-13 11:21:59 -03:00 - OP-014 status padrao no topbar dos modulos
+
+- Status atualizado: `VALIDADO_LOCAL / NAO_PUBLICADO`.
+- Protocolo: `OP-20260613-014-PANTEON-TOPBAR-PRESENCE-STANDARD`.
+- Pedido do Lucas:
+  - padronizar em todos os modulos e telas o bloco do canto superior direito com status, avatar, nome e logout;
+  - corrigir Chronos, que estava sem o bloco no header operacional;
+  - corrigir modulos que mostravam status visual, mas nao acionavam a regra real de presenca.
+- Diagnostico:
+  - o `HubShell` principal tinha controle real de presenca, mas o componente compartilhado `PanteonTopbarUser` usado por topbars operacionais era apenas visual;
+  - Atlas, Iris, Hades/Guardian e PulseX ja consumiam `PanteonTopbarUser`, entao passaram a herdar a logica real ao centralizar o componente;
+  - Chronos usa `HubShell chrome="operational"` e header proprio, por isso nao recebia o topbar padrao do shell.
+- Implementacao local:
+  - `apps/hub/components/panteon/panteon-topbar-user.tsx` agora centraliza status, avatar, nome e logout com `useHubPresenceController`;
+  - o dropdown de status usa as opcoes reais de presenca (`online`, `ausente`, `almoco`, `agenda`, `offline`) e registra alteracao manual;
+  - `agenda` manual segue marcada com metadata `manual_agenda`, preservando a excecao contra ausencia/logout automatico;
+  - `apps/hub/layouts/hub-shell.tsx` removeu a duplicacao local e passou a consumir o componente padrao;
+  - `apps/hub/modules/chronos/ChronosPage.tsx` adicionou o mesmo bloco ao header do Chronos, ao lado do botao de recarregar.
+- Validacoes:
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT fora do recorte;
+  - `git diff --check`: PASS, apenas aviso conhecido de CRLF.
+- Fora do escopo:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, deploy, alias, regra 5/10, Hades funcional, Hermes funcional, Iris funcional, Atlas funcional ou Setup funcional foi alterado.
+- Risco residual:
+  - validacao visual autenticada ainda precisa confirmar o header em Chronos e pelo menos uma topbar operacional que ja usava `PanteonTopbarUser`;
+  - a publicacao depende de autorizacao explicita do Lucas para deploy/preview/producao.
+
+Conclusao:
+
+- O que aconteceu: o controle de status deixou de ser duplicado/visual e passou a ser um componente unico funcional.
+- Impacto pratico: o status no canto superior direito deve funcionar igual no Panteon principal e nos modulos operacionais que usam o topbar padrao, incluindo Chronos.
+- Precisa de acao agora: ainda nao; o recorte esta local e validado por codigo.
+- Quem deve agir agora: Zeus conclui a checagem visual local/autenticada quando possivel e aguarda autorizacao para publicar.
+- Proximo passo: abrir Preview ou publicar somente quando Lucas autorizar.

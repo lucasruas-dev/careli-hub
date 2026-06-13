@@ -1,43 +1,68 @@
 "use client";
 
-import { LogOut } from "lucide-react";
+import { ChevronDown, LogOut } from "lucide-react";
+import { useRef, useState } from "react";
 import { Tooltip } from "@repo/uix";
 
+import { useHubPresenceController } from "@/hooks/use-hub-presence";
+import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
+import {
+  getHubPresenceLabel,
+  hubPresenceStatusOptions,
+  type HubPresenceStatus,
+} from "@/lib/hub-presence";
 import { useAuth } from "@/providers/auth-provider";
 
 type PanteonTopbarUserProps = {
   className?: string;
   compact?: boolean;
+  source?: string;
 };
 
 export function PanteonTopbarUser({
   className = "",
   compact = false,
+  source = "hub-shell",
 }: PanteonTopbarUserProps) {
   const { hubUser, profileStatus, signOut } = useAuth();
+  const [isPresenceMenuOpen, setIsPresenceMenuOpen] = useState(false);
+  const isPresenceReady = profileStatus === "ready" && Boolean(hubUser);
+  const hubPresence = useHubPresenceController({
+    enabled: isPresenceReady,
+    onAutoLogout: () => signOut(),
+    source,
+  });
   const name =
     hubUser?.name ?? (profileStatus === "ready" ? "Sessao" : "Carregando");
-  const isOnline = profileStatus === "ready" && Boolean(hubUser);
-  const statusLabel = isOnline ? "Online" : "Conectando";
-  const statusTone = isOnline
-    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-    : "border-slate-200 bg-slate-50 text-slate-500";
+  const status = isPresenceReady ? hubPresence.status : "offline";
 
   return (
     <div className={`flex h-10 shrink-0 items-center gap-2 ${className}`}>
-      <span
-        className={`h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold ${statusTone} ${
-          compact ? "hidden 2xl:inline-flex" : "hidden md:inline-flex"
-        }`}
-      >
-        <span
-          aria-hidden="true"
-          className={`h-2 w-2 rounded-full ${
-            isOnline ? "bg-emerald-500" : "bg-slate-300"
-          }`}
-        />
-        {statusLabel}
-      </span>
+      <PanteonPresenceControl
+        disabled={!isPresenceReady}
+        onChange={(nextStatus) => {
+          setIsPresenceMenuOpen(false);
+          void hubPresence
+            .setStatus(nextStatus, {
+              manual: true,
+              metadata:
+                nextStatus === "agenda" ? { rule: "manual_agenda" } : undefined,
+              reason: "manual",
+            })
+            .catch((error: unknown) => {
+              if (isLocalhostRuntime()) {
+                console.warn("[presence] manual update error", error);
+              }
+            });
+        }}
+        onOpenChange={setIsPresenceMenuOpen}
+        open={isPresenceMenuOpen}
+        status={status}
+        statusLabel={isPresenceReady ? undefined : "Conectando"}
+        visibilityClassName={
+          compact ? "hidden xl:inline-flex" : "hidden md:inline-flex"
+        }
+      />
 
       <span
         aria-label={`Foto de ${name}`}
@@ -78,6 +103,109 @@ export function PanteonTopbarUser({
   );
 }
 
+function PanteonPresenceControl({
+  disabled,
+  onChange,
+  onOpenChange,
+  open,
+  status,
+  statusLabel,
+  visibilityClassName,
+}: {
+  disabled: boolean;
+  onChange: (status: HubPresenceStatus) => void;
+  onOpenChange: (open: boolean) => void;
+  open: boolean;
+  status: HubPresenceStatus;
+  statusLabel?: string;
+  visibilityClassName: string;
+}) {
+  const tone = getPresenceTone(status);
+  const controlRef = useRef<HTMLDivElement>(null);
+
+  useOutsideDismiss({
+    enabled: open,
+    onDismiss: () => onOpenChange(false),
+    ref: controlRef,
+  });
+
+  return (
+    <div className={`relative ${visibilityClassName}`} ref={controlRef}>
+      <button
+        aria-expanded={open}
+        aria-label="Alterar status de presenca"
+        className={`inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold outline-none transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-70 ${tone.button}`}
+        disabled={disabled}
+        onClick={() => onOpenChange(!open)}
+        type="button"
+      >
+        <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+        <span className="capitalize">
+          {statusLabel ?? getHubPresenceLabel(status)}
+        </span>
+        {disabled ? null : <ChevronDown aria-hidden="true" size={14} />}
+      </button>
+      {open && !disabled ? (
+        <div className="absolute right-0 top-10 z-[var(--uix-z-popover)] w-44 rounded-md border border-[#d9e0e7] bg-white p-1.5 shadow-xl">
+          {hubPresenceStatusOptions.map((option) => {
+            const optionTone = getPresenceTone(option);
+
+            return (
+              <button
+                className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-[#17202f] outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                key={option}
+                onClick={() => onChange(option)}
+                type="button"
+              >
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${optionTone.dot}`}
+                />
+                <span className="capitalize">
+                  {getHubPresenceLabel(option)}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function getPresenceTone(status: HubPresenceStatus) {
+  const normalizedStatus = status === "busy" ? "agenda" : status;
+  const tones = {
+    agenda: {
+      button: "border-sky-200 bg-sky-50 text-sky-700",
+      dot: "bg-sky-500",
+    },
+    away: {
+      button: "border-red-200 bg-red-50 text-red-700",
+      dot: "bg-red-500",
+    },
+    lunch: {
+      button: "border-yellow-200 bg-yellow-50 text-yellow-700",
+      dot: "bg-yellow-400",
+    },
+    offline: {
+      button: "border-zinc-200 bg-zinc-50 text-zinc-500",
+      dot: "bg-zinc-400",
+    },
+    online: {
+      button: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      dot: "bg-emerald-500",
+    },
+  } as const satisfies Record<
+    Exclude<HubPresenceStatus, "busy">,
+    {
+      button: string;
+      dot: string;
+    }
+  >;
+
+  return tones[normalizedStatus];
+}
+
 function getInitials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
 
@@ -90,4 +218,8 @@ function getInitials(name: string) {
     .map((part) => part[0])
     .join("")
     .toUpperCase();
+}
+
+function isLocalhostRuntime() {
+  return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }

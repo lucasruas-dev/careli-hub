@@ -1,14 +1,9 @@
 "use client";
 
-import { useHubPresenceController } from "@/hooks/use-hub-presence";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
+import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 import { AthenaTicketRecordingProvider } from "@/components/hub-support/athena-ticket-recording-provider";
 import { HubSupportDock } from "@/components/hub-support/hub-support-dock";
-import {
-  getHubPresenceLabel,
-  hubPresenceStatusOptions,
-  type HubPresenceStatus,
-} from "@/lib/hub-presence";
 import { useAuth } from "@/providers/auth-provider";
 import {
   getHubSupabaseClient,
@@ -38,7 +33,6 @@ import {
   BarChart3,
   CalendarClock,
   CalendarDays,
-  ChevronDown,
   CircleDollarSign,
   ContactRound,
   Download,
@@ -126,7 +120,6 @@ export function HubShell({
   );
   const [isCommandPaletteOpen, setIsCommandPaletteOpen] = useState(false);
   const [isNotificationPanelOpen, setIsNotificationPanelOpen] = useState(false);
-  const [isPresenceMenuOpen, setIsPresenceMenuOpen] = useState(false);
   const notificationPanelRef = useRef<HTMLDivElement>(null);
   const [releasedModuleIds, setReleasedModuleIds] =
     useState<Set<string> | null>(null);
@@ -134,10 +127,6 @@ export function HubShell({
     isShellHomologationEnvironment,
   );
   const { hubUser, profileStatus, signOut } = useAuth();
-  const hubPresence = useHubPresenceController({
-    enabled: profileStatus === "ready" && Boolean(hubUser),
-    onAutoLogout: () => signOut(),
-  });
   const { realtimeState } = useRealtime();
   const pathname = usePathname();
   const router = useRouter();
@@ -572,53 +561,7 @@ export function HubShell({
                   )}
                 />
               }
-              user={
-                <div className="flex items-center gap-3">
-                  <HubPresenceControl
-                    onChange={(nextStatus) => {
-                      setIsPresenceMenuOpen(false);
-                      void hubPresence
-                        .setStatus(nextStatus, {
-                          manual: true,
-                          metadata:
-                            nextStatus === "agenda"
-                              ? { rule: "manual_agenda" }
-                              : undefined,
-                          reason: "manual",
-                        })
-                        .catch((error: unknown) => {
-                          if (isLocalhostRuntime()) {
-                            console.warn(
-                              "[presence] manual update error",
-                              error,
-                            );
-                          }
-                        });
-                    }}
-                    onOpenChange={setIsPresenceMenuOpen}
-                    open={isPresenceMenuOpen}
-                    status={hubPresence.status}
-                  />
-                  <div className="flex items-center gap-2">
-                    <TopbarUserAvatar
-                      avatarUrl={hubUser?.avatarUrl}
-                      name={hubUser?.name ?? "Sessao"}
-                    />
-                    <span className="max-w-24 text-sm text-[var(--uix-text-muted)]">
-                      {hubUser?.name ?? "Sessao"}
-                    </span>
-                  </div>
-                  <Tooltip content="Sair">
-                    <IconButton
-                      aria-label="Sair"
-                      icon={<LogOut aria-hidden="true" size={17} />}
-                      onClick={() => {
-                        void signOut();
-                      }}
-                    />
-                  </Tooltip>
-                </div>
-              }
+              user={<PanteonTopbarUser />}
             />
           )
         }
@@ -804,91 +747,6 @@ function PanteonInstallButton() {
   );
 }
 
-function HubPresenceControl({
-  onChange,
-  onOpenChange,
-  open,
-  status,
-}: {
-  onChange: (status: HubPresenceStatus) => void;
-  onOpenChange: (open: boolean) => void;
-  open: boolean;
-  status: HubPresenceStatus;
-}) {
-  const tone = getPresenceTone(status);
-  const controlRef = useRef<HTMLDivElement>(null);
-
-  useOutsideDismiss({
-    enabled: open,
-    onDismiss: () => onOpenChange(false),
-    ref: controlRef,
-  });
-
-  return (
-    <div className="relative" ref={controlRef}>
-      <button
-        aria-expanded={open}
-        aria-label="Alterar status de presenca"
-        className={`inline-flex h-8 items-center gap-2 rounded-md border px-2.5 text-xs font-semibold outline-none transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${tone.button}`}
-        onClick={() => onOpenChange(!open)}
-        type="button"
-      >
-        <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
-        <span className="capitalize">{getHubPresenceLabel(status)}</span>
-        <ChevronDown aria-hidden="true" size={14} />
-      </button>
-      {open ? (
-        <div className="absolute right-0 top-10 z-[var(--uix-z-popover)] w-44 rounded-md border border-[#d9e0e7] bg-white p-1.5 shadow-xl">
-          {hubPresenceStatusOptions.map((option) => {
-            const optionTone = getPresenceTone(option);
-
-            return (
-              <button
-                className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-[#17202f] outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                key={option}
-                onClick={() => onChange(option)}
-                type="button"
-              >
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${optionTone.dot}`}
-                />
-                <span className="capitalize">
-                  {getHubPresenceLabel(option)}
-                </span>
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function TopbarUserAvatar({
-  avatarUrl,
-  name,
-}: {
-  avatarUrl?: string;
-  name: string;
-}) {
-  return (
-    <span
-      aria-label={`Foto de ${name}`}
-      className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#d9e0e7] bg-[#101820] bg-cover bg-center text-[0.6875rem] font-semibold text-white"
-      role="img"
-      style={
-        avatarUrl
-          ? {
-              backgroundImage: `url(${avatarUrl})`,
-            }
-          : undefined
-      }
-    >
-      {avatarUrl ? null : getInitials(name)}
-    </span>
-  );
-}
-
 function PanteonBrandMark({
   className,
   src,
@@ -924,50 +782,6 @@ function ZeusModuleIcon() {
       }}
     />
   );
-}
-
-function getPresenceTone(status: HubPresenceStatus) {
-  const normalizedStatus = status === "busy" ? "agenda" : status;
-  const tones = {
-    agenda: {
-      button: "border-sky-200 bg-sky-50 text-sky-700",
-      dot: "bg-sky-500",
-    },
-    away: {
-      button: "border-red-200 bg-red-50 text-red-700",
-      dot: "bg-red-500",
-    },
-    lunch: {
-      button: "border-yellow-200 bg-yellow-50 text-yellow-700",
-      dot: "bg-yellow-400",
-    },
-    offline: {
-      button: "border-zinc-200 bg-zinc-50 text-zinc-500",
-      dot: "bg-zinc-400",
-    },
-    online: {
-      button: "border-emerald-200 bg-emerald-50 text-emerald-700",
-      dot: "bg-emerald-500",
-    },
-  } as const satisfies Record<
-    Exclude<HubPresenceStatus, "busy">,
-    {
-      button: string;
-      dot: string;
-    }
-  >;
-
-  return tones[normalizedStatus];
-}
-
-function getInitials(name: string) {
-  const [first = "", second = ""] = name.trim().split(/\s+/);
-
-  return `${first.charAt(0)}${second.charAt(0)}`.toUpperCase() || "--";
-}
-
-function isLocalhostRuntime() {
-  return ["localhost", "127.0.0.1"].includes(window.location.hostname);
 }
 
 function isStandalonePwa() {
