@@ -3,7 +3,7 @@
   "module": "Hermes / Panteon",
   "owner": "Zeus / Hermes",
   "createdAt": "2026-06-13T12:43:43-03:00",
-  "status": "VALIDADO_LOCAL / AGUARDANDO_PREVIEW",
+  "status": "EM PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO",
   "summary": "Primeira base da experiencia Hermes global e da Central de Notificacoes Panteon-wide: Hermes pode abrir conversa flutuante em outros apps, a central recebe um contrato generico e agora tambem consome eventos reais de hub_activity_events via snapshot da Home.",
   "fronts": [
     {
@@ -46,8 +46,33 @@
     "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria.",
     "git diff --check: PASS, apenas aviso conhecido de LF para CRLF no Windows."
   ],
+  "production": {
+    "authorizedBy": "Lucas",
+    "authorizedText": "pode subir em producao",
+    "publishedAt": "2026-06-13T13:33:49-03:00",
+    "commit": "a069dafe",
+    "branch": "codex/hermes/global-notification-dock-20260613",
+    "packagePath": "%LOCALAPPDATA%/Temp/panteon-hermes-global-notifications-prod-a069dafe-20260613-133020/source",
+    "deploymentId": "dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp",
+    "technicalUrl": "https://careli-hub-hub-i2bs-67yxen1o1-lucasruas-devs-projects.vercel.app",
+    "target": "production",
+    "domain": "https://c2x.app.br",
+    "previousC2xDeploymentId": "dpl_EnvuLzDuf7iGBRWbVHzwLVtYDoQr",
+    "opsPreservedDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
+    "opsAliasRestored": true,
+    "postDeployChecks": [
+      "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp.",
+      "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+      "GET https://c2x.app.br/: 200 OK.",
+      "GET https://c2x.app.br/login: 200 OK.",
+      "GET https://ops.c2x.app.br/login: 200 OK.",
+      "GET https://c2x.app.br/api/hub/home sem sessao: 401 esperado.",
+      "npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados.",
+      "npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error: sem logs encontrados."
+    ]
+  },
   "outOfScope": [
-    "Nenhum env, secret, migration, schema, Supabase manual, banco, dominio, alias, deploy Preview ou deploy de producao foi executado.",
+    "Nenhum env, secret, migration, schema, Supabase manual, banco ou migration foi alterado.",
     "Nenhuma regra de presenca 5/10 foi alterada.",
     "Nenhum modulo especifico foi alterado funcionalmente; modulos que ainda nao publicam eventos em hub_activity_events continuam precisando publicar seus proprios eventos na trilha central."
   ],
@@ -62,8 +87,8 @@
     "Restaurar, se necessario, o sino antigo do shell/Hades; preferivel somente como rollback temporario porque ele usava notificacao mock/estatica."
   ],
   "nextSteps": [
-    "Lucas validar a experiencia Hermes global em um modulo diferente do Hermes.",
+    "Lucas validar a experiencia Hermes global em producao em um modulo diferente do Hermes.",
     "Auditar quais eventos Iris, Hades, Chronos, Atlas e futuros modulos ja publicam em hub_activity_events e completar lacunas em recortes pequenos por modulo.",
-    "Publicar Preview somente com autorizacao explicita do Lucas."
+    "Sincronizar registro estruturado do Operations Center somente com autorizacao explicita para escrita em Supabase."
   ]
 }
