@@ -4,6 +4,8 @@
   "squad": "Zeus",
   "status": "VALIDADO_LOCAL",
   "createdAt": "2026-06-15T08:02:57-03:00",
+  "branch": "codex/home/presence-definitive-20260615",
+  "commit": "f561884",
   "scope": [
     "Corrigir falso status de agenda/reuniao por presenca antiga sem heartbeat",
     "Aplicar expiracao server-side: 5 minutos para ausente e 10 minutos para offline/logout",
