@@ -37676,3 +37676,36 @@ Conclusao:
 - Precisa de acao agora: Zeus deve publicar o protocolo autorizado em producao e executar healthchecks.
 - Quem deve agir agora: Zeus publica e valida; Lucas revisa visualmente depois do deploy.
 - Proximo passo: registrar deployment, healthchecks e rollback assim que a producao estiver atualizada.
+
+Atualizacao pos-producao:
+
+- Commit publicado:
+  - `820d596` (`fix(panteon): refine loading overlays`).
+- Deploy de producao:
+  - URL Vercel: `https://careli-hub-hub-i2bs-2hmz65b0s-lucasruas-devs-projects.vercel.app`;
+  - deployment id: `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - target: `production`;
+  - alias principal: `https://c2x.app.br`.
+- Rollback de `c2x.app.br`:
+  - deployment anterior capturado antes do deploy: `dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR`.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: PASS, `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5` Ready;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/api/pwa/manifest`: `200`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401` esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 15m --level error`: PASS, sem logs encontrados.
+- Aliases e ambientes preservados:
+  - `https://homo.c2x.app.br`: preservado em `dpl_Fc9K8PGPYadjinLTvwyPp8Vu2jAd`;
+  - `https://ops.c2x.app.br`: o deploy Vercel de producao anexou temporariamente o alias ao novo deployment por estar no mesmo projeto; Zeus restaurou imediatamente o alias para `https://careli-hub-hub-i2bs-k66oazozn-lucasruas-devs-projects.vercel.app`;
+  - inspecao direta final de `https://ops.c2x.app.br`: PASS, resolvendo para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Observacoes de build Vercel:
+  - build concluiu com warning conhecido de NFT/Turbopack;
+  - Vercel tambem alertou nomes de envs ausentes em `turbo.json` e `npm audit` existente; nenhum valor sensivel foi impresso e nenhum env/secret foi alterado.
+
+Conclusao pos-producao:
+
+- O que aconteceu: o refinamento foi publicado em `c2x.app.br` e o alias `ops.c2x.app.br` foi restaurado ao deployment anterior apos movimento automatico do Vercel.
+- Impacto pratico: producao principal usa o novo loading; ops voltou ao estado anterior.
+- Precisa de acao agora: Lucas pode validar visualmente Hades/Cobranca e Chronos em producao.
+- Quem deve agir agora: Lucas valida a experiencia; Zeus fica com rollback `dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR` caso haja regressao.
+- Proximo passo: se o visual estiver correto, manter o protocolo como `EM PRODUCAO`.
