@@ -2,10 +2,28 @@
   "protocolId": "HOME-20260615-001-PRESENCE-DEFINITIVE",
   "module": "Home",
   "squad": "Zeus",
-  "status": "VALIDADO_LOCAL",
+  "status": "EM_PRODUCAO",
   "createdAt": "2026-06-15T08:02:57-03:00",
   "branch": "codex/home/presence-definitive-20260615",
-  "commit": "f561884",
+  "commit": "af95765",
+  "codeCommit": "f561884",
+  "production": {
+    "publishedAt": "2026-06-15T09:14:36-03:00",
+    "authorizedBy": "Lucas",
+    "authorizationText": "pode seguir em producao",
+    "targetDomain": "https://c2x.app.br",
+    "preservedDomain": "https://ops.c2x.app.br",
+    "deploymentId": "dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR",
+    "deploymentUrl": "https://careli-hub-hub-i2bs-q2b9fap0k-lucasruas-devs-projects.vercel.app",
+    "previousC2xDeploymentId": "dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj",
+    "preservedOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
+    "candidateSourceCommit": "af95765",
+    "sourceWorktreeClean": true,
+    "candidatePackage": "%TEMP%/panteon-home-presence-prod-af95765-20260615-090526/source",
+    "deployCommand": "npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes",
+    "aliasCommand": "npx.cmd vercel alias set <deployment-url> c2x.app.br --scope lucasruas-devs-projects",
+    "status": "READY"
+  },
   "scope": [
     "Corrigir falso status de agenda/reuniao por presenca antiga sem heartbeat",
     "Aplicar expiracao server-side: 5 minutos para ausente e 10 minutos para offline/logout",
@@ -46,6 +64,41 @@
       "command": "Supabase read-only audit via @supabase/supabase-js",
       "status": "PASS",
       "notes": "Consulta autorizada por Lucas em 2026-06-15 08:19 -03:00. Resultado: 8 usuarios ativos, 42 eventos carregados entre 10/06 e 15/06, eventos apenas em 11/06 (5) e 12/06 (37), nenhum evento iniciado/criado em 13/06, hub_presence com status brutos stale de maio/junho."
+    },
+    {
+      "command": "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects",
+      "status": "PASS",
+      "notes": "Ready em dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR."
+    },
+    {
+      "command": "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects",
+      "status": "PASS",
+      "notes": "Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj."
+    },
+    {
+      "command": "GET https://c2x.app.br/login",
+      "status": "PASS",
+      "notes": "200 OK."
+    },
+    {
+      "command": "GET https://ops.c2x.app.br/login",
+      "status": "PASS",
+      "notes": "200 OK."
+    },
+    {
+      "command": "GET https://c2x.app.br/api/hub/home sem sessao",
+      "status": "PASS",
+      "notes": "401 Unauthorized esperado."
+    },
+    {
+      "command": "npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error",
+      "status": "PASS",
+      "notes": "Sem logs encontrados."
+    },
+    {
+      "command": "npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error",
+      "status": "PASS",
+      "notes": "Sem logs encontrados."
     }
   ],
   "blocked": [
@@ -58,13 +111,14 @@
       "reason": "Mudanca de infra/banco/env sensivel; deve virar recorte proprio apos autorizacao."
     },
     {
-      "item": "Deploy Preview, homologacao ou producao",
-      "reason": "Nao solicitado nesta rodada."
+      "item": "Registro estruturado direto em hub_engineering_operation_records",
+      "reason": "Mutacao manual em Supabase/banco exige autorizacao explicita separada; registro canonico em Markdown foi atualizado."
     }
   ],
   "rollback": [
-    "Reverter o commit do protocolo HOME-20260615-001-PRESENCE-DEFINITIVE.",
+    "Reapontar https://c2x.app.br para dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj se Lucas identificar regressao critica.",
+    "Manter https://ops.c2x.app.br em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
     "Sem migration ou alteracao de banco para desfazer."
   ],
-  "risk": "Baixo no codigo; risco residual depende de teste autenticado com multiplos colaboradores e auditoria read-only do historico real no Supabase se Lucas autorizar."
+  "risk": "Baixo no codigo publicado; risco residual depende de teste autenticado com multiplos colaboradores e de recorte futuro de reconciliador server-side para historico perfeito em crash/offline abrupto."
 }

@@ -4079,3 +4079,70 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_8SmrKPFXYxS3Seb5Uo77TUiMtuMp` se Lucas identificar regressao critica;
   - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-15 - PROD-20260615-001-HOME-PRESENCE-DEFINITIVE
+
+Status: EM PRODUCAO / C2X ATUALIZADO / OPS PRESERVADO.
+
+Registro de producao:
+
+- Assunto: `[Home] Disponibilidade assertiva`.
+- Protocolo de origem: `HOME-20260615-001-PRESENCE-DEFINITIVE`.
+- Squad/agente responsavel: `Zeus / Home`.
+- Data e hora local: `2026-06-15 09:14:36 -03:00`.
+- Autorizacao: Lucas autorizou explicitamente com `pode seguir em producao`.
+- Ambiente alvo: `producao`.
+- Dominio alvo: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj`;
+  - rollback imediato de `https://c2x.app.br`: `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj`;
+  - deployment preservado de `https://ops.c2x.app.br`: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - pacote candidato: `%TEMP%/panteon-home-presence-prod-af95765-20260615-090526/source`;
+  - commit candidato/publicado: `af95765`;
+  - commit de codigo do recorte: `f561884`.
+- Escopo publicado:
+  - normalizacao server-side de presenca stale para 5 minutos ausente e 10 minutos offline/logout;
+  - `agenda` e `almoco` so permanecem ativos com heartbeat recente;
+  - login de nova sessao gera evento mesmo quando o status bruto anterior ainda era `online`;
+  - `agenda` antiga nao e preservada automaticamente em login;
+  - Home/Disponibilidade passa a rotular o macro como `agenda` quando nao ha evidencia de call ativa.
+- Publicacao:
+  - branch: `codex/home/presence-definitive-20260615`;
+  - deployment novo: `dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-q2b9fap0k-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - comando: `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
+  - alias executado manualmente apenas para `https://c2x.app.br`;
+  - `--skip-domain` foi usado para evitar reapontamento automatico de `https://ops.c2x.app.br`.
+- Validacoes pre-publicacao:
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria;
+  - auditoria read-only Supabase: PASS, sem mutacao de banco.
+- Validacoes pos-publicacao:
+  - build remoto Vercel: PASS, com warnings conhecidos de `npm audit`, Turbopack/NFT e envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://careli-hub-hub-i2bs-q2b9fap0k-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401` esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Safety Gate:
+  - o documento/script generico `production-module-safety-gate` citado pela governanca nao existe neste worktree;
+  - controle compensatorio executado: commit limpo, pacote por `git archive`, deployment `--skip-domain`, alias manual somente em `c2x`, rollback capturado e `ops` inspecionado antes/depois.
+- Operations Center estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; o registro canonico em Markdown foi atualizado nesta rodada.
+- Escopo preservado:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Iris, Hermes, Atlas, Setup, Chronos ou modulo fora de Home/Presenca foi alterado;
+  - `https://ops.c2x.app.br` permaneceu no deployment preservado;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - validacao autenticada final depende de Lucas observar colaboradores reais ao longo do dia;
+  - historico perfeito para navegador fechado/crash ainda pede recorte futuro de reconciliador server-side/cron, sem misturar com este deploy.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj` se Lucas identificar regressao critica;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.

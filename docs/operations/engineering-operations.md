@@ -37510,3 +37510,75 @@ Conclusao:
 - Precisa de acao agora: Lucas precisa decidir se este protocolo deve ir para Preview/homologacao/producao e se abrimos recorte de reconciliador server-side.
 - Quem deve agir agora: Zeus pode publicar o recorte quando Lucas autorizar explicitamente o ambiente alvo.
 - Proximo passo: publicar o protocolo `HOME-20260615-001-PRESENCE-DEFINITIVE` no ambiente autorizado e monitorar os proximos logins/status por 24 horas.
+
+### Complemento 2026-06-15 09:14:36 -03:00 - Home disponibilidade assertiva publicada em producao
+
+- Status: `EM PRODUCAO / C2X_ATUALIZADO / OPS_PRESERVADO`.
+- Protocolo: `HOME-20260615-001-PRESENCE-DEFINITIVE`.
+- Manifesto: `docs/operations/panteon-recorte-manifest-home-20260615-001-presence-definitive.json`.
+- Registro de producao: `docs/operations/releases-production.md#2026-06-15---prod-20260615-001-home-presence-definitive`.
+- Autorizacao:
+  - Lucas autorizou explicitamente a publicacao em producao com `pode seguir em producao`.
+- Commit e branch:
+  - branch: `codex/home/presence-definitive-20260615`;
+  - commit publicado/candidato: `af95765`;
+  - commit de codigo do recorte: `f561884` (`fix(home): harden presence availability rules`);
+  - commits de registro: `ec99d413` e `af95765c`.
+- Publicacao:
+  - pacote limpo: `%TEMP%/panteon-home-presence-prod-af95765-20260615-090526/source`;
+  - comando de deploy: `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
+  - deployment Vercel novo: `dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-q2b9fap0k-lucasruas-devs-projects.vercel.app`;
+  - dominio alvo atualizado: `https://c2x.app.br`;
+  - alias executado somente para `https://c2x.app.br`;
+  - `--skip-domain` foi usado para evitar reapontamento automatico de `https://ops.c2x.app.br`;
+  - deployment anterior de `https://c2x.app.br` e rollback imediato: `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj`;
+  - `https://ops.c2x.app.br` permaneceu preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Escopo publicado:
+  - normalizacao server-side de presenca stale: sem sinal por 5 minutos vira `away`, sem sinal por 10 minutos vira `offline`;
+  - `agenda` e `almoco` so permanecem ativos com heartbeat recente;
+  - login de nova sessao passa a registrar evento mesmo quando o status bruto anterior ainda era `online`;
+  - login nao preserva `agenda` antiga;
+  - Home/Disponibilidade passa a tratar o macro como `agenda` quando nao ha evidencia de call ativa, reduzindo falsos `em reuniao`.
+- Validacoes pre-publicacao:
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria;
+  - auditoria Supabase read-only: PASS, sem mutacao de banco.
+- Validacoes pos-publicacao:
+  - build remoto Vercel: PASS, com warnings conhecidos de `npm audit` (2 moderate, 1 high), Turbopack/NFT e envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect https://careli-hub-hub-i2bs-q2b9fap0k-lucasruas-devs-projects.vercel.app --scope lucasruas-devs-projects`: Ready em `dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR`;
+  - `GET https://careli-hub-hub-i2bs-q2b9fap0k-lucasruas-devs-projects.vercel.app/login`: `200 OK`;
+  - `GET https://careli-hub-hub-i2bs-q2b9fap0k-lucasruas-devs-projects.vercel.app/api/hub/home` sem sessao: `401` esperado;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://ops.c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401` esperado;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados;
+  - `npx.cmd vercel logs https://ops.c2x.app.br --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Safety Gate:
+  - o documento/script generico `production-module-safety-gate` citado pela governanca nao existe neste worktree;
+  - controle compensatorio executado: branch limpo, commit rastreavel, pacote por `git archive`, deployment com `--skip-domain`, alias manual apenas em `c2x.app.br`, rollback conhecido e `ops.c2x.app.br` inspecionado antes/depois.
+- Operations Center estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; nenhum registro estruturado foi criado/alterado no banco nesta rodada.
+- Escopo preservado:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Iris, Hermes, Atlas, Setup, Chronos ou modulo fora de Home/Presenca foi alterado;
+  - `https://ops.c2x.app.br` nao foi reapontado;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - a validacao funcional autenticada final depende de Lucas observar os proximos ciclos reais de status;
+  - historico perfeito para navegador fechado/crash ainda exige recorte futuro de reconciliador server-side/cron e/ou Supabase Realtime Presence, com autorizacao propria.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj` se Lucas identificar regressao critica;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - nao ha migration ou banco para desfazer.
+
+Conclusao:
+
+- O que aconteceu: o protocolo de disponibilidade da Home foi publicado em producao somente em `https://c2x.app.br`.
+- Impacto pratico: a Home passa a expirar status antigos no servidor e reduz falso `agenda/reuniao`, alem de registrar melhor logins de novas sessoes.
+- Precisa de acao agora: Lucas deve validar em producao com uso real, principalmente um ciclo de usuario parado por 5 e 10 minutos.
+- Quem deve agir agora: Lucas valida o comportamento; Zeus monitora e pode executar rollback de `c2x.app.br` se houver regressao critica.
+- Proximo passo: manter observacao por 24 horas e abrir recorte separado para reconciliador server-side se Lucas quiser historico independente do navegador.
