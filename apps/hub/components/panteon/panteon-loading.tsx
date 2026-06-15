@@ -66,6 +66,7 @@ type PanteonLoadingStateProps = {
   description?: string;
   markSize?: PanteonLoadingSize;
   minHeightClassName?: string;
+  showLabel?: boolean;
   title?: string;
   variant?: "panel" | "overlay";
 };
@@ -75,28 +76,36 @@ export function PanteonLoadingState({
   description,
   markSize = "lg",
   minHeightClassName = "min-h-40",
+  showLabel = false,
   title = "Carregando",
   variant = "panel",
 }: PanteonLoadingStateProps) {
+  const statusLabel = description ? `${title}. ${description}` : title;
+
   if (variant === "overlay") {
     return (
       <div
         aria-busy="true"
+        aria-label={statusLabel}
         className={[
-          "absolute inset-0 z-20 grid place-items-center rounded-[inherit] border border-white/45 bg-white/80 p-6 text-center shadow-[inset_0_0_0_1px_rgba(217,224,231,0.45)] backdrop-blur-[2px]",
+          "absolute inset-0 z-20 grid place-items-center rounded-[inherit] border border-white/45 bg-white/80 p-6 text-center shadow-[inset_0_0_0_1px_rgba(217,224,231,0.45)] backdrop-blur-sm",
           className ?? "",
         ].join(" ")}
         role="status"
       >
-        <div>
+        <div className="grid place-items-center">
           <PanteonLoadingMark size={markSize} />
-          <p className="m-0 mt-3 text-sm font-semibold text-[#101820]">
-            {title}
-          </p>
-          {description ? (
-            <p className="m-0 mt-2 max-w-md text-xs leading-5 text-[#667085]">
-              {description}
-            </p>
+          {showLabel ? (
+            <>
+              <p className="m-0 mt-3 text-sm font-semibold text-[#101820]">
+                {title}
+              </p>
+              {description ? (
+                <p className="m-0 mt-2 max-w-md text-xs leading-5 text-[#667085]">
+                  {description}
+                </p>
+              ) : null}
+            </>
           ) : null}
         </div>
       </div>
@@ -106,6 +115,7 @@ export function PanteonLoadingState({
   return (
     <div
       aria-busy="true"
+      aria-label={statusLabel}
       className={[
         "grid place-items-center rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-6 text-center",
         minHeightClassName,
@@ -113,15 +123,19 @@ export function PanteonLoadingState({
       ].join(" ")}
       role="status"
     >
-      <div>
+      <div className="grid place-items-center">
         <PanteonLoadingMark size={markSize} />
-        <p className="m-0 mt-3 text-sm font-semibold text-[#101820]">
-          {title}
-        </p>
-        {description ? (
-          <p className="m-0 mt-2 max-w-md text-xs leading-5 text-[#667085]">
-            {description}
-          </p>
+        {showLabel ? (
+          <>
+            <p className="m-0 mt-3 text-sm font-semibold text-[#101820]">
+              {title}
+            </p>
+            {description ? (
+              <p className="m-0 mt-2 max-w-md text-xs leading-5 text-[#667085]">
+                {description}
+              </p>
+            ) : null}
+          </>
         ) : null}
       </div>
     </div>

@@ -359,11 +359,14 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   if (!selectedClient) {
     if (queueLoading) {
       return (
-        <PanteonLoadingState
-          className="bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-          minHeightClassName="min-h-40"
-          title="Carregando fila operacional do C2X"
-        />
+        <div className="relative min-h-[calc(100dvh-9rem)] overflow-hidden rounded-xl border border-[#d9e0e7] bg-white/50 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <PanteonLoadingState
+            className="rounded-xl bg-white/70 backdrop-blur-sm"
+            markSize="lg"
+            title="Carregando fila operacional do C2X"
+            variant="overlay"
+          />
+        </div>
       );
     }
 

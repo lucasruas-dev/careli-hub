@@ -37639,3 +37639,40 @@ Conclusao:
 - Precisa de acao agora: Lucas validar visualmente o Preview tecnico.
 - Quem deve agir agora: Lucas valida a experiencia; Zeus mantem bloqueado qualquer homo/producao/alias ate nova autorizacao explicita.
 - Proximo passo: se Lucas aprovar o Preview, decidir separadamente se o protocolo segue para homologacao/producao.
+
+## 2026-06-15 12:31:33 -03:00 - Zeus - refinamento loading Panteon em producao
+
+Assunto: [Zeus] Refinamento visual de loading Hades/Chronos
+
+- Nome da squad/agente: `Zeus`.
+- ProtocolId: `ZEUS-20260615-003-PANTEON-LOADING-REFINE`.
+- Tipo da alteracao: `FRONTEND / LOADING / HADES / CHRONOS`.
+- Status: `VALIDADO_LOCAL / PRODUCAO_AUTORIZADA_POR_LUCAS`.
+- Autorizacao: Lucas solicitou remover textos de carregamento, manter somente o icone Panteon, centralizar o overlay em Hades/Cobranca e Chronos, e subir em producao com escopo seguro.
+- Base segura:
+  - worktree limpo dedicado: `.codex-tmp/worktrees/panteon-loading-prod-base-20260615`;
+  - branch: `codex/panteon/loading-standard-prod-base-20260615`;
+  - base reconciliada: `origin/codex/home/presence-definitive-20260615` em `99ff52e7`.
+- Escopo:
+  - `PanteonLoadingState` passa a manter `title/description` apenas como acessibilidade por padrao, sem texto visivel;
+  - `Hades > Cobranca` passa a exibir overlay amplo com fundo ofuscado enquanto a fila operacional inicial esta carregando;
+  - `Chronos` passa a exibir overlay amplo com fundo ofuscado apenas na carga inicial, sem cobrir a agenda em refresh com dados ja carregados.
+- Exclusoes:
+  - nenhum env, secret, Supabase, banco, migration, regra de negocio, status/presenca, Chronos API, Whereby, Hermes, Iris, Atlas, Setup ou outro modulo fora do loading visual foi alterado;
+  - nenhum alias de homologacao foi movimentado neste registro.
+- Validacoes locais antes de producao:
+  - `git diff --check`: PASS;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree temporaria/Turbopack/NFT.
+- Risco residual:
+  - validacao visual autenticada final depende de Lucas observar as telas em producao com dados reais;
+  - como o ajuste e visual e sem fonte de dados, rollback e revert do commit do protocolo.
+
+Conclusao:
+
+- O que aconteceu: o refinamento remove textos visiveis dos loaders padrao e coloca overlays centralizados nas duas telas pedidas.
+- Impacto pratico: Hades/Cobranca e Chronos ficam mais limpos durante carregamento, com uma unica marca Panteon girando e fundo ofuscado.
+- Precisa de acao agora: Zeus deve publicar o protocolo autorizado em producao e executar healthchecks.
+- Quem deve agir agora: Zeus publica e valida; Lucas revisa visualmente depois do deploy.
+- Proximo passo: registrar deployment, healthchecks e rollback assim que a producao estiver atualizada.

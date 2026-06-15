@@ -24,7 +24,10 @@ import {
   type ChronosSnapshot,
 } from "@/lib/chronos/types";
 import type { LocalRecording } from "@/lib/chronos/drive";
-import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
+import {
+  PanteonLoadingMark,
+  PanteonLoadingState,
+} from "@/components/panteon/panteon-loading";
 import { useAuth } from "@/providers/auth-provider";
 import { Surface, WorkspaceLayout } from "@repo/uix";
 import { type ChronosDriveView } from "./components/chronos-drive-panel";
@@ -67,6 +70,8 @@ export function ChronosPage() {
       null,
     [selectedMeetingId, snapshot.meetings],
   );
+  const showInitialLoading =
+    loading && snapshot.meetings.length === 0 && snapshot.rooms.length === 0;
 
   const replaceMeeting = useCallback((meeting: ChronosMeeting) => {
     setSnapshot((currentSnapshot) => ({
@@ -389,7 +394,7 @@ export function ChronosPage() {
             setChronosSidebarCollapsed((currentValue) => !currentValue)
           }
         />
-        <main className="min-h-0 min-w-0 overflow-y-auto p-3 lg:p-4">
+        <main className="relative min-h-0 min-w-0 overflow-y-auto p-3 lg:p-4">
           <WorkspaceLayout className="chronos-workspace">
             <section className="grid gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
@@ -482,6 +487,14 @@ export function ChronosPage() {
         ) : null}
             </section>
           </WorkspaceLayout>
+          {showInitialLoading ? (
+            <PanteonLoadingState
+              className="z-50 rounded-none border-0 bg-[#f3f6fa]/72 backdrop-blur-sm"
+              markSize="lg"
+              title="Carregando Chronos"
+              variant="overlay"
+            />
+          ) : null}
         </main>
       </div>
     </div>
