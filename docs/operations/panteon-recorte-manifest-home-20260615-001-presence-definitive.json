@@ -41,6 +41,11 @@
       "command": "npm.cmd run build --workspace @repo/hub",
       "status": "PASS",
       "notes": "Warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria."
+    },
+    {
+      "command": "Supabase read-only audit via @supabase/supabase-js",
+      "status": "PASS",
+      "notes": "Consulta autorizada por Lucas em 2026-06-15 08:19 -03:00. Resultado: 8 usuarios ativos, 42 eventos carregados entre 10/06 e 15/06, eventos apenas em 11/06 (5) e 12/06 (37), nenhum evento iniciado/criado em 13/06, hub_presence com status brutos stale de maio/junho."
     }
   ],
   "blocked": [

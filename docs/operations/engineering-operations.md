@@ -37457,7 +37457,7 @@ Conclusao:
   - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
   - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria.
 - Supabase e infraestrutura:
-  - `BLOQUEADO`: consulta read-only para auditar eventos reais de `13/06/2026` em `hub_presence_events` depende de autorizacao explicita do Lucas;
+  - consulta read-only para auditar eventos reais de `13/06/2026` em `hub_presence_events` foi autorizada por Lucas e registrada no complemento de auditoria abaixo;
   - `BLOQUEADO`: Supabase Realtime Presence, Edge Function, Cron ou migration para reconciliacao ativa devem virar recorte proprio de banco/infra;
   - nenhuma chave, env, migration, schema, banco, alias, deploy Preview, homologacao ou producao foi executado nesta rodada.
 - Risco residual:
@@ -37473,3 +37473,40 @@ Conclusao:
 - Precisa de acao agora: Lucas deve validar em sessao autenticada com pelo menos um usuario parado por 5 minutos e 10 minutos, e confirmar se autoriza auditoria read-only no Supabase para o dia `13/06/2026`.
 - Quem deve agir agora: Zeus entrega o recorte local validado; Lucas decide se autoriza consulta Supabase e publicacao.
 - Proximo passo: se Lucas autorizar, publicar Preview/homologacao do protocolo e/ou abrir recorte de Supabase Realtime/Reconciliador para historico ainda mais forte.
+
+### Complemento 2026-06-15 08:19:07 -03:00 - Auditoria read-only Supabase disponibilidade
+
+- Status: `AUDITORIA_READ_ONLY_CONCLUIDA / SEM MUTACAO_DE_BANCO / SEM DEPLOY`.
+- Protocolo: `HOME-20260615-001-PRESENCE-DEFINITIVE`.
+- Autorizacao:
+  - Lucas autorizou seguir apos o diagnostico inicial; a consulta foi executada somente em modo leitura.
+- Consulta executada:
+  - client server-side `@supabase/supabase-js` usando o mesmo padrao da aplicacao;
+  - tabelas lidas: `hub_users`, `hub_presence`, `hub_presence_events`;
+  - filtro de eventos: `module_id is null`, `workspace_id is null`, periodo local `10/06/2026 00:00` ate `15/06/2026 23:59` em `America/Sao_Paulo`.
+- Resultado:
+  - `hub_users`: 8 usuarios ativos;
+  - `hub_presence_events`: 42 eventos carregados no periodo;
+  - eventos por dia local: `11/06/2026` com 5 eventos, `12/06/2026` com 37 eventos;
+  - `13/06/2026`: 0 eventos por `started_at` e 0 eventos por `created_at`;
+  - Lucas possui eventos em `11/06/2026` e `12/06/2026`, mas nenhum evento em `13/06/2026`;
+  - `hub_presence` contem status brutos muito antigos, incluindo linhas `online`/`away` com `last_seen_at` de maio e junho, o que explica falsos `online`/`agenda` se a tela confiar no valor cru sem normalizacao por heartbeat.
+- Interpretacao:
+  - o historico de `13/06/2026` nao estava oculto na tela; ele nao foi gravado em `hub_presence_events`;
+  - a causa provavel e a regra anterior, que so criava evento quando havia troca efetiva de status e podia preservar `online`/`agenda` antigo;
+  - a correcao deste protocolo reduz a chance de reincidencia ao registrar login de nova sessao, expirar status stale e fechar status antigo retroativamente.
+- Escopo preservado:
+  - nenhuma linha foi criada, atualizada ou removida no Supabase;
+  - nenhum valor sensivel foi impresso ou registrado;
+  - nenhum deploy, alias, migration ou env foi alterado.
+- Risco residual:
+  - os dados que nao foram gravados em `13/06/2026` nao podem ser reconstruidos com precisao apenas a partir de `hub_presence_events`;
+  - para auditoria perfeita mesmo quando navegador fecha/crasha, ainda e recomendado recorte futuro com reconciliador server-side/cron e, opcionalmente, Supabase Realtime Presence como fonte live complementar.
+
+Conclusao:
+
+- O que aconteceu: a auditoria confirmou que o dia `13/06/2026` nao possui eventos de presenca no banco, e que havia status crus antigos em `hub_presence`.
+- Impacto pratico: a tela nao tinha como mostrar historico real de `13/06/2026`; a correcao de codigo atua para que novos dias nao dependam de status antigo.
+- Precisa de acao agora: Lucas precisa decidir se este protocolo deve ir para Preview/homologacao/producao e se abrimos recorte de reconciliador server-side.
+- Quem deve agir agora: Zeus pode publicar o recorte quando Lucas autorizar explicitamente o ambiente alvo.
+- Proximo passo: publicar o protocolo `HOME-20260615-001-PRESENCE-DEFINITIVE` no ambiente autorizado e monitorar os proximos logins/status por 24 horas.
