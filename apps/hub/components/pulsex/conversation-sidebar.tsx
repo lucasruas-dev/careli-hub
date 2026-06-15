@@ -13,6 +13,7 @@ import {
   type HermesShortcutFilter,
 } from "@/lib/pulsex/shortcuts";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { Tooltip } from "@repo/uix";
 import {
   AtSign,
@@ -427,9 +428,14 @@ export function ConversationSidebar({
       </div>
       {!isCollapsed && dataStatus !== "ready" ? (
         <div className="border-t border-white/[0.075] px-4 py-2 text-xs text-[#a5afbd]">
-          {dataStatus === "loading"
-            ? "Carregando Supabase..."
-            : "Nao foi possivel carregar canais"}
+          {dataStatus === "loading" ? (
+            <span className="inline-flex items-center gap-2">
+              <PanteonLoadingMark size="xs" />
+              Carregando Supabase...
+            </span>
+          ) : (
+            "Nao foi possivel carregar canais"
+          )}
         </div>
       ) : null}
     </aside>

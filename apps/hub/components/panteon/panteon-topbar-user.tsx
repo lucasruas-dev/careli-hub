@@ -12,6 +12,7 @@ import {
   type HubPresenceStatus,
 } from "@/lib/hub-presence";
 import { useAuth } from "@/providers/auth-provider";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { PanteonNotificationButton } from "@/components/panteon/panteon-notification-button";
 
 type PanteonTopbarUserProps = {
@@ -142,7 +143,11 @@ function PanteonPresenceControl({
         onClick={() => onOpenChange(!open)}
         type="button"
       >
-        <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+        {disabled ? (
+          <PanteonLoadingMark size="xs" />
+        ) : (
+          <span className={`h-2 w-2 rounded-full ${tone.dot}`} />
+        )}
         <span className="capitalize">
           {statusLabel ?? getHubPresenceLabel(status)}
         </span>

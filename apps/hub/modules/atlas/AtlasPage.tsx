@@ -13,6 +13,7 @@ import {
   type ReviewAtlasJustificationClientInput,
   type SubmitAtlasJustificationClientInput,
 } from "@/lib/atlas/client";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 import type {
   AtlasBlocker,
@@ -605,7 +606,11 @@ function AtlasModuleToolbar({
         onClick={onRefresh}
         type="button"
       >
-        <RefreshCcw aria-hidden="true" size={15} />
+        {isLoading ? (
+          <PanteonLoadingMark size="xs" />
+        ) : (
+          <RefreshCcw aria-hidden="true" size={15} />
+        )}
         Atualizar
       </button>
       <button
@@ -634,7 +639,11 @@ function BlockedNotice({
     <section className="mb-4 rounded-lg border border-[#eadfca] bg-white p-4 shadow-sm">
       <div className="flex flex-wrap items-start gap-3">
         <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
-          <LockKeyhole className="size-4 stroke-[1.8]" aria-hidden="true" />
+          {status === "loading" ? (
+            <PanteonLoadingMark size="xs" />
+          ) : (
+            <LockKeyhole className="size-4 stroke-[1.8]" aria-hidden="true" />
+          )}
         </span>
         <div className="min-w-0 flex-1">
           <p className="m-0 text-sm font-bold uppercase text-[#8a682f]">
@@ -2674,7 +2683,11 @@ function EvidenceDraftList({
                 }`}
                 htmlFor={`atlas-evidence-file-${draft.id}`}
               >
-                <Paperclip aria-hidden="true" size={15} />
+                {draft.status === "uploading" ? (
+                  <PanteonLoadingMark size="xs" />
+                ) : (
+                  <Paperclip aria-hidden="true" size={15} />
+                )}
                 {draft.status === "uploading"
                   ? "Enviando..."
                   : draft.fileName

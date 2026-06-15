@@ -24,6 +24,7 @@ import {
   type ChronosSnapshot,
 } from "@/lib/chronos/types";
 import type { LocalRecording } from "@/lib/chronos/drive";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { useAuth } from "@/providers/auth-provider";
 import { Surface, WorkspaceLayout } from "@repo/uix";
 import { type ChronosDriveView } from "./components/chronos-drive-panel";
@@ -34,7 +35,7 @@ import {
   ChronosModuleSidebar,
   type ChronosView,
 } from "./components/chronos-sidebar";
-import { Loader2, RefreshCcw } from "lucide-react";
+import { RefreshCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 const emptySnapshot: ChronosSnapshot = {
@@ -409,7 +410,7 @@ export function ChronosPage() {
               type="button"
             >
               {loading ? (
-                <Loader2 aria-hidden="true" className="animate-spin" size={16} />
+                <PanteonLoadingMark size="xs" />
               ) : (
                 <RefreshCcw aria-hidden="true" size={16} />
               )}

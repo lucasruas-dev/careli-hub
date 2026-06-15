@@ -31,6 +31,7 @@ import {
   type HubReleaseProtocol,
   type ReleaseProtocolStatus,
 } from "@/lib/squadops/release-protocols";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { useAuth } from "@/providers/auth-provider";
 import type { HubUserContext } from "@repo/shared";
 import {
@@ -58,7 +59,6 @@ import {
   History,
   Layers3,
   LayoutGrid,
-  Loader2,
   Maximize2,
   MessageSquareText,
   Minimize2,
@@ -1396,6 +1396,7 @@ export function ZeusPage({
     return (
       <ZeusAccessState
         description="Carregando perfil operacional para validar permissao adm."
+        isLoading
         standalone={standalone}
         title="Preparando Zeus"
       />
@@ -2422,7 +2423,7 @@ function AlertProtocolFeedbackDrawer({
             onClick={onSave}
             type="button"
           >
-            {isSaving ? <Loader2 className="size-4 animate-spin" /> : null}
+            {isSaving ? <PanteonLoadingMark inverse size="xs" /> : null}
             Registrar parecer
           </button>
         </div>
@@ -2433,10 +2434,12 @@ function AlertProtocolFeedbackDrawer({
 
 function ZeusAccessState({
   description,
+  isLoading = false,
   standalone = false,
   title,
 }: {
   description: string;
+  isLoading?: boolean;
   standalone?: boolean;
   title: string;
 }) {
@@ -2448,7 +2451,11 @@ function ZeusAccessState({
             title={title}
             visual={
               <span className="flex size-12 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
-                <ShieldAlert className="size-5" />
+                {isLoading ? (
+                  <PanteonLoadingMark size="sm" />
+                ) : (
+                  <ShieldAlert className="size-5" />
+                )}
               </span>
             }
           />
@@ -2588,9 +2595,11 @@ function OperationsSourcePanel({
           onClick={onSync}
           type="button"
         >
-          <RefreshCcw
-            className={`size-4 text-[#A07C3B] ${isSyncing ? "animate-spin" : ""}`}
-          />
+          {isSyncing ? (
+            <PanteonLoadingMark size="xs" />
+          ) : (
+            <RefreshCcw className="size-4 text-[#A07C3B]" />
+          )}
           {isSyncing ? "Sincronizando" : "Sincronizar diário"}
         </button>
         <button
@@ -2600,7 +2609,7 @@ function OperationsSourcePanel({
           type="button"
         >
           {isImportingLocalFile ? (
-            <Loader2 className="size-4 animate-spin" />
+            <PanteonLoadingMark inverse size="xs" />
           ) : (
             <Upload className="size-4" />
           )}
@@ -2793,7 +2802,7 @@ function OperationRecordModal({
             disabled={isSaving}
             type="submit"
           >
-            {isSaving ? <Loader2 className="size-4 animate-spin" /> : null}
+            {isSaving ? <PanteonLoadingMark inverse size="xs" /> : null}
             Registrar no banco
           </button>
         </div>
@@ -3218,9 +3227,11 @@ function DatabaseMonitoringView({
               onClick={onRefresh}
               type="button"
             >
-              <RefreshCcw
-                className={`size-4 text-[#A07C3B] ${isLoading ? "animate-spin" : ""}`}
-              />
+              {isLoading ? (
+                <PanteonLoadingMark size="xs" />
+              ) : (
+                <RefreshCcw className="size-4 text-[#A07C3B]" />
+              )}
               Atualizar agora
             </button>
             <button
@@ -4764,7 +4775,7 @@ function OperationsAlertsPanel({
                       type="button"
                     >
                       {acknowledgingProtocol === alert.protocol ? (
-                        <Loader2 className="size-4 animate-spin" />
+                        <PanteonLoadingMark size="xs" />
                       ) : (
                         <ClipboardCheck className="size-4" />
                       )}
@@ -4792,7 +4803,7 @@ function OperationsAlertsPanel({
                       type="button"
                     >
                       {ignoringProtocol === alert.protocol ? (
-                        <Loader2 className="size-4 animate-spin" />
+                        <PanteonLoadingMark size="xs" />
                       ) : (
                         <EyeOff className="size-4" />
                       )}
@@ -4886,7 +4897,7 @@ function OpsWatcherPanel({
                     type="button"
                   >
                     {acknowledgingProtocol === watcher.protocol ? (
-                      <Loader2 className="size-4 animate-spin" />
+                      <PanteonLoadingMark size="xs" />
                     ) : (
                       <ClipboardCheck className="size-4" />
                     )}
@@ -4911,7 +4922,7 @@ function OpsWatcherPanel({
                     type="button"
                   >
                     {ignoringProtocol === watcher.protocol ? (
-                      <Loader2 className="size-4 animate-spin" />
+                      <PanteonLoadingMark size="xs" />
                     ) : (
                       <EyeOff className="size-4" />
                     )}
@@ -4972,7 +4983,7 @@ function OpsWatcherPanel({
                             type="button"
                           >
                             {acknowledgingProtocol === notification.protocol ? (
-                              <Loader2 className="size-4 animate-spin" />
+                              <PanteonLoadingMark size="xs" />
                             ) : (
                               <ClipboardCheck className="size-4" />
                             )}
@@ -5006,7 +5017,7 @@ function OpsWatcherPanel({
                             type="button"
                           >
                             {ignoringProtocol === notification.protocol ? (
-                              <Loader2 className="size-4 animate-spin" />
+                              <PanteonLoadingMark size="xs" />
                             ) : (
                               <EyeOff className="size-4" />
                             )}
@@ -7343,7 +7354,7 @@ function PoAiChannelPanel({
             <div className="flex justify-start">
               <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-2 text-sm font-semibold text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
                 <span className="inline-flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin text-[#A07C3B]" />
+                  <PanteonLoadingMark size="xs" />
                   PO AI consultando monitoramento real, histórico e código do
                   Panteon
                 </span>
@@ -7443,7 +7454,7 @@ function PoAiChannelPanel({
             type="button"
           >
             {isLoading ? (
-              <Loader2 className="size-4 animate-spin" />
+              <PanteonLoadingMark inverse size="xs" />
             ) : (
               <Send className="size-4" />
             )}

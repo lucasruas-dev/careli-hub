@@ -6,6 +6,7 @@ import {
   isHubItTicketsMigrationPendingMessage,
 } from "@/lib/hub-it-tickets/client";
 import { useAthenaTicketRecording } from "@/components/hub-support/athena-ticket-recording-provider";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import {
   dataUrlToBytes,
   extractVideoFrameDataUrls,
@@ -32,7 +33,6 @@ import {
   FileText,
   FileVideo,
   ImageIcon,
-  Loader2,
   Mic,
   Paperclip,
   Send,
@@ -615,7 +615,7 @@ export function HubTicketOpenForm({
               type="button"
             >
               {isProcessingRecording ? (
-                <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                <PanteonLoadingMark size="xs" />
               ) : (
                 <CheckCircle2 className="size-3.5" aria-hidden="true" />
               )}
@@ -791,7 +791,7 @@ export function HubTicketOpenForm({
             type="button"
           >
             {isSaving ? (
-              <Loader2 className="size-4 animate-spin" />
+              <PanteonLoadingMark inverse size="xs" />
             ) : (
               <Send className="size-4" />
             )}

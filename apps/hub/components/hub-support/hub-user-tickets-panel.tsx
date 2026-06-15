@@ -14,6 +14,10 @@ import {
   type HubItTicketAttachmentInput,
   type HubItTicketStatus,
 } from "@/lib/hub-it-tickets/types";
+import {
+  PanteonLoadingMark,
+  PanteonLoadingState,
+} from "@/components/panteon/panteon-loading";
 import { useAuth } from "@/providers/auth-provider";
 import { Badge, Surface, Tooltip } from "@repo/uix";
 import type { BadgeVariant } from "@repo/uix";
@@ -27,7 +31,6 @@ import {
   FileText,
   FileVideo,
   ImageIcon,
-  Loader2,
   MessageSquareReply,
   Mic,
   Paperclip,
@@ -219,7 +222,7 @@ export function HubUserTicketsPanel({
             type="button"
           >
             {isLoading ? (
-              <Loader2 className="size-4 animate-spin" />
+              <PanteonLoadingMark size="xs" />
             ) : (
               <RefreshCw className="size-4" />
             )}
@@ -772,7 +775,7 @@ function TicketDetail({
                   type="button"
                 >
                   {isSaving ? (
-                    <Loader2 className="size-4 animate-spin" />
+                    <PanteonLoadingMark size="xs" />
                   ) : (
                     <CheckCircle2 className="size-4" />
                   )}
@@ -872,7 +875,7 @@ function TicketDetail({
                   type="button"
                 >
                   {isSaving ? (
-                    <Loader2 className="size-5 animate-spin" />
+                    <PanteonLoadingMark inverse size="sm" />
                   ) : (
                     <Send className="size-5" />
                   )}
@@ -1383,16 +1386,21 @@ function FilterButton({
 }
 
 function EmptyState({ isLoading }: { isLoading: boolean }) {
+  if (isLoading) {
+    return (
+      <PanteonLoadingState
+        minHeightClassName="min-h-36"
+        title="Carregando tickets"
+      />
+    );
+  }
+
   return (
     <div className="grid min-h-36 place-items-center rounded-lg border border-dashed border-slate-200 bg-slate-50 p-4 text-center">
       <div>
-        {isLoading ? (
-          <Loader2 className="mx-auto size-5 animate-spin text-slate-400" />
-        ) : (
-          <XCircle className="mx-auto size-5 text-slate-300" />
-        )}
+        <XCircle className="mx-auto size-5 text-slate-300" />
         <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
-          {isLoading ? "Carregando tickets." : "Nenhum ticket neste filtro."}
+          Nenhum ticket neste filtro.
         </p>
       </div>
     </div>

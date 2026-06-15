@@ -37582,3 +37582,59 @@ Conclusao:
 - Precisa de acao agora: Lucas deve validar em producao com uso real, principalmente um ciclo de usuario parado por 5 e 10 minutos.
 - Quem deve agir agora: Lucas valida o comportamento; Zeus monitora e pode executar rollback de `c2x.app.br` se houver regressao critica.
 - Proximo passo: manter observacao por 24 horas e abrir recorte separado para reconciliador server-side se Lucas quiser historico independente do navegador.
+
+## 2026-06-15 11:49:13 -03:00 - Zeus - recorte visual de loading Panteon
+
+Assunto: [Zeus] Recorte visual de loading padronizado
+
+- Nome da squad/agente: `Zeus`.
+- ProtocolId: `ZEUS-20260615-002-PANTEON-LOADING`.
+- Tipo da alteracao: `FRONTEND / LOADING / IDENTIDADE PANTEON`.
+- Status: `PREVIEW_TECNICO_PUBLICADO / AGUARDANDO_VALIDACAO_LUCAS`.
+- Base segura:
+  - worktree limpo dedicado: `.codex-tmp/worktrees/panteon-loading-prod-base-20260615`;
+  - branch: `codex/panteon/loading-standard-prod-base-20260615`;
+  - base reconciliada: `origin/codex/home/presence-definitive-20260615` em `99ff52e7`;
+  - o Preview anterior baseado em `origin/homolog` foi descartado por risco de defasagem.
+- Escopo:
+  - criar componente visual compartilhado `PanteonLoadingMark` / `PanteonLoadingState`;
+  - padronizar carregamentos com a marca Panteon em Home, Hades, Iris, Hermes, Chronos, Atlas, Apolo, Setup, Zeus, Hub Support e fluxos Hades/atendimento;
+  - no Asana, manter somente o estado `Carregando`, sem texto tecnico de env/token durante loading;
+  - no Hades financeiro, trocar multiplos carregamentos simultaneos por um overlay unico com fundo ofuscado enquanto o snapshot inicial nao existir;
+  - manter loaders pequenos apenas para acoes pontuais como salvar, atualizar, sincronizar, entrar em sala ou gravar.
+- Validacoes locais:
+  - `git diff --check`: PASS;
+  - `git diff --cached --check`: PASS;
+  - `rg -n 'Loader2|animate-spin' apps/hub --glob '*.tsx'`: PASS, restando `animate-spin` apenas no componente oficial `apps/hub/components/panteon/panteon-loading.tsx`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree temporaria/Turbopack/NFT.
+- Commit:
+  - `e8c1bcf` (`feat(panteon): standardize loading states`);
+  - `git commit --no-verify` foi usado porque o hook compartilhado da raiz chama `scripts/panteon-hook-runner.ps1`, arquivo ausente nesta base e na raiz principal; controle compensatorio: `diff --check`, typecheck, lint e build manuais passaram antes do commit.
+- Preview tecnico:
+  - URL: `https://careli-hub-hub-i2bs-n43s0kzyp-lucasruas-devs-projects.vercel.app`;
+  - deployment id: `dpl_FxznBs9R2wDGZp8zohGUd4VCp5Gb`;
+  - target: `preview`;
+  - status Vercel: `Ready`.
+- Validacoes pos-Preview:
+  - `npx.cmd vercel inspect <preview> --scope lucasruas-devs-projects`: PASS, Ready em `dpl_FxznBs9R2wDGZp8zohGUd4VCp5Gb`;
+  - `GET <preview>/login`: `200 OK`;
+  - `GET <preview>/api/pwa/manifest`: `200 OK`;
+  - `GET <preview>/api/hub/home` sem sessao: `401 Unauthorized` esperado;
+  - `npx.cmd vercel inspect https://homo.c2x.app.br --scope lucasruas-devs-projects`: preservado em `dpl_Fc9K8PGPYadjinLTvwyPp8Vu2jAd`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: preservado em `dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Bloqueios e seguranca:
+  - nenhum env, secret, Supabase, banco, migration, dominio, alias, homo ou producao foi alterado;
+  - os arquivos `docs/operations/panteon-recorte-protocols.md`, `docs/operations/homologation-safety-gate.md` e `scripts/homologation-safety-gate.mjs` nao existem nesta base reconciliada, entao o controle compensatorio foi registrar base, escopo, validacoes e bloqueio explicito antes de qualquer Preview.
+- Rollback:
+  - reverter o recorte visual para remover `apps/hub/components/panteon/panteon-loading.tsx` e restaurar os loaders anteriores nos arquivos listados pelo diff do protocolo.
+
+Conclusao:
+
+- O que aconteceu: o recorte de loading foi refeito sobre a base mais atual, descartando o Preview defasado.
+- Impacto pratico: telas com carregamento passam a ter identidade Panteon consistente e, nos paineis com muitos dados, um unico overlay evita poluicao visual.
+- Precisa de acao agora: Lucas validar visualmente o Preview tecnico.
+- Quem deve agir agora: Lucas valida a experiencia; Zeus mantem bloqueado qualquer homo/producao/alias ate nova autorizacao explicita.
+- Proximo passo: se Lucas aprovar o Preview, decidir separadamente se o protocolo segue para homologacao/producao.

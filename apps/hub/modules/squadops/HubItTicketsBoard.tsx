@@ -13,6 +13,7 @@ import {
   type HubItTicket,
   type HubItTicketStatus,
 } from "@/lib/hub-it-tickets/types";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { Badge, Surface, Tooltip } from "@repo/uix";
 import type { BadgeVariant } from "@repo/uix";
 import {
@@ -27,7 +28,6 @@ import {
   History,
   ImageIcon,
   Inbox,
-  Loader2,
   Maximize2,
   MessageSquareReply,
   Paperclip,
@@ -427,7 +427,7 @@ export function HubItTicketsBoard({
                     type="button"
                   >
                     {isLoading ? (
-                      <Loader2 className="size-4 animate-spin" />
+                      <PanteonLoadingMark size="xs" />
                     ) : (
                       <RefreshCw className="size-4" />
                     )}
@@ -818,7 +818,7 @@ function TicketWorkspace({
               <DeliveryDueBadge ticket={ticket} />
               {isDetailLoading ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[0.68rem] font-semibold text-slate-500">
-                  <Loader2 className="size-3 animate-spin" />
+                  <PanteonLoadingMark size="xs" />
                   detalhes
                 </span>
               ) : null}
@@ -1281,7 +1281,7 @@ function TicketHistory({
           <History className="size-4 text-[#A07C3B]" />
           Historico
         </div>
-        {isLoading ? <Loader2 className="size-4 animate-spin text-slate-400" /> : null}
+        {isLoading ? <PanteonLoadingMark size="xs" /> : null}
       </div>
       <div className="mt-3 grid max-h-[17rem] gap-2 overflow-y-auto pr-1">
         {ticket.events.length > 0 ? (
@@ -1436,7 +1436,7 @@ function TicketReplyForm({
             type="button"
           >
             {isSaving ? (
-              <Loader2 className="size-4 animate-spin" />
+              <PanteonLoadingMark inverse size="xs" />
             ) : (
               <Send className="size-4" />
             )}
@@ -1498,7 +1498,7 @@ function TicketReplyForm({
                 value={mentionQuery}
               />
               {isMentionLoading ? (
-                <Loader2 className="size-4 animate-spin text-slate-400" />
+                <PanteonLoadingMark size="xs" />
               ) : null}
             </div>
             <div className="mt-2 grid max-h-52 gap-1 overflow-y-auto">
@@ -1782,7 +1782,7 @@ function EmptyQueue({ isLoading }: { isLoading: boolean }) {
   return (
     <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 text-center">
       {isLoading ? (
-        <Loader2 className="mx-auto size-5 animate-spin text-slate-400" />
+        <PanteonLoadingMark className="mx-auto" size="sm" />
       ) : (
         <Inbox className="mx-auto size-6 text-slate-300" />
       )}

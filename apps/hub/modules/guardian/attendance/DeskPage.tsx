@@ -26,6 +26,7 @@ import {
   X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
+import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { TicketOperationsQueue } from "@/modules/guardian/attendance/components/TicketOperationsQueue";
 import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/components/WhatsAppConversationPanel";
@@ -224,9 +225,11 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
         </div>
 
         {showLoadingState ? (
-          <div className="mx-3 mb-3 rounded-xl border border-slate-200/70 bg-slate-50 px-4 py-5 text-center text-sm font-semibold text-slate-500">
-            Carregando fila operacional do C2X...
-          </div>
+          <PanteonLoadingState
+            className="mx-3 mb-3 border-slate-200/70 bg-slate-50"
+            minHeightClassName="min-h-24"
+            title="Carregando fila operacional do C2X"
+          />
         ) : null}
 
         {error ? (

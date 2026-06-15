@@ -11,13 +11,13 @@ import {
 } from "@/lib/chronos/invitees";
 import type { ChronosMeeting, ChronosUpdateInput } from "@/lib/chronos/types";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import {
   Bot,
   CalendarClock,
   ChevronDown,
   ChevronUp,
   Clock3,
-  Loader2,
   Save,
   Search,
   ShieldCheck,
@@ -419,7 +419,7 @@ export function ChronosCalendarEventEditorModal({
             type="button"
           >
             {saving ? (
-              <Loader2 aria-hidden="true" className="animate-spin" size={16} />
+              <PanteonLoadingMark inverse size="xs" />
             ) : (
               <Save aria-hidden="true" size={16} />
             )}
@@ -485,7 +485,7 @@ export function ChronosCalendarEventEditorModal({
                   type="button"
                 >
                   {agendaAgentLoading ? (
-                    <Loader2 aria-hidden="true" className="animate-spin" size={16} />
+                    <PanteonLoadingMark size="xs" />
                   ) : (
                     <Bot aria-hidden="true" size={16} />
                   )}
@@ -870,7 +870,7 @@ export function ChronosCalendarEventEditorModal({
                       type="button"
                     >
                       {agendaAgentLoading ? (
-                        <Loader2 aria-hidden="true" className="animate-spin" size={15} />
+                        <PanteonLoadingMark inverse size="xs" />
                       ) : (
                         <Bot aria-hidden="true" size={15} />
                       )}

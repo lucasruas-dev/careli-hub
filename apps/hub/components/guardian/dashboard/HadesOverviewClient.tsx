@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { getHadesOverviewSnapshot } from "@/lib/guardian/overview-client";
 import type {
   HadesOverviewSnapshot,
@@ -452,7 +453,11 @@ function DataTable({
 function HadesLoading() {
   return (
     <div className="grid gap-4">
-      <div className="h-32 animate-pulse rounded-xl bg-white ring-1 ring-slate-200/70" />
+      <PanteonLoadingState
+        description="Sincronizando indicadores operacionais."
+        minHeightClassName="min-h-32"
+        title="Carregando Hades"
+      />
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-6">
         {Array.from({ length: 6 }, (_, index) => (
           <div

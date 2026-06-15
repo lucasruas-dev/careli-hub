@@ -18,6 +18,10 @@ import { Tooltip } from "@repo/uix";
 
 import { KpiCard } from "@/components/guardian/dashboard/KpiCard";
 import { MainLayout } from "@/components/guardian/layout/MainLayout";
+import {
+  PanteonLoadingMark,
+  PanteonLoadingState,
+} from "@/components/panteon/panteon-loading";
 import type {
   HadesDistributionBucket,
   HadesEnterpriseDistributions,
@@ -310,6 +314,7 @@ export default function HadesPage() {
         ? `dados reais de ${enterprise}`
         : "dados reais"
       : "carregando dados reais";
+  const isRealKpisLoading = !realKpis && !realKpisError;
   const financialEnterpriseRows =
     realKpis?.enterprisePerformance ?? [];
   const selectedEnterpriseDistributions = selectedEnterprisePerformance
@@ -328,6 +333,8 @@ export default function HadesPage() {
   const billingCompositionRows = selectedEnterprisePerformance
     ? selectedEnterpriseDistributions?.billingComposition ?? []
     : realKpis?.billingComposition ?? [];
+  const showFinancialLoadingOverlay =
+    isRealKpisLoading && financialEnterpriseRows.length === 0;
   const financialEnterpriseOptions = useMemo(
     () => [
       "Todos",
@@ -460,25 +467,42 @@ export default function HadesPage() {
           title="Financeiro"
           tone="gold"
         >
-          <section className="grid gap-4 2xl:grid-cols-[1.4fr_0.6fr]">
-            <EnterprisePerformanceTable
-              data={financialEnterpriseRows}
-              error={realKpisError}
-              selected={enterprise}
-              onSelect={(value) => setEnterprise((current) => (current === value ? "Todos" : value))}
-            />
-            <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-1">
-              <DistributionCard
-                title="Aging da inadimplência"
-                data={overdueAgingRows}
-                emptyMessage={distributionEmptyMessage}
+          <section
+            aria-busy={showFinancialLoadingOverlay}
+            className="relative grid gap-4 2xl:grid-cols-[1.4fr_0.6fr]"
+          >
+            <div
+              className={
+                showFinancialLoadingOverlay
+                  ? "contents pointer-events-none select-none"
+                  : "contents"
+              }
+            >
+              <EnterprisePerformanceTable
+                data={financialEnterpriseRows}
+                error={realKpisError}
+                isLoading={showFinancialLoadingOverlay}
+                selected={enterprise}
+                onSelect={(value) => setEnterprise((current) => (current === value ? "Todos" : value))}
               />
-              <DistributionCard
-                title="Composição da cobrança"
-                data={billingCompositionRows}
-                emptyMessage={distributionEmptyMessage}
-              />
+              <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-1">
+                <DistributionCard
+                  title="Aging da inadimplência"
+                  data={overdueAgingRows}
+                  emptyMessage={distributionEmptyMessage}
+                  isLoading={showFinancialLoadingOverlay}
+                />
+                <DistributionCard
+                  title="Composição da cobrança"
+                  data={billingCompositionRows}
+                  emptyMessage={distributionEmptyMessage}
+                  isLoading={showFinancialLoadingOverlay}
+                />
+              </div>
             </div>
+            {showFinancialLoadingOverlay ? (
+              <PanteonLoadingState title="Carregando" variant="overlay" />
+            ) : null}
           </section>
         </DashboardPanel>
 
@@ -940,11 +964,13 @@ function Input({
 function EnterprisePerformanceTable({
   data,
   error,
+  isLoading,
   selected,
   onSelect,
 }: {
   data: EnterprisePerformanceItem[];
   error: string | null;
+  isLoading: boolean;
   selected: string;
   onSelect: (value: string) => void;
 }) {
@@ -976,7 +1002,7 @@ function EnterprisePerformanceTable({
   }
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="relative overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="border-b border-slate-100 px-5 py-4">
         <div className="flex items-center gap-3">
           <div className="flex size-9 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
@@ -995,7 +1021,7 @@ function EnterprisePerformanceTable({
             : "Nao foi possivel carregar o consolidado real. Os dados serao exibidos quando o C2X responder."}
         </div>
       ) : null}
-      <div className="max-h-[408px] overflow-auto">
+      <div className="max-h-[408px] min-h-72 overflow-auto">
         <table className="w-full min-w-[1120px] text-left text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
             <tr>
@@ -1082,7 +1108,7 @@ function EnterprisePerformanceTable({
                   </td>
                 </tr>
               ))
-            ) : (
+            ) : isLoading ? null : (
               <tr>
                 <td colSpan={8} className="px-5 py-8 text-center text-sm text-slate-500">
                   Aguardando dados reais do C2X.
@@ -1182,20 +1208,23 @@ function DistributionCard({
   title,
   data,
   emptyMessage = "Aguardando dados reais do C2X.",
+  isLoading = false,
 }: {
   title: string;
   data: HadesDistributionBucket[];
   emptyMessage?: string;
+  isLoading?: boolean;
 }) {
+  const isLoadingEmptyState = /^carregando/i.test(emptyMessage);
   const total = Math.max(
     data.reduce((subtotal, item) => subtotal + item.total, 0),
     1,
   );
 
   return (
-    <section className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="relative rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-      <div className="mt-5 space-y-4">
+      <div className="mt-5 min-h-40 space-y-4">
         {data.length > 0 ? (
           data.map((item) => {
             const percentage = Math.round((item.total / total) * 100);
@@ -1212,7 +1241,16 @@ function DistributionCard({
           })
         ) : (
           <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-500">
-            {emptyMessage}
+            {isLoading ? (
+              "Carregando"
+            ) : isLoadingEmptyState ? (
+              <span className="inline-flex items-center gap-2">
+                <PanteonLoadingMark size="xs" />
+                {emptyMessage}
+              </span>
+            ) : (
+              emptyMessage
+            )}
           </div>
         )}
       </div>

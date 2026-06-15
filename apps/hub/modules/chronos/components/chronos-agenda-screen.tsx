@@ -22,8 +22,9 @@ import type {
   ChronosRoom,
   ChronosUpdateInput,
 } from "@/lib/chronos/types";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { Surface } from "@repo/uix";
-import { Loader2, Plus } from "lucide-react";
+import { Plus } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ChronosCalendarCanvas,
@@ -280,7 +281,7 @@ export function ChronosAgendaScreen({
             type="button"
           >
             {googleCalendarSyncing ? (
-              <Loader2 aria-hidden="true" className="animate-spin" size={15} />
+              <PanteonLoadingMark size="xs" />
             ) : (
               <span aria-hidden="true">G</span>
             )}

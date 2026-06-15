@@ -1,6 +1,7 @@
 "use client";
 
 import { CallParticipantTile } from "@/components/pulsex/call-participant-tile";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import type {
   ChronosChatMessage,
   ChronosPublicJoinResult,
@@ -52,7 +53,6 @@ import {
   Droplets,
   FileText,
   ImagePlus,
-  Loader2,
   MessageSquare,
   Mic,
   MicOff,
@@ -3708,7 +3708,7 @@ export function ChronosExternalRoomPage({
                   onClick={() => void handleJoinRoom()}
                   type="button"
                 >
-                  {joining ? <Loader2 aria-hidden="true" className="animate-spin" size={16} /> : null}
+                  {joining ? <PanteonLoadingMark inverse size="xs" /> : null}
                   Participar
                 </button>
               </div>
@@ -3754,11 +3754,7 @@ export function ChronosExternalRoomPage({
               {wherebyStatus === "loading" || joining ? (
                 <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] text-sm font-semibold text-white/72">
                   <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-2 shadow-xl">
-                    <Loader2
-                      aria-hidden="true"
-                      className="animate-spin"
-                      size={15}
-                    />
+                    <PanteonLoadingMark inverse size="xs" />
                     Preparando sala Whereby
                   </span>
                 </div>
@@ -5047,7 +5043,7 @@ function ChronosLiveKitControlBar({
             onClick={onToggleRecording}
           >
             {isRecordingBusy ? (
-              <Loader2 aria-hidden="true" className="animate-spin" size={17} />
+              <PanteonLoadingMark inverse={isRecording} size="xs" />
             ) : isRecording ? (
               <Square aria-hidden="true" size={17} />
             ) : (

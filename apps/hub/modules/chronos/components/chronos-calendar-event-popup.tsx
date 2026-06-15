@@ -32,6 +32,7 @@ import {
 } from "@/lib/chronos/types";
 import type { ApoloDashboardData } from "@/lib/apolo/types";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import {
   Bot,
   CalendarClock,
@@ -41,7 +42,6 @@ import {
   ExternalLink,
   FileText,
   ListChecks,
-  Loader2,
   MapPin,
   Repeat2,
   Save,
@@ -742,7 +742,7 @@ export function ChronosCalendarEventPopup({
                 type="button"
               >
                 {agendaAgentLoading ? (
-                  <Loader2 aria-hidden="true" className="animate-spin" size={16} />
+                  <PanteonLoadingMark size="xs" />
                 ) : (
                   <Bot aria-hidden="true" size={16} />
                 )}
@@ -956,7 +956,7 @@ export function ChronosCalendarEventPopup({
           type="submit"
         >
           {saving ? (
-            <Loader2 aria-hidden="true" className="animate-spin" size={15} />
+            <PanteonLoadingMark inverse size="xs" />
           ) : (
             <Save aria-hidden="true" size={15} />
           )}
@@ -1006,7 +1006,7 @@ export function ChronosCalendarEventPopup({
                 type="button"
               >
                 {agendaAgentLoading ? (
-                  <Loader2 aria-hidden="true" className="animate-spin" size={15} />
+                  <PanteonLoadingMark inverse size="xs" />
                 ) : (
                   <Bot aria-hidden="true" size={15} />
                 )}

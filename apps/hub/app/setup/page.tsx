@@ -1,6 +1,7 @@
 "use client";
 
 import { HubShell } from "@/layouts/hub-shell";
+import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import {
   createAtlasDepartment,
   createAtlasOccurrenceProfile,
@@ -138,8 +139,9 @@ export default function SetupPage() {
       <HubShell layoutMode="module">
         <WorkspaceLayout>
           <Surface bordered className="border-[#d9e0e7] bg-white p-6">
-            <EmptyState
+            <PanteonLoadingState
               description="Carregando perfil operacional."
+              minHeightClassName="min-h-40"
               title="Preparando Setup"
             />
           </Surface>
@@ -559,8 +561,9 @@ function SetupWorkspace() {
         </div>
         <div className="p-5">
           {isLoading ? (
-            <EmptyState
+            <PanteonLoadingState
               description="Buscando dados reais do Supabase."
+              minHeightClassName="min-h-64"
               title="Carregando Setup"
             />
           ) : (

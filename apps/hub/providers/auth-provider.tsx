@@ -21,6 +21,7 @@ import {
   logSupabaseDiagnostic,
   serializeDiagnosticError,
 } from "@/lib/supabase/client";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { markHubPresence } from "@/lib/hub-presence";
 import {
   getPermissionsForRole,
@@ -1543,12 +1544,19 @@ function AuthGateMessage({
   onRetry?: () => void;
   onSignOut?: () => void;
 }) {
+  const isLoadingMessage =
+    !onRetry && !onSignOut && /carregando|redirecionando/i.test(message);
+
   return (
     <div className="grid min-h-screen place-items-center bg-[var(--uix-surface-canvas)] px-6 text-center">
       <div className="max-w-md rounded-md border border-[#eadfca] bg-white px-6 py-5 shadow-sm">
-        <span className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-[#A07C3B]/10 text-[#8a682f]">
-          <AlertTriangle aria-hidden="true" size={18} strokeWidth={1.8} />
-        </span>
+        {isLoadingMessage ? (
+          <PanteonLoadingMark className="mx-auto mb-3" size="lg" />
+        ) : (
+          <span className="mx-auto mb-3 grid h-10 w-10 place-items-center rounded-full bg-[#A07C3B]/10 text-[#8a682f]">
+            <AlertTriangle aria-hidden="true" size={18} strokeWidth={1.8} />
+          </span>
+        )}
         <p className="m-0 text-sm font-medium text-[var(--uix-text-primary)]">
           {message}
         </p>

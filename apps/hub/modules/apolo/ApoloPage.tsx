@@ -7,6 +7,10 @@ import {
   getApoloProfileIcon,
   type ApoloScreen,
 } from "@/lib/apolo/catalog";
+import {
+  PanteonLoadingMark,
+  PanteonLoadingState,
+} from "@/components/panteon/panteon-loading";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { ClientDetailPanel } from "@/modules/guardian/attendance/components/ClientDetailPanel";
 import type {
@@ -40,7 +44,6 @@ import {
   HandCoins,
   Handshake,
   LayoutDashboard,
-  Loader2,
   MapPinned,
   MessageCircle,
   PhoneCall,
@@ -593,7 +596,7 @@ function ApoloProfileMetrics({
       {!metrics.length
         ? Array.from({ length: 7 }).map((_, index) => (
             <MetricCard
-              icon={<Loader2 className="size-4 animate-spin" aria-hidden="true" />}
+              icon={<PanteonLoadingMark size="xs" />}
               key={index}
               label="Carregando"
               loading
@@ -818,12 +821,10 @@ function EntityColumn({
 
 function EntityLoadingState() {
   return (
-    <div className="grid min-h-48 place-items-center rounded-lg border border-dashed border-slate-200 p-4 text-center text-sm font-semibold text-slate-500">
-      <span className="inline-flex items-center gap-2">
-        <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-        Carregando relacionamentos reais
-      </span>
-    </div>
+    <PanteonLoadingState
+      minHeightClassName="min-h-48"
+      title="Carregando relacionamentos reais"
+    />
   );
 }
 
@@ -1143,12 +1144,11 @@ function HadesWorkspaceLoading({ entity }: { entity: ApoloEntity }) {
   return (
     <section className="flex min-h-0 flex-col rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:h-[calc(100vh-112px)]">
       <RecordHeader entity={entity} />
-      <div className="grid min-h-72 flex-1 place-items-center bg-slate-50/35 p-6 text-sm font-semibold text-slate-500">
-        <span className="inline-flex items-center gap-2">
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          Carregando carteira, acordos, documentos e contrato
-        </span>
-      </div>
+      <PanteonLoadingState
+        className="flex-1 rounded-none border-0 bg-slate-50/35"
+        minHeightClassName="min-h-72"
+        title="Carregando carteira, acordos, documentos e contrato"
+      />
     </section>
   );
 }
@@ -1324,7 +1324,7 @@ function RecordHeaderEmpty({ loading }: { loading: boolean }) {
       <div className="flex items-center gap-3">
         <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400 ring-1 ring-slate-200/70">
           {loading ? (
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            <PanteonLoadingMark size="xs" />
           ) : (
             <ContactRound className="size-4" aria-hidden="true" />
           )}

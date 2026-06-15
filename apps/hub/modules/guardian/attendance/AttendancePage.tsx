@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Inbox, MapPinned, MessageCircle } from "lucide-react";
 import { Tooltip } from "@repo/uix";
+import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { ClientDetailPanel } from "@/modules/guardian/attendance/components/ClientDetailPanel";
 import { AiCopilotDrawer } from "@/modules/guardian/attendance/components/AiCopilotDrawer";
 import { QueuePanel } from "@/modules/guardian/attendance/components/QueuePanel";
@@ -356,11 +357,19 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     : selectedClient;
 
   if (!selectedClient) {
+    if (queueLoading) {
+      return (
+        <PanteonLoadingState
+          className="bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+          minHeightClassName="min-h-40"
+          title="Carregando fila operacional do C2X"
+        />
+      );
+    }
+
     return (
       <div className="rounded-xl border border-slate-200/70 bg-white p-8 text-center text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        {queueLoading
-          ? "Carregando fila operacional do C2X..."
-          : queueError ?? "Aguardando dados reais do C2X para montar a fila de cobrança."}
+        {queueError ?? "Aguardando dados reais do C2X para montar a fila de cobrança."}
       </div>
     );
   }

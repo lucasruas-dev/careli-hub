@@ -22,6 +22,10 @@ import {
   type AsanaTeamPerformanceSnapshot,
 } from "@/lib/asana-performance";
 import { HubUserTicketsPanel } from "@/components/hub-support/hub-user-tickets-panel";
+import {
+  PanteonLoadingMark,
+  PanteonLoadingState,
+} from "@/components/panteon/panteon-loading";
 import { HubShell } from "@/layouts/hub-shell";
 import { useAuth } from "@/providers/auth-provider";
 import {
@@ -761,11 +765,11 @@ function AsanaPerformancePanel({
             onClick={onRefresh}
             type="button"
           >
-            <RefreshCw
-              aria-hidden="true"
-              className={isLoading ? "animate-spin" : ""}
-              size={16}
-            />
+            {isLoading ? (
+              <PanteonLoadingMark size="xs" />
+            ) : (
+              <RefreshCw aria-hidden="true" size={16} />
+            )}
           </button>
         </div>
       </div>
@@ -906,6 +910,16 @@ function AsanaConfigState({
   isLoading: boolean;
   snapshot: AsanaTeamPerformanceSnapshot | null;
 }) {
+  if (isLoading) {
+    return (
+      <PanteonLoadingState
+        className="mt-4"
+        minHeightClassName="min-h-52"
+        title="Carregando"
+      />
+    );
+  }
+
   const missingEnv = snapshot?.source.missingEnv ?? [
     "ASANA_ACCESS_TOKEN",
   ];
@@ -917,7 +931,7 @@ function AsanaConfigState({
           <KeyRound aria-hidden="true" size={20} />
         </span>
         <p className="m-0 mt-3 text-sm font-semibold text-[#101820]">
-          {isLoading ? "Carregando Asana..." : "Configurar Asana server-side"}
+          Configurar Asana server-side
         </p>
         <p className="m-0 mt-2 text-xs leading-5 text-[#667085]">
           {error ??

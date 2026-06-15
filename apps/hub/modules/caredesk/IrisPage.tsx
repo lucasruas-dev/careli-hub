@@ -53,6 +53,9 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
+import {
+  PanteonLoadingState,
+} from "@/components/panteon/panteon-loading";
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import {
@@ -6526,12 +6529,11 @@ function conversationTime(ticket: IrisTicket) {
 
 function IrisLoading() {
   return (
-    <div className="rounded-2xl border border-[#dbe3ef] bg-white p-8">
-      <div className="mx-auto h-9 w-9 animate-spin rounded-full border-2 border-[#eadcc2] border-t-[#A07C3B]" />
-      <p className="mt-3 text-center text-sm font-semibold text-[#63708a]">
-        Carregando fila
-      </p>
-    </div>
+    <PanteonLoadingState
+      className="rounded-2xl border-[#dbe3ef] bg-white p-8"
+      minHeightClassName="min-h-32"
+      title="Carregando fila"
+    />
   );
 }
 

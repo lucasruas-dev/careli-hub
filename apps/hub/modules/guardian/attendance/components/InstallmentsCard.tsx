@@ -3,8 +3,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, ExternalLink, Eye, EyeOff, Filter, Loader2, ReceiptText } from "lucide-react";
+import { ChevronDown, ExternalLink, Eye, EyeOff, Filter, ReceiptText } from "lucide-react";
 import { Tooltip } from "@repo/uix";
+import {
+  PanteonLoadingMark,
+  PanteonLoadingState,
+} from "@/components/panteon/panteon-loading";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
 import type { PortfolioUnit, QueueClient } from "@/modules/guardian/attendance/types";
 
@@ -262,9 +266,11 @@ export function InstallmentsCard({
         style={{ maxHeight: showAllInstallments ? `${Math.max(visibleInstallments.length, 1) * 260}px` : "680px" }}
       >
         {installmentsPending ? (
-          <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-500">
-            Carregando parcelas reais do C2X...
-          </div>
+          <PanteonLoadingState
+            className="border-slate-200/70 bg-slate-50/60"
+            minHeightClassName="min-h-32"
+            title="Carregando parcelas reais do C2X"
+          />
         ) : visibleInstallments.length > 0 ? (
           visibleInstallments.map((installment) => (
           <article
@@ -536,7 +542,7 @@ function PaymentViewingIndicator({ installment }: { installment: Installment }) 
           aria-label="Consultando visualização do boleto"
           className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400"
         >
-          <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+          <PanteonLoadingMark size="xs" />
         </span>
       </Tooltip>
     );
