@@ -1,5 +1,8 @@
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
-import { HUB_IDLE_TIMEOUT_MS } from "@/lib/hub-presence-policy";
+import {
+  HUB_AUTO_LOGOUT_TIMEOUT_MS,
+  HUB_IDLE_TIMEOUT_MS,
+} from "@/lib/hub-presence-policy";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -282,8 +285,11 @@ export async function PATCH(request: NextRequest) {
   }
 
   const storedPreviousStatus = existingPresence
-    ? normalizeLegacyPresence(existingPresence.status)
+    ? normalizeFreshPresence(existingPresence)
     : "offline";
+  const previousStatusCloseOpenAt = existingPresence
+    ? getPresenceTransitionCloseOpenAt(existingPresence, now)
+    : undefined;
   const nextStatus = payload.data.status;
 
   if (
@@ -346,10 +352,12 @@ export async function PATCH(request: NextRequest) {
     shouldRecordPresenceTransition({
       metadata: payload.data.metadata,
       nextStatus,
+      reason: payload.data.reason,
       storedPreviousStatus,
     })
   ) {
     const eventResult = await recordPresenceTransition({
+      closeOpenAt: previousStatusCloseOpenAt,
       context,
       metadata: payload.data.metadata,
       nextStatus,
@@ -479,6 +487,7 @@ function createPresenceSummary({
 }
 
 async function recordPresenceTransition({
+  closeOpenAt,
   context,
   metadata,
   nextStatus,
@@ -488,6 +497,7 @@ async function recordPresenceTransition({
   source,
   storedPreviousStatus,
 }: {
+  closeOpenAt?: string;
   context: Extract<AuthorizedContext, { ok: true }>;
   metadata: Record<string, unknown>;
   nextStatus: Exclude<HubPresenceStatus, "busy">;
@@ -498,6 +508,7 @@ async function recordPresenceTransition({
   storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
 }) {
   const transitionPlan = createPresenceTransitionPlan({
+    closeOpenAt,
     metadata,
     nextStatus,
     now,
@@ -582,6 +593,7 @@ async function recordPresenceTransition({
 }
 
 function createPresenceTransitionPlan({
+  closeOpenAt,
   metadata,
   nextStatus,
   now,
@@ -590,6 +602,7 @@ function createPresenceTransitionPlan({
   source,
   storedPreviousStatus,
 }: {
+  closeOpenAt?: string;
   metadata: Record<string, unknown>;
   nextStatus: Exclude<HubPresenceStatus, "busy">;
   now: string;
@@ -599,6 +612,13 @@ function createPresenceTransitionPlan({
   storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
 }) {
   const normalizedPreviousStatus = normalizeLegacyPresence(previousStatus);
+  const staleLogoutEvent = createStaleLogoutEvent({
+    closeOpenAt,
+    metadata,
+    normalizedPreviousStatus,
+    now,
+    source,
+  });
   const bridgeAway = shouldBridgeAwayBeforeTransition({
     metadata,
     nextStatus,
@@ -615,8 +635,9 @@ function createPresenceTransitionPlan({
     };
 
     return {
-      closeOpenAt: awayStartedAt,
+      closeOpenAt: closeOpenAt ?? awayStartedAt,
       events: [
+        ...(staleLogoutEvent ? [staleLogoutEvent] : []),
         {
           endedAt: now,
           metadata: awayMetadata,
@@ -645,8 +666,9 @@ function createPresenceTransitionPlan({
       : now;
 
   return {
-    closeOpenAt: startedAt,
+    closeOpenAt: closeOpenAt ?? startedAt,
     events: [
+      ...(staleLogoutEvent ? [staleLogoutEvent] : []),
       {
         endedAt: undefined,
         metadata,
@@ -658,6 +680,49 @@ function createPresenceTransitionPlan({
       },
     ],
   };
+}
+
+function createStaleLogoutEvent({
+  closeOpenAt,
+  metadata,
+  normalizedPreviousStatus,
+  now,
+  source,
+}: {
+  closeOpenAt?: string;
+  metadata: Record<string, unknown>;
+  normalizedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
+  now: string;
+  source: string;
+}) {
+  if (!closeOpenAt || !isStaleCloseOpenAt(closeOpenAt, now)) {
+    return null;
+  }
+
+  return {
+    endedAt: now,
+    metadata: {
+      ...metadata,
+      synthetic: true,
+      trigger: "stale_presence_reconciliation",
+    },
+    nextStatus: "offline" as const,
+    previousStatus: normalizedPreviousStatus,
+    reason: "logout",
+    source,
+    startedAt: closeOpenAt,
+  };
+}
+
+function isStaleCloseOpenAt(closeOpenAt: string, now: string) {
+  const closeTime = Date.parse(closeOpenAt);
+  const nowTime = Date.parse(now);
+
+  if (Number.isNaN(closeTime) || Number.isNaN(nowTime)) {
+    return false;
+  }
+
+  return nowTime - closeTime > 1_000;
 }
 
 function shouldBridgeAwayBeforeTransition({
@@ -687,12 +752,18 @@ function shouldBridgeAwayBeforeTransition({
 function shouldRecordPresenceTransition({
   metadata,
   nextStatus,
+  reason,
   storedPreviousStatus,
 }: {
   metadata: Record<string, unknown>;
   nextStatus: Exclude<HubPresenceStatus, "busy">;
+  reason: string;
   storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
 }) {
+  if (reason === "login" && nextStatus === "online") {
+    return true;
+  }
+
   if (
     shouldBridgeAwayBeforeTransition({
       metadata,
@@ -728,7 +799,8 @@ function shouldPreserveManualPresence({
     storedPreviousStatus === "agenda" &&
     nextStatus !== "agenda" &&
     reason !== "manual" &&
-    reason !== "activity"
+    reason !== "activity" &&
+    reason !== "login"
   ) {
     return true;
   }
@@ -858,20 +930,52 @@ function parsePresencePayload(payload: unknown): ParsedPresencePayload {
 function normalizeFreshPresence(row: HubPresenceRow): Exclude<HubPresenceStatus, "busy"> {
   const status = normalizeLegacyPresence(row.status);
 
-  if (status === "offline" || status === "agenda" || status === "lunch") {
+  const lastSeenTime = Date.parse(row.last_seen_at);
+
+  if (status === "offline") {
+    return "offline";
+  }
+
+  if (Number.isNaN(lastSeenTime)) {
+    return "offline";
+  }
+
+  const presenceAgeMs = Date.now() - lastSeenTime;
+
+  if (presenceAgeMs >= HUB_AUTO_LOGOUT_TIMEOUT_MS) {
+    return "offline";
+  }
+
+  if (status === "agenda" || status === "lunch") {
     return status;
   }
 
-  const lastSeenTime = Date.parse(row.last_seen_at);
-
-  if (
-    Number.isNaN(lastSeenTime) ||
-    Date.now() - lastSeenTime > HUB_IDLE_TIMEOUT_MS
-  ) {
+  if (presenceAgeMs >= HUB_IDLE_TIMEOUT_MS) {
     return "away";
   }
 
   return status;
+}
+
+function getPresenceTransitionCloseOpenAt(row: HubPresenceRow, fallback: string) {
+  const status = normalizeLegacyPresence(row.status);
+
+  if (status === "offline") {
+    return fallback;
+  }
+
+  const lastSeenTime = Date.parse(row.last_seen_at);
+  const fallbackTime = Date.parse(fallback);
+
+  if (Number.isNaN(lastSeenTime) || Number.isNaN(fallbackTime)) {
+    return fallback;
+  }
+
+  if (fallbackTime - lastSeenTime < HUB_AUTO_LOGOUT_TIMEOUT_MS) {
+    return fallback;
+  }
+
+  return new Date(lastSeenTime + HUB_AUTO_LOGOUT_TIMEOUT_MS).toISOString();
 }
 
 function normalizePresencePayloadStatus(

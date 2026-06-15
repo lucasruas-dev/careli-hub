@@ -39,7 +39,9 @@ function isManualHoldPresence(status: HubPresenceStatus) {
   );
 }
 
-function isProtectedManualPresence(status: HubPresenceStatus | null) {
+function isProtectedManualPresence(
+  status: HubPresenceStatus | null,
+): status is "agenda" | "lunch" {
   return status === "agenda" || status === "lunch";
 }
 
@@ -160,12 +162,10 @@ export function useHubPresenceController({
         return "manual_agenda";
       }
 
-      if (activeMeetingRef.current) {
-        return "chronos_current_meeting";
-      }
-
       if (isChronosCallRoute()) {
-        return "chronos_call_route";
+        return activeMeetingRef.current
+          ? "chronos_current_meeting"
+          : "chronos_call_route";
       }
 
       return null;
@@ -195,6 +195,12 @@ export function useHubPresenceController({
         : {
             rule,
           };
+    }
+
+    function getProtectedManualPresenceMetadata(status: HubPresenceStatus) {
+      return {
+        rule: status === "agenda" ? "manual_agenda" : "manual_lunch",
+      };
     }
 
     function schedulePresenceTimers() {
@@ -290,8 +296,15 @@ export function useHubPresenceController({
         return;
       }
 
-      if (isProtectedManualPresence(manualPresenceRef.current)) {
-        schedulePresenceTimers();
+      const protectedActivityStatus = manualPresenceRef.current;
+
+      if (isProtectedManualPresence(protectedActivityStatus)) {
+        runPresenceUpdate(
+          protectedActivityStatus,
+          "heartbeat",
+          getProtectedManualPresenceMetadata(protectedActivityStatus),
+        );
+        clearPresenceTimers();
         return;
       }
 
@@ -335,7 +348,14 @@ export function useHubPresenceController({
         return;
       }
 
-      if (isProtectedManualPresence(manualPresenceRef.current)) {
+      const protectedAutomaticStatus = manualPresenceRef.current;
+
+      if (isProtectedManualPresence(protectedAutomaticStatus)) {
+        runPresenceUpdate(
+          protectedAutomaticStatus,
+          "heartbeat",
+          getProtectedManualPresenceMetadata(protectedAutomaticStatus),
+        );
         clearPresenceTimers();
         return;
       }

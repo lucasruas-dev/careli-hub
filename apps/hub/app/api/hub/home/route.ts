@@ -522,16 +522,27 @@ function mapNames(rows: IdNameRow[]) {
 function normalizeFreshPresence(row: HubPresenceRow): Exclude<HubPresenceStatus, "busy"> {
   const status = row.status === "busy" ? "agenda" : row.status;
 
-  if (status === "offline" || status === "agenda" || status === "lunch") {
+  const lastSeenTime = Date.parse(row.last_seen_at);
+
+  if (status === "offline") {
+    return "offline";
+  }
+
+  if (Number.isNaN(lastSeenTime)) {
+    return "offline";
+  }
+
+  const presenceAgeMs = Date.now() - lastSeenTime;
+
+  if (presenceAgeMs >= HUB_AUTO_LOGOUT_TIMEOUT_MS) {
+    return "offline";
+  }
+
+  if (status === "agenda" || status === "lunch") {
     return status;
   }
 
-  const lastSeenTime = Date.parse(row.last_seen_at);
-
-  if (
-    Number.isNaN(lastSeenTime) ||
-    Date.now() - lastSeenTime > HUB_IDLE_TIMEOUT_MS
-  ) {
+  if (presenceAgeMs >= HUB_IDLE_TIMEOUT_MS) {
     return "away";
   }
 

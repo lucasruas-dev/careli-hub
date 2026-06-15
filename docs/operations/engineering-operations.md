@@ -37425,3 +37425,47 @@ Conclusao:
 - Precisa de acao agora: Lucas deve validar um anexo real pequeno em uma resposta do Hermes.
 - Quem deve agir agora: Lucas valida; Zeus fica pronto para rollback de `c2x.app.br` se houver regressao critica.
 - Proximo passo: manter em producao se o teste autenticado confirmar envio e exibicao dos anexos.
+
+### Complemento 2026-06-15 08:02:57 -03:00 - Home disponibilidade assertiva
+
+- Status: `VALIDADO_LOCAL / AGUARDANDO_VALIDACAO_LUCAS`.
+- Protocolo: `HOME-20260615-001-PRESENCE-DEFINITIVE`.
+- Manifesto: `docs/operations/panteon-recorte-manifest-home-20260615-001-presence-definitive.json`.
+- Motivo:
+  - Lucas reportou falsos status `em reuniao`, regra de ausente inconsistente e ausencia de historico em `13/06/2026`;
+  - disponibilidade passou a ser tratada como incidente operacional por impactar confianca do painel de home office.
+- Causa tecnica identificada:
+  - o status `agenda` era exibido como `em reuniao`, mesmo quando era apenas agenda/status macro;
+  - `agenda` e `almoco` eram retornados como frescos na API mesmo sem heartbeat recente;
+  - `agenda` podia ser preservado em login/heartbeat e renovar um estado antigo;
+  - logins de nova sessao podiam nao gerar evento quando o status anterior continuava `online`, reduzindo a trilha do dia;
+  - uma reuniao Chronos agendada podia influenciar a presenca sem exigir evidencia de rota/sala de call.
+- Alteracoes:
+  - `apps/hub/hooks/use-hub-presence.ts` agora considera excecao automatica de agenda apenas em rota de sala/call Chronos ou agenda manual, mantendo heartbeat para agenda/almoco manual enquanto a aba esta viva;
+  - `apps/hub/app/api/hub/presence/route.ts` normaliza status stale: sem sinal por 5 minutos vira `away`, sem sinal por 10 minutos vira `offline`, inclusive para `agenda`/`almoco`;
+  - a API de presenca nao preserva `agenda` antiga em login e registra login de nova sessao mesmo quando o status bruto continuava `online`;
+  - quando uma presenca antiga e reconciliada, o status aberto e fechado retroativamente no limite de 10 minutos para nao inflar historico;
+  - `apps/hub/app/api/hub/home/route.ts` aplica a mesma normalizacao stale antes de montar Home/Disponibilidade;
+  - `apps/hub/app/page.tsx` troca rotulos de `reuniao` para `agenda` onde nao ha evidencia de call e inclui agenda na contagem macro da aba Disponibilidade.
+- Validacoes:
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria.
+- Supabase e infraestrutura:
+  - `BLOQUEADO`: consulta read-only para auditar eventos reais de `13/06/2026` em `hub_presence_events` depende de autorizacao explicita do Lucas;
+  - `BLOQUEADO`: Supabase Realtime Presence, Edge Function, Cron ou migration para reconciliacao ativa devem virar recorte proprio de banco/infra;
+  - nenhuma chave, env, migration, schema, banco, alias, deploy Preview, homologacao ou producao foi executado nesta rodada.
+- Risco residual:
+  - sem um reconciliador server-side agendado, o fechamento retroativo ocorre no proximo sinal do usuario; a exibicao atual ja deixa de confiar em status stale, mas a trilha historica perfeita para crash/offline abrupto exigira recorte de infra autorizado.
+- Rollback:
+  - reverter o commit do protocolo `HOME-20260615-001-PRESENCE-DEFINITIVE`;
+  - nao ha migration ou banco para desfazer neste recorte.
+
+Conclusao:
+
+- O que aconteceu: a regra de disponibilidade foi endurecida no client e no servidor para parar de confiar em status antigo e parar de chamar agenda de reuniao.
+- Impacto pratico: Home/Disponibilidade deve mostrar `agenda`, `ausente`, `online`, `almoco` e `offline` com base em heartbeat recente, com 5 minutos para ausente e 10 minutos para offline/logout.
+- Precisa de acao agora: Lucas deve validar em sessao autenticada com pelo menos um usuario parado por 5 minutos e 10 minutos, e confirmar se autoriza auditoria read-only no Supabase para o dia `13/06/2026`.
+- Quem deve agir agora: Zeus entrega o recorte local validado; Lucas decide se autoriza consulta Supabase e publicacao.
+- Proximo passo: se Lucas autorizar, publicar Preview/homologacao do protocolo e/ou abrir recorte de Supabase Realtime/Reconciliador para historico ainda mais forte.

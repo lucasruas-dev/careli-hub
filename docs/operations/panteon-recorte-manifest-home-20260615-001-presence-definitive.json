@@ -1,0 +1,63 @@
+{
+  "protocolId": "HOME-20260615-001-PRESENCE-DEFINITIVE",
+  "module": "Home",
+  "squad": "Zeus",
+  "status": "VALIDADO_LOCAL",
+  "createdAt": "2026-06-15T08:02:57-03:00",
+  "scope": [
+    "Corrigir falso status de agenda/reuniao por presenca antiga sem heartbeat",
+    "Aplicar expiracao server-side: 5 minutos para ausente e 10 minutos para offline/logout",
+    "Manter heartbeat de agenda/almoco manual enquanto a aba esta viva",
+    "Registrar login de nova sessao mesmo quando o status anterior ainda era online",
+    "Trocar rotulos visuais de reuniao para agenda quando nao ha evidência de call"
+  ],
+  "files": [
+    "apps/hub/hooks/use-hub-presence.ts",
+    "apps/hub/app/api/hub/presence/route.ts",
+    "apps/hub/app/api/hub/home/route.ts",
+    "apps/hub/app/page.tsx",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-home-20260615-001-presence-definitive.json"
+  ],
+  "validations": [
+    {
+      "command": "git diff --check",
+      "status": "PASS",
+      "notes": "Apenas avisos CRLF esperados no Windows."
+    },
+    {
+      "command": "npm.cmd run check-types:hub",
+      "status": "PASS",
+      "notes": "Warning conhecido de turbo global."
+    },
+    {
+      "command": "npm.cmd run lint:hub",
+      "status": "PASS",
+      "notes": "Warning conhecido MODULE_TYPELESS_PACKAGE_JSON."
+    },
+    {
+      "command": "npm.cmd run build --workspace @repo/hub",
+      "status": "PASS",
+      "notes": "Warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria."
+    }
+  ],
+  "blocked": [
+    {
+      "item": "Consulta ou alteracao manual em Supabase para auditar dia 13/06/2026",
+      "reason": "Operacao de banco/Supabase exige autorizacao explicita do Lucas neste recorte."
+    },
+    {
+      "item": "Supabase Realtime Presence, Edge Function ou Cron de reconciliacao",
+      "reason": "Mudanca de infra/banco/env sensivel; deve virar recorte proprio apos autorizacao."
+    },
+    {
+      "item": "Deploy Preview, homologacao ou producao",
+      "reason": "Nao solicitado nesta rodada."
+    }
+  ],
+  "rollback": [
+    "Reverter o commit do protocolo HOME-20260615-001-PRESENCE-DEFINITIVE.",
+    "Sem migration ou alteracao de banco para desfazer."
+  ],
+  "risk": "Baixo no codigo; risco residual depende de teste autenticado com multiplos colaboradores e auditoria read-only do historico real no Supabase se Lucas autorizar."
+}

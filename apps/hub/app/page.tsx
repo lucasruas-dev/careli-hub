@@ -88,7 +88,7 @@ type HomeTeamMember = {
 };
 
 const operationStatusLabel = {
-  agenda: "em reuniao",
+  agenda: "agenda",
   away: "ausente",
   lunch: "almoco",
   offline: "offline",
@@ -150,7 +150,7 @@ export default function HomePage() {
   const onlineCount = countTeamStatus(teamMembers, "online");
   const awayCount = countTeamStatus(teamMembers, "away");
   const lunchCount = countTeamStatus(teamMembers, "lunch");
-  const meetingCount = countTeamStatus(teamMembers, "agenda");
+  const agendaCount = countTeamStatus(teamMembers, "agenda");
   const offlineCount = countTeamStatus(teamMembers, "offline");
   const taskCount = asanaSnapshot?.totals.total ?? 0;
   const unreadNotificationsCount = snapshot?.notifications.unreadCount ?? 0;
@@ -261,7 +261,7 @@ export default function HomePage() {
         ) : (
           <>
             <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <PulseMetric icon={<CalendarCheck2 size={18} />} label="reunioes" value={meetingCount} />
+              <PulseMetric icon={<CalendarCheck2 size={18} />} label="agenda" value={agendaCount} />
               <PulseMetric icon={<ListChecks size={18} />} label="tasks" value={taskCount} />
               <PulseMetric icon={<MessageSquareText size={18} />} label="mensagens hoje" value={messagesTodayCount} />
               <PulseMetric icon={<Bell size={18} />} label="notificacoes" value={unreadNotificationsCount} />
@@ -281,7 +281,7 @@ export default function HomePage() {
                   <StatusPill label="online" value={onlineCount} variant="online" />
                   <StatusPill label="ausentes" value={awayCount} variant="away" />
                   <StatusPill label="almoco" value={lunchCount} variant="lunch" />
-                  <StatusPill label="reuniao" value={meetingCount} variant="meeting" />
+                  <StatusPill label="agenda" value={agendaCount} variant="meeting" />
                   <StatusPill label="offline" value={offlineCount} variant="offline" />
                 </div>
                 <div className="mt-4 grid grid-cols-2 gap-3">
@@ -320,7 +320,7 @@ export default function HomePage() {
                   title="Agenda e tarefas"
                 />
                 <div className="mt-4 grid grid-cols-3 gap-3">
-                  <DayMetric label="reunioes agora" value={meetingCount} />
+                  <DayMetric label="agenda agora" value={agendaCount} />
                   <DayMetric label="com entrega" value={taskCount} />
                   <DayMetric
                     label="a vencer"
@@ -498,6 +498,7 @@ function AvailabilityAdminPanel({
       snapshot.generatedAt,
     );
   const currentCounts = {
+    agenda: snapshot.team.filter((member) => member.currentStatus === "agenda").length,
     away: snapshot.team.filter((member) => member.currentStatus === "away").length,
     lunch: snapshot.team.filter((member) => member.currentStatus === "lunch").length,
     offline: snapshot.team.filter((member) => member.currentStatus === "offline").length,
@@ -564,7 +565,8 @@ function AvailabilityAdminPanel({
           <div className="flex min-w-[18rem] items-center justify-between gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] px-3 py-2 text-sm font-semibold text-[#17202f]">
             <span>
               {currentCounts.online} online / {currentCounts.away} ausentes /{" "}
-              {currentCounts.lunch} almoco / {currentCounts.offline} offline
+              {currentCounts.lunch} almoco / {currentCounts.agenda} agenda /{" "}
+              {currentCounts.offline} offline
             </span>
             {dateFilter ? (
               <button
@@ -1295,6 +1297,10 @@ function formatPresenceDate(value: string) {
 }
 
 function getJourneyEventKind(event: JourneyEventRecord): AvailabilityEventKind | null {
+  if (event.reason === "login" && event.nextStatus === "online") {
+    return "login";
+  }
+
   if (event.reason === "logout" || event.nextStatus === "offline") {
     return "logout";
   }
@@ -1461,8 +1467,15 @@ function shouldSkipJourneyEvent(
 
   const deltaMs = getJourneyTimeDeltaMs(previousItem, item);
 
-  // Keep the first online marker of a cycle; suppress heartbeat noise after it.
   if (item.kind === previousItem.kind) {
+    if (item.kind === "login") {
+      return (
+        getPresenceDateInputValue(previousItem.event.startedAt) ===
+          getPresenceDateInputValue(item.event.startedAt) &&
+        deltaMs <= 120_000
+      );
+    }
+
     return true;
   }
 
@@ -1645,7 +1658,7 @@ function shouldShowCurrentStatusFallback(
 
 function formatCurrentStatusText(member: HubAvailabilitySnapshot["team"][number]) {
   const labels = {
-    agenda: `${member.displayName} esta em reuniao`,
+    agenda: `${member.displayName} esta em agenda`,
     away: `${member.displayName} esta ausente`,
     lunch: `${member.displayName} esta em almoco`,
     offline: `${member.displayName} esta offline`,
