@@ -1,0 +1,59 @@
+{
+  "protocolId": "HOME-20260616-003-AVAILABILITY-STABILITY",
+  "module": "Home",
+  "domain": "https://c2x.app.br",
+  "currentProductionDeploymentId": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+  "rollbackDeploymentId": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+  "candidateSourceCommit": "d3b87ccc4a0cf08b3c572d2adbb26ac83c350269",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/production-base-20260616-availability",
+  "candidatePackagePath": ".codex-deploy/production-candidate-20260616-availability",
+  "allowedChangedPaths": [
+    "apps/hub/app/api/hub/home/route.ts",
+    "apps/hub/app/api/hub/presence/route.ts",
+    "apps/hub/app/page.tsx",
+    "apps/hub/hooks/use-hub-presence.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/production-recorte-safety-gate-home-20260616-001-availability.json"
+  ],
+  "protectedPaths": [
+    "apps/hub/app/escritorio-virtual/**",
+    "apps/hub/app/ares/**",
+    "apps/hub/app/api/ares/**",
+    "apps/hub/modules/ares/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/modules/chronos/**",
+    "apps/hub/modules/atlas/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/chronos/**",
+    "apps/hub/app/hermes/**"
+  ],
+  "forbiddenChangedPaths": [],
+  "requiredPaths": [
+    "apps/hub/app/api/hub/home/route.ts",
+    "apps/hub/app/api/hub/presence/route.ts",
+    "apps/hub/hooks/use-hub-presence.ts"
+  ],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/hooks/use-hub-presence.ts",
+      "contains": "persisted_agenda"
+    },
+    {
+      "path": "apps/hub/app/api/hub/presence/route.ts",
+      "contains": "createStaleReconciliationPlan"
+    },
+    {
+      "path": "apps/hub/app/api/hub/home/route.ts",
+      "contains": "reconcileAvailabilityHistoryEvents"
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/app/page.tsx",
+      "contains": "escritorio-virtual"
+    }
+  ]
+}

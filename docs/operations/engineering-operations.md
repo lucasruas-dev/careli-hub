@@ -37676,3 +37676,50 @@ Conclusao:
 - Precisa de acao agora: Zeus deve publicar o protocolo autorizado em producao e executar healthchecks.
 - Quem deve agir agora: Zeus publica e valida; Lucas revisa visualmente depois do deploy.
 - Proximo passo: registrar deployment, healthchecks e rollback assim que a producao estiver atualizada.
+
+## 2026-06-16 11:18:00 -03:00 - Zeus - recorte limpo Home Disponibilidade
+
+Assunto: [Home] Recorte limpo para estabilizar Disponibilidade
+
+- Nome da squad/agente: `Zeus`.
+- ProtocolId: `HOME-20260616-003-AVAILABILITY-STABILITY`.
+- Tipo da alteracao: `HOME / DISPONIBILIDADE / PRESENCA / PRODUCAO`.
+- Status inicial: `CANDIDATO_LIMPO_EM_VALIDACAO`.
+- Autorizacao: Lucas solicitou subir a melhoria de Disponibilidade trabalhada ontem antes do marco zero de producao.
+- Base de producao validada:
+  - deployment atual de `https://c2x.app.br`: `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - commit base local: `820d596` (`fix(panteon): refine loading overlays`).
+- Recorte aplicado:
+  - origem funcional: `d3b87ccc4a0cf08b3c572d2adbb26ac83c350269` (`fix(home): recover availability presence logs`);
+  - aplicado em worktree limpo criado a partir de `820d596`;
+  - caminhos funcionais alterados:
+    - `apps/hub/app/api/hub/home/route.ts`;
+    - `apps/hub/app/api/hub/presence/route.ts`;
+    - `apps/hub/app/page.tsx`;
+    - `apps/hub/hooks/use-hub-presence.ts`.
+- Regras esperadas:
+  - preservar status `agenda` persistido ou manual como excecao de penalidade de ausencia/logout;
+  - preservar `lunch` manual como excecao de penalidade;
+  - registrar transicoes sem duplicar logins seguidos no painel;
+  - reconciliar visualmente eventos antigos para que usuarios offline por timeout nao fiquem sem historico;
+  - impedir que status `agenda` gere auto logout e derrube reunioes.
+- Gate de recorte:
+  - manifesto: `docs/operations/production-recorte-safety-gate-home-20260616-001-availability.json`;
+  - allowlist restrita aos quatro arquivos de Home/presenca e registros operacionais do recorte;
+  - caminhos de `Escritorio`, Ares, Iris, Hades, Chronos, Hermes e Atlas protegidos contra mudanca neste pacote.
+- Escopo preservado:
+  - nenhum arquivo de `Escritorio`, Ares, Iris, Hades, Hermes, Chronos, Atlas, Setup, env, secret, Supabase, banco ou migration foi alterado neste recorte.
+- Validacoes planejadas:
+  - `npm.cmd run check-types:hub`;
+  - `npm.cmd run lint:hub`;
+  - `npm.cmd run build --workspace @repo/hub`;
+  - gate de producao por recorte comparando pacote base e candidato;
+  - healthchecks Vercel antes de alias final.
+
+Conclusao:
+
+- O que aconteceu: o pacote foi reconstruido a partir da producao validada, aplicando somente a correcao de Disponibilidade.
+- Impacto pratico: o sistema deve parar de derrubar usuarios em status `agenda`/reuniao e melhorar a confiabilidade do historico de presenca.
+- Precisa de acao agora: executar validacoes e publicar apenas se o gate passar.
+- Quem deve agir agora: Zeus valida, publica e registra rollback; Lucas valida a Home em producao depois do deploy.
+- Proximo passo: apos producao estabilizada, congelar este estado como marco zero para o Address Registry.

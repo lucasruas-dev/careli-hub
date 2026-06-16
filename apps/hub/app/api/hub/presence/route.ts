@@ -284,6 +284,9 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  const rawPreviousStatus = existingPresence
+    ? normalizeLegacyPresence(existingPresence.status)
+    : "offline";
   const storedPreviousStatus = existingPresence
     ? normalizeFreshPresence(existingPresence)
     : "offline";
@@ -291,12 +294,17 @@ export async function PATCH(request: NextRequest) {
     ? getPresenceTransitionCloseOpenAt(existingPresence, now)
     : undefined;
   const nextStatus = payload.data.status;
+  const transitionReason = getPresenceTransitionReason({
+    nextStatus,
+    reason: payload.data.reason,
+    storedPreviousStatus,
+  });
 
   if (
     existingPresence &&
     shouldPreserveManualPresence({
       nextStatus,
-      reason: payload.data.reason,
+      reason: transitionReason,
       storedPreviousStatus,
     })
   ) {
@@ -352,7 +360,7 @@ export async function PATCH(request: NextRequest) {
     shouldRecordPresenceTransition({
       metadata: payload.data.metadata,
       nextStatus,
-      reason: payload.data.reason,
+      reason: transitionReason,
       storedPreviousStatus,
     })
   ) {
@@ -362,8 +370,8 @@ export async function PATCH(request: NextRequest) {
       metadata: payload.data.metadata,
       nextStatus,
       now,
-      previousStatus: storedPreviousStatus,
-      reason: payload.data.reason,
+      previousStatus: rawPreviousStatus,
+      reason: transitionReason,
       source: payload.data.source,
       storedPreviousStatus,
     });
@@ -612,13 +620,16 @@ function createPresenceTransitionPlan({
   storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
 }) {
   const normalizedPreviousStatus = normalizeLegacyPresence(previousStatus);
-  const staleLogoutEvent = createStaleLogoutEvent({
+  const staleReconciliationPlan = createStaleReconciliationPlan({
     closeOpenAt,
     metadata,
     normalizedPreviousStatus,
     now,
     source,
   });
+  const transitionPreviousStatus = staleReconciliationPlan.events.length
+    ? ("offline" as const)
+    : normalizedPreviousStatus;
   const bridgeAway = shouldBridgeAwayBeforeTransition({
     metadata,
     nextStatus,
@@ -635,9 +646,10 @@ function createPresenceTransitionPlan({
     };
 
     return {
-      closeOpenAt: closeOpenAt ?? awayStartedAt,
+      closeOpenAt:
+        staleReconciliationPlan.closeOpenAt ?? closeOpenAt ?? awayStartedAt,
       events: [
-        ...(staleLogoutEvent ? [staleLogoutEvent] : []),
+        ...staleReconciliationPlan.events,
         {
           endedAt: now,
           metadata: awayMetadata,
@@ -666,14 +678,15 @@ function createPresenceTransitionPlan({
       : now;
 
   return {
-    closeOpenAt: closeOpenAt ?? startedAt,
+    closeOpenAt:
+      staleReconciliationPlan.closeOpenAt ?? closeOpenAt ?? startedAt,
     events: [
-      ...(staleLogoutEvent ? [staleLogoutEvent] : []),
+      ...staleReconciliationPlan.events,
       {
         endedAt: undefined,
         metadata,
         nextStatus,
-        previousStatus: normalizedPreviousStatus,
+        previousStatus: transitionPreviousStatus,
         reason,
         source,
         startedAt,
@@ -682,7 +695,7 @@ function createPresenceTransitionPlan({
   };
 }
 
-function createStaleLogoutEvent({
+function createStaleReconciliationPlan({
   closeOpenAt,
   metadata,
   normalizedPreviousStatus,
@@ -695,22 +708,73 @@ function createStaleLogoutEvent({
   now: string;
   source: string;
 }) {
-  if (!closeOpenAt || !isStaleCloseOpenAt(closeOpenAt, now)) {
-    return null;
+  if (
+    !closeOpenAt ||
+    !isStaleCloseOpenAt(closeOpenAt, now) ||
+    normalizedPreviousStatus === "agenda" ||
+    normalizedPreviousStatus === "lunch" ||
+    normalizedPreviousStatus === "offline"
+  ) {
+    return {
+      events: [],
+    };
+  }
+
+  const reconciliationMetadata = {
+    ...metadata,
+    synthetic: true,
+    trigger: "stale_presence_reconciliation",
+  };
+
+  if (normalizedPreviousStatus === "online") {
+    const logoutTime = Date.parse(closeOpenAt);
+    const awayStartedAt = Number.isNaN(logoutTime)
+      ? closeOpenAt
+      : new Date(
+          logoutTime - (HUB_AUTO_LOGOUT_TIMEOUT_MS - HUB_IDLE_TIMEOUT_MS),
+        ).toISOString();
+
+    return {
+      closeOpenAt: awayStartedAt,
+      events: [
+        {
+          endedAt: closeOpenAt,
+          metadata: {
+            ...reconciliationMetadata,
+            rule: "idle_without_panteon_activity",
+          },
+          nextStatus: "away" as const,
+          previousStatus: "online" as const,
+          reason: "idle",
+          source,
+          startedAt: awayStartedAt,
+        },
+        {
+          endedAt: now,
+          metadata: reconciliationMetadata,
+          nextStatus: "offline" as const,
+          previousStatus: "away" as const,
+          reason: "logout",
+          source,
+          startedAt: closeOpenAt,
+        },
+      ],
+    };
   }
 
   return {
-    endedAt: now,
-    metadata: {
-      ...metadata,
-      synthetic: true,
-      trigger: "stale_presence_reconciliation",
-    },
-    nextStatus: "offline" as const,
-    previousStatus: normalizedPreviousStatus,
-    reason: "logout",
-    source,
-    startedAt: closeOpenAt,
+    closeOpenAt,
+    events: [
+      {
+        endedAt: now,
+        metadata: reconciliationMetadata,
+        nextStatus: "offline" as const,
+        previousStatus: normalizedPreviousStatus,
+        reason: "logout",
+        source,
+        startedAt: closeOpenAt,
+      },
+    ],
   };
 }
 
@@ -761,7 +825,7 @@ function shouldRecordPresenceTransition({
   storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
 }) {
   if (reason === "login" && nextStatus === "online") {
-    return true;
+    return storedPreviousStatus === "offline";
   }
 
   if (
@@ -777,6 +841,26 @@ function shouldRecordPresenceTransition({
   return storedPreviousStatus !== nextStatus;
 }
 
+function getPresenceTransitionReason({
+  nextStatus,
+  reason,
+  storedPreviousStatus,
+}: {
+  nextStatus: Exclude<HubPresenceStatus, "busy">;
+  reason: string;
+  storedPreviousStatus: Exclude<HubPresenceStatus, "busy">;
+}) {
+  if (
+    reason === "login" &&
+    nextStatus === "online" &&
+    storedPreviousStatus !== "offline"
+  ) {
+    return "activity";
+  }
+
+  return reason;
+}
+
 function shouldPreserveManualPresence({
   nextStatus,
   reason,
@@ -789,8 +873,7 @@ function shouldPreserveManualPresence({
   if (
     storedPreviousStatus === "lunch" &&
     nextStatus === "online" &&
-    reason !== "manual" &&
-    reason !== "login"
+    reason !== "manual"
   ) {
     return true;
   }
@@ -798,9 +881,7 @@ function shouldPreserveManualPresence({
   if (
     storedPreviousStatus === "agenda" &&
     nextStatus !== "agenda" &&
-    reason !== "manual" &&
-    reason !== "activity" &&
-    reason !== "login"
+    reason !== "manual"
   ) {
     return true;
   }
@@ -942,7 +1023,7 @@ function normalizeFreshPresence(row: HubPresenceRow): Exclude<HubPresenceStatus,
 
   const presenceAgeMs = Date.now() - lastSeenTime;
 
-  if (presenceAgeMs >= HUB_AUTO_LOGOUT_TIMEOUT_MS) {
+  if (presenceAgeMs >= getPresenceAutoLogoutTimeoutMs(status)) {
     return "offline";
   }
 
@@ -960,7 +1041,7 @@ function normalizeFreshPresence(row: HubPresenceRow): Exclude<HubPresenceStatus,
 function getPresenceTransitionCloseOpenAt(row: HubPresenceRow, fallback: string) {
   const status = normalizeLegacyPresence(row.status);
 
-  if (status === "offline") {
+  if (status === "offline" || status === "agenda" || status === "lunch") {
     return fallback;
   }
 
@@ -971,11 +1052,23 @@ function getPresenceTransitionCloseOpenAt(row: HubPresenceRow, fallback: string)
     return fallback;
   }
 
-  if (fallbackTime - lastSeenTime < HUB_AUTO_LOGOUT_TIMEOUT_MS) {
+  if (fallbackTime - lastSeenTime < getPresenceAutoLogoutTimeoutMs(status)) {
     return fallback;
   }
 
-  return new Date(lastSeenTime + HUB_AUTO_LOGOUT_TIMEOUT_MS).toISOString();
+  return new Date(
+    lastSeenTime + getPresenceAutoLogoutTimeoutMs(status),
+  ).toISOString();
+}
+
+function getPresenceAutoLogoutTimeoutMs(
+  status: Exclude<HubPresenceStatus, "busy">,
+) {
+  if (status === "away") {
+    return HUB_AUTO_LOGOUT_TIMEOUT_MS - HUB_IDLE_TIMEOUT_MS;
+  }
+
+  return HUB_AUTO_LOGOUT_TIMEOUT_MS;
 }
 
 function normalizePresencePayloadStatus(

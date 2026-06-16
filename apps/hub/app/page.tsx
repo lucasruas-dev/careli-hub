@@ -1485,8 +1485,7 @@ function shouldSkipJourneyEvent(
     if (item.kind === "login") {
       return (
         getPresenceDateInputValue(previousItem.event.startedAt) ===
-          getPresenceDateInputValue(item.event.startedAt) &&
-        deltaMs <= 120_000
+        getPresenceDateInputValue(item.event.startedAt)
       );
     }
 

@@ -534,7 +534,7 @@ function normalizeFreshPresence(row: HubPresenceRow): Exclude<HubPresenceStatus,
 
   const presenceAgeMs = Date.now() - lastSeenTime;
 
-  if (presenceAgeMs >= HUB_AUTO_LOGOUT_TIMEOUT_MS) {
+  if (presenceAgeMs >= getPresenceAutoLogoutTimeoutMs(status)) {
     return "offline";
   }
 
@@ -568,10 +568,17 @@ async function loadAvailabilitySnapshot({
   historyStart.setDate(historyStart.getDate() - (availabilityHistoryDays - 1));
 
   const activeUsers = users.filter((user) => user.status === "active");
-  const events = await loadAvailabilityHistoryEvents({
+  const generatedAt = rangeEnd.toISOString();
+  const loadedEvents = await loadAvailabilityHistoryEvents({
     activeUsers,
     adminClient,
     historyStart: historyStart.toISOString(),
+  });
+  const events = reconcileAvailabilityHistoryEvents({
+    activeUsers,
+    events: loadedEvents,
+    generatedAt,
+    presenceByUserId,
   });
   const eventsByUserId = groupPresenceEventsByUser(events);
   const userNames = new Map(activeUsers.map((user) => [user.id, user.display_name]));
@@ -618,7 +625,7 @@ async function loadAvailabilitySnapshot({
   });
 
   return {
-    generatedAt: rangeEnd.toISOString(),
+    generatedAt,
     history: events.map((event) => ({
       createdAt: event.created_at,
       endedAt: event.ended_at ?? undefined,
@@ -646,6 +653,115 @@ async function loadAvailabilitySnapshot({
     summary: createAvailabilitySummary(team, events),
     team,
   };
+}
+
+function reconcileAvailabilityHistoryEvents({
+  activeUsers,
+  events,
+  generatedAt,
+  presenceByUserId,
+}: {
+  activeUsers: HubUserRow[];
+  events: HubPresenceEventRow[];
+  generatedAt: string;
+  presenceByUserId: Map<string, HubPresenceRow>;
+}) {
+  const reconciledEvents = [...events];
+
+  for (const user of activeUsers) {
+    const presence = presenceByUserId.get(user.id);
+
+    if (!presence) {
+      continue;
+    }
+
+    const rawStatus = normalizeLegacyPresence(presence.status);
+    const currentStatus = normalizeFreshPresence(presence);
+
+    if (
+      currentStatus !== "offline" ||
+      rawStatus === "offline" ||
+      rawStatus === "agenda" ||
+      rawStatus === "lunch"
+    ) {
+      continue;
+    }
+
+    const offlineAt = getDerivedAutoLogoutAt(presence, generatedAt);
+
+    if (!offlineAt || hasNearbyPresenceEvent(events, user.id, "offline", offlineAt)) {
+      continue;
+    }
+
+    reconciledEvents.push({
+      created_at: generatedAt,
+      ended_at: null,
+      id: `derived-offline:${user.id}:${offlineAt}`,
+      metadata: {
+        synthetic: true,
+        trigger: "stale_presence_visual_reconciliation",
+      },
+      next_status: "offline",
+      previous_status: rawStatus,
+      reason: "logout",
+      source: "hub-home",
+      started_at: offlineAt,
+      user_id: user.id,
+    });
+  }
+
+  return reconciledEvents.sort(
+    (firstEvent, secondEvent) =>
+      Date.parse(secondEvent.started_at) - Date.parse(firstEvent.started_at),
+  );
+}
+
+function getDerivedAutoLogoutAt(
+  presence: HubPresenceRow,
+  generatedAt: string,
+) {
+  const rawStatus = normalizeLegacyPresence(presence.status);
+
+  if (rawStatus === "offline" || rawStatus === "agenda" || rawStatus === "lunch") {
+    return null;
+  }
+
+  const lastSeenTime = Date.parse(presence.last_seen_at);
+  const generatedTime = Date.parse(generatedAt);
+
+  if (Number.isNaN(lastSeenTime) || Number.isNaN(generatedTime)) {
+    return null;
+  }
+
+  const offlineTime =
+    lastSeenTime + getPresenceAutoLogoutTimeoutMs(rawStatus);
+
+  return offlineTime <= generatedTime
+    ? new Date(offlineTime).toISOString()
+    : null;
+}
+
+function hasNearbyPresenceEvent(
+  events: HubPresenceEventRow[],
+  userId: string,
+  status: Exclude<HubPresenceStatus, "busy">,
+  targetAt: string,
+) {
+  const targetTime = Date.parse(targetAt);
+
+  if (Number.isNaN(targetTime)) {
+    return false;
+  }
+
+  return events.some((event) => {
+    if (event.user_id !== userId || normalizeLegacyPresence(event.next_status) !== status) {
+      return false;
+    }
+
+    const eventTime = Date.parse(event.started_at);
+
+    return !Number.isNaN(eventTime) && Math.abs(eventTime - targetTime) <= 60_000;
+  });
 }
 
 async function loadAvailabilityHistoryEvents({
@@ -870,6 +986,16 @@ function normalizeLegacyPresence(
   status: HubPresenceStatus,
 ): Exclude<HubPresenceStatus, "busy"> {
   return status === "busy" ? "agenda" : status;
+}
+
+function getPresenceAutoLogoutTimeoutMs(
+  status: Exclude<HubPresenceStatus, "busy">,
+) {
+  if (status === "away") {
+    return HUB_AUTO_LOGOUT_TIMEOUT_MS - HUB_IDLE_TIMEOUT_MS;
+  }
+
+  return HUB_AUTO_LOGOUT_TIMEOUT_MS;
 }
 
 function createEmptyPresenceTotals() {
