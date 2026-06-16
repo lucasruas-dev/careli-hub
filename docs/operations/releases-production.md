@@ -38,6 +38,40 @@ Objetivo:
 - Origem/homologacao de referencia
 - Escopo publicado
 - Commit publicado
+
+## 2026-06-16 - HADES-20260616-003-SEGMENTACAO-IRIS-EMBUTIDA
+
+- Status: `EM PRODUCAO`.
+- Assunto: `[Hades] Segmentacao de cobranca e Iris embutida`.
+- Squad/agente responsavel: `Zeus / Hades`.
+- Data e hora local: `2026-06-16 16:16:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Origem/homologacao de referencia:
+  - recorte local validado no worktree `.codex-tmp/worktrees/hades-segmentation-iris-hotfix-20260616`;
+  - protocolo `HADES-20260616-003-SEGMENTACAO-IRIS-EMBUTIDA` autorizado por Lucas no chat.
+- Escopo publicado:
+  - filtros de maturidade da cobranca `Todos`, `1-30`, `31-60` e `60+`;
+  - sidebar interno do Hades apontando Iris para `/hades/cobranca?view=iris`;
+  - view Iris embutida no Hades com `IrisPage embedded boardOnly queueSlugFilter="cobranca"`;
+  - preservacao da Iris global em `/iris`.
+- Commit publicado: `36adb64`.
+- Deployment publicado: `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS`.
+- URL tecnica: `https://careli-hub-hub-i2bs-gs3s3h4gs-lucasruas-devs-projects.vercel.app`.
+- Rollback imediato: `dpl_53h1Bz51yrV3GhJ7xvmPUPtqJMW1`.
+- Safety Gate:
+  - manifesto `.codex-deploy/hades-segmentation-iris-prod-20260616-1558/production-module-safety-gate.json`;
+  - resultado `PASS`.
+- Healthchecks finais:
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hades/cobranca?view=iris`: `200`;
+  - `GET https://c2x.app.br/iris`: `200`;
+  - `GET https://c2x.app.br/chronos`: `200`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401`;
+  - logs de erro do deployment nos ultimos 10 minutos: sem logs encontrados.
+- Risco residual:
+  - validacao visual autenticada em producao depende de Lucas confirmar os filtros e o clique Iris dentro do Hades.
 - Deployment anterior
 - Deployment novo
 - Dominio alvo autorizado

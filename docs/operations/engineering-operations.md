@@ -37878,3 +37878,62 @@ Conclusao:
 - O recorte local confirma que a falha reportada existe no pacote publicado e que o hotfix corrige os dois pontos: segmentacao de cobranca e Iris embutida no Hades.
 - O impacto pratico esperado apos publicacao e o lider/admin voltar a filtrar a fila por maturidade de atraso e o operador abrir a Iris de cobranca sem sair do Hades.
 - Precisa de acao agora: Lucas deve autorizar explicitamente a publicacao do protocolo `HADES-20260616-003-SEGMENTACAO-IRIS-EMBUTIDA` no ambiente desejado; sem essa autorizacao o status permanece validado localmente.
+
+## 2026-06-16 16:16:00 -03:00 - Hades - producao segmentacao e Iris embutida
+
+Assunto: [Hades] Producao do hotfix de segmentacao e Iris embutida
+
+- Nome da squad/agente: `Zeus / Hades`.
+- Tipo da alteracao: `HOTFIX / HADES / PRODUCAO`.
+- Protocolo: `HADES-20260616-003-SEGMENTACAO-IRIS-EMBUTIDA`.
+- Status final: `EM_PRODUCAO`.
+- Autorizacao: Lucas autorizou no chat com `pode subir`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Commit publicado: `36adb64` (`fix(hades): restore cobranca segmentation and embedded iris link`).
+- Deployment publicado para `https://c2x.app.br`: `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS`.
+- URL tecnica do deployment validado: `https://careli-hub-hub-i2bs-gs3s3h4gs-lucasruas-devs-projects.vercel.app`.
+- Rollback imediato de `https://c2x.app.br`: `dpl_53h1Bz51yrV3GhJ7xvmPUPtqJMW1`.
+- Pacote de deploy:
+  - origem: `git archive` do commit `36adb64`;
+  - diretorio temporario isolado: `%TEMP%/panteon-hades-prod-36adb6415dbe-20260616-1548/workspace`;
+  - projeto Vercel linkado explicitamente: `lucasruas-devs-projects/careli-hub-hub-i2bs`.
+- Safety Gate:
+  - manifesto: `.codex-deploy/hades-segmentation-iris-prod-20260616-1558/production-module-safety-gate.json`;
+  - comando: `node scripts/production-module-safety-gate.mjs --manifest .codex-deploy/hades-segmentation-iris-prod-20260616-1558/production-module-safety-gate.json`;
+  - resultado: `PASS`, com `5` mudancas detectadas no recorte Hades autorizado.
+- Publicacao:
+  - comando: `npx.cmd vercel deploy --yes --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --logs`;
+  - alias executado manualmente apenas para `https://c2x.app.br`;
+  - `--skip-domain` foi usado para evitar reapontamento automatico de `https://ops.c2x.app.br`.
+- Validacoes pre-publicacao:
+  - `git diff --check`: `PASS`;
+  - `npm.cmd run check-types:hub`: `PASS`;
+  - `npm.cmd run lint:hub`: `PASS`;
+  - `npm.cmd run build --workspace @repo/hub`: `PASS`;
+  - smoke local no build do worktree em `localhost:3027`: `/hades/cobranca?view=iris` `200`, `/iris` `200`.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: `PASS`, apontando para `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: `PASS`, preservado em `dpl_53h1Bz51yrV3GhJ7xvmPUPtqJMW1`;
+  - `Invoke-WebRequest https://c2x.app.br/login`: `PASS 200`;
+  - `Invoke-WebRequest https://c2x.app.br/hades/cobranca?view=iris`: `PASS 200`;
+  - `Invoke-WebRequest https://c2x.app.br/iris`: `PASS 200`;
+  - `Invoke-WebRequest https://c2x.app.br/chronos`: `PASS 200`;
+  - `Invoke-WebRequest https://c2x.app.br/api/hub/home` sem sessao: `PASS 401`, acesso protegido preservado;
+  - `npx.cmd vercel logs <deployment-url> --since 10m --level error`: `PASS`, sem logs de erro encontrados.
+- Warnings conhecidos no build remoto:
+  - `npm audit` reportou vulnerabilidades existentes;
+  - Turbopack/NFT em `apps/hub/next.config.ts`;
+  - aviso de envs do Turborepo fora do `turbo.json`, sem exposicao de valores.
+- Escopo preservado:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Home/Disponibilidade, Chronos, Hermes, Iris global, Atlas, Setup, Apolo, Ares ou modulo fora do Hades foi alterado neste pacote.
+- Operations Center estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; o registro canonico em Markdown foi atualizado nesta rodada.
+
+Conclusao:
+
+- O que aconteceu: o hotfix aprovado do Hades foi promovido para producao por pacote limpo, com Safety Gate `PASS` e alias manual apenas em `c2x.app.br`.
+- Impacto pratico: a lideranca volta a ter segmentacao da cobranca por maturidade de atraso e o item Iris dentro do Hades abre a view embutida da cobranca, sem sair para o modulo Iris global.
+- Precisa de acao agora: Lucas deve validar visualmente em producao Hades > Cobranca, especialmente filtros `1-30`, `31-60`, `60+` e o clique no item Iris do sidebar do Hades.
+- Quem deve agir: Lucas valida a experiencia; Zeus fica responsavel por rollback para `dpl_53h1Bz51yrV3GhJ7xvmPUPtqJMW1` se houver regressao.
+- Proximo passo: trabalhar melhorias da Iris em recorte separado, sem misturar com Hades.
