@@ -93,6 +93,56 @@ Registro de producao:
 
 Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo ou em ordem cronologica consistente por rodada. Nao apagar historico.
 
+## 2026-06-16 - HADES-20260616-004-IRIS-EMBUTIDA-SEM-SIDEBAR
+
+- Status: `EM PRODUCAO`.
+- Assunto: `[Hades] Iris embutida sem sidebar duplicado`.
+- Squad/agente responsavel: `Zeus / Hades`.
+- Data e hora local: `2026-06-16 17:20:00 -03:00`.
+- Ambiente: `producao`.
+- Dominio alvo: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Origem/homologacao de referencia:
+  - recorte local validado no worktree `.codex-tmp/worktrees/hades-segmentation-iris-hotfix-20260616`;
+  - protocolo `HADES-20260616-004-IRIS-EMBUTIDA-SEM-SIDEBAR` autorizado por Lucas no chat;
+  - base operacional de producao anterior: `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS`.
+- Escopo publicado:
+  - remocao do item `Iris` no sidebar interno do Hades para evitar estado ativo divergente;
+  - `IrisPage` embutida com `embedded` e `boardOnly` renderizando somente o conteudo operacional, sem sidebar/topbar proprios;
+  - preservacao da Iris global em `/iris`.
+- Escopo explicitamente fora:
+  - Hades fila/segmentacao, Iris global funcional, Home/Disponibilidade, Chronos, Hermes, Atlas, Setup, Apolo, Ares, envs, secrets, banco, Supabase e `ops.c2x.app.br`.
+- Commit publicado: `27946dc351348431d7dce99cbb009f1ef610661d`.
+- Deployment publicado: `dpl_E6XYEa3mo8zS1tH5V8ymJ9HH4nq2`.
+- URL tecnica: `https://careli-hub-hub-i2bs-kop1vvlgh-lucasruas-devs-projects.vercel.app`.
+- Rollback imediato: promover novamente `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS` para `https://c2x.app.br`.
+- Safety Gate:
+  - manifesto `.codex-deploy/hades-iris-no-sidebar-prod-20260616-01/production-safety-gate.json`;
+  - resultado `PASS`;
+  - diff permitido restrito a `apps/hub/components/guardian/layout/Sidebar.tsx`, `apps/hub/modules/caredesk/IrisPage.tsx`, `docs/operations/engineering-operations.md` e `docs/operations/releases-production.md`.
+- Validacoes pre-deploy:
+  - `git diff --check`: `PASS`;
+  - `npx.cmd eslint components/guardian/layout/Sidebar.tsx modules/caredesk/IrisPage.tsx --max-warnings 0`: `PASS`, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: `PASS`;
+  - `npm.cmd run build --workspace @repo/hub`: `PASS`, com warnings conhecidos de root/Turbopack/NFT;
+  - smoke local com `next start` em `localhost:3028`: `/hades/cobranca?view=iris` `200`, `/iris` `200`, `/chronos` `200`, `/login` `200`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hades/cobranca?view=iris`: `200`;
+  - `GET https://c2x.app.br/iris`: `200`;
+  - `GET https://c2x.app.br/chronos`: `200`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401`;
+  - `GET https://ops.c2x.app.br/zeus`: `200`.
+- Logs recentes:
+  - sem stack trace ou erro critico no deployment novo;
+  - registros `403` pontuais em `GET /api/hermes/messages` foram observados como resposta de permissao/autenticacao e ficam fora do recorte Hades/Iris.
+- Riscos conhecidos:
+  - validacao visual autenticada do Lucas ainda e recomendada para confirmar a leitura da Iris embutida dentro do Hades.
+- Pendencias:
+  - acompanhar feedback visual autenticado de Lucas.
+- Proxima acao:
+  - Lucas validar a Iris embutida no Hades; Zeus manter rollback `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS` documentado caso necessario.
+
 ## 2026-06-16 - HADES-20260616-003-SEGMENTACAO-IRIS-EMBUTIDA
 
 - Status: `EM PRODUCAO`.

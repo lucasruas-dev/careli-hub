@@ -37838,7 +37838,7 @@ Assunto: [Hades] Validacao local do hotfix de segmentacao e atalho Iris embutido
 - Nome da squad/agente: `Zeus / Hades`.
 - Tipo da alteracao: `HOTFIX / HADES / COBRANCA / IRIS_EMBUTIDA`.
 - Protocolo: `HADES-20260616-003-SEGMENTACAO-IRIS-EMBUTIDA`.
-- Status: `VALIDADO_LOCALMENTE / AGUARDANDO AUTORIZACAO PARA PUBLICACAO`.
+- Status: `EM PRODUCAO`.
 - Sintoma reportado:
   - a segmentacao da cobranca por faixa de atraso nao estava disponivel no Hades publicado;
   - o item `Iris` dentro do Hades redirecionava para o modulo global `/iris`, quando deveria abrir a Iris embutida no contexto de cobranca do Hades.
@@ -37969,15 +37969,32 @@ Assunto: [Hades] Ajuste local da Iris embutida sem sidebar interno
   - `npm.cmd run check-types:hub`: `PASS`;
   - `npm.cmd run build --workspace @repo/hub`: `PASS`, com warnings conhecidos de root/Turbopack/NFT;
   - smoke local com `next start` em `localhost:3028`: `/hades/cobranca?view=iris` `200`, `/iris` `200`.
+- Publicacao em producao:
+  - autorizacao: Lucas aprovou seguir no chat;
+  - Safety Gate: manifesto `.codex-deploy/hades-iris-no-sidebar-prod-20260616-01/production-safety-gate.json` com resultado `PASS`;
+  - deployment publicado: `dpl_E6XYEa3mo8zS1tH5V8ymJ9HH4nq2`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-kop1vvlgh-lucasruas-devs-projects.vercel.app`;
+  - dominio alvo: `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` preservado no deployment `dpl_53h1Bz51yrV3GhJ7xvmPUPtqJMW1`.
+- Healthchecks pos-deploy:
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/hades/cobranca?view=iris`: `200`;
+  - `GET https://c2x.app.br/iris`: `200`;
+  - `GET https://c2x.app.br/chronos`: `200`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401`;
+  - `GET https://ops.c2x.app.br/zeus`: `200`.
+- Logs recentes:
+  - sem stack trace ou erro critico no deployment novo;
+  - registros `403` pontuais em `GET /api/hermes/messages` foram observados como resposta de permissao/autenticacao e ficam fora do recorte Hades/Iris.
 - Riscos:
   - validacao visual autenticada ainda deve confirmar que o conteudo embutido ficou com altura e leitura boas dentro do Hades.
 - Rollback:
-  - reverter este protocolo e manter o deployment de producao atual `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS` caso Lucas prefira a navegacao anterior.
+  - promover novamente `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS` para `https://c2x.app.br` caso Lucas prefira a navegacao anterior ou apareca regressao critica no recorte.
 
 Conclusao:
 
-- O que aconteceu: o recorte local remove a duplicidade de navegação da Iris dentro do Hades.
+- O que aconteceu: o recorte removeu a duplicidade de navegacao da Iris dentro do Hades e foi publicado em producao.
 - Impacto pratico: Hades deixa de mostrar item Iris no sidebar interno e, ao abrir a view da Iris pelo fluxo de cobranca, nao aparece mais o shell/sidebar/topbar da Iris dentro da tela.
-- Precisa de acao agora: Lucas deve autorizar explicitamente a publicacao se quiser levar este ajuste para producao.
-- Quem deve agir: Zeus publica apenas apos autorizacao; Lucas valida visualmente depois.
-- Proximo passo: se aprovado, promover o protocolo `HADES-20260616-004-IRIS-EMBUTIDA-SEM-SIDEBAR` para `https://c2x.app.br` preservando `ops.c2x.app.br`.
+- Precisa de acao agora: Lucas deve apenas validar visualmente o clique na Iris embutida dentro do Hades autenticado.
+- Quem deve agir: Lucas valida a experiencia; Zeus monitora se houver retorno de regressao.
+- Proximo passo: manter o protocolo `HADES-20260616-004-IRIS-EMBUTIDA-SEM-SIDEBAR` em acompanhamento e usar `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS` como rollback se necessario.
