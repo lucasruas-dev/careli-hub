@@ -19,6 +19,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - `docs/operations/engineering-operations.md`: diario operacional vivo, append-only, com decisoes, incidentes, validacoes, deploys, handoffs e status.
 - `docs/operations/releases-homologation.md`: indice operacional dos recortes publicados/preparados para homologacao.
 - `docs/operations/releases-production.md`: indice operacional dos recortes publicados/bloqueados em producao.
+- `docs/operations/production-recorte-deploy-gate.md`: gate obrigatorio para publicar producao usando base validada + recorte aprovado, bloqueando arquivos fora da allowlist.
 - `docs/operations/agent-release-register-prompt.md`: prompt oficial para orientar agentes no registro por ambiente.
 - `docs/operations/squadops-center-process.md`: processo oficial do Zeus / Operations Center, protocolos `AT/CB/TI/OP/AL/DP`, homologacao, producao e operacao dedicada em `ops.c2x.app.br`.
 - `docs/operations/hub-rescueops.md`: protocolo historico de resposta critica, agora absorvido operacionalmente por `Zeus`, para recuperacao operacional, incidentes, rollback, healthchecks e bloqueios sensiveis.
@@ -49,6 +50,7 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - Se `Zeus` for autorizado por Lucas a executar/publicar seu proprio recorte, o fechamento nao pode ficar so no chat nem so no Markdown: o agente deve atualizar a fonte estruturada do Operations Center, reconciliar protocolos `AT/CB/TI/OP/AL/DP`, preencher commit/deploy/validacoes/status real e depois registrar a decisao no diario canonico. Quando o recorte for da tela Zeus e o Zeus fizer o processo inteiro com publicacao, o registro final deve ficar `EM PRODUCAO`, nao `AGUARDANDO RELEASEOPS`.
 - Como `https://c2x.app.br` e `https://ops.c2x.app.br` compartilham o mesmo projeto/deployment Vercel, todo deploy de producao deve inspecionar os dois aliases antes e depois. Se o pacote nao preservar o estado vigente do Panteon principal e do Zeus/OPS, `Hefesto` deve bloquear, preparar recorte limpo que preserve ambos ou registrar rollback/restauracao de alias antes de publicar.
 - Paridade homologacao/producao: depois de qualquer deploy de producao, `Hefesto` deve garantir que `https://homo.c2x.app.br` aponte para um deployment Preview gerado do mesmo commit/recorte aprovado, ou registrar explicitamente o motivo da divergencia. Nao usar worktree sujo para esse espelhamento; gerar pacote limpo a partir do commit publicado em producao.
+- Porta unica de producao por recorte: antes de qualquer publicacao em `c2x.app.br` ou `ops.c2x.app.br`, rode `npm.cmd run deploy:prod:gate -- --manifest docs/operations/<manifesto>.json` em pacote limpo. A base deve ser a producao validada, o candidato deve conter somente o recorte aprovado e qualquer mudanca fora de `allowedChangedPaths` bloqueia o deploy.
 
 ## Padrao visual oficial
 

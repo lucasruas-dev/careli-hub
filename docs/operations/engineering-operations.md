@@ -37746,3 +37746,40 @@ Conclusao:
 - Precisa de acao agora: Lucas deve validar visualmente a Home em producao; Zeus deve tratar a recuperacao de disponibilidade como novo recorte, nao como reaproveitamento direto do candidato.
 - Quem deve agir agora: Lucas valida a producao; Zeus prepara novo pacote somente se Lucas autorizar.
 - Proximo passo: revisar a estrategia de deploy para impedir que um recorte de logs publique base defasada novamente.
+
+## 2026-06-16 09:42:00 -03:00 - Zeus - gate obrigatorio de producao por recorte
+
+Assunto: [Zeus] Porta unica para producao por recorte aprovado
+
+- Nome da squad/agente: `Zeus`.
+- ProtocolId: `OP-20260616-001-PRODUCTION-RECORTE-GATE`.
+- Tipo da alteracao: `GOVERNANCA / PRODUCAO / RELEASE SAFETY / RECORTE`.
+- Status final: `DECISAO_REGISTRADA / PRODUCAO_BLOQUEADA_SEM_GATE`.
+- Contexto:
+  - Lucas reportou que um deploy de producao levou trabalho nao aprovado de `Escritorio` junto de um recorte solicitado para `Home / Disponibilidade`;
+  - a raiz local estava misturada com muitos modulos e arquivos nao homologados, portanto nao pode mais ser origem de pacote de producao;
+  - a regra operacional passa a ser: producao validada como base, recorte aprovado aplicado por cima e gate tecnico bloqueando qualquer arquivo fora da allowlist.
+- Decisao:
+  - todo deploy em `https://c2x.app.br` ou `https://ops.c2x.app.br` precisa executar `npm.cmd run deploy:prod:gate -- --manifest docs/operations/<manifesto>.json`;
+  - o manifesto precisa declarar deployment atual, rollback, commit candidato, `sourceWorktreeClean: true`, pacote base, pacote candidato e `allowedChangedPaths`;
+  - se `allowedChangedPaths` for de `Home / Disponibilidade`, caminhos como `apps/hub/app/escritorio-virtual/**`, `apps/hub/app/ares/**`, `apps/hub/modules/ares/**` ou qualquer outro modulo fora do recorte bloqueiam o deploy;
+  - `npx.cmd vercel --prod` direto, sem gate `PASS`, fica proibido para producao.
+- Arquivos criados/atualizados:
+  - `scripts/panteon-production-recorte-gate.mjs`;
+  - `docs/operations/production-recorte-deploy-gate.md`;
+  - `docs/operations/README.md`;
+  - `package.json`.
+- Validacao planejada:
+  - `npm.cmd run deploy:prod:gate:self-test`;
+  - `git diff --check`.
+- Escopo preservado:
+  - nenhum modulo funcional foi alterado;
+  - nenhum Vercel deploy, alias, env, secret, Supabase, banco ou migration foi executado nesta decisao.
+
+Conclusao:
+
+- O que aconteceu: a falha deixou claro que o processo precisava bloquear tecnicamente pacote misto, nao depender de revisao visual.
+- Impacto pratico: producao so pode receber base validada + recorte aprovado; arquivos fora do recorte viram erro antes do deploy.
+- Precisa de acao agora: usar este gate em toda promocao de producao.
+- Quem deve agir agora: Zeus/Hefesto aplicam o gate; agentes de modulo entregam allowlist precisa; Lucas aprova o protocolo.
+- Proximo passo: validar o self-test do gate e manter este pacote como regra operacional para proximos deploys.

@@ -11,6 +11,8 @@
     "format": "prettier --write \"**/*.{ts,tsx,md}\"",
     "squadops:sync": "node scripts/squadops-sync-operations-watch.mjs --once",
     "squadops:sync:watch": "node scripts/squadops-sync-operations-watch.mjs --watch",
+    "deploy:prod:gate": "node scripts/panteon-production-recorte-gate.mjs",
+    "deploy:prod:gate:self-test": "node scripts/panteon-production-recorte-gate.mjs --self-test",
     "check-types": "turbo run check-types",
     "check-types:hub": "turbo run check-types --filter=@repo/hub...",
     "validate:hub": "npm run check-types:hub && npm run lint:hub && npm run build --workspace @repo/hub"
