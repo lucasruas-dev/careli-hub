@@ -37643,6 +37643,7 @@ Conclusao:
   - comando: `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
   - alias manual executado somente para `https://c2x.app.br`;
   - `https://ops.c2x.app.br` nao foi reapontado.
+  - `https://homo.c2x.app.br` nao foi reapontado nesta rodada por restricao explicita de escopo; Lucas pediu cuidado para nao alterar nada alem da parte dos logs, entao a divergencia de homologacao fica registrada para reconciliacao futura.
 - Estado anterior e rollback:
   - deployment anterior de `https://c2x.app.br`: `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
   - rollback imediato de `https://c2x.app.br`: reapontar para `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;

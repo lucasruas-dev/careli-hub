@@ -4050,6 +4050,7 @@ Registro de producao:
   - comando: `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
   - alias executado manualmente apenas para `https://c2x.app.br`;
   - `--skip-domain` foi usado para evitar reapontamento automatico de `https://ops.c2x.app.br`.
+  - `https://homo.c2x.app.br` nao foi reapontado nesta rodada por restricao explicita de escopo; Lucas pediu cuidado para nao alterar nada alem da parte dos logs, entao a divergencia de homologacao fica registrada para reconciliacao futura.
 - Validacoes pre-publicacao:
   - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
   - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
