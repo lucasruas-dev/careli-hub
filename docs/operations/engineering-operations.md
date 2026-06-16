@@ -37709,3 +37709,40 @@ Conclusao pos-producao:
 - Precisa de acao agora: Lucas pode validar visualmente Hades/Cobranca e Chronos em producao.
 - Quem deve agir agora: Lucas valida a experiencia; Zeus fica com rollback `dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR` caso haja regressao.
 - Proximo passo: se o visual estiver correto, manter o protocolo como `EM PRODUCAO`.
+
+## 2026-06-16 09:09:13 -03:00 - Zeus - rollback final Home Disponibilidade
+
+Assunto: [Zeus] Rollback final de producao para ultimo valido
+
+- Nome da squad/agente: `Zeus`.
+- ProtocolId: `HOME-20260616-002-AVAILABILITY-RECOVERY`.
+- Tipo da alteracao: `ROLLBACK / HOME / DISPONIBILIDADE / PRODUCAO`.
+- Status final: `ROLLBACK_APLICADO / PRODUCAO_NO_ULTIMO_VALIDO`.
+- Autorizacao: Lucas solicitou explicitamente `faz rollback novamente para ultimo valido`.
+- Contexto:
+  - apos a regressao que removeu a aba `Disponibilidade` e as melhorias de loading, Zeus primeiro reapontou `https://c2x.app.br` para o ultimo deployment valido conhecido;
+  - em seguida foi publicado um deployment candidato com recuperacao dos logs de disponibilidade sobre worktree limpa;
+  - Lucas solicitou novo rollback antes de manter o candidato ativo.
+- Estado final de producao:
+  - `https://c2x.app.br`: `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - URL tecnica ativa: `https://careli-hub-hub-i2bs-2hmz65b0s-lucasruas-devs-projects.vercel.app`;
+  - candidato revertido: `dpl_GxtPPHQYay7ne1enXJGdtABuXN95` / `https://careli-hub-hub-i2bs-9wop0nb6n-lucasruas-devs-projects.vercel.app`;
+  - deployment regressivo anterior: `dpl_K9BevG9dzBvHesNYHYef8QjW1B2t`;
+  - `https://ops.c2x.app.br`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes finais:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: PASS, Ready em `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: PASS, Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/iris`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401` esperado.
+- Escopo preservado:
+  - nenhum env, secret, Supabase manual, banco, migration, Hades, Iris, Hermes, Chronos, Atlas, Setup ou alias `ops.c2x.app.br` foi alterado nesta virada final;
+  - o pacote candidato de codigo `d3b87ccc` ficou revertido de producao e nao deve ser promovido novamente sem nova revisao.
+
+Conclusao:
+
+- O que aconteceu: `c2x.app.br` voltou ao ultimo deployment valido `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`.
+- Impacto pratico: a producao volta ao estado anterior confirmado, sem manter o candidato recem-publicado.
+- Precisa de acao agora: Lucas deve validar visualmente a Home em producao; Zeus deve tratar a recuperacao de disponibilidade como novo recorte, nao como reaproveitamento direto do candidato.
+- Quem deve agir agora: Lucas valida a producao; Zeus prepara novo pacote somente se Lucas autorizar.
+- Proximo passo: revisar a estrategia de deploy para impedir que um recorte de logs publique base defasada novamente.

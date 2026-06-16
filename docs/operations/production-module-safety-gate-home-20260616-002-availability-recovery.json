@@ -1,0 +1,113 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "HOME-20260616-002-AVAILABILITY-RECOVERY",
+  "module": "home",
+  "agent": "Zeus",
+  "title": "Rollback de regressao e recuperacao da aba Disponibilidade",
+  "domain": "https://c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "regressedProductionDeploymentId": "dpl_K9BevG9dzBvHesNYHYef8QjW1B2t",
+  "rollbackDeploymentId": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+  "rollbackDeploymentUrl": "https://careli-hub-hub-i2bs-2hmz65b0s-lucasruas-devs-projects.vercel.app",
+  "currentOpsDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
+  "candidateProductionDeploymentId": "dpl_GxtPPHQYay7ne1enXJGdtABuXN95",
+  "candidateProductionUrl": "https://careli-hub-hub-i2bs-9wop0nb6n-lucasruas-devs-projects.vercel.app",
+  "candidateStatus": "REVERTED_BY_LUCAS_REQUEST",
+  "finalActiveProductionDeploymentId": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+  "finalActiveProductionUrl": "https://careli-hub-hub-i2bs-2hmz65b0s-lucasruas-devs-projects.vercel.app",
+  "candidateSourceCommit": "d3b87ccc",
+  "sourceWorktreeClean": true,
+  "sourceWorktree": ".codex-tmp/worktrees/panteon-loading-prod-base-20260615",
+  "sourceBranch": "codex/home/availability-prod-recovery-20260616",
+  "allowedChangedPaths": [
+    "apps/hub/app/api/hub/home/route.ts",
+    "apps/hub/app/api/hub/presence/route.ts",
+    "apps/hub/app/page.tsx",
+    "apps/hub/hooks/use-hub-presence.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md",
+    "docs/operations/production-module-safety-gate-home-20260616-002-availability-recovery.json"
+  ],
+  "protectedPaths": [
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/pulsex/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/pulsex/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/lib/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/guardian/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/guardian/**",
+    "apps/hub/modules/squadops/**",
+    "apps/hub/app/zeus/**",
+    "apps/hub/lib/squadops/**",
+    "apps/hub/app/atlas/**",
+    "apps/hub/modules/atlas/**",
+    "apps/hub/app/setup/**",
+    "apps/hub/app/chronos/**",
+    "apps/hub/app/api/chronos/**"
+  ],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/app/page.tsx",
+      "includes": [
+        "Disponibilidade",
+        "PanteonLoadingState",
+        "PanteonLoadingMark"
+      ]
+    },
+    {
+      "path": "apps/hub/app/api/hub/presence/route.ts",
+      "includes": [
+        "createStaleReconciliationPlan",
+        "getPresenceTransitionReason",
+        "getPresenceAutoLogoutTimeoutMs"
+      ]
+    },
+    {
+      "path": "apps/hub/app/api/hub/home/route.ts",
+      "includes": [
+        "reconcileAvailabilityHistoryEvents",
+        "getDerivedAutoLogoutAt",
+        "stale_presence_visual_reconciliation"
+      ]
+    }
+  ],
+  "validations": [
+    "Rollback: npx.cmd vercel alias set careli-hub-hub-i2bs-2hmz65b0s-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "Rollback validation: npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_4FyaXUbn47T45KBWJNGmA3a8orz5.",
+    "Rollback validation: GET https://c2x.app.br/login: 200 OK.",
+    "Rollback validation: GET https://c2x.app.br/iris: 200 OK.",
+    "Pre-deploy: git diff --check: PASS, com aviso CRLF esperado em page.tsx.",
+    "Pre-deploy: npm.cmd run check-types --workspace @repo/hub: PASS.",
+    "Pre-deploy: npm.cmd exec --workspace @repo/hub -- eslint app/api/hub/presence/route.ts app/api/hub/home/route.ts app/page.tsx hooks/use-hub-presence.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "Pre-deploy: npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de worktree temporaria/Turbopack/NFT.",
+    "Deployment: npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --yes: PASS, Ready em dpl_GxtPPHQYay7ne1enXJGdtABuXN95.",
+    "Candidate validation: GET https://careli-hub-hub-i2bs-9wop0nb6n-lucasruas-devs-projects.vercel.app/login: 200 OK.",
+    "Candidate validation: GET https://careli-hub-hub-i2bs-9wop0nb6n-lucasruas-devs-projects.vercel.app/iris: 200 OK.",
+    "Alias: npx.cmd vercel alias set careli-hub-hub-i2bs-9wop0nb6n-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "Post-deploy: npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_GxtPPHQYay7ne1enXJGdtABuXN95.",
+    "Post-deploy: npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+    "Post-deploy: GET https://c2x.app.br/login: 200 OK.",
+    "Post-deploy: GET https://c2x.app.br/iris: 200 OK.",
+    "Post-deploy: GET https://c2x.app.br/api/hub/home sem sessao: 401 esperado.",
+    "Final rollback solicitado por Lucas: npx.cmd vercel alias set careli-hub-hub-i2bs-2hmz65b0s-lucasruas-devs-projects.vercel.app c2x.app.br --scope lucasruas-devs-projects: SUCCESS.",
+    "Final rollback validation: npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_4FyaXUbn47T45KBWJNGmA3a8orz5.",
+    "Final rollback validation: npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready preservado em dpl_Gitf6mZqC4Wq23ChG16fYP34toZj.",
+    "Final rollback validation: GET https://c2x.app.br/login: 200 OK.",
+    "Final rollback validation: GET https://c2x.app.br/iris: 200 OK.",
+    "Final rollback validation: GET https://c2x.app.br/api/hub/home sem sessao: 401 esperado."
+  ],
+  "notes": [
+    "Rollback executado primeiro por autorizacao explicita de Lucas apos regressao em producao.",
+    "O pacote de recuperacao foi montado em worktree limpa sobre codex/panteon/loading-standard-prod-base-20260615, preservando a aba Disponibilidade e os loaders Panteon.",
+    "Apos o deploy candidato, Lucas solicitou rollback novamente para o ultimo valido; c2x.app.br ficou no deployment dpl_4FyaXUbn47T45KBWJNGmA3a8orz5.",
+    "Nao houve alteracao de env, secret, Supabase manual, banco, migration, Hades, Iris, Hermes, Chronos, Atlas, Setup ou ops.c2x.app.br."
+  ]
+}

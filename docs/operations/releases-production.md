@@ -4146,3 +4146,41 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj` se Lucas identificar regressao critica;
   - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-16 - PROD-20260616-001-HOME-AVAILABILITY-ROLLBACK
+
+Status: ROLLBACK APLICADO / ULTIMO VALIDO ATIVO / CANDIDATO REVERTIDO.
+
+Registro de producao:
+
+- Assunto: `[Home] Rollback final de Disponibilidade`.
+- Protocolo de origem: `HOME-20260616-002-AVAILABILITY-RECOVERY`.
+- Squad/agente responsavel: `Zeus / Home`.
+- Data e hora local: `2026-06-16 09:09:13 -03:00`.
+- Autorizacao: Lucas solicitou explicitamente `faz rollback novamente para ultimo valido`.
+- Ambiente alvo: `producao`.
+- Dominio alvo: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Estado final:
+  - deployment ativo de `https://c2x.app.br`: `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - URL tecnica ativa: `https://careli-hub-hub-i2bs-2hmz65b0s-lucasruas-devs-projects.vercel.app`;
+  - candidato revertido: `dpl_GxtPPHQYay7ne1enXJGdtABuXN95`;
+  - URL tecnica revertida: `https://careli-hub-hub-i2bs-9wop0nb6n-lucasruas-devs-projects.vercel.app`;
+  - deployment regressivo anterior: `dpl_K9BevG9dzBvHesNYHYef8QjW1B2t`;
+  - `https://ops.c2x.app.br`: preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes finais:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `GET https://c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/iris`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401` esperado.
+- Escopo preservado:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Iris, Hermes, Chronos, Atlas, Setup ou modulo fora de Home/Disponibilidade foi alterado;
+  - `https://ops.c2x.app.br` permaneceu no deployment preservado;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - o candidato `d3b87ccc` nao deve ser promovido novamente sem nova revisao de base e validacao visual autenticada;
+  - a recuperacao definitiva de logs/status de disponibilidade precisa virar novo pacote limpo, separado do rollback.
+- Rollback:
+  - `https://c2x.app.br`: ja esta no ultimo valido `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
