@@ -37729,3 +37729,26 @@ Conclusao:
 - Precisa de acao agora: executar validacoes e publicar apenas se o gate passar.
 - Quem deve agir agora: Zeus valida, publica e registra rollback; Lucas valida a Home em producao depois do deploy.
 - Proximo passo: apos producao estabilizada, congelar este estado como marco zero para o Address Registry.
+
+### Complemento 2026-06-16 11:31:00 -03:00 - deploy em producao concluido
+
+- Status final: `EM_PRODUCAO`.
+- Deployment publicado para `https://c2x.app.br`: `dpl_Hd4egBtwzSehNaD5vh99dpzYiw8j`.
+- URL tecnica do deployment validado: `https://careli-hub-hub-i2bs-fiop9q69g-lucasruas-devs-projects.vercel.app`.
+- Rollback imediato: `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`.
+- Healthchecks pos-alias:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: PASS, apontando para `dpl_Hd4egBtwzSehNaD5vh99dpzYiw8j`;
+  - `Invoke-WebRequest https://c2x.app.br/login`: PASS `200`;
+  - `Invoke-WebRequest https://c2x.app.br/api/hub/home` sem sessao: PASS `401`, acesso protegido preservado.
+- Controle de seguranca:
+  - um deployment anterior, `dpl_HyNWyUwcDXjjzCaxryuUpzr6p3bU`, foi bloqueado antes de receber alias porque o build mostrou rotas fora do recorte (`Ares`/`Escritorio`);
+  - o deployment final foi recriado a partir de um `git archive` limpo em diretorio isolado fora do repositorio principal, evitando contaminacao por worktree ou `.vercel` herdado;
+  - nenhum alias de homologacao, env, secret, Supabase, banco ou migration foi alterado neste ciclo.
+
+Conclusao:
+
+- O que aconteceu: a correcao de Disponibilidade foi promovida para producao usando pacote isolado e allowlist de arquivos.
+- Impacto pratico: status `agenda`/reuniao e status manual protegido deixam de sofrer penalidade automatica de ausencia/logout, reduzindo quedas em videochamadas e melhorando a leitura de historico.
+- Precisa de acao agora: Lucas deve atualizar a Home em producao e acompanhar a aba `Disponibilidade` durante chamadas reais.
+- Quem deve agir agora: Zeus monitora regressao e Lucas valida comportamento operacional com usuarios reais.
+- Proximo passo: tratar este deployment como candidato ao marco zero de producao e iniciar o desenho do Address Registry para futuros recortes.
