@@ -37838,7 +37838,7 @@ Assunto: [Hades] Validacao local do hotfix de segmentacao e atalho Iris embutido
 - Nome da squad/agente: `Zeus / Hades`.
 - Tipo da alteracao: `HOTFIX / HADES / COBRANCA / IRIS_EMBUTIDA`.
 - Protocolo: `HADES-20260616-003-SEGMENTACAO-IRIS-EMBUTIDA`.
-- Status: `EM PRODUCAO`.
+- Status: `ROLLBACK EXECUTADO`.
 - Sintoma reportado:
   - a segmentacao da cobranca por faixa de atraso nao estava disponivel no Hades publicado;
   - o item `Iris` dentro do Hades redirecionava para o modulo global `/iris`, quando deveria abrir a Iris embutida no contexto de cobranca do Hades.
@@ -37986,6 +37986,12 @@ Assunto: [Hades] Ajuste local da Iris embutida sem sidebar interno
 - Logs recentes:
   - sem stack trace ou erro critico no deployment novo;
   - registros `403` pontuais em `GET /api/hermes/messages` foram observados como resposta de permissao/autenticacao e ficam fora do recorte Hades/Iris.
+- Rollback executado:
+  - motivo: Lucas reportou bloqueio urgente no pre-join do Chronos com a mensagem `Sala indisponivel no momento. A chamada foi bloqueada para proteger o registro da reuniao.`;
+  - acao: `https://c2x.app.br` reapontado para o deployment anterior `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS`;
+  - deployment removido do alias de producao: `dpl_E6XYEa3mo8zS1tH5V8ymJ9HH4nq2`;
+  - resultado: rollback aplicado e confirmado por `vercel inspect`;
+  - healthchecks pos-rollback: `/login` `200`, `/chronos` `200`, `/hades/cobranca?view=iris` `200`, `/iris` `200`, `/api/hub/home` sem sessao `401`.
 - Riscos:
   - validacao visual autenticada ainda deve confirmar que o conteudo embutido ficou com altura e leitura boas dentro do Hades.
 - Rollback:
@@ -37993,8 +37999,8 @@ Assunto: [Hades] Ajuste local da Iris embutida sem sidebar interno
 
 Conclusao:
 
-- O que aconteceu: o recorte removeu a duplicidade de navegacao da Iris dentro do Hades e foi publicado em producao.
-- Impacto pratico: Hades deixa de mostrar item Iris no sidebar interno e, ao abrir a view da Iris pelo fluxo de cobranca, nao aparece mais o shell/sidebar/topbar da Iris dentro da tela.
-- Precisa de acao agora: Lucas deve apenas validar visualmente o clique na Iris embutida dentro do Hades autenticado.
-- Quem deve agir: Lucas valida a experiencia; Zeus monitora se houver retorno de regressao.
-- Proximo passo: manter o protocolo `HADES-20260616-004-IRIS-EMBUTIDA-SEM-SIDEBAR` em acompanhamento e usar `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS` como rollback se necessario.
+- O que aconteceu: o recorte removeu a duplicidade de navegacao da Iris dentro do Hades, foi publicado em producao e depois sofreu rollback urgente por impacto percebido no Chronos.
+- Impacto pratico: producao voltou ao deployment anterior `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS`; a melhoria da Iris embutida fica retirada de producao ate nova analise.
+- Precisa de acao agora: investigar a condicao de bloqueio do Chronos antes de qualquer nova promocao deste recorte.
+- Quem deve agir: Zeus/Chronos deve diagnosticar a regra de sala indisponivel; Lucas pode testar novamente a entrada na sala apos o rollback.
+- Proximo passo: abrir correcao Chronos em recorte separado e so republicar Hades/Iris sem sidebar quando o safety gate garantir ausencia de impacto no pre-join.

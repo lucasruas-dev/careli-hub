@@ -95,7 +95,7 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 ## 2026-06-16 - HADES-20260616-004-IRIS-EMBUTIDA-SEM-SIDEBAR
 
-- Status: `EM PRODUCAO`.
+- Status: `ROLLBACK EXECUTADO`.
 - Assunto: `[Hades] Iris embutida sem sidebar duplicado`.
 - Squad/agente responsavel: `Zeus / Hades`.
 - Data e hora local: `2026-06-16 17:20:00 -03:00`.
@@ -136,12 +136,19 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 - Logs recentes:
   - sem stack trace ou erro critico no deployment novo;
   - registros `403` pontuais em `GET /api/hermes/messages` foram observados como resposta de permissao/autenticacao e ficam fora do recorte Hades/Iris.
+- Rollback executado:
+  - motivo: Lucas reportou bloqueio urgente no pre-join do Chronos com a mensagem `Sala indisponivel no momento. A chamada foi bloqueada para proteger o registro da reuniao.`;
+  - acao: `https://c2x.app.br` reapontado para `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS`;
+  - deployment retirado do alias de producao: `dpl_E6XYEa3mo8zS1tH5V8ymJ9HH4nq2`;
+  - confirmacao: `vercel inspect https://c2x.app.br` retornou `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS` com status `Ready`;
+  - healthchecks pos-rollback: `/login` `200`, `/chronos` `200`, `/hades/cobranca?view=iris` `200`, `/iris` `200`, `/api/hub/home` sem sessao `401`.
 - Riscos conhecidos:
-  - validacao visual autenticada do Lucas ainda e recomendada para confirmar a leitura da Iris embutida dentro do Hades.
+  - recorte Hades/Iris sem sidebar saiu de producao ate nova analise;
+  - antes de nova promocao, validar explicitamente o pre-join do Chronos e a regra de sala indisponivel.
 - Pendencias:
-  - acompanhar feedback visual autenticado de Lucas.
+  - diagnosticar a condicao de bloqueio do Chronos em recorte separado.
 - Proxima acao:
-  - Lucas validar a Iris embutida no Hades; Zeus manter rollback `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS` documentado caso necessario.
+  - Zeus/Chronos investigar a regra de sala indisponivel; nao republicar o recorte Hades/Iris antes dessa analise.
 
 ## 2026-06-16 - HADES-20260616-003-SEGMENTACAO-IRIS-EMBUTIDA
 
