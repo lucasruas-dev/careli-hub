@@ -7,7 +7,7 @@ import path from "node:path";
 const DEFAULT_ALLOWED_DOMAINS = ["https://c2x.app.br", "https://ops.c2x.app.br"];
 
 const FORBIDDEN_PACKAGE_PATTERNS = [
-  /(^|\/)\.env($|[./])/i,
+  /(^|\/)\.env($|\/|\.local$|\.production$|\.development$|\.test$)/i,
   /(^|\/)\.git($|\/)/i,
   /(^|\/)\.next($|\/)/i,
   /(^|\/)\.turbo($|\/)/i,
