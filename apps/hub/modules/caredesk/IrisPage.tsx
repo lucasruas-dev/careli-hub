@@ -863,6 +863,79 @@ export function IrisPage({
   const visibleNavigationItems = boardOnly
     ? navigationItems.filter((item) => item.id === "gestao")
     : navigationItems;
+  const embeddedBoardOnly = embedded && boardOnly;
+  const currentViewContent = loadError ? (
+    <div className="h-full rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
+      {loadError}
+    </div>
+  ) : activeView === "gestao" ? (
+    <ManagementView
+      data={irisData}
+      loading={loading}
+      snapshot={snapshot}
+      onOpenAttendance={openAttendance}
+      onSelectTicket={setSelectedTicketId}
+      onStartAttendance={() => setStartAttendanceOpen(true)}
+    />
+  ) : activeView === "atendimento" ? (
+    <AttendanceView
+      ticket={selectedTicket}
+      tickets={irisData.tickets}
+      selectedTicketId={selectedTicket?.id ?? selectedTicketId}
+      onSelectTicket={setSelectedTicketId}
+      onClose={() => setActiveView("gestao")}
+      onMessageCreated={handleLocalMessage}
+      onMessageUpdated={handleMessageUpdated}
+    />
+  ) : activeView === "disparos" ? (
+    <BroadcastView data={irisData} snapshot={snapshot} />
+  ) : activeView === "setup" ? (
+    <SetupView
+      data={irisData}
+      snapshot={snapshot}
+      onQueuesChanged={handleQueuesChanged}
+      onProfilesChanged={handleProfilesChanged}
+    />
+  ) : (
+    <ReportsView data={irisData} snapshot={snapshot} />
+  );
+
+  if (embeddedBoardOnly) {
+    return (
+      <div
+        onClick={registerIrisNotificationPermissionIntent}
+        className="h-full min-h-[560px] overflow-hidden text-[#101820]"
+      >
+        {inboundNotice ? (
+          <IrisInboundNoticeToast
+            notice={inboundNotice}
+            onDismiss={() => setInboundNotice(null)}
+            onOpen={() => {
+              setSelectedTicketId(inboundNotice.ticketId);
+              setActiveView("atendimento");
+              setInboundNotice(null);
+            }}
+          />
+        ) : null}
+        {startAttendanceOpen ? (
+          <IrisStartAttendanceModal
+            onClose={() => setStartAttendanceOpen(false)}
+            onTicketCreated={(ticketId) => {
+              setStartAttendanceOpen(false);
+              void refreshIrisData({ notifyNewInbound: false });
+              if (ticketId) {
+                setSelectedTicketId(ticketId);
+                setActiveView("atendimento");
+              }
+            }}
+          />
+        ) : null}
+        <section className="h-full min-h-0 overflow-hidden">
+          {currentViewContent}
+        </section>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -998,41 +1071,7 @@ export function IrisPage({
           <IrisTopbar />
 
           <section className="min-h-0 flex-1 overflow-hidden p-3">
-            {loadError ? (
-              <div className="h-full rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
-                {loadError}
-              </div>
-            ) : activeView === "gestao" ? (
-              <ManagementView
-                data={irisData}
-                loading={loading}
-                snapshot={snapshot}
-                onOpenAttendance={openAttendance}
-                onSelectTicket={setSelectedTicketId}
-                onStartAttendance={() => setStartAttendanceOpen(true)}
-              />
-            ) : activeView === "atendimento" ? (
-              <AttendanceView
-                ticket={selectedTicket}
-                tickets={irisData.tickets}
-                selectedTicketId={selectedTicket?.id ?? selectedTicketId}
-                onSelectTicket={setSelectedTicketId}
-                onClose={() => setActiveView("gestao")}
-                onMessageCreated={handleLocalMessage}
-                onMessageUpdated={handleMessageUpdated}
-              />
-            ) : activeView === "disparos" ? (
-              <BroadcastView data={irisData} snapshot={snapshot} />
-            ) : activeView === "setup" ? (
-              <SetupView
-                data={irisData}
-                snapshot={snapshot}
-                onQueuesChanged={handleQueuesChanged}
-                onProfilesChanged={handleProfilesChanged}
-              />
-            ) : (
-              <ReportsView data={irisData} snapshot={snapshot} />
-            )}
+            {currentViewContent}
           </section>
         </main>
       </div>

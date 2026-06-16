@@ -37937,3 +37937,47 @@ Conclusao:
 - Precisa de acao agora: Lucas deve validar visualmente em producao Hades > Cobranca, especialmente filtros `1-30`, `31-60`, `60+` e o clique no item Iris do sidebar do Hades.
 - Quem deve agir: Lucas valida a experiencia; Zeus fica responsavel por rollback para `dpl_53h1Bz51yrV3GhJ7xvmPUPtqJMW1` se houver regressao.
 - Proximo passo: trabalhar melhorias da Iris em recorte separado, sem misturar com Hades.
+
+## 2026-06-16 16:32:00 -03:00 - Hades - Iris embutida sem sidebar duplicado
+
+Assunto: [Hades] Ajuste local da Iris embutida sem sidebar interno
+
+- Nome da squad/agente: `Zeus / Hades`.
+- Tipo da alteracao: `HOTFIX / HADES / UX / IRIS_EMBUTIDA`.
+- Protocolo: `HADES-20260616-004-IRIS-EMBUTIDA-SEM-SIDEBAR`.
+- Status: `VALIDADO_LOCALMENTE / AGUARDANDO AUTORIZACAO PARA PUBLICACAO`.
+- Sintoma reportado:
+  - ao acessar a Iris dentro do Hades, a tela carregava a Iris, mas o item ativo do sidebar interno do Hades continuava em `Cobranca`;
+  - a Iris embutida ainda renderizava seu proprio sidebar e topbar, criando uma tela dentro da tela.
+- Fonte:
+  - worktree: `.codex-tmp/worktrees/hades-segmentation-iris-hotfix-20260616`;
+  - branch: `codex/hades/segmentation-iris-hotfix-20260616`;
+  - base operacional: recorte Hades publicado em producao no deployment `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS`.
+- Correcao aplicada:
+  - removido o item `Iris` do sidebar interno do Hades para evitar estado ativo divergente;
+  - `IrisPage` agora, quando usada com `embedded` e `boardOnly`, renderiza somente o conteudo operacional da Iris, sem sidebar/topbar proprios;
+  - a Iris global em `/iris` permanece com seu shell completo.
+- Arquivos incluidos:
+  - `apps/hub/components/guardian/layout/Sidebar.tsx`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - Hades fila/segmentacao, Iris global funcional, Home/Disponibilidade, Chronos, Hermes, Atlas, Setup, Apolo, Ares, envs, secrets, banco, Supabase e Vercel.
+- Validacoes executadas:
+  - `git diff --check`: `PASS`, com avisos esperados de LF/CRLF no Windows;
+  - `npx.cmd eslint components/guardian/layout/Sidebar.tsx modules/caredesk/IrisPage.tsx --max-warnings 0`: `PASS`, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: `PASS`;
+  - `npm.cmd run build --workspace @repo/hub`: `PASS`, com warnings conhecidos de root/Turbopack/NFT;
+  - smoke local com `next start` em `localhost:3028`: `/hades/cobranca?view=iris` `200`, `/iris` `200`.
+- Riscos:
+  - validacao visual autenticada ainda deve confirmar que o conteudo embutido ficou com altura e leitura boas dentro do Hades.
+- Rollback:
+  - reverter este protocolo e manter o deployment de producao atual `dpl_8zXPjeFPykfQG7QMiZhRfRJTBQyS` caso Lucas prefira a navegacao anterior.
+
+Conclusao:
+
+- O que aconteceu: o recorte local remove a duplicidade de navegação da Iris dentro do Hades.
+- Impacto pratico: Hades deixa de mostrar item Iris no sidebar interno e, ao abrir a view da Iris pelo fluxo de cobranca, nao aparece mais o shell/sidebar/topbar da Iris dentro da tela.
+- Precisa de acao agora: Lucas deve autorizar explicitamente a publicacao se quiser levar este ajuste para producao.
+- Quem deve agir: Zeus publica apenas apos autorizacao; Lucas valida visualmente depois.
+- Proximo passo: se aprovado, promover o protocolo `HADES-20260616-004-IRIS-EMBUTIDA-SEM-SIDEBAR` para `https://c2x.app.br` preservando `ops.c2x.app.br`.

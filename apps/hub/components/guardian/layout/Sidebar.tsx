@@ -8,7 +8,6 @@ import { Tooltip } from "@repo/uix";
 import {
   BarChart3,
   Bot,
-  Inbox,
   LayoutDashboard,
   LayoutGrid,
   LineChart,
@@ -30,12 +29,6 @@ const menuItems = [
     label: "Cobrança",
     icon: WalletCards,
     href: "/hades/cobranca",
-    released: true,
-  },
-  {
-    label: "Iris",
-    icon: Inbox,
-    href: "/hades/cobranca?view=iris",
     released: true,
   },
   {
