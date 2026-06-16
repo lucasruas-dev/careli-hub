@@ -73,6 +73,7 @@ type IrisPageProps = {
   initialTickets?: IrisTicket[];
   loadFromSupabase?: boolean;
   operatorScoped?: boolean;
+  queueSlugFilter?: string | null;
 };
 
 type IrisView =
@@ -484,9 +485,11 @@ export function IrisPage({
   initialTickets = emptyIrisTickets,
   loadFromSupabase = true,
   operatorScoped = false,
+  queueSlugFilter = null,
 }: IrisPageProps) {
   const { hubUser } = useAuth();
   const operatorUserId = operatorScoped ? hubUser?.id ?? null : null;
+  const scopedQueueSlug = normalizeOptionalIrisQueueSlug(queueSlugFilter);
   const [irisData, setIrisData] = useState<IrisData>({
     ...emptyIrisData,
     tickets: initialTickets,
@@ -544,7 +547,7 @@ export function IrisPage({
 
       try {
         const nextData = await enrichIrisDataWithCrm360(
-          await loadIrisData({ operatorUserId }),
+          await loadIrisData({ operatorUserId, queueSlugFilter: scopedQueueSlug }),
         );
         let latestInbound: { message: IrisMessage; ticket: IrisTicket } | null =
           null;
@@ -586,7 +589,13 @@ export function IrisPage({
         refreshInFlightRef.current = false;
       }
     },
-    [enrichIrisDataWithCrm360, loadFromSupabase, operatorScoped, operatorUserId],
+    [
+      enrichIrisDataWithCrm360,
+      loadFromSupabase,
+      operatorScoped,
+      operatorUserId,
+      scopedQueueSlug,
+    ],
   );
 
   useEffect(() => {
@@ -617,7 +626,7 @@ export function IrisPage({
 
       try {
         const nextData = await enrichIrisDataWithCrm360(
-          await loadIrisData({ operatorUserId }),
+          await loadIrisData({ operatorUserId, queueSlugFilter: scopedQueueSlug }),
         );
 
         if (!active) {
@@ -647,7 +656,14 @@ export function IrisPage({
     return () => {
       active = false;
     };
-  }, [enrichIrisDataWithCrm360, initialTickets, loadFromSupabase, operatorScoped, operatorUserId]);
+  }, [
+    enrichIrisDataWithCrm360,
+    initialTickets,
+    loadFromSupabase,
+    operatorScoped,
+    operatorUserId,
+    scopedQueueSlug,
+  ]);
 
   useEffect(() => {
     if (!loadFromSupabase) {
@@ -6555,8 +6571,10 @@ function toneText(tone: IrisTone) {
 
 async function loadIrisData({
   operatorUserId,
+  queueSlugFilter,
 }: {
   operatorUserId?: string | null;
+  queueSlugFilter?: string | null;
 } = {}): Promise<IrisData> {
   const supabase = getHubSupabaseClient();
 
@@ -6564,7 +6582,27 @@ async function loadIrisData({
     return emptyIrisData;
   }
 
-  const ticketsQuery = supabase
+  const queuesResult = await supabase
+    .from("caredesk_queues")
+    .select(
+      "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy",
+    )
+    .order("name", { ascending: true });
+
+  if (queuesResult.error) {
+    throw queuesResult.error;
+  }
+
+  const queues = (queuesResult.data ?? []).map(mapQueueRow);
+  const normalizedQueueSlugFilter =
+    normalizeOptionalIrisQueueSlug(queueSlugFilter);
+  const scopedQueueIds = normalizedQueueSlugFilter
+    ? queues
+        .filter((queue) => isSameIrisQueueScope(queue, normalizedQueueSlugFilter))
+        .map((queue) => queue.id)
+    : [];
+
+  let ticketsQuery = supabase
     .from("caredesk_tickets")
     .select(
       "id,protocol,contact_id,queue_id,profile_id,channel_id,status,priority,subject,source_module,source_entity_type,source_context,assigned_to_user_id,opened_at,first_response_due_at,resolution_due_at,first_responded_at,resolved_at,closed_at,metadata,created_at,updated_at",
@@ -6572,23 +6610,24 @@ async function loadIrisData({
     .order("opened_at", { ascending: false })
     .limit(200);
 
+  if (operatorUserId) {
+    ticketsQuery = ticketsQuery.eq("assigned_to_user_id", operatorUserId);
+  }
+
+  if (normalizedQueueSlugFilter) {
+    ticketsQuery = scopedQueueIds.length
+      ? ticketsQuery.in("queue_id", scopedQueueIds)
+      : ticketsQuery.eq("queue_id", "__iris_queue_scope_not_found__");
+  }
+
   const [
     ticketsResult,
-    queuesResult,
     profilesResult,
     templatesResult,
     channelsResult,
     broadcastsResult,
   ] = await Promise.all([
-    operatorUserId
-      ? ticketsQuery.eq("assigned_to_user_id", operatorUserId)
-      : ticketsQuery,
-    supabase
-      .from("caredesk_queues")
-      .select(
-        "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy",
-      )
-      .order("name", { ascending: true }),
+    ticketsQuery,
     supabase
       .from("caredesk_ticket_profiles")
       .select(
@@ -6613,7 +6652,6 @@ async function loadIrisData({
 
   const failedResult = [
     ticketsResult,
-    queuesResult,
     profilesResult,
     templatesResult,
     channelsResult,
@@ -6667,7 +6705,6 @@ async function loadIrisData({
     throw failedNestedResult.error;
   }
 
-  const queues = (queuesResult.data ?? []).map(mapQueueRow);
   const channels = (channelsResult.data ?? []).map((channel) => ({
     id: channel.id,
     kind: channel.kind,
@@ -8019,6 +8056,21 @@ function slugifyIrisQueue(value: string) {
     .replace(/^-+|-+$/g, "");
 
   return slug || "fila-atendimento";
+}
+
+function normalizeOptionalIrisQueueSlug(value?: string | null) {
+  const trimmed = String(value ?? "").trim();
+
+  return trimmed ? slugifyIrisQueue(trimmed) : null;
+}
+
+function isSameIrisQueueScope(
+  queue: IrisQueueConfig,
+  normalizedQueueSlug: string,
+) {
+  return [queue.slug, queue.name]
+    .map((value) => normalizeOptionalIrisQueueSlug(value))
+    .includes(normalizedQueueSlug);
 }
 
 function formatSlaMinutes(minutes: number) {

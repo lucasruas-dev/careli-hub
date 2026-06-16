@@ -63,13 +63,18 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     searchParams.get("clientId") ??
     searchParams.get("client") ??
     searchParams.get("hadesClientId");
+  const routeSection = normalizeAttendanceSection(
+    searchParams.get("view") ?? searchParams.get("section"),
+  );
   const initialClients = clients ?? queueClients;
   const [sourceClients, setSourceClients] = useState(initialClients);
   const [queueTotalCount, setQueueTotalCount] = useState(initialClients.length);
   const [queueLoading, setQueueLoading] = useState(loadFromC2x && initialClients.length === 0);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState(sourceClients[0]?.id ?? "");
-  const [activeSection, setActiveSection] = useState<AttendanceSection>("queue");
+  const [activeSection, setActiveSection] = useState<AttendanceSection>(
+    routeSection ?? "queue",
+  );
   const [search, setSearch] = useState("");
   const [enterprise, setEnterprise] = useState("Todos");
   const [priority, setPriority] = useState<AttendancePriority | "Todos">("Todos");
@@ -559,7 +564,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
           </nav>
 
           {activeSection === "desk" ? (
-            <IrisPage embedded boardOnly operatorScoped />
+            <IrisPage embedded boardOnly queueSlugFilter="cobranca" />
           ) : (
             <div className="grid w-full items-start gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
               <QueuePanel
@@ -628,6 +633,24 @@ function normalizeAttendanceProtocol(value?: string | null) {
   const normalized = String(value ?? "").trim().toUpperCase();
 
   return /^AT-\d{1,12}$/.test(normalized) ? normalized : null;
+}
+
+function normalizeAttendanceSection(value?: string | null): AttendanceSection | null {
+  const normalized = String(value ?? "").trim().toLowerCase();
+
+  if (["iris", "desk", "atendimento"].includes(normalized)) {
+    return "desk";
+  }
+
+  if (["carteira", "portfolio"].includes(normalized)) {
+    return "portfolio";
+  }
+
+  if (["fila", "queue", "cobranca"].includes(normalized)) {
+    return "queue";
+  }
+
+  return null;
 }
 
 async function getHadesAccessToken() {

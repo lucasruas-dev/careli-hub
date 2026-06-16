@@ -37752,3 +37752,47 @@ Conclusao:
 - Precisa de acao agora: Lucas deve atualizar a Home em producao e acompanhar a aba `Disponibilidade` durante chamadas reais.
 - Quem deve agir agora: Zeus monitora regressao e Lucas valida comportamento operacional com usuarios reais.
 - Proximo passo: tratar este deployment como candidato ao marco zero de producao e iniciar o desenho do Address Registry para futuros recortes.
+
+## 2026-06-16 14:03:45 -03:00 - Zeus - recorte limpo Hades/Iris embutida
+
+Assunto: [Hades] Recuperacao segura da Iris embutida na cobranca
+
+- Nome da squad/agente: `Zeus`.
+- ProtocolId: `HADES-20260616-001-IRIS-EMBUTIDA-COBRANCA`.
+- Tipo da alteracao: `HADES / COBRANCA / IRIS_EMBUTIDA / PRODUCAO_CANDIDATA`.
+- Status: `VALIDADO_LOCAL / AGUARDANDO_APROVACAO_DE_PRODUCAO`.
+- Autorizacao: Lucas solicitou recuperar o recorte validado do Hades sem levar junto alteracoes soltas de Iris, Escritorio, Ares ou outros modulos.
+- Base segura:
+  - worktree limpo dedicado: `.codex-tmp/worktrees/hades-recovery-20260616`;
+  - branch: `codex/hades/recover-queue-profile-iris-20260616`;
+  - base herdada: producao com o recorte de Disponibilidade ja aplicado em `a4b5564`.
+- Escopo aplicado:
+  - `/hades/desk` e `/guardian/desk` passam a apontar para `/hades/cobranca?view=iris`;
+  - `AttendancePage` reconhece `view=iris` e abre a Iris dentro do Hades;
+  - `IrisPage` recebeu filtro opcional por fila (`queueSlugFilter`) para carregar apenas a fila `cobranca` quando estiver embutida no Hades;
+  - APIs, envio de mensagens, webhooks, templates, banco, Supabase, envs e regras gerais da Iris ficaram fora do pacote.
+- Arquivos funcionais alterados:
+  - `apps/hub/app/guardian/desk/page.tsx`;
+  - `apps/hub/app/hades/desk/page.tsx`;
+  - `apps/hub/modules/caredesk/IrisPage.tsx`;
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`.
+- Exclusoes:
+  - nenhum arquivo de Escritorio, Ares, Chronos, Hermes, Atlas, Setup, APIs da Iris, env, secret, Supabase, banco, migration, alias ou dominio foi alterado;
+  - o recorte antigo amplo da Iris nao foi reaplicado, porque misturava muitas alteracoes fora do Hades.
+- Validacoes executadas:
+  - `git diff --check`: PASS;
+  - `npx.cmd eslint modules/caredesk/IrisPage.tsx modules/guardian/attendance/AttendancePage.tsx app/hades/desk/page.tsx app/guardian/desk/page.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree temporaria/Turbopack/NFT;
+  - smoke local temporario em `localhost:3027`: `/hades/cobranca?view=iris` 200, `/guardian/desk` redirecionando para o Hades/Iris, `/iris` preservada 200.
+- Risco residual:
+  - validacao visual autenticada ainda depende de Lucas ou de Preview/Homo;
+  - producao permanece bloqueada ate Lucas aprovar explicitamente este pacote/protocolo.
+
+Conclusao:
+
+- O que aconteceu: o Hades recuperou a capacidade de abrir a Iris dentro da propria tela de cobranca, com filtro restrito para a fila de cobranca.
+- Impacto pratico: operadores de Hades nao precisam sair para o app Iris ao tratar conversas de cobranca.
+- Precisa de acao agora: Lucas aprovar ou pedir Preview/Homo do protocolo `HADES-20260616-001-IRIS-EMBUTIDA-COBRANCA`.
+- Quem deve agir agora: Zeus mantem producao bloqueada ate aprovacao explicita do pacote; Lucas valida a decisao.
+- Proximo passo: se aprovado, criar pacote isolado de producao contendo somente este protocolo e, em seguida, tratar a Iris como frente separada.
