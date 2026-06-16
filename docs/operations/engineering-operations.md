@@ -37582,3 +37582,44 @@ Conclusao:
 - Precisa de acao agora: Lucas deve validar em producao com uso real, principalmente um ciclo de usuario parado por 5 e 10 minutos.
 - Quem deve agir agora: Lucas valida o comportamento; Zeus monitora e pode executar rollback de `c2x.app.br` se houver regressao critica.
 - Proximo passo: manter observacao por 24 horas e abrir recorte separado para reconciliador server-side se Lucas quiser historico independente do navegador.
+
+### Complemento 2026-06-15 22:18:00 -03:00 - Home disponibilidade: estabilidade de logs e protecao de agenda
+
+- Status: `IMPLEMENTADO / VALIDADO LOCALMENTE / NAO PUBLICADO`.
+- Branch: `codex/home/presence-log-stability-20260615`.
+- Escopo:
+  - `apps/hub/hooks/use-hub-presence.ts`;
+  - `apps/hub/app/api/hub/presence/route.ts`;
+  - `apps/hub/app/api/hub/home/route.ts`;
+  - `apps/hub/app/page.tsx`.
+- Evidencia do incidente:
+  - Lucas reportou queda durante reunioes e historicos com multiplos `fez login` seguidos para Catherine, Cinthia, Nivea, Raiane e outros colaboradores;
+  - consulta Supabase read-only disponivel neste ambiente apontou base de homologacao local, nao a producao dos prints, mas confirmou que o fluxo atual conseguia gerar eventos repetidos de `login`/`online` no mesmo usuario.
+- Correcoes aplicadas:
+  - `login` agora so vira evento de login quando a presenca anterior efetiva estava `offline`;
+  - remontagem/reload do shell com presenca ainda ativa vira `activity` ou nao gera evento, evitando blocos de `fez login` em sequencia;
+  - `agenda` e `almoco` preservados no servidor contra `login`, `heartbeat` e outras atualizacoes automaticas; somente acao manual troca esses estados;
+  - o hook da topbar passa a reconhecer `agenda`/`almoco` persistidos pelo servidor como estados protegidos, evitando timeout e logout automatico apos reload durante chamada;
+  - status `away` passa a completar o ciclo de logout em `HUB_AUTO_LOGOUT_TIMEOUT_MS - HUB_IDLE_TIMEOUT_MS`, mantendo a regra real de 5 minutos para ausente e 10 minutos para logout total;
+  - a API de presenca reconcilia presenca stale com eventos sinteticos `away` -> `offline` antes de registrar novo login;
+  - Home/Disponibilidade passa a exibir um logout derivado quando o usuario esta `offline` por envelhecimento de `last_seen_at` mas o evento nao foi gravado, deixando claro o horario estimado em vez de mostrar apenas `offline` sem trilha;
+  - o painel deixa de exibir multiplos `login` consecutivos no mesmo dia quando nao houve logout/ausencia/almoco entre eles.
+- Validacoes:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/api/hub/presence/route.ts app/api/hub/home/route.ts app/page.tsx hooks/use-hub-presence.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria;
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows.
+- Seguranca operacional:
+  - nenhuma migration, schema, env, secret, alias, banco mutavel, Vercel, producao, Hades, Iris, Hermes, Atlas, Setup ou Chronos foi alterado;
+  - a correcao ficou isolada em worktree limpo e branch novo.
+- Risco residual:
+  - o historico antigo ja gravado com logins repetidos nao foi apagado do banco; o painel apenas deixa de repetir esses blocos quando eles representam a mesma jornada;
+  - para garantia absoluta em navegador fechado/crash sem novo evento, ainda pode ser criado recorte futuro de reconciliador server-side/cron, com autorizacao propria.
+
+Conclusao:
+
+- O que aconteceu: a auditoria encontrou duas causas principais: o shell enviava `login` em remontagens e a API aceitava esse `login` como evento novo mesmo sem logout anterior; alem disso, `agenda`/`almoco` nao eram preservados de forma suficiente apos reload.
+- Impacto pratico: a partir deste recorte, reunioes/status agenda ficam protegidos contra ausente/logout automaticos, e o historico fica mais macro e confiavel.
+- Precisa de acao agora: publicar primeiro em homologacao/Preview ou producao apenas com autorizacao explicita do Lucas para o ambiente alvo.
+- Quem deve agir agora: Zeus valida/publica se Lucas autorizar; Lucas valida um ciclo real de reuniao e um ciclo de 5/10 minutos.
+- Proximo passo: gerar commit do recorte e decidir o ambiente de publicacao.

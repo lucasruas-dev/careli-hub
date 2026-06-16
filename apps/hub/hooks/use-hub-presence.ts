@@ -99,6 +99,10 @@ export function useHubPresenceController({
       if (savedPresence && lastSentAtRef.current === sentAt) {
         statusRef.current = savedPresence.status;
         setStatus(savedPresence.status);
+
+        if (isProtectedManualPresence(savedPresence.status)) {
+          manualPresenceRef.current = savedPresence.status;
+        }
       }
     },
     [enabled, source],
@@ -162,6 +166,10 @@ export function useHubPresenceController({
         return "manual_agenda";
       }
 
+      if (statusRef.current === "agenda") {
+        return "persisted_agenda";
+      }
+
       if (isChronosCallRoute()) {
         return activeMeetingRef.current
           ? "chronos_current_meeting"
@@ -178,8 +186,18 @@ export function useHubPresenceController({
     function isPresencePenaltyExempt() {
       return (
         isAgendaExceptionActive() ||
-        isProtectedManualPresence(manualPresenceRef.current)
+        isProtectedManualPresence(getProtectedPresenceStatus())
       );
+    }
+
+    function getProtectedPresenceStatus() {
+      if (isProtectedManualPresence(manualPresenceRef.current)) {
+        return manualPresenceRef.current;
+      }
+
+      return isProtectedManualPresence(statusRef.current)
+        ? statusRef.current
+        : null;
     }
 
     function getMeetingMetadata() {
@@ -296,7 +314,7 @@ export function useHubPresenceController({
         return;
       }
 
-      const protectedActivityStatus = manualPresenceRef.current;
+      const protectedActivityStatus = getProtectedPresenceStatus();
 
       if (isProtectedManualPresence(protectedActivityStatus)) {
         runPresenceUpdate(
@@ -348,7 +366,7 @@ export function useHubPresenceController({
         return;
       }
 
-      const protectedAutomaticStatus = manualPresenceRef.current;
+      const protectedAutomaticStatus = getProtectedPresenceStatus();
 
       if (isProtectedManualPresence(protectedAutomaticStatus)) {
         runPresenceUpdate(
