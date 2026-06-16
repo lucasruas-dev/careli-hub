@@ -37623,3 +37623,55 @@ Conclusao:
 - Precisa de acao agora: publicar primeiro em homologacao/Preview ou producao apenas com autorizacao explicita do Lucas para o ambiente alvo.
 - Quem deve agir agora: Zeus valida/publica se Lucas autorizar; Lucas valida um ciclo real de reuniao e um ciclo de 5/10 minutos.
 - Proximo passo: gerar commit do recorte e decidir o ambiente de publicacao.
+
+### Complemento 2026-06-15 23:03:54 -03:00 - Home disponibilidade: producao dos logs estabilizados
+
+- Status: `EM PRODUCAO / C2X ATUALIZADO / OPS PRESERVADO`.
+- Branch: `codex/home/presence-log-stability-20260615`.
+- Commit publicado: `7a6b4723129ad1a275355fbc49bf123375ea9a2f`.
+- Escopo publicado:
+  - `apps/hub/hooks/use-hub-presence.ts`;
+  - `apps/hub/app/api/hub/presence/route.ts`;
+  - `apps/hub/app/api/hub/home/route.ts`;
+  - `apps/hub/app/page.tsx`.
+- Autorizacao:
+  - Lucas autorizou producao com `pode subir em producao` e reforcou o limite `cuidado para nao alterar nada que nao seja essa parte dos logs`.
+- Publicacao:
+  - deployment novo: `dpl_K9BevG9dzBvHesNYHYef8QjW1B2t`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-qrx43do2k-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - comando: `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
+  - alias manual executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` nao foi reapontado.
+- Estado anterior e rollback:
+  - deployment anterior de `https://c2x.app.br`: `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - rollback imediato de `https://c2x.app.br`: reapontar para `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - deployment preservado de `https://ops.c2x.app.br`: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+- Validacoes pre-publicacao:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/api/hub/presence/route.ts app/api/hub/home/route.ts app/page.tsx hooks/use-hub-presence.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria;
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows.
+- Validacoes pos-publicacao:
+  - build remoto Vercel: PASS, com warnings conhecidos de `npm audit`, Turbopack/NFT e envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_K9BevG9dzBvHesNYHYef8QjW1B2t`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `HEAD https://c2x.app.br/login`: `200 OK`;
+  - `HEAD https://ops.c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401` esperado;
+  - `npx.cmd vercel logs https://careli-hub-hub-i2bs-qrx43do2k-lucasruas-devs-projects.vercel.app --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Escopo preservado:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Iris, Hermes, Atlas, Setup, Chronos ou modulo fora de Home/Presenca foi alterado;
+  - `https://ops.c2x.app.br` permaneceu no deployment preservado;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - historico antigo ja gravado com logins repetidos nao foi apagado do banco;
+  - validacao autenticada final depende de Lucas observar os proximos ciclos reais de status.
+
+Conclusao:
+
+- O que aconteceu: o recorte que estabiliza os logs de disponibilidade foi publicado em producao somente em `https://c2x.app.br`.
+- Impacto pratico: novas remontagens/reloads nao devem gerar blocos artificiais de login, e `agenda`/`almoco` ficam protegidos contra a regra automatica de ausente/logout.
+- Precisa de acao agora: Lucas deve observar um ciclo real de reuniao e um ciclo parado de 5/10 minutos.
+- Quem deve agir agora: Lucas valida o uso real; Zeus monitora e pode reapontar `c2x.app.br` para `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5` se houver regressao critica.
+- Proximo passo: se ainda houver historico faltando com navegador fechado/crash, abrir recorte futuro separado para reconciliador server-side/cron.

@@ -4146,3 +4146,62 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj` se Lucas identificar regressao critica;
   - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-15 - PROD-20260615-002-HOME-PRESENCE-LOG-STABILITY
+
+Status: EM PRODUCAO / C2X ATUALIZADO / OPS PRESERVADO.
+
+Registro de producao:
+
+- Assunto: `[Home] Logs de disponibilidade estabilizados`.
+- Protocolo de origem: `HOME-20260615-002-PRESENCE-LOG-STABILITY`.
+- Squad/agente responsavel: `Zeus / Home`.
+- Data e hora local: `2026-06-15 23:03:54 -03:00`.
+- Autorizacao: Lucas autorizou com `pode subir em producao` e restringiu o escopo a `essa parte dos logs`.
+- Ambiente alvo: `producao`.
+- Dominio alvo: `https://c2x.app.br`.
+- Dominio fora do escopo preservado: `https://ops.c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de `https://c2x.app.br`: `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - rollback imediato de `https://c2x.app.br`: `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`;
+  - deployment preservado de `https://ops.c2x.app.br`: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - commit publicado: `7a6b4723129ad1a275355fbc49bf123375ea9a2f`.
+- Escopo publicado:
+  - `login` deixa de ser regravado em remontagens/reloads com presenca ativa;
+  - eventos repetidos de `login` no painel sao suprimidos quando representam a mesma jornada;
+  - `agenda` e `almoco` sao protegidos contra `login`, `heartbeat` e atualizacoes automaticas;
+  - `away` completa o ciclo de logout respeitando 5 minutos para ausente e 10 minutos totais para logout;
+  - Home exibe logout derivado quando a presenca envelhece para `offline` sem evento explicito gravado.
+- Publicacao:
+  - branch: `codex/home/presence-log-stability-20260615`;
+  - deployment novo: `dpl_K9BevG9dzBvHesNYHYef8QjW1B2t`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-qrx43do2k-lucasruas-devs-projects.vercel.app`;
+  - target: `production`;
+  - comando: `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes`;
+  - alias executado manualmente apenas para `https://c2x.app.br`;
+  - `--skip-domain` foi usado para evitar reapontamento automatico de `https://ops.c2x.app.br`.
+- Validacoes pre-publicacao:
+  - `npm.cmd run check-types --workspace @repo/hub`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/api/hub/presence/route.ts app/api/hub/home/route.ts app/page.tsx hooks/use-hub-presence.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/Turbopack/NFT por worktree temporaria;
+  - `git diff --check`: PASS, apenas avisos CRLF esperados no Windows.
+- Validacoes pos-publicacao:
+  - build remoto Vercel: PASS, com warnings conhecidos de `npm audit`, Turbopack/NFT e envs fora do `turbo.json`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_K9BevG9dzBvHesNYHYef8QjW1B2t`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready preservado em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - `HEAD https://c2x.app.br/login`: `200 OK`;
+  - `HEAD https://ops.c2x.app.br/login`: `200 OK`;
+  - `GET https://c2x.app.br/api/hub/home` sem sessao: `401` esperado;
+  - `npx.cmd vercel logs https://careli-hub-hub-i2bs-qrx43do2k-lucasruas-devs-projects.vercel.app --scope lucasruas-devs-projects --since 30m --level error`: sem logs encontrados.
+- Safety Gate:
+  - controle compensatorio executado: branch limpo, commit rastreavel, deployment com `--skip-domain`, alias manual somente em `c2x`, rollback capturado e `ops` inspecionado antes/depois.
+- Escopo preservado:
+  - nenhum env, secret, migration, schema, Supabase manual, banco, Hades, Iris, Hermes, Atlas, Setup, Chronos ou modulo fora de Home/Presenca foi alterado;
+  - `https://ops.c2x.app.br` permaneceu no deployment preservado;
+  - valores sensiveis nao foram impressos ou registrados.
+- Risco residual:
+  - historico antigo ja gravado com logins repetidos nao foi apagado do banco;
+  - validacao autenticada final depende de Lucas observar os proximos ciclos reais de status.
+- Rollback:
+  - `https://c2x.app.br`: reapontar para `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5` se Lucas identificar regressao critica;
+  - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
