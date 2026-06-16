@@ -37830,3 +37830,51 @@ Conclusao:
 - Precisa de acao agora: Lucas validar visualmente em producao entrando em Hades > Cobranca/Iris.
 - Quem deve agir agora: Lucas valida a experiencia; Zeus fica pronto para rollback para `dpl_Hd4egBtwzSehNaD5vh99dpzYiw8j` se houver regressao.
 - Proximo passo: trabalhar a Iris como frente separada, sem misturar com Hades ou Disponibilidade.
+
+## 2026-06-16 15:42:58 -03:00 - Hades - segmentacao de cobranca e atalho Iris
+
+Assunto: [Hades] Validacao local do hotfix de segmentacao e atalho Iris embutido
+
+- Nome da squad/agente: `Zeus / Hades`.
+- Tipo da alteracao: `HOTFIX / HADES / COBRANCA / IRIS_EMBUTIDA`.
+- Protocolo: `HADES-20260616-003-SEGMENTACAO-IRIS-EMBUTIDA`.
+- Status: `VALIDADO_LOCALMENTE / AGUARDANDO AUTORIZACAO PARA PUBLICACAO`.
+- Sintoma reportado:
+  - a segmentacao da cobranca por faixa de atraso nao estava disponivel no Hades publicado;
+  - o item `Iris` dentro do Hades redirecionava para o modulo global `/iris`, quando deveria abrir a Iris embutida no contexto de cobranca do Hades.
+- Fonte limpa:
+  - worktree: `.codex-tmp/worktrees/hades-segmentation-iris-hotfix-20260616`;
+  - branch: `codex/hades/segmentation-iris-hotfix-20260616`;
+  - base: `ed64399`.
+- Correcao aplicada:
+  - recuperada a segmentacao validada anteriormente para a fila do Hades, com filtros `Todos`, `1-30`, `31-60` e `60+` para perfis de lideranca;
+  - preservado o recorte operacional por perfil: `OP1` em `1-30`, `OP2` em `31-60`, `OP3` em `61-90`, e lideranca/admin com visao total;
+  - preservada a fila diaria com destaque de cliente contatado no dia;
+  - o item `Iris` do sidebar interno do Hades agora aponta para `/hades/cobranca?view=iris`;
+  - a view de Iris dentro do Hades usa `IrisPage embedded boardOnly queueSlugFilter="cobranca"`, sem sair para o modulo global.
+- Arquivos incluidos:
+  - `apps/hub/components/guardian/layout/Sidebar.tsx`;
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`;
+  - `apps/hub/modules/guardian/attendance/components/ClientQueueCard.tsx`;
+  - `apps/hub/modules/guardian/attendance/components/QueuePanel.tsx`;
+  - `docs/operations/engineering-operations.md`.
+- Arquivos excluidos:
+  - Home/Disponibilidade, Chronos, Hermes, Iris global, Setup, Atlas, Apolo, Ares, envs, secrets, banco, Supabase e Vercel.
+- Validacoes executadas:
+  - `git diff --check`: `PASS`;
+  - `npm.cmd run check-types:hub`: `PASS`;
+  - `npm.cmd run lint:hub`: `PASS`;
+  - `npm.cmd run build --workspace @repo/hub`: `PASS`;
+  - smoke local no build do worktree em `localhost:3027`: `/hades/cobranca?view=iris` `200`, `/iris` `200`.
+- Observacoes:
+  - o comando direto `npx.cmd eslint ...` na raiz falhou por resolucao de `eslint.config` do ESLint 9 antes de analisar codigo; a validacao oficial foi feita por `npm.cmd run lint:hub` com sucesso.
+- Riscos:
+  - precisa de publicacao por recorte limpo e gate antes de producao para evitar nova regressao em modulos fora do Hades.
+- Rollback:
+  - manter ou reapontar para o ultimo deployment valido de producao caso a publicacao seja bloqueada nos gates.
+
+Conclusao:
+
+- O recorte local confirma que a falha reportada existe no pacote publicado e que o hotfix corrige os dois pontos: segmentacao de cobranca e Iris embutida no Hades.
+- O impacto pratico esperado apos publicacao e o lider/admin voltar a filtrar a fila por maturidade de atraso e o operador abrir a Iris de cobranca sem sair do Hades.
+- Precisa de acao agora: Lucas deve autorizar explicitamente a publicacao do protocolo `HADES-20260616-003-SEGMENTACAO-IRIS-EMBUTIDA` no ambiente desejado; sem essa autorizacao o status permanece validado localmente.

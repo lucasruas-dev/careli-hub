@@ -35,7 +35,7 @@ const menuItems = [
   {
     label: "Iris",
     icon: Inbox,
-    href: "/iris",
+    href: "/hades/cobranca?view=iris",
     released: true,
   },
   {

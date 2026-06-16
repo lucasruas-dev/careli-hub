@@ -6,6 +6,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Inbox, MapPinned, MessageCircle } from "lucide-react";
 import { Tooltip } from "@repo/uix";
+import {
+  mapLegacyRoleToOperationalProfile,
+  type HubUserContext,
+  type OperationalProfileRole,
+} from "@repo/shared";
 import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { ClientDetailPanel } from "@/modules/guardian/attendance/components/ClientDetailPanel";
 import { AiCopilotDrawer } from "@/modules/guardian/attendance/components/AiCopilotDrawer";
@@ -14,6 +19,7 @@ import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/compone
 import { IrisPage } from "@/modules/caredesk/IrisPage";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { queueClients } from "@/modules/guardian/attendance/data";
+import { useAuth } from "@/providers/auth-provider";
 import type {
   AttendancePriority,
   OperationalTimelineEvent,
@@ -30,6 +36,8 @@ const priorities: Array<AttendancePriority | "Todos"> = [
 ];
 
 type AttendanceSection = "queue" | "desk" | "portfolio";
+type QueueMode = "daily" | "general";
+type OverdueRangeFilter = "all" | "1-30" | "31-60" | "60+";
 type ManualHadesOperations = {
   commitments: QueueClient["commitments"];
   events: OperationalTimelineEvent[];
@@ -52,6 +60,7 @@ type AttendancePageProps = {
 };
 
 export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageProps) {
+  const { hubUser } = useAuth();
   const searchParams = useSearchParams();
   const routeOpenHandledRef = useRef(false);
   const routeAttendanceProtocol = normalizeAttendanceProtocol(
@@ -79,6 +88,8 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const [enterprise, setEnterprise] = useState("Todos");
   const [priority, setPriority] = useState<AttendancePriority | "Todos">("Todos");
   const [stage, setStage] = useState<WorkflowStage | "Todas">("Todas");
+  const [queueMode, setQueueMode] = useState<QueueMode>("daily");
+  const [overdueRange, setOverdueRange] = useState<OverdueRangeFilter>("all");
   const [whatsAppClientId, setWhatsAppClientId] = useState<string | null>(null);
   const [whatsAppAttendanceProtocol, setWhatsAppAttendanceProtocol] = useState<string | null>(null);
   const [timelineEventsByClient, setTimelineEventsByClient] = useState<
@@ -99,7 +110,11 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   }, [initialClients]);
 
   useEffect(() => {
-    if (!loadFromC2x) {
+    setActiveSection(routeSection ?? "queue");
+  }, [routeSection]);
+
+  useEffect(() => {
+    if (!loadFromC2x || activeSection === "desk") {
       return;
     }
 
@@ -153,7 +168,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     return () => {
       cancelled = true;
     };
-  }, [loadFromC2x]);
+  }, [activeSection, loadFromC2x]);
 
   useEffect(() => {
     if (!selectedId) {
@@ -293,8 +308,52 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     setWhatsAppAttendanceProtocol(routeAttendanceProtocol);
   }, [routeAttendanceProtocol, routeClientId, selectedId, sourceClients]);
 
+  const operationalProfile = useMemo(
+    () => resolveHadesOperationalProfile(hubUser),
+    [hubUser],
+  );
+  const profileScopedClients = useMemo(
+    () =>
+      sourceClients.filter((client) =>
+        isClientInHadesProfileScope(client, operationalProfile.profileRole),
+      ),
+    [operationalProfile.profileRole, sourceClients],
+  );
+  const leadershipOverdueFilterEnabled = isHadesLeadershipProfile(
+    operationalProfile.profileRole,
+  );
+  const overdueRangeCounts = useMemo(
+    () => buildOverdueRangeCounts(profileScopedClients),
+    [profileScopedClients],
+  );
+  const overdueScopedClients = useMemo(() => {
+    if (!leadershipOverdueFilterEnabled) {
+      return profileScopedClients;
+    }
+
+    return profileScopedClients.filter((client) =>
+      isClientInOverdueRange(client, overdueRange),
+    );
+  }, [leadershipOverdueFilterEnabled, overdueRange, profileScopedClients]);
+
+  useEffect(() => {
+    if (!leadershipOverdueFilterEnabled && overdueRange !== "all") {
+      setOverdueRange("all");
+    }
+  }, [leadershipOverdueFilterEnabled, overdueRange]);
+
+  const todayContactClientIds = useMemo(
+    () =>
+      buildTodayContactClientIds({
+        manualOperationsByClient,
+        sourceClients: overdueScopedClients,
+        timelineEventsByClient,
+      }),
+    [manualOperationsByClient, overdueScopedClients, timelineEventsByClient],
+  );
+
   const enterpriseOptions = useMemo(() => {
-    const enterprises = sourceClients
+    const enterprises = overdueScopedClients
       .flatMap((client) => [
         client.carteira.empreendimento,
         ...client.carteira.unidades.map((unit) => unit.empreendimento),
@@ -303,12 +362,12 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       .sort((a, b) => a.localeCompare(b, "pt-BR"));
 
     return ["Todos", ...Array.from(new Set(enterprises))];
-  }, [sourceClients]);
+  }, [overdueScopedClients]);
 
   const searchableClients = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return sourceClients.filter((client) => {
+    return overdueScopedClients.filter((client) => {
       const matchesSearch =
         normalizedSearch.length === 0 ||
         client.nome.toLowerCase().includes(normalizedSearch) ||
@@ -329,19 +388,38 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
 
       return matchesSearch && matchesEnterprise && matchesPriority;
     });
-  }, [enterprise, priority, search, sourceClients]);
+  }, [enterprise, overdueScopedClients, priority, search]);
+
+  const dailyQueueClients = useMemo(() => {
+    return searchableClients.filter(isDailyQueueClient);
+  }, [searchableClients]);
+
+  const queueSummaryClients = queueMode === "daily" ? dailyQueueClients : searchableClients;
 
   const filteredClients = useMemo(() => {
-    return searchableClients
+    const queueBase = queueMode === "daily" ? dailyQueueClients : searchableClients;
+
+    return queueBase
       .filter((client) => stage === "Todas" || client.workflow.stage === stage)
-      .sort((first, second) => second.parcelas.vencidas - first.parcelas.vencidas);
-  }, [searchableClients, stage]);
+      .sort((first, second) => {
+        if (queueMode === "daily") {
+          const firstContacted = todayContactClientIds.has(first.id) ? 1 : 0;
+          const secondContacted = todayContactClientIds.has(second.id) ? 1 : 0;
+
+          if (firstContacted !== secondContacted) {
+            return firstContacted - secondContacted;
+          }
+        }
+
+        return second.parcelas.vencidas - first.parcelas.vencidas;
+      });
+  }, [dailyQueueClients, queueMode, searchableClients, stage, todayContactClientIds]);
 
   const selectedClient =
     filteredClients.find((client) => client.id === selectedId) ??
     filteredClients[0] ??
-    sourceClients.find((client) => client.id === selectedId) ??
-    sourceClients[0];
+    overdueScopedClients.find((client) => client.id === selectedId) ??
+    overdueScopedClients[0];
   const selectedManualOperations =
     manualOperationsByClient[selectedClient?.id ?? ""] ?? emptyManualOperations;
   const selectedClientWithManualOperations = selectedClient
@@ -360,6 +438,45 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const whatsAppClient = whatsAppClientId
     ? sourceClients.find((client) => client.id === whatsAppClientId) ?? selectedClient
     : selectedClient;
+  const sectionNavigation = (
+    <nav className="flex w-fit gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-label="Modulos de cobranca">
+      {attendanceSections.map((section) => {
+        const Icon = section.icon;
+        const active = activeSection === section.id;
+
+        return (
+          <Tooltip key={section.id} content={section.label} placement="bottom">
+            <button
+              type="button"
+              onClick={() => setActiveSection(section.id)}
+              aria-label={section.label}
+              className={`relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
+                active
+                  ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/20"
+                  : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+              }`}
+            >
+              <Icon className="size-4" aria-hidden="true" />
+              {section.badge ? (
+                <span className="absolute -right-1 -top-1 rounded-full bg-[#A07C3B] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
+                  {section.badge}
+                </span>
+              ) : null}
+            </button>
+          </Tooltip>
+        );
+      })}
+    </nav>
+  );
+
+  if (activeSection === "desk" && !whatsAppClientId) {
+    return (
+      <div className="space-y-5">
+        {sectionNavigation}
+        <IrisPage embedded boardOnly queueSlugFilter="cobranca" />
+      </div>
+    );
+  }
 
   if (!selectedClient) {
     if (queueLoading) {
@@ -534,34 +651,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
         />
       ) : (
         <div className="space-y-5">
-          <nav className="flex w-fit gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-label="Módulos de cobrança">
-            {attendanceSections.map((section) => {
-              const Icon = section.icon;
-              const active = activeSection === section.id;
-
-              return (
-                <Tooltip key={section.id} content={section.label} placement="bottom">
-                  <button
-                    type="button"
-                    onClick={() => setActiveSection(section.id)}
-                    aria-label={section.label}
-                    className={`relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                      active
-                        ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/20"
-                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
-                    }`}
-                  >
-                    <Icon className="size-4" aria-hidden="true" />
-                    {section.badge ? (
-                      <span className="absolute -right-1 -top-1 rounded-full bg-[#A07C3B] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                        {section.badge}
-                      </span>
-                    ) : null}
-                  </button>
-                </Tooltip>
-              );
-            })}
-          </nav>
+          {sectionNavigation}
 
           {activeSection === "desk" ? (
             <IrisPage embedded boardOnly queueSlugFilter="cobranca" />
@@ -569,7 +659,15 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
             <div className="grid w-full items-start gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
               <QueuePanel
                 clients={filteredClients}
-                summaryClients={searchableClients}
+                contactedTodayClientIds={todayContactClientIds}
+                dailyCount={dailyQueueClients.length}
+                generalCount={searchableClients.length}
+                mode={queueMode}
+                overdueRange={overdueRange}
+                overdueRangeCounts={overdueRangeCounts}
+                overdueRangeEnabled={leadershipOverdueFilterEnabled}
+                profileLabel={operationalProfile.label}
+                summaryClients={queueSummaryClients}
                 priorities={priorities}
                 enterprises={enterpriseOptions}
                 search={search}
@@ -578,6 +676,8 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
                 selectedPriority={priority}
                 selectedStage={stage}
                 onEnterpriseChange={setEnterprise}
+                onModeChange={setQueueMode}
+                onOverdueRangeChange={setOverdueRange}
                 onPriorityChange={setPriority}
                 onOpenWhatsApp={(clientId) => openWhatsApp(clientId)}
                 onSearchChange={setSearch}
@@ -602,8 +702,8 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       <AiCopilotDrawer
         client={selectedClientWithManualOperations}
         filteredQueueClients={filteredClients}
-        queueClients={sourceClients}
-        queueTotalCount={queueTotalCount}
+        queueClients={overdueScopedClients}
+        queueTotalCount={overdueScopedClients.length || queueTotalCount}
       />
     </>
   );
@@ -636,22 +736,205 @@ function normalizeAttendanceProtocol(value?: string | null) {
 }
 
 function normalizeAttendanceSection(value?: string | null): AttendanceSection | null {
-  const normalized = String(value ?? "").trim().toLowerCase();
+  const normalized = String(value ?? "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .trim()
+    .toLowerCase();
 
-  if (["iris", "desk", "atendimento"].includes(normalized)) {
+  if (
+    normalized === "iris" ||
+    normalized === "desk" ||
+    normalized === "board"
+  ) {
     return "desk";
   }
 
-  if (["carteira", "portfolio"].includes(normalized)) {
+  if (normalized === "carteira" || normalized === "portfolio") {
     return "portfolio";
   }
 
-  if (["fila", "queue", "cobranca"].includes(normalized)) {
+  if (
+    normalized === "fila" ||
+    normalized === "queue" ||
+    normalized === "cobranca"
+  ) {
     return "queue";
   }
 
   return null;
 }
+
+function resolveHadesOperationalProfile(hubUser: HubUserContext | null) {
+  const profileRole =
+    hubUser?.operationalProfile?.profileRole ??
+    (hubUser ? mapLegacyRoleToOperationalProfile(hubUser.role) : "op1");
+
+  return {
+    label: HADES_PROFILE_LABELS[profileRole],
+    profileRole,
+  };
+}
+
+function isClientInHadesProfileScope(
+  client: QueueClient,
+  profileRole: OperationalProfileRole,
+) {
+  if (profileRole === "adm" || profileRole === "cdr" || profileRole === "ldr") {
+    return true;
+  }
+
+  if (profileRole === "op1") {
+    return client.atrasoDias >= 1 && client.atrasoDias <= 30;
+  }
+
+  if (profileRole === "op2") {
+    return client.atrasoDias >= 31 && client.atrasoDias <= 60;
+  }
+
+  return client.atrasoDias >= 61 && client.atrasoDias <= 90;
+}
+
+function isHadesLeadershipProfile(profileRole: OperationalProfileRole) {
+  return profileRole === "adm" || profileRole === "cdr" || profileRole === "ldr";
+}
+
+function isClientInOverdueRange(client: QueueClient, range: OverdueRangeFilter) {
+  if (range === "1-30") {
+    return client.atrasoDias >= 1 && client.atrasoDias <= 30;
+  }
+
+  if (range === "31-60") {
+    return client.atrasoDias >= 31 && client.atrasoDias <= 60;
+  }
+
+  if (range === "60+") {
+    return client.atrasoDias > 60;
+  }
+
+  return true;
+}
+
+function buildOverdueRangeCounts(clients: QueueClient[]) {
+  return {
+    "1-30": clients.filter((client) => isClientInOverdueRange(client, "1-30")).length,
+    "31-60": clients.filter((client) => isClientInOverdueRange(client, "31-60")).length,
+    "60+": clients.filter((client) => isClientInOverdueRange(client, "60+")).length,
+    all: clients.length,
+  } satisfies Record<OverdueRangeFilter, number>;
+}
+
+function isDailyQueueClient(client: QueueClient) {
+  if (client.atrasoDias < 3) {
+    return false;
+  }
+
+  const stage = normalizeDailyWorkflowStage(client.workflow.stage);
+
+  return stage !== "Promessa de pagamento" && stage !== "Acordo";
+}
+
+function normalizeDailyWorkflowStage(stage: WorkflowStage) {
+  if (stage === "Promessa realizada" || stage === "Aguardando pagamento") {
+    return "Promessa de pagamento";
+  }
+
+  if (stage === "Pago") {
+    return "Acordo";
+  }
+
+  return stage;
+}
+
+function buildTodayContactClientIds({
+  manualOperationsByClient,
+  sourceClients,
+  timelineEventsByClient,
+}: {
+  manualOperationsByClient: Record<string, ManualHadesOperations>;
+  sourceClients: QueueClient[];
+  timelineEventsByClient: Record<string, OperationalTimelineEvent[]>;
+}) {
+  const ids = new Set<string>();
+
+  sourceClients.forEach((client) => {
+    const events = [
+      ...(client.timeline ?? []),
+      ...(client.workflow.history ?? []),
+      ...(timelineEventsByClient[client.id] ?? []),
+      ...(manualOperationsByClient[client.id]?.events ?? []),
+    ];
+
+    if (events.some(hasTodayContactEvidence)) {
+      ids.add(client.id);
+    }
+  });
+
+  return ids;
+}
+
+function hasTodayContactEvidence(event: unknown) {
+  const record = event as {
+    changedAt?: string;
+    occurredAt?: string;
+    status?: string;
+    type?: string;
+  };
+  const type = String(record.type ?? "").toLowerCase();
+  const status = String(record.status ?? "").toLowerCase();
+
+  if (
+    ![
+      "ligação realizada",
+      "whatsapp enviado",
+      "promessa de pagamento",
+      "acordo gerado",
+      "observação operacional",
+    ].some((needle) => type.includes(needle)) &&
+    !["realizado", "enviado", "prometido", "gerado", "registrado"].some(
+      (needle) => status.includes(needle),
+    )
+  ) {
+    return false;
+  }
+
+  return isTodayDateLike(record.occurredAt ?? record.changedAt);
+}
+
+function isTodayDateLike(value?: string | null) {
+  if (!value) {
+    return false;
+  }
+
+  const today = new Date();
+  const match = value.match(/^(\d{2})\/(\d{2})\/(\d{4})/);
+
+  if (match) {
+    return (
+      Number(match[1]) === today.getDate() &&
+      Number(match[2]) === today.getMonth() + 1 &&
+      Number(match[3]) === today.getFullYear()
+    );
+  }
+
+  const parsed = new Date(value);
+
+  return (
+    Number.isFinite(parsed.getTime()) &&
+    parsed.getDate() === today.getDate() &&
+    parsed.getMonth() === today.getMonth() &&
+    parsed.getFullYear() === today.getFullYear()
+  );
+}
+
+const HADES_PROFILE_LABELS: Record<OperationalProfileRole, string> = {
+  adm: "Admin | visão total",
+  cdr: "Coordenador | visão total",
+  ldr: "Líder | visão total",
+  op1: "OP1 | 1 a 30 dias",
+  op2: "OP2 | 31 a 60 dias",
+  op3: "OP3 | 61 a 90 dias",
+};
 
 async function getHadesAccessToken() {
   const client = getHubSupabaseClient();
