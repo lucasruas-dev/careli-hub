@@ -1,0 +1,117 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "ZEUS-20260617-002-HELPDESK-BACKLOG-HISTORY",
+  "module": "zeus",
+  "agent": "Zeus",
+  "title": "Zeus HelpDesk Backlog, historico em popup e ordenacao",
+  "domain": "https://ops.c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_2tesUwiA4e2qcS4oC5tryFzZWoPK",
+  "candidateSourceCommit": "fb34cbb5d6a25a4f226b46f6f72c196891dde921",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/zeus-helpdesk-backlog-history-prod-20260617/base",
+  "candidatePackagePath": ".codex-deploy/zeus-helpdesk-backlog-history-prod-20260617/candidate",
+  "rollbackDeploymentId": "dpl_2tesUwiA4e2qcS4oC5tryFzZWoPK",
+  "addressManifest": "docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json",
+  "addressCheckFiles": [
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/lib/hub-it-tickets/server.ts",
+    "apps/hub/lib/hub-it-tickets/types.ts",
+    "docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json",
+    "docs/operations/production-module-safety-gate-zeus-20260617-002-helpdesk-backlog-history.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "allowedChangedPaths": [
+    "apps/hub/modules/squadops/blocks/helpdesk/**",
+    "apps/hub/lib/hub-it-tickets/**",
+    "docs/operations/**"
+  ],
+  "protectedPaths": [
+    "apps/hub/modules/chronos/**",
+    "apps/hub/app/chronos/**",
+    "apps/hub/app/api/chronos/**",
+    "apps/hub/lib/chronos/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/app/setup/**",
+    "packages/database/migrations/**"
+  ],
+  "ignoredPaths": [],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/ZeusPage.tsx",
+      "includes": [
+        "zeus-operations-center",
+        "HubItTicketsBoard"
+      ]
+    },
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "TicketDetailModal",
+        "BacklogFormModal",
+        "sortHistoryTickets",
+        "Mover para Backlog",
+        "Prioridade"
+      ]
+    },
+    {
+      "path": "apps/hub/lib/hub-it-tickets/server.ts",
+      "includes": [
+        "buildRoadmapBacklogMetadata",
+        "metadata.roadmap",
+        "Zeus moveu este ticket para Backlog"
+      ]
+    },
+    {
+      "path": "apps/hub/lib/hub-it-tickets/types.ts",
+      "includes": [
+        "hubItTicketRoadmapTypes",
+        "HubItTicketBacklogInput",
+        "HubItTicketRoadmap"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "WorkflowSummaryGrid",
+        "QueueMetric"
+      ]
+    }
+  ],
+  "requiredPaths": [
+    "apps/hub/modules/squadops/ZeusPage.tsx",
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary.ts",
+    "apps/hub/modules/squadops/blocks/shared/operations-ui.tsx",
+    "apps/hub/modules/squadops/blocks/records/timeline-records.tsx",
+    "apps/hub/modules/squadops/blocks/deploys/release-cards.tsx",
+    "apps/hub/modules/squadops/blocks/monitoring/source-grid.tsx",
+    "apps/hub/modules/squadops/blocks/monitoring/performance-utils.ts",
+    "apps/hub/modules/squadops/blocks/po-ai/po-ai-panel.tsx"
+  ],
+  "validations": [
+    "git diff --check",
+    "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/lib/hub-it-tickets/server.ts,apps/hub/lib/hub-it-tickets/types.ts,docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json,docs/operations/production-module-safety-gate-zeus-20260617-002-helpdesk-backlog-history.json,docs/operations/engineering-operations.md",
+    "npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx lib/hub-it-tickets/server.ts lib/hub-it-tickets/types.ts --max-warnings 0",
+    "npm.cmd run check-types:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-002-helpdesk-backlog-history.json"
+  ],
+  "notes": [
+    "Lucas autorizou producao em 2026-06-17 somente para ops.c2x.app.br.",
+    "Nao alterar alias do dominio principal c2x.app.br.",
+    "Rollback OPS: reapontar ops.c2x.app.br para dpl_2tesUwiA4e2qcS4oC5tryFzZWoPK.",
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte."
+  ]
+}

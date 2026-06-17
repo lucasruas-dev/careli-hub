@@ -28,7 +28,7 @@
     "productionDomain": "https://ops.c2x.app.br",
     "expectedProductionDeploymentId": "dpl_2tesUwiA4e2qcS4oC5tryFzZWoPK",
     "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-l6zhf1xdx-lucasruas-devs-projects.vercel.app",
-    "candidateSourceCommit": "PENDENTE_COMMIT_LIMPO",
+    "candidateSourceCommit": "fb34cbb5d6a25a4f226b46f6f72c196891dde921",
     "sourceWorktreeClean": true,
     "basePackagePath": ".codex-deploy/zeus-helpdesk-backlog-history-prod-20260617/base",
     "candidatePackagePath": ".codex-deploy/zeus-helpdesk-backlog-history-prod-20260617/candidate",
