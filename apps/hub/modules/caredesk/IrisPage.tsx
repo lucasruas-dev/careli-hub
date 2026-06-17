@@ -848,6 +848,66 @@ export function IrisPage({
     ? navigationItems.filter((item) => item.id === "gestao")
     : navigationItems;
 
+  if (embedded && boardOnly) {
+    return (
+      <div
+        onClick={registerIrisNotificationPermissionIntent}
+        className="min-h-[620px] overflow-hidden rounded-2xl border border-[#dbe3ef] bg-[#f3f6fa] text-[#101820]"
+      >
+        {inboundNotice ? (
+          <IrisInboundNoticeToast
+            notice={inboundNotice}
+            onDismiss={() => setInboundNotice(null)}
+            onOpen={() => {
+              setSelectedTicketId(inboundNotice.ticketId);
+              setActiveView("atendimento");
+              setInboundNotice(null);
+            }}
+          />
+        ) : null}
+        {startAttendanceOpen ? (
+          <IrisStartAttendanceModal
+            onClose={() => setStartAttendanceOpen(false)}
+            onTicketCreated={(ticketId) => {
+              setStartAttendanceOpen(false);
+              void refreshIrisData({ notifyNewInbound: false });
+              if (ticketId) {
+                setSelectedTicketId(ticketId);
+                setActiveView("atendimento");
+              }
+            }}
+          />
+        ) : null}
+        <section className="h-full min-h-[620px] overflow-hidden p-3">
+          {loadError ? (
+            <div className="h-full rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
+              {loadError}
+            </div>
+          ) : activeView === "atendimento" ? (
+            <AttendanceView
+              ticket={selectedTicket}
+              tickets={irisData.tickets}
+              selectedTicketId={selectedTicket?.id ?? selectedTicketId}
+              onSelectTicket={setSelectedTicketId}
+              onClose={() => setActiveView("gestao")}
+              onMessageCreated={handleLocalMessage}
+              onMessageUpdated={handleMessageUpdated}
+            />
+          ) : (
+            <ManagementView
+              data={irisData}
+              loading={loading}
+              snapshot={snapshot}
+              onOpenAttendance={openAttendance}
+              onSelectTicket={setSelectedTicketId}
+              onStartAttendance={() => setStartAttendanceOpen(true)}
+            />
+          )}
+        </section>
+      </div>
+    );
+  }
+
   return (
     <div
       onClick={registerIrisNotificationPermissionIntent}
