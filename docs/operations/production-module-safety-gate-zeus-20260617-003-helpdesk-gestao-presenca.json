@@ -1,0 +1,109 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "ZEUS-20260617-003-HELPDESK-GESTAO-PRESENCA",
+  "module": "zeus",
+  "agent": "Zeus",
+  "title": "Zeus HelpDesk gestao, resposta em Backlog e presenca OPS",
+  "domain": "https://ops.c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_CW9zQ9qReV1xbrrT7LEEjXrGBESc",
+  "candidateSourceCommit": "2f63571ff77e8bc5da6d065a3b908384b21bada1",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/zeus-helpdesk-gestao-presenca-prod-20260617-2f63571/base",
+  "candidatePackagePath": ".codex-deploy/zeus-helpdesk-gestao-presenca-prod-20260617-2f63571/candidate",
+  "rollbackDeploymentId": "dpl_CW9zQ9qReV1xbrrT7LEEjXrGBESc",
+  "addressManifest": "docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-presenca-20260617.json",
+  "addressCheckFiles": [
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/modules/squadops/ZeusPage.tsx",
+    "apps/hub/lib/hub-it-tickets/server.ts",
+    "docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-presenca-20260617.json",
+    "docs/operations/production-module-safety-gate-zeus-20260617-003-helpdesk-gestao-presenca.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "allowedChangedPaths": [
+    "apps/hub/modules/squadops/**",
+    "apps/hub/lib/hub-it-tickets/**",
+    "docs/operations/**"
+  ],
+  "protectedPaths": [
+    "apps/hub/modules/chronos/**",
+    "apps/hub/app/chronos/**",
+    "apps/hub/app/api/chronos/**",
+    "apps/hub/lib/chronos/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/app/setup/**",
+    "packages/database/migrations/**"
+  ],
+  "ignoredPaths": [],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/ZeusPage.tsx",
+      "includes": [
+        "ZeusOpsPresenceBar",
+        "zeus-operations-center",
+        "keepOnline"
+      ]
+    },
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "HelpDeskManagementPanel",
+        "Responder e manter no Backlog",
+        "Tickets por departamento",
+        "Foi feito",
+        "Esta em Backlog"
+      ]
+    },
+    {
+      "path": "apps/hub/lib/hub-it-tickets/server.ts",
+      "includes": [
+        "resolveAdminTicketNextStatus",
+        "moveu este ticket para Backlog como"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "WorkflowSummaryGrid",
+        "QueueMetric"
+      ]
+    }
+  ],
+  "requiredPaths": [
+    "apps/hub/modules/squadops/ZeusPage.tsx",
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary.ts",
+    "apps/hub/modules/squadops/blocks/shared/operations-ui.tsx",
+    "apps/hub/modules/squadops/blocks/records/timeline-records.tsx",
+    "apps/hub/modules/squadops/blocks/deploys/release-cards.tsx",
+    "apps/hub/modules/squadops/blocks/monitoring/source-grid.tsx",
+    "apps/hub/modules/squadops/blocks/monitoring/performance-utils.ts",
+    "apps/hub/modules/squadops/blocks/po-ai/po-ai-panel.tsx"
+  ],
+  "validations": [
+    "git diff --check",
+    "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-presenca-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/ZeusPage.tsx,apps/hub/lib/hub-it-tickets/server.ts,docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-presenca-20260617.json,docs/operations/engineering-operations.md",
+    "npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/ZeusPage.tsx modules/squadops/blocks/helpdesk/helpdesk-board.tsx lib/hub-it-tickets/server.ts --max-warnings 0",
+    "npm.cmd run check-types:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-003-helpdesk-gestao-presenca.json"
+  ],
+  "notes": [
+    "Lucas autorizou producao em 2026-06-17 somente para ops.c2x.app.br.",
+    "Nao alterar alias do dominio principal c2x.app.br.",
+    "Rollback OPS: reapontar ops.c2x.app.br para dpl_CW9zQ9qReV1xbrrT7LEEjXrGBESc.",
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte."
+  ]
+}
