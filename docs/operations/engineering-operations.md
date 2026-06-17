@@ -35933,3 +35933,75 @@ Conclusao:
 - O recorte Zeus HelpDesk gestao/presenca foi implementado e validado localmente.
 - O impacto pratico e que Lucas passa a ter uma tela executiva para reunioes, sem perder o workflow Backlog ao responder tickets.
 - Precisa de acao agora: Lucas pode validar local/OPS quando desejar; qualquer producao segue bloqueada ate autorizacao explicita.
+
+## 2026-06-17 19:52:08 -03:00 - Zeus - HelpDesk gestao executiva e Ticket encerrado em OPS
+
+Assunto: [Zeus] HelpDesk gestao executiva e mensagem Ticket encerrado
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `PRODUCAO / OPS / HELPDESK / UX`.
+- Status: `EM PRODUCAO`.
+- Protocolo CEP:
+  - `ZEUS-20260617-004-HELPDESK-GESTAO-UI`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-ui-20260617.json`;
+  - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Autorizacao: Lucas autorizou publicar em producao somente no dominio `https://ops.c2x.app.br`, preservando `https://c2x.app.br`.
+- Base/rollback:
+  - OPS antes da publicacao: `dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk`;
+  - rollback imediato: `dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk`;
+  - principal preservado: `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Commit/pacote:
+  - branch limpa: `codex/zeus-helpdesk-gestao-ui-prod-20260617`;
+  - commit de codigo: `4bd91629c6cd0923d3435329270a505ae3b1e747`;
+  - commit com Safety Gate: `fc5c29aa23a531846184ebfe26c783d5abc20d9f`;
+  - pacote base: `.codex-deploy/zeus-helpdesk-gestao-ui-prod-20260617-4bd916/base`;
+  - pacote candidato: `.codex-deploy/zeus-helpdesk-gestao-ui-prod-20260617-4bd916/candidate`;
+  - manifesto de producao: `docs/operations/production-module-safety-gate-zeus-20260617-004-helpdesk-gestao-ui.json`.
+- Escopo publicado:
+  - HelpDesk agora separa a tela `Fila` da tela `Gestao`;
+  - a tela `Gestao` nao renderiza mais a fila lateral;
+  - painel executivo recebeu indicadores de tickets, finalizados, tratamento, maior area e roadmap;
+  - tabelas de gestao ganharam visao por departamento e por colaborador;
+  - paineis gerenciais passaram a mostrar tipos de demanda e modulos com demandas;
+  - total por departamento passou a seguir a soma dos buckets exibidos: feitos, tratando e backlog;
+  - a timeline traduz fechamentos automaticos antigos para `Ticket encerrado`;
+  - novas rotinas de encerramento automatico passam a gravar `Ticket encerrado`.
+- Validacoes pre-publicacao:
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx lib/hub-it-tickets/server.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de lockfile em worktree e Turbopack/NFT fora do recorte;
+  - `GET http://localhost:3017/zeus`: 200 OK;
+  - `node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-ui-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/lib/hub-it-tickets/server.ts,docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-ui-20260617.json`: PASS, com avisos esperados do OPS divergindo da cidade base;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-004-helpdesk-gestao-ui.json`: PASS, 4 mudancas detectadas.
+- Publicacao:
+  - deployment novo OPS: `dpl_FLe1u31uaehb3qCdSdjduZav73uk`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-a5es5qefh-lucasruas-devs-projects.vercel.app`;
+  - `vercel deploy --prod --skip-domain` foi executado antes do alias;
+  - alias executado somente para `ops.c2x.app.br`;
+  - nenhum alias do dominio principal foi alterado.
+- Validacoes pos-publicacao:
+  - `GET https://ops.c2x.app.br/`: 200;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_FLe1u31uaehb3qCdSdjduZav73uk`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - logs Vercel dos ultimos 10 minutos: somente healthchecks 200/401 esperados, sem 500/502.
+- Escopo preservado:
+  - nenhum env, secret, token, Supabase remoto, banco, migration, dominio adicional ou alias principal foi alterado;
+  - nao houve alteracao em Hades, Hermes, Iris, Atlas, Chronos, Setup, Guardian ou outro modulo fora de Zeus/HelpDesk.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; registro canonico em Markdown foi atualizado nesta rodada.
+- Rollback:
+  - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk`;
+  - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Pendencia: Lucas validar visualmente a tela autenticada `https://ops.c2x.app.br/zeus`, principalmente `Fila`, `Gestao` e a timeline do ticket encerrado.
+
+Conclusao:
+
+- O recorte Zeus HelpDesk gestao executiva e mensagem `Ticket encerrado` esta em producao no dominio OPS.
+- O impacto pratico e que Lucas passa a ter uma gestao mais limpa, com indicadores por departamento, colaborador, tipo e modulo, e a timeline deixa de exibir o texto longo de encerramento automatico.
+- Precisa de acao agora: Lucas deve validar autenticado no OPS; Zeus fica com rollback pronto em `dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk` se aparecer regressao critica.

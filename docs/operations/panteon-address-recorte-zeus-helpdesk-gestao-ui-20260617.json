@@ -5,7 +5,7 @@
   "title": "Zeus HelpDesk gestao executiva e mensagem de encerramento",
   "module": "zeus",
   "agent": "Zeus",
-  "status": "VALIDADO_LOCAL",
+  "status": "EM_PRODUCAO",
   "riskLevel": "MEDIO",
   "approvedBy": "Lucas - 2026-06-17 - producao autorizada somente para ops.c2x.app.br",
   "addressing": {
@@ -28,17 +28,20 @@
     "productionDomain": "https://ops.c2x.app.br",
     "expectedProductionDeploymentId": "dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk",
     "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-f6ga1km18-lucasruas-devs-projects.vercel.app",
-    "candidateSourceCommit": null,
-    "sourceWorktreeClean": false,
-    "basePackagePath": null,
-    "candidatePackagePath": null,
+    "candidateSourceCommit": "fc5c29aa23a531846184ebfe26c783d5abc20d9f",
+    "sourceWorktreeClean": true,
+    "basePackagePath": ".codex-deploy/zeus-helpdesk-gestao-ui-prod-20260617-4bd916/base",
+    "candidatePackagePath": ".codex-deploy/zeus-helpdesk-gestao-ui-prod-20260617-4bd916/candidate",
     "rollbackDeploymentId": "dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk"
   },
   "scope": {
     "includedFiles": [
       "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
       "apps/hub/lib/hub-it-tickets/server.ts",
-      "docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-ui-20260617.json"
+      "docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-ui-20260617.json",
+      "docs/operations/production-module-safety-gate-zeus-20260617-004-helpdesk-gestao-ui.json",
+      "docs/operations/engineering-operations.md",
+      "docs/operations/releases-production.md"
     ],
     "excludedPaths": [
       ".env",
@@ -114,7 +117,22 @@
       "GET http://localhost:3017/zeus: 200 OK"
     ],
     "addressing": [],
-    "productionGate": []
+    "productionGate": [
+      "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-004-helpdesk-gestao-ui.json: PASS, 4 mudancas detectadas"
+    ],
+    "production": [
+      "Vercel deployment novo OPS: dpl_FLe1u31uaehb3qCdSdjduZav73uk",
+      "URL tecnica: https://careli-hub-hub-i2bs-a5es5qefh-lucasruas-devs-projects.vercel.app",
+      "alias executado somente para https://ops.c2x.app.br",
+      "https://c2x.app.br preservado em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU",
+      "GET https://ops.c2x.app.br/: 200",
+      "GET https://ops.c2x.app.br/login: 200",
+      "GET https://ops.c2x.app.br/zeus: 200",
+      "GET https://ops.c2x.app.br/api/pwa/manifest: 200",
+      "GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all: 401 esperado sem sessao",
+      "GET https://ops.c2x.app.br/api/zeus/release-registers: 401 esperado sem sessao",
+      "logs Vercel 10m: somente healthchecks 200/401 esperados, sem 500/502"
+    ]
   },
   "blockingRules": [
     "BLOQUEADO se o pacote incluir env, secret, migration, banco, dominio fora de ops.c2x.app.br, alias principal, Vercel env ou operacao sensivel.",
@@ -125,8 +143,8 @@
   "release": {
     "targetEnvironment": "production",
     "targetDomain": "https://ops.c2x.app.br",
-    "previewUrl": null,
-    "previewDeploymentId": null,
+    "previewUrl": "https://careli-hub-hub-i2bs-a5es5qefh-lucasruas-devs-projects.vercel.app",
+    "previewDeploymentId": "dpl_FLe1u31uaehb3qCdSdjduZav73uk",
     "homologationAlias": "https://homo.c2x.app.br",
     "productionDomain": "https://ops.c2x.app.br",
     "rollbackPlan": "Se houver regressao critica, reapontar https://ops.c2x.app.br para dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk. Nao alterar https://c2x.app.br."

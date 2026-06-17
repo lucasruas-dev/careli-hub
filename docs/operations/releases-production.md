@@ -3447,3 +3447,54 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_7LScsoFfijnxSNJZCV6m7t6s34KK` se o proximo teste real ainda falhar por `Start signal not received` ou se algum healthcheck critico falhar;
   - `https://ops.c2x.app.br`: manter em `dpl_5yxi1DSYo7UWUV5EmuezvsENiBCS`.
+
+## 2026-06-17 - PROD-20260617-004-ZEUS-HELPDESK-GESTAO-UI
+
+Status: EM PRODUCAO / OPS VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Zeus] HelpDesk gestao executiva e mensagem Ticket encerrado`.
+- Protocolo de origem: `ZEUS-20260617-004-HELPDESK-GESTAO-UI`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-06-17 19:52:08 -03:00`.
+- Autorizacao: Lucas autorizou publicar em producao somente no dominio `https://ops.c2x.app.br`.
+- Dominio alvo: `https://ops.c2x.app.br`.
+- Dominio preservado: `https://c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de OPS: `dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk`;
+  - rollback imediato: `dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk`;
+  - principal preservado: `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - pacote base: `.codex-deploy/zeus-helpdesk-gestao-ui-prod-20260617-4bd916/base`;
+  - pacote candidato: `.codex-deploy/zeus-helpdesk-gestao-ui-prod-20260617-4bd916/candidate`.
+- Escopo publicado:
+  - tela `Gestao` separada da `Fila`, sem fila lateral na gestao;
+  - painel executivo com indicadores, departamentos, colaboradores, tipos de demanda e modulos;
+  - totais por departamento coerentes com os buckets exibidos;
+  - timeline exibindo `Ticket encerrado` para fechamentos automaticos antigos;
+  - novas automacoes de encerramento gravando `Ticket encerrado`.
+- Validacoes:
+  - lint focado: PASS;
+  - `check-types:hub`: PASS;
+  - build Hub: PASS;
+  - CEP preflight: PASS;
+  - Production Module Safety Gate: PASS, 4 mudancas detectadas;
+  - `GET http://localhost:3017/zeus`: 200 OK.
+- Publicacao:
+  - deployment novo OPS: `dpl_FLe1u31uaehb3qCdSdjduZav73uk`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-a5es5qefh-lucasruas-devs-projects.vercel.app`;
+  - alias executado somente para `ops.c2x.app.br`.
+- Healthchecks:
+  - `GET https://ops.c2x.app.br/`: 200;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200;
+  - logs do deployment novo: somente healthchecks esperados, sem 500/502.
+- Escopo preservado:
+  - nenhum env, secret, token, banco, migration, Supabase remoto, dominio adicional ou alias principal foi alterado.
+- Rollback:
+  - `https://ops.c2x.app.br`: reapontar para `dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk` se houver regressao critica;
+  - `https://c2x.app.br`: manter em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
