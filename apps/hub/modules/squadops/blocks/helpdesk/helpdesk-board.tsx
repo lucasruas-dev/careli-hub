@@ -9,8 +9,8 @@ import {
   hubItTicketCategoryLabels,
   hubItTicketPriorityLabels,
   hubItTicketStatusLabels,
-  hubItTicketStatuses,
   type HubItTicket,
+  type HubItTicketAttachmentInput,
   type HubItTicketStatus,
 } from "@/lib/hub-it-tickets/types";
 import { Badge, Surface, Tooltip } from "@repo/uix";
@@ -19,6 +19,7 @@ import {
   AlertTriangle,
   AtSign,
   CalendarDays,
+  Camera,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
@@ -30,12 +31,15 @@ import {
   Loader2,
   Maximize2,
   MessageSquareReply,
+  Mic,
   Paperclip,
   RefreshCw,
   Search,
   Send,
   Sparkles,
+  Square,
   UserRound,
+  Video,
   X,
 } from "lucide-react";
 import Image from "next/image";
@@ -43,13 +47,18 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
+  type ChangeEvent,
+  type Dispatch,
   type ReactNode,
+  type SetStateAction,
 } from "react";
 
 type HubItTicketsBoardProps = {
   accessToken: string | null;
   isActive: boolean;
+  onOpenPoAi?: () => void;
   onTicketAttentionCountChange?: (count: number) => void;
   onTicketCountChange?: (count: number) => void;
 };
@@ -69,10 +78,17 @@ const emptyDraft: TicketDraft = {
   deliveryDecision: "manter",
   deliveryDecisionNote: "",
   resolutionSummary: "",
-  status: "em_analise",
+  status: "em_tratativa",
 };
 
 type DeliveryFilter = "todos" | "hoje" | "proximos" | "folga" | "sem_data";
+type TicketQueueView = "fila" | "historico";
+type TicketWorkflowStage =
+  | "finalizado"
+  | "novo"
+  | "revisao"
+  | "tratativa"
+  | "validacao";
 type TicketWorkspaceSection =
   | "actual"
   | "context"
@@ -94,9 +110,29 @@ type SetupUsersApiResponse = {
   error?: string;
 };
 
+const activeWorkflowStages = [
+  "novo",
+  "tratativa",
+  "validacao",
+  "revisao",
+] as const satisfies readonly TicketWorkflowStage[];
+
+const historyWorkflowStages = [
+  "finalizado",
+] as const satisfies readonly TicketWorkflowStage[];
+
+const workflowStageLabels = {
+  finalizado: "Finalizado",
+  novo: "Novo",
+  revisao: "Revisao",
+  tratativa: "Em tratativa",
+  validacao: "Validacao",
+} as const satisfies Record<TicketWorkflowStage, string>;
+
 export function HubItTicketsBoard({
   accessToken,
   isActive,
+  onOpenPoAi,
   onTicketAttentionCountChange,
   onTicketCountChange,
 }: HubItTicketsBoardProps) {
@@ -107,7 +143,6 @@ export function HubItTicketsBoard({
     useState<DeliveryFilter>("todos");
   const [isQueueDatesExpanded, setIsQueueDatesExpanded] = useState(false);
   const [isQueueMetricsExpanded, setIsQueueMetricsExpanded] = useState(false);
-  const [isQueueStatusExpanded, setIsQueueStatusExpanded] = useState(false);
   const [loadedDetailProtocols, setLoadedDetailProtocols] = useState<
     readonly string[]
   >([]);
@@ -115,39 +150,77 @@ export function HubItTicketsBoard({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [queueView, setQueueView] = useState<TicketQueueView>("fila");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [replyAttachments, setReplyAttachments] = useState<
+    HubItTicketAttachmentInput[]
+  >([]);
+  const [attentionToast, setAttentionToast] = useState<string | null>(null);
+  const attentionKeysRef = useRef<ReadonlySet<string>>(new Set());
 
-  const openTickets = tickets.filter(
-    (ticket) => ticket.status !== "resolvido" && ticket.status !== "fechado",
+  const activeQueueTickets = useMemo(
+    () => tickets.filter(isTicketInActiveQueue),
+    [tickets],
   );
-  const ticketsWaitingForZeus = tickets.filter(
-    (ticket) =>
-      ticket.status === "novo" ||
-      ticket.status === "em_analise" ||
-      ticket.status === "em_revisao",
+  const historyTickets = useMemo(
+    () => tickets.filter(isTicketInHistory),
+    [tickets],
+  );
+  const visibleQueueTickets =
+    queueView === "fila" ? activeQueueTickets : historyTickets;
+  const filteredQueueTickets = useMemo(
+    () => filterTicketsBySearch(visibleQueueTickets, searchQuery),
+    [searchQuery, visibleQueueTickets],
   );
   const deliveryBuckets = useMemo(() => {
     return {
-      folga: tickets.filter((ticket) => getTicketDeliveryBucket(ticket) === "folga")
+      folga: activeQueueTickets.filter(
+        (ticket) => getTicketDeliveryBucket(ticket) === "folga",
+      )
         .length,
-      hoje: tickets.filter((ticket) => getTicketDeliveryBucket(ticket) === "hoje")
+      hoje: activeQueueTickets.filter(
+        (ticket) => getTicketDeliveryBucket(ticket) === "hoje",
+      )
         .length,
-      proximos: tickets.filter(
+      proximos: activeQueueTickets.filter(
         (ticket) => getTicketDeliveryBucket(ticket) === "proximos",
       ).length,
-      semData: tickets.filter(
+      semData: activeQueueTickets.filter(
         (ticket) => getTicketDeliveryBucket(ticket) === "sem_data",
       ).length,
     };
-  }, [tickets]);
+  }, [activeQueueTickets]);
+  const historyBuckets = useMemo(() => {
+    return {
+      finalizados: historyTickets.length,
+    };
+  }, [historyTickets]);
+  const workflowCounts = useMemo(
+    () => countTicketsByWorkflowStage(tickets),
+    [tickets],
+  );
+  const operatorAttentionTickets = useMemo(
+    () =>
+      activeQueueTickets.filter((ticket) => {
+        const stage = getTicketWorkflowStage(ticket.status);
+
+        return stage === "novo" || stage === "tratativa" || stage === "revisao";
+      }),
+    [activeQueueTickets],
+  );
   const ticketsByDelivery = useMemo(() => {
+    if (queueView === "historico") {
+      return sortTicketsByUpdatedAt(filteredQueueTickets);
+    }
+
     return sortTicketsByDeliveryDate(
       deliveryFilter === "todos"
-        ? tickets
-        : tickets.filter(
+        ? filteredQueueTickets
+        : filteredQueueTickets.filter(
             (ticket) => getTicketDeliveryBucket(ticket) === deliveryFilter,
           ),
     );
-  }, [deliveryFilter, tickets]);
+  }, [deliveryFilter, filteredQueueTickets, queueView]);
   const selectedTicket =
     ticketsByDelivery.find((ticket) => ticket.protocol === selectedProtocol) ??
     ticketsByDelivery[0] ??
@@ -158,13 +231,6 @@ export function HubItTicketsBoard({
     selectedTicket?.approvedDeliveryDate ?? null;
   const selectedTicketDraftRequestedDeliveryDate =
     selectedTicket?.requestedDeliveryDate ?? null;
-
-  const ticketsByStatus = useMemo(() => {
-    return hubItTicketStatuses.map((status) => ({
-      count: tickets.filter((ticket) => ticket.status === status).length,
-      status,
-    }));
-  }, [tickets]);
 
   const refreshTickets = useCallback(async () => {
     setIsLoading(true);
@@ -205,19 +271,58 @@ export function HubItTicketsBoard({
   }, [accessToken, isActive, refreshTickets]);
 
   useEffect(() => {
-    onTicketCountChange?.(openTickets.length);
-  }, [onTicketCountChange, openTickets.length]);
+    onTicketCountChange?.(activeQueueTickets.length);
+  }, [activeQueueTickets.length, onTicketCountChange]);
 
   useEffect(() => {
-    onTicketAttentionCountChange?.(ticketsWaitingForZeus.length);
-  }, [onTicketAttentionCountChange, ticketsWaitingForZeus.length]);
+    onTicketAttentionCountChange?.(operatorAttentionTickets.length);
+  }, [onTicketAttentionCountChange, operatorAttentionTickets.length]);
+
+  useEffect(() => {
+    if (!isActive) {
+      return;
+    }
+
+    const nextKeys = new Set(
+      operatorAttentionTickets.map(
+        (ticket) => `${ticket.protocol}:${ticket.updatedAt}`,
+      ),
+    );
+    const previousKeys = attentionKeysRef.current;
+
+    if (previousKeys.size > 0) {
+      const newAttentionTicket = operatorAttentionTickets.find(
+        (ticket) => !previousKeys.has(`${ticket.protocol}:${ticket.updatedAt}`),
+      );
+
+      if (newAttentionTicket) {
+        setAttentionToast(
+          `${newAttentionTicket.protocol} tem nova mensagem ou revisao para tratar.`,
+        );
+      }
+    }
+
+    attentionKeysRef.current = nextKeys;
+  }, [isActive, operatorAttentionTickets]);
+
+  useEffect(() => {
+    if (!attentionToast) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => setAttentionToast(null), 7000);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [attentionToast]);
 
   useEffect(() => {
     if (!selectedTicketDraftProtocol || !selectedTicketDraftStatus) {
       setDraft(emptyDraft);
+      setReplyAttachments([]);
       return;
     }
 
+    setReplyAttachments([]);
     setDraft({
       adminResponse: "",
       approvedDeliveryDate:
@@ -229,7 +334,7 @@ export function HubItTicketsBoard({
       resolutionSummary: "",
       status:
         selectedTicketDraftStatus === "novo"
-          ? "em_analise"
+          ? "em_tratativa"
           : selectedTicketDraftStatus,
     });
   }, [
@@ -308,7 +413,7 @@ export function HubItTicketsBoard({
     }
   }, [selectedProtocol, ticketsByDelivery]);
 
-  async function saveReply() {
+  async function saveReply(nextStatus: HubItTicketStatus = "em_tratativa") {
     if (!selectedTicket) {
       return;
     }
@@ -319,16 +424,17 @@ export function HubItTicketsBoard({
       draft.deliveryDecision === "reject_with_new_date" &&
       !draft.approvedDeliveryDate
     ) {
-      setError("Informe a nova data proposta por Zeus.");
+      setError("Informe a nova data proposta.");
       return;
     }
 
     if (
       !draft.adminResponse.trim() &&
       !draft.resolutionSummary.trim() &&
-      !hasDeliveryDecision
+      !hasDeliveryDecision &&
+      replyAttachments.length === 0
     ) {
-      setError("Escreva uma devolutiva, resumo ou decisao de data.");
+      setError("Escreva uma devolutiva, resumo, decisao de data ou anexe uma evidencia.");
       return;
     }
 
@@ -340,6 +446,8 @@ export function HubItTicketsBoard({
         accessToken,
         input: {
           adminResponse: draft.adminResponse,
+          attachments:
+            replyAttachments.length > 0 ? replyAttachments : undefined,
           approvedDeliveryDate:
             hasDeliveryDecision && draft.approvedDeliveryDate
               ? draft.approvedDeliveryDate
@@ -353,7 +461,7 @@ export function HubItTicketsBoard({
             : undefined,
           protocol: selectedTicket.protocol,
           resolutionSummary: draft.resolutionSummary,
-          status: draft.status,
+          status: nextStatus,
         },
       });
 
@@ -363,6 +471,7 @@ export function HubItTicketsBoard({
         ),
       );
       setSelectedProtocol(updatedTicket.protocol);
+      setReplyAttachments([]);
       setLoadedDetailProtocols((currentProtocols) =>
         currentProtocols.includes(updatedTicket.protocol)
           ? currentProtocols
@@ -376,7 +485,7 @@ export function HubItTicketsBoard({
           "",
         status:
           updatedTicket.status === "novo"
-            ? "em_analise"
+            ? "em_tratativa"
             : updatedTicket.status,
       });
     } catch (saveError) {
@@ -405,52 +514,169 @@ export function HubItTicketsBoard({
     <section className="min-w-0">
       <Surface
         bordered
-        className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        className="border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
       >
         <div className="grid min-h-[calc(100vh-13rem)] grid-cols-1 xl:grid-cols-[minmax(19rem,23rem)_minmax(0,1fr)]">
-          <aside className="border-b border-slate-200/70 bg-slate-50/60 xl:border-b-0 xl:border-r">
+          <aside className="flex min-h-0 flex-col border-b border-slate-200/70 bg-slate-50/60 xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)] xl:border-b-0 xl:border-r">
             <div className="border-b border-slate-200/70 p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="m-0 text-xs font-semibold uppercase text-slate-500">
-                    Fila Zeus
+                    HelpDesk
                   </p>
                   <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
-                    HelpDesk
+                    {queueView === "fila" ? "Fila ativa" : "Historico"}
                   </h2>
                 </div>
-                <Tooltip content="Atualizar HelpDesk" placement="left">
+                <div className="flex shrink-0 items-center gap-2">
+                  {onOpenPoAi ? (
+                    <Tooltip content="PO AI" placement="left">
+                      <button
+                        aria-label="Abrir PO AI"
+                        className="grid size-9 place-items-center rounded-lg border border-[#A07C3B]/25 bg-white text-[#7A5E2C] transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5"
+                        onClick={onOpenPoAi}
+                        type="button"
+                      >
+                        <Sparkles className="size-4" />
+                      </button>
+                    </Tooltip>
+                  ) : null}
+                  <Tooltip content="Atualizar HelpDesk" placement="left">
+                    <button
+                      aria-label="Atualizar HelpDesk"
+                      className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/25 hover:text-slate-950"
+                      onClick={() => void refreshTickets()}
+                      type="button"
+                    >
+                      {isLoading ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        <RefreshCw className="size-4" />
+                      )}
+                    </button>
+                  </Tooltip>
+                </div>
+              </div>
+              <label className="mt-3 flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.03)] focus-within:border-[#A07C3B]/45 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+                <Search className="size-4 shrink-0 text-slate-400" />
+                <input
+                  aria-label="Buscar ticket, colaborador ou assunto"
+                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400"
+                  onChange={(event) => setSearchQuery(event.target.value)}
+                  placeholder="Ticket, colaborador ou assunto"
+                  type="search"
+                  value={searchQuery}
+                />
+                {searchQuery.trim() ? (
                   <button
-                    aria-label="Atualizar HelpDesk"
-                    className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/25 hover:text-slate-950"
-                    onClick={() => void refreshTickets()}
+                    aria-label="Limpar busca"
+                    className="grid size-6 shrink-0 place-items-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                    onClick={() => setSearchQuery("")}
                     type="button"
                   >
-                    {isLoading ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <RefreshCw className="size-4" />
-                    )}
+                    <X className="size-3.5" />
                   </button>
-                </Tooltip>
+                ) : null}
+              </label>
+            </div>
+
+            {queueView === "fila" ? (
+              <QueueDisclosureSection
+                isExpanded={isQueueDatesExpanded}
+                onToggle={() => setIsQueueDatesExpanded((current) => !current)}
+                summary={getDeliveryFilterSummary(
+                  deliveryFilter,
+                  activeQueueTickets.length,
+                  deliveryBuckets,
+                )}
+                title="Entrega"
+              >
+                <div className="grid grid-cols-2 gap-2">
+                  <DeliveryFilterButton
+                    active={deliveryFilter === "todos"}
+                    label={`Todos ${activeQueueTickets.length}`}
+                    onClick={() => setDeliveryFilter("todos")}
+                  />
+                  <DeliveryFilterButton
+                    active={deliveryFilter === "hoje"}
+                    label={`Hoje ${deliveryBuckets.hoje}`}
+                    tone="danger"
+                    onClick={() => setDeliveryFilter("hoje")}
+                  />
+                  <DeliveryFilterButton
+                    active={deliveryFilter === "proximos"}
+                    label={`1-2 dias ${deliveryBuckets.proximos}`}
+                    tone="warning"
+                    onClick={() => setDeliveryFilter("proximos")}
+                  />
+                  <DeliveryFilterButton
+                    active={deliveryFilter === "folga"}
+                    label={`3+ dias ${deliveryBuckets.folga}`}
+                    tone="success"
+                    onClick={() => setDeliveryFilter("folga")}
+                  />
+                </div>
+                {deliveryBuckets.semData > 0 ? (
+                  <div className="mt-2">
+                    <DeliveryFilterButton
+                      active={deliveryFilter === "sem_data"}
+                      label={`Sem data ${deliveryBuckets.semData}`}
+                      onClick={() => setDeliveryFilter("sem_data")}
+                    />
+                  </div>
+                ) : null}
+              </QueueDisclosureSection>
+            ) : null}
+
+            <div className="border-b border-slate-200/70 p-3">
+              <div className="grid grid-cols-2 gap-2">
+                <QueueViewButton
+                  active={queueView === "fila"}
+                  icon={<Inbox className="size-4" />}
+                  label="Fila"
+                  onClick={() => setQueueView("fila")}
+                  value={activeQueueTickets.length}
+                />
+                <QueueViewButton
+                  active={queueView === "historico"}
+                  icon={<History className="size-4" />}
+                  label="Historico"
+                  onClick={() => setQueueView("historico")}
+                  value={historyTickets.length}
+                />
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
-                <QueueSummaryPill label="abertos" value={openTickets.length} />
                 <QueueSummaryPill
-                  label="hoje"
-                  tone="danger"
-                  value={deliveryBuckets.hoje}
+                  label={searchQuery.trim() ? "resultado" : queueView === "fila" ? "ativos" : "historico"}
+                  value={ticketsByDelivery.length}
                 />
-                <QueueSummaryPill
-                  label="1-2d"
-                  tone="warning"
-                  value={deliveryBuckets.proximos}
-                />
-                <QueueSummaryPill
-                  label="3+d"
-                  tone="success"
-                  value={deliveryBuckets.folga}
-                />
+                {queueView === "fila" ? (
+                  <>
+                    <QueueSummaryPill
+                      label="data"
+                      tone="danger"
+                      value={deliveryBuckets.hoje}
+                    />
+                    <QueueSummaryPill
+                      label="validacao"
+                      tone="success"
+                      value={workflowCounts.validacao}
+                    />
+                    <QueueSummaryPill
+                      label="revisao"
+                      tone="warning"
+                      value={workflowCounts.revisao}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <QueueSummaryPill
+                      label="finalizados"
+                      tone="success"
+                      value={historyBuckets.finalizados}
+                    />
+                  </>
+                )}
               </div>
             </div>
 
@@ -459,99 +685,13 @@ export function HubItTicketsBoard({
               onToggle={() =>
                 setIsQueueMetricsExpanded((current) => !current)
               }
-              summary={`${openTickets.length} abertos`}
-              title="Indicadores"
+              summary={`${filteredQueueTickets.length} ${queueView === "fila" ? "em acao" : "no historico"}`}
+              title="Fluxo"
             >
-              <div className="grid grid-cols-4 gap-2">
-                <QueueMetric label="abertos" value={openTickets.length} />
-                <QueueMetric
-                  label="hoje"
-                  tone="danger"
-                  value={deliveryBuckets.hoje}
-                />
-                <QueueMetric
-                  label="1-2d"
-                  tone="warning"
-                  value={deliveryBuckets.proximos}
-                />
-                <QueueMetric
-                  label="3+d"
-                  tone="success"
-                  value={deliveryBuckets.folga}
-                />
-              </div>
+              <WorkflowSummaryGrid counts={workflowCounts} />
             </QueueDisclosureSection>
 
-            <QueueDisclosureSection
-              isExpanded={isQueueDatesExpanded}
-              onToggle={() => setIsQueueDatesExpanded((current) => !current)}
-              summary={getDeliveryFilterSummary(
-                deliveryFilter,
-                tickets.length,
-                deliveryBuckets,
-              )}
-              title="Visao por data"
-            >
-              <div className="grid grid-cols-2 gap-2">
-                <DeliveryFilterButton
-                  active={deliveryFilter === "todos"}
-                  label={`Todos ${tickets.length}`}
-                  onClick={() => setDeliveryFilter("todos")}
-                />
-                <DeliveryFilterButton
-                  active={deliveryFilter === "hoje"}
-                  label={`Hoje ${deliveryBuckets.hoje}`}
-                  tone="danger"
-                  onClick={() => setDeliveryFilter("hoje")}
-                />
-                <DeliveryFilterButton
-                  active={deliveryFilter === "proximos"}
-                  label={`1-2 dias ${deliveryBuckets.proximos}`}
-                  tone="warning"
-                  onClick={() => setDeliveryFilter("proximos")}
-                />
-                <DeliveryFilterButton
-                  active={deliveryFilter === "folga"}
-                  label={`3+ dias ${deliveryBuckets.folga}`}
-                  tone="success"
-                  onClick={() => setDeliveryFilter("folga")}
-                />
-              </div>
-              {deliveryBuckets.semData > 0 ? (
-                <div className="mt-2">
-                  <DeliveryFilterButton
-                    active={deliveryFilter === "sem_data"}
-                    label={`Sem data ${deliveryBuckets.semData}`}
-                    onClick={() => setDeliveryFilter("sem_data")}
-                  />
-                </div>
-              ) : null}
-            </QueueDisclosureSection>
-
-            <QueueDisclosureSection
-              isExpanded={isQueueStatusExpanded}
-              onToggle={() => setIsQueueStatusExpanded((current) => !current)}
-              summary={`${ticketsWaitingForZeus.length} aguardando Zeus`}
-              title="Status da fila"
-            >
-              <div className="grid grid-cols-2 gap-1.5">
-                {ticketsByStatus.map((item) => (
-                  <div
-                    className="rounded-lg border border-slate-200 bg-white px-2.5 py-2"
-                    key={item.status}
-                  >
-                    <p className="m-0 truncate text-[0.64rem] font-semibold text-slate-500">
-                      {hubItTicketStatusLabels[item.status]}
-                    </p>
-                    <p className="m-0 mt-0.5 text-base font-semibold text-slate-950">
-                      {item.count}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </QueueDisclosureSection>
-
-            <div className="max-h-[calc(100vh-24rem)] min-h-[28rem] overflow-y-auto p-3">
+            <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-6">
               {ticketsByDelivery.length > 0 ? (
                 <div className="grid gap-2">
                   {ticketsByDelivery.map((ticket) => (
@@ -564,7 +704,7 @@ export function HubItTicketsBoard({
                   ))}
                 </div>
               ) : (
-                <EmptyQueue isLoading={isLoading} />
+                <EmptyQueue isLoading={isLoading} view={queueView} />
               )}
             </div>
           </aside>
@@ -574,6 +714,21 @@ export function HubItTicketsBoard({
               <OperationalErrorBanner message={error} />
             ) : null}
 
+            {queueView === "historico" ? (
+              <TicketHistoryTable
+                onSelectTicket={setSelectedProtocol}
+                selectedProtocol={selectedTicket?.protocol ?? null}
+                tickets={ticketsByDelivery}
+              />
+            ) : (
+              <TicketKanbanBoard
+                onSelectTicket={setSelectedProtocol}
+                queueView={queueView}
+                selectedProtocol={selectedTicket?.protocol ?? null}
+                tickets={ticketsByDelivery}
+              />
+            )}
+
             {selectedTicket ? (
               <TicketWorkspace
                 accessToken={accessToken}
@@ -581,7 +736,9 @@ export function HubItTicketsBoard({
                 isDetailLoading={isDetailLoading}
                 isSaving={isSaving}
                 onDraftChange={setDraft}
-                onSave={() => void saveReply()}
+                onReplyAttachmentsChange={setReplyAttachments}
+                onSave={(nextStatus) => void saveReply(nextStatus)}
+                replyAttachments={replyAttachments}
                 ticket={selectedTicket}
               />
             ) : (
@@ -597,6 +754,21 @@ export function HubItTicketsBoard({
           </div>
         </div>
       </Surface>
+      {attentionToast ? (
+        <div className="fixed bottom-6 right-6 z-[70] max-w-sm rounded-xl border border-[#A07C3B]/25 bg-white p-4 text-sm font-semibold text-slate-800 shadow-2xl">
+          <div className="flex items-start gap-3">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#101820] text-white">
+              <MessageSquareReply className="size-4" />
+            </span>
+            <div className="min-w-0">
+              <p className="m-0 text-xs uppercase text-[#7A5E2C]">
+                HelpDesk
+              </p>
+              <p className="m-0 mt-1 leading-5">{attentionToast}</p>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -608,6 +780,268 @@ function OperationalErrorBanner({ message }: { message: string }) {
     : "border-b border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700";
 
   return <div className={className}>{message}</div>;
+}
+
+function WorkflowSummaryGrid({
+  counts,
+}: {
+  counts: Record<TicketWorkflowStage, number>;
+}) {
+  const items = [
+    { stage: "novo", tone: "neutral" },
+    { stage: "tratativa", tone: "danger" },
+    { stage: "validacao", tone: "success" },
+    { stage: "revisao", tone: "warning" },
+    { stage: "finalizado", tone: "success" },
+  ] as const satisfies readonly {
+    stage: TicketWorkflowStage;
+    tone: "danger" | "neutral" | "success" | "warning";
+  }[];
+
+  return (
+    <div className="grid grid-cols-2 gap-2">
+      {items.map((item) => (
+        <QueueMetric
+          key={item.stage}
+          label={workflowStageLabels[item.stage]}
+          tone={item.tone}
+          value={counts[item.stage]}
+        />
+      ))}
+    </div>
+  );
+}
+
+function TicketKanbanBoard({
+  onSelectTicket,
+  queueView,
+  selectedProtocol,
+  tickets,
+}: {
+  onSelectTicket: (protocol: string) => void;
+  queueView: TicketQueueView;
+  selectedProtocol: string | null;
+  tickets: HubItTicket[];
+}) {
+  const stages =
+    queueView === "fila" ? activeWorkflowStages : historyWorkflowStages;
+
+  return (
+    <div className="border-b border-slate-200/70 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="m-0 mt-1 text-base font-semibold text-slate-950">
+            {queueView === "fila"
+              ? "Novo / Tratativa / Validacao / Revisao"
+              : "Historico de finalizados"}
+          </h3>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+          {tickets.length} ticket(s)
+        </span>
+      </div>
+      <div
+        className={`grid gap-3 ${
+          queueView === "fila"
+            ? "lg:grid-cols-4"
+            : "lg:grid-cols-1"
+        }`}
+      >
+        {stages.map((stage) => {
+          const columnTickets = tickets.filter(
+            (ticket) => getTicketWorkflowStage(ticket.status) === stage,
+          );
+
+          return (
+            <KanbanColumn
+              key={stage}
+              onSelectTicket={onSelectTicket}
+              selectedProtocol={selectedProtocol}
+              stage={stage}
+              tickets={columnTickets}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function TicketHistoryTable({
+  onSelectTicket,
+  selectedProtocol,
+  tickets,
+}: {
+  onSelectTicket: (protocol: string) => void;
+  selectedProtocol: string | null;
+  tickets: HubItTicket[];
+}) {
+  return (
+    <div className="border-b border-slate-200/70 bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h3 className="m-0 text-base font-semibold text-slate-950">
+          Historico de finalizados
+        </h3>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+          {tickets.length} ticket(s)
+        </span>
+      </div>
+      <div className="overflow-hidden rounded-xl border border-slate-200">
+        <div
+          className="hidden grid-cols-[9rem_minmax(12rem,1fr)_12rem_9rem_9rem] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 lg:grid"
+          role="row"
+        >
+          <span>Ticket</span>
+          <span>Assunto</span>
+          <span>Colaborador</span>
+          <span>Evidencias</span>
+          <span>Atualizacao</span>
+        </div>
+        {tickets.length > 0 ? (
+          <div className="divide-y divide-slate-100">
+            {tickets.map((ticket) => {
+              const isSelected = ticket.protocol === selectedProtocol;
+
+              return (
+                <button
+                  className={`grid w-full gap-2 px-3 py-3 text-left transition lg:grid-cols-[9rem_minmax(12rem,1fr)_12rem_9rem_9rem] lg:items-center lg:gap-3 ${
+                    isSelected
+                      ? "bg-[#A07C3B]/10 text-slate-950"
+                      : "bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                  key={ticket.id}
+                  onClick={() => onSelectTicket(ticket.protocol)}
+                  type="button"
+                >
+                  <span className="min-w-0">
+                    <span className="block font-mono text-xs font-semibold text-slate-950">
+                      {ticket.protocol}
+                    </span>
+                    <span className="mt-1 block text-[0.68rem] font-semibold uppercase text-slate-400 lg:hidden">
+                      Ticket
+                    </span>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold">
+                      {ticket.title}
+                    </span>
+                    <span className="mt-1 block truncate text-xs text-slate-500">
+                      {ticket.module} / {hubItTicketCategoryLabels[ticket.category]}
+                    </span>
+                  </span>
+                  <span className="min-w-0 text-sm font-medium">
+                    <span className="block truncate">{ticket.requester.name}</span>
+                    <span className="mt-1 block truncate text-xs text-slate-400">
+                      {ticket.assignedTo?.name ?? "Sem responsavel"}
+                    </span>
+                  </span>
+                  <span className="text-sm font-semibold text-slate-600">
+                    {getTicketEvidenceCount(ticket)}
+                  </span>
+                  <span className="text-xs font-medium text-slate-500">
+                    {formatDateShort(ticket.updatedAt)}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="grid min-h-36 place-items-center px-4 py-8 text-center">
+            <div>
+              <History className="mx-auto size-7 text-slate-300" />
+              <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
+                Historico vazio.
+              </p>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function KanbanColumn({
+  onSelectTicket,
+  selectedProtocol,
+  stage,
+  tickets,
+}: {
+  onSelectTicket: (protocol: string) => void;
+  selectedProtocol: string | null;
+  stage: TicketWorkflowStage;
+  tickets: HubItTicket[];
+}) {
+  return (
+    <section className="min-h-40 rounded-xl border border-slate-200 bg-slate-50/70 p-2">
+      <div className="flex items-center justify-between gap-2 px-1 py-1">
+        <p className="m-0 text-xs font-semibold uppercase text-slate-500">
+          {workflowStageLabels[stage]}
+        </p>
+        <span className="rounded-full bg-white px-2 py-0.5 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200">
+          {tickets.length}
+        </span>
+      </div>
+      <div className="mt-2 grid max-h-[22rem] gap-2 overflow-y-auto pr-1">
+        {tickets.length > 0 ? (
+          tickets.map((ticket) => (
+            <KanbanTicketCard
+              isActive={ticket.protocol === selectedProtocol}
+              key={ticket.id}
+              onClick={() => onSelectTicket(ticket.protocol)}
+              ticket={ticket}
+            />
+          ))
+        ) : (
+          <p className="m-0 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs font-semibold text-slate-400">
+            Sem tickets aqui.
+          </p>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function KanbanTicketCard({
+  isActive,
+  onClick,
+  ticket,
+}: {
+  isActive: boolean;
+  onClick: () => void;
+  ticket: HubItTicket;
+}) {
+  const stage = getTicketWorkflowStage(ticket.status);
+  const stageClass =
+    stage === "validacao" || stage === "finalizado"
+      ? "border-emerald-100 bg-emerald-50/70"
+      : stage === "revisao"
+        ? "border-amber-100 bg-amber-50/70"
+        : "border-slate-200 bg-white";
+
+  return (
+    <button
+      className={`rounded-lg border p-3 text-left transition hover:border-[#A07C3B]/30 ${
+        isActive ? "ring-2 ring-[#A07C3B]/25" : stageClass
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      <div className="mb-2">
+        <DeliveryDueBadge ticket={ticket} variant="prominent" />
+      </div>
+      <div className="flex items-start justify-between gap-2">
+        <p className="m-0 font-mono text-xs font-semibold text-[#7A5E2C]">
+          {ticket.protocol}
+        </p>
+      </div>
+      <p className="m-0 mt-2 line-clamp-2 text-sm font-semibold text-slate-950">
+        {ticket.title}
+      </p>
+      <p className="m-0 mt-2 truncate text-xs text-slate-500">
+        {ticket.requester.name}
+      </p>
+    </button>
+  );
 }
 
 function QueueMetric({
@@ -659,6 +1093,47 @@ function QueueSummaryPill({
       <strong className="font-mono text-xs">{value}</strong>
       {label}
     </span>
+  );
+}
+
+function QueueViewButton({
+  active,
+  icon,
+  label,
+  onClick,
+  value,
+}: {
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+  value: number;
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition ${
+        active
+          ? "border-[#A07C3B]/40 bg-[#A07C3B]/10 text-slate-950 shadow-sm"
+          : "border-slate-200 bg-white text-slate-500 hover:border-[#A07C3B]/25 hover:text-slate-950"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      <span className="inline-flex min-w-0 items-center gap-2">
+        <span
+          className={`grid size-7 shrink-0 place-items-center rounded-lg ${
+            active ? "bg-[#101820] text-white" : "bg-slate-100 text-slate-500"
+          }`}
+        >
+          {icon}
+        </span>
+        <span className="truncate text-xs font-semibold uppercase">
+          {label}
+        </span>
+      </span>
+      <span className="font-mono text-sm font-semibold">{value}</span>
+    </button>
   );
 }
 
@@ -718,7 +1193,7 @@ function TicketQueueItem({
   onClick: () => void;
   ticket: HubItTicket;
 }) {
-  const queueTone = getTicketQueueToneClass(getTicketDeliveryBucket(ticket), isActive);
+  const queueTone = getTicketQueueToneClass(ticket, isActive);
 
   return (
     <button
@@ -730,6 +1205,9 @@ function TicketQueueItem({
         aria-hidden
         className={`absolute bottom-3 left-0 top-3 w-1 rounded-r-full ${queueTone.stripe}`}
       />
+      <div className="mb-2 pl-3">
+        <DeliveryDueBadge ticket={ticket} variant="prominent" />
+      </div>
       <div className="flex items-start gap-3">
         <RequesterAvatar requester={ticket.requester} size="sm" />
         <div className="min-w-0 flex-1">
@@ -748,7 +1226,6 @@ function TicketQueueItem({
         </div>
       </div>
       <div className="mt-3 flex flex-wrap gap-1.5">
-        <DeliveryDueBadge ticket={ticket} />
         <MiniBadge>{ticket.module}</MiniBadge>
         <MiniBadge>{hubItTicketPriorityLabels[ticket.priority]}</MiniBadge>
         {ticket.attachments.length > 0 ? (
@@ -765,7 +1242,9 @@ function TicketWorkspace({
   isDetailLoading,
   isSaving,
   onDraftChange,
+  onReplyAttachmentsChange,
   onSave,
+  replyAttachments,
   ticket,
 }: {
   accessToken: string | null;
@@ -773,15 +1252,19 @@ function TicketWorkspace({
   isDetailLoading: boolean;
   isSaving: boolean;
   onDraftChange: (draft: TicketDraft) => void;
-  onSave: () => void;
+  onReplyAttachmentsChange: Dispatch<
+    SetStateAction<HubItTicketAttachmentInput[]>
+  >;
+  onSave: (nextStatus: HubItTicketStatus) => void;
+  replyAttachments: HubItTicketAttachmentInput[];
   ticket: HubItTicket;
 }) {
   const [expandedSections, setExpandedSections] = useState<
     ReadonlySet<TicketWorkspaceSection>
-  >(() => new Set());
+  >(() => new Set(["delivery"]));
 
   useEffect(() => {
-    setExpandedSections(new Set());
+    setExpandedSections(new Set(["delivery"]));
   }, [ticket.protocol]);
 
   const isSectionExpanded = useCallback(
@@ -849,7 +1332,7 @@ function TicketWorkspace({
             <UserSummaryCard
               label="Tratando"
               user={ticket.assignedTo}
-              fallback="Aguardando Zeus"
+              fallback="Aguardando operador"
             />
           </div>
         </CollapsiblePanel>
@@ -870,7 +1353,7 @@ function TicketWorkspace({
           </WorkspaceDisclosureBlock>
           <DetailBlock
             icon={<Sparkles className="size-4" />}
-            label="Leitura tecnica da Athena"
+            label="Leitura tecnica do Zeus"
             value={ticket.technicalSummary}
           />
           <AttachmentsPanel attachments={ticket.attachments} />
@@ -901,16 +1384,6 @@ function TicketWorkspace({
         </div>
 
         <aside className="grid content-start gap-4">
-          <TicketHistory isLoading={isDetailLoading} ticket={ticket} />
-
-          <TicketReplyForm
-            accessToken={accessToken}
-            draft={draft}
-            isSaving={isSaving}
-            onDraftChange={onDraftChange}
-            onSave={onSave}
-          />
-
           <CollapsiblePanel
             icon={<CalendarDays className="size-4" />}
             isExpanded={isSectionExpanded("delivery")}
@@ -923,6 +1396,19 @@ function TicketWorkspace({
               ticket={ticket}
             />
           </CollapsiblePanel>
+
+          <TicketHistory isLoading={isDetailLoading} ticket={ticket} />
+
+          <TicketReplyForm
+            accessToken={accessToken}
+            draft={draft}
+            isSaving={isSaving}
+            onDraftChange={onDraftChange}
+            onReplyAttachmentsChange={onReplyAttachmentsChange}
+            onSave={onSave}
+            replyAttachments={replyAttachments}
+            ticketProtocol={ticket.protocol}
+          />
         </aside>
       </div>
     </div>
@@ -984,16 +1470,11 @@ function UserSummaryCard({
 
 function WorkflowStepper({ status }: { status: HubItTicketStatus }) {
   const steps = [
-    { id: "novo", label: "Entrada" },
-    { id: "em_analise", label: "Analise" },
-    { id: "em_triagem", label: "Triagem" },
-    { id: "em_tratativa", label: "Tratativa" },
-    { id: "em_execucao", label: "Execucao" },
-    { id: "em_homologacao", label: "Homologacao" },
-    { id: "em_producao", label: "Producao" },
-    { id: "aguardando_cliente", label: "Cliente" },
+    { id: "novo", label: "Novo" },
+    { id: "em_tratativa", label: "Em tratativa" },
+    { id: "aguardando_cliente", label: "Validacao" },
     { id: "em_revisao", label: "Revisao" },
-    { id: "resolvido", label: "Resolvido" },
+    { id: "fechado", label: "Finalizado" },
   ] as const satisfies readonly { id: HubItTicketStatus; label: string }[];
   const activeIndex = Math.max(
     steps.findIndex((step) => step.id === normalizeWorkflowStatus(status)),
@@ -1054,7 +1535,7 @@ function DeliveryDecisionPanel({
           }
         />
         <InfoPill
-          label={decisionStatus === "reprogramada" ? "Zeus" : "Aprovada"}
+          label={decisionStatus === "reprogramada" ? "Nova" : "Aprovada"}
           value={
             ticket.approvedDeliveryDate
               ? formatDateOnly(ticket.approvedDeliveryDate)
@@ -1089,7 +1570,7 @@ function DeliveryDecisionPanel({
       {draft.deliveryDecision === "reject_with_new_date" ? (
         <label className="mt-3 grid gap-1.5">
           <span className="text-xs font-semibold uppercase text-slate-500">
-            Nova data Zeus
+            Nova data
           </span>
           <input
             className={fieldClassName}
@@ -1127,7 +1608,7 @@ function DeliveryDecisionPanel({
 
       {ticket.deliveryDecisionBy || ticket.deliveryDecisionAt ? (
         <p className="m-0 mt-3 text-xs leading-5 text-slate-500">
-          Ultima decisao: {ticket.deliveryDecisionBy?.name ?? "Zeus"} em{" "}
+          Ultima decisao: {ticket.deliveryDecisionBy?.name ?? "Operador"} em{" "}
           {ticket.deliveryDecisionAt
             ? formatDateTime(ticket.deliveryDecisionAt)
             : "--"}
@@ -1279,11 +1760,11 @@ function TicketHistory({
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
           <History className="size-4 text-[#A07C3B]" />
-          Historico
+          Timeline
         </div>
         {isLoading ? <Loader2 className="size-4 animate-spin text-slate-400" /> : null}
       </div>
-      <div className="mt-3 grid max-h-[17rem] gap-2 overflow-y-auto pr-1">
+      <div className="mt-3 grid max-h-[20rem] gap-2 overflow-y-auto pr-1">
         {ticket.events.length > 0 ? (
           ticket.events.map((event) => (
             <TicketHistoryEvent event={event} key={event.id} ticket={ticket} />
@@ -1306,33 +1787,71 @@ function TicketHistoryEvent({
   ticket: HubItTicket;
 }) {
   const actor = getTicketHistoryActor(event, ticket);
-  const isOperator = actor.kind === "operator";
-  const isAthena = actor.kind === "athena";
-  const bubbleClass = isOperator
-    ? "border-[#3f4c5d] bg-[#3f4c5d] text-white"
-    : isAthena
-      ? "border-[#A07C3B]/20 bg-[#A07C3B]/10 text-slate-800"
-      : "border-slate-200 bg-white text-slate-700";
-  const timestampClass = isOperator ? "text-white/65" : "text-slate-400";
+  const isZeus = actor.kind === "zeus";
 
   return (
-    <div className={`flex gap-2 ${isOperator ? "justify-end" : "justify-start"}`}>
-      {!isOperator ? (
-        <RequesterAvatar requester={actor.user} size="xs" variant={actor.variant} />
-      ) : null}
-      <div
-        className={`max-w-[88%] rounded-2xl border px-3 py-2 text-xs leading-5 shadow-sm ${bubbleClass}`}
-      >
-        <p className="m-0 whitespace-pre-wrap">{event.message}</p>
-        <p className={`m-0 mt-1 font-mono text-[0.62rem] ${timestampClass}`}>
-          {formatDateTime(event.createdAt)}
+    <div
+      className={`flex gap-3 rounded-lg border px-3 py-2 text-xs leading-5 ${
+        isZeus
+          ? "border-[#101820]/10 bg-[#101820]/[0.03]"
+          : "border-slate-200 bg-white"
+      }`}
+    >
+      <RequesterAvatar requester={actor.user} size="xs" variant={actor.variant} />
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-semibold text-slate-900">
+            {actor.user.name}
+          </span>
+          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.62rem] font-semibold uppercase text-slate-500">
+            {getTicketEventTypeLabel(event.type)}
+          </span>
+          <span className="font-mono text-[0.62rem] text-slate-400">
+            {formatDateTime(event.createdAt)}
+          </span>
+        </div>
+        <p className="m-0 mt-1 whitespace-pre-wrap text-slate-700">
+          {event.message}
         </p>
       </div>
-      {isOperator ? (
-        <RequesterAvatar requester={actor.user} size="xs" variant="dark" />
-      ) : null}
     </div>
   );
+}
+
+function getTicketEventTypeLabel(eventType: HubItTicket["events"][number]["type"]) {
+  if (eventType === "admin_reply") {
+    return "resposta";
+  }
+
+  if (eventType === "attachment_added") {
+    return "evidencia";
+  }
+
+  if (eventType === "closed") {
+    return "fechamento";
+  }
+
+  if (eventType === "created") {
+    return "abertura";
+  }
+
+  if (eventType === "resolved") {
+    return "validacao";
+  }
+
+  if (eventType === "review_requested") {
+    return "revisao";
+  }
+
+  if (eventType === "status_changed") {
+    return "status";
+  }
+
+  if (eventType === "triaged") {
+    return "triagem";
+  }
+
+  return "comentario";
 }
 
 function TicketReplyForm({
@@ -1340,19 +1859,38 @@ function TicketReplyForm({
   draft,
   isSaving,
   onDraftChange,
+  onReplyAttachmentsChange,
   onSave,
+  replyAttachments,
+  ticketProtocol,
 }: {
   accessToken: string | null;
   draft: TicketDraft;
   isSaving: boolean;
   onDraftChange: (draft: TicketDraft) => void;
-  onSave: () => void;
+  onReplyAttachmentsChange: Dispatch<
+    SetStateAction<HubItTicketAttachmentInput[]>
+  >;
+  onSave: (nextStatus: HubItTicketStatus) => void;
+  replyAttachments: HubItTicketAttachmentInput[];
+  ticketProtocol: string;
 }) {
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const recordingChunksRef = useRef<BlobPart[]>([]);
+  const recordingStartedAtRef = useRef<number | null>(null);
+  const recordingTypeRef = useRef<HubItTicketAttachmentInput["type"]>("video");
+  const recordingPrefixRef = useRef("gravacao");
   const [isMentionPickerOpen, setIsMentionPickerOpen] = useState(false);
   const [isMentionLoading, setIsMentionLoading] = useState(false);
   const [mentionError, setMentionError] = useState<string | null>(null);
   const [mentionQuery, setMentionQuery] = useState("");
   const [mentionUsers, setMentionUsers] = useState<MentionUser[]>([]);
+  const [recordingKind, setRecordingKind] = useState<"audio" | "screen" | null>(
+    null,
+  );
+  const [evidenceError, setEvidenceError] = useState<string | null>(null);
   const filteredMentionUsers = useMemo(() => {
     const normalizedQuery = normalizeSearchText(mentionQuery);
 
@@ -1405,6 +1943,210 @@ function TicketReplyForm({
       setIsMentionLoading(false);
     }
   }, [accessToken, isMentionLoading, mentionUsers.length]);
+  const stopRecording = useCallback(() => {
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    mediaStreamRef.current = null;
+    mediaRecorderRef.current = null;
+    recordingChunksRef.current = [];
+    recordingStartedAtRef.current = null;
+    setRecordingKind(null);
+  }, []);
+
+  useEffect(() => {
+    setEvidenceError(null);
+    stopRecording();
+  }, [stopRecording, ticketProtocol]);
+
+  useEffect(() => {
+    return () => {
+      stopRecording();
+    };
+  }, [stopRecording]);
+
+  async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? []);
+
+    event.target.value = "";
+
+    if (files.length === 0) {
+      return;
+    }
+
+    await addEvidenceFiles(files);
+  }
+
+  async function addEvidenceFiles(files: File[]) {
+    const nextAttachments: HubItTicketAttachmentInput[] = [];
+
+    for (const file of files) {
+      if (file.size > maxReplyEvidenceBytes) {
+        setEvidenceError("Arquivo acima de 6 MB.");
+        continue;
+      }
+
+      nextAttachments.push(
+        await createReplyAttachment(file, {
+          fileName: file.name,
+          mimeType: file.type,
+          sizeBytes: file.size,
+        }),
+      );
+    }
+
+    if (nextAttachments.length > 0) {
+      onReplyAttachmentsChange((currentAttachments) => [
+        ...currentAttachments,
+        ...nextAttachments,
+      ]);
+      setEvidenceError(null);
+    }
+  }
+
+  async function handleCapturePrint() {
+    if (!navigator.mediaDevices?.getDisplayMedia) {
+      setEvidenceError("Captura de tela indisponivel neste navegador.");
+      return;
+    }
+
+    let stream: MediaStream | null = null;
+
+    try {
+      stream = await navigator.mediaDevices.getDisplayMedia({
+        audio: false,
+        video: true,
+      });
+      const video = document.createElement("video");
+
+      video.srcObject = stream;
+      video.muted = true;
+      await video.play();
+      await new Promise((resolve) => window.setTimeout(resolve, 250));
+      const canvas = document.createElement("canvas");
+
+      canvas.width = video.videoWidth || 1280;
+      canvas.height = video.videoHeight || 720;
+      canvas
+        .getContext("2d")
+        ?.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob | null>((resolve) =>
+        canvas.toBlob(resolve, "image/png", 0.92),
+      );
+
+      if (!blob) {
+        throw new Error("print-unavailable");
+      }
+
+      const attachment = await createReplyAttachment(blob, {
+        fileName: `print-helpdesk-${formatEvidenceFileTime(new Date())}.png`,
+        mimeType: "image/png",
+        sizeBytes: blob.size,
+        type: "image",
+      });
+
+      onReplyAttachmentsChange((currentAttachments) => [
+        attachment,
+        ...currentAttachments,
+      ]);
+      setEvidenceError(null);
+    } catch {
+      setEvidenceError("Nao foi possivel capturar o print.");
+    } finally {
+      stream?.getTracks().forEach((track) => track.stop());
+    }
+  }
+
+  async function handleToggleRecording(kind: "audio" | "screen") {
+    if (recordingKind === kind) {
+      mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    if (recordingKind) {
+      setEvidenceError("Finalize a gravacao atual antes de iniciar outra.");
+      return;
+    }
+
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices) {
+      setEvidenceError("Gravacao indisponivel neste navegador.");
+      return;
+    }
+
+    try {
+      const stream =
+        kind === "audio"
+          ? await navigator.mediaDevices.getUserMedia({ audio: true })
+          : await navigator.mediaDevices.getDisplayMedia({
+              audio: true,
+              video: true,
+            });
+      const recorder = new MediaRecorder(stream);
+
+      recordingChunksRef.current = [];
+      recordingStartedAtRef.current = Date.now();
+      recordingTypeRef.current = kind === "audio" ? "audio" : "video";
+      recordingPrefixRef.current = kind === "audio" ? "audio" : "video";
+      mediaStreamRef.current = stream;
+      mediaRecorderRef.current = recorder;
+
+      recorder.addEventListener("dataavailable", (event) => {
+        if (event.data.size > 0) {
+          recordingChunksRef.current.push(event.data);
+        }
+      });
+      recorder.addEventListener("stop", () => {
+        void finalizeRecording(recorder.mimeType);
+      });
+
+      recorder.start();
+      setRecordingKind(kind);
+      setEvidenceError(null);
+    } catch {
+      stopRecording();
+      setEvidenceError(
+        kind === "audio"
+          ? "Permita o microfone para gravar audio."
+          : "Permita a tela para gravar video.",
+      );
+    }
+  }
+
+  async function finalizeRecording(mimeType: string) {
+    const durationSeconds = recordingStartedAtRef.current
+      ? Math.max(
+          1,
+          Math.round((Date.now() - recordingStartedAtRef.current) / 1000),
+        )
+      : undefined;
+    const type = recordingTypeRef.current;
+    const blob = new Blob(recordingChunksRef.current, {
+      type: mimeType || (type === "audio" ? "audio/webm" : "video/webm"),
+    });
+
+    stopRecording();
+
+    if (blob.size > maxReplyEvidenceBytes) {
+      setEvidenceError("Gravacao acima de 6 MB.");
+      return;
+    }
+
+    try {
+      const attachment = await createReplyAttachment(blob, {
+        durationSeconds,
+        fileName: `${recordingPrefixRef.current}-helpdesk-${formatEvidenceFileTime(new Date())}.webm`,
+        mimeType: blob.type,
+        sizeBytes: blob.size,
+        type,
+      });
+
+      onReplyAttachmentsChange((currentAttachments) => [
+        attachment,
+        ...currentAttachments,
+      ]);
+      setEvidenceError(null);
+    } catch {
+      setEvidenceError("Nao foi possivel preparar a gravacao.");
+    }
+  }
 
   function insertMention(user: MentionUser) {
     const mention = `@${user.name}`;
@@ -1432,7 +2174,7 @@ function TicketReplyForm({
             aria-label="Registrar devolutiva"
             className="grid size-9 place-items-center rounded-lg bg-[#101820] text-white transition hover:bg-[#1d2634] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSaving}
-            onClick={onSave}
+            onClick={() => onSave("em_tratativa")}
             type="button"
           >
             {isSaving ? (
@@ -1443,27 +2185,14 @@ function TicketReplyForm({
           </button>
         </Tooltip>
       </div>
-      <label className="mt-4 grid gap-1.5">
-        <span className="text-xs font-semibold uppercase text-slate-500">
-          Etapa
-        </span>
-        <select
-          className={fieldClassName}
-          onChange={(event) =>
-            onDraftChange({
-              ...draft,
-              status: event.target.value as HubItTicketStatus,
-            })
-          }
-          value={draft.status}
-        >
-          {hubItTicketStatuses.map((status) => (
-            <option key={status} value={status}>
-              {hubItTicketStatusLabels[status]}
-            </option>
-          ))}
-        </select>
-      </label>
+      <input
+        accept="audio/*,image/*,video/*,.doc,.docx,.pdf,.ppt,.pptx,.xls,.xlsx,.txt"
+        className="hidden"
+        multiple
+        onChange={(event) => void handleFileChange(event)}
+        ref={fileInputRef}
+        type="file"
+      />
       <div className="mt-3 grid gap-1.5">
         <span className="flex items-center justify-between gap-2">
           <label
@@ -1575,7 +2304,172 @@ function TicketReplyForm({
           value={draft.resolutionSummary}
         />
       </label>
+      <div className="mt-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <p className="m-0 text-xs font-semibold uppercase text-slate-500">
+              Evidencias
+            </p>
+          </div>
+          <span className="rounded-full bg-white px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200">
+            {replyAttachments.length}
+          </span>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <EvidenceButton
+            icon={<Camera className="size-4" />}
+            label="Print"
+            onClick={() => void handleCapturePrint()}
+          />
+          <EvidenceButton
+            active={recordingKind === "screen"}
+            icon={
+              recordingKind === "screen" ? (
+                <Square className="size-4" />
+              ) : (
+                <Video className="size-4" />
+              )
+            }
+            label={recordingKind === "screen" ? "Parar" : "Gravar tela"}
+            onClick={() => void handleToggleRecording("screen")}
+          />
+          <EvidenceButton
+            active={recordingKind === "audio"}
+            icon={
+              recordingKind === "audio" ? (
+                <Square className="size-4" />
+              ) : (
+                <Mic className="size-4" />
+              )
+            }
+            label={recordingKind === "audio" ? "Parar" : "Audio"}
+            onClick={() => void handleToggleRecording("audio")}
+          />
+          <EvidenceButton
+            icon={<Paperclip className="size-4" />}
+            label="Arquivo"
+            onClick={() => fileInputRef.current?.click()}
+          />
+        </div>
+        <ReplyEvidenceList
+          attachments={replyAttachments}
+          onRemove={(fileName) =>
+            onReplyAttachmentsChange((currentAttachments) =>
+              currentAttachments.filter(
+                (attachment) => attachment.fileName !== fileName,
+              ),
+            )
+          }
+        />
+        {evidenceError ? (
+          <p className="m-0 text-xs font-semibold text-red-600">
+            {evidenceError}
+          </p>
+        ) : null}
+      </div>
+      <div className="mt-3 flex justify-end gap-2">
+        <Tooltip content="Manter em tratativa" placement="top">
+          <button
+            aria-label="Manter em tratativa"
+            className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-[#A07C3B]/30 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isSaving}
+            onClick={() => onSave("em_tratativa")}
+            type="button"
+          >
+            {isSaving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <MessageSquareReply className="size-4" />
+            )}
+          </button>
+        </Tooltip>
+        <Tooltip content="Enviar para validacao" placement="top">
+          <button
+            aria-label="Enviar para validacao"
+            className="grid size-10 place-items-center rounded-lg bg-emerald-600 text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isSaving}
+            onClick={() => onSave("aguardando_cliente")}
+            type="button"
+          >
+            {isSaving ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <CheckCircle2 className="size-4" />
+            )}
+          </button>
+        </Tooltip>
+      </div>
     </Surface>
+  );
+}
+
+function EvidenceButton({
+  active = false,
+  icon,
+  label,
+  onClick,
+}: {
+  active?: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <Tooltip content={label} placement="top">
+      <button
+        aria-label={label}
+        aria-pressed={active || undefined}
+        className={`grid size-9 place-items-center rounded-lg border text-sm font-semibold transition ${
+          active
+            ? "border-red-200 bg-red-50 text-red-700"
+            : "border-slate-200 bg-white text-slate-600 hover:border-[#A07C3B]/30 hover:text-slate-950"
+        }`}
+        onClick={onClick}
+        type="button"
+      >
+        {icon}
+      </button>
+    </Tooltip>
+  );
+}
+
+function ReplyEvidenceList({
+  attachments,
+  onRemove,
+}: {
+  attachments: HubItTicketAttachmentInput[];
+  onRemove: (fileName: string) => void;
+}) {
+  if (attachments.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="grid gap-2">
+      {attachments.map((attachment) => (
+        <div
+          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
+          key={attachment.fileName}
+        >
+          <div className="min-w-0">
+            <p className="m-0 truncate text-sm font-semibold text-slate-950">
+              {attachment.fileName}
+            </p>
+            <p className="m-0 text-xs text-slate-500">
+              {attachment.type} / {formatBytes(attachment.sizeBytes)}
+            </p>
+          </div>
+          <button
+            aria-label="Remover evidencia"
+            className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+            onClick={() => onRemove(attachment.fileName)}
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+      ))}
+    </div>
   );
 }
 
@@ -1778,7 +2672,16 @@ function AttachmentCard({
   );
 }
 
-function EmptyQueue({ isLoading }: { isLoading: boolean }) {
+function EmptyQueue({
+  isLoading,
+  view,
+}: {
+  isLoading: boolean;
+  view: TicketQueueView;
+}) {
+  const message =
+    view === "fila" ? "Fila vazia." : "Historico vazio.";
+
   return (
     <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 text-center">
       {isLoading ? (
@@ -1787,7 +2690,7 @@ function EmptyQueue({ isLoading }: { isLoading: boolean }) {
         <Inbox className="mx-auto size-6 text-slate-300" />
       )}
       <p className="m-0 mt-3 text-sm font-semibold text-slate-500">
-        {isLoading ? "Carregando HelpDesk." : "Fila vazia no Zeus."}
+        {isLoading ? "Carregando HelpDesk." : message}
       </p>
     </div>
   );
@@ -1889,44 +2792,63 @@ function DeliveryFilterButton({
   );
 }
 
-function DeliveryDueBadge({ ticket }: { ticket: HubItTicket }) {
+function DeliveryDueBadge({
+  ticket,
+  variant = "compact",
+}: {
+  ticket: HubItTicket;
+  variant?: "compact" | "prominent";
+}) {
   const deliveryState = getTicketDeliveryState(ticket);
+  const baseClass =
+    variant === "prominent"
+      ? "inline-flex w-full items-center justify-between gap-2 rounded-lg px-2.5 py-1.5 text-[0.72rem] font-semibold"
+      : "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold";
 
-  if (!deliveryState.date) {
+  if (!deliveryState.date && deliveryState.label === "Sem data") {
+    if (variant === "prominent") {
+      return (
+        <span className={`${baseClass} bg-slate-100 text-slate-500`}>
+          <span className="inline-flex items-center gap-1">
+            <CalendarDays className="size-3.5" />
+            Entrega
+          </span>
+          <span>Sem data</span>
+        </span>
+      );
+    }
+
     return <MiniBadge>Sem data</MiniBadge>;
   }
 
   return (
     <span
-      className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold ${deliveryState.className}`}
+      className={`${baseClass} ${deliveryState.className}`}
     >
-      <CalendarDays className="size-3" />
-      {deliveryState.label}
+      <span className="inline-flex items-center gap-1">
+        <CalendarDays
+          className={variant === "prominent" ? "size-3.5" : "size-3"}
+        />
+        {variant === "prominent" ? "Entrega" : null}
+      </span>
+      <span>{deliveryState.label}</span>
     </span>
   );
 }
 
 function statusVariant(status: HubItTicketStatus): BadgeVariant {
-  if (status === "resolvido" || status === "fechado") {
+  const stage = getTicketWorkflowStage(status);
+
+  if (stage === "validacao" || stage === "finalizado") {
     return "success";
   }
 
-  if (status === "em_producao") {
-    return "success";
-  }
-
-  if (
-    status === "em_analise" ||
-    status === "em_execucao" ||
-    status === "em_homologacao" ||
-    status === "em_revisao" ||
-    status === "em_tratativa"
-  ) {
-    return "info";
-  }
-
-  if (status === "aguardando_cliente") {
+  if (stage === "revisao") {
     return "warning";
+  }
+
+  if (stage === "tratativa") {
+    return "info";
   }
 
   return "neutral";
@@ -1959,24 +2881,31 @@ function getTicketHistoryActor(
     ({
       avatarUrl: null,
       email: null,
-      id: "zeus",
-      name: "Zeus",
+      id: "operator",
+      name: "Operador",
     } satisfies HubItTicket["requester"]);
+  const zeusAutomation = {
+    avatarUrl: null,
+    email: null,
+    id: "zeus",
+    name: "Zeus",
+  } satisfies HubItTicket["requester"];
   const operatorEvent =
     event.type === "admin_reply" ||
+    event.type === "closed" ||
     event.type === "status_changed" ||
     event.type === "resolved";
 
-  if (event.type === "triaged") {
+  if (
+    event.type === "triaged" ||
+    (!event.actor &&
+      (event.type === "closed" ||
+        event.message.trim().toLowerCase().startsWith("zeus:")))
+  ) {
     return {
-      kind: "athena" as const,
-      user: event.actor ?? {
-        avatarUrl: null,
-        email: null,
-        id: "athena",
-        name: "Athena",
-      },
-      variant: "gold" as const,
+      kind: "zeus" as const,
+      user: zeusAutomation,
+      variant: "dark" as const,
     };
   }
 
@@ -2035,6 +2964,20 @@ function formatDateTime(value: string) {
     day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  });
+}
+
+function formatDateShort(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return value;
+  }
+
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
     month: "2-digit",
     timeZone: "America/Sao_Paulo",
   });
@@ -2103,6 +3046,40 @@ function normalizeSearchText(value: string) {
     .trim();
 }
 
+function filterTicketsBySearch(tickets: HubItTicket[], query: string) {
+  const normalizedQuery = normalizeSearchText(query);
+
+  if (!normalizedQuery) {
+    return tickets;
+  }
+
+  return tickets.filter((ticket) =>
+    getTicketSearchText(ticket).includes(normalizedQuery),
+  );
+}
+
+function getTicketSearchText(ticket: HubItTicket) {
+  return [
+    ticket.protocol,
+    ticket.title,
+    ticket.requester.name,
+    ticket.requester.email,
+    ticket.assignedTo?.name,
+    ticket.assignedTo?.email,
+    ticket.module,
+    hubItTicketCategoryLabels[ticket.category],
+    hubItTicketStatusLabels[ticket.status],
+    ticket.technicalSummary,
+    ticket.userDescription,
+  ]
+    .map((value) => normalizeSearchText(value ?? ""))
+    .join(" ");
+}
+
+function getTicketEvidenceCount(ticket: HubItTicket) {
+  return ticket.attachments.length;
+}
+
 function getTodayDateInput() {
   const now = new Date();
   const year = now.getFullYear();
@@ -2166,6 +3143,14 @@ function sortTicketsByDeliveryDate(tickets: HubItTicket[]) {
   });
 }
 
+function sortTicketsByUpdatedAt(tickets: HubItTicket[]) {
+  return [...tickets].sort(
+    (firstTicket, secondTicket) =>
+      new Date(secondTicket.updatedAt).getTime() -
+      new Date(firstTicket.updatedAt).getTime(),
+  );
+}
+
 function mergeTicketListWithExistingDetails(
   nextTickets: HubItTicket[],
   currentTickets: HubItTicket[],
@@ -2208,11 +3193,79 @@ function upsertTicketWithDetails(
 }
 
 function normalizeWorkflowStatus(status: HubItTicketStatus): HubItTicketStatus {
-  if (status === "fechado") {
-    return "resolvido";
+  const stage = getTicketWorkflowStage(status);
+
+  if (stage === "tratativa") {
+    return "em_tratativa";
   }
 
-  return status;
+  if (stage === "validacao") {
+    return "aguardando_cliente";
+  }
+
+  if (stage === "revisao") {
+    return "em_revisao";
+  }
+
+  if (stage === "finalizado") {
+    return "fechado";
+  }
+
+  return "novo";
+}
+
+function getTicketWorkflowStage(status: HubItTicketStatus): TicketWorkflowStage {
+  if (status === "novo") {
+    return "novo";
+  }
+
+  if (status === "aguardando_cliente" || status === "resolvido") {
+    return "validacao";
+  }
+
+  if (status === "em_revisao") {
+    return "revisao";
+  }
+
+  if (status === "fechado") {
+    return "finalizado";
+  }
+
+  return "tratativa";
+}
+
+function countTicketsByWorkflowStage(
+  tickets: HubItTicket[],
+): Record<TicketWorkflowStage, number> {
+  return tickets.reduce<Record<TicketWorkflowStage, number>>(
+    (counts, ticket) => {
+      counts[getTicketWorkflowStage(ticket.status)] += 1;
+
+      return counts;
+    },
+    {
+      finalizado: 0,
+      novo: 0,
+      revisao: 0,
+      tratativa: 0,
+      validacao: 0,
+    },
+  );
+}
+
+function isTicketInHistory(ticket: HubItTicket) {
+  return !isTicketInActiveQueue(ticket);
+}
+
+function isTicketInActiveQueue(ticket: HubItTicket) {
+  const stage = getTicketWorkflowStage(ticket.status);
+
+  return (
+    stage === "novo" ||
+    stage === "tratativa" ||
+    stage === "validacao" ||
+    stage === "revisao"
+  );
 }
 
 function getTicketEffectiveDeliveryDate(ticket: HubItTicket) {
@@ -2220,6 +3273,10 @@ function getTicketEffectiveDeliveryDate(ticket: HubItTicket) {
 }
 
 function getTicketDeliveryBucket(ticket: HubItTicket): DeliveryFilter {
+  if (isTicketInHistory(ticket)) {
+    return "folga";
+  }
+
   const deliveryState = getTicketDeliveryState(ticket);
 
   if (!deliveryState.date) {
@@ -2239,6 +3296,25 @@ function getTicketDeliveryBucket(ticket: HubItTicket): DeliveryFilter {
 
 function getTicketDeliveryState(ticket: HubItTicket) {
   const date = getTicketEffectiveDeliveryDate(ticket);
+  const stage = getTicketWorkflowStage(ticket.status);
+
+  if (stage === "validacao") {
+    return {
+      className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
+      date,
+      days: Number.POSITIVE_INFINITY,
+      label: "Validacao",
+    };
+  }
+
+  if (stage === "finalizado") {
+    return {
+      className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
+      date,
+      days: Number.POSITIVE_INFINITY,
+      label: hubItTicketStatusLabels[ticket.status],
+    };
+  }
 
   if (!date) {
     return {
@@ -2278,9 +3354,22 @@ function getTicketDeliveryState(ticket: HubItTicket) {
 }
 
 function getTicketQueueToneClass(
-  bucket: DeliveryFilter,
+  ticket: HubItTicket,
   isActive: boolean,
 ) {
+  const stage = getTicketWorkflowStage(ticket.status);
+
+  if (stage === "validacao" || stage === "finalizado") {
+    return {
+      container: isActive
+        ? "border-emerald-300 bg-emerald-50 shadow-sm"
+        : "border-emerald-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/50",
+      stripe: "bg-emerald-500",
+    };
+  }
+
+  const bucket = getTicketDeliveryBucket(ticket);
+
   if (bucket === "hoje") {
     return {
       container: isActive
@@ -2348,10 +3437,71 @@ function getDeliveryDecisionLabel(ticket: HubItTicket) {
   }
 
   if (ticket.deliveryDecisionStatus === "reprogramada") {
-    return "reprogramada por Zeus";
+    return "reprogramada";
   }
 
   return "aguardando decisao";
+}
+
+const maxReplyEvidenceBytes = 6_000_000;
+async function createReplyAttachment(
+  blob: Blob,
+  options: {
+    durationSeconds?: number;
+    fileName: string;
+    mimeType?: string;
+    sizeBytes?: number;
+    type?: HubItTicketAttachmentInput["type"];
+  },
+): Promise<HubItTicketAttachmentInput> {
+  const mimeType = options.mimeType || blob.type || "application/octet-stream";
+
+  return {
+    capturedAt: new Date().toISOString(),
+    dataUrl: await readBlobAsDataUrl(blob),
+    fileName: options.fileName,
+    mimeType,
+    sizeBytes: options.sizeBytes ?? blob.size,
+    type: options.type ?? getAttachmentTypeFromMime(mimeType),
+  };
+}
+
+function readBlobAsDataUrl(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+
+    reader.addEventListener("load", () => {
+      resolve(typeof reader.result === "string" ? reader.result : "");
+    });
+    reader.addEventListener("error", () => reject(reader.error));
+    reader.readAsDataURL(blob);
+  });
+}
+
+function getAttachmentTypeFromMime(
+  mimeType: string,
+): HubItTicketAttachmentInput["type"] {
+  if (mimeType.startsWith("audio/")) {
+    return "audio";
+  }
+
+  if (mimeType.startsWith("image/")) {
+    return "image";
+  }
+
+  if (mimeType.startsWith("video/")) {
+    return "video";
+  }
+
+  return "file";
+}
+
+function formatEvidenceFileTime(value: Date) {
+  return value
+    .toISOString()
+    .replace(/[:.]/g, "-")
+    .replace("T", "-")
+    .slice(0, 19);
 }
 
 function formatBytes(bytes: number) {

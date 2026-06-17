@@ -1,0 +1,1418 @@
+{
+  "schemaVersion": "panteon.address-registry.v1",
+  "status": "ATIVO_DOCUMENTAL",
+  "updatedAt": "2026-06-17",
+  "owner": "Zeus",
+  "addressFormat": {
+    "pattern": "PNT-CC-BB-RR-HHH",
+    "platformPrefix": "PNT",
+    "cityDigits": 2,
+    "districtDigits": 2,
+    "streetDigits": 2,
+    "houseDigits": 3,
+    "reservedZeroCode": "00",
+    "description": "CEP operacional do Panteon: cidade, bairro, rua e casa."
+  },
+  "cityBaseline": {
+    "addressCode": "PNT-01-00-00-000",
+    "deploymentId": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+    "technicalUrl": "https://careli-hub-hub-i2bs-2hmz65b0s-lucasruas-devs-projects.vercel.app",
+    "domain": "https://c2x.app.br",
+    "validatedBy": "Lucas",
+    "validatedAt": "2026-06-17",
+    "notes": [
+      "Marco zero operacional do Panteon.",
+      "Novos recortes devem nascer desta base ou provar preservacao equivalente."
+    ]
+  },
+  "reservedDistrictCodes": [
+    { "code": "01", "module": "panteon-core", "name": "Panteon Core, Home e Disponibilidade" },
+    { "code": "10", "module": "hades", "name": "Hades" },
+    { "code": "20", "module": "iris", "name": "Iris" },
+    { "code": "30", "module": "hermes", "name": "Hermes" },
+    { "code": "40", "module": "chronos", "name": "Chronos" },
+    { "code": "50", "module": "zeus", "name": "Zeus / Operations Center" },
+    { "code": "60", "module": "atlas", "name": "Atlas" },
+    { "code": "70", "module": "setup", "name": "Setup" },
+    { "code": "80", "module": "apolo", "name": "Apolo" },
+    { "code": "90", "module": "ares", "name": "Ares" }
+  ],
+  "addresses": [
+    {
+      "addressId": "PNT-CID-01",
+      "addressCode": "PNT-01-00-00-000",
+      "level": "city",
+      "name": "Panteon Producao Marco Zero 2026-06-17",
+      "module": "panteon",
+      "owner": "Zeus / Hefesto",
+      "parentAddressCode": null,
+      "houseType": null,
+      "routes": ["https://c2x.app.br"],
+      "paths": ["apps/hub/**", "packages/**", "docs/operations/**"],
+      "allowedChangedPaths": [],
+      "protectedPaths": ["apps/hub/**", "packages/**", "scripts/**"],
+      "requiredMarkers": [],
+      "forbiddenMarkers": [],
+      "validationCommands": [
+        "git status --short --branch",
+        "git worktree list",
+        "node scripts/production-module-safety-gate.mjs --manifest <manifesto>"
+      ],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": [
+        "Cidade/base validada por Lucas.",
+        "Nao e alvo direto de recorte comum; recortes devem apontar bairro, rua e casa."
+      ]
+    },
+    {
+      "addressId": "PNT-BRR-PANTEON-CORE-01",
+      "addressCode": "PNT-01-01-00-000",
+      "level": "district",
+      "name": "Panteon Core, Home e Disponibilidade",
+      "module": "panteon-core",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-00-00-000",
+      "houseType": null,
+      "routes": ["/"],
+      "paths": [
+        "apps/hub/app/page.tsx",
+        "apps/hub/layouts/**",
+        "apps/hub/lib/operational-home.ts",
+        "apps/hub/lib/hub-home.ts",
+        "packages/shared/src/modules/**"
+      ],
+      "allowedChangedPaths": [
+        "apps/hub/app/page.tsx",
+        "apps/hub/layouts/**",
+        "apps/hub/lib/operational-home.ts",
+        "apps/hub/lib/hub-home.ts",
+        "packages/shared/src/modules/**",
+        "docs/operations/**"
+      ],
+      "protectedPaths": [
+        "apps/hub/modules/guardian/**",
+        "apps/hub/modules/caredesk/**",
+        "apps/hub/components/pulsex/**",
+        "apps/hub/modules/chronos/**",
+        "apps/hub/modules/squadops/**"
+      ],
+      "requiredMarkers": [],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Protege Home, shell e superficies transversais do marco zero."]
+    },
+    {
+      "addressId": "PNT-RUA-PANTEON-DISPONIBILIDADE-01",
+      "addressCode": "PNT-01-01-10-000",
+      "level": "street",
+      "name": "Panteon / Home / Disponibilidade",
+      "module": "panteon-core",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-01-00-000",
+      "houseType": null,
+      "routes": ["/"],
+      "paths": ["apps/hub/app/page.tsx", "apps/hub/lib/operational-home.ts"],
+      "allowedChangedPaths": ["apps/hub/app/page.tsx", "apps/hub/lib/operational-home.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/app/page.tsx",
+          "includes": ["PresenceTodayPanel"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "protected",
+      "notes": ["Superficie protegida porque foi uma melhoria do marco zero validado."]
+    },
+    {
+      "addressId": "PNT-CASA-PANTEON-DISPONIBILIDADE-SURFACE-001",
+      "addressCode": "PNT-01-01-10-001",
+      "level": "house",
+      "name": "Home / Disponibilidade / Superficie principal",
+      "module": "panteon-core",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-01-10-000",
+      "houseType": "ui-panel",
+      "routes": ["/"],
+      "paths": ["apps/hub/app/page.tsx", "apps/hub/lib/operational-home.ts"],
+      "allowedChangedPaths": ["apps/hub/app/page.tsx", "apps/hub/lib/operational-home.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/app/page.tsx",
+          "includes": ["PresenceTodayPanel"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "protected",
+      "notes": ["Nao remover sem autorizacao explicita do Lucas e registro operacional."]
+    },
+    {
+      "addressId": "PNT-BRR-HADES-01",
+      "addressCode": "PNT-01-10-00-000",
+      "level": "district",
+      "name": "Hades",
+      "module": "hades",
+      "owner": "Hades Core",
+      "parentAddressCode": "PNT-01-00-00-000",
+      "houseType": null,
+      "routes": ["/hades", "/hades/cobranca", "/guardian/cobranca"],
+      "paths": ["apps/hub/modules/guardian/**", "apps/hub/components/guardian/**", "apps/hub/lib/guardian/**", "apps/hub/app/hades/**", "apps/hub/app/guardian/**", "apps/hub/app/api/hades/**", "apps/hub/app/api/guardian/**"],
+      "allowedChangedPaths": ["apps/hub/modules/guardian/**", "apps/hub/components/guardian/**", "apps/hub/lib/guardian/**", "apps/hub/app/hades/**", "apps/hub/app/guardian/**", "apps/hub/app/api/hades/**", "apps/hub/app/api/guardian/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**", "apps/hub/modules/squadops/**"],
+      "requiredMarkers": [],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Bairro de cobranca, atendimento financeiro e legado Guardian."]
+    },
+    {
+      "addressId": "PNT-RUA-HADES-COBRANCA-01",
+      "addressCode": "PNT-01-10-20-000",
+      "level": "street",
+      "name": "Hades / Cobranca",
+      "module": "hades",
+      "owner": "Hades Core",
+      "parentAddressCode": "PNT-01-10-00-000",
+      "houseType": null,
+      "routes": ["/hades/cobranca", "/guardian/cobranca"],
+      "paths": ["apps/hub/app/hades/cobranca/page.tsx", "apps/hub/app/guardian/cobranca/page.tsx", "apps/hub/modules/guardian/attendance/**"],
+      "allowedChangedPaths": ["apps/hub/app/hades/cobranca/page.tsx", "apps/hub/app/guardian/cobranca/page.tsx", "apps/hub/modules/guardian/attendance/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**", "apps/hub/modules/squadops/**"],
+      "requiredMarkers": [],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua critica do marco zero; foi citada nas validacoes pos-rollback."]
+    },
+    {
+      "addressId": "PNT-CASA-HADES-COBRANCA-ROUTE-001",
+      "addressCode": "PNT-01-10-20-001",
+      "level": "house",
+      "name": "Hades / Cobranca / Entrada de rota",
+      "module": "hades",
+      "owner": "Hades Core",
+      "parentAddressCode": "PNT-01-10-20-000",
+      "houseType": "route",
+      "routes": ["/hades/cobranca", "/guardian/cobranca"],
+      "paths": ["apps/hub/app/hades/cobranca/page.tsx", "apps/hub/app/guardian/cobranca/page.tsx"],
+      "allowedChangedPaths": ["apps/hub/app/hades/cobranca/page.tsx", "apps/hub/app/guardian/cobranca/page.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**", "apps/hub/modules/squadops/**"],
+      "requiredMarkers": [],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Usar quando o recorte tocar apenas a entrada de rota da cobranca."]
+    },
+    {
+      "addressId": "PNT-CASA-HADES-QUEUE-PANEL-002",
+      "addressCode": "PNT-01-10-20-002",
+      "level": "house",
+      "name": "Hades / Cobranca / Fila de cobranca",
+      "module": "hades",
+      "owner": "Hades Core",
+      "parentAddressCode": "PNT-01-10-20-000",
+      "houseType": "ui-panel",
+      "routes": ["/hades/cobranca", "/guardian/cobranca"],
+      "paths": ["apps/hub/modules/guardian/attendance/components/QueuePanel.tsx", "apps/hub/modules/guardian/attendance/components/TicketOperationsQueue.tsx"],
+      "allowedChangedPaths": ["apps/hub/modules/guardian/attendance/components/QueuePanel.tsx", "apps/hub/modules/guardian/attendance/components/TicketOperationsQueue.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**", "apps/hub/modules/squadops/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/guardian/attendance/components/QueuePanel.tsx",
+          "includes": ["QueuePanel"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa candidata para recortes de fila; nao autoriza mexer em Iris, Hermes, Chronos ou Zeus."]
+    },
+    {
+      "addressId": "PNT-CASA-HADES-IRIS-EMBED-003",
+      "addressCode": "PNT-01-10-20-003",
+      "level": "house",
+      "name": "Hades / Cobranca / Iris embutida",
+      "module": "hades",
+      "owner": "Hades Core / Iris Core",
+      "parentAddressCode": "PNT-01-10-20-000",
+      "houseType": "component",
+      "routes": ["/hades/cobranca", "/guardian/cobranca"],
+      "paths": ["apps/hub/modules/caredesk/embeds/iris-collection-queue-embed.tsx", "apps/hub/modules/guardian/attendance/**"],
+      "allowedChangedPaths": ["apps/hub/modules/caredesk/embeds/iris-collection-queue-embed.tsx", "apps/hub/modules/guardian/attendance/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**", "apps/hub/modules/squadops/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/caredesk/embeds/iris-collection-queue-embed.tsx",
+          "includes": ["Iris"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "protected",
+      "notes": ["Acoplamento Hades/Iris exige recorte explicito e validacao visual antes de qualquer publicacao."]
+    },
+    {
+      "addressId": "PNT-BRR-IRIS-01",
+      "addressCode": "PNT-01-20-00-000",
+      "level": "district",
+      "name": "Iris",
+      "module": "iris",
+      "owner": "Iris Core",
+      "parentAddressCode": "PNT-01-00-00-000",
+      "houseType": null,
+      "routes": ["/iris"],
+      "paths": ["apps/hub/modules/caredesk/**", "apps/hub/lib/iris/**", "apps/hub/app/iris/**", "apps/hub/app/api/iris/**"],
+      "allowedChangedPaths": ["apps/hub/modules/caredesk/**", "apps/hub/lib/iris/**", "apps/hub/app/iris/**", "apps/hub/app/api/iris/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**", "apps/hub/modules/squadops/**"],
+      "requiredMarkers": [],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Bairro de atendimento, tickets e Meta/WhatsApp."]
+    },
+    {
+      "addressId": "PNT-RUA-IRIS-BOARD-01",
+      "addressCode": "PNT-01-20-10-000",
+      "level": "street",
+      "name": "Iris / Board",
+      "module": "iris",
+      "owner": "Iris Core",
+      "parentAddressCode": "PNT-01-20-00-000",
+      "houseType": null,
+      "routes": ["/iris"],
+      "paths": ["apps/hub/modules/caredesk/IrisPage.tsx", "apps/hub/modules/caredesk/blocks/board/**"],
+      "allowedChangedPaths": ["apps/hub/modules/caredesk/IrisPage.tsx", "apps/hub/modules/caredesk/blocks/board/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/caredesk/IrisPage.tsx",
+          "includes": ["IrisTicketQueue"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua principal do board Iris."]
+    },
+    {
+      "addressId": "PNT-CASA-IRIS-TICKET-QUEUE-001",
+      "addressCode": "PNT-01-20-10-001",
+      "level": "house",
+      "name": "Iris / Board / Fila de tickets",
+      "module": "iris",
+      "owner": "Iris Core",
+      "parentAddressCode": "PNT-01-20-10-000",
+      "houseType": "ui-panel",
+      "routes": ["/iris"],
+      "paths": ["apps/hub/modules/caredesk/blocks/board/iris-ticket-queue.tsx", "apps/hub/modules/caredesk/IrisPage.tsx"],
+      "allowedChangedPaths": ["apps/hub/modules/caredesk/blocks/board/iris-ticket-queue.tsx", "apps/hub/modules/caredesk/IrisPage.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/caredesk/blocks/board/iris-ticket-queue.tsx",
+          "includes": ["IrisTicketQueue"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Nao autoriza mudancas em Meta/env/token sem autorizacao explicita."]
+    },
+    {
+      "addressId": "PNT-BRR-HERMES-01",
+      "addressCode": "PNT-01-30-00-000",
+      "level": "district",
+      "name": "Hermes",
+      "module": "hermes",
+      "owner": "Hermes Core",
+      "parentAddressCode": "PNT-01-00-00-000",
+      "houseType": null,
+      "routes": ["/hermes"],
+      "paths": ["apps/hub/components/pulsex/**", "apps/hub/lib/pulsex/**", "apps/hub/app/hermes/**", "apps/hub/app/api/hermes/**"],
+      "allowedChangedPaths": ["apps/hub/components/pulsex/**", "apps/hub/lib/pulsex/**", "apps/hub/app/hermes/**", "apps/hub/app/api/hermes/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/chronos/**", "apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/squadops/**"],
+      "requiredMarkers": [],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Bairro de comunicacao, mensagens, threads e chamadas."]
+    },
+    {
+      "addressId": "PNT-RUA-HERMES-WORKSPACE-01",
+      "addressCode": "PNT-01-30-10-000",
+      "level": "street",
+      "name": "Hermes / Workspace",
+      "module": "hermes",
+      "owner": "Hermes Core",
+      "parentAddressCode": "PNT-01-30-00-000",
+      "houseType": null,
+      "routes": ["/hermes"],
+      "paths": ["apps/hub/components/pulsex/pulsex-workspace.tsx", "apps/hub/components/pulsex/**", "apps/hub/lib/pulsex/**"],
+      "allowedChangedPaths": ["apps/hub/components/pulsex/pulsex-workspace.tsx", "apps/hub/components/pulsex/**", "apps/hub/lib/pulsex/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/chronos/**", "apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/components/pulsex/pulsex-workspace.tsx",
+          "includes": ["Hermes"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua inicial para recortes de conversa, notificacoes e workspace Hermes."]
+    },
+    {
+      "addressId": "PNT-CASA-HERMES-WORKSPACE-SCREEN-001",
+      "addressCode": "PNT-01-30-10-001",
+      "level": "house",
+      "name": "Hermes / Workspace / Tela principal",
+      "module": "hermes",
+      "owner": "Hermes Core",
+      "parentAddressCode": "PNT-01-30-10-000",
+      "houseType": "screen",
+      "routes": ["/hermes"],
+      "paths": ["apps/hub/components/pulsex/pulsex-workspace.tsx"],
+      "allowedChangedPaths": ["apps/hub/components/pulsex/pulsex-workspace.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/chronos/**", "apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/components/pulsex/pulsex-workspace.tsx",
+          "includes": ["Hermes"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Nao autoriza tocar Chronos ou shared providers fora do recorte declarado."]
+    },
+    {
+      "addressId": "PNT-BRR-CHRONOS-01",
+      "addressCode": "PNT-01-40-00-000",
+      "level": "district",
+      "name": "Chronos",
+      "module": "chronos",
+      "owner": "Chronos Core",
+      "parentAddressCode": "PNT-01-00-00-000",
+      "houseType": null,
+      "routes": ["/chronos", "/chronos/[roomSlug]"],
+      "paths": ["apps/hub/modules/chronos/**", "apps/hub/lib/chronos/**", "apps/hub/app/chronos/**", "apps/hub/app/api/chronos/**"],
+      "allowedChangedPaths": ["apps/hub/modules/chronos/**", "apps/hub/lib/chronos/**", "apps/hub/app/chronos/**", "apps/hub/app/api/chronos/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/components/pulsex/**", "apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/squadops/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+          "includes": ["ChronosAgendaScreen", "ChronosDriveLibraryScreen"]
+        }
+      ],
+      "forbiddenMarkers": [
+        {
+          "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+          "includes": ["v1 executiva"]
+        }
+      ],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Bairro de agenda, salas, Drive, gravacoes e atas."]
+    },
+    {
+      "addressId": "PNT-RUA-CHRONOS-AGENDA-01",
+      "addressCode": "PNT-01-40-10-000",
+      "level": "street",
+      "name": "Chronos / Agenda",
+      "module": "chronos",
+      "owner": "Chronos Core",
+      "parentAddressCode": "PNT-01-40-00-000",
+      "houseType": null,
+      "routes": ["/chronos"],
+      "paths": ["apps/hub/modules/chronos/ChronosPage.tsx", "apps/hub/modules/chronos/components/chronos-agenda-screen.tsx", "apps/hub/modules/chronos/components/chronos-calendar-canvas.tsx"],
+      "allowedChangedPaths": ["apps/hub/modules/chronos/ChronosPage.tsx", "apps/hub/modules/chronos/components/chronos-agenda-screen.tsx", "apps/hub/modules/chronos/components/chronos-calendar-canvas.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/components/pulsex/**", "apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+          "includes": ["ChronosAgendaScreen"]
+        }
+      ],
+      "forbiddenMarkers": [
+        {
+          "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+          "includes": ["v1 executiva"]
+        }
+      ],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua critica de agenda Chronos."]
+    },
+    {
+      "addressId": "PNT-CASA-CHRONOS-AGENDA-SCREEN-001",
+      "addressCode": "PNT-01-40-10-001",
+      "level": "house",
+      "name": "Chronos / Agenda / Tela de agenda",
+      "module": "chronos",
+      "owner": "Chronos Core",
+      "parentAddressCode": "PNT-01-40-10-000",
+      "houseType": "screen",
+      "routes": ["/chronos"],
+      "paths": ["apps/hub/modules/chronos/components/chronos-agenda-screen.tsx"],
+      "allowedChangedPaths": ["apps/hub/modules/chronos/components/chronos-agenda-screen.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/components/pulsex/**", "apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/chronos/components/chronos-agenda-screen.tsx",
+          "includes": ["ChronosAgendaScreen"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa candidata para ajustes pontuais da agenda."]
+    },
+    {
+      "addressId": "PNT-RUA-CHRONOS-DRIVE-01",
+      "addressCode": "PNT-01-40-20-000",
+      "level": "street",
+      "name": "Chronos / Drive",
+      "module": "chronos",
+      "owner": "Chronos Core",
+      "parentAddressCode": "PNT-01-40-00-000",
+      "houseType": null,
+      "routes": ["/chronos"],
+      "paths": ["apps/hub/modules/chronos/ChronosPage.tsx", "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx", "apps/hub/modules/chronos/components/chronos-drive-panel.tsx"],
+      "allowedChangedPaths": ["apps/hub/modules/chronos/ChronosPage.tsx", "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx", "apps/hub/modules/chronos/components/chronos-drive-panel.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/components/pulsex/**", "apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+          "includes": ["ChronosDriveLibraryScreen"]
+        }
+      ],
+      "forbiddenMarkers": [
+        {
+          "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+          "includes": ["v1 executiva"]
+        }
+      ],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua critica para biblioteca, gravacoes e atas."]
+    },
+    {
+      "addressId": "PNT-CASA-CHRONOS-DRIVE-LIBRARY-001",
+      "addressCode": "PNT-01-40-20-001",
+      "level": "house",
+      "name": "Chronos / Drive / Biblioteca",
+      "module": "chronos",
+      "owner": "Chronos Core",
+      "parentAddressCode": "PNT-01-40-20-000",
+      "houseType": "screen",
+      "routes": ["/chronos"],
+      "paths": ["apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx"],
+      "allowedChangedPaths": ["apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/components/pulsex/**", "apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx",
+          "includes": ["ChronosDriveLibraryScreen"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa candidata para ajustes pontuais do Drive Chronos."]
+    },
+    {
+      "addressId": "PNT-BRR-ZEUS-01",
+      "addressCode": "PNT-01-50-00-000",
+      "level": "district",
+      "name": "Zeus / Operations Center",
+      "module": "zeus",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-00-00-000",
+      "houseType": null,
+      "routes": ["/zeus", "/squadops"],
+      "paths": ["apps/hub/modules/squadops/**", "apps/hub/lib/squadops/**", "apps/hub/app/zeus/**", "apps/hub/app/api/zeus/**", "docs/operations/**", "scripts/panteon-*.mjs"],
+      "allowedChangedPaths": ["apps/hub/modules/squadops/**", "apps/hub/lib/squadops/**", "apps/hub/app/zeus/**", "apps/hub/app/api/zeus/**", "docs/operations/**", "scripts/panteon-*.mjs"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/components/pulsex/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://ops.c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Bairro de governanca, suporte, incidentes e releases. Producao dedicada em ops.c2x.app.br."]
+    },
+    {
+      "addressId": "PNT-RUA-ZEUS-OPERATIONS-CENTER-01",
+      "addressCode": "PNT-01-50-10-000",
+      "level": "street",
+      "name": "Zeus / Operations Center",
+      "module": "zeus",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-50-00-000",
+      "houseType": null,
+      "routes": ["/zeus"],
+      "paths": ["apps/hub/modules/squadops/ZeusPage.tsx", "apps/hub/modules/squadops/blocks/**", "apps/hub/lib/operations/**"],
+      "allowedChangedPaths": ["apps/hub/modules/squadops/ZeusPage.tsx", "apps/hub/modules/squadops/blocks/**", "apps/hub/lib/operations/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/components/pulsex/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/squadops/ZeusPage.tsx",
+          "includes": ["Operations Center"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://ops.c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua de controle operacional e governanca."]
+    },
+    {
+      "addressId": "PNT-CASA-ZEUS-HELPDESK-001",
+      "addressCode": "PNT-01-50-10-001",
+      "level": "house",
+      "name": "Zeus / Operations Center / HelpDesk",
+      "module": "zeus",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-50-10-000",
+      "houseType": "ui-panel",
+      "routes": ["/zeus"],
+      "paths": ["apps/hub/modules/squadops/ZeusPage.tsx", "apps/hub/modules/squadops/blocks/helpdesk/**", "apps/hub/lib/hub-it-tickets/**"],
+      "allowedChangedPaths": ["apps/hub/modules/squadops/ZeusPage.tsx", "apps/hub/modules/squadops/blocks/helpdesk/**", "apps/hub/lib/hub-it-tickets/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/components/pulsex/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/squadops/ZeusPage.tsx",
+          "includes": ["HelpDesk"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://ops.c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Recortes Zeus/HelpDesk devem mirar ops.c2x.app.br, salvo excecao explicita do Lucas."]
+    },
+    {
+      "addressId": "PNT-RUA-PANTEON-HOME-SNAPSHOT-01",
+      "addressCode": "PNT-01-01-20-000",
+      "level": "street",
+      "name": "Panteon / Home / Snapshot operacional",
+      "module": "panteon-core",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-01-00-000",
+      "houseType": null,
+      "routes": ["/", "/api/hub/home"],
+      "paths": ["apps/hub/app/page.tsx", "apps/hub/lib/hub-home.ts", "apps/hub/app/api/hub/home/route.ts"],
+      "allowedChangedPaths": ["apps/hub/app/page.tsx", "apps/hub/lib/hub-home.ts", "apps/hub/app/api/hub/home/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/lib/hub-home.ts",
+          "includes": ["getHubHomeSnapshot"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua para snapshot operacional da Home sem tocar modulos de produto."]
+    },
+    {
+      "addressId": "PNT-CASA-PANTEON-HOME-SNAPSHOT-001",
+      "addressCode": "PNT-01-01-20-001",
+      "level": "house",
+      "name": "Home / Snapshot operacional",
+      "module": "panteon-core",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-01-20-000",
+      "houseType": "server-helper",
+      "routes": ["/", "/api/hub/home"],
+      "paths": ["apps/hub/lib/hub-home.ts", "apps/hub/app/api/hub/home/route.ts"],
+      "allowedChangedPaths": ["apps/hub/lib/hub-home.ts", "apps/hub/app/api/hub/home/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/lib/hub-home.ts",
+          "includes": ["getHubHomeSnapshot"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa para ajustes de dados da Home; nao autoriza alterar Hades, Iris, Hermes ou Chronos."]
+    },
+    {
+      "addressId": "PNT-RUA-HADES-ATENDIMENTO-01",
+      "addressCode": "PNT-01-10-10-000",
+      "level": "street",
+      "name": "Hades / Atendimento",
+      "module": "hades",
+      "owner": "Hades Core",
+      "parentAddressCode": "PNT-01-10-00-000",
+      "houseType": null,
+      "routes": ["/hades/atendimento", "/hades/desk", "/guardian/atendimento", "/guardian/desk"],
+      "paths": ["apps/hub/app/hades/atendimento/page.tsx", "apps/hub/app/hades/desk/page.tsx", "apps/hub/app/guardian/atendimento/page.tsx", "apps/hub/app/guardian/desk/page.tsx", "apps/hub/modules/guardian/attendance/**"],
+      "allowedChangedPaths": ["apps/hub/app/hades/atendimento/page.tsx", "apps/hub/app/hades/desk/page.tsx", "apps/hub/app/guardian/atendimento/page.tsx", "apps/hub/app/guardian/desk/page.tsx", "apps/hub/modules/guardian/attendance/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**", "apps/hub/modules/squadops/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/guardian/attendance/AttendancePage.tsx",
+          "includes": ["AttendancePage"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua de atendimento operacional Hades, separada da fila de cobranca."]
+    },
+    {
+      "addressId": "PNT-CASA-HADES-ATENDIMENTO-SCREEN-001",
+      "addressCode": "PNT-01-10-10-001",
+      "level": "house",
+      "name": "Hades / Atendimento / Tela operacional",
+      "module": "hades",
+      "owner": "Hades Core",
+      "parentAddressCode": "PNT-01-10-10-000",
+      "houseType": "screen",
+      "routes": ["/hades/atendimento", "/guardian/atendimento"],
+      "paths": ["apps/hub/modules/guardian/attendance/AttendancePage.tsx", "apps/hub/modules/guardian/attendance/DeskPage.tsx"],
+      "allowedChangedPaths": ["apps/hub/modules/guardian/attendance/AttendancePage.tsx", "apps/hub/modules/guardian/attendance/DeskPage.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/guardian/attendance/AttendancePage.tsx",
+          "includes": ["AttendancePage"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa para ajuste da tela de atendimento sem autorizar Iris embed."]
+    },
+    {
+      "addressId": "PNT-CASA-HADES-WHATSAPP-THREAD-002",
+      "addressCode": "PNT-01-10-10-002",
+      "level": "house",
+      "name": "Hades / Atendimento / Conversa WhatsApp",
+      "module": "hades",
+      "owner": "Hades Core",
+      "parentAddressCode": "PNT-01-10-10-000",
+      "houseType": "ui-panel",
+      "routes": ["/hades/atendimento", "/guardian/atendimento"],
+      "paths": ["apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx", "apps/hub/modules/guardian/attendance/hades-whatsapp-thread.ts", "apps/hub/modules/guardian/attendance/hades-whatsapp-quick-templates.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx", "apps/hub/modules/guardian/attendance/hades-whatsapp-thread.ts", "apps/hub/modules/guardian/attendance/hades-whatsapp-quick-templates.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/guardian/attendance/components/WhatsAppConversationPanel.tsx",
+          "includes": ["WhatsAppConversationPanel"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa para recortes do painel WhatsApp Hades; envs/tokens Meta continuam bloqueados sem autorizacao."]
+    },
+    {
+      "addressId": "PNT-RUA-IRIS-SETUP-01",
+      "addressCode": "PNT-01-20-20-000",
+      "level": "street",
+      "name": "Iris / Setup",
+      "module": "iris",
+      "owner": "Iris Core",
+      "parentAddressCode": "PNT-01-20-00-000",
+      "houseType": null,
+      "routes": ["/iris"],
+      "paths": ["apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx", "apps/hub/app/api/iris/meta/templates/**"],
+      "allowedChangedPaths": ["apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx", "apps/hub/app/api/iris/meta/templates/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx",
+          "includes": ["SetupView"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua de configuracao Iris, filas, assuntos e templates Meta."]
+    },
+    {
+      "addressId": "PNT-CASA-IRIS-SETUP-QUEUES-001",
+      "addressCode": "PNT-01-20-20-001",
+      "level": "house",
+      "name": "Iris / Setup / Filas e assuntos",
+      "module": "iris",
+      "owner": "Iris Core",
+      "parentAddressCode": "PNT-01-20-20-000",
+      "houseType": "ui-panel",
+      "routes": ["/iris"],
+      "paths": ["apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx"],
+      "allowedChangedPaths": ["apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx",
+          "includes": ["IrisSetupTabs", "SetupField"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa para filas e assuntos; nao autoriza envio real para Meta."]
+    },
+    {
+      "addressId": "PNT-CASA-IRIS-SETUP-META-TEMPLATES-002",
+      "addressCode": "PNT-01-20-20-002",
+      "level": "house",
+      "name": "Iris / Setup / Templates Meta",
+      "module": "iris",
+      "owner": "Iris Core",
+      "parentAddressCode": "PNT-01-20-20-000",
+      "houseType": "ui-panel",
+      "routes": ["/iris"],
+      "paths": ["apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx", "apps/hub/app/api/iris/meta/templates/route.ts", "apps/hub/app/api/iris/meta/templates/media/route.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx", "apps/hub/app/api/iris/meta/templates/route.ts", "apps/hub/app/api/iris/meta/templates/media/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx",
+          "includes": ["IrisTemplateSetupPanel", "Fila vinculada"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "protected",
+      "notes": ["Envio real, tokens Meta e midia externa seguem bloqueados sem autorizacao explicita."]
+    },
+    {
+      "addressId": "PNT-RUA-IRIS-CACA-01",
+      "addressCode": "PNT-01-20-30-000",
+      "level": "street",
+      "name": "Iris / Caca",
+      "module": "iris",
+      "owner": "Iris Core",
+      "parentAddressCode": "PNT-01-20-00-000",
+      "houseType": null,
+      "routes": ["/iris", "/api/iris/attendant"],
+      "paths": ["apps/hub/modules/caredesk/blocks/caca/**", "apps/hub/lib/iris/caca-agent.ts", "apps/hub/app/api/iris/attendant/route.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/caredesk/blocks/caca/**", "apps/hub/lib/iris/caca-agent.ts", "apps/hub/app/api/iris/attendant/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/lib/iris/caca-agent.ts",
+          "includes": ["Caca"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua da assistente Iris/Caca; integracoes externas continuam sensiveis."]
+    },
+    {
+      "addressId": "PNT-CASA-IRIS-CACA-PANEL-001",
+      "addressCode": "PNT-01-20-30-001",
+      "level": "house",
+      "name": "Iris / Caca / Painel atendente",
+      "module": "iris",
+      "owner": "Iris Core",
+      "parentAddressCode": "PNT-01-20-30-000",
+      "houseType": "ui-panel",
+      "routes": ["/iris"],
+      "paths": ["apps/hub/modules/caredesk/blocks/caca/iris-attendant-panel.tsx", "apps/hub/lib/iris/caca-agent.ts", "apps/hub/app/api/iris/attendant/route.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/caredesk/blocks/caca/iris-attendant-panel.tsx", "apps/hub/lib/iris/caca-agent.ts", "apps/hub/app/api/iris/attendant/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/caredesk/blocks/caca/iris-attendant-panel.tsx",
+          "includes": ["IrisAttendantPanel"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa para painel da Caca; nao autoriza chave OpenAI ou provedor externo sem aprovacao."]
+    },
+    {
+      "addressId": "PNT-CASA-HERMES-MESSAGES-002",
+      "addressCode": "PNT-01-30-10-002",
+      "level": "house",
+      "name": "Hermes / Workspace / Mensagens",
+      "module": "hermes",
+      "owner": "Hermes Core",
+      "parentAddressCode": "PNT-01-30-10-000",
+      "houseType": "component",
+      "routes": ["/hermes", "/api/hermes/messages"],
+      "paths": ["apps/hub/components/pulsex/message-list.tsx", "apps/hub/components/pulsex/message-composer.tsx", "apps/hub/app/api/hermes/messages/route.ts", "apps/hub/lib/pulsex/messages-api-client.ts"],
+      "allowedChangedPaths": ["apps/hub/components/pulsex/message-list.tsx", "apps/hub/components/pulsex/message-composer.tsx", "apps/hub/app/api/hermes/messages/route.ts", "apps/hub/lib/pulsex/messages-api-client.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/components/pulsex/message-composer.tsx",
+          "includes": ["MessageComposer"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa de mensagens Hermes; nao autoriza mexer em Chronos ou Hades."]
+    },
+    {
+      "addressId": "PNT-RUA-HERMES-CALLS-01",
+      "addressCode": "PNT-01-30-20-000",
+      "level": "street",
+      "name": "Hermes / Chamadas",
+      "module": "hermes",
+      "owner": "Hermes Core",
+      "parentAddressCode": "PNT-01-30-00-000",
+      "houseType": null,
+      "routes": ["/hermes"],
+      "paths": ["apps/hub/components/pulsex/incoming-call-banner.tsx", "apps/hub/components/pulsex/call-panel.tsx", "apps/hub/components/pulsex/call-controls.tsx", "apps/hub/components/pulsex/call-participant-tile.tsx"],
+      "allowedChangedPaths": ["apps/hub/components/pulsex/incoming-call-banner.tsx", "apps/hub/components/pulsex/call-panel.tsx", "apps/hub/components/pulsex/call-controls.tsx", "apps/hub/components/pulsex/call-participant-tile.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/components/pulsex/incoming-call-banner.tsx",
+          "includes": ["IncomingCallBanner"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua de chamadas Hermes, incluindo banner e controles."]
+    },
+    {
+      "addressId": "PNT-CASA-HERMES-INCOMING-CALL-001",
+      "addressCode": "PNT-01-30-20-001",
+      "level": "house",
+      "name": "Hermes / Chamadas / Banner de chamada",
+      "module": "hermes",
+      "owner": "Hermes Core",
+      "parentAddressCode": "PNT-01-30-20-000",
+      "houseType": "ui-panel",
+      "routes": ["/hermes"],
+      "paths": ["apps/hub/components/pulsex/incoming-call-banner.tsx"],
+      "allowedChangedPaths": ["apps/hub/components/pulsex/incoming-call-banner.tsx", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/components/pulsex/incoming-call-banner.tsx",
+          "includes": ["IncomingCallBanner"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa pontual para UX de chamada entrante."]
+    },
+    {
+      "addressId": "PNT-RUA-CHRONOS-ROOMS-01",
+      "addressCode": "PNT-01-40-30-000",
+      "level": "street",
+      "name": "Chronos / Salas",
+      "module": "chronos",
+      "owner": "Chronos Core",
+      "parentAddressCode": "PNT-01-40-00-000",
+      "houseType": null,
+      "routes": ["/chronos", "/chronos/[roomSlug]", "/api/chronos/rooms"],
+      "paths": ["apps/hub/modules/chronos/components/chronos-rooms-management-screen.tsx", "apps/hub/modules/chronos/components/chronos-rooms-panel.tsx", "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx", "apps/hub/app/api/chronos/rooms/route.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/chronos/components/chronos-rooms-management-screen.tsx", "apps/hub/modules/chronos/components/chronos-rooms-panel.tsx", "apps/hub/modules/chronos/ChronosExternalRoomPage.tsx", "apps/hub/app/api/chronos/rooms/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/components/pulsex/**", "apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/chronos/components/chronos-rooms-management-screen.tsx",
+          "includes": ["ChronosRoomsManagementScreen"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua de salas Chronos, separada de agenda e Drive."]
+    },
+    {
+      "addressId": "PNT-CASA-CHRONOS-ROOMS-MANAGEMENT-001",
+      "addressCode": "PNT-01-40-30-001",
+      "level": "house",
+      "name": "Chronos / Salas / Gestao de salas",
+      "module": "chronos",
+      "owner": "Chronos Core",
+      "parentAddressCode": "PNT-01-40-30-000",
+      "houseType": "screen",
+      "routes": ["/chronos", "/api/chronos/rooms"],
+      "paths": ["apps/hub/modules/chronos/components/chronos-rooms-management-screen.tsx", "apps/hub/app/api/chronos/rooms/route.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/chronos/components/chronos-rooms-management-screen.tsx", "apps/hub/app/api/chronos/rooms/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/components/pulsex/**", "apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/chronos/components/chronos-rooms-management-screen.tsx",
+          "includes": ["ChronosRoomsManagementScreen"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa para gestao de salas; integracoes LiveKit/Google seguem escopo separado."]
+    },
+    {
+      "addressId": "PNT-RUA-ZEUS-RELEASE-01",
+      "addressCode": "PNT-01-50-20-000",
+      "level": "street",
+      "name": "Zeus / Releases e Operacoes",
+      "module": "zeus",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-50-00-000",
+      "houseType": null,
+      "routes": ["/zeus", "/api/zeus/release-registers", "/api/zeus/operations/structured"],
+      "paths": ["apps/hub/modules/squadops/blocks/deploys/**", "apps/hub/lib/squadops/release-registers-source.ts", "apps/hub/lib/squadops/release-protocols.ts", "apps/hub/app/api/zeus/**", "apps/hub/app/api/squadops/**", "docs/operations/**"],
+      "allowedChangedPaths": ["apps/hub/modules/squadops/blocks/deploys/**", "apps/hub/lib/squadops/release-registers-source.ts", "apps/hub/lib/squadops/release-protocols.ts", "apps/hub/app/api/zeus/**", "apps/hub/app/api/squadops/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/components/pulsex/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://ops.c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua de releases Zeus; publicacao em ops.c2x.app.br continua sensivel."]
+    },
+    {
+      "addressId": "PNT-CASA-ZEUS-RELEASE-CARDS-001",
+      "addressCode": "PNT-01-50-20-001",
+      "level": "house",
+      "name": "Zeus / Releases / Cards de deploy",
+      "module": "zeus",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-50-20-000",
+      "houseType": "ui-panel",
+      "routes": ["/zeus"],
+      "paths": ["apps/hub/modules/squadops/blocks/deploys/release-cards.tsx", "apps/hub/lib/squadops/release-registers-source.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/squadops/blocks/deploys/release-cards.tsx", "apps/hub/lib/squadops/release-registers-source.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/components/pulsex/**", "apps/hub/modules/chronos/**"],
+      "requiredMarkers": [],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://ops.c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa para visualizacao de releases; nao autoriza deploy ou alias sem Lucas."]
+    },
+    {
+      "addressId": "PNT-BRR-ATLAS-01",
+      "addressCode": "PNT-01-60-00-000",
+      "level": "district",
+      "name": "Atlas",
+      "module": "atlas",
+      "owner": "Atlas Core",
+      "parentAddressCode": "PNT-01-00-00-000",
+      "houseType": null,
+      "routes": ["/atlas", "/api/atlas/snapshot"],
+      "paths": ["apps/hub/modules/atlas/**", "apps/hub/lib/atlas/**", "apps/hub/app/atlas/**", "apps/hub/app/api/atlas/**"],
+      "allowedChangedPaths": ["apps/hub/modules/atlas/**", "apps/hub/lib/atlas/**", "apps/hub/app/atlas/**", "apps/hub/app/api/atlas/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/atlas/AtlasPage.tsx",
+          "includes": ["AtlasPage"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Bairro de desempenho, FPE, ocorrencias e colaboradores."]
+    },
+    {
+      "addressId": "PNT-RUA-ATLAS-DESEMPENHO-01",
+      "addressCode": "PNT-01-60-10-000",
+      "level": "street",
+      "name": "Atlas / Desempenho e FPE",
+      "module": "atlas",
+      "owner": "Atlas Core",
+      "parentAddressCode": "PNT-01-60-00-000",
+      "houseType": null,
+      "routes": ["/atlas", "/api/atlas/fpe/entries"],
+      "paths": ["apps/hub/modules/atlas/AtlasPage.tsx", "apps/hub/app/api/atlas/fpe/entries/route.ts", "apps/hub/lib/atlas/**"],
+      "allowedChangedPaths": ["apps/hub/modules/atlas/AtlasPage.tsx", "apps/hub/app/api/atlas/fpe/entries/route.ts", "apps/hub/lib/atlas/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/atlas/AtlasPage.tsx",
+          "includes": ["PerformanceSection", "FpeSection"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua para recortes de desempenho e FPE Atlas."]
+    },
+    {
+      "addressId": "PNT-CASA-ATLAS-FPE-001",
+      "addressCode": "PNT-01-60-10-001",
+      "level": "house",
+      "name": "Atlas / FPE / Lancamentos",
+      "module": "atlas",
+      "owner": "Atlas Core",
+      "parentAddressCode": "PNT-01-60-10-000",
+      "houseType": "ui-panel",
+      "routes": ["/atlas", "/api/atlas/fpe/entries"],
+      "paths": ["apps/hub/modules/atlas/AtlasPage.tsx", "apps/hub/app/api/atlas/fpe/entries/route.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/atlas/AtlasPage.tsx", "apps/hub/app/api/atlas/fpe/entries/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/atlas/AtlasPage.tsx",
+          "includes": ["FpeSection"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa para ajustes FPE; migration/banco continuam bloqueados sem autorizacao."]
+    },
+    {
+      "addressId": "PNT-RUA-ATLAS-OCORRENCIAS-01",
+      "addressCode": "PNT-01-60-20-000",
+      "level": "street",
+      "name": "Atlas / Ocorrencias",
+      "module": "atlas",
+      "owner": "Atlas Core",
+      "parentAddressCode": "PNT-01-60-00-000",
+      "houseType": null,
+      "routes": ["/atlas", "/api/atlas/occurrences"],
+      "paths": ["apps/hub/modules/atlas/AtlasPage.tsx", "apps/hub/app/api/atlas/occurrences/**"],
+      "allowedChangedPaths": ["apps/hub/modules/atlas/AtlasPage.tsx", "apps/hub/app/api/atlas/occurrences/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/atlas/AtlasPage.tsx",
+          "includes": ["OccurrencesSection", "JustificationDialog"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua para ocorrencias, evidencias e justificativas Atlas."]
+    },
+    {
+      "addressId": "PNT-BRR-SETUP-01",
+      "addressCode": "PNT-01-70-00-000",
+      "level": "district",
+      "name": "Setup",
+      "module": "setup",
+      "owner": "Setup Core",
+      "parentAddressCode": "PNT-01-00-00-000",
+      "houseType": null,
+      "routes": ["/setup"],
+      "paths": ["apps/hub/app/setup/**", "apps/hub/lib/setup/**", "apps/hub/app/api/setup/**"],
+      "allowedChangedPaths": ["apps/hub/app/setup/**", "apps/hub/lib/setup/**", "apps/hub/app/api/setup/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/app/setup/page.tsx",
+          "includes": ["loadSetupData"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Bairro transversal de Setup Central; alteracoes exigem escopo bem delimitado."]
+    },
+    {
+      "addressId": "PNT-RUA-SETUP-CENTRAL-01",
+      "addressCode": "PNT-01-70-10-000",
+      "level": "street",
+      "name": "Setup / Central operacional",
+      "module": "setup",
+      "owner": "Setup Core",
+      "parentAddressCode": "PNT-01-70-00-000",
+      "houseType": null,
+      "routes": ["/setup", "/api/setup/users", "/api/setup/departments"],
+      "paths": ["apps/hub/app/setup/page.tsx", "apps/hub/lib/setup/**", "apps/hub/app/api/setup/**"],
+      "allowedChangedPaths": ["apps/hub/app/setup/page.tsx", "apps/hub/lib/setup/**", "apps/hub/app/api/setup/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/app/setup/page.tsx",
+          "includes": ["loadSetupData", "createOperationalUser"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua de usuarios, departamentos, setores, canais e permissoes."]
+    },
+    {
+      "addressId": "PNT-CASA-SETUP-USERS-001",
+      "addressCode": "PNT-01-70-10-001",
+      "level": "house",
+      "name": "Setup / Usuarios e acessos",
+      "module": "setup",
+      "owner": "Setup Core",
+      "parentAddressCode": "PNT-01-70-10-000",
+      "houseType": "data-contract",
+      "routes": ["/setup", "/api/setup/users"],
+      "paths": ["apps/hub/app/setup/page.tsx", "apps/hub/app/api/setup/users/route.ts", "apps/hub/lib/setup/data.ts", "apps/hub/lib/setup/types.ts"],
+      "allowedChangedPaths": ["apps/hub/app/setup/page.tsx", "apps/hub/app/api/setup/users/route.ts", "apps/hub/lib/setup/data.ts", "apps/hub/lib/setup/types.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/app/setup/page.tsx",
+          "includes": ["createOperationalUser"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "protected",
+      "notes": ["Casa sensivel por tocar usuarios e acessos; Supabase/Auth real segue bloqueado sem autorizacao."]
+    },
+    {
+      "addressId": "PNT-BRR-APOLO-01",
+      "addressCode": "PNT-01-80-00-000",
+      "level": "district",
+      "name": "Apolo",
+      "module": "apolo",
+      "owner": "Apolo Core",
+      "parentAddressCode": "PNT-01-00-00-000",
+      "houseType": null,
+      "routes": ["/apolo", "/api/apolo/search"],
+      "paths": ["apps/hub/modules/apolo/**", "apps/hub/lib/apolo/**", "apps/hub/app/apolo/**", "apps/hub/app/api/apolo/**"],
+      "allowedChangedPaths": ["apps/hub/modules/apolo/**", "apps/hub/lib/apolo/**", "apps/hub/app/apolo/**", "apps/hub/app/api/apolo/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/apolo/ApoloPage.tsx",
+          "includes": ["ApoloTab"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Bairro de CRM, entidades, relacionamento e busca C2X."]
+    },
+    {
+      "addressId": "PNT-RUA-APOLO-CRM-01",
+      "addressCode": "PNT-01-80-10-000",
+      "level": "street",
+      "name": "Apolo / CRM e busca",
+      "module": "apolo",
+      "owner": "Apolo Core",
+      "parentAddressCode": "PNT-01-80-00-000",
+      "houseType": null,
+      "routes": ["/apolo", "/api/apolo/search", "/api/apolo/relationships"],
+      "paths": ["apps/hub/modules/apolo/ApoloPage.tsx", "apps/hub/lib/apolo/**", "apps/hub/app/api/apolo/search/route.ts", "apps/hub/app/api/apolo/relationships/route.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/apolo/ApoloPage.tsx", "apps/hub/lib/apolo/**", "apps/hub/app/api/apolo/search/route.ts", "apps/hub/app/api/apolo/relationships/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/apolo/ApoloPage.tsx",
+          "includes": ["apoloScreens"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua para consulta, relacionamento e hidratacao de perfis Apolo."]
+    },
+    {
+      "addressId": "PNT-CASA-APOLO-SEARCH-001",
+      "addressCode": "PNT-01-80-10-001",
+      "level": "house",
+      "name": "Apolo / CRM / Busca",
+      "module": "apolo",
+      "owner": "Apolo Core",
+      "parentAddressCode": "PNT-01-80-10-000",
+      "houseType": "api-route",
+      "routes": ["/apolo", "/api/apolo/search"],
+      "paths": ["apps/hub/modules/apolo/ApoloPage.tsx", "apps/hub/app/api/apolo/search/route.ts", "apps/hub/lib/apolo/server.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/apolo/ApoloPage.tsx", "apps/hub/app/api/apolo/search/route.ts", "apps/hub/lib/apolo/server.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/app/api/apolo/search/route.ts",
+          "includes": ["GET"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Casa de busca Apolo; sync C2X real continua escopo sensivel quando envolver API externa."]
+    },
+    {
+      "addressId": "PNT-BRR-ARES-01",
+      "addressCode": "PNT-01-90-00-000",
+      "level": "district",
+      "name": "Ares",
+      "module": "ares",
+      "owner": "Ares Core",
+      "parentAddressCode": "PNT-01-00-00-000",
+      "houseType": null,
+      "routes": ["/ares", "/financeiro", "/api/ares/snapshot"],
+      "paths": ["apps/hub/modules/ares/**", "apps/hub/lib/ares/**", "apps/hub/app/ares/**", "apps/hub/app/financeiro/**", "apps/hub/app/api/ares/**"],
+      "allowedChangedPaths": ["apps/hub/modules/ares/**", "apps/hub/lib/ares/**", "apps/hub/app/ares/**", "apps/hub/app/financeiro/**", "apps/hub/app/api/ares/**", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/ares/AresPage.tsx",
+          "includes": ["AresPage"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Bairro financeiro Ares; banco/migrations continuam bloqueados sem autorizacao."]
+    },
+    {
+      "addressId": "PNT-RUA-ARES-FINANCEIRO-01",
+      "addressCode": "PNT-01-90-10-000",
+      "level": "street",
+      "name": "Ares / Financeiro",
+      "module": "ares",
+      "owner": "Ares Core",
+      "parentAddressCode": "PNT-01-90-00-000",
+      "houseType": null,
+      "routes": ["/ares", "/financeiro", "/api/ares/snapshot", "/api/ares/entries"],
+      "paths": ["apps/hub/modules/ares/AresPage.tsx", "apps/hub/lib/ares/**", "apps/hub/app/api/ares/snapshot/route.ts", "apps/hub/app/api/ares/entries/route.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/ares/AresPage.tsx", "apps/hub/lib/ares/**", "apps/hub/app/api/ares/snapshot/route.ts", "apps/hub/app/api/ares/entries/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/ares/AresPage.tsx",
+          "includes": ["AresPage", "AresLaunchPanel"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "active",
+      "notes": ["Rua principal de operacao financeira Ares."]
+    },
+    {
+      "addressId": "PNT-CASA-ARES-SETUP-FINANCEIRO-001",
+      "addressCode": "PNT-01-90-10-001",
+      "level": "house",
+      "name": "Ares / Financeiro / Setup financeiro",
+      "module": "ares",
+      "owner": "Ares Core",
+      "parentAddressCode": "PNT-01-90-10-000",
+      "houseType": "ui-panel",
+      "routes": ["/ares", "/api/ares/financial-bases"],
+      "paths": ["apps/hub/modules/ares/AresPage.tsx", "apps/hub/app/api/ares/financial-bases/route.ts", "apps/hub/app/api/ares/dimensions/route.ts"],
+      "allowedChangedPaths": ["apps/hub/modules/ares/AresPage.tsx", "apps/hub/app/api/ares/financial-bases/route.ts", "apps/hub/app/api/ares/dimensions/route.ts", "docs/operations/**"],
+      "protectedPaths": ["apps/hub/modules/guardian/**", "apps/hub/modules/caredesk/**", "apps/hub/modules/chronos/**", "apps/hub/components/pulsex/**"],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/ares/AresPage.tsx",
+          "includes": ["StructureSection", "AresFinancialBaseSetup"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": ["npm.cmd run check-types:hub", "npm.cmd run lint:hub", "npm.cmd run build --workspace @repo/hub", "git diff --check"],
+      "releaseDomain": "https://c2x.app.br",
+      "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+      "status": "protected",
+      "notes": ["Casa de estrutura financeira; banco e migrations seguem bloqueados sem autorizacao explicita."]
+    }
+  ],
+  "globalBlockingRules": [
+    "Se o diff tocar CEP fora dos houseAddressCodes declarados, bloquear.",
+    "Se a cidade/base ativa divergir do cityAddressCode declarado, bloquear.",
+    "Se o worktree ou pacote misturar modulos fora do endereco autorizado, separar pacote limpo ou bloquear.",
+    "Se envolver Vercel, Supabase, banco, dominio, alias, production deployment, migration, env ou secret, iniciar BLOQUEADO ate autorizacao explicita do Lucas.",
+    "Nada sobe em producao sem commit limpo, sourceWorktreeClean true e Production Module Safety Gate PASS."
+  ]
+}

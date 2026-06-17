@@ -1,9 +1,50 @@
 "use client";
 
 import { HubShell } from "@/layouts/hub-shell";
+import {
+  HUB_PRESENCE_HEARTBEAT_MS,
+  markHubPresence,
+} from "@/lib/hub-presence";
 import { loadHubItTickets } from "@/lib/hub-it-tickets/client";
-import type { HubItTicket } from "@/lib/hub-it-tickets/types";
-import { HubItTicketsBoard } from "@/modules/squadops/HubItTicketsBoard";
+import {
+  EmptyState,
+  PanelTitle,
+} from "@/modules/squadops/blocks/shared/operations-ui";
+import {
+  formatIndicatorEvidence,
+  formatMetricMs,
+  getAverageResponseMs,
+  getCacheSummary,
+  getColdStartSummary,
+  getHighestPayloadCheck,
+  getMaxResponseMs,
+  getResponseChecksTone,
+  getSlowestCheck,
+  monitoringSourceTone,
+  payloadPerformanceTone,
+  performanceCardBorderClass,
+  performanceIconClass,
+  sortMonitoringChecksByLatest,
+  type PerformanceTone,
+} from "@/modules/squadops/blocks/monitoring/performance-utils";
+import {
+  OperationsAlertCenter,
+  OperationsAlertsDialog,
+} from "@/modules/squadops/blocks/monitoring/alerts-panel";
+import { MonitoringPeakPanel } from "@/modules/squadops/blocks/monitoring/peaks-panel";
+import {
+  getMonitoringSourceIcon,
+  getMonitoringSourceMeta,
+  getMonitoringSourceOrder,
+  MiniTrendBars,
+  MonitoringSourceGrid,
+  type MonitoringSourceSummary,
+} from "@/modules/squadops/blocks/monitoring/source-grid";
+import { HubItTicketsBoard } from "@/modules/squadops/blocks/helpdesk/helpdesk-board";
+import {
+  countItTicketsWaitingForZeus,
+  countOpenItTickets,
+} from "@/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary";
 import {
   getHubSupabaseClient,
   hubSupabaseConfig,
@@ -24,13 +65,32 @@ import {
   type EngineeringOperationsResponse,
 } from "@/lib/squadops/engineering-operations-parser";
 import {
-  buildReleaseCommitTemplate,
   buildReleaseProtocols,
   getReleaseProtocolEnvironmentLabel,
   getReleaseProtocolStatusLabel,
   type HubReleaseProtocol,
   type ReleaseProtocolStatus,
 } from "@/lib/squadops/release-protocols";
+import {
+  ReleaseModuleGroupSection,
+  type ReleaseModuleGroup,
+} from "@/modules/squadops/blocks/deploys/release-cards";
+import {
+  ProtocolRecordCard,
+  RecordsTable,
+  TimelinePanel,
+} from "@/modules/squadops/blocks/records/timeline-records";
+import {
+  AuditRoutineDetailDrawer,
+  AuditRoutinesPanel,
+} from "@/modules/squadops/blocks/audits/audit-routines";
+import {
+  PoAiDrawer,
+  PromptLibraryModal,
+  createPoAiMessage,
+  type PoAiChatMessage,
+  type PromptTemplate,
+} from "@/modules/squadops/blocks/po-ai/po-ai-panel";
 import { useAuth } from "@/providers/auth-provider";
 import type { HubUserContext } from "@repo/shared";
 import {
@@ -44,15 +104,12 @@ import type { BadgeVariant } from "@repo/uix";
 import {
   AlertTriangle,
   Activity,
-  BellRing,
   Bot,
-  CalendarDays,
   ChevronDown,
   ChevronRight,
   ClipboardCheck,
   Copy,
   Database,
-  EyeOff,
   FileText,
   GitCommitHorizontal,
   History,
@@ -60,20 +117,14 @@ import {
   LayoutGrid,
   Loader2,
   Maximize2,
-  MessageSquareText,
   Minimize2,
   Plus,
   RefreshCcw,
   Rocket,
   Search,
-  Send,
-  ServerCog,
   ShieldAlert,
   Sparkles,
-  TrendingUp,
   Upload,
-  WandSparkles,
-  Wifi,
   X,
 } from "lucide-react";
 import {
@@ -104,20 +155,6 @@ type ZeusView =
   | "timeline"
   | "audits"
   | "records";
-
-type CopilotAnswerSection = {
-  id: string;
-  items: string[];
-  title: string;
-  type: "module" | "prompt" | "risk" | "summary";
-};
-
-type PoAiChatMessage = {
-  content: string;
-  createdAt: string;
-  id: string;
-  role: "assistant" | "user";
-};
 
 type MonitoringIntervalMs = 0 | 10_000 | 30_000 | 60_000;
 
@@ -317,14 +354,6 @@ type HomologationSummary = {
   waiting: number;
 };
 
-type ReleaseModuleGroup = {
-  activityCount: number;
-  agent: string;
-  latestAt: string;
-  module: string;
-  protocols: HubReleaseProtocol[];
-};
-
 type HomologationModuleSummary = {
   approved: number;
   blocked: number;
@@ -435,6 +464,8 @@ const promptTargets = [
   "Hefesto",
 ] as const;
 
+type PromptTarget = (typeof promptTargets)[number];
+
 const alertFeedbackOptions = [
   { label: "Em analise", value: "em_analise" },
   { label: "Persiste", value: "persiste" },
@@ -447,16 +478,7 @@ const alertFeedbackOptions = [
   value: OperationsAlertFeedbackStatus;
 }[];
 
-type PromptTemplate = {
-  body: string;
-  description: string;
-  id: string;
-  label: string;
-  target: (typeof promptTargets)[number];
-  type: "deploy" | "daily" | "weekly" | "monthly" | "monitoring";
-};
-
-const promptTemplates: PromptTemplate[] = [
+const promptTemplates: PromptTemplate<PromptTarget>[] = [
   {
     id: "deploy-hefesto",
     label: "Producao por modulo",
@@ -836,12 +858,12 @@ export function ZeusPage({
   const [isCopilotLoading, setIsCopilotLoading] = useState(false);
   const [isPoAiOpen, setIsPoAiOpen] = useState(false);
   const [promptTarget, setPromptTarget] =
-    useState<(typeof promptTargets)[number]>("Hefesto");
+    useState<PromptTarget>("Hefesto");
   const [isPromptLibraryOpen, setIsPromptLibraryOpen] = useState(false);
   const [selectedPromptTemplateId, setSelectedPromptTemplateId] = useState(
     promptTemplates[0]!.id,
   );
-  const [activeView, setActiveView] = useState<ZeusView>("overview");
+  const [activeView, setActiveView] = useState<ZeusView>("itTickets");
   const [monitoringSnapshot, setMonitoringSnapshot] =
     useState<OperationsMonitoringSnapshot | null>(null);
   const [monitoringHistory, setMonitoringHistory] = useState<
@@ -900,6 +922,57 @@ export function ZeusPage({
       isActive = false;
     };
   }, [authAccessToken, canAccessZeus, profileStatus]);
+
+  useEffect(() => {
+    if (!canAccessZeus || profileStatus === "loading" || !zeusAccessToken) {
+      return;
+    }
+
+    let isMounted = true;
+
+    const markZeusOnline = () => {
+      if (!isMounted) {
+        return;
+      }
+
+      void markHubPresence({
+        metadata: {
+          activeView,
+          keepOnline: true,
+          module: "zeus",
+          surface: "operations-center",
+        },
+        reason: "heartbeat",
+        source: "zeus-operations-center",
+        status: "online",
+      }).catch(() => {
+        // Presenca nao deve interromper a operacao do Zeus.
+      });
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        markZeusOnline();
+      }
+    };
+
+    markZeusOnline();
+
+    const heartbeatId = window.setInterval(
+      markZeusOnline,
+      Math.max(15_000, HUB_PRESENCE_HEARTBEAT_MS - 5_000),
+    );
+
+    window.addEventListener("focus", markZeusOnline);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      isMounted = false;
+      window.clearInterval(heartbeatId);
+      window.removeEventListener("focus", markZeusOnline);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [activeView, canAccessZeus, profileStatus, zeusAccessToken]);
 
   useEffect(() => {
     if (profileStatus === "loading") {
@@ -2022,6 +2095,7 @@ export function ZeusPage({
           <HubItTicketsBoard
             accessToken={zeusAccessToken}
             isActive={activeView === "itTickets"}
+            onOpenPoAi={() => setIsPoAiOpen(true)}
             onTicketAttentionCountChange={setItTicketAttentionCount}
             onTicketCountChange={setItTicketCount}
           />
@@ -2039,6 +2113,8 @@ export function ZeusPage({
               />
               <TimelinePanel
                 emptyMessage="Sem registro recente para mostrar."
+                formatDateTime={formatOperationDateTime}
+                getStatusVariant={statusVariant}
                 limit={5}
                 onSelectRecord={setSelectedRecord}
                 records={records}
@@ -2127,6 +2203,8 @@ export function ZeusPage({
             <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.36fr)]">
               <TimelinePanel
                 emptyMessage="Nenhum registro encontrado para os filtros atuais."
+                formatDateTime={formatOperationDateTime}
+                getStatusVariant={statusVariant}
                 limit={16}
                 onSelectRecord={setSelectedRecord}
                 records={filteredRecords}
@@ -2153,6 +2231,8 @@ export function ZeusPage({
 
         {activeView === "audits" ? (
           <AuditRoutinesPanel
+            formatDateTime={formatOperationDateTime}
+            getStatusVariant={statusVariant}
             onSelectRoutine={setSelectedRoutine}
             routines={auditRoutines}
           />
@@ -2167,6 +2247,8 @@ export function ZeusPage({
             />
             <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.36fr)]">
               <RecordsTable
+                formatDateTime={formatOperationDateTime}
+                getStatusVariant={statusVariant}
                 records={filteredRecords.slice(0, 40)}
                 onSelectRecord={setSelectedRecord}
               />
@@ -2195,11 +2277,14 @@ export function ZeusPage({
         record={selectedRecord}
       />
       <AuditRoutineDetailDrawer
+        formatDateTime={formatOperationDateTime}
+        getStatusVariant={statusVariant}
         onClose={() => setSelectedRoutine(null)}
         routine={selectedRoutine}
       />
       <PoAiDrawer
         error={copilotError}
+        formatDateTime={formatOperationDateTime}
         isLoading={isCopilotLoading}
         isOpen={isPoAiOpen}
         messages={poAiMessages}
@@ -2208,6 +2293,7 @@ export function ZeusPage({
         onGeneratePrompt={() => setIsPromptLibraryOpen(true)}
         onQuestionChange={setCopilotQuestion}
         onTargetChange={setPromptTarget}
+        promptTargets={promptTargets}
         question={copilotQuestion}
         target={promptTarget}
       />
@@ -2238,10 +2324,6 @@ export function ZeusPage({
         protocol={selectedAlertProtocol}
         status={alertFeedbackStatus}
       />
-      <FloatingPoAiButton
-        isHidden={isPoAiOpen}
-        onClick={() => setIsPoAiOpen(true)}
-      />
     </>
   );
 
@@ -2254,33 +2336,6 @@ export function ZeusPage({
   }
 
   return <HubShell layoutMode="module">{pageContent}</HubShell>;
-}
-
-function FloatingPoAiButton({
-  isHidden,
-  onClick,
-}: {
-  isHidden: boolean;
-  onClick: () => void;
-}) {
-  if (isHidden) {
-    return null;
-  }
-
-  return (
-    <button
-      aria-label="Abrir PO AI"
-      className="fixed bottom-6 right-40 z-40 inline-flex h-12 items-center gap-3 rounded-2xl border border-[#A07C3B]/25 bg-white px-4 text-sm font-semibold text-[#7A5E2C] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-      onClick={onClick}
-      type="button"
-    >
-      <span className="relative grid size-8 place-items-center rounded-xl bg-[#A07C3B]/10 text-[#A07C3B]">
-        <Bot className="size-4" aria-hidden="true" />
-        <span className="absolute -right-0.5 -top-0.5 size-2.5 rounded-full bg-emerald-500 ring-2 ring-white" />
-      </span>
-      PO AI
-    </button>
-  );
 }
 
 function AlertProtocolFeedbackDrawer({
@@ -2483,23 +2538,6 @@ function getPoAiErrorMessage(error: Error) {
 
 function openHubModulesSidebar() {
   window.dispatchEvent(new Event("careli:toggle-module-launcher"));
-}
-
-function createPoAiMessage(
-  role: PoAiChatMessage["role"],
-  content: string,
-): PoAiChatMessage {
-  const id =
-    typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
-      ? crypto.randomUUID()
-      : `po-ai-${Date.now()}-${Math.random().toString(16).slice(2)}`;
-
-  return {
-    content,
-    createdAt: new Date().toISOString(),
-    id,
-    role,
-  };
 }
 
 function OperationsSourcePanel({
@@ -3283,6 +3321,7 @@ function DatabaseMonitoringView({
 
         <OperationsAlertCenter
           alertCount={visibleAlerts.length}
+          getRiskVariant={riskToBadgeVariant}
           highestAlert={highestVisibleAlert}
           latestNotification={bannerNotification ?? latestNotification}
           onOpen={() => setIsAlertsDialogOpen(true)}
@@ -3300,6 +3339,9 @@ function DatabaseMonitoringView({
         />
 
         <MonitoringSourceGrid
+          formatPayload={formatBytes}
+          formatStatus={generalStatusLabel}
+          getStatusVariant={statusToBadgeVariant}
           isTvMode={isTvMode}
           onSelectSource={setSelectedSourceId}
           sources={sourceCards}
@@ -3312,7 +3354,13 @@ function DatabaseMonitoringView({
               : "mt-5 grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.55fr)]"
           }
         >
-          <MonitoringPeakPanel checks={monitoringChecks} isTvMode={isTvMode} />
+          <MonitoringPeakPanel
+            checks={monitoringChecks}
+            formatDateTime={formatOperationDateTime}
+            formatPayload={formatBytes}
+            getRiskVariant={riskToBadgeVariant}
+            isTvMode={isTvMode}
+          />
           <MonitoringHotspotsPanel
             isTvMode={isTvMode}
             onSelectSource={setSelectedSourceId}
@@ -3327,12 +3375,19 @@ function DatabaseMonitoringView({
           alertProtocols={alertProtocols}
           alerts={visibleAlerts}
           copiedCommandId={copiedCommandId}
+          formatDateTime={formatOperationDateTime}
+          getFeedbackStatusLabel={alertFeedbackStatusLabel}
+          getFeedbackStatusVariant={alertFeedbackStatusVariant}
+          getRiskVariant={riskToBadgeVariant}
           ignoringProtocol={ignoringProtocol}
           notifications={visibleNotifications}
           onAcknowledgeProtocol={onAcknowledgeProtocol}
           onClose={() => setIsAlertsDialogOpen(false)}
           onCopyCommand={onCopyCommand}
           onIgnoreProtocol={onIgnoreProtocol}
+          onOpenAlert={(alert) =>
+            onOpenAlertProtocol(alertToProtocolSummary(alert))
+          }
           onOpenAlertProtocol={onOpenAlertProtocol}
           onOpenAlertProtocolByCode={onOpenAlertProtocolByCode}
           watcher={visibleWatcher}
@@ -3674,601 +3729,6 @@ function getPanteonIndicatorIcon(id: PanteonPerformanceIndicatorId) {
   return <RefreshCcw size={17} />;
 }
 
-function sortMonitoringChecksByLatest(checks: OperationsCheckMetric[]) {
-  return checks
-    .slice()
-    .sort(
-      (first, second) =>
-        new Date(second.checkedAt).getTime() -
-        new Date(first.checkedAt).getTime(),
-    );
-}
-
-function getSlowestCheck(checks: OperationsCheckMetric[]) {
-  return checks
-    .slice()
-    .sort((first, second) => second.responseMs - first.responseMs)[0];
-}
-
-function getHighestPayloadCheck(checks: OperationsCheckMetric[]) {
-  return checks
-    .slice()
-    .sort((first, second) => second.payloadBytes - first.payloadBytes)[0];
-}
-
-function getMaxResponseMs(checks: OperationsCheckMetric[]) {
-  return Math.max(0, ...checks.map((check) => check.responseMs));
-}
-
-function getAverageResponseMs(checks: OperationsCheckMetric[]) {
-  if (checks.length === 0) {
-    return 0;
-  }
-
-  return Math.round(
-    checks.reduce((total, check) => total + check.responseMs, 0) /
-      checks.length,
-  );
-}
-
-function formatMetricMs(value: number) {
-  return value > 0 ? `${value}ms` : "--";
-}
-
-function formatIndicatorEvidence(checks: OperationsCheckMetric[]) {
-  if (checks.length === 0) {
-    return "sem leitura";
-  }
-
-  return checks.map((check) => check.label).join(" / ");
-}
-
-function getResponseChecksTone(checks: OperationsCheckMetric[]): PerformanceTone {
-  if (checks.length === 0) {
-    return "neutral";
-  }
-
-  return responsePerformanceTone(getMaxResponseMs(checks));
-}
-
-function payloadPerformanceTone(
-  payloadRisk: OperationsCheckMetric["payloadRisk"],
-): PerformanceTone {
-  if (payloadRisk === "critico") {
-    return "red";
-  }
-
-  if (payloadRisk === "pesado" || payloadRisk === "atencao") {
-    return "yellow";
-  }
-
-  return "green";
-}
-
-function getColdStartSummary(
-  checks: OperationsCheckMetric[],
-): Pick<PanteonPerformanceIndicator, "detail" | "evidence" | "tone" | "value"> {
-  const checksById = new Map<string, OperationsCheckMetric[]>();
-
-  checks.forEach((check) => {
-    const currentChecks = checksById.get(check.id) ?? [];
-    currentChecks.push(check);
-    checksById.set(check.id, currentChecks);
-  });
-
-  const signals: OperationsCheckMetric[] = [];
-  let comparableSeries = 0;
-
-  checksById.forEach((series) => {
-    const orderedSeries = sortMonitoringChecksByLatest(series);
-    const latest = orderedSeries[0];
-    const previous = orderedSeries[1];
-
-    if (!latest || !previous) {
-      return;
-    }
-
-    comparableSeries += 1;
-
-    if (latest.responseMs > 1_500 && latest.responseMs - previous.responseMs > 800) {
-      signals.push(latest);
-    }
-  });
-
-  if (comparableSeries === 0) {
-    return {
-      detail: "Ainda falta serie temporal para inferir cold start.",
-      evidence: "comparativo pendente",
-      tone: "neutral",
-      value: "sem base",
-    };
-  }
-
-  if (signals.length === 0) {
-    return {
-      detail: "Sem salto brusco de latencia entre as ultimas leituras.",
-      evidence: `${comparableSeries} serie(s) comparada(s)`,
-      tone: "green",
-      value: "0 sinais",
-    };
-  }
-
-  return {
-    detail: `Pico brusco em ${signals
-      .slice(0, 2)
-      .map((check) => check.label)
-      .join(" / ")}.`,
-    evidence: `${comparableSeries} serie(s) comparada(s)`,
-    tone: signals.length > 1 ? "red" : "yellow",
-    value: `${signals.length} sinal(is)`,
-  };
-}
-
-function getCacheSummary(
-  checks: OperationsCheckMetric[],
-): Pick<PanteonPerformanceIndicator, "detail" | "evidence" | "tone" | "value"> {
-  const cacheReadings = checks
-    .map((check) => ({
-      check,
-      value: getCacheHeaderValue(check),
-    }))
-    .filter(
-      (item): item is { check: OperationsCheckMetric; value: string } =>
-        Boolean(item.value),
-    );
-
-  if (cacheReadings.length === 0) {
-    return {
-      detail: "Headers de cache ainda nao foram observados nas fontes atuais.",
-      evidence: "cache-control sem sinal",
-      tone: "neutral",
-      value: "sem sinal",
-    };
-  }
-
-  const hitCount = cacheReadings.filter((item) =>
-    normalizeSearchText(item.value).includes("hit"),
-  ).length;
-  const missCount = cacheReadings.filter((item) => {
-    const normalizedValue = normalizeSearchText(item.value);
-
-    return (
-      normalizedValue.includes("miss") ||
-      normalizedValue.includes("bypass") ||
-      normalizedValue.includes("stale")
-    );
-  }).length;
-
-  if (hitCount > 0) {
-    return {
-      detail: "Pelo menos uma fonte respondeu com cache aproveitado.",
-      evidence: `${cacheReadings.length} header(s) de cache`,
-      tone: "green",
-      value: `${hitCount} HIT`,
-    };
-  }
-
-  if (missCount > 0) {
-    return {
-      detail: "Cache observado, mas ainda sem reaproveitamento na leitura atual.",
-      evidence: `${cacheReadings.length} header(s) de cache`,
-      tone: "yellow",
-      value: `${missCount} MISS`,
-    };
-  }
-
-  return {
-    detail: `Cache declarado em ${cacheReadings[0]?.check.label ?? "fonte monitorada"}.`,
-    evidence: `${cacheReadings.length} header(s) de cache`,
-    tone: "green",
-    value: "ativo",
-  };
-}
-
-function getCacheHeaderValue(check: OperationsCheckMetric) {
-  const keys = [
-    "cacheStatus",
-    "hadesQueueCache",
-    "vercelCache",
-    "cacheControl",
-    "age",
-  ];
-
-  for (const key of keys) {
-    const value = check.meta?.[key];
-
-    if (typeof value === "string" && value.trim()) {
-      return value.trim();
-    }
-  }
-
-  return null;
-}
-
-type MonitoringSourceSummary = {
-  alertCount: number;
-  averageResponseMs: number;
-  checks: OperationsCheckMetric[];
-  currentChecks: OperationsCheckMetric[];
-  description: string;
-  endpointCount: number;
-  errorCount: number;
-  healthyCount: number;
-  id: string;
-  label: string;
-  lastCheckAt: string | null;
-  peakPayloadBytes: number;
-  peakResponseMs: number;
-  payloadBytes: number;
-  responseMs: number;
-  risk: OperationsRiskLevel | "nenhum";
-  status?: OperationsMonitoringSnapshot["cards"]["status"]["value"];
-  trend: number[];
-};
-
-const monitoringSourceOrder = [
-  "page",
-  "c2x",
-  "supabase",
-  "guardian-queue",
-  "protected-api",
-  "vercel",
-  "api",
-] as const;
-
-function MonitoringSourceGrid({
-  isTvMode,
-  onSelectSource,
-  sources,
-}: {
-  isTvMode: boolean;
-  onSelectSource: (sourceId: string) => void;
-  sources: MonitoringSourceSummary[];
-}) {
-  return (
-    <div className="mt-5">
-      <div className="mb-3 flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-[#A07C3B]">
-            Instancias monitoradas
-          </p>
-          <p className="m-0 mt-1 text-sm text-slate-500">
-            Clique em uma fonte para abrir tempo, payload, endpoint e picos.
-          </p>
-        </div>
-        <Badge variant="neutral">
-          {sources.length || 0} fonte(s) em leitura
-        </Badge>
-      </div>
-      {sources.length > 0 ? (
-        <div
-          className={`grid grid-cols-1 gap-3 md:grid-cols-2 ${
-            isTvMode ? "xl:grid-cols-5" : "xl:grid-cols-3 2xl:grid-cols-6"
-          }`}
-        >
-          {sources.map((source) => (
-            <MonitoringSourceCard
-              key={source.id}
-              onSelect={() => onSelectSource(source.id)}
-              source={source}
-            />
-          ))}
-        </div>
-      ) : (
-        <EmptyState message="Aguardando primeiro snapshot das fontes reais." />
-      )}
-    </div>
-  );
-}
-
-function MonitoringSourceCard({
-  onSelect,
-  source,
-}: {
-  onSelect: () => void;
-  source: MonitoringSourceSummary;
-}) {
-  const tone = monitoringSourceTone(source.risk, source.status);
-
-  return (
-    <button
-      className={`group min-w-0 rounded-xl border bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] ${performanceCardBorderClass(tone)}`}
-      onClick={onSelect}
-      type="button"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="m-0 truncate text-sm font-semibold text-slate-950">
-            {source.label}
-          </p>
-          <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
-            {source.description}
-          </p>
-        </div>
-        <span
-          className={`flex size-9 shrink-0 items-center justify-center rounded-lg ring-1 ${performanceIconClass(tone)}`}
-        >
-          {getMonitoringSourceIcon(source.id)}
-        </span>
-      </div>
-      <div className="mt-4 grid grid-cols-2 gap-2">
-        <div className="rounded-lg bg-slate-50/70 p-2 ring-1 ring-slate-200/70">
-          <p className="m-0 text-[0.65rem] font-semibold uppercase text-slate-400">
-            Tempo
-          </p>
-          <p className="m-0 mt-1 text-base font-semibold text-slate-950">
-            {source.responseMs}ms
-          </p>
-        </div>
-        <div className="rounded-lg bg-slate-50/70 p-2 ring-1 ring-slate-200/70">
-          <p className="m-0 text-[0.65rem] font-semibold uppercase text-slate-400">
-            Payload
-          </p>
-          <p className="m-0 mt-1 truncate text-base font-semibold text-slate-950">
-            {formatBytes(source.payloadBytes)}
-          </p>
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Badge variant={statusToBadgeVariant(source.status)}>
-          {generalStatusLabel(source.status)}
-        </Badge>
-        <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
-          {source.healthyCount}/{source.endpointCount} ok
-        </span>
-        {source.alertCount > 0 ? (
-          <span
-            className={`rounded-full px-2 py-1 text-[0.68rem] font-semibold ring-1 ${performancePillClass(tone)}`}
-          >
-            {source.alertCount} alerta(s)
-          </span>
-        ) : null}
-      </div>
-      <div className="mt-4">
-        <MiniTrendBars values={source.trend} />
-      </div>
-    </button>
-  );
-}
-
-function MonitoringPeakPanel({
-  checks,
-  isTvMode,
-}: {
-  checks: OperationsCheckMetric[];
-  isTvMode: boolean;
-}) {
-  const series = useMemo(
-    () =>
-      checks
-        .slice(0, isTvMode ? 48 : 72)
-        .sort(
-          (first, second) =>
-            new Date(first.checkedAt).getTime() -
-            new Date(second.checkedAt).getTime(),
-        ),
-    [checks, isTvMode],
-  );
-  const peaks = useMemo(
-    () =>
-      checks
-        .slice(0, 160)
-        .sort((first, second) => second.responseMs - first.responseMs)
-        .slice(0, isTvMode ? 3 : 5),
-    [checks, isTvMode],
-  );
-  const maxResponse = Math.max(1, ...peaks.map((check) => check.responseMs));
-  const maxPayloadCheck = checks
-    .slice(0, 160)
-    .sort((first, second) => second.payloadBytes - first.payloadBytes)[0];
-
-  return (
-    <Surface
-      bordered
-      className={`min-w-0 border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
-        isTvMode ? "min-h-0 overflow-hidden p-4" : "p-5"
-      }`}
-    >
-      <PanelTitle
-        eyebrow="picos recentes"
-        icon={<TrendingUp size={18} />}
-        title="Picos de performance"
-      />
-      <div className="mt-4">
-        <PerformanceLineChart checks={series} isTvMode={isTvMode} />
-      </div>
-      <div className={`mt-4 grid gap-3 ${isTvMode ? "grid-cols-3" : ""}`}>
-        {peaks.length > 0 ? (
-          peaks.map((check) => (
-            <div
-              className="rounded-xl border border-slate-200/70 bg-slate-50/50 p-3"
-              key={`${check.id}-${check.checkedAt}-peak`}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="min-w-0">
-                  <p className="m-0 truncate text-sm font-semibold text-slate-950">
-                    {check.label}
-                  </p>
-                  <p className="m-0 mt-1 text-xs text-slate-500">
-                    {check.module} / {formatOperationDateTime(check.checkedAt)}
-                  </p>
-                </div>
-                <Badge variant={riskToBadgeVariant(check.risk)}>
-                  {check.risk}
-                </Badge>
-              </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white ring-1 ring-slate-200/70">
-                <div
-                  className={`h-full rounded-full ${responsePerformanceBarClass(check.responseMs)}`}
-                  style={{
-                    width: `${Math.max(8, (check.responseMs / maxResponse) * 100)}%`,
-                  }}
-                />
-              </div>
-              <div className="mt-2 flex items-center justify-between text-xs font-semibold text-slate-600">
-                <span>{check.responseMs}ms</span>
-                <span>{formatBytes(check.payloadBytes)}</span>
-              </div>
-            </div>
-          ))
-        ) : (
-          <EmptyState message="Sem picos registrados nesta sessao." />
-        )}
-      </div>
-      {maxPayloadCheck && !isTvMode ? (
-        <p className="m-0 mt-4 rounded-xl bg-yellow-50 p-3 text-xs leading-5 text-slate-600 ring-1 ring-yellow-200">
-          Maior payload recente:{" "}
-          <strong className="text-slate-950">{maxPayloadCheck.label}</strong>{" "}
-          com {formatBytes(maxPayloadCheck.payloadBytes)}.
-        </p>
-      ) : null}
-    </Surface>
-  );
-}
-
-function PerformanceLineChart({
-  checks,
-  isTvMode,
-}: {
-  checks: OperationsCheckMetric[];
-  isTvMode: boolean;
-}) {
-  const visibleChecks = checks.filter((check) => Number.isFinite(check.responseMs));
-  const maxResponse = Math.max(
-    1,
-    ...visibleChecks.map((check) => check.responseMs),
-  );
-  const minResponse = Math.min(
-    maxResponse,
-    ...visibleChecks.map((check) => check.responseMs),
-  );
-  const range = Math.max(1, maxResponse - minResponse);
-  const tone = responsePerformanceTone(maxResponse);
-  const colors = performanceChartColors(tone);
-  const points = visibleChecks.map((check, index) => {
-    const x =
-      visibleChecks.length === 1
-        ? 50
-        : (index / (visibleChecks.length - 1)) * 100;
-    const y = 48 - ((check.responseMs - minResponse) / range) * 38;
-
-    return { check, x, y };
-  });
-  const linePoints = points
-    .map((point) => `${point.x.toFixed(2)},${point.y.toFixed(2)}`)
-    .join(" ");
-  const firstPoint = points[0] ?? null;
-  const lastPoint = points[points.length - 1] ?? null;
-  const areaPath =
-    firstPoint && lastPoint
-      ? `M ${firstPoint.x.toFixed(2)} 54 L ${points
-          .map((point) => `${point.x.toFixed(2)} ${point.y.toFixed(2)}`)
-          .join(" L ")} L ${lastPoint.x.toFixed(2)} 54 Z`
-      : "";
-  const latestCheck = visibleChecks[visibleChecks.length - 1] ?? null;
-  const previousCheck = visibleChecks[visibleChecks.length - 2] ?? null;
-  const delta =
-    latestCheck && previousCheck
-      ? latestCheck.responseMs - previousCheck.responseMs
-      : 0;
-
-  if (visibleChecks.length === 0) {
-    return <EmptyState message="Aguardando serie temporal de performance." />;
-  }
-
-  return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <p className="m-0 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-400">
-            Curva de resposta
-          </p>
-          <p className="m-0 mt-1 text-2xl font-semibold text-slate-950">
-            {maxResponse}ms
-          </p>
-        </div>
-        <div className="flex flex-wrap justify-end gap-2 text-xs font-semibold">
-          <span className={`rounded-full px-2.5 py-1 ring-1 ${performancePillClass(tone)}`}>
-            pico {maxResponse}ms
-          </span>
-          <span className="rounded-full bg-slate-50 px-2.5 py-1 text-slate-500 ring-1 ring-slate-200/70">
-            {visibleChecks.length} checks
-          </span>
-          {latestCheck ? (
-            <span className="rounded-full bg-slate-50 px-2.5 py-1 text-slate-500 ring-1 ring-slate-200/70">
-              ultimo {latestCheck.responseMs}ms
-            </span>
-          ) : null}
-        </div>
-      </div>
-      <div className={`mt-4 ${isTvMode ? "h-28" : "h-40"}`}>
-        <svg
-          aria-label="Grafico de linha dos picos de performance"
-          className="h-full w-full overflow-visible"
-          preserveAspectRatio="none"
-          role="img"
-          viewBox="0 0 100 56"
-        >
-          <defs>
-            <linearGradient id="performance-area" x1="0" x2="0" y1="0" y2="1">
-              <stop offset="0%" stopColor={colors.area} stopOpacity="0.28" />
-              <stop offset="100%" stopColor={colors.area} stopOpacity="0.02" />
-            </linearGradient>
-          </defs>
-          {[10, 22, 34, 46].map((y) => (
-            <line
-              key={y}
-              stroke="#e2e8f0"
-              strokeDasharray="2 3"
-              strokeWidth="0.35"
-              x1="0"
-              x2="100"
-              y1={y}
-              y2={y}
-            />
-          ))}
-          {areaPath ? <path d={areaPath} fill="url(#performance-area)" /> : null}
-          <polyline
-            fill="none"
-            points={linePoints}
-            stroke={colors.stroke}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth="1.8"
-            vectorEffect="non-scaling-stroke"
-          />
-          {points.map((point, index) => {
-            const isPeak = point.check.responseMs === maxResponse;
-            const isLatest = index === points.length - 1;
-
-            return (
-              <circle
-                cx={point.x}
-                cy={point.y}
-                fill={isPeak || isLatest ? colors.stroke : "#ffffff"}
-                key={`${point.check.id}-${point.check.checkedAt}-${index}`}
-                r={isPeak ? 1.9 : isLatest ? 1.6 : 1.1}
-                stroke={colors.stroke}
-                strokeWidth="0.7"
-                vectorEffect="non-scaling-stroke"
-              />
-            );
-          })}
-        </svg>
-      </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-500">
-        <span>
-          menor {minResponse}ms / maior {maxResponse}ms
-        </span>
-        <span className={delta > 0 ? "text-yellow-700" : "text-emerald-700"}>
-          {delta > 0 ? "+" : ""}
-          {delta}ms no ultimo check
-        </span>
-      </div>
-    </div>
-  );
-}
-
 function MonitoringHotspotsPanel({
   isTvMode,
   onSelectSource,
@@ -4448,44 +3908,6 @@ function MonitoringDetailMetric({
   );
 }
 
-function MiniTrendBars({
-  tall = false,
-  values,
-}: {
-  tall?: boolean;
-  values: number[];
-}) {
-  const visibleValues = values.slice(-18);
-  const maxValue = Math.max(1, ...visibleValues);
-
-  if (visibleValues.length === 0) {
-    return (
-      <div
-        className={`flex ${tall ? "h-20" : "h-11"} items-center justify-center rounded-lg bg-slate-50 text-xs font-semibold text-slate-400 ring-1 ring-slate-200/70`}
-      >
-        sem historico
-      </div>
-    );
-  }
-
-  return (
-    <div
-      className={`flex ${tall ? "h-20" : "h-11"} items-end gap-1 rounded-lg bg-slate-50/80 p-2 ring-1 ring-slate-200/70`}
-    >
-      {visibleValues.map((value, index) => (
-        <span
-          aria-label={`${value}ms`}
-          className={`min-w-1 flex-1 rounded-t ${responsePerformanceBarClass(value)}`}
-          key={`${value}-${index}`}
-          style={{
-            height: `${Math.max(12, (value / maxValue) * 100)}%`,
-          }}
-        />
-      ))}
-    </div>
-  );
-}
-
 function MonitoringIntervalControl({
   intervalMs,
   onChange,
@@ -4520,655 +3942,6 @@ function MonitoringIntervalControl({
         </button>
       ))}
     </div>
-  );
-}
-
-function OperationsAlertCenter({
-  alertCount,
-  highestAlert,
-  latestNotification,
-  onOpen,
-}: {
-  alertCount: number;
-  highestAlert: OperationsAlert | null;
-  latestNotification: OpsWatcherDecision | null;
-  onOpen: () => void;
-}) {
-  const hasAlert = alertCount > 0 || Boolean(latestNotification?.notifyLucas);
-  const title = highestAlert?.title ?? latestNotification?.message ?? "Sem alerta operacional ativo";
-  const risk = highestAlert?.level ?? latestNotification?.risk ?? "baixo";
-
-  return (
-    <button
-      className={`mt-4 flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-left transition-colors ${
-        hasAlert
-          ? "border-amber-200 bg-amber-50 hover:bg-amber-100/70"
-          : "border-slate-200/70 bg-slate-50/70 hover:bg-slate-100/70"
-      }`}
-      onClick={onOpen}
-      type="button"
-    >
-      <div className="flex min-w-0 items-start gap-3">
-        <span
-          className={`flex size-10 shrink-0 items-center justify-center rounded-lg ring-1 ${
-            hasAlert
-              ? "bg-white text-amber-700 ring-amber-200"
-              : "bg-white text-slate-500 ring-slate-200"
-          }`}
-        >
-          <BellRing className="size-4" />
-        </span>
-        <div className="min-w-0">
-          <p className="m-0 text-xs font-semibold uppercase text-slate-500">
-            Alertas operacionais
-          </p>
-          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
-            {title}
-          </p>
-          <p className="m-0 mt-1 text-xs text-slate-500">
-            {hasAlert
-              ? "Abrir popup para confirmar leitura, ignorar, registrar devolutiva ou gerar prompt."
-              : "Abrir popup para consultar historico e protocolos de alertas."}
-          </p>
-        </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-2">
-        <Badge variant={riskToBadgeVariant(risk)}>{risk}</Badge>
-        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-          {alertCount} ativo(s)
-        </span>
-        <ChevronRight className="size-4 text-[#A07C3B]" />
-      </div>
-    </button>
-  );
-}
-
-function OperationsAlertsDialog({
-  acknowledgingProtocol,
-  alertProtocols,
-  alerts,
-  copiedCommandId,
-  ignoringProtocol,
-  notifications,
-  onAcknowledgeProtocol,
-  onClose,
-  onCopyCommand,
-  onIgnoreProtocol,
-  onOpenAlertProtocol,
-  onOpenAlertProtocolByCode,
-  watcher,
-}: {
-  acknowledgingProtocol: string | null;
-  alertProtocols: OperationsAlertProtocolSummary[];
-  alerts: OperationsAlert[];
-  copiedCommandId: string | null;
-  ignoringProtocol: string | null;
-  notifications: OpsWatcherDecision[];
-  onAcknowledgeProtocol: (protocolCode?: string) => void;
-  onClose: () => void;
-  onCopyCommand: (command: string, id: string) => void;
-  onIgnoreProtocol: (protocolCode?: string) => void;
-  onOpenAlertProtocol: (protocol: OperationsAlertProtocolSummary) => void;
-  onOpenAlertProtocolByCode: (protocolCode?: string) => void;
-  watcher: OpsWatcherDecision | null;
-}) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[2px]">
-      <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-2xl">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
-          <PanelTitle
-            eyebrow={`${alerts.length} ativo(s) / ${alertProtocols.length} protocolo(s)`}
-            icon={<BellRing size={18} />}
-            title="Central de alertas"
-          />
-          <button
-            aria-label="Fechar alertas"
-            className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
-            onClick={onClose}
-            type="button"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          <div className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,1fr)_minmax(22rem,0.38fr)]">
-            <OperationsAlertsPanel
-              acknowledgingProtocol={acknowledgingProtocol}
-              alerts={alerts}
-              copiedCommandId={copiedCommandId}
-              ignoringProtocol={ignoringProtocol}
-              onAcknowledgeProtocol={onAcknowledgeProtocol}
-              onCopyCommand={onCopyCommand}
-              onIgnoreProtocol={onIgnoreProtocol}
-              onOpenProtocol={(alert) =>
-                onOpenAlertProtocol(alertToProtocolSummary(alert))
-              }
-            />
-            <OpsWatcherPanel
-              acknowledgingProtocol={acknowledgingProtocol}
-              copiedCommandId={copiedCommandId}
-              ignoringProtocol={ignoringProtocol}
-              notifications={notifications}
-              onAcknowledgeProtocol={onAcknowledgeProtocol}
-              onCopyCommand={onCopyCommand}
-              onIgnoreProtocol={onIgnoreProtocol}
-              onOpenProtocol={onOpenAlertProtocolByCode}
-              watcher={watcher}
-            />
-          </div>
-          <div className="mt-5">
-            <AlertProtocolsHistoryPanel
-              copiedCommandId={copiedCommandId}
-              onCopyCommand={onCopyCommand}
-              onOpenProtocol={onOpenAlertProtocol}
-              protocols={alertProtocols}
-            />
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function OperationsAlertsPanel({
-  acknowledgingProtocol,
-  alerts,
-  copiedCommandId,
-  ignoringProtocol,
-  onAcknowledgeProtocol,
-  onCopyCommand,
-  onIgnoreProtocol,
-  onOpenProtocol,
-}: {
-  acknowledgingProtocol: string | null;
-  alerts: OperationsAlert[];
-  copiedCommandId: string | null;
-  ignoringProtocol: string | null;
-  onAcknowledgeProtocol: (protocolCode?: string) => void;
-  onCopyCommand: (command: string, id: string) => void;
-  onIgnoreProtocol: (protocolCode?: string) => void;
-  onOpenProtocol: (alert: OperationsAlert) => void;
-}) {
-  return (
-    <Surface
-      bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-    >
-      <PanelTitle
-        eyebrow={`${alerts.length} alertas`}
-        icon={<BellRing size={18} />}
-        title="Alertas operacionais"
-      />
-      <div className="mt-4 grid max-h-[54vh] gap-3 overflow-y-auto pr-1">
-        {alerts.length > 0 ? (
-          alerts.map((alert) => (
-            <article
-              className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-              key={alert.id}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="m-0 text-sm font-semibold text-slate-950">
-                    {alert.title}
-                  </p>
-                  <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-                    {alert.module} / {alert.origin}
-                  </p>
-                  <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-                    Registro: {formatOperationDateTime(alert.generatedAt)}
-                    {alert.lastSeenAt && alert.lastSeenAt !== alert.generatedAt
-                      ? ` / ultima: ${formatOperationDateTime(alert.lastSeenAt)}`
-                      : ""}
-                  </p>
-                  <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="rounded-full bg-[#A07C3B]/10 px-2 py-1 text-[0.68rem] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                      {alert.protocol}
-                    </span>
-                    <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
-                      {alertFeedbackStatusLabel(
-                        alert.technicalFeedbackStatus ?? "pendente",
-                      )}
-                    </span>
-                    {alert.occurrenceCount ? (
-                      <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
-                        {alert.occurrenceCount}x
-                      </span>
-                    ) : null}
-                    <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
-                      Analise: {alert.analysis.label}
-                    </span>
-                  </div>
-                </div>
-                <Badge variant={riskToBadgeVariant(alert.level)}>
-                  {alert.level}
-                </Badge>
-              </div>
-              <p className="m-0 mt-3 text-xs leading-5 text-slate-600">
-                {alert.impact}
-              </p>
-              <p className="m-0 mt-2 rounded-lg bg-slate-50/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
-                {alert.recommendation}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-500">
-                  Agente: {alert.recommendedAgent}
-                </span>
-                <div className="flex items-center gap-2">
-                  <Tooltip content="Confirmar leitura" placement="top">
-                    <button
-                      aria-label={`Confirmar leitura do protocolo ${alert.protocol}`}
-                      className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={acknowledgingProtocol === alert.protocol}
-                      onClick={() => onAcknowledgeProtocol(alert.protocol)}
-                      type="button"
-                    >
-                      {acknowledgingProtocol === alert.protocol ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <ClipboardCheck className="size-4" />
-                      )}
-                    </button>
-                  </Tooltip>
-                  <Tooltip
-                    content="Registrar devolutiva tecnica"
-                    placement="top"
-                  >
-                    <button
-                      aria-label={`Registrar devolutiva tecnica do protocolo ${alert.protocol}`}
-                      className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-                      onClick={() => onOpenProtocol(alert)}
-                      type="button"
-                    >
-                      <MessageSquareText className="size-4" />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="Ignorar alerta" placement="top">
-                    <button
-                      aria-label={`Ignorar protocolo ${alert.protocol}`}
-                      className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                      disabled={ignoringProtocol === alert.protocol}
-                      onClick={() => onIgnoreProtocol(alert.protocol)}
-                      type="button"
-                    >
-                      {ignoringProtocol === alert.protocol ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <EyeOff className="size-4" />
-                      )}
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="Criar prompt para agente" placement="top">
-                    <button
-                      aria-label={`Criar prompt para ${alert.recommendedAgent}`}
-                      className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
-                        copiedCommandId === alert.id ? "bg-[#A07C3B]/10" : ""
-                      }`}
-                      onClick={() => onCopyCommand(alert.command, alert.id)}
-                      type="button"
-                    >
-                      <WandSparkles className="size-4" />
-                    </button>
-                  </Tooltip>
-                </div>
-              </div>
-            </article>
-          ))
-        ) : (
-          <EmptyState message="Sem alerta operacional ativo." />
-        )}
-      </div>
-    </Surface>
-  );
-}
-
-function OpsWatcherPanel({
-  acknowledgingProtocol,
-  copiedCommandId,
-  ignoringProtocol,
-  notifications,
-  onAcknowledgeProtocol,
-  onCopyCommand,
-  onIgnoreProtocol,
-  onOpenProtocol,
-  watcher,
-}: {
-  acknowledgingProtocol: string | null;
-  copiedCommandId: string | null;
-  ignoringProtocol: string | null;
-  notifications: OpsWatcherDecision[];
-  onAcknowledgeProtocol: (protocolCode?: string) => void;
-  onCopyCommand: (command: string, id: string) => void;
-  onIgnoreProtocol: (protocolCode?: string) => void;
-  onOpenProtocol: (protocolCode?: string) => void;
-  watcher: OpsWatcherDecision | null;
-}) {
-  return (
-    <Surface
-      bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-    >
-      <PanelTitle
-        eyebrow={watcher ? watcher.status : "aguardando"}
-        icon={<Activity size={18} />}
-        title="Ops Watcher"
-      />
-      {watcher ? (
-        <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <p className="m-0 text-sm font-semibold leading-6 text-slate-950">
-              {watcher.message}
-            </p>
-            <Badge variant={riskToBadgeVariant(watcher.risk)}>
-              {watcher.risk}
-            </Badge>
-          </div>
-          <p className="m-0 mt-3 text-xs leading-5 text-slate-600">
-            Motivo: {watcher.reason}
-          </p>
-          <p className="m-0 mt-2 text-xs font-semibold text-slate-500">
-            Agente recomendado: {watcher.agent}
-          </p>
-          {watcher.protocol ? (
-            <span className="mt-3 inline-flex rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-              {watcher.protocol}
-            </span>
-          ) : null}
-          <div className="mt-4 flex items-center gap-2">
-            {watcher.protocol ? (
-              <>
-                <Tooltip content="Confirmar leitura" placement="top">
-                  <button
-                    aria-label={`Confirmar leitura do protocolo ${watcher.protocol}`}
-                    className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={acknowledgingProtocol === watcher.protocol}
-                    onClick={() => onAcknowledgeProtocol(watcher.protocol)}
-                    type="button"
-                  >
-                    {acknowledgingProtocol === watcher.protocol ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <ClipboardCheck className="size-4" />
-                    )}
-                  </button>
-                </Tooltip>
-                <Tooltip content="Registrar devolutiva tecnica" placement="top">
-                  <button
-                    aria-label={`Registrar devolutiva tecnica do protocolo ${watcher.protocol}`}
-                    className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-                    onClick={() => onOpenProtocol(watcher.protocol)}
-                    type="button"
-                  >
-                    <MessageSquareText className="size-4" />
-                  </button>
-                </Tooltip>
-                <Tooltip content="Ignorar alerta" placement="top">
-                  <button
-                    aria-label={`Ignorar protocolo ${watcher.protocol}`}
-                    className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    disabled={ignoringProtocol === watcher.protocol}
-                    onClick={() => onIgnoreProtocol(watcher.protocol)}
-                    type="button"
-                  >
-                    {ignoringProtocol === watcher.protocol ? (
-                      <Loader2 className="size-4 animate-spin" />
-                    ) : (
-                      <EyeOff className="size-4" />
-                    )}
-                  </button>
-                </Tooltip>
-              </>
-            ) : null}
-            <Tooltip content="Criar prompt para agente" placement="top">
-              <button
-                aria-label={`Criar prompt para ${watcher.agent}`}
-                className={`inline-flex size-9 items-center justify-center rounded-lg bg-[#101820] text-white transition-colors hover:bg-[#1b2533] ${
-                  copiedCommandId === watcher.dedupeKey
-                    ? "ring-2 ring-[#A07C3B]/30"
-                    : ""
-                }`}
-                onClick={() =>
-                  onCopyCommand(watcher.command, watcher.dedupeKey)
-                }
-                type="button"
-              >
-                <WandSparkles className="size-4" />
-              </button>
-            </Tooltip>
-          </div>
-        </div>
-      ) : (
-        <EmptyState message="Clique em Analisar agora para rodar o watcher." />
-      )}
-
-      <div className="mt-5">
-        <p className="m-0 text-xs font-semibold uppercase text-slate-400">
-          Historico de notificacoes
-        </p>
-        <div className="mt-3 grid max-h-64 gap-2 overflow-y-auto pr-1">
-          {notifications.length > 0 ? (
-            notifications.map((notification) => (
-              <div
-                className="rounded-xl border border-slate-200/70 bg-white p-3 text-xs leading-5 text-slate-600"
-                key={`${notification.dedupeKey}-${notification.generatedAt}`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-slate-950">
-                    {formatOperationDateTime(notification.generatedAt)}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    {notification.protocol ? (
-                      <>
-                        <Tooltip content="Confirmar leitura" placement="top">
-                          <button
-                            aria-label={`Confirmar leitura do protocolo ${notification.protocol}`}
-                            className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={
-                              acknowledgingProtocol === notification.protocol
-                            }
-                            onClick={() =>
-                              onAcknowledgeProtocol(notification.protocol)
-                            }
-                            type="button"
-                          >
-                            {acknowledgingProtocol === notification.protocol ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <ClipboardCheck className="size-4" />
-                            )}
-                          </button>
-                        </Tooltip>
-                        <Tooltip
-                          content="Registrar devolutiva tecnica"
-                          placement="top"
-                        >
-                          <button
-                            aria-label={`Registrar devolutiva tecnica do protocolo ${notification.protocol}`}
-                            className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-                            onClick={() =>
-                              onOpenProtocol(notification.protocol)
-                            }
-                            type="button"
-                          >
-                            <MessageSquareText className="size-4" />
-                          </button>
-                        </Tooltip>
-                        <Tooltip content="Ignorar alerta" placement="top">
-                          <button
-                            aria-label={`Ignorar protocolo ${notification.protocol}`}
-                            className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
-                            disabled={
-                              ignoringProtocol === notification.protocol
-                            }
-                            onClick={() =>
-                              onIgnoreProtocol(notification.protocol)
-                            }
-                            type="button"
-                          >
-                            {ignoringProtocol === notification.protocol ? (
-                              <Loader2 className="size-4 animate-spin" />
-                            ) : (
-                              <EyeOff className="size-4" />
-                            )}
-                          </button>
-                        </Tooltip>
-                      </>
-                    ) : null}
-                    <Badge variant={riskToBadgeVariant(notification.risk)}>
-                      {notification.risk}
-                    </Badge>
-                    <Tooltip content="Criar prompt para agente" placement="top">
-                      <button
-                        aria-label={`Criar prompt para ${notification.agent}`}
-                        className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
-                          copiedCommandId === notification.dedupeKey
-                            ? "bg-[#A07C3B]/10"
-                            : ""
-                        }`}
-                        onClick={() =>
-                          onCopyCommand(
-                            notification.command,
-                            notification.dedupeKey,
-                          )
-                        }
-                        type="button"
-                      >
-                        <WandSparkles className="size-4" />
-                      </button>
-                    </Tooltip>
-                  </div>
-                </div>
-                {notification.protocol ? (
-                  <p className="m-0 mt-1 text-[0.68rem] font-semibold text-[#7A5E2C]">
-                    {notification.protocol}
-                  </p>
-                ) : null}
-                <p className="m-0 mt-2 line-clamp-3">{notification.message}</p>
-              </div>
-            ))
-          ) : (
-            <p className="m-0 rounded-xl bg-slate-50/70 p-3 text-xs text-slate-500 ring-1 ring-slate-200/70">
-              Sem notificacao enviada nesta sessao.
-            </p>
-          )}
-        </div>
-      </div>
-    </Surface>
-  );
-}
-
-function AlertProtocolsHistoryPanel({
-  copiedCommandId,
-  onCopyCommand,
-  onOpenProtocol,
-  protocols,
-}: {
-  copiedCommandId: string | null;
-  onCopyCommand: (command: string, id: string) => void;
-  onOpenProtocol: (protocol: OperationsAlertProtocolSummary) => void;
-  protocols: OperationsAlertProtocolSummary[];
-}) {
-  return (
-    <Surface
-      bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-    >
-      <div className="border-b border-slate-100 p-5">
-        <PanelTitle
-          eyebrow={`${protocols.length} protocolos`}
-          icon={<MessageSquareText size={18} />}
-          title="Protocolos de alertas e devolutivas"
-        />
-      </div>
-      <div className="grid max-h-[46vh] gap-3 overflow-y-auto p-4 pr-3">
-        {protocols.length > 0 ? (
-          protocols.map((protocol) => (
-            <article
-              className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-              key={protocol.id}
-            >
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                      {protocol.protocol}
-                    </span>
-                    <Badge
-                      variant={alertFeedbackStatusVariant(
-                        protocol.technicalFeedbackStatus,
-                      )}
-                    >
-                      {alertFeedbackStatusLabel(
-                        protocol.technicalFeedbackStatus,
-                      )}
-                    </Badge>
-                    <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
-                      {protocol.occurrenceCount} ocorrencias
-                    </span>
-                    <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
-                      Analise: {protocol.analysis.label}
-                    </span>
-                  </div>
-                  <p className="m-0 mt-3 text-sm font-semibold text-slate-950">
-                    {protocol.title}
-                  </p>
-                  <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-                    {protocol.module} / {protocol.origin} / ultimo:{" "}
-                    {formatOperationDateTime(protocol.lastSeenAt)}
-                  </p>
-                </div>
-                <Badge variant={riskToBadgeVariant(protocol.level)}>
-                  {protocol.level}
-                </Badge>
-              </div>
-              <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-slate-600">
-                {protocol.technicalFeedback
-                  ? protocol.technicalFeedback
-                  : "Aguardando devolutiva tecnica do dev responsavel."}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-500">
-                  Agente: {protocol.recommendedAgent}
-                </span>
-                <div className="flex items-center gap-2">
-                  <Tooltip
-                    content="Registrar devolutiva tecnica"
-                    placement="top"
-                  >
-                    <button
-                      aria-label={`Registrar devolutiva tecnica do protocolo ${protocol.protocol}`}
-                      className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-                      onClick={() => onOpenProtocol(protocol)}
-                      type="button"
-                    >
-                      <MessageSquareText className="size-4" />
-                    </button>
-                  </Tooltip>
-                  <Tooltip content="Criar prompt para agente" placement="top">
-                    <button
-                      aria-label={`Criar prompt para ${protocol.recommendedAgent}`}
-                      className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
-                        copiedCommandId === protocol.protocol
-                          ? "bg-[#A07C3B]/10"
-                          : ""
-                      }`}
-                      onClick={() =>
-                        onCopyCommand(protocol.command, protocol.protocol)
-                      }
-                      type="button"
-                    >
-                      <WandSparkles className="size-4" />
-                    </button>
-                  </Tooltip>
-                </div>
-              </div>
-            </article>
-          ))
-        ) : (
-          <EmptyState message="Nenhum protocolo de alerta persistido ainda." />
-        )}
-      </div>
-    </Surface>
   );
 }
 
@@ -5589,93 +4362,6 @@ function getMonitoringSourceId(check: OperationsCheckMetric) {
   return check.group;
 }
 
-function getMonitoringSourceMeta(sourceId: string) {
-  if (sourceId === "page") {
-    return {
-      description: "Abertura HTML do Login e Zeus.",
-      label: "Paginas",
-    };
-  }
-
-  if (sourceId === "c2x") {
-    return {
-      description: "Banco e healthcheck do legado C2X.",
-      label: "C2X Legado",
-    };
-  }
-
-  if (sourceId === "supabase") {
-    return {
-      description: "Auth, REST e Realtime.",
-      label: "Supabase",
-    };
-  }
-
-  if (sourceId === "guardian-queue") {
-    return {
-      description: "Fila operacional segura do Hades.",
-      label: "Hades Queue",
-    };
-  }
-
-  if (sourceId === "protected-api") {
-    return {
-      description: "APIs protegidas e comportamento 401 esperado.",
-      label: "APIs protegidas",
-    };
-  }
-
-  if (sourceId === "vercel") {
-    return {
-      description: "Disponibilidade do dominio publicado.",
-      label: "Vercel",
-    };
-  }
-
-  return {
-    description: "Endpoints internos monitorados.",
-    label: "Hub APIs",
-  };
-}
-
-function getMonitoringSourceIcon(sourceId: string) {
-  if (sourceId === "page") {
-    return <LayoutGrid size={17} />;
-  }
-
-  if (sourceId === "c2x") {
-    return <ServerCog size={17} />;
-  }
-
-  if (sourceId === "supabase") {
-    return <Wifi size={17} />;
-  }
-
-  if (sourceId === "guardian-queue") {
-    return <Database size={17} />;
-  }
-
-  if (sourceId === "protected-api") {
-    return <ShieldAlert size={17} />;
-  }
-
-  if (sourceId === "vercel") {
-    return <Rocket size={17} />;
-  }
-
-  return <Activity size={17} />;
-}
-
-function getMonitoringSourceOrder(sourceId: string) {
-  const index = monitoringSourceOrder.findIndex((item) => item === sourceId);
-
-  if (index >= 0) {
-    return index;
-  }
-
-  return monitoringSourceOrder.length;
-}
-
 function ZeusViewTabs({
   activeView,
   actionCount,
@@ -5997,7 +4683,12 @@ function DeployProtocolsView({
             {releaseModuleGroups.length > 0 ? (
               releaseModuleGroups.map((moduleGroup) => (
                 <ReleaseModuleGroupSection
+                  formatDateTime={formatOperationDateTime}
+                  formatModuleList={formatReleaseModuleList}
+                  getStatusVariant={releaseProtocolStatusVariant}
                   group={moduleGroup}
+                  isInHomologation={isReleaseProtocolInHomologation}
+                  isReadyForProduction={isReleaseProtocolReadyForProduction}
                   key={moduleGroup.module}
                   onSelectRecord={onSelectRecord}
                 />
@@ -6077,6 +4768,10 @@ function DeployProtocolsView({
                         <div className="grid gap-2">
                           {category.records.map((record) => (
                             <ProtocolRecordCard
+                              formatDateTime={formatOperationDateTime}
+                              getChangeSummary={getRecordChangeSummary}
+                              getReasonSummary={getRecordReasonSummary}
+                              getStatusVariant={statusVariant}
                               key={record.id}
                               onSelect={() => onSelectRecord(record)}
                               record={record}
@@ -6155,56 +4850,6 @@ function ReleaseRegistersSourcePanel({
         </p>
       ) : null}
     </Surface>
-  );
-}
-
-function ReleaseModuleGroupSection({
-  group,
-  onSelectRecord,
-}: {
-  group: ReleaseModuleGroup;
-  onSelectRecord: (record: EngineeringOperationRecord) => void;
-}) {
-  const readyForProduction = group.protocols.filter(
-    isReleaseProtocolReadyForProduction,
-  ).length;
-  const homologationCount = group.protocols.filter(
-    isReleaseProtocolInHomologation,
-  ).length;
-
-  return (
-    <section className="grid gap-3 border-b border-slate-100 pb-4 last:border-b-0 last:pb-0">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="m-0 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#7A5E2C]">
-            {group.agent}
-          </p>
-          <h3 className="m-0 mt-1 text-base font-semibold text-slate-950">
-            {group.module}
-          </h3>
-          <p className="m-0 mt-1 text-xs leading-5 text-slate-500">
-            {group.protocols.length} pacote(s) / {group.activityCount} atividade(s)
-            sinalizadas para rastreabilidade.
-          </p>
-        </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Badge variant={readyForProduction > 0 ? "success" : "info"}>
-            {readyForProduction} pronto(s) producao
-          </Badge>
-          <Badge variant="warning">{homologationCount} em homologacao</Badge>
-        </div>
-      </div>
-
-      <div className="grid gap-3">
-        {group.protocols.map((releaseProtocol) => (
-          <ReleaseProtocolCard
-            key={`${group.module}-${releaseProtocol.protocol}`}
-            onSelectRecord={onSelectRecord}
-            releaseProtocol={releaseProtocol}
-          />
-        ))}
-      </div>
-    </section>
   );
 }
 
@@ -6592,370 +5237,6 @@ function HomologationItemRow({
   );
 }
 
-function ReleaseProtocolCard({
-  onSelectRecord,
-  releaseProtocol,
-}: {
-  onSelectRecord: (record: EngineeringOperationRecord) => void;
-  releaseProtocol: HubReleaseProtocol;
-}) {
-  const commitTemplate = buildReleaseCommitTemplate(releaseProtocol);
-  const protocolRecords = new Map(
-    [releaseProtocol.record, ...releaseProtocol.records].map((record) => [
-      record.protocol,
-      record,
-    ]),
-  );
-
-  return (
-    <article className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="min-w-0">
-          <button
-            className="flex min-w-0 flex-wrap items-center gap-2 text-left"
-            onClick={() => onSelectRecord(releaseProtocol.record)}
-            type="button"
-          >
-            <span className="font-mono text-xs font-semibold text-[#7A5E2C]">
-              {releaseProtocol.protocol}
-            </span>
-            <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[0.68rem] font-semibold uppercase text-slate-500 ring-1 ring-slate-200/70">
-              Pacote do modulo
-            </span>
-          </button>
-          <h3 className="m-0 mt-2 line-clamp-2 text-sm font-semibold text-slate-950">
-            {releaseProtocol.title}
-          </h3>
-          <div className="mt-2 flex flex-wrap gap-1.5">
-            <Tooltip
-              content={`Abrir ${releaseProtocol.protocol}`}
-              placement="top"
-            >
-              <button
-                className="rounded-full bg-white px-2 py-1 font-mono text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-[#F7F2EA] hover:text-[#7A5E2C] hover:ring-[#D8C7A8] focus-visible:bg-[#F7F2EA] focus-visible:text-[#7A5E2C] focus-visible:ring-[#D8C7A8]"
-                onClick={() => onSelectRecord(releaseProtocol.record)}
-                type="button"
-              >
-                {releaseProtocol.protocol}
-              </button>
-            </Tooltip>
-            {releaseProtocol.includedProtocols.map((protocol) => {
-              const protocolRecord = protocolRecords.get(protocol);
-              const protocolTooltip = protocolRecord
-                ? `Abrir ${protocol}`
-                : "Registro nao encontrado neste pacote";
-
-              return (
-                <Tooltip
-                  content={protocolTooltip}
-                  key={`${releaseProtocol.protocol}-quick-${protocol}`}
-                  placement="top"
-                >
-                  <button
-                    className="rounded-full bg-white px-2 py-1 font-mono text-[0.68rem] font-semibold text-slate-600 ring-1 ring-slate-200/70 transition hover:bg-[#F7F2EA] hover:text-[#7A5E2C] hover:ring-[#D8C7A8] focus-visible:bg-[#F7F2EA] focus-visible:text-[#7A5E2C] focus-visible:ring-[#D8C7A8] disabled:cursor-default disabled:opacity-70"
-                    disabled={!protocolRecord}
-                    onClick={() => {
-                      if (protocolRecord) {
-                        onSelectRecord(protocolRecord);
-                      }
-                    }}
-                    type="button"
-                  >
-                    {protocol}
-                  </button>
-                </Tooltip>
-              );
-            })}
-          </div>
-          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-            {formatReleaseModuleList(releaseProtocol)} /{" "}
-            {formatOperationDateTime(releaseProtocol.plannedAt)}
-          </p>
-        </div>
-        <div className="flex flex-wrap justify-end gap-2">
-          <Badge variant={releaseProtocolStatusVariant(releaseProtocol.status)}>
-            {getReleaseProtocolStatusLabel(releaseProtocol.status)}
-          </Badge>
-          <Badge variant="info">
-            {getReleaseProtocolEnvironmentLabel(releaseProtocol.environment)}
-          </Badge>
-        </div>
-      </div>
-
-      <ReleaseProtocolPipeline releaseProtocol={releaseProtocol} />
-
-      <p className="m-0 mt-3 line-clamp-3 text-xs leading-5 text-slate-600">
-        {releaseProtocol.summary}
-      </p>
-
-      <div className="mt-3 grid gap-3 rounded-lg bg-slate-50/80 p-3 ring-1 ring-slate-200/70">
-        <div>
-          <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-400">
-            Vinculo operacional
-          </p>
-          <p className="m-0 mt-1 text-xs leading-5 text-slate-600">
-            Este pacote agrupa protocolos do modulo para homologacao; clique
-            em cada protocolo para abrir o detalhe operacional.
-          </p>
-        </div>
-
-        <div className="grid gap-2 text-xs leading-5 text-slate-600">
-          <ReleaseMetaLine label="Commit" value={releaseProtocol.commit} />
-          <ReleaseMetaLine label="Deploy" value={releaseProtocol.deployment} />
-          <ReleaseMetaLine
-            label="Healthcheck"
-            value={releaseProtocol.healthchecks}
-          />
-        </div>
-
-        <div className="rounded-lg border border-slate-200 bg-white p-3">
-          <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-400">
-            Formato de commit
-          </p>
-          <pre className="m-0 mt-2 whitespace-pre-wrap break-words font-mono text-[0.68rem] leading-5 text-slate-600">
-            {commitTemplate}
-          </pre>
-        </div>
-      </div>
-    </article>
-  );
-}
-
-function ReleaseProtocolPipeline({
-  releaseProtocol,
-}: {
-  releaseProtocol: HubReleaseProtocol;
-}) {
-  const steps = [
-    {
-      id: "homologacao",
-      label: "Modulo homologa",
-      isActive:
-        releaseProtocol.environment === "homologacao" ||
-        releaseProtocol.status === "em_homologacao" ||
-        releaseProtocol.status === "homologado",
-      isDone:
-        releaseProtocol.status === "homologado" ||
-        releaseProtocol.status === "aguardando_producao" ||
-        releaseProtocol.status === "em_producao" ||
-        releaseProtocol.status === "finalizado",
-    },
-    {
-      id: "producao",
-      label: "Hefesto produz",
-      isActive:
-        releaseProtocol.environment === "producao" ||
-        releaseProtocol.status === "aguardando_producao" ||
-        releaseProtocol.status === "em_producao",
-      isDone:
-        releaseProtocol.status === "em_producao" ||
-        releaseProtocol.status === "finalizado",
-    },
-  ];
-
-  return (
-    <div className="mt-4 grid grid-cols-2 gap-2">
-      {steps.map((step) => (
-        <div
-          className={`rounded-lg border px-3 py-2 ${
-            step.isDone
-              ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-              : step.isActive
-                ? "border-[#A07C3B]/25 bg-[#A07C3B]/10 text-[#7A5E2C]"
-                : "border-slate-200 bg-white text-slate-500"
-          }`}
-          key={step.id}
-        >
-          <p className="m-0 text-xs font-semibold">{step.label}</p>
-          <p className="m-0 mt-1 text-[0.68rem] font-medium">
-            {step.isDone ? "concluido" : step.isActive ? "em foco" : "pendente"}
-          </p>
-        </div>
-      ))}
-    </div>
-  );
-}
-
-function ReleaseMetaLine({ label, value }: { label: string; value: string }) {
-  return (
-    <p className="m-0">
-      <span className="font-semibold text-slate-500">{label}: </span>
-      {value && value !== UNKNOWN_OPERATION_VALUE ? value : "nao informado"}
-    </p>
-  );
-}
-
-function ProtocolRecordCard({
-  onSelect,
-  record,
-}: {
-  onSelect: () => void;
-  record: EngineeringOperationRecord;
-}) {
-  return (
-    <button
-      className="w-full rounded-lg border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-colors hover:border-[#A07C3B]/25 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-      onClick={onSelect}
-      type="button"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="m-0 text-xs font-semibold text-[#7A5E2C]">
-            {record.protocol}
-          </p>
-          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
-            {record.subject}
-          </p>
-          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-            {record.screen} / {formatOperationDateTime(record.localDateTime)}
-          </p>
-        </div>
-        <Badge variant={statusVariant(record.status)}>{record.status}</Badge>
-      </div>
-      <div className="mt-3 grid gap-2 text-xs leading-5 text-slate-600">
-        <p className="m-0">
-          <span className="font-semibold text-slate-800">O que mudou: </span>
-          {getRecordChangeSummary(record)}
-        </p>
-        <p className="m-0">
-          <span className="font-semibold text-slate-800">Por que: </span>
-          {getRecordReasonSummary(record)}
-        </p>
-      </div>
-    </button>
-  );
-}
-
-function TimelinePanel({
-  emptyMessage,
-  limit,
-  onSelectRecord,
-  records,
-  title,
-}: {
-  emptyMessage: string;
-  limit: number;
-  onSelectRecord: (record: EngineeringOperationRecord) => void;
-  records: EngineeringOperationRecord[];
-  title: string;
-}) {
-  return (
-    <Surface
-      bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-    >
-      <div className="border-b border-slate-100 p-5">
-        <PanelTitle
-          icon={<History size={18} />}
-          eyebrow={`${records.length} registros`}
-          title={title}
-        />
-      </div>
-      <div className="grid max-h-[58vh] min-w-0 gap-3 overflow-y-auto overscroll-contain p-4 pr-3">
-        {records.length > 0 ? (
-          records
-            .slice(0, limit)
-            .map((record) => (
-              <TimelineItem
-                key={record.id}
-                onSelect={() => onSelectRecord(record)}
-                record={record}
-              />
-            ))
-        ) : (
-          <EmptyState message={emptyMessage} />
-        )}
-      </div>
-    </Surface>
-  );
-}
-
-function RecordsTable({
-  onSelectRecord,
-  records,
-}: {
-  onSelectRecord: (record: EngineeringOperationRecord) => void;
-  records: EngineeringOperationRecord[];
-}) {
-  return (
-    <Surface
-      bordered
-      className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-    >
-      <div className="border-b border-slate-100 p-5">
-        <PanelTitle
-          icon={<Layers3 size={18} />}
-          eyebrow={`${records.length} registros`}
-          title="Registros estruturados"
-        />
-      </div>
-      <div className="max-h-[66vh] overflow-auto overscroll-contain">
-        <table className="min-w-[62rem] w-full border-collapse text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase text-slate-400 shadow-[0_1px_0_rgba(226,232,240,0.9)]">
-            <tr>
-              <th className="px-4 py-3">Protocolo</th>
-              <th className="px-4 py-3">Assunto</th>
-              <th className="px-4 py-3">Módulo</th>
-              <th className="px-4 py-3">Squad</th>
-              <th className="px-4 py-3">Tipo</th>
-              <th className="px-4 py-3">Status</th>
-              <th className="px-4 py-3">Data</th>
-              <th className="px-4 py-3">Próxima squad</th>
-              <th className="px-4 py-3">Pendências</th>
-            </tr>
-          </thead>
-          <tbody>
-            {records.map((record) => (
-              <tr
-                className="cursor-pointer border-t border-slate-100 transition-colors hover:bg-[#A07C3B]/5"
-                key={record.id}
-                onClick={() => onSelectRecord(record)}
-              >
-                <td className="whitespace-nowrap px-4 py-3">
-                  <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                    {record.protocol}
-                  </span>
-                </td>
-                <td className="max-w-64 px-4 py-3">
-                  <p className="m-0 truncate font-semibold text-slate-950">
-                    {record.subject}
-                  </p>
-                </td>
-                <td className="px-4 py-3 text-slate-600">{record.module}</td>
-                <td className="px-4 py-3 text-slate-600">{record.squad}</td>
-                <td className="px-4 py-3">
-                  <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
-                    {record.type}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  <Badge variant={statusVariant(record.status)}>
-                    {record.status}
-                  </Badge>
-                </td>
-                <td className="whitespace-nowrap px-4 py-3 text-slate-600">
-                  {formatOperationDateTime(record.localDateTime)}
-                </td>
-                <td className="max-w-52 px-4 py-3 text-slate-600">
-                  <span className="line-clamp-2">{record.nextSquad}</span>
-                </td>
-                <td className="max-w-56 px-4 py-3 text-slate-600">
-                  <span className="line-clamp-2">{record.risks}</span>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      {records.length === 0 ? (
-        <div className="p-4">
-          <EmptyState message="Nenhum registro encontrado para os filtros atuais." />
-        </div>
-      ) : null}
-    </Surface>
-  );
-}
-
 function OperationsFiltersBar({
   filters,
   onChange,
@@ -7068,977 +5349,6 @@ function FilterSelect({
       </select>
     </label>
   );
-}
-
-function TimelineItem({
-  onSelect,
-  record,
-}: {
-  onSelect: () => void;
-  record: EngineeringOperationRecord;
-}) {
-  return (
-    <button
-      className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] lg:grid-cols-[auto_minmax(0,1fr)_auto]"
-      onClick={onSelect}
-      type="button"
-    >
-      <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[#A07C3B]" />
-      <div className="min-w-0">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="shrink-0 rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-            {record.protocol}
-          </span>
-          <p className="m-0 min-w-0 flex-1 truncate text-sm font-semibold text-[#101820]">
-            {record.subject}
-          </p>
-          <Badge
-            className="max-w-[9.5rem] shrink-0 truncate"
-            variant={statusVariant(record.status)}
-          >
-            {record.status}
-          </Badge>
-          <span className="max-w-[12rem] truncate rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
-            {record.type}
-          </span>
-        </div>
-        <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-[#667085]">
-          {record.shortSummary}
-        </p>
-        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-          <span className="max-w-[11rem] truncate">{record.squad}</span>
-          <span>/</span>
-          <span className="max-w-[11rem] truncate">{record.module}</span>
-          {record.isCritical ? (
-            <>
-              <span>/</span>
-              <span className="text-[#A07C3B]">risco ou pendência</span>
-            </>
-          ) : null}
-        </div>
-      </div>
-      <span className="whitespace-nowrap text-left text-xs font-semibold text-[#667085] lg:text-right">
-        {formatOperationDateTime(record.localDateTime)}
-      </span>
-    </button>
-  );
-}
-
-function AuditRoutinesPanel({
-  onSelectRoutine,
-  routines,
-}: {
-  onSelectRoutine: (routine: EngineeringAuditRoutine) => void;
-  routines: EngineeringAuditRoutine[];
-}) {
-  const overdueRoutines = routines.filter((routine) => routine.isOverdue);
-  const stableRoutines = routines.filter((routine) => !routine.isOverdue);
-  const latestExecution =
-    routines.find(
-      (routine) => routine.lastExecution !== UNKNOWN_OPERATION_VALUE,
-    )?.lastExecution ?? UNKNOWN_OPERATION_VALUE;
-  const latestExecutionFormatted = formatOperationDateTime(latestExecution);
-
-  return (
-    <Surface
-      bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-    >
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <PanelTitle
-          eyebrow={`${routines.length} rotinas`}
-          icon={<ClipboardCheck size={18} />}
-          title="Auditorias operacionais"
-        />
-        <Badge variant={overdueRoutines.length > 0 ? "warning" : "success"}>
-          {overdueRoutines.length > 0
-            ? `${overdueRoutines.length} vencidas`
-            : "rotinas em dia"}
-        </Badge>
-      </div>
-
-      <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-3">
-        <AuditSummaryPill label="vencidas" value={overdueRoutines.length} />
-        <AuditSummaryPill
-          label="em acompanhamento"
-          value={stableRoutines.length}
-        />
-        <AuditSummaryPill
-          label="última execução"
-          value={latestExecutionFormatted}
-        />
-      </div>
-
-      <div className="mt-5 grid max-h-[62vh] gap-5 overflow-y-auto overscroll-contain pr-1">
-        {overdueRoutines.length > 0 ? (
-          <AuditRoutineGroup
-            onSelectRoutine={onSelectRoutine}
-            routines={overdueRoutines}
-            title="Precisa de atenção"
-          />
-        ) : null}
-        <AuditRoutineGroup
-          onSelectRoutine={onSelectRoutine}
-          routines={stableRoutines}
-          title="Em acompanhamento"
-        />
-      </div>
-    </Surface>
-  );
-}
-
-function AuditSummaryPill({
-  label,
-  value,
-}: {
-  label: string;
-  value: number | string;
-}) {
-  return (
-    <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-      <p className="m-0 text-xs font-semibold uppercase text-slate-400">
-        {label}
-      </p>
-      <p className="m-0 mt-1 text-sm font-semibold text-slate-950">{value}</p>
-    </div>
-  );
-}
-
-function AuditRoutineGroup({
-  onSelectRoutine,
-  routines,
-  title,
-}: {
-  onSelectRoutine: (routine: EngineeringAuditRoutine) => void;
-  routines: EngineeringAuditRoutine[];
-  title: string;
-}) {
-  return (
-    <section>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="m-0 text-sm font-semibold text-slate-950">{title}</h3>
-        <span className="text-xs font-semibold text-slate-400">
-          {routines.length} rotinas
-        </span>
-      </div>
-      <div className="grid grid-cols-1 gap-3 xl:grid-cols-2">
-        {routines.length > 0 ? (
-          routines.map((routine) => (
-            <AuditRoutineCard
-              key={routine.id}
-              onSelect={() => onSelectRoutine(routine)}
-              routine={routine}
-            />
-          ))
-        ) : (
-          <EmptyState message="Nenhuma rotina nesta categoria." />
-        )}
-      </div>
-    </section>
-  );
-}
-
-function AuditRoutineCard({
-  onSelect,
-  routine,
-}: {
-  onSelect: () => void;
-  routine: EngineeringAuditRoutine;
-}) {
-  return (
-    <button
-      className="rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-      onClick={onSelect}
-      type="button"
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="m-0 truncate text-sm font-semibold text-slate-950">
-            {routine.name}
-          </p>
-          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-            {routine.frequency} / {routine.responsible}
-          </p>
-        </div>
-        <Badge
-          variant={
-            routine.isOverdue ? "warning" : statusVariant(routine.lastStatus)
-          }
-        >
-          {routine.isOverdue ? "vencida" : routine.lastStatus}
-        </Badge>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-        <span className="rounded-full bg-slate-50 px-2.5 py-1 ring-1 ring-slate-200/70">
-          Última: {formatOperationDateTime(routine.lastExecution)}
-        </span>
-        <span className="rounded-full bg-slate-50 px-2.5 py-1 ring-1 ring-slate-200/70">
-          Histórico: {routine.history.length}
-        </span>
-      </div>
-      <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-slate-600">
-        {routine.consolidatedResult}
-      </p>
-      <p className="m-0 mt-3 line-clamp-2 rounded-lg bg-slate-50/70 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
-        {routine.script}
-      </p>
-    </button>
-  );
-}
-
-function PoAiChannelPanel({
-  error,
-  isLoading,
-  messages,
-  onAsk,
-  onGeneratePrompt,
-  onQuestionChange,
-  onTargetChange,
-  question,
-  target,
-}: {
-  error: string | null;
-  isLoading: boolean;
-  messages: PoAiChatMessage[];
-  onAsk: (question: string) => void;
-  onGeneratePrompt: () => void;
-  onQuestionChange: (question: string) => void;
-  onTargetChange: (target: (typeof promptTargets)[number]) => void;
-  question: string;
-  target: (typeof promptTargets)[number];
-}) {
-  return (
-    <Surface
-      bordered
-      className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-    >
-      <div className="border-b border-slate-100 p-5">
-        <PanelTitle
-          eyebrow="Cérebro do Panteon"
-          icon={<Bot size={18} />}
-          title="PO AI"
-        />
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
-            monitoramento real
-          </span>
-          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-100">
-            diário = histórico
-          </span>
-          <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-100">
-            código do Panteon
-          </span>
-          <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
-            sem execução automática
-          </span>
-        </div>
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50/70 p-4">
-          {messages.map((message) => (
-            <PoAiMessageBubble key={message.id} message={message} />
-          ))}
-          {isLoading ? (
-            <div className="flex justify-start">
-              <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-2 text-sm font-semibold text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
-                <span className="inline-flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin text-[#A07C3B]" />
-                  PO AI consultando monitoramento real, histórico e código do
-                  Panteon
-                </span>
-              </div>
-            </div>
-          ) : null}
-        </div>
-
-        <div className="border-t border-slate-100 bg-white p-4">
-          {error ? (
-            <p className="m-0 mb-3 rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700 ring-1 ring-red-100">
-              {error}
-            </p>
-          ) : null}
-          <label className="block">
-            <span className="mb-1.5 block text-xs font-semibold text-slate-500">
-              Conversar com o PO AI
-            </span>
-            <textarea
-              className={`${fieldClassName} h-20 resize-none py-2`}
-              onChange={(event) => onQuestionChange(event.target.value)}
-              onKeyDown={(event) => {
-                if (event.key === "Enter" && (event.ctrlKey || event.metaKey)) {
-                  event.preventDefault();
-                  onAsk(question);
-                }
-              }}
-              placeholder="Pergunte sobre banco, APIs, monitoramento real, risco, decisão, deploy ou próximo passo..."
-              value={question}
-            />
-          </label>
-
-          <div className="mt-3 grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-            <select
-              className={fieldClassName}
-              onChange={(event) =>
-                onTargetChange(
-                  event.target.value as (typeof promptTargets)[number],
-                )
-              }
-              value={target}
-            >
-              {promptTargets.map((promptTarget) => (
-                <option key={promptTarget} value={promptTarget}>
-                  {promptTarget}
-                </option>
-              ))}
-            </select>
-            <button
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 disabled:cursor-not-allowed disabled:opacity-60"
-              disabled={isLoading}
-              onClick={onGeneratePrompt}
-              type="button"
-            >
-              <WandSparkles className="size-4" />
-              Prompt
-            </button>
-          </div>
-
-          <div className="mt-3 grid grid-cols-3 gap-2">
-            <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-              onClick={() => onQuestionChange("O que foi feito hoje?")}
-              type="button"
-            >
-              <MessageSquareText className="size-4 text-[#A07C3B]" />
-              Hoje
-            </button>
-            <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-              onClick={() =>
-                onQuestionChange(
-                  "Como está o banco de dados no monitoramento real agora? Use o diário apenas como histórico.",
-                )
-              }
-              type="button"
-            >
-              <Database className="size-4 text-[#A07C3B]" />
-              Banco
-            </button>
-            <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-              onClick={() =>
-                onQuestionChange("O que precisa ir para Hefesto?")
-              }
-              type="button"
-            >
-              <Rocket className="size-4 text-[#A07C3B]" />
-              Hefesto
-            </button>
-          </div>
-
-          <button
-            className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533] disabled:cursor-not-allowed disabled:opacity-60"
-            disabled={isLoading}
-            onClick={() => onAsk(question)}
-            type="button"
-          >
-            {isLoading ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <Send className="size-4" />
-            )}
-            Enviar
-          </button>
-        </div>
-      </div>
-    </Surface>
-  );
-}
-
-function PoAiDrawer({
-  error,
-  isLoading,
-  isOpen,
-  messages,
-  onAsk,
-  onClose,
-  onGeneratePrompt,
-  onQuestionChange,
-  onTargetChange,
-  question,
-  target,
-}: {
-  error: string | null;
-  isLoading: boolean;
-  isOpen: boolean;
-  messages: PoAiChatMessage[];
-  onAsk: (question: string) => void;
-  onClose: () => void;
-  onGeneratePrompt: () => void;
-  onQuestionChange: (question: string) => void;
-  onTargetChange: (target: (typeof promptTargets)[number]) => void;
-  question: string;
-  target: (typeof promptTargets)[number];
-}) {
-  if (!isOpen) {
-    return null;
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-950/20 backdrop-blur-[1px]">
-      <button
-        aria-label="Fechar PO AI"
-        className="absolute inset-0 cursor-default"
-        onClick={onClose}
-        type="button"
-      />
-      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-slate-50 p-4 shadow-2xl">
-        <button
-          className="absolute right-7 top-7 z-10 grid size-9 place-items-center rounded-lg border border-slate-200/70 bg-white text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 hover:text-slate-950"
-          onClick={onClose}
-          type="button"
-        >
-          <X className="size-4" />
-        </button>
-        <PoAiChannelPanel
-          error={error}
-          isLoading={isLoading}
-          messages={messages}
-          onAsk={onAsk}
-          onGeneratePrompt={onGeneratePrompt}
-          onQuestionChange={onQuestionChange}
-          onTargetChange={onTargetChange}
-          question={question}
-          target={target}
-        />
-      </aside>
-    </div>
-  );
-}
-
-function PromptLibraryModal({
-  isOpen,
-  onClose,
-  onSelectTemplate,
-  selectedTemplate,
-  templates,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onSelectTemplate: (templateId: string) => void;
-  selectedTemplate: PromptTemplate;
-  templates: PromptTemplate[];
-}) {
-  const [copiedPromptId, setCopiedPromptId] = useState<string | null>(null);
-
-  if (!isOpen) {
-    return null;
-  }
-
-  async function copyPrompt(template: PromptTemplate) {
-    if (typeof navigator === "undefined" || !navigator.clipboard) {
-      return;
-    }
-
-    try {
-      await navigator.clipboard.writeText(template.body);
-      setCopiedPromptId(template.id);
-      window.setTimeout(() => setCopiedPromptId(null), 1400);
-    } catch {
-      setCopiedPromptId(null);
-    }
-  }
-
-  return (
-    <div className="fixed inset-0 z-[70] bg-slate-950/35 p-4 backdrop-blur-[2px]">
-      <button
-        aria-label="Fechar biblioteca de prompts"
-        className="absolute inset-0 cursor-default"
-        onClick={onClose}
-        type="button"
-      />
-      <div
-        aria-label="Biblioteca de prompts do PO AI"
-        aria-modal="true"
-        className="relative z-10 mx-auto flex h-full max-h-[48rem] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
-        role="dialog"
-      >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 p-5">
-          <PanelTitle
-            eyebrow="modelos prontos"
-            icon={<WandSparkles size={18} />}
-            title="Biblioteca de prompts"
-          />
-          <button
-            className="grid size-9 place-items-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
-            onClick={onClose}
-            type="button"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-
-        <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[21rem_minmax(0,1fr)]">
-          <aside className="min-h-0 overflow-y-auto border-b border-slate-100 bg-slate-50/70 p-4 lg:border-b-0 lg:border-r">
-            <div className="grid gap-2">
-              {templates.map((template) => {
-                const isSelected = template.id === selectedTemplate.id;
-
-                return (
-                  <button
-                    aria-pressed={isSelected}
-                    className={`rounded-lg border p-3 text-left transition-colors ${
-                      isSelected
-                        ? "border-[#A07C3B]/35 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
-                        : "border-slate-200/70 bg-white/70 hover:border-[#A07C3B]/25 hover:bg-white"
-                    }`}
-                    key={template.id}
-                    onClick={() => onSelectTemplate(template.id)}
-                    type="button"
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="flex size-9 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
-                        {promptTemplateIcon(template)}
-                      </span>
-                      <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-slate-950">
-                          {template.label}
-                        </span>
-                        <span className="mt-1 block text-xs leading-5 text-slate-500">
-                          {template.description}
-                        </span>
-                        <span className="mt-2 inline-flex rounded-full bg-white px-2.5 py-1 text-[0.68rem] font-semibold uppercase text-slate-500 ring-1 ring-slate-200/70">
-                          {promptTemplateTypeLabel(template.type)}
-                        </span>
-                      </span>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
-          </aside>
-
-          <section className="flex min-h-0 flex-col p-5">
-            <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="m-0 text-xs font-semibold uppercase text-[#7A5E2C]">
-                  {selectedTemplate.target}
-                </p>
-                <h3 className="m-0 mt-1 text-lg font-semibold text-slate-950">
-                  {selectedTemplate.label}
-                </h3>
-                <p className="m-0 mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                  Texto pronto para copiar e enviar ao dev responsavel.
-                </p>
-              </div>
-              <span className="inline-flex items-center gap-2 rounded-full bg-[#A07C3B]/10 px-3 py-1.5 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                {promptTemplateIcon(selectedTemplate)}
-                {promptTemplateTypeLabel(selectedTemplate.type)}
-              </span>
-            </div>
-
-            <textarea
-              aria-label="Prompt selecionado"
-              className="mt-4 min-h-0 flex-1 resize-none rounded-lg border border-slate-200 bg-slate-50/80 p-4 font-mono text-xs leading-5 text-slate-800 outline-none focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
-              readOnly
-              spellCheck={false}
-              value={selectedTemplate.body}
-            />
-
-            <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
-              <button
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533]"
-                onClick={() => void copyPrompt(selectedTemplate)}
-                type="button"
-              >
-                <Copy className="size-4" />
-                {copiedPromptId === selectedTemplate.id
-                  ? "Texto copiado"
-                  : "Copiar para enviar ao dev"}
-              </button>
-            </div>
-          </section>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function promptTemplateIcon(template: PromptTemplate) {
-  if (template.type === "deploy") {
-    return <Rocket className="size-4" />;
-  }
-
-  if (template.type === "daily") {
-    return <MessageSquareText className="size-4" />;
-  }
-
-  if (template.type === "weekly") {
-    return <ClipboardCheck className="size-4" />;
-  }
-
-  if (template.type === "monitoring") {
-    return <ServerCog className="size-4" />;
-  }
-
-  return <CalendarDays className="size-4" />;
-}
-
-function promptTemplateTypeLabel(type: PromptTemplate["type"]) {
-  if (type === "deploy") {
-    return "deploy";
-  }
-
-  if (type === "daily") {
-    return "diario";
-  }
-
-  if (type === "weekly") {
-    return "semanal";
-  }
-
-  if (type === "monitoring") {
-    return "monitoramento";
-  }
-
-  return "mensal";
-}
-
-function PoAiMessageBubble({ message }: { message: PoAiChatMessage }) {
-  if (message.role === "user") {
-    return (
-      <div className="flex justify-end">
-        <div className="max-w-[86%] rounded-2xl bg-[#101820] px-4 py-3 text-sm leading-6 text-white shadow-[0_1px_2px_rgba(15,23,42,0.08)]">
-          <p className="m-0 whitespace-pre-wrap">{message.content}</p>
-          <p className="m-0 mt-2 text-right text-[0.68rem] font-semibold text-white/55">
-            {formatOperationDateTime(message.createdAt)}
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex justify-start">
-      <div className="max-w-[94%]">
-        <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-white text-[#A07C3B] ring-1 ring-slate-200/70">
-            <Bot className="size-4" />
-          </span>
-          <span>PO AI</span>
-          <span>/</span>
-          <span>{formatOperationDateTime(message.createdAt)}</span>
-        </div>
-        <CopilotAnswerBubbles answer={message.content} compact />
-      </div>
-    </div>
-  );
-}
-
-function CopilotAnswerBubbles({
-  answer,
-  compact = false,
-}: {
-  answer: string;
-  compact?: boolean;
-}) {
-  const sections = parseCopilotAnswer(answer);
-
-  return (
-    <div
-      className={
-        compact
-          ? "grid gap-3"
-          : "mt-4 rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-      }
-    >
-      {!compact ? (
-        <div className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
-            <Bot className="size-4" />
-          </span>
-          <div>
-            <p className="m-0 text-xs font-semibold uppercase text-[#7A5E2C]">
-              Resposta do PO AI
-            </p>
-            <p className="m-0 mt-0.5 text-xs text-slate-500">
-              Organizado por frente para leitura rápida
-            </p>
-          </div>
-        </div>
-      ) : null}
-
-      <div className={compact ? "grid gap-3" : "mt-4 grid gap-3"}>
-        {sections.map((section) => (
-          <article
-            className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-            key={section.id}
-          >
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="m-0 text-[0.95rem] font-semibold text-slate-950">
-                {section.title}
-              </h3>
-              <span
-                className={`rounded-full px-2.5 py-1 text-[0.68rem] font-semibold uppercase ${copilotSectionBadgeClass(section.type)}`}
-              >
-                {copilotSectionLabel(section.type)}
-              </span>
-            </div>
-            <ul className="m-0 mt-3 grid list-none gap-2 p-0">
-              {section.items.map((item, index) =>
-                isCopilotSubheading(item) ? (
-                  <li
-                    className="pt-2 text-xs font-semibold uppercase text-[#7A5E2C]"
-                    key={`${section.id}-${index}`}
-                  >
-                    {item.replace(/:$/, "")}
-                  </li>
-                ) : (
-                  <li
-                    className="grid grid-cols-[0.45rem_minmax(0,1fr)] gap-3 text-sm leading-6 text-slate-700"
-                    key={`${section.id}-${index}`}
-                  >
-                    <span className="mt-[0.62rem] size-1.5 rounded-full bg-[#A07C3B]" />
-                    <span className="min-w-0">{item}</span>
-                  </li>
-                ),
-              )}
-            </ul>
-          </article>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function parseCopilotAnswer(answer: string): CopilotAnswerSection[] {
-  const sections: CopilotAnswerSection[] = [];
-  let current: CopilotAnswerSection | null = null;
-
-  function ensureSection(title = "Resumo executivo") {
-    if (!current) {
-      current = {
-        id: `copilot-section-${sections.length + 1}`,
-        items: [],
-        title,
-        type: inferCopilotSectionType(title),
-      };
-      sections.push(current);
-    }
-
-    return current;
-  }
-
-  function getOrCreateModuleSection(title: string) {
-    const normalizedTitle = normalizeSearchText(title);
-    const existingSection = sections.find(
-      (section) => normalizeSearchText(section.title) === normalizedTitle,
-    );
-
-    if (existingSection) {
-      return existingSection;
-    }
-
-    const section: CopilotAnswerSection = {
-      id: `copilot-section-${sections.length + 1}`,
-      items: [],
-      title,
-      type: "module",
-    };
-
-    sections.push(section);
-    return section;
-  }
-
-  answer
-    .split(/\r?\n/)
-    .map(cleanCopilotLine)
-    .filter(Boolean)
-    .forEach((line) => {
-      const title = extractCopilotTitle(line);
-
-      if (title) {
-        current = {
-          id: `copilot-section-${sections.length + 1}`,
-          items: [],
-          title,
-          type: inferCopilotSectionType(title),
-        };
-        sections.push(current);
-        return;
-      }
-
-      const item = cleanCopilotItem(line);
-
-      if (!item || item === "---") {
-        return;
-      }
-
-      const moduleTitle = detectCopilotModuleTitle(item);
-
-      if (moduleTitle && current?.type !== "module") {
-        getOrCreateModuleSection(moduleTitle).items.push(item);
-        return;
-      }
-
-      ensureSection().items.push(item);
-    });
-
-  return sections
-    .map((section) => ({
-      ...section,
-      items: section.items.length > 0 ? section.items : ["Não informado."],
-    }))
-    .filter((section) => section.items.length > 0);
-}
-
-function detectCopilotModuleTitle(text: string) {
-  const normalizedText = normalizeSearchText(text);
-
-  if (
-    normalizedText.includes("releaseops") ||
-    normalizedText.includes("engineering operations") ||
-    normalizedText.includes("producao") ||
-    normalizedText.includes("deploy")
-  ) {
-    return "Hefesto / Engineering Operations";
-  }
-
-  if (
-    normalizedText.includes("hubops") ||
-    normalizedText.includes("squadops")
-  ) {
-    return "Zeus";
-  }
-
-  if (normalizedText.includes("supportops")) {
-    return "Zeus";
-  }
-
-  if (normalizedText.includes("guardian")) {
-    return "Hades";
-  }
-
-  if (normalizedText.includes("pulsex")) {
-    return "Hermes";
-  }
-
-  if (normalizedText.includes("caredesk")) {
-    return "Iris";
-  }
-
-  if (normalizedText.includes("setup")) {
-    return "Setup";
-  }
-
-  return null;
-}
-
-function extractCopilotTitle(line: string) {
-  const front = line.match(/^Frente:\s+(.+)$/i);
-
-  if (front?.[1]) {
-    return cleanCopilotItem(front[1]);
-  }
-
-  const heading = line.match(/^#{2,6}\s+(.+)$/);
-
-  if (heading?.[1]) {
-    return cleanCopilotItem(heading[1]);
-  }
-
-  const numberedModule = line.match(
-    /^(?:\d+\.\s+)?((?:Hades|Iris|Hermes|Zeus|Hefesto|ReleaseOps|SupportOps|Setup|Engineering Operations)[\w\s/.-]*)$/i,
-  );
-
-  if (numberedModule?.[1]) {
-    return cleanCopilotItem(numberedModule[1]);
-  }
-
-  return null;
-}
-
-function cleanCopilotLine(line: string) {
-  return line.trim();
-}
-
-function cleanCopilotItem(line: string) {
-  return line
-    .replace(/^[-*]\s+/, "")
-    .replace(/^\d+\.\s+/, "")
-    .replace(/`([^`]+)`/g, "$1")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/__([^_]+)__/g, "$1")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function isCopilotSubheading(item: string) {
-  return item.endsWith(":") && item.length <= 80;
-}
-
-function inferCopilotSectionType(title: string): CopilotAnswerSection["type"] {
-  const normalizedTitle = normalizeSearchText(title);
-
-  if (
-    normalizedTitle.includes("risco") ||
-    normalizedTitle.includes("pendencia") ||
-    normalizedTitle.includes("atencao")
-  ) {
-    return "risk";
-  }
-
-  if (normalizedTitle.includes("prompt")) {
-    return "prompt";
-  }
-
-  if (
-    normalizedTitle.includes("guardian") ||
-    normalizedTitle.includes("caredesk") ||
-    normalizedTitle.includes("pulsex") ||
-    normalizedTitle.includes("hubops") ||
-    normalizedTitle.includes("squadops") ||
-    normalizedTitle.includes("releaseops") ||
-    normalizedTitle.includes("supportops") ||
-    normalizedTitle.includes("setup") ||
-    normalizedTitle.includes("engineering operations")
-  ) {
-    return "module";
-  }
-
-  return "summary";
-}
-
-function copilotSectionLabel(type: CopilotAnswerSection["type"]) {
-  if (type === "module") {
-    return "módulo";
-  }
-
-  if (type === "prompt") {
-    return "prompt";
-  }
-
-  if (type === "risk") {
-    return "atenção";
-  }
-
-  return "resumo";
-}
-
-function copilotSectionBadgeClass(type: CopilotAnswerSection["type"]) {
-  if (type === "module") {
-    return "bg-sky-50 text-sky-700 ring-1 ring-sky-100";
-  }
-
-  if (type === "prompt") {
-    return "bg-violet-50 text-violet-700 ring-1 ring-violet-100";
-  }
-
-  if (type === "risk") {
-    return "bg-amber-50 text-amber-800 ring-1 ring-amber-100";
-  }
-
-  return "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/15";
 }
 
 function getRecordCardSummary(record: EngineeringOperationRecord) {
@@ -8303,118 +5613,6 @@ function OperationalList({
   );
 }
 
-function AuditRoutineDetailDrawer({
-  onClose,
-  routine,
-}: {
-  onClose: () => void;
-  routine: EngineeringAuditRoutine | null;
-}) {
-  if (!routine) {
-    return null;
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 bg-slate-950/20 backdrop-blur-[1px]">
-      <button
-        aria-label="Fechar rotina de auditoria"
-        className="absolute inset-0 cursor-default"
-        onClick={onClose}
-        type="button"
-      />
-      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
-          <PanelTitle
-            eyebrow={routine.frequency}
-            icon={<ClipboardCheck size={18} />}
-            title={routine.name}
-          />
-          <button
-            className="grid size-9 place-items-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
-            onClick={onClose}
-            type="button"
-          >
-            <X className="size-4" />
-          </button>
-        </div>
-        <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              variant={
-                routine.isOverdue
-                  ? "warning"
-                  : statusVariant(routine.lastStatus)
-              }
-            >
-              {routine.isOverdue ? "vencida" : routine.lastStatus}
-            </Badge>
-            <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
-              {routine.responsible}
-            </span>
-          </div>
-
-          <div className="mt-5 grid grid-cols-2 gap-3">
-            <DetailField label="Responsavel" value={routine.responsible} />
-            <DetailField
-              label="Ultima execucao"
-              value={formatOperationDateTime(routine.lastExecution)}
-            />
-            <DetailField label="Frequencia" value={routine.frequency} />
-            <DetailField
-              label="Historico"
-              value={`${routine.history.length} registros`}
-            />
-          </div>
-
-          <div className="mt-5 grid gap-3">
-            <DetailBlock
-              label="Resultado consolidado"
-              value={routine.consolidatedResult}
-            />
-            <DetailBlock label="Script operacional" value={routine.script} />
-          </div>
-
-          <div className="mt-5 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-            <p className="m-0 text-xs font-semibold uppercase text-slate-400">
-              Historico relacionado
-            </p>
-            <div className="mt-3 grid gap-3">
-              {routine.history.length > 0 ? (
-                routine.history.map((record) => (
-                  <article
-                    className="rounded-lg border border-slate-200/70 bg-white p-3"
-                    key={record.id}
-                  >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <p className="m-0 truncate text-sm font-semibold text-slate-950">
-                          {record.subject}
-                        </p>
-                        <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
-                          {record.module} /{" "}
-                          {formatOperationDateTime(record.localDateTime)}
-                        </p>
-                      </div>
-                      <Badge variant={statusVariant(record.status)}>
-                        {record.status}
-                      </Badge>
-                    </div>
-                    <pre className="m-0 mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-slate-700">
-                      {record.rawContent}
-                    </pre>
-                  </article>
-                ))
-              ) : (
-                <EmptyState message="Sem registro historico relacionado." />
-              )}
-            </div>
-          </div>
-        </div>
-      </aside>
-    </div>
-  );
-}
-
 function OperationDetailDrawer({
   onClose,
   record,
@@ -8583,60 +5781,6 @@ function OperationalDetailSummary({
 
 function isKnownDetailValue(value: string) {
   return Boolean(value.trim() && value.trim() !== UNKNOWN_OPERATION_VALUE);
-}
-
-function PanelTitle({
-  eyebrow,
-  icon,
-  title,
-}: {
-  eyebrow: string;
-  icon: ReactNode;
-  title: string;
-}) {
-  return (
-    <div className="flex min-w-0 items-center gap-3">
-      <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
-        {icon}
-      </span>
-      <div className="min-w-0">
-        <p className="m-0 text-xs font-semibold text-slate-500">{eyebrow}</p>
-        <h2 className="m-0 mt-1 line-clamp-2 text-base font-semibold text-slate-950">
-          {title}
-        </h2>
-      </div>
-    </div>
-  );
-}
-
-function DetailField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <p className="m-0 text-xs font-semibold text-slate-500">{label}</p>
-      <p className="m-0 mt-1 text-sm font-semibold leading-5 text-slate-950">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function DetailBlock({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <p className="m-0 text-xs font-semibold text-slate-500">{label}</p>
-      <p className="m-0 mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-700">
-        {value}
-      </p>
-    </div>
-  );
-}
-
-function EmptyState({ message }: { message: string }) {
-  return (
-    <p className="m-0 rounded-xl bg-slate-50/70 p-4 text-sm text-slate-500 ring-1 ring-slate-200/70">
-      {message}
-    </p>
-  );
 }
 
 function readHomologationReviews(): HomologationReviewState {
@@ -9941,135 +7085,6 @@ function riskToBadgeVariant(
   return "neutral";
 }
 
-type PerformanceTone = "green" | "yellow" | "red" | "neutral";
-
-function monitoringSourceTone(
-  risk?: OperationsRiskLevel | "nenhum",
-  status?: OperationsMonitoringSnapshot["cards"]["status"]["value"],
-): PerformanceTone {
-  if (
-    risk === "critico" ||
-    status === "critico" ||
-    status === "indisponivel"
-  ) {
-    return "red";
-  }
-
-  if (
-    risk === "alto" ||
-    risk === "medio" ||
-    status === "operacional_com_atencao"
-  ) {
-    return "yellow";
-  }
-
-  if (risk === "baixo" || risk === "nenhum" || status === "operacional") {
-    return "green";
-  }
-
-  return "neutral";
-}
-
-function responsePerformanceBarClass(responseMs: number) {
-  if (responseMs > 3000) {
-    return "bg-red-500";
-  }
-
-  if (responseMs > 500) {
-    return "bg-yellow-400";
-  }
-
-  return "bg-emerald-500";
-}
-
-function responsePerformanceTone(responseMs: number): PerformanceTone {
-  if (responseMs > 3000) {
-    return "red";
-  }
-
-  if (responseMs > 500) {
-    return "yellow";
-  }
-
-  return "green";
-}
-
-function performanceChartColors(tone: PerformanceTone) {
-  if (tone === "red") {
-    return {
-      area: "#ef4444",
-      stroke: "#dc2626",
-    };
-  }
-
-  if (tone === "yellow") {
-    return {
-      area: "#eab308",
-      stroke: "#ca8a04",
-    };
-  }
-
-  if (tone === "green") {
-    return {
-      area: "#10b981",
-      stroke: "#059669",
-    };
-  }
-
-  return {
-    area: "#94a3b8",
-    stroke: "#64748b",
-  };
-}
-
-function performanceCardBorderClass(tone: PerformanceTone) {
-  if (tone === "red") {
-    return "border-red-200 hover:border-red-300";
-  }
-
-  if (tone === "yellow") {
-    return "border-yellow-200 hover:border-yellow-300";
-  }
-
-  if (tone === "green") {
-    return "border-emerald-200 hover:border-emerald-300";
-  }
-
-  return "border-slate-200/70 hover:border-slate-300";
-}
-
-function performanceIconClass(tone: PerformanceTone) {
-  if (tone === "red") {
-    return "bg-red-50 text-red-600 ring-red-200 group-hover:bg-red-100";
-  }
-
-  if (tone === "yellow") {
-    return "bg-yellow-50 text-yellow-700 ring-yellow-200 group-hover:bg-yellow-100";
-  }
-
-  if (tone === "green") {
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200 group-hover:bg-emerald-100";
-  }
-
-  return "bg-slate-50 text-slate-500 ring-slate-200/70 group-hover:bg-slate-100";
-}
-
-function performancePillClass(tone: PerformanceTone) {
-  if (tone === "red") {
-    return "bg-red-50 text-red-700 ring-red-200";
-  }
-
-  if (tone === "yellow") {
-    return "bg-yellow-50 text-yellow-700 ring-yellow-200";
-  }
-
-  if (tone === "green") {
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
-  }
-
-  return "bg-slate-50 text-slate-500 ring-slate-200/70";
-}
-
 function riskPriority(risk?: OperationsRiskLevel | "nenhum") {
   const priorities = {
     alto: 3,
@@ -10360,23 +7375,6 @@ function getHomologationReviewErrorMessage(error: unknown) {
   }
 
   return message;
-}
-
-function countOpenItTickets(tickets: readonly HubItTicket[]) {
-  return tickets.filter((ticket) => isOpenItTicket(ticket)).length;
-}
-
-function countItTicketsWaitingForZeus(tickets: readonly HubItTicket[]) {
-  return tickets.filter((ticket) => isItTicketWaitingForZeus(ticket))
-    .length;
-}
-
-function isOpenItTicket(ticket: HubItTicket) {
-  return ticket.status !== "resolvido" && ticket.status !== "fechado";
-}
-
-function isItTicketWaitingForZeus(ticket: HubItTicket) {
-  return ticket.status === "novo" || ticket.status === "em_revisao";
 }
 
 function matchesPeriod(localDateTime: string, period: string) {
