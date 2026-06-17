@@ -8,21 +8,28 @@ import {
 import {
   hubItTicketCategoryLabels,
   hubItTicketPriorityLabels,
+  hubItTicketRoadmapTypeLabels,
   hubItTicketStatusLabels,
   type HubItTicket,
   type HubItTicketAttachmentInput,
+  type HubItTicketBacklogInput,
+  type HubItTicketRoadmapType,
   type HubItTicketStatus,
 } from "@/lib/hub-it-tickets/types";
 import { Badge, Surface, Tooltip } from "@repo/uix";
 import type { BadgeVariant } from "@repo/uix";
 import {
   AlertTriangle,
+  Archive,
+  ArrowUpDown,
   AtSign,
+  Bug,
   CalendarDays,
   Camera,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  ClipboardList,
   ExternalLink,
   FileText,
   History,
@@ -40,6 +47,7 @@ import {
   Square,
   UserRound,
   Video,
+  Wrench,
   X,
 } from "lucide-react";
 import Image from "next/image";
@@ -81,9 +89,25 @@ const emptyDraft: TicketDraft = {
   status: "em_tratativa",
 };
 
+type BacklogFormState = {
+  module: string;
+  note: string;
+  priority: HubItTicket["priority"];
+  screen: string;
+  type: HubItTicketRoadmapType;
+};
+
 type DeliveryFilter = "todos" | "hoje" | "proximos" | "folga" | "sem_data";
 type TicketQueueView = "fila" | "historico";
+type HistorySortDirection = "asc" | "desc";
+type HistorySortKey =
+  | "collaborator"
+  | "evidence"
+  | "protocol"
+  | "title"
+  | "updatedAt";
 type TicketWorkflowStage =
+  | "backlog"
   | "finalizado"
   | "novo"
   | "revisao"
@@ -111,6 +135,7 @@ type SetupUsersApiResponse = {
 };
 
 const activeWorkflowStages = [
+  "backlog",
   "novo",
   "tratativa",
   "validacao",
@@ -122,12 +147,27 @@ const historyWorkflowStages = [
 ] as const satisfies readonly TicketWorkflowStage[];
 
 const workflowStageLabels = {
+  backlog: "Backlog",
   finalizado: "Finalizado",
   novo: "Novo",
   revisao: "Revisao",
   tratativa: "Em tratativa",
   validacao: "Validacao",
 } as const satisfies Record<TicketWorkflowStage, string>;
+
+const roadmapTypeOptions = [
+  "melhoria",
+  "bug",
+  "divida_tecnica",
+  "automacao_integracao",
+] as const satisfies readonly HubItTicketRoadmapType[];
+
+const priorityOptions = [
+  "baixa",
+  "media",
+  "alta",
+  "critica",
+] as const satisfies readonly HubItTicket["priority"][];
 
 export function HubItTicketsBoard({
   accessToken,
@@ -142,7 +182,12 @@ export function HubItTicketsBoard({
   const [deliveryFilter, setDeliveryFilter] =
     useState<DeliveryFilter>("todos");
   const [isQueueDatesExpanded, setIsQueueDatesExpanded] = useState(false);
-  const [isQueueMetricsExpanded, setIsQueueMetricsExpanded] = useState(false);
+  const [historyModalProtocol, setHistoryModalProtocol] = useState<
+    string | null
+  >(null);
+  const [backlogModalProtocol, setBacklogModalProtocol] = useState<
+    string | null
+  >(null);
   const [loadedDetailProtocols, setLoadedDetailProtocols] = useState<
     readonly string[]
   >([]);
@@ -202,7 +247,7 @@ export function HubItTicketsBoard({
   const operatorAttentionTickets = useMemo(
     () =>
       activeQueueTickets.filter((ticket) => {
-        const stage = getTicketWorkflowStage(ticket.status);
+        const stage = getTicketWorkflowStage(ticket);
 
         return stage === "novo" || stage === "tratativa" || stage === "revisao";
       }),
@@ -225,6 +270,16 @@ export function HubItTicketsBoard({
     ticketsByDelivery.find((ticket) => ticket.protocol === selectedProtocol) ??
     ticketsByDelivery[0] ??
     null;
+  const historyModalTicket =
+    historyModalProtocol
+      ? tickets.find((ticket) => ticket.protocol === historyModalProtocol) ??
+        null
+      : null;
+  const backlogModalTicket =
+    backlogModalProtocol
+      ? tickets.find((ticket) => ticket.protocol === backlogModalProtocol) ??
+        null
+      : null;
   const selectedTicketDraftProtocol = selectedTicket?.protocol ?? null;
   const selectedTicketDraftStatus = selectedTicket?.status ?? null;
   const selectedTicketDraftApprovedDeliveryDate =
@@ -499,6 +554,57 @@ export function HubItTicketsBoard({
     }
   }
 
+  function openHistoryTicket(protocol: string) {
+    setSelectedProtocol(protocol);
+    setHistoryModalProtocol(protocol);
+  }
+
+  function openBacklogForm(protocol: string) {
+    setSelectedProtocol(protocol);
+    setBacklogModalProtocol(protocol);
+  }
+
+  async function saveBacklog(input: HubItTicketBacklogInput) {
+    if (!backlogModalTicket) {
+      return;
+    }
+
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      const updatedTicket = await updateHubItTicket({
+        accessToken,
+        input: {
+          backlog: input,
+          protocol: backlogModalTicket.protocol,
+          status: "em_analise",
+        },
+      });
+
+      setTickets((currentTickets) =>
+        currentTickets.map((ticket) =>
+          ticket.id === updatedTicket.id ? updatedTicket : ticket,
+        ),
+      );
+      setSelectedProtocol(updatedTicket.protocol);
+      setBacklogModalProtocol(null);
+      setLoadedDetailProtocols((currentProtocols) =>
+        currentProtocols.includes(updatedTicket.protocol)
+          ? currentProtocols
+          : [...currentProtocols, updatedTicket.protocol],
+      );
+    } catch (saveError) {
+      setError(
+        saveError instanceof Error
+          ? saveError.message
+          : "Nao foi possivel mover o ticket para Backlog.",
+      );
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
   if (!accessToken) {
     return (
       <Surface bordered className="border-amber-100 bg-amber-50 p-5">
@@ -653,6 +759,10 @@ export function HubItTicketsBoard({
                 {queueView === "fila" ? (
                   <>
                     <QueueSummaryPill
+                      label="backlog"
+                      value={workflowCounts.backlog}
+                    />
+                    <QueueSummaryPill
                       label="data"
                       tone="danger"
                       value={deliveryBuckets.hoje}
@@ -680,17 +790,6 @@ export function HubItTicketsBoard({
               </div>
             </div>
 
-            <QueueDisclosureSection
-              isExpanded={isQueueMetricsExpanded}
-              onToggle={() =>
-                setIsQueueMetricsExpanded((current) => !current)
-              }
-              summary={`${filteredQueueTickets.length} ${queueView === "fila" ? "em acao" : "no historico"}`}
-              title="Fluxo"
-            >
-              <WorkflowSummaryGrid counts={workflowCounts} />
-            </QueueDisclosureSection>
-
             <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-6">
               {ticketsByDelivery.length > 0 ? (
                 <div className="grid gap-2">
@@ -716,7 +815,7 @@ export function HubItTicketsBoard({
 
             {queueView === "historico" ? (
               <TicketHistoryTable
-                onSelectTicket={setSelectedProtocol}
+                onSelectTicket={openHistoryTicket}
                 selectedProtocol={selectedTicket?.protocol ?? null}
                 tickets={ticketsByDelivery}
               />
@@ -729,19 +828,20 @@ export function HubItTicketsBoard({
               />
             )}
 
-            {selectedTicket ? (
+            {queueView !== "historico" && selectedTicket ? (
               <TicketWorkspace
                 accessToken={accessToken}
                 draft={draft}
                 isDetailLoading={isDetailLoading}
                 isSaving={isSaving}
                 onDraftChange={setDraft}
+                onOpenBacklogForm={openBacklogForm}
                 onReplyAttachmentsChange={setReplyAttachments}
                 onSave={(nextStatus) => void saveReply(nextStatus)}
                 replyAttachments={replyAttachments}
                 ticket={selectedTicket}
               />
-            ) : (
+            ) : queueView !== "historico" ? (
               <div className="grid min-h-[28rem] place-items-center p-6 text-center">
                 <div>
                   <Inbox className="mx-auto size-8 text-slate-300" />
@@ -750,10 +850,33 @@ export function HubItTicketsBoard({
                   </p>
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
         </div>
       </Surface>
+      {historyModalTicket ? (
+        <TicketDetailModal
+          accessToken={accessToken}
+          draft={draft}
+          isDetailLoading={isDetailLoading}
+          isSaving={isSaving}
+          onClose={() => setHistoryModalProtocol(null)}
+          onDraftChange={setDraft}
+          onOpenBacklogForm={openBacklogForm}
+          onReplyAttachmentsChange={setReplyAttachments}
+          onSave={(nextStatus) => void saveReply(nextStatus)}
+          replyAttachments={replyAttachments}
+          ticket={historyModalTicket}
+        />
+      ) : null}
+      {backlogModalTicket ? (
+        <BacklogFormModal
+          isSaving={isSaving}
+          onClose={() => setBacklogModalProtocol(null)}
+          onSubmit={(input) => void saveBacklog(input)}
+          ticket={backlogModalTicket}
+        />
+      ) : null}
       {attentionToast ? (
         <div className="fixed bottom-6 right-6 z-[70] max-w-sm rounded-xl border border-[#A07C3B]/25 bg-white p-4 text-sm font-semibold text-slate-800 shadow-2xl">
           <div className="flex items-start gap-3">
@@ -782,32 +905,279 @@ function OperationalErrorBanner({ message }: { message: string }) {
   return <div className={className}>{message}</div>;
 }
 
-function WorkflowSummaryGrid({
-  counts,
+function TicketDetailModal({
+  accessToken,
+  draft,
+  isDetailLoading,
+  isSaving,
+  onClose,
+  onDraftChange,
+  onOpenBacklogForm,
+  onReplyAttachmentsChange,
+  onSave,
+  replyAttachments,
+  ticket,
 }: {
-  counts: Record<TicketWorkflowStage, number>;
+  accessToken: string | null;
+  draft: TicketDraft;
+  isDetailLoading: boolean;
+  isSaving: boolean;
+  onClose: () => void;
+  onDraftChange: (draft: TicketDraft) => void;
+  onOpenBacklogForm: (protocol: string) => void;
+  onReplyAttachmentsChange: Dispatch<
+    SetStateAction<HubItTicketAttachmentInput[]>
+  >;
+  onSave: (nextStatus: HubItTicketStatus) => void;
+  replyAttachments: HubItTicketAttachmentInput[];
+  ticket: HubItTicket;
 }) {
-  const items = [
-    { stage: "novo", tone: "neutral" },
-    { stage: "tratativa", tone: "danger" },
-    { stage: "validacao", tone: "success" },
-    { stage: "revisao", tone: "warning" },
-    { stage: "finalizado", tone: "success" },
-  ] as const satisfies readonly {
-    stage: TicketWorkflowStage;
-    tone: "danger" | "neutral" | "success" | "warning";
-  }[];
+  return (
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#101820]/45 p-4">
+      <button
+        aria-label="Fechar detalhe do ticket"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
+      <div
+        aria-modal="true"
+        className="relative flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        role="dialog"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="min-w-0">
+            <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-500">
+              Historico / detalhe
+            </p>
+            <p className="m-0 truncate font-mono text-sm font-semibold text-[#7A5E2C]">
+              {ticket.protocol}
+            </p>
+          </div>
+          <Tooltip content="Fechar" placement="left">
+            <button
+              aria-label="Fechar detalhe do ticket"
+              className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+              onClick={onClose}
+              type="button"
+            >
+              <X className="size-4" />
+            </button>
+          </Tooltip>
+        </div>
+        <div className="min-h-0 overflow-y-auto">
+          <TicketWorkspace
+            accessToken={accessToken}
+            draft={draft}
+            isDetailLoading={isDetailLoading}
+            isSaving={isSaving}
+            onDraftChange={onDraftChange}
+            onOpenBacklogForm={onOpenBacklogForm}
+            onReplyAttachmentsChange={onReplyAttachmentsChange}
+            onSave={onSave}
+            replyAttachments={replyAttachments}
+            ticket={ticket}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BacklogFormModal({
+  isSaving,
+  onClose,
+  onSubmit,
+  ticket,
+}: {
+  isSaving: boolean;
+  onClose: () => void;
+  onSubmit: (input: HubItTicketBacklogInput) => void;
+  ticket: HubItTicket;
+}) {
+  const [form, setForm] = useState<BacklogFormState>(() =>
+    getBacklogFormInitialState(ticket),
+  );
+
+  useEffect(() => {
+    setForm(getBacklogFormInitialState(ticket));
+  }, [ticket]);
+
+  const canSubmit = form.module.trim() && form.screen.trim();
 
   return (
-    <div className="grid grid-cols-2 gap-2">
-      {items.map((item) => (
-        <QueueMetric
-          key={item.stage}
-          label={workflowStageLabels[item.stage]}
-          tone={item.tone}
-          value={counts[item.stage]}
-        />
-      ))}
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#101820]/50 p-4">
+      <button
+        aria-label="Fechar formulario de Backlog"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
+      <form
+        aria-label="Formulario de Backlog"
+        className="relative w-full max-w-xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        onSubmit={(event) => {
+          event.preventDefault();
+
+          if (!canSubmit) {
+            return;
+          }
+
+          onSubmit({
+            module: form.module.trim(),
+            note: form.note.trim() || undefined,
+            priority: form.priority,
+            screen: form.screen.trim(),
+            type: form.type,
+          });
+        }}
+      >
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="min-w-0">
+            <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#7A5E2C]">
+              Backlog
+            </p>
+            <h3 className="m-0 mt-1 truncate text-base font-semibold text-slate-950">
+              {ticket.protocol} / {ticket.title}
+            </h3>
+          </div>
+          <Tooltip content="Fechar" placement="left">
+            <button
+              aria-label="Fechar formulario de Backlog"
+              className="grid size-9 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+              onClick={onClose}
+              type="button"
+            >
+              <X className="size-4" />
+            </button>
+          </Tooltip>
+        </div>
+        <div className="grid gap-4 p-4">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase text-slate-500">
+                Tipo
+              </span>
+              <select
+                className={fieldClassName}
+                onChange={(event) =>
+                  setForm((currentForm) => ({
+                    ...currentForm,
+                    type: event.target.value as HubItTicketRoadmapType,
+                  }))
+                }
+                value={form.type}
+              >
+                {roadmapTypeOptions.map((type) => (
+                  <option key={type} value={type}>
+                    {hubItTicketRoadmapTypeLabels[type]}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase text-slate-500">
+                Prioridade
+              </span>
+              <select
+                className={fieldClassName}
+                onChange={(event) =>
+                  setForm((currentForm) => ({
+                    ...currentForm,
+                    priority: event.target.value as HubItTicket["priority"],
+                  }))
+                }
+                value={form.priority}
+              >
+                {priorityOptions.map((priority) => (
+                  <option key={priority} value={priority}>
+                    {hubItTicketPriorityLabels[priority]}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase text-slate-500">
+                Modulo
+              </span>
+              <input
+                className={fieldClassName}
+                onChange={(event) =>
+                  setForm((currentForm) => ({
+                    ...currentForm,
+                    module: event.target.value,
+                  }))
+                }
+                value={form.module}
+              />
+            </label>
+            <label className="grid gap-1.5">
+              <span className="text-xs font-semibold uppercase text-slate-500">
+                Tela / fluxo
+              </span>
+              <input
+                className={fieldClassName}
+                onChange={(event) =>
+                  setForm((currentForm) => ({
+                    ...currentForm,
+                    screen: event.target.value,
+                  }))
+                }
+                value={form.screen}
+              />
+            </label>
+          </div>
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold uppercase text-slate-500">
+              Observacao
+            </span>
+            <textarea
+              className={`${fieldClassName} min-h-24 resize-none py-2 leading-6`}
+              onChange={(event) =>
+                setForm((currentForm) => ({
+                  ...currentForm,
+                  note: event.target.value,
+                }))
+              }
+              placeholder="Contexto para roadmap, impacto ou criterio futuro."
+              value={form.note}
+            />
+          </label>
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-600">
+              {getBacklogTypeIcon(form.type)}
+              <span className="truncate">
+                {hubItTicketRoadmapTypeLabels[form.type]} /{" "}
+                {hubItTicketPriorityLabels[form.priority]}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                disabled={isSaving}
+                onClick={onClose}
+                type="button"
+              >
+                Cancelar
+              </button>
+              <button
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition hover:bg-[#1d2634] disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isSaving || !canSubmit}
+                type="submit"
+              >
+                {isSaving ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <Archive className="size-4" />
+                )}
+                Salvar Backlog
+              </button>
+            </div>
+          </div>
+        </div>
+      </form>
     </div>
   );
 }
@@ -832,7 +1202,7 @@ function TicketKanbanBoard({
         <div>
           <h3 className="m-0 mt-1 text-base font-semibold text-slate-950">
             {queueView === "fila"
-              ? "Novo / Tratativa / Validacao / Revisao"
+              ? "Backlog / Novo / Tratativa / Validacao / Revisao"
               : "Historico de finalizados"}
           </h3>
         </div>
@@ -843,13 +1213,13 @@ function TicketKanbanBoard({
       <div
         className={`grid gap-3 ${
           queueView === "fila"
-            ? "lg:grid-cols-4"
+            ? "lg:grid-cols-5"
             : "lg:grid-cols-1"
         }`}
       >
         {stages.map((stage) => {
           const columnTickets = tickets.filter(
-            (ticket) => getTicketWorkflowStage(ticket.status) === stage,
+            (ticket) => getTicketWorkflowStage(ticket) === stage,
           );
 
           return (
@@ -876,6 +1246,29 @@ function TicketHistoryTable({
   selectedProtocol: string | null;
   tickets: HubItTicket[];
 }) {
+  const [sortKey, setSortKey] = useState<HistorySortKey>("updatedAt");
+  const [sortDirection, setSortDirection] =
+    useState<HistorySortDirection>("desc");
+  const sortedTickets = useMemo(
+    () => sortHistoryTickets(tickets, sortKey, sortDirection),
+    [sortDirection, sortKey, tickets],
+  );
+  const handleSort = useCallback((nextKey: HistorySortKey) => {
+    setSortKey((currentKey) => {
+      if (currentKey === nextKey) {
+        setSortDirection((currentDirection) =>
+          currentDirection === "asc" ? "desc" : "asc",
+        );
+
+        return currentKey;
+      }
+
+      setSortDirection(nextKey === "updatedAt" ? "desc" : "asc");
+
+      return nextKey;
+    });
+  }, []);
+
   return (
     <div className="border-b border-slate-200/70 bg-white p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -891,15 +1284,40 @@ function TicketHistoryTable({
           className="hidden grid-cols-[9rem_minmax(12rem,1fr)_12rem_9rem_9rem] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 lg:grid"
           role="row"
         >
-          <span>Ticket</span>
-          <span>Assunto</span>
-          <span>Colaborador</span>
-          <span>Evidencias</span>
-          <span>Atualizacao</span>
+          <HistorySortHeader
+            active={sortKey === "protocol"}
+            direction={sortDirection}
+            label="Ticket"
+            onClick={() => handleSort("protocol")}
+          />
+          <HistorySortHeader
+            active={sortKey === "title"}
+            direction={sortDirection}
+            label="Assunto"
+            onClick={() => handleSort("title")}
+          />
+          <HistorySortHeader
+            active={sortKey === "collaborator"}
+            direction={sortDirection}
+            label="Colaborador"
+            onClick={() => handleSort("collaborator")}
+          />
+          <HistorySortHeader
+            active={sortKey === "evidence"}
+            direction={sortDirection}
+            label="Evidencias"
+            onClick={() => handleSort("evidence")}
+          />
+          <HistorySortHeader
+            active={sortKey === "updatedAt"}
+            direction={sortDirection}
+            label="Atualizacao"
+            onClick={() => handleSort("updatedAt")}
+          />
         </div>
-        {tickets.length > 0 ? (
+        {sortedTickets.length > 0 ? (
           <div className="divide-y divide-slate-100">
-            {tickets.map((ticket) => {
+            {sortedTickets.map((ticket) => {
               const isSelected = ticket.protocol === selectedProtocol;
 
               return (
@@ -960,6 +1378,37 @@ function TicketHistoryTable({
   );
 }
 
+function HistorySortHeader({
+  active,
+  direction,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  direction: HistorySortDirection;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-label={`Ordenar por ${label}`}
+      className={`inline-flex items-center gap-1 text-left font-semibold uppercase transition ${
+        active ? "text-[#7A5E2C]" : "text-slate-500 hover:text-slate-800"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+      <ArrowUpDown className="size-3" />
+      {active ? (
+        <span className="font-mono text-[0.58rem]">
+          {direction === "asc" ? "ASC" : "DESC"}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
 function KanbanColumn({
   onSelectTicket,
   selectedProtocol,
@@ -1010,9 +1459,11 @@ function KanbanTicketCard({
   onClick: () => void;
   ticket: HubItTicket;
 }) {
-  const stage = getTicketWorkflowStage(ticket.status);
+  const stage = getTicketWorkflowStage(ticket);
   const stageClass =
-    stage === "validacao" || stage === "finalizado"
+    stage === "backlog"
+      ? "border-slate-200 bg-slate-100/80"
+      : stage === "validacao" || stage === "finalizado"
       ? "border-emerald-100 bg-emerald-50/70"
       : stage === "revisao"
         ? "border-amber-100 bg-amber-50/70"
@@ -1040,33 +1491,13 @@ function KanbanTicketCard({
       <p className="m-0 mt-2 truncate text-xs text-slate-500">
         {ticket.requester.name}
       </p>
+      {ticket.roadmap?.active ? (
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <MiniBadge>{hubItTicketRoadmapTypeLabels[ticket.roadmap.type]}</MiniBadge>
+          <MiniBadge>{hubItTicketPriorityLabels[ticket.roadmap.priority]}</MiniBadge>
+        </div>
+      ) : null}
     </button>
-  );
-}
-
-function QueueMetric({
-  label,
-  tone = "neutral",
-  value,
-}: {
-  label: string;
-  tone?: "danger" | "neutral" | "success" | "warning";
-  value: number | string;
-}) {
-  const toneClass = {
-    danger: "border-red-100 bg-red-50 text-red-700",
-    neutral: "border-slate-200 bg-white text-slate-700",
-    success: "border-emerald-100 bg-emerald-50 text-emerald-700",
-    warning: "border-amber-100 bg-amber-50 text-amber-700",
-  }[tone];
-
-  return (
-    <div className={`rounded-lg border px-2 py-1.5 ${toneClass}`}>
-      <p className="m-0 text-base font-semibold leading-none">{value}</p>
-      <p className="m-0 mt-1 truncate text-[0.62rem] font-semibold uppercase">
-        {label}
-      </p>
-    </div>
   );
 }
 
@@ -1215,7 +1646,7 @@ function TicketQueueItem({
             <p className="m-0 font-mono text-xs font-semibold text-[#7A5E2C]">
               {ticket.protocol}
             </p>
-            <StatusBadge status={ticket.status} />
+            <StatusBadge status={ticket.status} ticket={ticket} />
           </div>
           <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
             {ticket.title}
@@ -1228,6 +1659,12 @@ function TicketQueueItem({
       <div className="mt-3 flex flex-wrap gap-1.5">
         <MiniBadge>{ticket.module}</MiniBadge>
         <MiniBadge>{hubItTicketPriorityLabels[ticket.priority]}</MiniBadge>
+        {ticket.roadmap?.active ? (
+          <>
+            <MiniBadge>{hubItTicketRoadmapTypeLabels[ticket.roadmap.type]}</MiniBadge>
+            <MiniBadge>{hubItTicketPriorityLabels[ticket.roadmap.priority]}</MiniBadge>
+          </>
+        ) : null}
         {ticket.attachments.length > 0 ? (
           <MiniBadge>{ticket.attachments.length} anexo(s)</MiniBadge>
         ) : null}
@@ -1242,6 +1679,7 @@ function TicketWorkspace({
   isDetailLoading,
   isSaving,
   onDraftChange,
+  onOpenBacklogForm,
   onReplyAttachmentsChange,
   onSave,
   replyAttachments,
@@ -1252,6 +1690,7 @@ function TicketWorkspace({
   isDetailLoading: boolean;
   isSaving: boolean;
   onDraftChange: (draft: TicketDraft) => void;
+  onOpenBacklogForm: (protocol: string) => void;
   onReplyAttachmentsChange: Dispatch<
     SetStateAction<HubItTicketAttachmentInput[]>
   >;
@@ -1294,7 +1733,13 @@ function TicketWorkspace({
               <span className="font-mono text-sm font-semibold text-[#7A5E2C]">
                 {ticket.protocol}
               </span>
-              <StatusBadge status={ticket.status} />
+              <StatusBadge status={ticket.status} ticket={ticket} />
+              {ticket.roadmap?.active ? (
+                <Badge variant="neutral">
+                  {hubItTicketRoadmapTypeLabels[ticket.roadmap.type]} /{" "}
+                  {hubItTicketPriorityLabels[ticket.roadmap.priority]}
+                </Badge>
+              ) : null}
               <Badge variant={priorityVariant(ticket.priority)}>
                 {hubItTicketPriorityLabels[ticket.priority]}
               </Badge>
@@ -1315,7 +1760,7 @@ function TicketWorkspace({
             </p>
           </div>
         </div>
-        <WorkflowStepper status={ticket.status} />
+        <WorkflowStepper ticket={ticket} />
         <CollapsiblePanel
           icon={<UserRound className="size-4" />}
           isExpanded={isSectionExpanded("context")}
@@ -1404,6 +1849,7 @@ function TicketWorkspace({
             draft={draft}
             isSaving={isSaving}
             onDraftChange={onDraftChange}
+            onOpenBacklogForm={() => onOpenBacklogForm(ticket.protocol)}
             onReplyAttachmentsChange={onReplyAttachmentsChange}
             onSave={onSave}
             replyAttachments={replyAttachments}
@@ -1468,24 +1914,26 @@ function UserSummaryCard({
   );
 }
 
-function WorkflowStepper({ status }: { status: HubItTicketStatus }) {
+function WorkflowStepper({ ticket }: { ticket: HubItTicket }) {
   const steps = [
+    { id: "backlog", label: "Backlog" },
     { id: "novo", label: "Novo" },
-    { id: "em_tratativa", label: "Em tratativa" },
-    { id: "aguardando_cliente", label: "Validacao" },
-    { id: "em_revisao", label: "Revisao" },
-    { id: "fechado", label: "Finalizado" },
-  ] as const satisfies readonly { id: HubItTicketStatus; label: string }[];
+    { id: "tratativa", label: "Em tratativa" },
+    { id: "validacao", label: "Validacao" },
+    { id: "revisao", label: "Revisao" },
+    { id: "finalizado", label: "Finalizado" },
+  ] as const satisfies readonly { id: TicketWorkflowStage; label: string }[];
+  const activeStage = getTicketWorkflowStage(ticket);
   const activeIndex = Math.max(
-    steps.findIndex((step) => step.id === normalizeWorkflowStatus(status)),
+    steps.findIndex((step) => step.id === activeStage),
     0,
   );
 
   return (
     <div className="flex gap-2 overflow-x-auto pb-1">
       {steps.map((step, index) => {
-        const isDone = index < activeIndex || status === "fechado";
-        const isActive = index === activeIndex && status !== "fechado";
+        const isDone = index < activeIndex || activeStage === "finalizado";
+        const isActive = index === activeIndex && activeStage !== "finalizado";
 
         return (
           <div
@@ -1859,6 +2307,7 @@ function TicketReplyForm({
   draft,
   isSaving,
   onDraftChange,
+  onOpenBacklogForm,
   onReplyAttachmentsChange,
   onSave,
   replyAttachments,
@@ -1868,6 +2317,7 @@ function TicketReplyForm({
   draft: TicketDraft;
   isSaving: boolean;
   onDraftChange: (draft: TicketDraft) => void;
+  onOpenBacklogForm: () => void;
   onReplyAttachmentsChange: Dispatch<
     SetStateAction<HubItTicketAttachmentInput[]>
   >;
@@ -2368,6 +2818,17 @@ function TicketReplyForm({
         ) : null}
       </div>
       <div className="mt-3 flex justify-end gap-2">
+        <Tooltip content="Mover para Backlog" placement="top">
+          <button
+            aria-label="Mover para Backlog"
+            className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-[#A07C3B]/30 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={isSaving}
+            onClick={onOpenBacklogForm}
+            type="button"
+          >
+            <Archive className="size-4" />
+          </button>
+        </Tooltip>
         <Tooltip content="Manter em tratativa" placement="top">
           <button
             aria-label="Manter em tratativa"
@@ -2696,10 +3157,18 @@ function EmptyQueue({
   );
 }
 
-function StatusBadge({ status }: { status: HubItTicketStatus }) {
+function StatusBadge({
+  status,
+  ticket,
+}: {
+  status: HubItTicketStatus;
+  ticket?: HubItTicket;
+}) {
+  const isBacklog = ticket ? isTicketBacklog(ticket) : false;
+
   return (
-    <Badge variant={statusVariant(status)}>
-      {hubItTicketStatusLabels[status]}
+    <Badge variant={isBacklog ? "neutral" : statusVariant(status)}>
+      {isBacklog ? "Backlog" : hubItTicketStatusLabels[status]}
     </Badge>
   );
 }
@@ -2837,7 +3306,7 @@ function DeliveryDueBadge({
 }
 
 function statusVariant(status: HubItTicketStatus): BadgeVariant {
-  const stage = getTicketWorkflowStage(status);
+  const stage = getTicketWorkflowStageFromStatus(status);
 
   if (stage === "validacao" || stage === "finalizado") {
     return "success";
@@ -3076,6 +3545,65 @@ function getTicketSearchText(ticket: HubItTicket) {
     .join(" ");
 }
 
+function getBacklogFormInitialState(ticket: HubItTicket): BacklogFormState {
+  return {
+    module: ticket.roadmap?.module ?? ticket.module,
+    note: ticket.roadmap?.note ?? "",
+    priority: ticket.roadmap?.priority ?? ticket.priority,
+    screen:
+      ticket.roadmap?.screen ??
+      getBacklogScreenFromTicket(ticket) ??
+      "Tela nao informada",
+    type: ticket.roadmap?.type ?? getDefaultBacklogType(ticket),
+  };
+}
+
+function getBacklogScreenFromTicket(ticket: HubItTicket) {
+  const source = ticket.sourcePath || ticket.sourceUrl || "";
+
+  if (!source) {
+    return null;
+  }
+
+  try {
+    const url = source.startsWith("http") ? new URL(source) : null;
+
+    return url?.pathname || source;
+  } catch {
+    return source;
+  }
+}
+
+function getDefaultBacklogType(
+  ticket: HubItTicket,
+): HubItTicketRoadmapType {
+  if (ticket.category === "bug" || ticket.category === "erro") {
+    return "bug";
+  }
+
+  if (ticket.category === "performance") {
+    return "divida_tecnica";
+  }
+
+  return "melhoria";
+}
+
+function getBacklogTypeIcon(type: HubItTicketRoadmapType) {
+  if (type === "bug") {
+    return <Bug className="size-4 text-red-600" />;
+  }
+
+  if (type === "divida_tecnica") {
+    return <Wrench className="size-4 text-amber-600" />;
+  }
+
+  if (type === "automacao_integracao") {
+    return <ClipboardList className="size-4 text-slate-600" />;
+  }
+
+  return <Sparkles className="size-4 text-[#7A5E2C]" />;
+}
+
 function getTicketEvidenceCount(ticket: HubItTicket) {
   return ticket.attachments.length;
 }
@@ -3151,6 +3679,64 @@ function sortTicketsByUpdatedAt(tickets: HubItTicket[]) {
   );
 }
 
+function sortHistoryTickets(
+  tickets: HubItTicket[],
+  key: HistorySortKey,
+  direction: HistorySortDirection,
+) {
+  const multiplier = direction === "asc" ? 1 : -1;
+
+  return [...tickets].sort((firstTicket, secondTicket) => {
+    const comparison = compareHistoryTicketValue(firstTicket, secondTicket, key);
+
+    if (comparison !== 0) {
+      return comparison * multiplier;
+    }
+
+    return secondTicket.updatedAt.localeCompare(firstTicket.updatedAt);
+  });
+}
+
+function compareHistoryTicketValue(
+  firstTicket: HubItTicket,
+  secondTicket: HubItTicket,
+  key: HistorySortKey,
+) {
+  if (key === "evidence") {
+    return getTicketEvidenceCount(firstTicket) - getTicketEvidenceCount(secondTicket);
+  }
+
+  if (key === "updatedAt") {
+    return (
+      new Date(firstTicket.updatedAt).getTime() -
+      new Date(secondTicket.updatedAt).getTime()
+    );
+  }
+
+  const firstValue = getHistoryTicketStringValue(firstTicket, key);
+  const secondValue = getHistoryTicketStringValue(secondTicket, key);
+
+  return firstValue.localeCompare(secondValue, "pt-BR", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function getHistoryTicketStringValue(
+  ticket: HubItTicket,
+  key: Exclude<HistorySortKey, "evidence" | "updatedAt">,
+) {
+  if (key === "collaborator") {
+    return ticket.requester.name;
+  }
+
+  if (key === "protocol") {
+    return ticket.protocol;
+  }
+
+  return ticket.title;
+}
+
 function mergeTicketListWithExistingDetails(
   nextTickets: HubItTicket[],
   currentTickets: HubItTicket[],
@@ -3192,29 +3778,17 @@ function upsertTicketWithDetails(
   );
 }
 
-function normalizeWorkflowStatus(status: HubItTicketStatus): HubItTicketStatus {
-  const stage = getTicketWorkflowStage(status);
-
-  if (stage === "tratativa") {
-    return "em_tratativa";
+function getTicketWorkflowStage(ticket: HubItTicket): TicketWorkflowStage {
+  if (isTicketBacklog(ticket)) {
+    return "backlog";
   }
 
-  if (stage === "validacao") {
-    return "aguardando_cliente";
-  }
-
-  if (stage === "revisao") {
-    return "em_revisao";
-  }
-
-  if (stage === "finalizado") {
-    return "fechado";
-  }
-
-  return "novo";
+  return getTicketWorkflowStageFromStatus(ticket.status);
 }
 
-function getTicketWorkflowStage(status: HubItTicketStatus): TicketWorkflowStage {
+function getTicketWorkflowStageFromStatus(
+  status: HubItTicketStatus,
+): TicketWorkflowStage {
   if (status === "novo") {
     return "novo";
   }
@@ -3234,16 +3808,21 @@ function getTicketWorkflowStage(status: HubItTicketStatus): TicketWorkflowStage 
   return "tratativa";
 }
 
+function isTicketBacklog(ticket: HubItTicket) {
+  return ticket.roadmap?.active === true;
+}
+
 function countTicketsByWorkflowStage(
   tickets: HubItTicket[],
 ): Record<TicketWorkflowStage, number> {
   return tickets.reduce<Record<TicketWorkflowStage, number>>(
     (counts, ticket) => {
-      counts[getTicketWorkflowStage(ticket.status)] += 1;
+      counts[getTicketWorkflowStage(ticket)] += 1;
 
       return counts;
     },
     {
+      backlog: 0,
       finalizado: 0,
       novo: 0,
       revisao: 0,
@@ -3258,9 +3837,10 @@ function isTicketInHistory(ticket: HubItTicket) {
 }
 
 function isTicketInActiveQueue(ticket: HubItTicket) {
-  const stage = getTicketWorkflowStage(ticket.status);
+  const stage = getTicketWorkflowStage(ticket);
 
   return (
+    stage === "backlog" ||
     stage === "novo" ||
     stage === "tratativa" ||
     stage === "validacao" ||
@@ -3296,7 +3876,16 @@ function getTicketDeliveryBucket(ticket: HubItTicket): DeliveryFilter {
 
 function getTicketDeliveryState(ticket: HubItTicket) {
   const date = getTicketEffectiveDeliveryDate(ticket);
-  const stage = getTicketWorkflowStage(ticket.status);
+  const stage = getTicketWorkflowStage(ticket);
+
+  if (stage === "backlog") {
+    return {
+      className: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+      date,
+      days: Number.POSITIVE_INFINITY,
+      label: "Backlog",
+    };
+  }
 
   if (stage === "validacao") {
     return {
@@ -3357,7 +3946,16 @@ function getTicketQueueToneClass(
   ticket: HubItTicket,
   isActive: boolean,
 ) {
-  const stage = getTicketWorkflowStage(ticket.status);
+  const stage = getTicketWorkflowStage(ticket);
+
+  if (stage === "backlog") {
+    return {
+      container: isActive
+        ? "border-slate-300 bg-slate-100 shadow-sm"
+        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
+      stripe: "bg-slate-400",
+    };
+  }
 
   if (stage === "validacao" || stage === "finalizado") {
     return {

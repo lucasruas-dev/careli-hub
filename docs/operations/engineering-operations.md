@@ -35708,3 +35708,50 @@ Conclusao:
 - O recorte Zeus HelpDesk UX/presenca foi implementado e validado localmente.
 - O impacto pratico e uma tela menos poluida, com busca direta, kanban de validacao, historico consultavel e automacoes falando como Zeus.
 - Precisa de acao agora: Lucas validar a experiencia local/autenticada; Preview, homologacao ou producao continuam bloqueados ate autorizacao explicita pelo protocolo `ZEUS-20260617-001-HELPDESK-UX-PRESENCE`.
+
+## 2026-06-17 11:36:26 -03:00 - Zeus - autorizacao de producao Backlog e historico popup
+
+Assunto: [Zeus] Autorizacao de producao do Backlog e historico popup
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `PRE_PRODUCAO / OPS / HELPDESK / ROADMAP`.
+- Status: `APROVADO_LUCAS / PREPARANDO_DEPLOY_OPS`.
+- Protocolo CEP:
+  - `ZEUS-20260617-002-HELPDESK-BACKLOG-HISTORY`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json`;
+  - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Autorizacao:
+  - Lucas autorizou publicar em producao somente no dominio `https://ops.c2x.app.br`;
+  - o dominio principal `https://c2x.app.br` deve ser preservado e nao pode receber alias deste recorte.
+- Escopo autorizado:
+  - historico do HelpDesk abrindo ticket em popup/modal;
+  - ordenacao nas colunas do historico;
+  - nova etapa/coluna `Backlog` no kanban e workflow;
+  - formulario de Backlog com tipo, prioridade, modulo, tela/fluxo e observacao;
+  - remocao do painel lateral `Fluxo`, mantendo contadores compactos abaixo de `Fila` e `Historico`.
+- Base de producao alvo antes do deploy:
+  - `https://ops.c2x.app.br`: `dpl_2tesUwiA4e2qcS4oC5tryFzZWoPK`;
+  - `https://c2x.app.br`: `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`, dominio fora do escopo e a preservar.
+- Arquivos candidatos:
+  - `apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx`;
+  - `apps/hub/lib/hub-it-tickets/server.ts`;
+  - `apps/hub/lib/hub-it-tickets/types.ts`;
+  - `docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - `https://c2x.app.br`;
+  - Hades, Hermes, Iris, Atlas, Chronos, Setup, Guardian, Apolo, Ares e demais modulos nao-Zeus;
+  - env, secret, Supabase mutavel, banco real, migration, storage e alteracao de chave.
+- Proximo passo operacional:
+  - criar commit limpo do recorte;
+  - montar pacote base/candidato;
+  - executar `Production Module Safety Gate`;
+  - publicar com `vercel deploy --prod --skip-domain`;
+  - apontar somente `ops.c2x.app.br` se o gate e o deploy passarem;
+  - validar `ops` e confirmar que `c2x` permaneceu no deployment anterior.
+
+Conclusao:
+
+- O recorte Backlog/historico recebeu autorizacao explicita para producao OPS.
+- O impacto pratico e liberar em `ops.c2x.app.br` a nova estrutura de roadmap do HelpDesk Zeus.
+- Precisa de acao agora: Zeus concluir commit limpo, Safety Gate, deploy com `--skip-domain`, alias somente de OPS e healthchecks.
