@@ -37754,3 +37754,43 @@ Conclusao:
 - Precisa de acao agora: validar visualmente o Hades em ambiente autenticado antes de qualquer producao.
 - Quem deve agir agora: Lucas autoriza o proximo passo; Zeus publica somente este protocolo se houver autorizacao.
 - Proximo passo: se aprovado, publicar o pacote `HADES-20260616-001-SEGMENTACAO-WORKFLOW` sem incluir outros recortes.
+
+Atualizacao pos-producao:
+
+- Commit publicado:
+  - `cb60b9b` (`fix(hades): restore cobranca segmentation workflow`).
+- Branch de rastreabilidade:
+  - `codex/hades/segment-workflow-prod-cut-20260616`.
+- Primeira tentativa bloqueada e revertida:
+  - deployment gerado: `dpl_31D4LvsEMiRg2su9odhJYkHUw3io`;
+  - motivo: a CLI Vercel subiu ate o `.vercel` do root pai porque o worktree limpo estava dentro do repositorio principal e ainda nao tinha `.vercel/project.json`; o build remoto mostrou rotas fora do recorte, como `/ares` e `/escritorio-virtual`;
+  - acao: rollback/promote imediato para o deployment anterior validado `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`.
+- Correcao do procedimento:
+  - criado `.vercel/project.json` local no worktree limpo apenas para impedir a CLI de resolver o projeto pelo root pai;
+  - tentativa de `vercel build --prod` local foi bloqueada por `spawn cmd.exe ENOENT` no ambiente da CLI Windows antes de compilar;
+  - o arquivo `.vercel/.env.production.local` baixado pela CLI foi removido apos o deploy, sem exposicao de valores.
+- Deploy de producao correto:
+  - deployment id: `dpl_ut2iLP2a34HmdCJCRxxEp5DLe9gb`;
+  - URL Vercel: `https://careli-hub-hub-i2bs-gwu30b8ni-lucasruas-devs-projects.vercel.app`;
+  - alias principal: `https://c2x.app.br`;
+  - rollback: `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5`.
+- Evidencias do build correto:
+  - build remoto final listou `34` paginas, sem `/ares` e sem `/escritorio-virtual`;
+  - rotas Hades/Cobranca presentes: `/hades/cobranca`, `/api/hades/attendance/queue`, `/api/hades/attendance/client/[clientId]`, `/api/hades/attendance/manual-events`.
+- Healthchecks pos-deploy:
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: PASS, `dpl_ut2iLP2a34HmdCJCRxxEp5DLe9gb` Ready;
+  - `GET https://c2x.app.br/login`: `200`;
+  - `GET https://c2x.app.br/api/pwa/manifest`: `200`;
+  - `GET https://c2x.app.br/hades/cobranca`: `200`;
+  - `npx.cmd vercel logs https://c2x.app.br --scope lucasruas-devs-projects --since 15m --level error`: PASS, sem logs encontrados.
+- Observacoes:
+  - Vercel inspect mostra `ops.c2x.app.br` no mesmo deployment do projeto atual, como ja estava no marco capturado antes do deploy;
+  - build manteve warnings conhecidos de NFT/Turbopack, `npm audit` e envs ausentes em `turbo.json`; nenhum valor sensivel foi impresso e nenhum env/secret foi alterado.
+
+Conclusao pos-producao:
+
+- O que aconteceu: a primeira tentativa de deploy foi revertida ao detectar artefato fora do recorte; a segunda tentativa foi feita com o worktree vinculado diretamente ao projeto Vercel e publicou somente o marco zero + Hades.
+- Impacto pratico: producao agora contem a segmentacao de cobranca e o workflow do Hades, preservando as demais telas validadas.
+- Precisa de acao agora: Lucas validar visualmente Hades/Cobranca com usuario autenticado e dados reais.
+- Quem deve agir agora: Lucas valida a experiencia; Zeus mantem rollback `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5` se houver qualquer regressao.
+- Proximo passo: se validado, este protocolo permanece como novo estado de producao para Hades/Cobranca.
