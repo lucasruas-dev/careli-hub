@@ -30,8 +30,7 @@ import {
   type HubItTicketUpdateInput,
 } from "./types";
 
-const ZEUS_VALIDATION_TIMEOUT_MESSAGE =
-  "Zeus: finalizei este ticket por falta de retorno apos 3 dias em validacao. Se ainda precisar de apoio, responda com nova evidencia ou abra um novo ticket.";
+const ZEUS_VALIDATION_TIMEOUT_MESSAGE = "Ticket encerrado";
 
 type HubItTicketUserRow = {
   avatar_url?: string | null;
