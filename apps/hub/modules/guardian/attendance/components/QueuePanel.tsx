@@ -9,9 +9,29 @@ import { ClientQueueCard } from "@/modules/guardian/attendance/components/Client
 import { workflowStageDots, workflowStages, workflowStageStyles } from "@/modules/guardian/attendance/workflow";
 import type { AttendancePriority, QueueClient, WorkflowStage } from "@/modules/guardian/attendance/types";
 
+type QueueMode = "daily" | "general";
+type OverdueRangeFilter = "all" | "1-30" | "31-60" | "60+";
+
+const overdueRangeLabels: Record<OverdueRangeFilter, string> = {
+  all: "Todos",
+  "1-30": "1-30",
+  "31-60": "31-60",
+  "60+": "60+",
+};
+
+const overdueRangeOptions: OverdueRangeFilter[] = ["all", "1-30", "31-60", "60+"];
+
 type QueuePanelProps = {
   clients: QueueClient[];
+  contactedTodayClientIds: Set<string>;
+  dailyCount: number;
   enterprises: string[];
+  generalCount: number;
+  mode: QueueMode;
+  overdueRange: OverdueRangeFilter;
+  overdueRangeCounts: Record<OverdueRangeFilter, number>;
+  overdueRangeEnabled: boolean;
+  profileLabel: string;
   summaryClients: QueueClient[];
   priorities: Array<AttendancePriority | "Todos">;
   search: string;
@@ -20,6 +40,8 @@ type QueuePanelProps = {
   selectedPriority: AttendancePriority | "Todos";
   selectedStage: WorkflowStage | "Todas";
   onEnterpriseChange: (enterprise: string) => void;
+  onModeChange: (mode: QueueMode) => void;
+  onOverdueRangeChange: (range: OverdueRangeFilter) => void;
   onPriorityChange: (priority: AttendancePriority | "Todos") => void;
   onOpenWhatsApp: (clientId: string) => void;
   onSearchChange: (search: string) => void;
@@ -29,7 +51,15 @@ type QueuePanelProps = {
 
 export function QueuePanel({
   clients,
+  contactedTodayClientIds,
+  dailyCount,
   enterprises,
+  generalCount,
+  mode,
+  overdueRange,
+  overdueRangeCounts,
+  overdueRangeEnabled,
+  profileLabel,
   summaryClients,
   priorities,
   search,
@@ -38,6 +68,8 @@ export function QueuePanel({
   selectedPriority,
   selectedStage,
   onEnterpriseChange,
+  onModeChange,
+  onOverdueRangeChange,
   onPriorityChange,
   onOpenWhatsApp,
   onSearchChange,
@@ -53,6 +85,8 @@ export function QueuePanel({
   const activeStages = stageCounts.filter((item) => item.count > 0);
   const total = Math.max(summaryClients.length, 1);
   const activeFilters = [
+    mode !== "daily" ? { label: "Fila", value: "Geral", clear: () => onModeChange("daily") } : null,
+    overdueRange !== "all" ? { label: "Atraso", value: overdueRangeLabels[overdueRange], clear: () => onOverdueRangeChange("all") } : null,
     selectedEnterprise !== "Todos" ? { label: "Empreendimento", value: selectedEnterprise, clear: () => onEnterpriseChange("Todos") } : null,
     selectedPriority !== "Todos" ? { label: "Prioridade", value: selectedPriority, clear: () => onPriorityChange("Todos") } : null,
     selectedStage !== "Todas" ? { label: "Workflow", value: selectedStage, clear: () => onStageChange("Todas") } : null,
@@ -75,6 +109,8 @@ export function QueuePanel({
   }
 
   function clearFilters() {
+    onModeChange("daily");
+    onOverdueRangeChange("all");
     onEnterpriseChange("Todos");
     onPriorityChange("Todos");
     onStageChange("Todas");
@@ -86,9 +122,56 @@ export function QueuePanel({
         <div className="shrink-0 border-b border-slate-100 px-5 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h1 className="text-base font-semibold text-slate-950">Fila operacional</h1>
+              <h1 className="text-base font-semibold text-slate-950">
+                {mode === "daily" ? "Fila diária" : "Fila geral"}
+              </h1>
+              <p className="mt-1 text-xs font-medium text-slate-500">{profileLabel}</p>
             </div>
           </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200/70 bg-slate-50/80 p-1">
+            <button
+              type="button"
+              onClick={() => onModeChange("daily")}
+              className={`h-8 rounded-lg px-3 text-xs font-semibold transition-colors ${
+                mode === "daily"
+                  ? "bg-slate-950 text-white"
+                  : "text-slate-600 hover:bg-white hover:text-slate-950"
+              }`}
+            >
+              Fila diária ({dailyCount})
+            </button>
+            <button
+              type="button"
+              onClick={() => onModeChange("general")}
+              className={`h-8 rounded-lg px-3 text-xs font-semibold transition-colors ${
+                mode === "general"
+                  ? "bg-slate-950 text-white"
+                  : "text-slate-600 hover:bg-white hover:text-slate-950"
+              }`}
+            >
+              Fila geral ({generalCount})
+            </button>
+          </div>
+
+          {overdueRangeEnabled ? (
+            <div className="mt-3 grid grid-cols-4 gap-2">
+              {overdueRangeOptions.map((range) => (
+                <button
+                  key={range}
+                  type="button"
+                  onClick={() => onOverdueRangeChange(range)}
+                  className={`h-8 rounded-lg border px-2 text-xs font-semibold transition-colors ${
+                    overdueRange === range
+                      ? "border-[#A07C3B]/25 bg-[#A07C3B]/10 text-[#7A5E2C]"
+                      : "border-slate-200/70 bg-white text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  {overdueRangeLabels[range]} ({overdueRangeCounts[range] ?? 0})
+                </button>
+              ))}
+            </div>
+          ) : null}
 
           <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2 text-slate-500">
             <Search className="size-4 shrink-0" aria-hidden="true" />
@@ -112,6 +195,11 @@ export function QueuePanel({
               <ChevronDown className={`size-3.5 text-[#A07C3B] transition-transform ${filtersOpen ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
             <span className="text-xs font-medium text-slate-500">{clients.length} na fila</span>
+            {mode === "daily" && contactedTodayClientIds.size > 0 ? (
+              <span className="rounded-full bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100">
+                {contactedTodayClientIds.size} contatado(s) hoje
+              </span>
+            ) : null}
             {activeFilters.map((filter) => (
               <Tooltip key={`${filter.label}-${filter.value}`} content={`Remover ${filter.label}`} placement="top">
                 <button
@@ -278,6 +366,8 @@ export function QueuePanel({
               selected={client.id === selectedClientId}
               onOpenWhatsApp={() => onOpenWhatsApp(client.id)}
               onSelect={() => onSelectClient(client.id)}
+              contactedToday={contactedTodayClientIds.has(client.id)}
+              mode={mode}
             />
           ))}
         </div>

@@ -37709,3 +37709,48 @@ Conclusao pos-producao:
 - Precisa de acao agora: Lucas pode validar visualmente Hades/Cobranca e Chronos em producao.
 - Quem deve agir agora: Lucas valida a experiencia; Zeus fica com rollback `dpl_CujKXmy6FPVEGtWGWXREDWHKdWxR` caso haja regressao.
 - Proximo passo: se o visual estiver correto, manter o protocolo como `EM PRODUCAO`.
+
+## 2026-06-16 20:20:00 -03:00 - Zeus - recorte Hades segmentacao cobranca e workflow
+
+Assunto: [Hades] Segmentacao 1-30/31-60/60+ e workflow oficial
+
+- Nome da squad/agente: `Zeus`.
+- ProtocolId: `HADES-20260616-001-SEGMENTACAO-WORKFLOW`.
+- Tipo da alteracao: `HADES / COBRANCA / FILA OPERACIONAL / WORKFLOW`.
+- Status: `VALIDADO_LOCAL / AGUARDANDO_AUTORIZACAO_PRODUCAO`.
+- Autorizacao: Lucas solicitou corrigir somente a regressao da segmentacao da cobranca em `1-30`, `31-60`, `60+` e o workflow do Hades, sem mexer em outros recortes.
+- Base segura:
+  - worktree limpo dedicado: `.codex-tmp/worktrees/hades-segment-workflow-20260616`;
+  - branch: `codex/hades/segment-workflow-prod-cut-20260616`;
+  - base: `codex/panteon/loading-standard-prod-base-20260615` (`efe92797`), marco zero validado em producao.
+- Escopo:
+  - fila de cobranca passa a respeitar perfil operacional: `OP1` recebe `1 a 30 dias`, `OP2` recebe `31 a 60 dias`, `OP3` recebe `61 a 90 dias`;
+  - perfis `Lider`, `Coordenador` e `Admin` mantem visao total e ganham filtro visual `Todos`, `1-30`, `31-60`, `60+`;
+  - fila diaria separa clientes acionaveis, preservando fila geral para consulta;
+  - workflow oficial do Hades passa a usar `A acionar`, `Contato`, `Negociacao`, `Promessa de pagamento`, `Acordo`, `Quebra` e `Juridico`, mapeando status legados do C2X.
+- Exclusoes:
+  - nenhum arquivo de Escritorio, Ares, Chronos, Iris standalone, Hermes, Atlas, Setup, loading global, status/disponibilidade, env, secret, banco, migration, dominio ou alias foi alterado;
+  - sem deploy, rollback ou promocao de producao neste registro.
+- Arquivos do recorte:
+  - `apps/hub/lib/guardian/read-model.ts`;
+  - `apps/hub/modules/guardian/attendance/AttendancePage.tsx`;
+  - `apps/hub/modules/guardian/attendance/components/ClientQueueCard.tsx`;
+  - `apps/hub/modules/guardian/attendance/components/QueuePanel.tsx`;
+  - `apps/hub/modules/guardian/attendance/types.ts`;
+  - `apps/hub/modules/guardian/attendance/workflow.ts`.
+- Validacoes locais:
+  - `git diff --check`: PASS;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree temporaria/Turbopack/NFT.
+- Risco residual:
+  - validacao visual autenticada de Hades/Cobranca ainda depende de Lucas ou Zeus abrir a tela com dados reais;
+  - publicacao em producao continua bloqueada ate Lucas autorizar explicitamente este protocolo.
+
+Conclusao:
+
+- O que aconteceu: o recorte foi refeito sobre a base de producao validada e ficou isolado nos arquivos de Hades/Cobranca.
+- Impacto pratico: a fila volta a separar a cobranca por maturidade e o workflow volta ao modelo operacional aprovado.
+- Precisa de acao agora: validar visualmente o Hades em ambiente autenticado antes de qualquer producao.
+- Quem deve agir agora: Lucas autoriza o proximo passo; Zeus publica somente este protocolo se houver autorizacao.
+- Proximo passo: se aprovado, publicar o pacote `HADES-20260616-001-SEGMENTACAO-WORKFLOW` sem incluir outros recortes.

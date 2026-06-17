@@ -5,6 +5,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Inbox, MapPinned, MessageCircle } from "lucide-react";
+import {
+  mapLegacyRoleToOperationalProfile,
+  type HubUserContext,
+  type OperationalProfileRole,
+} from "@repo/shared";
 import { Tooltip } from "@repo/uix";
 import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { ClientDetailPanel } from "@/modules/guardian/attendance/components/ClientDetailPanel";
@@ -12,6 +17,7 @@ import { AiCopilotDrawer } from "@/modules/guardian/attendance/components/AiCopi
 import { QueuePanel } from "@/modules/guardian/attendance/components/QueuePanel";
 import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/components/WhatsAppConversationPanel";
 import { IrisPage } from "@/modules/caredesk/IrisPage";
+import { useAuth } from "@/providers/auth-provider";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { queueClients } from "@/modules/guardian/attendance/data";
 import type {
@@ -30,6 +36,8 @@ const priorities: Array<AttendancePriority | "Todos"> = [
 ];
 
 type AttendanceSection = "queue" | "desk" | "portfolio";
+type QueueMode = "daily" | "general";
+type OverdueRangeFilter = "all" | "1-30" | "31-60" | "60+";
 type ManualHadesOperations = {
   commitments: QueueClient["commitments"];
   events: OperationalTimelineEvent[];
@@ -52,6 +60,7 @@ type AttendancePageProps = {
 };
 
 export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageProps) {
+  const { hubUser } = useAuth();
   const searchParams = useSearchParams();
   const routeOpenHandledRef = useRef(false);
   const routeAttendanceProtocol = normalizeAttendanceProtocol(
@@ -74,6 +83,8 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const [enterprise, setEnterprise] = useState("Todos");
   const [priority, setPriority] = useState<AttendancePriority | "Todos">("Todos");
   const [stage, setStage] = useState<WorkflowStage | "Todas">("Todas");
+  const [queueMode, setQueueMode] = useState<QueueMode>("daily");
+  const [overdueRange, setOverdueRange] = useState<OverdueRangeFilter>("all");
   const [whatsAppClientId, setWhatsAppClientId] = useState<string | null>(null);
   const [whatsAppAttendanceProtocol, setWhatsAppAttendanceProtocol] = useState<string | null>(null);
   const [timelineEventsByClient, setTimelineEventsByClient] = useState<
@@ -288,8 +299,49 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     setWhatsAppAttendanceProtocol(routeAttendanceProtocol);
   }, [routeAttendanceProtocol, routeClientId, selectedId, sourceClients]);
 
+  const operationalProfile = useMemo(
+    () => resolveHadesOperationalProfile(hubUser),
+    [hubUser],
+  );
+  const profileScopedClients = useMemo(
+    () =>
+      sourceClients.filter((client) =>
+        isClientInHadesProfileScope(client, operationalProfile.role),
+      ),
+    [operationalProfile.role, sourceClients],
+  );
+  const leadershipOverdueFilterEnabled = isHadesLeadershipProfile(
+    operationalProfile.role,
+  );
+  const overdueRangeCounts = useMemo(
+    () => buildOverdueRangeCounts(profileScopedClients),
+    [profileScopedClients],
+  );
+  const overdueScopedClients = useMemo(
+    () =>
+      profileScopedClients.filter((client) =>
+        isClientInOverdueRange(client, overdueRange),
+      ),
+    [overdueRange, profileScopedClients],
+  );
+  const todayContactClientIds = useMemo(
+    () =>
+      buildTodayContactClientIds(
+        overdueScopedClients,
+        timelineEventsByClient,
+        manualOperationsByClient,
+      ),
+    [manualOperationsByClient, overdueScopedClients, timelineEventsByClient],
+  );
+
+  useEffect(() => {
+    if (!leadershipOverdueFilterEnabled && overdueRange !== "all") {
+      setOverdueRange("all");
+    }
+  }, [leadershipOverdueFilterEnabled, overdueRange]);
+
   const enterpriseOptions = useMemo(() => {
-    const enterprises = sourceClients
+    const enterprises = overdueScopedClients
       .flatMap((client) => [
         client.carteira.empreendimento,
         ...client.carteira.unidades.map((unit) => unit.empreendimento),
@@ -298,12 +350,12 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       .sort((a, b) => a.localeCompare(b, "pt-BR"));
 
     return ["Todos", ...Array.from(new Set(enterprises))];
-  }, [sourceClients]);
+  }, [overdueScopedClients]);
 
   const searchableClients = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
 
-    return sourceClients.filter((client) => {
+    return overdueScopedClients.filter((client) => {
       const matchesSearch =
         normalizedSearch.length === 0 ||
         client.nome.toLowerCase().includes(normalizedSearch) ||
@@ -324,17 +376,36 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
 
       return matchesSearch && matchesEnterprise && matchesPriority;
     });
-  }, [enterprise, priority, search, sourceClients]);
+  }, [enterprise, overdueScopedClients, priority, search]);
+
+  const dailyQueueClients = useMemo(
+    () => searchableClients.filter((client) => isDailyQueueClient(client)),
+    [searchableClients],
+  );
+  const queueSummaryClients = queueMode === "daily" ? dailyQueueClients : searchableClients;
 
   const filteredClients = useMemo(() => {
-    return searchableClients
+    const modeScopedClients = queueMode === "daily" ? dailyQueueClients : searchableClients;
+
+    return modeScopedClients
       .filter((client) => stage === "Todas" || client.workflow.stage === stage)
-      .sort((first, second) => second.parcelas.vencidas - first.parcelas.vencidas);
-  }, [searchableClients, stage]);
+      .sort((first, second) => {
+        const firstContacted = todayContactClientIds.has(first.id) ? 1 : 0;
+        const secondContacted = todayContactClientIds.has(second.id) ? 1 : 0;
+
+        if (firstContacted !== secondContacted) {
+          return firstContacted - secondContacted;
+        }
+
+        return second.parcelas.vencidas - first.parcelas.vencidas;
+      });
+  }, [dailyQueueClients, queueMode, searchableClients, stage, todayContactClientIds]);
 
   const selectedClient =
     filteredClients.find((client) => client.id === selectedId) ??
     filteredClients[0] ??
+    overdueScopedClients.find((client) => client.id === selectedId) ??
+    overdueScopedClients[0] ??
     sourceClients.find((client) => client.id === selectedId) ??
     sourceClients[0];
   const selectedManualOperations =
@@ -564,15 +635,25 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
             <div className="grid w-full items-start gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
               <QueuePanel
                 clients={filteredClients}
-                summaryClients={searchableClients}
+                contactedTodayClientIds={todayContactClientIds}
+                dailyCount={dailyQueueClients.length}
+                generalCount={searchableClients.length}
+                summaryClients={queueSummaryClients}
                 priorities={priorities}
                 enterprises={enterpriseOptions}
+                mode={queueMode}
+                overdueRange={overdueRange}
+                overdueRangeCounts={overdueRangeCounts}
+                overdueRangeEnabled={leadershipOverdueFilterEnabled}
+                profileLabel={operationalProfile.label}
                 search={search}
                 selectedEnterprise={enterprise}
                 selectedClientId={selectedClient.id}
                 selectedPriority={priority}
                 selectedStage={stage}
                 onEnterpriseChange={setEnterprise}
+                onModeChange={setQueueMode}
+                onOverdueRangeChange={setOverdueRange}
                 onPriorityChange={setPriority}
                 onOpenWhatsApp={(clientId) => openWhatsApp(clientId)}
                 onSearchChange={setSearch}
@@ -597,12 +678,197 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       <AiCopilotDrawer
         client={selectedClientWithManualOperations}
         filteredQueueClients={filteredClients}
-        queueClients={sourceClients}
-        queueTotalCount={queueTotalCount}
+        queueClients={overdueScopedClients}
+        queueTotalCount={overdueScopedClients.length || queueTotalCount}
       />
     </>
   );
 }
+
+function resolveHadesOperationalProfile(hubUser: HubUserContext | null) {
+  const role = hubUser ? mapLegacyRoleToOperationalProfile(hubUser.role) : "op1";
+
+  return {
+    label: HADES_PROFILE_LABELS[role],
+    role,
+  };
+}
+
+function isClientInHadesProfileScope(
+  client: QueueClient,
+  profileRole: OperationalProfileRole,
+) {
+  if (isHadesLeadershipProfile(profileRole)) {
+    return true;
+  }
+
+  if (profileRole === "op1") {
+    return client.atrasoDias >= 1 && client.atrasoDias <= 30;
+  }
+
+  if (profileRole === "op2") {
+    return client.atrasoDias >= 31 && client.atrasoDias <= 60;
+  }
+
+  return client.atrasoDias >= 61 && client.atrasoDias <= 90;
+}
+
+function isHadesLeadershipProfile(profileRole: OperationalProfileRole) {
+  return profileRole === "adm" || profileRole === "cdr" || profileRole === "ldr";
+}
+
+function isClientInOverdueRange(
+  client: QueueClient,
+  overdueRange: OverdueRangeFilter,
+) {
+  if (overdueRange === "1-30") {
+    return client.atrasoDias >= 1 && client.atrasoDias <= 30;
+  }
+
+  if (overdueRange === "31-60") {
+    return client.atrasoDias >= 31 && client.atrasoDias <= 60;
+  }
+
+  if (overdueRange === "60+") {
+    return client.atrasoDias > 60;
+  }
+
+  return true;
+}
+
+function buildOverdueRangeCounts(clients: QueueClient[]) {
+  return clients.reduce(
+    (counts, client) => {
+      if (client.atrasoDias >= 1 && client.atrasoDias <= 30) {
+        counts["1-30"] += 1;
+      } else if (client.atrasoDias >= 31 && client.atrasoDias <= 60) {
+        counts["31-60"] += 1;
+      } else if (client.atrasoDias > 60) {
+        counts["60+"] += 1;
+      }
+
+      counts.all += 1;
+      return counts;
+    },
+    { all: 0, "1-30": 0, "31-60": 0, "60+": 0 } as Record<
+      OverdueRangeFilter,
+      number
+    >,
+  );
+}
+
+function isDailyQueueClient(client: QueueClient) {
+  const stage = normalizeDailyWorkflowStage(client.workflow.stage);
+
+  if (client.atrasoDias < 3) {
+    return false;
+  }
+
+  return stage !== "Promessa de pagamento" && stage !== "Acordo";
+}
+
+function normalizeDailyWorkflowStage(stage: WorkflowStage): WorkflowStage {
+  if (stage === "Promessa realizada" || stage === "Aguardando pagamento") {
+    return "Promessa de pagamento";
+  }
+
+  if (stage === "Pago") {
+    return "Acordo";
+  }
+
+  return stage;
+}
+
+function buildTodayContactClientIds(
+  clients: QueueClient[],
+  timelineEventsByClient: Record<string, OperationalTimelineEvent[]>,
+  manualOperationsByClient: Record<string, ManualHadesOperations>,
+) {
+  const ids = new Set<string>();
+
+  clients.forEach((client) => {
+    const events = [
+      ...(client.timeline ?? []),
+      ...(client.workflow.history ?? []),
+      ...(timelineEventsByClient[client.id] ?? []),
+      ...(manualOperationsByClient[client.id]?.events ?? []),
+    ];
+
+    if (events.some((event) => hasTodayContactEvidence(event))) {
+      ids.add(client.id);
+    }
+  });
+
+  return ids;
+}
+
+function hasTodayContactEvidence(event: {
+  changedAt?: string;
+  createdAt?: string;
+  date?: string;
+  status?: string;
+  type?: string;
+  updatedAt?: string;
+}) {
+  const type = String(event.type ?? "").toLowerCase();
+  const status = String(event.status ?? "").toLowerCase();
+  const date =
+    event.date ?? event.createdAt ?? event.updatedAt ?? event.changedAt ?? "";
+
+  if (!isTodayDateLike(date)) {
+    return false;
+  }
+
+  return (
+    [
+      "ligação realizada",
+      "whatsapp enviado",
+      "promessa de pagamento",
+      "acordo gerado",
+      "observação operacional",
+    ].some((item) => type.includes(item)) ||
+    ["realizado", "enviado", "prometido", "gerado", "registrado"].some(
+      (item) => status.includes(item),
+    )
+  );
+}
+
+function isTodayDateLike(value: string) {
+  if (!value) {
+    return false;
+  }
+
+  const today = new Date();
+  const day = String(today.getDate()).padStart(2, "0");
+  const month = String(today.getMonth() + 1).padStart(2, "0");
+  const year = String(today.getFullYear());
+  const normalized = String(value);
+
+  if (normalized.includes(`${day}/${month}/${year}`)) {
+    return true;
+  }
+
+  const parsed = new Date(normalized);
+
+  if (Number.isNaN(parsed.getTime())) {
+    return false;
+  }
+
+  return (
+    parsed.getDate() === today.getDate() &&
+    parsed.getMonth() === today.getMonth() &&
+    parsed.getFullYear() === today.getFullYear()
+  );
+}
+
+const HADES_PROFILE_LABELS: Record<OperationalProfileRole, string> = {
+  adm: "Admin | visão total",
+  cdr: "Coordenador | visão total",
+  ldr: "Líder | visão total",
+  op1: "OP1 | 1 a 30 dias",
+  op2: "OP2 | 31 a 60 dias",
+  op3: "OP3 | 61 a 90 dias",
+};
 
 function upsertById<T extends { id: string }>(nextRows: T[], currentRows: T[]) {
   const nextIds = new Set(nextRows.map((row) => row.id));

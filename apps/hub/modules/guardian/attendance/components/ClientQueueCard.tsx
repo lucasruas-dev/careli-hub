@@ -8,6 +8,8 @@ import type { QueueClient } from "@/modules/guardian/attendance/types";
 
 type ClientQueueCardProps = {
   client: QueueClient;
+  contactedToday?: boolean;
+  mode?: "daily" | "general";
   selected: boolean;
   onOpenWhatsApp: () => void;
   onSelect: () => void;
@@ -15,6 +17,8 @@ type ClientQueueCardProps = {
 
 export function ClientQueueCard({
   client,
+  contactedToday = false,
+  mode = "daily",
   selected,
   onOpenWhatsApp,
   onSelect,
@@ -61,6 +65,11 @@ export function ClientQueueCard({
         >
           {client.workflow.stage}
         </span>
+        {mode === "daily" && contactedToday ? (
+          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+            Contatado hoje
+          </span>
+        ) : null}
         <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
           {client.workflow.nextAction}
         </span>
