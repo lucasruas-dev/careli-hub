@@ -4,7 +4,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Inbox, MapPinned, MessageCircle } from "lucide-react";
+import { Handshake, Inbox, MessageCircle } from "lucide-react";
 import {
   mapLegacyRoleToOperationalProfile,
   type HubUserContext,
@@ -35,24 +35,28 @@ const priorities: Array<AttendancePriority | "Todos"> = [
   "Baixa",
 ];
 
-type AttendanceSection = "queue" | "desk" | "portfolio";
 type QueueMode = "daily" | "general";
 type OverdueRangeFilter = "all" | "1-30" | "31-60" | "60+";
+type AttendanceSection = "queue" | "desk" | "agreements";
 type ManualHadesOperations = {
   commitments: QueueClient["commitments"];
   events: OperationalTimelineEvent[];
 };
 
-const attendanceSections: Array<{ id: AttendanceSection; label: string; badge?: string; icon: typeof Inbox }> = [
-  { id: "queue", label: "Fila operacional", icon: Inbox },
-  { id: "desk", label: "Iris", badge: "3", icon: MessageCircle },
-  { id: "portfolio", label: "Carteira", icon: MapPinned },
-];
 const INITIAL_QUEUE_LIMIT = 600;
 const emptyManualOperations: ManualHadesOperations = {
   commitments: [],
   events: [],
 };
+const attendanceSections: Array<{
+  id: AttendanceSection;
+  label: string;
+  icon: typeof Inbox;
+}> = [
+  { id: "queue", label: "Fila diaria", icon: Inbox },
+  { id: "desk", label: "Fila de atendimento", icon: MessageCircle },
+  { id: "agreements", label: "Acordos feitos", icon: Handshake },
+];
 
 type AttendancePageProps = {
   clients?: QueueClient[];
@@ -78,13 +82,13 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const [queueLoading, setQueueLoading] = useState(loadFromC2x && initialClients.length === 0);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState(sourceClients[0]?.id ?? "");
-  const [activeSection, setActiveSection] = useState<AttendanceSection>("queue");
   const [search, setSearch] = useState("");
   const [enterprise, setEnterprise] = useState("Todos");
   const [priority, setPriority] = useState<AttendancePriority | "Todos">("Todos");
   const [stage, setStage] = useState<WorkflowStage | "Todas">("Todas");
   const [queueMode, setQueueMode] = useState<QueueMode>("daily");
   const [overdueRange, setOverdueRange] = useState<OverdueRangeFilter>("all");
+  const [activeSection, setActiveSection] = useState<AttendanceSection>("queue");
   const [whatsAppClientId, setWhatsAppClientId] = useState<string | null>(null);
   const [whatsAppAttendanceProtocol, setWhatsAppAttendanceProtocol] = useState<string | null>(null);
   const [timelineEventsByClient, setTimelineEventsByClient] = useState<
@@ -382,6 +386,10 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     () => searchableClients.filter((client) => isDailyQueueClient(client)),
     [searchableClients],
   );
+  const agreementClients = useMemo(
+    () => overdueScopedClients.filter((client) => isAgreementClient(client)),
+    [overdueScopedClients],
+  );
   const queueSummaryClients = queueMode === "daily" ? dailyQueueClients : searchableClients;
 
   const filteredClients = useMemo(() => {
@@ -426,6 +434,33 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const whatsAppClient = whatsAppClientId
     ? sourceClients.find((client) => client.id === whatsAppClientId) ?? selectedClient
     : selectedClient;
+  const selectedAgreementClient =
+    agreementClients.find((client) => client.id === selectedId) ?? agreementClients[0];
+  const selectedAgreementManualOperations =
+    manualOperationsByClient[selectedAgreementClient?.id ?? ""] ?? emptyManualOperations;
+  const selectedAgreementClientWithManualOperations = selectedAgreementClient
+    ? {
+        ...selectedAgreementClient,
+        commitments: mergeCommitments(
+          selectedAgreementManualOperations.commitments,
+          selectedAgreementClient.commitments,
+        ),
+      }
+    : selectedAgreementClient;
+  const selectedAgreementExtraTimelineEvents = dedupeTimelineEvents([
+    ...selectedAgreementManualOperations.events,
+    ...(timelineEventsByClient[selectedAgreementClient?.id ?? ""] ?? []),
+  ]);
+
+  useEffect(() => {
+    if (activeSection !== "agreements" || agreementClients.length === 0) {
+      return;
+    }
+
+    if (!agreementClients.some((client) => client.id === selectedId)) {
+      setSelectedId(agreementClients[0].id);
+    }
+  }, [activeSection, agreementClients, selectedId]);
 
   if (!selectedClient) {
     if (queueLoading) {
@@ -504,13 +539,16 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     });
   }
 
-  async function saveManualCommitment(record: QueueClient["commitments"][number]) {
+  async function saveManualCommitment(
+    record: QueueClient["commitments"][number],
+    clientContext = selectedClient,
+  ) {
     const response = await fetch("/api/hades/attendance/manual-events", {
       body: JSON.stringify({
         client: {
-          c2xAcquisitionRequestId: selectedClient.c2xAcquisitionRequestId,
-          id: selectedClient.id,
-          name: selectedClient.nome,
+          c2xAcquisitionRequestId: clientContext.c2xAcquisitionRequestId,
+          id: clientContext.id,
+          name: clientContext.nome,
         },
         commitment: record,
         kind: "commitment",
@@ -531,14 +569,17 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       throw new Error(payload?.error ?? "Nao foi possivel salvar compromisso.");
     }
 
-    upsertManualOperations(selectedClient.id, payload);
+    upsertManualOperations(clientContext.id, payload);
   }
 
-  async function updateManualCommitment(record: QueueClient["commitments"][number]) {
+  async function updateManualCommitment(
+    record: QueueClient["commitments"][number],
+    clientContext = selectedClient,
+  ) {
     const isPersistedRecord = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(record.id);
 
     if (!isPersistedRecord) {
-      await saveManualCommitment(record);
+      await saveManualCommitment(record, clientContext);
       return;
     }
 
@@ -564,7 +605,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
       throw new Error(payload?.error ?? "Nao foi possivel atualizar compromisso.");
     }
 
-    upsertManualOperations(selectedClient.id, payload);
+    upsertManualOperations(clientContext.id, payload);
   }
 
   function upsertManualOperations(clientId: string, payload: ManualHadesOperations) {
@@ -600,29 +641,34 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
         />
       ) : (
         <div className="space-y-5">
-          <nav className="flex w-fit gap-1 overflow-x-auto rounded-xl border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]" aria-label="Módulos de cobrança">
+          <nav
+            aria-label="Atalhos do Hades"
+            className="inline-flex items-center gap-1 rounded-xl border border-[#d9e0e7] bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
+          >
             {attendanceSections.map((section) => {
               const Icon = section.icon;
-              const active = activeSection === section.id;
+              const isActive = activeSection === section.id;
 
               return (
                 <Tooltip key={section.id} content={section.label} placement="bottom">
                   <button
                     type="button"
-                    onClick={() => setActiveSection(section.id)}
                     aria-label={section.label}
-                    className={`relative inline-flex size-9 shrink-0 items-center justify-center rounded-lg transition-colors ${
-                      active
-                        ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/20"
-                        : "text-slate-500 hover:bg-slate-50 hover:text-slate-900"
+                    aria-pressed={isActive}
+                    onClick={() => {
+                      setActiveSection(section.id);
+
+                      if (section.id === "queue") {
+                        setQueueMode("daily");
+                      }
+                    }}
+                    className={`inline-flex size-9 items-center justify-center rounded-lg border text-sm transition focus:outline-none focus:ring-2 focus:ring-[#A07C3B]/35 ${
+                      isActive
+                        ? "border-[#A07C3B]/35 bg-[#F8F3E8] text-[#8A6A2F]"
+                        : "border-transparent bg-white text-slate-500 hover:border-[#d9e0e7] hover:text-slate-900"
                     }`}
                   >
                     <Icon className="size-4" aria-hidden="true" />
-                    {section.badge ? (
-                      <span className="absolute -right-1 -top-1 rounded-full bg-[#A07C3B] px-1.5 py-0.5 text-[10px] font-semibold leading-none text-white">
-                        {section.badge}
-                      </span>
-                    ) : null}
                   </button>
                 </Tooltip>
               );
@@ -631,6 +677,35 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
 
           {activeSection === "desk" ? (
             <IrisPage embedded boardOnly operatorScoped />
+          ) : activeSection === "agreements" ? (
+            <div className="grid w-full items-start gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
+              <AgreementsPanel
+                clients={agreementClients}
+                selectedClientId={selectedAgreementClient?.id ?? ""}
+                onSelectClient={setSelectedId}
+              />
+              {selectedAgreementClientWithManualOperations ? (
+                <ClientDetailPanel
+                  key={selectedAgreementClientWithManualOperations.id}
+                  client={selectedAgreementClientWithManualOperations}
+                  extraTimelineEvents={selectedAgreementExtraTimelineEvents}
+                  onCreateCommitment={(record) =>
+                    saveManualCommitment(record, selectedAgreementClientWithManualOperations)
+                  }
+                  onCreateTimelineEvent={(event) =>
+                    saveManualTimelineEvent(selectedAgreementClientWithManualOperations.id, event)
+                  }
+                  onOpenWhatsApp={() => openWhatsApp(selectedAgreementClientWithManualOperations.id)}
+                  onUpdateCommitment={(record) =>
+                    updateManualCommitment(record, selectedAgreementClientWithManualOperations)
+                  }
+                />
+              ) : (
+                <div className="rounded-xl border border-[#d9e0e7] bg-white p-8 text-center text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                  Nenhum acordo feito encontrado na fila carregada.
+                </div>
+              )}
+            </div>
           ) : (
             <div className="grid w-full items-start gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
               <QueuePanel
@@ -765,6 +840,100 @@ function isDailyQueueClient(client: QueueClient) {
   }
 
   return stage !== "Promessa de pagamento" && stage !== "Acordo";
+}
+
+function isAgreementClient(client: QueueClient) {
+  return (
+    normalizeDailyWorkflowStage(client.workflow.stage) === "Acordo" ||
+    client.commitments.some((commitment) => commitment.type === "Acordo")
+  );
+}
+
+function AgreementsPanel({
+  clients,
+  selectedClientId,
+  onSelectClient,
+}: {
+  clients: QueueClient[];
+  selectedClientId: string;
+  onSelectClient: (clientId: string) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-xl border border-[#d9e0e7] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="border-b border-[#edf1f5] px-5 py-4">
+        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+          Hades
+        </p>
+        <div className="mt-1 flex items-center justify-between gap-3">
+          <h2 className="text-base font-semibold text-slate-950">Acordos feitos</h2>
+          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+            {clients.length}
+          </span>
+        </div>
+      </div>
+
+      <div className="max-h-[calc(100dvh-18rem)] overflow-y-auto p-3">
+        {clients.length === 0 ? (
+          <div className="rounded-lg border border-dashed border-[#d9e0e7] px-4 py-8 text-center text-sm text-slate-500">
+            Nenhum acordo feito encontrado na fila carregada.
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {clients.map((client) => {
+              const agreement = client.commitments.find((commitment) => commitment.type === "Acordo");
+              const amount = agreement?.negotiatedValue ?? client.agreement?.negotiatedValue ?? client.saldoDevedor;
+              const status = agreement?.status ?? client.agreement?.status ?? client.workflow.stage;
+              const isActive = client.id === selectedClientId;
+
+              return (
+                <button
+                  key={client.id}
+                  type="button"
+                  onClick={() => onSelectClient(client.id)}
+                  className={`w-full rounded-lg border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#A07C3B]/25 ${
+                    isActive
+                      ? "border-[#A07C3B]/45 bg-[#FFF9EF]"
+                      : "border-[#edf1f5] bg-white hover:border-[#d9e0e7] hover:bg-slate-50"
+                  }`}
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold text-slate-950">
+                        {client.nome}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-slate-500">
+                        {agreement?.enterprise ?? client.carteira.empreendimento}
+                      </p>
+                    </div>
+                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-100">
+                      {status}
+                    </span>
+                  </div>
+
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-500">
+                    <div>
+                      <p className="font-semibold text-slate-900">{amount}</p>
+                      <p>valor</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-900">
+                        {agreement?.installmentsCount ?? client.agreement?.installmentsCount ?? "-"}
+                      </p>
+                      <p>parcelas</p>
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-900">{client.atrasoDias}d</p>
+                      <p>atraso</p>
+                    </div>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function normalizeDailyWorkflowStage(stage: WorkflowStage): WorkflowStage {

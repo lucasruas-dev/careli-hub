@@ -19,6 +19,13 @@ const overdueRangeLabels: Record<OverdueRangeFilter, string> = {
   "60+": "60+",
 };
 
+const overdueRangeDisplayLabels: Record<OverdueRangeFilter, string> = {
+  all: "Todos",
+  "1-30": "1-30 dias",
+  "31-60": "31-60 dias",
+  "60+": "60+ dias",
+};
+
 const overdueRangeOptions: OverdueRangeFilter[] = ["all", "1-30", "31-60", "60+"];
 
 type QueuePanelProps = {
@@ -156,20 +163,28 @@ export function QueuePanel({
 
           {overdueRangeEnabled ? (
             <div className="mt-3 grid grid-cols-4 gap-2">
-              {overdueRangeOptions.map((range) => (
-                <button
-                  key={range}
-                  type="button"
-                  onClick={() => onOverdueRangeChange(range)}
-                  className={`h-8 rounded-lg border px-2 text-xs font-semibold transition-colors ${
-                    overdueRange === range
-                      ? "border-[#A07C3B]/25 bg-[#A07C3B]/10 text-[#7A5E2C]"
-                      : "border-slate-200/70 bg-white text-slate-600 hover:bg-slate-50"
-                  }`}
-                >
-                  {overdueRangeLabels[range]} ({overdueRangeCounts[range] ?? 0})
-                </button>
-              ))}
+              {overdueRangeOptions.map((range) => {
+                const count = overdueRangeCounts[range] ?? 0;
+
+                return (
+                  <button
+                    key={range}
+                    type="button"
+                    onClick={() => onOverdueRangeChange(range)}
+                    aria-label={`${overdueRangeDisplayLabels[range]}: ${count}`}
+                    className={`min-w-0 rounded-lg border px-2 py-2 text-center transition-colors ${
+                      overdueRange === range
+                        ? "border-[#A07C3B]/25 bg-[#A07C3B]/10 text-[#7A5E2C]"
+                        : "border-slate-200/70 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    <span className="block text-base font-semibold leading-none tabular-nums">{count}</span>
+                    <span className="mt-1 block truncate whitespace-nowrap text-[11px] font-medium leading-none">
+                      {overdueRangeDisplayLabels[range]}
+                    </span>
+                  </button>
+                );
+              })}
             </div>
           ) : null}
 

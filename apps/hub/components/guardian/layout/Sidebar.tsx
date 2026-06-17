@@ -36,7 +36,7 @@ const menuItems = [
     label: "Iris",
     icon: Inbox,
     href: "/iris",
-    released: true,
+    released: false,
   },
   {
     label: "Inteligência",
