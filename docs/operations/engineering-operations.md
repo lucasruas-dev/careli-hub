@@ -35709,49 +35709,227 @@ Conclusao:
 - O impacto pratico e uma tela menos poluida, com busca direta, kanban de validacao, historico consultavel e automacoes falando como Zeus.
 - Precisa de acao agora: Lucas validar a experiencia local/autenticada; Preview, homologacao ou producao continuam bloqueados ate autorizacao explicita pelo protocolo `ZEUS-20260617-001-HELPDESK-UX-PRESENCE`.
 
-## 2026-06-17 11:36:26 -03:00 - Zeus - autorizacao de producao Backlog e historico popup
+## 2026-06-17 11:00:55 -03:00 - Zeus - Producao OPS HelpDesk UX, presenca e historico
 
-Assunto: [Zeus] Autorizacao de producao do Backlog e historico popup
+Assunto: [Zeus] Producao OPS HelpDesk UX, presenca e historico
 
 - Nome da squad/agente: `Zeus`.
-- Tipo da acao: `PRE_PRODUCAO / OPS / HELPDESK / ROADMAP`.
-- Status: `APROVADO_LUCAS / PREPARANDO_DEPLOY_OPS`.
+- Tipo da acao: `PRODUCAO / OPS / DEPLOY MODULAR`.
+- Status: `EM PRODUCAO`.
+- Protocolo CEP:
+  - `ZEUS-20260617-001-HELPDESK-UX-PRESENCE`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-ux-presence-20260617.json`;
+  - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Autorizacao:
+  - Lucas autorizou subir em producao em `2026-06-17`, limitando a alteracao ao dominio `https://ops.c2x.app.br`;
+  - `https://c2x.app.br` ficou fora do escopo e nao recebeu comando de alias.
+- Base e candidato:
+  - deployment anterior OPS: `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`;
+  - deployment de controle do dominio principal: `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - commit candidato limpo: `2f48ad7272bd1c132051e7fcd7baef33ba4cb67d`;
+  - pacote base: `.codex-deploy/zeus-helpdesk-ux-prod-20260617/base`;
+  - pacote candidato: `.codex-deploy/zeus-helpdesk-ux-prod-20260617/candidate`.
+- Publicacao:
+  - `npx.cmd vercel deploy --prod --skip-domain --yes --scope lucasruas-devs-projects`: PASS;
+  - deployment novo: `dpl_2tesUwiA4e2qcS4oC5tryFzZWoPK`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-l6zhf1xdx-lucasruas-devs-projects.vercel.app`;
+  - `npx.cmd vercel alias set https://careli-hub-hub-i2bs-l6zhf1xdx-lucasruas-devs-projects.vercel.app ops.c2x.app.br --scope lucasruas-devs-projects`: PASS.
+- Validacoes:
+  - `node scripts/production-module-safety-gate.mjs --manifest .codex-deploy/zeus-helpdesk-ux-prod-20260617/production-module-safety-gate.json`: PASS, 25 mudancas detectadas;
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/ZeusPage.tsx modules/squadops/blocks/helpdesk/helpdesk-board.tsx lib/hub-it-tickets/server.ts --max-warnings 0`: PASS;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS;
+  - Vercel build remoto: READY, com warnings conhecidos de Turbopack/NFT e variaveis de ambiente declaradas no projeto mas ausentes em `turbo.json`;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200;
+  - logs Vercel recentes do deployment novo: apenas healthchecks esperados, sem erro imediato.
+- Escopo preservado:
+  - nenhuma env var, secret, token, chave Supabase/Vercel, banco, migration, storage ou dominio principal foi alterado;
+  - `https://c2x.app.br` continuou resolvendo para `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - o inspect de `c2x.app.br` ainda listou `ops.c2x.app.br` como alias associado, mas o inspect direto de `ops.c2x.app.br` confirmou o novo deployment OPS.
+- Bloqueio remanescente:
+  - registro estruturado remoto em `hub_engineering_operation_records` nao foi executado porque envolve banco/Supabase e exige autorizacao especifica separada do Lucas.
+- Rollback:
+  - reapontar `https://ops.c2x.app.br` para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj` se houver regressao critica no Zeus;
+  - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+
+Conclusao:
+
+- O recorte Zeus HelpDesk UX/presenca esta em producao no dominio OPS.
+- O impacto pratico e que o Operations Center passa a refletir a nova experiencia do HelpDesk e a presenca do usuario no Zeus sem mexer no dominio principal.
+- Precisa de acao agora: Lucas pode validar visualmente `https://ops.c2x.app.br/zeus`; se houver regressao critica, Zeus deve executar rollback do alias OPS para `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-17 11:24:27 -03:00 - Zeus - HelpDesk Backlog, historico popup e ordenacao
+
+Assunto: [Zeus] HelpDesk Backlog, historico popup e ordenacao
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `IMPLEMENTACAO_LOCAL / UX / HELPDESK / ROADMAP`.
+- Status: `VALIDADO_LOCAL / SEM_DEPLOY`.
 - Protocolo CEP:
   - `ZEUS-20260617-002-HELPDESK-BACKLOG-HISTORY`;
   - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json`;
   - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
-- Autorizacao:
-  - Lucas autorizou publicar em producao somente no dominio `https://ops.c2x.app.br`;
-  - o dominio principal `https://c2x.app.br` deve ser preservado e nao pode receber alias deste recorte.
-- Escopo autorizado:
-  - historico do HelpDesk abrindo ticket em popup/modal;
-  - ordenacao nas colunas do historico;
-  - nova etapa/coluna `Backlog` no kanban e workflow;
-  - formulario de Backlog com tipo, prioridade, modulo, tela/fluxo e observacao;
-  - remocao do painel lateral `Fluxo`, mantendo contadores compactos abaixo de `Fila` e `Historico`.
-- Base de producao alvo antes do deploy:
-  - `https://ops.c2x.app.br`: `dpl_2tesUwiA4e2qcS4oC5tryFzZWoPK`;
-  - `https://c2x.app.br`: `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`, dominio fora do escopo e a preservar.
-- Arquivos candidatos:
+- Origem:
+  - Lucas pediu que o clique no ticket do historico abrisse popup, em vez de exigir descer a tela;
+  - pediu ordenacao nas colunas do historico;
+  - pediu uma nova secao/etapa `Backlog` no kanban e workflow;
+  - pediu mini formulario ao mover para Backlog, com classificacao do tipo, modulo, tela e prioridade para relatórios e roadmap;
+  - depois pediu remover o painel `Fluxo`, mantendo a leitura compacta abaixo de `Fila` e `Historico`.
+- Decisoes implementadas:
+  - historico agora abre `TicketDetailModal` ao clicar em um ticket;
+  - tabela de historico ganhou ordenacao por `Ticket`, `Assunto`, `Colaborador`, `Evidencias` e `Atualizacao`;
+  - painel lateral `Fluxo` foi removido para reduzir duplicidade visual;
+  - chips compactos abaixo de `Fila`/`Historico` passam a carregar tambem o contador de `Backlog`;
+  - kanban ativo passa a ter coluna `Backlog`;
+  - workflow/stepper do detalhe passa a reconhecer `Backlog`;
+  - Backlog usa status tecnico existente `em_analise` mais `metadata.roadmap`, evitando migration/alteracao de enum neste recorte;
+  - formulario de Backlog exige tipo, prioridade, modulo e tela/fluxo, com observacao opcional;
+  - tipos oficiais de Backlog definidos neste recorte: `Melhoria`, `Bug`, `Divida tecnica` e `Automacao / integracao`;
+  - `Bug` foi escolhido como nome curto para correcao de defeito, por ser linguagem ja conhecida na operacao.
+- Arquivos atualizados neste recorte:
   - `apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx`;
   - `apps/hub/lib/hub-it-tickets/server.ts`;
   - `apps/hub/lib/hub-it-tickets/types.ts`;
   - `docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json`;
   - `docs/operations/engineering-operations.md`.
 - Fora do escopo:
-  - `https://c2x.app.br`;
-  - Hades, Hermes, Iris, Atlas, Chronos, Setup, Guardian, Apolo, Ares e demais modulos nao-Zeus;
-  - env, secret, Supabase mutavel, banco real, migration, storage e alteracao de chave.
-- Proximo passo operacional:
-  - criar commit limpo do recorte;
-  - montar pacote base/candidato;
-  - executar `Production Module Safety Gate`;
-  - publicar com `vercel deploy --prod --skip-domain`;
-  - apontar somente `ops.c2x.app.br` se o gate e o deploy passarem;
-  - validar `ops` e confirmar que `c2x` permaneceu no deployment anterior.
+  - nenhum deploy, Preview, homologacao real, producao, alias, dominio, env, secret, Supabase, banco real, migration ou Vercel;
+  - nenhuma alteracao em Hades, Hermes, Iris, Atlas, Chronos, Setup ou Guardian;
+  - nenhuma migration para criar novo enum de status `backlog`.
+- Validacao executada:
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx lib/hub-it-tickets/server.ts lib/hub-it-tickets/types.ts --max-warnings 0`: PASS, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON`.
+  - `npm.cmd run check-types:hub`: PASS.
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido do Turbopack sobre NFT/import trace em `apps/hub/next.config.ts` -> `engineering-operations-source.ts`, ja existente fora do recorte.
+  - `GET http://localhost:3001/zeus`: PASS, `200 OK`.
+  - Validacao visual no navegador interno em `http://localhost:3001/zeus`: PASS, tela abriu autenticada, `Backlog` visivel, painel `Fluxo` removido, modal de Backlog abriu sem salvar e exibiu `Prioridade`, `Tipo`, `Modulo`, `Tela / fluxo` e acao `Salvar Backlog`; console sem erros.
+  - `node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/lib/hub-it-tickets/server.ts,apps/hub/lib/hub-it-tickets/types.ts,docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json,docs/operations/engineering-operations.md`: PASS, com avisos esperados de baseline do dominio `ops.c2x.app.br` divergindo da cidade base `PNT-01-00-00-000`.
+  - `git diff --check -- apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx apps/hub/lib/hub-it-tickets/server.ts apps/hub/lib/hub-it-tickets/types.ts docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json docs/operations/engineering-operations.md`: PASS, apenas avisos de normalizacao LF/CRLF.
+- Risco residual:
+  - relatórios consolidados de roadmap ainda exigem uma tela/consulta futura sobre `metadata.roadmap`;
+  - se no futuro Lucas quiser `Backlog` como status nativo no banco, sera necessario recorte especifico de migration/enum, bloqueado ate autorizacao.
 
 Conclusao:
 
-- O recorte Backlog/historico recebeu autorizacao explicita para producao OPS.
-- O impacto pratico e liberar em `ops.c2x.app.br` a nova estrutura de roadmap do HelpDesk Zeus.
-- Precisa de acao agora: Zeus concluir commit limpo, Safety Gate, deploy com `--skip-domain`, alias somente de OPS e healthchecks.
+- O recorte Zeus Backlog/historico foi implementado e validado localmente.
+- O impacto pratico e que o HelpDesk vira tambem fonte de roadmap do Panteon, sem poluir o sidebar com o painel `Fluxo`.
+- Precisa de acao agora: Lucas testar a experiencia autenticada antes de qualquer Preview, homologacao ou producao.
+
+## 2026-06-17 11:48:07 -03:00 - Zeus - producao Backlog e historico popup em OPS
+
+Assunto: [Zeus] Producao Backlog e historico popup no dominio OPS
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `PRODUCAO / OPS / HELPDESK / ROADMAP`.
+- Status: `EM PRODUCAO`.
+- Protocolo CEP:
+  - `ZEUS-20260617-002-HELPDESK-BACKLOG-HISTORY`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-backlog-history-20260617.json`;
+  - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Autorizacao: Lucas autorizou publicar em producao somente no dominio `https://ops.c2x.app.br`, preservando o dominio principal `https://c2x.app.br`.
+- Commit/pacote:
+  - branch limpa: `codex/zeus-helpdesk-backlog-history-prod-20260617`;
+  - commit publicado: `56cf5a5c4dea41e349d127b2cd69823009c61ead`;
+  - commit de codigo do recorte: `fb34cbb5d6a25a4f226b46f6f72c196891dde921`;
+  - pacote base: `.codex-deploy/zeus-helpdesk-backlog-history-prod-20260617-56cf5a5/base`;
+  - pacote candidato: `.codex-deploy/zeus-helpdesk-backlog-history-prod-20260617-56cf5a5/candidate`;
+  - manifesto de producao: `.codex-deploy/zeus-helpdesk-backlog-history-prod-20260617-56cf5a5/production-module-safety-gate.json`.
+- Publicacao:
+  - deployment anterior OPS: `dpl_2tesUwiA4e2qcS4oC5tryFzZWoPK`;
+  - deployment novo OPS: `dpl_CW9zQ9qReV1xbrrT7LEEjXrGBESc`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-dzuedb5pj-lucasruas-devs-projects.vercel.app`;
+  - `vercel deploy --prod --skip-domain` foi usado antes do alias;
+  - alias executado somente para `ops.c2x.app.br`;
+  - `https://c2x.app.br` permaneceu em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Escopo publicado:
+  - historico do HelpDesk abre ticket em popup/modal;
+  - tabela do historico tem ordenacao por colunas;
+  - kanban/workflow tem etapa `Backlog`;
+  - formulario de Backlog exige tipo, prioridade, modulo e tela/fluxo, com observacao opcional;
+  - painel lateral `Fluxo` removido.
+- Validacoes:
+  - CEP preflight: PASS;
+  - `Production Module Safety Gate`: PASS, 6 mudancas detectadas;
+  - lint focado: PASS;
+  - `check-types:hub`: PASS;
+  - build Hub: PASS, com warnings conhecidos de Turbopack/NFT e root de lockfile em worktree;
+  - deployment Vercel: READY;
+  - logs de erro do deployment novo nos ultimos 10 minutos: sem logs encontrados.
+- Healthchecks:
+  - `GET https://ops.c2x.app.br/`: 200;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200.
+- Rollback:
+  - reapontar `https://ops.c2x.app.br` para `dpl_2tesUwiA4e2qcS4oC5tryFzZWoPK` se houver regressao critica;
+  - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Risco residual:
+  - a listagem de aliases do inspect de `c2x.app.br` ainda exibe `ops.c2x.app.br`, mas o inspect direto de `ops.c2x.app.br` resolve para o deployment novo;
+  - registro estruturado remoto em `hub_engineering_operation_records` segue bloqueado por envolver Supabase/banco sem autorizacao separada.
+- Pendencia: Lucas validar visualmente o HelpDesk Zeus autenticado em `https://ops.c2x.app.br/zeus`.
+
+Conclusao:
+
+- O recorte Zeus Backlog/historico esta em producao no dominio OPS.
+- O impacto pratico e que o HelpDesk Zeus agora sustenta fluxo de roadmap com Backlog, prioridade e historico em popup.
+- Precisa de acao agora: Lucas testar autenticado; Zeus fica com rollback pronto em `dpl_2tesUwiA4e2qcS4oC5tryFzZWoPK` se aparecer regressao critica.
+
+## 2026-06-17 12:33:24 -03:00 - Zeus - HelpDesk gestao, resposta em Backlog e presenca OPS
+
+Assunto: [Zeus] HelpDesk gestao, resposta em Backlog e presenca OPS
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `IMPLEMENTACAO_LOCAL / UX / HELPDESK / PRESENCA`.
+- Status: `VALIDADO_LOCAL / SEM_DEPLOY`.
+- Protocolo CEP:
+  - `ZEUS-20260617-003-HELPDESK-GESTAO-PRESENCA`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-presenca-20260617.json`;
+  - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Origem:
+  - Lucas pediu que respostas enviadas ao usuario continuem aparecendo na timeline e preservem o workflow `Backlog` quando o ticket estiver em Backlog;
+  - pediu uma tela nova dentro do HelpDesk com painel de gestao para reunioes de departamento;
+  - pediu indicadores de total, finalizados, em tratamento, Backlog e demandas por departamento do colaborador solicitante;
+  - pediu que a timeline mostre o ator real quando Lucas mover um ticket para Backlog, em vez de registrar `Zeus moveu`;
+  - pediu que o OPS/Zeus mantenha o usuario online no Panteon e exponha a barra/status de presenca no modulo.
+- Decisoes implementadas:
+  - `updateHubItTicket` passou a resolver o proximo status preservando `em_analise` quando o ticket ja tem `metadata.roadmap.active`, evitando arquivar o Backlog ao enviar devolutiva;
+  - mensagem de roadmap/Backlog agora usa o ator real do update, por exemplo `Lucas Ruas moveu este ticket para Backlog...`;
+  - fallback local recebeu a mesma regra de status e autoria;
+  - HelpDesk ganhou a visao `Gestao` ao lado de `Fila` e `Historico`;
+  - painel `Gestao` exibe metricas de tickets, finalizados, em tratamento e Backlog;
+  - painel `Gestao` cruza tickets com `/api/setup/users` por id/e-mail do solicitante para agrupar demandas por departamento, com fallback `Sem departamento`;
+  - painel `Gestao` inclui listas de reuniao: `Foi feito`, `Esta sendo tratado` e `Esta em Backlog`;
+  - `ZeusPage` exibe `ZeusOpsPresenceBar` com status `Online no Panteon`, usuario, view ativa do OPS e ultimo pulso;
+  - heartbeat Zeus segue usando `source=zeus-operations-center`, `module=zeus`, `surface=operations-center` e `keepOnline=true`.
+- Arquivos atualizados neste recorte:
+  - `apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx`;
+  - `apps/hub/modules/squadops/ZeusPage.tsx`;
+  - `apps/hub/lib/hub-it-tickets/server.ts`;
+  - `docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-presenca-20260617.json`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - nenhum deploy, Preview, homologacao real, producao, alias, dominio, env, secret, Supabase, banco real, migration ou Vercel;
+  - nenhuma alteracao em Hades, Hermes, Iris, Atlas, Chronos, Setup ou Guardian;
+  - nenhuma migration para gravar departamento diretamente no ticket.
+- Validacao executada:
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/ZeusPage.tsx modules/squadops/blocks/helpdesk/helpdesk-board.tsx lib/hub-it-tickets/server.ts --max-warnings 0`: PASS, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON`.
+  - `npm.cmd run check-types:hub`: PASS.
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido do Turbopack/NFT sobre `apps/hub/next.config.ts` -> `engineering-operations-source.ts`.
+  - `node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-presenca-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/ZeusPage.tsx,apps/hub/lib/hub-it-tickets/server.ts,docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-presenca-20260617.json,docs/operations/engineering-operations.md`: PASS, com avisos esperados de baseline OPS divergindo da cidade base `PNT-01-00-00-000`.
+  - `git diff --check -- apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx apps/hub/modules/squadops/ZeusPage.tsx apps/hub/lib/hub-it-tickets/server.ts docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-presenca-20260617.json docs/operations/engineering-operations.md`: PASS, apenas avisos de normalizacao LF/CRLF.
+  - `GET http://localhost:3001/zeus`: PASS, `200 OK`.
+  - Navegador interno em `http://localhost:3001/zeus`: PASS, tela autenticada carregou, barra `Online no Panteon` visivel para `Lucas Ruas`, clique em `Gestao` abriu painel com `Tickets por departamento`, `Foi feito`, `Esta sendo tratado` e `Esta em Backlog`, console sem erros.
+- Risco residual:
+  - departamento depende de disponibilidade de `/api/setup/users`; se o usuario nao tiver vinculo ativo no Setup, o painel cai para `Sem departamento`;
+  - este recorte ainda nao foi publicado em OPS e precisa de autorizacao explicita se Lucas quiser producao.
+
+Conclusao:
+
+- O recorte Zeus HelpDesk gestao/presenca foi implementado e validado localmente.
+- O impacto pratico e que Lucas passa a ter uma tela executiva para reunioes, sem perder o workflow Backlog ao responder tickets.
+- Precisa de acao agora: Lucas pode validar local/OPS quando desejar; qualquer producao segue bloqueada ate autorizacao explicita.

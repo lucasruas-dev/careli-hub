@@ -23,12 +23,15 @@ import {
   Archive,
   ArrowUpDown,
   AtSign,
+  BarChart3,
   Bug,
+  Building2,
   CalendarDays,
   Camera,
   CheckCircle2,
   ChevronDown,
   ChevronUp,
+  CircleDot,
   ClipboardList,
   ExternalLink,
   FileText,
@@ -98,7 +101,7 @@ type BacklogFormState = {
 };
 
 type DeliveryFilter = "todos" | "hoje" | "proximos" | "folga" | "sem_data";
-type TicketQueueView = "fila" | "historico";
+type TicketQueueView = "fila" | "historico" | "gestao";
 type HistorySortDirection = "asc" | "desc";
 type HistorySortKey =
   | "collaborator"
@@ -122,11 +125,42 @@ type TicketWorkspaceSection =
 
 type MentionUser = {
   avatarUrl?: string | null;
+  departmentId?: string | null;
+  departmentName?: string | null;
   email?: string | null;
   id: string;
   name: string;
   role?: string | null;
+  sectorId?: string | null;
+  sectorName?: string | null;
   status?: string | null;
+};
+
+type SetupUsersStatus = "idle" | "loading" | "ready" | "error";
+
+type TicketManagementStats = {
+  active: number;
+  backlog: number;
+  departmentByTicketProtocol: ReadonlyMap<string, string>;
+  departments: TicketDepartmentStats[];
+  doneTickets: HubItTicket[];
+  finalized: number;
+  inProgress: number;
+  meetingBacklogTickets: HubItTicket[];
+  meetingTreatmentTickets: HubItTicket[];
+  newTickets: number;
+  review: number;
+  total: number;
+  validation: number;
+};
+
+type TicketDepartmentStats = {
+  backlog: number;
+  department: string;
+  finalized: number;
+  inProgress: number;
+  latestTicket: HubItTicket | null;
+  total: number;
 };
 
 type SetupUsersApiResponse = {
@@ -201,6 +235,10 @@ export function HubItTicketsBoard({
     HubItTicketAttachmentInput[]
   >([]);
   const [attentionToast, setAttentionToast] = useState<string | null>(null);
+  const [setupUsers, setSetupUsers] = useState<MentionUser[]>([]);
+  const [setupUsersStatus, setSetupUsersStatus] =
+    useState<SetupUsersStatus>("idle");
+  const [setupUsersError, setSetupUsersError] = useState<string | null>(null);
   const attentionKeysRef = useRef<ReadonlySet<string>>(new Set());
 
   const activeQueueTickets = useMemo(
@@ -212,10 +250,22 @@ export function HubItTicketsBoard({
     [tickets],
   );
   const visibleQueueTickets =
-    queueView === "fila" ? activeQueueTickets : historyTickets;
+    queueView === "historico"
+      ? historyTickets
+      : queueView === "gestao"
+        ? tickets
+        : activeQueueTickets;
   const filteredQueueTickets = useMemo(
     () => filterTicketsBySearch(visibleQueueTickets, searchQuery),
     [searchQuery, visibleQueueTickets],
+  );
+  const setupUsersByLookup = useMemo(
+    () => buildSetupUserLookup(setupUsers),
+    [setupUsers],
+  );
+  const managementStats = useMemo(
+    () => buildTicketManagementStats(tickets, setupUsersByLookup),
+    [setupUsersByLookup, tickets],
   );
   const deliveryBuckets = useMemo(() => {
     return {
@@ -254,7 +304,7 @@ export function HubItTicketsBoard({
     [activeQueueTickets],
   );
   const ticketsByDelivery = useMemo(() => {
-    if (queueView === "historico") {
+    if (queueView === "historico" || queueView === "gestao") {
       return sortTicketsByUpdatedAt(filteredQueueTickets);
     }
 
@@ -286,6 +336,7 @@ export function HubItTicketsBoard({
     selectedTicket?.approvedDeliveryDate ?? null;
   const selectedTicketDraftRequestedDeliveryDate =
     selectedTicket?.requestedDeliveryDate ?? null;
+  const selectedTicketDraftIsBacklog = selectedTicket?.roadmap?.active === true;
 
   const refreshTickets = useCallback(async () => {
     setIsLoading(true);
@@ -317,6 +368,43 @@ export function HubItTicketsBoard({
     }
   }, [accessToken]);
 
+  const loadSetupUsersForManagement = useCallback(async () => {
+    if (!accessToken) {
+      return;
+    }
+
+    setSetupUsersStatus("loading");
+    setSetupUsersError(null);
+
+    try {
+      const response = await fetch("/api/setup/users", {
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+        },
+      });
+      const payload = (await response.json().catch(() => null)) as
+        | SetupUsersApiResponse
+        | null;
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel carregar usuarios do Setup.",
+        );
+      }
+
+      setSetupUsers(parseMentionUsers(payload?.data));
+      setSetupUsersStatus("ready");
+    } catch (loadError) {
+      setSetupUsersStatus("error");
+      setSetupUsersError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Nao foi possivel carregar usuarios do Setup.",
+      );
+    }
+  }, [accessToken]);
+
   useEffect(() => {
     if (!isActive || !accessToken) {
       return;
@@ -324,6 +412,14 @@ export function HubItTicketsBoard({
 
     void refreshTickets();
   }, [accessToken, isActive, refreshTickets]);
+
+  useEffect(() => {
+    if (!isActive || !accessToken || setupUsersStatus !== "idle") {
+      return;
+    }
+
+    void loadSetupUsersForManagement();
+  }, [accessToken, isActive, loadSetupUsersForManagement, setupUsersStatus]);
 
   useEffect(() => {
     onTicketCountChange?.(activeQueueTickets.length);
@@ -387,13 +483,15 @@ export function HubItTicketsBoard({
       deliveryDecision: "manter",
       deliveryDecisionNote: "",
       resolutionSummary: "",
-      status:
-        selectedTicketDraftStatus === "novo"
+      status: selectedTicketDraftIsBacklog
+        ? "em_analise"
+        : selectedTicketDraftStatus === "novo"
           ? "em_tratativa"
           : selectedTicketDraftStatus,
     });
   }, [
     selectedTicketDraftApprovedDeliveryDate,
+    selectedTicketDraftIsBacklog,
     selectedTicketDraftProtocol,
     selectedTicketDraftRequestedDeliveryDate,
     selectedTicketDraftStatus,
@@ -538,8 +636,9 @@ export function HubItTicketsBoard({
           updatedTicket.approvedDeliveryDate ??
           updatedTicket.requestedDeliveryDate ??
           "",
-        status:
-          updatedTicket.status === "novo"
+        status: updatedTicket.roadmap?.active
+          ? "em_analise"
+          : updatedTicket.status === "novo"
             ? "em_tratativa"
             : updatedTicket.status,
       });
@@ -631,7 +730,7 @@ export function HubItTicketsBoard({
                     HelpDesk
                   </p>
                   <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
-                    {queueView === "fila" ? "Fila ativa" : "Historico"}
+                    {getQueueViewTitle(queueView)}
                   </h2>
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
@@ -735,7 +834,7 @@ export function HubItTicketsBoard({
             ) : null}
 
             <div className="border-b border-slate-200/70 p-3">
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-3 gap-2">
                 <QueueViewButton
                   active={queueView === "fila"}
                   icon={<Inbox className="size-4" />}
@@ -750,10 +849,25 @@ export function HubItTicketsBoard({
                   onClick={() => setQueueView("historico")}
                   value={historyTickets.length}
                 />
+                <QueueViewButton
+                  active={queueView === "gestao"}
+                  icon={<BarChart3 className="size-4" />}
+                  label="Gestao"
+                  onClick={() => setQueueView("gestao")}
+                  value={tickets.length}
+                />
               </div>
               <div className="mt-3 flex flex-wrap items-center gap-2">
                 <QueueSummaryPill
-                  label={searchQuery.trim() ? "resultado" : queueView === "fila" ? "ativos" : "historico"}
+                  label={
+                    searchQuery.trim()
+                      ? "resultado"
+                      : queueView === "fila"
+                        ? "ativos"
+                        : queueView === "historico"
+                          ? "historico"
+                          : "total"
+                  }
                   value={ticketsByDelivery.length}
                 />
                 {queueView === "fila" ? (
@@ -778,12 +892,28 @@ export function HubItTicketsBoard({
                       value={workflowCounts.revisao}
                     />
                   </>
-                ) : (
+                ) : queueView === "historico" ? (
                   <>
                     <QueueSummaryPill
                       label="finalizados"
                       tone="success"
                       value={historyBuckets.finalizados}
+                    />
+                  </>
+                ) : (
+                  <>
+                    <QueueSummaryPill
+                      label="tratando"
+                      value={managementStats.inProgress}
+                    />
+                    <QueueSummaryPill
+                      label="backlog"
+                      value={managementStats.backlog}
+                    />
+                    <QueueSummaryPill
+                      label="feitos"
+                      tone="success"
+                      value={managementStats.finalized}
                     />
                   </>
                 )}
@@ -797,7 +927,17 @@ export function HubItTicketsBoard({
                     <TicketQueueItem
                       isActive={ticket.protocol === selectedTicket?.protocol}
                       key={ticket.id}
-                      onClick={() => setSelectedProtocol(ticket.protocol)}
+                      onClick={() => {
+                        setSelectedProtocol(ticket.protocol);
+
+                        if (queueView === "gestao") {
+                          if (isTicketInHistory(ticket)) {
+                            setHistoryModalProtocol(ticket.protocol);
+                          } else {
+                            setQueueView("fila");
+                          }
+                        }
+                      }}
                       ticket={ticket}
                     />
                   ))}
@@ -813,7 +953,22 @@ export function HubItTicketsBoard({
               <OperationalErrorBanner message={error} />
             ) : null}
 
-            {queueView === "historico" ? (
+            {queueView === "gestao" ? (
+              <HelpDeskManagementPanel
+                onOpenTicket={(ticket) => {
+                  setSelectedProtocol(ticket.protocol);
+
+                  if (isTicketInHistory(ticket)) {
+                    setHistoryModalProtocol(ticket.protocol);
+                  } else {
+                    setQueueView("fila");
+                  }
+                }}
+                setupUsersError={setupUsersError}
+                setupUsersStatus={setupUsersStatus}
+                stats={managementStats}
+              />
+            ) : queueView === "historico" ? (
               <TicketHistoryTable
                 onSelectTicket={openHistoryTicket}
                 selectedProtocol={selectedTicket?.protocol ?? null}
@@ -828,7 +983,7 @@ export function HubItTicketsBoard({
               />
             )}
 
-            {queueView !== "historico" && selectedTicket ? (
+            {queueView === "fila" && selectedTicket ? (
               <TicketWorkspace
                 accessToken={accessToken}
                 draft={draft}
@@ -841,7 +996,7 @@ export function HubItTicketsBoard({
                 replyAttachments={replyAttachments}
                 ticket={selectedTicket}
               />
-            ) : queueView !== "historico" ? (
+            ) : queueView === "fila" ? (
               <div className="grid min-h-[28rem] place-items-center p-6 text-center">
                 <div>
                   <Inbox className="mx-auto size-8 text-slate-300" />
@@ -1179,6 +1334,341 @@ function BacklogFormModal({
         </div>
       </form>
     </div>
+  );
+}
+
+function HelpDeskManagementPanel({
+  onOpenTicket,
+  setupUsersError,
+  setupUsersStatus,
+  stats,
+}: {
+  onOpenTicket: (ticket: HubItTicket) => void;
+  setupUsersError: string | null;
+  setupUsersStatus: SetupUsersStatus;
+  stats: TicketManagementStats;
+}) {
+  const departmentStatus =
+    setupUsersStatus === "ready"
+      ? "Departamentos do Setup"
+      : setupUsersStatus === "loading"
+        ? "Carregando departamentos"
+        : setupUsersStatus === "error"
+          ? "Departamento parcial"
+          : "Aguardando departamentos";
+
+  return (
+    <div className="border-b border-slate-200/70 bg-white p-4">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="m-0 text-xs font-semibold uppercase text-slate-500">
+            Gestao HelpDesk
+          </p>
+          <h3 className="m-0 mt-1 text-base font-semibold text-slate-950">
+            Indicadores para reuniao de departamento
+          </h3>
+        </div>
+        <span className="inline-flex h-8 items-center gap-2 rounded-lg bg-slate-50 px-3 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+          <Building2 className="size-4 text-[#A07C3B]" />
+          {departmentStatus}
+        </span>
+      </div>
+
+      {setupUsersError ? (
+        <div className="mb-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+          {setupUsersError}
+        </div>
+      ) : null}
+
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+        <ManagementMetricTile
+          hint={`${stats.active} em fila ativa`}
+          icon={<ClipboardList className="size-4" />}
+          label="Tickets"
+          value={stats.total}
+        />
+        <ManagementMetricTile
+          hint="Encerrados ou resolvidos"
+          icon={<CheckCircle2 className="size-4" />}
+          label="Finalizados"
+          tone="success"
+          value={stats.finalized}
+        />
+        <ManagementMetricTile
+          hint={`${stats.newTickets} novo(s), ${stats.review} revisao`}
+          icon={<CircleDot className="size-4" />}
+          label="Em tratamento"
+          tone="warning"
+          value={stats.inProgress}
+        />
+        <ManagementMetricTile
+          hint="Roadmap futuro"
+          icon={<Archive className="size-4" />}
+          label="Backlog"
+          value={stats.backlog}
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.72fr)]">
+        <DepartmentDemandTable
+          departments={stats.departments}
+          onOpenTicket={onOpenTicket}
+        />
+
+        <div className="grid gap-3">
+          <MeetingTicketList
+            departmentByTicketProtocol={stats.departmentByTicketProtocol}
+            emptyMessage="Sem tickets finalizados no recorte atual."
+            icon={<CheckCircle2 className="size-4" />}
+            onOpenTicket={onOpenTicket}
+            tickets={stats.doneTickets}
+            title="Foi feito"
+            tone="success"
+          />
+          <MeetingTicketList
+            departmentByTicketProtocol={stats.departmentByTicketProtocol}
+            emptyMessage="Sem tickets em tratamento."
+            icon={<MessageSquareReply className="size-4" />}
+            onOpenTicket={onOpenTicket}
+            tickets={stats.meetingTreatmentTickets}
+            title="Esta sendo tratado"
+            tone="warning"
+          />
+          <MeetingTicketList
+            departmentByTicketProtocol={stats.departmentByTicketProtocol}
+            emptyMessage="Sem itens em Backlog."
+            icon={<Archive className="size-4" />}
+            onOpenTicket={onOpenTicket}
+            tickets={stats.meetingBacklogTickets}
+            title="Esta em Backlog"
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ManagementMetricTile({
+  hint,
+  icon,
+  label,
+  tone = "neutral",
+  value,
+}: {
+  hint: string;
+  icon: ReactNode;
+  label: string;
+  tone?: "neutral" | "success" | "warning";
+  value: number;
+}) {
+  const toneClassName =
+    tone === "success"
+      ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+      : tone === "warning"
+        ? "bg-amber-50 text-amber-700 ring-amber-100"
+        : "bg-slate-50 text-slate-700 ring-slate-200";
+
+  return (
+    <div className="rounded-lg border border-slate-200/70 bg-slate-50/60 p-3">
+      <div className="flex items-center justify-between gap-3">
+        <span
+          className={`grid size-9 place-items-center rounded-lg ring-1 ${toneClassName}`}
+        >
+          {icon}
+        </span>
+        <span className="font-mono text-2xl font-semibold text-slate-950">
+          {value}
+        </span>
+      </div>
+      <p className="m-0 mt-3 text-xs font-semibold uppercase text-slate-500">
+        {label}
+      </p>
+      <p className="m-0 mt-1 truncate text-xs text-slate-500">{hint}</p>
+    </div>
+  );
+}
+
+function DepartmentDemandTable({
+  departments,
+  onOpenTicket,
+}: {
+  departments: TicketDepartmentStats[];
+  onOpenTicket: (ticket: HubItTicket) => void;
+}) {
+  return (
+    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
+        <div>
+          <h4 className="m-0 text-sm font-semibold text-slate-950">
+            Tickets por departamento
+          </h4>
+          <p className="m-0 text-xs text-slate-500">
+            Departamento do colaborador solicitante
+          </p>
+        </div>
+        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+          {departments.length}
+        </span>
+      </div>
+      <div
+        className="hidden grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_minmax(9rem,0.7fr)] gap-3 border-b border-slate-100 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 lg:grid"
+        role="row"
+      >
+        <span>Departamento</span>
+        <span>Total</span>
+        <span>Feitos</span>
+        <span>Tratando</span>
+        <span>Backlog</span>
+        <span>Ultimo</span>
+      </div>
+      {departments.length > 0 ? (
+        <div className="divide-y divide-slate-100">
+          {departments.map((department) => (
+            <div
+              className="grid gap-2 px-3 py-3 text-sm lg:grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_minmax(9rem,0.7fr)] lg:items-center lg:gap-3"
+              key={department.department}
+            >
+              <span className="min-w-0 font-semibold text-slate-950">
+                <span className="block truncate">{department.department}</span>
+                <span className="mt-1 block text-xs font-medium text-slate-500 lg:hidden">
+                  {department.total} total / {department.backlog} backlog
+                </span>
+              </span>
+              <MetricCell value={department.total} />
+              <MetricCell tone="success" value={department.finalized} />
+              <MetricCell tone="warning" value={department.inProgress} />
+              <MetricCell value={department.backlog} />
+              {department.latestTicket ? (
+                <button
+                  className="min-w-0 rounded-lg px-2 py-1 text-left text-xs font-semibold text-[#7A5E2C] transition hover:bg-[#A07C3B]/10"
+                  onClick={() => {
+                    if (department.latestTicket) {
+                      onOpenTicket(department.latestTicket);
+                    }
+                  }}
+                  type="button"
+                >
+                  <span className="block truncate">
+                    {department.latestTicket.protocol}
+                  </span>
+                  <span className="block truncate font-medium text-slate-500">
+                    {formatDateShort(department.latestTicket.updatedAt)}
+                  </span>
+                </button>
+              ) : (
+                <span className="text-xs text-slate-400">-</span>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className="grid min-h-32 place-items-center px-4 py-8 text-center">
+          <div>
+            <Building2 className="mx-auto size-7 text-slate-300" />
+            <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
+              Sem departamentos para exibir.
+            </p>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function MetricCell({
+  tone = "neutral",
+  value,
+}: {
+  tone?: "neutral" | "success" | "warning";
+  value: number;
+}) {
+  const className =
+    tone === "success"
+      ? "bg-emerald-50 text-emerald-700"
+      : tone === "warning"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-slate-100 text-slate-700";
+
+  return (
+    <span
+      className={`inline-flex h-7 w-fit min-w-8 items-center justify-center rounded-md px-2 text-xs font-semibold ${className}`}
+    >
+      {value}
+    </span>
+  );
+}
+
+function MeetingTicketList({
+  departmentByTicketProtocol,
+  emptyMessage,
+  icon,
+  onOpenTicket,
+  tickets,
+  title,
+  tone = "neutral",
+}: {
+  departmentByTicketProtocol: ReadonlyMap<string, string>;
+  emptyMessage: string;
+  icon: ReactNode;
+  onOpenTicket: (ticket: HubItTicket) => void;
+  tickets: HubItTicket[];
+  title: string;
+  tone?: "neutral" | "success" | "warning";
+}) {
+  const iconClassName =
+    tone === "success"
+      ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+      : tone === "warning"
+        ? "bg-amber-50 text-amber-700 ring-amber-100"
+        : "bg-slate-50 text-slate-700 ring-slate-200";
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2">
+          <span
+            className={`grid size-8 place-items-center rounded-lg ring-1 ${iconClassName}`}
+          >
+            {icon}
+          </span>
+          <h4 className="m-0 text-sm font-semibold text-slate-950">{title}</h4>
+        </div>
+        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+          {tickets.length}
+        </span>
+      </div>
+      {tickets.length > 0 ? (
+        <div className="grid gap-2">
+          {tickets.map((ticket) => (
+            <button
+              className="grid min-w-0 gap-1 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-left transition hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+              key={ticket.id}
+              onClick={() => onOpenTicket(ticket)}
+              type="button"
+            >
+              <span className="flex min-w-0 items-center justify-between gap-2">
+                <span className="truncate font-mono text-xs font-semibold text-[#7A5E2C]">
+                  {ticket.protocol}
+                </span>
+                <StatusBadge status={ticket.status} ticket={ticket} />
+              </span>
+              <span className="truncate text-sm font-semibold text-slate-950">
+                {ticket.title}
+              </span>
+              <span className="truncate text-xs text-slate-500">
+                {departmentByTicketProtocol.get(ticket.protocol) ??
+                  "Sem departamento"}{" "}
+                / {formatDateShort(ticket.updatedAt)}
+              </span>
+            </button>
+          ))}
+        </div>
+      ) : (
+        <p className="m-0 rounded-lg bg-slate-50 px-3 py-4 text-center text-sm font-semibold text-slate-500">
+          {emptyMessage}
+        </p>
+      )}
+    </section>
   );
 }
 
@@ -1853,7 +2343,7 @@ function TicketWorkspace({
             onReplyAttachmentsChange={onReplyAttachmentsChange}
             onSave={onSave}
             replyAttachments={replyAttachments}
-            ticketProtocol={ticket.protocol}
+            ticket={ticket}
           />
         </aside>
       </div>
@@ -2311,7 +2801,7 @@ function TicketReplyForm({
   onReplyAttachmentsChange,
   onSave,
   replyAttachments,
-  ticketProtocol,
+  ticket,
 }: {
   accessToken: string | null;
   draft: TicketDraft;
@@ -2323,7 +2813,7 @@ function TicketReplyForm({
   >;
   onSave: (nextStatus: HubItTicketStatus) => void;
   replyAttachments: HubItTicketAttachmentInput[];
-  ticketProtocol: string;
+  ticket: HubItTicket;
 }) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -2405,13 +2895,21 @@ function TicketReplyForm({
   useEffect(() => {
     setEvidenceError(null);
     stopRecording();
-  }, [stopRecording, ticketProtocol]);
+  }, [stopRecording, ticket.protocol]);
 
   useEffect(() => {
     return () => {
       stopRecording();
     };
   }, [stopRecording]);
+
+  const replyStatus = isTicketBacklog(ticket) ? "em_analise" : "em_tratativa";
+  const replyTooltip = isTicketBacklog(ticket)
+    ? "Responder e manter no Backlog"
+    : "Registrar devolutiva";
+  const treatmentTooltip = isTicketBacklog(ticket)
+    ? "Manter no Backlog"
+    : "Manter em tratativa";
 
   async function handleFileChange(event: ChangeEvent<HTMLInputElement>) {
     const files = Array.from(event.target.files ?? []);
@@ -2619,12 +3117,12 @@ function TicketReplyForm({
           <MessageSquareReply className="size-4 text-[#A07C3B]" />
           Devolutiva
         </div>
-        <Tooltip content="Registrar devolutiva" placement="left">
+        <Tooltip content={replyTooltip} placement="left">
           <button
-            aria-label="Registrar devolutiva"
+            aria-label={replyTooltip}
             className="grid size-9 place-items-center rounded-lg bg-[#101820] text-white transition hover:bg-[#1d2634] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSaving}
-            onClick={() => onSave("em_tratativa")}
+            onClick={() => onSave(replyStatus)}
             type="button"
           >
             {isSaving ? (
@@ -2829,16 +3327,18 @@ function TicketReplyForm({
             <Archive className="size-4" />
           </button>
         </Tooltip>
-        <Tooltip content="Manter em tratativa" placement="top">
+        <Tooltip content={treatmentTooltip} placement="top">
           <button
-            aria-label="Manter em tratativa"
+            aria-label={treatmentTooltip}
             className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-[#A07C3B]/30 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSaving}
-            onClick={() => onSave("em_tratativa")}
+            onClick={() => onSave(replyStatus)}
             type="button"
           >
             {isSaving ? (
               <Loader2 className="size-4 animate-spin" />
+            ) : isTicketBacklog(ticket) ? (
+              <Archive className="size-4" />
             ) : (
               <MessageSquareReply className="size-4" />
             )}
@@ -3141,7 +3641,11 @@ function EmptyQueue({
   view: TicketQueueView;
 }) {
   const message =
-    view === "fila" ? "Fila vazia." : "Historico vazio.";
+    view === "fila"
+      ? "Fila vazia."
+      : view === "historico"
+        ? "Historico vazio."
+        : "Sem tickets para gestao.";
 
   return (
     <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 text-center">
@@ -3462,6 +3966,42 @@ function formatDateOnly(value: string) {
   return `${day}/${month}/${year}`;
 }
 
+function getUnknownRecord(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function getOptionalString(value: unknown) {
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function getSetupRelationName(value: unknown) {
+  const record = Array.isArray(value)
+    ? getUnknownRecord(value[0])
+    : getUnknownRecord(value);
+
+  return getOptionalString(record?.name);
+}
+
+function getSetupPrimaryAssignment(value: unknown) {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+
+  const assignments = value
+    .map(getUnknownRecord)
+    .filter((assignment): assignment is Record<string, unknown> =>
+      Boolean(assignment),
+    );
+
+  return (
+    assignments.find((assignment) => assignment.status === "active") ??
+    assignments[0] ??
+    null
+  );
+}
+
 function parseMentionUsers(value: unknown): MentionUser[] {
   if (!Array.isArray(value)) {
     return [];
@@ -3476,6 +4016,7 @@ function parseMentionUsers(value: unknown): MentionUser[] {
       avatar_url?: unknown;
       display_name?: unknown;
       email?: unknown;
+      hub_user_assignments?: unknown;
       id?: unknown;
       name?: unknown;
       role?: unknown;
@@ -3493,14 +4034,20 @@ function parseMentionUsers(value: unknown): MentionUser[] {
       return [];
     }
 
+    const assignment = getSetupPrimaryAssignment(user.hub_user_assignments);
+
     return [
       {
         avatarUrl:
           typeof user.avatar_url === "string" ? user.avatar_url : null,
+        departmentId: getOptionalString(assignment?.department_id),
+        departmentName: getSetupRelationName(assignment?.hub_departments),
         email: typeof user.email === "string" ? user.email : null,
         id,
         name,
         role: typeof user.role === "string" ? user.role : null,
+        sectorId: getOptionalString(assignment?.sector_id),
+        sectorName: getSetupRelationName(assignment?.hub_sectors),
         status: typeof user.status === "string" ? user.status : null,
       } satisfies MentionUser,
     ];
@@ -3513,6 +4060,126 @@ function normalizeSearchText(value: string) {
     .replace(/\p{Diacritic}/gu, "")
     .toLowerCase()
     .trim();
+}
+
+function buildSetupUserLookup(users: MentionUser[]) {
+  const lookup = new Map<string, MentionUser>();
+
+  for (const user of users) {
+    lookup.set(`id:${user.id}`, user);
+
+    if (user.email) {
+      lookup.set(`email:${normalizeSearchText(user.email)}`, user);
+    }
+  }
+
+  return lookup;
+}
+
+function buildTicketManagementStats(
+  tickets: HubItTicket[],
+  setupUsersByLookup: ReadonlyMap<string, MentionUser>,
+): TicketManagementStats {
+  const workflowCounts = countTicketsByWorkflowStage(tickets);
+  const departmentByTicketProtocol = new Map<string, string>();
+  const departmentsByName = new Map<string, TicketDepartmentStats>();
+  const sortedByUpdate = sortTicketsByUpdatedAt(tickets);
+  const doneTickets = sortedByUpdate
+    .filter((ticket) => getTicketWorkflowStage(ticket) === "finalizado")
+    .slice(0, 5);
+  const meetingBacklogTickets = sortedByUpdate
+    .filter((ticket) => getTicketWorkflowStage(ticket) === "backlog")
+    .slice(0, 5);
+  const meetingTreatmentTickets = sortedByUpdate
+    .filter((ticket) => {
+      const stage = getTicketWorkflowStage(ticket);
+
+      return (
+        stage === "novo" ||
+        stage === "tratativa" ||
+        stage === "validacao" ||
+        stage === "revisao"
+      );
+    })
+    .slice(0, 5);
+
+  for (const ticket of tickets) {
+    const department = getTicketRequesterDepartment(ticket, setupUsersByLookup);
+    const stage = getTicketWorkflowStage(ticket);
+    const currentDepartment = departmentsByName.get(department) ?? {
+      backlog: 0,
+      department,
+      finalized: 0,
+      inProgress: 0,
+      latestTicket: null,
+      total: 0,
+    };
+
+    currentDepartment.total += 1;
+
+    if (stage === "finalizado") {
+      currentDepartment.finalized += 1;
+    } else if (stage === "backlog") {
+      currentDepartment.backlog += 1;
+    } else {
+      currentDepartment.inProgress += 1;
+    }
+
+    if (
+      !currentDepartment.latestTicket ||
+      new Date(ticket.updatedAt).getTime() >
+        new Date(currentDepartment.latestTicket.updatedAt).getTime()
+    ) {
+      currentDepartment.latestTicket = ticket;
+    }
+
+    departmentsByName.set(department, currentDepartment);
+    departmentByTicketProtocol.set(ticket.protocol, department);
+  }
+
+  return {
+    active: tickets.filter(isTicketInActiveQueue).length,
+    backlog: workflowCounts.backlog,
+    departmentByTicketProtocol,
+    departments: [...departmentsByName.values()].sort(
+      (firstDepartment, secondDepartment) =>
+        secondDepartment.total - firstDepartment.total ||
+        firstDepartment.department.localeCompare(
+          secondDepartment.department,
+          "pt-BR",
+          { sensitivity: "base" },
+        ),
+    ),
+    doneTickets,
+    finalized: workflowCounts.finalizado,
+    inProgress:
+      workflowCounts.novo +
+      workflowCounts.tratativa +
+      workflowCounts.validacao +
+      workflowCounts.revisao,
+    meetingBacklogTickets,
+    meetingTreatmentTickets,
+    newTickets: workflowCounts.novo,
+    review: workflowCounts.revisao,
+    total: tickets.length,
+    validation: workflowCounts.validacao,
+  };
+}
+
+function getTicketRequesterDepartment(
+  ticket: HubItTicket,
+  setupUsersByLookup: ReadonlyMap<string, MentionUser>,
+) {
+  const userById = setupUsersByLookup.get(`id:${ticket.requester.id}`);
+  const userByEmail = ticket.requester.email
+    ? setupUsersByLookup.get(`email:${normalizeSearchText(ticket.requester.email)}`)
+    : null;
+
+  return (
+    userById?.departmentName ??
+    userByEmail?.departmentName ??
+    "Sem departamento"
+  );
 }
 
 function filterTicketsBySearch(tickets: HubItTicket[], query: string) {
@@ -3644,6 +4311,18 @@ function getDeliveryFilterSummary(
   }
 
   return `${total} tickets`;
+}
+
+function getQueueViewTitle(view: TicketQueueView) {
+  if (view === "historico") {
+    return "Historico";
+  }
+
+  if (view === "gestao") {
+    return "Gestao";
+  }
+
+  return "Fila ativa";
 }
 
 function sortTicketsByDeliveryDate(tickets: HubItTicket[]) {

@@ -885,6 +885,9 @@ export function ZeusPage({
     useState<OperationsAlertProtocolSummary | null>(null);
   const [itTicketCount, setItTicketCount] = useState(0);
   const [itTicketAttentionCount, setItTicketAttentionCount] = useState(0);
+  const [zeusPresenceLastSeenAt, setZeusPresenceLastSeenAt] = useState<
+    string | null
+  >(null);
   const [alertFeedbackStatus, setAlertFeedbackStatus] =
     useState<OperationsAlertFeedbackStatus>("em_analise");
   const [alertFeedbackText, setAlertFeedbackText] = useState("");
@@ -935,6 +938,10 @@ export function ZeusPage({
         return;
       }
 
+      const heartbeatAt = new Date().toISOString();
+
+      setZeusPresenceLastSeenAt(heartbeatAt);
+
       void markHubPresence({
         metadata: {
           activeView,
@@ -945,9 +952,15 @@ export function ZeusPage({
         reason: "heartbeat",
         source: "zeus-operations-center",
         status: "online",
-      }).catch(() => {
-        // Presenca nao deve interromper a operacao do Zeus.
-      });
+      })
+        .then((presence) => {
+          if (isMounted) {
+            setZeusPresenceLastSeenAt(presence?.lastSeenAt ?? heartbeatAt);
+          }
+        })
+        .catch(() => {
+          // Presenca nao deve interromper a operacao do Zeus.
+        });
     };
 
     const handleVisibilityChange = () => {
@@ -2089,6 +2102,17 @@ export function ZeusPage({
           monitoringAlertCount={visibleMonitoringAlertCount}
           onChange={setActiveView}
           routineCount={auditRoutines.length}
+        />
+
+        <ZeusOpsPresenceBar
+          activeView={activeView}
+          isOnline={
+            canAccessZeus &&
+            profileStatus === "ready" &&
+            Boolean(zeusAccessToken)
+          }
+          lastSeenAt={zeusPresenceLastSeenAt}
+          userName={hubUser?.name ?? "Sessao"}
         />
 
         {activeView === "itTickets" ? (
@@ -4441,6 +4465,56 @@ function ZeusViewTabs({
         );
       })}
     </nav>
+  );
+}
+
+function ZeusOpsPresenceBar({
+  activeView,
+  isOnline,
+  lastSeenAt,
+  userName,
+}: {
+  activeView: ZeusView;
+  isOnline: boolean;
+  lastSeenAt: string | null;
+  userName: string;
+}) {
+  const activeViewLabel =
+    zeusViews.find((view) => view.id === activeView)?.label ?? "Zeus";
+  const statusTone = isOnline
+    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    : "border-slate-200 bg-slate-50 text-slate-500";
+
+  return (
+    <section className="rounded-xl border border-slate-200/70 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className={`inline-flex h-8 items-center gap-2 rounded-lg border px-2.5 text-xs font-semibold ${statusTone}`}>
+            <span
+              aria-hidden="true"
+              className={`h-2 w-2 rounded-full ${
+                isOnline ? "bg-emerald-500" : "bg-slate-300"
+              }`}
+            />
+            {isOnline ? "Online no Panteon" : "Conectando presenca"}
+          </span>
+          <span className="min-w-0 truncate text-sm font-semibold text-slate-950">
+            {userName}
+          </span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+          <span className="inline-flex h-8 items-center gap-2 rounded-lg bg-slate-50 px-2.5 ring-1 ring-slate-200">
+            <Activity className="size-4 text-[#A07C3B]" />
+            OPS / {activeViewLabel}
+          </span>
+          <span className="inline-flex h-8 items-center rounded-lg bg-slate-50 px-2.5 ring-1 ring-slate-200">
+            {lastSeenAt
+              ? `Pulso: ${formatOperationDateTime(lastSeenAt)}`
+              : "Pulso: aguardando"}
+          </span>
+        </div>
+      </div>
+    </section>
   );
 }
 

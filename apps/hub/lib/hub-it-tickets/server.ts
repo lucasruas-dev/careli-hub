@@ -686,9 +686,11 @@ export async function updateHubItTicket({
     }
 
     const adminAttachments = normalizedInput.attachments ?? [];
-    const nextStatus = normalizedInput.backlog
-      ? "em_analise"
-      : (normalizedInput.status ?? "em_tratativa");
+    const nextStatus = resolveAdminTicketNextStatus({
+      currentRoadmap: getRoadmapFromMetadata(currentTicket.metadata),
+      currentStatus: currentTicket.status,
+      input: normalizedInput,
+    });
     const deliveryDecision = buildDeliveryDecisionMetadata({
       currentMetadata: currentTicket.metadata,
       input: normalizedInput,
@@ -1370,7 +1372,7 @@ function buildRoadmapBacklogMetadata({
 
     return {
       changed: true,
-      message: `Zeus moveu este ticket para Backlog como ${hubItTicketRoadmapTypeLabels[input.backlog.type]} (${hubItTicketPriorityLabels[input.backlog.priority]}) em ${input.backlog.module} / ${input.backlog.screen}.`,
+      message: `${actor.name} moveu este ticket para Backlog como ${hubItTicketRoadmapTypeLabels[input.backlog.type]} (${hubItTicketPriorityLabels[input.backlog.priority]}) em ${input.backlog.module} / ${input.backlog.screen}.`,
       metadata: {
         ...currentMetadata,
         roadmap: nextRoadmap,
@@ -1563,7 +1565,7 @@ function buildLocalRoadmapBacklog({
 
     return {
       changed: true,
-      message: `Zeus moveu este ticket para Backlog como ${hubItTicketRoadmapTypeLabels[input.backlog.type]} (${hubItTicketPriorityLabels[input.backlog.priority]}) em ${input.backlog.module} / ${input.backlog.screen}.`,
+      message: `${actor.name} moveu este ticket para Backlog como ${hubItTicketRoadmapTypeLabels[input.backlog.type]} (${hubItTicketPriorityLabels[input.backlog.priority]}) em ${input.backlog.module} / ${input.backlog.screen}.`,
       roadmap,
     };
   }
@@ -1634,6 +1636,34 @@ function buildDeliveryActor(user: AuthorizedHubItTicketUser) {
     id: user.id,
     name: user.name,
   };
+}
+
+function resolveAdminTicketNextStatus({
+  currentRoadmap,
+  currentStatus,
+  input,
+}: {
+  currentRoadmap: HubItTicket["roadmap"];
+  currentStatus: HubItTicketStatus;
+  input: HubItTicketUpdateInput;
+}) {
+  if (input.backlog) {
+    return "em_analise";
+  }
+
+  if (input.status) {
+    return input.status;
+  }
+
+  if (currentRoadmap?.active && currentStatus === "em_analise") {
+    return "em_analise";
+  }
+
+  if (input.adminResponse && currentStatus === "novo") {
+    return "em_tratativa";
+  }
+
+  return currentStatus;
 }
 
 function buildAdminTicketEventMessage({
@@ -1915,9 +1945,11 @@ async function updateLocalHubItTicket({
     ...attachment,
     id: `local-att-${randomBytes(6).toString("hex")}`,
   }));
-  const nextStatus = input.backlog
-    ? "em_analise"
-    : (input.status ?? "em_tratativa");
+  const nextStatus = resolveAdminTicketNextStatus({
+    currentRoadmap: currentTicket.roadmap ?? null,
+    currentStatus: currentTicket.status,
+    input,
+  });
   const isResolved = nextStatus === "fechado";
   const deliveryDecision = buildLocalDeliveryDecision({
     currentTicket,
