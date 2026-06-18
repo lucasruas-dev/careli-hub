@@ -117,7 +117,6 @@ type HistorySortKey =
   | "createdAt"
   | "department"
   | "deliveryDate"
-  | "evidence"
   | "module"
   | "priority"
   | "protocol"
@@ -326,7 +325,7 @@ const queueDisplayModeOptions = [
 ] as const satisfies readonly TicketQueueDisplayMode[];
 
 const ticketDraftStorageKey = "careli-hub:zeus-helpdesk:drafts:v1";
-const helpDeskViewStorageKey = "careli-hub:zeus-helpdesk:view:v1";
+const helpDeskViewStorageKey = "careli-hub:zeus-helpdesk:view:v2";
 const emptyQueueFilters: TicketQueueFilters = {
   collaborator: "todos",
   department: "todos",
@@ -368,12 +367,10 @@ export function HubItTicketsBoard({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queueView, setQueueView] = useState<TicketQueueView>(
-    () => initialViewState.queueView ?? "gestao",
+    () => initialViewState.queueView ?? "fila",
   );
   const [queueDisplayMode, setQueueDisplayMode] =
-    useState<TicketQueueDisplayMode>(
-      () => initialViewState.queueDisplayMode ?? "lista",
-    );
+    useState<TicketQueueDisplayMode>("kanban");
   const [queueFilters, setQueueFilters] = useState<TicketQueueFilters>(
     () => initialViewState.queueFilters ?? emptyQueueFilters,
   );
@@ -595,6 +592,12 @@ export function HubItTicketsBoard({
   }, [onTicketAttentionCountChange, operatorAttentionTickets.length]);
 
   useEffect(() => {
+    if (queueView === "fila") {
+      setQueueDisplayMode("kanban");
+    }
+  }, [queueView]);
+
+  useEffect(() => {
     if (!isActive) {
       return;
     }
@@ -636,7 +639,6 @@ export function HubItTicketsBoard({
       deliveryFilter,
       detailModalProtocol,
       isQueueDatesExpanded,
-      queueDisplayMode,
       queueFilters,
       queueView,
       searchQuery,
@@ -646,7 +648,6 @@ export function HubItTicketsBoard({
     deliveryFilter,
     detailModalProtocol,
     isQueueDatesExpanded,
-    queueDisplayMode,
     queueFilters,
     queueView,
     searchQuery,
@@ -2465,7 +2466,11 @@ function DailyVolumePanel({
 }) {
   const maxValue = Math.max(
     1,
-    ...dailyVolume.map((item) => item.created + item.treated + item.validation),
+    ...dailyVolume.flatMap((item) => [
+      item.created,
+      item.treated,
+      item.validation,
+    ]),
   );
 
   return (
@@ -2488,54 +2493,69 @@ function DailyVolumePanel({
       <div className="grid gap-2">
         {dailyVolume.map((item) => {
           const total = item.created + item.treated + item.validation;
-          const createdWidth = getStackedBarWidth(item.created, maxValue);
-          const treatedWidth = getStackedBarWidth(item.treated, maxValue);
-          const validationWidth = getStackedBarWidth(item.validation, maxValue);
 
           return (
-            <Tooltip
-              content={`${formatDayLabel(item.day)}: ${item.created} recebido(s), ${item.treated} tratado(s), ${item.validation} em validacao`}
+            <div
+              aria-label={`${formatDayLabel(item.day)}: ${item.created} recebido(s), ${item.treated} tratado(s), ${item.validation} em validacao`}
+              className="group relative grid cursor-help gap-3 rounded-lg bg-slate-50 px-3 py-2 transition hover:bg-slate-100/80 lg:grid-cols-[4.8rem_minmax(0,1fr)_2.5rem] lg:items-center"
               key={item.day}
-              placement="top"
             >
-              <div className="grid cursor-help gap-2 rounded-lg bg-slate-50 px-3 py-2 md:grid-cols-[4.5rem_minmax(0,1fr)_2.5rem] md:items-center">
-                <div>
-                  <p className="m-0 text-[0.68rem] font-semibold text-slate-500">
+              <div>
+                <p className="m-0 text-[0.68rem] font-semibold text-slate-500">
                   {formatDayLabel(item.day)}
-                  </p>
-                  <p className="m-0 text-xs font-semibold text-slate-950">
-                    {total}
-                  </p>
-                </div>
-                <div className="grid gap-1.5">
-                  <span className="h-2 overflow-hidden rounded-full bg-slate-200">
-                    <span
-                      className="block h-full rounded-full bg-[#101820]"
-                      style={{ width: createdWidth }}
-                    />
-                  </span>
-                  <span className="h-2 overflow-hidden rounded-full bg-slate-200">
-                    <span
-                      className="block h-full rounded-full bg-[#A07C3B]"
-                      style={{ width: treatedWidth }}
-                    />
-                  </span>
-                  <span className="h-2 overflow-hidden rounded-full bg-slate-200">
-                    <span
-                      className="block h-full rounded-full bg-emerald-500"
-                      style={{ width: validationWidth }}
-                    />
-                  </span>
-                </div>
-                <span className="text-right font-mono text-xs font-semibold text-slate-500">
+                </p>
+                <p className="m-0 text-xs font-semibold text-slate-950">
                   {total}
-                </span>
+                </p>
               </div>
-            </Tooltip>
+              <div className="grid min-w-0 gap-1.5">
+                <DailyVolumeBar
+                  className="bg-[#101820]"
+                  maxValue={maxValue}
+                  value={item.created}
+                />
+                <DailyVolumeBar
+                  className="bg-[#A07C3B]"
+                  maxValue={maxValue}
+                  value={item.treated}
+                />
+                <DailyVolumeBar
+                  className="bg-emerald-500"
+                  maxValue={maxValue}
+                  value={item.validation}
+                />
+              </div>
+              <span className="text-right font-mono text-xs font-semibold text-slate-500">
+                {total}
+              </span>
+              <span className="pointer-events-none absolute left-20 top-2 z-20 rounded-lg bg-[#101820] px-3 py-2 text-[0.68rem] font-semibold text-white opacity-0 shadow-xl transition group-hover:opacity-100">
+                {item.created} recebido(s), {item.treated} tratado(s),{" "}
+                {item.validation} em validacao
+              </span>
+            </div>
           );
         })}
       </div>
     </section>
+  );
+}
+
+function DailyVolumeBar({
+  className,
+  maxValue,
+  value,
+}: {
+  className: string;
+  maxValue: number;
+  value: number;
+}) {
+  return (
+    <span className="block h-2 overflow-hidden rounded-full bg-slate-200">
+      <span
+        className={`block h-full rounded-full ${className}`}
+        style={{ width: getChartBarWidth(value, maxValue) }}
+      />
+    </span>
   );
 }
 
@@ -3548,7 +3568,7 @@ function TicketOperationsTable({
       </div>
       <div className="overflow-hidden rounded-xl border border-slate-200">
         <div
-          className="hidden grid-cols-[5.6rem_minmax(0,1.35fr)_6.5rem_minmax(0,0.65fr)_minmax(0,0.6fr)_minmax(0,0.58fr)_5rem_5.1rem_5.4rem_3.2rem_4.8rem] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[0.66rem] font-semibold uppercase text-slate-500 xl:grid"
+          className="hidden grid-cols-[5.6rem_minmax(0,1.45fr)_6.5rem_minmax(0,0.65fr)_minmax(0,0.6fr)_minmax(0,0.58fr)_5rem_5.1rem_5.4rem_5.4rem] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[0.66rem] font-semibold uppercase text-slate-500 xl:grid"
           role="row"
         >
           <HistorySortHeader
@@ -3606,12 +3626,6 @@ function TicketOperationsTable({
             onClick={() => handleSort("deliveryDate")}
           />
           <HistorySortHeader
-            active={sortKey === "evidence"}
-            direction={sortDirection}
-            label="Evidencias"
-            onClick={() => handleSort("evidence")}
-          />
-          <HistorySortHeader
             active={sortKey === "updatedAt"}
             direction={sortDirection}
             label="Atualizacao"
@@ -3631,7 +3645,7 @@ function TicketOperationsTable({
 
               return (
                 <button
-                  className={`grid w-full cursor-pointer gap-2 px-3 py-3 text-left transition xl:grid-cols-[5.6rem_minmax(0,1.35fr)_6.5rem_minmax(0,0.65fr)_minmax(0,0.6fr)_minmax(0,0.58fr)_5rem_5.1rem_5.4rem_3.2rem_4.8rem] xl:items-center xl:gap-3 ${
+                  className={`grid w-full cursor-pointer gap-2 px-3 py-3 text-left transition xl:grid-cols-[5.6rem_minmax(0,1.45fr)_6.5rem_minmax(0,0.65fr)_minmax(0,0.6fr)_minmax(0,0.58fr)_5rem_5.1rem_5.4rem_5.4rem] xl:items-center xl:gap-3 ${
                     isSelected
                       ? "bg-[#A07C3B]/10 text-slate-950"
                       : "bg-white text-slate-700 hover:bg-slate-50"
@@ -3681,10 +3695,7 @@ function TicketOperationsTable({
                     {formatDateShort(ticket.createdAt)}
                   </span>
                   <DeliveryDateCell ticket={ticket} />
-                  <span className="text-sm font-semibold text-slate-600">
-                    {getTicketEvidenceCount(ticket)}
-                  </span>
-                  <span className="text-xs font-medium text-slate-500">
+                  <span className="truncate text-xs font-medium text-slate-500">
                     {formatDateShort(ticket.updatedAt)}
                   </span>
                 </button>
@@ -6011,12 +6022,12 @@ function isTicketSentToValidationOnDate(ticket: HubItTicket, date: Date) {
   );
 }
 
-function getStackedBarWidth(value: number, maxValue: number) {
+function getChartBarWidth(value: number, maxValue: number) {
   if (value <= 0) {
     return "0%";
   }
 
-  return `${Math.max(8, Math.round((value / maxValue) * 100))}%`;
+  return `${Math.max(6, Math.round((value / maxValue) * 100))}%`;
 }
 
 function isTicketClosedOnDate(ticket: HubItTicket, date: Date) {
@@ -6346,22 +6357,20 @@ function buildTicketDeliveryCalendar(tickets: HubItTicket[]) {
   >();
   const laterTickets: HubItTicket[] = [];
   const noDateTickets: HubItTicket[] = [];
-  const weekEnd = addLocalDays(today, 6);
-  const weekEndKey = toLocalDateKey(weekEnd);
+  const businessDays = getNextBusinessDays(today, 5);
+  const weekEndKey = businessDays[businessDays.length - 1]?.key ?? todayKey;
 
-  for (let index = 0; index < 7; index += 1) {
-    const date = addLocalDays(today, index);
-    const key = toLocalDateKey(date);
-    const parsedDate = parseDateOnly(key);
+  for (const businessDay of businessDays) {
+    const parsedDate = parseDateOnly(businessDay.key);
 
-    if (!key || !parsedDate) {
+    if (!businessDay.key || !parsedDate) {
       continue;
     }
 
-    groupsByDate.set(key, {
-      isToday: key === todayKey,
-      key,
-      label: formatDayLabel(key),
+    groupsByDate.set(businessDay.key, {
+      isToday: businessDay.key === todayKey,
+      key: businessDay.key,
+      label: formatDayLabel(businessDay.key),
       tickets: [],
       weekday: formatWeekdayLabel(parsedDate),
     });
@@ -6392,16 +6401,14 @@ function buildTicketDeliveryCalendar(tickets: HubItTicket[]) {
       continue;
     }
 
-    const group = groupsByDate.get(deliveryKey) ?? {
-      isToday: deliveryKey === todayKey,
-      key: deliveryKey,
-      label: formatDayLabel(deliveryKey),
-      tickets: [],
-      weekday: formatWeekdayLabel(parsedDate),
-    };
+    const group = groupsByDate.get(deliveryKey);
+
+    if (!group) {
+      laterTickets.push(ticket);
+      continue;
+    }
 
     group.tickets.push(ticket);
-    groupsByDate.set(deliveryKey, group);
   }
 
   const dateGroups = [...groupsByDate.values()].sort((firstDay, secondDay) =>
@@ -6428,6 +6435,33 @@ function addLocalDays(date: Date, days: number) {
   nextDate.setDate(nextDate.getDate() + days);
 
   return nextDate;
+}
+
+function getNextBusinessDays(startDate: Date, count: number) {
+  const days: { key: string }[] = [];
+  let cursor = new Date(startDate);
+  let guard = 0;
+
+  while (days.length < count && guard < count + 10) {
+    if (isBusinessDay(cursor)) {
+      const key = toLocalDateKey(cursor);
+
+      if (key) {
+        days.push({ key });
+      }
+    }
+
+    cursor = addLocalDays(cursor, 1);
+    guard += 1;
+  }
+
+  return days;
+}
+
+function isBusinessDay(date: Date) {
+  const weekday = date.getDay();
+
+  return weekday !== 0 && weekday !== 6;
 }
 
 function formatWeekdayLabel(date: Date) {
@@ -6940,10 +6974,6 @@ function getBacklogTypeIcon(type: HubItTicketRoadmapType) {
   return <Sparkles className="size-4 text-[#7A5E2C]" />;
 }
 
-function getTicketEvidenceCount(ticket: HubItTicket) {
-  return ticket.attachments.length;
-}
-
 function getTodayDateInput() {
   const now = new Date();
   const year = now.getFullYear();
@@ -7016,12 +7046,6 @@ function compareHistoryTicketValue(
   key: HistorySortKey,
   departmentByTicketProtocol: ReadonlyMap<string, string>,
 ) {
-  if (key === "evidence") {
-    return (
-      getTicketEvidenceCount(firstTicket) - getTicketEvidenceCount(secondTicket)
-    );
-  }
-
   if (key === "priority") {
     return (
       priorityScore(firstTicket.priority) - priorityScore(secondTicket.priority)
@@ -7070,7 +7094,7 @@ function getHistoryTicketStringValue(
   ticket: HubItTicket,
   key: Exclude<
     HistorySortKey,
-    "createdAt" | "deliveryDate" | "evidence" | "priority" | "updatedAt"
+    "createdAt" | "deliveryDate" | "priority" | "updatedAt"
   >,
   departmentByTicketProtocol: ReadonlyMap<string, string>,
 ) {

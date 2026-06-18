@@ -36531,3 +36531,32 @@ Conclusao:
 - O protocolo `ZEUS-20260618-009-HELPDESK-ADDRESS-PROD` foi publicado em producao no dominio OPS.
 - O impacto pratico e que Lucas passa a ter HelpDesk mais persistente e filtravel, com gestao menos poluida, e a primeira tela Address consultavel no Zeus.
 - Precisa de acao agora: Lucas pode validar em `https://ops.c2x.app.br/zeus`; Zeus mantem rollback para `dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F` se houver regressao critica.
+
+## 2026-06-18 10:18:02 -03:00 - Zeus - hotfix visual HelpDesk Desk e Gestao
+
+Assunto: [Zeus] hotfix visual HelpDesk Desk e Gestao
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da alteracao: `HOTFIX / UX OPERACIONAL / VALIDACAO LOCAL`.
+- Protocolo operacional: `ZEUS-20260618-010-HELPDESK-BUSINESS-DAYS`; recorte local sobre `codex/zeus-address-catalog-20260618`.
+- CEP operacional: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Motivo da mudanca: Lucas apontou que o grafico `Movimento por dia` nao estava aparecendo corretamente, que o calendario do Desk deve pular sabado e domingo, que as colunas `Evidencias` e `Atualizacao` estavam quebrando a tabela, e pediu que o Desk sempre abra em visualizacao Kanban.
+- Arquivos/modulos afetados: `apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx` e este diario canonico.
+- Como foi feito: ajustei o estado inicial do Desk para abrir em `Kanban`, reiniciei a chave local de memoria da view para evitar preferencias antigas em `Lista`, deixei a alternancia manual Lista/Kanban/Calendario funcionando durante o uso, removi a coluna `Evidencias` da grade operacional, ampliei o espaco de `Atualizacao`, redesenhei o painel `Movimento por dia` com barras por recebido/tratado/validacao e tooltip proprio, e alterei o calendario para montar cinco dias uteis, sem colunas de sabado ou domingo.
+- Logica utilizada: evidencias continuam disponiveis no popup/detalhe do ticket, onde fazem parte da analise, mas saem da grade para eliminar rolagem horizontal e poluicao. A visao Kanban vira a entrada operacional do Desk, enquanto Lista e Calendario seguem disponiveis como modos auxiliares. O calendario considera somente dias uteis futuros; tickets de fim de semana nao criam coluna propria.
+- Validacao executada:
+  - `npm.cmd run check-types`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx --max-warnings 0`: PASS, com warning conhecido de `MODULE_TYPELESS_PACKAGE_JSON` do `eslint.config.js`;
+  - `git diff --check -- apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx`: PASS, apenas aviso esperado de LF/CRLF;
+  - `npm.cmd run build`: PASS, com warnings conhecidos de worktree `.codex-tmp`/Turbopack/NFT e `turbo` global;
+  - `GET http://localhost:3021/zeus`: 200 OK;
+  - navegador interno em `http://localhost:3021/zeus`: redirecionou para `/login`, sem erro de console e sem overflow horizontal na tela de login; validacao visual autenticada do HelpDesk ficou limitada por sessao.
+- Pendencias ou riscos conhecidos: nenhuma publicacao, alias, dominio, env, secret, Supabase, migration ou banco foi alterado neste hotfix ate este registro. Lucas autorizou publicar no dominio OPS; ainda faltam protocolo/safety gate e healthchecks remotos antes de considerar concluido.
+- Status operacional: `VALIDADO LOCAL / AUTORIZADO PARA PRODUCAO OPS`.
+- Proxima squad recomendada: `Zeus` para executar recorte limpo, Safety Gate, deploy somente em `ops.c2x.app.br`, healthchecks e registro final de producao.
+
+Conclusao:
+
+- O hotfix visual do HelpDesk foi implementado e validado localmente.
+- O impacto pratico esperado e o Desk abrir no Kanban, a Gestao voltar a mostrar o grafico de movimento com barras, o calendario trabalhar apenas com dias uteis e a tabela ficar mais limpa sem `Evidencias`.
+- Precisa de acao agora: Zeus deve publicar somente no `ops.c2x.app.br`, preservar `https://c2x.app.br`, validar o resultado e registrar o rollback.
