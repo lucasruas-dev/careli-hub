@@ -148,6 +148,7 @@
     "Foi feito, Tratando e Backlog ficam ocultos por padrao e abrem sob demanda.",
     "Sem env, secret, Supabase mutavel, banco ou migration neste recorte.",
     "Publicacao autorizada por Lucas somente para o dominio OPS.",
-    "Publicado em producao OPS no deployment dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp em 2026-06-17."
+    "Publicado em producao OPS no deployment dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp em 2026-06-17.",
+    "Sync direto para hub_engineering_operation_records ficou bloqueado por envolver Supabase/banco sem autorizacao separada."
   ]
 }

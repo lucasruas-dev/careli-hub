@@ -36288,6 +36288,8 @@ Assunto: [Zeus] Publicacao OPS do HelpDesk fila, kanban, calendario e gestao int
 - Escopo preservado:
   - nenhum env, secret, token, banco, migration, Supabase remoto, dominio adicional ou alias principal foi alterado;
   - `https://c2x.app.br` permaneceu fora do escopo funcional e segue no deployment `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; registro canonico em Markdown foi atualizado nesta rodada.
 - Rollback:
   - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq`;
   - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
