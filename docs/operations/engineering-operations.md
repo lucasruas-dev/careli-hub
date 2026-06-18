@@ -37854,3 +37854,51 @@ Conclusao:
 - Precisa de acao agora: nao publicar ainda; validar visualmente ou autorizar proximo passo explicitamente.
 - Quem deve agir agora: Lucas decide se quer Preview/validacao autenticada; Zeus so publica se houver autorizacao.
 - Proximo passo: criar commit candidato e, se Lucas autorizar, gerar pacote limpo e Preview/produçao segura conforme protocolo.
+
+## 2026-06-18 - Hermes + Ares - recorte combinado autorizado
+
+- Nome da squad/agente: `Zeus / Hermes / Ares`.
+- ProtocolId: `HERMES-ARES-20260618-018-FINANCEOPS-PERFORMANCE-ARES`.
+- Tipo da alteracao: `HERMES / FINANCEOPS / PERFORMANCE / ARES`.
+- Status: `VALIDADO_LOCAL / CANDIDATO_RECONSTRUIDO / PRODUCAO_BLOQUEADA_POR_MIGRATION_SUPABASE`.
+- Autorizacao: Lucas autorizou ampliar o recorte afirmando que `Ares pode entrar`; isso foi tratado como ampliacao de escopo tecnico, nao como autorizacao de producao.
+- Base segura:
+  - deployment valido atual de `c2x.app.br`: `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-bdvjyo7km-lucasruas-devs-projects.vercel.app`;
+  - commit fonte do deployment valido: `b963af6f39640205f6ae15ff77f7439f6dc1e877`;
+  - commit candidato Hermes puro: `3778481`;
+  - worktree dedicado: `.codex-deploy/hermes-ares-financeops-dpl8vo-20260618/worktree`;
+  - branch candidata: `codex/hermes-ares-financeops-dpl8vo-20260618`.
+- Escopo implementado:
+  - preserva as correcoes FinanceOps do Hermes ja validadas no protocolo `HERMES-20260618-017-FINANCEOPS-PERFORMANCE`;
+  - inclui rota `/ares`, APIs `/api/ares/*`, client/server/types e tela operacional Ares;
+  - ativa o modulo `financeiro` como `Ares` no registry compartilhado e aponta navegacao para `/ares`;
+  - inclui migrations `0030_ares_core.sql`, `0031_ares_dimensions_setup.sql`, `0032_ares_dimension_codes.sql` e `0033_ares_financial_bases.sql` apenas como arquivos versionados;
+  - removeu do Ares o link `PanteonVirtualOfficeLink`, evitando carregar Escritorio Virtual neste recorte.
+- Exclusoes:
+  - `Escritorio Virtual` nao foi incluido;
+  - nenhuma rota `/escritorio-virtual` foi adicionada ao candidato;
+  - nenhum env, secret, alias, dominio, Supabase manual, Vercel deploy ou migration aplicada foi executado.
+- Validacoes:
+  - busca por `VirtualOffice`, `escritorio`, `PanteonVirtual` e `panteon-virtual-office` no escopo Ares/shell/registry: sem resultados;
+  - `git diff --check`: PASS, com aviso esperado de LF para CRLF no Windows;
+  - `npm.cmd exec --workspace @repo/hub -- eslint <arquivos Hermes+Ares> --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON` e aviso conhecido de turbo global;
+  - `npm.cmd run check-types:hub`: PASS, com aviso conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, `38` paginas geradas; build listou `/ares` e `/api/ares/*` e nao listou `/escritorio-virtual`.
+- Risco residual:
+  - Ares depende das tabelas Supabase criadas pelas migrations `0030` a `0033`; sem aplicar essas migrations em ambiente real, a tela compila mas a API pode retornar erro de tabela ausente;
+  - migrations alteram banco, grants, RLS, permissoes e `hub_modules`, portanto producao permanece bloqueada ate aprovacao explicita do Lucas, validacao previa e safety gate;
+  - validacao visual autenticada de Hermes e Ares ainda depende de sessao real do Lucas.
+- Rollback:
+  - enquanto nao publicado, manter `c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - se este recorte for publicado depois e houver regressao, reapontar `c2x.app.br` para `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - se migrations forem aprovadas e aplicadas, preparar rollback SQL especifico antes de promocao.
+
+Conclusao:
+
+- O que aconteceu: o recorte foi ampliado de Hermes puro para Hermes + Ares, ainda partindo da base valida de producao e sem trazer Escritorio Virtual.
+- Impacto pratico: o candidato agora entrega a reducao de custo/performance do Hermes e prepara o modulo Ares para validacao.
+- Precisa de acao agora: sim; Lucas precisa decidir se autoriza a proxima etapa com Preview/Homologacao e migration Supabase controlada para Ares.
+- Quem deve agir agora: Lucas aprova ou segura a etapa de banco; Zeus mantem producao bloqueada ate safety gate.
+- Proximo passo: fechar commit candidato, validar pacote limpo e, se Lucas autorizar, planejar a migration do Ares primeiro fora de producao.

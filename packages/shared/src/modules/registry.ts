@@ -267,11 +267,12 @@ export const hubModules = [
   },
   {
     id: "financeiro",
-    name: "Financeiro",
-    description: "Fluxos financeiros, controle e acompanhamento executivo.",
+    name: "Ares",
+    description:
+      "Financeiro operacional, contas, centros, projetos e acompanhamento da Careli.",
     category: "finance",
-    status: "planned",
-    basePath: "/financeiro",
+    status: "active",
+    basePath: "/ares",
     iconKey: "financeiro",
     realtimeEnabled: false,
     order: 40,
@@ -279,15 +280,16 @@ export const hubModules = [
     routes: [
       {
         id: "financeiro-overview",
-        label: "Visao geral",
-        path: "/financeiro",
+        label: "Operacao financeira",
+        path: "/ares",
+        description: "Mesa operacional do Ares.",
       },
     ],
     navigationItems: [
       {
         id: "financeiro-overview",
-        label: "Financeiro",
-        path: "/financeiro",
+        label: "Ares",
+        path: "/ares",
         iconKey: "financeiro",
         order: 10,
       },

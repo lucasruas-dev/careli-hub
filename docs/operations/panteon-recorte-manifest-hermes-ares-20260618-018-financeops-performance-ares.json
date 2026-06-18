@@ -1,0 +1,96 @@
+{
+  "protocolId": "HERMES-ARES-20260618-018-FINANCEOPS-PERFORMANCE-ARES",
+  "modules": ["Hermes", "Ares"],
+  "owner": "Zeus / Hermes / Ares",
+  "createdAt": "2026-06-18",
+  "status": "VALIDADO_LOCAL / CANDIDATO_RECONSTRUIDO / PRODUCAO_BLOQUEADA_POR_MIGRATION_SUPABASE",
+  "summary": "Recorte combinado sobre a base valida de producao: mantem as correcoes FinanceOps do Hermes e inclui o modulo Ares sem carregar Escritorio Virtual.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Lucas autorizou ampliar o recorte para Ares apos confirmar que Ares pode entrar.",
+    "deployment": "Nenhum deploy, alias, env, secret, banco, migration aplicada ou conector foi alterado neste pacote."
+  },
+  "base": {
+    "productionDeploymentId": "dpl_8voSqS84aMPV5jyacdyW7h3NBxnU",
+    "productionTechnicalUrl": "https://careli-hub-hub-i2bs-bdvjyo7km-lucasruas-devs-projects.vercel.app",
+    "productionCommit": "b963af6f39640205f6ae15ff77f7439f6dc1e877",
+    "productionBranch": "codex/hades/segment-workflow-prod-cut-20260616",
+    "hermesCandidateCommit": "3778481",
+    "worktree": ".codex-deploy/hermes-ares-financeops-dpl8vo-20260618/worktree",
+    "candidateBranch": "codex/hermes-ares-financeops-dpl8vo-20260618"
+  },
+  "includedChanges": {
+    "hermes": [
+      "Reduz polling de presenca, mensagens e snapshot do Hermes.",
+      "Evita carregar mensagens de todos os canais no snapshot geral.",
+      "Pagina mensagens por cursor na API /api/pulsex/messages.",
+      "Mantem envio otimista, estado de entrega/falha, limpeza de notificacoes lidas e rascunho por canal."
+    ],
+    "ares": [
+      "Inclui rota /ares com shell operacional e tela Ares.",
+      "Inclui APIs /api/ares/snapshot, /api/ares/entries, /api/ares/dimensions e /api/ares/financial-bases.",
+      "Inclui client/server/types de Ares usando Supabase Hub real e permissoes financeiro:view/financeiro:manage.",
+      "Ativa o modulo financeiro como Ares no registry compartilhado e aponta navegacao para /ares.",
+      "Inclui migrations 0030 a 0033 do Ares apenas como arquivos versionados, sem aplicar no banco."
+    ]
+  },
+  "changedFiles": [
+    "apps/hub/app/api/pulsex/messages/route.ts",
+    "apps/hub/components/pulsex/message-item.tsx",
+    "apps/hub/components/pulsex/pulsex-workspace.tsx",
+    "apps/hub/lib/pulsex/supabase-data.ts",
+    "apps/hub/lib/pulsex/types.ts",
+    "apps/hub/lib/pulsex/workspace-messages.ts",
+    "apps/hub/app/api/ares/dimensions/route.ts",
+    "apps/hub/app/api/ares/entries/route.ts",
+    "apps/hub/app/api/ares/financial-bases/route.ts",
+    "apps/hub/app/api/ares/snapshot/route.ts",
+    "apps/hub/app/ares/page.tsx",
+    "apps/hub/layouts/hub-shell.tsx",
+    "apps/hub/lib/ares/client.ts",
+    "apps/hub/lib/ares/server.ts",
+    "apps/hub/lib/ares/types.ts",
+    "apps/hub/modules/ares/AresPage.tsx",
+    "packages/database/migrations/0030_ares_core.sql",
+    "packages/database/migrations/0031_ares_dimensions_setup.sql",
+    "packages/database/migrations/0032_ares_dimension_codes.sql",
+    "packages/database/migrations/0033_ares_financial_bases.sql",
+    "packages/shared/src/modules/registry.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-hermes-ares-20260618-018-financeops-performance-ares.json"
+  ],
+  "exclusions": [
+    "Escritorio Virtual nao foi incluido.",
+    "Nenhuma rota /escritorio-virtual foi adicionada ao candidato.",
+    "Nenhum env, secret, alias, dominio, Supabase manual ou Vercel deploy foi alterado.",
+    "Nenhuma migration foi aplicada em banco real."
+  ],
+  "validations": [
+    "rg VirtualOffice/escritorio/PanteonVirtual/panteon-virtual-office no escopo Ares/shell/registry: sem resultados.",
+    "git diff --check: PASS, com aviso esperado de LF para CRLF no Windows.",
+    "npm.cmd exec --workspace @repo/hub -- eslint <arquivos Hermes+Ares> --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run lint:hub: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON e aviso conhecido de turbo global.",
+    "npm.cmd run check-types:hub: PASS, com aviso conhecido de turbo global.",
+    "npm.cmd run build --workspace @repo/hub: PASS, 38 paginas geradas; build listou /ares e /api/ares/* e nao listou /escritorio-virtual."
+  ],
+  "safety": [
+    "Pacote construido em worktree limpa a partir do candidato Hermes validado 3778481.",
+    "O recorte Hermes puro permanece preservado na branch codex/hermes-financeops-dpl8vo-rebuild-20260618.",
+    "Ares depende de tabelas Supabase novas; por isso producao fica bloqueada ate aprovacao explicita de migration, validacao em ambiente adequado e safety gate."
+  ],
+  "risks": [
+    "Sem aplicar migrations 0030-0033 no Supabase, a tela Ares pode compilar mas a API real tende a retornar erro de tabela ausente.",
+    "As migrations criam/alteram tabelas, grants, RLS, permissoes e hub_modules; isso e operacao sensivel e nao deve ir direto para producao sem autorizacao e validacao previa.",
+    "Validacao visual autenticada do Hermes e Ares ainda depende de sessao real do Lucas."
+  ],
+  "rollback": [
+    "Enquanto nao publicado, manter c2x.app.br em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU.",
+    "Se este recorte for publicado depois e houver regressao, reapontar c2x.app.br para dpl_8voSqS84aMPV5jyacdyW7h3NBxnU.",
+    "Se as migrations forem aprovadas e aplicadas em ambiente real, preparar rollback SQL especifico antes de qualquer promocao."
+  ],
+  "nextSteps": [
+    "Lucas decidir se quer validar Ares em Preview/Homologacao com migrations autorizadas.",
+    "Antes de producao, executar safety gate com o protocolo HERMES-ARES-20260618-018-FINANCEOPS-PERFORMANCE-ARES.",
+    "Se migration for autorizada, validar RLS, permissoes financeiro:view/financeiro:manage e acesso por empresa/base financeira antes de publicar."
+  ]
+}

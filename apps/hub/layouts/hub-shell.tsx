@@ -98,6 +98,7 @@ const minimumReleasedModuleIds = [
   "iris",
   "chronos",
   "hermes",
+  "financeiro",
   "setup",
 ] as const;
 const hiddenProductionModuleIds = new Set<string>();
