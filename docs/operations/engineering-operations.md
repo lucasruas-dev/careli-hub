@@ -36182,3 +36182,58 @@ Conclusao:
 - Sim, houve uma falha no primeiro deploy: ele publicou um artefato incorreto e por isso Lucas viu a UI antiga.
 - O OPS foi corrigido no deployment `dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq`, com validacao autenticada confirmando as alteracoes pedidas.
 - Precisa de acao agora: Lucas pode recarregar `https://ops.c2x.app.br/zeus` e validar a tela nova; Zeus mantem rollback para `dpl_FLe1u31uaehb3qCdSdjduZav73uk`.
+
+## 2026-06-17 22:44:10 -03:00 - Zeus - HelpDesk fila em lista, kanban, calendario e gestao interativa
+
+Assunto: [Zeus] HelpDesk fila em lista, kanban, calendario e gestao interativa
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `IMPLEMENTACAO_LOCAL / UX / HELPDESK / GESTAO`.
+- Status: `VALIDADO_LOCAL / SEM_DEPLOY`.
+- Protocolo CEP:
+  - `ZEUS-20260617-006-HELPDESK-QUEUE-VIEWS`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json`;
+  - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Origem:
+  - Lucas pediu retornar uma visao em kanban sem perder a lista operacional;
+  - pediu filtros na lista por prioridade, colaborador e workflow;
+  - pediu data de recepcao e data de entrega na fila;
+  - pediu uma visao calendario para enxergar entregas por data;
+  - pediu que `Movimento por dia` mostrasse recebido, tratado e enviado para validacao;
+  - pediu aproximar os paineis de departamento e colaborador;
+  - pediu ocultar por padrao `Foi feito`, `Tratando` e `Backlog`, abrindo sob clique;
+  - pediu departamento clicavel abrindo tickets agrupados por colaborador, e colaborador abrindo por tipo de demanda;
+  - pediu sinal visual claro em itens clicaveis, com cursor e animacao.
+- Decisoes implementadas:
+  - `Fila Ativa` ganhou seletor local de modo `Lista`, `Kanban` e `Calendario`;
+  - filtros de fila ficaram visiveis por `Workflow`, `Prioridade` e `Colaborador`, com acao `Limpar filtros`;
+  - lista/tabela da fila agora mostra `Recepcao` (`createdAt`) e `Entrega` (`approvedDeliveryDate` ou `requestedDeliveryDate`), ambas ordenaveis;
+  - kanban compacto agrupa tickets por `Backlog`, `Novo`, `Em tratativa`, `Validacao` e `Revisao`;
+  - calendario mostra vencidos, proximos 14 dias, entregas futuras e tickets sem data;
+  - `Movimento por dia` passou a usar barras empilhadas para `Recebido`, `Tratado` e `Validacao`;
+  - `Tickets por departamento` e `Colaboradores` ficam lado a lado em telas largas;
+  - linhas de departamento e colaborador passaram a ser clicaveis, com `cursor-pointer`, hover e elevacao sutil;
+  - popup de indicadores suporta agrupamento interno: departamento agrupa por colaborador; colaborador agrupa por tipo de demanda; modulos/tipos agrupam por workflow;
+  - paineis `Foi feito`, `Tratando` e `Backlog` viraram disclosures fechados por padrao.
+- Arquivos atualizados neste recorte:
+  - `apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx`;
+  - `docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json`;
+  - `docs/operations/engineering-operations.md`.
+- Fora do escopo:
+  - nenhum deploy, Preview, homologacao real, producao, alias, dominio, env, secret, Supabase, banco real, migration ou Vercel;
+  - nenhuma alteracao em Hades, Hermes, Iris, Atlas, Chronos, Setup, Guardian ou outro modulo fora de Zeus/HelpDesk.
+- Validacao executada:
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+  - `npm.cmd run check-types:hub`: PASS.
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree/Turbopack fora do recorte.
+  - `GET http://localhost:3018/zeus`: PASS, `200 OK`.
+- Risco residual:
+  - validacao visual autenticada detalhada ainda depende do teste do Lucas no navegador;
+  - calendario usa datas ja existentes no ticket, sem criar nova persistencia ou migration;
+  - producao continua bloqueada ate autorizacao explicita do Lucas para este protocolo.
+
+Conclusao:
+
+- O recorte `ZEUS-20260617-006-HELPDESK-QUEUE-VIEWS` foi implementado e validado localmente.
+- O impacto pratico e que a Fila Ativa passa a ser operada em lista, kanban ou calendario, com filtros e datas de entrega, enquanto a Gestao fica mais compacta e interativa.
+- Precisa de acao agora: Lucas pode testar em `http://localhost:3018/zeus`; qualquer publicacao em OPS precisa de autorizacao explicita.

@@ -103,10 +103,19 @@ type BacklogFormState = {
 };
 
 type DeliveryFilter = "todos" | "hoje" | "proximos" | "folga" | "sem_data";
+type QueueFilterValue = "todos";
 type TicketQueueView = "fila" | "historico" | "gestao";
+type TicketQueueDisplayMode = "calendario" | "kanban" | "lista";
+type TicketQueueFilters = {
+  collaborator: QueueFilterValue | string;
+  priority: QueueFilterValue | HubItTicket["priority"];
+  workflow: QueueFilterValue | TicketWorkflowStage;
+};
 type HistorySortDirection = "asc" | "desc";
 type HistorySortKey =
   | "collaborator"
+  | "createdAt"
+  | "deliveryDate"
   | "evidence"
   | "module"
   | "priority"
@@ -115,9 +124,16 @@ type HistorySortKey =
   | "title"
   | "updatedAt";
 type TicketInsightModalState = {
+  groupBy?: TicketInsightGroupMode;
   tickets: HubItTicket[];
   title: string;
 } | null;
+type TicketInsightGroupMode = "category" | "collaborator" | "workflow";
+type TicketInsightGroup = {
+  key: string;
+  label: string;
+  tickets: HubItTicket[];
+};
 type TicketWorkflowStage =
   | "backlog"
   | "finalizado"
@@ -215,7 +231,16 @@ type TicketDailyVolumeStats = {
   closed: number;
   created: number;
   day: string;
-  replied: number;
+  treated: number;
+  validation: number;
+};
+
+type TicketQueueFilterOptions = {
+  collaborators: {
+    count: number;
+    key: string;
+    label: string;
+  }[];
 };
 
 type SetupUsersApiResponse = {
@@ -247,6 +272,11 @@ const priorityOptions = [
 ] as const satisfies readonly HubItTicket["priority"][];
 
 const ticketDraftStorageKey = "careli-hub:zeus-helpdesk:drafts:v1";
+const emptyQueueFilters: TicketQueueFilters = {
+  collaborator: "todos",
+  priority: "todos",
+  workflow: "todos",
+};
 
 export function HubItTicketsBoard({
   accessToken,
@@ -276,6 +306,10 @@ export function HubItTicketsBoard({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [queueView, setQueueView] = useState<TicketQueueView>("fila");
+  const [queueDisplayMode, setQueueDisplayMode] =
+    useState<TicketQueueDisplayMode>("lista");
+  const [queueFilters, setQueueFilters] =
+    useState<TicketQueueFilters>(emptyQueueFilters);
   const [searchQuery, setSearchQuery] = useState("");
   const [replyAttachments, setReplyAttachments] = useState<
     HubItTicketAttachmentInput[]
@@ -296,18 +330,31 @@ export function HubItTicketsBoard({
     () => tickets.filter(isTicketInHistory),
     [tickets],
   );
+  const queueFilterOptions = useMemo(
+    () => buildTicketQueueFilterOptions(activeQueueTickets),
+    [activeQueueTickets],
+  );
   const visibleQueueTickets =
     queueView === "historico"
       ? historyTickets
       : queueView === "gestao"
         ? tickets
         : activeQueueTickets;
-  const filteredQueueTickets = useMemo(
+  const searchFilteredQueueTickets = useMemo(
     () => filterTicketsBySearch(visibleQueueTickets, searchQuery),
     [searchQuery, visibleQueueTickets],
   );
+  const filteredQueueTickets = useMemo(
+    () =>
+      queueView === "fila"
+        ? filterTicketsByQueueFilters(searchFilteredQueueTickets, queueFilters)
+        : searchFilteredQueueTickets,
+    [queueFilters, queueView, searchFilteredQueueTickets],
+  );
   const managementSourceTickets =
-    queueView === "gestao" && searchQuery.trim() ? filteredQueueTickets : tickets;
+    queueView === "gestao" && searchQuery.trim()
+      ? searchFilteredQueueTickets
+      : tickets;
   const setupUsersByLookup = useMemo(
     () => buildSetupUserLookup(setupUsers),
     [setupUsers],
@@ -797,8 +844,11 @@ export function HubItTicketsBoard({
           historyTickets={historyTickets.length}
           isDatesExpanded={isQueueDatesExpanded}
           isLoading={isLoading}
+          onClearQueueFilters={() => setQueueFilters(emptyQueueFilters)}
           onDeliveryFilterChange={setDeliveryFilter}
           onOpenPoAi={onOpenPoAi}
+          onQueueDisplayModeChange={setQueueDisplayMode}
+          onQueueFilterChange={setQueueFilters}
           onRefresh={() => void refreshTickets()}
           onSearchChange={setSearchQuery}
           onToggleDates={() =>
@@ -806,6 +856,9 @@ export function HubItTicketsBoard({
           }
           onViewChange={setQueueView}
           searchQuery={searchQuery}
+          queueDisplayMode={queueDisplayMode}
+          queueFilterOptions={queueFilterOptions}
+          queueFilters={queueFilters}
           selectedView={queueView}
           totalTickets={tickets.length}
           workflowCounts={workflowCounts}
@@ -816,17 +869,20 @@ export function HubItTicketsBoard({
         {queueView === "gestao" ? (
           <HelpDeskManagementPanel
             onOpenTicket={(ticket) => openTicketDetail(ticket.protocol)}
-            onOpenTicketGroup={(title, groupTickets) =>
-              setInsightModal({ tickets: groupTickets, title })
+            onOpenTicketGroup={(title, groupTickets, groupBy) =>
+              setInsightModal({ groupBy, tickets: groupTickets, title })
             }
             setupUsersError={setupUsersError}
             setupUsersStatus={setupUsersStatus}
             stats={managementStats}
           />
         ) : (
-          <TicketOperationsTable
+          <TicketQueueContent
+            displayMode={queueView === "fila" ? queueDisplayMode : "lista"}
             emptyView={queueView}
-            onSelectTicket={queueView === "historico" ? openHistoryTicket : openTicketDetail}
+            onSelectTicket={
+              queueView === "historico" ? openHistoryTicket : openTicketDetail
+            }
             selectedProtocol={selectedTicket?.protocol ?? null}
             tickets={ticketsByDelivery}
             title={queueView === "historico" ? "Historico" : "Fila ativa"}
@@ -855,6 +911,7 @@ export function HubItTicketsBoard({
             setInsightModal(null);
             openTicketDetail(ticket.protocol);
           }}
+          groupBy={insightModal.groupBy}
           tickets={insightModal.tickets}
           title={insightModal.title}
         />
@@ -975,16 +1032,23 @@ function TicketDetailModal({
 }
 
 function TicketInsightModal({
+  groupBy,
   onClose,
   onOpenTicket,
   tickets,
   title,
 }: {
+  groupBy?: TicketInsightGroupMode;
   onClose: () => void;
   onOpenTicket: (ticket: HubItTicket) => void;
   tickets: HubItTicket[];
   title: string;
 }) {
+  const groups = useMemo(
+    () => (groupBy ? buildTicketInsightGroups(tickets, groupBy) : []),
+    [groupBy, tickets],
+  );
+
   return (
     <div className="fixed inset-0 z-[85] flex items-center justify-center bg-[#101820]/45 p-4">
       <button
@@ -1019,34 +1083,41 @@ function TicketInsightModal({
           </Tooltip>
         </div>
         <div className="min-h-0 overflow-y-auto p-4">
-          {tickets.length > 0 ? (
+          {groups.length > 0 ? (
+            <div className="grid gap-4">
+              {groups.map((group) => (
+                <section
+                  className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60"
+                  key={group.key}
+                >
+                  <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2">
+                    <h4 className="m-0 truncate text-sm font-semibold text-slate-950">
+                      {group.label}
+                    </h4>
+                    <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                      {group.tickets.length}
+                    </span>
+                  </div>
+                  <div className="grid gap-2 p-2">
+                    {sortTicketsByUpdatedAt(group.tickets).map((ticket) => (
+                      <InsightTicketButton
+                        key={ticket.id}
+                        onOpenTicket={onOpenTicket}
+                        ticket={ticket}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
+          ) : tickets.length > 0 ? (
             <div className="grid gap-2">
               {sortTicketsByUpdatedAt(tickets).map((ticket) => (
-                <button
-                  className="grid gap-2 rounded-lg border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 md:grid-cols-[8rem_minmax(0,1fr)_8rem_7rem] md:items-center"
+                <InsightTicketButton
                   key={ticket.id}
-                  onClick={() => onOpenTicket(ticket)}
-                  type="button"
-                >
-                  <span className="font-mono text-xs font-semibold text-[#7A5E2C]">
-                    {ticket.protocol}
-                  </span>
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-slate-950">
-                      {ticket.title}
-                    </span>
-                    <span className="block truncate text-xs text-slate-500">
-                      {ticket.requester.name} /{" "}
-                      {normalizeTicketModuleLabel(
-                        ticket.roadmap?.module || ticket.module,
-                      )}
-                    </span>
-                  </span>
-                  <StatusBadge status={ticket.status} ticket={ticket} />
-                  <span className="text-xs font-medium text-slate-500">
-                    {formatDateShort(ticket.updatedAt)}
-                  </span>
-                </button>
+                  onOpenTicket={onOpenTicket}
+                  ticket={ticket}
+                />
               ))}
             </div>
           ) : (
@@ -1062,6 +1133,39 @@ function TicketInsightModal({
         </div>
       </div>
     </div>
+  );
+}
+
+function InsightTicketButton({
+  onOpenTicket,
+  ticket,
+}: {
+  onOpenTicket: (ticket: HubItTicket) => void;
+  ticket: HubItTicket;
+}) {
+  return (
+    <button
+      className="grid cursor-pointer gap-2 rounded-lg border border-slate-200 bg-white px-3 py-3 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] md:grid-cols-[8rem_minmax(0,1fr)_8rem_7rem] md:items-center"
+      onClick={() => onOpenTicket(ticket)}
+      type="button"
+    >
+      <span className="font-mono text-xs font-semibold text-[#7A5E2C]">
+        {ticket.protocol}
+      </span>
+      <span className="min-w-0">
+        <span className="block truncate text-sm font-semibold text-slate-950">
+          {ticket.title}
+        </span>
+        <span className="block truncate text-xs text-slate-500">
+          {ticket.requester.name} /{" "}
+          {normalizeTicketModuleLabel(ticket.roadmap?.module || ticket.module)}
+        </span>
+      </span>
+      <StatusBadge status={ticket.status} ticket={ticket} />
+      <span className="text-xs font-medium text-slate-500">
+        {formatDateShort(ticket.updatedAt)}
+      </span>
+    </button>
   );
 }
 
@@ -1270,12 +1374,18 @@ function HelpDeskBoardToolbar({
   historyTickets,
   isDatesExpanded,
   isLoading,
+  onClearQueueFilters,
   onOpenPoAi,
   onDeliveryFilterChange,
+  onQueueDisplayModeChange,
+  onQueueFilterChange,
   onRefresh,
   onSearchChange,
   onToggleDates,
   onViewChange,
+  queueDisplayMode,
+  queueFilterOptions,
+  queueFilters,
   searchQuery,
   selectedView,
   totalTickets,
@@ -1292,17 +1402,24 @@ function HelpDeskBoardToolbar({
   historyTickets: number;
   isDatesExpanded: boolean;
   isLoading: boolean;
+  onClearQueueFilters: () => void;
   onOpenPoAi?: () => void;
   onDeliveryFilterChange: (filter: DeliveryFilter) => void;
+  onQueueDisplayModeChange: (mode: TicketQueueDisplayMode) => void;
+  onQueueFilterChange: (filters: TicketQueueFilters) => void;
   onRefresh: () => void;
   onSearchChange: (value: string) => void;
   onToggleDates: () => void;
   onViewChange: (view: TicketQueueView) => void;
+  queueDisplayMode: TicketQueueDisplayMode;
+  queueFilterOptions: TicketQueueFilterOptions;
+  queueFilters: TicketQueueFilters;
   searchQuery: string;
   selectedView: TicketQueueView;
   totalTickets: number;
   workflowCounts: Record<TicketWorkflowStage, number>;
 }) {
+  const hasQueueFilters = hasActiveQueueFilters(queueFilters);
   const tabs = [
     {
       count: activeTickets,
@@ -1494,7 +1611,163 @@ function HelpDeskBoardToolbar({
           />
         </div>
       ) : null}
+
+      {selectedView === "fila" ? (
+        <div className="grid gap-3 border-t border-slate-100 bg-white px-4 py-3 xl:grid-cols-[auto_minmax(0,1fr)] xl:items-center">
+          <div className="inline-flex w-fit rounded-lg border border-slate-200 bg-slate-50 p-1">
+            <QueueModeButton
+              active={queueDisplayMode === "lista"}
+              icon={<ClipboardList className="size-3.5" />}
+              label="Lista"
+              onClick={() => onQueueDisplayModeChange("lista")}
+            />
+            <QueueModeButton
+              active={queueDisplayMode === "kanban"}
+              icon={<Square className="size-3.5" />}
+              label="Kanban"
+              onClick={() => onQueueDisplayModeChange("kanban")}
+            />
+            <QueueModeButton
+              active={queueDisplayMode === "calendario"}
+              icon={<CalendarDays className="size-3.5" />}
+              label="Calendario"
+              onClick={() => onQueueDisplayModeChange("calendario")}
+            />
+          </div>
+
+          <div className="grid gap-2 md:grid-cols-4">
+            <QueueFilterSelect
+              label="Workflow"
+              onChange={(value) =>
+                onQueueFilterChange({
+                  ...queueFilters,
+                  workflow: value as TicketQueueFilters["workflow"],
+                })
+              }
+              value={queueFilters.workflow}
+            >
+              <option value="todos">Todos</option>
+              {(
+                [
+                  "backlog",
+                  "novo",
+                  "tratativa",
+                  "validacao",
+                  "revisao",
+                ] as const satisfies readonly TicketWorkflowStage[]
+              ).map((stage) => (
+                <option key={stage} value={stage}>
+                  {workflowStageLabels[stage]} ({workflowCounts[stage]})
+                </option>
+              ))}
+            </QueueFilterSelect>
+            <QueueFilterSelect
+              label="Prioridade"
+              onChange={(value) =>
+                onQueueFilterChange({
+                  ...queueFilters,
+                  priority: value as TicketQueueFilters["priority"],
+                })
+              }
+              value={queueFilters.priority}
+            >
+              <option value="todos">Todas</option>
+              {priorityOptions.map((priority) => (
+                <option key={priority} value={priority}>
+                  {hubItTicketPriorityLabels[priority]}
+                </option>
+              ))}
+            </QueueFilterSelect>
+            <QueueFilterSelect
+              label="Colaborador"
+              onChange={(value) =>
+                onQueueFilterChange({
+                  ...queueFilters,
+                  collaborator: value,
+                })
+              }
+              value={queueFilters.collaborator}
+            >
+              <option value="todos">Todos</option>
+              {queueFilterOptions.collaborators.map((collaborator) => (
+                <option key={collaborator.key} value={collaborator.key}>
+                  {collaborator.label} ({collaborator.count})
+                </option>
+              ))}
+            </QueueFilterSelect>
+            <button
+              className={`inline-flex h-10 items-center justify-center gap-2 rounded-lg border px-3 text-xs font-semibold transition ${
+                hasQueueFilters
+                  ? "cursor-pointer border-[#A07C3B]/30 bg-[#A07C3B]/10 text-[#7A5E2C] hover:border-[#A07C3B]/50"
+                  : "cursor-default border-slate-200 bg-slate-50 text-slate-400"
+              }`}
+              disabled={!hasQueueFilters}
+              onClick={onClearQueueFilters}
+              type="button"
+            >
+              <X className="size-3.5" />
+              Limpar filtros
+            </button>
+          </div>
+        </div>
+      ) : null}
     </div>
+  );
+}
+
+function QueueModeButton({
+  active,
+  icon,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition ${
+        active
+          ? "bg-[#101820] text-white shadow-sm"
+          : "text-slate-600 hover:bg-white hover:text-slate-950"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      <span className={active ? "text-[#D7B46A]" : "text-slate-400"}>
+        {icon}
+      </span>
+      {label}
+    </button>
+  );
+}
+
+function QueueFilterSelect({
+  children,
+  label,
+  onChange,
+  value,
+}: {
+  children: ReactNode;
+  label: string;
+  onChange: (value: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1">
+      <span className="text-[0.66rem] font-semibold uppercase text-slate-500">
+        {label}
+      </span>
+      <select
+        className="h-9 cursor-pointer rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none transition hover:border-[#A07C3B]/30 focus:border-[#A07C3B]/50 focus:ring-2 focus:ring-[#A07C3B]/10"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {children}
+      </select>
+    </label>
   );
 }
 
@@ -1505,7 +1778,11 @@ function HelpDeskManagementPanel({
   setupUsersStatus,
   stats,
 }: {
-  onOpenTicketGroup: (title: string, tickets: HubItTicket[]) => void;
+  onOpenTicketGroup: (
+    title: string,
+    tickets: HubItTicket[],
+    groupBy?: TicketInsightGroupMode,
+  ) => void;
   onOpenTicket: (ticket: HubItTicket) => void;
   setupUsersError: string | null;
   setupUsersStatus: SetupUsersStatus;
@@ -1645,7 +1922,7 @@ function HelpDeskManagementPanel({
           </div>
           <div className="grid gap-2">
             <PerformanceLine
-              label="Respondidos hoje"
+              label="Tratados hoje"
               value={stats.repliedTodayTickets.length}
             />
             <PerformanceLine
@@ -1660,54 +1937,73 @@ function HelpDeskManagementPanel({
         </section>
       </div>
 
-      <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1.05fr)_minmax(28rem,0.95fr)]">
-        <div className="grid gap-4">
-          <DepartmentDemandTable
-            departments={stats.departments}
-            onOpenTicket={onOpenTicket}
+      <div className="mt-4 grid gap-4 2xl:grid-cols-2">
+        <DepartmentDemandTable
+          departments={stats.departments}
+          onOpenDepartment={(department) =>
+            onOpenTicketGroup(
+              `Departamento: ${department.department}`,
+              department.tickets,
+              "collaborator",
+            )
+          }
+        />
+        <CollaboratorDemandTable
+          collaborators={stats.collaborators}
+          onOpenCollaborator={(collaborator) =>
+            onOpenTicketGroup(
+              `Colaborador: ${collaborator.label}`,
+              collaborator.tickets,
+              "category",
+            )
+          }
+        />
+      </div>
+
+      <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+        <div className="grid gap-4 xl:grid-cols-2">
+          <DemandDimensionPanel
+            items={stats.categories}
+            onOpenItem={(item) =>
+              onOpenTicketGroup(`Tipo: ${item.label}`, item.tickets, "workflow")
+            }
+            title="Tipos de demanda"
           />
-          <CollaboratorDemandTable
-            collaborators={stats.collaborators}
-            onOpenTicket={onOpenTicket}
+          <DemandDimensionPanel
+            items={stats.modules}
+            onOpenItem={(item) =>
+              onOpenTicketGroup(`Modulo: ${item.label}`, item.tickets, "workflow")
+            }
+            title="Modulos"
           />
         </div>
-
-        <div className="grid gap-4">
-          <div className="grid gap-4 xl:grid-cols-2 2xl:grid-cols-1">
-            <DemandDimensionPanel
-              items={stats.categories}
-              title="Tipos de demanda"
-            />
-            <DemandDimensionPanel items={stats.modules} title="Modulos" />
-          </div>
-          <div className="grid gap-3 xl:grid-cols-3 2xl:grid-cols-1">
-            <MeetingTicketList
-              departmentByTicketProtocol={stats.departmentByTicketProtocol}
-              emptyMessage="Sem finalizados."
-              icon={<CheckCircle2 className="size-4" />}
-              onOpenTicket={onOpenTicket}
-              tickets={stats.doneTickets}
-              title="Foi feito"
-              tone="success"
-            />
-            <MeetingTicketList
-              departmentByTicketProtocol={stats.departmentByTicketProtocol}
-              emptyMessage="Sem tratamento."
-              icon={<MessageSquareReply className="size-4" />}
-              onOpenTicket={onOpenTicket}
-              tickets={stats.meetingTreatmentTickets}
-              title="Tratando"
-              tone="warning"
-            />
-            <MeetingTicketList
-              departmentByTicketProtocol={stats.departmentByTicketProtocol}
-              emptyMessage="Sem Backlog."
-              icon={<Archive className="size-4" />}
-              onOpenTicket={onOpenTicket}
-              tickets={stats.meetingBacklogTickets}
-              title="Backlog"
-            />
-          </div>
+        <div className="grid gap-3 xl:grid-cols-3">
+          <MeetingTicketDisclosure
+            departmentByTicketProtocol={stats.departmentByTicketProtocol}
+            emptyMessage="Sem finalizados."
+            icon={<CheckCircle2 className="size-4" />}
+            onOpenTicket={onOpenTicket}
+            tickets={stats.doneTickets}
+            title="Foi feito"
+            tone="success"
+          />
+          <MeetingTicketDisclosure
+            departmentByTicketProtocol={stats.departmentByTicketProtocol}
+            emptyMessage="Sem tratamento."
+            icon={<MessageSquareReply className="size-4" />}
+            onOpenTicket={onOpenTicket}
+            tickets={stats.meetingTreatmentTickets}
+            title="Tratando"
+            tone="warning"
+          />
+          <MeetingTicketDisclosure
+            departmentByTicketProtocol={stats.departmentByTicketProtocol}
+            emptyMessage="Sem Backlog."
+            icon={<Archive className="size-4" />}
+            onOpenTicket={onOpenTicket}
+            tickets={stats.meetingBacklogTickets}
+            title="Backlog"
+          />
         </div>
       </div>
     </div>
@@ -1788,7 +2084,7 @@ function DailyVolumePanel({
 }) {
   const maxValue = Math.max(
     1,
-    ...dailyVolume.map((item) => item.created + item.replied + item.closed),
+    ...dailyVolume.map((item) => item.created + item.treated + item.validation),
   );
 
   return (
@@ -1797,24 +2093,53 @@ function DailyVolumePanel({
         <h4 className="m-0 text-sm font-semibold text-slate-950">
           Movimento por dia
         </h4>
-        <Tooltip content="Criados, respondidos e encerrados nos ultimos dias.">
+        <Tooltip content="Recebidos, tratados e enviados para validacao nos ultimos dias.">
           <span className="grid size-6 place-items-center rounded-md text-slate-400">
             <LineChart className="size-4" />
           </span>
         </Tooltip>
       </div>
+      <div className="mb-3 flex flex-wrap gap-2 text-[0.66rem] font-semibold uppercase text-slate-500">
+        <ChartLegendDot className="bg-[#101820]" label="Recebido" />
+        <ChartLegendDot className="bg-[#A07C3B]" label="Tratado" />
+        <ChartLegendDot className="bg-emerald-500" label="Validacao" />
+      </div>
       <div className="grid grid-cols-7 items-end gap-2">
         {dailyVolume.map((item) => {
-          const total = item.created + item.replied + item.closed;
-          const height = Math.max(12, Math.round((total / maxValue) * 74));
+          const total = item.created + item.treated + item.validation;
+          const createdHeight = getStackedBarHeight(item.created, maxValue);
+          const treatedHeight = getStackedBarHeight(item.treated, maxValue);
+          const validationHeight = getStackedBarHeight(
+            item.validation,
+            maxValue,
+          );
 
           return (
             <div className="grid gap-2 text-center" key={item.day}>
-              <div className="flex h-20 items-end justify-center rounded-md bg-slate-50 px-1">
-                <div
-                  className="w-full max-w-7 rounded-t-md bg-[#A07C3B]"
-                  style={{ height }}
-                />
+              <div className="flex h-24 items-end justify-center rounded-md bg-slate-50 px-1">
+                <div className="flex w-full max-w-7 flex-col justify-end overflow-hidden rounded-t-md">
+                  {item.validation > 0 ? (
+                    <div
+                      className="bg-emerald-500"
+                      style={{ height: validationHeight }}
+                    />
+                  ) : null}
+                  {item.treated > 0 ? (
+                    <div
+                      className="bg-[#A07C3B]"
+                      style={{ height: treatedHeight }}
+                    />
+                  ) : null}
+                  {item.created > 0 ? (
+                    <div
+                      className="bg-[#101820]"
+                      style={{ height: createdHeight }}
+                    />
+                  ) : null}
+                  {total === 0 ? (
+                    <div className="h-2 rounded-t-md bg-slate-200" />
+                  ) : null}
+                </div>
               </div>
               <div>
                 <p className="m-0 text-[0.68rem] font-semibold text-slate-500">
@@ -1832,6 +2157,21 @@ function DailyVolumePanel({
   );
 }
 
+function ChartLegendDot({
+  className,
+  label,
+}: {
+  className: string;
+  label: string;
+}) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className={`size-2 rounded-full ${className}`} />
+      {label}
+    </span>
+  );
+}
+
 function PerformanceLine({ label, value }: { label: string; value: number }) {
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
@@ -1845,10 +2185,10 @@ function PerformanceLine({ label, value }: { label: string; value: number }) {
 
 function DepartmentDemandTable({
   departments,
-  onOpenTicket,
+  onOpenDepartment,
 }: {
   departments: TicketDepartmentStats[];
-  onOpenTicket: (ticket: HubItTicket) => void;
+  onOpenDepartment: (department: TicketDepartmentStats) => void;
 }) {
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -1881,9 +2221,11 @@ function DepartmentDemandTable({
       {departments.length > 0 ? (
         <div className="divide-y divide-slate-100">
           {departments.map((department) => (
-            <div
-              className="grid gap-2 px-3 py-3 text-sm xl:grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_7rem_minmax(9rem,0.7fr)] xl:items-center xl:gap-3"
+            <button
+              className="grid w-full cursor-pointer gap-2 px-3 py-3 text-left text-sm transition hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] xl:grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_7rem_minmax(9rem,0.7fr)] xl:items-center xl:gap-3"
               key={department.department}
+              onClick={() => onOpenDepartment(department)}
+              type="button"
             >
               <span className="min-w-0 font-semibold text-slate-950">
                 <span className="block truncate">{department.department}</span>
@@ -1901,26 +2243,18 @@ function DepartmentDemandTable({
                 {department.highPriority} alta
               </span>
               {department.latestTicket ? (
-                <button
-                  className="min-w-0 rounded-lg px-2 py-1 text-left text-xs font-semibold text-[#7A5E2C] transition hover:bg-[#A07C3B]/10"
-                  onClick={() => {
-                    if (department.latestTicket) {
-                      onOpenTicket(department.latestTicket);
-                    }
-                  }}
-                  type="button"
-                >
+                <span className="min-w-0 rounded-lg px-2 py-1 text-left text-xs font-semibold text-[#7A5E2C]">
                   <span className="block truncate">
                     {department.latestTicket.protocol}
                   </span>
                   <span className="block truncate font-medium text-slate-500">
                     {formatDateShort(department.latestTicket.updatedAt)}
                   </span>
-                </button>
+                </span>
               ) : (
                 <span className="text-xs text-slate-400">-</span>
               )}
-            </div>
+            </button>
           ))}
         </div>
       ) : (
@@ -1939,10 +2273,10 @@ function DepartmentDemandTable({
 
 function CollaboratorDemandTable({
   collaborators,
-  onOpenTicket,
+  onOpenCollaborator,
 }: {
   collaborators: TicketCollaboratorStats[];
-  onOpenTicket: (ticket: HubItTicket) => void;
+  onOpenCollaborator: (collaborator: TicketCollaboratorStats) => void;
 }) {
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
@@ -1977,13 +2311,9 @@ function CollaboratorDemandTable({
         <div className="divide-y divide-slate-100">
           {collaborators.slice(0, 8).map((collaborator) => (
             <button
-              className="grid w-full gap-2 px-3 py-3 text-left transition hover:bg-[#A07C3B]/5 xl:grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_7rem_minmax(8rem,0.7fr)] xl:items-center"
+              className="grid w-full cursor-pointer gap-2 px-3 py-3 text-left transition hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] xl:grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_7rem_minmax(8rem,0.7fr)] xl:items-center"
               key={collaborator.key}
-              onClick={() => {
-                if (collaborator.latestTicket) {
-                  onOpenTicket(collaborator.latestTicket);
-                }
-              }}
+              onClick={() => onOpenCollaborator(collaborator)}
               type="button"
             >
               <span className="flex min-w-0 items-center gap-3">
@@ -2039,9 +2369,11 @@ function CollaboratorDemandTable({
 
 function DemandDimensionPanel({
   items,
+  onOpenItem,
   title,
 }: {
   items: TicketDimensionStats[];
+  onOpenItem?: (item: TicketDimensionStats) => void;
   title: string;
 }) {
   const maxTotal = Math.max(1, ...items.map((item) => item.total));
@@ -2068,7 +2400,12 @@ function DemandDimensionPanel({
             const percentage = Math.max(6, Math.round((item.total / maxTotal) * 100));
 
             return (
-              <div className="grid gap-1.5" key={item.key}>
+              <button
+                className="grid cursor-pointer gap-1.5 rounded-lg p-2 text-left transition hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)]"
+                key={item.key}
+                onClick={() => onOpenItem?.(item)}
+                type="button"
+              >
                 <div className="flex items-center justify-between gap-3">
                   <span className="min-w-0 truncate text-sm font-semibold text-slate-800">
                     {item.label}
@@ -2088,7 +2425,7 @@ function DemandDimensionPanel({
                   <span>{item.inProgress} tratando</span>
                   <span>{item.backlog} backlog</span>
                 </div>
-              </div>
+              </button>
             );
           })}
         </div>
@@ -2124,7 +2461,7 @@ function MetricCell({
   );
 }
 
-function MeetingTicketList({
+function MeetingTicketDisclosure({
   departmentByTicketProtocol,
   emptyMessage,
   icon,
@@ -2141,6 +2478,7 @@ function MeetingTicketList({
   title: string;
   tone?: "neutral" | "success" | "warning";
 }) {
+  const [isExpanded, setIsExpanded] = useState(false);
   const iconClassName =
     tone === "success"
       ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
@@ -2149,52 +2487,419 @@ function MeetingTicketList({
         : "bg-slate-50 text-slate-700 ring-slate-200";
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-3">
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+    <section className="rounded-lg border border-slate-200 bg-white">
+      <button
+        className="flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-3 text-left transition hover:bg-[#A07C3B]/5"
+        onClick={() => setIsExpanded((currentValue) => !currentValue)}
+        type="button"
+      >
+        <span className="flex min-w-0 items-center gap-2">
           <span
-            className={`grid size-8 place-items-center rounded-lg ring-1 ${iconClassName}`}
+            className={`grid size-8 shrink-0 place-items-center rounded-lg ring-1 ${iconClassName}`}
           >
             {icon}
           </span>
-          <h4 className="m-0 text-sm font-semibold text-slate-950">{title}</h4>
+          <span className="min-w-0">
+            <span className="block truncate text-sm font-semibold text-slate-950">
+              {title}
+            </span>
+            <span className="block truncate text-xs font-medium text-slate-500">
+              Clique para {isExpanded ? "ocultar" : "abrir"}
+            </span>
+          </span>
+        </span>
+        <span className="flex items-center gap-2">
+          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+            {tickets.length}
+          </span>
+          {isExpanded ? (
+            <ChevronUp className="size-4 text-slate-400" />
+          ) : (
+            <ChevronDown className="size-4 text-slate-400" />
+          )}
+        </span>
+      </button>
+      {isExpanded ? (
+        <div className="border-t border-slate-100 p-3">
+          {tickets.length > 0 ? (
+            <div className="grid gap-2">
+              {tickets.map((ticket) => (
+                <button
+                  className="grid min-w-0 cursor-pointer gap-1 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+                  key={ticket.id}
+                  onClick={() => onOpenTicket(ticket)}
+                  type="button"
+                >
+                  <span className="flex min-w-0 items-center justify-between gap-2">
+                    <span className="truncate font-mono text-xs font-semibold text-[#7A5E2C]">
+                      {ticket.protocol}
+                    </span>
+                    <StatusBadge status={ticket.status} ticket={ticket} />
+                  </span>
+                  <span className="truncate text-sm font-semibold text-slate-950">
+                    {ticket.title}
+                  </span>
+                  <span className="truncate text-xs text-slate-500">
+                    {departmentByTicketProtocol.get(ticket.protocol) ??
+                      "Sem departamento"}{" "}
+                    / {formatDateShort(ticket.updatedAt)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="m-0 rounded-lg bg-slate-50 px-3 py-4 text-center text-sm font-semibold text-slate-500">
+              {emptyMessage}
+            </p>
+          )}
         </div>
-        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+      ) : null}
+    </section>
+  );
+}
+
+function TicketQueueContent({
+  displayMode,
+  emptyView,
+  onSelectTicket,
+  selectedProtocol,
+  tickets,
+  title,
+}: {
+  displayMode: TicketQueueDisplayMode;
+  emptyView: TicketQueueView;
+  onSelectTicket: (protocol: string) => void;
+  selectedProtocol: string | null;
+  tickets: HubItTicket[];
+  title: string;
+}) {
+  if (displayMode === "kanban" && emptyView === "fila") {
+    return (
+      <TicketWorkflowKanban
+        onSelectTicket={onSelectTicket}
+        selectedProtocol={selectedProtocol}
+        tickets={tickets}
+      />
+    );
+  }
+
+  if (displayMode === "calendario" && emptyView === "fila") {
+    return (
+      <TicketDeliveryCalendar
+        onSelectTicket={onSelectTicket}
+        selectedProtocol={selectedProtocol}
+        tickets={tickets}
+      />
+    );
+  }
+
+  return (
+    <TicketOperationsTable
+      emptyView={emptyView}
+      onSelectTicket={onSelectTicket}
+      selectedProtocol={selectedProtocol}
+      tickets={tickets}
+      title={title}
+    />
+  );
+}
+
+function TicketWorkflowKanban({
+  onSelectTicket,
+  selectedProtocol,
+  tickets,
+}: {
+  onSelectTicket: (protocol: string) => void;
+  selectedProtocol: string | null;
+  tickets: HubItTicket[];
+}) {
+  const columns = (
+    ["backlog", "novo", "tratativa", "validacao", "revisao"] as const
+  ).map((stage) => ({
+    stage,
+    tickets: sortTicketsByDeliveryDate(
+      tickets.filter((ticket) => getTicketWorkflowStage(ticket) === stage),
+    ),
+  }));
+
+  return (
+    <div className="bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="m-0 text-base font-semibold text-slate-950">
+            Kanban da fila
+          </h3>
+          <p className="m-0 mt-1 text-xs font-medium text-slate-500">
+            Clique no cartao para abrir o ticket em popup.
+          </p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+          {tickets.length} ticket(s)
+        </span>
+      </div>
+      <div className="grid gap-3 overflow-x-auto pb-1 xl:grid-cols-5">
+        {columns.map((column) => (
+          <section
+            className="min-w-[16rem] rounded-xl border border-slate-200 bg-slate-50/70"
+            key={column.stage}
+          >
+            <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2">
+              <h4 className="m-0 text-sm font-semibold text-slate-950">
+                {workflowStageLabels[column.stage]}
+              </h4>
+              <span className="rounded-full bg-white px-2 py-0.5 font-mono text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                {column.tickets.length}
+              </span>
+            </div>
+            <div className="grid max-h-[34rem] gap-2 overflow-y-auto p-2">
+              {column.tickets.length > 0 ? (
+                column.tickets.map((ticket) => (
+                  <TicketQueueCompactCard
+                    isSelected={ticket.protocol === selectedProtocol}
+                    key={ticket.id}
+                    onSelectTicket={onSelectTicket}
+                    ticket={ticket}
+                  />
+                ))
+              ) : (
+                <p className="m-0 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-5 text-center text-xs font-semibold text-slate-400">
+                  Sem tickets.
+                </p>
+              )}
+            </div>
+          </section>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function TicketDeliveryCalendar({
+  onSelectTicket,
+  selectedProtocol,
+  tickets,
+}: {
+  onSelectTicket: (protocol: string) => void;
+  selectedProtocol: string | null;
+  tickets: HubItTicket[];
+}) {
+  const calendar = useMemo(() => buildTicketDeliveryCalendar(tickets), [tickets]);
+
+  return (
+    <div className="bg-white p-4">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h3 className="m-0 text-base font-semibold text-slate-950">
+            Calendario de entrega
+          </h3>
+          <p className="m-0 mt-1 text-xs font-medium text-slate-500">
+            Datas de entrega aprovadas ou solicitadas.
+          </p>
+        </div>
+        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+          {tickets.length} ticket(s)
+        </span>
+      </div>
+
+      {calendar.overdueTickets.length > 0 ? (
+        <CalendarSpecialLane
+          label="Vencidos"
+          onSelectTicket={onSelectTicket}
+          selectedProtocol={selectedProtocol}
+          tickets={calendar.overdueTickets}
+          tone="danger"
+        />
+      ) : null}
+
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-7">
+        {calendar.days.map((day) => (
+          <section
+            className={`min-h-44 rounded-xl border p-2 ${
+              day.isToday
+                ? "border-[#A07C3B]/35 bg-[#A07C3B]/5"
+                : "border-slate-200 bg-slate-50/70"
+            }`}
+            key={day.key}
+          >
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div>
+                <p className="m-0 text-[0.66rem] font-semibold uppercase text-slate-500">
+                  {day.weekday}
+                </p>
+                <h4 className="m-0 text-sm font-semibold text-slate-950">
+                  {day.label}
+                </h4>
+              </div>
+              <span className="rounded-full bg-white px-2 py-0.5 font-mono text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                {day.tickets.length}
+              </span>
+            </div>
+            <div className="grid gap-2">
+              {day.tickets.slice(0, 4).map((ticket) => (
+                <TicketCalendarItem
+                  isSelected={ticket.protocol === selectedProtocol}
+                  key={ticket.id}
+                  onSelectTicket={onSelectTicket}
+                  ticket={ticket}
+                />
+              ))}
+              {day.tickets.length > 4 ? (
+                <span className="rounded-lg bg-white px-2 py-1 text-center text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                  +{day.tickets.length - 4} ticket(s)
+                </span>
+              ) : null}
+            </div>
+          </section>
+        ))}
+      </div>
+
+      <div className="mt-3 grid gap-3 xl:grid-cols-2">
+        {calendar.futureTickets.length > 0 ? (
+          <CalendarSpecialLane
+            label="Depois"
+            onSelectTicket={onSelectTicket}
+            selectedProtocol={selectedProtocol}
+            tickets={calendar.futureTickets}
+          />
+        ) : null}
+        {calendar.noDateTickets.length > 0 ? (
+          <CalendarSpecialLane
+            label="Sem data"
+            onSelectTicket={onSelectTicket}
+            selectedProtocol={selectedProtocol}
+            tickets={calendar.noDateTickets}
+          />
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CalendarSpecialLane({
+  label,
+  onSelectTicket,
+  selectedProtocol,
+  tickets,
+  tone = "neutral",
+}: {
+  label: string;
+  onSelectTicket: (protocol: string) => void;
+  selectedProtocol: string | null;
+  tickets: HubItTicket[];
+  tone?: "danger" | "neutral";
+}) {
+  return (
+    <section
+      className={`mb-3 rounded-xl border p-3 ${
+        tone === "danger"
+          ? "border-red-100 bg-red-50"
+          : "border-slate-200 bg-slate-50/70"
+      }`}
+    >
+      <div className="mb-2 flex items-center justify-between gap-2">
+        <h4
+          className={`m-0 text-sm font-semibold ${
+            tone === "danger" ? "text-red-700" : "text-slate-950"
+          }`}
+        >
+          {label}
+        </h4>
+        <span className="rounded-full bg-white px-2 py-0.5 font-mono text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
           {tickets.length}
         </span>
       </div>
-      {tickets.length > 0 ? (
-        <div className="grid gap-2">
-          {tickets.map((ticket) => (
-            <button
-              className="grid min-w-0 gap-1 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-left transition hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-3">
+        {sortTicketsByDeliveryDate(tickets)
+          .slice(0, 6)
+          .map((ticket) => (
+            <TicketCalendarItem
+              isSelected={ticket.protocol === selectedProtocol}
               key={ticket.id}
-              onClick={() => onOpenTicket(ticket)}
-              type="button"
-            >
-              <span className="flex min-w-0 items-center justify-between gap-2">
-                <span className="truncate font-mono text-xs font-semibold text-[#7A5E2C]">
-                  {ticket.protocol}
-                </span>
-                <StatusBadge status={ticket.status} ticket={ticket} />
-              </span>
-              <span className="truncate text-sm font-semibold text-slate-950">
-                {ticket.title}
-              </span>
-              <span className="truncate text-xs text-slate-500">
-                {departmentByTicketProtocol.get(ticket.protocol) ??
-                  "Sem departamento"}{" "}
-                / {formatDateShort(ticket.updatedAt)}
-              </span>
-            </button>
+              onSelectTicket={onSelectTicket}
+              ticket={ticket}
+            />
           ))}
-        </div>
-      ) : (
-        <p className="m-0 rounded-lg bg-slate-50 px-3 py-4 text-center text-sm font-semibold text-slate-500">
-          {emptyMessage}
-        </p>
-      )}
+      </div>
     </section>
+  );
+}
+
+function TicketQueueCompactCard({
+  isSelected,
+  onSelectTicket,
+  ticket,
+}: {
+  isSelected: boolean;
+  onSelectTicket: (protocol: string) => void;
+  ticket: HubItTicket;
+}) {
+  return (
+    <button
+      className={`grid cursor-pointer gap-2 rounded-lg border px-3 py-3 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] ${
+        isSelected
+          ? "border-[#A07C3B]/35 bg-[#A07C3B]/10"
+          : "border-slate-200 bg-white"
+      }`}
+      onClick={() => onSelectTicket(ticket.protocol)}
+      type="button"
+    >
+      <span className="flex min-w-0 items-center justify-between gap-2">
+        <span className="truncate font-mono text-xs font-semibold text-[#7A5E2C]">
+          {ticket.protocol}
+        </span>
+        <Badge variant={priorityVariant(ticket.priority)}>
+          {hubItTicketPriorityLabels[ticket.priority]}
+        </Badge>
+      </span>
+      <span className="line-clamp-2 text-sm font-semibold text-slate-950">
+        {ticket.title}
+      </span>
+      <span className="flex min-w-0 items-center gap-2 text-xs text-slate-500">
+        <RequesterAvatar requester={ticket.requester} size="xs" variant="gold" />
+        <span className="min-w-0 truncate">{ticket.requester.name}</span>
+      </span>
+      <span className="grid gap-1 text-[0.68rem] font-semibold text-slate-500">
+        <span>Recepcao {formatDateShort(ticket.createdAt)}</span>
+        <span>
+          Entrega{" "}
+          {getTicketEffectiveDeliveryDate(ticket)
+            ? formatDateOnly(getTicketEffectiveDeliveryDate(ticket) ?? "")
+            : "sem data"}
+        </span>
+      </span>
+    </button>
+  );
+}
+
+function TicketCalendarItem({
+  isSelected,
+  onSelectTicket,
+  ticket,
+}: {
+  isSelected: boolean;
+  onSelectTicket: (protocol: string) => void;
+  ticket: HubItTicket;
+}) {
+  return (
+    <button
+      className={`grid cursor-pointer gap-1 rounded-lg border px-2 py-2 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 ${
+        isSelected
+          ? "border-[#A07C3B]/35 bg-[#A07C3B]/10"
+          : "border-slate-200 bg-white"
+      }`}
+      onClick={() => onSelectTicket(ticket.protocol)}
+      type="button"
+    >
+      <span className="truncate font-mono text-[0.68rem] font-semibold text-[#7A5E2C]">
+        {ticket.protocol}
+      </span>
+      <span className="line-clamp-2 text-xs font-semibold text-slate-950">
+        {ticket.title}
+      </span>
+      <span className="truncate text-[0.66rem] font-medium text-slate-500">
+        {ticket.requester.name}
+      </span>
+    </button>
   );
 }
 
@@ -2251,7 +2956,7 @@ function TicketOperationsTable({
       </div>
       <div className="overflow-hidden rounded-xl border border-slate-200">
         <div
-          className="hidden grid-cols-[8.5rem_minmax(14rem,1fr)_11rem_8rem_8rem_8rem_7rem_8rem] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
+          className="hidden grid-cols-[7.5rem_minmax(13rem,1fr)_9rem_8rem_7rem_7rem_7rem_6rem_7rem_7rem] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
           role="row"
         >
           <HistorySortHeader
@@ -2291,6 +2996,18 @@ function TicketOperationsTable({
             onClick={() => handleSort("priority")}
           />
           <HistorySortHeader
+            active={sortKey === "createdAt"}
+            direction={sortDirection}
+            label="Recepcao"
+            onClick={() => handleSort("createdAt")}
+          />
+          <HistorySortHeader
+            active={sortKey === "deliveryDate"}
+            direction={sortDirection}
+            label="Entrega"
+            onClick={() => handleSort("deliveryDate")}
+          />
+          <HistorySortHeader
             active={sortKey === "evidence"}
             direction={sortDirection}
             label="Evidencias"
@@ -2313,7 +3030,7 @@ function TicketOperationsTable({
 
               return (
                 <button
-                  className={`grid w-full gap-2 px-3 py-3 text-left transition xl:grid-cols-[8.5rem_minmax(14rem,1fr)_11rem_8rem_8rem_8rem_7rem_8rem] xl:items-center xl:gap-3 ${
+                  className={`grid w-full cursor-pointer gap-2 px-3 py-3 text-left transition xl:grid-cols-[7.5rem_minmax(13rem,1fr)_9rem_8rem_7rem_7rem_7rem_6rem_7rem_7rem] xl:items-center xl:gap-3 ${
                     isSelected
                       ? "bg-[#A07C3B]/10 text-slate-950"
                       : "bg-white text-slate-700 hover:bg-slate-50"
@@ -2354,6 +3071,14 @@ function TicketOperationsTable({
                     <Badge variant={priorityVariant(ticket.priority)}>
                       {hubItTicketPriorityLabels[ticket.priority]}
                     </Badge>
+                  </span>
+                  <span className="text-xs font-medium text-slate-500">
+                    {formatDateShort(ticket.createdAt)}
+                  </span>
+                  <span className="text-xs font-medium text-slate-500">
+                    {getTicketEffectiveDeliveryDate(ticket)
+                      ? formatDateOnly(getTicketEffectiveDeliveryDate(ticket) ?? "")
+                      : "sem data"}
                   </span>
                   <span className="text-sm font-semibold text-slate-600">
                     {getTicketEvidenceCount(ticket)}
@@ -4647,14 +5372,37 @@ function buildDailyVolumeStats(tickets: HubItTicket[]): TicketDailyVolumeStats[]
       created: tickets.filter((ticket) => isSameLocalDate(ticket.createdAt, date))
         .length,
       day,
-      replied: tickets.filter((ticket) =>
+      treated: tickets.filter((ticket) =>
         ticket.events.some(
           (event) =>
             event.type === "admin_reply" && isSameLocalDate(event.createdAt, date),
         ),
       ).length,
+      validation: tickets.filter((ticket) =>
+        isTicketSentToValidationOnDate(ticket, date),
+      ).length,
     };
   });
+}
+
+function isTicketSentToValidationOnDate(ticket: HubItTicket, date: Date) {
+  return (
+    ticket.events.some(
+      (event) =>
+        (event.type === "resolved" || event.type === "review_requested") &&
+        isSameLocalDate(event.createdAt, date),
+    ) ||
+    (getTicketWorkflowStage(ticket) === "validacao" &&
+      isSameLocalDate(ticket.updatedAt, date))
+  );
+}
+
+function getStackedBarHeight(value: number, maxValue: number) {
+  if (value <= 0) {
+    return 0;
+  }
+
+  return Math.max(8, Math.round((value / maxValue) * 88));
 }
 
 function isTicketClosedOnDate(ticket: HubItTicket, date: Date) {
@@ -4800,6 +5548,201 @@ function filterTicketsBySearch(tickets: HubItTicket[], query: string) {
   return tickets.filter((ticket) =>
     getTicketSearchText(ticket).includes(normalizedQuery),
   );
+}
+
+function filterTicketsByQueueFilters(
+  tickets: HubItTicket[],
+  filters: TicketQueueFilters,
+) {
+  return tickets.filter((ticket) => {
+    if (
+      filters.workflow !== "todos" &&
+      getTicketWorkflowStage(ticket) !== filters.workflow
+    ) {
+      return false;
+    }
+
+    if (filters.priority !== "todos" && ticket.priority !== filters.priority) {
+      return false;
+    }
+
+    if (
+      filters.collaborator !== "todos" &&
+      getTicketRequesterFilterKey(ticket) !== filters.collaborator
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function buildTicketQueueFilterOptions(
+  tickets: HubItTicket[],
+): TicketQueueFilterOptions {
+  const collaborators = new Map<
+    string,
+    {
+      count: number;
+      key: string;
+      label: string;
+    }
+  >();
+
+  for (const ticket of tickets) {
+    const key = getTicketRequesterFilterKey(ticket);
+    const current = collaborators.get(key) ?? {
+      count: 0,
+      key,
+      label: ticket.requester.name,
+    };
+
+    current.count += 1;
+    collaborators.set(key, current);
+  }
+
+  return {
+    collaborators: [...collaborators.values()].sort(
+      (firstCollaborator, secondCollaborator) =>
+        firstCollaborator.label.localeCompare(
+          secondCollaborator.label,
+          "pt-BR",
+          { sensitivity: "base" },
+        ),
+    ),
+  };
+}
+
+function hasActiveQueueFilters(filters: TicketQueueFilters) {
+  return (
+    filters.collaborator !== "todos" ||
+    filters.priority !== "todos" ||
+    filters.workflow !== "todos"
+  );
+}
+
+function getTicketRequesterFilterKey(ticket: HubItTicket) {
+  return (
+    ticket.requester.id ||
+    ticket.requester.email ||
+    normalizeSearchText(ticket.requester.name)
+  );
+}
+
+function buildTicketInsightGroups(
+  tickets: HubItTicket[],
+  groupBy: TicketInsightGroupMode,
+): TicketInsightGroup[] {
+  const groupsByKey = new Map<string, TicketInsightGroup>();
+
+  for (const ticket of tickets) {
+    const group = getTicketInsightGroup(ticket, groupBy);
+    const currentGroup = groupsByKey.get(group.key) ?? {
+      key: group.key,
+      label: group.label,
+      tickets: [],
+    };
+
+    currentGroup.tickets.push(ticket);
+    groupsByKey.set(group.key, currentGroup);
+  }
+
+  return [...groupsByKey.values()].sort(
+    (firstGroup, secondGroup) =>
+      secondGroup.tickets.length - firstGroup.tickets.length ||
+      firstGroup.label.localeCompare(secondGroup.label, "pt-BR", {
+        sensitivity: "base",
+      }),
+  );
+}
+
+function getTicketInsightGroup(
+  ticket: HubItTicket,
+  groupBy: TicketInsightGroupMode,
+) {
+  if (groupBy === "category") {
+    return {
+      key: ticket.category,
+      label: hubItTicketCategoryLabels[ticket.category],
+    };
+  }
+
+  if (groupBy === "workflow") {
+    const stage = getTicketWorkflowStage(ticket);
+
+    return {
+      key: stage,
+      label: workflowStageLabels[stage],
+    };
+  }
+
+  return {
+    key: getTicketRequesterFilterKey(ticket),
+    label: ticket.requester.name,
+  };
+}
+
+function buildTicketDeliveryCalendar(tickets: HubItTicket[]) {
+  const today = new Date();
+  const todayKey = toLocalDateKey(today);
+  const days = Array.from({ length: 14 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() + index);
+    const key = toLocalDateKey(date);
+
+    return {
+      isToday: key === todayKey,
+      key,
+      label: formatDayLabel(key),
+      tickets: [] as HubItTicket[],
+      weekday: formatWeekdayLabel(date),
+    };
+  });
+  const daysByKey = new Map(days.map((day) => [day.key, day]));
+  const lastDayKey = days[days.length - 1]?.key ?? todayKey;
+  const futureTickets: HubItTicket[] = [];
+  const noDateTickets: HubItTicket[] = [];
+  const overdueTickets: HubItTicket[] = [];
+
+  for (const ticket of tickets) {
+    const deliveryDate = getTicketEffectiveDeliveryDate(ticket);
+
+    if (!deliveryDate) {
+      noDateTickets.push(ticket);
+      continue;
+    }
+
+    const deliveryKey = toLocalDateKey(new Date(deliveryDate));
+    const day = daysByKey.get(deliveryKey);
+
+    if (day) {
+      day.tickets.push(ticket);
+    } else if (deliveryKey && deliveryKey < todayKey) {
+      overdueTickets.push(ticket);
+    } else if (deliveryKey > lastDayKey) {
+      futureTickets.push(ticket);
+    }
+  }
+
+  for (const day of days) {
+    day.tickets = sortTicketsByDeliveryDate(day.tickets);
+  }
+
+  return {
+    days,
+    futureTickets: sortTicketsByDeliveryDate(futureTickets),
+    noDateTickets: sortTicketsByUpdatedAt(noDateTickets),
+    overdueTickets: sortTicketsByDeliveryDate(overdueTickets),
+  };
+}
+
+function formatWeekdayLabel(date: Date) {
+  return date
+    .toLocaleDateString("pt-BR", {
+      timeZone: "America/Sao_Paulo",
+      weekday: "short",
+    })
+    .replace(".", "");
 }
 
 function getTicketSearchText(ticket: HubItTicket) {
@@ -5095,6 +6038,20 @@ function compareHistoryTicketValue(
     );
   }
 
+  if (key === "createdAt") {
+    return (
+      new Date(firstTicket.createdAt).getTime() -
+      new Date(secondTicket.createdAt).getTime()
+    );
+  }
+
+  if (key === "deliveryDate") {
+    return compareOptionalDate(
+      getTicketEffectiveDeliveryDate(firstTicket),
+      getTicketEffectiveDeliveryDate(secondTicket),
+    );
+  }
+
   if (key === "updatedAt") {
     return (
       new Date(firstTicket.updatedAt).getTime() -
@@ -5113,7 +6070,10 @@ function compareHistoryTicketValue(
 
 function getHistoryTicketStringValue(
   ticket: HubItTicket,
-  key: Exclude<HistorySortKey, "evidence" | "priority" | "updatedAt">,
+  key: Exclude<
+    HistorySortKey,
+    "createdAt" | "deliveryDate" | "evidence" | "priority" | "updatedAt"
+  >,
 ) {
   if (key === "collaborator") {
     return ticket.requester.name;
@@ -5143,6 +6103,25 @@ function priorityScore(priority: HubItTicket["priority"]) {
   } as const satisfies Record<HubItTicket["priority"], number>;
 
   return scores[priority];
+}
+
+function compareOptionalDate(
+  firstDate: string | null,
+  secondDate: string | null,
+) {
+  if (!firstDate && !secondDate) {
+    return 0;
+  }
+
+  if (!firstDate) {
+    return 1;
+  }
+
+  if (!secondDate) {
+    return -1;
+  }
+
+  return new Date(firstDate).getTime() - new Date(secondDate).getTime();
 }
 
 function mergeTicketListWithExistingDetails(
