@@ -28,8 +28,8 @@
     "productionDomain": "https://ops.c2x.app.br",
     "expectedProductionDeploymentId": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F",
     "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-8ymyjzg62-lucasruas-devs-projects.vercel.app",
-    "candidateSourceCommit": null,
-    "sourceWorktreeClean": false,
+    "candidateSourceCommit": "fb40a94c89cc9f0d27bdcf42c35ae3a562e1f403",
+    "sourceWorktreeClean": true,
     "basePackagePath": ".codex-deploy/zeus-helpdesk-address-prod-20260618/base",
     "candidatePackagePath": ".codex-deploy/zeus-helpdesk-address-prod-20260618/candidate",
     "rollbackDeploymentId": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F"
