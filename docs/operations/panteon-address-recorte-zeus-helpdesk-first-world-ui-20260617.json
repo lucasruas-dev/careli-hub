@@ -5,9 +5,9 @@
   "title": "Zeus HelpDesk abas, listas, gestao executiva e rascunho persistente",
   "module": "zeus",
   "agent": "Zeus",
-  "status": "VALIDADO_LOCAL",
+  "status": "PRONTO_PARA_PRODUCAO",
   "riskLevel": "MEDIO",
-  "approvedBy": "PENDENTE - Lucas ainda nao autorizou deploy deste novo recorte",
+  "approvedBy": "Lucas - 2026-06-17 - producao autorizada somente para ops.c2x.app.br",
   "addressing": {
     "cityAddressCode": "PNT-01-00-00-000",
     "cityAddressId": "PNT-CID-01",
@@ -28,17 +28,18 @@
     "productionDomain": "https://ops.c2x.app.br",
     "expectedProductionDeploymentId": "dpl_FLe1u31uaehb3qCdSdjduZav73uk",
     "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-a5es5qefh-lucasruas-devs-projects.vercel.app",
-    "candidateSourceCommit": "8f0e94e7f8d93df89aef39ca619757559c8ea2ee",
-    "sourceWorktreeClean": false,
-    "basePackagePath": null,
-    "candidatePackagePath": null,
-    "rollbackDeploymentId": "dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk"
+    "candidateSourceCommit": "1913353790b3133efd51fdfe58160a21c06eb8bd",
+    "sourceWorktreeClean": true,
+    "basePackagePath": ".codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-1913353/base",
+    "candidatePackagePath": ".codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-1913353/candidate",
+    "rollbackDeploymentId": "dpl_FLe1u31uaehb3qCdSdjduZav73uk"
   },
   "scope": {
     "includedFiles": [
       "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
       "apps/hub/modules/squadops/ZeusPage.tsx",
       "docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json",
+      "docs/operations/production-module-safety-gate-zeus-20260617-005-helpdesk-first-world-ui.json",
       "docs/operations/engineering-operations.md"
     ],
     "excludedPaths": [
@@ -130,13 +131,13 @@
     "BLOQUEADO se Lucas nao autorizar explicitamente o deploy deste novo protocolo."
   ],
   "release": {
-    "targetEnvironment": "local",
-    "targetDomain": null,
+    "targetEnvironment": "production",
+    "targetDomain": "https://ops.c2x.app.br",
     "previewUrl": null,
     "previewDeploymentId": null,
     "homologationAlias": "https://homo.c2x.app.br",
     "productionDomain": "https://ops.c2x.app.br",
-    "rollbackPlan": "Sem deploy neste recorte. Se virar producao e houver regressao critica, reapontar https://ops.c2x.app.br para dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk. Nao alterar https://c2x.app.br."
+    "rollbackPlan": "Se houver regressao critica, reapontar https://ops.c2x.app.br para dpl_FLe1u31uaehb3qCdSdjduZav73uk. Nao alterar https://c2x.app.br."
   },
   "notes": [
     "Fila Ativa, Gestao e Historico passam a ser abas do HelpDesk Zeus.",
