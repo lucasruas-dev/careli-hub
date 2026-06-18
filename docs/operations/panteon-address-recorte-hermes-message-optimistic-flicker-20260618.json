@@ -1,0 +1,142 @@
+{
+  "schemaVersion": "panteon.address-recorte.v1",
+  "deploymentManifestId": "PNT-DEP-HERMES-20260618-019",
+  "protocolId": "HERMES-20260618-019-MESSAGE-OPTIMISTIC-FLICKER",
+  "title": "Hermes hotfix de envio imediato e refresh sem piscar",
+  "module": "hermes",
+  "agent": "Zeus",
+  "status": "PRONTO_PARA_PRODUCAO",
+  "riskLevel": "MEDIO",
+  "approvedBy": "Lucas autorizou subir em producao em 2026-06-18 no chat operacional.",
+  "addressing": {
+    "cityAddressCode": "PNT-01-00-00-000",
+    "cityAddressId": "PNT-CID-01",
+    "districtAddressCode": "PNT-01-30-00-000",
+    "districtAddressId": "PNT-BRR-HERMES-01",
+    "streetAddressCode": "PNT-01-30-10-000",
+    "streetAddressId": "PNT-RUA-HERMES-WORKSPACE-01",
+    "houseAddressCodes": [
+      "PNT-01-30-10-001",
+      "PNT-01-30-10-002"
+    ],
+    "houseAddressIds": [
+      "PNT-CASA-HERMES-WORKSPACE-SCREEN-001",
+      "PNT-CASA-HERMES-MESSAGES-002"
+    ],
+    "registryFile": "docs/operations/panteon-address-registry.json",
+    "scopeSummary": "Corrigir somente a experiencia do Hermes para inserir mensagens enviadas imediatamente, reconciliar com a resposta real e evitar repaint quando o refresh periodico nao trouxer mudanca."
+  },
+  "baseline": {
+    "productionDomain": "https://c2x.app.br",
+    "expectedProductionDeploymentId": "dpl_CUFy6rq6DisrBuJ3F5neqBHHiUxR",
+    "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-hks4o7wl1-lucasruas-devs-projects.vercel.app",
+    "candidateSourceCommit": "a definir no manifesto de producao apos commit do recorte",
+    "sourceWorktreeClean": true,
+    "basePackagePath": ".codex-deploy/hermes-message-hotfix-20260618-019-final/packages/base-current",
+    "candidatePackagePath": ".codex-deploy/hermes-message-hotfix-20260618-019-final/packages/candidate-current",
+    "rollbackDeploymentId": "dpl_CUFy6rq6DisrBuJ3F5neqBHHiUxR"
+  },
+  "scope": {
+    "includedFiles": [
+      "apps/hub/components/pulsex/pulsex-workspace.tsx",
+      "apps/hub/components/pulsex/message-list.tsx",
+      "docs/operations/panteon-address-recorte-hermes-message-optimistic-flicker-20260618.json",
+      "docs/operations/engineering-operations.md"
+    ],
+    "excludedPaths": [
+      ".env",
+      ".env*",
+      ".vercel/**",
+      ".git/**",
+      "node_modules/**",
+      ".next/**",
+      ".turbo/**",
+      "apps/hub/app/escritorio-virtual/**",
+      "apps/hub/components/panteon/panteon-virtual-office-link.tsx",
+      "apps/hub/modules/ares/**",
+      "apps/hub/app/ares/**",
+      "apps/hub/app/api/ares/**",
+      "packages/database/migrations/**"
+    ],
+    "allowedChangedPaths": [
+      "apps/hub/components/pulsex/pulsex-workspace.tsx",
+      "apps/hub/components/pulsex/message-list.tsx",
+      "docs/operations/panteon-address-recorte-hermes-message-optimistic-flicker-20260618.json",
+      "docs/operations/engineering-operations.md"
+    ],
+    "protectedPaths": [
+      "apps/hub/modules/chronos/**",
+      "apps/hub/app/chronos/**",
+      "apps/hub/app/api/chronos/**",
+      "apps/hub/lib/chronos/**",
+      "apps/hub/modules/guardian/**",
+      "apps/hub/modules/caredesk/**",
+      "apps/hub/modules/squadops/**",
+      "apps/hub/app/escritorio-virtual/**",
+      "apps/hub/modules/ares/**",
+      "apps/hub/app/ares/**",
+      "apps/hub/app/api/ares/**"
+    ],
+    "requiredMarkers": [
+      {
+        "path": "apps/hub/components/pulsex/pulsex-workspace.tsx",
+        "includes": [
+          "flushSync",
+          "preserveHermesArrayReference",
+          "HERMES_MESSAGE_REFRESH_MS = 60_000",
+          "HERMES_WORKSPACE_REFRESH_MS = 180_000"
+        ]
+      },
+      {
+        "path": "apps/hub/components/pulsex/message-list.tsx",
+        "includes": [
+          "useLayoutEffect",
+          "scrollToBottom(\"auto\")"
+        ]
+      }
+    ],
+    "forbiddenMarkers": [
+      {
+        "path": "apps/hub/components/pulsex/pulsex-workspace.tsx",
+        "includes": [
+          "PULSEX_MESSAGE_REFRESH_MS = 4_000",
+          "PULSEX_WORKSPACE_REFRESH_MS = 6_000"
+        ]
+      }
+    ],
+    "sensitiveOperations": [
+      "Sem env, sem secret, sem migration e sem Supabase write neste recorte. Alias de producao somente para c2x.app.br apos Safety Gate PASS."
+    ]
+  },
+  "validations": {
+    "local": [
+      "git diff --check -- apps/hub/components/pulsex/pulsex-workspace.tsx apps/hub/components/pulsex/message-list.tsx",
+      "npm.cmd exec --workspace @repo/hub -- eslint components/pulsex/pulsex-workspace.tsx components/pulsex/message-list.tsx --max-warnings 0",
+      "npm.cmd run check-types:hub",
+      "npm.cmd run build --workspace @repo/hub"
+    ],
+    "addressing": [
+      "Pendente: rodar panteon-address-recorte-check antes de qualquer publicacao."
+    ],
+    "productionGate": [
+      "Pendente: gerar manifesto de producao e rodar Production Module Safety Gate antes de qualquer alias."
+    ]
+  },
+  "blockingRules": [
+    "BLOQUEADO para producao ate Lucas autorizar explicitamente o protocolo e dominio.",
+    "BLOQUEADO se qualquer arquivo fora de allowedChangedPaths entrar no pacote.",
+    "BLOQUEADO se houver migration, env, secret, banco ou dominio fora do recorte."
+  ],
+  "release": {
+    "targetEnvironment": "production",
+    "targetDomain": "https://c2x.app.br",
+    "previewUrl": null,
+    "previewDeploymentId": null,
+    "productionDomain": "https://c2x.app.br",
+    "rollbackPlan": "Manter dpl_CUFy6rq6DisrBuJ3F5neqBHHiUxR enquanto o hotfix nao for publicado; se publicado e houver regressao, reapontar para o deployment anterior aprovado."
+  },
+  "notes": [
+    "O refresh periodico do Hermes e fallback de consistencia quando realtime nao entrega; o hotfix impede repaint quando nao existe mudanca real.",
+    "A mensagem enviada passa a entrar na tela por flushSync antes de qualquer chamada de rede e depois e substituida pela mensagem real retornada pela API."
+  ]
+}

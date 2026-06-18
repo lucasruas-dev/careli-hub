@@ -37902,3 +37902,51 @@ Conclusao:
 - Precisa de acao agora: sim; Lucas precisa decidir se autoriza a proxima etapa com Preview/Homologacao e migration Supabase controlada para Ares.
 - Quem deve agir agora: Lucas aprova ou segura a etapa de banco; Zeus mantem producao bloqueada ate safety gate.
 - Proximo passo: fechar commit candidato, validar pacote limpo e, se Lucas autorizar, planejar a migration do Ares primeiro fora de producao.
+
+## 2026-06-18 - Hermes - hotfix envio imediato e refresh sem piscar
+
+Assunto: [Hermes] Hotfix de envio imediato e refresh sem piscar
+
+- Nome da squad/agente: `Zeus / Hermes / FinanceOps`.
+- Tipo da acao: `HOTFIX_LOCAL / UX / PERFORMANCE / HERMES`.
+- Status: `PRONTO_PARA_PRODUCAO / AUTORIZADO_PELO_LUCAS`.
+- Data e hora local: `2026-06-18 15:57:22 -03:00`.
+- Protocolo CEP:
+  - `HERMES-20260618-019-MESSAGE-OPTIMISTIC-FLICKER`;
+  - manifesto: `docs/operations/panteon-address-recorte-hermes-message-optimistic-flicker-20260618.json`.
+- Contexto:
+  - Lucas relatou que uma mensagem enviada no Hermes nao apareceu imediatamente e demorou para entrar na tela;
+  - Lucas tambem observou que a tela atualizava de tempos em tempos e parecia piscar.
+- Causa tecnica:
+  - o refresh periodico do Hermes existe como fallback de consistencia quando o realtime nao entrega eventos;
+  - esse fallback estava reaplicando estado mesmo quando os dados retornavam iguais, provocando repaint/scroll perceptivel;
+  - o envio otimista existia, mas a renderizacao local ainda podia ficar presa ao ciclo normal de render/network antes de aparecer ao usuario.
+- Mudancas locais aplicadas:
+  - o envio da mensagem local agora usa `flushSync` para inserir o balao pendente e limpar o compositor antes de qualquer chamada de rede;
+  - quando a API responde, a mensagem `local-*` e removida explicitamente e substituida pela mensagem real;
+  - a lista usa `useLayoutEffect` para acompanhar o scroll do novo item sem esperar um ciclo visual posterior;
+  - o refresh de mensagens do canal ativo passou para 60 segundos;
+  - o refresh completo do workspace passou para 180 segundos;
+  - merges de mensagens, canais e usuarios agora preservam a referencia do estado quando o payload novo e equivalente ao atual, evitando repintura sem mudanca real.
+- Arquivos alterados:
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/components/pulsex/message-list.tsx`;
+  - `docs/operations/panteon-address-recorte-hermes-message-optimistic-flicker-20260618.json`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes:
+  - `git diff --check -- apps/hub/components/pulsex/pulsex-workspace.tsx apps/hub/components/pulsex/message-list.tsx`: PASS;
+  - `npm.cmd exec --workspace @repo/hub -- eslint components/pulsex/pulsex-workspace.tsx components/pulsex/message-list.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido sobre `turbo` global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de workspace root/NFT no worktree aninhado.
+- Autorizacao de producao:
+  - Lucas autorizou subir o protocolo `HERMES-20260618-019-MESSAGE-OPTIMISTIC-FLICKER` em `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` fica fora do escopo e deve ser preservado.
+- Bloqueios:
+  - nao houve env, secret, migration, banco ou Supabase write neste hotfix;
+  - deploy segue condicionado a commit limpo, pacote isolado e Production Module Safety Gate PASS.
+
+Conclusao:
+
+- O hotfix Hermes foi implementado, validado localmente e autorizado para producao pelo Lucas.
+- O impacto pratico esperado e o balao aparecer imediatamente ao enviar e o refresh deixar de causar piscar quando nao ha dado novo.
+- Precisa de acao agora: Zeus fechar commit limpo, rodar Safety Gate e publicar somente se o pacote candidato preservar o dominio OPS e os modulos fora do recorte.

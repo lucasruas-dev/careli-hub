@@ -10,7 +10,7 @@ import type {
 } from "@/lib/pulsex";
 import { EmptyState } from "@repo/uix";
 import { PhoneCall, PhoneMissed, Video } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { MessageItem } from "./message-item";
 
 type MessageListProps = {
@@ -67,7 +67,7 @@ export function MessageList({
   const timelineRows = getHermesTimelineRows(timelineItems);
   const lastTimelineItemId = timelineItems.at(-1)?.id;
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const scrollToBottom = (behavior: ScrollBehavior) => {
       bottomRef.current?.scrollIntoView({
         behavior,
