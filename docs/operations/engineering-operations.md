@@ -36366,3 +36366,97 @@ Conclusao:
 - O protocolo `ZEUS-20260618-007-HELPDESK-FINAL-POLISH` foi publicado em producao no dominio OPS.
 - O impacto pratico e que Lucas passa a ter a tela HelpDesk com aba `Desk`, calendario mais limpo, gestao filtravel e status manual do Zeus refletindo no Panteon.
 - Precisa de acao agora: Lucas pode validar em `https://ops.c2x.app.br/zeus`; Zeus mantem rollback para `dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp` se houver regressao critica.
+
+## 2026-06-18 07:56:54 -03:00 - Zeus - Catalogo digital do Address em validacao local
+
+Assunto: [Zeus] Catalogo digital do Address em validacao local
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `IMPLEMENTACAO_LOCAL / ADDRESS / CATALOGO_DIGITAL`.
+- Status: `VALIDADO_LOCAL`.
+- Protocolo CEP:
+  - `ZEUS-20260618-008-ADDRESS-CATALOG`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-address-catalog-20260618.json`;
+  - CEP: `PNT-01-50-30-001` (`Zeus / Address / Catalogo CEP operacional`).
+- Autorizacao:
+  - Lucas autorizou continuar a acao do Address em 2026-06-18;
+  - nao houve autorizacao de deploy, alias, dominio, banco, env, secret, Supabase remoto ou producao nesta rodada.
+- Escopo implementado:
+  - nova aba `Address` no Zeus, separada de HelpDesk/Releases;
+  - API `/api/zeus/address-catalog` com leitura server-side do registry e autorizacao Zeus admin;
+  - helper `loadPanteonAddressRegistry` para carregar o registry documental em runtime;
+  - tela `PanteonAddressCatalog` com resumo, busca, filtros por modulo/nivel/status, arvore cidade -> bairro -> rua -> casa, detalhe do CEP, marcadores e copia de semente de manifesto;
+  - registry CEP atualizado com a rua `PNT-01-50-30-000` e casa `PNT-01-50-30-001`;
+  - plano de implantacao atualizado para marcar a Etapa 7 como `EM_VALIDACAO_LOCAL`.
+- Validacoes:
+  - lint focado inicial apos ajuste visual: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - JSON do registry e do manifesto: PASS;
+  - lint focado final: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run check-types:hub`: PASS, com aviso conhecido de `turbo` global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree `.codex-tmp`/Turbopack/NFT fora do recorte;
+  - CEP preflight do manifesto `ZEUS-20260618-008-ADDRESS-CATALOG`: PASS, com avisos esperados de baseline OPS divergindo da cidade marco zero;
+  - `git diff --check` do recorte: PASS, com avisos LF/CRLF do Git;
+  - `GET http://localhost:3021/zeus`: 200 OK;
+  - `GET http://localhost:3021/api/zeus/address-catalog`: 200 OK no modo dev local sem token, conforme liberacao local existente em `authorizeZeusAdminRequest`.
+- Escopo preservado:
+  - nenhum arquivo de Hades, Hermes, Iris, Chronos, Atlas, Setup, Guardian ou banco foi alterado;
+  - nenhum env, secret, token, migration, Supabase remoto, dominio, alias, Vercel ou producao foi alterado.
+- Rollback:
+  - como nao houve publicacao, rollback runtime nao se aplica;
+  - se futuramente publicado em OPS e houver regressao critica, reapontar `https://ops.c2x.app.br` para `dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F`;
+  - manter `https://c2x.app.br` fora do escopo.
+
+Conclusao:
+
+- A Etapa 7 do Address entrou em implementacao local com um catalogo consultavel dentro do Zeus.
+- O impacto pratico e que o CEP operacional deixa de existir apenas como JSON/documento e passa a ter uma tela de consulta e apoio a manifesto.
+- Precisa de acao agora: Lucas pode validar localmente a aba `Address` no Zeus; deploy permanece bloqueado ate autorizacao explicita do Lucas.
+
+## 2026-06-18 09:06:31 -03:00 - Zeus - Preparacao OPS do HelpDesk persistente e Address
+
+Assunto: [Zeus] Preparacao OPS do HelpDesk persistente e Address
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `PREPARACAO_PRODUCAO_OPS / HELPDESK / ADDRESS`.
+- Status: `PRONTO_PARA_GATE`.
+- Protocolo CEP:
+  - `ZEUS-20260618-009-HELPDESK-ADDRESS-PROD`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-address-prod-20260618.json`;
+  - safety gate: `docs/operations/production-module-safety-gate-zeus-20260618-009-helpdesk-address.json`;
+  - CEPs envolvidos: `PNT-01-50-30-001` (`Zeus / Address / Catalogo CEP operacional`) e `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Autorizacao:
+  - Lucas solicitou corrigir HelpDesk e subir a tela Address em 2026-06-18;
+  - publicacao autorizada somente no dominio `https://ops.c2x.app.br`;
+  - dominio principal `https://c2x.app.br` continua explicitamente fora do escopo.
+- Escopo preparado:
+  - HelpDesk passa a persistir aba, modo de visualizacao, filtros, busca, ticket selecionado e popup aberto no navegador;
+  - Desk/lista recebe coluna e filtro de departamento, filtros reorganizados, entrega apenas por data colorida e ordenacao por departamento;
+  - detalhe do ticket remove workflow duplicado do cabecalho e elimina fonte de rolagem horizontal no stepper;
+  - gestao remove cabecalho escuro, troca grafico quebrado por barras horizontais com tooltip e enriquece popups com filtros, prioridade, departamento, colaborador e recolher/expandir;
+  - calendario do Desk passa a exibir semana rolante com dias vazios, sem tickets vencidos e com faixa para entregas depois da semana;
+  - Address Catalog permanece como nova aba Zeus, com API `/api/zeus/address-catalog`, filtros, arvore CEP e semente de manifesto.
+- Baseline OPS:
+  - `ops.c2x.app.br` inspecionado em `dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F`, `Ready`;
+  - rollback planejado para `dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F`.
+- Validacoes locais ja executadas:
+  - `npm.cmd run check-types`: PASS, com aviso conhecido de `turbo` global;
+  - `npx.cmd eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run lint`: BLOQUEADO por 20 warnings preexistentes de Chronos/turbo env fora do recorte;
+  - `npm.cmd run build`: PASS, com warnings conhecidos de worktree `.codex-tmp`/Turbopack/NFT fora do recorte;
+  - `GET http://localhost:3021/zeus`: 200 OK;
+  - `GET http://localhost:3021/api/zeus/address-catalog`: 200 OK;
+  - navegador interno em `http://localhost:3021/zeus`: login local do Panteon, sem erro de console e sem overflow horizontal na primeira renderizacao; validacao autenticada local limitada por sessao.
+- Pendencias antes de publicar:
+  - atualizar manifestos com commit final e pacote limpo;
+  - rodar preflight CEP combinado;
+  - rodar `production-module-safety-gate`;
+  - publicar novo deployment Vercel sem alias principal e apontar somente `ops.c2x.app.br`.
+- Escopo preservado:
+  - nenhum env, secret, token, migration, Supabase remoto, banco ou dominio principal foi alterado;
+  - Hades, Hermes, Iris, Atlas, Chronos, Setup e Guardian seguem fora do recorte funcional.
+
+Conclusao:
+
+- O pacote combinado `ZEUS-20260618-009-HELPDESK-ADDRESS-PROD` ficou preparado para gate de producao OPS.
+- O impacto pratico esperado e reduzir retrabalho na tela HelpDesk, melhorar leitura da fila/gestao e liberar a primeira tela consultavel do Address no Zeus.
+- Precisa de acao agora: Zeus deve fechar commit limpo, rodar gates e publicar somente `https://ops.c2x.app.br`; Lucas valida depois em producao OPS.

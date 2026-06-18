@@ -38,6 +38,10 @@ Preview, homologacao ou producao.
 - `CONCLUIDO`: etapa criada e validada localmente.
 - `PROXIMO`: etapa pronta para ser executada em seguida.
 - `FUTURO`: etapa planejada, mas sem necessidade imediata.
+- `EM_VALIDACAO_LOCAL`: etapa autorizada e implementada localmente, aguardando
+  validacoes tecnicas antes de qualquer Preview ou producao.
+- `VALIDADO_LOCAL`: etapa implementada e validada localmente; publicacao segue
+  bloqueada ate autorizacao explicita quando envolver ambiente real.
 - `BLOQUEADO_ATE_AUTORIZACAO`: depende de runtime, deploy, ambiente sensivel,
   producao ou alteracao funcional autorizada por Lucas.
 
@@ -52,7 +56,7 @@ Preview, homologacao ou producao.
 | 4 | Integrar protocolo de recorte | Zeus | Protocolo de recorte | `CONCLUIDO` |
 | 5 | Expandir cobertura dos modulos | Zeus + agentes | Registry por modulo | `CONCLUIDO` |
 | 6 | Integrar Safety Gates | Zeus/Hefesto | Homologation/Production gates | `CONCLUIDO` |
-| 7 | Criar catalogo digital | Zeus | Tela no Operations Center | `BLOQUEADO_ATE_AUTORIZACAO` |
+| 7 | Criar catalogo digital | Zeus | Tela no Operations Center | `VALIDADO_LOCAL` |
 | 8 | Automatizar esteira | Zeus/Hefesto | Check em release/CI | `FUTURO` |
 | 9 | Treinar agentes por CEP | Zeus | Prompts e handoffs | `FUTURO` |
 | 10 | Manter e auditar catalogo | Zeus/Hefesto | Diario, registry e relatorios | `FUTURO` |
@@ -296,7 +300,7 @@ Bloqueio:
 
 ## Etapa 7 - criar catalogo digital no Zeus
 
-Status: `BLOQUEADO_ATE_AUTORIZACAO`
+Status: `VALIDADO_LOCAL`
 
 Objetivo:
 
@@ -312,10 +316,36 @@ Funcionalidades planejadas:
 
 Dependencias:
 
-- Autorizacao explicita do Lucas para mexer em runtime/UI.
+- Autorizacao explicita do Lucas para mexer em runtime/UI: recebida em
+  2026-06-18 para continuidade local da acao Address.
 - Leitura de `docs/architecture/design-guidelines.md`.
 - Recorte proprio de Zeus, sem misturar Hades, Iris, Hermes, Chronos ou outros
   modulos.
+
+Saidas validadas localmente:
+
+- `PNT-01-50-30-000`: rua Zeus / Address Catalog.
+- `PNT-01-50-30-001`: casa Zeus / Address / Catalogo CEP operacional.
+- Aba `Address` no Zeus com resumo, filtros, arvore CEP, detalhes, marcadores
+  e copia de semente de manifesto.
+- API `/api/zeus/address-catalog` com leitura server-side do registry e
+  autorizacao Zeus admin.
+- Manifesto `ZEUS-20260618-008-ADDRESS-CATALOG`.
+
+Bloqueio:
+
+- Preview, alias, dominio, producao, banco, env, secret e Vercel seguem
+  bloqueados ate nova autorizacao explicita do Lucas.
+
+Validacao local:
+
+- JSON do registry e do manifesto: PASS.
+- Lint focado do recorte: PASS.
+- `npm.cmd run check-types:hub`: PASS.
+- `npm.cmd run build --workspace @repo/hub`: PASS.
+- Preflight CEP do manifesto `ZEUS-20260618-008-ADDRESS-CATALOG`: PASS, com
+  avisos esperados de baseline OPS divergindo da cidade marco zero.
+- `git diff --check` do recorte: PASS.
 
 ## Etapa 8 - automatizar esteira
 

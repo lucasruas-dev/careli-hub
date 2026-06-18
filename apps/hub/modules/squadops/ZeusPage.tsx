@@ -48,6 +48,7 @@ import {
   countItTicketsWaitingForZeus,
   countOpenItTickets,
 } from "@/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary";
+import { PanteonAddressCatalog } from "@/modules/squadops/blocks/address/address-catalog";
 import {
   getHubSupabaseClient,
   hubSupabaseConfig,
@@ -157,6 +158,7 @@ type ZeusView =
   | "overview"
   | "monitoring"
   | "itTickets"
+  | "address"
   | "deploys"
   | "timeline"
   | "audits"
@@ -802,6 +804,7 @@ OPERACIONAL COM ATENCAO se houver pendencias abertas; AGUARDANDO RELEASEOPS quan
 
 const zeusViews = [
   { id: "itTickets", label: "HelpDesk" },
+  { id: "address", label: "Address" },
   { id: "overview", label: "Visão geral" },
   { id: "monitoring", label: "Database Monitoring" },
   { id: "deploys", label: "Deploys" },
@@ -891,6 +894,7 @@ export function ZeusPage({
     useState<OperationsAlertProtocolSummary | null>(null);
   const [itTicketCount, setItTicketCount] = useState(0);
   const [itTicketAttentionCount, setItTicketAttentionCount] = useState(0);
+  const [addressCatalogCount, setAddressCatalogCount] = useState(0);
   const [zeusPresenceLastSeenAt, setZeusPresenceLastSeenAt] = useState<
     string | null
   >(null);
@@ -1474,6 +1478,13 @@ export function ZeusPage({
     monitoringIntervalMs,
     profileStatus,
   ]);
+
+  const handleAddressCatalogSummaryChange = useCallback(
+    (summary: { totalAddresses: number } | null) => {
+      setAddressCatalogCount(summary?.totalAddresses ?? 0);
+    },
+    [],
+  );
 
   const activeOperations = structuredOperations ?? operations;
   const records = useMemo(
@@ -2143,6 +2154,7 @@ export function ZeusPage({
 
         <ZeusViewTabs
           activeView={activeView}
+          addressCatalogCount={addressCatalogCount}
           actionCount={actionCount}
           deployCount={deployRecords.length}
           filteredCount={filteredRecords.length}
@@ -2182,6 +2194,14 @@ export function ZeusPage({
             onOpenPoAi={() => setIsPoAiOpen(true)}
             onTicketAttentionCountChange={setItTicketAttentionCount}
             onTicketCountChange={setItTicketCount}
+          />
+        ) : null}
+
+        {activeView === "address" ? (
+          <PanteonAddressCatalog
+            accessToken={zeusAccessToken}
+            isActive={activeView === "address"}
+            onSummaryChange={handleAddressCatalogSummaryChange}
           />
         ) : null}
 
@@ -4448,6 +4468,7 @@ function getMonitoringSourceId(check: OperationsCheckMetric) {
 
 function ZeusViewTabs({
   activeView,
+  addressCatalogCount,
   actionCount,
   deployCount,
   filteredCount,
@@ -4458,6 +4479,7 @@ function ZeusViewTabs({
   routineCount,
 }: {
   activeView: ZeusView;
+  addressCatalogCount: number;
   actionCount: number;
   deployCount: number;
   filteredCount: number;
@@ -4468,6 +4490,7 @@ function ZeusViewTabs({
   routineCount: number;
 }) {
   const counters = {
+    address: addressCatalogCount,
     audits: routineCount,
     deploys: deployCount,
     itTickets: itTicketCount,

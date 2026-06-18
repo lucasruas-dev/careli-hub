@@ -1,7 +1,7 @@
 {
   "schemaVersion": "panteon.address-registry.v1",
   "status": "ATIVO_DOCUMENTAL",
-  "updatedAt": "2026-06-17",
+  "updatedAt": "2026-06-18",
   "owner": "Zeus",
   "addressFormat": {
     "pattern": "PNT-CC-BB-RR-HHH",
@@ -1068,6 +1068,139 @@
       "rollbackReference": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
       "status": "active",
       "notes": ["Casa para visualizacao de releases; nao autoriza deploy ou alias sem Lucas."]
+    },
+    {
+      "addressId": "PNT-RUA-ZEUS-ADDRESS-CATALOG-01",
+      "addressCode": "PNT-01-50-30-000",
+      "level": "street",
+      "name": "Zeus / Address Catalog",
+      "module": "zeus",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-50-00-000",
+      "houseType": null,
+      "routes": ["/zeus", "/api/zeus/address-catalog"],
+      "paths": [
+        "apps/hub/modules/squadops/ZeusPage.tsx",
+        "apps/hub/modules/squadops/blocks/address/**",
+        "apps/hub/lib/squadops/address-registry-source.ts",
+        "apps/hub/app/api/zeus/address-catalog/**",
+        "docs/operations/panteon-address-*.json",
+        "docs/operations/panteon-address-*.md"
+      ],
+      "allowedChangedPaths": [
+        "apps/hub/modules/squadops/ZeusPage.tsx",
+        "apps/hub/modules/squadops/blocks/address/**",
+        "apps/hub/lib/squadops/address-registry-source.ts",
+        "apps/hub/app/api/zeus/address-catalog/**",
+        "docs/operations/**"
+      ],
+      "protectedPaths": [
+        "apps/hub/modules/guardian/**",
+        "apps/hub/modules/caredesk/**",
+        "apps/hub/components/pulsex/**",
+        "apps/hub/modules/chronos/**",
+        "apps/hub/app/hades/**",
+        "apps/hub/app/hermes/**",
+        "apps/hub/app/iris/**",
+        "packages/database/migrations/**"
+      ],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+          "includes": ["PanteonAddressCatalog", "buildManifestSeed"]
+        },
+        {
+          "path": "apps/hub/lib/squadops/address-registry-source.ts",
+          "includes": ["loadPanteonAddressRegistry"]
+        },
+        {
+          "path": "apps/hub/app/api/zeus/address-catalog/route.ts",
+          "includes": ["loadPanteonAddressRegistry"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": [
+        "npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/ZeusPage.tsx modules/squadops/blocks/address/address-catalog.tsx app/api/zeus/address-catalog/route.ts lib/squadops/address-registry-source.ts --max-warnings 0",
+        "npm.cmd run check-types:hub",
+        "npm.cmd run build --workspace @repo/hub",
+        "git diff --check"
+      ],
+      "releaseDomain": "https://ops.c2x.app.br",
+      "rollbackReference": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F",
+      "status": "active",
+      "notes": [
+        "Rua para consulta operacional do CEP no Zeus.",
+        "Nao autoriza deploy, alias, producao, banco, env ou secret sem aprovacao explicita do Lucas."
+      ]
+    },
+    {
+      "addressId": "PNT-CASA-ZEUS-ADDRESS-CATALOG-001",
+      "addressCode": "PNT-01-50-30-001",
+      "level": "house",
+      "name": "Zeus / Address / Catalogo CEP operacional",
+      "module": "zeus",
+      "owner": "Zeus",
+      "parentAddressCode": "PNT-01-50-30-000",
+      "houseType": "ui-panel",
+      "routes": ["/zeus", "/api/zeus/address-catalog"],
+      "paths": [
+        "apps/hub/modules/squadops/ZeusPage.tsx",
+        "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+        "apps/hub/lib/squadops/address-registry-source.ts",
+        "apps/hub/app/api/zeus/address-catalog/route.ts",
+        "docs/operations/panteon-address-registry.json",
+        "docs/operations/panteon-address-architecture-implementation-plan.md"
+      ],
+      "allowedChangedPaths": [
+        "apps/hub/modules/squadops/ZeusPage.tsx",
+        "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+        "apps/hub/lib/squadops/address-registry-source.ts",
+        "apps/hub/app/api/zeus/address-catalog/route.ts",
+        "docs/operations/**"
+      ],
+      "protectedPaths": [
+        "apps/hub/modules/guardian/**",
+        "apps/hub/modules/caredesk/**",
+        "apps/hub/components/pulsex/**",
+        "apps/hub/modules/chronos/**",
+        "apps/hub/app/hades/**",
+        "apps/hub/app/hermes/**",
+        "apps/hub/app/iris/**",
+        "packages/database/migrations/**"
+      ],
+      "requiredMarkers": [
+        {
+          "path": "apps/hub/modules/squadops/ZeusPage.tsx",
+          "includes": ["address", "PanteonAddressCatalog"]
+        },
+        {
+          "path": "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+          "includes": ["PanteonAddressCatalog", "buildManifestSeed", "AddressTreeNode"]
+        },
+        {
+          "path": "apps/hub/lib/squadops/address-registry-source.ts",
+          "includes": ["loadPanteonAddressRegistry", "PanteonAddressRegistrySummary"]
+        },
+        {
+          "path": "apps/hub/app/api/zeus/address-catalog/route.ts",
+          "includes": ["authorizeZeusAdminRequest", "loadPanteonAddressRegistry"]
+        }
+      ],
+      "forbiddenMarkers": [],
+      "validationCommands": [
+        "npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/ZeusPage.tsx modules/squadops/blocks/address/address-catalog.tsx app/api/zeus/address-catalog/route.ts lib/squadops/address-registry-source.ts --max-warnings 0",
+        "npm.cmd run check-types:hub",
+        "npm.cmd run build --workspace @repo/hub",
+        "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-address-catalog-20260618.json --files apps/hub/modules/squadops/ZeusPage.tsx,apps/hub/modules/squadops/blocks/address/address-catalog.tsx,apps/hub/lib/squadops/address-registry-source.ts,apps/hub/app/api/zeus/address-catalog/route.ts,docs/operations/panteon-address-registry.json,docs/operations/panteon-address-architecture-implementation-plan.md,docs/operations/engineering-operations.md",
+        "git diff --check"
+      ],
+      "releaseDomain": "https://ops.c2x.app.br",
+      "rollbackReference": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F",
+      "status": "active",
+      "notes": [
+        "Casa da Etapa 7 do Address para catalogo digital no Zeus.",
+        "Escopo local sem deploy ate nova autorizacao explicita do Lucas."
+      ]
     },
     {
       "addressId": "PNT-BRR-ATLAS-01",
