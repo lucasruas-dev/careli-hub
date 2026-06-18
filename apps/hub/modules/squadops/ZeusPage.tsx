@@ -2,8 +2,11 @@
 
 import { HubShell } from "@/layouts/hub-shell";
 import {
+  getHubPresenceLabel,
   HUB_PRESENCE_HEARTBEAT_MS,
+  hubPresenceStatusOptions,
   markHubPresence,
+  type HubPresenceStatus,
 } from "@/lib/hub-presence";
 import { loadHubItTickets } from "@/lib/hub-it-tickets/client";
 import {
@@ -891,6 +894,8 @@ export function ZeusPage({
   const [zeusPresenceLastSeenAt, setZeusPresenceLastSeenAt] = useState<
     string | null
   >(null);
+  const [zeusPresenceStatus, setZeusPresenceStatus] =
+    useState<HubPresenceStatus>("online");
   const [alertFeedbackStatus, setAlertFeedbackStatus] =
     useState<OperationsAlertFeedbackStatus>("em_analise");
   const [alertFeedbackText, setAlertFeedbackText] = useState("");
@@ -936,7 +941,7 @@ export function ZeusPage({
 
     let isMounted = true;
 
-    const markZeusOnline = () => {
+    const markZeusPresence = (status: HubPresenceStatus) => {
       if (!isMounted) {
         return;
       }
@@ -954,7 +959,7 @@ export function ZeusPage({
         },
         reason: "heartbeat",
         source: "zeus-operations-center",
-        status: "online",
+        status,
       })
         .then((presence) => {
           if (isMounted) {
@@ -968,27 +973,68 @@ export function ZeusPage({
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "visible") {
-        markZeusOnline();
+        markZeusPresence(zeusPresenceStatus);
       }
     };
 
-    markZeusOnline();
+    markZeusPresence(zeusPresenceStatus);
 
     const heartbeatId = window.setInterval(
-      markZeusOnline,
+      () => markZeusPresence(zeusPresenceStatus),
       Math.max(15_000, HUB_PRESENCE_HEARTBEAT_MS - 5_000),
     );
 
-    window.addEventListener("focus", markZeusOnline);
+    const handleFocus = () => markZeusPresence(zeusPresenceStatus);
+
+    window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
       isMounted = false;
       window.clearInterval(heartbeatId);
-      window.removeEventListener("focus", markZeusOnline);
+      window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [activeView, canAccessZeus, profileStatus, zeusAccessToken]);
+  }, [
+    activeView,
+    canAccessZeus,
+    profileStatus,
+    zeusAccessToken,
+    zeusPresenceStatus,
+  ]);
+
+  const handleZeusPresenceStatusChange = useCallback(
+    (nextStatus: HubPresenceStatus) => {
+      setZeusPresenceStatus(nextStatus);
+
+      if (!canAccessZeus || profileStatus !== "ready" || !zeusAccessToken) {
+        return;
+      }
+
+      const heartbeatAt = new Date().toISOString();
+
+      setZeusPresenceLastSeenAt(heartbeatAt);
+
+      void markHubPresence({
+        metadata: {
+          activeView,
+          keepOnline: true,
+          module: "zeus",
+          surface: "operations-center",
+        },
+        reason: "manual",
+        source: "zeus-operations-center",
+        status: nextStatus,
+      })
+        .then((presence) => {
+          setZeusPresenceLastSeenAt(presence?.lastSeenAt ?? heartbeatAt);
+        })
+        .catch(() => {
+          // Presenca nao deve interromper a operacao do Zeus.
+        });
+    },
+    [activeView, canAccessZeus, profileStatus, zeusAccessToken],
+  );
 
   useEffect(() => {
     if (profileStatus === "loading") {
@@ -2120,10 +2166,12 @@ export function ZeusPage({
           monitoringAlertCount={visibleMonitoringAlertCount}
           onOpenHelpDesk={() => setActiveView("itTickets")}
           onOpenMonitoring={() => setActiveView("monitoring")}
+          onPresenceStatusChange={handleZeusPresenceStatusChange}
           onSignOut={() => {
             void signOut();
           }}
           operationActionCount={actionCount}
+          presenceStatus={zeusPresenceStatus}
           userName={hubUser?.name ?? "Sessao"}
         />
 
@@ -4489,8 +4537,10 @@ function ZeusOpsPresenceBar({
   monitoringAlertCount,
   onOpenHelpDesk,
   onOpenMonitoring,
+  onPresenceStatusChange,
   onSignOut,
   operationActionCount,
+  presenceStatus,
   userName,
 }: {
   activeView: ZeusView;
@@ -4501,18 +4551,20 @@ function ZeusOpsPresenceBar({
   monitoringAlertCount: number;
   onOpenHelpDesk: () => void;
   onOpenMonitoring: () => void;
+  onPresenceStatusChange: (status: HubPresenceStatus) => void;
   onSignOut: () => void;
   operationActionCount: number;
+  presenceStatus: HubPresenceStatus;
   userName: string;
 }) {
   const [isNotificationOpen, setIsNotificationOpen] = useState(false);
+  const [isPresenceMenuOpen, setIsPresenceMenuOpen] = useState(false);
   const activeViewLabel =
     zeusViews.find((view) => view.id === activeView)?.label ?? "Zeus";
   const notificationCount =
     itTicketAttentionCount + monitoringAlertCount + operationActionCount;
-  const statusTone = isOnline
-    ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
-    : "bg-slate-50 text-slate-500 ring-slate-200";
+  const effectivePresenceStatus = isOnline ? presenceStatus : "offline";
+  const presenceTone = getZeusPresenceTone(effectivePresenceStatus);
 
   return (
     <section className="rounded-xl border border-slate-200/70 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -4596,16 +4648,47 @@ function ZeusOpsPresenceBar({
               <Settings className="size-4" />
             </button>
           </Tooltip>
-          <span className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold ring-1 ${statusTone}`}>
-            <span
-              aria-hidden="true"
-              className={`h-2 w-2 rounded-full ${
-                isOnline ? "bg-emerald-500" : "bg-slate-300"
-              }`}
-            />
-            {isOnline ? "Online" : "Conectando"}
-            <ChevronDown className="size-3.5" />
-          </span>
+          <div className="relative">
+            <button
+              aria-expanded={isPresenceMenuOpen}
+              aria-label="Alterar status de presenca"
+              className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold outline-none transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${presenceTone.button}`}
+              onClick={() => setIsPresenceMenuOpen((current) => !current)}
+              type="button"
+            >
+              <span className={`h-2 w-2 rounded-full ${presenceTone.dot}`} />
+              <span className="capitalize">
+                {isOnline
+                  ? getHubPresenceLabel(effectivePresenceStatus)
+                  : "Conectando"}
+              </span>
+              <ChevronDown className="size-3.5" />
+            </button>
+            {isPresenceMenuOpen ? (
+              <div className="absolute right-0 top-11 z-[90] w-44 rounded-lg border border-slate-200 bg-white p-1.5 shadow-xl">
+                {hubPresenceStatusOptions.map((option) => {
+                  const optionTone = getZeusPresenceTone(option);
+
+                  return (
+                    <button
+                      className="flex h-9 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left text-sm text-slate-800 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                      key={option}
+                      onClick={() => {
+                        setIsPresenceMenuOpen(false);
+                        onPresenceStatusChange(option);
+                      }}
+                      type="button"
+                    >
+                      <span className={`h-2.5 w-2.5 rounded-full ${optionTone.dot}`} />
+                      <span className="capitalize">
+                        {getHubPresenceLabel(option)}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : null}
+          </div>
           <span className="grid size-9 place-items-center overflow-hidden rounded-full bg-[#101820] text-xs font-semibold text-white ring-2 ring-white">
             {avatarUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -4664,6 +4747,40 @@ function getZeusUserInitials(name: string) {
   const [first = "", second = ""] = name.trim().split(/\s+/);
 
   return `${first.charAt(0)}${second.charAt(0)}`.toUpperCase() || "Z";
+}
+
+function getZeusPresenceTone(status: HubPresenceStatus) {
+  const normalizedStatus = status === "busy" ? "agenda" : status;
+  const tones = {
+    agenda: {
+      button: "border-sky-200 bg-sky-50 text-sky-700",
+      dot: "bg-sky-500",
+    },
+    away: {
+      button: "border-red-200 bg-red-50 text-red-700",
+      dot: "bg-red-500",
+    },
+    lunch: {
+      button: "border-yellow-200 bg-yellow-50 text-yellow-700",
+      dot: "bg-yellow-400",
+    },
+    offline: {
+      button: "border-zinc-200 bg-zinc-50 text-zinc-500",
+      dot: "bg-zinc-400",
+    },
+    online: {
+      button: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      dot: "bg-emerald-500",
+    },
+  } as const satisfies Record<
+    Exclude<HubPresenceStatus, "busy">,
+    {
+      button: string;
+      dot: string;
+    }
+  >;
+
+  return tones[normalizedStatus];
 }
 
 function DeployProtocolsView({

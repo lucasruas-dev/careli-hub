@@ -50,7 +50,6 @@ import {
   Sparkles,
   Square,
   UserRound,
-  UsersRound,
   Video,
   Wrench,
   X,
@@ -234,6 +233,13 @@ type TicketDailyVolumeStats = {
   treated: number;
   validation: number;
 };
+type ManagementPanelFilters = {
+  category: QueueFilterValue | HubItTicket["category"];
+  collaborator: QueueFilterValue | string;
+  priority: QueueFilterValue | HubItTicket["priority"];
+  query: string;
+  workflow: QueueFilterValue | TicketWorkflowStage;
+};
 
 type TicketQueueFilterOptions = {
   collaborators: {
@@ -256,6 +262,15 @@ const workflowStageLabels = {
   tratativa: "Em tratativa",
   validacao: "Validacao",
 } as const satisfies Record<TicketWorkflowStage, string>;
+
+const workflowStageOptions = [
+  "backlog",
+  "novo",
+  "tratativa",
+  "validacao",
+  "revisao",
+  "finalizado",
+] as const satisfies readonly TicketWorkflowStage[];
 
 const roadmapTypeOptions = [
   "melhoria",
@@ -305,7 +320,7 @@ export function HubItTicketsBoard({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [queueView, setQueueView] = useState<TicketQueueView>("fila");
+  const [queueView, setQueueView] = useState<TicketQueueView>("gestao");
   const [queueDisplayMode, setQueueDisplayMode] =
     useState<TicketQueueDisplayMode>("lista");
   const [queueFilters, setQueueFilters] =
@@ -885,7 +900,7 @@ export function HubItTicketsBoard({
             }
             selectedProtocol={selectedTicket?.protocol ?? null}
             tickets={ticketsByDelivery}
-            title={queueView === "historico" ? "Historico" : "Fila ativa"}
+            title={queueView === "historico" ? "Historico" : "Desk"}
           />
         )}
       </Surface>
@@ -1422,22 +1437,22 @@ function HelpDeskBoardToolbar({
   const hasQueueFilters = hasActiveQueueFilters(queueFilters);
   const tabs = [
     {
+      count: totalTickets,
+      icon: <BarChart3 className="size-4" />,
+      id: "gestao",
+      label: "Gestao",
+    },
+    {
       count: activeTickets,
       icon: <Inbox className="size-4" />,
       id: "fila",
-      label: "Fila Ativa",
+      label: "Desk",
     },
     {
       count: historyTickets,
       icon: <History className="size-4" />,
       id: "historico",
       label: "Historico",
-    },
-    {
-      count: totalTickets,
-      icon: <BarChart3 className="size-4" />,
-      id: "gestao",
-      label: "Gestao",
     },
   ] as const satisfies readonly {
     count: number;
@@ -1458,7 +1473,7 @@ function HelpDeskBoardToolbar({
               ? "Gestao executiva"
               : selectedView === "historico"
                 ? "Historico de tickets"
-                : "Fila ativa"}
+                : "Desk"}
           </h2>
         </div>
 
@@ -1767,6 +1782,46 @@ function QueueFilterSelect({
       >
         {children}
       </select>
+    </label>
+  );
+}
+
+function ManagementSearchInput({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1">
+      <span className="text-[0.66rem] font-semibold uppercase text-slate-500">
+        {label}
+      </span>
+      <span className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition focus-within:border-[#A07C3B]/50 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+        <Search className="size-3.5 shrink-0 text-slate-400" />
+        <input
+          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-xs font-semibold outline-none placeholder:text-slate-400"
+          onChange={(event) => onChange(event.target.value)}
+          placeholder={placeholder}
+          type="search"
+          value={value}
+        />
+        {value.trim() ? (
+          <button
+            aria-label="Limpar filtro"
+            className="grid size-5 shrink-0 place-items-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            onClick={() => onChange("")}
+            type="button"
+          >
+            <X className="size-3" />
+          </button>
+        ) : null}
+      </span>
     </label>
   );
 }
@@ -2116,31 +2171,36 @@ function DailyVolumePanel({
 
           return (
             <div className="grid gap-2 text-center" key={item.day}>
-              <div className="flex h-24 items-end justify-center rounded-md bg-slate-50 px-1">
-                <div className="flex w-full max-w-7 flex-col justify-end overflow-hidden rounded-t-md">
-                  {item.validation > 0 ? (
-                    <div
-                      className="bg-emerald-500"
-                      style={{ height: validationHeight }}
-                    />
-                  ) : null}
-                  {item.treated > 0 ? (
-                    <div
-                      className="bg-[#A07C3B]"
-                      style={{ height: treatedHeight }}
-                    />
-                  ) : null}
-                  {item.created > 0 ? (
-                    <div
-                      className="bg-[#101820]"
-                      style={{ height: createdHeight }}
-                    />
-                  ) : null}
-                  {total === 0 ? (
-                    <div className="h-2 rounded-t-md bg-slate-200" />
-                  ) : null}
+              <Tooltip
+                content={`${formatDayLabel(item.day)}: ${item.created} recebido(s), ${item.treated} tratado(s), ${item.validation} em validacao`}
+                placement="top"
+              >
+                <div className="flex h-24 cursor-help items-end justify-center rounded-md bg-slate-50 px-1">
+                  <div className="flex w-full max-w-7 flex-col justify-end overflow-hidden rounded-t-md">
+                    {item.validation > 0 ? (
+                      <div
+                        className="bg-emerald-500"
+                        style={{ height: validationHeight }}
+                      />
+                    ) : null}
+                    {item.treated > 0 ? (
+                      <div
+                        className="bg-[#A07C3B]"
+                        style={{ height: treatedHeight }}
+                      />
+                    ) : null}
+                    {item.created > 0 ? (
+                      <div
+                        className="bg-[#101820]"
+                        style={{ height: createdHeight }}
+                      />
+                    ) : null}
+                    {total === 0 ? (
+                      <div className="h-2 rounded-t-md bg-slate-200" />
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+              </Tooltip>
               <div>
                 <p className="m-0 text-[0.68rem] font-semibold text-slate-500">
                   {formatDayLabel(item.day)}
@@ -2190,6 +2250,46 @@ function DepartmentDemandTable({
   departments: TicketDepartmentStats[];
   onOpenDepartment: (department: TicketDepartmentStats) => void;
 }) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [filters, setFilters] = useState<ManagementPanelFilters>({
+    category: "todos",
+    collaborator: "todos",
+    priority: "todos",
+    query: "",
+    workflow: "todos",
+  });
+  const collaboratorOptions = useMemo(
+    () =>
+      buildManagementCollaboratorOptions(
+        departments.flatMap((department) => department.tickets),
+      ),
+    [departments],
+  );
+  const visibleDepartments = useMemo(
+    () =>
+      departments
+        .map((department) =>
+          summarizeDepartmentForTickets(
+            department,
+            filterTicketsByManagementFilters(department.tickets, filters),
+          ),
+        )
+        .filter((department) => department.tickets.length > 0),
+    [departments, filters],
+  );
+  const updateFilter = useCallback(
+    <Key extends keyof ManagementPanelFilters>(
+      key: Key,
+      value: ManagementPanelFilters[Key],
+    ) => {
+      setFilters((currentFilters) => ({
+        ...currentFilters,
+        [key]: value,
+      }));
+    },
+    [],
+  );
+
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
@@ -2197,76 +2297,135 @@ function DepartmentDemandTable({
           <h4 className="m-0 text-sm font-semibold text-slate-950">
             Tickets por departamento
           </h4>
-          <p className="m-0 text-xs text-slate-500">
-            Departamento do colaborador solicitante
-          </p>
         </div>
-        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-          {departments.length}
-        </span>
+        <button
+          className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+          onClick={() => setIsExpanded((currentValue) => !currentValue)}
+          type="button"
+        >
+          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 font-mono text-[0.65rem]">
+            {visibleDepartments.length}
+          </span>
+          {isExpanded ? "Recolher" : "Expandir"}
+          {isExpanded ? (
+            <ChevronUp className="size-3.5" />
+          ) : (
+            <ChevronDown className="size-3.5" />
+          )}
+        </button>
       </div>
-      <div
-        className="hidden grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_7rem_minmax(9rem,0.7fr)] gap-3 border-b border-slate-100 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
-        role="row"
-      >
-        <span>Departamento</span>
-        <span>Total</span>
-        <span>Feitos</span>
-        <span>Tratando</span>
-        <span>Backlog</span>
-        <span>Solic.</span>
-        <span>Critico</span>
-        <span>Ultimo</span>
-      </div>
-      {departments.length > 0 ? (
-        <div className="divide-y divide-slate-100">
-          {departments.map((department) => (
-            <button
-              className="grid w-full cursor-pointer gap-2 px-3 py-3 text-left text-sm transition hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] xl:grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_7rem_minmax(9rem,0.7fr)] xl:items-center xl:gap-3"
-              key={department.department}
-              onClick={() => onOpenDepartment(department)}
-              type="button"
+      {isExpanded ? (
+        <>
+          <div className="grid gap-2 border-b border-slate-100 bg-white px-3 py-3 md:grid-cols-4">
+            <ManagementSearchInput
+              label="Ticket"
+              onChange={(value) => updateFilter("query", value)}
+              placeholder="ticket ou assunto"
+              value={filters.query}
+            />
+            <QueueFilterSelect
+              label="Workflow"
+              onChange={(value) =>
+                updateFilter("workflow", value as ManagementPanelFilters["workflow"])
+              }
+              value={filters.workflow}
             >
-              <span className="min-w-0 font-semibold text-slate-950">
-                <span className="block truncate">{department.department}</span>
-                <span className="mt-1 block text-xs font-medium text-slate-500 lg:hidden">
-                  {department.total} total / {department.backlog} backlog /{" "}
-                  {department.modules.slice(0, 2).join(", ") || "sem modulo"}
-                </span>
-              </span>
-              <MetricCell value={department.total} />
-              <MetricCell tone="success" value={department.finalized} />
-              <MetricCell tone="warning" value={department.inProgress} />
-              <MetricCell value={department.backlog} />
-              <MetricCell value={department.requesterCount} />
-              <span className="truncate text-xs font-semibold text-slate-600">
-                {department.highPriority} alta
-              </span>
-              {department.latestTicket ? (
-                <span className="min-w-0 rounded-lg px-2 py-1 text-left text-xs font-semibold text-[#7A5E2C]">
-                  <span className="block truncate">
-                    {department.latestTicket.protocol}
-                  </span>
-                  <span className="block truncate font-medium text-slate-500">
-                    {formatDateShort(department.latestTicket.updatedAt)}
-                  </span>
-                </span>
-              ) : (
-                <span className="text-xs text-slate-400">-</span>
-              )}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="grid min-h-32 place-items-center px-4 py-8 text-center">
-          <div>
-            <Building2 className="mx-auto size-7 text-slate-300" />
-            <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
-              Sem departamentos para exibir.
-            </p>
+              <option value="todos">Todos</option>
+              {workflowStageOptions.map((stage) => (
+                <option key={stage} value={stage}>
+                  {workflowStageLabels[stage]}
+                </option>
+              ))}
+            </QueueFilterSelect>
+            <QueueFilterSelect
+              label="Colaborador"
+              onChange={(value) => updateFilter("collaborator", value)}
+              value={filters.collaborator}
+            >
+              <option value="todos">Todos</option>
+              {collaboratorOptions.map((collaborator) => (
+                <option key={collaborator.key} value={collaborator.key}>
+                  {collaborator.label}
+                </option>
+              ))}
+            </QueueFilterSelect>
+            <QueueFilterSelect
+              label="Prioridade"
+              onChange={(value) =>
+                updateFilter("priority", value as ManagementPanelFilters["priority"])
+              }
+              value={filters.priority}
+            >
+              <option value="todos">Todas</option>
+              {priorityOptions.map((priority) => (
+                <option key={priority} value={priority}>
+                  {hubItTicketPriorityLabels[priority]}
+                </option>
+              ))}
+            </QueueFilterSelect>
           </div>
-        </div>
-      )}
+          <div
+            className="hidden grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_6rem_minmax(9rem,0.7fr)] gap-3 border-b border-slate-100 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
+            role="row"
+          >
+            <span>Departamento</span>
+            <span>Total</span>
+            <span>Feitos</span>
+            <span>Tratando</span>
+            <span>Backlog</span>
+            <span>Solic.</span>
+            <span>Prioridade</span>
+            <span>Ultimo</span>
+          </div>
+          {visibleDepartments.length > 0 ? (
+            <div className="divide-y divide-slate-100">
+              {visibleDepartments.map((department) => (
+                <button
+                  className="grid w-full cursor-pointer gap-2 px-3 py-3 text-left text-sm transition hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] xl:grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_6rem_minmax(9rem,0.7fr)] xl:items-center xl:gap-3"
+                  key={department.department}
+                  onClick={() => onOpenDepartment(department)}
+                  type="button"
+                >
+                  <span className="min-w-0 font-semibold text-slate-950">
+                    <span className="block truncate">{department.department}</span>
+                    <span className="mt-1 block text-xs font-medium text-slate-500 lg:hidden">
+                      {department.total} total / {department.backlog} backlog /{" "}
+                      {department.modules.slice(0, 2).join(", ") || "sem modulo"}
+                    </span>
+                  </span>
+                  <MetricCell value={department.total} />
+                  <MetricCell tone="success" value={department.finalized} />
+                  <MetricCell tone="warning" value={department.inProgress} />
+                  <MetricCell value={department.backlog} />
+                  <MetricCell value={department.requesterCount} />
+                  <MetricCell tone="danger" value={department.highPriority} />
+                  {department.latestTicket ? (
+                    <span className="min-w-0 rounded-lg px-2 py-1 text-left text-xs font-semibold text-[#7A5E2C]">
+                      <span className="block truncate">
+                        {department.latestTicket.protocol}
+                      </span>
+                      <span className="block truncate font-medium text-slate-500">
+                        {formatDateShort(department.latestTicket.updatedAt)}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400">-</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="grid min-h-32 place-items-center px-4 py-8 text-center">
+              <div>
+                <Building2 className="mx-auto size-7 text-slate-300" />
+                <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
+                  Sem departamentos para exibir.
+                </p>
+              </div>
+            </div>
+          )}
+        </>
+      ) : null}
     </section>
   );
 }
@@ -2278,6 +2437,46 @@ function CollaboratorDemandTable({
   collaborators: TicketCollaboratorStats[];
   onOpenCollaborator: (collaborator: TicketCollaboratorStats) => void;
 }) {
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [filters, setFilters] = useState<ManagementPanelFilters>({
+    category: "todos",
+    collaborator: "todos",
+    priority: "todos",
+    query: "",
+    workflow: "todos",
+  });
+  const categoryOptions = useMemo(
+    () =>
+      buildManagementCategoryOptions(
+        collaborators.flatMap((collaborator) => collaborator.tickets),
+      ),
+    [collaborators],
+  );
+  const visibleCollaborators = useMemo(
+    () =>
+      collaborators
+        .map((collaborator) =>
+          summarizeCollaboratorForTickets(
+            collaborator,
+            filterTicketsByManagementFilters(collaborator.tickets, filters),
+          ),
+        )
+        .filter((collaborator) => collaborator.tickets.length > 0),
+    [collaborators, filters],
+  );
+  const updateFilter = useCallback(
+    <Key extends keyof ManagementPanelFilters>(
+      key: Key,
+      value: ManagementPanelFilters[Key],
+    ) => {
+      setFilters((currentFilters) => ({
+        ...currentFilters,
+        [key]: value,
+      }));
+    },
+    [],
+  );
+
   return (
     <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
@@ -2285,84 +2484,147 @@ function CollaboratorDemandTable({
           <h4 className="m-0 text-sm font-semibold text-slate-950">
             Colaboradores
           </h4>
-          <Tooltip content="Solicitantes com mais demandas no recorte." placement="top">
-            <span className="grid size-6 place-items-center rounded-md text-slate-400">
-              <UsersRound className="size-4" />
-            </span>
-          </Tooltip>
         </div>
-        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-          {collaborators.length}
-        </span>
+        <button
+          className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+          onClick={() => setIsExpanded((currentValue) => !currentValue)}
+          type="button"
+        >
+          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 font-mono text-[0.65rem]">
+            {visibleCollaborators.length}
+          </span>
+          {isExpanded ? "Recolher" : "Expandir"}
+          {isExpanded ? (
+            <ChevronUp className="size-3.5" />
+          ) : (
+            <ChevronDown className="size-3.5" />
+          )}
+        </button>
       </div>
-      <div
-        className="hidden grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_7rem_minmax(8rem,0.7fr)] gap-3 border-b border-slate-100 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
-        role="row"
-      >
-        <span>Colaborador</span>
-        <span>Total</span>
-        <span>Feitos</span>
-        <span>Tratando</span>
-        <span>Backlog</span>
-        <span>Modulo</span>
-        <span>Ultimo</span>
-      </div>
-      {collaborators.length > 0 ? (
-        <div className="divide-y divide-slate-100">
-          {collaborators.slice(0, 8).map((collaborator) => (
-            <button
-              className="grid w-full cursor-pointer gap-2 px-3 py-3 text-left transition hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] xl:grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_7rem_minmax(8rem,0.7fr)] xl:items-center"
-              key={collaborator.key}
-              onClick={() => onOpenCollaborator(collaborator)}
-              type="button"
+      {isExpanded ? (
+        <>
+          <div className="grid gap-2 border-b border-slate-100 bg-white px-3 py-3 md:grid-cols-4">
+            <ManagementSearchInput
+              label="Ticket"
+              onChange={(value) => updateFilter("query", value)}
+              placeholder="ticket ou assunto"
+              value={filters.query}
+            />
+            <QueueFilterSelect
+              label="Tipo"
+              onChange={(value) =>
+                updateFilter("category", value as ManagementPanelFilters["category"])
+              }
+              value={filters.category}
             >
-              <span className="flex min-w-0 items-center gap-3">
-                <RequesterAvatar
-                  requester={collaborator.requester}
-                  size="xs"
-                  variant="gold"
-                />
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-slate-950">
-                    {collaborator.label}
-                  </span>
-                  <span className="block truncate text-xs font-medium text-slate-500">
-                    {collaborator.department}
-                  </span>
-                </span>
-              </span>
-              <MetricCell value={collaborator.total} />
-              <MetricCell tone="success" value={collaborator.finalized} />
-              <MetricCell tone="warning" value={collaborator.inProgress} />
-              <MetricCell value={collaborator.backlog} />
-              <span className="truncate text-xs font-semibold text-slate-600">
-                {collaborator.modules[0] ?? "Panteon"}
-              </span>
-              {collaborator.latestTicket ? (
-                <span className="min-w-0 text-xs font-semibold text-[#7A5E2C]">
-                  <span className="block truncate">
-                    {collaborator.latestTicket.protocol}
-                  </span>
-                  <span className="block truncate font-medium text-slate-500">
-                    {formatDateShort(collaborator.latestTicket.updatedAt)}
-                  </span>
-                </span>
-              ) : (
-                <span className="text-xs text-slate-400">-</span>
-              )}
-            </button>
-          ))}
-        </div>
-      ) : (
-        <div className="grid min-h-32 place-items-center px-4 py-8 text-center">
-          <div>
-            <UserRound className="mx-auto size-7 text-slate-300" />
-            <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
-              Sem colaboradores para exibir.
-            </p>
+              <option value="todos">Todos</option>
+              {categoryOptions.map((category) => (
+                <option key={category.key} value={category.key}>
+                  {category.label}
+                </option>
+              ))}
+            </QueueFilterSelect>
+            <QueueFilterSelect
+              label="Workflow"
+              onChange={(value) =>
+                updateFilter("workflow", value as ManagementPanelFilters["workflow"])
+              }
+              value={filters.workflow}
+            >
+              <option value="todos">Todos</option>
+              {workflowStageOptions.map((stage) => (
+                <option key={stage} value={stage}>
+                  {workflowStageLabels[stage]}
+                </option>
+              ))}
+            </QueueFilterSelect>
+            <QueueFilterSelect
+              label="Prioridade"
+              onChange={(value) =>
+                updateFilter("priority", value as ManagementPanelFilters["priority"])
+              }
+              value={filters.priority}
+            >
+              <option value="todos">Todas</option>
+              {priorityOptions.map((priority) => (
+                <option key={priority} value={priority}>
+                  {hubItTicketPriorityLabels[priority]}
+                </option>
+              ))}
+            </QueueFilterSelect>
           </div>
-        </div>
-      )}
+          <div
+            className="hidden grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_6rem_7rem_minmax(8rem,0.7fr)] gap-3 border-b border-slate-100 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
+            role="row"
+          >
+            <span>Colaborador</span>
+            <span>Total</span>
+            <span>Feitos</span>
+            <span>Tratando</span>
+            <span>Backlog</span>
+            <span>Prioridade</span>
+            <span>Modulo</span>
+            <span>Ultimo</span>
+          </div>
+          {visibleCollaborators.length > 0 ? (
+            <div className="divide-y divide-slate-100">
+              {visibleCollaborators.slice(0, 12).map((collaborator) => (
+                <button
+                  className="grid w-full cursor-pointer gap-2 px-3 py-3 text-left transition hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] xl:grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_6rem_7rem_minmax(8rem,0.7fr)] xl:items-center"
+                  key={collaborator.key}
+                  onClick={() => onOpenCollaborator(collaborator)}
+                  type="button"
+                >
+                  <span className="flex min-w-0 items-center gap-3">
+                    <RequesterAvatar
+                      requester={collaborator.requester}
+                      size="xs"
+                      variant="gold"
+                    />
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-slate-950">
+                        {collaborator.label}
+                      </span>
+                      <span className="block truncate text-xs font-medium text-slate-500">
+                        {collaborator.department}
+                      </span>
+                    </span>
+                  </span>
+                  <MetricCell value={collaborator.total} />
+                  <MetricCell tone="success" value={collaborator.finalized} />
+                  <MetricCell tone="warning" value={collaborator.inProgress} />
+                  <MetricCell value={collaborator.backlog} />
+                  <MetricCell tone="danger" value={collaborator.highPriority} />
+                  <span className="truncate text-xs font-semibold text-slate-600">
+                    {collaborator.modules[0] ?? "Panteon"}
+                  </span>
+                  {collaborator.latestTicket ? (
+                    <span className="min-w-0 text-xs font-semibold text-[#7A5E2C]">
+                      <span className="block truncate">
+                        {collaborator.latestTicket.protocol}
+                      </span>
+                      <span className="block truncate font-medium text-slate-500">
+                        {formatDateShort(collaborator.latestTicket.updatedAt)}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className="text-xs text-slate-400">-</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="grid min-h-32 place-items-center px-4 py-8 text-center">
+              <div>
+                <UserRound className="mx-auto size-7 text-slate-300" />
+                <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
+                  Sem colaboradores para exibir.
+                </p>
+              </div>
+            </div>
+          )}
+        </>
+      ) : null}
     </section>
   );
 }
@@ -2442,7 +2704,7 @@ function MetricCell({
   tone = "neutral",
   value,
 }: {
-  tone?: "neutral" | "success" | "warning";
+  tone?: "danger" | "neutral" | "success" | "warning";
   value: number;
 }) {
   const className =
@@ -2450,7 +2712,9 @@ function MetricCell({
       ? "bg-emerald-50 text-emerald-700"
       : tone === "warning"
         ? "bg-amber-50 text-amber-700"
-        : "bg-slate-100 text-slate-700";
+        : tone === "danger"
+          ? "bg-red-50 text-red-700"
+          : "bg-slate-100 text-slate-700";
 
   return (
     <span
@@ -2692,27 +2956,14 @@ function TicketDeliveryCalendar({
           <h3 className="m-0 text-base font-semibold text-slate-950">
             Calendario de entrega
           </h3>
-          <p className="m-0 mt-1 text-xs font-medium text-slate-500">
-            Datas de entrega aprovadas ou solicitadas.
-          </p>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-          {tickets.length} ticket(s)
+          {calendar.visibleCount} ticket(s)
         </span>
       </div>
 
-      {calendar.overdueTickets.length > 0 ? (
-        <CalendarSpecialLane
-          label="Vencidos"
-          onSelectTicket={onSelectTicket}
-          selectedProtocol={selectedProtocol}
-          tickets={calendar.overdueTickets}
-          tone="danger"
-        />
-      ) : null}
-
-      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-7">
-        {calendar.days.map((day) => (
+      <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+        {calendar.dateGroups.map((day) => (
           <section
             className={`min-h-44 rounded-xl border p-2 ${
               day.isToday
@@ -2753,15 +3004,7 @@ function TicketDeliveryCalendar({
         ))}
       </div>
 
-      <div className="mt-3 grid gap-3 xl:grid-cols-2">
-        {calendar.futureTickets.length > 0 ? (
-          <CalendarSpecialLane
-            label="Depois"
-            onSelectTicket={onSelectTicket}
-            selectedProtocol={selectedProtocol}
-            tickets={calendar.futureTickets}
-          />
-        ) : null}
+      <div className="mt-3 grid gap-3">
         {calendar.noDateTickets.length > 0 ? (
           <CalendarSpecialLane
             label="Sem data"
@@ -2771,6 +3014,13 @@ function TicketDeliveryCalendar({
           />
         ) : null}
       </div>
+      {calendar.visibleCount === 0 ? (
+        <div className="grid min-h-36 place-items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
+          <p className="m-0 text-sm font-semibold text-slate-500">
+            Sem entregas futuras no calendario.
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -2946,9 +3196,6 @@ function TicketOperationsTable({
           <h3 className="m-0 text-base font-semibold text-slate-950">
             {title}
           </h3>
-          <p className="m-0 mt-1 text-xs font-medium text-slate-500">
-            Clique em uma linha para abrir o ticket em popup.
-          </p>
         </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
           {tickets.length} ticket(s)
@@ -3075,11 +3322,7 @@ function TicketOperationsTable({
                   <span className="text-xs font-medium text-slate-500">
                     {formatDateShort(ticket.createdAt)}
                   </span>
-                  <span className="text-xs font-medium text-slate-500">
-                    {getTicketEffectiveDeliveryDate(ticket)
-                      ? formatDateOnly(getTicketEffectiveDeliveryDate(ticket) ?? "")
-                      : "sem data"}
-                  </span>
+                  <DeliveryDateCell ticket={ticket} />
                   <span className="text-sm font-semibold text-slate-600">
                     {getTicketEvidenceCount(ticket)}
                   </span>
@@ -3104,6 +3347,21 @@ function TicketOperationsTable({
         )}
       </div>
     </div>
+  );
+}
+
+function DeliveryDateCell({ ticket }: { ticket: HubItTicket }) {
+  const deliveryState = getTicketDeliveryDateTone(ticket);
+
+  return (
+    <span
+      className={`inline-flex w-fit min-w-[5.75rem] flex-col rounded-lg px-2 py-1 text-left text-[0.68rem] font-semibold ring-1 ${deliveryState.className}`}
+    >
+      <span>{deliveryState.dateLabel}</span>
+      <span className="text-[0.62rem] font-bold uppercase opacity-75">
+        {deliveryState.statusLabel}
+      </span>
+    </span>
   );
 }
 
@@ -5685,24 +5943,17 @@ function getTicketInsightGroup(
 function buildTicketDeliveryCalendar(tickets: HubItTicket[]) {
   const today = new Date();
   const todayKey = toLocalDateKey(today);
-  const days = Array.from({ length: 14 }, (_, index) => {
-    const date = new Date(today);
-    date.setDate(today.getDate() + index);
-    const key = toLocalDateKey(date);
-
-    return {
-      isToday: key === todayKey,
-      key,
-      label: formatDayLabel(key),
-      tickets: [] as HubItTicket[],
-      weekday: formatWeekdayLabel(date),
-    };
-  });
-  const daysByKey = new Map(days.map((day) => [day.key, day]));
-  const lastDayKey = days[days.length - 1]?.key ?? todayKey;
-  const futureTickets: HubItTicket[] = [];
+  const groupsByDate = new Map<
+    string,
+    {
+      isToday: boolean;
+      key: string;
+      label: string;
+      tickets: HubItTicket[];
+      weekday: string;
+    }
+  >();
   const noDateTickets: HubItTicket[] = [];
-  const overdueTickets: HubItTicket[] = [];
 
   for (const ticket of tickets) {
     const deliveryDate = getTicketEffectiveDeliveryDate(ticket);
@@ -5713,26 +5964,43 @@ function buildTicketDeliveryCalendar(tickets: HubItTicket[]) {
     }
 
     const deliveryKey = toLocalDateKey(new Date(deliveryDate));
-    const day = daysByKey.get(deliveryKey);
+    const parsedDate = parseDateOnly(deliveryKey);
 
-    if (day) {
-      day.tickets.push(ticket);
-    } else if (deliveryKey && deliveryKey < todayKey) {
-      overdueTickets.push(ticket);
-    } else if (deliveryKey > lastDayKey) {
-      futureTickets.push(ticket);
+    if (!deliveryKey || !parsedDate) {
+      noDateTickets.push(ticket);
+      continue;
     }
+
+    if (deliveryKey < todayKey) {
+      continue;
+    }
+
+    const group = groupsByDate.get(deliveryKey) ?? {
+      isToday: deliveryKey === todayKey,
+      key: deliveryKey,
+      label: formatDayLabel(deliveryKey),
+      tickets: [],
+      weekday: formatWeekdayLabel(parsedDate),
+    };
+
+    group.tickets.push(ticket);
+    groupsByDate.set(deliveryKey, group);
   }
 
-  for (const day of days) {
+  const dateGroups = [...groupsByDate.values()].sort((firstDay, secondDay) =>
+    firstDay.key.localeCompare(secondDay.key),
+  );
+
+  for (const day of dateGroups) {
     day.tickets = sortTicketsByDeliveryDate(day.tickets);
   }
 
   return {
-    days,
-    futureTickets: sortTicketsByDeliveryDate(futureTickets),
+    dateGroups,
     noDateTickets: sortTicketsByUpdatedAt(noDateTickets),
-    overdueTickets: sortTicketsByDeliveryDate(overdueTickets),
+    visibleCount:
+      dateGroups.reduce((total, day) => total + day.tickets.length, 0) +
+      noDateTickets.length,
   };
 }
 
@@ -5761,6 +6029,148 @@ function getTicketSearchText(ticket: HubItTicket) {
   ]
     .map((value) => normalizeSearchText(value ?? ""))
     .join(" ");
+}
+
+function filterTicketsByManagementFilters(
+  tickets: HubItTicket[],
+  filters: ManagementPanelFilters,
+) {
+  const normalizedQuery = normalizeSearchText(filters.query);
+
+  return tickets.filter((ticket) => {
+    if (normalizedQuery && !getTicketSearchText(ticket).includes(normalizedQuery)) {
+      return false;
+    }
+
+    if (
+      filters.workflow !== "todos" &&
+      getTicketWorkflowStage(ticket) !== filters.workflow
+    ) {
+      return false;
+    }
+
+    if (filters.priority !== "todos" && ticket.priority !== filters.priority) {
+      return false;
+    }
+
+    if (filters.category !== "todos" && ticket.category !== filters.category) {
+      return false;
+    }
+
+    if (
+      filters.collaborator !== "todos" &&
+      getTicketRequesterFilterKey(ticket) !== filters.collaborator
+    ) {
+      return false;
+    }
+
+    return true;
+  });
+}
+
+function buildManagementCollaboratorOptions(tickets: HubItTicket[]) {
+  const options = new Map<string, { key: string; label: string }>();
+
+  for (const ticket of tickets) {
+    const key = getTicketRequesterFilterKey(ticket);
+
+    if (!options.has(key)) {
+      options.set(key, {
+        key,
+        label: ticket.requester.name,
+      });
+    }
+  }
+
+  return [...options.values()].sort((firstOption, secondOption) =>
+    firstOption.label.localeCompare(secondOption.label, "pt-BR", {
+      sensitivity: "base",
+    }),
+  );
+}
+
+function buildManagementCategoryOptions(tickets: HubItTicket[]) {
+  const categories = new Set(tickets.map((ticket) => ticket.category));
+
+  return [...categories]
+    .map((category) => ({
+      key: category,
+      label: hubItTicketCategoryLabels[category],
+    }))
+    .sort((firstOption, secondOption) =>
+      firstOption.label.localeCompare(secondOption.label, "pt-BR", {
+        sensitivity: "base",
+      }),
+    );
+}
+
+function summarizeDepartmentForTickets(
+  department: TicketDepartmentStats,
+  tickets: HubItTicket[],
+): TicketDepartmentStats {
+  const workflowCounts = countTicketsByWorkflowStage(tickets);
+  const modules = Array.from(
+    new Set(
+      tickets.map((ticket) =>
+        normalizeTicketModuleLabel(ticket.roadmap?.module || ticket.module),
+      ),
+    ),
+  ).sort(sortLabels);
+  const requesterCount = new Set(tickets.map(getTicketRequesterFilterKey)).size;
+
+  return {
+    ...department,
+    backlog: workflowCounts.backlog,
+    finalized: workflowCounts.finalizado,
+    highPriority: countHighPriorityTickets(tickets),
+    inProgress:
+      workflowCounts.novo +
+      workflowCounts.tratativa +
+      workflowCounts.validacao +
+      workflowCounts.revisao,
+    latestTicket: sortTicketsByUpdatedAt(tickets)[0] ?? null,
+    modules,
+    requesterCount,
+    tickets,
+    total: tickets.length,
+    validation: workflowCounts.validacao,
+  };
+}
+
+function summarizeCollaboratorForTickets(
+  collaborator: TicketCollaboratorStats,
+  tickets: HubItTicket[],
+): TicketCollaboratorStats {
+  const workflowCounts = countTicketsByWorkflowStage(tickets);
+  const modules = Array.from(
+    new Set(
+      tickets.map((ticket) =>
+        normalizeTicketModuleLabel(ticket.roadmap?.module || ticket.module),
+      ),
+    ),
+  ).sort(sortLabels);
+
+  return {
+    ...collaborator,
+    backlog: workflowCounts.backlog,
+    finalized: workflowCounts.finalizado,
+    highPriority: countHighPriorityTickets(tickets),
+    inProgress:
+      workflowCounts.novo +
+      workflowCounts.tratativa +
+      workflowCounts.validacao +
+      workflowCounts.revisao,
+    latestTicket: sortTicketsByUpdatedAt(tickets)[0] ?? null,
+    modules,
+    tickets,
+    total: tickets.length,
+  };
+}
+
+function countHighPriorityTickets(tickets: HubItTicket[]) {
+  return tickets.filter(
+    (ticket) => ticket.priority === "alta" || ticket.priority === "critica",
+  ).length;
 }
 
 function createDefaultTicketDraft({
@@ -6326,6 +6736,42 @@ function getTicketDeliveryState(ticket: HubItTicket) {
     date,
     days,
     label: `${days} dias`,
+  };
+}
+
+function getTicketDeliveryDateTone(ticket: HubItTicket) {
+  const date = getTicketEffectiveDeliveryDate(ticket);
+
+  if (!date) {
+    return {
+      className: "bg-slate-100 text-slate-500 ring-slate-200",
+      dateLabel: "Sem data",
+      statusLabel: "Pendente",
+    };
+  }
+
+  const days = getDaysUntilDate(date);
+
+  if (days < 0) {
+    return {
+      className: "bg-red-50 text-red-700 ring-red-100",
+      dateLabel: formatDateOnly(date),
+      statusLabel: "Vencido",
+    };
+  }
+
+  if (days <= 2) {
+    return {
+      className: "bg-amber-50 text-amber-700 ring-amber-100",
+      dateLabel: formatDateOnly(date),
+      statusLabel: days === 0 ? "Hoje" : "Perto",
+    };
+  }
+
+  return {
+    className: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    dateLabel: formatDateOnly(date),
+    statusLabel: "Com folga",
   };
 }
 
