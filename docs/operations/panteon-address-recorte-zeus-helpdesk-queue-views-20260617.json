@@ -5,9 +5,9 @@
   "title": "Zeus HelpDesk filtros, lista, kanban, calendario e gestao interativa",
   "module": "zeus",
   "agent": "Zeus",
-  "status": "VALIDADO_LOCAL",
+  "status": "PRONTO_PARA_PRODUCAO",
   "riskLevel": "MEDIO",
-  "approvedBy": "Nao publicado; Lucas pediu implementacao e validacao local.",
+  "approvedBy": "Lucas - 2026-06-17 - publicacao autorizada para ops.c2x.app.br",
   "addressing": {
     "cityAddressCode": "PNT-01-00-00-000",
     "cityAddressId": "PNT-CID-01",
@@ -28,13 +28,18 @@
     "productionDomain": "https://ops.c2x.app.br",
     "expectedProductionDeploymentId": "dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq",
     "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-rdl5zjrz1-lucasruas-devs-projects.vercel.app",
-    "sourceWorktreeClean": false,
+    "candidateSourceCommit": "5b51299960873f5f6e84e51a9d65339cd3a0eca9",
+    "sourceWorktreeClean": true,
+    "basePackagePath": ".codex-deploy/zeus-helpdesk-queue-views-prod-20260617-5b51299/base",
+    "candidatePackagePath": ".codex-deploy/zeus-helpdesk-queue-views-prod-20260617-5b51299/candidate",
     "rollbackDeploymentId": "dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq"
   },
   "scope": {
     "includedFiles": [
       "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
       "docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json",
+      "docs/operations/production-module-safety-gate-zeus-20260617-006-helpdesk-queue-views.json",
+      "docs/operations/releases-production.md",
       "docs/operations/engineering-operations.md"
     ],
     "excludedPaths": [
@@ -96,6 +101,9 @@
     "addressing": [
       "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json,docs/operations/engineering-operations.md: PASS, com avisos esperados de baseline OPS divergindo da cidade base PNT-01-00-00-000"
     ],
+    "productionGate": [
+      "pendente antes da publicacao"
+    ],
     "production": []
   },
   "blockingRules": [
@@ -105,13 +113,13 @@
     "BLOQUEADO para producao ate Lucas autorizar explicitamente este protocolo."
   ],
   "release": {
-    "targetEnvironment": "local",
+    "targetEnvironment": "production",
     "targetDomain": "https://ops.c2x.app.br",
     "previewUrl": null,
     "previewDeploymentId": null,
     "homologationAlias": "https://homo.c2x.app.br",
     "productionDomain": "https://ops.c2x.app.br",
-    "rollbackPlan": "Sem deploy neste recorte. Se futuramente publicado e houver regressao critica, reapontar https://ops.c2x.app.br para dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq ou rollback aprovado vigente. Nao alterar https://c2x.app.br."
+    "rollbackPlan": "Se houver regressao critica, reapontar https://ops.c2x.app.br para dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq. Nao alterar https://c2x.app.br."
   },
   "notes": [
     "Fila Ativa passa a ter modos Lista, Kanban e Calendario.",
@@ -122,6 +130,7 @@
     "Departamento abre popup agrupado por colaborador; Colaborador abre popup agrupado por tipo de demanda.",
     "Movimento por dia mostra recebido, tratado e enviado para validacao.",
     "Foi feito, Tratando e Backlog ficam ocultos por padrao e abrem sob demanda.",
-    "Sem env, secret, Supabase mutavel, banco, migration ou deploy neste recorte."
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte.",
+    "Publicacao autorizada por Lucas somente para o dominio OPS."
   ]
 }
