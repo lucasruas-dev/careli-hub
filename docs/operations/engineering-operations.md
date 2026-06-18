@@ -36132,3 +36132,53 @@ Conclusao:
 - O protocolo `ZEUS-20260617-005-HELPDESK-FIRST-WORLD-UI` esta em producao no OPS.
 - O impacto pratico e que Lucas passa a usar uma tela Zeus mais limpa, tabulada, com gestao executiva e rascunho persistente de resposta.
 - Precisa de acao agora: Lucas validar autenticado em `https://ops.c2x.app.br/zeus`; Zeus fica com rollback pronto para `dpl_FLe1u31uaehb3qCdSdjduZav73uk`.
+
+## 2026-06-17 21:48:32 -03:00 - Zeus - correcao do deploy HelpDesk first-world UI
+
+Assunto: [Zeus] correcao do deploy HelpDesk first-world UI
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `INCIDENTE / PRODUCAO / OPS / DEPLOY`.
+- Status: `CORRIGIDO / EM PRODUCAO`.
+- Protocolo CEP:
+  - `ZEUS-20260617-005-HELPDESK-FIRST-WORLD-UI`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json`;
+  - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Reporte:
+  - Lucas informou que nenhuma das alteracoes solicitadas apareceu em `https://ops.c2x.app.br/zeus`;
+  - a percepcao de Lucas foi correta: o primeiro publish se comportou como regressao operacional de deploy.
+- Diagnostico:
+  - o primeiro deployment (`dpl_HQhh2GW1QbyQWoezYNYpGid6LDph`) ficou Ready, mas foi publicado a partir de contexto/pacote incorreto;
+  - o upload inicial (`454.5MB`, `16743 files`) indicou pacote da raiz, nao o candidate limpo do recorte;
+  - validacao autenticada no Chrome confirmou UI antiga no OPS, sem `Fila Ativa`, `Historico`, `Gestao`, tabela operacional, notificacoes e KPIs novos.
+- Correcao executada:
+  - criado pacote corrigido em `.codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-corrected/candidate`;
+  - confirmado no pacote corrigido os marcadores `Fila Ativa`, `Notificacoes Zeus`, `TicketOperationsTable`, `DailyVolumePanel` e `readStoredTicketDraft`;
+  - executado `vercel deploy --prod --skip-domain --yes --archive=tgz --force` a partir do diretorio do candidate, com `VERCEL_ORG_ID` e `VERCEL_PROJECT_ID` explicitos;
+  - deployment corrigido OPS: `dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq`;
+  - URL tecnica corrigida: `https://careli-hub-hub-i2bs-rdl5zjrz1-lucasruas-devs-projects.vercel.app`;
+  - alias reapontado somente para `https://ops.c2x.app.br`.
+- Validacoes pos-correcao:
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - `GET https://ops.c2x.app.br/`: 200;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200;
+  - Chrome autenticado em `https://ops.c2x.app.br/zeus`: confirmou `Notificacoes`, `Fila Ativa`, `Historico`, `Gestao`, tabela operacional, KPIs de gestao, consolidacao `Hub` => `Panteon` e retirada do kanban antigo;
+  - logs Vercel 10m do deployment corrigido: somente 200/401 esperados, sem 500/502.
+- Escopo preservado:
+  - nenhum env, secret, token, banco, migration, Supabase remoto, dominio adicional ou alias principal foi alterado;
+  - `https://c2x.app.br` permaneceu fora do escopo funcional e segue em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Rollback:
+  - se houver regressao critica, reapontar `https://ops.c2x.app.br` para `dpl_FLe1u31uaehb3qCdSdjduZav73uk`;
+  - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+
+Conclusao:
+
+- Sim, houve uma falha no primeiro deploy: ele publicou um artefato incorreto e por isso Lucas viu a UI antiga.
+- O OPS foi corrigido no deployment `dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq`, com validacao autenticada confirmando as alteracoes pedidas.
+- Precisa de acao agora: Lucas pode recarregar `https://ops.c2x.app.br/zeus` e validar a tela nova; Zeus mantem rollback para `dpl_FLe1u31uaehb3qCdSdjduZav73uk`.

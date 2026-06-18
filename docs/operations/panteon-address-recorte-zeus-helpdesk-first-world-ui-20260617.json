@@ -31,7 +31,7 @@
     "candidateSourceCommit": "1913353790b3133efd51fdfe58160a21c06eb8bd",
     "sourceWorktreeClean": true,
     "basePackagePath": ".codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-1913353/base",
-    "candidatePackagePath": ".codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-1913353/candidate",
+    "candidatePackagePath": ".codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-corrected/candidate",
     "rollbackDeploymentId": "dpl_FLe1u31uaehb3qCdSdjduZav73uk"
   },
   "scope": {
@@ -123,20 +123,25 @@
       "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/ZeusPage.tsx,docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json,docs/operations/engineering-operations.md: PASS, com avisos esperados de baseline OPS divergindo da cidade base PNT-01-00-00-000"
     ],
     "productionGate": [
-      "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-005-helpdesk-first-world-ui.json: PASS, 5 mudancas detectadas"
+      "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-005-helpdesk-first-world-ui.json: PASS, 6 mudancas detectadas"
     ],
     "production": [
-      "Vercel deployment novo OPS: dpl_HQhh2GW1QbyQWoezYNYpGid6LDph",
-      "URL tecnica: https://careli-hub-hub-i2bs-hccy245vl-lucasruas-devs-projects.vercel.app",
+      "INCIDENTE: primeiro publish OPS gerou dpl_HQhh2GW1QbyQWoezYNYpGid6LDph a partir do contexto/pacote incorreto e nao entregou as alteracoes visuais solicitadas.",
+      "Redeploy corrigido OPS a partir do pacote candidato correto e cwd do candidate: dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq",
+      "URL tecnica corrigida: https://careli-hub-hub-i2bs-rdl5zjrz1-lucasruas-devs-projects.vercel.app",
       "primeira tentativa de deploy sem archive bloqueada por missing_archive acima de 15000 arquivos; repetido com --archive=tgz conforme orientacao da Vercel: PASS",
+      "redeploy corrigido executado com --archive=tgz --force e VERCEL_PROJECT_ID/VERCEL_ORG_ID explicitos: PASS",
       "alias executado somente para https://ops.c2x.app.br",
       "https://c2x.app.br preservado em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU",
+      "npx.cmd vercel inspect https://ops.c2x.app.br: Ready em dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq",
+      "npx.cmd vercel inspect https://c2x.app.br: Ready em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU",
       "GET https://ops.c2x.app.br/: 200",
       "GET https://ops.c2x.app.br/login: 200",
       "GET https://ops.c2x.app.br/zeus: 200",
       "GET https://ops.c2x.app.br/api/pwa/manifest: 200",
       "GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all: 401 esperado sem sessao",
       "GET https://ops.c2x.app.br/api/zeus/release-registers: 401 esperado sem sessao",
+      "Chrome autenticado em https://ops.c2x.app.br/zeus: confirmou Notificacoes, Fila Ativa, Historico, Gestao, tabela operacional, KPIs de gestao e remocao do kanban antigo",
       "logs Vercel 10m: somente 200/401 esperados, sem 500/502"
     ]
   },
@@ -149,8 +154,8 @@
   "release": {
     "targetEnvironment": "production",
     "targetDomain": "https://ops.c2x.app.br",
-    "previewUrl": "https://careli-hub-hub-i2bs-hccy245vl-lucasruas-devs-projects.vercel.app",
-    "previewDeploymentId": "dpl_HQhh2GW1QbyQWoezYNYpGid6LDph",
+    "previewUrl": "https://careli-hub-hub-i2bs-rdl5zjrz1-lucasruas-devs-projects.vercel.app",
+    "previewDeploymentId": "dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq",
     "homologationAlias": "https://homo.c2x.app.br",
     "productionDomain": "https://ops.c2x.app.br",
     "rollbackPlan": "Se houver regressao critica, reapontar https://ops.c2x.app.br para dpl_FLe1u31uaehb3qCdSdjduZav73uk. Nao alterar https://c2x.app.br."
@@ -164,5 +169,16 @@
     "Rascunho da resposta fica persistido localmente por protocolo ate o envio.",
     "Sem env, secret, Supabase mutavel, banco ou migration neste recorte.",
     "Publicado somente no dominio OPS em 2026-06-17."
-  ]
+  ],
+  "incidentResponse": {
+    "reportedBy": "Lucas - 2026-06-17 - alteracoes nao apareceram no OPS",
+    "classification": "REGRESSAO_OPERACIONAL_DE_DEPLOY",
+    "firstInvalidDeploymentId": "dpl_HQhh2GW1QbyQWoezYNYpGid6LDph",
+    "firstInvalidTechnicalUrl": "https://careli-hub-hub-i2bs-hccy245vl-lucasruas-devs-projects.vercel.app",
+    "rootCause": "O publish inicial foi executado a partir do contexto/pacote incorreto e enviou um artefato grande da raiz, sem refletir o recorte first-world UI validado no pacote candidato.",
+    "correctedDeploymentId": "dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq",
+    "correctedTechnicalUrl": "https://careli-hub-hub-i2bs-rdl5zjrz1-lucasruas-devs-projects.vercel.app",
+    "correctiveAction": "Redeploy em producao com --skip-domain, --archive=tgz e --force a partir do diretorio do pacote candidate, com VERCEL_ORG_ID e VERCEL_PROJECT_ID explicitos, seguido de alias set somente para ops.c2x.app.br.",
+    "verifiedOutcome": "OPS aponta para dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq; c2x.app.br permanece em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU; Chrome autenticado confirmou a UI nova."
+  }
 }

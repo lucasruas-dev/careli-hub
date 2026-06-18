@@ -10,7 +10,7 @@
   "candidateSourceCommit": "1913353790b3133efd51fdfe58160a21c06eb8bd",
   "sourceWorktreeClean": true,
   "basePackagePath": ".codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-1913353/base",
-  "candidatePackagePath": ".codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-1913353/candidate",
+  "candidatePackagePath": ".codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-corrected/candidate",
   "rollbackDeploymentId": "dpl_FLe1u31uaehb3qCdSdjduZav73uk",
   "addressManifest": "docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json",
   "addressCheckFiles": [
@@ -96,6 +96,7 @@
     "Publicar somente no dominio OPS: https://ops.c2x.app.br.",
     "Nao alterar alias do dominio principal https://c2x.app.br.",
     "Rollback OPS: reapontar ops.c2x.app.br para dpl_FLe1u31uaehb3qCdSdjduZav73uk.",
-    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte."
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte.",
+    "Correcao de incidente: deployment final em producao OPS dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq."
   ]
 }
