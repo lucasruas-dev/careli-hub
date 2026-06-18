@@ -3498,3 +3498,63 @@ Registro de producao:
 - Rollback:
   - `https://ops.c2x.app.br`: reapontar para `dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk` se houver regressao critica;
   - `https://c2x.app.br`: manter em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+
+## 2026-06-17 - PROD-20260617-005-ZEUS-HELPDESK-FIRST-WORLD-UI
+
+Status: EM PRODUCAO / OPS VALIDADO.
+
+Registro de producao:
+
+- Assunto: `[Zeus] HelpDesk first-world UI`.
+- Protocolo de origem: `ZEUS-20260617-005-HELPDESK-FIRST-WORLD-UI`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-06-17 21:21:24 -03:00`.
+- Autorizacao: Lucas autorizou publicar o protocolo 005 em producao no dominio OPS.
+- Dominio alvo: `https://ops.c2x.app.br`.
+- Dominio preservado: `https://c2x.app.br`.
+- Base ativa usada para comparacao:
+  - deployment anterior de OPS: `dpl_FLe1u31uaehb3qCdSdjduZav73uk`;
+  - rollback imediato: `dpl_FLe1u31uaehb3qCdSdjduZav73uk`;
+  - principal preservado: `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - pacote base: `.codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-1913353/base`;
+  - pacote candidato: `.codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-1913353/candidate`.
+- Escopo publicado:
+  - HelpDesk com abas `Fila Ativa`, `Gestao` e `Historico`;
+  - Fila Ativa e Historico em lista/tabela operacional com ordenacao e abertura de ticket em popup;
+  - barra superior do Zeus com status online, avatar, usuario, logout e sino de notificacoes;
+  - notificacoes do Zeus para tickets, alertas de monitoramento e acoes operacionais;
+  - Gestao executiva com cards interativos, KPIs de hoje, resposta, resolucao, criticidade e volume de 7 dias;
+  - tabelas de departamento e colaborador enriquecidas com solicitantes, criticos, validacao, backlog, modulo e ultimo ticket;
+  - consolidacao operacional de modulos: `PulseX`/`Hermes` => `Hermes`; `Hub`/`Panteon` => `Panteon`;
+  - rascunho de resposta persistido localmente por protocolo ate o envio.
+- Validacoes:
+  - lint focado: PASS;
+  - `check-types:hub`: PASS;
+  - build Hub local: PASS;
+  - CEP preflight: PASS;
+  - Production Module Safety Gate: PASS, 5 mudancas detectadas;
+  - `GET http://localhost:3018/zeus`: 200 OK.
+- Publicacao:
+  - primeira tentativa de `vercel deploy` sem archive foi bloqueada pela Vercel por `missing_archive` acima de 15000 arquivos;
+  - repeticao com `--archive=tgz` conforme orientacao da Vercel: PASS;
+  - deployment novo OPS: `dpl_HQhh2GW1QbyQWoezYNYpGid6LDph`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-hccy245vl-lucasruas-devs-projects.vercel.app`;
+  - alias executado somente para `ops.c2x.app.br`.
+- Healthchecks:
+  - `GET https://ops.c2x.app.br/`: 200;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_HQhh2GW1QbyQWoezYNYpGid6LDph`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - logs do deployment novo: somente 200/401 esperados, sem 500/502.
+- Escopo preservado:
+  - nenhum env, secret, token, banco, migration, Supabase remoto, dominio adicional ou alias principal foi alterado.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; registro canonico em Markdown foi atualizado nesta rodada.
+- Rollback:
+  - `https://ops.c2x.app.br`: reapontar para `dpl_FLe1u31uaehb3qCdSdjduZav73uk` se houver regressao critica;
+  - `https://c2x.app.br`: manter em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.

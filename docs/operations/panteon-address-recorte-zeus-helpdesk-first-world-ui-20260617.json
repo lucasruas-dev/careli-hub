@@ -5,7 +5,7 @@
   "title": "Zeus HelpDesk abas, listas, gestao executiva e rascunho persistente",
   "module": "zeus",
   "agent": "Zeus",
-  "status": "PRONTO_PARA_PRODUCAO",
+  "status": "EM_PRODUCAO",
   "riskLevel": "MEDIO",
   "approvedBy": "Lucas - 2026-06-17 - producao autorizada somente para ops.c2x.app.br",
   "addressing": {
@@ -40,7 +40,8 @@
       "apps/hub/modules/squadops/ZeusPage.tsx",
       "docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json",
       "docs/operations/production-module-safety-gate-zeus-20260617-005-helpdesk-first-world-ui.json",
-      "docs/operations/engineering-operations.md"
+      "docs/operations/engineering-operations.md",
+      "docs/operations/releases-production.md"
     ],
     "excludedPaths": [
       ".env",
@@ -121,8 +122,23 @@
     "addressing": [
       "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/ZeusPage.tsx,docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json,docs/operations/engineering-operations.md: PASS, com avisos esperados de baseline OPS divergindo da cidade base PNT-01-00-00-000"
     ],
-    "productionGate": [],
-    "production": []
+    "productionGate": [
+      "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-005-helpdesk-first-world-ui.json: PASS, 5 mudancas detectadas"
+    ],
+    "production": [
+      "Vercel deployment novo OPS: dpl_HQhh2GW1QbyQWoezYNYpGid6LDph",
+      "URL tecnica: https://careli-hub-hub-i2bs-hccy245vl-lucasruas-devs-projects.vercel.app",
+      "primeira tentativa de deploy sem archive bloqueada por missing_archive acima de 15000 arquivos; repetido com --archive=tgz conforme orientacao da Vercel: PASS",
+      "alias executado somente para https://ops.c2x.app.br",
+      "https://c2x.app.br preservado em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU",
+      "GET https://ops.c2x.app.br/: 200",
+      "GET https://ops.c2x.app.br/login: 200",
+      "GET https://ops.c2x.app.br/zeus: 200",
+      "GET https://ops.c2x.app.br/api/pwa/manifest: 200",
+      "GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all: 401 esperado sem sessao",
+      "GET https://ops.c2x.app.br/api/zeus/release-registers: 401 esperado sem sessao",
+      "logs Vercel 10m: somente 200/401 esperados, sem 500/502"
+    ]
   },
   "blockingRules": [
     "BLOQUEADO se o pacote incluir env, secret, migration, banco, dominio, alias principal, Vercel env ou operacao sensivel.",
@@ -133,8 +149,8 @@
   "release": {
     "targetEnvironment": "production",
     "targetDomain": "https://ops.c2x.app.br",
-    "previewUrl": null,
-    "previewDeploymentId": null,
+    "previewUrl": "https://careli-hub-hub-i2bs-hccy245vl-lucasruas-devs-projects.vercel.app",
+    "previewDeploymentId": "dpl_HQhh2GW1QbyQWoezYNYpGid6LDph",
     "homologationAlias": "https://homo.c2x.app.br",
     "productionDomain": "https://ops.c2x.app.br",
     "rollbackPlan": "Se houver regressao critica, reapontar https://ops.c2x.app.br para dpl_FLe1u31uaehb3qCdSdjduZav73uk. Nao alterar https://c2x.app.br."
@@ -146,6 +162,7 @@
     "Gestao adiciona KPIs de hoje, resposta, resolucao, criticidade e volume diario.",
     "Hermes e PulseX sao consolidados como Hermes; Hub aparece como Panteon.",
     "Rascunho da resposta fica persistido localmente por protocolo ate o envio.",
-    "Sem env, secret, Supabase mutavel, banco, migration ou deploy neste recorte."
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte.",
+    "Publicado somente no dominio OPS em 2026-06-17."
   ]
 }

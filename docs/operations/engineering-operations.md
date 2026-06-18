@@ -36063,3 +36063,72 @@ Conclusao:
 - O recorte Zeus HelpDesk first-world foi implementado e validado localmente.
 - O impacto pratico e reduzir poluicao visual, separar claramente fila/gestao/historico, abrir tickets em popup e preservar rascunho de resposta.
 - Precisa de acao agora: Lucas pode testar em `http://localhost:3018/zeus`; para publicar no OPS, precisa autorizar explicitamente o protocolo `ZEUS-20260617-005-HELPDESK-FIRST-WORLD-UI`.
+
+## 2026-06-17 21:21:24 -03:00 - Zeus - HelpDesk first-world UI em producao OPS
+
+Assunto: [Zeus] HelpDesk first-world UI em producao OPS
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `PRODUCAO / OPS / HELPDESK / UI`.
+- Status: `EM PRODUCAO`.
+- Protocolo CEP:
+  - `ZEUS-20260617-005-HELPDESK-FIRST-WORLD-UI`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json`;
+  - manifesto de producao: `docs/operations/production-module-safety-gate-zeus-20260617-005-helpdesk-first-world-ui.json`;
+  - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Autorizacao: Lucas autorizou publicar o protocolo 005 no OPS em 2026-06-17.
+- Base/rollback:
+  - OPS antes da publicacao: `dpl_FLe1u31uaehb3qCdSdjduZav73uk`;
+  - rollback imediato OPS: `dpl_FLe1u31uaehb3qCdSdjduZav73uk`;
+  - dominio principal preservado: `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Pacote:
+  - branch: `codex/zeus-helpdesk-first-world-ui-20260617`;
+  - commit do recorte: `1913353790b3133efd51fdfe58160a21c06eb8bd`;
+  - commit de Safety Gate: `446d2ad`;
+  - pacote base: `.codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-1913353/base`;
+  - pacote candidato: `.codex-deploy/zeus-helpdesk-first-world-ui-prod-20260617-1913353/candidate`.
+- Escopo publicado:
+  - abas `Fila Ativa`, `Gestao` e `Historico` no HelpDesk;
+  - Fila Ativa e Historico em lista/tabela operacional, com popup para abrir ticket;
+  - barra superior Zeus no padrao Panteon com status, avatar, usuario, logout e notificacoes;
+  - Gestao com cards interativos, KPIs, volume de 7 dias, tabelas por departamento/colaborador, tipo de demanda e modulo;
+  - consolidacao `PulseX`/`Hermes` como `Hermes` e `Hub` como `Panteon`;
+  - rascunho local de resposta persistido por protocolo ate o envio.
+- Validacoes pre-publicacao:
+  - lint focado: PASS;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS;
+  - `GET http://localhost:3018/zeus`: 200 OK;
+  - `node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/ZeusPage.tsx,docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json,docs/operations/production-module-safety-gate-zeus-20260617-005-helpdesk-first-world-ui.json`: PASS, com avisos esperados de baseline OPS;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-005-helpdesk-first-world-ui.json`: PASS, 5 mudancas detectadas.
+- Publicacao:
+  - primeira tentativa `npx.cmd vercel deploy ... --prod --skip-domain --yes --scope lucasruas-devs-projects`: bloqueada pela Vercel por `missing_archive` acima de 15000 arquivos;
+  - repeticao com `--archive=tgz`: PASS;
+  - deployment novo OPS: `dpl_HQhh2GW1QbyQWoezYNYpGid6LDph`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-hccy245vl-lucasruas-devs-projects.vercel.app`;
+  - alias executado somente para `https://ops.c2x.app.br`.
+- Validacoes pos-publicacao:
+  - `GET https://ops.c2x.app.br/`: 200;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_HQhh2GW1QbyQWoezYNYpGid6LDph`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - logs Vercel 10m do novo deployment: somente 200/401 esperados, sem 500/502.
+- Escopo preservado:
+  - nenhum env, secret, token, banco, migration, Supabase remoto, dominio adicional ou alias principal foi alterado;
+  - Hades, Hermes, Iris, Atlas, Chronos, Setup e Guardian nao tiveram alteracao funcional neste recorte.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; registro canonico em Markdown foi atualizado nesta rodada.
+- Rollback:
+  - se houver regressao critica, reapontar `https://ops.c2x.app.br` para `dpl_FLe1u31uaehb3qCdSdjduZav73uk`;
+  - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+
+Conclusao:
+
+- O protocolo `ZEUS-20260617-005-HELPDESK-FIRST-WORLD-UI` esta em producao no OPS.
+- O impacto pratico e que Lucas passa a usar uma tela Zeus mais limpa, tabulada, com gestao executiva e rascunho persistente de resposta.
+- Precisa de acao agora: Lucas validar autenticado em `https://ops.c2x.app.br/zeus`; Zeus fica com rollback pronto para `dpl_FLe1u31uaehb3qCdSdjduZav73uk`.
