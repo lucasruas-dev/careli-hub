@@ -101,9 +101,10 @@ type HermesChannelNotificationEntry = {
   unreadCount: number;
 };
 
-const PULSEX_PRESENCE_REFRESH_MS = 5_000;
-const PULSEX_MESSAGE_REFRESH_MS = 4_000;
-const PULSEX_WORKSPACE_REFRESH_MS = 6_000;
+const HERMES_PRESENCE_REFRESH_MS = 60_000;
+const HERMES_MESSAGE_REFRESH_MS = 30_000;
+const HERMES_WORKSPACE_REFRESH_MS = 60_000;
+const HERMES_COMPOSER_DRAFT_STORAGE_PREFIX = "careli:hermes:composer-draft";
 const PULSEX_FAVORITE_CHANNELS_STORAGE_KEY = "careli:pulsex:favorite-channels";
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
@@ -172,6 +173,9 @@ export function HermesWorkspace() {
     useState(false);
   const knownMessageIdsRef = useRef<Set<string>>(new Set());
   const loadedChannelIdsRef = useRef<Set<string>>(new Set());
+  const composerValueRef = useRef("");
+  const composerDraftChannelIdRef = useRef<HermesChannel["id"] | null>(null);
+  const isComposerDraftHydratingRef = useRef(false);
   const messageRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
   const queryChannelAppliedRef = useRef(false);
   const athenaAgentPanelRef = useRef<HTMLDivElement>(null);
@@ -186,6 +190,48 @@ export function HermesWorkspace() {
     channels.find((channel) => channel.id === activeChannelId) ??
     channels[0] ??
     emptyHermesChannel;
+
+  useEffect(() => {
+    composerValueRef.current = composerValue;
+  }, [composerValue]);
+
+  useEffect(() => {
+    if (activeChannel.id === emptyHermesChannel.id) {
+      return;
+    }
+
+    const previousChannelId = composerDraftChannelIdRef.current;
+
+    if (previousChannelId && previousChannelId !== activeChannel.id) {
+      writeHermesComposerDraft(previousChannelId, composerValueRef.current);
+    }
+
+    composerDraftChannelIdRef.current = activeChannel.id;
+    const nextDraft = readHermesComposerDraft(activeChannel.id);
+    isComposerDraftHydratingRef.current = true;
+    composerValueRef.current = nextDraft;
+    setComposerValue(nextDraft);
+    setComposerMentions([]);
+
+    const timeoutId = window.setTimeout(() => {
+      isComposerDraftHydratingRef.current = false;
+    }, 0);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [activeChannel.id]);
+
+  useEffect(() => {
+    if (
+      activeChannel.id === emptyHermesChannel.id ||
+      isComposerDraftHydratingRef.current
+    ) {
+      return;
+    }
+
+    writeHermesComposerDraft(activeChannel.id, composerValue);
+  }, [activeChannel.id, composerValue]);
 
   useOutsideDismiss({
     enabled: isAthenaAgentOpen && !isAthenaTicketRecordingMinimized,
@@ -642,7 +688,7 @@ export function HermesWorkspace() {
     refreshPresenceStatuses(() => isMounted);
     const intervalId = window.setInterval(() => {
       refreshPresenceStatuses(() => isMounted);
-    }, PULSEX_PRESENCE_REFRESH_MS);
+    }, HERMES_PRESENCE_REFRESH_MS);
 
     return () => {
       isMounted = false;
@@ -835,7 +881,7 @@ export function HermesWorkspace() {
     loadActiveChannelMessages(() => isMounted);
     const intervalId = window.setInterval(() => {
       loadActiveChannelMessages(() => isMounted);
-    }, PULSEX_MESSAGE_REFRESH_MS);
+    }, HERMES_MESSAGE_REFRESH_MS);
 
     return () => {
       isMounted = false;
@@ -851,7 +897,7 @@ export function HermesWorkspace() {
     let isMounted = true;
     const intervalId = window.setInterval(() => {
       refreshWorkspaceSnapshot(() => isMounted);
-    }, PULSEX_WORKSPACE_REFRESH_MS);
+    }, HERMES_WORKSPACE_REFRESH_MS);
 
     return () => {
       isMounted = false;
@@ -995,6 +1041,11 @@ export function HermesWorkspace() {
               : message,
           ),
         );
+        setNotifications((currentNotifications) =>
+          currentNotifications.filter(
+            (notification) => notification.channelId !== receipt.channelId,
+          ),
+        );
       })
       .catch((error: unknown) => {
         if (isLocalDevelopmentRuntime()) {
@@ -1077,6 +1128,11 @@ export function HermesWorkspace() {
     setChannels((currentChannels) =>
       currentChannels.map((channel) =>
         channel.id === channelId ? { ...channel, unreadCount: 0 } : channel,
+      ),
+    );
+    setNotifications((currentNotifications) =>
+      currentNotifications.filter(
+        (notification) => notification.channelId !== channelId,
       ),
     );
   }
@@ -1270,6 +1326,7 @@ export function HermesWorkspace() {
       channelId: activeChannel.id,
       clientMessageId,
       createdAt,
+      deliveryStatus: "pending",
       deliveredTo,
       id: `local-${activeChannel.id}-${Date.now()}`,
       mentionUserIds: mentions.map((mention) => mention.userId),
@@ -1319,6 +1376,7 @@ export function HermesWorkspace() {
       knownMessageIdsRef.current.add(savedMessage.id);
       const savedDeliveredMessage = {
         ...savedMessage,
+        deliveryStatus: "delivered" as const,
         deliveredTo,
         readBy: [],
       };
@@ -1345,11 +1403,16 @@ export function HermesWorkspace() {
         console.warn("[pulsex] send message error", error);
       }
       setMessages((currentMessages) =>
-        currentMessages.filter((message) => message.id !== localMessage.id),
+        currentMessages.map((message) =>
+          message.id === localMessage.id
+            ? {
+                ...message,
+                deliveryStatus: "failed" as const,
+                status: "danger" as const,
+              }
+            : message,
+        ),
       );
-      setComposerValue(body);
-      setComposerMentions(mentions);
-      setComposerTags(tags);
       setDataStatus("fallback");
     }
   }
@@ -2283,6 +2346,38 @@ function getChannelNotificationSortTime(value: string) {
   const todayTime = Date.parse(`${todayPrefix}T${value}:00`);
 
   return Number.isNaN(todayTime) ? 0 : todayTime;
+}
+
+function getHermesComposerDraftStorageKey(channelId: HermesChannel["id"]) {
+  return `${HERMES_COMPOSER_DRAFT_STORAGE_PREFIX}:${channelId}`;
+}
+
+function readHermesComposerDraft(channelId: HermesChannel["id"]) {
+  try {
+    return window.localStorage.getItem(
+      getHermesComposerDraftStorageKey(channelId),
+    ) ?? "";
+  } catch {
+    return "";
+  }
+}
+
+function writeHermesComposerDraft(
+  channelId: HermesChannel["id"],
+  value: string,
+) {
+  try {
+    const key = getHermesComposerDraftStorageKey(channelId);
+
+    if (value.trim()) {
+      window.localStorage.setItem(key, value);
+      return;
+    }
+
+    window.localStorage.removeItem(key);
+  } catch {
+    // localStorage can be unavailable in restricted browser contexts.
+  }
 }
 
 const emptyHermesChannel = {

@@ -1,0 +1,72 @@
+{
+  "protocolId": "HERMES-20260618-017-FINANCEOPS-PERFORMANCE",
+  "module": "Hermes",
+  "owner": "Zeus / Hermes",
+  "createdAt": "2026-06-18T14:37:40-03:00",
+  "status": "VALIDADO_LOCAL / CANDIDATO_RECONSTRUIDO / PRODUCAO_BLOQUEADA_ATE_AUTORIZACAO",
+  "summary": "Reconstrucao segura do pacote FinanceOps do Hermes sobre o commit exato do deployment valido em producao, reduzindo polling, leituras Supabase e perda de rascunho sem trazer Ares ou Escritorio.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Lucas autorizou reconstruir apos rollback do deploy errado que havia subido superficies fora do marco valido.",
+    "deployment": "Nenhum deploy, alias, env, secret, banco, migration ou conector foi alterado neste pacote. Producao permanece bloqueada ate nova autorizacao explicita."
+  },
+  "base": {
+    "productionDeploymentId": "dpl_8voSqS84aMPV5jyacdyW7h3NBxnU",
+    "productionTechnicalUrl": "https://careli-hub-hub-i2bs-bdvjyo7km-lucasruas-devs-projects.vercel.app",
+    "productionCommit": "b963af6f39640205f6ae15ff77f7439f6dc1e877",
+    "productionBranch": "codex/hades/segment-workflow-prod-cut-20260616",
+    "worktree": ".codex-deploy/hermes-financeops-dpl8vo-rebuild-20260618/worktree",
+    "candidateBranch": "codex/hermes-financeops-dpl8vo-rebuild-20260618"
+  },
+  "changedFiles": [
+    "apps/hub/app/api/pulsex/messages/route.ts",
+    "apps/hub/components/pulsex/message-item.tsx",
+    "apps/hub/components/pulsex/pulsex-workspace.tsx",
+    "apps/hub/lib/pulsex/supabase-data.ts",
+    "apps/hub/lib/pulsex/types.ts",
+    "apps/hub/lib/pulsex/workspace-messages.ts",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-hermes-20260618-017-financeops-performance.json"
+  ],
+  "implemented": [
+    "Polling de presenca do Hermes saiu de 5 segundos para 60 segundos.",
+    "Polling de mensagens do canal ativo saiu de 4 segundos para 30 segundos, mantendo realtime como caminho rapido quando disponivel.",
+    "Snapshot geral do workspace saiu de 6 segundos para 60 segundos e deixou de carregar mensagens de todos os canais.",
+    "O loader inicial do Hermes deixou de executar heartbeat de presenca redundante via pulsex-load.",
+    "Mensagens do canal e respostas de thread passaram a usar limite de 50 itens por pagina.",
+    "A API de mensagens passou a aceitar limit, before e after, com pagina baseada em cursor de created_at e sem filtro em memoria para threads.",
+    "Envio de mensagem ficou otimista: a mensagem aparece localmente como Enviando, muda para Entregue ao salvar e fica Nao entregue se falhar.",
+    "Notificacoes locais do canal sao removidas ao abrir ou marcar o canal como lido.",
+    "Rascunho do composer do Hermes passa a ser preservado por canal em localStorage."
+  ],
+  "validations": [
+    "Supabase changelog oficial consultado em 2026-06-18: nenhuma breaking change relevante para selects PostgREST, contains, order ou limit usados neste recorte.",
+    "git diff --check: PASS, com aviso esperado de LF para CRLF no Windows.",
+    "npm.cmd exec --workspace @repo/hub -- eslint app/api/pulsex/messages/route.ts components/pulsex/message-item.tsx components/pulsex/pulsex-workspace.tsx lib/pulsex/supabase-data.ts lib/pulsex/types.ts lib/pulsex/workspace-messages.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON.",
+    "npm.cmd run lint:hub: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON e aviso conhecido de turbo global.",
+    "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+    "npm.cmd run build --workspace @repo/hub: PASS, 34 paginas geradas, com warnings conhecidos de root Turbopack/NFT em worktree temporario.",
+    "Test-Path apps/hub/app/ares, apps/hub/app/escritorio-virtual e apps/hub/lib/ares: todos False."
+  ],
+  "safety": [
+    "Nenhum env, secret, migration, schema, banco, Supabase manual, Vercel alias ou dominio foi alterado.",
+    "Recorte reconstruido a partir do commit b963af6f39640205f6ae15ff77f7439f6dc1e877, identificado como fonte do deployment valido dpl_8voSqS84aMPV5jyacdyW7h3NBxnU.",
+    "Arquivos alterados estao limitados ao Hermes/PulseX legacy de mensagens e documentacao operacional.",
+    "Build local confirmou ausencia das rotas /ares e /escritorio-virtual na base candidata."
+  ],
+  "risks": [
+    "Validacao visual completa depende de sessao autenticada do Lucas no Hermes real.",
+    "Com polling mais longo, atualizacoes estruturais de canais/usuarios podem levar ate 60 segundos fora do realtime.",
+    "A pagina antiga do historico ainda carrega somente a pagina inicial de 50 mensagens; carregar paginas anteriores pode virar recorte futuro se Lucas quiser navegacao infinita para historico longo."
+  ],
+  "rollback": [
+    "Manter c2x.app.br apontado para dpl_8voSqS84aMPV5jyacdyW7h3NBxnU enquanto este candidato nao for autorizado.",
+    "Se este recorte for publicado depois e houver regressao, reapontar c2x.app.br para dpl_8voSqS84aMPV5jyacdyW7h3NBxnU.",
+    "Reverter os seis arquivos Hermes listados em changedFiles para o commit b963af6f39640205f6ae15ff77f7439f6dc1e877."
+  ],
+  "nextSteps": [
+    "Lucas validar o candidato em ambiente local/preview autenticado antes de qualquer producao.",
+    "Se Lucas autorizar publicacao depois, gerar pacote limpo por git archive do commit candidato e publicar sem alias automatico ate checar superficie.",
+    "Depois de publicado, monitorar transferencia, invocacoes, observabilidade e leituras Supabase por pelo menos um ciclo de uso real."
+  ]
+}

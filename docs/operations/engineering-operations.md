@@ -37794,3 +37794,63 @@ Conclusao pos-producao:
 - Precisa de acao agora: Lucas validar visualmente Hades/Cobranca com usuario autenticado e dados reais.
 - Quem deve agir agora: Lucas valida a experiencia; Zeus mantem rollback `dpl_4FyaXUbn47T45KBWJNGmA3a8orz5` se houver qualquer regressao.
 - Proximo passo: se validado, este protocolo permanece como novo estado de producao para Hades/Cobranca.
+
+## 2026-06-18 - Hermes FinanceOps - reconstrucao segura pos-rollback
+
+- Nome da squad/agente: `Zeus / Hermes`.
+- ProtocolId: `HERMES-20260618-017-FINANCEOPS-PERFORMANCE`.
+- Tipo da alteracao: `HERMES / FINANCEOPS / PERFORMANCE / CHAT`.
+- Status: `VALIDADO_LOCAL / CANDIDATO_RECONSTRUIDO / PRODUCAO_BLOQUEADA_ATE_AUTORIZACAO`.
+- Autorizacao: Lucas autorizou reconstruir depois do rollback do deploy errado; nao houve nova autorizacao para publicar este candidato em producao.
+- Base segura:
+  - deployment valido atual de `c2x.app.br`: `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-bdvjyo7km-lucasruas-devs-projects.vercel.app`;
+  - commit fonte do deployment valido: `b963af6f39640205f6ae15ff77f7439f6dc1e877`;
+  - branch fonte do deployment valido: `codex/hades/segment-workflow-prod-cut-20260616`;
+  - worktree dedicado: `.codex-deploy/hermes-financeops-dpl8vo-rebuild-20260618/worktree`;
+  - branch candidata: `codex/hermes-financeops-dpl8vo-rebuild-20260618`.
+- Escopo implementado:
+  - polling de presenca do Hermes passou de `5s` para `60s`;
+  - polling de mensagens do canal ativo passou de `4s` para `30s`;
+  - snapshot geral do workspace passou de `6s` para `60s`;
+  - carregamento inicial deixou de buscar mensagens de todos os canais e deixou de executar heartbeat redundante `pulsex-load`;
+  - API de mensagens passou a aceitar `limit`, `before` e `after`, retornando pagina de ate `50` mensagens por padrao;
+  - thread replies passaram a filtrar por `metadata.threadParentMessageId` no PostgREST, sem filtrar historico inteiro em memoria;
+  - envio de mensagem agora aparece localmente como `Enviando`, muda para `Entregue` ao salvar e fica `Nao entregue` se falhar;
+  - notificacoes locais sao removidas ao abrir ou marcar o canal como lido;
+  - rascunho do composer e preservado por canal em `localStorage`.
+- Arquivos do recorte:
+  - `apps/hub/app/api/pulsex/messages/route.ts`;
+  - `apps/hub/components/pulsex/message-item.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - `apps/hub/lib/pulsex/types.ts`;
+  - `apps/hub/lib/pulsex/workspace-messages.ts`;
+  - `docs/operations/panteon-recorte-manifest-hermes-20260618-017-financeops-performance.json`.
+- Exclusoes:
+  - nenhum env, secret, migration, schema, banco, Supabase manual, Vercel alias, dominio ou deployment foi alterado;
+  - nenhum arquivo de Ares, Escritorio, Zeus, Hades, Iris, Chronos, Atlas, Setup ou modulo fora de Hermes foi alterado.
+- Validacoes:
+  - Supabase changelog oficial consultado em 2026-06-18: sem breaking change relevante para os recursos usados (`select`, `contains`, `order`, `limit`);
+  - `git diff --check`: PASS, com aviso esperado de LF para CRLF no Windows;
+  - `npm.cmd exec --workspace @repo/hub -- eslint app/api/pulsex/messages/route.ts components/pulsex/message-item.tsx components/pulsex/pulsex-workspace.tsx lib/pulsex/supabase-data.ts lib/pulsex/types.ts lib/pulsex/workspace-messages.ts --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON` e aviso conhecido de turbo global;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, `34` paginas geradas, com warnings conhecidos de root Turbopack/NFT em worktree temporario;
+  - `Test-Path apps/hub/app/ares`, `apps/hub/app/escritorio-virtual` e `apps/hub/lib/ares`: todos `False`.
+- Risco residual:
+  - validacao visual autenticada do Hermes ainda depende de Lucas;
+  - atualizacoes estruturais de canais/usuarios podem levar ate `60s` fora do realtime;
+  - historico profundo ainda precisara de navegacao de paginas antigas em recorte futuro, se necessario.
+- Rollback:
+  - enquanto nao publicado, manter `c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - se este candidato for publicado depois e houver regressao, reapontar `c2x.app.br` para `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - reverter os seis arquivos Hermes do recorte para `b963af6f39640205f6ae15ff77f7439f6dc1e877`.
+
+Conclusao:
+
+- O que aconteceu: o pacote FinanceOps do Hermes foi reconstruido em cima do commit exato que esta em producao valida, sem trazer Ares/Escritorio.
+- Impacto pratico: o Hermes deve reduzir chamadas recorrentes, leituras Supabase e carga Vercel, alem de melhorar a sensacao de envio e preservar rascunho.
+- Precisa de acao agora: nao publicar ainda; validar visualmente ou autorizar proximo passo explicitamente.
+- Quem deve agir agora: Lucas decide se quer Preview/validacao autenticada; Zeus so publica se houver autorizacao.
+- Proximo passo: criar commit candidato e, se Lucas autorizar, gerar pacote limpo e Preview/produçao segura conforme protocolo.

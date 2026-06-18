@@ -8,7 +8,6 @@ import {
 } from "@/lib/supabase/client";
 import {
   listHubPresence,
-  markHubPresence,
 } from "@/lib/hub-presence";
 import type {
   HermesChannel,
@@ -113,6 +112,8 @@ type HubUserRow = {
   status: "active" | "archived" | "disabled";
 };
 
+const HERMES_MESSAGES_PAGE_SIZE = 50;
+
 export async function loadHermesOperationalData(input: {
   currentUserId: string;
   userRole?: string;
@@ -128,17 +129,6 @@ export async function loadHermesOperationalData(input: {
   }
 
   await runHermesConnectivityProbe();
-
-  await markHubPresence({
-    reason: "heartbeat",
-    source: "pulsex-load",
-    status: "online",
-  }).catch((error: unknown) => {
-    logHermesDebug("presence heartbeat error", {
-      error: serializeThrownError(error),
-      supabase: getHubSupabaseDiagnostics(),
-    });
-  });
 
   const [
     departmentsLoad,
@@ -177,22 +167,7 @@ export async function loadHermesOperationalData(input: {
     currentUserId: input.currentUserId,
     userRole: input.userRole,
   });
-  const messages = channels.length
-    ? (
-        await Promise.all(
-          channels.map((channel) =>
-            listChannelMessages(channel.id).catch((error: unknown) => {
-              logHermesDebug("list channel messages error", {
-                channelId: channel.id,
-                error: serializeThrownError(error),
-              });
-
-              return [];
-            }),
-          ),
-        )
-      ).flat()
-    : [];
+  const messages: HermesMessage[] = [];
   const hasRealStructure =
     departments.length > 0 ||
     sectors.length > 0 ||
@@ -454,13 +429,14 @@ export async function listChannelMessages(
       .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
       .eq("channel_id", channelId)
       .is("deleted_at", null)
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: false })
+      .limit(HERMES_MESSAGES_PAGE_SIZE),
   );
 
   assertQuery("mensagens Hermes", result);
 
   return mapChannelMessages(
-    (result as QueryResult<HermesMessageRow[]>).data ?? [],
+    [...((result as QueryResult<HermesMessageRow[]>).data ?? [])].reverse(),
   );
 }
 
@@ -535,7 +511,9 @@ export async function listHermesThreadReplies(input: {
     error?: string;
   }>({
     client,
-    url: getHermesMessagesApiUrl({ threadParentMessageId: input.messageId }),
+    url: `${getHermesMessagesApiUrl({
+      threadParentMessageId: input.messageId,
+    })}&limit=${HERMES_MESSAGES_PAGE_SIZE}`,
   });
 
   if (apiResult) {
@@ -550,19 +528,17 @@ export async function listHermesThreadReplies(input: {
     client
       .from("pulsex_messages")
       .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+      .contains("metadata", { threadParentMessageId: input.messageId })
       .is("deleted_at", null)
-      .order("created_at", { ascending: true }),
+      .order("created_at", { ascending: true })
+      .limit(HERMES_MESSAGES_PAGE_SIZE),
   );
 
   assertQuery("respostas Hermes", result);
 
-  return ((result as QueryResult<HermesMessageRow[]>).data ?? [])
-    .filter(
-      (message) =>
-        getString(getMessageMetadata(message.metadata).threadParentMessageId) ===
-        input.messageId,
-    )
-    .map(mapThreadReply);
+  return ((result as QueryResult<HermesMessageRow[]>).data ?? []).map(
+    mapThreadReply,
+  );
 }
 
 export async function createHermesThreadReply(input: {
@@ -717,7 +693,9 @@ async function listChannelMessagesViaApi(
     error?: string;
   }>({
     client,
-    url: getHermesMessagesApiUrl({ channelId }),
+    url: `${getHermesMessagesApiUrl({
+      channelId,
+    })}&limit=${HERMES_MESSAGES_PAGE_SIZE}`,
   });
 
   if (!apiResult?.response.ok || !apiResult.payload?.data) {

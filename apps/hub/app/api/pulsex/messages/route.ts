@@ -179,6 +179,17 @@ type AuthorizedContext =
     }
   | { ok: false; response: NextResponse };
 
+const HERMES_MESSAGES_DEFAULT_LIMIT = 50;
+const HERMES_MESSAGES_MAX_LIMIT = 100;
+const HERMES_MESSAGE_SELECT =
+  "id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)";
+
+type MessagePageOptions = {
+  after?: string;
+  before?: string;
+  limit: number;
+};
+
 export async function GET(request: NextRequest) {
   const context = await createAuthorizedContext(request);
 
@@ -189,6 +200,7 @@ export async function GET(request: NextRequest) {
   const threadParentMessageId =
     request.nextUrl.searchParams.get("threadParentMessageId")?.trim() ?? "";
   const channelId = request.nextUrl.searchParams.get("channelId")?.trim();
+  const pageOptions = parseMessagePageOptions(request.nextUrl.searchParams);
 
   if (threadParentMessageId) {
     const { data: parentMessage, error: parentError } = await context.adminClient
@@ -212,12 +224,27 @@ export async function GET(request: NextRequest) {
       return access.response;
     }
 
-    const { data, error } = await context.adminClient
+    let query = context.adminClient
       .from("pulsex_messages")
-      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+      .select(HERMES_MESSAGE_SELECT)
       .eq("channel_id", parentMessage.channel_id)
+      .contains("metadata", { threadParentMessageId })
       .is("deleted_at", null)
-      .order("created_at", { ascending: true });
+      .limit(pageOptions.limit);
+
+    if (pageOptions.after) {
+      query = query
+        .gt("created_at", pageOptions.after)
+        .order("created_at", { ascending: true });
+    } else {
+      if (pageOptions.before) {
+        query = query.lt("created_at", pageOptions.before);
+      }
+
+      query = query.order("created_at", { ascending: false });
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       return NextResponse.json(
@@ -226,12 +253,11 @@ export async function GET(request: NextRequest) {
       );
     }
 
+    const rows = pageOptions.after ? (data ?? []) : [...(data ?? [])].reverse();
+
     return NextResponse.json({
-      data: (data ?? []).filter(
-        (message) =>
-          getString(getRecord(message.metadata).threadParentMessageId) ===
-          threadParentMessageId,
-      ),
+      data: rows,
+      page: createMessagesPageMetadata(rows, pageOptions),
     });
   }
 
@@ -245,12 +271,26 @@ export async function GET(request: NextRequest) {
     return access.response;
   }
 
-  const { data, error } = await context.adminClient
+  let query = context.adminClient
     .from("pulsex_messages")
-    .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+    .select(HERMES_MESSAGE_SELECT)
     .eq("channel_id", channelId)
     .is("deleted_at", null)
-    .order("created_at", { ascending: true });
+    .limit(pageOptions.limit);
+
+  if (pageOptions.after) {
+    query = query
+      .gt("created_at", pageOptions.after)
+      .order("created_at", { ascending: true });
+  } else {
+    if (pageOptions.before) {
+      query = query.lt("created_at", pageOptions.before);
+    }
+
+    query = query.order("created_at", { ascending: false });
+  }
+
+  const { data, error } = await query;
 
   if (error) {
     return NextResponse.json(
@@ -259,7 +299,12 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ data: data ?? [] });
+  const rows = pageOptions.after ? (data ?? []) : [...(data ?? [])].reverse();
+
+  return NextResponse.json({
+    data: rows,
+    page: createMessagesPageMetadata(rows, pageOptions),
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -318,7 +363,7 @@ export async function POST(request: NextRequest) {
           : {}),
       },
     })
-    .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+    .select(HERMES_MESSAGE_SELECT)
     .single<HermesMessageRow>();
 
   if (error || !data) {
@@ -422,7 +467,7 @@ export async function PATCH(request: NextRequest) {
         },
       })
       .eq("id", editPayload.data.messageId)
-      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+      .select(HERMES_MESSAGE_SELECT)
       .single<HermesMessageRow>();
 
     if (error || !data) {
@@ -478,7 +523,7 @@ export async function PATCH(request: NextRequest) {
         },
       })
       .eq("id", reactionPayload.data.messageId)
-      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+      .select(HERMES_MESSAGE_SELECT)
       .single<HermesMessageRow>();
 
     if (error || !data) {
@@ -527,7 +572,7 @@ export async function PATCH(request: NextRequest) {
       },
     })
     .eq("id", payload.data.messageId)
-    .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+    .select(HERMES_MESSAGE_SELECT)
     .single<HermesMessageRow>();
 
   if (error || !data) {
@@ -538,6 +583,39 @@ export async function PATCH(request: NextRequest) {
   }
 
   return NextResponse.json({ data });
+}
+
+function parseMessagePageOptions(
+  searchParams: URLSearchParams,
+): MessagePageOptions {
+  const limitParam = Number(searchParams.get("limit") ?? "");
+  const limit = Number.isFinite(limitParam)
+    ? Math.min(
+        Math.max(Math.trunc(limitParam), 1),
+        HERMES_MESSAGES_MAX_LIMIT,
+      )
+    : HERMES_MESSAGES_DEFAULT_LIMIT;
+  const before = searchParams.get("before")?.trim();
+  const after = searchParams.get("after")?.trim();
+
+  return {
+    ...(after ? { after } : {}),
+    ...(before && !after ? { before } : {}),
+    limit,
+  };
+}
+
+function createMessagesPageMetadata(
+  rows: readonly HermesMessageRow[],
+  options: MessagePageOptions,
+) {
+  return {
+    count: rows.length,
+    firstCursor: rows[0]?.created_at ?? null,
+    hasMore: rows.length >= options.limit,
+    lastCursor: rows.at(-1)?.created_at ?? null,
+    limit: options.limit,
+  };
 }
 
 function parseMarkReadPayload(payload: unknown):
@@ -1119,12 +1197,6 @@ function getString(value: unknown) {
 
 function getUserLabel(user: Pick<HubUserAccessRow, "display_name" | "email" | "id">) {
   return getString(user.display_name) || getString(user.email) || user.id;
-}
-
-function getRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
 }
 
 function getBearerToken(request: NextRequest) {

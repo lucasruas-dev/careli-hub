@@ -113,6 +113,7 @@ export function withMessageDeliveryData(
 
     return {
       ...message,
+      deliveryStatus: getMessageDeliveryStatus(message, channel),
       deliveredTo: getMessageRecipientUserIds({
         channel,
         messageAuthorId: message.authorId,
@@ -173,7 +174,10 @@ export function getMessageRecipientUserIds({
 }
 
 function isLocalPendingHermesMessage(message: HermesMessage) {
-  return message.id.startsWith("local-");
+  return (
+    message.id.startsWith("local-") &&
+    (message.deliveryStatus === "pending" || message.deliveryStatus === "failed")
+  );
 }
 
 function compareHermesMessages(
@@ -237,4 +241,28 @@ function getMessageReadUserIds(message: HermesMessage, channel: HermesChannel) {
       return !Number.isNaN(lastReadTime) && lastReadTime >= messageCreatedAt;
     })
     .map(([userId]) => userId);
+}
+
+function getMessageDeliveryStatus(
+  message: HermesMessage,
+  channel: HermesChannel,
+): NonNullable<HermesMessage["deliveryStatus"]> {
+  if (message.deliveryStatus === "pending" || message.deliveryStatus === "failed") {
+    return message.deliveryStatus;
+  }
+
+  const recipientUserIds = getMessageRecipientUserIds({
+    channel,
+    messageAuthorId: message.authorId,
+  });
+  const readUserIds = new Set(getMessageReadUserIds(message, channel));
+
+  if (
+    recipientUserIds.length > 0 &&
+    recipientUserIds.every((userId) => readUserIds.has(userId))
+  ) {
+    return "read";
+  }
+
+  return "delivered";
 }

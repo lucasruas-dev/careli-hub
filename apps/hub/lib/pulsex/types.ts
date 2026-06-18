@@ -108,6 +108,7 @@ export type HermesMessage = {
   clientMessageId?: string;
   createdAt?: string;
   deletedAt?: string;
+  deliveryStatus?: "pending" | "sent" | "delivered" | "read" | "failed";
   deliveredTo?: readonly HermesPresenceUser["id"][];
   editedAt?: string;
   id: string;

@@ -12,6 +12,8 @@ import type {
 import {
   Check,
   CheckCheck,
+  CircleAlert,
+  Clock3,
   Download,
   ExternalLink,
   FileText,
@@ -90,6 +92,8 @@ export function MessageItem({
   const authorAvatarUrl = author?.avatarUrl ?? message.authorAvatarUrl;
   const authorInitials = author?.initials ?? getInitials(authorName);
   const deliveryState = getDeliveryState({ message, users });
+  const deliveryIndicator = getDeliveryIndicator({ deliveryState, message });
+  const DeliveryIndicatorIcon = deliveryIndicator.Icon;
   const visibleReactions = (message.reactions ?? []).filter(
     (reaction) => reaction.count > 0,
   );
@@ -324,17 +328,17 @@ export function MessageItem({
           {message.editedAt ? <span>editada</span> : null}
           <span className="font-bold text-[#101820]">{message.timestamp}</span>
           {isOwn ? (
-            <Tooltip
-              content={deliveryState.allRead ? "Todos leram" : "Enviado"}
-            >
+            <Tooltip content={deliveryIndicator.label}>
               <span
-                aria-label={deliveryState.allRead ? "Todos leram" : "Enviado"}
-                className={
-                  deliveryState.allRead ? "text-[#2085ff]" : "text-[#8b98aa]"
-                }
+                aria-label={deliveryIndicator.label}
+                className={deliveryIndicator.className}
                 role="img"
               >
-                <CheckCheck aria-hidden="true" size={14} strokeWidth={2.4} />
+                <DeliveryIndicatorIcon
+                  aria-hidden="true"
+                  size={14}
+                  strokeWidth={2.4}
+                />
               </span>
             </Tooltip>
           ) : null}
@@ -1062,6 +1066,55 @@ function getDeliveryState({
       recipientUserIds.length > 0 &&
       recipientUserIds.every((userId) => readUserIds.has(userId)),
     recipientUserIds,
+  };
+}
+
+function getDeliveryIndicator({
+  deliveryState,
+  message,
+}: {
+  deliveryState: ReturnType<typeof getDeliveryState>;
+  message: HermesMessage;
+}) {
+  if (message.deliveryStatus === "pending") {
+    return {
+      Icon: Clock3,
+      className: "text-[#8b98aa]",
+      label: "Enviando",
+    };
+  }
+
+  if (message.deliveryStatus === "failed") {
+    return {
+      Icon: CircleAlert,
+      className: "text-[#dc2626]",
+      label: "Nao entregue",
+    };
+  }
+
+  if (deliveryState.allRead || message.deliveryStatus === "read") {
+    return {
+      Icon: CheckCheck,
+      className: "text-[#2085ff]",
+      label: "Todos leram",
+    };
+  }
+
+  if (
+    message.deliveryStatus === "delivered" ||
+    deliveryState.recipientUserIds.length > 0
+  ) {
+    return {
+      Icon: CheckCheck,
+      className: "text-[#8b98aa]",
+      label: "Entregue",
+    };
+  }
+
+  return {
+    Icon: Check,
+    className: "text-[#8b98aa]",
+    label: "Enviado",
   };
 }
 
