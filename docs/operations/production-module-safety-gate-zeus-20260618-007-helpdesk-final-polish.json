@@ -1,0 +1,111 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "ZEUS-20260618-007-HELPDESK-FINAL-POLISH",
+  "module": "zeus",
+  "agent": "Zeus",
+  "title": "Zeus HelpDesk Desk, calendario, gestao filtravel e presenca manual",
+  "domain": "https://ops.c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp",
+  "candidateSourceCommit": "84739d869377d6c87789bef2a7522bba7c8d88d0",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/zeus-helpdesk-final-polish-prod-20260618-84739d8/base",
+  "candidatePackagePath": ".codex-deploy/zeus-helpdesk-final-polish-prod-20260618-84739d8/candidate",
+  "rollbackDeploymentId": "dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp",
+  "addressManifest": "docs/operations/panteon-address-recorte-zeus-helpdesk-final-polish-20260618.json",
+  "addressCheckFiles": [
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/modules/squadops/ZeusPage.tsx",
+    "docs/operations/panteon-address-recorte-zeus-helpdesk-final-polish-20260618.json",
+    "docs/operations/production-module-safety-gate-zeus-20260618-007-helpdesk-final-polish.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "allowedChangedPaths": [
+    "apps/hub/modules/squadops/**",
+    "docs/operations/**"
+  ],
+  "protectedPaths": [
+    "apps/hub/modules/chronos/**",
+    "apps/hub/app/chronos/**",
+    "apps/hub/app/api/chronos/**",
+    "apps/hub/lib/chronos/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/app/setup/**",
+    "packages/database/migrations/**"
+  ],
+  "ignoredPaths": [],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "label: \"Desk\"",
+        "TicketWorkflowKanban",
+        "TicketDeliveryCalendar",
+        "DeliveryDateCell",
+        "ManagementSearchInput",
+        "workflowStageOptions",
+        "visibleCount",
+        "DailyVolumePanel"
+      ]
+    },
+    {
+      "path": "apps/hub/modules/squadops/ZeusPage.tsx",
+      "includes": [
+        "hubPresenceStatusOptions",
+        "onPresenceStatusChange",
+        "keepOnline",
+        "getZeusPresenceTone",
+        "ZeusOpsPresenceBar"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "Fila Ativa",
+        "overdueTickets",
+        "futureTickets"
+      ]
+    }
+  ],
+  "requiredPaths": [
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/modules/squadops/ZeusPage.tsx"
+  ],
+  "validations": [
+    "npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx modules/squadops/ZeusPage.tsx --max-warnings 0",
+    "npm.cmd run check-types:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-final-polish-20260618.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/ZeusPage.tsx,docs/operations/panteon-address-recorte-zeus-helpdesk-final-polish-20260618.json,docs/operations/production-module-safety-gate-zeus-20260618-007-helpdesk-final-polish.json,docs/operations/engineering-operations.md",
+    "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260618-007-helpdesk-final-polish.json"
+  ],
+  "publishedDeploymentId": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F",
+  "publishedTechnicalUrl": "https://careli-hub-hub-i2bs-8ymyjzg62-lucasruas-devs-projects.vercel.app",
+  "publishedAt": "2026-06-18 00:13:16 -03:00",
+  "postDeployChecks": [
+    "ops.c2x.app.br: Ready em dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F",
+    "c2x.app.br: Ready em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU, sem troca do dominio principal",
+    "Rotas OPS /login, /zeus e /api/pwa/manifest: 200",
+    "Rota OPS /: 307 sem redirect e 200 seguindo redirect",
+    "APIs protegidas sem sessao: 401 esperado",
+    "Logs 10m: 200/307/401 esperados e PATCH /api/hub/presence 200; sem 500/502",
+    "Sem env, secret, banco, migration ou alias principal alterado"
+  ],
+  "notes": [
+    "Lucas autorizou atualizar e subir em producao em 2026-06-17/18.",
+    "Publicar somente no dominio OPS: https://ops.c2x.app.br.",
+    "Nao alterar alias do dominio principal https://c2x.app.br.",
+    "Rollback OPS: reapontar ops.c2x.app.br para dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp.",
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte."
+  ]
+}

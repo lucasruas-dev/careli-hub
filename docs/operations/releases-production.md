@@ -3647,3 +3647,52 @@ Registro de producao:
 - Rollback:
   - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq`;
   - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+
+## 2026-06-18 - PROD-20260618-007-ZEUS-HELPDESK-FINAL-POLISH
+
+Status: EM PRODUCAO / OPS.
+
+Registro de producao:
+
+- Assunto: `[Zeus] HelpDesk Desk, gestao filtravel e presenca manual`.
+- Protocolo: `ZEUS-20260618-007-HELPDESK-FINAL-POLISH`.
+- Data e hora local: `2026-06-18 00:13:16 -03:00`.
+- Autorizacao: Lucas autorizou atualizar e publicar em producao somente no dominio `https://ops.c2x.app.br`.
+- Deployment publicado:
+  - id: `dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-8ymyjzg62-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://ops.c2x.app.br`.
+- Escopo publicado:
+  - aba `Fila Ativa` renomeada para `Desk`;
+  - ordem das abas ajustada para `Gestao`, `Desk`, `Historico`;
+  - tabela Desk sem texto explicativo e com entrega sinalizada por vencido/perto/com folga;
+  - calendario sem tickets vencidos e agrupado por data de entrega;
+  - paineis de Gestao com tooltips nas barras, botao recolher/expandir e filtros internos;
+  - painel de departamento com filtros por ticket, workflow, colaborador e prioridade;
+  - painel de colaborador com filtros por tipo de demanda, ticket, workflow e prioridade;
+  - barra de presenca do Zeus com troca manual de status usando o mesmo contrato do Panteon e heartbeat `keepOnline`.
+- Validacoes antes de publicar:
+  - lint focado: PASS;
+  - `check-types:hub`: PASS;
+  - build Hub local: PASS;
+  - CEP preflight: PASS;
+  - Production Module Safety Gate: PASS, 2 mudancas detectadas.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - `GET https://ops.c2x.app.br/`: 307 sem redirect e 200 seguindo redirect;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200;
+  - logs Vercel 10m do deployment novo: somente 200/307/401 esperados, `PATCH /api/hub/presence` 200 observado e sem 500/502.
+- Escopo preservado:
+  - nenhum env, secret, token, banco, migration, Supabase remoto, dominio adicional ou alias principal foi alterado;
+  - `https://c2x.app.br` permaneceu no deployment `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; registro canonico em Markdown foi atualizado nesta rodada.
+- Rollback:
+  - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp`;
+  - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
