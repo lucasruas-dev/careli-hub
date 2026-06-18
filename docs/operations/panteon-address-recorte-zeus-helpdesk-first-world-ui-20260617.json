@@ -1,0 +1,150 @@
+{
+  "schemaVersion": "panteon.address-recorte.v1",
+  "deploymentManifestId": "PNT-DEP-ZEUS-20260617-005",
+  "protocolId": "ZEUS-20260617-005-HELPDESK-FIRST-WORLD-UI",
+  "title": "Zeus HelpDesk abas, listas, gestao executiva e rascunho persistente",
+  "module": "zeus",
+  "agent": "Zeus",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "MEDIO",
+  "approvedBy": "PENDENTE - Lucas ainda nao autorizou deploy deste novo recorte",
+  "addressing": {
+    "cityAddressCode": "PNT-01-00-00-000",
+    "cityAddressId": "PNT-CID-01",
+    "districtAddressCode": "PNT-01-50-00-000",
+    "districtAddressId": "PNT-BRR-ZEUS-01",
+    "streetAddressCode": "PNT-01-50-10-000",
+    "streetAddressId": "PNT-RUA-ZEUS-OPERATIONS-CENTER-01",
+    "houseAddressCodes": [
+      "PNT-01-50-10-001"
+    ],
+    "houseAddressIds": [
+      "PNT-CASA-ZEUS-HELPDESK-001"
+    ],
+    "registryFile": "docs/operations/panteon-address-registry.json",
+    "scopeSummary": "Ajustar somente Zeus/HelpDesk: barra de status no padrao Panteon, abas Fila Ativa/Gestao/Historico, fila e historico em lista com popup, gestao executiva enriquecida, KPIs de performance e rascunho local por ticket."
+  },
+  "baseline": {
+    "productionDomain": "https://ops.c2x.app.br",
+    "expectedProductionDeploymentId": "dpl_FLe1u31uaehb3qCdSdjduZav73uk",
+    "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-a5es5qefh-lucasruas-devs-projects.vercel.app",
+    "candidateSourceCommit": "e0adc89333e928a8f5a5db1282d83e78cfe504d2",
+    "sourceWorktreeClean": false,
+    "basePackagePath": null,
+    "candidatePackagePath": null,
+    "rollbackDeploymentId": "dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk"
+  },
+  "scope": {
+    "includedFiles": [
+      "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "apps/hub/modules/squadops/ZeusPage.tsx",
+      "docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json",
+      "docs/operations/engineering-operations.md"
+    ],
+    "excludedPaths": [
+      ".env",
+      ".env*",
+      ".vercel/**",
+      ".git/**",
+      "node_modules/**",
+      ".next/**",
+      ".turbo/**",
+      "packages/database/migrations/**"
+    ],
+    "allowedChangedPaths": [
+      "apps/hub/modules/squadops/**",
+      "docs/operations/**"
+    ],
+    "protectedPaths": [
+      "apps/hub/modules/chronos/**",
+      "apps/hub/app/chronos/**",
+      "apps/hub/app/api/chronos/**",
+      "apps/hub/lib/chronos/**",
+      "apps/hub/modules/caredesk/**",
+      "apps/hub/app/iris/**",
+      "apps/hub/app/api/iris/**",
+      "apps/hub/modules/guardian/**",
+      "apps/hub/app/hades/**",
+      "apps/hub/app/hermes/**",
+      "apps/hub/app/api/hades/**",
+      "apps/hub/app/api/hermes/**",
+      "apps/hub/components/pulsex/**",
+      "apps/hub/lib/pulsex/**",
+      "apps/hub/app/setup/**",
+      "packages/database/migrations/**"
+    ],
+    "requiredMarkers": [
+      {
+        "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+        "includes": [
+          "HelpDeskBoardToolbar",
+          "TicketOperationsTable",
+          "TicketInsightModal",
+          "DailyVolumePanel",
+          "ExecutiveKpi",
+          "readStoredTicketDraft",
+          "writeStoredTicketDraft",
+          "normalizeTicketModuleLabel"
+        ]
+      },
+      {
+        "path": "apps/hub/modules/squadops/ZeusPage.tsx",
+        "includes": [
+          "ZeusOpsPresenceBar",
+          "ZeusNotificationButton",
+          "Notificacoes Zeus",
+          "onOpenHelpDesk",
+          "onOpenMonitoring"
+        ]
+      }
+    ],
+    "forbiddenMarkers": [
+      {
+        "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+        "includes": [
+          "TicketKanbanBoard",
+          "QueueViewButton",
+          "TicketQueueItem"
+        ]
+      }
+    ],
+    "sensitiveOperations": []
+  },
+  "validations": {
+    "local": [
+      "npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/ZeusPage.tsx modules/squadops/blocks/helpdesk/helpdesk-board.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+      "npm.cmd run check-types:hub: PASS",
+      "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de worktree .codex-tmp/Turbopack/NFT fora do recorte",
+      "GET http://localhost:3018/zeus: 200 OK"
+    ],
+    "addressing": [
+      "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/ZeusPage.tsx,docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json,docs/operations/engineering-operations.md: PASS, com avisos esperados de baseline OPS divergindo da cidade base PNT-01-00-00-000"
+    ],
+    "productionGate": [],
+    "production": []
+  },
+  "blockingRules": [
+    "BLOQUEADO se o pacote incluir env, secret, migration, banco, dominio, alias principal, Vercel env ou operacao sensivel.",
+    "BLOQUEADO se qualquer arquivo fora de allowedChangedPaths entrar no pacote.",
+    "BLOQUEADO se o preflight CEP retornar BLOQUEADO.",
+    "BLOQUEADO se Lucas nao autorizar explicitamente o deploy deste novo protocolo."
+  ],
+  "release": {
+    "targetEnvironment": "local",
+    "targetDomain": null,
+    "previewUrl": null,
+    "previewDeploymentId": null,
+    "homologationAlias": "https://homo.c2x.app.br",
+    "productionDomain": "https://ops.c2x.app.br",
+    "rollbackPlan": "Sem deploy neste recorte. Se virar producao e houver regressao critica, reapontar https://ops.c2x.app.br para dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk. Nao alterar https://c2x.app.br."
+  },
+  "notes": [
+    "Fila Ativa, Gestao e Historico passam a ser abas do HelpDesk Zeus.",
+    "Fila Ativa e Historico usam tabela/lista operacional com abertura de ticket em popup.",
+    "Cards de gestao sao interativos e abrem popup com tickets filtrados.",
+    "Gestao adiciona KPIs de hoje, resposta, resolucao, criticidade e volume diario.",
+    "Hermes e PulseX sao consolidados como Hermes; Hub aparece como Panteon.",
+    "Rascunho da resposta fica persistido localmente por protocolo ate o envio.",
+    "Sem env, secret, Supabase mutavel, banco, migration ou deploy neste recorte."
+  ]
+}

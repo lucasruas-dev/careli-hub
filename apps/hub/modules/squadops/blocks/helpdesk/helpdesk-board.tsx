@@ -38,6 +38,7 @@ import {
   History,
   ImageIcon,
   Inbox,
+  LineChart,
   Loader2,
   Maximize2,
   MessageSquareReply,
@@ -49,6 +50,7 @@ import {
   Sparkles,
   Square,
   UserRound,
+  UsersRound,
   Video,
   Wrench,
   X,
@@ -106,9 +108,16 @@ type HistorySortDirection = "asc" | "desc";
 type HistorySortKey =
   | "collaborator"
   | "evidence"
+  | "module"
+  | "priority"
   | "protocol"
+  | "status"
   | "title"
   | "updatedAt";
+type TicketInsightModalState = {
+  tickets: HubItTicket[];
+  title: string;
+} | null;
 type TicketWorkflowStage =
   | "backlog"
   | "finalizado"
@@ -140,20 +149,32 @@ type SetupUsersStatus = "idle" | "loading" | "ready" | "error";
 
 type TicketManagementStats = {
   active: number;
+  activeTickets: HubItTicket[];
+  allTickets: HubItTicket[];
   backlog: number;
+  backlogTickets: HubItTicket[];
   categories: TicketDimensionStats[];
+  closedTodayTickets: HubItTicket[];
   collaborators: TicketCollaboratorStats[];
+  createdTodayTickets: HubItTicket[];
+  dailyVolume: TicketDailyVolumeStats[];
   departmentByTicketProtocol: ReadonlyMap<string, string>;
   departments: TicketDepartmentStats[];
   doneTickets: HubItTicket[];
   finalized: number;
+  finalizedTickets: HubItTicket[];
+  firstResponseAverageHours: number | null;
+  highPriorityTickets: HubItTicket[];
   inProgress: number;
   lastUpdatedTicket: HubItTicket | null;
   meetingBacklogTickets: HubItTicket[];
   meetingTreatmentTickets: HubItTicket[];
   modules: TicketDimensionStats[];
   newTickets: number;
+  repliedTodayTickets: HubItTicket[];
+  resolutionAverageHours: number | null;
   review: number;
+  treatmentTickets: HubItTicket[];
   total: number;
   validation: number;
 };
@@ -162,9 +183,14 @@ type TicketDepartmentStats = {
   backlog: number;
   department: string;
   finalized: number;
+  highPriority: number;
   inProgress: number;
   latestTicket: HubItTicket | null;
+  modules: string[];
+  requesterCount: number;
+  tickets: HubItTicket[];
   total: number;
+  validation: number;
 };
 
 type TicketDimensionStats = {
@@ -174,30 +200,28 @@ type TicketDimensionStats = {
   key: string;
   label: string;
   latestTicket: HubItTicket | null;
+  tickets: HubItTicket[];
   total: number;
 };
 
 type TicketCollaboratorStats = TicketDimensionStats & {
   department: string;
+  highPriority: number;
+  modules: string[];
   requester: HubItTicket["requester"];
+};
+
+type TicketDailyVolumeStats = {
+  closed: number;
+  created: number;
+  day: string;
+  replied: number;
 };
 
 type SetupUsersApiResponse = {
   data?: unknown;
   error?: string;
 };
-
-const activeWorkflowStages = [
-  "backlog",
-  "novo",
-  "tratativa",
-  "validacao",
-  "revisao",
-] as const satisfies readonly TicketWorkflowStage[];
-
-const historyWorkflowStages = [
-  "finalizado",
-] as const satisfies readonly TicketWorkflowStage[];
 
 const workflowStageLabels = {
   backlog: "Backlog",
@@ -222,6 +246,8 @@ const priorityOptions = [
   "critica",
 ] as const satisfies readonly HubItTicket["priority"][];
 
+const ticketDraftStorageKey = "careli-hub:zeus-helpdesk:drafts:v1";
+
 export function HubItTicketsBoard({
   accessToken,
   isActive,
@@ -235,9 +261,10 @@ export function HubItTicketsBoard({
   const [deliveryFilter, setDeliveryFilter] =
     useState<DeliveryFilter>("todos");
   const [isQueueDatesExpanded, setIsQueueDatesExpanded] = useState(false);
-  const [historyModalProtocol, setHistoryModalProtocol] = useState<
+  const [detailModalProtocol, setDetailModalProtocol] = useState<
     string | null
   >(null);
+  const [insightModal, setInsightModal] = useState<TicketInsightModalState>(null);
   const [backlogModalProtocol, setBacklogModalProtocol] = useState<
     string | null
   >(null);
@@ -259,6 +286,7 @@ export function HubItTicketsBoard({
     useState<SetupUsersStatus>("idle");
   const [setupUsersError, setSetupUsersError] = useState<string | null>(null);
   const attentionKeysRef = useRef<ReadonlySet<string>>(new Set());
+  const isHydratingDraftRef = useRef(false);
 
   const activeQueueTickets = useMemo(
     () => tickets.filter(isTicketInActiveQueue),
@@ -306,11 +334,6 @@ export function HubItTicketsBoard({
       ).length,
     };
   }, [activeQueueTickets]);
-  const historyBuckets = useMemo(() => {
-    return {
-      finalizados: historyTickets.length,
-    };
-  }, [historyTickets]);
   const workflowCounts = useMemo(
     () => countTicketsByWorkflowStage(tickets),
     [tickets],
@@ -338,12 +361,13 @@ export function HubItTicketsBoard({
     );
   }, [deliveryFilter, filteredQueueTickets, queueView]);
   const selectedTicket =
+    tickets.find((ticket) => ticket.protocol === selectedProtocol) ??
     ticketsByDelivery.find((ticket) => ticket.protocol === selectedProtocol) ??
     ticketsByDelivery[0] ??
     null;
-  const historyModalTicket =
-    historyModalProtocol
-      ? tickets.find((ticket) => ticket.protocol === historyModalProtocol) ??
+  const detailModalTicket =
+    detailModalProtocol
+      ? tickets.find((ticket) => ticket.protocol === detailModalProtocol) ??
         null
       : null;
   const backlogModalTicket =
@@ -489,27 +513,25 @@ export function HubItTicketsBoard({
 
   useEffect(() => {
     if (!selectedTicketDraftProtocol || !selectedTicketDraftStatus) {
+      isHydratingDraftRef.current = true;
       setDraft(emptyDraft);
       setReplyAttachments([]);
       return;
     }
 
+    const persistedDraft = readStoredTicketDraft(selectedTicketDraftProtocol);
+
+    isHydratingDraftRef.current = true;
     setReplyAttachments([]);
-    setDraft({
-      adminResponse: "",
-      approvedDeliveryDate:
-        selectedTicketDraftApprovedDeliveryDate ??
-        selectedTicketDraftRequestedDeliveryDate ??
-        "",
-      deliveryDecision: "manter",
-      deliveryDecisionNote: "",
-      resolutionSummary: "",
-      status: selectedTicketDraftIsBacklog
-        ? "em_analise"
-        : selectedTicketDraftStatus === "novo"
-          ? "em_tratativa"
-          : selectedTicketDraftStatus,
-    });
+    setDraft(
+      persistedDraft ??
+        createDefaultTicketDraft({
+          approvedDeliveryDate: selectedTicketDraftApprovedDeliveryDate,
+          isBacklog: selectedTicketDraftIsBacklog,
+          requestedDeliveryDate: selectedTicketDraftRequestedDeliveryDate,
+          status: selectedTicketDraftStatus,
+        }),
+    );
   }, [
     selectedTicketDraftApprovedDeliveryDate,
     selectedTicketDraftIsBacklog,
@@ -517,6 +539,26 @@ export function HubItTicketsBoard({
     selectedTicketDraftRequestedDeliveryDate,
     selectedTicketDraftStatus,
   ]);
+
+  useEffect(() => {
+    if (isHydratingDraftRef.current) {
+      isHydratingDraftRef.current = false;
+      return;
+    }
+
+    if (!selectedTicketDraftProtocol || !selectedTicket) {
+      return;
+    }
+
+    const defaultDraft = createDefaultTicketDraft({
+      approvedDeliveryDate: selectedTicket.approvedDeliveryDate ?? null,
+      isBacklog: selectedTicket.roadmap?.active === true,
+      requestedDeliveryDate: selectedTicket.requestedDeliveryDate ?? null,
+      status: selectedTicket.status,
+    });
+
+    writeStoredTicketDraft(selectedTicketDraftProtocol, draft, defaultDraft);
+  }, [draft, selectedTicket, selectedTicketDraftProtocol]);
 
   useEffect(() => {
     if (!selectedProtocol || !accessToken) {
@@ -651,6 +693,7 @@ export function HubItTicketsBoard({
           ? currentProtocols
           : [...currentProtocols, updatedTicket.protocol],
       );
+      clearStoredTicketDraft(updatedTicket.protocol);
       setDraft({
         ...emptyDraft,
         approvedDeliveryDate:
@@ -676,12 +719,17 @@ export function HubItTicketsBoard({
 
   function openHistoryTicket(protocol: string) {
     setSelectedProtocol(protocol);
-    setHistoryModalProtocol(protocol);
+    setDetailModalProtocol(protocol);
   }
 
   function openBacklogForm(protocol: string) {
     setSelectedProtocol(protocol);
     setBacklogModalProtocol(protocol);
+  }
+
+  function openTicketDetail(protocol: string) {
+    setSelectedProtocol(protocol);
+    setDetailModalProtocol(protocol);
   }
 
   async function saveBacklog(input: HubItTicketBacklogInput) {
@@ -736,304 +784,79 @@ export function HubItTicketsBoard({
     );
   }
 
-  const isManagementView = queueView === "gestao";
-
   return (
     <section className="min-w-0">
       <Surface
         bordered
-        className="border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
       >
-        <div
-          className={
-            isManagementView
-              ? "min-h-[calc(100vh-13rem)]"
-              : "grid min-h-[calc(100vh-13rem)] grid-cols-1 xl:grid-cols-[minmax(19rem,23rem)_minmax(0,1fr)]"
+        <HelpDeskBoardToolbar
+          activeTickets={activeQueueTickets.length}
+          deliveryBuckets={deliveryBuckets}
+          deliveryFilter={deliveryFilter}
+          historyTickets={historyTickets.length}
+          isDatesExpanded={isQueueDatesExpanded}
+          isLoading={isLoading}
+          onDeliveryFilterChange={setDeliveryFilter}
+          onOpenPoAi={onOpenPoAi}
+          onRefresh={() => void refreshTickets()}
+          onSearchChange={setSearchQuery}
+          onToggleDates={() =>
+            setIsQueueDatesExpanded((currentValue) => !currentValue)
           }
-        >
-          {!isManagementView ? (
-          <aside className="flex min-h-0 flex-col border-b border-slate-200/70 bg-slate-50/60 xl:sticky xl:top-4 xl:max-h-[calc(100vh-8rem)] xl:border-b-0 xl:border-r">
-            <div className="border-b border-slate-200/70 p-4">
-              <div className="flex items-center justify-between gap-3">
-                <div>
-                  <p className="m-0 text-xs font-semibold uppercase text-slate-500">
-                    HelpDesk
-                  </p>
-                  <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
-                    {getQueueViewTitle(queueView)}
-                  </h2>
-                </div>
-                <div className="flex shrink-0 items-center gap-2">
-                  {onOpenPoAi ? (
-                    <Tooltip content="PO AI" placement="left">
-                      <button
-                        aria-label="Abrir PO AI"
-                        className="grid size-9 place-items-center rounded-lg border border-[#A07C3B]/25 bg-white text-[#7A5E2C] transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5"
-                        onClick={onOpenPoAi}
-                        type="button"
-                      >
-                        <Sparkles className="size-4" />
-                      </button>
-                    </Tooltip>
-                  ) : null}
-                  <Tooltip content="Atualizar HelpDesk" placement="left">
-                    <button
-                      aria-label="Atualizar HelpDesk"
-                      className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/25 hover:text-slate-950"
-                      onClick={() => void refreshTickets()}
-                      type="button"
-                    >
-                      {isLoading ? (
-                        <Loader2 className="size-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="size-4" />
-                      )}
-                    </button>
-                  </Tooltip>
-                </div>
-              </div>
-              <label className="mt-3 flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.03)] focus-within:border-[#A07C3B]/45 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
-                <Search className="size-4 shrink-0 text-slate-400" />
-                <input
-                  aria-label="Buscar ticket, colaborador ou assunto"
-                  className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400"
-                  onChange={(event) => setSearchQuery(event.target.value)}
-                  placeholder="Ticket, colaborador ou assunto"
-                  type="search"
-                  value={searchQuery}
-                />
-                {searchQuery.trim() ? (
-                  <button
-                    aria-label="Limpar busca"
-                    className="grid size-6 shrink-0 place-items-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-                    onClick={() => setSearchQuery("")}
-                    type="button"
-                  >
-                    <X className="size-3.5" />
-                  </button>
-                ) : null}
-              </label>
-            </div>
+          onViewChange={setQueueView}
+          searchQuery={searchQuery}
+          selectedView={queueView}
+          totalTickets={tickets.length}
+          workflowCounts={workflowCounts}
+        />
 
-            {queueView === "fila" ? (
-              <QueueDisclosureSection
-                isExpanded={isQueueDatesExpanded}
-                onToggle={() => setIsQueueDatesExpanded((current) => !current)}
-                summary={getDeliveryFilterSummary(
-                  deliveryFilter,
-                  activeQueueTickets.length,
-                  deliveryBuckets,
-                )}
-                title="Entrega"
-              >
-                <div className="grid grid-cols-2 gap-2">
-                  <DeliveryFilterButton
-                    active={deliveryFilter === "todos"}
-                    label={`Todos ${activeQueueTickets.length}`}
-                    onClick={() => setDeliveryFilter("todos")}
-                  />
-                  <DeliveryFilterButton
-                    active={deliveryFilter === "hoje"}
-                    label={`Hoje ${deliveryBuckets.hoje}`}
-                    tone="danger"
-                    onClick={() => setDeliveryFilter("hoje")}
-                  />
-                  <DeliveryFilterButton
-                    active={deliveryFilter === "proximos"}
-                    label={`1-2 dias ${deliveryBuckets.proximos}`}
-                    tone="warning"
-                    onClick={() => setDeliveryFilter("proximos")}
-                  />
-                  <DeliveryFilterButton
-                    active={deliveryFilter === "folga"}
-                    label={`3+ dias ${deliveryBuckets.folga}`}
-                    tone="success"
-                    onClick={() => setDeliveryFilter("folga")}
-                  />
-                </div>
-                {deliveryBuckets.semData > 0 ? (
-                  <div className="mt-2">
-                    <DeliveryFilterButton
-                      active={deliveryFilter === "sem_data"}
-                      label={`Sem data ${deliveryBuckets.semData}`}
-                      onClick={() => setDeliveryFilter("sem_data")}
-                    />
-                  </div>
-                ) : null}
-              </QueueDisclosureSection>
-            ) : null}
+        {error ? <OperationalErrorBanner message={error} /> : null}
 
-            <div className="border-b border-slate-200/70 p-3">
-              <div className="grid grid-cols-2 gap-2">
-                <QueueViewButton
-                  active={queueView === "fila"}
-                  icon={<Inbox className="size-4" />}
-                  label="Fila"
-                  onClick={() => setQueueView("fila")}
-                  value={activeQueueTickets.length}
-                />
-                <QueueViewButton
-                  active={false}
-                  icon={<BarChart3 className="size-4" />}
-                  label="Gestao"
-                  onClick={() => setQueueView("gestao")}
-                  value={tickets.length}
-                />
-              </div>
-              <div className="mt-3 flex flex-wrap items-center gap-2">
-                <QueueSummaryPill
-                  label={
-                    searchQuery.trim()
-                      ? "resultado"
-                      : queueView === "fila"
-                        ? "ativos"
-                        : queueView === "historico"
-                          ? "historico"
-                          : "total"
-                  }
-                  value={ticketsByDelivery.length}
-                />
-                {queueView === "fila" ? (
-                  <>
-                    <QueueSummaryPill
-                      label="backlog"
-                      value={workflowCounts.backlog}
-                    />
-                    <QueueSummaryPill
-                      label="data"
-                      tone="danger"
-                      value={deliveryBuckets.hoje}
-                    />
-                    <QueueSummaryPill
-                      label="validacao"
-                      tone="success"
-                      value={workflowCounts.validacao}
-                    />
-                    <QueueSummaryPill
-                      label="revisao"
-                      tone="warning"
-                      value={workflowCounts.revisao}
-                    />
-                  </>
-                ) : queueView === "historico" ? (
-                  <>
-                    <QueueSummaryPill
-                      label="finalizados"
-                      tone="success"
-                      value={historyBuckets.finalizados}
-                    />
-                  </>
-                ) : null}
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-6">
-              {ticketsByDelivery.length > 0 ? (
-                <div className="grid gap-2">
-                  {ticketsByDelivery.map((ticket) => (
-                    <TicketQueueItem
-                      isActive={ticket.protocol === selectedTicket?.protocol}
-                      key={ticket.id}
-                      onClick={() => {
-                        setSelectedProtocol(ticket.protocol);
-                      }}
-                      ticket={ticket}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <EmptyQueue isLoading={isLoading} view={queueView} />
-              )}
-            </div>
-          </aside>
-          ) : null}
-
-          <div className="min-w-0">
-            {isManagementView ? (
-              <HelpDeskManagementToolbar
-                isLoading={isLoading}
-                onOpenPoAi={onOpenPoAi}
-                onRefresh={() => void refreshTickets()}
-                onSearchChange={setSearchQuery}
-                onSelectQueue={() => setQueueView("fila")}
-                searchQuery={searchQuery}
-                totalTickets={managementStats.total}
-              />
-            ) : null}
-
-            {error ? (
-              <OperationalErrorBanner message={error} />
-            ) : null}
-
-            {queueView === "gestao" ? (
-              <HelpDeskManagementPanel
-                onOpenTicket={(ticket) => {
-                  setSelectedProtocol(ticket.protocol);
-
-                  if (isTicketInHistory(ticket)) {
-                    setHistoryModalProtocol(ticket.protocol);
-                  } else {
-                    setQueueView("fila");
-                  }
-                }}
-                setupUsersError={setupUsersError}
-                setupUsersStatus={setupUsersStatus}
-                stats={managementStats}
-              />
-            ) : queueView === "historico" ? (
-              <TicketHistoryTable
-                onSelectTicket={openHistoryTicket}
-                selectedProtocol={selectedTicket?.protocol ?? null}
-                tickets={ticketsByDelivery}
-              />
-            ) : (
-              <TicketKanbanBoard
-                onSelectTicket={setSelectedProtocol}
-                queueView={queueView}
-                selectedProtocol={selectedTicket?.protocol ?? null}
-                tickets={ticketsByDelivery}
-              />
-            )}
-
-            {queueView === "fila" && selectedTicket ? (
-              <TicketWorkspace
-                accessToken={accessToken}
-                draft={draft}
-                isDetailLoading={isDetailLoading}
-                isSaving={isSaving}
-                onDraftChange={setDraft}
-                onOpenBacklogForm={openBacklogForm}
-                onReplyAttachmentsChange={setReplyAttachments}
-                onSave={(nextStatus) => void saveReply(nextStatus)}
-                replyAttachments={replyAttachments}
-                ticket={selectedTicket}
-              />
-            ) : queueView === "fila" ? (
-              <div className="grid min-h-[28rem] place-items-center p-6 text-center">
-                <div>
-                  <Inbox className="mx-auto size-8 text-slate-300" />
-                  <p className="m-0 mt-3 text-sm font-semibold text-slate-500">
-                    Nenhum protocolo HelpDesk encontrado.
-                  </p>
-                </div>
-              </div>
-            ) : null}
-          </div>
-        </div>
+        {queueView === "gestao" ? (
+          <HelpDeskManagementPanel
+            onOpenTicket={(ticket) => openTicketDetail(ticket.protocol)}
+            onOpenTicketGroup={(title, groupTickets) =>
+              setInsightModal({ tickets: groupTickets, title })
+            }
+            setupUsersError={setupUsersError}
+            setupUsersStatus={setupUsersStatus}
+            stats={managementStats}
+          />
+        ) : (
+          <TicketOperationsTable
+            emptyView={queueView}
+            onSelectTicket={queueView === "historico" ? openHistoryTicket : openTicketDetail}
+            selectedProtocol={selectedTicket?.protocol ?? null}
+            tickets={ticketsByDelivery}
+            title={queueView === "historico" ? "Historico" : "Fila ativa"}
+          />
+        )}
       </Surface>
-      {historyModalTicket ? (
+      {detailModalTicket ? (
         <TicketDetailModal
           accessToken={accessToken}
           draft={draft}
           isDetailLoading={isDetailLoading}
           isSaving={isSaving}
-          onClose={() => setHistoryModalProtocol(null)}
+          onClose={() => setDetailModalProtocol(null)}
           onDraftChange={setDraft}
           onOpenBacklogForm={openBacklogForm}
           onReplyAttachmentsChange={setReplyAttachments}
           onSave={(nextStatus) => void saveReply(nextStatus)}
           replyAttachments={replyAttachments}
-          ticket={historyModalTicket}
+          ticket={detailModalTicket}
+        />
+      ) : null}
+      {insightModal ? (
+        <TicketInsightModal
+          onClose={() => setInsightModal(null)}
+          onOpenTicket={(ticket) => {
+            setInsightModal(null);
+            openTicketDetail(ticket.protocol);
+          }}
+          tickets={insightModal.tickets}
+          title={insightModal.title}
         />
       ) : null}
       {backlogModalTicket ? (
@@ -1145,6 +968,97 @@ function TicketDetailModal({
             replyAttachments={replyAttachments}
             ticket={ticket}
           />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TicketInsightModal({
+  onClose,
+  onOpenTicket,
+  tickets,
+  title,
+}: {
+  onClose: () => void;
+  onOpenTicket: (ticket: HubItTicket) => void;
+  tickets: HubItTicket[];
+  title: string;
+}) {
+  return (
+    <div className="fixed inset-0 z-[85] flex items-center justify-center bg-[#101820]/45 p-4">
+      <button
+        aria-label="Fechar lista de tickets"
+        className="absolute inset-0 cursor-default"
+        onClick={onClose}
+        type="button"
+      />
+      <div
+        aria-modal="true"
+        className="relative flex max-h-[82vh] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        role="dialog"
+      >
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="min-w-0">
+            <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#7A5E2C]">
+              Indicador
+            </p>
+            <h3 className="m-0 truncate text-base font-semibold text-slate-950">
+              {title}
+            </h3>
+          </div>
+          <Tooltip content="Fechar" placement="left">
+            <button
+              aria-label="Fechar lista de tickets"
+              className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+              onClick={onClose}
+              type="button"
+            >
+              <X className="size-4" />
+            </button>
+          </Tooltip>
+        </div>
+        <div className="min-h-0 overflow-y-auto p-4">
+          {tickets.length > 0 ? (
+            <div className="grid gap-2">
+              {sortTicketsByUpdatedAt(tickets).map((ticket) => (
+                <button
+                  className="grid gap-2 rounded-lg border border-slate-200 bg-white px-3 py-3 text-left transition hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 md:grid-cols-[8rem_minmax(0,1fr)_8rem_7rem] md:items-center"
+                  key={ticket.id}
+                  onClick={() => onOpenTicket(ticket)}
+                  type="button"
+                >
+                  <span className="font-mono text-xs font-semibold text-[#7A5E2C]">
+                    {ticket.protocol}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-slate-950">
+                      {ticket.title}
+                    </span>
+                    <span className="block truncate text-xs text-slate-500">
+                      {ticket.requester.name} /{" "}
+                      {normalizeTicketModuleLabel(
+                        ticket.roadmap?.module || ticket.module,
+                      )}
+                    </span>
+                  </span>
+                  <StatusBadge status={ticket.status} ticket={ticket} />
+                  <span className="text-xs font-medium text-slate-500">
+                    {formatDateShort(ticket.updatedAt)}
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <div className="grid min-h-40 place-items-center text-center">
+              <div>
+                <Inbox className="mx-auto size-7 text-slate-300" />
+                <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
+                  Nenhum ticket neste indicador.
+                </p>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -1349,46 +1263,90 @@ function BacklogFormModal({
   );
 }
 
-function HelpDeskManagementToolbar({
+function HelpDeskBoardToolbar({
+  activeTickets,
+  deliveryBuckets,
+  deliveryFilter,
+  historyTickets,
+  isDatesExpanded,
   isLoading,
   onOpenPoAi,
+  onDeliveryFilterChange,
   onRefresh,
   onSearchChange,
-  onSelectQueue,
+  onToggleDates,
+  onViewChange,
   searchQuery,
+  selectedView,
   totalTickets,
+  workflowCounts,
 }: {
+  activeTickets: number;
+  deliveryBuckets: {
+    folga: number;
+    hoje: number;
+    proximos: number;
+    semData: number;
+  };
+  deliveryFilter: DeliveryFilter;
+  historyTickets: number;
+  isDatesExpanded: boolean;
   isLoading: boolean;
   onOpenPoAi?: () => void;
+  onDeliveryFilterChange: (filter: DeliveryFilter) => void;
   onRefresh: () => void;
   onSearchChange: (value: string) => void;
-  onSelectQueue: () => void;
+  onToggleDates: () => void;
+  onViewChange: (view: TicketQueueView) => void;
   searchQuery: string;
+  selectedView: TicketQueueView;
   totalTickets: number;
+  workflowCounts: Record<TicketWorkflowStage, number>;
 }) {
+  const tabs = [
+    {
+      count: activeTickets,
+      icon: <Inbox className="size-4" />,
+      id: "fila",
+      label: "Fila Ativa",
+    },
+    {
+      count: historyTickets,
+      icon: <History className="size-4" />,
+      id: "historico",
+      label: "Historico",
+    },
+    {
+      count: totalTickets,
+      icon: <BarChart3 className="size-4" />,
+      id: "gestao",
+      label: "Gestao",
+    },
+  ] as const satisfies readonly {
+    count: number;
+    icon: ReactNode;
+    id: TicketQueueView;
+    label: string;
+  }[];
+
   return (
-    <div className="border-b border-slate-200/70 bg-white px-4 py-3">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2">
-          <button
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-            onClick={onSelectQueue}
-            type="button"
-          >
-            <Inbox className="size-4" />
-            Fila
-          </button>
-          <span className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white">
-            <BarChart3 className="size-4 text-[#D7B46A]" />
-            Gestao
-          </span>
-          <span className="hidden text-xs font-semibold text-slate-500 sm:inline">
-            {totalTickets} ticket(s)
-          </span>
+    <div className="border-b border-slate-200/70 bg-white">
+      <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+        <div className="min-w-0">
+          <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#7A5E2C]">
+            Zeus HelpDesk
+          </p>
+          <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
+            {selectedView === "gestao"
+              ? "Gestao executiva"
+              : selectedView === "historico"
+                ? "Historico de tickets"
+                : "Fila ativa"}
+          </h2>
         </div>
 
-        <div className="flex min-w-0 flex-1 items-center justify-end gap-2">
-          <label className="flex h-9 w-full max-w-md items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.03)] focus-within:border-[#A07C3B]/45 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
+          <label className="flex h-9 w-full min-w-56 max-w-md items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.03)] focus-within:border-[#A07C3B]/45 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
             <Search className="size-4 shrink-0 text-slate-400" />
             <input
               aria-label="Buscar ticket, colaborador, modulo ou assunto"
@@ -1437,16 +1395,117 @@ function HelpDeskManagementToolbar({
           </Tooltip>
         </div>
       </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
+        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+          {tabs.map((tab) => (
+            <button
+              className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${
+                selectedView === tab.id
+                  ? "bg-[#101820] text-white shadow-sm"
+                  : "text-slate-600 hover:bg-white hover:text-slate-950"
+              }`}
+              key={tab.id}
+              onClick={() => onViewChange(tab.id)}
+              type="button"
+            >
+              <span
+                className={
+                  selectedView === tab.id ? "text-[#D7B46A]" : "text-slate-400"
+                }
+              >
+                {tab.icon}
+              </span>
+              {tab.label}
+              <span
+                className={`rounded-full px-1.5 py-0.5 font-mono text-[0.65rem] ${
+                  selectedView === tab.id
+                    ? "bg-white/12 text-white"
+                    : "bg-white text-slate-500 ring-1 ring-slate-200"
+                }`}
+              >
+                {tab.count}
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {selectedView === "fila" ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <QueueSummaryPill
+              label="backlog"
+              value={workflowCounts.backlog}
+            />
+            <QueueSummaryPill
+              label="hoje"
+              tone="danger"
+              value={deliveryBuckets.hoje}
+            />
+            <QueueSummaryPill
+              label="validacao"
+              tone="success"
+              value={workflowCounts.validacao}
+            />
+            <button
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:border-[#A07C3B]/25 hover:text-slate-950"
+              onClick={onToggleDates}
+              type="button"
+            >
+              Entrega
+              {isDatesExpanded ? (
+                <ChevronUp className="size-3.5" />
+              ) : (
+                <ChevronDown className="size-3.5" />
+              )}
+            </button>
+          </div>
+        ) : null}
+      </div>
+
+      {selectedView === "fila" && isDatesExpanded ? (
+        <div className="grid gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-3 sm:grid-cols-5">
+          <DeliveryFilterButton
+            active={deliveryFilter === "todos"}
+            label={`Todos ${activeTickets}`}
+            onClick={() => onDeliveryFilterChange("todos")}
+          />
+          <DeliveryFilterButton
+            active={deliveryFilter === "hoje"}
+            label={`Hoje ${deliveryBuckets.hoje}`}
+            onClick={() => onDeliveryFilterChange("hoje")}
+            tone="danger"
+          />
+          <DeliveryFilterButton
+            active={deliveryFilter === "proximos"}
+            label={`1-2 dias ${deliveryBuckets.proximos}`}
+            onClick={() => onDeliveryFilterChange("proximos")}
+            tone="warning"
+          />
+          <DeliveryFilterButton
+            active={deliveryFilter === "folga"}
+            label={`3+ dias ${deliveryBuckets.folga}`}
+            onClick={() => onDeliveryFilterChange("folga")}
+            tone="success"
+          />
+          <DeliveryFilterButton
+            active={deliveryFilter === "sem_data"}
+            label={`Sem data ${deliveryBuckets.semData}`}
+            onClick={() => onDeliveryFilterChange("sem_data")}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
 
 function HelpDeskManagementPanel({
+  onOpenTicketGroup,
   onOpenTicket,
   setupUsersError,
   setupUsersStatus,
   stats,
 }: {
+  onOpenTicketGroup: (title: string, tickets: HubItTicket[]) => void;
   onOpenTicket: (ticket: HubItTicket) => void;
   setupUsersError: string | null;
   setupUsersStatus: SetupUsersStatus;
@@ -1464,31 +1523,57 @@ function HelpDeskManagementPanel({
     stats.total > 0 ? Math.round((stats.finalized / stats.total) * 100) : 0;
   const leadingDepartment = stats.departments[0];
   const leadingModule = stats.modules[0];
+  const firstResponseLabel = formatHoursKpi(stats.firstResponseAverageHours);
+  const resolutionLabel = formatHoursKpi(stats.resolutionAverageHours);
 
   return (
     <div className="bg-slate-50/50 p-4 xl:p-5">
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="m-0 text-xs font-semibold uppercase text-slate-500">
-            Gestao HelpDesk
-          </p>
-          <h3 className="m-0 mt-1 text-xl font-semibold text-slate-950">
-            Painel executivo
-          </h3>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="inline-flex h-8 items-center gap-2 rounded-lg bg-white px-3 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-            <Building2 className="size-4 text-[#A07C3B]" />
-            {departmentStatus}
-          </span>
-          <Tooltip
-            content="A gestao usa os tickets carregados do HelpDesk e respeita a busca atual."
-            placement="left"
-          >
-            <span className="grid size-8 place-items-center rounded-lg bg-white text-slate-500 ring-1 ring-slate-200">
-              <CircleDot className="size-4" />
+      <div className="mb-4 overflow-hidden rounded-xl border border-[#101820]/10 bg-[#101820] text-white shadow-[0_12px_28px_rgba(16,24,32,0.14)]">
+        <div className="flex flex-wrap items-center justify-between gap-4 p-4">
+          <div>
+            <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#D7B46A]">
+              Gestao HelpDesk
+            </p>
+            <h3 className="m-0 mt-1 text-xl font-semibold">
+              Painel executivo
+            </h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="inline-flex h-8 items-center gap-2 rounded-lg bg-white/10 px-3 text-xs font-semibold text-white ring-1 ring-white/10">
+              <Building2 className="size-4 text-[#D7B46A]" />
+              {departmentStatus}
             </span>
-          </Tooltip>
+            <Tooltip
+              content="A gestao usa os tickets carregados do HelpDesk e respeita a busca atual."
+              placement="left"
+            >
+              <span className="grid size-8 place-items-center rounded-lg bg-white/10 text-white ring-1 ring-white/10">
+                <CircleDot className="size-4" />
+              </span>
+            </Tooltip>
+          </div>
+        </div>
+        <div className="grid border-t border-white/10 md:grid-cols-4">
+          <ExecutiveKpi
+            label="Hoje"
+            supporting={`${stats.repliedTodayTickets.length} respondido(s)`}
+            value={`${stats.createdTodayTickets.length} novo(s)`}
+          />
+          <ExecutiveKpi
+            label="Primeira resposta"
+            supporting="media dos tickets com resposta"
+            value={firstResponseLabel}
+          />
+          <ExecutiveKpi
+            label="Resolucao"
+            supporting={`${stats.closedTodayTickets.length} fechado(s) hoje`}
+            value={resolutionLabel}
+          />
+          <ExecutiveKpi
+            label="Criticidade"
+            supporting="alta ou critica"
+            value={`${stats.highPriorityTickets.length}`}
+          />
         </div>
       </div>
 
@@ -1503,12 +1588,16 @@ function HelpDeskManagementPanel({
           hint={`${stats.active} em fila`}
           icon={<ClipboardList className="size-4" />}
           label="Tickets"
+          onClick={() => onOpenTicketGroup("Todos os tickets", stats.allTickets)}
           value={stats.total}
         />
         <ManagementMetricTile
           hint={`${resolutionRate}% do volume`}
           icon={<CheckCircle2 className="size-4" />}
           label="Finalizados"
+          onClick={() =>
+            onOpenTicketGroup("Tickets finalizados", stats.finalizedTickets)
+          }
           tone="success"
           value={stats.finalized}
         />
@@ -1516,6 +1605,9 @@ function HelpDeskManagementPanel({
           hint={`${stats.newTickets} novo(s), ${stats.review} revisao`}
           icon={<CircleDot className="size-4" />}
           label="Tratando"
+          onClick={() =>
+            onOpenTicketGroup("Tickets em tratamento", stats.treatmentTickets)
+          }
           tone="warning"
           value={stats.inProgress}
         />
@@ -1523,14 +1615,49 @@ function HelpDeskManagementPanel({
           hint={leadingDepartment?.department ?? "Sem departamento"}
           icon={<Building2 className="size-4" />}
           label="Maior area"
+          onClick={() =>
+            onOpenTicketGroup(
+              leadingDepartment?.department ?? "Maior area",
+              leadingDepartment?.tickets ?? [],
+            )
+          }
           value={leadingDepartment?.total ?? 0}
         />
         <ManagementMetricTile
           hint={leadingModule?.label ?? "Sem modulo"}
           icon={<Archive className="size-4" />}
           label="Roadmap"
+          onClick={() =>
+            onOpenTicketGroup("Tickets em Backlog", stats.backlogTickets)
+          }
           value={stats.backlog}
         />
+      </div>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.36fr)]">
+        <DailyVolumePanel dailyVolume={stats.dailyVolume} />
+        <section className="rounded-lg border border-slate-200 bg-white p-3">
+          <div className="mb-3 flex items-center justify-between gap-2">
+            <h4 className="m-0 text-sm font-semibold text-slate-950">
+              Performance
+            </h4>
+            <LineChart className="size-4 text-[#A07C3B]" />
+          </div>
+          <div className="grid gap-2">
+            <PerformanceLine
+              label="Respondidos hoje"
+              value={stats.repliedTodayTickets.length}
+            />
+            <PerformanceLine
+              label="Fechados hoje"
+              value={stats.closedTodayTickets.length}
+            />
+            <PerformanceLine
+              label="Validação"
+              value={stats.validation}
+            />
+          </div>
+        </section>
       </div>
 
       <div className="mt-4 grid gap-4 2xl:grid-cols-[minmax(0,1.05fr)_minmax(28rem,0.95fr)]">
@@ -1591,12 +1718,14 @@ function ManagementMetricTile({
   hint,
   icon,
   label,
+  onClick,
   tone = "neutral",
   value,
 }: {
   hint: string;
   icon: ReactNode;
   label: string;
+  onClick?: () => void;
   tone?: "neutral" | "success" | "warning";
   value: number;
 }) {
@@ -1608,7 +1737,12 @@ function ManagementMetricTile({
         : "bg-slate-50 text-slate-700 ring-slate-200";
 
   return (
-    <div className="rounded-lg border border-slate-200/70 bg-slate-50/60 p-3">
+    <button
+      className="rounded-lg border border-slate-200/70 bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] disabled:hover:translate-y-0 disabled:hover:border-slate-200/70 disabled:hover:shadow-none"
+      disabled={!onClick}
+      onClick={onClick}
+      type="button"
+    >
       <div className="flex items-center justify-between gap-3">
         <span
           className={`grid size-9 place-items-center rounded-lg ring-1 ${toneClassName}`}
@@ -1623,6 +1757,88 @@ function ManagementMetricTile({
         {label}
       </p>
       <p className="m-0 mt-1 truncate text-xs text-slate-500">{hint}</p>
+    </button>
+  );
+}
+
+function ExecutiveKpi({
+  label,
+  supporting,
+  value,
+}: {
+  label: string;
+  supporting: string;
+  value: string;
+}) {
+  return (
+    <div className="border-t border-white/10 p-4 md:border-l md:border-t-0">
+      <p className="m-0 text-[0.68rem] font-semibold uppercase text-white/55">
+        {label}
+      </p>
+      <p className="m-0 mt-2 text-lg font-semibold text-white">{value}</p>
+      <p className="m-0 mt-1 truncate text-xs text-white/55">{supporting}</p>
+    </div>
+  );
+}
+
+function DailyVolumePanel({
+  dailyVolume,
+}: {
+  dailyVolume: TicketDailyVolumeStats[];
+}) {
+  const maxValue = Math.max(
+    1,
+    ...dailyVolume.map((item) => item.created + item.replied + item.closed),
+  );
+
+  return (
+    <section className="rounded-lg border border-slate-200 bg-white p-3">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <h4 className="m-0 text-sm font-semibold text-slate-950">
+          Movimento por dia
+        </h4>
+        <Tooltip content="Criados, respondidos e encerrados nos ultimos dias.">
+          <span className="grid size-6 place-items-center rounded-md text-slate-400">
+            <LineChart className="size-4" />
+          </span>
+        </Tooltip>
+      </div>
+      <div className="grid grid-cols-7 items-end gap-2">
+        {dailyVolume.map((item) => {
+          const total = item.created + item.replied + item.closed;
+          const height = Math.max(12, Math.round((total / maxValue) * 74));
+
+          return (
+            <div className="grid gap-2 text-center" key={item.day}>
+              <div className="flex h-20 items-end justify-center rounded-md bg-slate-50 px-1">
+                <div
+                  className="w-full max-w-7 rounded-t-md bg-[#A07C3B]"
+                  style={{ height }}
+                />
+              </div>
+              <div>
+                <p className="m-0 text-[0.68rem] font-semibold text-slate-500">
+                  {formatDayLabel(item.day)}
+                </p>
+                <p className="m-0 text-xs font-semibold text-slate-950">
+                  {total}
+                </p>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function PerformanceLine({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
+      <span className="text-xs font-semibold text-slate-500">{label}</span>
+      <span className="font-mono text-sm font-semibold text-slate-950">
+        {value}
+      </span>
     </div>
   );
 }
@@ -1650,7 +1866,7 @@ function DepartmentDemandTable({
         </span>
       </div>
       <div
-        className="hidden grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_minmax(9rem,0.7fr)] gap-3 border-b border-slate-100 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 lg:grid"
+        className="hidden grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_7rem_minmax(9rem,0.7fr)] gap-3 border-b border-slate-100 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
         role="row"
       >
         <span>Departamento</span>
@@ -1658,25 +1874,32 @@ function DepartmentDemandTable({
         <span>Feitos</span>
         <span>Tratando</span>
         <span>Backlog</span>
+        <span>Solic.</span>
+        <span>Critico</span>
         <span>Ultimo</span>
       </div>
       {departments.length > 0 ? (
         <div className="divide-y divide-slate-100">
           {departments.map((department) => (
             <div
-              className="grid gap-2 px-3 py-3 text-sm lg:grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_minmax(9rem,0.7fr)] lg:items-center lg:gap-3"
+              className="grid gap-2 px-3 py-3 text-sm xl:grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_7rem_minmax(9rem,0.7fr)] xl:items-center xl:gap-3"
               key={department.department}
             >
               <span className="min-w-0 font-semibold text-slate-950">
                 <span className="block truncate">{department.department}</span>
                 <span className="mt-1 block text-xs font-medium text-slate-500 lg:hidden">
-                  {department.total} total / {department.backlog} backlog
+                  {department.total} total / {department.backlog} backlog /{" "}
+                  {department.modules.slice(0, 2).join(", ") || "sem modulo"}
                 </span>
               </span>
               <MetricCell value={department.total} />
               <MetricCell tone="success" value={department.finalized} />
               <MetricCell tone="warning" value={department.inProgress} />
               <MetricCell value={department.backlog} />
+              <MetricCell value={department.requesterCount} />
+              <span className="truncate text-xs font-semibold text-slate-600">
+                {department.highPriority} alta
+              </span>
               {department.latestTicket ? (
                 <button
                   className="min-w-0 rounded-lg px-2 py-1 text-left text-xs font-semibold text-[#7A5E2C] transition hover:bg-[#A07C3B]/10"
@@ -1730,7 +1953,7 @@ function CollaboratorDemandTable({
           </h4>
           <Tooltip content="Solicitantes com mais demandas no recorte." placement="top">
             <span className="grid size-6 place-items-center rounded-md text-slate-400">
-              <UserRound className="size-4" />
+              <UsersRound className="size-4" />
             </span>
           </Tooltip>
         </div>
@@ -1738,11 +1961,23 @@ function CollaboratorDemandTable({
           {collaborators.length}
         </span>
       </div>
+      <div
+        className="hidden grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_7rem_minmax(8rem,0.7fr)] gap-3 border-b border-slate-100 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
+        role="row"
+      >
+        <span>Colaborador</span>
+        <span>Total</span>
+        <span>Feitos</span>
+        <span>Tratando</span>
+        <span>Backlog</span>
+        <span>Modulo</span>
+        <span>Ultimo</span>
+      </div>
       {collaborators.length > 0 ? (
         <div className="divide-y divide-slate-100">
           {collaborators.slice(0, 8).map((collaborator) => (
             <button
-              className="grid w-full gap-2 px-3 py-3 text-left transition hover:bg-[#A07C3B]/5 lg:grid-cols-[minmax(16rem,1fr)_4rem_5rem_5rem_minmax(8rem,0.7fr)] lg:items-center"
+              className="grid w-full gap-2 px-3 py-3 text-left transition hover:bg-[#A07C3B]/5 xl:grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_7rem_minmax(8rem,0.7fr)] xl:items-center"
               key={collaborator.key}
               onClick={() => {
                 if (collaborator.latestTicket) {
@@ -1769,6 +2004,10 @@ function CollaboratorDemandTable({
               <MetricCell value={collaborator.total} />
               <MetricCell tone="success" value={collaborator.finalized} />
               <MetricCell tone="warning" value={collaborator.inProgress} />
+              <MetricCell value={collaborator.backlog} />
+              <span className="truncate text-xs font-semibold text-slate-600">
+                {collaborator.modules[0] ?? "Panteon"}
+              </span>
               {collaborator.latestTicket ? (
                 <span className="min-w-0 text-xs font-semibold text-[#7A5E2C]">
                   <span className="block truncate">
@@ -1959,69 +2198,18 @@ function MeetingTicketList({
   );
 }
 
-function TicketKanbanBoard({
-  onSelectTicket,
-  queueView,
-  selectedProtocol,
-  tickets,
-}: {
-  onSelectTicket: (protocol: string) => void;
-  queueView: TicketQueueView;
-  selectedProtocol: string | null;
-  tickets: HubItTicket[];
-}) {
-  const stages =
-    queueView === "fila" ? activeWorkflowStages : historyWorkflowStages;
-
-  return (
-    <div className="border-b border-slate-200/70 bg-white p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h3 className="m-0 mt-1 text-base font-semibold text-slate-950">
-            {queueView === "fila"
-              ? "Backlog / Novo / Tratativa / Validacao / Revisao"
-              : "Historico de finalizados"}
-          </h3>
-        </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-          {tickets.length} ticket(s)
-        </span>
-      </div>
-      <div
-        className={`grid gap-3 ${
-          queueView === "fila"
-            ? "lg:grid-cols-5"
-            : "lg:grid-cols-1"
-        }`}
-      >
-        {stages.map((stage) => {
-          const columnTickets = tickets.filter(
-            (ticket) => getTicketWorkflowStage(ticket) === stage,
-          );
-
-          return (
-            <KanbanColumn
-              key={stage}
-              onSelectTicket={onSelectTicket}
-              selectedProtocol={selectedProtocol}
-              stage={stage}
-              tickets={columnTickets}
-            />
-          );
-        })}
-      </div>
-    </div>
-  );
-}
-
-function TicketHistoryTable({
+function TicketOperationsTable({
+  emptyView,
   onSelectTicket,
   selectedProtocol,
   tickets,
+  title,
 }: {
+  emptyView: TicketQueueView;
   onSelectTicket: (protocol: string) => void;
   selectedProtocol: string | null;
   tickets: HubItTicket[];
+  title: string;
 }) {
   const [sortKey, setSortKey] = useState<HistorySortKey>("updatedAt");
   const [sortDirection, setSortDirection] =
@@ -2047,18 +2235,23 @@ function TicketHistoryTable({
   }, []);
 
   return (
-    <div className="border-b border-slate-200/70 bg-white p-4">
+    <div className="bg-white p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <h3 className="m-0 text-base font-semibold text-slate-950">
-          Historico de finalizados
-        </h3>
+        <div>
+          <h3 className="m-0 text-base font-semibold text-slate-950">
+            {title}
+          </h3>
+          <p className="m-0 mt-1 text-xs font-medium text-slate-500">
+            Clique em uma linha para abrir o ticket em popup.
+          </p>
+        </div>
         <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
           {tickets.length} ticket(s)
         </span>
       </div>
       <div className="overflow-hidden rounded-xl border border-slate-200">
         <div
-          className="hidden grid-cols-[9rem_minmax(12rem,1fr)_12rem_9rem_9rem] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 lg:grid"
+          className="hidden grid-cols-[8.5rem_minmax(14rem,1fr)_11rem_8rem_8rem_8rem_7rem_8rem] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
           role="row"
         >
           <HistorySortHeader
@@ -2074,10 +2267,28 @@ function TicketHistoryTable({
             onClick={() => handleSort("title")}
           />
           <HistorySortHeader
+            active={sortKey === "status"}
+            direction={sortDirection}
+            label="Workflow"
+            onClick={() => handleSort("status")}
+          />
+          <HistorySortHeader
             active={sortKey === "collaborator"}
             direction={sortDirection}
             label="Colaborador"
             onClick={() => handleSort("collaborator")}
+          />
+          <HistorySortHeader
+            active={sortKey === "module"}
+            direction={sortDirection}
+            label="Modulo"
+            onClick={() => handleSort("module")}
+          />
+          <HistorySortHeader
+            active={sortKey === "priority"}
+            direction={sortDirection}
+            label="Prioridade"
+            onClick={() => handleSort("priority")}
           />
           <HistorySortHeader
             active={sortKey === "evidence"}
@@ -2096,10 +2307,13 @@ function TicketHistoryTable({
           <div className="divide-y divide-slate-100">
             {sortedTickets.map((ticket) => {
               const isSelected = ticket.protocol === selectedProtocol;
+              const moduleLabel = normalizeTicketModuleLabel(
+                ticket.roadmap?.module || ticket.module,
+              );
 
               return (
                 <button
-                  className={`grid w-full gap-2 px-3 py-3 text-left transition lg:grid-cols-[9rem_minmax(12rem,1fr)_12rem_9rem_9rem] lg:items-center lg:gap-3 ${
+                  className={`grid w-full gap-2 px-3 py-3 text-left transition xl:grid-cols-[8.5rem_minmax(14rem,1fr)_11rem_8rem_8rem_8rem_7rem_8rem] xl:items-center xl:gap-3 ${
                     isSelected
                       ? "bg-[#A07C3B]/10 text-slate-950"
                       : "bg-white text-slate-700 hover:bg-slate-50"
@@ -2112,8 +2326,8 @@ function TicketHistoryTable({
                     <span className="block font-mono text-xs font-semibold text-slate-950">
                       {ticket.protocol}
                     </span>
-                    <span className="mt-1 block text-[0.68rem] font-semibold uppercase text-slate-400 lg:hidden">
-                      Ticket
+                    <span className="mt-1 block text-[0.68rem] font-semibold uppercase text-slate-400 xl:hidden">
+                      {workflowStageLabels[getTicketWorkflowStage(ticket)]}
                     </span>
                   </span>
                   <span className="min-w-0">
@@ -2121,14 +2335,25 @@ function TicketHistoryTable({
                       {ticket.title}
                     </span>
                     <span className="mt-1 block truncate text-xs text-slate-500">
-                      {ticket.module} / {hubItTicketCategoryLabels[ticket.category]}
+                      {moduleLabel} / {hubItTicketCategoryLabels[ticket.category]}
                     </span>
+                  </span>
+                  <span className="min-w-0">
+                    <StatusBadge status={ticket.status} ticket={ticket} />
                   </span>
                   <span className="min-w-0 text-sm font-medium">
                     <span className="block truncate">{ticket.requester.name}</span>
                     <span className="mt-1 block truncate text-xs text-slate-400">
                       {ticket.assignedTo?.name ?? "Sem responsavel"}
                     </span>
+                  </span>
+                  <span className="truncate text-sm font-semibold text-slate-600">
+                    {moduleLabel}
+                  </span>
+                  <span>
+                    <Badge variant={priorityVariant(ticket.priority)}>
+                      {hubItTicketPriorityLabels[ticket.priority]}
+                    </Badge>
                   </span>
                   <span className="text-sm font-semibold text-slate-600">
                     {getTicketEvidenceCount(ticket)}
@@ -2145,7 +2370,9 @@ function TicketHistoryTable({
             <div>
               <History className="mx-auto size-7 text-slate-300" />
               <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
-                Historico vazio.
+                {emptyView === "historico"
+                  ? "Historico vazio."
+                  : "Nenhum ticket na fila."}
               </p>
             </div>
           </div>
@@ -2186,98 +2413,6 @@ function HistorySortHeader({
   );
 }
 
-function KanbanColumn({
-  onSelectTicket,
-  selectedProtocol,
-  stage,
-  tickets,
-}: {
-  onSelectTicket: (protocol: string) => void;
-  selectedProtocol: string | null;
-  stage: TicketWorkflowStage;
-  tickets: HubItTicket[];
-}) {
-  return (
-    <section className="min-h-40 rounded-xl border border-slate-200 bg-slate-50/70 p-2">
-      <div className="flex items-center justify-between gap-2 px-1 py-1">
-        <p className="m-0 text-xs font-semibold uppercase text-slate-500">
-          {workflowStageLabels[stage]}
-        </p>
-        <span className="rounded-full bg-white px-2 py-0.5 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200">
-          {tickets.length}
-        </span>
-      </div>
-      <div className="mt-2 grid max-h-[22rem] gap-2 overflow-y-auto pr-1">
-        {tickets.length > 0 ? (
-          tickets.map((ticket) => (
-            <KanbanTicketCard
-              isActive={ticket.protocol === selectedProtocol}
-              key={ticket.id}
-              onClick={() => onSelectTicket(ticket.protocol)}
-              ticket={ticket}
-            />
-          ))
-        ) : (
-          <p className="m-0 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-4 text-center text-xs font-semibold text-slate-400">
-            Sem tickets aqui.
-          </p>
-        )}
-      </div>
-    </section>
-  );
-}
-
-function KanbanTicketCard({
-  isActive,
-  onClick,
-  ticket,
-}: {
-  isActive: boolean;
-  onClick: () => void;
-  ticket: HubItTicket;
-}) {
-  const stage = getTicketWorkflowStage(ticket);
-  const stageClass =
-    stage === "backlog"
-      ? "border-slate-200 bg-slate-100/80"
-      : stage === "validacao" || stage === "finalizado"
-      ? "border-emerald-100 bg-emerald-50/70"
-      : stage === "revisao"
-        ? "border-amber-100 bg-amber-50/70"
-        : "border-slate-200 bg-white";
-
-  return (
-    <button
-      className={`rounded-lg border p-3 text-left transition hover:border-[#A07C3B]/30 ${
-        isActive ? "ring-2 ring-[#A07C3B]/25" : stageClass
-      }`}
-      onClick={onClick}
-      type="button"
-    >
-      <div className="mb-2">
-        <DeliveryDueBadge ticket={ticket} variant="prominent" />
-      </div>
-      <div className="flex items-start justify-between gap-2">
-        <p className="m-0 font-mono text-xs font-semibold text-[#7A5E2C]">
-          {ticket.protocol}
-        </p>
-      </div>
-      <p className="m-0 mt-2 line-clamp-2 text-sm font-semibold text-slate-950">
-        {ticket.title}
-      </p>
-      <p className="m-0 mt-2 truncate text-xs text-slate-500">
-        {ticket.requester.name}
-      </p>
-      {ticket.roadmap?.active ? (
-        <div className="mt-2 flex flex-wrap gap-1.5">
-          <MiniBadge>{hubItTicketRoadmapTypeLabels[ticket.roadmap.type]}</MiniBadge>
-          <MiniBadge>{hubItTicketPriorityLabels[ticket.roadmap.priority]}</MiniBadge>
-        </div>
-      ) : null}
-    </button>
-  );
-}
-
 function QueueSummaryPill({
   label,
   tone = "neutral",
@@ -2301,152 +2436,6 @@ function QueueSummaryPill({
       <strong className="font-mono text-xs">{value}</strong>
       {label}
     </span>
-  );
-}
-
-function QueueViewButton({
-  active,
-  icon,
-  label,
-  onClick,
-  value,
-}: {
-  active: boolean;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-  value: number;
-}) {
-  return (
-    <button
-      aria-pressed={active}
-      className={`flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left transition ${
-        active
-          ? "border-[#A07C3B]/40 bg-[#A07C3B]/10 text-slate-950 shadow-sm"
-          : "border-slate-200 bg-white text-slate-500 hover:border-[#A07C3B]/25 hover:text-slate-950"
-      }`}
-      onClick={onClick}
-      type="button"
-    >
-      <span className="inline-flex min-w-0 items-center gap-2">
-        <span
-          className={`grid size-7 shrink-0 place-items-center rounded-lg ${
-            active ? "bg-[#101820] text-white" : "bg-slate-100 text-slate-500"
-          }`}
-        >
-          {icon}
-        </span>
-        <span className="truncate text-xs font-semibold uppercase">
-          {label}
-        </span>
-      </span>
-      <span className="font-mono text-sm font-semibold">{value}</span>
-    </button>
-  );
-}
-
-function QueueDisclosureSection({
-  children,
-  isExpanded,
-  onToggle,
-  summary,
-  title,
-}: {
-  children: ReactNode;
-  isExpanded: boolean;
-  onToggle: () => void;
-  summary: string;
-  title: string;
-}) {
-  return (
-    <div className="border-b border-slate-200/70 p-3">
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-500">
-            {title}
-          </p>
-          <p className="m-0 mt-0.5 truncate text-xs font-medium text-slate-500">
-            {summary}
-          </p>
-        </div>
-        <Tooltip
-          content={isExpanded ? `Recolher ${title}` : `Expandir ${title}`}
-          placement="left"
-        >
-          <button
-            aria-label={isExpanded ? `Recolher ${title}` : `Expandir ${title}`}
-            className="grid size-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
-            onClick={onToggle}
-            type="button"
-          >
-            {isExpanded ? (
-              <ChevronUp className="size-4" />
-            ) : (
-              <ChevronDown className="size-4" />
-            )}
-          </button>
-        </Tooltip>
-      </div>
-      {isExpanded ? <div className="mt-3">{children}</div> : null}
-    </div>
-  );
-}
-
-function TicketQueueItem({
-  isActive,
-  onClick,
-  ticket,
-}: {
-  isActive: boolean;
-  onClick: () => void;
-  ticket: HubItTicket;
-}) {
-  const queueTone = getTicketQueueToneClass(ticket, isActive);
-
-  return (
-    <button
-      className={`relative w-full overflow-hidden rounded-xl border p-3 text-left transition ${queueTone.container}`}
-      onClick={onClick}
-      type="button"
-    >
-      <span
-        aria-hidden
-        className={`absolute bottom-3 left-0 top-3 w-1 rounded-r-full ${queueTone.stripe}`}
-      />
-      <div className="mb-2 pl-3">
-        <DeliveryDueBadge ticket={ticket} variant="prominent" />
-      </div>
-      <div className="flex items-start gap-3">
-        <RequesterAvatar requester={ticket.requester} size="sm" />
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-center justify-between gap-1.5">
-            <p className="m-0 font-mono text-xs font-semibold text-[#7A5E2C]">
-              {ticket.protocol}
-            </p>
-            <StatusBadge status={ticket.status} ticket={ticket} />
-          </div>
-          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
-            {ticket.title}
-          </p>
-          <p className="m-0 mt-1 truncate text-xs text-slate-500">
-            {ticket.requester.name}
-          </p>
-        </div>
-      </div>
-      <div className="mt-3 flex flex-wrap gap-1.5">
-        <MiniBadge>{ticket.module}</MiniBadge>
-        <MiniBadge>{hubItTicketPriorityLabels[ticket.priority]}</MiniBadge>
-        {ticket.roadmap?.active ? (
-          <>
-            <MiniBadge>{hubItTicketRoadmapTypeLabels[ticket.roadmap.type]}</MiniBadge>
-            <MiniBadge>{hubItTicketPriorityLabels[ticket.roadmap.priority]}</MiniBadge>
-          </>
-        ) : null}
-        {ticket.attachments.length > 0 ? (
-          <MiniBadge>{ticket.attachments.length} anexo(s)</MiniBadge>
-        ) : null}
-      </div>
-    </button>
   );
 }
 
@@ -3936,34 +3925,6 @@ function AttachmentCard({
   );
 }
 
-function EmptyQueue({
-  isLoading,
-  view,
-}: {
-  isLoading: boolean;
-  view: TicketQueueView;
-}) {
-  const message =
-    view === "fila"
-      ? "Fila vazia."
-      : view === "historico"
-        ? "Historico vazio."
-        : "Sem tickets para gestao.";
-
-  return (
-    <div className="rounded-xl border border-dashed border-slate-200 bg-white p-5 text-center">
-      {isLoading ? (
-        <Loader2 className="mx-auto size-5 animate-spin text-slate-400" />
-      ) : (
-        <Inbox className="mx-auto size-6 text-slate-300" />
-      )}
-      <p className="m-0 mt-3 text-sm font-semibold text-slate-500">
-        {isLoading ? "Carregando HelpDesk." : message}
-      </p>
-    </div>
-  );
-}
-
 function StatusBadge({
   status,
   ticket,
@@ -4384,37 +4345,63 @@ function buildTicketManagementStats(
   setupUsersByLookup: ReadonlyMap<string, MentionUser>,
 ): TicketManagementStats {
   const workflowCounts = countTicketsByWorkflowStage(tickets);
+  const activeTickets = tickets.filter(isTicketInActiveQueue);
+  const finalizedTickets = tickets.filter(
+    (ticket) => getTicketWorkflowStage(ticket) === "finalizado",
+  );
+  const backlogTickets = tickets.filter(
+    (ticket) => getTicketWorkflowStage(ticket) === "backlog",
+  );
+  const treatmentTickets = tickets.filter((ticket) => {
+    const stage = getTicketWorkflowStage(ticket);
+
+    return (
+      stage === "novo" ||
+      stage === "tratativa" ||
+      stage === "validacao" ||
+      stage === "revisao"
+    );
+  });
   const categoriesByKey = new Map<string, TicketDimensionStats>();
   const collaboratorsByKey = new Map<string, TicketCollaboratorStats>();
   const departmentByTicketProtocol = new Map<string, string>();
   const departmentsByName = new Map<string, TicketDepartmentStats>();
   const modulesByKey = new Map<string, TicketDimensionStats>();
+  const requesterKeysByDepartment = new Map<string, Set<string>>();
+  const modulesByDepartment = new Map<string, Set<string>>();
   const sortedByUpdate = sortTicketsByUpdatedAt(tickets);
-  const doneTickets = sortedByUpdate
-    .filter((ticket) => getTicketWorkflowStage(ticket) === "finalizado")
-    .slice(0, 6);
-  const meetingBacklogTickets = sortedByUpdate
-    .filter((ticket) => getTicketWorkflowStage(ticket) === "backlog")
-    .slice(0, 6);
-  const meetingTreatmentTickets = sortedByUpdate
-    .filter((ticket) => {
-      const stage = getTicketWorkflowStage(ticket);
-
-      return (
-        stage === "novo" ||
-        stage === "tratativa" ||
-        stage === "validacao" ||
-        stage === "revisao"
-      );
-    })
-    .slice(0, 6);
+  const doneTickets = sortTicketsByUpdatedAt(finalizedTickets).slice(0, 6);
+  const meetingBacklogTickets = sortTicketsByUpdatedAt(backlogTickets).slice(0, 6);
+  const meetingTreatmentTickets = sortTicketsByUpdatedAt(treatmentTickets).slice(0, 6);
+  const highPriorityTickets = tickets.filter(
+    (ticket) => ticket.priority === "alta" || ticket.priority === "critica",
+  );
+  const createdTodayTickets = tickets.filter((ticket) =>
+    isSameLocalDate(ticket.createdAt, new Date()),
+  );
+  const closedTodayTickets = finalizedTickets.filter((ticket) =>
+    isTicketClosedOnDate(ticket, new Date()),
+  );
+  const repliedTodayTickets = tickets.filter((ticket) =>
+    ticket.events.some(
+      (event) =>
+        event.type === "admin_reply" && isSameLocalDate(event.createdAt, new Date()),
+    ),
+  );
 
   for (const ticket of tickets) {
     const department = getTicketRequesterDepartment(ticket, setupUsersByLookup);
     const stage = getTicketWorkflowStage(ticket);
     const categoryKey = ticket.category;
-    const moduleKey = normalizeSearchText(ticket.roadmap?.module ?? ticket.module);
+    const moduleLabel = normalizeTicketModuleLabel(
+      ticket.roadmap?.module || ticket.module,
+    );
+    const moduleKey = normalizeSearchText(moduleLabel);
     const collaboratorKey =
+      ticket.requester.id ||
+      ticket.requester.email ||
+      normalizeSearchText(ticket.requester.name);
+    const requesterKey =
       ticket.requester.id ||
       ticket.requester.email ||
       normalizeSearchText(ticket.requester.name);
@@ -4422,9 +4409,14 @@ function buildTicketManagementStats(
       backlog: 0,
       department,
       finalized: 0,
+      highPriority: 0,
       inProgress: 0,
       latestTicket: null,
+      modules: [],
+      requesterCount: 0,
+      tickets: [],
       total: 0,
+      validation: 0,
     };
     const currentCategory = categoriesByKey.get(categoryKey) ?? {
       backlog: 0,
@@ -4433,9 +4425,9 @@ function buildTicketManagementStats(
       key: categoryKey,
       label: hubItTicketCategoryLabels[ticket.category],
       latestTicket: null,
+      tickets: [],
       total: 0,
     };
-    const moduleLabel = ticket.roadmap?.module?.trim() || ticket.module.trim() || "Sem modulo";
     const currentModule = modulesByKey.get(moduleKey) ?? {
       backlog: 0,
       finalized: 0,
@@ -4443,17 +4435,21 @@ function buildTicketManagementStats(
       key: moduleKey,
       label: moduleLabel,
       latestTicket: null,
+      tickets: [],
       total: 0,
     };
     const currentCollaborator = collaboratorsByKey.get(collaboratorKey) ?? {
       backlog: 0,
       department,
       finalized: 0,
+      highPriority: 0,
       inProgress: 0,
       key: collaboratorKey,
       label: ticket.requester.name,
       latestTicket: null,
+      modules: [],
       requester: ticket.requester,
+      tickets: [],
       total: 0,
     };
 
@@ -4462,6 +4458,30 @@ function buildTicketManagementStats(
     applyTicketToDimension(currentModule, stage, ticket);
     applyTicketToDimension(currentCollaborator, stage, ticket);
 
+    if (ticket.priority === "alta" || ticket.priority === "critica") {
+      currentDepartment.highPriority += 1;
+      currentCollaborator.highPriority += 1;
+    }
+
+    if (stage === "validacao") {
+      currentDepartment.validation += 1;
+    }
+
+    const departmentRequesterKeys =
+      requesterKeysByDepartment.get(department) ?? new Set<string>();
+    departmentRequesterKeys.add(requesterKey);
+    requesterKeysByDepartment.set(department, departmentRequesterKeys);
+
+    const departmentModules =
+      modulesByDepartment.get(department) ?? new Set<string>();
+    departmentModules.add(moduleLabel);
+    modulesByDepartment.set(department, departmentModules);
+
+    currentCollaborator.modules = addUniqueSortedLabel(
+      currentCollaborator.modules,
+      moduleLabel,
+    );
+
     departmentsByName.set(department, currentDepartment);
     categoriesByKey.set(categoryKey, currentCategory);
     modulesByKey.set(moduleKey, currentModule);
@@ -4469,15 +4489,35 @@ function buildTicketManagementStats(
     departmentByTicketProtocol.set(ticket.protocol, department);
   }
 
+  const departments = [...departmentsByName.values()].map((department) => ({
+    ...department,
+    modules: [...(modulesByDepartment.get(department.department) ?? [])].sort(
+      sortLabels,
+    ),
+    requesterCount:
+      requesterKeysByDepartment.get(department.department)?.size ?? 0,
+  }));
+
   return {
-    active: tickets.filter(isTicketInActiveQueue).length,
+    active: activeTickets.length,
+    activeTickets,
+    allTickets: tickets,
     backlog: workflowCounts.backlog,
+    backlogTickets,
     categories: sortManagementDimensions([...categoriesByKey.values()]),
+    closedTodayTickets,
     collaborators: sortManagementDimensions([...collaboratorsByKey.values()]),
+    createdTodayTickets,
+    dailyVolume: buildDailyVolumeStats(tickets),
     departmentByTicketProtocol,
-    departments: sortDepartmentDimensions([...departmentsByName.values()]),
+    departments: sortDepartmentDimensions(departments),
     doneTickets,
     finalized: workflowCounts.finalizado,
+    finalizedTickets,
+    firstResponseAverageHours: averageHours(
+      tickets.map(getTicketFirstResponseHours).filter(isNumber),
+    ),
+    highPriorityTickets,
     inProgress:
       workflowCounts.novo +
       workflowCounts.tratativa +
@@ -4488,7 +4528,12 @@ function buildTicketManagementStats(
     meetingTreatmentTickets,
     modules: sortManagementDimensions([...modulesByKey.values()]),
     newTickets: workflowCounts.novo,
+    repliedTodayTickets,
+    resolutionAverageHours: averageHours(
+      finalizedTickets.map(getTicketResolutionHours).filter(isNumber),
+    ),
     review: workflowCounts.revisao,
+    treatmentTickets,
     total: tickets.length,
     validation: workflowCounts.validacao,
   };
@@ -4497,7 +4542,12 @@ function buildTicketManagementStats(
 function applyTicketToDimension(
   dimension: Pick<
     TicketDimensionStats,
-    "backlog" | "finalized" | "inProgress" | "latestTicket" | "total"
+    | "backlog"
+    | "finalized"
+    | "inProgress"
+    | "latestTicket"
+    | "tickets"
+    | "total"
   >,
   stage: TicketWorkflowStage,
   ticket: HubItTicket,
@@ -4512,6 +4562,7 @@ function applyTicketToDimension(
 
   dimension.total =
     dimension.finalized + dimension.inProgress + dimension.backlog;
+  dimension.tickets.push(ticket);
 
   if (
     !dimension.latestTicket ||
@@ -4544,6 +4595,183 @@ function sortDepartmentDimensions(items: TicketDepartmentStats[]) {
         { sensitivity: "base" },
       ),
   );
+}
+
+function addUniqueSortedLabel(items: string[], label: string) {
+  return Array.from(new Set([...items, label])).sort(sortLabels);
+}
+
+function sortLabels(firstLabel: string, secondLabel: string) {
+  return firstLabel.localeCompare(secondLabel, "pt-BR", {
+    sensitivity: "base",
+  });
+}
+
+function normalizeTicketModuleLabel(moduleName: string | null | undefined) {
+  const normalizedModule = normalizeSearchText(moduleName ?? "");
+
+  if (!normalizedModule) {
+    return "Panteon";
+  }
+
+  if (
+    normalizedModule.includes("pulsex") ||
+    normalizedModule.includes("pulse x") ||
+    normalizedModule.includes("hermes")
+  ) {
+    return "Hermes";
+  }
+
+  if (normalizedModule === "hub" || normalizedModule.includes("panteon")) {
+    return "Panteon";
+  }
+
+  if (normalizedModule.includes("hubops")) {
+    return "Zeus";
+  }
+
+  return moduleName?.trim() || "Panteon";
+}
+
+function buildDailyVolumeStats(tickets: HubItTicket[]): TicketDailyVolumeStats[] {
+  const today = new Date();
+
+  return Array.from({ length: 7 }, (_, index) => {
+    const date = new Date(today);
+    date.setDate(today.getDate() - (6 - index));
+    const day = toLocalDateKey(date);
+
+    return {
+      closed: tickets.filter((ticket) => isTicketClosedOnDate(ticket, date))
+        .length,
+      created: tickets.filter((ticket) => isSameLocalDate(ticket.createdAt, date))
+        .length,
+      day,
+      replied: tickets.filter((ticket) =>
+        ticket.events.some(
+          (event) =>
+            event.type === "admin_reply" && isSameLocalDate(event.createdAt, date),
+        ),
+      ).length,
+    };
+  });
+}
+
+function isTicketClosedOnDate(ticket: HubItTicket, date: Date) {
+  return (
+    (ticket.resolvedAt ? isSameLocalDate(ticket.resolvedAt, date) : false) ||
+    ticket.events.some(
+      (event) =>
+        (event.type === "closed" || event.type === "resolved") &&
+        isSameLocalDate(event.createdAt, date),
+    )
+  );
+}
+
+function isSameLocalDate(value: string, date: Date) {
+  return toLocalDateKey(new Date(value)) === toLocalDateKey(date);
+}
+
+function toLocalDateKey(date: Date) {
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const dateParts = new Intl.DateTimeFormat("en-US", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+  })
+    .formatToParts(date)
+    .reduce<Record<string, string>>((parts, part) => {
+      if (part.type !== "literal") {
+        parts[part.type] = part.value;
+      }
+
+      return parts;
+    }, {});
+
+  return `${dateParts.year}-${dateParts.month}-${dateParts.day}`;
+}
+
+function getTicketFirstResponseHours(ticket: HubItTicket) {
+  const firstResponse = [...ticket.events]
+    .filter((event) => event.type === "admin_reply")
+    .sort(
+      (firstEvent, secondEvent) =>
+        new Date(firstEvent.createdAt).getTime() -
+        new Date(secondEvent.createdAt).getTime(),
+    )[0];
+
+  if (!firstResponse) {
+    return null;
+  }
+
+  return hoursBetween(ticket.createdAt, firstResponse.createdAt);
+}
+
+function getTicketResolutionHours(ticket: HubItTicket) {
+  const resolutionDate =
+    ticket.resolvedAt ??
+    [...ticket.events]
+      .filter((event) => event.type === "closed" || event.type === "resolved")
+      .sort(
+        (firstEvent, secondEvent) =>
+          new Date(secondEvent.createdAt).getTime() -
+          new Date(firstEvent.createdAt).getTime(),
+      )[0]?.createdAt;
+
+  return resolutionDate ? hoursBetween(ticket.createdAt, resolutionDate) : null;
+}
+
+function hoursBetween(start: string, end: string) {
+  const startTime = new Date(start).getTime();
+  const endTime = new Date(end).getTime();
+
+  if (Number.isNaN(startTime) || Number.isNaN(endTime) || endTime < startTime) {
+    return null;
+  }
+
+  return (endTime - startTime) / (60 * 60 * 1000);
+}
+
+function averageHours(values: number[]) {
+  if (!values.length) {
+    return null;
+  }
+
+  return values.reduce((sum, value) => sum + value, 0) / values.length;
+}
+
+function isNumber(value: number | null): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function formatHoursKpi(value: number | null) {
+  if (value === null) {
+    return "--";
+  }
+
+  if (value < 24) {
+    return `${Math.max(1, Math.round(value))}h`;
+  }
+
+  return `${(value / 24).toFixed(value >= 240 ? 0 : 1)}d`;
+}
+
+function formatDayLabel(day: string) {
+  const date = new Date(`${day}T12:00:00`);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--";
+  }
+
+  return date.toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "America/Sao_Paulo",
+  });
 }
 
 function getTicketRequesterDepartment(
@@ -4590,6 +4818,141 @@ function getTicketSearchText(ticket: HubItTicket) {
   ]
     .map((value) => normalizeSearchText(value ?? ""))
     .join(" ");
+}
+
+function createDefaultTicketDraft({
+  approvedDeliveryDate,
+  isBacklog,
+  requestedDeliveryDate,
+  status,
+}: {
+  approvedDeliveryDate: string | null;
+  isBacklog: boolean;
+  requestedDeliveryDate: string | null;
+  status: HubItTicketStatus;
+}): TicketDraft {
+  return {
+    adminResponse: "",
+    approvedDeliveryDate: approvedDeliveryDate ?? requestedDeliveryDate ?? "",
+    deliveryDecision: "manter",
+    deliveryDecisionNote: "",
+    resolutionSummary: "",
+    status: isBacklog ? "em_analise" : status === "novo" ? "em_tratativa" : status,
+  };
+}
+
+function readStoredTicketDraft(protocol: string): TicketDraft | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(ticketDraftStorageKey);
+    const drafts = rawValue ? (JSON.parse(rawValue) as unknown) : null;
+
+    if (!drafts || typeof drafts !== "object" || Array.isArray(drafts)) {
+      return null;
+    }
+
+    return parseStoredTicketDraft(
+      (drafts as Record<string, unknown>)[protocol],
+    );
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredTicketDraft(
+  protocol: string,
+  draft: TicketDraft,
+  defaultDraft: TicketDraft,
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(ticketDraftStorageKey);
+    const drafts =
+      rawValue && typeof rawValue === "string"
+        ? (JSON.parse(rawValue) as Record<string, unknown>)
+        : {};
+
+    if (!hasMeaningfulTicketDraft(draft, defaultDraft)) {
+      delete drafts[protocol];
+    } else {
+      drafts[protocol] = draft;
+    }
+
+    window.localStorage.setItem(ticketDraftStorageKey, JSON.stringify(drafts));
+  } catch {
+    // O rascunho local e uma melhoria de experiencia; falha nele nao bloqueia o ticket.
+  }
+}
+
+function clearStoredTicketDraft(protocol: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const rawValue = window.localStorage.getItem(ticketDraftStorageKey);
+    const drafts =
+      rawValue && typeof rawValue === "string"
+        ? (JSON.parse(rawValue) as Record<string, unknown>)
+        : {};
+
+    delete drafts[protocol];
+    window.localStorage.setItem(ticketDraftStorageKey, JSON.stringify(drafts));
+  } catch {
+    // Mantem o fluxo de salvamento mesmo se o armazenamento local falhar.
+  }
+}
+
+function parseStoredTicketDraft(value: unknown): TicketDraft | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const draft = value as Partial<Record<keyof TicketDraft, unknown>>;
+
+  if (typeof draft.status !== "string") {
+    return null;
+  }
+
+  return {
+    adminResponse:
+      typeof draft.adminResponse === "string" ? draft.adminResponse : "",
+    approvedDeliveryDate:
+      typeof draft.approvedDeliveryDate === "string"
+        ? draft.approvedDeliveryDate
+        : "",
+    deliveryDecision:
+      draft.deliveryDecision === "approve_requested" ||
+      draft.deliveryDecision === "reject_with_new_date"
+        ? draft.deliveryDecision
+        : "manter",
+    deliveryDecisionNote:
+      typeof draft.deliveryDecisionNote === "string"
+        ? draft.deliveryDecisionNote
+        : "",
+    resolutionSummary:
+      typeof draft.resolutionSummary === "string"
+        ? draft.resolutionSummary
+        : "",
+    status: draft.status as HubItTicketStatus,
+  };
+}
+
+function hasMeaningfulTicketDraft(draft: TicketDraft, defaultDraft: TicketDraft) {
+  return (
+    draft.adminResponse.trim().length > 0 ||
+    draft.resolutionSummary.trim().length > 0 ||
+    draft.deliveryDecisionNote.trim().length > 0 ||
+    draft.deliveryDecision !== defaultDraft.deliveryDecision ||
+    draft.approvedDeliveryDate !== defaultDraft.approvedDeliveryDate ||
+    draft.status !== defaultDraft.status
+  );
 }
 
 function getBacklogFormInitialState(ticket: HubItTicket): BacklogFormState {
@@ -4664,47 +5027,6 @@ function getTodayDateInput() {
   return `${year}-${month}-${day}`;
 }
 
-function getDeliveryFilterSummary(
-  filter: DeliveryFilter,
-  total: number,
-  buckets: {
-    folga: number;
-    hoje: number;
-    proximos: number;
-    semData: number;
-  },
-) {
-  if (filter === "hoje") {
-    return `${buckets.hoje} vencem hoje`;
-  }
-
-  if (filter === "proximos") {
-    return `${buckets.proximos} em 1-2 dias`;
-  }
-
-  if (filter === "folga") {
-    return `${buckets.folga} com 3+ dias`;
-  }
-
-  if (filter === "sem_data") {
-    return `${buckets.semData} sem data`;
-  }
-
-  return `${total} tickets`;
-}
-
-function getQueueViewTitle(view: TicketQueueView) {
-  if (view === "historico") {
-    return "Historico";
-  }
-
-  if (view === "gestao") {
-    return "Gestao";
-  }
-
-  return "Fila ativa";
-}
-
 function sortTicketsByDeliveryDate(tickets: HubItTicket[]) {
   return [...tickets].sort((firstTicket, secondTicket) => {
     const firstDate = getTicketEffectiveDeliveryDate(firstTicket);
@@ -4762,7 +5084,15 @@ function compareHistoryTicketValue(
   key: HistorySortKey,
 ) {
   if (key === "evidence") {
-    return getTicketEvidenceCount(firstTicket) - getTicketEvidenceCount(secondTicket);
+    return (
+      getTicketEvidenceCount(firstTicket) - getTicketEvidenceCount(secondTicket)
+    );
+  }
+
+  if (key === "priority") {
+    return (
+      priorityScore(firstTicket.priority) - priorityScore(secondTicket.priority)
+    );
   }
 
   if (key === "updatedAt") {
@@ -4783,17 +5113,36 @@ function compareHistoryTicketValue(
 
 function getHistoryTicketStringValue(
   ticket: HubItTicket,
-  key: Exclude<HistorySortKey, "evidence" | "updatedAt">,
+  key: Exclude<HistorySortKey, "evidence" | "priority" | "updatedAt">,
 ) {
   if (key === "collaborator") {
     return ticket.requester.name;
+  }
+
+  if (key === "module") {
+    return normalizeTicketModuleLabel(ticket.roadmap?.module || ticket.module);
   }
 
   if (key === "protocol") {
     return ticket.protocol;
   }
 
+  if (key === "status") {
+    return workflowStageLabels[getTicketWorkflowStage(ticket)];
+  }
+
   return ticket.title;
+}
+
+function priorityScore(priority: HubItTicket["priority"]) {
+  const scores = {
+    baixa: 1,
+    media: 2,
+    alta: 3,
+    critica: 4,
+  } as const satisfies Record<HubItTicket["priority"], number>;
+
+  return scores[priority];
 }
 
 function mergeTicketListWithExistingDetails(
@@ -4998,67 +5347,6 @@ function getTicketDeliveryState(ticket: HubItTicket) {
     date,
     days,
     label: `${days} dias`,
-  };
-}
-
-function getTicketQueueToneClass(
-  ticket: HubItTicket,
-  isActive: boolean,
-) {
-  const stage = getTicketWorkflowStage(ticket);
-
-  if (stage === "backlog") {
-    return {
-      container: isActive
-        ? "border-slate-300 bg-slate-100 shadow-sm"
-        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50",
-      stripe: "bg-slate-400",
-    };
-  }
-
-  if (stage === "validacao" || stage === "finalizado") {
-    return {
-      container: isActive
-        ? "border-emerald-300 bg-emerald-50 shadow-sm"
-        : "border-emerald-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/50",
-      stripe: "bg-emerald-500",
-    };
-  }
-
-  const bucket = getTicketDeliveryBucket(ticket);
-
-  if (bucket === "hoje") {
-    return {
-      container: isActive
-        ? "border-red-300 bg-red-50 shadow-sm"
-        : "border-red-100 bg-white hover:border-red-200 hover:bg-red-50/50",
-      stripe: "bg-red-500",
-    };
-  }
-
-  if (bucket === "proximos") {
-    return {
-      container: isActive
-        ? "border-amber-300 bg-amber-50 shadow-sm"
-        : "border-amber-100 bg-white hover:border-amber-200 hover:bg-amber-50/50",
-      stripe: "bg-amber-500",
-    };
-  }
-
-  if (bucket === "folga") {
-    return {
-      container: isActive
-        ? "border-emerald-300 bg-emerald-50 shadow-sm"
-        : "border-emerald-100 bg-white hover:border-emerald-200 hover:bg-emerald-50/50",
-      stripe: "bg-emerald-500",
-    };
-  }
-
-  return {
-    container: isActive
-      ? "border-[#A07C3B]/35 bg-white shadow-sm"
-      : "border-slate-200/70 bg-white/70 hover:border-[#A07C3B]/25 hover:bg-white",
-    stripe: "bg-slate-300",
   };
 }
 

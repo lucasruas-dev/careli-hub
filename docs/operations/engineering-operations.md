@@ -36005,3 +36005,60 @@ Conclusao:
 - O recorte Zeus HelpDesk gestao executiva e mensagem `Ticket encerrado` esta em producao no dominio OPS.
 - O impacto pratico e que Lucas passa a ter uma gestao mais limpa, com indicadores por departamento, colaborador, tipo e modulo, e a timeline deixa de exibir o texto longo de encerramento automatico.
 - Precisa de acao agora: Lucas deve validar autenticado no OPS; Zeus fica com rollback pronto em `dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk` se aparecer regressao critica.
+
+## 2026-06-17 20:39:03 -03:00 - Zeus - HelpDesk abas, listas e gestao first-world
+
+Assunto: [Zeus] HelpDesk abas, listas e gestao first-world
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `UI / HELPDESK / OPERACOES / SEM_DEPLOY`.
+- Status: `VALIDADO_LOCAL / AGUARDANDO_TESTE_LUCAS`.
+- Protocolo CEP:
+  - `ZEUS-20260617-005-HELPDESK-FIRST-WORLD-UI`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json`;
+  - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Origem:
+  - Lucas pediu que o Zeus trouxesse a barra de status do Panteon, principalmente notificacoes;
+  - pediu a volta do `Historico` como aba propria, junto de `Fila Ativa` e `Gestao`;
+  - pediu Fila Ativa em lista/tabela, sem cards grandes, com clique abrindo popup;
+  - pediu que a Gestao evoluisse para uma visao executiva parecida com a tela inicial do Hades;
+  - pediu tabelas mais ricas por departamento e colaborador, tipos de demanda, modulos e performance;
+  - pediu consolidar `Hermes` e `PulseX` como o mesmo modulo e exibir `Hub` como `Panteon`;
+  - pediu que respostas em andamento nao sejam perdidas ao sair e voltar da tela.
+- Decisoes implementadas:
+  - HelpDesk passou a ter `Fila Ativa`, `Gestao` e `Historico` como abas principais;
+  - `Fila Ativa` e `Historico` agora usam tabela/lista operacional com ordenacao e abertura do ticket em popup;
+  - o popup de detalhe concentra timeline, evidencias, resposta, backlog e workflow, sem obrigar o usuario a descer a tela;
+  - a barra superior do Zeus foi aproximada do padrao Panteon com status online, avatar, usuario, logout e sino de notificacoes;
+  - as notificacoes do Zeus agrupam tickets aguardando atencao, alertas de monitoramento e acoes operacionais;
+  - a gestao ganhou header executivo, cards interativos que abrem popup de tickets, KPIs de hoje, resposta, resolucao, criticidade e grafico simples de 7 dias;
+  - tabelas de departamento e colaborador foram enriquecidas com solicitantes, criticos, validacao, backlog, modulo principal e ultimo ticket;
+  - tipos de demanda e modulos usam consolidacao operacional: `PulseX`/`Hermes` => `Hermes`, `Hub`/`Panteon` => `Panteon`;
+  - rascunhos de resposta passam a ser persistidos localmente por protocolo via `localStorage`, e sao limpos apos envio.
+- Arquivos atualizados neste recorte:
+  - `apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx`;
+  - `apps/hub/modules/squadops/ZeusPage.tsx`;
+  - `docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json`;
+  - `docs/operations/engineering-operations.md`.
+- Commit local:
+  - `e0adc89333e928a8f5a5db1282d83e78cfe504d2`.
+- Fora do escopo:
+  - nenhum deploy, Preview, homologacao real, producao, alias, dominio, env, secret, Supabase, banco real, migration ou Vercel;
+  - nenhuma alteracao em Hades, Hermes, Iris, Atlas, Chronos, Setup, Guardian ou outro modulo fora de Zeus/HelpDesk;
+  - anexos ainda nao sao persistidos no rascunho local, apenas texto/campos da resposta.
+- Validacao executada:
+  - `npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/ZeusPage.tsx modules/squadops/blocks/helpdesk/helpdesk-board.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`.
+  - `npm.cmd run check-types:hub`: PASS.
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warnings conhecidos de worktree `.codex-tmp` e Turbopack/NFT fora do recorte.
+  - `GET http://localhost:3018/zeus`: PASS, `200 OK`.
+  - `node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/ZeusPage.tsx,docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json,docs/operations/engineering-operations.md`: PASS, com avisos esperados de baseline OPS divergindo da cidade base `PNT-01-00-00-000`.
+- Risco residual:
+  - validacao visual autenticada ficou pendente neste ambiente porque a ferramenta de navegador completa nao foi exposta para a sessao;
+  - os KPIs de resposta e resolucao dependem da qualidade dos eventos historicos de timeline;
+  - deploy em OPS/producao permanece bloqueado ate autorizacao explicita do Lucas para este protocolo.
+
+Conclusao:
+
+- O recorte Zeus HelpDesk first-world foi implementado e validado localmente.
+- O impacto pratico e reduzir poluicao visual, separar claramente fila/gestao/historico, abrir tickets em popup e preservar rascunho de resposta.
+- Precisa de acao agora: Lucas pode testar em `http://localhost:3018/zeus`; para publicar no OPS, precisa autorizar explicitamente o protocolo `ZEUS-20260617-005-HELPDESK-FIRST-WORLD-UI`.

@@ -104,6 +104,7 @@ import type { BadgeVariant } from "@repo/uix";
 import {
   AlertTriangle,
   Activity,
+  Bell,
   Bot,
   ChevronDown,
   ChevronRight,
@@ -115,6 +116,7 @@ import {
   History,
   Layers3,
   LayoutGrid,
+  LogOut,
   Loader2,
   Maximize2,
   Minimize2,
@@ -122,6 +124,7 @@ import {
   RefreshCcw,
   Rocket,
   Search,
+  Settings,
   ShieldAlert,
   Sparkles,
   Upload,
@@ -809,7 +812,7 @@ export function ZeusPage({
 }: {
   standalone?: boolean;
 } = {}) {
-  const { authState, hubUser, profileStatus } = useAuth();
+  const { authState, hubUser, profileStatus, signOut } = useAuth();
   const canAccessZeus = canAccessZeusAsAdmin(hubUser);
   const authAccessToken = authState.session?.accessToken ?? null;
   const [resolvedAccessToken, setResolvedAccessToken] = useState<string | null>(
@@ -2106,12 +2109,21 @@ export function ZeusPage({
 
         <ZeusOpsPresenceBar
           activeView={activeView}
+          avatarUrl={hubUser?.avatarUrl}
           isOnline={
             canAccessZeus &&
             profileStatus === "ready" &&
             Boolean(zeusAccessToken)
           }
+          itTicketAttentionCount={itTicketAttentionCount}
           lastSeenAt={zeusPresenceLastSeenAt}
+          monitoringAlertCount={visibleMonitoringAlertCount}
+          onOpenHelpDesk={() => setActiveView("itTickets")}
+          onOpenMonitoring={() => setActiveView("monitoring")}
+          onSignOut={() => {
+            void signOut();
+          }}
+          operationActionCount={actionCount}
           userName={hubUser?.name ?? "Sessao"}
         />
 
@@ -4470,52 +4482,188 @@ function ZeusViewTabs({
 
 function ZeusOpsPresenceBar({
   activeView,
+  avatarUrl,
   isOnline,
+  itTicketAttentionCount,
   lastSeenAt,
+  monitoringAlertCount,
+  onOpenHelpDesk,
+  onOpenMonitoring,
+  onSignOut,
+  operationActionCount,
   userName,
 }: {
   activeView: ZeusView;
+  avatarUrl?: string | null;
   isOnline: boolean;
+  itTicketAttentionCount: number;
   lastSeenAt: string | null;
+  monitoringAlertCount: number;
+  onOpenHelpDesk: () => void;
+  onOpenMonitoring: () => void;
+  onSignOut: () => void;
+  operationActionCount: number;
   userName: string;
 }) {
+  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
   const activeViewLabel =
     zeusViews.find((view) => view.id === activeView)?.label ?? "Zeus";
+  const notificationCount =
+    itTicketAttentionCount + monitoringAlertCount + operationActionCount;
   const statusTone = isOnline
-    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-    : "border-slate-200 bg-slate-50 text-slate-500";
+    ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+    : "bg-slate-50 text-slate-500 ring-slate-200";
 
   return (
     <section className="rounded-xl border border-slate-200/70 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-3">
-          <span className={`inline-flex h-8 items-center gap-2 rounded-lg border px-2.5 text-xs font-semibold ${statusTone}`}>
+        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-500">
+          <span className="inline-flex h-8 items-center gap-2 rounded-lg bg-slate-50 px-2.5 ring-1 ring-slate-200">
+            <Activity className="size-4 text-emerald-600" />
+            connected
+          </span>
+          <span className="hidden h-8 items-center gap-2 rounded-lg bg-slate-50 px-2.5 ring-1 ring-slate-200 sm:inline-flex">
+            <Activity className="size-4 text-[#A07C3B]" />
+            OPS / {activeViewLabel}
+          </span>
+          <span className="hidden h-8 items-center rounded-lg bg-slate-50 px-2.5 ring-1 ring-slate-200 lg:inline-flex">
+            {lastSeenAt
+              ? `Pulso: ${formatOperationDateTime(lastSeenAt)}`
+              : "Pulso: aguardando"}
+          </span>
+        </div>
+
+        <div className="flex min-w-0 items-center gap-2">
+          <div className="relative">
+            <Tooltip content="Notificacoes">
+              <button
+                aria-expanded={isNotificationOpen}
+                aria-label="Abrir notificacoes Zeus"
+                className="relative grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+                onClick={() => setIsNotificationOpen((current) => !current)}
+                type="button"
+              >
+                <Bell className="size-4" />
+                {notificationCount > 0 ? (
+                  <span className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[0.62rem] font-bold leading-none text-white">
+                    {notificationCount > 99 ? "99+" : notificationCount}
+                  </span>
+                ) : null}
+              </button>
+            </Tooltip>
+            {isNotificationOpen ? (
+              <div className="absolute right-0 top-11 z-[90] w-[22rem] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
+                <div className="border-b border-slate-100 px-4 py-3">
+                  <p className="m-0 text-sm font-semibold text-slate-950">
+                    Notificacoes Zeus
+                  </p>
+                  <p className="m-0 mt-1 text-xs text-slate-500">
+                    Sinais acionaveis do OPS.
+                  </p>
+                </div>
+                <div className="grid gap-2 p-2">
+                  <ZeusNotificationButton
+                    count={itTicketAttentionCount}
+                    label="Tickets aguardando Zeus"
+                    onClick={() => {
+                      setIsNotificationOpen(false);
+                      onOpenHelpDesk();
+                    }}
+                  />
+                  <ZeusNotificationButton
+                    count={monitoringAlertCount}
+                    label="Alertas de monitoramento"
+                    onClick={() => {
+                      setIsNotificationOpen(false);
+                      onOpenMonitoring();
+                    }}
+                  />
+                  <ZeusNotificationButton
+                    count={operationActionCount}
+                    label="Acoes operacionais"
+                    onClick={() => setIsNotificationOpen(false)}
+                  />
+                </div>
+              </div>
+            ) : null}
+          </div>
+          <Tooltip content="Ajustes">
+            <button
+              aria-label="Abrir ajustes"
+              className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+              type="button"
+            >
+              <Settings className="size-4" />
+            </button>
+          </Tooltip>
+          <span className={`inline-flex h-9 items-center gap-2 rounded-lg px-3 text-xs font-semibold ring-1 ${statusTone}`}>
             <span
               aria-hidden="true"
               className={`h-2 w-2 rounded-full ${
                 isOnline ? "bg-emerald-500" : "bg-slate-300"
               }`}
             />
-            {isOnline ? "Online no Panteon" : "Conectando presenca"}
+            {isOnline ? "Online" : "Conectando"}
+            <ChevronDown className="size-3.5" />
           </span>
-          <span className="min-w-0 truncate text-sm font-semibold text-slate-950">
+          <span className="grid size-9 place-items-center overflow-hidden rounded-full bg-[#101820] text-xs font-semibold text-white ring-2 ring-white">
+            {avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                alt=""
+                className="size-full object-cover"
+                src={avatarUrl}
+              />
+            ) : (
+              getZeusUserInitials(userName)
+            )}
+          </span>
+          <span className="hidden max-w-28 truncate text-sm font-medium text-slate-600 sm:inline">
             {userName}
           </span>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
-          <span className="inline-flex h-8 items-center gap-2 rounded-lg bg-slate-50 px-2.5 ring-1 ring-slate-200">
-            <Activity className="size-4 text-[#A07C3B]" />
-            OPS / {activeViewLabel}
-          </span>
-          <span className="inline-flex h-8 items-center rounded-lg bg-slate-50 px-2.5 ring-1 ring-slate-200">
-            {lastSeenAt
-              ? `Pulso: ${formatOperationDateTime(lastSeenAt)}`
-              : "Pulso: aguardando"}
-          </span>
+          <Tooltip content="Sair">
+            <button
+              aria-label="Sair"
+              className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+              onClick={onSignOut}
+              type="button"
+            >
+              <LogOut className="size-4" />
+            </button>
+          </Tooltip>
         </div>
       </div>
     </section>
   );
+}
+
+function ZeusNotificationButton({
+  count,
+  label,
+  onClick,
+}: {
+  count: number;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-slate-50"
+      onClick={onClick}
+      type="button"
+    >
+      <span className="text-sm font-semibold text-slate-800">{label}</span>
+      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-xs font-semibold text-slate-600">
+        {count}
+      </span>
+    </button>
+  );
+}
+
+function getZeusUserInitials(name: string) {
+  const [first = "", second = ""] = name.trim().split(/\s+/);
+
+  return `${first.charAt(0)}${second.charAt(0)}`.toUpperCase() || "Z";
 }
 
 function DeployProtocolsView({
