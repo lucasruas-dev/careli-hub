@@ -3696,3 +3696,51 @@ Registro de producao:
 - Rollback:
   - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp`;
   - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+
+## 2026-06-18 - PROD-20260618-009-ZEUS-HELPDESK-ADDRESS
+
+Status: EM PRODUCAO / OPS.
+
+Registro de producao:
+
+- Assunto: `[Zeus] HelpDesk persistente e Address Catalog`.
+- Protocolo: `ZEUS-20260618-009-HELPDESK-ADDRESS-PROD`.
+- Data e hora local: `2026-06-18 09:22:59 -03:00`.
+- Autorizacao: Lucas autorizou corrigir HelpDesk e publicar a tela Address somente no dominio `https://ops.c2x.app.br`.
+- Deployment publicado:
+  - id: `dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-2xdumpc1n-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://ops.c2x.app.br`.
+- Escopo publicado:
+  - HelpDesk com persistencia de aba, modo, filtros, busca, ticket selecionado e popup aberto;
+  - Desk/lista com departamento, filtros melhores, entrega apenas por data colorida e sem rolagem horizontal;
+  - detalhe de ticket sem workflow duplicado no cabecalho;
+  - gestao sem cabecalho escuro, grafico de movimento corrigido e popups com filtros/recolher/expandir;
+  - calendario semanal com dias vazios e entregas depois da semana;
+  - nova aba `Address` no Zeus com catalogo CEP operacional e API `/api/zeus/address-catalog`.
+- Validacoes antes de publicar:
+  - `check-types`: PASS;
+  - lint focado do HelpDesk: PASS;
+  - build Hub local: PASS;
+  - CEP preflight combinado: PASS;
+  - Production Module Safety Gate: PASS, 11 mudancas detectadas.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/zeus/address-catalog`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/api/zeus/address-catalog`: 404 esperado, rota fora do dominio principal;
+  - logs Vercel 10m: apenas 200/401 esperados, sem 500/502.
+- Escopo preservado:
+  - nenhum env, secret, token, banco, migration, Supabase remoto, dominio adicional ou alias principal foi alterado;
+  - `https://c2x.app.br` permaneceu no deployment `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Observacao de deploy:
+  - dois deployments tecnicos sem alias foram descartados por snapshot remoto sem a rota Address;
+  - deployment final foi gerado a partir de pacote temporario limpo fora do root linkado principal.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; registro canonico em Markdown foi atualizado nesta rodada.
+- Rollback:
+  - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F`;
+  - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.

@@ -36460,3 +36460,74 @@ Conclusao:
 - O pacote combinado `ZEUS-20260618-009-HELPDESK-ADDRESS-PROD` ficou preparado para gate de producao OPS.
 - O impacto pratico esperado e reduzir retrabalho na tela HelpDesk, melhorar leitura da fila/gestao e liberar a primeira tela consultavel do Address no Zeus.
 - Precisa de acao agora: Zeus deve fechar commit limpo, rodar gates e publicar somente `https://ops.c2x.app.br`; Lucas valida depois em producao OPS.
+
+## 2026-06-18 09:22:59 -03:00 - Zeus - Publicacao OPS do HelpDesk persistente e Address
+
+Assunto: [Zeus] Publicacao OPS do HelpDesk persistente e Address
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `PUBLICACAO_PRODUCAO_OPS / HELPDESK / ADDRESS`.
+- Status: `EM_PRODUCAO`.
+- Protocolo CEP:
+  - `ZEUS-20260618-009-HELPDESK-ADDRESS-PROD`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-address-prod-20260618.json`;
+  - safety gate: `docs/operations/production-module-safety-gate-zeus-20260618-009-helpdesk-address.json`;
+  - CEP principal do recorte Address: `PNT-01-50-30-001` (`Zeus / Address / Catalogo CEP operacional`).
+- Autorizacao:
+  - Lucas autorizou corrigir HelpDesk e publicar a tela Address em 2026-06-18;
+  - publicacao executada somente no dominio `https://ops.c2x.app.br`;
+  - dominio principal `https://c2x.app.br` foi preservado.
+- Escopo publicado:
+  - HelpDesk persiste aba, modo de visualizacao, filtros, busca, ticket selecionado e popup aberto no navegador;
+  - Desk/lista agora tem coluna/filtro de departamento, filtro visual reorganizado, entrega apenas por data colorida e ordenacao por departamento;
+  - detalhe do ticket remove workflow duplicado do cabecalho e troca stepper horizontal por grade responsiva;
+  - gestao remove cabecalho escuro, usa barras horizontais com tooltip no movimento por dia e abre popups com filtros, prioridade, departamento, colaborador e recolher/expandir;
+  - calendario do Desk mostra semana rolante com dias vazios, sem tickets vencidos, e faixa para entregas depois da semana;
+  - nova aba `Address` no Zeus com API `/api/zeus/address-catalog`, resumo, filtros, arvore CEP, detalhe e semente de manifesto.
+- Commits do recorte:
+  - `fb40a94c89cc9f0d27bdcf42c35ae3a562e1f403` - implementacao HelpDesk/Address;
+  - `c807c0c` - metadados finais do gate.
+- Validacoes antes da publicacao:
+  - `npm.cmd run check-types`: PASS, com aviso conhecido de `turbo` global;
+  - `npx.cmd eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx --max-warnings 0`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run lint`: BLOQUEADO por 20 warnings preexistentes de Chronos/turbo env fora do recorte;
+  - `npm.cmd run build`: PASS, com warnings conhecidos de worktree `.codex-tmp`/Turbopack/NFT fora do recorte;
+  - `GET http://localhost:3021/zeus`: 200 OK;
+  - `GET http://localhost:3021/api/zeus/address-catalog`: 200 OK no modo dev local;
+  - navegador interno em `http://localhost:3021/zeus`: login local do Panteon, sem erro de console e sem overflow horizontal na primeira renderizacao; validacao autenticada local limitada por sessao;
+  - `node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-address-prod-20260618.json --files ...`: PASS, com avisos esperados de baseline OPS divergindo da cidade base;
+  - `node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260618-009-helpdesk-address.json`: PASS, 11 mudancas detectadas.
+- Observacao sobre deploy tecnico:
+  - `dpl_CSUvngqZgokSr9RDr9zt81bL6V6e` e `dpl_EH3uvGQLCDftucxVkj5MHihWKFa9` foram criados sem alias e descartados porque o snapshot remoto nao expunha `/api/zeus/address-catalog`;
+  - causa operacional: Vercel CLI estava subindo o root linkado principal em vez do pacote limpo;
+  - correcao: gerado pacote temporario limpo fora do root linkado, com `.vercel/project.json` do projeto correto.
+- Publicacao final:
+  - deployment publicado: `dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-2xdumpc1n-lucasruas-devs-projects.vercel.app`;
+  - alias executado somente para `https://ops.c2x.app.br`.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW`;
+  - `npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects`: Ready em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`, dominio principal preservado;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/zeus/address-catalog`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200;
+  - `GET https://c2x.app.br/api/zeus/address-catalog`: 404 esperado, confirmando que o dominio principal nao recebeu a rota nova;
+  - logs Vercel 10m do deployment final: apenas 200/401 esperados; sem 500/502.
+- Escopo preservado:
+  - nenhum env, secret, token, migration, Supabase remoto, banco ou alias principal foi alterado;
+  - Hades, Hermes, Iris, Atlas, Chronos, Setup e Guardian seguiram fora do recorte funcional.
+- Registro estruturado:
+  - `BLOQUEADO`: sync direto para `hub_engineering_operation_records` envolve Supabase/banco e exige autorizacao explicita separada; registro canonico em Markdown foi atualizado nesta rodada.
+- Rollback:
+  - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F`;
+  - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+
+Conclusao:
+
+- O protocolo `ZEUS-20260618-009-HELPDESK-ADDRESS-PROD` foi publicado em producao no dominio OPS.
+- O impacto pratico e que Lucas passa a ter HelpDesk mais persistente e filtravel, com gestao menos poluida, e a primeira tela Address consultavel no Zeus.
+- Precisa de acao agora: Lucas pode validar em `https://ops.c2x.app.br/zeus`; Zeus mantem rollback para `dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F` se houver regressao critica.
