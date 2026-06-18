@@ -1,0 +1,160 @@
+{
+  "schemaVersion": "panteon.address-recorte.v1",
+  "deploymentManifestId": "PNT-DEP-ZEUS-20260618-010",
+  "protocolId": "ZEUS-20260618-010-HELPDESK-BUSINESS-DAYS",
+  "title": "Zeus HelpDesk Desk Kanban, grafico de movimento e calendario util",
+  "module": "zeus",
+  "agent": "Zeus",
+  "status": "EM_PRODUCAO",
+  "riskLevel": "BAIXO",
+  "approvedBy": "Lucas - 2026-06-18 - publicar hotfix HelpDesk somente em ops.c2x.app.br",
+  "addressing": {
+    "cityAddressCode": "PNT-01-00-00-000",
+    "cityAddressId": "PNT-CID-01",
+    "districtAddressCode": "PNT-01-50-00-000",
+    "districtAddressId": "PNT-BRR-ZEUS-01",
+    "streetAddressCode": "PNT-01-50-10-000",
+    "streetAddressId": "PNT-RUA-ZEUS-OPERATIONS-CENTER-01",
+    "houseAddressCodes": [
+      "PNT-01-50-10-001"
+    ],
+    "houseAddressIds": [
+      "PNT-CASA-ZEUS-HELPDESK-001"
+    ],
+    "registryFile": "docs/operations/panteon-address-registry.json",
+    "scopeSummary": "Hotfix visual e funcional no HelpDesk: Desk abre em Kanban, Movimento por dia volta com barras e tooltip, calendario semanal considera apenas dias uteis e a lista remove Evidencias para eliminar quebra horizontal."
+  },
+  "baseline": {
+    "productionDomain": "https://ops.c2x.app.br",
+    "expectedProductionDeploymentId": "dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW",
+    "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-2xdumpc1n-lucasruas-devs-projects.vercel.app",
+    "candidateSourceCommit": "6a50d7b4432a8d20a3ab9aaf17bb884021017511",
+    "sourceWorktreeClean": true,
+    "basePackagePath": ".codex-deploy/zeus-helpdesk-business-days-20260618/base",
+    "candidatePackagePath": ".codex-deploy/zeus-helpdesk-business-days-20260618/candidate",
+    "rollbackDeploymentId": "dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW"
+  },
+  "scope": {
+    "includedFiles": [
+      "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "docs/operations/engineering-operations.md",
+      "docs/operations/releases-production.md",
+      "docs/operations/panteon-address-recorte-zeus-helpdesk-business-days-20260618.json",
+      "docs/operations/production-module-safety-gate-zeus-20260618-010-helpdesk-business-days.json"
+    ],
+    "excludedPaths": [
+      ".env",
+      ".env*",
+      ".vercel/**",
+      ".git/**",
+      "node_modules/**",
+      ".next/**",
+      ".turbo/**",
+      "packages/database/migrations/**"
+    ],
+    "allowedChangedPaths": [
+      "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "docs/operations/**"
+    ],
+    "protectedPaths": [
+      "apps/hub/modules/chronos/**",
+      "apps/hub/app/chronos/**",
+      "apps/hub/app/api/chronos/**",
+      "apps/hub/lib/chronos/**",
+      "apps/hub/modules/caredesk/**",
+      "apps/hub/app/iris/**",
+      "apps/hub/app/api/iris/**",
+      "apps/hub/modules/guardian/**",
+      "apps/hub/app/hades/**",
+      "apps/hub/app/hermes/**",
+      "apps/hub/app/api/hades/**",
+      "apps/hub/app/api/hermes/**",
+      "apps/hub/components/pulsex/**",
+      "apps/hub/lib/pulsex/**",
+      "apps/hub/app/setup/**",
+      "packages/database/migrations/**"
+    ],
+    "requiredMarkers": [
+      {
+        "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+        "includes": [
+          "careli-hub:zeus-helpdesk:view:v2",
+          "DailyVolumeBar",
+          "getChartBarWidth",
+          "getNextBusinessDays",
+          "isBusinessDay",
+          "setQueueDisplayMode(\"kanban\")"
+        ]
+      }
+    ],
+    "forbiddenMarkers": [
+      {
+        "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+        "includes": [
+          "getTicketEvidenceCount",
+          "getStackedBarWidth",
+          "overflow-x-auto"
+        ]
+      }
+    ],
+    "sensitiveOperations": []
+  },
+  "validations": {
+    "local": [
+      "npm.cmd run check-types: PASS",
+      "npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+      "git diff --check -- apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx docs/operations/engineering-operations.md: PASS, apenas aviso LF/CRLF esperado",
+      "npm.cmd run build: PASS, com warnings conhecidos de worktree .codex-tmp/Turbopack/NFT e turbo global",
+      "GET http://localhost:3021/zeus: 200 OK",
+      "Browser interno http://localhost:3021/zeus: redirect para /login, sem erro de console e sem overflow horizontal na primeira renderizacao"
+    ],
+    "addressing": [
+      "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-business-days-20260618.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,docs/operations/engineering-operations.md,docs/operations/releases-production.md,docs/operations/panteon-address-recorte-zeus-helpdesk-business-days-20260618.json,docs/operations/production-module-safety-gate-zeus-20260618-010-helpdesk-business-days.json: PASS, com avisos esperados de baseline OPS divergindo da cidade base"
+    ],
+    "productionGate": [
+      "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260618-010-helpdesk-business-days.json: PASS, 2 mudancas detectadas"
+    ],
+    "production": [
+      "npx.cmd vercel deploy --prod --skip-domain --yes --archive=tgz --force --scope lucasruas-devs-projects a partir de pacote temporario limpo fora do repo: PASS, dpl_2CENGD4sXbbak1sKjErgTpxF94c5",
+      "URL tecnica validada: https://careli-hub-hub-i2bs-errm13car-lucasruas-devs-projects.vercel.app",
+      "GET URL tecnica /zeus: 200",
+      "GET URL tecnica /api/zeus/address-catalog: 401 esperado sem sessao",
+      "GET URL tecnica /api/hub/it-tickets?details=list&scope=all: 401 esperado sem sessao",
+      "npx.cmd vercel alias set https://careli-hub-hub-i2bs-errm13car-lucasruas-devs-projects.vercel.app ops.c2x.app.br --scope lucasruas-devs-projects: PASS, somente OPS",
+      "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_2CENGD4sXbbak1sKjErgTpxF94c5",
+      "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU; dominio principal preservado",
+      "GET https://ops.c2x.app.br/login: 200",
+      "GET https://ops.c2x.app.br/zeus: 200",
+      "GET https://ops.c2x.app.br/api/pwa/manifest: 200",
+      "GET https://ops.c2x.app.br/api/zeus/address-catalog: 401 esperado sem sessao",
+      "GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all: 401 esperado sem sessao",
+      "GET https://ops.c2x.app.br/api/zeus/release-registers: 401 esperado sem sessao",
+      "GET https://c2x.app.br/: 200",
+      "GET https://c2x.app.br/api/zeus/address-catalog: 404 esperado, rota nova fora do dominio principal",
+      "npx.cmd vercel logs https://careli-hub-hub-i2bs-errm13car-lucasruas-devs-projects.vercel.app --since 10m --scope lucasruas-devs-projects: apenas 200/401 esperados; sem 500/502"
+    ]
+  },
+  "blockingRules": [
+    "BLOQUEADO se o pacote incluir env, secret, migration, banco, dominio principal, alias principal, Vercel env ou operacao sensivel.",
+    "BLOQUEADO se qualquer arquivo fora de allowedChangedPaths entrar no pacote.",
+    "BLOQUEADO se o preflight CEP retornar BLOQUEADO.",
+    "BLOQUEADO se ops.c2x.app.br nao estiver em dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW antes do deploy.",
+    "BLOQUEADO para qualquer alteracao em https://c2x.app.br."
+  ],
+  "release": {
+    "targetEnvironment": "production",
+    "targetDomain": "https://ops.c2x.app.br",
+    "productionDomain": "https://ops.c2x.app.br",
+    "productionDeploymentId": "dpl_2CENGD4sXbbak1sKjErgTpxF94c5",
+    "productionTechnicalUrl": "https://careli-hub-hub-i2bs-errm13car-lucasruas-devs-projects.vercel.app",
+    "publishedAt": "2026-06-18 10:54:52 -03:00",
+    "rollbackPlan": "Se houver regressao critica, reapontar https://ops.c2x.app.br para dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW. Nao alterar https://c2x.app.br."
+  },
+  "notes": [
+    "Lucas autorizou publicar somente no dominio OPS em 2026-06-18.",
+    "Nao alterar dominio principal https://c2x.app.br.",
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte.",
+    "Commit candidato limpo: 6a50d7b4432a8d20a3ab9aaf17bb884021017511.",
+    "Deployment final publicado em OPS: dpl_2CENGD4sXbbak1sKjErgTpxF94c5."
+  ]
+}
