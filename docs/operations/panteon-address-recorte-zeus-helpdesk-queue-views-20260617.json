@@ -5,7 +5,7 @@
   "title": "Zeus HelpDesk filtros, lista, kanban, calendario e gestao interativa",
   "module": "zeus",
   "agent": "Zeus",
-  "status": "PRONTO_PARA_PRODUCAO",
+  "status": "EM_PRODUCAO",
   "riskLevel": "MEDIO",
   "approvedBy": "Lucas - 2026-06-17 - publicacao autorizada para ops.c2x.app.br",
   "addressing": {
@@ -28,7 +28,7 @@
     "productionDomain": "https://ops.c2x.app.br",
     "expectedProductionDeploymentId": "dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq",
     "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-rdl5zjrz1-lucasruas-devs-projects.vercel.app",
-    "candidateSourceCommit": "5b51299960873f5f6e84e51a9d65339cd3a0eca9",
+    "candidateSourceCommit": "6e7897a8ef0a98e095fa980958f2cd9a9544fea6",
     "sourceWorktreeClean": true,
     "basePackagePath": ".codex-deploy/zeus-helpdesk-queue-views-prod-20260617-5b51299/base",
     "candidatePackagePath": ".codex-deploy/zeus-helpdesk-queue-views-prod-20260617-5b51299/candidate",
@@ -102,9 +102,22 @@
       "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json,docs/operations/engineering-operations.md: PASS, com avisos esperados de baseline OPS divergindo da cidade base PNT-01-00-00-000"
     ],
     "productionGate": [
-      "pendente antes da publicacao"
+      "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-006-helpdesk-queue-views.json: PASS, 4 mudancas detectadas antes do deploy"
     ],
-    "production": []
+    "production": [
+      "npx.cmd vercel deploy --prod --skip-domain --yes --archive=tgz --force --scope lucasruas-devs-projects a partir do pacote candidate: PASS, dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp",
+      "npx.cmd vercel alias set https://careli-hub-hub-i2bs-94q9c5f3q-lucasruas-devs-projects.vercel.app ops.c2x.app.br --scope lucasruas-devs-projects: PASS, somente OPS",
+      "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp",
+      "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU; dominio principal preservado",
+      "GET https://ops.c2x.app.br/: 200",
+      "GET https://ops.c2x.app.br/login: 200",
+      "GET https://ops.c2x.app.br/zeus: 200",
+      "GET https://ops.c2x.app.br/api/pwa/manifest: 200",
+      "GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all: 401 esperado sem sessao",
+      "GET https://ops.c2x.app.br/api/zeus/release-registers: 401 esperado sem sessao",
+      "GET https://c2x.app.br/: 200",
+      "npx.cmd vercel logs https://careli-hub-hub-i2bs-94q9c5f3q-lucasruas-devs-projects.vercel.app --since 10m --scope lucasruas-devs-projects: sem logs de runtime retornados pela CLI; sem 500/502 observados nos healthchecks"
+    ]
   },
   "blockingRules": [
     "BLOQUEADO se o pacote incluir env, secret, migration, banco, dominio, alias principal, Vercel env ou operacao sensivel.",
@@ -115,10 +128,13 @@
   "release": {
     "targetEnvironment": "production",
     "targetDomain": "https://ops.c2x.app.br",
-    "previewUrl": null,
-    "previewDeploymentId": null,
+    "previewUrl": "https://careli-hub-hub-i2bs-94q9c5f3q-lucasruas-devs-projects.vercel.app",
+    "previewDeploymentId": "dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp",
     "homologationAlias": "https://homo.c2x.app.br",
     "productionDomain": "https://ops.c2x.app.br",
+    "productionDeploymentId": "dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp",
+    "productionTechnicalUrl": "https://careli-hub-hub-i2bs-94q9c5f3q-lucasruas-devs-projects.vercel.app",
+    "publishedAt": "2026-06-17 23:13:51 -03:00",
     "rollbackPlan": "Se houver regressao critica, reapontar https://ops.c2x.app.br para dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq. Nao alterar https://c2x.app.br."
   },
   "notes": [
@@ -131,6 +147,7 @@
     "Movimento por dia mostra recebido, tratado e enviado para validacao.",
     "Foi feito, Tratando e Backlog ficam ocultos por padrao e abrem sob demanda.",
     "Sem env, secret, Supabase mutavel, banco ou migration neste recorte.",
-    "Publicacao autorizada por Lucas somente para o dominio OPS."
+    "Publicacao autorizada por Lucas somente para o dominio OPS.",
+    "Publicado em producao OPS no deployment dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp em 2026-06-17."
   ]
 }

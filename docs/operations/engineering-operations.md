@@ -36237,3 +36237,63 @@ Conclusao:
 - O recorte `ZEUS-20260617-006-HELPDESK-QUEUE-VIEWS` foi implementado e validado localmente.
 - O impacto pratico e que a Fila Ativa passa a ser operada em lista, kanban ou calendario, com filtros e datas de entrega, enquanto a Gestao fica mais compacta e interativa.
 - Precisa de acao agora: Lucas pode testar em `http://localhost:3018/zeus`; qualquer publicacao em OPS precisa de autorizacao explicita.
+
+## 2026-06-17 23:13:51 -03:00 - Zeus - Publicacao OPS do HelpDesk fila, kanban, calendario e gestao interativa
+
+Assunto: [Zeus] Publicacao OPS do HelpDesk fila, kanban, calendario e gestao interativa
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `PUBLICACAO_PRODUCAO_OPS / HELPDESK / UX / GESTAO`.
+- Status: `EM_PRODUCAO`.
+- Protocolo CEP:
+  - `ZEUS-20260617-006-HELPDESK-QUEUE-VIEWS`;
+  - manifesto: `docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json`;
+  - safety gate: `docs/operations/production-module-safety-gate-zeus-20260617-006-helpdesk-queue-views.json`;
+  - CEP: `PNT-01-50-10-001` (`Zeus / Operations Center / HelpDesk`).
+- Autorizacao:
+  - Lucas autorizou publicar o recorte em producao no dominio `https://ops.c2x.app.br`;
+  - dominio principal `https://c2x.app.br` ficou explicitamente fora do escopo.
+- Escopo publicado:
+  - Fila Ativa com modos `Lista`, `Kanban` e `Calendario`;
+  - filtros por `Workflow`, `Prioridade` e `Colaborador`;
+  - colunas de `Recepcao` e `Entrega`;
+  - calendario de entregas;
+  - gestao com movimento por dia em `Recebido`, `Tratado` e `Validacao`;
+  - paineis `Foi feito`, `Tratando` e `Backlog` ocultos por padrao;
+  - departamento e colaborador clicaveis com popups agrupados.
+- Publicacao:
+  - pacote limpo base: `.codex-deploy/zeus-helpdesk-queue-views-prod-20260617-5b51299/base`;
+  - pacote limpo candidato: `.codex-deploy/zeus-helpdesk-queue-views-prod-20260617-5b51299/candidate`;
+  - deployment novo: `dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-94q9c5f3q-lucasruas-devs-projects.vercel.app`;
+  - alias executado somente para `https://ops.c2x.app.br`.
+- Validacoes antes de publicar:
+  - lint focado: PASS;
+  - `check-types:hub`: PASS;
+  - build Hub local: PASS;
+  - `GET http://localhost:3018/zeus`: 200 OK;
+  - CEP preflight: PASS;
+  - Production Module Safety Gate: PASS, 4 mudancas detectadas.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - `GET https://ops.c2x.app.br/`: 200;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200;
+  - logs Vercel 10m do deployment novo: sem logs de runtime retornados pela CLI; sem 500/502 observados nos healthchecks.
+- Escopo preservado:
+  - nenhum env, secret, token, banco, migration, Supabase remoto, dominio adicional ou alias principal foi alterado;
+  - `https://c2x.app.br` permaneceu fora do escopo funcional e segue no deployment `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Rollback:
+  - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq`;
+  - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+
+Conclusao:
+
+- O protocolo `ZEUS-20260617-006-HELPDESK-QUEUE-VIEWS` foi publicado em producao no dominio OPS.
+- O impacto pratico e que Lucas passa a ter a fila do HelpDesk em lista, kanban e calendario, com filtros e gestao mais interativa.
+- Precisa de acao agora: Lucas pode validar em `https://ops.c2x.app.br/zeus`; Zeus mantem rollback para `dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq` se houver regressao critica.

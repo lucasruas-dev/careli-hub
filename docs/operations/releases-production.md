@@ -3598,3 +3598,50 @@ Registro de correcao:
 - Rollback:
   - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_FLe1u31uaehb3qCdSdjduZav73uk`;
   - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+
+## 2026-06-17 - PROD-20260617-006-ZEUS-HELPDESK-QUEUE-VIEWS
+
+Status: EM PRODUCAO / OPS.
+
+Registro de producao:
+
+- Assunto: `[Zeus] HelpDesk fila em lista, kanban, calendario e gestao interativa`.
+- Protocolo: `ZEUS-20260617-006-HELPDESK-QUEUE-VIEWS`.
+- Data e hora local: `2026-06-17 23:13:51 -03:00`.
+- Autorizacao: Lucas autorizou publicar em producao somente no dominio `https://ops.c2x.app.br`.
+- Deployment publicado:
+  - id: `dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-94q9c5f3q-lucasruas-devs-projects.vercel.app`;
+  - alias: `https://ops.c2x.app.br`.
+- Escopo publicado:
+  - Fila Ativa com modos `Lista`, `Kanban` e `Calendario`;
+  - filtros por `Workflow`, `Prioridade` e `Colaborador`;
+  - colunas de `Recepcao` e `Entrega` na fila;
+  - calendario de entregas vencidas, proximas, futuras e sem data;
+  - gestao com movimento por dia em `Recebido`, `Tratado` e `Validacao`;
+  - paineis `Foi feito`, `Tratando` e `Backlog` ocultos por padrao;
+  - paineis de departamento e colaborador mais proximos e interativos;
+  - popups de departamento agrupados por colaborador e de colaborador agrupados por tipo de demanda.
+- Validacoes antes de publicar:
+  - lint focado: PASS;
+  - `check-types:hub`: PASS;
+  - build Hub local: PASS;
+  - `GET http://localhost:3018/zeus`: 200 OK;
+  - CEP preflight: PASS;
+  - Production Module Safety Gate: PASS, 4 mudancas detectadas.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready em `dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp`;
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`;
+  - `GET https://ops.c2x.app.br/`: 200;
+  - `GET https://ops.c2x.app.br/login`: 200;
+  - `GET https://ops.c2x.app.br/zeus`: 200;
+  - `GET https://ops.c2x.app.br/api/pwa/manifest`: 200;
+  - `GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all`: 401 esperado sem sessao;
+  - `GET https://ops.c2x.app.br/api/zeus/release-registers`: 401 esperado sem sessao;
+  - `GET https://c2x.app.br/`: 200.
+- Escopo preservado:
+  - nenhum env, secret, token, banco, migration, Supabase remoto, dominio adicional ou alias principal foi alterado;
+  - `https://c2x.app.br` permaneceu no deployment `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+- Rollback:
+  - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq`;
+  - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
