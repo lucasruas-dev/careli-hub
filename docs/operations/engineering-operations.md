@@ -36041,7 +36041,8 @@ Assunto: [Zeus] HelpDesk abas, listas e gestao first-world
   - `docs/operations/panteon-address-recorte-zeus-helpdesk-first-world-ui-20260617.json`;
   - `docs/operations/engineering-operations.md`.
 - Commit local:
-  - `e0adc89333e928a8f5a5db1282d83e78cfe504d2`.
+  - commit base do recorte: `8f0e94e7f8d93df89aef39ca619757559c8ea2ee`;
+  - registro de metadados do protocolo: pendente no commit documental seguinte.
 - Fora do escopo:
   - nenhum deploy, Preview, homologacao real, producao, alias, dominio, env, secret, Supabase, banco real, migration ou Vercel;
   - nenhuma alteracao em Hades, Hermes, Iris, Atlas, Chronos, Setup, Guardian ou outro modulo fora de Zeus/HelpDesk;

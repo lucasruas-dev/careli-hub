@@ -28,7 +28,7 @@
     "productionDomain": "https://ops.c2x.app.br",
     "expectedProductionDeploymentId": "dpl_FLe1u31uaehb3qCdSdjduZav73uk",
     "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-a5es5qefh-lucasruas-devs-projects.vercel.app",
-    "candidateSourceCommit": "e0adc89333e928a8f5a5db1282d83e78cfe504d2",
+    "candidateSourceCommit": "8f0e94e7f8d93df89aef39ca619757559c8ea2ee",
     "sourceWorktreeClean": false,
     "basePackagePath": null,
     "candidatePackagePath": null,
