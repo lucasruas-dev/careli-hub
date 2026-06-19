@@ -38150,3 +38150,59 @@ Conclusao:
 - Precisa de acao agora: nao para o time, porque o dominio principal ja voltou ao rollback; sim para Zeus, que deve validar o recorte corrigido antes de qualquer nova publicacao.
 - Quem deve agir agora: Zeus valida e registra; Lucas so autoriza nova publicacao quando quiser.
 - Proximo passo: fechar a correcao local e manter producao no deployment valido ate nova autorizacao.
+
+## 2026-06-19 - Hermes/Panteon - recorte 033 publicado em producao
+
+- Status: EM PRODUCAO / C2X ATUALIZADO / OPS PRESERVADO.
+- Autorizacao: Lucas autorizou explicitamente `pode publicar` apos a correcao local do crash realtime e do metodo de deploy.
+- Protocolo: `HERMES-20260619-033-REALTIME-CONSUMER-FIX`.
+- Commit de codigo publicado: `8e899532cafb8fb59ee1ea64184c1d19cc6869d8`.
+- Base valida usada para comparacao:
+  - commit base: `59e1eab931ccf0808ac92b1eed9bb0df60eb2725`;
+  - deployment anterior/rollback de `https://c2x.app.br`: `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW`;
+  - deployment preservado de `https://ops.c2x.app.br`: `dpl_2CENGD4sXbbak1sKjErgTpxF94c5`.
+- Correcao publicada:
+  - topico Postgres Realtime do workspace: `workspace`;
+  - topico Postgres Realtime da central global: `notifications`;
+  - mantido broadcast compartilhado para UX otimista, sem colidir com `postgres_changes`;
+  - publicacao feita por production build real, nao por Preview com alias.
+- Manifestos:
+  - CEP: `.codex-deploy/hermes-professional-chat-033-realtime-consumer/panteon-address-recorte-hermes-20260619-033-realtime-consumer-fix.json`;
+  - Production Safety Gate: `.codex-deploy/hermes-professional-chat-033-realtime-consumer/production-module-safety-gate-hermes-20260619-033-realtime-consumer-fix.json`.
+- Validacoes pre-publicacao:
+  - `git diff --check`: PASS;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS;
+  - `node scripts/panteon-address-recorte-check.mjs --manifest ...033...json`: PASS, com avisos esperados por a raiz local estar suja e por assets existirem no pacote candidato;
+  - `node scripts/production-module-safety-gate.mjs --manifest ...033...json`: PASS, 15 mudancas detectadas.
+- Publicacao:
+  - comando usado: `npx.cmd vercel deploy --prod --skip-domain --scope lucasruas-devs-projects --project careli-hub-hub-i2bs --yes --archive=tgz`;
+  - deployment novo: `dpl_2FnyCFzxAc6coHaJB8eSFhqDuKSY`;
+  - URL tecnica: `https://careli-hub-hub-i2bs-eov78rqy9-lucasruas-devs-projects.vercel.app`;
+  - alias manual executado somente para `https://c2x.app.br`;
+  - `https://ops.c2x.app.br` nao foi movido.
+- Validacoes pos-publicacao:
+  - `npx.cmd vercel inspect https://c2x.app.br`: Ready em `dpl_2FnyCFzxAc6coHaJB8eSFhqDuKSY`;
+  - `npx.cmd vercel inspect https://ops.c2x.app.br`: Ready preservado em `dpl_2CENGD4sXbbak1sKjErgTpxF94c5`;
+  - `GET https://c2x.app.br/hermes`: 200;
+  - `GET https://c2x.app.br/login`: 200;
+  - `GET https://c2x.app.br/sounds/hermes-call-ringtone.mp3`: 200;
+  - `GET https://c2x.app.br/sounds/panteon-notification.mp3`: 200;
+  - `GET https://c2x.app.br/sounds/iris-notification.mp3`: 200;
+  - HTML de `/hermes` aponta para `panteon-mark.png`, sem marca de homologacao.
+- Limitacoes:
+  - a consulta `vercel logs https://c2x.app.br --since 10m --level error` ficou pendurada ate timeout da CLI local;
+  - validacao autenticada de realtime ainda depende de Lucas testar com dois usuarios reais.
+- Rollback:
+  - reapontar `https://c2x.app.br` para `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW`;
+  - URL tecnica de rollback: `https://careli-hub-hub-i2bs-lnwosa4kp-lucasruas-devs-projects.vercel.app`;
+  - `https://ops.c2x.app.br` permanece fora do rollback deste recorte.
+
+Conclusao:
+
+- O que aconteceu: o recorte Hermes corrigido foi publicado em producao pelo fluxo seguro, com build production real e alias manual apenas em `c2x.app.br`.
+- Impacto pratico: a tela Hermes nao deve mais quebrar por colisao de `postgres_changes`, e a identidade visual permanece `Panteon`, nao `Homo Panteon`.
+- Precisa de acao agora: sim, Lucas deve testar mensagem realtime com dois usuarios reais para validar a experiencia autenticada.
+- Quem deve agir agora: Lucas valida o uso real; Zeus monitora e reverte se houver regressao critica.
+- Proximo passo: se o teste real confirmar estabilidade, manter o recorte; se quebrar, rollback imediato para `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW`.

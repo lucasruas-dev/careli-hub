@@ -4200,3 +4200,36 @@ Registro de producao:
   - `npm.cmd run build --workspace @repo/hub`: PASS.
 - Publicacao:
   - bloqueada ate nova validacao e autorizacao explicita de Lucas.
+
+## 2026-06-19 - HERMES-20260619-033-REALTIME-CONSUMER-FIX
+
+Status: EM PRODUCAO / C2X ATUALIZADO / OPS PRESERVADO.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Realtime por consumidor e publicacao segura`.
+- Protocolo de origem: `HERMES-20260619-033-REALTIME-CONSUMER-FIX`.
+- Commit publicado: `8e899532cafb8fb59ee1ea64184c1d19cc6869d8`.
+- Dominio alvo: `https://c2x.app.br`.
+- Dominio preservado: `https://ops.c2x.app.br`.
+- Deployment novo: `dpl_2FnyCFzxAc6coHaJB8eSFhqDuKSY`.
+- URL tecnica: `https://careli-hub-hub-i2bs-eov78rqy9-lucasruas-devs-projects.vercel.app`.
+- Rollback: `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW`.
+- OPS preservado: `dpl_2CENGD4sXbbak1sKjErgTpxF94c5`.
+- Escopo:
+  - Hermes realtime com topico Postgres separado por consumidor `workspace` e `notifications`;
+  - publicacao feita por `vercel deploy --prod --skip-domain`;
+  - alias manual executado apenas em `c2x.app.br`;
+  - sem Preview usado como producao.
+- Gates:
+  - CEP preflight: PASS;
+  - Production Module Safety Gate: PASS, 15 mudancas detectadas.
+- Validacoes:
+  - `GET /hermes`: 200;
+  - `GET /login`: 200;
+  - sons Hermes/Panteon/Iris: 200;
+  - `c2x.app.br`: Ready em `dpl_2FnyCFzxAc6coHaJB8eSFhqDuKSY`;
+  - `ops.c2x.app.br`: Ready preservado em `dpl_2CENGD4sXbbak1sKjErgTpxF94c5`.
+- Risco residual:
+  - teste final de realtime/notificacoes depende de duas sessoes autenticadas;
+  - scan de logs via CLI local estourou timeout e deve ser repetido se Lucas observar regressao.
