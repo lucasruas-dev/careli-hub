@@ -93,23 +93,29 @@ type HermesToastNotification = {
 const HERMES_PRESENCE_REFRESH_MS = 60_000;
 const HERMES_MESSAGE_REFRESH_MS = 8_000;
 const HERMES_WORKSPACE_REFRESH_MS = 300_000;
+const HERMES_CHANNEL_MESSAGE_CACHE_LIMIT = 50;
+const HERMES_CHANNEL_MESSAGE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
+const HERMES_CHANNEL_MESSAGE_CACHE_FRESH_MS = 5 * 60 * 1_000;
+const HERMES_CHANNEL_MESSAGE_CACHE_VERSION = 1;
+const HERMES_CHANNEL_MESSAGE_CACHE_STORAGE_PREFIX =
+  "careli:hermes:channel-message-cache";
 const HERMES_COMPOSER_DRAFT_STORAGE_PREFIX = "careli:hermes:composer-draft";
 const PULSEX_FAVORITE_CHANNELS_STORAGE_KEY = "careli:pulsex:favorite-channels";
 type HubSupabaseClient = NonNullable<ReturnType<typeof getHubSupabaseClient>>;
 type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
+type HermesChannelMessageCache = {
+  cachedAt: string;
+  channelId: HermesChannel["id"];
+  messages: HermesMessage[];
+  version: typeof HERMES_CHANNEL_MESSAGE_CACHE_VERSION;
+};
 
 export function HermesWorkspace() {
   const { hubUser, profileStatus } = useAuth();
-  const {
-    broadcastHermesMessageEvent,
-    hermesChannels: notificationChannels,
-  } = usePanteonNotifications();
-  const {
-    callHistory,
-    markCallHistoryRead,
-    startCall,
-    unreadCallCount,
-  } = useHermesCall();
+  const { broadcastHermesMessageEvent, hermesChannels: notificationChannels } =
+    usePanteonNotifications();
+  const { callHistory, markCallHistoryRead, startCall, unreadCallCount } =
+    useHermesCall();
   const currentUserId = hubUser?.id ?? "ana";
   const [activeChannelId, setActiveChannelId] = useState<HermesChannel["id"]>(
     emptyHermesChannel.id,
@@ -127,8 +133,10 @@ export function HermesWorkspace() {
   const [isAthenaAgentOpen, setIsAthenaAgentOpen] = useState(false);
   const [isAthenaTicketRecordingActive, setIsAthenaTicketRecordingActive] =
     useState(false);
-  const [isAthenaTicketRecordingMinimized, setIsAthenaTicketRecordingMinimized] =
-    useState(false);
+  const [
+    isAthenaTicketRecordingMinimized,
+    setIsAthenaTicketRecordingMinimized,
+  ] = useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [athenaFocusedMessageId, setAthenaFocusedMessageId] = useState<
     HermesMessage["id"] | null
@@ -151,6 +159,9 @@ export function HermesWorkspace() {
   const [dataStatus, setDataStatus] = useState<
     "fallback" | "loading" | "ready"
   >("loading");
+  const [loadingMessageChannelIds, setLoadingMessageChannelIds] = useState<
+    HermesChannel["id"][]
+  >([]);
   const [favoriteChannelIds, setFavoriteChannelIds] = useState<
     HermesChannel["id"][]
   >([]);
@@ -164,6 +175,7 @@ export function HermesWorkspace() {
   const loadedChannelIdsRef = useRef<Set<string>>(new Set());
   const messageCursorByChannelIdRef = useRef<Map<string, string>>(new Map());
   const messageLoadInFlightByChannelIdRef = useRef<Set<string>>(new Set());
+  const staleMessageCacheChannelIdsRef = useRef<Set<string>>(new Set());
   const composerValueRef = useRef("");
   const composerDraftChannelIdRef = useRef<HermesChannel["id"] | null>(null);
   const isComposerDraftHydratingRef = useRef(false);
@@ -177,9 +189,9 @@ export function HermesWorkspace() {
   const [notifications, setNotifications] = useState<HermesToastNotification[]>(
     [],
   );
-  const [attachmentPreview, setAttachmentPreview] = useState<
-    NonNullable<HermesMessage["attachment"]> | null
-  >(null);
+  const [attachmentPreview, setAttachmentPreview] = useState<NonNullable<
+    HermesMessage["attachment"]
+  > | null>(null);
   const activeChannel =
     channels.find((channel) => channel.id === activeChannelId) ??
     channels[0] ??
@@ -267,6 +279,13 @@ export function HermesWorkspace() {
         : channelMessages.filter((message) =>
             message.tags?.includes(activeMessageFilter),
           );
+  const isActiveChannelMessageLoading =
+    loadingMessageChannelIds.includes(activeChannel.id) ||
+    (hasHubSupabaseConfig() &&
+      dataStatus === "ready" &&
+      activeChannel.id !== emptyHermesChannel.id &&
+      channelMessages.length === 0 &&
+      !loadedChannelIdsRef.current.has(activeChannel.id));
   const channelPresenceUsers = useMemo(() => {
     const channelUsers = presenceUsers.filter((user) =>
       (user.channelIds as readonly string[]).includes(activeChannel.id),
@@ -407,6 +426,10 @@ export function HermesWorkspace() {
           payload.messages,
           nextChannels,
         );
+        writeHermesChannelMessageCaches({
+          messages: nextMessages,
+          userId: currentUserId,
+        });
         const nextChannelsWithUnread = withChannelUnreadCounts({
           channels: nextChannels,
           currentUserId,
@@ -496,7 +519,9 @@ export function HermesWorkspace() {
       return;
     }
 
-    const channelId = new URLSearchParams(window.location.search).get("channel");
+    const channelId = new URLSearchParams(window.location.search).get(
+      "channel",
+    );
 
     if (!channelId || !channels.some((channel) => channel.id === channelId)) {
       queryChannelAppliedRef.current = true;
@@ -506,6 +531,69 @@ export function HermesWorkspace() {
     queryChannelAppliedRef.current = true;
     setActiveChannelId(channelId);
   }, [channels]);
+
+  useEffect(() => {
+    if (
+      activeChannel.id === emptyHermesChannel.id ||
+      channels.length === 0 ||
+      channelMessages.length > 0
+    ) {
+      return;
+    }
+
+    const cachedChannelMessages = readHermesChannelMessageCache({
+      channelId: activeChannel.id,
+      userId: currentUserId,
+    });
+
+    if (!cachedChannelMessages || cachedChannelMessages.messages.length === 0) {
+      return;
+    }
+
+    const nextMessages = withMessageDeliveryData(
+      cachedChannelMessages.messages,
+      channels,
+    );
+
+    if (nextMessages.length === 0) {
+      return;
+    }
+
+    nextMessages.forEach((message) =>
+      knownMessageIdsRef.current.add(message.id),
+    );
+
+    if (isHermesChannelMessageCacheFresh(cachedChannelMessages)) {
+      rememberHermesMessageCursors(
+        messageCursorByChannelIdRef.current,
+        nextMessages,
+      );
+      loadedChannelIdsRef.current.add(activeChannel.id);
+    } else {
+      staleMessageCacheChannelIdsRef.current.add(activeChannel.id);
+    }
+
+    setMessages((currentMessages) => {
+      if (
+        currentMessages.some(
+          (message) => message.channelId === activeChannel.id,
+        )
+      ) {
+        return currentMessages;
+      }
+
+      return preserveHermesArrayReference(
+        currentMessages,
+        mergeHermesChannelMessages({
+          channelId: activeChannel.id,
+          currentMessages,
+          nextMessages,
+          replaceChannel: true,
+        }),
+        getHermesMessageRenderSignature,
+      );
+    });
+  }, [activeChannel.id, channelMessages.length, channels, currentUserId]);
 
   useEffect(() => {
     try {
@@ -598,6 +686,26 @@ export function HermesWorkspace() {
       return changed ? nextState : currentState;
     });
   }, [isThreadReadStorageReady, messages]);
+
+  useEffect(() => {
+    if (activeChannel.id === emptyHermesChannel.id || messages.length === 0) {
+      return;
+    }
+
+    if (staleMessageCacheChannelIdsRef.current.has(activeChannel.id)) {
+      return;
+    }
+
+    const messagesForActiveChannel = messages.filter(
+      (message) => message.channelId === activeChannel.id,
+    );
+
+    writeHermesChannelMessageCache({
+      channelId: activeChannel.id,
+      messages: messagesForActiveChannel,
+      userId: currentUserId,
+    });
+  }, [activeChannel.id, currentUserId, messages]);
 
   const refreshPresenceStatuses = useCallback(
     (shouldApply: () => boolean = () => true) => {
@@ -711,6 +819,11 @@ export function HermesWorkspace() {
       }
 
       messageLoadInFlightByChannelIdRef.current.add(channelId);
+      setLoadingMessageChannelIds((currentChannelIds) =>
+        currentChannelIds.includes(channelId)
+          ? currentChannelIds
+          : [...currentChannelIds, channelId],
+      );
       listChannelMessages(channelId, cursor ? { after: cursor } : undefined)
         .then((nextMessages) => {
           if (!shouldApply()) {
@@ -721,9 +834,8 @@ export function HermesWorkspace() {
             nextMessages,
             channels,
           );
-          const isFirstChannelLoad = !loadedChannelIdsRef.current.has(
-            channelId,
-          );
+          const isFirstChannelLoad =
+            !loadedChannelIdsRef.current.has(channelId);
           const newMessages = nextDeliveredMessages.filter(
             (message) => !knownMessageIdsRef.current.has(message.id),
           );
@@ -736,6 +848,7 @@ export function HermesWorkspace() {
             knownMessageIdsRef.current.add(message.id),
           );
           loadedChannelIdsRef.current.add(channelId);
+          staleMessageCacheChannelIdsRef.current.delete(channelId);
 
           if (!isFirstChannelLoad) {
             notifyIncomingMessages(
@@ -746,6 +859,25 @@ export function HermesWorkspace() {
           }
 
           if (nextDeliveredMessages.length === 0) {
+            if (!cursor) {
+              writeHermesChannelMessageCache({
+                channelId,
+                messages: [],
+                userId: currentUserId,
+              });
+              setMessages((currentMessages) =>
+                preserveHermesArrayReference(
+                  currentMessages,
+                  mergeHermesChannelMessages({
+                    channelId,
+                    currentMessages,
+                    nextMessages: [],
+                    replaceChannel: true,
+                  }),
+                  getHermesMessageRenderSignature,
+                ),
+              );
+            }
             return;
           }
 
@@ -769,14 +901,14 @@ export function HermesWorkspace() {
         })
         .finally(() => {
           messageLoadInFlightByChannelIdRef.current.delete(channelId);
+          setLoadingMessageChannelIds((currentChannelIds) =>
+            currentChannelIds.filter(
+              (currentChannelId) => currentChannelId !== channelId,
+            ),
+          );
         });
     },
-    [
-      activeChannel.id,
-      channels,
-      currentUserId,
-      notifyIncomingMessages,
-    ],
+    [activeChannel.id, channels, currentUserId, notifyIncomingMessages],
   );
 
   const refreshWorkspaceSnapshot = useCallback(
@@ -825,18 +957,11 @@ export function HermesWorkspace() {
           }
         });
     },
-    [
-      currentUserId,
-      dataStatus,
-      hubUser?.role,
-    ],
+    [currentUserId, dataStatus, hubUser?.role],
   );
 
   useEffect(() => {
-    if (
-      !hasHubSupabaseConfig() ||
-      activeChannel.id === emptyHermesChannel.id
-    ) {
+    if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
       return;
     }
 
@@ -982,7 +1107,9 @@ export function HermesWorkspace() {
       if (messageRealtimeChannelRef.current === broadcastRealtimeChannel) {
         messageRealtimeChannelRef.current = null;
       }
-      if (messagePostgresRealtimeChannelRef.current === postgresRealtimeChannel) {
+      if (
+        messagePostgresRealtimeChannelRef.current === postgresRealtimeChannel
+      ) {
         messagePostgresRealtimeChannelRef.current = null;
       }
 
@@ -1000,10 +1127,7 @@ export function HermesWorkspace() {
   ]);
 
   useEffect(() => {
-    if (
-      !hasHubSupabaseConfig() ||
-      activeChannel.id === emptyHermesChannel.id
-    ) {
+    if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
       return;
     }
 
@@ -1841,6 +1965,7 @@ export function HermesWorkspace() {
               channelId={activeChannel.id}
               currentUserId={currentUserId}
               filter={activeMessageFilter}
+              isLoading={isActiveChannelMessageLoading}
               messages={filteredChannelMessages}
               onAskAiReply={handleOpenAthenaAgentForMessage}
               onEditMessage={handleEditMessage}
@@ -1890,7 +2015,10 @@ export function HermesWorkspace() {
                   onClick={handleOpenAthenaAgent}
                   type="button"
                 >
-                  <AthenaIcon className="size-full object-cover" aria-hidden="true" />
+                  <AthenaIcon
+                    className="size-full object-cover"
+                    aria-hidden="true"
+                  />
                   <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
                 </button>
               </Tooltip>
@@ -1969,12 +2097,19 @@ function withDirectUserChannels(
   users: readonly HermesPresenceUser[],
   currentUserId: HermesPresenceUser["id"],
 ): HermesChannel[] {
-  const channelsById = new Map(channels.map((channel) => [channel.id, channel]));
-  const nonDirectChannels = channels.filter((channel) => channel.kind !== "direct");
+  const channelsById = new Map(
+    channels.map((channel) => [channel.id, channel]),
+  );
+  const nonDirectChannels = channels.filter(
+    (channel) => channel.kind !== "direct",
+  );
   const directChannels = users
     .filter((user) => user.id !== currentUserId)
     .map((user) => {
-      const directChannelId = createHermesDirectChannelId(currentUserId, user.id);
+      const directChannelId = createHermesDirectChannelId(
+        currentUserId,
+        user.id,
+      );
       const existingChannel = channelsById.get(directChannelId);
 
       return {
@@ -1998,7 +2133,10 @@ function withDirectUserChannels(
         kind: "direct" as const,
         lastMessageAt: existingChannel?.lastMessageAt ?? "-",
         memberReadAtByUserId: existingChannel?.memberReadAtByUserId ?? {},
-        memberUserIds: existingChannel?.memberUserIds ?? [currentUserId, user.id],
+        memberUserIds: existingChannel?.memberUserIds ?? [
+          currentUserId,
+          user.id,
+        ],
         name: user.label,
         preview: existingChannel?.preview ?? user.email ?? "Usuario do Hub",
         status: user.status,
@@ -2036,6 +2174,177 @@ function preserveHermesChannelRuntimeState(
       unreadCount: currentChannel.unreadCount,
     };
   });
+}
+
+function readHermesChannelMessageCache({
+  channelId,
+  userId,
+}: {
+  channelId: HermesChannel["id"];
+  userId: HermesPresenceUser["id"];
+}): HermesChannelMessageCache | null {
+  try {
+    const storageKey = getHermesChannelMessageCacheStorageKey({
+      channelId,
+      userId,
+    });
+    const storedValue = window.localStorage.getItem(storageKey);
+
+    if (!storedValue) {
+      return null;
+    }
+
+    const parsedValue = JSON.parse(
+      storedValue,
+    ) as Partial<HermesChannelMessageCache>;
+    const cachedAtTime = parsedValue.cachedAt
+      ? Date.parse(parsedValue.cachedAt)
+      : Number.NaN;
+
+    if (
+      parsedValue.version !== HERMES_CHANNEL_MESSAGE_CACHE_VERSION ||
+      parsedValue.channelId !== channelId ||
+      typeof parsedValue.cachedAt !== "string" ||
+      !Number.isFinite(cachedAtTime) ||
+      Date.now() - cachedAtTime > HERMES_CHANNEL_MESSAGE_CACHE_TTL_MS ||
+      !Array.isArray(parsedValue.messages)
+    ) {
+      window.localStorage.removeItem(storageKey);
+      return null;
+    }
+
+    return {
+      cachedAt: parsedValue.cachedAt,
+      channelId,
+      messages: takeLastHermesChannelMessages(
+        parsedValue.messages.filter(isCacheableHermesMessage),
+      ),
+      version: HERMES_CHANNEL_MESSAGE_CACHE_VERSION,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function writeHermesChannelMessageCaches({
+  messages,
+  userId,
+}: {
+  messages: readonly HermesMessage[];
+  userId: HermesPresenceUser["id"];
+}) {
+  const messagesByChannelId = new Map<HermesChannel["id"], HermesMessage[]>();
+
+  for (const message of messages) {
+    const channelMessages = messagesByChannelId.get(message.channelId) ?? [];
+
+    channelMessages.push(message);
+    messagesByChannelId.set(message.channelId, channelMessages);
+  }
+
+  messagesByChannelId.forEach((channelMessages, channelId) => {
+    writeHermesChannelMessageCache({
+      channelId,
+      messages: channelMessages,
+      userId,
+    });
+  });
+}
+
+function writeHermesChannelMessageCache({
+  channelId,
+  messages,
+  userId,
+}: {
+  channelId: HermesChannel["id"];
+  messages: readonly HermesMessage[];
+  userId: HermesPresenceUser["id"];
+}) {
+  try {
+    const storageKey = getHermesChannelMessageCacheStorageKey({
+      channelId,
+      userId,
+    });
+    const cacheableMessages = takeLastHermesChannelMessages(
+      messages.filter(isCacheableHermesMessage),
+    );
+
+    if (cacheableMessages.length === 0) {
+      window.localStorage.removeItem(storageKey);
+      return;
+    }
+
+    const payload = {
+      cachedAt: new Date().toISOString(),
+      channelId,
+      messages: cacheableMessages,
+      version: HERMES_CHANNEL_MESSAGE_CACHE_VERSION,
+    } satisfies HermesChannelMessageCache;
+
+    window.localStorage.setItem(storageKey, JSON.stringify(payload));
+  } catch {
+    // localStorage can be unavailable or full; Hermes keeps the server flow.
+  }
+}
+
+function isHermesChannelMessageCacheFresh(cache: HermesChannelMessageCache) {
+  const cachedAtTime = Date.parse(cache.cachedAt);
+
+  return (
+    Number.isFinite(cachedAtTime) &&
+    Date.now() - cachedAtTime <= HERMES_CHANNEL_MESSAGE_CACHE_FRESH_MS
+  );
+}
+
+function getHermesChannelMessageCacheStorageKey({
+  channelId,
+  userId,
+}: {
+  channelId: HermesChannel["id"];
+  userId: HermesPresenceUser["id"];
+}) {
+  return `${HERMES_CHANNEL_MESSAGE_CACHE_STORAGE_PREFIX}:${userId}:${channelId}`;
+}
+
+function takeLastHermesChannelMessages(messages: readonly HermesMessage[]) {
+  return [...messages]
+    .sort((firstMessage, secondMessage) => {
+      const firstTime = getHermesCacheMessageSortTime(firstMessage);
+      const secondTime = getHermesCacheMessageSortTime(secondMessage);
+
+      if (firstTime !== secondTime) {
+        return firstTime - secondTime;
+      }
+
+      return firstMessage.id.localeCompare(secondMessage.id);
+    })
+    .slice(-HERMES_CHANNEL_MESSAGE_CACHE_LIMIT);
+}
+
+function getHermesCacheMessageSortTime(message: HermesMessage) {
+  const sortTime = message.createdAt
+    ? Date.parse(message.createdAt)
+    : Number.NaN;
+
+  return Number.isFinite(sortTime) ? sortTime : 0;
+}
+
+function isCacheableHermesMessage(message: unknown): message is HermesMessage {
+  if (!message || typeof message !== "object") {
+    return false;
+  }
+
+  const candidate = message as Partial<HermesMessage>;
+
+  return (
+    typeof candidate.id === "string" &&
+    !candidate.id.startsWith("local-") &&
+    typeof candidate.channelId === "string" &&
+    typeof candidate.authorId === "string" &&
+    typeof candidate.body === "string" &&
+    typeof candidate.createdAt === "string" &&
+    !candidate.threadParentMessageId
+  );
 }
 
 function rememberHermesMessageCursors(
@@ -2356,7 +2665,9 @@ function applyPresenceStatusesToDirectChannels(
 
     const userId =
       getHermesDirectPeerUserId(channel.id, currentUserId) ??
-      channel.memberUserIds?.find((memberUserId) => memberUserId !== currentUserId);
+      channel.memberUserIds?.find(
+        (memberUserId) => memberUserId !== currentUserId,
+      );
 
     if (!userId) {
       return channel;
@@ -2454,9 +2765,11 @@ function getHermesComposerDraftStorageKey(channelId: HermesChannel["id"]) {
 
 function readHermesComposerDraft(channelId: HermesChannel["id"]) {
   try {
-    return window.localStorage.getItem(
-      getHermesComposerDraftStorageKey(channelId),
-    ) ?? "";
+    return (
+      window.localStorage.getItem(
+        getHermesComposerDraftStorageKey(channelId),
+      ) ?? ""
+    );
   } catch {
     return "";
   }

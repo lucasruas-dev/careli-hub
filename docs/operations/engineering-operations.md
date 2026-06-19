@@ -38310,3 +38310,39 @@ Conclusao:
 - O recorte Hermes 034 foi publicado em producao pelo padrao seguro: commit limpo, pacote `git archive`, CEP PASS, Safety Gate PASS, deploy tecnico com `--skip-domain`, alias manual somente em `c2x.app.br` e OPS preservado.
 - O impacto pratico e reduzir a janela em que a notificacao chega pelo Windows mas demora para aparecer dentro do Hermes, alem de eliminar o sino local duplicado.
 - Precisa de acao agora: Lucas e o time validarem em uso real com dois usuarios se a central Hermes recebe em tempo real quando o usuario esta em outro canal/modulo; se houver atraso residual, a proxima etapa e instrumentar telemetria de latencia do Supabase Realtime por cliente.
+
+## 2026-06-19 - Hermes - cache local de mensagens por canal
+
+Assunto: [Hermes] Cache local das ultimas mensagens do canal
+
+- Nome da squad/agente: `Zeus / Hermes`.
+- Tipo da acao: `PERFORMANCE LOCAL / UX / HISTORICO DE CANAL`.
+- Status: `VALIDADO_LOCAL / NAO_PUBLICADO`.
+- Data e hora local: `2026-06-19 08:14:22 -03:00`.
+- Protocolo CEP: `HERMES-20260619-035-CHANNEL-MESSAGE-CACHE`.
+- Contexto:
+  - Lucas reportou atraso grande ao abrir canais Hermes, com a tela exibindo `Nenhuma mensagem` antes do carregamento real do historico;
+  - Lucas sugeriu salvar as ultimas 50 mensagens no navegador, em vez de depender sempre da busca remota ao trocar de canal.
+- Decisao tecnica:
+  - nao usar cookie para historico, porque cookie trafega em toda requisicao e aumenta payload/custo;
+  - usar cache local por usuario/canal em `localStorage`, limitado a 50 mensagens confirmadas, com TTL de 7 dias e janela de frescor de 5 minutos;
+  - manter o servidor/Supabase como fonte oficial, aplicando modelo `stale while revalidate`: mostra cache rapidamente e reconcilia com a resposta real em segundo plano.
+- Correcao aplicada:
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`: leitura/escrita do cache local por canal, hidratacao imediata ao trocar de canal, controle de carregamento por canal e limpeza do cache quando a resposta oficial volta vazia;
+  - `apps/hub/components/pulsex/message-list.tsx`: estado visual de carregamento para nao exibir `Nenhuma mensagem` antes da consulta terminar.
+- Escopo preservado:
+  - nenhuma env, secret, token, chave Supabase/Vercel, migration, banco, storage, dominio, alias ou producao foi alterado;
+  - recorte limitado ao Hermes e sem publicacao.
+- Validacoes locais:
+  - `git diff --check`: PASS, com avisos esperados LF/CRLF no Windows;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT por causa do worktree em `.codex-deploy`.
+- Proximo passo:
+  - se Lucas aprovar publicacao, gerar commit limpo, manifestos CEP/producao e rodar Safety Gate antes de qualquer deploy/alias.
+
+Conclusao:
+
+- O recorte deixa a abertura do canal parecida com app de chat profissional: conteudo recente aparece de imediato quando existe cache local, e a rede apenas confirma/atualiza.
+- O impacto pratico esperado e reduzir o tempo percebido de carregamento e evitar a falsa tela vazia.
+- Precisa de acao agora: Lucas decidir se quer publicar este recorte; producao permanece inalterada neste registro.

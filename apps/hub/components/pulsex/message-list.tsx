@@ -18,6 +18,7 @@ type MessageListProps = {
   channelId?: string;
   currentUserId?: HermesPresenceUser["id"];
   filter?: HermesMessageFilter;
+  isLoading?: boolean;
   messages: readonly HermesMessage[];
   onEditMessage?: (
     messageId: HermesMessage["id"],
@@ -26,10 +27,7 @@ type MessageListProps = {
   onAskAiReply?: (messageId: HermesMessage["id"]) => void;
   onOpenThread?: (messageId: HermesMessage["id"]) => void;
   onReturnCall?: (entry: HermesCallHistoryEntry) => void;
-  onToggleTag?: (
-    messageId: HermesMessage["id"],
-    tag: HermesMessageTag,
-  ) => void;
+  onToggleTag?: (messageId: HermesMessage["id"], tag: HermesMessageTag) => void;
   onToggleReaction?: (
     messageId: HermesMessage["id"],
     emoji: HermesReactionEmoji,
@@ -47,6 +45,7 @@ export function MessageList({
   channelId,
   currentUserId,
   filter = "all",
+  isLoading = false,
   messages,
   onEditMessage,
   onAskAiReply,
@@ -89,6 +88,10 @@ export function MessageList({
     };
   }, [channelId, lastTimelineItemId]);
 
+  if (timelineItems.length === 0 && isLoading) {
+    return <HermesMessageListLoading />;
+  }
+
   if (timelineItems.length === 0) {
     return (
       <EmptyState
@@ -97,7 +100,7 @@ export function MessageList({
             ? "As mensagens deste canal aparecerao aqui."
             : filter === "mentions"
               ? "Nenhuma mensagem marcou voce neste canal."
-            : "Nenhuma mensagem desta conversa possui a tag selecionada."
+              : "Nenhuma mensagem desta conversa possui a tag selecionada."
         }
         title={
           filter === "all"
@@ -111,11 +114,7 @@ export function MessageList({
   }
 
   return (
-    <div
-      aria-label="Mensagens do canal"
-      className="grid gap-2 px-2"
-      role="log"
-    >
+    <div aria-label="Mensagens do canal" className="grid gap-2 px-2" role="log">
       {timelineRows.map((item) =>
         item.kind === "message" ? (
           <MessageItem
@@ -144,6 +143,20 @@ export function MessageList({
         ),
       )}
       <div ref={bottomRef} />
+    </div>
+  );
+}
+
+function HermesMessageListLoading() {
+  return (
+    <div
+      aria-label="Carregando mensagens do canal"
+      className="grid gap-3 px-6 py-4"
+      role="status"
+    >
+      <div className="h-20 w-[min(28rem,80%)] animate-pulse rounded-2xl border border-[#d9e0ea] bg-white" />
+      <div className="ml-auto h-20 w-[min(30rem,78%)] animate-pulse rounded-2xl border border-emerald-100 bg-emerald-50" />
+      <div className="h-16 w-[min(22rem,68%)] animate-pulse rounded-2xl border border-[#d9e0ea] bg-white" />
     </div>
   );
 }
