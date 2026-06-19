@@ -521,6 +521,34 @@ export async function listRecentChannelMessages(input: {
   );
 }
 
+export function mapHermesRealtimeMessageRow(row: unknown): HermesMessage | null {
+  if (!row || typeof row !== "object" || Array.isArray(row)) {
+    return null;
+  }
+
+  const maybeRow = row as Partial<HermesMessageRow>;
+
+  if (
+    !maybeRow.id ||
+    !maybeRow.channel_id ||
+    !maybeRow.body ||
+    !maybeRow.created_at
+  ) {
+    return null;
+  }
+
+  return mapMessage({
+    author_user_id: maybeRow.author_user_id,
+    body: maybeRow.body,
+    channel_id: maybeRow.channel_id,
+    created_at: maybeRow.created_at,
+    deleted_at: maybeRow.deleted_at,
+    hub_users: maybeRow.hub_users,
+    id: maybeRow.id,
+    metadata: maybeRow.metadata,
+  });
+}
+
 export async function createHermesMessage(input: {
   attachment?: HermesMessageAttachment;
   authorUserId?: string;

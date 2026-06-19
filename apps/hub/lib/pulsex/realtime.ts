@@ -22,6 +22,12 @@ export type HermesMessagePostgresRealtimeConsumer =
   | "notifications"
   | "workspace";
 
+export function getHermesMessageGlobalPostgresRealtimeTopic(
+  consumer: HermesMessagePostgresRealtimeConsumer,
+) {
+  return `pulsex:messages:postgres:${consumer}:global`;
+}
+
 export function getHermesMessagePostgresRealtimeTopic(
   channelId: HermesChannel["id"],
   consumer: HermesMessagePostgresRealtimeConsumer,

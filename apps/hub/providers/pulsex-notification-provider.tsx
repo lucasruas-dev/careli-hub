@@ -31,6 +31,7 @@ import {
 import {
   PULSEX_MESSAGE_BROADCAST_EVENT,
   broadcastHermesMessage,
+  getHermesMessageGlobalPostgresRealtimeTopic,
   getHermesMessageGlobalRealtimeTopic,
   parseHermesMessageBroadcastPayload,
   type HermesMessageRealtimeChannel,
@@ -41,6 +42,7 @@ import {
   listHermesNotificationChannels,
   listRecentChannelMessages,
   markHermesChannelRead,
+  mapHermesRealtimeMessageRow,
 } from "@/lib/pulsex/supabase-data";
 import { withChannelUnreadCounts } from "@/lib/pulsex/workspace-messages";
 import {
@@ -588,6 +590,9 @@ export function HermesNotificationProvider({
         },
       },
     );
+    const globalPostgresRealtimeChannel = client.channel(
+      getHermesMessageGlobalPostgresRealtimeTopic("notifications"),
+    );
 
     globalRealtimeChannelRef.current = globalRealtimeChannel;
     globalRealtimeReadyRef.current = false;
@@ -640,12 +645,58 @@ export function HermesNotificationProvider({
         }
       });
 
+    globalPostgresRealtimeChannel
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "pulsex_messages",
+        },
+        (payload) => {
+          const message = mapHermesRealtimeMessageRow(payload.new);
+          const currentChannel = message
+            ? hermesChannelsByIdRef.current.get(message.channelId)
+            : null;
+
+          if (!message) {
+            return;
+          }
+
+          if (!currentChannel) {
+            pendingGlobalIncomingMessagesRef.current = [
+              ...pendingGlobalIncomingMessagesRef.current,
+              message,
+            ].slice(-50);
+            void refreshHermesSnapshot().catch((error: unknown) => {
+              logSupabaseDiagnostic(
+                "pulsex",
+                "global postgres channel refresh error",
+                {
+                  channelId: message.channelId,
+                  error: serializeDiagnosticError(error),
+                },
+              );
+            });
+            return;
+          }
+
+          handleHermesMessage(currentChannel, message);
+        },
+      )
+      .subscribe((status) => {
+        logSupabaseDiagnostic("pulsex", "global postgres message status", {
+          status,
+        });
+      });
+
     return () => {
       if (globalRealtimeChannelRef.current === globalRealtimeChannel) {
         globalRealtimeChannelRef.current = null;
       }
       globalRealtimeReadyRef.current = false;
       void client.removeChannel(globalRealtimeChannel);
+      void client.removeChannel(globalPostgresRealtimeChannel);
     };
   }, [
     currentUserId,

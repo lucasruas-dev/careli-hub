@@ -7,6 +7,7 @@ import {
   createHermesThreadReply,
   listChannelMessages,
   listHermesThreadReplies,
+  listRecentChannelMessages,
   loadHermesOperationalData,
   markHermesChannelRead,
   updateHermesMessageBody,
@@ -96,6 +97,7 @@ const HERMES_WORKSPACE_REFRESH_MS = 300_000;
 const HERMES_CHANNEL_MESSAGE_CACHE_LIMIT = 50;
 const HERMES_CHANNEL_MESSAGE_CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1_000;
 const HERMES_CHANNEL_MESSAGE_CACHE_FRESH_MS = 5 * 60 * 1_000;
+const HERMES_PREFETCH_MESSAGE_LIMIT = 200;
 const HERMES_CHANNEL_MESSAGE_CACHE_VERSION = 1;
 const HERMES_CHANNEL_MESSAGE_CACHE_STORAGE_PREFIX =
   "careli:hermes:channel-message-cache";
@@ -176,6 +178,7 @@ export function HermesWorkspace() {
   const messageCursorByChannelIdRef = useRef<Map<string, string>>(new Map());
   const messageLoadInFlightByChannelIdRef = useRef<Set<string>>(new Set());
   const staleMessageCacheChannelIdsRef = useRef<Set<string>>(new Set());
+  const messagesPrefetchedRef = useRef(false);
   const composerValueRef = useRef("");
   const composerDraftChannelIdRef = useRef<HermesChannel["id"] | null>(null);
   const isComposerDraftHydratingRef = useRef(false);
@@ -513,6 +516,53 @@ export function HermesWorkspace() {
       ),
     );
   }, [activeChannel.id, notificationChannels]);
+
+  useEffect(() => {
+    if (
+      messagesPrefetchedRef.current ||
+      dataStatus !== "ready" ||
+      !hasHubSupabaseConfig() ||
+      !currentUserId ||
+      channels.length === 0
+    ) {
+      return;
+    }
+
+    const channelIds = channels
+      .map((channel) => channel.id)
+      .filter((channelId) => channelId !== emptyHermesChannel.id);
+
+    if (channelIds.length === 0) {
+      return;
+    }
+
+    let isMounted = true;
+
+    messagesPrefetchedRef.current = true;
+    listRecentChannelMessages({
+      channelIds,
+      limit: HERMES_PREFETCH_MESSAGE_LIMIT,
+    })
+      .then((recentMessages) => {
+        if (!isMounted || recentMessages.length === 0) {
+          return;
+        }
+
+        writeHermesChannelMessageCaches({
+          messages: withMessageDeliveryData(recentMessages, channels),
+          userId: currentUserId,
+        });
+      })
+      .catch((error: unknown) => {
+        logSupabaseDiagnostic("pulsex", "message cache prefetch error", {
+          error,
+        });
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [channels, currentUserId, dataStatus]);
 
   useEffect(() => {
     if (queryChannelAppliedRef.current || channels.length === 0) {
