@@ -38106,3 +38106,47 @@ Conclusao:
 - Precisa de acao agora: sim; rodar validacoes, Safety Gate e deploy somente se os gates passarem.
 - Quem deve agir agora: Zeus.
 - Proximo passo: validar, commitar o recorte limpo, gerar deployment e promover apenas se o alvo estiver correto.
+
+## 2026-06-19 - Hermes/Panteon - incidente de Preview com identidade Homo em producao
+
+- Status: ROLLBACK_EXECUTADO / CAUSA_IDENTIFICADA / REDEPLOY_BLOQUEADO.
+- Origem: Lucas reportou que, apos nova tentativa de publicacao, `/hermes` voltou a quebrar e a janela passou a exibir `Homo Panteon`, nome incorreto para producao.
+- Evidencia:
+  - tela do Next.js `This page couldn't load` em `https://c2x.app.br/hermes`;
+  - console do Chrome com `cannot add 'postgres_changes' callbacks ... after 'subscribe()'`;
+  - titulo/identidade visual do app como `Homo Panteon`.
+- Acoes executadas:
+  - rollback imediato de `https://c2x.app.br` para o deployment valido `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW`;
+  - `https://ops.c2x.app.br` permaneceu preservado em `dpl_2CENGD4sXbbak1sKjErgTpxF94c5`;
+  - nenhuma env, secret, migration, banco, Supabase remoto ou dominio OPS foi alterado.
+- Diagnostico do titulo:
+  - o deployment quebrado foi gerado como Preview e depois recebeu alias de producao;
+  - por nascer com env/branding de Preview/Homolog, o build carregou `Homo Panteon`;
+  - para producao real, o recorte precisa ser publicado com `vercel deploy --prod --skip-domain` e depois receber alias manual apenas em `c2x.app.br`.
+- Diagnostico do crash realtime:
+  - separar `broadcast` e `postgres_changes` por topico de canal nao foi suficiente;
+  - o workspace ativo e a central global de notificacoes tambem precisam ter topicos Postgres distintos por consumidor;
+  - sem isso, duas areas do Hermes podem disputar o mesmo topico `postgres_changes` para o mesmo canal.
+- Correcao aplicada no recorte local:
+  - `apps/hub/lib/pulsex/realtime.ts` passou a exigir consumidor `workspace` ou `notifications` no topico Postgres;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx` usa `pulsex:messages:postgres:workspace:<channelId>`;
+  - `apps/hub/providers/pulsex-notification-provider.tsx` usa `pulsex:messages:postgres:notifications:<channelId>`.
+- Regra operacional adicionada:
+  - fica bloqueado usar deployment Preview como candidato a alias de producao no Panteon, mesmo que o Safety Gate de arquivos passe;
+  - producao modular deve usar build de producao com `--prod --skip-domain`, smoke do deployment tecnico e alias manual somente do dominio autorizado.
+- Validacoes do recorte corrigido:
+  - `git diff --check`: PASS, com avisos esperados de LF/CRLF no Windows;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido de worktree aninhado/Turbopack.
+- Proximo passo:
+  - nao publicar novamente sem autorizacao explicita de Lucas apos estas validacoes;
+  - se autorizado, gerar novo commit candidato e usar apenas `vercel deploy --prod --skip-domain` antes do alias manual.
+
+Conclusao:
+
+- O que aconteceu: alem do bug realtime, a tentativa de deploy usou um deployment Preview como se fosse producao, por isso apareceu `Homo Panteon`.
+- Impacto pratico: o usuario via uma identidade de homologacao em producao e o Hermes quebrava no carregamento client-side.
+- Precisa de acao agora: nao para o time, porque o dominio principal ja voltou ao rollback; sim para Zeus, que deve validar o recorte corrigido antes de qualquer nova publicacao.
+- Quem deve agir agora: Zeus valida e registra; Lucas so autoriza nova publicacao quando quiser.
+- Proximo passo: fechar a correcao local e manter producao no deployment valido ate nova autorizacao.

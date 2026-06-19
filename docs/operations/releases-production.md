@@ -4171,3 +4171,32 @@ Registro de producao:
   - ainda nao publicada;
   - `https://c2x.app.br` deve permanecer no rollback `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW` ate nova autorizacao;
   - `https://ops.c2x.app.br` deve permanecer em `dpl_2CENGD4sXbbak1sKjErgTpxF94c5`.
+
+## 2026-06-19 - HERMES-20260619-032-PROFESSIONAL-CHAT-COST - INCIDENTE PREVIEW/HOMO
+
+Status: ROLLBACK_EXECUTADO / NAO_PUBLICAR_SEM_NOVO_GATE.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Incidente por Preview com identidade Homo e colisao Realtime`.
+- Dominio alvo: `https://c2x.app.br`.
+- Dominio preservado: `https://ops.c2x.app.br`.
+- Evidencia: Lucas reportou `This page couldn't load` e titulo `Homo Panteon` apos nova tentativa de publicacao.
+- Causa operacional:
+  - o candidato foi publicado como Preview e recebeu alias de producao;
+  - Preview/Homolog gera metadata `Homo Panteon`, portanto nao pode ser usado como build final de producao.
+- Causa tecnica:
+  - o topico Postgres separado por canal ainda podia colidir entre workspace Hermes e central global de notificacoes.
+- Rollback executado:
+  - `https://c2x.app.br` restaurado para `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW`;
+  - `https://ops.c2x.app.br` preservado em `dpl_2CENGD4sXbbak1sKjErgTpxF94c5`.
+- Correcao local pendente de validacao:
+  - topico Postgres por consumidor `workspace` e `notifications`;
+  - proximo deploy, se autorizado, deve ser obrigatoriamente `vercel deploy --prod --skip-domain` seguido de alias manual apenas para `c2x.app.br`.
+- Validacoes locais:
+  - `git diff --check`: PASS;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS.
+- Publicacao:
+  - bloqueada ate nova validacao e autorizacao explicita de Lucas.

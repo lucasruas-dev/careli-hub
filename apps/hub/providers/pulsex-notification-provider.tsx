@@ -549,7 +549,7 @@ export function HermesNotificationProvider({
             },
           );
           const postgresRealtimeChannel = client.channel(
-            getHermesMessagePostgresRealtimeTopic(channel.id),
+            getHermesMessagePostgresRealtimeTopic(channel.id, "notifications"),
           );
 
           realtimeChannelsById.set(channel.id, broadcastRealtimeChannel);

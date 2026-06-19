@@ -987,7 +987,7 @@ export function HermesWorkspace() {
       },
     );
     const postgresRealtimeChannel = client.channel(
-      getHermesMessagePostgresRealtimeTopic(activeChannel.id),
+      getHermesMessagePostgresRealtimeTopic(activeChannel.id, "workspace"),
     );
 
     messageRealtimeChannelRef.current = broadcastRealtimeChannel;
