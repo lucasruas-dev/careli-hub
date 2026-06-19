@@ -22,7 +22,6 @@ import {
 import type {
   HermesChannel,
   HermesMessage,
-  HermesMessageMention,
 } from "@/lib/pulsex";
 import {
   playHermesIncomingMessageSound,
@@ -32,8 +31,7 @@ import {
 import {
   PULSEX_MESSAGE_BROADCAST_EVENT,
   broadcastHermesMessage,
-  getHermesMessagePostgresRealtimeTopic,
-  getHermesMessageRealtimeTopic,
+  getHermesMessageGlobalRealtimeTopic,
   parseHermesMessageBroadcastPayload,
   type HermesMessageRealtimeChannel,
 } from "@/lib/pulsex/realtime";
@@ -64,6 +62,7 @@ type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
 type PanteonNotificationsContextValue = {
   activeHermesChannelId: HermesChannel["id"] | null;
+  broadcastHermesMessageEvent: (message: HermesMessage) => void;
   hermesChannels: readonly HermesChannel[];
   items: readonly PanteonNotificationItem[];
   publishNotification: (notification: PanteonNotificationInput) => void;
@@ -100,9 +99,11 @@ export function HermesNotificationProvider({
     useState<HermesMessage | null>(null);
   const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
   const activeHermesChannelIdRef = useRef<HermesChannel["id"] | null>(null);
-  const realtimeChannelsByIdRef = useRef<Map<string, HubRealtimeChannel>>(
-    new Map(),
-  );
+  const globalRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
+  const globalRealtimeReadyRef = useRef(false);
+  const hermesChannelsByIdRef = useRef<Map<string, HermesChannel>>(new Map());
+  const pendingGlobalBroadcastMessagesRef = useRef<HermesMessage[]>([]);
+  const pendingGlobalIncomingMessagesRef = useRef<HermesMessage[]>([]);
   const floatingTimeoutsRef = useRef<Map<string, number>>(new Map());
 
   const unreadCount = useMemo(
@@ -392,6 +393,67 @@ export function HermesNotificationProvider({
     [currentUserId, markChannelNotificationsRead, pushFloatingNotification],
   );
 
+  const broadcastHermesMessageEvent = useCallback((message: HermesMessage) => {
+    const realtimeChannel = globalRealtimeChannelRef.current;
+
+    if (!realtimeChannel || !globalRealtimeReadyRef.current) {
+      pendingGlobalBroadcastMessagesRef.current = [
+        ...pendingGlobalBroadcastMessagesRef.current,
+        message,
+      ].slice(-20);
+      return;
+    }
+
+    void broadcastHermesMessage({
+      message,
+      onError: (error: unknown, failedMessage: HermesMessage) => {
+        logSupabaseDiagnostic("pulsex", "global broadcast error", {
+          error: serializeDiagnosticError(error),
+          messageId: failedMessage.id,
+        });
+      },
+      realtimeChannel: realtimeChannel as HermesMessageRealtimeChannel,
+    });
+  }, []);
+
+  const flushPendingGlobalBroadcastMessages = useCallback(() => {
+    if (
+      !globalRealtimeChannelRef.current ||
+      !globalRealtimeReadyRef.current ||
+      pendingGlobalBroadcastMessagesRef.current.length === 0
+    ) {
+      return;
+    }
+
+    const pendingMessages = [...pendingGlobalBroadcastMessagesRef.current];
+
+    pendingGlobalBroadcastMessagesRef.current = [];
+    pendingMessages.forEach((message) => broadcastHermesMessageEvent(message));
+  }, [broadcastHermesMessageEvent]);
+
+  const flushPendingGlobalIncomingMessages = useCallback(() => {
+    if (pendingGlobalIncomingMessagesRef.current.length === 0) {
+      return;
+    }
+
+    const remainingMessages: HermesMessage[] = [];
+
+    pendingGlobalIncomingMessagesRef.current.forEach((message) => {
+      const currentChannel = hermesChannelsByIdRef.current.get(
+        message.channelId,
+      );
+
+      if (!currentChannel) {
+        remainingMessages.push(message);
+        return;
+      }
+
+      handleHermesMessage(currentChannel, message);
+    });
+
+    pendingGlobalIncomingMessagesRef.current = remainingMessages.slice(-50);
+  }, [handleHermesMessage]);
+
   const sendHermesPopupMessage = useCallback(
     async (channelId: HermesChannel["id"], body: string) => {
       if (!currentUserId) {
@@ -404,25 +466,14 @@ export function HermesNotificationProvider({
         channelId,
         clientMessageId: `global-${currentUserId}-${Date.now()}`,
       });
-      const realtimeChannel = realtimeChannelsByIdRef.current.get(channelId);
 
       notifiedMessageIdsRef.current.add(savedMessage.id);
-      void broadcastHermesMessage({
-        message: savedMessage,
-        onError: (error: unknown, message: HermesMessage) => {
-          logSupabaseDiagnostic("pulsex", "global broadcast error", {
-            error: serializeDiagnosticError(error),
-            messageId: message.id,
-          });
-        },
-        realtimeChannel: (realtimeChannel ??
-          null) as HermesMessageRealtimeChannel | null,
-      });
+      broadcastHermesMessageEvent(savedMessage);
       markChannelNotificationsRead(channelId);
 
       return savedMessage;
     },
-    [currentUserId, markChannelNotificationsRead],
+    [broadcastHermesMessageEvent, currentUserId, markChannelNotificationsRead],
   );
 
   useEffect(() => registerHermesNotificationPermissionIntent(), []);
@@ -430,6 +481,13 @@ export function HermesNotificationProvider({
   useEffect(() => {
     activeHermesChannelIdRef.current = activeHermesChannelId;
   }, [activeHermesChannelId]);
+
+  useEffect(() => {
+    hermesChannelsByIdRef.current = new Map(
+      hermesChannels.map((channel) => [channel.id, channel] as const),
+    );
+    flushPendingGlobalIncomingMessages();
+  }, [flushPendingGlobalIncomingMessages, hermesChannels]);
 
   useEffect(() => {
     const floatingTimeouts = floatingTimeoutsRef.current;
@@ -503,14 +561,13 @@ export function HermesNotificationProvider({
   }, [currentUserId, profileStatus, refreshPanteonActivityNotifications]);
 
   useEffect(() => {
-    const realtimeChannelsById = realtimeChannelsByIdRef.current;
-
     if (
       !currentUserId ||
       profileStatus !== "ready" ||
       !hasHubSupabaseConfig()
     ) {
-      realtimeChannelsById.clear();
+      globalRealtimeChannelRef.current = null;
+      globalRealtimeReadyRef.current = false;
       return;
     }
 
@@ -520,122 +577,88 @@ export function HermesNotificationProvider({
       return;
     }
 
-    let isMounted = true;
-    let realtimeChannels: HubRealtimeChannel[] = [];
+    const globalRealtimeChannel = client.channel(
+      getHermesMessageGlobalRealtimeTopic(),
+      {
+        config: {
+          broadcast: {
+            ack: true,
+            self: false,
+          },
+        },
+      },
+    );
 
-    listHermesNotificationChannels({
-      currentUserId,
-      userRole: hubUser?.role,
-    })
-      .then((channels) => {
-        if (!isMounted) {
-          return;
-        }
+    globalRealtimeChannelRef.current = globalRealtimeChannel;
+    globalRealtimeReadyRef.current = false;
 
-        const channelMap = new Map(
-          channels.map((channel) => [channel.id, channel]),
-        );
+    globalRealtimeChannel
+      .on(
+        "broadcast",
+        {
+          event: PULSEX_MESSAGE_BROADCAST_EVENT,
+        },
+        (payload: { payload?: unknown }) => {
+          const message = parseHermesMessageBroadcastPayload(payload.payload);
+          const currentChannel = message
+            ? hermesChannelsByIdRef.current.get(message.channelId)
+            : null;
 
-        realtimeChannels = channels.flatMap((channel) => {
-          const broadcastRealtimeChannel = client.channel(
-            getHermesMessageRealtimeTopic(channel.id),
-            {
-              config: {
-                broadcast: {
-                  ack: true,
-                  self: false,
-                },
-              },
-            },
-          );
-          const postgresRealtimeChannel = client.channel(
-            getHermesMessagePostgresRealtimeTopic(channel.id, "notifications"),
-          );
+          if (!message) {
+            return;
+          }
 
-          realtimeChannelsById.set(channel.id, broadcastRealtimeChannel);
-          broadcastRealtimeChannel
-            .on(
-              "broadcast",
-              {
-                event: PULSEX_MESSAGE_BROADCAST_EVENT,
-              },
-              (payload: { payload?: unknown }) => {
-                const message = parseHermesMessageBroadcastPayload(
-                  payload.payload,
-                );
-                const currentChannel = message
-                  ? channelMap.get(message.channelId)
-                  : null;
-
-                if (!message || !currentChannel) {
-                  return;
-                }
-
-                handleHermesMessage(currentChannel, message);
-              },
-            )
-            .subscribe((status) => {
-              logSupabaseDiagnostic("pulsex", "global message broadcast status", {
-                channelId: channel.id,
-                status,
-              });
-            });
-
-          postgresRealtimeChannel
-            .on(
-              "postgres_changes",
-              {
-                event: "INSERT",
-                filter: `channel_id=eq.${channel.id}`,
-                schema: "public",
-                table: "pulsex_messages",
-              },
-              (payload: { new?: unknown }) => {
-                const message = parseHermesInsertedMessagePayload(payload);
-                const currentChannel = message
-                  ? channelMap.get(message.channelId)
-                  : null;
-
-                if (!message || !currentChannel) {
-                  return;
-                }
-
-                handleHermesMessage(currentChannel, message);
-              },
-            )
-            .subscribe((status) => {
+          if (!currentChannel) {
+            pendingGlobalIncomingMessagesRef.current = [
+              ...pendingGlobalIncomingMessagesRef.current,
+              message,
+            ].slice(-50);
+            void refreshHermesSnapshot().catch((error: unknown) => {
               logSupabaseDiagnostic(
                 "pulsex",
-                "global message postgres realtime status",
+                "global message channel refresh error",
                 {
-                  channelId: channel.id,
-                  status,
+                  channelId: message.channelId,
+                  error: serializeDiagnosticError(error),
                 },
               );
             });
+            return;
+          }
 
-          return [broadcastRealtimeChannel, postgresRealtimeChannel];
+          handleHermesMessage(currentChannel, message);
+        },
+      )
+      .subscribe((status) => {
+        globalRealtimeReadyRef.current = status === "SUBSCRIBED";
+        logSupabaseDiagnostic("pulsex", "global message bus status", {
+          status,
         });
-      })
-      .catch((error: unknown) => {
-        logSupabaseDiagnostic("pulsex", "global notifications error", {
-          error: serializeDiagnosticError(error),
-        });
+
+        if (status === "SUBSCRIBED") {
+          flushPendingGlobalBroadcastMessages();
+        }
       });
 
     return () => {
-      isMounted = false;
-      realtimeChannels.forEach((realtimeChannel) => {
-        void client.removeChannel(realtimeChannel);
-      });
-      realtimeChannelsById.clear();
-      realtimeChannels = [];
+      if (globalRealtimeChannelRef.current === globalRealtimeChannel) {
+        globalRealtimeChannelRef.current = null;
+      }
+      globalRealtimeReadyRef.current = false;
+      void client.removeChannel(globalRealtimeChannel);
     };
-  }, [currentUserId, handleHermesMessage, hubUser?.role, profileStatus]);
+  }, [
+    currentUserId,
+    flushPendingGlobalBroadcastMessages,
+    handleHermesMessage,
+    profileStatus,
+    refreshHermesSnapshot,
+  ]);
 
   const contextValue = useMemo<PanteonNotificationsContextValue>(
     () => ({
       activeHermesChannelId,
+      broadcastHermesMessageEvent,
       hermesChannels,
       items,
       markAllRead,
@@ -645,6 +668,7 @@ export function HermesNotificationProvider({
     }),
     [
       activeHermesChannelId,
+      broadcastHermesMessageEvent,
       hermesChannels,
       items,
       markAllRead,
@@ -1011,84 +1035,6 @@ function getOldestHermesReadCursor(
   return oldestReadAt;
 }
 
-function parseHermesInsertedMessagePayload(payload: { new?: unknown }) {
-  const row = getRecord(payload.new);
-  const id = getString(row.id);
-  const channelId = getString(row.channel_id);
-  const body = getString(row.body);
-  const createdAt = getString(row.created_at) || new Date().toISOString();
-  const metadata = getRecord(row.metadata);
-
-  if (!id || !channelId || !body) {
-    return null;
-  }
-
-  return {
-    authorId: getString(row.author_user_id) || "system",
-    body,
-    channelId,
-    createdAt,
-    id,
-    mentionUserIds: normalizeStringList(metadata.mentionUserIds),
-    mentions: normalizeHermesMentions(metadata.mentions),
-    reactions: [],
-    status: "neutral",
-    tags: [],
-    threadCount: 0,
-    threadParentMessageId:
-      getString(metadata.threadParentMessageId) || undefined,
-    timestamp: formatHermesNotificationTime(createdAt),
-  } satisfies HermesMessage;
-}
-
-function normalizeHermesMentions(value: unknown): HermesMessageMention[] {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return value
-    .map((mention) => {
-      const maybeMention = getRecord(mention);
-      const displayName = getString(maybeMention.displayName);
-      const trigger = getString(maybeMention.trigger);
-      const userId = getString(maybeMention.userId);
-
-      if (!displayName || !trigger || !userId) {
-        return null;
-      }
-
-      return {
-        displayName,
-        trigger,
-        userId,
-      };
-    })
-    .filter((mention): mention is HermesMessageMention => Boolean(mention));
-}
-
-function normalizeStringList(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return [
-    ...new Set(value.filter((item): item is string => typeof item === "string")),
-  ];
-}
-
-function formatHermesNotificationTime(value: string) {
-  const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return "--:--";
-  }
-
-  return new Intl.DateTimeFormat("pt-BR", {
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(date);
-}
-
 function createHermesChannelNotification({
   channel,
   currentUserId,
@@ -1259,16 +1205,6 @@ function getReadableError(error: unknown) {
   }
 
   return "Nao foi possivel concluir a acao.";
-}
-
-function getRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === "object" && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {};
-}
-
-function getString(value: unknown) {
-  return typeof value === "string" ? value.trim() : "";
 }
 
 function isHermesWorkspaceRoute() {

@@ -14,6 +14,10 @@ export function getHermesMessageRealtimeTopic(channelId: HermesChannel["id"]) {
   return `pulsex:messages:${channelId}`;
 }
 
+export function getHermesMessageGlobalRealtimeTopic() {
+  return "pulsex:messages:global";
+}
+
 export type HermesMessagePostgresRealtimeConsumer =
   | "notifications"
   | "workspace";

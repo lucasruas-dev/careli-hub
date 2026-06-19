@@ -38206,3 +38206,39 @@ Conclusao:
 - Precisa de acao agora: sim, Lucas deve testar mensagem realtime com dois usuarios reais para validar a experiencia autenticada.
 - Quem deve agir agora: Lucas valida o uso real; Zeus monitora e reverte se houver regressao critica.
 - Proximo passo: se o teste real confirmar estabilidade, manter o recorte; se quebrar, rollback imediato para `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW`.
+
+## 2026-06-19 - Hermes/Panteon - central unica e trilho global de notificacao
+
+Assunto: [Hermes] Central unica e notificacao realtime global
+
+- Nome da squad/agente: `Zeus / Hermes`.
+- Tipo da acao: `CORRECAO LOCAL / REALTIME / NOTIFICACOES / UI`.
+- Status: `VALIDADO_LOCAL / NAO_PUBLICADO`.
+- Data e hora local: `2026-06-19 07:20:00 -03:00`.
+- Contexto:
+  - Lucas demonstrou que a notificacao nativa do navegador/Windows chegava em tempo real, mas a notificacao interna do Hermes/Central Panteon era intermitente;
+  - a tela Hermes tambem exibia controles duplicados de notificacao no header, mantendo sino local alem da Central Panteon.
+- Causa tecnica:
+  - a central interna dependia de assinaturas por canal (`pulsex:messages:<channelId>`) e callbacks por canal para atualizar badges/central;
+  - quando a assinatura do canal ja estava pronta, a notificacao interna chegava junto; quando nao estava, o snapshot posterior recuperava o estado, gerando atraso perceptivel.
+- Correcao aplicada no recorte limpo:
+  - `apps/hub/lib/pulsex/realtime.ts`: criado topico global `pulsex:messages:global`;
+  - `apps/hub/providers/pulsex-notification-provider.tsx`: central Panteon passou a escutar um bus global unico de mensagens Hermes, com fila curta para broadcasts enviados antes do `SUBSCRIBED` e snapshot apenas como fallback;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`: envio de mensagem passou a disparar tambem o evento global, alem do broadcast do canal ativo;
+  - `apps/hub/components/pulsex/conversation-header.tsx`: removidos os controles locais de mensagens nao lidas e respostas, deixando somente a Central Panteon como sino/notificacao.
+- Validacoes locais:
+  - `git diff --check`: PASS, somente avisos esperados de LF/CRLF no Windows;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido do Turbopack sobre root/NFT no worktree.
+- Escopo preservado:
+  - nenhuma env, secret, token, migration, banco, storage, dominio, alias ou deploy foi alterado;
+  - recorte limitado a arquivos Hermes/Panteon de notificacao.
+- Proximo passo:
+  - se Lucas aprovar publicacao, gerar commit limpo, manifesto CEP/producao e rodar Safety Gate antes de qualquer alias em `c2x.app.br`.
+
+Conclusao:
+
+- A correcao local troca a notificacao interna do Hermes de um modelo fragil por canal para um bus global unico, reduzindo atraso intermitente e diminuindo a quantidade de subscriptions.
+- O impacto pratico esperado e que mensagem nova alimente a Central Panteon, badge/sidebar e som no mesmo caminho realtime, com snapshot apenas para recuperacao.
+- Precisa de acao agora: Lucas decidir se quer publicar este recorte; producao permanece inalterada neste registro.

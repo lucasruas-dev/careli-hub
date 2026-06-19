@@ -41,15 +41,10 @@ import {
   withMessageDeliveryData,
 } from "@/lib/pulsex/workspace-messages";
 import {
-  formatHermesThreadNotificationTime,
-  getHermesThreadChannelName,
-  getHermesThreadNotificationSortTime,
-  getHermesThreadParentPreview,
   getHermesThreadReadStorageKey,
   getHermesThreadUnreadCount,
   getLatestHermesThreadReplyCreatedAt,
   normalizeHermesThreadReadState,
-  type HermesThreadNotificationEntry,
   type HermesThreadReadReceipt,
 } from "@/lib/pulsex/thread-notifications";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
@@ -95,15 +90,6 @@ type HermesToastNotification = {
   title: string;
 };
 
-type HermesChannelNotificationEntry = {
-  channelId: HermesChannel["id"];
-  channelName: string;
-  id: string;
-  lastMessageAt: string;
-  preview: string;
-  unreadCount: number;
-};
-
 const HERMES_PRESENCE_REFRESH_MS = 60_000;
 const HERMES_MESSAGE_REFRESH_MS = 8_000;
 const HERMES_WORKSPACE_REFRESH_MS = 300_000;
@@ -114,7 +100,10 @@ type HubRealtimeChannel = ReturnType<HubSupabaseClient["channel"]>;
 
 export function HermesWorkspace() {
   const { hubUser, profileStatus } = useAuth();
-  const { hermesChannels: notificationChannels } = usePanteonNotifications();
+  const {
+    broadcastHermesMessageEvent,
+    hermesChannels: notificationChannels,
+  } = usePanteonNotifications();
   const {
     callHistory,
     markCallHistoryRead,
@@ -322,86 +311,6 @@ export function HermesWorkspace() {
 
     return unreadCountByMessageId;
   }, [messages, threadReadState]);
-  const unreadThreadReplyCount = useMemo(
-    () =>
-      Array.from(threadUnreadCountByMessageId.values()).reduce(
-        (total, count) => total + count,
-        0,
-      ),
-    [threadUnreadCountByMessageId],
-  );
-  const threadNotifications = useMemo<HermesThreadNotificationEntry[]>(
-    () => {
-      const entries: HermesThreadNotificationEntry[] = [];
-
-      for (const message of messages) {
-        const unreadCount = threadUnreadCountByMessageId.get(message.id) ?? 0;
-
-        if (unreadCount <= 0) {
-          continue;
-        }
-
-        entries.push({
-          channelName: getHermesThreadChannelName({
-            activeChannel,
-            channelsById,
-            message,
-          }),
-          id: `thread-notification-${message.id}`,
-          lastReplyLabel: formatHermesThreadNotificationTime(
-            message.lastThreadReplyAt ?? message.createdAt,
-          ),
-          messageId: message.id,
-          parentPreview: getHermesThreadParentPreview(message),
-          replyCount: message.threadCount ?? 0,
-          unreadCount,
-          ...(message.authorName
-            ? { parentAuthorName: message.authorName }
-            : {}),
-        });
-      }
-
-      return entries.sort(
-        (firstEntry, secondEntry) =>
-          getHermesThreadNotificationSortTime({
-            messages,
-            notification: secondEntry,
-          }) -
-          getHermesThreadNotificationSortTime({
-            messages,
-            notification: firstEntry,
-          }),
-      );
-    },
-    [activeChannel, channelsById, messages, threadUnreadCountByMessageId],
-  );
-  const unreadMessageCount = useMemo(
-    () =>
-      channels.reduce(
-        (total, channel) => total + Math.max(channel.unreadCount ?? 0, 0),
-        0,
-      ),
-    [channels],
-  );
-  const channelNotifications = useMemo<HermesChannelNotificationEntry[]>(
-    () =>
-      channels
-        .filter((channel) => (channel.unreadCount ?? 0) > 0)
-        .map((channel) => ({
-          channelId: channel.id,
-          channelName: channel.name,
-          id: `channel-notification-${channel.id}`,
-          lastMessageAt: channel.lastMessageAt,
-          preview: channel.preview,
-          unreadCount: channel.unreadCount ?? 0,
-        }))
-        .sort(
-          (firstEntry, secondEntry) =>
-            getChannelNotificationSortTime(secondEntry.lastMessageAt) -
-            getChannelNotificationSortTime(firstEntry.lastMessageAt),
-        ),
-    [channels],
-  );
   const markThreadRepliesRead = useCallback(
     (message: HermesMessage, replyCountOverride?: number) => {
       if (!isThreadReadStorageReady) {
@@ -1519,6 +1428,7 @@ export function HermesWorkspace() {
           }),
         realtimeChannel: messageRealtimeChannelRef.current,
       });
+      broadcastHermesMessageEvent(savedDeliveredMessage);
     } catch (error) {
       if (isLocalDevelopmentRuntime()) {
         console.warn("[pulsex] send message error", error);
@@ -1921,15 +1831,9 @@ export function HermesWorkspace() {
             onMarkCallHistoryRead={markCallHistoryRead}
             onReturnCall={handleReturnCallFromHistory}
             onStartCall={handleStartCall}
-            channelNotifications={channelNotifications}
-            onOpenChannelNotification={handleSelectChannel}
-            onOpenThreadNotification={handleOpenThread}
             onToggleFavorite={handleToggleFavoriteChannel}
             presenceUsers={channelPresenceUsers}
-            threadNotifications={threadNotifications}
-            unreadMessageCount={unreadMessageCount}
             unreadCallCount={unreadCallCount}
-            unreadThreadReplyCount={unreadThreadReplyCount}
           />
           <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
             <MessageList
@@ -2542,19 +2446,6 @@ function isMessageMentioningUser(
     message.authorId !== userId &&
     Boolean(message.mentionUserIds?.includes(userId))
   );
-}
-
-function getChannelNotificationSortTime(value: string) {
-  const parsedTime = Date.parse(value);
-
-  if (!Number.isNaN(parsedTime)) {
-    return parsedTime;
-  }
-
-  const todayPrefix = new Date().toISOString().slice(0, 10);
-  const todayTime = Date.parse(`${todayPrefix}T${value}:00`);
-
-  return Number.isNaN(todayTime) ? 0 : todayTime;
 }
 
 function getHermesComposerDraftStorageKey(channelId: HermesChannel["id"]) {
