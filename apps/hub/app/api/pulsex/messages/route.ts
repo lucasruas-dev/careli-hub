@@ -180,7 +180,7 @@ type AuthorizedContext =
   | { ok: false; response: NextResponse };
 
 const HERMES_MESSAGES_DEFAULT_LIMIT = 50;
-const HERMES_MESSAGES_MAX_LIMIT = 100;
+const HERMES_MESSAGES_MAX_LIMIT = 200;
 const HERMES_MESSAGE_SELECT =
   "id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)";
 
@@ -200,6 +200,9 @@ export async function GET(request: NextRequest) {
   const threadParentMessageId =
     request.nextUrl.searchParams.get("threadParentMessageId")?.trim() ?? "";
   const channelId = request.nextUrl.searchParams.get("channelId")?.trim();
+  const channelIds = parseChannelIds(
+    request.nextUrl.searchParams.get("channelIds"),
+  );
   const pageOptions = parseMessagePageOptions(request.nextUrl.searchParams);
 
   if (threadParentMessageId) {
@@ -249,6 +252,64 @@ export async function GET(request: NextRequest) {
     if (error) {
       return NextResponse.json(
         { error: "Nao foi possivel carregar respostas." },
+        { status: 500 },
+      );
+    }
+
+    const rows = pageOptions.after ? (data ?? []) : [...(data ?? [])].reverse();
+
+    return NextResponse.json({
+      data: rows,
+      page: createMessagesPageMetadata(rows, pageOptions),
+    });
+  }
+
+  if (channelIds.length > 0) {
+    const accessibleChannelIds: string[] = [];
+
+    for (const requestedChannelId of channelIds) {
+      const access = await ensureChannelAccess(
+        context.adminClient,
+        context.user,
+        requestedChannelId,
+      );
+
+      if (access.ok) {
+        accessibleChannelIds.push(requestedChannelId);
+      }
+    }
+
+    if (accessibleChannelIds.length === 0) {
+      return NextResponse.json({
+        data: [],
+        page: createMessagesPageMetadata([], pageOptions),
+      });
+    }
+
+    let query = context.adminClient
+      .from("pulsex_messages")
+      .select(HERMES_MESSAGE_SELECT)
+      .in("channel_id", accessibleChannelIds)
+      .is("deleted_at", null)
+      .limit(pageOptions.limit);
+
+    if (pageOptions.after) {
+      query = query
+        .gt("created_at", pageOptions.after)
+        .order("created_at", { ascending: true });
+    } else {
+      if (pageOptions.before) {
+        query = query.lt("created_at", pageOptions.before);
+      }
+
+      query = query.order("created_at", { ascending: false });
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      return NextResponse.json(
+        { error: "Nao foi possivel carregar mensagens recentes." },
         { status: 500 },
       );
     }
@@ -603,6 +664,21 @@ function parseMessagePageOptions(
     ...(before && !after ? { before } : {}),
     limit,
   };
+}
+
+function parseChannelIds(value: string | null) {
+  if (!value) {
+    return [];
+  }
+
+  return [
+    ...new Set(
+      value
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean),
+    ),
+  ].slice(0, 80);
 }
 
 function createMessagesPageMetadata(

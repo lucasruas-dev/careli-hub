@@ -37950,3 +37950,159 @@ Conclusao:
 - O hotfix Hermes foi implementado, validado localmente e autorizado para producao pelo Lucas.
 - O impacto pratico esperado e o balao aparecer imediatamente ao enviar e o refresh deixar de causar piscar quando nao ha dado novo.
 - Precisa de acao agora: Zeus fechar commit limpo, rodar Safety Gate e publicar somente se o pacote candidato preservar o dominio OPS e os modulos fora do recorte.
+
+## 2026-06-19 - Hermes - chat profissional, notificacoes e reducao de custo
+
+Assunto: [Hermes] Chat profissional, notificacoes e reducao de custo
+
+- Nome da squad/agente: `Zeus / Hermes`.
+- ProtocolId: `HERMES-20260619-031-PROFESSIONAL-CHAT-COST`.
+- Tipo da acao: `RECORTE_LOCAL / HERMES / PERFORMANCE / NOTIFICACOES / AUDIO`.
+- Status: `VALIDADO_LOCAL / PRODUCAO_BLOQUEADA_ATE_AUTORIZACAO`.
+- Base segura:
+  - commit base do worktree candidato: `59e1eab931ccf0808ac92b1eed9bb0df60eb2725`;
+  - worktree dedicado: `.codex-deploy/hermes-professional-chat-031/worktree`;
+  - branch candidata: `codex/hermes-professional-chat-031`.
+- Contexto:
+  - Lucas relatou que mensagens enviadas por um usuario demoravam para aparecer para outro usuario;
+  - em alguns momentos a tela parecia atualizar, apagar mensagens e depois restaurar;
+  - a central/sino e a sidebar do Hermes nao ficavam sempre consistentes;
+  - Lucas pediu os sons enviados para notificacao/mensagem e chamada, e pediu remover a escolha manual de som do Hermes.
+- Causa tecnica encontrada:
+  - o snapshot estrutural do workspace executava periodicamente e reaplicava `messages` a partir de uma carga operacional que nao traz mensagens, podendo limpar a conversa ate o proximo carregamento do canal;
+  - o canal ativo usava polling de pagina completa e substituicao do canal, em vez de delta por cursor;
+  - a central global varria mensagens por canal para montar notificacoes, aumentando custo e ainda dependendo do ciclo de snapshot;
+  - o realtime dependia principalmente do broadcast do remetente; quando esse caminho nao chegava, o receptor so via a mensagem no fallback posterior;
+  - a escolha manual de sons mantinha estado local e UI que Lucas nao queria mais.
+- Mudancas locais aplicadas:
+  - a API `/api/pulsex/messages` e o alias `/api/hermes/messages` passaram a aceitar `channelIds`, `limit`, `before` e `after`, validando acesso por canal;
+  - `listRecentChannelMessages` foi criado para a central buscar mensagens recentes de varios canais em uma unica chamada;
+  - `listChannelMessages` passou a aceitar cursor opcional e respeitar `after/before` tambem no fallback;
+  - o canal ativo agora usa cursor por canal, trava de requisicao em andamento e delta a cada `8s` como fallback leve;
+  - o snapshot estrutural do workspace foi espaçado para `300s` e deixou de alterar `messages`, preservando preview, unread count, last message e recibos ja conhecidos;
+  - o snapshot global da central foi espaçado para `120s` e virou reconciliacao, nao motor principal;
+  - o canal ativo passou a escutar `broadcast` e `postgres_changes INSERT`; no INSERT ele executa delta fetch para trazer a mensagem completa;
+  - a central global tambem escuta `postgres_changes INSERT` por canal e deduplica pelo ID da mensagem;
+  - a sidebar do Hermes sincroniza badges/preview com a central global;
+  - clicar em notificacao da central dentro do Hermes dispara `careli:hermes:open-channel` e abre o canal na tela; fora do Hermes o popup flutuante segue existindo;
+  - o menu de escolha/teste de som de chamada foi removido do header e do provider Hermes;
+  - os sons foram padronizados por asset: `/sounds/panteon-notification.mp3` para mensagem/notificacao, `/sounds/hermes-call-ringtone.mp3` para chamada Hermes e `/sounds/iris-notification.mp3` reservado para Iris sem alterar fluxo Iris neste recorte.
+- Arquivos alterados:
+  - `apps/hub/app/api/pulsex/messages/route.ts`;
+  - `apps/hub/components/pulsex/conversation-header.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/lib/pulsex/notification-effects.ts`;
+  - `apps/hub/lib/pulsex/routes.ts`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - `apps/hub/providers/pulsex-call-provider.tsx`;
+  - `apps/hub/providers/pulsex-notification-provider.tsx`;
+  - `apps/hub/public/sounds/hermes-call-ringtone.mp3`;
+  - `apps/hub/public/sounds/iris-notification.mp3`;
+  - `apps/hub/public/sounds/panteon-notification.mp3`;
+  - `docs/operations/panteon-recorte-manifest-hermes-20260619-031-professional-chat-cost.json`;
+  - `docs/operations/engineering-operations.md`.
+- Validacoes:
+  - `git diff --check`: PASS, com aviso esperado de LF para CRLF no Windows;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON` e aviso conhecido de turbo global;
+  - `npm.cmd run check-types:hub`: PASS, com warning conhecido de turbo global;
+  - `npm.cmd run build --workspace @repo/hub`: PASS; build listou `/hermes`, `/api/hermes/messages` e `/api/pulsex/messages`; warning conhecido de worktree aninhado em `.codex-deploy` para root Turbopack/NFT.
+- Bloqueios:
+  - nao houve deploy, redeploy, Preview, alias, dominio, Supabase remoto, banco, migration, env, secret ou token;
+  - producao permanece bloqueada ate autorizacao explicita do Lucas para o protocolo;
+  - validacao funcional real ainda depende de dois usuarios autenticados testando o Hermes.
+- Risco residual:
+  - `postgres_changes` depende da configuracao Realtime da tabela `pulsex_messages`; se o banco nao emitir INSERT, o fallback por delta do canal ativo e o snapshot global continuam cobrindo consistencia;
+  - o agrupamento/nome da notificacao no Windows pode depender da instalacao PWA/navegador do usuario, mesmo com icon/body/som definidos no app.
+- Rollback:
+  - enquanto nao publicado, manter producao no deployment atual validado;
+  - se publicado depois e houver regressao, reapontar `c2x.app.br` para o deployment de rollback capturado no Safety Gate correspondente;
+  - reverter os arquivos listados para `59e1eab931ccf0808ac92b1eed9bb0df60eb2725`.
+
+Conclusao:
+
+- O que aconteceu: o Hermes foi reestruturado localmente para usar delta por cursor, realtime mais robusto, central agregada e sons fixos.
+- Impacto pratico: a mensagem deve aparecer sem sumir, a tela deve parar de piscar por snapshot, badges devem ficar alinhados entre sino/sidebar e o custo deve cair por reduzir varredura de mensagens.
+- Precisa de acao agora: sim; Lucas precisa validar com dois usuarios reais antes de qualquer publicacao.
+- Quem deve agir agora: Lucas valida o fluxo; Zeus so prepara Preview/producao se houver autorizacao explicita.
+- Proximo passo: criar commit candidato limpo e, se Lucas autorizar, executar Safety Gate antes de qualquer deploy.
+
+## 2026-06-19 - Hermes/Panteon - correcao local do crash realtime
+
+- Status: CORRIGIDO_NO_RECORTE / NAO_PUBLICADO.
+- Origem: Lucas enviou evidencia do DevTools no Preview quebrado de `/hermes`.
+- Erro confirmado: `cannot add 'postgres_changes' callbacks for realtime:pulsex:messages:inovacao-testes after subscribe()`.
+- Diagnostico:
+  - o recorte candidato misturou `broadcast` e `postgres_changes` no mesmo topico Supabase Realtime `pulsex:messages:<channelId>`;
+  - em alguns ciclos de renderizacao/assinatura, o cliente tentava adicionar callback `postgres_changes` depois do canal ja inscrito;
+  - o Supabase JS bloqueou essa alteracao e a excecao client-side derrubou a pagina Hermes.
+- Correcao aplicada no recorte:
+  - mantido `broadcast` no topico `pulsex:messages:<channelId>`;
+  - criado topico separado para Postgres Realtime `pulsex:messages:postgres:<channelId>`;
+  - separados os canais de realtime do workspace e da central de notificacoes;
+  - cleanup passou a remover os dois canais de forma independente.
+- Arquivos corrigidos:
+  - `apps/hub/lib/pulsex/realtime.ts`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/providers/pulsex-notification-provider.tsx`.
+- Validacoes:
+  - `git diff --check`: PASS, com aviso esperado de LF para CRLF no Windows;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido de worktree aninhado em `.codex-deploy`.
+- Operacao:
+  - nao houve novo deploy, redeploy, Preview, alias, dominio, Supabase remoto, banco, migration, env, secret ou token apos o rollback;
+  - producao segue no rollback valido `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW`;
+  - OPS segue preservado em `dpl_2CENGD4sXbbak1sKjErgTpxF94c5`.
+- Proximo passo:
+  - se Lucas autorizar, publicar novamente apenas esse recorte Hermes corrigido, saindo do deployment de producao valido e passando pelo Safety Gate.
+
+Conclusao:
+
+- O que aconteceu: o crash do Hermes foi causado por uma assinatura Supabase Realtime montada com callbacks em ordem invalida no mesmo canal.
+- Impacto pratico: a pagina quebrava antes de carregar o modulo, por isso aparecia `This page couldn't load`.
+- Precisa de acao agora: nao em producao, porque o rollback ja devolveu o site ao ultimo deployment valido.
+- Quem deve agir agora: Zeus so deve publicar novamente se Lucas autorizar o recorte corrigido.
+- Proximo passo: fechar commit candidato limpo e aguardar autorizacao explicita de deploy.
+
+## 2026-06-19 - Hermes/Panteon - recorte 032 reconstruido da producao atual
+
+- Status: PRONTO_PARA_SAFETY_GATE.
+- Autorizacao: Lucas autorizou publicar com seguranca, partindo do recorte atual de producao e trazendo somente os arquivos Hermes atualizados.
+- Base usada:
+  - commit base: `59e1eab931ccf0808ac92b1eed9bb0df60eb2725`;
+  - deployment atual de producao apos rollback: `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW`;
+  - worktree limpo: `.codex-deploy/hermes-professional-chat-032-prod-clean/worktree`;
+  - branch: `codex/hermes-professional-chat-032`.
+- Como o recorte foi montado:
+  - criado worktree novo diretamente a partir da base valida de producao;
+  - aplicado patch binario restrito aos arquivos Hermes/PulseX, assets de som e registros operacionais;
+  - bloqueado o uso do commit quebrado como base de deploy.
+- Escopo confirmado:
+  - `apps/hub/app/api/pulsex/messages/route.ts`;
+  - `apps/hub/components/pulsex/conversation-header.tsx`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/lib/pulsex/notification-effects.ts`;
+  - `apps/hub/lib/pulsex/realtime.ts`;
+  - `apps/hub/lib/pulsex/routes.ts`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - `apps/hub/providers/pulsex-call-provider.tsx`;
+  - `apps/hub/providers/pulsex-notification-provider.tsx`;
+  - `apps/hub/public/sounds/hermes-call-ringtone.mp3`;
+  - `apps/hub/public/sounds/iris-notification.mp3`;
+  - `apps/hub/public/sounds/panteon-notification.mp3`;
+  - `docs/operations/engineering-operations.md`;
+  - `docs/operations/panteon-recorte-manifest-hermes-20260619-031-professional-chat-cost.json`;
+  - `docs/operations/releases-production.md`.
+- Validacao ja executada nesta etapa:
+  - `git diff --cached --check`: PASS.
+- Bloqueios preservados:
+  - nenhum env, secret, migration, banco, dominio OPS ou Supabase foi alterado;
+  - `ops.c2x.app.br` permanece fora do escopo.
+
+Conclusao:
+
+- O que aconteceu: o pacote de producao foi refeito do zero a partir da producao valida, evitando herdar estado quebrado do recorte anterior.
+- Impacto pratico: o deploy seguro agora tem uma base rastreavel e uma lista de arquivos fechada.
+- Precisa de acao agora: sim; rodar validacoes, Safety Gate e deploy somente se os gates passarem.
+- Quem deve agir agora: Zeus.
+- Proximo passo: validar, commitar o recorte limpo, gerar deployment e promover apenas se o alvo estiver correto.

@@ -14,6 +14,12 @@ export function getHermesMessageRealtimeTopic(channelId: HermesChannel["id"]) {
   return `pulsex:messages:${channelId}`;
 }
 
+export function getHermesMessagePostgresRealtimeTopic(
+  channelId: HermesChannel["id"],
+) {
+  return `pulsex:messages:postgres:${channelId}`;
+}
+
 export async function broadcastHermesMessage({
   message,
   onError,

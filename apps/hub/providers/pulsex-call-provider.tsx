@@ -17,12 +17,9 @@ import {
   serializeDiagnosticError,
 } from "@/lib/supabase/client";
 import {
-  isHermesCallSoundId,
   playHermesCallSound,
   playHermesOutgoingCallSound,
-  pulsexCallSoundOptions,
   showBrowserHermesNotification,
-  type HermesCallSoundId,
 } from "@/lib/pulsex/notification-effects";
 import { useAuth } from "@/providers/auth-provider";
 import { Tooltip } from "@repo/uix";
@@ -38,16 +35,11 @@ import {
 } from "react";
 import { CallPanel } from "@/components/pulsex/call-panel";
 import { IncomingCallBanner } from "@/components/pulsex/incoming-call-banner";
-import type { HermesCallSoundOption } from "@/components/pulsex/conversation-header";
 
 type HermesCallContextValue = {
   callHistory: readonly HermesCallHistoryEntry[];
-  callSoundId: HermesCallSoundId;
-  callSoundOptions: readonly HermesCallSoundOption[];
   endActiveCall: () => void;
   markCallHistoryRead: (channelId?: string) => void;
-  previewCallSound: (soundId: string) => void;
-  setCallSoundId: (soundId: string) => void;
   startCall: (input: {
     session: HermesCallSession;
     targetUserIds: readonly HermesPresenceUser["id"][];
@@ -62,7 +54,6 @@ const PULSEX_CALL_SIGNAL_EVENT = "call-signal";
 const PULSEX_CALL_SIGNAL_TOPIC = "pulsex:calls";
 const PULSEX_ACTIVE_CALL_STORAGE_KEY = "careli:pulsex:active-call";
 const PULSEX_CALL_HISTORY_STORAGE_KEY = "careli:pulsex:call-history";
-const PULSEX_CALL_SOUND_STORAGE_KEY = "careli:pulsex:call-sound";
 const PULSEX_ACTIVE_CALL_STORAGE_TTL_MS = 1000 * 60 * 60 * 4;
 const PULSEX_CALL_HISTORY_LIMIT = 80;
 const PULSEX_CALL_DISABLED_HOSTS = new Set([
@@ -117,9 +108,6 @@ function ActiveHermesCallProvider({
     useState(false);
   const [isCallRealtimeReady, setIsCallRealtimeReady] = useState(false);
   const [restoredCallId, setRestoredCallId] = useState<string | null>(null);
-  const [callSoundId, setInternalCallSoundId] = useState<HermesCallSoundId>(
-    pulsexCallSoundOptions[0].id,
-  );
   const activeCallRef = useRef<HermesCallSession | null>(null);
   const callRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
   const incomingCallRef = useRef<HermesCallSession | null>(null);
@@ -131,16 +119,6 @@ function ActiveHermesCallProvider({
   useEffect(() => {
     incomingCallRef.current = incomingCall;
   }, [incomingCall]);
-
-  useEffect(() => {
-    const savedSoundId = window.localStorage.getItem(
-      PULSEX_CALL_SOUND_STORAGE_KEY,
-    );
-
-    if (isHermesCallSoundId(savedSoundId)) {
-      setInternalCallSoundId(savedSoundId);
-    }
-  }, []);
 
   useEffect(() => {
     if (hubUser || profileStatus === "loading") {
@@ -475,15 +453,15 @@ function ActiveHermesCallProvider({
       return;
     }
 
-    playHermesCallSound(callSoundId);
+    playHermesCallSound();
     const intervalId = window.setInterval(() => {
-      playHermesCallSound(callSoundId);
+      playHermesCallSound();
     }, 2_200);
 
     return () => {
       window.clearInterval(intervalId);
     };
-  }, [callSoundId, incomingCall]);
+  }, [incomingCall]);
 
   useEffect(() => {
     if (
@@ -647,33 +625,14 @@ function ActiveHermesCallProvider({
     });
   }, []);
 
-  const setCallSoundId = useCallback((soundId: string) => {
-    if (!isHermesCallSoundId(soundId)) {
-      return;
-    }
-
-    setInternalCallSoundId(soundId);
-    window.localStorage.setItem(PULSEX_CALL_SOUND_STORAGE_KEY, soundId);
-  }, []);
-
-  const previewCallSound = useCallback((soundId: string) => {
-    if (isHermesCallSoundId(soundId)) {
-      playHermesCallSound(soundId);
-    }
-  }, []);
-
   const unreadCallCount = callHistory.filter((entry) => entry.isUnread).length;
 
   return (
     <HermesCallContext.Provider
       value={{
         callHistory,
-        callSoundId,
-        callSoundOptions: pulsexCallSoundOptions,
         endActiveCall,
         markCallHistoryRead,
-        previewCallSound,
-        setCallSoundId,
         startCall,
         unreadCallCount,
       }}
@@ -733,12 +692,8 @@ function ActiveHermesCallProvider({
 
 const disabledHermesCallContextValue = {
   callHistory: [],
-  callSoundId: pulsexCallSoundOptions[0].id,
-  callSoundOptions: pulsexCallSoundOptions,
   endActiveCall: noopHermesCallAction,
   markCallHistoryRead: noopHermesCallAction,
-  previewCallSound: noopHermesCallAction,
-  setCallSoundId: noopHermesCallAction,
   startCall: noopHermesCallAction,
   unreadCallCount: 0,
 } satisfies HermesCallContextValue;

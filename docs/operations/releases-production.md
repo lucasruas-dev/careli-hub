@@ -4146,3 +4146,28 @@ Registro de producao:
 - Rollback:
   - `https://c2x.app.br`: reapontar para `dpl_C487QEzMqgrth1i4Fb4pYZSM5Wmj` se Lucas identificar regressao critica;
   - `https://ops.c2x.app.br`: manter em `dpl_Gitf6mZqC4Wq23ChG16fYP34toZj`.
+
+## 2026-06-19 - HERMES-20260619-031-PROFESSIONAL-CHAT-COST - CORRECAO LOCAL
+
+Status: CORRIGIDO_NO_RECORTE / NAO_PUBLICADO.
+
+Registro de producao:
+
+- Assunto: `[Hermes] Correcao local do crash realtime postgres_changes`.
+- Protocolo de origem: `HERMES-20260619-031-PROFESSIONAL-CHAT-COST`.
+- Evidencia: console do Chrome no deployment tecnico `dpl_As7chZKbtjRDCKLRk8oqToCsNdsp` exibiu `cannot add postgres_changes callbacks ... after subscribe()`.
+- Causa: `broadcast` e `postgres_changes` foram registrados no mesmo topico realtime `pulsex:messages:<channelId>`, permitindo ciclo em que o Supabase bloqueava callback Postgres apos assinatura do canal.
+- Correcao local:
+  - separar topico de broadcast e topico Postgres;
+  - manter canal de broadcast para envio/recebimento otimista;
+  - manter canal Postgres dedicado para INSERT em `pulsex_messages`;
+  - remover os dois canais no cleanup do React.
+- Validacoes:
+  - `git diff --check`: PASS;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS;
+  - `npm.cmd run build --workspace @repo/hub`: PASS.
+- Publicacao:
+  - ainda nao publicada;
+  - `https://c2x.app.br` deve permanecer no rollback `dpl_9bKS3Jpp75frxeY6cbQrom6uwRBW` ate nova autorizacao;
+  - `https://ops.c2x.app.br` deve permanecer em `dpl_2CENGD4sXbbak1sKjErgTpxF94c5`.

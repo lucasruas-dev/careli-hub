@@ -19,7 +19,11 @@ import {
   type ReactNode,
 } from "react";
 
-import type { HermesChannel, HermesMessage } from "@/lib/pulsex";
+import type {
+  HermesChannel,
+  HermesMessage,
+  HermesMessageMention,
+} from "@/lib/pulsex";
 import {
   playHermesIncomingMessageSound,
   registerHermesNotificationPermissionIntent,
@@ -28,6 +32,7 @@ import {
 import {
   PULSEX_MESSAGE_BROADCAST_EVENT,
   broadcastHermesMessage,
+  getHermesMessagePostgresRealtimeTopic,
   getHermesMessageRealtimeTopic,
   parseHermesMessageBroadcastPayload,
   type HermesMessageRealtimeChannel,
@@ -36,6 +41,7 @@ import {
   createHermesMessage,
   listChannelMessages,
   listHermesNotificationChannels,
+  listRecentChannelMessages,
   markHermesChannelRead,
 } from "@/lib/pulsex/supabase-data";
 import { withChannelUnreadCounts } from "@/lib/pulsex/workspace-messages";
@@ -71,7 +77,7 @@ const PanteonNotificationsContext =
 
 const HERMES_MODULE_ID = "hermes";
 const HERMES_MODULE_LABEL = "Hermes";
-const HERMES_SNAPSHOT_INTERVAL_MS = 60_000;
+const HERMES_SNAPSHOT_INTERVAL_MS = 120_000;
 const PANTEON_ACTIVITY_SNAPSHOT_INTERVAL_MS = 90_000;
 const FLOATING_NOTIFICATION_TTL_MS = 9_000;
 
@@ -174,6 +180,24 @@ export function HermesNotificationProvider({
 
   const openHermesChannel = useCallback(
     (channelId: HermesChannel["id"]) => {
+      if (isHermesWorkspaceRoute()) {
+        window.dispatchEvent(
+          new CustomEvent("careli:hermes:open-channel", {
+            detail: { channelId },
+          }),
+        );
+        setActiveHermesChannelId(null);
+        markChannelNotificationsRead(channelId);
+
+        markHermesChannelRead({ channelId }).catch((error: unknown) => {
+          logSupabaseDiagnostic("pulsex", "global mark read error", {
+            channelId,
+            error: serializeDiagnosticError(error),
+          });
+        });
+        return;
+      }
+
       setActiveHermesChannelId(channelId);
       markChannelNotificationsRead(channelId);
 
@@ -225,26 +249,18 @@ export function HermesNotificationProvider({
       userRole: hubUser?.role,
     });
 
-    const messagesByChannel = new Map<HermesChannel["id"], HermesMessage[]>();
-    const messages = (
-      await Promise.all(
-        channels.map(async (channel) => {
-          const channelMessages = await listChannelMessages(channel.id).catch(
-            (error: unknown) => {
-              logSupabaseDiagnostic("pulsex", "global channel messages error", {
-                channelId: channel.id,
-                error: serializeDiagnosticError(error),
-              });
+    const messages = await listRecentChannelMessages({
+      after: getOldestHermesReadCursor(channels, currentUserId),
+      channelIds: channels.map((channel) => channel.id),
+      limit: 200,
+    }).catch((error: unknown) => {
+      logSupabaseDiagnostic("pulsex", "global recent messages error", {
+        error: serializeDiagnosticError(error),
+      });
 
-              return [];
-            },
-          );
-
-          messagesByChannel.set(channel.id, channelMessages);
-          return channelMessages;
-        }),
-      )
-    ).flat();
+      return [];
+    });
+    const messagesByChannel = groupHermesMessagesByChannel(messages);
     const channelsWithUnread = withChannelUnreadCounts({
       channels,
       currentUserId,
@@ -520,8 +536,8 @@ export function HermesNotificationProvider({
           channels.map((channel) => [channel.id, channel]),
         );
 
-        realtimeChannels = channels.map((channel) => {
-          const realtimeChannel = client.channel(
+        realtimeChannels = channels.flatMap((channel) => {
+          const broadcastRealtimeChannel = client.channel(
             getHermesMessageRealtimeTopic(channel.id),
             {
               config: {
@@ -532,9 +548,12 @@ export function HermesNotificationProvider({
               },
             },
           );
+          const postgresRealtimeChannel = client.channel(
+            getHermesMessagePostgresRealtimeTopic(channel.id),
+          );
 
-          realtimeChannelsById.set(channel.id, realtimeChannel);
-          realtimeChannel
+          realtimeChannelsById.set(channel.id, broadcastRealtimeChannel);
+          broadcastRealtimeChannel
             .on(
               "broadcast",
               {
@@ -556,13 +575,46 @@ export function HermesNotificationProvider({
               },
             )
             .subscribe((status) => {
-              logSupabaseDiagnostic("pulsex", "global message realtime status", {
+              logSupabaseDiagnostic("pulsex", "global message broadcast status", {
                 channelId: channel.id,
                 status,
               });
             });
 
-          return realtimeChannel;
+          postgresRealtimeChannel
+            .on(
+              "postgres_changes",
+              {
+                event: "INSERT",
+                filter: `channel_id=eq.${channel.id}`,
+                schema: "public",
+                table: "pulsex_messages",
+              },
+              (payload: { new?: unknown }) => {
+                const message = parseHermesInsertedMessagePayload(payload);
+                const currentChannel = message
+                  ? channelMap.get(message.channelId)
+                  : null;
+
+                if (!message || !currentChannel) {
+                  return;
+                }
+
+                handleHermesMessage(currentChannel, message);
+              },
+            )
+            .subscribe((status) => {
+              logSupabaseDiagnostic(
+                "pulsex",
+                "global message postgres realtime status",
+                {
+                  channelId: channel.id,
+                  status,
+                },
+              );
+            });
+
+          return [broadcastRealtimeChannel, postgresRealtimeChannel];
         });
       })
       .catch((error: unknown) => {
@@ -925,6 +977,118 @@ function normalizePanteonNotification(
   };
 }
 
+function groupHermesMessagesByChannel(messages: readonly HermesMessage[]) {
+  const messagesByChannel = new Map<HermesChannel["id"], HermesMessage[]>();
+
+  for (const message of messages) {
+    const channelMessages = messagesByChannel.get(message.channelId) ?? [];
+
+    channelMessages.push(message);
+    messagesByChannel.set(message.channelId, channelMessages);
+  }
+
+  return messagesByChannel;
+}
+
+function getOldestHermesReadCursor(
+  channels: readonly HermesChannel[],
+  currentUserId: string,
+) {
+  let oldestReadAt: string | undefined;
+
+  for (const channel of channels) {
+    const readAt = channel.memberReadAtByUserId?.[currentUserId];
+
+    if (!readAt) {
+      return undefined;
+    }
+
+    if (!oldestReadAt || Date.parse(readAt) < Date.parse(oldestReadAt)) {
+      oldestReadAt = readAt;
+    }
+  }
+
+  return oldestReadAt;
+}
+
+function parseHermesInsertedMessagePayload(payload: { new?: unknown }) {
+  const row = getRecord(payload.new);
+  const id = getString(row.id);
+  const channelId = getString(row.channel_id);
+  const body = getString(row.body);
+  const createdAt = getString(row.created_at) || new Date().toISOString();
+  const metadata = getRecord(row.metadata);
+
+  if (!id || !channelId || !body) {
+    return null;
+  }
+
+  return {
+    authorId: getString(row.author_user_id) || "system",
+    body,
+    channelId,
+    createdAt,
+    id,
+    mentionUserIds: normalizeStringList(metadata.mentionUserIds),
+    mentions: normalizeHermesMentions(metadata.mentions),
+    reactions: [],
+    status: "neutral",
+    tags: [],
+    threadCount: 0,
+    threadParentMessageId:
+      getString(metadata.threadParentMessageId) || undefined,
+    timestamp: formatHermesNotificationTime(createdAt),
+  } satisfies HermesMessage;
+}
+
+function normalizeHermesMentions(value: unknown): HermesMessageMention[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return value
+    .map((mention) => {
+      const maybeMention = getRecord(mention);
+      const displayName = getString(maybeMention.displayName);
+      const trigger = getString(maybeMention.trigger);
+      const userId = getString(maybeMention.userId);
+
+      if (!displayName || !trigger || !userId) {
+        return null;
+      }
+
+      return {
+        displayName,
+        trigger,
+        userId,
+      };
+    })
+    .filter((mention): mention is HermesMessageMention => Boolean(mention));
+}
+
+function normalizeStringList(value: unknown) {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+
+  return [
+    ...new Set(value.filter((item): item is string => typeof item === "string")),
+  ];
+}
+
+function formatHermesNotificationTime(value: string) {
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "--:--";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+}
+
 function createHermesChannelNotification({
   channel,
   currentUserId,
@@ -1095,4 +1259,24 @@ function getReadableError(error: unknown) {
   }
 
   return "Nao foi possivel concluir a acao.";
+}
+
+function getRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function getString(value: unknown) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isHermesWorkspaceRoute() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const pathname = window.location.pathname.toLowerCase();
+
+  return pathname === "/hermes" || pathname.startsWith("/hermes/");
 }

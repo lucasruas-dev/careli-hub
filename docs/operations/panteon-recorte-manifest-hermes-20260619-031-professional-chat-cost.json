@@ -1,0 +1,74 @@
+{
+  "protocolId": "HERMES-20260619-031-PROFESSIONAL-CHAT-COST",
+  "module": "Hermes",
+  "owner": "Zeus / Hermes",
+  "createdAt": "2026-06-19T04:55:00-03:00",
+  "status": "PRONTO_PARA_PRODUCAO / AUTORIZADO_LUCAS / RECORTE_RECONSTRUIDO_DA_PRODUCAO_ATUAL / SAFETY_GATE_PENDENTE",
+  "summary": "Recorte profissional do Hermes para estabilizar recebimento em tempo real, eliminar sumico/piscada de mensagens, reduzir consultas recorrentes e padronizar sons de notificacao/chamada com os audios enviados pelo Lucas.",
+  "authorization": {
+    "requestedBy": "Lucas",
+    "scope": "Lucas autorizou seguir com o plano de trabalho do Hermes, mantendo os sons enviados e removendo a opcao de escolha manual de som no Hermes.",
+    "deployment": "Lucas autorizou em 2026-06-19 subir em producao somente os arquivos atualizados do Hermes, partindo do recorte que esta em producao e sem trazer nada fora do escopo Hermes."
+  },
+  "base": {
+    "productionCommitBase": "59e1eab931ccf0808ac92b1eed9bb0df60eb2725",
+    "worktree": ".codex-deploy/hermes-professional-chat-032-prod-clean/worktree",
+    "candidateBranch": "codex/hermes-professional-chat-032",
+    "candidateCommit": "registrado-no-safety-gate-e-no-log-de-deploy"
+  },
+  "changedFiles": [
+    "apps/hub/app/api/pulsex/messages/route.ts",
+    "apps/hub/components/pulsex/conversation-header.tsx",
+    "apps/hub/components/pulsex/pulsex-workspace.tsx",
+    "apps/hub/lib/pulsex/notification-effects.ts",
+    "apps/hub/lib/pulsex/routes.ts",
+    "apps/hub/lib/pulsex/supabase-data.ts",
+    "apps/hub/providers/pulsex-call-provider.tsx",
+    "apps/hub/providers/pulsex-notification-provider.tsx",
+    "apps/hub/public/sounds/hermes-call-ringtone.mp3",
+    "apps/hub/public/sounds/iris-notification.mp3",
+    "apps/hub/public/sounds/panteon-notification.mp3",
+    "docs/operations/engineering-operations.md",
+    "docs/operations/panteon-recorte-manifest-hermes-20260619-031-professional-chat-cost.json"
+  ],
+  "implemented": [
+    "A API de mensagens do Hermes/PulseX passou a aceitar consulta agregada por channelIds com limit, before e after, validando acesso por canal antes de retornar dados.",
+    "A camada de dados passou a expor listRecentChannelMessages para a central global buscar mensagens recentes em uma chamada, em vez de varrer cada canal com a conversa inteira.",
+    "O canal ativo passou a usar delta por cursor after e trava de requisicao em andamento, evitando chamadas sobrepostas e substituicao completa da lista quando nao ha novidade.",
+    "O snapshot estrutural do workspace deixou de limpar messages; ele preserva preview, unreadCount, lastMessageAt e recibos ja conhecidos para evitar sumico/piscada.",
+    "O realtime do canal ativo agora combina broadcast com postgres_changes de INSERT e usa delta fetch quando o banco informa nova mensagem.",
+    "A central global de notificacoes tambem escuta INSERT por canal, mantendo badge/som/notificacao mesmo quando o broadcast do remetente falhar.",
+    "A sidebar do Hermes sincroniza badges e preview com a central global para exibir indicador de mensagem nova no canal.",
+    "Clicar em notificacao da central dentro do Hermes dispara evento local e abre o canal na propria tela; fora do Hermes continua abrindo o popup flutuante.",
+    "O snapshot global do Hermes passou para 120 segundos e a reconciliacao estrutural do workspace para 300 segundos; o canal ativo usa delta leve a cada 8 segundos como fallback de consistencia.",
+    "A opcao de escolha/teste de sons de chamada foi removida do header e do provider Hermes.",
+    "Mensagem/menção Hermes usam /sounds/panteon-notification.mp3; chamada Hermes usa /sounds/hermes-call-ringtone.mp3; o asset /sounds/iris-notification.mp3 foi versionado para uso futuro da Iris sem alterar o fluxo Iris neste recorte."
+  ],
+  "validations": [
+    "git diff --check: PASS, com aviso esperado de LF para CRLF no Windows.",
+    "npm.cmd run lint:hub: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON e aviso conhecido de turbo global.",
+    "npm.cmd run check-types:hub: PASS, com warning conhecido de turbo global.",
+    "npm.cmd run build --workspace @repo/hub: PASS; build listou /hermes, /api/hermes/messages e /api/pulsex/messages. Warning conhecido: worktree aninhado em .codex-deploy gerou aviso de root Turbopack/NFT."
+  ],
+  "safety": [
+    "Nenhum env, secret, migration, schema, banco, Supabase manual, Vercel alias, dominio ou deploy foi executado.",
+    "Recorte reconstruido em worktree dedicado 032 a partir do commit 59e1eab931ccf0808ac92b1eed9bb0df60eb2725, que corresponde a base valida em producao apos rollback.",
+    "Arquivos alterados estao limitados ao Hermes/PulseX legacy de mensagens, providers compartilhados de notificacao/chamada Hermes, assets publicos de som e documentacao operacional.",
+    "O dominio ops.c2x.app.br e o Zeus/HelpDesk ficaram fora do escopo."
+  ],
+  "risks": [
+    "Validacao funcional completa ainda depende de sessao autenticada real com dois usuarios enviando mensagens simultaneamente.",
+    "postgres_changes depende da configuracao de Realtime do Supabase para a tabela pulsex_messages; se o banco nao emitir INSERT, o fallback por delta do canal ativo e o snapshot global continuam cobrindo consistencia.",
+    "A notificacao nativa do Windows continua sujeita ao comportamento do navegador/PWA instalado; o recorte melhora icon/body/som da aplicacao, mas o nome do agrupamento do Windows pode depender da instalacao PWA do usuario."
+  ],
+  "rollback": [
+    "Enquanto nao publicado, manter producao no deployment atual validado.",
+    "Se este recorte for publicado depois e houver regressao, reapontar c2x.app.br para o deployment de rollback capturado no Production Safety Gate correspondente.",
+    "Reverter os arquivos listados em changedFiles para o commit base 59e1eab931ccf0808ac92b1eed9bb0df60eb2725."
+  ],
+  "nextSteps": [
+    "Lucas validar o comportamento real com dois usuarios: envio imediato, recebimento no canal ativo, badge na sidebar, central de notificacoes e som.",
+    "Criar commit candidato limpo e preparar producao com Production Module Safety Gate antes do deploy.",
+    "Depois de publicado, monitorar invocacoes Vercel, transferencia, eventos de observabilidade e leituras Supabase por pelo menos um ciclo operacional."
+  ]
+}

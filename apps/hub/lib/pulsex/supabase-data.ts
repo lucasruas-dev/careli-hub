@@ -113,6 +113,13 @@ type HubUserRow = {
 };
 
 const HERMES_MESSAGES_PAGE_SIZE = 50;
+const HERMES_RECENT_MESSAGES_LIMIT = 200;
+
+type HermesMessagePageOptions = {
+  after?: string;
+  before?: string;
+  limit?: number;
+};
 
 export async function loadHermesOperationalData(input: {
   currentUserId: string;
@@ -404,6 +411,7 @@ export async function listDirectUsers(): Promise<HermesPresenceUser[]> {
 
 export async function listChannelMessages(
   channelId: HermesChannel["id"],
+  options: HermesMessagePageOptions = {},
 ): Promise<HermesMessage[]> {
   const client = getHubSupabaseClient();
 
@@ -411,7 +419,7 @@ export async function listChannelMessages(
     return [];
   }
 
-  const apiMessages = await listChannelMessagesViaApi(client, channelId);
+  const apiMessages = await listChannelMessagesViaApi(client, channelId, options);
 
   if (apiMessages) {
     return apiMessages;
@@ -421,22 +429,95 @@ export async function listChannelMessages(
     return [];
   }
 
+  let query = client
+    .from("pulsex_messages")
+    .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+    .eq("channel_id", channelId)
+    .is("deleted_at", null)
+    .limit(getHermesMessageLimit(options.limit));
+
+  if (options.after) {
+    query = query
+      .gt("created_at", options.after)
+      .order("created_at", { ascending: true });
+  } else {
+    if (options.before) {
+      query = query.lt("created_at", options.before);
+    }
+
+    query = query.order("created_at", { ascending: false });
+  }
+
   const result = await runHermesQuery<HermesMessageRow[]>(
     "list channel messages",
     "pulsex_messages",
-    client
-      .from("pulsex_messages")
-      .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
-      .eq("channel_id", channelId)
-      .is("deleted_at", null)
-      .order("created_at", { ascending: false })
-      .limit(HERMES_MESSAGES_PAGE_SIZE),
+    query,
   );
 
   assertQuery("mensagens Hermes", result);
 
   return mapChannelMessages(
-    [...((result as QueryResult<HermesMessageRow[]>).data ?? [])].reverse(),
+    options.after
+      ? ((result as QueryResult<HermesMessageRow[]>).data ?? [])
+      : [...((result as QueryResult<HermesMessageRow[]>).data ?? [])].reverse(),
+  );
+}
+
+export async function listRecentChannelMessages(input: {
+  after?: string;
+  channelIds: readonly HermesChannel["id"][];
+  limit?: number;
+}): Promise<HermesMessage[]> {
+  const client = getHubSupabaseClient();
+  const channelIds = [...new Set(input.channelIds.filter(Boolean))];
+
+  if (!client || channelIds.length === 0) {
+    return [];
+  }
+
+  const apiResult = await fetchHermesMessagesApi<{
+    data?: HermesMessageRow[];
+    error?: string;
+  }>({
+    client,
+    url: getHermesMessagesApiUrl({
+      after: input.after,
+      channelIds,
+      limit: getHermesMessageLimit(input.limit, HERMES_RECENT_MESSAGES_LIMIT),
+    }),
+  });
+
+  if (apiResult?.response.ok && apiResult.payload?.data) {
+    return mapChannelMessages(apiResult.payload.data);
+  }
+
+  let query = client
+    .from("pulsex_messages")
+    .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
+    .in("channel_id", channelIds)
+    .is("deleted_at", null)
+    .limit(getHermesMessageLimit(input.limit, HERMES_RECENT_MESSAGES_LIMIT));
+
+  if (input.after) {
+    query = query
+      .gt("created_at", input.after)
+      .order("created_at", { ascending: true });
+  } else {
+    query = query.order("created_at", { ascending: false });
+  }
+
+  const result = await runHermesQuery<HermesMessageRow[]>(
+    "list recent channel messages",
+    "pulsex_messages",
+    query,
+  );
+
+  assertQuery("mensagens recentes Hermes", result);
+
+  return mapChannelMessages(
+    input.after
+      ? ((result as QueryResult<HermesMessageRow[]>).data ?? [])
+      : [...((result as QueryResult<HermesMessageRow[]>).data ?? [])].reverse(),
   );
 }
 
@@ -687,15 +768,19 @@ export async function markHermesChannelRead(input: {
 async function listChannelMessagesViaApi(
   client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
   channelId: HermesChannel["id"],
+  options: HermesMessagePageOptions,
 ) {
   const apiResult = await fetchHermesMessagesApi<{
     data?: HermesMessageRow[];
     error?: string;
   }>({
     client,
-    url: `${getHermesMessagesApiUrl({
+    url: getHermesMessagesApiUrl({
+      after: options.after,
+      before: options.before,
       channelId,
-    })}&limit=${HERMES_MESSAGES_PAGE_SIZE}`,
+      limit: getHermesMessageLimit(options.limit),
+    }),
   });
 
   if (!apiResult?.response.ok || !apiResult.payload?.data) {
@@ -703,6 +788,17 @@ async function listChannelMessagesViaApi(
   }
 
   return mapChannelMessages(apiResult.payload.data);
+}
+
+function getHermesMessageLimit(
+  value: number | undefined,
+  fallback = HERMES_MESSAGES_PAGE_SIZE,
+) {
+  if (!Number.isFinite(value)) {
+    return fallback;
+  }
+
+  return Math.min(Math.max(Math.trunc(value ?? fallback), 1), 200);
 }
 
 async function createHermesMessageViaApi(

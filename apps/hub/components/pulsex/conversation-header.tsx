@@ -22,7 +22,6 @@ import {
   Star,
   Users,
   Video,
-  Volume2,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import type { ReactNode } from "react";
@@ -30,20 +29,12 @@ import { useRef, useState } from "react";
 import Image from "next/image";
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 
-export type HermesCallSoundOption = {
-  id: string;
-  label: string;
-};
-
 type ConversationHeaderProps = {
   callHistory: readonly HermesCallHistoryEntry[];
-  callSoundOptions: readonly HermesCallSoundOption[];
   channelNotifications: readonly HermesChannelNotificationEntry[];
   channel: HermesChannel;
   isFavorite?: boolean;
-  onChangeCallSound: (soundId: string) => void;
   onMarkCallHistoryRead: (channelId?: string) => void;
-  onPreviewCallSound: (soundId: string) => void;
   onOpenChannelNotification: (channelId: HermesChannel["id"]) => void;
   onReturnCall: (entry: HermesCallHistoryEntry) => void;
   onStartCall: (type: HermesCallType) => void;
@@ -51,7 +42,6 @@ type ConversationHeaderProps = {
   onOpenThreadNotification: (messageId: HermesMessage["id"]) => void;
   presenceUsers: readonly HermesPresenceUser[];
   threadNotifications: readonly HermesThreadNotificationEntry[];
-  selectedCallSoundId: string;
   unreadMessageCount: number;
   unreadCallCount: number;
   unreadThreadReplyCount: number;
@@ -68,13 +58,10 @@ type HermesChannelNotificationEntry = {
 
 export function ConversationHeader({
   callHistory,
-  callSoundOptions,
   channelNotifications,
   channel,
   isFavorite = false,
-  onChangeCallSound,
   onMarkCallHistoryRead,
-  onPreviewCallSound,
   onOpenChannelNotification,
   onReturnCall,
   onStartCall,
@@ -82,7 +69,6 @@ export function ConversationHeader({
   onOpenThreadNotification,
   presenceUsers,
   threadNotifications,
-  selectedCallSoundId,
   unreadMessageCount,
   unreadCallCount,
   unreadThreadReplyCount,
@@ -90,12 +76,10 @@ export function ConversationHeader({
   const [isCallHistoryOpen, setIsCallHistoryOpen] = useState(false);
   const [isChannelNotificationsOpen, setIsChannelNotificationsOpen] =
     useState(false);
-  const [isSoundMenuOpen, setIsSoundMenuOpen] = useState(false);
   const [isThreadNotificationsOpen, setIsThreadNotificationsOpen] =
     useState(false);
   const callHistoryMenuRef = useRef<HTMLDivElement>(null);
   const channelNotificationsMenuRef = useRef<HTMLDivElement>(null);
-  const soundMenuRef = useRef<HTMLDivElement>(null);
   const threadNotificationsMenuRef = useRef<HTMLDivElement>(null);
   const onlineCount = presenceUsers.filter(
     (user) => user.status === "online",
@@ -112,11 +96,6 @@ export function ConversationHeader({
   const presenceLabel = presenceLabelMap[presenceStatus];
   const isDirectChannel = channel.kind === "direct";
 
-  useOutsideDismiss({
-    enabled: isSoundMenuOpen,
-    onDismiss: () => setIsSoundMenuOpen(false),
-    ref: soundMenuRef,
-  });
   useOutsideDismiss({
     enabled: isCallHistoryOpen,
     onDismiss: () => setIsCallHistoryOpen(false),
@@ -246,25 +225,6 @@ export function ConversationHeader({
                 onReturnCall(entry);
                 setIsCallHistoryOpen(false);
               }}
-            />
-          ) : null}
-        </div>
-        <div className="relative" ref={soundMenuRef}>
-          <HeaderAction
-            ariaLabel="Som de chamada"
-            icon={<Volume2 size={17} />}
-            onClick={() => setIsSoundMenuOpen((current) => !current)}
-          />
-          {isSoundMenuOpen ? (
-            <CallSoundMenu
-              onChange={(soundId) => {
-                onChangeCallSound(soundId);
-                onPreviewCallSound(soundId);
-                setIsSoundMenuOpen(false);
-              }}
-              onPreview={onPreviewCallSound}
-              options={callSoundOptions}
-              selectedSoundId={selectedCallSoundId}
             />
           ) : null}
         </div>
@@ -556,54 +516,6 @@ function CallHistoryMenuItem({
         </span>
       </span>
     </button>
-  );
-}
-
-function CallSoundMenu({
-  onChange,
-  onPreview,
-  options,
-  selectedSoundId,
-}: {
-  onChange: (soundId: string) => void;
-  onPreview: (soundId: string) => void;
-  options: readonly HermesCallSoundOption[];
-  selectedSoundId: string;
-}) {
-  return (
-    <div className="absolute right-0 top-10 z-40 w-64 rounded-lg border border-[#d9e0ea] bg-white p-2 text-xs shadow-xl">
-      <div className="px-2 py-1.5">
-        <p className="m-0 text-[0.68rem] font-semibold uppercase tracking-wide text-[#667085]">
-          Sons da chamada
-        </p>
-      </div>
-      <div className="grid gap-1">
-        {options.map((option) => (
-          <div
-            className="grid grid-cols-[1fr_auto] items-center gap-2 rounded-md px-2 py-1.5 hover:bg-[#f3f6fa]"
-            key={option.id}
-          >
-            <button
-              className="min-w-0 text-left font-semibold text-[#101820] outline-none focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-              onClick={() => onChange(option.id)}
-              type="button"
-            >
-              <span className="block truncate">{option.label}</span>
-              <span className="mt-0.5 block text-[0.68rem] font-normal text-[#667085]">
-                {selectedSoundId === option.id ? "Selecionado" : "Disponivel"}
-              </span>
-            </button>
-            <button
-              className="h-7 rounded-md border border-[#cfd8e3] px-2 font-semibold text-[#344054] outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
-              onClick={() => onPreview(option.id)}
-              type="button"
-            >
-              Testar
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
   );
 }
 
