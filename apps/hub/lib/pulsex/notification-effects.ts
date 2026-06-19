@@ -14,6 +14,7 @@ const PULSEX_MESSAGE_SOUND_DEDUPE_MS = 12_000;
 const HERMES_CALL_SOUND_SRC = "/sounds/hermes-call-ringtone.mp3";
 const PANTEON_NOTIFICATION_SOUND_SRC = "/sounds/panteon-notification.mp3";
 const playedMessageSoundAtById = new Map<string, number>();
+let hermesCallRingtoneAudio: HTMLAudioElement | null = null;
 
 export function playHermesMessageSound() {
   playAudioAsset(PANTEON_NOTIFICATION_SOUND_SRC, 0.82);
@@ -45,6 +46,55 @@ export function playHermesCallSound() {
 
 export function playHermesOutgoingCallSound() {
   playAudioAsset(HERMES_CALL_SOUND_SRC, 0.64);
+}
+
+export function startHermesCallRingtone(volume = 0.92) {
+  try {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const normalizedVolume = Math.min(Math.max(volume, 0), 1);
+
+    if (hermesCallRingtoneAudio) {
+      hermesCallRingtoneAudio.volume = normalizedVolume;
+      hermesCallRingtoneAudio.loop = true;
+
+      if (hermesCallRingtoneAudio.paused) {
+        hermesCallRingtoneAudio.currentTime = 0;
+        void hermesCallRingtoneAudio.play().catch(() => undefined);
+      }
+
+      return;
+    }
+
+    const audio = new Audio(HERMES_CALL_SOUND_SRC);
+
+    audio.loop = true;
+    audio.preload = "auto";
+    audio.volume = normalizedVolume;
+    hermesCallRingtoneAudio = audio;
+
+    void audio.play().catch(() => undefined);
+  } catch {
+    // Browser can block audio before the user interacts with the page.
+  }
+}
+
+export function startHermesOutgoingCallRingtone() {
+  startHermesCallRingtone(0.64);
+}
+
+export function stopHermesCallRingtone() {
+  const audio = hermesCallRingtoneAudio;
+
+  if (!audio) {
+    return;
+  }
+
+  hermesCallRingtoneAudio = null;
+  audio.pause();
+  audio.currentTime = 0;
 }
 
 export function registerHermesNotificationPermissionIntent() {

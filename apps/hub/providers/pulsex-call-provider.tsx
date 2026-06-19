@@ -17,9 +17,10 @@ import {
   serializeDiagnosticError,
 } from "@/lib/supabase/client";
 import {
-  playHermesCallSound,
-  playHermesOutgoingCallSound,
   showBrowserHermesNotification,
+  startHermesCallRingtone,
+  startHermesOutgoingCallRingtone,
+  stopHermesCallRingtone,
 } from "@/lib/pulsex/notification-effects";
 import { useAuth } from "@/providers/auth-provider";
 import { Tooltip } from "@repo/uix";
@@ -111,6 +112,12 @@ function ActiveHermesCallProvider({
   const activeCallRef = useRef<HermesCallSession | null>(null);
   const callRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
   const incomingCallRef = useRef<HermesCallSession | null>(null);
+
+  useEffect(() => {
+    return () => {
+      stopHermesCallRingtone();
+    };
+  }, []);
 
   useEffect(() => {
     activeCallRef.current = activeCall;
@@ -305,6 +312,7 @@ function ActiveHermesCallProvider({
           currentCall?.id === signal.callId &&
           currentCall.initiatedByUserId === currentUserId
         ) {
+          stopHermesCallRingtone();
           recordCallHistory(currentCall, "answered");
         }
 
@@ -323,6 +331,7 @@ function ActiveHermesCallProvider({
           currentCall?.id === signal.callId &&
           currentCall.initiatedByUserId === currentUserId
         ) {
+          stopHermesCallRingtone();
           recordCallHistory(
             currentCall,
             signal.kind === "decline" ? "declined" : "ended",
@@ -362,12 +371,14 @@ function ActiveHermesCallProvider({
         const currentCall = activeCallRef.current;
 
         if (pendingIncomingCall?.id === signal.callId) {
+          stopHermesCallRingtone();
           recordCallHistory(pendingIncomingCall, "missed", {
             unread: true,
           });
         }
 
         if (currentCall?.id === signal.callId) {
+          stopHermesCallRingtone();
           recordCallHistory(currentCall, "ended");
         }
 
@@ -453,13 +464,10 @@ function ActiveHermesCallProvider({
       return;
     }
 
-    playHermesCallSound();
-    const intervalId = window.setInterval(() => {
-      playHermesCallSound();
-    }, 2_200);
+    startHermesCallRingtone();
 
     return () => {
-      window.clearInterval(intervalId);
+      stopHermesCallRingtone();
     };
   }, [incomingCall]);
 
@@ -472,13 +480,10 @@ function ActiveHermesCallProvider({
       return;
     }
 
-    playHermesOutgoingCallSound();
-    const intervalId = window.setInterval(() => {
-      playHermesOutgoingCallSound();
-    }, 2_500);
+    startHermesOutgoingCallRingtone();
 
     return () => {
-      window.clearInterval(intervalId);
+      stopHermesCallRingtone();
     };
   }, [activeCall, currentUserId]);
 
@@ -524,6 +529,7 @@ function ActiveHermesCallProvider({
       "joined",
     );
 
+    stopHermesCallRingtone();
     setActiveCall(acceptedCall);
     setIsCallPanelOpen(true);
     setIncomingCall(null);
@@ -551,6 +557,7 @@ function ActiveHermesCallProvider({
       channelId: incomingCall.channelId,
       kind: "decline",
     });
+    stopHermesCallRingtone();
     recordCallHistory(incomingCall, "declined");
     setIncomingCall(null);
   }, [incomingCall, recordCallHistory, sendCallSignal]);
@@ -594,6 +601,7 @@ function ActiveHermesCallProvider({
     const call = activeCallRef.current;
 
     if (call) {
+      stopHermesCallRingtone();
       recordCallHistory(call, "ended");
       sendCallSignal({
         callId: call.id,
