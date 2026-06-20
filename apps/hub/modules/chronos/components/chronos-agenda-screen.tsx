@@ -337,7 +337,7 @@ export function ChronosAgendaScreen({
   }
 
   return (
-    <Surface bordered className="relative grid min-h-[38rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[28px] border-[#d9e0e7] bg-white shadow-[0_18px_60px_rgb(16_24_32_/_0.08)]">
+    <Surface bordered className="relative grid h-[calc(100dvh-8rem)] min-h-[34rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[28px] border-[#d9e0e7] bg-white shadow-[0_18px_60px_rgb(16_24_32_/_0.08)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] px-5 py-4">
         <div className="flex flex-wrap items-center gap-1.5">
           <button

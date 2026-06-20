@@ -169,17 +169,23 @@ function ChronosTimeGrid({
       const allDay = isChronosAllDayMeeting(meeting);
       const rsvpStatus = getChronosCurrentUserRsvpStatus(meeting, currentUser);
 
+      const eventColor = getChronosCalendarEventColor(meeting);
+      // Igual ao Google Agenda: confirmados tem fundo preenchido + texto branco;
+      // pendente/talvez/recusado ficam com fundo branco, borda e TEXTO na cor do
+      // evento. As cores vao inline porque o FullCalendar propaga o textColor
+      // tambem para dentro do evento — deixar branco fixo aqui tornava o texto
+      // invisivel sobre o fundo branco dos nao confirmados.
+      const isConfirmed = rsvpStatus === "accepted";
+
       return {
         allDay,
-        backgroundColor: getChronosCalendarEventColor(meeting),
-        borderColor: getChronosCalendarEventColor(meeting),
-        textColor: "#ffffff",
+        backgroundColor: isConfirmed ? eventColor : "#ffffff",
+        borderColor: eventColor,
+        textColor: isConfirmed ? "#ffffff" : eventColor,
         classNames: [
           "chronos-google-event",
           meeting.id === selectedMeetingId ? "chronos-google-event-selected" : "",
-          rsvpStatus !== "accepted"
-            ? `chronos-google-event-rsvp-${rsvpStatus}`
-            : "",
+          rsvpStatus === "declined" ? "chronos-google-event-rsvp-declined" : "",
         ].filter(Boolean),
         end: getChronosFullCalendarEnd(meeting, allDay),
         extendedProps: { meeting },
@@ -222,19 +228,11 @@ function ChronosTimeGrid({
         }}
         eventContent={(arg) => {
           const meeting = arg.event.extendedProps.meeting as ChronosMeeting;
-          // Eventos confirmados tem fundo preenchido (texto branco). Os com RSVP
-          // pendente/talvez/recusado sao desenhados com fundo branco e borda
-          // colorida (estilo Google Agenda "nao confirmado"), entao o texto deve
-          // herdar a cor da borda — nunca branco, senao fica invisivel.
-          const isFilled =
-            getChronosCurrentUserRsvpStatus(meeting, currentUser) === "accepted";
 
+          // A cor do texto vem do textColor do evento (branco nos confirmados,
+          // cor do evento nos nao confirmados) — aqui apenas herdamos.
           return (
-            <div
-              className={`min-w-0 px-1 py-0.5 leading-tight ${
-                isFilled ? "text-white" : ""
-              }`}
-            >
+            <div className="min-w-0 px-1 py-0.5 leading-tight">
               <span className="block truncate text-[11px] font-bold">
                 {arg.timeText ? `${arg.timeText} ` : ""}
                 {meeting.title}
@@ -266,7 +264,7 @@ function ChronosTimeGrid({
           }).catch(() => info.revert());
         }}
         events={fullCalendarEvents}
-        expandRows={false}
+        expandRows
         firstDay={0}
         headerToolbar={false}
         height="100%"
@@ -321,7 +319,11 @@ function ChronosTimeGrid({
           font-weight: 600;
         }
         .chronos-google-calendar .fc-timegrid-slot {
-          height: 3rem;
+          /* Altura minima por faixa de 30min. Pequena de proposito: com
+             expandRows, os slots esticam ate preencher a area visivel, entao o
+             dia inteiro (00h-24h) cabe na tela sem rolar nem sobrar vazio
+             (estilo Google Agenda). Em telas baixas vira o piso e rola. */
+          height: 1rem;
         }
         .chronos-google-calendar .fc-timegrid-slot-minor {
           border-top-style: solid;
@@ -352,16 +354,7 @@ function ChronosTimeGrid({
           border-color: #7db7ff;
           color: #0b66d8;
         }
-        .chronos-google-calendar .chronos-google-event-rsvp-pending,
-        .chronos-google-calendar .chronos-google-event-rsvp-tentative {
-          background: #ffffff !important;
-          border-color: #0b66d8 !important;
-          color: #0b66d8 !important;
-        }
         .chronos-google-calendar .chronos-google-event-rsvp-declined {
-          background: #ffffff !important;
-          border-color: #dc2626 !important;
-          color: #b91c1c !important;
           opacity: 0.82;
         }
         .chronos-google-calendar .chronos-google-event-rsvp-declined .fc-event-title,
