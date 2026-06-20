@@ -74,7 +74,14 @@ import type {
   HermesReactionEmoji,
   HermesThreadReply,
 } from "@/lib/pulsex";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { flushSync } from "react-dom";
 import { AthenaAgentPanel } from "./athena-agent-panel";
 import { ConversationHeader } from "./conversation-header";
@@ -582,7 +589,7 @@ export function HermesWorkspace() {
     setActiveChannelId(channelId);
   }, [channels]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (
       activeChannel.id === emptyHermesChannel.id ||
       channels.length === 0 ||
@@ -910,22 +917,19 @@ export function HermesWorkspace() {
 
           if (nextDeliveredMessages.length === 0) {
             if (!cursor) {
-              writeHermesChannelMessageCache({
-                channelId,
-                messages: [],
-                userId: currentUserId,
-              });
               setMessages((currentMessages) =>
-                preserveHermesArrayReference(
-                  currentMessages,
-                  mergeHermesChannelMessages({
-                    channelId,
-                    currentMessages,
-                    nextMessages: [],
-                    replaceChannel: true,
-                  }),
-                  getHermesMessageRenderSignature,
-                ),
+                currentMessages.some((message) => message.channelId === channelId)
+                  ? currentMessages
+                  : preserveHermesArrayReference(
+                      currentMessages,
+                      mergeHermesChannelMessages({
+                        channelId,
+                        currentMessages,
+                        nextMessages: [],
+                        replaceChannel: true,
+                      }),
+                      getHermesMessageRenderSignature,
+                    ),
               );
             }
             return;

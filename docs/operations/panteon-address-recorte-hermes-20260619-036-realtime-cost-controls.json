@@ -1,0 +1,165 @@
+{
+  "schemaVersion": "panteon.address-recorte.v1",
+  "deploymentManifestId": "PNT-DEP-HERMES-20260619-036",
+  "protocolId": "HERMES-20260619-036-REALTIME-COST-CONTROLS",
+  "title": "Hermes realtime, cache e controle de payload de mensagens",
+  "module": "hermes",
+  "agent": "Zeus",
+  "status": "PRONTO_PARA_PRODUCAO / MIGRATION_0035_APLICADA_SUPABASE",
+  "riskLevel": "MEDIO",
+  "approvedBy": "Lucas autorizou seguir com a preparacao do recorte Hermes/Supabase em 2026-06-19, autorizou explicitamente fazer a migration 0035 e autorizou subir em producao no recorte Hermes correto incluindo as melhorias anteriores.",
+  "addressing": {
+    "cityAddressCode": "PNT-01-00-00-000",
+    "cityAddressId": "PNT-CID-01",
+    "districtAddressCode": "PNT-01-30-00-000",
+    "districtAddressId": "PNT-BRR-HERMES-01",
+    "streetAddressCode": "PNT-01-30-10-000",
+    "streetAddressId": "PNT-RUA-HERMES-WORKSPACE-01",
+    "houseAddressCodes": [
+      "PNT-01-30-10-001",
+      "PNT-01-30-10-002"
+    ],
+    "houseAddressIds": [
+      "PNT-CASA-HERMES-WORKSPACE-SCREEN-001",
+      "PNT-CASA-HERMES-MESSAGES-002"
+    ],
+    "registryFile": "docs/operations/panteon-address-registry.json",
+    "scopeSummary": "Reduzir custo e latencia percebida do Hermes compactando metadata pesada de anexos, preservando cache local das ultimas mensagens por canal e preparando RLS/indices para Supabase Realtime."
+  },
+  "baseline": {
+    "productionDomain": "https://c2x.app.br",
+    "expectedProductionDeploymentId": "dpl_FqEvFwNBNMUq8U18wLvo2zML4xks",
+    "candidateSourceCommit": "registrado no Production Module Safety Gate do pacote de producao",
+    "sourceWorktreeClean": true,
+    "rollbackDeploymentId": "dpl_FqEvFwNBNMUq8U18wLvo2zML4xks"
+  },
+  "scope": {
+    "includedFiles": [
+      "apps/hub/app/api/pulsex/messages/route.ts",
+      "apps/hub/components/pulsex/pulsex-workspace.tsx",
+      "apps/hub/lib/hub-presence-policy.ts",
+      "apps/hub/lib/pulsex/message-metadata.ts",
+      "apps/hub/lib/pulsex/notification-effects.ts",
+      "apps/hub/lib/pulsex/realtime.ts",
+      "apps/hub/lib/pulsex/supabase-data.ts",
+      "apps/hub/providers/pulsex-call-provider.tsx",
+      "apps/hub/providers/pulsex-notification-provider.tsx",
+      "packages/database/migrations/0035_hermes_realtime_cost_controls.sql",
+      "docs/operations/panteon-address-recorte-hermes-20260619-036-realtime-cost-controls.json",
+      "docs/operations/engineering-operations.md"
+    ],
+    "allowedChangedPaths": [
+      "apps/hub/app/api/pulsex/messages/route.ts",
+      "apps/hub/components/pulsex/pulsex-workspace.tsx",
+      "apps/hub/lib/hub-presence-policy.ts",
+      "apps/hub/lib/pulsex/message-metadata.ts",
+      "apps/hub/lib/pulsex/notification-effects.ts",
+      "apps/hub/lib/pulsex/realtime.ts",
+      "apps/hub/lib/pulsex/supabase-data.ts",
+      "apps/hub/providers/pulsex-call-provider.tsx",
+      "apps/hub/providers/pulsex-notification-provider.tsx",
+      "packages/database/migrations/0035_hermes_realtime_cost_controls.sql",
+      "docs/operations/panteon-address-recorte-hermes-20260619-036-realtime-cost-controls.json",
+      "docs/operations/engineering-operations.md"
+    ],
+    "excludedPaths": [
+      ".env",
+      ".env*",
+      ".vercel/**",
+      ".git/**",
+      "node_modules/**",
+      ".next/**",
+      ".turbo/**",
+      "apps/hub/app/escritorio-virtual/**",
+      "apps/hub/modules/ares/**",
+      "apps/hub/app/ares/**",
+      "apps/hub/app/api/ares/**",
+      "apps/hub/modules/hades/**",
+      "apps/hub/app/hades/**",
+      "apps/hub/modules/guardian/**",
+      "apps/hub/modules/caredesk/**",
+      "apps/hub/modules/iris/**",
+      "apps/hub/modules/chronos/**"
+    ],
+    "protectedPaths": [
+      "apps/hub/app/escritorio-virtual/**",
+      "apps/hub/modules/ares/**",
+      "apps/hub/app/ares/**",
+      "apps/hub/app/api/ares/**",
+      "apps/hub/modules/hades/**",
+      "apps/hub/app/hades/**",
+      "apps/hub/modules/guardian/**",
+      "apps/hub/modules/caredesk/**",
+      "apps/hub/modules/iris/**",
+      "apps/hub/modules/chronos/**",
+      "apps/hub/app/chronos/**",
+      "apps/hub/app/api/chronos/**"
+    ],
+    "requiredMarkers": [
+      {
+        "path": "apps/hub/app/api/pulsex/messages/route.ts",
+        "includes": [
+          "compactHermesMessageMetadata",
+          "compactHermesMessageRows"
+        ]
+      },
+      {
+        "path": "apps/hub/lib/pulsex/message-metadata.ts",
+        "includes": [
+          "HERMES_INLINE_ATTACHMENT_URL_MAX_LENGTH",
+          "storageMode: HERMES_STRIPPED_ATTACHMENT_MARKER"
+        ]
+      },
+      {
+        "path": "apps/hub/components/pulsex/pulsex-workspace.tsx",
+        "includes": [
+          "useLayoutEffect",
+          "currentMessages.some((message) => message.channelId === channelId)"
+        ]
+      },
+      {
+        "path": "packages/database/migrations/0035_hermes_realtime_cost_controls.sql",
+        "includes": [
+          "hermes authenticated read channel messages",
+          "pulsex_channel_members_user_active_channel_idx",
+          "pulsex_messages_channel_active_created_at_idx"
+        ]
+      }
+    ],
+    "sensitiveOperations": [
+      "Sem alteracao de env, secret, token, dominio, alias ou deploy neste recorte.",
+      "Migration Supabase 0035 aplicada no project ref bxgukywoxgivlrhjkwjx apos autorizacao explicita do Lucas.",
+      "Post-check aplicou dedupe do indice pulsex_messages_channel_created_active_idx, mantendo o indice canonico pulsex_messages_channel_active_created_at_idx.",
+      "Nenhuma limpeza destrutiva de anexos historicos foi incluida."
+    ]
+  },
+  "validations": {
+    "local": [
+      "git diff --check: PASS, com avisos esperados LF/CRLF no Windows",
+      "npm.cmd run check-types:hub: PASS",
+      "npm.cmd run lint:hub: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+      "npm.cmd run build --workspace @repo/hub: PASS, com warning conhecido Turbopack/NFT",
+      "node scripts/panteon-address-recorte-check.mjs: PASS usando script canonico da raiz com cwd no worktree Hermes"
+    ],
+    "supabase": [
+      "Analise somente leitura identificou pulsex_messages com RLS habilitado sem policy, tabela em supabase_realtime e metadata de anexos ocupando a maior parte do TOAST.",
+      "Supabase project ref bxgukywoxgivlrhjkwjx confirmado com pulsex_messages=2114 linhas e pulsex_channel_members=116 linhas antes da aplicacao.",
+      "Migration aplicada via Supabase MCP: 20260620015954 / 0035_hermes_realtime_cost_controls.",
+      "Dedupe aplicado via Supabase MCP: 20260620020205 / 0035_hermes_realtime_cost_controls_dedupe, removendo apenas o indice redundante criado no post-check.",
+      "Post-check confirmou policies hermes authenticated read channel messages e hermes authenticated insert own channel messages para role authenticated.",
+      "Post-check confirmou indices pulsex_channel_members_user_active_channel_idx e pulsex_messages_channel_active_created_at_idx, sem manter a duplicata pulsex_messages_channel_created_active_idx.",
+      "Post-check confirmou RLS ativo em public.pulsex_messages e public.pulsex_messages publicado em supabase_realtime."
+    ],
+    "addressing": [
+      "node scripts/panteon-address-recorte-check.mjs: PASS com aviso conhecido de baseline.expectedProductionDeploymentId divergente da referencia antiga da cidade no registry."
+    ]
+  },
+  "rollback": {
+    "strategy": "Reverter commit do recorte Hermes 036 se o codigo nao for publicado. Para rollback de banco, aplicar migration controlada removendo as policies hermes authenticated read channel messages/hermes authenticated insert own channel messages e o indice pulsex_channel_members_user_active_channel_idx; manter o indice canonico pulsex_messages_channel_active_created_at_idx porque ja existia antes do recorte.",
+    "productionRollbackDeploymentId": "dpl_FqEvFwNBNMUq8U18wLvo2zML4xks"
+  },
+  "notes": [
+    "A compactacao remove URLs inline data/blob ou URLs acima de 2048 caracteres do metadata retornado/grava do Hermes, preservando labels, tipo, mime e tamanho.",
+    "A reducao definitiva de custo sobre anexos antigos ainda depende de storage dedicado e plano de migracao/limpeza nao destrutiva."
+  ]
+}

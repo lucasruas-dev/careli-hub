@@ -1,5 +1,10 @@
 import { normalizeHermesMessageTags } from "@/lib/pulsex/message-tags";
 import {
+  compactHermesMessageMetadata,
+  compactHermesMessageRow,
+  compactHermesMessageRows,
+} from "@/lib/pulsex/message-metadata";
+import {
   getHermesDirectPeerUserId,
   parseHermesDirectChannelId,
 } from "@/lib/pulsex/direct-channel";
@@ -259,7 +264,7 @@ export async function GET(request: NextRequest) {
     const rows = pageOptions.after ? (data ?? []) : [...(data ?? [])].reverse();
 
     return NextResponse.json({
-      data: rows,
+      data: compactHermesMessageRows(rows),
       page: createMessagesPageMetadata(rows, pageOptions),
     });
   }
@@ -317,7 +322,7 @@ export async function GET(request: NextRequest) {
     const rows = pageOptions.after ? (data ?? []) : [...(data ?? [])].reverse();
 
     return NextResponse.json({
-      data: rows,
+      data: compactHermesMessageRows(rows),
       page: createMessagesPageMetadata(rows, pageOptions),
     });
   }
@@ -363,7 +368,7 @@ export async function GET(request: NextRequest) {
   const rows = pageOptions.after ? (data ?? []) : [...(data ?? [])].reverse();
 
   return NextResponse.json({
-    data: rows,
+    data: compactHermesMessageRows(rows),
     page: createMessagesPageMetadata(rows, pageOptions),
   });
 }
@@ -405,24 +410,27 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const metadata =
+    compactHermesMessageMetadata({
+      ...(payload.data.attachment ? { attachment: payload.data.attachment } : {}),
+      ...(payload.data.clientMessageId
+        ? { clientMessageId: payload.data.clientMessageId }
+        : {}),
+      mentionUserIds: payload.data.mentionUserIds,
+      mentions: payload.data.mentions,
+      tags: payload.data.tags,
+      ...(payload.data.threadParentMessageId
+        ? { threadParentMessageId: payload.data.threadParentMessageId }
+        : {}),
+    }) ?? {};
+
   const { data, error } = await context.adminClient
     .from("pulsex_messages")
     .insert({
       author_user_id: context.user.id,
       body: payload.data.body,
       channel_id: payload.data.channelId,
-      metadata: {
-        ...(payload.data.attachment ? { attachment: payload.data.attachment } : {}),
-        ...(payload.data.clientMessageId
-          ? { clientMessageId: payload.data.clientMessageId }
-          : {}),
-        mentionUserIds: payload.data.mentionUserIds,
-        mentions: payload.data.mentions,
-        tags: payload.data.tags,
-        ...(payload.data.threadParentMessageId
-          ? { threadParentMessageId: payload.data.threadParentMessageId }
-          : {}),
-      },
+      metadata,
     })
     .select(HERMES_MESSAGE_SELECT)
     .single<HermesMessageRow>();
@@ -434,7 +442,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data: compactHermesMessageRow(data) });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -522,10 +530,10 @@ export async function PATCH(request: NextRequest) {
       .from("pulsex_messages")
       .update({
         body: editPayload.data.body,
-        metadata: {
+        metadata: compactHermesMessageMetadata({
           ...(message.metadata ?? {}),
           editedAt: new Date().toISOString(),
-        },
+        }) ?? {},
       })
       .eq("id", editPayload.data.messageId)
       .select(HERMES_MESSAGE_SELECT)
@@ -538,7 +546,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: compactHermesMessageRow(data) });
   }
 
   const reactionPayload = parseToggleReactionPayload(rawPayload);
@@ -578,10 +586,10 @@ export async function PATCH(request: NextRequest) {
     const { data, error } = await context.adminClient
       .from("pulsex_messages")
       .update({
-        metadata: {
+        metadata: compactHermesMessageMetadata({
           ...currentMetadata,
           reactions,
-        },
+        }) ?? {},
       })
       .eq("id", reactionPayload.data.messageId)
       .select(HERMES_MESSAGE_SELECT)
@@ -594,7 +602,7 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ data });
+    return NextResponse.json({ data: compactHermesMessageRow(data) });
   }
 
   const payload = parseUpdateTagsPayload(rawPayload);
@@ -627,10 +635,10 @@ export async function PATCH(request: NextRequest) {
   const { data, error } = await context.adminClient
     .from("pulsex_messages")
     .update({
-      metadata: {
+      metadata: compactHermesMessageMetadata({
         ...(message.metadata ?? {}),
         tags: payload.data.tags,
-      },
+      }) ?? {},
     })
     .eq("id", payload.data.messageId)
     .select(HERMES_MESSAGE_SELECT)
@@ -643,7 +651,7 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
-  return NextResponse.json({ data });
+  return NextResponse.json({ data: compactHermesMessageRow(data) });
 }
 
 function parseMessagePageOptions(

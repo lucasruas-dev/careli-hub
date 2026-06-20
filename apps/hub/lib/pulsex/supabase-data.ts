@@ -23,6 +23,7 @@ import type {
   HermesThreadReply,
 } from "./types";
 import { normalizeHermesMessageTags } from "./message-tags";
+import { compactHermesMessageMetadata } from "./message-metadata";
 import { isHermesDirectChannelId } from "./direct-channel";
 import { fetchHermesMessagesApi } from "./messages-api-client";
 import { getHermesMessagesApiUrl } from "./routes";
@@ -577,6 +578,17 @@ export async function createHermesMessage(input: {
   }
 
   const tags = normalizeHermesMessageTags(input.tags);
+  const metadata =
+    compactHermesMessageMetadata({
+      ...(input.attachment ? { attachment: input.attachment } : {}),
+      ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
+      mentionUserIds: input.mentionUserIds ?? [],
+      mentions: input.mentions ?? [],
+      tags,
+      ...(input.threadParentMessageId
+        ? { threadParentMessageId: input.threadParentMessageId }
+        : {}),
+    }) ?? {};
   const result = await runHermesQuery<HermesMessageRow>(
     "create message",
     "pulsex_messages",
@@ -586,16 +598,7 @@ export async function createHermesMessage(input: {
         author_user_id: input.authorUserId,
         body: input.body,
         channel_id: input.channelId,
-        metadata: {
-          ...(input.attachment ? { attachment: input.attachment } : {}),
-          ...(input.clientMessageId ? { clientMessageId: input.clientMessageId } : {}),
-          mentionUserIds: input.mentionUserIds ?? [],
-          mentions: input.mentions ?? [],
-          tags,
-          ...(input.threadParentMessageId
-            ? { threadParentMessageId: input.threadParentMessageId }
-            : {}),
-        },
+        metadata,
       })
       .select("id,channel_id,author_user_id,body,metadata,created_at,deleted_at,hub_users(display_name,avatar_url,email)")
       .single(),
@@ -1050,7 +1053,9 @@ function mapMessage(row: HermesMessageRow | null): HermesMessage {
     throw new Error("Mensagem inexistente.");
   }
 
-  const metadata = getMessageMetadata(row.metadata);
+  const metadata = getMessageMetadata(
+    compactHermesMessageMetadata(row.metadata),
+  );
   const attachment = normalizeMessageAttachment(metadata.attachment);
   const mentions = normalizeMessageMentions(metadata.mentions);
   const mentionUserIds =

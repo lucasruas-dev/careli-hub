@@ -38346,3 +38346,63 @@ Conclusao:
 - O recorte deixa a abertura do canal parecida com app de chat profissional: conteudo recente aparece de imediato quando existe cache local, e a rede apenas confirma/atualiza.
 - O impacto pratico esperado e reduzir o tempo percebido de carregamento e evitar a falsa tela vazia.
 - Precisa de acao agora: Lucas decidir se quer publicar este recorte; producao permanece inalterada neste registro.
+
+## 2026-06-19 - Hermes/Supabase - controle de payload e realtime
+
+Assunto: [Hermes] Realtime e controle de custo das mensagens
+
+- Nome da squad/agente: `Zeus / Hermes / Supabase`.
+- Tipo da acao: `CORRECAO LOCAL / PERFORMANCE / CUSTO / REALTIME / MIGRATION APLICADA`.
+- Status: `VALIDADO_LOCAL / MIGRATION_0035_APLICADA_SUPABASE`.
+- Data e hora local: `2026-06-19 08:45:00 -03:00`; aplicacao Supabase registrada em `2026-06-19 22:59 -03:00`.
+- Protocolo CEP: `HERMES-20260619-036-REALTIME-COST-CONTROLS`.
+- Contexto:
+  - Lucas pediu continuidade no diagnostico Supabase/Hermes para reduzir custo mensal e resolver atraso/intermitencia de mensagens/notificacoes;
+  - Lucas autorizou explicitamente a aplicacao da migration 0035 no chat operacional;
+  - analise somente leitura indicou `pulsex_messages` em realtime, RLS habilitado sem policy efetiva e metadata de anexos ocupando a maior parte do TOAST da tabela.
+- Decisao tecnica:
+  - cortar novas gravacoes pesadas em metadata, removendo URLs inline `data:`/`blob:` ou URLs acima de 2048 caracteres antes de persistir/retornar mensagens;
+  - manter cache local de canal, mas impedir que uma resposta vazia temporaria do servidor apague mensagens ja carregadas em tela;
+  - aplicar migration Supabase para policy minima de leitura/insert por membro do canal e indices de apoio;
+  - manter o indice canonico ja existente em `pulsex_messages` para evitar duplicidade de indice.
+- Correcao aplicada localmente:
+  - `apps/hub/lib/pulsex/message-metadata.ts`: helper de compactacao de metadata/anexo Hermes;
+  - `apps/hub/app/api/pulsex/messages/route.ts`: API passa a gravar e retornar metadata compacta;
+  - `apps/hub/lib/pulsex/supabase-data.ts`: mapper/fallback client-side tambem compacta metadata para evitar cache/estado pesados;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`: hidratacao de cache via `useLayoutEffect` e protecao contra limpar canal quando consulta retorna vazia enquanto ja ha mensagens locais;
+  - `packages/database/migrations/0035_hermes_realtime_cost_controls.sql`: migration com policies e indices, ajustada para usar o indice canonico `pulsex_messages_channel_active_created_at_idx`.
+- Escopo preservado:
+  - nenhuma env, secret, token, chave Vercel/Supabase, dominio, alias ou deploy foi executado;
+  - migration real executada somente no project ref `bxgukywoxgivlrhjkwjx`, sem expor valores sensiveis;
+  - nenhuma limpeza destrutiva de anexos historicos foi incluida, porque isso exige storage dedicado ou plano de migracao de arquivos.
+- Validacoes locais:
+  - `git diff --check`: PASS, com avisos esperados LF/CRLF no Windows;
+  - `npm.cmd run check-types:hub`: PASS;
+  - `npm.cmd run lint:hub`: PASS, com warning conhecido `MODULE_TYPELESS_PACKAGE_JSON`;
+  - `npm.cmd run build --workspace @repo/hub`: PASS, com warning conhecido Turbopack/NFT;
+  - `node scripts/panteon-address-recorte-check.mjs`: PASS usando script canonico da raiz com `cwd` no worktree Hermes, com aviso esperado de divergencia entre baseline do manifesto e referencia antiga do registry.
+- Validacoes Supabase:
+  - preflight confirmou `public.pulsex_messages` e `public.pulsex_channel_members` no project ref `bxgukywoxgivlrhjkwjx`;
+  - migration aplicada via Supabase MCP como `20260620015954 / 0035_hermes_realtime_cost_controls`;
+  - post-check confirmou policies `hermes authenticated read channel messages` e `hermes authenticated insert own channel messages` para role `authenticated`;
+  - post-check confirmou RLS ativo em `public.pulsex_messages` e publicacao mantida em `supabase_realtime`;
+  - advisor apontou duplicidade entre o indice antigo `pulsex_messages_channel_active_created_at_idx` e o indice novo `pulsex_messages_channel_created_active_idx`; o indice redundante criado no post-check foi removido por migration complementar `20260620020205 / 0035_hermes_realtime_cost_controls_dedupe`;
+  - estado final ficou com `pulsex_channel_members_user_active_channel_idx` e `pulsex_messages_channel_active_created_at_idx`, sem duplicata em `pulsex_messages`.
+- Arquivos/modulos afetados:
+  - `apps/hub/app/api/pulsex/messages/route.ts`;
+  - `apps/hub/components/pulsex/pulsex-workspace.tsx`;
+  - `apps/hub/lib/pulsex/message-metadata.ts`;
+  - `apps/hub/lib/pulsex/supabase-data.ts`;
+  - `packages/database/migrations/0035_hermes_realtime_cost_controls.sql`;
+  - `docs/operations/panteon-address-recorte-hermes-20260619-036-realtime-cost-controls.json`;
+  - este diario canonico.
+- Pendencias ou riscos conhecidos:
+  - para reduzir o custo historico ja gravado no TOAST, ainda falta desenhar storage dedicado para anexos Hermes e migracao nao destrutiva dos arquivos antigos;
+  - ainda falta healthcheck autenticado de duas sessoes para confirmar comportamento de realtime/notificacoes depois que o codigo deste recorte for publicado;
+  - advisors Supabase ainda apontam itens antigos fora do recorte, incluindo RLS sem policies em outras tabelas e policies permissivas legadas de Setup/Hermes, que devem virar recortes separados.
+
+Conclusao:
+
+- O recorte reduz bloat futuro, melhora a fluidez percebida e agora tambem tem a camada Supabase minima aplicada com RLS/policies/indices.
+- O impacto pratico esperado e abrir canais mais rapido, evitar sumico temporario de mensagens, reduzir payload futuro e dar suporte melhor ao realtime sem indice duplicado.
+- Precisa de acao agora: publicar o codigo do recorte ainda exige Safety Gate/recorte limpo; a reducao do historico antigo de anexos continua para um plano de storage/migracao separado.
