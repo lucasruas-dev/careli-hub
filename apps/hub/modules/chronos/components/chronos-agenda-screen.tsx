@@ -307,7 +307,7 @@ export function ChronosAgendaScreen({
           />
         </aside>
 
-        <div className="min-h-0 overflow-auto">
+        <div className="min-h-0 overflow-x-auto overflow-y-hidden">
           <ChronosCalendarCanvas
             cursorDate={cursorDate}
             currentUser={currentUser}

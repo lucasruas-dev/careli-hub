@@ -157,6 +157,9 @@ function ChronosTimeGrid({
 }) {
   const isWeek = dates.length > 1;
   const calendarStartDate = dates[0] ?? new Date();
+  // Abre o calendario rolado para perto da hora atual (1h antes, para dar
+  // contexto), como o Google Agenda, em vez de comecar na meia-noite.
+  const scrollToTime = `${String(Math.max(0, new Date().getHours() - 1)).padStart(2, "0")}:00:00`;
   const fullCalendarEvents = meetings
     .filter((meeting) => meeting.startsAt)
     .map((meeting) => {
@@ -165,10 +168,9 @@ function ChronosTimeGrid({
 
       return {
         allDay,
-        backgroundColor: allDay
-          ? getChronosCalendarEventColor(meeting)
-          : undefined,
-        borderColor: allDay ? getChronosCalendarEventColor(meeting) : undefined,
+        backgroundColor: getChronosCalendarEventColor(meeting),
+        borderColor: getChronosCalendarEventColor(meeting),
+        textColor: "#ffffff",
         classNames: [
           "chronos-google-event",
           meeting.id === selectedMeetingId ? "chronos-google-event-selected" : "",
@@ -185,7 +187,7 @@ function ChronosTimeGrid({
     });
 
   return (
-    <div className="chronos-google-calendar min-w-[58rem] overflow-hidden rounded-[28px] bg-white">
+    <div className="chronos-google-calendar h-full min-w-[58rem] overflow-hidden rounded-[28px] bg-white">
       <FullCalendar
         allDaySlot
         dayHeaderContent={(arg) => (
@@ -214,22 +216,15 @@ function ChronosTimeGrid({
         }}
         eventContent={(arg) => {
           const meeting = arg.event.extendedProps.meeting as ChronosMeeting;
-          const typeVisual = chronosMeetingTypeVisuals[meeting.meetingType];
 
           return (
-            <div className="min-w-0 px-1 py-0.5 leading-tight">
-              <div className="flex min-w-0 items-center gap-1">
-                <span
-                  aria-hidden="true"
-                  className={`h-1.5 w-1.5 shrink-0 rounded-full ${typeVisual.dotClass}`}
-                />
-                <span className="truncate text-[11px] font-bold">
-                  {arg.timeText ? `${arg.timeText} ` : ""}
-                  {meeting.title}
-                </span>
-              </div>
+            <div className="min-w-0 px-1 py-0.5 leading-tight text-white">
+              <span className="block truncate text-[11px] font-bold">
+                {arg.timeText ? `${arg.timeText} ` : ""}
+                {meeting.title}
+              </span>
               {!arg.event.allDay ? (
-                <span className="block truncate text-[10px] font-semibold opacity-80">
+                <span className="block truncate text-[10px] font-semibold text-white/85">
                   {getChronosMeetingLocationLabel(meeting)}
                 </span>
               ) : null}
@@ -258,14 +253,14 @@ function ChronosTimeGrid({
         expandRows={false}
         firstDay={0}
         headerToolbar={false}
-        height="auto"
+        height="100%"
         initialDate={calendarStartDate}
         initialView={isWeek ? "timeGridWeek" : "timeGridDay"}
         key={`${isWeek ? "week" : "day"}-${calendarStartDate.toISOString()}`}
         locale="pt-br"
         nowIndicator
         plugins={[timeGridPlugin, dayGridPlugin, listPlugin, interactionPlugin]}
-        scrollTime="00:00:00"
+        scrollTime={scrollToTime}
         slotDuration="00:30:00"
         slotEventOverlap
         slotLabelFormat={{
@@ -276,6 +271,7 @@ function ChronosTimeGrid({
         slotLabelInterval="01:00:00"
         slotMaxTime="24:00:00"
         slotMinTime="00:00:00"
+        stickyHeaderDates
         timeZone="local"
       />
       <style>{`
@@ -677,15 +673,21 @@ function getChronosCalendarEventColor(meeting: ChronosMeeting) {
     return "#0ea5e9";
   }
 
-  if (meeting.meetingType === "results") {
-    return "#078b4f";
+  switch (meeting.meetingType) {
+    case "results":
+      return "#078b4f"; // Resultado — verde
+    case "formal":
+      return "#d97706"; // Comunicado — ambar
+    case "client":
+      return "#A07C3B"; // Reuniao com cliente — dourado Careli
+    case "executive":
+      return "#1f2a37"; // Executiva — grafite
+    case "external":
+      return "#526078"; // Externa — cinza
+    case "alignment":
+    default:
+      return "#0b66d8"; // Alinhamento — azul
   }
-
-  if (meeting.meetingType === "formal") {
-    return "#d97706";
-  }
-
-  return "#0b66d8";
 }
 
 function toDateOnly(date: Date) {
