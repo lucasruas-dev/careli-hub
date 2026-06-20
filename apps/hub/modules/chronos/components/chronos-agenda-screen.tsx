@@ -25,7 +25,14 @@ import type {
 import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { Surface } from "@repo/uix";
 import { Plus } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ChronosCalendarCanvas,
   MiniCalendar,
@@ -35,6 +42,26 @@ import { ChronosCalendarEventEditorModal } from "./chronos-calendar-event-editor
 import { ChronosCalendarEventPopup } from "./chronos-calendar-event-popup";
 import { chronosMeetingTypeVisuals } from "./chronos-meeting-type-visuals";
 import type { ChronosCurrentUser } from "./chronos-rsvp";
+
+// Identifica os registros criados quando alguem abre uma sala Whereby sem ter
+// uma reserva na agenda (source "chronos-whereby-native-entry" /
+// external_reference "whereby-room:..."). Sao sessoes de video para
+// historico/ata, nao compromissos — e nao existem no Google Agenda.
+function isChronosWherebyNativeSession(meeting: ChronosMeeting): boolean {
+  const source =
+    typeof meeting.metadata?.source === "string"
+      ? meeting.metadata.source
+      : null;
+
+  if (source === "chronos-whereby-native-entry") {
+    return true;
+  }
+
+  return (
+    typeof meeting.externalReference === "string" &&
+    meeting.externalReference.startsWith("whereby-room:")
+  );
+}
 
 export function ChronosAgendaScreen({
   canManage,
@@ -71,10 +98,15 @@ export function ChronosAgendaScreen({
     useState<ChronosCalendarView>("week");
   const [cursorDate, setCursorDate] = useState(() => startOfDay(new Date()));
   const [detailMeetingId, setDetailMeetingId] = useState<string | null>(null);
+  const [detailAnchor, setDetailAnchor] = useState<{
+    x: number;
+    y: number;
+  } | null>(null);
   const [detailPosition, setDetailPosition] = useState<{
     left: number;
     top: number;
   } | null>(null);
+  const detailPopupRef = useRef<HTMLDivElement | null>(null);
   const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null);
   const [draftStartsAt, setDraftStartsAt] = useState<string | null>(null);
   const [googleCalendarStatus, setGoogleCalendarStatus] =
@@ -86,7 +118,17 @@ export function ChronosAgendaScreen({
   const [googleCalendarSyncError, setGoogleCalendarSyncError] = useState<
     string | null
   >(null);
-  const sortedMeetings = useMemo(() => sortMeetingsByDate(meetings), [meetings]);
+  // Sessoes de sala Whereby abertas sem reserva viram um registro "ao vivo" so
+  // para historico/ata — nao sao compromissos reais e nao existem no Google.
+  // Ocultamos do calendario para nao poluir a agenda (igual ao Google Agenda).
+  const calendarMeetings = useMemo(
+    () => meetings.filter((meeting) => !isChronosWherebyNativeSession(meeting)),
+    [meetings],
+  );
+  const sortedMeetings = useMemo(
+    () => sortMeetingsByDate(calendarMeetings),
+    [calendarMeetings],
+  );
   const detailMeeting = detailMeetingId
     ? sortedMeetings.find((meeting) => meeting.id === detailMeetingId) ?? null
     : null;
@@ -201,32 +243,57 @@ export function ChronosAgendaScreen({
     };
   }, [isGoogleCalendarConnected, runBackgroundGoogleCalendarSync]);
 
+  // Calcula a posicao do popup de detalhes ja com o tamanho REAL medido (ele
+  // pode ter ate 34rem de largura e altura variavel conforme o conteudo),
+  // garantindo que nunca ultrapasse a viewport — nao importa onde o evento foi
+  // clicado. Substitui o chute fixo anterior que vazava a tela.
+  useLayoutEffect(() => {
+    if (!detailMeetingId) {
+      return;
+    }
+
+    const popup = detailPopupRef.current;
+
+    if (!popup) {
+      return;
+    }
+
+    const margin = 12;
+    const { width, height } = popup.getBoundingClientRect();
+
+    if (!detailAnchor) {
+      setDetailPosition({
+        left: Math.max(margin, (window.innerWidth - width) / 2),
+        top: Math.max(
+          margin,
+          Math.min(96, window.innerHeight - height - margin),
+        ),
+      });
+      return;
+    }
+
+    setDetailPosition({
+      left: Math.min(
+        Math.max(margin, detailAnchor.x + 16),
+        Math.max(margin, window.innerWidth - width - margin),
+      ),
+      top: Math.min(
+        Math.max(margin, detailAnchor.y - 40),
+        Math.max(margin, window.innerHeight - height - margin),
+      ),
+    });
+  }, [detailMeetingId, detailAnchor]);
+
   function openMeetingDetails(
     meetingId: string,
     anchor?: { x: number; y: number },
   ) {
     onSelectMeeting(meetingId);
     setDetailMeetingId(meetingId);
-
-    if (!anchor) {
-      setDetailPosition(null);
-      return;
-    }
-
-    // Ancora o popup perto do evento clicado (estilo Google Agenda), com
-    // clamp para nao sair da viewport.
-    const popupWidth = 384;
-    const popupHeight = 520;
-    const left = Math.min(
-      Math.max(12, anchor.x + 16),
-      Math.max(12, window.innerWidth - popupWidth - 12),
-    );
-    const top = Math.min(
-      Math.max(12, anchor.y - 40),
-      Math.max(12, window.innerHeight - popupHeight - 12),
-    );
-
-    setDetailPosition({ left, top });
+    // A posicao final e definida no useLayoutEffect acima (com o tamanho real
+    // ja medido). Zeramos para medir antes de exibir.
+    setDetailAnchor(anchor ?? null);
+    setDetailPosition(null);
   }
 
   function openMeetingEditor(meetingId: string) {
@@ -413,10 +480,15 @@ export function ChronosAgendaScreen({
           />
           <div
             className="absolute max-w-[calc(100vw-1.5rem)]"
+            ref={detailPopupRef}
             style={
               detailPosition
-                ? { left: detailPosition.left, top: detailPosition.top }
-                : { left: "50%", top: "6rem", transform: "translateX(-50%)" }
+                ? {
+                    left: detailPosition.left,
+                    top: detailPosition.top,
+                    visibility: "visible",
+                  }
+                : { left: 12, top: 12, visibility: "hidden" }
             }
           >
             <ChronosCalendarEventDetailsPopup
@@ -436,7 +508,7 @@ export function ChronosAgendaScreen({
       ) : null}
 
       {draftStartsAt ? (
-        <div className="absolute inset-0 z-30 flex items-start justify-center px-4 pt-28">
+        <div className="fixed inset-0 z-30 flex items-center justify-center p-4">
           <button
             aria-label="Fechar criacao de evento"
             className="absolute inset-0 cursor-default bg-transparent"

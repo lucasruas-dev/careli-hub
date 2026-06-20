@@ -222,15 +222,25 @@ function ChronosTimeGrid({
         }}
         eventContent={(arg) => {
           const meeting = arg.event.extendedProps.meeting as ChronosMeeting;
+          // Eventos confirmados tem fundo preenchido (texto branco). Os com RSVP
+          // pendente/talvez/recusado sao desenhados com fundo branco e borda
+          // colorida (estilo Google Agenda "nao confirmado"), entao o texto deve
+          // herdar a cor da borda — nunca branco, senao fica invisivel.
+          const isFilled =
+            getChronosCurrentUserRsvpStatus(meeting, currentUser) === "accepted";
 
           return (
-            <div className="min-w-0 px-1 py-0.5 leading-tight text-white">
+            <div
+              className={`min-w-0 px-1 py-0.5 leading-tight ${
+                isFilled ? "text-white" : ""
+              }`}
+            >
               <span className="block truncate text-[11px] font-bold">
                 {arg.timeText ? `${arg.timeText} ` : ""}
                 {meeting.title}
               </span>
               {!arg.event.allDay ? (
-                <span className="block truncate text-[10px] font-semibold text-white/85">
+                <span className="block truncate text-[10px] font-semibold opacity-80">
                   {getChronosMeetingLocationLabel(meeting)}
                 </span>
               ) : null}
@@ -361,9 +371,10 @@ function ChronosTimeGrid({
         .chronos-google-calendar .fc-daygrid-event,
         .chronos-google-calendar .fc-timegrid-event {
           margin: 1px 2px;
+          box-shadow: 0 0 0 1px #ffffff;
         }
         .chronos-google-calendar .chronos-google-event-selected {
-          box-shadow: 0 0 0 2px rgba(160, 124, 59, 0.45);
+          box-shadow: 0 0 0 1px #ffffff, 0 0 0 3px rgba(160, 124, 59, 0.55);
         }
       `}</style>
     </div>
