@@ -233,12 +233,12 @@ function ChronosTimeGrid({
           // cor do evento nos nao confirmados) — aqui apenas herdamos.
           return (
             <div className="min-w-0 px-1 py-0.5 leading-tight">
-              <span className="block truncate text-[11px] font-bold">
+              <span className="block truncate text-[12.5px] font-bold">
                 {arg.timeText ? `${arg.timeText} ` : ""}
                 {meeting.title}
               </span>
               {!arg.event.allDay ? (
-                <span className="block truncate text-[10px] font-semibold opacity-80">
+                <span className="block truncate text-[11px] font-semibold opacity-80">
                   {getChronosMeetingLocationLabel(meeting)}
                 </span>
               ) : null}
@@ -296,7 +296,7 @@ function ChronosTimeGrid({
           --fc-event-text-color: #0b66d8;
           color: #101820;
           font-family: inherit;
-          font-size: 12px;
+          font-size: 13px;
           overflow: hidden;
         }
         .chronos-google-calendar .fc-scrollgrid {

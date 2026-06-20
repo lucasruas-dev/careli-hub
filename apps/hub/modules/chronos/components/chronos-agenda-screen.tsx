@@ -63,6 +63,44 @@ function isChronosWherebyNativeSession(meeting: ChronosMeeting): boolean {
   );
 }
 
+// RRULE quando o evento e o "mestre" de uma recorrencia criada no Chronos.
+function getChronosMeetingRecurrenceRule(meeting: ChronosMeeting): string | null {
+  const recurrence = meeting.metadata?.recurrence;
+
+  if (
+    recurrence &&
+    typeof recurrence === "object" &&
+    !Array.isArray(recurrence)
+  ) {
+    const rrule = (recurrence as { rrule?: unknown }).rrule;
+
+    if (typeof rrule === "string" && rrule.trim()) {
+      return rrule.trim();
+    }
+  }
+
+  return null;
+}
+
+// Quando o evento e uma OCORRENCIA importada do Google (cada ocorrencia da
+// serie expandida volta como um meeting com recurringEventId no metadata).
+function getChronosMeetingGoogleRecurringEventId(
+  meeting: ChronosMeeting,
+): string | null {
+  const google = meeting.metadata?.googleCalendar;
+
+  if (google && typeof google === "object" && !Array.isArray(google)) {
+    const recurringEventId = (google as { recurringEventId?: unknown })
+      .recurringEventId;
+
+    if (typeof recurringEventId === "string" && recurringEventId.trim()) {
+      return recurringEventId.trim();
+    }
+  }
+
+  return null;
+}
+
 export function ChronosAgendaScreen({
   canManage,
   currentUser,
@@ -118,13 +156,35 @@ export function ChronosAgendaScreen({
   const [googleCalendarSyncError, setGoogleCalendarSyncError] = useState<
     string | null
   >(null);
-  // Sessoes de sala Whereby abertas sem reserva viram um registro "ao vivo" so
-  // para historico/ata — nao sao compromissos reais e nao existem no Google.
-  // Ocultamos do calendario para nao poluir a agenda (igual ao Google Agenda).
-  const calendarMeetings = useMemo(
-    () => meetings.filter((meeting) => !isChronosWherebyNativeSession(meeting)),
-    [meetings],
-  );
+  const calendarMeetings = useMemo(() => {
+    // Series recorrentes sao expandidas pelo Google: cada ocorrencia volta como
+    // um meeting importado (recurringEventId). Coletamos os titulos dessas
+    // series ja materializadas para ocultar o "evento-mae" local (que carrega a
+    // RRULE) e evitar a duplicata na data inicial. Se as ocorrencias ainda nao
+    // chegaram (push/sync pendente), o mestre fica visivel como fallback.
+    const materializedRecurringTitles = new Set(
+      meetings
+        .filter((meeting) => getChronosMeetingGoogleRecurringEventId(meeting))
+        .map((meeting) => meeting.title.trim().toLowerCase()),
+    );
+
+    return meetings.filter((meeting) => {
+      // Sessoes de sala Whereby abertas sem reserva sao registro de ata, nao
+      // compromisso real, e nao existem no Google: fora do calendario.
+      if (isChronosWherebyNativeSession(meeting)) {
+        return false;
+      }
+
+      if (
+        getChronosMeetingRecurrenceRule(meeting) &&
+        materializedRecurringTitles.has(meeting.title.trim().toLowerCase())
+      ) {
+        return false;
+      }
+
+      return true;
+    });
+  }, [meetings]);
   const sortedMeetings = useMemo(
     () => sortMeetingsByDate(calendarMeetings),
     [calendarMeetings],
@@ -521,6 +581,9 @@ export function ChronosAgendaScreen({
             onCreate={async (input) => {
               await onCreate(input);
               setDraftStartsAt(null);
+              // Eventos recorrentes sao expandidos pelo Google; puxamos logo
+              // apos criar para as ocorrencias aparecerem sem esperar o ciclo.
+              void runBackgroundGoogleCalendarSync();
             }}
             profiles={profiles}
             rooms={rooms}
