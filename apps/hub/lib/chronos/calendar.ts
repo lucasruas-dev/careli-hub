@@ -295,6 +295,236 @@ export function buildChronosRecurrenceInput({
   };
 }
 
+const chronosRRuleWeekdayIndex: Record<string, number> = {
+  FR: 5,
+  MO: 1,
+  SA: 6,
+  SU: 0,
+  TH: 4,
+  TU: 2,
+  WE: 3,
+};
+
+type ParsedChronosRRule = {
+  byDay: string[];
+  count: number | null;
+  freq: "DAILY" | "MONTHLY" | "WEEKLY" | "YEARLY";
+  interval: number;
+  until: Date | null;
+};
+
+function parseChronosRRule(rrule: string): ParsedChronosRRule | null {
+  const body = rrule.replace(/^RRULE:/i, "").trim();
+
+  if (!body) {
+    return null;
+  }
+
+  const params = new Map<string, string>();
+
+  for (const part of body.split(";")) {
+    const [key, value] = part.split("=");
+
+    if (key && value) {
+      params.set(key.trim().toUpperCase(), value.trim());
+    }
+  }
+
+  const freq = params.get("FREQ");
+
+  if (
+    freq !== "DAILY" &&
+    freq !== "WEEKLY" &&
+    freq !== "MONTHLY" &&
+    freq !== "YEARLY"
+  ) {
+    return null;
+  }
+
+  const intervalRaw = Number.parseInt(params.get("INTERVAL") ?? "1", 10);
+  const countRaw = Number.parseInt(params.get("COUNT") ?? "", 10);
+  const untilRaw = params.get("UNTIL");
+  let until: Date | null = null;
+
+  if (untilRaw) {
+    const match = untilRaw.match(
+      /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})Z?)?$/,
+    );
+
+    if (match) {
+      until = new Date(
+        Date.UTC(
+          Number(match[1]),
+          Number(match[2]) - 1,
+          Number(match[3]),
+          Number(match[4] ?? "23"),
+          Number(match[5] ?? "59"),
+          Number(match[6] ?? "59"),
+        ),
+      );
+    }
+  }
+
+  return {
+    byDay: (params.get("BYDAY") ?? "")
+      .split(",")
+      .map((day) => day.trim().toUpperCase())
+      .filter(Boolean),
+    count: Number.isFinite(countRaw) && countRaw > 0 ? countRaw : null,
+    freq,
+    interval: Number.isFinite(intervalRaw) && intervalRaw > 0 ? intervalRaw : 1,
+    until,
+  };
+}
+
+function applyTimeFromReference(target: Date, reference: Date) {
+  target.setHours(
+    reference.getHours(),
+    reference.getMinutes(),
+    reference.getSeconds(),
+    0,
+  );
+
+  return target;
+}
+
+function getChronosMonthlyWeekdayDate(
+  year: number,
+  month: number,
+  weekdayIndex: number,
+  nth: number,
+) {
+  if (nth < 0) {
+    const last = new Date(year, month + 1, 0);
+    const offset = (last.getDay() - weekdayIndex + 7) % 7;
+
+    return new Date(year, month, last.getDate() - offset);
+  }
+
+  const first = new Date(year, month, 1);
+  const offset = (weekdayIndex - first.getDay() + 7) % 7;
+
+  return new Date(year, month, 1 + offset + (nth - 1) * 7);
+}
+
+// Expande uma RRULE do Chronos nas datas de inicio das ocorrencias (inclui a
+// primeira, igual a startsAt). Como o Brasil nao tem horario de verao, avancar
+// por dias/semanas/meses preserva o horario local com seguranca, sem depender
+// de bibliotecas externas.
+export function expandChronosRecurrenceOccurrences(input: {
+  endsAt?: string | null;
+  horizonDays?: number;
+  maxOccurrences?: number;
+  rrule: string;
+  startsAt: string;
+}): Array<{ endsAt: string | null; startsAt: string }> {
+  const parsed = parseChronosRRule(input.rrule);
+  const start = new Date(input.startsAt);
+
+  if (!parsed || Number.isNaN(start.getTime())) {
+    return [];
+  }
+
+  const end =
+    input.endsAt && !Number.isNaN(new Date(input.endsAt).getTime())
+      ? new Date(input.endsAt)
+      : null;
+  const durationMs = end ? end.getTime() - start.getTime() : null;
+  const maxOccurrences = Math.max(
+    1,
+    Math.min(input.maxOccurrences ?? 60, parsed.count ?? 60),
+  );
+  const horizon = new Date(start);
+
+  horizon.setDate(horizon.getDate() + (input.horizonDays ?? 365));
+
+  const limit = parsed.until && parsed.until < horizon ? parsed.until : horizon;
+  const occurrences: Date[] = [];
+  const add = (date: Date) => {
+    if (date < start || date > limit || occurrences.length >= maxOccurrences) {
+      return;
+    }
+
+    occurrences.push(new Date(date));
+  };
+
+  if (parsed.freq === "DAILY") {
+    const cursor = new Date(start);
+
+    while (cursor <= limit && occurrences.length < maxOccurrences) {
+      add(cursor);
+      cursor.setDate(cursor.getDate() + parsed.interval);
+    }
+  } else if (parsed.freq === "WEEKLY") {
+    const weekdays = (
+      parsed.byDay.length > 0 ? parsed.byDay : [getRRuleWeekday(start)]
+    )
+      .map((day) => chronosRRuleWeekdayIndex[day])
+      .filter((index): index is number => index !== undefined)
+      .sort((a, b) => a - b);
+    const weekStart = new Date(start);
+
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    applyTimeFromReference(weekStart, start);
+
+    while (weekStart <= limit && occurrences.length < maxOccurrences) {
+      for (const weekdayIndex of weekdays) {
+        const occurrence = new Date(weekStart);
+
+        occurrence.setDate(weekStart.getDate() + weekdayIndex);
+        applyTimeFromReference(occurrence, start);
+        add(occurrence);
+      }
+
+      weekStart.setDate(weekStart.getDate() + 7 * parsed.interval);
+    }
+  } else if (parsed.freq === "MONTHLY") {
+    const match = (parsed.byDay[0] ?? "").match(
+      /^(-?\d+)(SU|MO|TU|WE|TH|FR|SA)$/,
+    );
+    const nth = match ? Number(match[1]) : getNthWeekdayInMonth(start);
+    const weekdayCode = match?.[2] ?? getRRuleWeekday(start);
+    const weekdayIndex = chronosRRuleWeekdayIndex[weekdayCode] ?? start.getDay();
+    const monthCursor = new Date(start.getFullYear(), start.getMonth(), 1);
+
+    while (monthCursor <= limit && occurrences.length < maxOccurrences) {
+      const occurrence = getChronosMonthlyWeekdayDate(
+        monthCursor.getFullYear(),
+        monthCursor.getMonth(),
+        weekdayIndex,
+        nth,
+      );
+
+      applyTimeFromReference(occurrence, start);
+      add(occurrence);
+      monthCursor.setMonth(monthCursor.getMonth() + parsed.interval);
+    }
+  } else {
+    const cursor = new Date(start);
+
+    while (cursor <= limit && occurrences.length < maxOccurrences) {
+      add(cursor);
+      cursor.setFullYear(cursor.getFullYear() + parsed.interval);
+    }
+  }
+
+  const unique = new Map<number, Date>();
+
+  for (const occurrence of occurrences) {
+    unique.set(occurrence.getTime(), occurrence);
+  }
+
+  return [...unique.values()]
+    .sort((a, b) => a.getTime() - b.getTime())
+    .map((occurrence) => ({
+      endsAt:
+        durationMs !== null
+          ? new Date(occurrence.getTime() + durationMs).toISOString()
+          : null,
+      startsAt: occurrence.toISOString(),
+    }));
+}
+
 export function formatWeekday(date: Date) {
   return new Intl.DateTimeFormat("pt-BR", { weekday: "short" })
     .format(date)

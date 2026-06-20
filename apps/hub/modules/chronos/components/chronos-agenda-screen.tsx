@@ -63,42 +63,13 @@ function isChronosWherebyNativeSession(meeting: ChronosMeeting): boolean {
   );
 }
 
-// RRULE quando o evento e o "mestre" de uma recorrencia criada no Chronos.
-function getChronosMeetingRecurrenceRule(meeting: ChronosMeeting): string | null {
-  const recurrence = meeting.metadata?.recurrence;
-
-  if (
-    recurrence &&
-    typeof recurrence === "object" &&
-    !Array.isArray(recurrence)
-  ) {
-    const rrule = (recurrence as { rrule?: unknown }).rrule;
-
-    if (typeof rrule === "string" && rrule.trim()) {
-      return rrule.trim();
-    }
-  }
-
-  return null;
-}
-
-// Quando o evento e uma OCORRENCIA importada do Google (cada ocorrencia da
-// serie expandida volta como um meeting com recurringEventId no metadata).
-function getChronosMeetingGoogleRecurringEventId(
-  meeting: ChronosMeeting,
-): string | null {
-  const google = meeting.metadata?.googleCalendar;
-
-  if (google && typeof google === "object" && !Array.isArray(google)) {
-    const recurringEventId = (google as { recurringEventId?: unknown })
-      .recurringEventId;
-
-    if (typeof recurringEventId === "string" && recurringEventId.trim()) {
-      return recurringEventId.trim();
-    }
-  }
-
-  return null;
+// Referencia compartilhada por todas as ocorrencias de uma serie recorrente
+// materializada no Chronos. Permite excluir/identificar a serie inteira.
+function getChronosSeriesReference(meeting: ChronosMeeting): string | null {
+  return typeof meeting.externalReference === "string" &&
+    meeting.externalReference.startsWith("chronos-series:")
+    ? meeting.externalReference
+    : null;
 }
 
 export function ChronosAgendaScreen({
@@ -146,6 +117,9 @@ export function ChronosAgendaScreen({
   } | null>(null);
   const detailPopupRef = useRef<HTMLDivElement | null>(null);
   const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null);
+  const [seriesDeleteMeetingId, setSeriesDeleteMeetingId] = useState<
+    string | null
+  >(null);
   const [draftStartsAt, setDraftStartsAt] = useState<string | null>(null);
   const [googleCalendarStatus, setGoogleCalendarStatus] =
     useState<ChronosGoogleCalendarStatus | null>(null);
@@ -156,35 +130,13 @@ export function ChronosAgendaScreen({
   const [googleCalendarSyncError, setGoogleCalendarSyncError] = useState<
     string | null
   >(null);
-  const calendarMeetings = useMemo(() => {
-    // Series recorrentes sao expandidas pelo Google: cada ocorrencia volta como
-    // um meeting importado (recurringEventId). Coletamos os titulos dessas
-    // series ja materializadas para ocultar o "evento-mae" local (que carrega a
-    // RRULE) e evitar a duplicata na data inicial. Se as ocorrencias ainda nao
-    // chegaram (push/sync pendente), o mestre fica visivel como fallback.
-    const materializedRecurringTitles = new Set(
-      meetings
-        .filter((meeting) => getChronosMeetingGoogleRecurringEventId(meeting))
-        .map((meeting) => meeting.title.trim().toLowerCase()),
-    );
-
-    return meetings.filter((meeting) => {
-      // Sessoes de sala Whereby abertas sem reserva sao registro de ata, nao
-      // compromisso real, e nao existem no Google: fora do calendario.
-      if (isChronosWherebyNativeSession(meeting)) {
-        return false;
-      }
-
-      if (
-        getChronosMeetingRecurrenceRule(meeting) &&
-        materializedRecurringTitles.has(meeting.title.trim().toLowerCase())
-      ) {
-        return false;
-      }
-
-      return true;
-    });
-  }, [meetings]);
+  // Sessoes de sala Whereby abertas sem reserva viram um registro "ao vivo" so
+  // para historico/ata — nao sao compromissos reais e nao existem no Google.
+  // Ocultamos do calendario para nao poluir a agenda (igual ao Google Agenda).
+  const calendarMeetings = useMemo(
+    () => meetings.filter((meeting) => !isChronosWherebyNativeSession(meeting)),
+    [meetings],
+  );
   const sortedMeetings = useMemo(
     () => sortMeetingsByDate(calendarMeetings),
     [calendarMeetings],
@@ -556,6 +508,17 @@ export function ChronosAgendaScreen({
               meeting={detailMeeting}
               onClose={() => setDetailMeetingId(null)}
               onDelete={async (meetingId) => {
+                const target = sortedMeetings.find(
+                  (meeting) => meeting.id === meetingId,
+                );
+
+                // Evento recorrente: pergunta o escopo (este / toda a serie).
+                if (target && getChronosSeriesReference(target)) {
+                  setDetailMeetingId(null);
+                  setSeriesDeleteMeetingId(meetingId);
+                  return;
+                }
+
                 await onDeleteMeeting(meetingId);
                 setDetailMeetingId(null);
               }}
@@ -581,20 +544,6 @@ export function ChronosAgendaScreen({
             onCreate={async (input) => {
               await onCreate(input);
               setDraftStartsAt(null);
-              // Eventos recorrentes sao expandidos pelo Google; o push leva
-              // alguns segundos para materializar as ocorrencias, entao puxamos
-              // algumas vezes para elas aparecerem sem esperar o ciclo de 3min.
-              void runBackgroundGoogleCalendarSync();
-              if (input.recurrence) {
-                window.setTimeout(
-                  () => void runBackgroundGoogleCalendarSync(),
-                  4000,
-                );
-                window.setTimeout(
-                  () => void runBackgroundGoogleCalendarSync(),
-                  12000,
-                );
-              }
             }}
             profiles={profiles}
             rooms={rooms}
@@ -618,6 +567,77 @@ export function ChronosAgendaScreen({
             }}
             saving={saving}
           />
+        </div>
+      ) : null}
+      {seriesDeleteMeetingId ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <button
+            aria-label="Cancelar exclusao"
+            className="absolute inset-0 cursor-default bg-black/20"
+            onClick={() => setSeriesDeleteMeetingId(null)}
+            type="button"
+          />
+          <div className="relative z-10 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-[#d9e0e7] bg-white p-5 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]">
+            <h2 className="text-lg font-semibold text-[#101820]">
+              Excluir evento recorrente
+            </h2>
+            <p className="mt-1 text-sm text-[#667085]">
+              Este evento faz parte de uma serie. O que deseja excluir?
+            </p>
+            <div className="mt-4 grid gap-2">
+              <button
+                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:opacity-55"
+                disabled={saving}
+                onClick={async () => {
+                  const meetingId = seriesDeleteMeetingId;
+
+                  setSeriesDeleteMeetingId(null);
+                  await onDeleteMeeting(meetingId);
+                }}
+                type="button"
+              >
+                Somente este evento
+              </button>
+              <button
+                className="h-10 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-55"
+                disabled={saving}
+                onClick={async () => {
+                  const target = sortedMeetings.find(
+                    (meeting) => meeting.id === seriesDeleteMeetingId,
+                  );
+                  const reference = target
+                    ? getChronosSeriesReference(target)
+                    : null;
+
+                  setSeriesDeleteMeetingId(null);
+
+                  if (!reference) {
+                    return;
+                  }
+
+                  // Exclui todas as ocorrencias da serie (mesma referencia).
+                  const seriesMeetings = sortedMeetings.filter(
+                    (meeting) =>
+                      getChronosSeriesReference(meeting) === reference,
+                  );
+
+                  for (const meeting of seriesMeetings) {
+                    await onDeleteMeeting(meeting.id);
+                  }
+                }}
+                type="button"
+              >
+                Todos os eventos da serie
+              </button>
+              <button
+                className="h-10 rounded-md px-3 text-sm font-semibold text-[#526078] transition hover:bg-[#f8fafc]"
+                onClick={() => setSeriesDeleteMeetingId(null)}
+                type="button"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
         </div>
       ) : null}
     </Surface>

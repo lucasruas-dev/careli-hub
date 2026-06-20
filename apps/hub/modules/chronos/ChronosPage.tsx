@@ -24,6 +24,7 @@ import {
   type ChronosSnapshot,
 } from "@/lib/chronos/types";
 import type { LocalRecording } from "@/lib/chronos/drive";
+import { expandChronosRecurrenceOccurrences } from "@/lib/chronos/calendar";
 import {
   PanteonLoadingMark,
   PanteonLoadingState,
@@ -141,9 +142,43 @@ export function ChronosPage() {
     setError(null);
 
     try {
-      const meeting = await createChronosMeeting(input);
+      const recurrenceRule = input.recurrence?.rrule;
+      const occurrences =
+        recurrenceRule && input.startsAt
+          ? expandChronosRecurrenceOccurrences({
+              endsAt: input.endsAt ?? null,
+              // Materializa um horizonte conservador (cada ocorrencia e uma
+              // reuniao real criada agora); a serie pode ser estendida depois.
+              horizonDays: 150,
+              maxOccurrences: 16,
+              rrule: recurrenceRule,
+              startsAt: input.startsAt,
+            })
+          : [];
 
-      replaceMeeting(meeting);
+      if (occurrences.length > 1) {
+        // Recorrencia materializada: cada ocorrencia vira uma reuniao real que
+        // herda a sala/tipo/participantes (mantendo Drive e ata organizados por
+        // sala). Todas levam a mesma referencia de serie e NAO enviam a RRULE
+        // (cada uma e um evento individual no Google, sem perder a sala).
+        const seriesReference = `chronos-series:${crypto.randomUUID()}`;
+
+        for (const occurrence of occurrences) {
+          const occurrenceMeeting = await createChronosMeeting({
+            ...input,
+            endsAt: occurrence.endsAt ?? undefined,
+            externalReference: seriesReference,
+            recurrence: undefined,
+            startsAt: occurrence.startsAt,
+          });
+
+          replaceMeeting(occurrenceMeeting);
+        }
+      } else {
+        const meeting = await createChronosMeeting(input);
+
+        replaceMeeting(meeting);
+      }
     } catch (createError) {
       setError(
         createError instanceof Error
