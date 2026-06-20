@@ -397,7 +397,7 @@ export function ChronosAgendaScreen({
   }
 
   return (
-    <Surface bordered className="relative grid h-[calc(100dvh-8rem)] min-h-[34rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[28px] border-[#d9e0e7] bg-white shadow-[0_18px_60px_rgb(16_24_32_/_0.08)]">
+    <Surface bordered className="relative grid h-[calc(100dvh-5.5rem)] min-h-[34rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[28px] border-[#d9e0e7] bg-white shadow-[0_18px_60px_rgb(16_24_32_/_0.08)]">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] px-5 py-4">
         <div className="flex flex-wrap items-center gap-1.5">
           <button
@@ -581,9 +581,20 @@ export function ChronosAgendaScreen({
             onCreate={async (input) => {
               await onCreate(input);
               setDraftStartsAt(null);
-              // Eventos recorrentes sao expandidos pelo Google; puxamos logo
-              // apos criar para as ocorrencias aparecerem sem esperar o ciclo.
+              // Eventos recorrentes sao expandidos pelo Google; o push leva
+              // alguns segundos para materializar as ocorrencias, entao puxamos
+              // algumas vezes para elas aparecerem sem esperar o ciclo de 3min.
               void runBackgroundGoogleCalendarSync();
+              if (input.recurrence) {
+                window.setTimeout(
+                  () => void runBackgroundGoogleCalendarSync(),
+                  4000,
+                );
+                window.setTimeout(
+                  () => void runBackgroundGoogleCalendarSync(),
+                  12000,
+                );
+              }
             }}
             profiles={profiles}
             rooms={rooms}

@@ -52,13 +52,19 @@ export function getChronosCurrentUserParticipant(
   }
 
   const email = currentUser.email?.trim().toLowerCase();
+  const matches = meeting.participants.filter(
+    (participant) =>
+      (currentUser.id && participant.userId === currentUser.id) ||
+      (email && participant.email?.trim().toLowerCase() === email),
+  );
 
+  // Se o usuario aparece tanto como host quanto como convidado (duplicidade no
+  // cadastro), o papel de host prevalece: o organizador nao confirma presenca
+  // no proprio evento.
   return (
-    meeting.participants.find(
-      (participant) =>
-        (currentUser.id && participant.userId === currentUser.id) ||
-        (email && participant.email?.trim().toLowerCase() === email),
-    ) ?? null
+    matches.find((participant) => participant.role === "host") ??
+    matches[0] ??
+    null
   );
 }
 

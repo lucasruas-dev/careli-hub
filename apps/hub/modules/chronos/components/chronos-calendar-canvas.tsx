@@ -323,7 +323,7 @@ function ChronosTimeGrid({
              expandRows, os slots esticam ate preencher a area visivel, entao o
              dia inteiro (00h-24h) cabe na tela sem rolar nem sobrar vazio
              (estilo Google Agenda). Em telas baixas vira o piso e rola. */
-          height: 1rem;
+          height: 0.85rem;
         }
         .chronos-google-calendar .fc-timegrid-slot-minor {
           border-top-style: solid;
