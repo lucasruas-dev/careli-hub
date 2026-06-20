@@ -50,8 +50,8 @@ const googleCalendarApiBaseUrl = "https://www.googleapis.com/calendar/v3";
 const googleCalendarProvider = "google-calendar";
 const googleCalendarDefaultTimezone = "America/Sao_Paulo";
 const googleCalendarStateTtlMinutes = 15;
-const googleCalendarSyncWindowPastDays = 7;
-const googleCalendarSyncWindowFutureDays = 180;
+const googleCalendarSyncWindowPastDays = 30;
+const googleCalendarSyncWindowFutureDays = 365;
 const maxGoogleCalendarDescriptionLength = 7_500;
 
 type ChronosGoogleCalendarConnectionRow = {

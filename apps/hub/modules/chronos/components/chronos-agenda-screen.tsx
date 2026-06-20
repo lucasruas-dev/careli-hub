@@ -144,6 +144,59 @@ export function ChronosAgendaScreen({
     void refreshGoogleCalendarStatus();
   }, [refreshGoogleCalendarStatus]);
 
+  const isGoogleCalendarConnected = Boolean(
+    googleCalendarStatus?.connection?.connected,
+  );
+
+  const runBackgroundGoogleCalendarSync = useCallback(async () => {
+    if (!isGoogleCalendarConnected) {
+      return;
+    }
+
+    try {
+      const result = await syncChronosGoogleCalendar("pull");
+
+      if (
+        result.status !== "skipped" &&
+        (result.synced > 0 || result.processed > 0)
+      ) {
+        await onReload();
+      }
+    } catch {
+      // Sincronizacao em segundo plano e silenciosa: falhas nao interrompem o uso.
+    }
+  }, [isGoogleCalendarConnected, onReload]);
+
+  useEffect(() => {
+    if (!isGoogleCalendarConnected) {
+      return;
+    }
+
+    // Reflete no Chronos as mudancas feitas no Google sem precisar clicar em
+    // "sincronizar": puxa ao abrir, ao voltar o foco e a cada intervalo curto.
+    // O pull e incremental (syncToken), entao cada execucao e leve.
+    void runBackgroundGoogleCalendarSync();
+
+    const intervalId = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        void runBackgroundGoogleCalendarSync();
+      }
+    }, 3 * 60 * 1000);
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        void runBackgroundGoogleCalendarSync();
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [isGoogleCalendarConnected, runBackgroundGoogleCalendarSync]);
+
   function openMeetingDetails(meetingId: string) {
     onSelectMeeting(meetingId);
     setDetailMeetingId(meetingId);
