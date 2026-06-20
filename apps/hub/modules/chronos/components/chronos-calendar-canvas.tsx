@@ -151,7 +151,10 @@ function ChronosTimeGrid({
   currentUser?: ChronosCurrentUser | null;
   onCreateAt: (date: Date) => void;
   onOpenFullEditor: (meetingId: string) => void;
-  onSelectMeeting: (meetingId: string) => void;
+  onSelectMeeting: (
+    meetingId: string,
+    anchor?: { x: number; y: number },
+  ) => void;
   onUpdate: (input: ChronosUpdateInput) => Promise<void>;
   selectedMeetingId: string;
 }) {
@@ -212,7 +215,10 @@ function ChronosTimeGrid({
             return;
           }
 
-          onSelectMeeting(info.event.id);
+          onSelectMeeting(info.event.id, {
+            x: info.jsEvent.clientX,
+            y: info.jsEvent.clientY,
+          });
         }}
         eventContent={(arg) => {
           const meeting = arg.event.extendedProps.meeting as ChronosMeeting;

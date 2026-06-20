@@ -71,6 +71,10 @@ export function ChronosAgendaScreen({
     useState<ChronosCalendarView>("week");
   const [cursorDate, setCursorDate] = useState(() => startOfDay(new Date()));
   const [detailMeetingId, setDetailMeetingId] = useState<string | null>(null);
+  const [detailPosition, setDetailPosition] = useState<{
+    left: number;
+    top: number;
+  } | null>(null);
   const [editingMeetingId, setEditingMeetingId] = useState<string | null>(null);
   const [draftStartsAt, setDraftStartsAt] = useState<string | null>(null);
   const [googleCalendarStatus, setGoogleCalendarStatus] =
@@ -197,9 +201,32 @@ export function ChronosAgendaScreen({
     };
   }, [isGoogleCalendarConnected, runBackgroundGoogleCalendarSync]);
 
-  function openMeetingDetails(meetingId: string) {
+  function openMeetingDetails(
+    meetingId: string,
+    anchor?: { x: number; y: number },
+  ) {
     onSelectMeeting(meetingId);
     setDetailMeetingId(meetingId);
+
+    if (!anchor) {
+      setDetailPosition(null);
+      return;
+    }
+
+    // Ancora o popup perto do evento clicado (estilo Google Agenda), com
+    // clamp para nao sair da viewport.
+    const popupWidth = 384;
+    const popupHeight = 520;
+    const left = Math.min(
+      Math.max(12, anchor.x + 16),
+      Math.max(12, window.innerWidth - popupWidth - 12),
+    );
+    const top = Math.min(
+      Math.max(12, anchor.y - 40),
+      Math.max(12, window.innerHeight - popupHeight - 12),
+    );
+
+    setDetailPosition({ left, top });
   }
 
   function openMeetingEditor(meetingId: string) {
@@ -377,25 +404,34 @@ export function ChronosAgendaScreen({
       </div>
 
       {detailMeeting ? (
-        <div className="absolute inset-0 z-40 flex items-start justify-center px-4 pt-24">
+        <div className="fixed inset-0 z-40">
           <button
             aria-label="Fechar detalhes do evento"
             className="absolute inset-0 cursor-default bg-transparent"
             onClick={() => setDetailMeetingId(null)}
             type="button"
           />
-          <ChronosCalendarEventDetailsPopup
-            currentUser={currentUser}
-            meeting={detailMeeting}
-            onClose={() => setDetailMeetingId(null)}
-            onDelete={async (meetingId) => {
-              await onDeleteMeeting(meetingId);
-              setDetailMeetingId(null);
-            }}
-            onEdit={openMeetingEditor}
-            onUpdateParticipantResponse={onRespondToMeeting}
-            saving={saving}
-          />
+          <div
+            className="absolute max-w-[calc(100vw-1.5rem)]"
+            style={
+              detailPosition
+                ? { left: detailPosition.left, top: detailPosition.top }
+                : { left: "50%", top: "6rem", transform: "translateX(-50%)" }
+            }
+          >
+            <ChronosCalendarEventDetailsPopup
+              currentUser={currentUser}
+              meeting={detailMeeting}
+              onClose={() => setDetailMeetingId(null)}
+              onDelete={async (meetingId) => {
+                await onDeleteMeeting(meetingId);
+                setDetailMeetingId(null);
+              }}
+              onEdit={openMeetingEditor}
+              onUpdateParticipantResponse={onRespondToMeeting}
+              saving={saving}
+            />
+          </div>
         </div>
       ) : null}
 
