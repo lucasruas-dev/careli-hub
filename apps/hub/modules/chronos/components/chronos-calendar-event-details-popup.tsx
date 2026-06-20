@@ -75,8 +75,13 @@ export function ChronosCalendarEventDetailsPopup({
     meeting,
     currentUser,
   );
+  const isEventHost = Boolean(
+    currentUser?.id && meeting.hostUserId === currentUser.id,
+  );
   const canAnswerRsvp = Boolean(
-    currentUserParticipant && currentUserParticipant.role !== "host",
+    !isEventHost &&
+      currentUserParticipant &&
+      currentUserParticipant.role !== "host",
   );
   const currentUserRsvp = currentUserParticipant
     ? getChronosParticipantRsvpStatus(currentUserParticipant)
@@ -582,7 +587,13 @@ function getParticipantInitials(displayName: string) {
 
 function getChronosDisplayParticipants(meeting: ChronosMeeting): ChronosParticipant[] {
   const persistedParticipants = meeting.participants.filter(
-    (participant) => participant.role !== "host",
+    (participant) =>
+      participant.role !== "host" &&
+      !(
+        meeting.hostUserId !== null &&
+        meeting.hostUserId !== undefined &&
+        participant.userId === meeting.hostUserId
+      ),
   );
 
   if (persistedParticipants.length > 0) {

@@ -440,7 +440,7 @@ export function ChronosCalendarEventPopup({
 
   return (
     <form
-      className="relative z-10 grid max-h-[calc(100vh-8rem)] w-full max-w-[34rem] gap-3 overflow-auto rounded-lg border border-[#d9e0e7] bg-white p-4 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]"
+      className="relative z-10 grid max-h-[calc(100vh-8rem)] w-full max-w-[34rem] gap-3 overflow-y-auto overflow-x-hidden rounded-lg border border-[#d9e0e7] bg-white p-4 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]"
       onSubmit={handleSubmit}
       onClick={(event) => event.stopPropagation()}
     >
@@ -852,11 +852,11 @@ export function ChronosCalendarEventPopup({
                 className="mt-2 justify-self-center text-[#667085]"
                 size={17}
               />
-              <div className="grid gap-2 sm:grid-cols-3">
+              <div className="grid min-w-0 gap-2 sm:grid-cols-3">
                 <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
                   Notificacao
                   <input
-                    className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    className="h-9 w-full min-w-0 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
                     min={0}
                     onChange={(event) => setNotificationMinutes(event.target.value)}
                     type="number"
@@ -866,7 +866,7 @@ export function ChronosCalendarEventPopup({
                 <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
                   Agenda
                   <select
-                    className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    className="h-9 w-full min-w-0 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
                     onChange={(event) =>
                       setAvailability(event.target.value as "busy" | "free")
                     }
@@ -879,7 +879,7 @@ export function ChronosCalendarEventPopup({
                 <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
                   Visibilidade
                   <select
-                    className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    className="h-9 w-full min-w-0 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
                     onChange={(event) =>
                       setVisibility(
                         event.target.value as "default" | "private" | "public",

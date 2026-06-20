@@ -72,6 +72,17 @@ export function getChronosCurrentUserRsvpStatus(
   meeting: ChronosMeeting,
   currentUser?: ChronosCurrentUser | null,
 ): ChronosRsvpStatus {
+  // O organizador (host_user_id do evento) nunca confirma presenca no proprio
+  // evento. Checamos direto o host_user_id porque o sync pode reescrever os
+  // participantes e rebaixar o criador para "participant" pendente.
+  if (
+    currentUser?.id &&
+    meeting.hostUserId &&
+    currentUser.id === meeting.hostUserId
+  ) {
+    return "accepted";
+  }
+
   const participant = getChronosCurrentUserParticipant(meeting, currentUser);
 
   if (!participant || participant.role === "host") {
