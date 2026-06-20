@@ -289,6 +289,7 @@ type GoogleCalendarEvent = {
   id?: string;
   location?: string;
   recurrence?: string[];
+  recurringEventId?: string;
   reminders?: {
     overrides?: Array<{
       method: "email" | "popup";
@@ -1929,6 +1930,7 @@ async function importGoogleEventAsChronosMeeting(
           htmlLink: input.event.htmlLink,
           inboundSyncedAt: new Date().toISOString(),
           provider: googleCalendarProvider,
+          recurringEventId: input.event.recurringEventId ?? null,
           source: "google",
           status: "synced",
         },
