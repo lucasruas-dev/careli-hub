@@ -152,6 +152,7 @@ function buildChronosMinutesPrintHtml({
       h1, h2, h3, p, ul, ol { margin: 0; }
       h1 { font-size: 13pt; font-weight: 700; line-height: 1.5; }
       h2 { font-size: 10pt; font-weight: 700; line-height: 1.5; margin-top: 10px; }
+      h3 { color: #344054; font-size: 9.5pt; font-weight: 700; line-height: 1.5; margin-top: 7px; }
       p { line-height: 1.5; }
       ul, ol { padding-left: 16px; }
       li { line-height: 1.5; margin: 0; }
@@ -294,6 +295,21 @@ export function buildChronosMinutesBodyHtml(minutes: string) {
     }
 
     flushTable();
+
+    const headingMatch = line.match(/^(#{1,6})\s+(.+)$/);
+
+    if (headingMatch) {
+      flushList();
+
+      const headingTag = (headingMatch[1] ?? "").length <= 2 ? "h2" : "h3";
+
+      chunks.push(
+        `<${headingTag}>${formatChronosMinutesInline(
+          headingMatch[2] ?? "",
+        )}</${headingTag}>`,
+      );
+      continue;
+    }
 
     if (/^[-*]\s+/.test(line)) {
       listItems.push(formatChronosMinutesInline(line.replace(/^[-*]\s+/, "")));
