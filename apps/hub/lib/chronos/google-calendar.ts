@@ -1590,9 +1590,14 @@ async function pullChronosEventsFromGoogleCalendar(
       forceFullSync: options.forceFullSync === true,
     });
   } catch (error) {
+    // Um marcador de pagina (PAGE:) tambem pode expirar; nesse caso recomecamos
+    // a carga do presente em vez de falhar.
+    const wasPaging =
+      activeConnection.sync_token?.startsWith("PAGE:") ?? false;
+
     if (
       options.forceFullSync === true ||
-      !isExpiredGoogleCalendarSyncTokenError(error) ||
+      (!isExpiredGoogleCalendarSyncTokenError(error) && !wasPaging) ||
       !activeConnection.sync_token
     ) {
       await updateGoogleCalendarConnectionError(
@@ -1707,8 +1712,13 @@ async function pullChronosEventsFromGoogleCalendar(
     .update({
       last_error: lastEventError,
       last_synced_at: new Date().toISOString(),
-      sync_token: listResult.nextSyncToken ?? activeConnection.sync_token,
-      sync_token_status: listResult.nextSyncToken ? "active" : "missing",
+      sync_token: listResult.pendingPageToken
+        ? `PAGE:${listResult.pendingPageToken}`
+        : listResult.nextSyncToken ?? activeConnection.sync_token,
+      sync_token_status:
+        listResult.pendingPageToken || listResult.nextSyncToken
+          ? "active"
+          : "missing",
     })
     .eq("id", activeConnection.id);
 
@@ -1788,9 +1798,19 @@ async function listGoogleCalendarEvents({
     singleEvents: "true",
   });
 
-  if (connection.sync_token && !forceFullSync) {
+  const savedToken = connection.sync_token ?? undefined;
+  const isPageContinuation =
+    !forceFullSync && (savedToken?.startsWith("PAGE:") ?? false);
+
+  if (isPageContinuation && savedToken) {
+    // Continuacao de uma carga grande que parou no teto de paginas: o pageToken
+    // e opaco e ja carrega o contexto (orderBy/timeMin/timeMax) da consulta
+    // original, entao seguimos so com ele, avancando a agenda em blocos a cada
+    // sincronizacao ate cobrir tudo.
+    pageToken = savedToken.slice("PAGE:".length);
+  } else if (savedToken && !forceFullSync) {
     baseParams.set("showDeleted", "true");
-    baseParams.set("syncToken", connection.sync_token);
+    baseParams.set("syncToken", savedToken);
   } else {
     // orderBy=startTime faz o Google devolver os eventos em ordem cronologica,
     // entao agendas enormes recebem primeiro os mais proximos (semana/mes atual
@@ -1830,7 +1850,9 @@ async function listGoogleCalendarEvents({
     pageCount += 1;
   } while (pageToken && pageCount < maxSyncPages);
 
-  return { events, nextSyncToken };
+  // Se ainda sobrou pageToken, paramos no teto: devolvemos como pendente para a
+  // proxima sincronizacao continuar a carga de onde parou.
+  return { events, nextSyncToken, pendingPageToken: pageToken };
 }
 
 async function applyGoogleEventToChronosMeeting(
