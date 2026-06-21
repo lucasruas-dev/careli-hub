@@ -1784,11 +1784,12 @@ async function listGoogleCalendarEvents({
   forceFullSync?: boolean;
 }) {
   const events: GoogleCalendarEvent[] = [];
-  // Teto de seguranca de paginas por sincronizacao. Como cada evento e gravado
-  // individualmente, lotes grandes estouravam o tempo da funcao (504). Lotes de
-  // ~750 eventos por execucao cabem com folga; com orderBy=startTime vem
-  // primeiro a janela proxima e a paginacao persistente avanca o restante.
-  const maxSyncPages = 3;
+  // Teto de paginas por sincronizacao. Cada evento e gravado individualmente
+  // (protocolo sequencial + insert + participantes), entao lotes grandes
+  // estouram o tempo da funcao (504). 1 pagina (~250 eventos) cabe com folga;
+  // a paginacao persistente avanca o restante a cada sync. A solucao definitiva
+  // (gravar em lote, p/ subir esse teto) faz parte da auditoria de eficiencia.
+  const maxSyncPages = 1;
   let pageCount = 0;
   let pageToken: string | undefined;
   let nextSyncToken: string | undefined;
