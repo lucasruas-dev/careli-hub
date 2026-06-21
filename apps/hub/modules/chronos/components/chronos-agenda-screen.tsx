@@ -120,6 +120,11 @@ export function ChronosAgendaScreen({
   const [seriesDeleteMeetingId, setSeriesDeleteMeetingId] = useState<
     string | null
   >(null);
+  const [seriesEditPending, setSeriesEditPending] = useState<{
+    input: ChronosUpdateInput;
+    reference: string;
+    startShiftMs: number;
+  } | null>(null);
   const [draftStartsAt, setDraftStartsAt] = useState<string | null>(null);
   const [googleCalendarStatus, setGoogleCalendarStatus] =
     useState<ChronosGoogleCalendarStatus | null>(null);
@@ -562,6 +567,31 @@ export function ChronosAgendaScreen({
               setEditingMeetingId(null);
             }}
             onSave={async (input) => {
+              const reference = editingMeeting
+                ? getChronosSeriesReference(editingMeeting)
+                : null;
+
+              // Evento recorrente: pergunta o escopo (este / toda a serie). Para
+              // "toda a serie" aplicamos o mesmo deslocamento de horario que foi
+              // feito neste evento a cada ocorrencia, preservando as datas.
+              if (reference) {
+                const originalStart = editingMeeting?.startsAt
+                  ? new Date(editingMeeting.startsAt).getTime()
+                  : null;
+                const nextStart =
+                  input.action === "update_schedule" && input.startsAt
+                    ? new Date(input.startsAt).getTime()
+                    : null;
+                const startShiftMs =
+                  originalStart !== null && nextStart !== null
+                    ? nextStart - originalStart
+                    : 0;
+
+                setSeriesEditPending({ input, reference, startShiftMs });
+                setEditingMeetingId(null);
+                return;
+              }
+
               await onUpdate(input);
               setEditingMeetingId(null);
             }}
@@ -632,6 +662,91 @@ export function ChronosAgendaScreen({
               <button
                 className="h-10 rounded-md px-3 text-sm font-semibold text-[#526078] transition hover:bg-[#f8fafc]"
                 onClick={() => setSeriesDeleteMeetingId(null)}
+                type="button"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+      {seriesEditPending ? (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <button
+            aria-label="Cancelar edicao"
+            className="absolute inset-0 cursor-default bg-black/20"
+            onClick={() => setSeriesEditPending(null)}
+            type="button"
+          />
+          <div className="relative z-10 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-[#d9e0e7] bg-white p-5 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]">
+            <h2 className="text-lg font-semibold text-[#101820]">
+              Editar evento recorrente
+            </h2>
+            <p className="mt-1 text-sm text-[#667085]">
+              Aplicar as alteracoes a quais eventos da serie?
+            </p>
+            <div className="mt-4 grid gap-2">
+              <button
+                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:opacity-55"
+                disabled={saving}
+                onClick={async () => {
+                  const pending = seriesEditPending;
+
+                  setSeriesEditPending(null);
+                  await onUpdate(pending.input);
+                }}
+                type="button"
+              >
+                Somente este evento
+              </button>
+              <button
+                className="h-10 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:opacity-55"
+                disabled={saving}
+                onClick={async () => {
+                  const pending = seriesEditPending;
+
+                  setSeriesEditPending(null);
+
+                  const seriesMeetings = sortedMeetings.filter(
+                    (meeting) =>
+                      getChronosSeriesReference(meeting) === pending.reference,
+                  );
+
+                  // Aplica as alteracoes a cada ocorrencia, deslocando o horario
+                  // igual ao deste evento e preservando a data de cada uma.
+                  for (const meeting of seriesMeetings) {
+                    if (pending.input.action === "update_schedule") {
+                      await onUpdate({
+                        ...pending.input,
+                        endsAt: meeting.endsAt
+                          ? new Date(
+                              new Date(meeting.endsAt).getTime() +
+                                pending.startShiftMs,
+                            ).toISOString()
+                          : undefined,
+                        meetingId: meeting.id,
+                        startsAt: meeting.startsAt
+                          ? new Date(
+                              new Date(meeting.startsAt).getTime() +
+                                pending.startShiftMs,
+                            ).toISOString()
+                          : undefined,
+                      });
+                    } else {
+                      await onUpdate({
+                        ...pending.input,
+                        meetingId: meeting.id,
+                      });
+                    }
+                  }
+                }}
+                type="button"
+              >
+                Todos os eventos da serie
+              </button>
+              <button
+                className="h-10 rounded-md px-3 text-sm font-semibold text-[#526078] transition hover:bg-[#f8fafc]"
+                onClick={() => setSeriesEditPending(null)}
                 type="button"
               >
                 Cancelar
