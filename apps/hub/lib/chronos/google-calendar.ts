@@ -1784,13 +1784,18 @@ async function listGoogleCalendarEvents({
   let nextSyncToken: string | undefined;
   const baseParams = new URLSearchParams({
     maxResults: "250",
-    showDeleted: "true",
     singleEvents: "true",
   });
 
   if (connection.sync_token && !forceFullSync) {
+    baseParams.set("showDeleted", "true");
     baseParams.set("syncToken", connection.sync_token);
   } else {
+    // orderBy=startTime faz o Google devolver os eventos em ordem cronologica,
+    // entao agendas enormes recebem primeiro os mais proximos (semana/mes atual
+    // completos) dentro do teto de paginas, em vez de um recorte arbitrario.
+    // (orderBy exige singleEvents=true e e incompativel com showDeleted.)
+    baseParams.set("orderBy", "startTime");
     baseParams.set(
       "timeMin",
       new Date(
