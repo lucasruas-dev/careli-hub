@@ -566,6 +566,31 @@ export function ChronosAgendaScreen({
               await onDeleteMeeting(meetingId);
               setEditingMeetingId(null);
             }}
+            onRecreateSeries={async (createInput) => {
+              const target = editingMeeting;
+
+              setEditingMeetingId(null);
+
+              if (!target) {
+                return;
+              }
+
+              // Refaz a serie: apaga as ocorrencias atuais (ou o evento unico) e
+              // recria com a nova regra — onCreate materializa as ocorrencias.
+              const reference = getChronosSeriesReference(target);
+              const toRemove = reference
+                ? sortedMeetings.filter(
+                    (meeting) =>
+                      getChronosSeriesReference(meeting) === reference,
+                  )
+                : [target];
+
+              for (const meeting of toRemove) {
+                await onDeleteMeeting(meeting.id);
+              }
+
+              await onCreate(createInput);
+            }}
             onSave={async (input) => {
               const reference = editingMeeting
                 ? getChronosSeriesReference(editingMeeting)

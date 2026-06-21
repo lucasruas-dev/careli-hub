@@ -1,6 +1,11 @@
 import type { ApoloDashboardData } from "@/lib/apolo/types";
 import { searchChronosInternalInvitees } from "@/lib/chronos/client";
-import { toDateTimeLocalValue } from "@/lib/chronos/calendar";
+import {
+  buildChronosRecurrenceInput,
+  getChronosRecurrenceOptions,
+  toDateTimeLocalValue,
+  type ChronosRecurrenceMode,
+} from "@/lib/chronos/calendar";
 import {
   getInviteeKey,
   hasChronosInviteeContact,
@@ -9,7 +14,11 @@ import {
   type ChronosAgendaInvitee,
   type ChronosInviteeSource,
 } from "@/lib/chronos/invitees";
-import type { ChronosMeeting, ChronosUpdateInput } from "@/lib/chronos/types";
+import type {
+  ChronosCreateMeetingInput,
+  ChronosMeeting,
+  ChronosUpdateInput,
+} from "@/lib/chronos/types";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import {
@@ -18,6 +27,7 @@ import {
   ChevronDown,
   ChevronUp,
   Clock3,
+  Repeat2,
   Save,
   Search,
   ShieldCheck,
@@ -31,6 +41,7 @@ type ChronosCalendarEventEditorModalProps = {
   meeting: ChronosMeeting;
   onClose: () => void;
   onDelete: (meetingId: string) => Promise<void>;
+  onRecreateSeries: (input: ChronosCreateMeetingInput) => Promise<void>;
   onSave: (input: ChronosUpdateInput) => Promise<void>;
   saving: boolean;
 };
@@ -46,6 +57,7 @@ export function ChronosCalendarEventEditorModal({
   meeting,
   onClose,
   onDelete,
+  onRecreateSeries,
   onSave,
   saving,
 }: ChronosCalendarEventEditorModalProps) {
@@ -103,6 +115,12 @@ export function ChronosCalendarEventEditorModal({
     null,
   );
   const [showMoreOptions, setShowMoreOptions] = useState(false);
+  const [recurrenceMode, setRecurrenceMode] =
+    useState<ChronosRecurrenceMode>("none");
+  const isRecurringSeries =
+    typeof meeting.externalReference === "string" &&
+    meeting.externalReference.startsWith("chronos-series:");
+  const recurrenceOptions = getChronosRecurrenceOptions(new Date(startsAt));
   const [notificationMinutes, setNotificationMinutes] = useState(
     String(calendarOptions.notificationMinutes ?? 10),
   );
@@ -224,33 +242,63 @@ export function ChronosCalendarEventEditorModal({
 
   async function handleSave() {
     const schedule = buildSchedulePayload({ allDay, endsAt, startsAt });
+    const calendarOptions = {
+      allDay,
+      availability,
+      guestPermissions: {
+        canInviteOthers: guestCanInviteOthers,
+        canModify: guestCanModify,
+        canSeeGuestList: guestCanSeeList,
+      },
+      notificationMinutes: Number(notificationMinutes) || 10,
+      visibility,
+    };
+    const participants = selectedInvitees.map((invitee) => ({
+      displayName: invitee.displayName,
+      email: invitee.email,
+      organization:
+        invitee.organization ??
+        (invitee.source === "internal" ? "Careli" : undefined),
+      role: "participant" as const,
+      userId: invitee.userId,
+    }));
+    const recurrence = buildChronosRecurrenceInput({
+      customEnd: "never",
+      customFrequency: "weekly",
+      customInterval: 1,
+      customUntil: "",
+      mode: recurrenceMode,
+      startsAt,
+    });
+
+    // Escolher uma recorrencia aqui REFAZ a serie: apaga as ocorrencias atuais
+    // e recria com a nova regra a partir deste evento, mantendo sala, tipo e
+    // convidados.
+    if (recurrence) {
+      await onRecreateSeries({
+        agenda: parseLines(agenda),
+        calendarOptions,
+        endsAt: schedule.endsAt ?? undefined,
+        meetingType: meeting.meetingType,
+        objective,
+        participants,
+        recurrence,
+        roomId: meeting.roomId ?? undefined,
+        startsAt: schedule.startsAt ?? undefined,
+        title,
+      });
+
+      return;
+    }
 
     await onSave({
       action: "update_schedule",
       agenda: parseLines(agenda),
-      calendarOptions: {
-        allDay,
-        availability,
-        guestPermissions: {
-          canInviteOthers: guestCanInviteOthers,
-          canModify: guestCanModify,
-          canSeeGuestList: guestCanSeeList,
-        },
-        notificationMinutes: Number(notificationMinutes) || 10,
-        visibility,
-      },
+      calendarOptions,
       endsAt: schedule.endsAt,
       meetingId: meeting.id,
       objective,
-      participants: selectedInvitees.map((invitee) => ({
-        displayName: invitee.displayName,
-        email: invitee.email,
-        organization:
-          invitee.organization ??
-          (invitee.source === "internal" ? "Careli" : undefined),
-        role: "participant" as const,
-        userId: invitee.userId,
-      })),
+      participants,
       startsAt: schedule.startsAt,
       title,
     });
@@ -542,6 +590,36 @@ export function ChronosCalendarEventEditorModal({
 
             {showMoreOptions ? (
               <div className="grid gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
+                <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
+                  <Repeat2
+                    aria-hidden="true"
+                    className="mt-2 justify-self-center text-[#667085]"
+                    size={17}
+                  />
+                  <label className="grid min-w-0 gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                    Repete
+                    <select
+                      className="h-9 w-full min-w-0 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm font-medium normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                      onChange={(event) =>
+                        setRecurrenceMode(
+                          event.target.value as ChronosRecurrenceMode,
+                        )
+                      }
+                      value={recurrenceMode}
+                    >
+                      {recurrenceOptions.map((option) => (
+                        <option key={option.id} value={option.id}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <span className="text-[10px] font-medium normal-case text-[#667085]">
+                      {isRecurringSeries
+                        ? "Escolher uma opcao refaz a serie inteira com a nova frequencia (a partir deste evento)."
+                        : "Escolha para transformar este evento em uma serie recorrente."}
+                    </span>
+                  </label>
+                </div>
                 <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
                   <Clock3
                     aria-hidden="true"
