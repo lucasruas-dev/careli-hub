@@ -386,7 +386,7 @@ export function ChronosAgendaScreen({
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
           <div className="hidden flex-wrap items-center gap-2 text-[11px] font-semibold text-[#667085] xl:flex">
-            {(["alignment", "results", "formal", "executive"] as const).map(
+            {(["alignment", "results", "formal"] as const).map(
               (type) => {
                 const visual = chronosMeetingTypeVisuals[type];
 
