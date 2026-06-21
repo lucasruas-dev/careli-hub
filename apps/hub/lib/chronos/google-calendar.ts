@@ -50,8 +50,8 @@ const googleCalendarApiBaseUrl = "https://www.googleapis.com/calendar/v3";
 const googleCalendarProvider = "google-calendar";
 const googleCalendarDefaultTimezone = "America/Sao_Paulo";
 const googleCalendarStateTtlMinutes = 15;
-const googleCalendarSyncWindowPastDays = 30;
-const googleCalendarSyncWindowFutureDays = 365;
+const googleCalendarSyncWindowPastDays = 7;
+const googleCalendarSyncWindowFutureDays = 60;
 const maxGoogleCalendarDescriptionLength = 7_500;
 
 type ChronosGoogleCalendarConnectionRow = {
@@ -1784,12 +1784,11 @@ async function listGoogleCalendarEvents({
   forceFullSync?: boolean;
 }) {
   const events: GoogleCalendarEvent[] = [];
-  // Teto de seguranca de paginas por sincronizacao. Agendas muito grandes
-  // (centenas de eventos por dia) gerariam dezenas de paginas e estourariam o
-  // tempo limite da funcao. Limitamos a ~1500 eventos por execucao (cada um e
-  // gravado individualmente). Com orderBy=startTime, vem primeiro a janela
-  // proxima (semana/mes atual) completa.
-  const maxSyncPages = 6;
+  // Teto de seguranca de paginas por sincronizacao. Como cada evento e gravado
+  // individualmente, lotes grandes estouravam o tempo da funcao (504). Lotes de
+  // ~750 eventos por execucao cabem com folga; com orderBy=startTime vem
+  // primeiro a janela proxima e a paginacao persistente avanca o restante.
+  const maxSyncPages = 3;
   let pageCount = 0;
   let pageToken: string | undefined;
   let nextSyncToken: string | undefined;
