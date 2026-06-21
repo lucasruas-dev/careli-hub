@@ -236,15 +236,16 @@ export function ChronosAgendaScreen({
     }
 
     // Reflete no Chronos as mudancas feitas no Google sem precisar clicar em
-    // "sincronizar": puxa ao abrir, ao voltar o foco e a cada intervalo curto.
-    // O pull e incremental (syncToken), entao cada execucao e leve.
+    // "sincronizar": puxa ao abrir, ao voltar o foco e a cada intervalo. O
+    // intervalo e espacado (20min) porque em agendas grandes cada sync e
+    // custoso; o botao "G" sincroniza na hora quando precisar.
     void runBackgroundGoogleCalendarSync();
 
     const intervalId = window.setInterval(() => {
       if (document.visibilityState === "visible") {
         void runBackgroundGoogleCalendarSync();
       }
-    }, 3 * 60 * 1000);
+    }, 20 * 60 * 1000);
 
     function handleVisibilityChange() {
       if (document.visibilityState === "visible") {
