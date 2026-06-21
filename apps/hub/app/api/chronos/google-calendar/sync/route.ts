@@ -9,6 +9,10 @@ import type { ChronosGoogleCalendarSyncDirection } from "@/lib/chronos/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// Agendas grandes processam muitos eventos por sincronizacao; o tempo padrao
+// (curto) estourava com 504. Damos uma janela maior, ainda contida pelo teto
+// de paginas do pull.
+export const maxDuration = 60;
 
 export async function POST(request: NextRequest) {
   const authorization = await authorizeChronosRequest(request);

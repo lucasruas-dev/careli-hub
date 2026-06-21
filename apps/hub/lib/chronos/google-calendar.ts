@@ -1776,9 +1776,10 @@ async function listGoogleCalendarEvents({
   const events: GoogleCalendarEvent[] = [];
   // Teto de seguranca de paginas por sincronizacao. Agendas muito grandes
   // (centenas de eventos por dia) gerariam dezenas de paginas e estourariam o
-  // tempo limite da funcao. Limitamos a ~2500 eventos por execucao; como a
-  // sincronizacao guarda o syncToken, a proxima rodada continua o restante.
-  const maxSyncPages = 10;
+  // tempo limite da funcao. Limitamos a ~1500 eventos por execucao (cada um e
+  // gravado individualmente). Com orderBy=startTime, vem primeiro a janela
+  // proxima (semana/mes atual) completa.
+  const maxSyncPages = 6;
   let pageCount = 0;
   let pageToken: string | undefined;
   let nextSyncToken: string | undefined;
