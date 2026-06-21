@@ -112,7 +112,17 @@ export function ChronosCalendarEventDetailsPopup({
   }
 
   async function requestDelete() {
-    if (!window.confirm(`Excluir "${meeting.title}" da agenda Chronos?`)) {
+    const isRecurringSeries =
+      typeof meeting.externalReference === "string" &&
+      meeting.externalReference.startsWith("chronos-series:");
+
+    // Eventos de serie recorrente abrem o dialogo de escopo (somente este /
+    // toda a serie) no calendario — nao usamos o confirm generico, que so
+    // removeria uma ocorrencia.
+    if (
+      !isRecurringSeries &&
+      !window.confirm(`Excluir "${meeting.title}" da agenda Chronos?`)
+    ) {
       return;
     }
 

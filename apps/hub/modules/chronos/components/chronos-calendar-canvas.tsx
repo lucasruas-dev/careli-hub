@@ -169,19 +169,16 @@ function ChronosTimeGrid({
       const allDay = isChronosAllDayMeeting(meeting);
       const rsvpStatus = getChronosCurrentUserRsvpStatus(meeting, currentUser);
 
-      const eventColor = getChronosCalendarEventColor(meeting);
-      // Igual ao Google Agenda: confirmados tem fundo preenchido + texto branco;
-      // pendente/talvez/recusado ficam com fundo branco, borda e TEXTO na cor do
-      // evento. As cores vao inline porque o FullCalendar propaga o textColor
-      // tambem para dentro do evento — deixar branco fixo aqui tornava o texto
-      // invisivel sobre o fundo branco dos nao confirmados.
-      const isConfirmed = rsvpStatus === "accepted";
+      // Tom claro uniforme (estilo Google): fundo pastel + texto na cor do tipo.
+      // O FullCalendar propaga o textColor para dentro do evento, entao o texto
+      // herda a cor escura definida aqui (sempre legivel sobre o fundo claro).
+      const palette = getChronosCalendarEventPalette(meeting);
 
       return {
         allDay,
-        backgroundColor: isConfirmed ? eventColor : "#ffffff",
-        borderColor: eventColor,
-        textColor: isConfirmed ? "#ffffff" : eventColor,
+        backgroundColor: palette.background,
+        borderColor: palette.border,
+        textColor: palette.text,
         classNames: [
           "chronos-google-event",
           meeting.id === selectedMeetingId ? "chronos-google-event-selected" : "",
@@ -678,25 +675,36 @@ function getChronosFullCalendarEnd(meeting: ChronosMeeting, allDay: boolean) {
   return toDateOnly(exclusiveEnd);
 }
 
-function getChronosCalendarEventColor(meeting: ChronosMeeting) {
+type ChronosCalendarEventPalette = {
+  background: string;
+  border: string;
+  text: string;
+};
+
+// Paleta CLARA estilo Google Agenda: fundo pastel + texto/borda na cor do tipo.
+// Tons suaves para nao cansar a vista (pedido do Lucas), mantendo a identidade
+// de cor por tipo de reuniao e texto sempre legivel.
+function getChronosCalendarEventPalette(
+  meeting: ChronosMeeting,
+): ChronosCalendarEventPalette {
   if (getChronosCalendarEventKind(meeting) === "out_of_office") {
-    return "#0ea5e9";
+    return { background: "#e1f5fe", border: "#b3e5fc", text: "#0277bd" };
   }
 
   switch (meeting.meetingType) {
     case "results":
-      return "#078b4f"; // Resultado — verde
+      return { background: "#e6f4ea", border: "#a8dab5", text: "#188038" };
     case "formal":
-      return "#d97706"; // Comunicado — ambar
+      return { background: "#fef7e0", border: "#fad776", text: "#b06000" };
     case "client":
-      return "#A07C3B"; // Reuniao com cliente — dourado Careli
+      return { background: "#f6efe2", border: "#e0cda0", text: "#7a5a1f" };
     case "executive":
-      return "#1f2a37"; // Executiva — grafite
+      return { background: "#eceff1", border: "#cfd8dc", text: "#37474f" };
     case "external":
-      return "#526078"; // Externa — cinza
+      return { background: "#eef1f6", border: "#cfd8dc", text: "#455a64" };
     case "alignment":
     default:
-      return "#0b66d8"; // Alinhamento — azul
+      return { background: "#e8f0fe", border: "#aecbfa", text: "#1967d2" };
   }
 }
 

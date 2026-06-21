@@ -440,7 +440,7 @@ export function ChronosCalendarEventPopup({
 
   return (
     <form
-      className="relative z-10 grid max-h-[calc(100vh-8rem)] w-full max-w-[34rem] gap-3 overflow-y-auto overflow-x-hidden rounded-lg border border-[#d9e0e7] bg-white p-4 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]"
+      className="relative z-10 grid max-h-[calc(100vh-6rem)] w-full max-w-[44rem] gap-3 overflow-y-auto overflow-x-hidden rounded-lg border border-[#d9e0e7] bg-white p-5 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]"
       onSubmit={handleSubmit}
       onClick={(event) => event.stopPropagation()}
     >
@@ -661,7 +661,7 @@ export function ChronosCalendarEventPopup({
             {locationMode === "online" ? (
               <div className="grid gap-1.5">
                 <select
-                  className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm text-[#344054] outline-none transition focus:border-[#A07C3B] focus:bg-[#fafbfc]"
+                  className="h-9 w-full min-w-0 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm text-[#344054] outline-none transition focus:border-[#A07C3B] focus:bg-[#fafbfc]"
                   disabled={rooms.length === 0}
                   onChange={(event) => setRoomId(event.target.value)}
                   value={roomId}
