@@ -169,14 +169,16 @@ function ChronosTimeGrid({
       const allDay = isChronosAllDayMeeting(meeting);
       const rsvpStatus = getChronosCurrentUserRsvpStatus(meeting, currentUser);
 
-      // Tom claro uniforme (estilo Google): fundo pastel + texto na cor do tipo.
-      // O FullCalendar propaga o textColor para dentro do evento, entao o texto
-      // herda a cor escura definida aqui (sempre legivel sobre o fundo claro).
+      // Paleta clara (estilo Google) + distincao visual de presenca: o que voce
+      // confirmou ou organiza (host) fica com o fundo pastel preenchido; o que
+      // ainda nao aceitou (e nao e host) fica com fundo BRANCO, so com a borda e
+      // o texto na cor do tipo. Assim da para bater o olho e saber o seu status.
       const palette = getChronosCalendarEventPalette(meeting);
+      const isConfirmed = rsvpStatus === "accepted";
 
       return {
         allDay,
-        backgroundColor: palette.background,
+        backgroundColor: isConfirmed ? palette.background : "#ffffff",
         borderColor: palette.border,
         textColor: palette.text,
         classNames: [
