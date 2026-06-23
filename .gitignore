@@ -43,3 +43,4 @@ yarn-error.log*
 .cache/
 .codex-artifacts/
 .codex-deploy/
+.codex-tmp/

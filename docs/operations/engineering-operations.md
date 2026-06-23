@@ -38417,3 +38417,32 @@ Conclusao:
 - O recorte reduz bloat futuro, melhora a fluidez percebida e agora tambem tem a camada Supabase minima aplicada com RLS/policies/indices.
 - O impacto pratico esperado e abrir canais mais rapido, evitar sumico temporario de mensagens, reduzir payload futuro e dar suporte melhor ao realtime sem indice duplicado.
 - Precisa de acao agora: publicar o codigo do recorte ainda exige Safety Gate/recorte limpo; a reducao do historico antigo de anexos continua para um plano de storage/migracao separado.
+
+## 2026-06-23 - Zeus/Panteon - MARCO ZERO: main = producao + fundacao do operating model
+
+Assunto: [Zeus] Marco zero rastreavel e operating model Zeus
+
+- Nome da squad/agente: `Zeus`.
+- Status: `EM PRODUCAO (base)` / governanca `VALIDADO_LOCAL, SEM DEPLOY`.
+- Autorizacao: Lucas pediu para estabelecer um marco zero "fiel ao que esta no ar" e adotar o processo correto de trabalho.
+- Problema-raiz identificado: producao saia de worktrees sujas (gitDirty=1); a branch `main` estava parada em 2026-05-17, ~268 commits atras do que rodava. Sem base rastreavel, cada deploy partia de uma base diferente e reintroduzia regressao (o sintoma que o Lucas relatava: "alterava algo que ja estava bom").
+- Marco zero (fiel ao ar):
+  - deployment LIVE `rbscvi7ae` (`dpl_Ek2vkPL2rbrFo9jaudTDFsNd86YA`), base `e6f3206` + working tree do deploy, origem worktree `.codex-tmp/worktrees/chronos-google-agenda-20260620`;
+  - congelado no commit `e093453` (24 arquivos: lote Hermes + ata Chronos + vercel.json);
+  - `main` reapontada para `e093453` (avanco limpo: producao descende da main sem divergencia, 269 commits);
+  - typecheck da base: PASS (exit 0).
+- Fundacao do operating model Zeus (segundo commit, sobre a main):
+  - hooks de commit resilientes e VERSIONADOS em `scripts/git-hooks/` + `scripts/setup-git-hooks.ps1` (`core.hooksPath`); pre-push destravado;
+  - `AGENTS.md` no modelo Zeus (camada central Zeus absorve Hefesto; Codex legado; squad documentado); governanca completa preservada (versao elaborada da linha homolog, mais rica que a de producao);
+  - squad `.claude/agents/`: investigator, planner, builder, reviewer, release-manager + commands /handoff, /registrar-release;
+  - `CLAUDE.md` (cerebro) atualizado.
+- Processo de trabalho oficial (5 regras de ouro): (1) a main = no ar e e sagrada; (2) todo trabalho parte da main; (3) um recorte por vez em branch propria; (4) aprovado em producao volta pra main por merge; (5) recorte fechado, poda a branch.
+- Seguranca: nada tocou Vercel/Supabase/dominio/secret/producao no ar. Backups: `backup/main-pre-marcozero-20260623` (ce9842f), `backup/homolog-pre-marcozero-20260623` (a43d3a1); estado sujo do principal preservado em `wip/principal-dirty-20260623`.
+- Pendencias: (1) podar entulho (~90 worktrees, ~83 branches codex/*) com cuidado; (2) sincronizar `main` com o GitHub quando Lucas autorizar (origin/main esta em 2026-05-17); (3) alinhar docs de governanca secundarios (Hefesto->Zeus) num recorte dedicado.
+
+Conclusao:
+
+- A `main` voltou a ser a fonte da verdade (= producao), com base rastreavel e a fundacao do operating model Zeus aplicada por cima.
+- Impacto pratico: ataca a causa estrutural das regressoes (deploys partindo de bases velhas); daqui pra frente todo recorte nasce da main e volta pra main.
+- Precisa de acao: Lucas decidir sobre push pro GitHub e autorizar a poda do entulho.
+- Proximo passo: limpar worktrees/branches antigas e seguir para a frente Iris pelo novo processo.
