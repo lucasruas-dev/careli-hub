@@ -580,17 +580,10 @@ async function syncChronosWherebyTranscriptForMinutes({
     return normalizedMeeting;
   }
 
-  const snapshot = await listChronosSnapshot(authorization);
-  const refreshedMeeting = snapshot.meetings.find(
-    (currentMeeting) => currentMeeting.id === meetingId,
-  );
-  const syncedMeeting = refreshedMeeting
-    ? normalizeChronosMeetingRuntime(refreshedMeeting)
-    : normalizedMeeting;
-
-  if (hasChronosOfficialTranscript(syncedMeeting)) {
-    return syncedMeeting;
-  }
+  // Antes carregava o snapshot INTEIRO (todas as reunioes + dados + URLs assinadas)
+  // so para reler esta reuniao -> consumia tempo precioso antes da IA (causa do 502).
+  // A transcricao recem-sincronizada e lida direto por reuniao logo abaixo.
+  const syncedMeeting = normalizedMeeting;
 
   const directTranscript = await loadChronosTranscriptSegmentsForMeeting({
     authorization,
@@ -1773,13 +1766,14 @@ function buildChronosMinutesPrompt({
     `Perfil da ata: ${chronosMinutesProfileLabels[minutesProfile]}.`,
     profileInstruction[minutesProfile],
     "FORMATACAO (siga a risca para a ata sair bem diagramada):",
+    "ACENTUACAO OBRIGATORIA: embora estas instrucoes estejam escritas sem acento, a ATA GERADA deve usar acentuacao e ortografia perfeitas do portugues do Brasil. Exemplos do que NAO pode sair sem acento na ata final: 'reuniao'->'reunião', 'identificacao'->'identificação', 'decisoes'->'decisões', 'acao'->'ação', 'proximos'->'próximos', 'video'->'vídeo', 'gravacao'->'gravação', 'responsaveis'->'responsáveis'. NUNCA omita acentos no texto final.",
     "Cada secao principal e um titulo markdown nivel 2, no formato '## Nome da secao'. NUNCA use negrito (**texto**) como titulo de secao.",
     "Subtopicos dentro de uma secao sao titulos nivel 3, no formato '### Subtopico'. NUNCA use bullets como subtitulo.",
     "Escreva o corpo em PARAGRAFOS curtos e objetivos. Use bullets ('- ') apenas para listas reais de 3 ou mais itens, e cada bullet precisa ser uma FRASE COMPLETA.",
     "E PROIBIDO criar bullets de uma ou duas palavras (ex: '- Feedback.', '- Comunicacao clara.', '- Clima do departamento.'). Quando os itens forem curtos, consolide-os em UMA frase corrida separada por virgulas, dentro de um paragrafo.",
     "Nas secoes de dados (Identificacao da reuniao, Participantes com check-in), use bullets no formato '- **Rotulo:** valor'.",
     "Use negrito (**texto**) com moderacao: apenas em rotulos de dados, decisoes, responsaveis e prazos. Nao encha a ata de negrito.",
-    "Estruture a ata com estas secoes (titulo nivel 2 '## '), nesta ordem: Identificacao da reuniao, Participantes com check-in, Resumo executivo, Pontos relevantes, Decisoes e alinhamentos, Plano de acao, Proximos passos, Evidencias de gravacao/video, Chat da reuniao, Linha do tempo.",
+    "Estruture a ata com estas secoes (titulo nivel 2 '## '), nesta ordem: Identificação da reunião, Participantes com check-in, Resumo executivo, Pontos relevantes, Decisões e alinhamentos, Plano de ação, Próximos passos, Evidências de gravação/vídeo, Chat da reunião, Linha do tempo.",
     "Omita por completo as secoes que nao tiverem conteudo real (ex: Chat da reuniao ou Linha do tempo vazios), para nao gerar paginas em branco.",
     "O resumo executivo deve ter de 3 a 6 bullets claros (frases completas), sem repetir transcricao literal.",
     "Pontos relevantes devem ser paragrafos consolidados por assunto, com subtopicos '### ' quando necessario, em linguagem profissional, sem piadas internas, ruidos ou trechos irrelevantes. NAO fragmente em bullets curtos.",

@@ -663,7 +663,8 @@ export async function listChronosSnapshot(
         client
           .from("chronos_meetings")
           .select("*")
-          .neq("status", "cancelled")
+          // NAO filtra cancelled aqui: reunioes com gravacao/transcricao/ata (mesmo
+          // canceladas, ex.: containers de sessao Whereby) devem aparecer no Drive.
           .or(
             "recording_status.eq.available,transcription_status.eq.available,external_reference.like.whereby-room:%",
           )
@@ -683,13 +684,25 @@ export async function listChronosSnapshot(
       throw artifactMeetingsResult.error;
     }
 
+    const chronosParticipatedMeetingIds =
+      authorization.user.role === "admin"
+        ? null
+        : await loadChronosParticipatedMeetingIds(
+            client,
+            authorization.user.id,
+            authorization.user.email,
+          );
     const meetings = mergeChronosMeetingRowsById([
       ...(ownedMeetingsResult.data ?? []),
       ...(artifactMeetingsResult.data ?? []),
       ...(meetingsResult.data ?? []),
     ])
       .filter((meeting) =>
-        isChronosMeetingVisibleInSnapshot(meeting, authorization.user.id),
+        isChronosMeetingVisibleInSnapshot(
+          meeting,
+          authorization.user.id,
+          chronosParticipatedMeetingIds,
+        ),
       )
       .sort(compareChronosMeetingRowsByStartDate);
     await syncPendingChronosWherebyArtifactsForSnapshot({
@@ -3374,6 +3387,7 @@ async function logChronosWherebyPublicDriveDiagnostic({
         ? isChronosMeetingVisibleInSnapshot(
             meeting,
             "00000000-0000-0000-0000-000000000000",
+            new Set<string>(),
           )
         : null,
       wherebyMetadata: {
@@ -8872,9 +8886,50 @@ function mapMeetingRow(input: {
   };
 }
 
+// Carrega os meeting_ids em que o usuario participou (por user_id OU email), para
+// restringir video/transcricao/ata a quem participou daquela videochamada.
+async function loadChronosParticipatedMeetingIds(
+  client: ChronosClient,
+  userId: string,
+  email: string | null | undefined,
+): Promise<Set<string>> {
+  const participatedMeetingIds = new Set<string>();
+
+  const byUserId = await client
+    .from("chronos_participants")
+    .select("meeting_id")
+    .eq("user_id", userId);
+
+  for (const row of byUserId.data ?? []) {
+    if (row.meeting_id) {
+      participatedMeetingIds.add(row.meeting_id);
+    }
+  }
+
+  const normalizedEmail = email?.trim();
+
+  if (normalizedEmail) {
+    const byEmail = await client
+      .from("chronos_participants")
+      .select("meeting_id")
+      .ilike("email", normalizedEmail);
+
+    for (const row of byEmail.data ?? []) {
+      if (row.meeting_id) {
+        participatedMeetingIds.add(row.meeting_id);
+      }
+    }
+  }
+
+  return participatedMeetingIds;
+}
+
 function isChronosMeetingVisibleInSnapshot(
   meeting: ChronosMeetingRow,
   userId: string,
+  // null = admin (acesso total aos artefatos). Senao, meeting_ids em que o usuario
+  // participou — restringe video/transcricao/ata a quem participou.
+  participatedMeetingIds: Set<string> | null,
 ) {
   if (meeting.host_user_id === userId) {
     return true;
@@ -8887,13 +8942,18 @@ function isChronosMeetingVisibleInSnapshot(
     readChronosMetadataText(wherebyMetadata, "provider") ??
     readChronosMetadataText(externalRoomMetadata, "provider");
 
-  if (
+  const hasDriveArtifacts =
     externalProvider === "whereby" ||
     meeting.external_reference?.startsWith("whereby-room:") ||
     meeting.recording_status === "available" ||
-    meeting.transcription_status === "available"
-  ) {
-    return true;
+    meeting.transcription_status === "available";
+
+  if (hasDriveArtifacts) {
+    // Gravacao/transcricao/ata: admin ve tudo; os demais so se participaram.
+    return (
+      participatedMeetingIds === null ||
+      participatedMeetingIds.has(meeting.id)
+    );
   }
 
   if (

@@ -277,7 +277,7 @@ export function MessageComposer({
     }
 
     if (file.size > MAX_ATTACHMENT_BYTES) {
-      setMediaError("Arquivo acima de 8 MB.");
+      setMediaError("Arquivo acima de 50 MB.");
       return;
     }
 
@@ -301,7 +301,7 @@ export function MessageComposer({
     event.preventDefault();
 
     if (imageFile.size > MAX_ATTACHMENT_BYTES) {
-      setMediaError("Imagem acima de 8 MB.");
+      setMediaError("Imagem acima de 50 MB.");
       return;
     }
 
@@ -1086,7 +1086,7 @@ const composerEmojiOptions = [
   "⚫",
 ] as const;
 
-const MAX_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+const MAX_ATTACHMENT_BYTES = 50 * 1024 * 1024;
 
 function getStickerStorageKey(currentUserId?: HermesPresenceUser["id"]) {
   return `${HERMES_STICKER_STORAGE_KEY_PREFIX}:${currentUserId ?? "anonimo"}`;

@@ -11,6 +11,7 @@ import {
   type HubPresenceChangeReason,
   type HubPresenceStatus,
 } from "@/lib/hub-presence";
+import { isHubChronosCallHeartbeatActive } from "@/lib/hub-presence-policy";
 import { hasHubSupabaseConfig } from "@/lib/supabase/client";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -166,6 +167,13 @@ export function useHubPresenceController({
         return activeMeetingRef.current
           ? "chronos_current_meeting"
           : "chronos_call_route";
+      }
+
+      // Chamada Chronos ativa em OUTRA aba (a sala Whereby roda em tela cheia, sem
+      // este controlador). Sem isto, o auto-logout de 2h desta aba encerra a sessao
+      // global e derruba a videochamada. Ver hub-presence-policy.ts.
+      if (isHubChronosCallHeartbeatActive()) {
+        return "chronos_call_active_signal";
       }
 
       return null;

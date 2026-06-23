@@ -167,3 +167,25 @@ function getFallbackModuleLabel(moduleId: string) {
 
   return labelsByModule[moduleId] ?? "Panteon";
 }
+
+// Renovacao diaria do historico de notificacoes: confere se a notificacao e de HOJE
+// (fuso America/Sao_Paulo). Lidas de dias anteriores saem do historico ao virar o dia.
+const panteonNotificationDayFormatter = new Intl.DateTimeFormat("en-CA", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+});
+
+export function isPanteonNotificationFromToday(createdAt: string): boolean {
+  const time = Date.parse(createdAt);
+
+  if (Number.isNaN(time)) {
+    return false;
+  }
+
+  return (
+    panteonNotificationDayFormatter.format(new Date(time)) ===
+    panteonNotificationDayFormatter.format(new Date())
+  );
+}

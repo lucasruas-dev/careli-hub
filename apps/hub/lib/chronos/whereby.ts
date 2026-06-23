@@ -235,6 +235,16 @@ export async function getChronosWherebyRecordingAccessLink(recordingId: string) 
   );
 }
 
+export async function deleteChronosWherebyRecording(recordingId: string) {
+  const config = getChronosWherebyConfig();
+
+  await callChronosWherebyApi(
+    config,
+    `/recordings/${encodeURIComponent(recordingId)}`,
+    { method: "DELETE" },
+  );
+}
+
 export async function createChronosWherebyTranscription(recordingId: string) {
   const config = getChronosWherebyConfig();
 
@@ -352,7 +362,7 @@ async function callChronosWherebyApi(
   path: string,
   options: {
     body?: unknown;
-    method?: "GET" | "POST" | "PUT";
+    method?: "DELETE" | "GET" | "POST" | "PUT";
     rawBody?: boolean;
   } = {},
 ) {

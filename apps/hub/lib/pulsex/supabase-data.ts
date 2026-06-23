@@ -550,7 +550,74 @@ export function mapHermesRealtimeMessageRow(row: unknown): HermesMessage | null 
   });
 }
 
-export async function createHermesMessage(input: {
+// A: sobe um anexo com data URL (ou blob) para o Supabase Storage via rota server-side
+// e devolve o anexo com a URL publica. Em qualquer falha, devolve o anexo original
+// (fallback seguro — no pior caso so aquele anexo volta ao comportamento antigo).
+async function externalizeHermesAttachment(
+  client: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
+  attachment: HermesMessageAttachment | undefined,
+): Promise<HermesMessageAttachment | undefined> {
+  if (
+    !attachment?.url ||
+    !(attachment.url.startsWith("data:") || attachment.url.startsWith("blob:"))
+  ) {
+    return attachment;
+  }
+
+  try {
+    const { data } = await client.auth.getSession();
+    const accessToken = data.session?.access_token;
+
+    if (!accessToken) {
+      return attachment;
+    }
+
+    const blob = await (await fetch(attachment.url)).blob();
+    const fileName = attachment.label?.trim() || `anexo-${Date.now()}`;
+    const contentType =
+      attachment.mimeType || blob.type || "application/octet-stream";
+
+    // 1) Pede uma signed upload URL (request pequeno, SEM o arquivo).
+    const signResponse = await fetch("/api/hermes/attachments/upload", {
+      body: JSON.stringify({ contentType, fileName }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+
+    if (!signResponse.ok) {
+      return attachment;
+    }
+
+    const signed = (await signResponse.json()) as {
+      bucket?: string;
+      path?: string;
+      publicUrl?: string;
+      token?: string;
+    };
+
+    if (!signed.bucket || !signed.path || !signed.token || !signed.publicUrl) {
+      return attachment;
+    }
+
+    // 2) Sobe o arquivo DIRETO pro Storage (sem passar pela Vercel, sem limite de body).
+    const uploadResult = await client.storage
+      .from(signed.bucket)
+      .uploadToSignedUrl(signed.path, signed.token, blob, { contentType });
+
+    if (uploadResult.error) {
+      return attachment;
+    }
+
+    return { ...attachment, url: signed.publicUrl };
+  } catch {
+    return attachment;
+  }
+}
+
+export async function createHermesMessage(rawInput: {
   attachment?: HermesMessageAttachment;
   authorUserId?: string;
   body: string;
@@ -566,6 +633,14 @@ export async function createHermesMessage(input: {
   if (!client) {
     throw new Error("Supabase nao configurado.");
   }
+
+  // A: externaliza anexo grande (data URL) para o Storage e troca pela URL publica
+  // ANTES de persistir/broadcast — senao compactHermesAttachmentMetadata descarta a
+  // data URL e o anexo vira "Arquivo indisponivel".
+  const input = {
+    ...rawInput,
+    attachment: await externalizeHermesAttachment(client, rawInput.attachment),
+  };
 
   const apiMessage = await createHermesMessageViaApi(client, input);
 

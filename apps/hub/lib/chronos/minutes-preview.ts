@@ -72,7 +72,7 @@ function buildChronosMinutesPrintHtml({
   minutes: string;
 }) {
   const context = buildChronosMinutesContext(meeting);
-  const logoUrl = `${window.location.origin}/logoc.png`;
+  const watermarkUrl = `${window.location.origin}/chronos-minutes-watermark.png`;
   const letterheadTopUrl = `${window.location.origin}/chronos-minutes-letterhead-top.png`;
   const letterheadFooterUrl = `${window.location.origin}/chronos-minutes-letterhead-footer.png`;
   const title = `Ata ${meeting.protocol} - ${meeting.title}`;
@@ -97,16 +97,27 @@ function buildChronosMinutesPrintHtml({
         -webkit-print-color-adjust: exact;
         print-color-adjust: exact;
       }
-      .letterhead-top,
-      .letterhead-footer,
-      .watermark {
-        pointer-events: none;
-        position: fixed;
-        z-index: 0;
+      /* Timbrado via TABELA: o navegador repete o thead (topo) e o tfoot (rodape)
+         em CADA pagina e RESERVA o espaco deles automaticamente -> o texto nunca
+         sobrepoe, igual ao cabecalho/rodape nativo do Word do modelo. */
+      .page-frame {
+        border-collapse: collapse;
+        width: 100%;
+      }
+      /* Filho DIRETO (> tr > td) de proposito: zera so as celulas do esqueleto da
+         pagina, sem atingir as celulas das tabelas de conteudo aninhadas (ex.: Plano
+         de acao), que mantem o grid das regras th, td (border 1px). */
+      .page-frame > thead > tr > td,
+      .page-frame > tfoot > tr > td,
+      .page-frame > tbody > tr > td {
+        border: 0;
+      }
+      .page-frame > thead > tr > td,
+      .page-frame > tfoot > tr > td {
+        padding: 0;
       }
       .letterhead-top {
         height: 30mm;
-        inset: 0 0 auto 0;
         overflow: hidden;
       }
       .letterhead-top img {
@@ -114,12 +125,23 @@ function buildChronosMinutesPrintHtml({
         height: auto;
         width: 100%;
       }
+      /* Rodape FIXO no fim de TODA pagina (segue a pagina, nao o texto). O espaco e
+         reservado pelo margin-bottom do @page para o conteudo nao sobrepor. */
       .letterhead-footer {
         bottom: 0;
         height: 20mm;
         left: 0;
         overflow: hidden;
+        pointer-events: none;
+        position: fixed;
         right: 0;
+        z-index: 0;
+      }
+      /* tfoot invisivel: reserva o espaco do rodape nas paginas cheias (conteudo nao
+         sobrepoe). Na ultima pagina curta ele "flutua" mas e invisivel; o rodape
+         VISIVEL e o .letterhead-footer fixo, sempre no fundo fisico da pagina. */
+      .footer-spacer {
+        height: 22mm;
       }
       .letterhead-footer img {
         bottom: 0;
@@ -129,16 +151,18 @@ function buildChronosMinutesPrintHtml({
         width: 100%;
       }
       .watermark {
-        background: url("${logoUrl}") center 42% / 46% auto no-repeat;
+        background: url("${watermarkUrl}") center / contain no-repeat;
         inset: 0;
-        opacity: 0.035;
+        opacity: 0.08;
+        pointer-events: none;
+        position: fixed;
+        z-index: 0;
+      }
+      .content-cell {
+        padding: 8mm 25.4mm;
       }
       .chronos-document {
-        margin: 0 auto;
-        min-height: 297mm;
-        padding: 40mm 18mm 24mm;
         position: relative;
-        width: 210mm;
         z-index: 1;
       }
       header {
@@ -153,7 +177,7 @@ function buildChronosMinutesPrintHtml({
       h1 { font-size: 13pt; font-weight: 700; line-height: 1.5; }
       h2 { font-size: 10pt; font-weight: 700; line-height: 1.5; margin-top: 10px; }
       h3 { color: #344054; font-size: 9.5pt; font-weight: 700; line-height: 1.5; margin-top: 7px; }
-      p { line-height: 1.5; }
+      p { line-height: 1.5; text-align: justify; }
       ul, ol { padding-left: 16px; }
       li { line-height: 1.5; margin: 0; }
       strong { font-weight: 700; }
@@ -162,8 +186,12 @@ function buildChronosMinutesPrintHtml({
         font-size: 9pt;
         line-height: 1.5;
         margin-top: 4px;
-        page-break-inside: avoid;
         width: 100%;
+      }
+      /* Tabela de conteudo pode quebrar entre paginas (evita pagina em branco),
+         mas cada LINHA fica inteira (evita celula rachada no meio da quebra). */
+      .content-cell table tr {
+        page-break-inside: avoid;
       }
       th, td {
         border: 1px solid #d9e0e7;
@@ -199,29 +227,32 @@ function buildChronosMinutesPrintHtml({
         body {
           background: #ffffff;
         }
-        .chronos-document {
-          margin: 0;
-          width: auto;
-        }
       }
     </style>
   </head>
   <body>
-    <div aria-hidden="true" class="letterhead-top"><img alt="" src="${letterheadTopUrl}" /></div>
-    <div aria-hidden="true" class="letterhead-footer"><img alt="" src="${letterheadFooterUrl}" /></div>
     <div aria-hidden="true" class="watermark"></div>
-    <main class="chronos-document">
+    <div aria-hidden="true" class="letterhead-footer"><img alt="" src="${letterheadFooterUrl}" /></div>
+    <table class="page-frame">
+      <thead><tr><td>
+        <div aria-hidden="true" class="letterhead-top"><img alt="" src="${letterheadTopUrl}" /></div>
+      </td></tr></thead>
+      <tfoot><tr><td><div class="footer-spacer"></div></td></tr></tfoot>
+      <tbody><tr><td class="content-cell">
+        <main class="chronos-document">
       <header>
         <div>
           <p class="eyebrow">Chronos</p>
-          <h1>Ata de reuniao</h1>
+          <h1>Ata de reunião</h1>
           <p class="meta">${escapeChronosHtml(meeting.protocol)} | ${escapeChronosHtml(meeting.title)}</p>
-          <p class="meta">Inicio: ${escapeChronosHtml(context.scheduledStartLabel)} | Fim real: ${escapeChronosHtml(context.actualEndLabel)} | Duracao: ${escapeChronosHtml(context.durationLabel)}</p>
+          <p class="meta">Início: ${escapeChronosHtml(context.scheduledStartLabel)} | Fim real: ${escapeChronosHtml(context.actualEndLabel)} | Duração: ${escapeChronosHtml(context.durationLabel)}</p>
         </div>
       </header>
       ${buildChronosMinutesBodyHtml(minutes)}
-      <p class="footer">Careli | documento gerado para revisao e formalizacao humana</p>
-    </main>
+      <p class="footer">Careli | documento gerado para revisão e formalização humana</p>
+        </main>
+      </td></tr></tbody>
+    </table>
   </body>
 </html>`;
 }

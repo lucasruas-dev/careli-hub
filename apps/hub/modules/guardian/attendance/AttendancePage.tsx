@@ -773,19 +773,21 @@ function isClientInHadesProfileScope(
   client: QueueClient,
   profileRole: OperationalProfileRole,
 ) {
+  const overdueDays = getOperationalOverdueDays(client);
+
   if (isHadesLeadershipProfile(profileRole)) {
-    return true;
+    return isOperationalOverdueClient(client);
   }
 
   if (profileRole === "op1") {
-    return client.atrasoDias >= 1 && client.atrasoDias <= 30;
+    return overdueDays >= 1 && overdueDays <= 30;
   }
 
   if (profileRole === "op2") {
-    return client.atrasoDias >= 31 && client.atrasoDias <= 60;
+    return overdueDays >= 31 && overdueDays <= 60;
   }
 
-  return client.atrasoDias >= 61 && client.atrasoDias <= 90;
+  return overdueDays >= 61 && overdueDays <= 90;
 }
 
 function isHadesLeadershipProfile(profileRole: OperationalProfileRole) {
@@ -796,29 +798,37 @@ function isClientInOverdueRange(
   client: QueueClient,
   overdueRange: OverdueRangeFilter,
 ) {
+  const overdueDays = getOperationalOverdueDays(client);
+
   if (overdueRange === "1-30") {
-    return client.atrasoDias >= 1 && client.atrasoDias <= 30;
+    return overdueDays >= 1 && overdueDays <= 30;
   }
 
   if (overdueRange === "31-60") {
-    return client.atrasoDias >= 31 && client.atrasoDias <= 60;
+    return overdueDays >= 31 && overdueDays <= 60;
   }
 
   if (overdueRange === "60+") {
-    return client.atrasoDias > 60;
+    return overdueDays > 60;
   }
 
-  return true;
+  return isOperationalOverdueClient(client);
 }
 
 function buildOverdueRangeCounts(clients: QueueClient[]) {
   return clients.reduce(
     (counts, client) => {
-      if (client.atrasoDias >= 1 && client.atrasoDias <= 30) {
+      if (!isOperationalOverdueClient(client)) {
+        return counts;
+      }
+
+      const overdueDays = getOperationalOverdueDays(client);
+
+      if (overdueDays >= 1 && overdueDays <= 30) {
         counts["1-30"] += 1;
-      } else if (client.atrasoDias >= 31 && client.atrasoDias <= 60) {
+      } else if (overdueDays >= 31 && overdueDays <= 60) {
         counts["31-60"] += 1;
-      } else if (client.atrasoDias > 60) {
+      } else if (overdueDays > 60) {
         counts["60+"] += 1;
       }
 
@@ -834,12 +844,27 @@ function buildOverdueRangeCounts(clients: QueueClient[]) {
 
 function isDailyQueueClient(client: QueueClient) {
   const stage = normalizeDailyWorkflowStage(client.workflow.stage);
+  const overdueDays = getOperationalOverdueDays(client);
 
-  if (client.atrasoDias < 3) {
+  if (!isOperationalOverdueClient(client) || overdueDays < 3) {
     return false;
   }
 
   return stage !== "Promessa de pagamento" && stage !== "Acordo";
+}
+
+function isOperationalOverdueClient(client: QueueClient) {
+  return (client.parcelas?.vencidas ?? 0) > 0;
+}
+
+function getOperationalOverdueDays(client: QueueClient) {
+  const overdueDays = Number(client.atrasoDias) || 0;
+
+  if (isOperationalOverdueClient(client) && overdueDays < 1) {
+    return 1;
+  }
+
+  return overdueDays;
 }
 
 function isAgreementClient(client: QueueClient) {

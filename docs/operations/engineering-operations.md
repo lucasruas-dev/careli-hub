@@ -38,6 +38,17 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 
 ## Pendencias criticas atuais
 
+### 2026-06-20 - Hades - alinhamento de clientes em atraso entre Dashboard e Cobranca
+
+- Status: `VALIDADO_LOCAL / AGUARDANDO_TESTE_LUCAS`.
+- Tipo da alteracao: `CORRECAO FUNCIONAL / METRICA OPERACIONAL`.
+- Motivo: Lucas identificou divergencia entre `Clientes em atraso` no dashboard principal, `Fila geral`, `Fila diaria` e os chips de segmentacao da tela de cobranca.
+- Diagnostico: o dashboard principal calculava `overdue_clients` pelo snapshot financeiro/consulta de pagamentos sem a mesma carteira valida usada pela fila de cobranca; a tela de cobranca calculava a fila pelo conjunto operacional `c2x_guardian_attendance_queue`/consulta compacta do C2X; e a segmentacao do frontend incrementava o total `Todos` mesmo quando um cliente com parcela vencida vinha com `atrasoDias` zerado, deixando esse cliente fora das faixas `1-30`, `31-60` e `60+`.
+- Como foi corrigido: `overview.ts` passou a aplicar a mesma carteira valida do Hades no calculo de `overdue_clients`; `read-model.ts` passou a priorizar a contagem exata da fila atual para o card `Clientes em atraso` quando o read-model Supabase estiver fresco; `AttendancePage.tsx` passou a usar uma regra operacional unica para cliente em atraso, tratando cliente com parcelas vencidas e `atrasoDias < 1` como primeira faixa de atraso para que `Todos` sempre bata com a soma das faixas.
+- Arquivos afetados: `apps/hub/lib/guardian/overview.ts`, `apps/hub/lib/guardian/read-model.ts`, `apps/hub/modules/guardian/attendance/AttendancePage.tsx`.
+- Validacao: consulta read-only ao Supabase confirmou divergencia de +1 entre snapshot financeiro e fila atual; `git diff --check` passou com avisos LF/CRLF conhecidos; `npm.cmd run check-types:hub` passou; `npm.cmd run lint:hub` passou com warning conhecido de `eslint.config.js`; `npm.cmd run build --workspace @repo/hub` passou com warnings conhecidos de Turbopack/NFT em SquadOps.
+- Pendencias ou riscos conhecidos: nao houve migration, escrita no banco, Vercel, Supabase mutavel, env, secret ou deploy. A validacao visual autenticada em producao/homologacao deve confirmar que `Clientes em atraso`, `Fila geral` e soma dos chips ficam consistentes no mesmo recorte de dados.
+
 | Frente                            | Status operacional        | Pendencia aberta                                                                                                                                                                          | Proxima acao                                                                                                                            |
 | --------------------------------- | ------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
 | Guardian / D4Sign                 | `OPERACIONAL COM ATENCAO` | Guarda/autorizacao server-side da rota D4Sign ja esta na arvore publicada; pendente apenas smoke autenticado real de contrato.                                                            | Guardian Core/SupportOps deve validar com sessao real quando Lucas disponibilizar cenario.                                              |

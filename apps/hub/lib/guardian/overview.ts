@@ -263,10 +263,9 @@ const enterpriseDisplayExpression = `
 `;
 const validEnterpriseWhere = `
   e.id is not null
-  and upper(trim(coalesce(e.code, ''))) not in ('SDT', 'TSC')
-  and not (
-    upper(trim(coalesce(e.name, ''))) like 'LAGOA BONITA%'
-    and upper(trim(coalesce(e.code, ''))) not in ('LBR', 'LBP', 'LBF')
+  and upper(trim(coalesce(e.code, ''))) in (
+    'REP', 'EDL', 'LOU', 'LOS', 'PDV', 'PVS', 'RDP', 'RPS', 'RPC',
+    'LBR', 'LBP', 'LBF', 'MDS', 'MLN', 'VDO', 'VAL', 'VDP'
   )
 `;
 
@@ -411,8 +410,11 @@ export async function loadHadesOverview(): Promise<
           select count(distinct ar.client_id)
           from payments p
           left join acquisition_requests ar on ar.id = p.acquisition_request_id
+          left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+          left join enterprises e on e.id = eu.enterprise_id
           where p.payment_status_id = 7
             and ${activePaymentWhere}
+            and ${validEnterpriseWhere}
             and ar.client_id is not null
         ) as overdue_clients,
         (

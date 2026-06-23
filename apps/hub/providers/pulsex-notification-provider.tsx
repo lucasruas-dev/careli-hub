@@ -47,6 +47,7 @@ import {
 import { withChannelUnreadCounts } from "@/lib/pulsex/workspace-messages";
 import {
   PANTEON_ACTIVITY_NOTIFICATION_PREFIX,
+  isPanteonNotificationFromToday,
   listPanteonActivityNotifications,
   type PanteonNotificationInput,
   type PanteonNotificationItem,
@@ -107,6 +108,7 @@ export function HermesNotificationProvider({
   const pendingGlobalBroadcastMessagesRef = useRef<HermesMessage[]>([]);
   const pendingGlobalIncomingMessagesRef = useRef<HermesMessage[]>([]);
   const floatingTimeoutsRef = useRef<Map<string, number>>(new Map());
+  const didHydrateNotificationsRef = useRef(false);
 
   const unreadCount = useMemo(
     () => items.filter((item) => !item.read).length,
@@ -291,7 +293,10 @@ export function HermesNotificationProvider({
         (item) =>
           item.moduleId !== HERMES_MODULE_ID ||
           !item.context?.hermesChannelId ||
-          hermesNotificationIds.has(item.id),
+          hermesNotificationIds.has(item.id) ||
+          // #5 + renovacao diaria: mantem como historico apenas as LIDAS de HOJE
+          // (vira o dia, o snapshot expurga as lidas antigas).
+          (item.read && isPanteonNotificationFromToday(item.createdAt)),
       );
 
       return mergeNotifications(retainedItems, hermesNotifications).slice(0, 80);
@@ -329,6 +334,16 @@ export function HermesNotificationProvider({
 
       notifiedMessageIdsRef.current.add(message.id);
       setLatestHermesPopupMessage(message);
+
+      // B: ponte do broadcast GLOBAL (confiavel) -> conversa ativa. Entrega a mensagem
+      // na hora no workspace, sem depender do broadcast por-canal/poll de 8s (que fazia
+      // a msg so aparecer ~15s depois da notificacao). Disparado ANTES do early-return
+      // para cobrir tambem o canal que a pessoa esta vendo.
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(
+          new CustomEvent("careli:hermes:message", { detail: { message } }),
+        );
+      }
 
       if (activeHermesChannelIdRef.current === channel.id) {
         markChannelNotificationsRead(channel.id);
@@ -501,6 +516,37 @@ export function HermesNotificationProvider({
       floatingTimeouts.clear();
     };
   }, []);
+
+  // #5: hidrata o historico de notificacoes persistido (localStorage) uma vez,
+  // tratando-as como LIDAS — o snapshot live re-marca as que ainda estao pendentes.
+  useEffect(() => {
+    if (!currentUserId || didHydrateNotificationsRef.current) {
+      return;
+    }
+
+    didHydrateNotificationsRef.current = true;
+
+    const storedItems = readStoredPanteonNotifications(currentUserId)
+      .filter((item) => isPanteonNotificationFromToday(item.createdAt))
+      .map((item) => ({ ...item, read: true }));
+
+    if (storedItems.length === 0) {
+      return;
+    }
+
+    setItems((currentItems) =>
+      mergeNotifications(storedItems, currentItems).slice(0, 80),
+    );
+  }, [currentUserId]);
+
+  // #5: persiste o historico a cada mudanca para sobreviver a reloads.
+  useEffect(() => {
+    if (!currentUserId) {
+      return;
+    }
+
+    writeStoredPanteonNotifications(currentUserId, items);
+  }, [currentUserId, items]);
 
   useEffect(() => {
     if (
@@ -1050,6 +1096,58 @@ function normalizePanteonNotification(
     read: notification.read ?? false,
     severity: notification.severity ?? "neutral",
   };
+}
+
+const PANTEON_NOTIFICATIONS_STORAGE_PREFIX = "careli:panteon:notifications:";
+
+function getPanteonNotificationsStorageKey(userId: string) {
+  return `${PANTEON_NOTIFICATIONS_STORAGE_PREFIX}${userId}`;
+}
+
+function readStoredPanteonNotifications(
+  userId: string,
+): PanteonNotificationItem[] {
+  if (typeof window === "undefined") {
+    return [];
+  }
+
+  try {
+    const raw = window.localStorage.getItem(
+      getPanteonNotificationsStorageKey(userId),
+    );
+
+    if (!raw) {
+      return [];
+    }
+
+    const parsed = JSON.parse(raw);
+
+    return Array.isArray(parsed) ? (parsed as PanteonNotificationItem[]) : [];
+  } catch {
+    return [];
+  }
+}
+
+function writeStoredPanteonNotifications(
+  userId: string,
+  items: readonly PanteonNotificationItem[],
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.setItem(
+      getPanteonNotificationsStorageKey(userId),
+      JSON.stringify(
+        items
+          .filter((item) => isPanteonNotificationFromToday(item.createdAt))
+          .slice(0, 80),
+      ),
+    );
+  } catch {
+    // localStorage indisponivel/cheio — historico persistido e best-effort.
+  }
 }
 
 function groupHermesMessagesByChannel(messages: readonly HermesMessage[]) {

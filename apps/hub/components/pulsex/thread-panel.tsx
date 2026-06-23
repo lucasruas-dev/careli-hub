@@ -279,7 +279,7 @@ export function ThreadPanel({
     } = {},
   ) {
     if (file.size > MAX_THREAD_ATTACHMENT_BYTES) {
-      setMediaError("Arquivo acima de 8 MB.");
+      setMediaError("Arquivo acima de 50 MB.");
       return;
     }
 
@@ -345,15 +345,15 @@ export function ThreadPanel({
         <div className="my-3 text-center text-xs text-[var(--uix-text-muted)]">
           {replies.length} respostas
         </div>
-        {replies.map((reply) => {
-          const author = users.find((user) => user.id === reply.authorId);
-
-          return (
-            <div className="px-4 py-1" key={reply.id}>
+        {buildThreadReplyRows(replies).map((row) =>
+          row.kind === "date" ? (
+            <ThreadDateSeparator key={row.id} label={row.label} />
+          ) : (
+            <div className="px-4 py-1" key={row.reply.id}>
               <MessageItem
-                author={author}
+                author={users.find((user) => user.id === row.reply.authorId)}
                 currentUserId={currentUserId}
-                message={mapThreadReplyToMessage(reply, message)}
+                message={mapThreadReplyToMessage(row.reply, message)}
                 onPreviewAttachment={onPreviewAttachment}
                 onToggleReaction={onToggleReaction}
                 onToggleTag={onToggleTag}
@@ -361,8 +361,8 @@ export function ThreadPanel({
                 users={users}
               />
             </div>
-          );
-        })}
+          ),
+        )}
       </div>
       <form
         className="border-t border-[#d9e0ea] px-4 py-3"
@@ -551,8 +551,113 @@ function mapThreadReplyToMessage(
     status: "neutral",
     tags: reply.tags,
     threadParentMessageId: parentMessage.id,
-    timestamp: reply.timestamp,
+    timestamp: reply.timestamp || formatThreadReplyTime(reply.createdAt),
   };
+}
+
+type ThreadReplyRow =
+  | { id: string; kind: "date"; label: string }
+  | { kind: "reply"; reply: HermesThreadReply };
+
+// Agrupa as respostas por dia inserindo divisorias de data, igual a lista
+// principal de mensagens (Hermes), para a thread tambem mostrar DATA + HORA.
+function buildThreadReplyRows(
+  replies: readonly HermesThreadReply[],
+): ThreadReplyRow[] {
+  const rows: ThreadReplyRow[] = [];
+  let currentDateKey = "";
+
+  for (const reply of replies) {
+    const dateInfo = getThreadReplyDateInfo(reply.createdAt);
+
+    if (dateInfo && dateInfo.key !== currentDateKey) {
+      rows.push({
+        id: `thread-date-${dateInfo.key}`,
+        kind: "date",
+        label: dateInfo.label,
+      });
+      currentDateKey = dateInfo.key;
+    }
+
+    rows.push({ kind: "reply", reply });
+  }
+
+  return rows;
+}
+
+function ThreadDateSeparator({ label }: { label: string }) {
+  return (
+    <div
+      aria-label={`Data das respostas: ${label}`}
+      className="my-2 flex justify-center px-4"
+      role="separator"
+    >
+      <span className="rounded-full border border-[#d9e0ea] bg-white px-3 py-1 text-xs font-semibold text-[#475467] shadow-sm">
+        {label}
+      </span>
+    </div>
+  );
+}
+
+const threadReplyDateLabelFormatter = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "America/Sao_Paulo",
+  weekday: "long",
+  year: "numeric",
+});
+
+const threadReplyDateKeyFormatter = new Intl.DateTimeFormat("pt-BR", {
+  day: "2-digit",
+  month: "2-digit",
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+});
+
+function getThreadReplyDateInfo(createdAt?: string) {
+  if (!createdAt) {
+    return null;
+  }
+
+  const time = Date.parse(createdAt);
+
+  if (!Number.isFinite(time)) {
+    return null;
+  }
+
+  const date = new Date(time);
+  const label = threadReplyDateLabelFormatter.format(date);
+
+  return {
+    key: getThreadReplyDateKey(date),
+    label: label.charAt(0).toLocaleUpperCase("pt-BR") + label.slice(1),
+  };
+}
+
+function getThreadReplyDateKey(date: Date) {
+  const parts = threadReplyDateKeyFormatter.formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? "0000";
+  const month = parts.find((part) => part.type === "month")?.value ?? "00";
+  const day = parts.find((part) => part.type === "day")?.value ?? "00";
+
+  return `${year}-${month}-${day}`;
+}
+
+function formatThreadReplyTime(createdAt?: string) {
+  if (!createdAt) {
+    return "";
+  }
+
+  const time = Date.parse(createdAt);
+
+  if (!Number.isFinite(time)) {
+    return "";
+  }
+
+  return new Intl.DateTimeFormat("pt-BR", {
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(new Date(time));
 }
 
 function MentionAutocomplete({
@@ -765,4 +870,4 @@ function formatFileSize(bytes: number) {
 
 const THREAD_ATTACHMENT_ACCEPT =
   "audio/*,image/*,video/*,.csv,.doc,.docx,.pdf,.ppt,.pptx,.txt,.xls,.xlsx";
-const MAX_THREAD_ATTACHMENT_BYTES = 8 * 1024 * 1024;
+const MAX_THREAD_ATTACHMENT_BYTES = 50 * 1024 * 1024;

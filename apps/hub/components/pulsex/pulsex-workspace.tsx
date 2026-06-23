@@ -186,6 +186,15 @@ export function HermesWorkspace() {
   const messageLoadInFlightByChannelIdRef = useRef<Set<string>>(new Set());
   const staleMessageCacheChannelIdsRef = useRef<Set<string>>(new Set());
   const messagesPrefetchedRef = useRef(false);
+  const olderMessagesInFlightByChannelIdRef = useRef<Set<string>>(new Set());
+  const hasMoreOlderMessagesByChannelIdRef = useRef<Map<string, boolean>>(
+    new Map(),
+  );
+  const messageScrollContainerRef = useRef<HTMLDivElement>(null);
+  const pendingOlderScrollRestoreRef = useRef<{
+    prevScrollHeight: number;
+    prevScrollTop: number;
+  } | null>(null);
   const composerValueRef = useRef("");
   const composerDraftChannelIdRef = useRef<HermesChannel["id"] | null>(null);
   const isComposerDraftHydratingRef = useRef(false);
@@ -836,16 +845,23 @@ export function HermesWorkspace() {
           title,
         } satisfies HermesToastNotification;
 
-        playHermesIncomingMessageSound({
-          mentioned,
-          messageId: message.id,
-        });
-        showBrowserHermesNotification({
-          body: description,
-          onClickPath: `/hermes?channel=${encodeURIComponent(message.channelId)}`,
-          tag: `hermes-message-${message.id}`,
-          title,
-        });
+        // O som e a notificacao do SO precisam chegar DEPOIS da mensagem aparecer.
+        // O caller ja chamou setMessages antes daqui; adiando um tick garantimos que
+        // o React commitou a mensagem no DOM antes do som tocar (corrige "som antes
+        // da mensagem"). setTimeout (nao requestAnimationFrame) continua disparando
+        // mesmo com a aba em segundo plano, que e justamente quando o alerta importa.
+        window.setTimeout(() => {
+          playHermesIncomingMessageSound({
+            mentioned,
+            messageId: message.id,
+          });
+          showBrowserHermesNotification({
+            body: description,
+            onClickPath: `/hermes?channel=${encodeURIComponent(message.channelId)}`,
+            tag: `hermes-message-${message.id}`,
+            title,
+          });
+        }, 0);
         setNotifications((currentNotifications) =>
           [notification, ...currentNotifications].slice(0, 4),
         );
@@ -964,6 +980,115 @@ export function HermesWorkspace() {
     },
     [activeChannel.id, channels, currentUserId, notifyIncomingMessages],
   );
+
+  const loadOlderActiveChannelMessages = useCallback(() => {
+    if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
+      return;
+    }
+
+    const channelId = activeChannel.id;
+
+    if (
+      olderMessagesInFlightByChannelIdRef.current.has(channelId) ||
+      hasMoreOlderMessagesByChannelIdRef.current.get(channelId) === false
+    ) {
+      return;
+    }
+
+    let oldestCreatedAt: string | undefined;
+
+    for (const message of messages) {
+      if (message.channelId !== channelId || !message.createdAt) {
+        continue;
+      }
+
+      if (
+        !oldestCreatedAt ||
+        Date.parse(message.createdAt) < Date.parse(oldestCreatedAt)
+      ) {
+        oldestCreatedAt = message.createdAt;
+      }
+    }
+
+    if (!oldestCreatedAt) {
+      return;
+    }
+
+    const scrollContainer = messageScrollContainerRef.current;
+
+    if (scrollContainer) {
+      pendingOlderScrollRestoreRef.current = {
+        prevScrollHeight: scrollContainer.scrollHeight,
+        prevScrollTop: scrollContainer.scrollTop,
+      };
+    }
+
+    olderMessagesInFlightByChannelIdRef.current.add(channelId);
+
+    listChannelMessages(channelId, { before: oldestCreatedAt, limit: 50 })
+      .then((olderMessages) => {
+        if (olderMessages.length === 0) {
+          hasMoreOlderMessagesByChannelIdRef.current.set(channelId, false);
+          pendingOlderScrollRestoreRef.current = null;
+          return;
+        }
+
+        const deliveredOlderMessages = withMessageDeliveryData(
+          olderMessages,
+          channels,
+        );
+        deliveredOlderMessages.forEach((message) =>
+          knownMessageIdsRef.current.add(message.id),
+        );
+
+        setMessages((currentMessages) =>
+          preserveHermesArrayReference(
+            currentMessages,
+            mergeHermesChannelMessages({
+              channelId,
+              currentMessages,
+              nextMessages: deliveredOlderMessages,
+              replaceChannel: false,
+            }),
+            getHermesMessageRenderSignature,
+          ),
+        );
+      })
+      .catch((error: unknown) => {
+        pendingOlderScrollRestoreRef.current = null;
+
+        if (isLocalDevelopmentRuntime()) {
+          console.warn("[pulsex] load older channel messages error", error);
+        }
+      })
+      .finally(() => {
+        olderMessagesInFlightByChannelIdRef.current.delete(channelId);
+      });
+  }, [activeChannel.id, channels, messages]);
+
+  const handleMessageScroll = useCallback(() => {
+    const scrollContainer = messageScrollContainerRef.current;
+
+    if (scrollContainer && scrollContainer.scrollTop <= 64) {
+      loadOlderActiveChannelMessages();
+    }
+  }, [loadOlderActiveChannelMessages]);
+
+  useLayoutEffect(() => {
+    const restore = pendingOlderScrollRestoreRef.current;
+    const scrollContainer = messageScrollContainerRef.current;
+
+    if (!restore || !scrollContainer) {
+      return;
+    }
+
+    pendingOlderScrollRestoreRef.current = null;
+    const addedHeight = scrollContainer.scrollHeight - restore.prevScrollHeight;
+
+    if (addedHeight > 0) {
+      scrollContainer.scrollTop = restore.prevScrollTop + addedHeight;
+    }
+  }, [messages]);
 
   const refreshWorkspaceSnapshot = useCallback(
     (shouldApply: () => boolean = () => true) => {
@@ -1179,6 +1304,59 @@ export function HermesWorkspace() {
     loadActiveChannelMessages,
     notifyIncomingMessages,
   ]);
+
+  // B: ponte do broadcast global (confiavel) -> conversa ativa. Funde a mensagem na
+  // hora quando o provider a recebe, sem depender do broadcast por-canal/poll. NAO
+  // re-notifica aqui (som/central ja sao tratados pelo provider).
+  useEffect(() => {
+    function handleGlobalHermesMessage(event: Event) {
+      const message = (event as CustomEvent<{ message?: HermesMessage }>).detail
+        ?.message;
+
+      if (
+        !message ||
+        message.channelId !== activeChannel.id ||
+        message.threadParentMessageId
+      ) {
+        return;
+      }
+
+      const [nextDeliveredMessage] = withMessageDeliveryData(
+        [message],
+        channels,
+      );
+
+      if (!nextDeliveredMessage) {
+        return;
+      }
+
+      rememberHermesMessageCursors(messageCursorByChannelIdRef.current, [
+        nextDeliveredMessage,
+      ]);
+      knownMessageIdsRef.current.add(nextDeliveredMessage.id);
+      loadedChannelIdsRef.current.add(nextDeliveredMessage.channelId);
+      setMessages((currentMessages) =>
+        preserveHermesArrayReference(
+          currentMessages,
+          mergeHermesChannelMessages({
+            channelId: activeChannel.id,
+            currentMessages,
+            nextMessages: [nextDeliveredMessage],
+            replaceChannel: false,
+          }),
+          getHermesMessageRenderSignature,
+        ),
+      );
+    }
+
+    window.addEventListener("careli:hermes:message", handleGlobalHermesMessage);
+
+    return () =>
+      window.removeEventListener(
+        "careli:hermes:message",
+        handleGlobalHermesMessage,
+      );
+  }, [activeChannel.id, channels]);
 
   useEffect(() => {
     if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
@@ -1952,6 +2130,14 @@ export function HermesWorkspace() {
           ).map((reply) => (reply.id === localReply.id ? savedReply : reply)),
         }));
         loadThreadReplies(activeThreadMessage.id);
+        // #2: faz broadcast da resposta como mensagem (com threadParentMessageId) para
+        // o provider global de notificacoes avisar os outros membros — resposta passa a
+        // ser tratada igual a uma mensagem normal (som + central + toast).
+        broadcastHermesMessageEvent({
+          ...savedReply,
+          status: "neutral",
+          threadParentMessageId: activeThreadMessage.id,
+        });
       })
       .catch((error: unknown) => {
         if (isLocalDevelopmentRuntime()) {
@@ -2013,7 +2199,11 @@ export function HermesWorkspace() {
             presenceUsers={channelPresenceUsers}
             unreadCallCount={unreadCallCount}
           />
-          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4">
+          <div
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4"
+            onScroll={handleMessageScroll}
+            ref={messageScrollContainerRef}
+          >
             <MessageList
               callEvents={activeChannelCallEvents}
               channelId={activeChannel.id}

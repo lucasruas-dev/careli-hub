@@ -1,5 +1,11 @@
 {
   "buildCommand": "npx turbo build --filter=@repo/hub",
   "installCommand": "npm install",
-  "outputDirectory": "apps/hub/.next"
+  "outputDirectory": "apps/hub/.next",
+  "crons": [
+    {
+      "path": "/api/chronos/recordings/egress-cron",
+      "schedule": "*/30 * * * *"
+    }
+  ]
 }

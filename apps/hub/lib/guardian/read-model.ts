@@ -120,7 +120,7 @@ export async function loadHadesOverviewReadModel(): Promise<HadesOverviewSnapsho
     return null;
   }
 
-  const [enterpriseResult, agingResult, compositionResult] = await Promise.all([
+  const [enterpriseResult, agingResult, compositionResult, queueCountResult] = await Promise.all([
     adminClient
       .from("c2x_guardian_enterprise_performance")
       .select("*")
@@ -135,11 +135,20 @@ export async function loadHadesOverviewReadModel(): Promise<HadesOverviewSnapsho
       .select("*")
       .eq("snapshot_id", snapshot.id)
       .order("sort_order", { ascending: true }),
+    adminClient
+      .from("c2x_guardian_attendance_queue")
+      .select("id", { count: "exact", head: true })
+      .eq("is_current", true)
+      .gt("overdue_payments", 0),
   ]);
 
   if (enterpriseResult.error || agingResult.error || compositionResult.error) {
     return null;
   }
+
+  const attendanceQueueOverdueClients = queueCountResult.error
+    ? null
+    : queueCountResult.count;
 
   return {
     billingComposition: mapDistributionRows(compositionResult.data ?? []),
@@ -163,7 +172,8 @@ export async function loadHadesOverviewReadModel(): Promise<HadesOverviewSnapsho
       monthlyRecoveryPayments: toNumber(snapshot.monthly_recovery_payments),
       openProposals: 0,
       overdueAmount: toNumber(snapshot.overdue_amount),
-      overdueClients: toNumber(snapshot.overdue_clients),
+      overdueClients:
+        attendanceQueueOverdueClients ?? toNumber(snapshot.overdue_clients),
       overduePayments: toNumber(snapshot.overdue_payments),
       overduePrincipalAmount: toNumber(snapshot.overdue_amount),
       overduePrincipalPayments: toNumber(snapshot.overdue_payments),

@@ -66,6 +66,7 @@
   --uix-z-base: 0;
   --uix-z-raised: 10;
   --uix-z-sticky: 100;
+  --uix-z-popover: 300;
   --uix-z-overlay: 400;
   --uix-z-modal: 500;
   --uix-z-toast: 600;

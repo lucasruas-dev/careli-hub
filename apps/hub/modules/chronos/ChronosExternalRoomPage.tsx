@@ -15,6 +15,11 @@ import {
 } from "@/lib/chronos/recording";
 import type { HermesCallParticipant } from "@/lib/pulsex";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+import {
+  HUB_CHRONOS_CALL_HEARTBEAT_INTERVAL_MS,
+  clearHubChronosCallHeartbeat,
+  writeHubChronosCallHeartbeat,
+} from "@/lib/hub-presence-policy";
 import { useAuth } from "@/providers/auth-provider";
 import { Badge } from "@repo/uix";
 import type { ImageSegmenter } from "@mediapipe/tasks-vision";
@@ -549,6 +554,25 @@ export function ChronosExternalRoomPage({
     () => `chronos:background:${room.slug}:${hubUser?.id ?? "guest"}`,
     [hubUser?.id, room.slug],
   );
+  useEffect(() => {
+    // Enquanto a videochamada esta ativa, publica um heartbeat cross-tab para que o
+    // controlador de presenca (montado na topbar do Hub, possivelmente em outra aba)
+    // nao dispare o auto-logout de 2h e derrube a sessao/embed. Ver hub-presence-policy.ts.
+    if (!hasJoined) {
+      return;
+    }
+
+    writeHubChronosCallHeartbeat();
+    const interval = window.setInterval(
+      () => writeHubChronosCallHeartbeat(),
+      HUB_CHRONOS_CALL_HEARTBEAT_INTERVAL_MS,
+    );
+
+    return () => {
+      window.clearInterval(interval);
+      clearHubChronosCallHeartbeat();
+    };
+  }, [hasJoined]);
   const syncChronosWherebyArtifacts = useCallback(async () => {
     if (!meetingId || !wherebyRoom) {
       return;

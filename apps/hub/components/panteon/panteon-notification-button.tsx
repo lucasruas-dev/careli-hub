@@ -1,10 +1,13 @@
 "use client";
 
-import { Bell, CheckCheck, Inbox } from "lucide-react";
+import { Bell, CheckCheck, History, Inbox } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Tooltip } from "@repo/uix";
 
-import type { PanteonNotificationItem } from "@/lib/panteon-notifications";
+import {
+  isPanteonNotificationFromToday,
+  type PanteonNotificationItem,
+} from "@/lib/panteon-notifications";
 import { usePanteonNotifications } from "@/providers/pulsex-notification-provider";
 
 export function PanteonNotificationButton({
@@ -15,7 +18,21 @@ export function PanteonNotificationButton({
   const { items, markAllRead, openHermesChannel, unreadCount } =
     usePanteonNotifications();
   const [open, setOpen] = useState(false);
+  // C: separa as notificacoes em "novas" (nao lidas) e "historico" (lidas). A Central
+  // abre nas novas; o icone de historico mostra as lidas num so popup.
+  const [showHistory, setShowHistory] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
+  const unreadItems = items.filter((item) => !item.read);
+  const readItems = items.filter(
+    (item) => item.read && isPanteonNotificationFromToday(item.createdAt),
+  );
+  const visibleItems = showHistory ? readItems : unreadItems;
+
+  useEffect(() => {
+    if (!open) {
+      setShowHistory(false);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (!open) {
@@ -64,27 +81,47 @@ export function PanteonNotificationButton({
           <header className="flex items-center justify-between gap-3 border-b border-[#e4e9ef] px-3 py-2.5">
             <div className="min-w-0">
               <p className="m-0 text-sm font-semibold text-[#101820]">
-                Central Panteon
+                {showHistory ? "Historico" : "Central Panteon"}
               </p>
               <p className="m-0 text-xs text-[#6b778c]">
-                {unreadCount > 0
-                  ? `${unreadCount} pendente(s)`
-                  : "Tudo em dia"}
+                {showHistory
+                  ? `${readItems.length} lida(s)`
+                  : unreadItems.length > 0
+                    ? `${unreadItems.length} pendente(s)`
+                    : "Tudo em dia"}
               </p>
             </div>
-            <button
-              className="inline-flex h-8 items-center gap-1 rounded-md border border-[#d9e0e7] px-2 text-xs font-semibold text-[#526078] outline-none transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-              onClick={markAllRead}
-              type="button"
-            >
-              <CheckCheck aria-hidden="true" size={14} />
-              Lidas
-            </button>
+            <div className="flex items-center gap-1.5">
+              <button
+                aria-label={showHistory ? "Ver novas" : "Ver historico"}
+                aria-pressed={showHistory}
+                className={`inline-flex h-8 items-center gap-1 rounded-md border px-2 text-xs font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+                  showHistory
+                    ? "border-[#A07C3B] bg-[#f7f3eb] text-[#7b5f2d]"
+                    : "border-[#d9e0e7] text-[#526078] hover:bg-[#f8fafc] hover:text-[#101820]"
+                }`}
+                onClick={() => setShowHistory((current) => !current)}
+                type="button"
+              >
+                <History aria-hidden="true" size={14} />
+                Historico
+              </button>
+              {showHistory ? null : (
+                <button
+                  className="inline-flex h-8 items-center gap-1 rounded-md border border-[#d9e0e7] px-2 text-xs font-semibold text-[#526078] outline-none transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                  onClick={markAllRead}
+                  type="button"
+                >
+                  <CheckCheck aria-hidden="true" size={14} />
+                  Lidas
+                </button>
+              )}
+            </div>
           </header>
           <div className="max-h-[28rem] overflow-y-auto p-2">
-            {items.length > 0 ? (
+            {visibleItems.length > 0 ? (
               <div className="grid gap-1.5">
-                {items.map((item) => (
+                {visibleItems.map((item) => (
                   <NotificationCenterRow
                     item={item}
                     key={item.id}
@@ -106,7 +143,9 @@ export function PanteonNotificationButton({
               <div className="grid min-h-28 place-items-center rounded-md border border-dashed border-[#d9e0e7] px-4 text-center text-sm text-[#6b778c]">
                 <span className="inline-flex items-center gap-2">
                   <Inbox aria-hidden="true" size={16} />
-                  Sem notificacoes acionaveis.
+                  {showHistory
+                    ? "Sem notificacoes no historico."
+                    : "Sem notificacoes novas."}
                 </span>
               </div>
             )}
