@@ -49,6 +49,7 @@ import {
   countOpenItTickets,
 } from "@/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary";
 import { PanteonAddressCatalog } from "@/modules/squadops/blocks/address/address-catalog";
+import { HealthBoard } from "@/modules/squadops/blocks/health/health-board";
 import {
   getHubSupabaseClient,
   hubSupabaseConfig,
@@ -156,6 +157,7 @@ type OperationsFilters = {
 
 type ZeusView =
   | "overview"
+  | "health"
   | "monitoring"
   | "itTickets"
   | "address"
@@ -804,6 +806,7 @@ OPERACIONAL COM ATENCAO se houver pendencias abertas; AGUARDANDO RELEASEOPS quan
 
 const zeusViews = [
   { id: "itTickets", label: "HelpDesk" },
+  { id: "health", label: "Saúde do HUB" },
   { id: "address", label: "Address" },
   { id: "overview", label: "Visão geral" },
   { id: "monitoring", label: "Database Monitoring" },
@@ -1448,7 +1451,7 @@ export function ZeusPage({
     if (
       !canAccessZeus ||
       profileStatus === "loading" ||
-      activeView !== "monitoring"
+      (activeView !== "monitoring" && activeView !== "health")
     ) {
       return;
     }
@@ -1460,7 +1463,7 @@ export function ZeusPage({
     if (
       !canAccessZeus ||
       profileStatus === "loading" ||
-      activeView !== "monitoring" ||
+      (activeView !== "monitoring" && activeView !== "health") ||
       monitoringIntervalMs === 0
     ) {
       return;
@@ -2071,7 +2074,7 @@ export function ZeusPage({
   const pageContent = (
     <>
       <WorkspaceLayout>
-        {!isHelpDeskView ? (
+        {!isHelpDeskView && activeView !== "health" ? (
         <>
         <section className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -2136,7 +2139,7 @@ export function ZeusPage({
           </Surface>
         ) : null}
 
-        {!isHelpDeskView ? (
+        {!isHelpDeskView && activeView !== "health" ? (
         <ZeusCommandCenter
           actionCount={actionCount}
           isLoading={isLoading}
@@ -2247,6 +2250,16 @@ export function ZeusPage({
               />
             </section>
           </>
+        ) : null}
+
+        {activeView === "health" ? (
+          <HealthBoard
+            generatedAt={monitoringSnapshot?.generatedAt}
+            isLoading={isMonitoringLoading}
+            onRefresh={() => void loadMonitoringSnapshot()}
+            snapshot={monitoringSnapshot}
+            watcher={watcherDecision}
+          />
         ) : null}
 
         {activeView === "monitoring" ? (
@@ -4493,6 +4506,7 @@ function ZeusViewTabs({
     address: addressCatalogCount,
     audits: routineCount,
     deploys: deployCount,
+    health: monitoringAlertCount,
     itTickets: itTicketCount,
     monitoring: monitoringAlertCount,
     overview: actionCount,
