@@ -22,6 +22,7 @@ import type {
 } from "./types";
 
 type ChronosApiResponse = Partial<ChronosSnapshot> & {
+  authorizationUrl?: string;
   error?: string;
   googleCalendar?: ChronosGoogleCalendarStatus | ChronosGoogleCalendarSyncResult;
   invitees?: ChronosHubInvitee[];
@@ -161,6 +162,30 @@ export async function loadChronosGoogleCalendarStatus(
   }
 
   return googleCalendar;
+}
+
+// Inicia a conexao com o Google Agenda: chama a rota /authorize via fetch
+// AUTENTICADO (header Bearer) e devolve a URL de consentimento do Google. O
+// chamador navega o browser para essa URL. Fazemos assim porque uma navegacao
+// direta do browser para /authorize nao carrega o token e cai em "Sessao ausente".
+export async function startChronosGoogleCalendarAuthorization(
+  returnTo: string,
+  accessToken?: string | null,
+) {
+  const { payload, response } = await fetchChronosApi<ChronosApiResponse>({
+    accessToken,
+    url: `/api/chronos/google-calendar/authorize?returnTo=${encodeURIComponent(returnTo)}`,
+  });
+
+  const authorizationUrl = payload?.authorizationUrl;
+
+  if (!response.ok || typeof authorizationUrl !== "string" || !authorizationUrl) {
+    throw new Error(
+      payload?.error ?? "Nao foi possivel iniciar a conexao com o Google Agenda.",
+    );
+  }
+
+  return authorizationUrl;
 }
 
 export async function syncChronosGoogleCalendar(

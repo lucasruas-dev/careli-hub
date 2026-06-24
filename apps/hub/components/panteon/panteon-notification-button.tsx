@@ -23,8 +23,14 @@ export function PanteonNotificationButton({
   const [showHistory, setShowHistory] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const unreadItems = items.filter((item) => !item.read);
+  // Historico = lidas de hoje. As notificacoes do Hermes POR CANAL (que colapsam e
+  // viram o badge "novas") sao escondidas do historico: la mostramos o log por
+  // mensagem (id "hermes:msg:..."), evitando duplicar a mesma conversa.
   const readItems = items.filter(
-    (item) => item.read && isPanteonNotificationFromToday(item.createdAt),
+    (item) =>
+      item.read &&
+      isPanteonNotificationFromToday(item.createdAt) &&
+      !item.id.startsWith("hermes:channel:"),
   );
   const visibleItems = showHistory ? readItems : unreadItems;
 
@@ -127,7 +133,10 @@ export function PanteonNotificationButton({
                     key={item.id}
                     onOpen={() => {
                       if (item.context?.hermesChannelId) {
-                        openHermesChannel(item.context.hermesChannelId);
+                        openHermesChannel(
+                          item.context.hermesChannelId,
+                          item.context.threadParentMessageId,
+                        );
                         setOpen(false);
                         return;
                       }

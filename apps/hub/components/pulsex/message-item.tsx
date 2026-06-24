@@ -34,6 +34,7 @@ import {
   useState,
   type FormEvent,
   type KeyboardEvent,
+  type MouseEvent,
   type ReactNode,
 } from "react";
 import {
@@ -214,6 +215,32 @@ export function MessageItem({
     setIsReactionPickerOpen(false);
   }
 
+  // Clicar na mensagem abre o painel de respostas (thread) — alvo de clique maior que
+  // so o icone. Nao dispara ao clicar em botoes/links/midia nem ao selecionar texto.
+  function handleBubbleClick(event: MouseEvent<HTMLDivElement>) {
+    if (!onOpenThread || isEditing || message.deletedAt) {
+      return;
+    }
+
+    if (
+      event.target instanceof Element &&
+      event.target.closest(
+        "button, a, audio, video, input, textarea, [role='button']",
+      )
+    ) {
+      return;
+    }
+
+    if (
+      typeof window !== "undefined" &&
+      !(window.getSelection()?.isCollapsed ?? true)
+    ) {
+      return;
+    }
+
+    onOpenThread(message.id);
+  }
+
   return (
     <div
       className={`relative flex items-end gap-2 px-4 py-1 ${
@@ -229,7 +256,7 @@ export function MessageItem({
         />
       ) : null}
       <div
-        className={`group relative ${
+        className={`group relative ${onOpenThread && !isEditing ? "cursor-pointer" : ""} ${
           isStandaloneVisual
             ? "max-w-[10rem] border-0 bg-transparent px-1 py-0 text-[#101820] shadow-none"
             : `max-w-[min(72%,46rem)] border px-3 py-2 shadow-[0_1px_2px_rgba(16,24,32,0.12)] ${
@@ -238,6 +265,7 @@ export function MessageItem({
                   : "rounded-2xl rounded-bl-md border-[#e5e9ef] bg-white text-[var(--uix-text-primary)]"
               }`
         }`}
+        onClick={handleBubbleClick}
       >
         {!isStandaloneVisual ? (
           <span

@@ -1186,6 +1186,7 @@ function mapThreadReplyFromMessage(
     body: message.body,
     channelId: message.channelId,
     createdAt: message.createdAt,
+    editedAt: message.editedAt,
     id: message.id,
     mentionUserIds: message.mentionUserIds,
     mentions: message.mentions,

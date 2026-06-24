@@ -46,5 +46,9 @@ export async function GET(request: NextRequest) {
     userId: authorization.user.id,
   });
 
-  return Response.redirect(authorizationUrl, 302);
+  // Devolvemos a URL do Google em JSON (em vez de 302) porque o cliente chama
+  // esta rota via fetch autenticado (header Authorization). Uma navegacao direta
+  // do browser nao carrega o Bearer e cairia em "Sessao ausente". O cliente le
+  // `authorizationUrl` e navega para o consentimento do Google.
+  return Response.json({ authorizationUrl });
 }

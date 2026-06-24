@@ -466,7 +466,17 @@ export async function startChronosGoogleCalendarAuthorization({
   url.searchParams.set("code_challenge", codeChallenge);
   url.searchParams.set("code_challenge_method", "S256");
   url.searchParams.set("include_granted_scopes", "true");
-  url.searchParams.set("prompt", "consent");
+  // select_account: forca o seletor de contas (a pessoa escolhe ativamente a conta do
+  // Workspace, em vez de reusar silenciosamente a pessoal conflitante).
+  url.searchParams.set("prompt", "select_account consent");
+  // hd: restringe o seletor de contas ao dominio do Workspace, evitando que a pessoa
+  // autorize com a conta Google PESSOAL conflitante (que o Google mostra como
+  // ...%dominio@gtempaccount.com e NAO e membro da organizacao -> erro org_internal).
+  // Como o app OAuth e "Interno", so contas @careli.adm.br conseguem concluir.
+  url.searchParams.set(
+    "hd",
+    process.env.GOOGLE_CALENDAR_HOSTED_DOMAIN?.trim() || "careli.adm.br",
+  );
   url.searchParams.set(
     "redirect_uri",
     readRequiredEnv("GOOGLE_CALENDAR_REDIRECT_URI"),

@@ -42,6 +42,7 @@ export type PanteonNotificationItem = {
     hermesChannelId?: HermesChannel["id"];
     entityId?: string;
     entityType?: string;
+    threadParentMessageId?: string;
   };
 };
 

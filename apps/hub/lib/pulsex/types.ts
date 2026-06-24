@@ -134,6 +134,7 @@ export type HermesThreadReply = {
   body: string;
   channelId: HermesChannel["id"];
   createdAt?: string;
+  editedAt?: string;
   id: string;
   mentionUserIds?: readonly HermesPresenceUser["id"][];
   mentions?: readonly HermesMessageMention[];

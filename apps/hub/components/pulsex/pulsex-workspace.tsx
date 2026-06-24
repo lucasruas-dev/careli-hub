@@ -30,9 +30,7 @@ import {
   getHermesDirectPeerUserId,
 } from "@/lib/pulsex/direct-channel";
 import {
-  playHermesIncomingMessageSound,
   registerHermesNotificationPermissionIntent,
-  showBrowserHermesNotification,
 } from "@/lib/pulsex/notification-effects";
 import {
   getMessageRecipientUserIds,
@@ -585,9 +583,8 @@ export function HermesWorkspace() {
       return;
     }
 
-    const channelId = new URLSearchParams(window.location.search).get(
-      "channel",
-    );
+    const params = new URLSearchParams(window.location.search);
+    const channelId = params.get("channel");
 
     if (!channelId || !channels.some((channel) => channel.id === channelId)) {
       queryChannelAppliedRef.current = true;
@@ -596,6 +593,14 @@ export function HermesWorkspace() {
 
     queryChannelAppliedRef.current = true;
     setActiveChannelId(channelId);
+
+    // ?thread=<parentId>: abre direto na thread (notificacao de resposta clicada
+    // de fora do Hermes / via link).
+    const threadParentMessageId = params.get("thread");
+
+    if (threadParentMessageId) {
+      setActiveThreadMessageId(threadParentMessageId);
+    }
   }, [channels]);
 
   useLayoutEffect(() => {
@@ -823,57 +828,36 @@ export function HermesWorkspace() {
     };
   }, [dataStatus, refreshPresenceStatuses]);
 
+  // Notificacao do Hermes foi CENTRALIZADA no HermesNotificationProvider (som +
+  // toast + Central + log por mensagem) e no Web Push (notificacao do SO, sempre com
+  // avatar). O workspace nao alerta mais — isso elimina o duplo-disparo, o re-disparo
+  // ao reabrir (catch-up/poll) e a notificacao de SO generica do time. Mantido como
+  // no-op para nao mexer nos call sites (carga inicial / realtime).
   const notifyIncomingMessages = useCallback(
-    (newMessages: readonly HermesMessage[]) => {
-      if (newMessages.length === 0) {
-        return;
-      }
-
-      newMessages.forEach((message) => {
-        const mentioned = isMessageMentioningUser(message, currentUserId);
-        const messageChannel = channelsById.get(message.channelId);
-        const channelName = messageChannel?.name ?? activeChannel.name;
-        const title = mentioned
-          ? "Voce foi mencionado no Hermes"
-          : `Nova mensagem em ${channelName}`;
-        const description = `${message.authorName ?? "Hermes"}: ${message.body}`;
-        const notification = {
-          channelId: message.channelId,
-          description,
-          id: `notification-${message.id}-${Date.now()}`,
-          mentioned,
-          title,
-        } satisfies HermesToastNotification;
-
-        // O som e a notificacao do SO precisam chegar DEPOIS da mensagem aparecer.
-        // O caller ja chamou setMessages antes daqui; adiando um tick garantimos que
-        // o React commitou a mensagem no DOM antes do som tocar (corrige "som antes
-        // da mensagem"). setTimeout (nao requestAnimationFrame) continua disparando
-        // mesmo com a aba em segundo plano, que e justamente quando o alerta importa.
-        window.setTimeout(() => {
-          playHermesIncomingMessageSound({
-            mentioned,
-            messageId: message.id,
-          });
-          showBrowserHermesNotification({
-            body: description,
-            onClickPath: `/hermes?channel=${encodeURIComponent(message.channelId)}`,
-            tag: `hermes-message-${message.id}`,
-            title,
-          });
-        }, 0);
-        setNotifications((currentNotifications) =>
-          [notification, ...currentNotifications].slice(0, 4),
-        );
-        window.setTimeout(() => {
-          setNotifications((currentNotifications) =>
-            currentNotifications.filter((item) => item.id !== notification.id),
-          );
-        }, 6_000);
-      });
-    },
-    [activeChannel.name, channelsById, currentUserId],
+    (_newMessages: readonly HermesMessage[]) => {},
+    [],
   );
+
+  // Avisa o provider global qual conversa esta aberta para ele NAO alertar
+  // (som/toast) o canal que o usuario ja esta vendo. Limpa ao trocar/sair.
+  useEffect(() => {
+    const channelId =
+      activeChannel.id === emptyHermesChannel.id ? null : activeChannel.id;
+
+    window.dispatchEvent(
+      new CustomEvent("careli:hermes:active-channel", {
+        detail: { channelId },
+      }),
+    );
+
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("careli:hermes:active-channel", {
+          detail: { channelId: null },
+        }),
+      );
+    };
+  }, [activeChannel.id]);
 
   const loadActiveChannelMessages = useCallback(
     (shouldApply: () => boolean = () => true) => {
@@ -1157,6 +1141,29 @@ export function HermesWorkspace() {
     };
   }, [activeChannel.id, activeChannel.kind, loadActiveChannelMessages]);
 
+  // Catch-up ao focar/restaurar: o navegador congela a PWA minimizada (websocket
+  // realtime suspenso, poll parado). Ao voltar o foco, refetch imediato do canal ativo
+  // para nao esperar o proximo ciclo de poll — era o "demorou a aparecer" ao reabrir.
+  useEffect(() => {
+    if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
+      return;
+    }
+
+    const handleFocusCatchUp = () => {
+      if (document.visibilityState === "visible") {
+        loadActiveChannelMessages();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleFocusCatchUp);
+    window.addEventListener("focus", handleFocusCatchUp);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleFocusCatchUp);
+      window.removeEventListener("focus", handleFocusCatchUp);
+    };
+  }, [activeChannel.id, loadActiveChannelMessages]);
+
   useEffect(() => {
     if (!hasHubSupabaseConfig() || dataStatus !== "ready") {
       return;
@@ -1313,11 +1320,37 @@ export function HermesWorkspace() {
       const message = (event as CustomEvent<{ message?: HermesMessage }>).detail
         ?.message;
 
-      if (
-        !message ||
-        message.channelId !== activeChannel.id ||
-        message.threadParentMessageId
-      ) {
+      if (!message || message.channelId !== activeChannel.id) {
+        return;
+      }
+
+      // Resposta de thread: marca a mensagem-pai em TEMPO REAL (botao de resposta
+      // fica azul = nao-lida) sem precisar abrir. Incrementa o threadCount; como o
+      // receipt ja foi semeado no count anterior, o delta vira "nao-lida". Abrir a
+      // thread (markThreadRepliesRead) zera o delta de volta a dourado. Pula se a
+      // thread desse pai ja esta aberta (o poll de 8s + marcacao de leitura cuidam).
+      if (message.threadParentMessageId) {
+        if (
+          message.authorId === currentUserId ||
+          activeThreadMessageId === message.threadParentMessageId
+        ) {
+          return;
+        }
+
+        const parentId = message.threadParentMessageId;
+
+        setMessages((currentMessages) =>
+          currentMessages.map((current) =>
+            current.id === parentId
+              ? {
+                  ...current,
+                  threadCount: (current.threadCount ?? 0) + 1,
+                  lastThreadReplyAt:
+                    message.createdAt ?? current.lastThreadReplyAt,
+                }
+              : current,
+          ),
+        );
         return;
       }
 
@@ -1356,7 +1389,7 @@ export function HermesWorkspace() {
         "careli:hermes:message",
         handleGlobalHermesMessage,
       );
-  }, [activeChannel.id, channels]);
+  }, [activeChannel.id, activeThreadMessageId, channels, currentUserId]);
 
   useEffect(() => {
     if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
@@ -1496,14 +1529,25 @@ export function HermesWorkspace() {
 
   useEffect(() => {
     function handleOpenChannel(event: Event) {
-      const channelId = (event as CustomEvent<{ channelId?: string }>).detail
-        ?.channelId;
+      const detail = (
+        event as CustomEvent<{
+          channelId?: string;
+          threadParentMessageId?: string;
+        }>
+      ).detail;
+      const channelId = detail?.channelId;
 
       if (!channelId || !channels.some((channel) => channel.id === channelId)) {
         return;
       }
 
       handleSelectChannel(channelId);
+
+      // Notificacao de uma resposta: abre direto na thread. handleSelectChannel
+      // zera a thread, entao reabrimos logo em seguida.
+      if (detail?.threadParentMessageId) {
+        setActiveThreadMessageId(detail.threadParentMessageId);
+      }
     }
 
     window.addEventListener("careli:hermes:open-channel", handleOpenChannel);
@@ -1825,11 +1869,22 @@ export function HermesWorkspace() {
     body: string,
   ) {
     const nextBody = body.trim();
+
+    if (!nextBody) {
+      return;
+    }
+
     const previousMessage = messages.find(
       (message) => message.id === messageId,
     );
 
-    if (!previousMessage || !nextBody || previousMessage.body === nextBody) {
+    if (!previousMessage) {
+      // Nao esta na lista principal: e uma resposta dentro de uma thread.
+      await editThreadReplyMessage(messageId, nextBody);
+      return;
+    }
+
+    if (previousMessage.body === nextBody) {
       return;
     }
 
@@ -1886,6 +1941,53 @@ export function HermesWorkspace() {
     }
   }
 
+  // Edita uma resposta de thread (vive em `threadReplies`, nao na lista principal).
+  async function editThreadReplyMessage(
+    messageId: HermesThreadReply["id"],
+    nextBody: string,
+  ) {
+    const previousReply = Object.values(threadReplies)
+      .flat()
+      .find((reply) => reply.id === messageId);
+
+    if (!previousReply || previousReply.body === nextBody) {
+      return;
+    }
+
+    const editedAt = new Date().toISOString();
+
+    updateThreadReplyState(messageId, (reply) => ({
+      ...reply,
+      body: nextBody,
+      editedAt,
+    }));
+
+    if (!hasHubSupabaseConfig() || messageId.startsWith("local-")) {
+      return;
+    }
+
+    try {
+      const savedMessage = await updateHermesMessageBody({
+        body: nextBody,
+        messageId,
+      });
+
+      if (!savedMessage) {
+        throw new Error("Resposta nao atualizada.");
+      }
+
+      applySavedThreadReplyMessage(savedMessage);
+    } catch (error: unknown) {
+      updateThreadReplyState(messageId, () => previousReply);
+
+      if (isLocalDevelopmentRuntime()) {
+        console.warn("[pulsex] edit thread reply error", error);
+      }
+
+      throw error;
+    }
+  }
+
   function updateThreadReplyState(
     replyId: HermesThreadReply["id"],
     updater: (reply: HermesThreadReply) => HermesThreadReply,
@@ -1920,6 +2022,7 @@ export function HermesWorkspace() {
       body: savedMessage.body,
       channelId: savedMessage.channelId,
       createdAt: savedMessage.createdAt,
+      editedAt: savedMessage.editedAt,
       reactions: savedMessage.reactions,
       tags: savedMessage.tags,
       timestamp: savedMessage.timestamp,

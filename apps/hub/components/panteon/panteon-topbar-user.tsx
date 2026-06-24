@@ -12,6 +12,7 @@ import {
   type HubPresenceStatus,
 } from "@/lib/hub-presence";
 import { useAuth } from "@/providers/auth-provider";
+import { PANTEON_BUILD_TAG } from "@/lib/build-info";
 import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { PanteonNotificationButton } from "@/components/panteon/panteon-notification-button";
 
@@ -72,6 +73,7 @@ export function PanteonTopbarUser({
         aria-label={`Foto de ${name}`}
         className="grid h-8 w-8 shrink-0 place-items-center rounded-full border border-[#d9e0e7] bg-[#101820] bg-cover bg-center text-[0.6875rem] font-semibold text-white"
         role="img"
+        title={`Panteon build ${PANTEON_BUILD_TAG}`}
         style={
           hubUser?.avatarUrl
             ? {
