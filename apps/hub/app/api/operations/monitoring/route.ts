@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 
 const PROTOCOL_SYNC_TIMEOUT_MS = 6_000;
 const SNAPSHOT_PERSIST_TIMEOUT_MS = 4_000;
-const COST_SNAPSHOT_TIMEOUT_MS = 6_000;
+const COST_SNAPSHOT_TIMEOUT_MS = 9_000;
 
 export async function GET(request: NextRequest) {
   const authorization = await authorizeZeusAdminRequest(request);

@@ -456,7 +456,8 @@ function CostDailyBars({
 // Custo D-1 (trilho anti-Hermes): Vercel = uso variavel real (EffectiveCost);
 // Supabase = estimativa pelo plano. Regua de cor pelo risco do custo do dia.
 function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
-  const { supabase, vercel } = cost;
+  const { monthAccumulated, monthLabel, monthProjection, supabase, vercel } =
+    cost;
   const fixedMonthly = vercel.monthlyFixedCost + supabase.estimateMonthlyCost;
   const trend = costTrendVisual[vercel.trend];
   const TrendIcon = trend.Icon;
@@ -467,11 +468,11 @@ function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
         <div className="flex items-center gap-2">
           <DollarSign className="size-4 text-[#A07C3B]" />
           <p className="m-0 text-xs font-semibold text-slate-500">
-            Custo D-1{vercel.day ? ` · ${vercel.day}` : ""}
+            Custo · ciclo {monthLabel}
           </p>
         </div>
         <Tooltip
-          content="Uso variável de ontem na Vercel (o que dispara em abuso). Verde dentro do normal, vermelho se estourar o teto."
+          content="Risco pelo uso variável de ontem na Vercel (o que dispara em abuso). Verde dentro do normal, vermelho se estourar o teto."
           placement="top"
         >
           <span
@@ -482,10 +483,36 @@ function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
         </Tooltip>
       </div>
 
+      {/* Destaque: acumulado do mes + expectativa final (projecao ate o fim do mes) */}
+      <div className="mb-3 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-3">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Acumulado no ciclo
+          </p>
+          <p className="m-0 mt-1 text-3xl font-bold leading-none text-slate-950">
+            {formatUsd(monthAccumulated)}
+          </p>
+          <p className="m-0 mt-1 text-[11px] text-slate-500">
+            Vercel + Supabase · ciclo até agora
+          </p>
+        </div>
+        <div className="rounded-lg border border-[#A07C3B]/30 bg-[#A07C3B]/[0.06] p-3">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[#7A5E2C]">
+            Expectativa final
+          </p>
+          <p className="m-0 mt-1 text-3xl font-bold leading-none text-[#7A5E2C]">
+            {formatUsd(monthProjection)}
+          </p>
+          <p className="m-0 mt-1 text-[11px] text-slate-500">
+            projeção até o fim do ciclo
+          </p>
+        </div>
+      </div>
+
       {vercel.configured && vercel.dailySeries.length > 1 ? (
         <div className="mb-3">
           <p className="m-0 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Uso variável por dia (Vercel)
+            Custo por dia (Vercel · faturado)
           </p>
           <CostDailyBars points={vercel.dailySeries} />
         </div>

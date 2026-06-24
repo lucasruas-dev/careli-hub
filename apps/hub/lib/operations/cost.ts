@@ -10,6 +10,9 @@ const VERCEL_BILLING_TEAM_ID =
   "team_0AsY43vvHN2fwEkcN8u5LKXX";
 const VERCEL_MONTHLY_PLAN_USD = readNumberEnv("VERCEL_MONTHLY_PLAN_USD", 40);
 const SUPABASE_MONTHLY_PLAN_USD = readNumberEnv("SUPABASE_MONTHLY_PLAN_USD", 25);
+// Corte do ciclo de faturamento da Vercel (dia do mes). Confirmado no painel
+// ("June 20 - July 20"). Configuravel por env caso a Vercel mude o corte.
+const VERCEL_BILLING_CYCLE_DAY = readNumberEnv("VERCEL_BILLING_CYCLE_DAY", 20);
 
 // Regua do custo diario VARIAVEL (USD/dia). Configuravel por env.
 const DAILY_COST_MEDIO_USD = readNumberEnv("OPS_COST_DAILY_MEDIO_USD", 5);
@@ -34,6 +37,8 @@ export type OperationsVercelCost = {
   dailySeries: OperationsCostDailyPoint[];
   day: string | null;
   error?: string;
+  monthAccumulated: number;
+  monthProjection: number;
   monthlyFixedCost: number;
   risk: OperationsRiskLevel;
   topServices: OperationsCostServiceItem[];
@@ -45,12 +50,16 @@ export type OperationsVercelCost = {
 export type OperationsSupabaseCost = {
   estimateMonthlyCost: number;
   estimateDailyCost: number;
+  monthAccumulated: number;
   note: string;
 };
 
 export type OperationsCostSnapshot = {
   currency: string;
   generatedAt: string;
+  monthAccumulated: number;
+  monthLabel: string;
+  monthProjection: number;
   supabase: OperationsSupabaseCost;
   vercel: OperationsVercelCost;
 };
@@ -62,24 +71,103 @@ export async function getOperationsCostSnapshot(): Promise<OperationsCostSnapsho
     return costCache.value;
   }
 
+  const cycle = getCycleContext();
+  const vercel = await getVercelCost(cycle);
+  const supabase = getSupabaseEstimate(cycle);
+
   const value: OperationsCostSnapshot = {
     currency: "USD",
     generatedAt: new Date().toISOString(),
-    supabase: getSupabaseEstimate(),
-    vercel: await getVercelCost(),
+    // Acumulado do CICLO (destaque) + expectativa final (projecao ate o fim do ciclo),
+    // somando Vercel (fatura real) + Supabase (estimativa por plano).
+    monthAccumulated: round2(vercel.monthAccumulated + supabase.monthAccumulated),
+    monthLabel: cycle.label,
+    monthProjection: round2(vercel.monthProjection + supabase.estimateMonthlyCost),
+    supabase,
+    vercel,
   };
 
   costCache = { at: Date.now(), value };
   return value;
 }
 
-async function getVercelCost(): Promise<OperationsVercelCost> {
+type CycleContext = {
+  daysElapsed: number;
+  daysInCycle: number;
+  label: string;
+  startKey: string;
+  startMs: number;
+  todayKey: string;
+};
+
+// Ciclo de faturamento da Vercel (corte no dia VERCEL_BILLING_CYCLE_DAY). A fatura e
+// por ciclo (ex.: 20/06 a 20/07), NAO por mes-calendario — por isso o acumulado e a
+// projecao seguem o ciclo.
+function getCycleContext(): CycleContext {
+  const todayKey = pacificDateKey(new Date()); // "YYYY-MM-DD"
+  const year = Number(todayKey.slice(0, 4));
+  const monthIndex = Number(todayKey.slice(5, 7)); // 1-based
+  const dayOfMonth = Number(todayKey.slice(8));
+  const cycleDay = Math.min(
+    Math.max(Math.round(VERCEL_BILLING_CYCLE_DAY), 1),
+    28,
+  );
+
+  let startYear = year;
+  let startMonth = monthIndex;
+  if (dayOfMonth < cycleDay) {
+    startMonth -= 1;
+    if (startMonth < 1) {
+      startMonth = 12;
+      startYear -= 1;
+    }
+  }
+
+  let endYear = startYear;
+  let endMonth = startMonth + 1;
+  if (endMonth > 12) {
+    endMonth = 1;
+    endYear += 1;
+  }
+
+  const startKey = `${pad(startYear, 4)}-${pad(startMonth, 2)}-${pad(cycleDay, 2)}`;
+  const endKey = `${pad(endYear, 4)}-${pad(endMonth, 2)}-${pad(cycleDay, 2)}`;
+  const startMs = Date.parse(`${startKey}T00:00:00Z`);
+  const endMs = Date.parse(`${endKey}T00:00:00Z`);
+  const todayMs = Date.parse(`${todayKey}T00:00:00Z`);
+  const daysInCycle = Math.max(Math.round((endMs - startMs) / 86400000), 1);
+  const daysElapsed = Math.min(
+    Math.max(Math.round((todayMs - startMs) / 86400000), 1),
+    daysInCycle,
+  );
+
+  return {
+    daysElapsed,
+    daysInCycle,
+    label: `${pad(cycleDay, 2)}/${pad(startMonth, 2)} – ${pad(cycleDay, 2)}/${pad(endMonth, 2)}`,
+    startKey,
+    startMs,
+    todayKey,
+  };
+}
+
+function pad(value: number, size: number) {
+  return String(value).padStart(size, "0");
+}
+
+async function getVercelCost(
+  cycle: CycleContext,
+): Promise<OperationsVercelCost> {
   const token = process.env.VERCEL_API_TOKEN?.trim();
 
   const base: OperationsVercelCost = {
     configured: Boolean(token),
     dailySeries: [],
     day: null,
+    monthAccumulated: round2(
+      (VERCEL_MONTHLY_PLAN_USD * cycle.daysElapsed) / cycle.daysInCycle,
+    ),
+    monthProjection: VERCEL_MONTHLY_PLAN_USD,
     monthlyFixedCost: VERCEL_MONTHLY_PLAN_USD,
     risk: "baixo",
     topServices: [],
@@ -94,7 +182,9 @@ async function getVercelCost(): Promise<OperationsVercelCost> {
 
   try {
     const today = utcMidnight(new Date());
-    const from = new Date(today.getTime() - 8 * 86400000).toISOString();
+    // Janela = inicio do CICLO atual (com buffer) ate hoje, mais ~14 dias antes do
+    // corte para o grafico mostrar o fim do ciclo anterior (historico do pico).
+    const from = new Date(cycle.startMs - 16 * 86400000).toISOString();
     const to = today.toISOString();
     const url = `${VERCEL_BILLING_API}?teamId=${encodeURIComponent(
       VERCEL_BILLING_TEAM_ID,
@@ -121,6 +211,7 @@ async function getVercelCost(): Promise<OperationsVercelCost> {
     // = custo de uso real, antes do credito incluido (BilledCost fica ~0 ate estourar).
     const variableByDay = new Map<string, number>();
     const fixedByDay = new Map<string, number>();
+    const billedByDay = new Map<string, number>();
     const variableServiceByDay = new Map<string, Map<string, number>>();
 
     for (const row of rows) {
@@ -129,6 +220,13 @@ async function getVercelCost(): Promise<OperationsVercelCost> {
       if (!day) {
         continue;
       }
+
+      // BilledCost = valor REAL faturado (base da invoice) — todos os servicos. E o
+      // numero do acumulado e da projecao (a fatura que o time paga de fato).
+      billedByDay.set(
+        day,
+        (billedByDay.get(day) ?? 0) + (Number(row.BilledCost) || 0),
+      );
 
       const cost = Number(row.EffectiveCost) || 0;
 
@@ -149,7 +247,11 @@ async function getVercelCost(): Promise<OperationsVercelCost> {
     // Por isso usamos o DIA MAIS RECENTE COM DADOS (anterior a hoje), nao a data fixa.
     const todayKey = pacificDateKey(new Date());
     const availableDays = [
-      ...new Set([...variableByDay.keys(), ...fixedByDay.keys()]),
+      ...new Set([
+        ...variableByDay.keys(),
+        ...fixedByDay.keys(),
+        ...billedByDay.keys(),
+      ]),
     ]
       .filter((day) => day < todayKey)
       .sort();
@@ -164,9 +266,11 @@ async function getVercelCost(): Promise<OperationsVercelCost> {
       median(availableDays.map((day) => variableByDay.get(day) ?? 0)),
     );
 
-    // Serie diaria do uso variavel (mini grafico) — ultimos (ate) 8 dias com dados.
-    const dailySeries = availableDays.slice(-8).map((day) => ({
-      cost: round2(variableByDay.get(day) ?? 0),
+    // Serie diaria do CUSTO real faturado (mini grafico) — ultimos (ate) 14 dias, p/
+    // o pico aparecer junto com a normalizacao recente.
+    const billedDaily = d1 ? round2(billedByDay.get(d1) ?? 0) : 0;
+    const dailySeries = availableDays.slice(-14).map((day) => ({
+      cost: round2(billedByDay.get(day) ?? 0),
       day,
     }));
 
@@ -183,12 +287,40 @@ async function getVercelCost(): Promise<OperationsVercelCost> {
           .slice(0, 4)
       : [];
 
+    // Acumulado do CICLO = soma do BilledCost (fatura real) dos dias do ciclo atual.
+    // Projecao = max(plano, acumulado + ritmo do CICLO * dias que faltam). O ritmo usa
+    // SO os dias do ciclo (nao cruza o corte, p/ nao herdar o pico do ciclo anterior);
+    // e nunca abaixo do plano fixo (a fatura minima do ciclo).
+    const cycleDays = availableDays.filter((day) => day >= cycle.startKey);
+    const monthAccumulated = round2(
+      cycleDays.reduce((total, day) => total + (billedByDay.get(day) ?? 0), 0),
+    );
+    const lastCycleDayMs = cycleDays.length
+      ? Date.parse(`${cycleDays[cycleDays.length - 1]!}T00:00:00Z`)
+      : cycle.startMs;
+    const daysCovered = Math.max(
+      Math.round((lastCycleDayMs - cycle.startMs) / 86400000) + 1,
+      0,
+    );
+    const daysRemaining = Math.max(cycle.daysInCycle - daysCovered, 0);
+    const cycleDailyRate = median(
+      cycleDays.map((day) => billedByDay.get(day) ?? 0),
+    );
+    const monthProjection = round2(
+      Math.max(
+        VERCEL_MONTHLY_PLAN_USD,
+        monthAccumulated + cycleDailyRate * daysRemaining,
+      ),
+    );
+
     return {
       ...base,
       dailySeries,
       day: d1,
+      monthAccumulated,
+      monthProjection,
       monthlyFixedCost,
-      risk: costToRisk(variableCost),
+      risk: costToRisk(billedDaily),
       topServices,
       trend: getTrend(variableCost, typicalDailyCost),
       typicalDailyCost,
@@ -202,17 +334,21 @@ async function getVercelCost(): Promise<OperationsVercelCost> {
   }
 }
 
-function getSupabaseEstimate(): OperationsSupabaseCost {
+function getSupabaseEstimate(cycle: CycleContext): OperationsSupabaseCost {
   // Custo do Supabase e dominado pelo plano fixo (Pro). O uso variavel costuma
-  // ficar dentro da franquia. Estimativa configuravel por env.
+  // ficar dentro da franquia. Estimativa configuravel por env, proporcional ao ciclo.
   return {
     estimateDailyCost: round2(SUPABASE_MONTHLY_PLAN_USD / 30),
     estimateMonthlyCost: SUPABASE_MONTHLY_PLAN_USD,
+    monthAccumulated: round2(
+      (SUPABASE_MONTHLY_PLAN_USD * cycle.daysElapsed) / cycle.daysInCycle,
+    ),
     note: "Estimativa pelo plano (uso dentro da franquia).",
   };
 }
 
 type BillingCharge = {
+  BilledCost?: number | string;
   ChargePeriodStart?: string;
   EffectiveCost?: number | string;
   ServiceCategory?: string;
