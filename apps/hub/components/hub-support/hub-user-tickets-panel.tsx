@@ -8,12 +8,18 @@ import {
 import {
   hubItTicketCategoryLabels,
   hubItTicketPriorityLabels,
-  hubItTicketStatusLabels,
-  hubItTicketStatuses,
   type HubItTicket,
   type HubItTicketAttachmentInput,
   type HubItTicketStatus,
 } from "@/lib/hub-it-tickets/types";
+import {
+  countTicketsByWorkflowStage,
+  getTicketWorkflowStage,
+  getTicketWorkflowStageFromStatus,
+  ticketWorkflowStageLabels,
+  ticketWorkflowStageOrder,
+  type TicketWorkflowStage,
+} from "@/lib/hub-it-tickets/workflow";
 import {
   PanteonLoadingMark,
   PanteonLoadingState,
@@ -53,7 +59,7 @@ import {
   type ReactNode,
 } from "react";
 
-type TicketFilter = "todos" | HubItTicketStatus;
+type TicketFilter = "todos" | TicketWorkflowStage;
 
 type HubUserTicketsPanelProps = {
   compact?: boolean;
@@ -73,12 +79,19 @@ export function HubUserTicketsPanel({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const stageCounts = useMemo(
+    () => countTicketsByWorkflowStage(tickets),
+    [tickets],
+  );
+
   const filteredTickets = useMemo(() => {
     if (statusFilter === "todos") {
       return tickets;
     }
 
-    return tickets.filter((ticket) => ticket.status === statusFilter);
+    return tickets.filter(
+      (ticket) => getTicketWorkflowStage(ticket) === statusFilter,
+    );
   }, [statusFilter, tickets]);
 
   const selectedTicket =
@@ -235,12 +248,12 @@ export function HubUserTicketsPanel({
             label={`Todos ${tickets.length}`}
             onClick={() => setStatusFilter("todos")}
           />
-          {hubItTicketStatuses.map((status) => (
+          {ticketWorkflowStageOrder.map((stage) => (
             <FilterButton
-              active={statusFilter === status}
-              key={status}
-              label={`${hubItTicketStatusLabels[status]} ${countByStatus(tickets, status)}`}
-              onClick={() => setStatusFilter(status)}
+              active={statusFilter === stage}
+              key={stage}
+              label={`${ticketWorkflowStageLabels[stage]} ${stageCounts[stage]}`}
+              onClick={() => setStatusFilter(stage)}
             />
           ))}
         </div>
@@ -367,7 +380,7 @@ function TicketHistoryItem({
             {ticket.title}
           </p>
         </div>
-        <StatusBadge status={ticket.status} />
+        <StatusBadge ticket={ticket} />
       </div>
       <div className="mt-2">
         <DeliveryDueBadge ticket={ticket} />
@@ -683,7 +696,7 @@ function TicketDetail({
             <span className="font-mono text-sm font-semibold text-[#7A5E2C]">
               {ticket.protocol}
             </span>
-            <StatusBadge status={ticket.status} />
+            <StatusBadge ticket={ticket} />
             <Badge variant={priorityVariant(ticket.priority)}>
               {hubItTicketPriorityLabels[ticket.priority]}
             </Badge>
@@ -911,24 +924,24 @@ function TicketDetail({
 }
 
 function RequesterWorkflow({ status }: { status: HubItTicketStatus }) {
+  const stage = getTicketWorkflowStageFromStatus(status);
   const steps = [
-    { id: "novo", label: "Entrada" },
-    { id: "em_triagem", label: "Triagem" },
-    { id: "em_tratativa", label: "Tratativa" },
-    { id: "em_homologacao", label: "Homologacao" },
-    { id: "aguardando_cliente", label: "Sua validacao" },
-    { id: "fechado", label: "Encerrado" },
-  ] as const;
+    "novo",
+    "tratativa",
+    "validacao",
+    "revisao",
+    "finalizado",
+  ] as const satisfies readonly TicketWorkflowStage[];
   const activeIndex = Math.max(
-    steps.findIndex((step) => step.id === normalizeRequesterWorkflowStatus(status)),
+    steps.findIndex((step) => step === stage),
     0,
   );
 
   return (
     <div className="flex gap-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50/80 p-2">
       {steps.map((step, index) => {
-        const isDone = index < activeIndex || status === "fechado";
-        const isActive = index === activeIndex && status !== "fechado";
+        const isDone = index < activeIndex || stage === "finalizado";
+        const isActive = index === activeIndex && stage !== "finalizado";
 
         return (
           <div
@@ -939,32 +952,16 @@ function RequesterWorkflow({ status }: { status: HubItTicketStatus }) {
                   ? "border-[#A07C3B]/35 bg-[#A07C3B]/10 text-[#7A5E2C]"
                   : "border-slate-200 bg-white text-slate-500"
             }`}
-            key={step.id}
+            key={step}
           >
             <p className="m-0 text-[0.68rem] font-semibold uppercase">
-              {step.label}
+              {ticketWorkflowStageLabels[step]}
             </p>
           </div>
         );
       })}
     </div>
   );
-}
-
-function normalizeRequesterWorkflowStatus(status: HubItTicketStatus) {
-  if (status === "em_analise" || status === "em_revisao") {
-    return "em_triagem";
-  }
-
-  if (status === "em_execucao" || status === "em_producao") {
-    return "em_tratativa";
-  }
-
-  if (status === "resolvido") {
-    return "aguardando_cliente";
-  }
-
-  return status;
 }
 
 function CustomerTicketHistory({ ticket }: { ticket: HubItTicket }) {
@@ -1428,35 +1425,27 @@ function DeliveryDueBadge({ ticket }: { ticket: HubItTicket }) {
   );
 }
 
-function StatusBadge({ status }: { status: HubItTicketStatus }) {
+function StatusBadge({ ticket }: { ticket: HubItTicket }) {
+  const stage = getTicketWorkflowStage(ticket);
+
   return (
-    <Badge variant={statusVariant(status)}>
-      {hubItTicketStatusLabels[status]}
+    <Badge variant={stageVariant(stage)}>
+      {ticketWorkflowStageLabels[stage]}
     </Badge>
   );
 }
 
-function statusVariant(status: HubItTicketStatus): BadgeVariant {
-  if (status === "resolvido" || status === "fechado") {
+function stageVariant(stage: TicketWorkflowStage): BadgeVariant {
+  if (stage === "finalizado") {
     return "success";
   }
 
-  if (status === "em_producao") {
-    return "success";
-  }
-
-  if (
-    status === "em_analise" ||
-    status === "em_execucao" ||
-    status === "em_homologacao" ||
-    status === "em_revisao" ||
-    status === "em_tratativa"
-  ) {
-    return "info";
-  }
-
-  if (status === "aguardando_cliente") {
+  if (stage === "validacao") {
     return "warning";
+  }
+
+  if (stage === "tratativa" || stage === "revisao") {
+    return "info";
   }
 
   return "neutral";
@@ -1476,13 +1465,6 @@ function priorityVariant(priority: HubItTicket["priority"]): BadgeVariant {
   }
 
   return "info";
-}
-
-function countByStatus(
-  tickets: readonly HubItTicket[],
-  status: HubItTicketStatus,
-) {
-  return tickets.filter((ticket) => ticket.status === status).length;
 }
 
 function formatDateTime(value: string) {

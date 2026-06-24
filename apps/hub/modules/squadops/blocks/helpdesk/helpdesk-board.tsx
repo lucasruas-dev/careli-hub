@@ -16,6 +16,15 @@ import {
   type HubItTicketRoadmapType,
   type HubItTicketStatus,
 } from "@/lib/hub-it-tickets/types";
+import {
+  countTicketsByWorkflowStage,
+  getTicketWorkflowStage,
+  getTicketWorkflowStageFromStatus,
+  isTicketBacklog,
+  ticketWorkflowStageLabels as workflowStageLabels,
+  ticketWorkflowStageOrder as workflowStageOptions,
+  type TicketWorkflowStage,
+} from "@/lib/hub-it-tickets/workflow";
 import { Badge, Surface, Tooltip } from "@repo/uix";
 import type { BadgeVariant } from "@repo/uix";
 import {
@@ -134,13 +143,6 @@ type TicketInsightGroup = {
   label: string;
   tickets: HubItTicket[];
 };
-type TicketWorkflowStage =
-  | "backlog"
-  | "finalizado"
-  | "novo"
-  | "revisao"
-  | "tratativa"
-  | "validacao";
 type TicketWorkspaceSection =
   | "actual"
   | "context"
@@ -272,23 +274,6 @@ type SetupUsersApiResponse = {
   error?: string;
 };
 
-const workflowStageLabels = {
-  backlog: "Backlog",
-  finalizado: "Finalizado",
-  novo: "Novo",
-  revisao: "Revisao",
-  tratativa: "Em tratativa",
-  validacao: "Validacao",
-} as const satisfies Record<TicketWorkflowStage, string>;
-
-const workflowStageOptions = [
-  "backlog",
-  "novo",
-  "tratativa",
-  "validacao",
-  "revisao",
-  "finalizado",
-] as const satisfies readonly TicketWorkflowStage[];
 
 const roadmapTypeOptions = [
   "melhoria",
@@ -7192,59 +7177,6 @@ function upsertTicketWithDetails(
   );
 }
 
-function getTicketWorkflowStage(ticket: HubItTicket): TicketWorkflowStage {
-  if (isTicketBacklog(ticket)) {
-    return "backlog";
-  }
-
-  return getTicketWorkflowStageFromStatus(ticket.status);
-}
-
-function getTicketWorkflowStageFromStatus(
-  status: HubItTicketStatus,
-): TicketWorkflowStage {
-  if (status === "novo") {
-    return "novo";
-  }
-
-  if (status === "aguardando_cliente" || status === "resolvido") {
-    return "validacao";
-  }
-
-  if (status === "em_revisao") {
-    return "revisao";
-  }
-
-  if (status === "fechado") {
-    return "finalizado";
-  }
-
-  return "tratativa";
-}
-
-function isTicketBacklog(ticket: HubItTicket) {
-  return ticket.roadmap?.active === true;
-}
-
-function countTicketsByWorkflowStage(
-  tickets: HubItTicket[],
-): Record<TicketWorkflowStage, number> {
-  return tickets.reduce<Record<TicketWorkflowStage, number>>(
-    (counts, ticket) => {
-      counts[getTicketWorkflowStage(ticket)] += 1;
-
-      return counts;
-    },
-    {
-      backlog: 0,
-      finalizado: 0,
-      novo: 0,
-      revisao: 0,
-      tratativa: 0,
-      validacao: 0,
-    },
-  );
-}
 
 function isTicketInHistory(ticket: HubItTicket) {
   return !isTicketInActiveQueue(ticket);

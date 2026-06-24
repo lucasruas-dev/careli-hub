@@ -22,6 +22,7 @@ import {
   type AsanaTeamPerformanceSnapshot,
 } from "@/lib/asana-performance";
 import { HubUserTicketsPanel } from "@/components/hub-support/hub-user-tickets-panel";
+import { HomeNovidadesPanel } from "@/components/panteon/home-novidades-panel";
 import {
   PanteonLoadingMark,
   PanteonLoadingState,
@@ -318,34 +319,7 @@ export default function HomePage() {
                 </div>
               </Surface>
 
-              <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)] xl:col-span-5">
-                <PanelTitle
-                  eyebrow="Rotina"
-                  title="Agenda e tarefas"
-                />
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  <DayMetric label="agenda agora" value={agendaCount} />
-                  <DayMetric label="com entrega" value={taskCount} />
-                  <DayMetric
-                    label="a vencer"
-                    value={asanaSnapshot?.totals.dueSoon ?? 0}
-                  />
-                </div>
-                <div className="mt-4 grid grid-cols-3 gap-3">
-                  <DayMetric
-                    label="vencidas"
-                    value={asanaSnapshot?.totals.overdue ?? 0}
-                  />
-                  <DayMetric
-                    label="no prazo"
-                    value={asanaSnapshot?.totals.completedOnTime ?? 0}
-                  />
-                  <DayMetric
-                    label="fora prazo"
-                    value={asanaSnapshot?.totals.completedLate ?? 0}
-                  />
-                </div>
-              </Surface>
+              <HomeNovidadesPanel />
 
               <PresenceTodayPanel className="col-span-12 xl:col-span-4" />
               <AsanaPerformancePanel
