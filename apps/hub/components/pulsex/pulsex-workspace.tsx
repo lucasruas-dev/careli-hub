@@ -858,7 +858,9 @@ export function HermesWorkspace() {
           showBrowserHermesNotification({
             body: description,
             onClickPath: `/hermes?channel=${encodeURIComponent(message.channelId)}`,
-            tag: `hermes-message-${message.id}`,
+            // Mesma tag do provider global para o navegador colapsar a notificacao
+            // duplicada do SO quando os dois notificadores disparam o mesmo id.
+            tag: `pulsex-message-${message.id}`,
             title,
           });
         }, 0);

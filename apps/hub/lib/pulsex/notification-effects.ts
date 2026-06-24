@@ -10,7 +10,10 @@ type HermesIncomingMessageSoundInput = {
   messageId?: string;
 };
 
-const PULSEX_MESSAGE_SOUND_DEDUPE_MS = 12_000;
+// Janela longa (10 min) para garantir 1 som por mensagem mesmo quando dois
+// notificadores (provider global + workspace) disparam para o mesmo id com
+// minutos de intervalo (ex.: usuario abre o Hermes tempos depois do 1o som).
+const PULSEX_MESSAGE_SOUND_DEDUPE_MS = 600_000;
 const HERMES_CALL_SOUND_SRC = "/sounds/hermes-call-ringtone.mp3";
 const PANTEON_NOTIFICATION_SOUND_SRC = "/sounds/panteon-notification.mp3";
 const playedMessageSoundAtById = new Map<string, number>();
