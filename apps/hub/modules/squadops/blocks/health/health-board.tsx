@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 
 import type { OperationsSourceGroup } from "@/lib/operations/data-sources";
 import type {
+  OperationsAlert,
   OperationsCheckMetric,
   OperationsGeneralStatus,
   OperationsMonitoringSnapshot,
@@ -26,10 +27,15 @@ import {
   AlertTriangle,
   BellRing,
   CheckCircle2,
+  ChevronRight,
+  ClipboardCheck,
   Clock,
+  EyeOff,
   Gauge,
   Layers,
+  Loader2,
   RefreshCcw,
+  WandSparkles,
   Zap,
 } from "lucide-react";
 
@@ -64,6 +70,14 @@ const riskPill: Record<OperationsRiskLevel, string> = {
   baixo: "bg-emerald-50 text-emerald-700 ring-emerald-200/70",
   critico: "bg-rose-50 text-rose-700 ring-rose-200/70",
   medio: "bg-amber-50 text-amber-700 ring-amber-200/70",
+};
+
+// Borda do card de ocorrencia pela severidade (leitura imediata bom/ruim).
+const riskCardBorder: Record<OperationsRiskLevel, string> = {
+  alto: "border-orange-200/80",
+  baixo: "border-emerald-200/70",
+  critico: "border-rose-200/80",
+  medio: "border-amber-200/80",
 };
 
 // Regua de latencia: cores derivam de classifyResponseTime (fonte unica do timeRisk
@@ -139,8 +153,15 @@ function checkToGeneralStatus(
 }
 
 type HealthBoardProps = {
+  acknowledgingProtocol?: string | null;
+  copiedCommandId?: string | null;
   generatedAt?: string;
+  ignoringProtocol?: string | null;
   isLoading?: boolean;
+  onAcknowledgeProtocol?: (protocol?: string) => void;
+  onCopyCommand?: (command: string, id: string) => void;
+  onIgnoreProtocol?: (protocol?: string) => void;
+  onOpenFullCenter?: () => void;
   onRefresh?: () => void;
   snapshot: OperationsMonitoringSnapshot | null;
   watcher?: OpsWatcherDecision | null;
@@ -226,9 +247,138 @@ function MetricCard({
   );
 }
 
+function OccurrenceCard({
+  acknowledgingProtocol,
+  alert,
+  copiedCommandId,
+  ignoringProtocol,
+  onAcknowledgeProtocol,
+  onCopyCommand,
+  onIgnoreProtocol,
+}: {
+  acknowledgingProtocol?: string | null;
+  alert: OperationsAlert;
+  copiedCommandId?: string | null;
+  ignoringProtocol?: string | null;
+  onAcknowledgeProtocol?: (protocol?: string) => void;
+  onCopyCommand?: (command: string, id: string) => void;
+  onIgnoreProtocol?: (protocol?: string) => void;
+}) {
+  const latency = timeRiskTone[classifyResponseTime(alert.responseMs)];
+  const isAcknowledging = acknowledgingProtocol === alert.protocol;
+  const isIgnoring = ignoringProtocol === alert.protocol;
+
+  return (
+    <li
+      className={`flex flex-col gap-2 rounded-xl border bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${riskCardBorder[alert.level]}`}
+    >
+      {/* Problema: nivel + titulo + acoes */}
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ${riskPill[alert.level]}`}
+          >
+            {alert.level}
+          </span>
+          <span
+            className="min-w-0 truncate text-sm font-semibold text-slate-900"
+            title={alert.title}
+          >
+            {alert.title}
+          </span>
+        </div>
+        <div className="flex shrink-0 items-center gap-1.5">
+          {onAcknowledgeProtocol ? (
+            <Tooltip content="Confirmar leitura" placement="top">
+              <button
+                aria-label={`Confirmar leitura do protocolo ${alert.protocol}`}
+                className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isAcknowledging}
+                onClick={() => onAcknowledgeProtocol(alert.protocol)}
+                type="button"
+              >
+                {isAcknowledging ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <ClipboardCheck className="size-4" />
+                )}
+              </button>
+            </Tooltip>
+          ) : null}
+          {onIgnoreProtocol ? (
+            <Tooltip content="Silenciar / ignorar" placement="top">
+              <button
+                aria-label={`Silenciar protocolo ${alert.protocol}`}
+                className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                disabled={isIgnoring}
+                onClick={() => onIgnoreProtocol(alert.protocol)}
+                type="button"
+              >
+                {isIgnoring ? (
+                  <Loader2 className="size-4 animate-spin" />
+                ) : (
+                  <EyeOff className="size-4" />
+                )}
+              </button>
+            </Tooltip>
+          ) : null}
+          {onCopyCommand ? (
+            <Tooltip
+              content={`Acionar ${alert.recommendedAgent} (gerar prompt)`}
+              placement="top"
+            >
+              <button
+                aria-label={`Acionar ${alert.recommendedAgent}`}
+                className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition hover:bg-[#A07C3B]/5 ${
+                  copiedCommandId === alert.id ? "bg-[#A07C3B]/10" : ""
+                }`}
+                onClick={() => onCopyCommand(alert.command, alert.id)}
+                type="button"
+              >
+                <WandSparkles className="size-4" />
+              </button>
+            </Tooltip>
+          ) : null}
+        </div>
+      </div>
+
+      {/* Causa: impacto + endpoint + latencia (regua) */}
+      <p className="m-0 text-xs leading-5 text-slate-600">
+        <span className="font-semibold text-slate-500">Causa:</span>{" "}
+        {alert.impact}
+      </p>
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
+        <code className="rounded bg-slate-50 px-1.5 py-0.5 text-slate-500">
+          {alert.endpoint}
+        </code>
+        <span className="inline-flex items-center gap-1">
+          <span className={`size-2 rounded-full ${latency.dot}`} aria-hidden />
+          {alert.responseMs}ms · {latency.label}
+        </span>
+      </div>
+
+      {/* O que fazer: recomendacao + agente */}
+      <p className="m-0 rounded-lg bg-slate-50/80 p-2 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/60">
+        <span className="font-semibold text-slate-500">Fazer:</span>{" "}
+        {alert.recommendation}
+        <span className="ml-1 font-semibold text-[#7A5E2C]">
+          · {alert.recommendedAgent}
+        </span>
+      </p>
+    </li>
+  );
+}
+
 export function HealthBoard({
+  acknowledgingProtocol,
+  copiedCommandId,
   generatedAt,
+  ignoringProtocol,
   isLoading,
+  onAcknowledgeProtocol,
+  onCopyCommand,
+  onIgnoreProtocol,
+  onOpenFullCenter,
   onRefresh,
   snapshot,
   watcher,
@@ -398,44 +548,50 @@ export function HealthBoard({
       ) : null}
 
       <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="mb-3 flex items-center gap-2">
-          {activeAlerts.length > 0 ? (
-            <AlertTriangle className="size-4 text-amber-500" />
-          ) : (
-            <CheckCircle2 className="size-4 text-emerald-500" />
-          )}
-          <p className="m-0 text-xs font-semibold text-slate-500">
-            {activeAlerts.length > 0
-              ? `${activeAlerts.length} alerta(s) ativo(s)`
-              : "Nenhum alerta ativo"}
-          </p>
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            {activeAlerts.length > 0 ? (
+              <AlertTriangle className="size-4 text-amber-500" />
+            ) : (
+              <CheckCircle2 className="size-4 text-emerald-500" />
+            )}
+            <p className="m-0 text-xs font-semibold text-slate-500">
+              {activeAlerts.length > 0
+                ? `${activeAlerts.length} ocorrencia(s) ativa(s)`
+                : "Nenhuma ocorrencia ativa"}
+            </p>
+          </div>
+          {onOpenFullCenter ? (
+            <Tooltip
+              content="Historico, protocolos e devolutivas tecnicas"
+              placement="top"
+            >
+              <button
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                onClick={onOpenFullCenter}
+                type="button"
+              >
+                Ver na Central
+                <ChevronRight className="size-3.5" />
+              </button>
+            </Tooltip>
+          ) : null}
         </div>
         {activeAlerts.length === 0 ? (
           <EmptyState message="Tudo operacional. Sem riscos detectados na ultima leitura." />
         ) : (
-          <ul className="m-0 flex list-none flex-col gap-2 p-0">
+          <ul className="m-0 flex list-none flex-col gap-2.5 p-0">
             {activeAlerts.map((alert) => (
-              <li
-                className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200/70 bg-white p-3"
+              <OccurrenceCard
+                acknowledgingProtocol={acknowledgingProtocol}
+                alert={alert}
+                copiedCommandId={copiedCommandId}
+                ignoringProtocol={ignoringProtocol}
                 key={alert.id}
-              >
-                <span
-                  className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ${riskPill[alert.level]}`}
-                >
-                  {alert.level}
-                </span>
-                <Tooltip
-                  content={`${alert.impact} - ${alert.recommendation}`}
-                  placement="top"
-                >
-                  <span className="min-w-0 flex-1 truncate text-sm font-medium text-slate-800">
-                    {alert.title}
-                  </span>
-                </Tooltip>
-                <code className="rounded bg-slate-50 px-1.5 py-0.5 text-xs text-slate-500">
-                  {alert.endpoint}
-                </code>
-              </li>
+                onAcknowledgeProtocol={onAcknowledgeProtocol}
+                onCopyCommand={onCopyCommand}
+                onIgnoreProtocol={onIgnoreProtocol}
+              />
             ))}
           </ul>
         )}

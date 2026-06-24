@@ -2254,8 +2254,17 @@ export function ZeusPage({
 
         {activeView === "health" ? (
           <HealthBoard
+            acknowledgingProtocol={acknowledgingProtocol}
+            copiedCommandId={copiedCommandId}
             generatedAt={monitoringSnapshot?.generatedAt}
+            ignoringProtocol={ignoringProtocol}
             isLoading={isMonitoringLoading}
+            onAcknowledgeProtocol={(protocol) =>
+              void acknowledgeAlertProtocol(protocol)
+            }
+            onCopyCommand={(command, id) => void copyAgentCommand(command, id)}
+            onIgnoreProtocol={(protocol) => void ignoreAlertProtocol(protocol)}
+            onOpenFullCenter={() => setActiveView("monitoring")}
             onRefresh={() => void loadMonitoringSnapshot()}
             snapshot={monitoringSnapshot}
             watcher={watcherDecision}
