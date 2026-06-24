@@ -2,6 +2,7 @@
 
 import type { ReactNode } from "react";
 
+import type { OperationsCostSnapshot } from "@/lib/operations/cost";
 import type { OperationsSourceGroup } from "@/lib/operations/data-sources";
 import type {
   OperationsAlert,
@@ -30,11 +31,15 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock,
+  DollarSign,
   EyeOff,
   Gauge,
   Layers,
   Loader2,
+  Minus,
   RefreshCcw,
+  TrendingDown,
+  TrendingUp,
   WandSparkles,
   Zap,
 } from "lucide-react";
@@ -369,6 +374,119 @@ function OccurrenceCard({
   );
 }
 
+function formatUsd(value: number) {
+  return new Intl.NumberFormat("en-US", {
+    currency: "USD",
+    minimumFractionDigits: 2,
+    style: "currency",
+  }).format(value);
+}
+
+const costTrendVisual = {
+  down: { Icon: TrendingDown, className: "text-emerald-600", label: "abaixo da média" },
+  flat: { Icon: Minus, className: "text-slate-400", label: "na média" },
+  up: { Icon: TrendingUp, className: "text-rose-600", label: "acima da média" },
+} as const;
+
+// Custo D-1 (trilho anti-Hermes): Vercel = uso variavel real (EffectiveCost);
+// Supabase = estimativa pelo plano. Regua de cor pelo risco do custo do dia.
+function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
+  const { supabase, vercel } = cost;
+  const fixedMonthly = vercel.monthlyFixedCost + supabase.estimateMonthlyCost;
+  const trend = costTrendVisual[vercel.trend];
+  const TrendIcon = trend.Icon;
+
+  return (
+    <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <DollarSign className="size-4 text-[#A07C3B]" />
+          <p className="m-0 text-xs font-semibold text-slate-500">
+            Custo D-1{vercel.day ? ` · ${vercel.day}` : ""}
+          </p>
+        </div>
+        <Tooltip
+          content="Uso variável de ontem na Vercel (o que dispara em abuso). Verde dentro do normal, vermelho se estourar o teto."
+          placement="top"
+        >
+          <span
+            className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ${riskPill[vercel.risk]}`}
+          >
+            {vercel.risk}
+          </span>
+        </Tooltip>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border border-slate-200/70 bg-slate-50/40 p-3">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Vercel · uso variável
+          </p>
+          {vercel.configured ? (
+            <>
+              <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="text-2xl font-semibold leading-none text-slate-950">
+                  {formatUsd(vercel.variableCost)}
+                </span>
+                <span
+                  className={`inline-flex items-center gap-1 text-[11px] font-medium ${trend.className}`}
+                >
+                  <TrendIcon className="size-3.5" />
+                  {trend.label}
+                </span>
+              </div>
+              <p className="m-0 mt-1 text-[11px] text-slate-500">
+                típico/dia: {formatUsd(vercel.typicalDailyCost)}
+              </p>
+              {vercel.topServices.length > 0 ? (
+                <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
+                  {vercel.topServices.map((item) => (
+                    <li
+                      className="flex items-center justify-between gap-2 text-[11px] text-slate-600"
+                      key={item.service}
+                    >
+                      <span className="min-w-0 truncate">{item.service}</span>
+                      <span className="shrink-0 font-medium text-slate-700">
+                        {formatUsd(item.cost)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="m-0 mt-2 text-[11px] text-slate-400">
+                  Sem uso variável no dia.
+                </p>
+              )}
+            </>
+          ) : (
+            <p className="m-0 mt-1 text-[11px] text-slate-400">
+              Configure VERCEL_API_TOKEN para ler o custo real da Vercel.
+            </p>
+          )}
+        </div>
+
+        <div className="rounded-lg border border-slate-200/70 bg-slate-50/40 p-3">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Supabase · estimativa
+          </p>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-2xl font-semibold leading-none text-slate-950">
+              {formatUsd(supabase.estimateDailyCost)}
+            </span>
+            <span className="text-[11px] text-slate-500">/dia</span>
+          </div>
+          <p className="m-0 mt-1 text-[11px] text-slate-500">{supabase.note}</p>
+        </div>
+      </div>
+
+      <p className="m-0 mt-3 text-[11px] text-slate-400">
+        Plano fixo: Vercel {formatUsd(vercel.monthlyFixedCost)} + Supabase{" "}
+        {formatUsd(supabase.estimateMonthlyCost)} ≈ {formatUsd(fixedMonthly)}/mês
+      </p>
+    </div>
+  );
+}
+
 export function HealthBoard({
   acknowledgingProtocol,
   copiedCommandId,
@@ -533,6 +651,8 @@ export function HealthBoard({
             })}
         </div>
       </div>
+
+      {snapshot.cost ? <CostPanel cost={snapshot.cost} /> : null}
 
       {watcherCritical && watcher ? (
         <div className="rounded-xl border-2 border-rose-200 bg-rose-50/60 p-4">

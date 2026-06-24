@@ -1,6 +1,10 @@
 import { type NextRequest } from "next/server";
 
 import { authorizeZeusAdminRequest } from "@/lib/squadops/admin-access";
+import {
+  getOperationsCostSnapshot,
+  type OperationsCostSnapshot,
+} from "@/lib/operations/cost";
 import { collectOperationsDataSources } from "@/lib/operations/data-sources";
 import { syncOperationAlertProtocols } from "@/lib/operations/alert-protocols";
 import { buildOperationsMonitoringSnapshot } from "@/lib/operations/monitoring";
@@ -11,6 +15,7 @@ export const runtime = "nodejs";
 
 const PROTOCOL_SYNC_TIMEOUT_MS = 6_000;
 const SNAPSHOT_PERSIST_TIMEOUT_MS = 4_000;
+const COST_SNAPSHOT_TIMEOUT_MS = 6_000;
 
 export async function GET(request: NextRequest) {
   const authorization = await authorizeZeusAdminRequest(request);
@@ -43,10 +48,19 @@ export async function GET(request: NextRequest) {
         protocols: [],
         status: snapshot.protocolSyncStatus,
       };
+  // Custo D-1 (cacheado 30min na fonte). Best-effort: se a Vercel demorar/falhar,
+  // o snapshot sai sem custo, sem travar o monitoring.
+  const cost = await withMonitoringTimeout<OperationsCostSnapshot | undefined>({
+    fallback: undefined,
+    label: "cost snapshot",
+    promise: getOperationsCostSnapshot(),
+    timeoutMs: COST_SNAPSHOT_TIMEOUT_MS,
+  });
   const snapshotWithProtocols = {
     ...snapshot,
     alertProtocols: protocolSync.protocols,
     alerts: protocolSync.alerts,
+    cost,
     protocolSyncStatus: protocolSync.status,
   };
 
