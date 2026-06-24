@@ -24,8 +24,14 @@ export type OperationsCostServiceItem = {
   service: string;
 };
 
+export type OperationsCostDailyPoint = {
+  cost: number;
+  day: string;
+};
+
 export type OperationsVercelCost = {
   configured: boolean;
+  dailySeries: OperationsCostDailyPoint[];
   day: string | null;
   error?: string;
   monthlyFixedCost: number;
@@ -72,6 +78,7 @@ async function getVercelCost(): Promise<OperationsVercelCost> {
 
   const base: OperationsVercelCost = {
     configured: Boolean(token),
+    dailySeries: [],
     day: null,
     monthlyFixedCost: VERCEL_MONTHLY_PLAN_USD,
     risk: "baixo",
@@ -157,6 +164,12 @@ async function getVercelCost(): Promise<OperationsVercelCost> {
       median(availableDays.map((day) => variableByDay.get(day) ?? 0)),
     );
 
+    // Serie diaria do uso variavel (mini grafico) — ultimos (ate) 8 dias com dados.
+    const dailySeries = availableDays.slice(-8).map((day) => ({
+      cost: round2(variableByDay.get(day) ?? 0),
+      day,
+    }));
+
     // Plano fixo REAL: assinatura/dia do D-1 projetada no mes (fallback no config).
     const fixedDaily = d1 ? (fixedByDay.get(d1) ?? 0) : 0;
     const monthlyFixedCost =
@@ -172,6 +185,7 @@ async function getVercelCost(): Promise<OperationsVercelCost> {
 
     return {
       ...base,
+      dailySeries,
       day: d1,
       monthlyFixedCost,
       risk: costToRisk(variableCost),

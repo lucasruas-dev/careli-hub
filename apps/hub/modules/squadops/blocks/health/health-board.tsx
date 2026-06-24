@@ -2,7 +2,10 @@
 
 import type { ReactNode } from "react";
 
-import type { OperationsCostSnapshot } from "@/lib/operations/cost";
+import type {
+  OperationsCostDailyPoint,
+  OperationsCostSnapshot,
+} from "@/lib/operations/cost";
 import type { OperationsSourceGroup } from "@/lib/operations/data-sources";
 import type {
   OperationsAlert,
@@ -388,6 +391,57 @@ const costTrendVisual = {
   up: { Icon: TrendingUp, className: "text-rose-600", label: "acima da média" },
 } as const;
 
+function costBarColor(cost: number) {
+  if (cost >= 40) {
+    return "bg-rose-400";
+  }
+
+  if (cost >= 15) {
+    return "bg-orange-400";
+  }
+
+  if (cost >= 5) {
+    return "bg-amber-400";
+  }
+
+  return "bg-emerald-400";
+}
+
+// Histórico diário do uso variável (mini gráfico de barras, cor pela régua de risco).
+function CostDailyBars({
+  points,
+}: {
+  points: readonly OperationsCostDailyPoint[];
+}) {
+  const max = Math.max(...points.map((point) => point.cost), 0.01);
+
+  return (
+    <div className="flex h-14 items-end gap-1">
+      {points.map((point) => {
+        const heightPct = Math.max((point.cost / max) * 100, 5);
+
+        return (
+          <Tooltip
+            content={`${point.day}: ${formatUsd(point.cost)}`}
+            key={point.day}
+            placement="top"
+          >
+            <div className="flex h-full flex-1 flex-col items-center justify-end gap-1">
+              <div
+                className={`w-full rounded-sm ${costBarColor(point.cost)}`}
+                style={{ height: `${heightPct}%` }}
+              />
+              <span className="text-[9px] tabular-nums text-slate-400">
+                {point.day.slice(8)}
+              </span>
+            </div>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
 // Custo D-1 (trilho anti-Hermes): Vercel = uso variavel real (EffectiveCost);
 // Supabase = estimativa pelo plano. Regua de cor pelo risco do custo do dia.
 function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
@@ -416,6 +470,15 @@ function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
           </span>
         </Tooltip>
       </div>
+
+      {vercel.configured && vercel.dailySeries.length > 1 ? (
+        <div className="mb-3">
+          <p className="m-0 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Uso variável por dia (Vercel)
+          </p>
+          <CostDailyBars points={vercel.dailySeries} />
+        </div>
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-slate-200/70 bg-slate-50/40 p-3">
@@ -605,6 +668,8 @@ export function HealthBoard({
         })}
       </div>
 
+      {snapshot.cost ? <CostPanel cost={snapshot.cost} /> : null}
+
       <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <p className="m-0 mb-3 text-xs font-semibold text-slate-500">
           Integracoes
@@ -651,8 +716,6 @@ export function HealthBoard({
             })}
         </div>
       </div>
-
-      {snapshot.cost ? <CostPanel cost={snapshot.cost} /> : null}
 
       {watcherCritical && watcher ? (
         <div className="rounded-xl border-2 border-rose-200 bg-rose-50/60 p-4">
