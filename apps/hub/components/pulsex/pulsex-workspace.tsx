@@ -857,6 +857,7 @@ export function HermesWorkspace() {
           });
           showBrowserHermesNotification({
             body: description,
+            icon: message.authorAvatarUrl,
             onClickPath: `/hermes?channel=${encodeURIComponent(message.channelId)}`,
             // Mesma tag do provider global para o navegador colapsar a notificacao
             // duplicada do SO quando os dois notificadores disparam o mesmo id.

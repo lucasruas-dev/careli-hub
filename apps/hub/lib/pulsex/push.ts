@@ -103,7 +103,7 @@ export async function sendHermesMessagePush(input: {
     input.authorUserId
       ? client
           .from("hub_users")
-          .select("display_name")
+          .select("display_name,avatar_url")
           .eq("id", input.authorUserId)
           .maybeSingle()
       : Promise.resolve({ data: null }),
@@ -111,12 +111,16 @@ export async function sendHermesMessagePush(input: {
 
   const channelName =
     (channelResult.data as { name?: string } | null)?.name ?? "Hermes";
-  const authorName =
-    (authorResult.data as { display_name?: string } | null)?.display_name ??
-    "Hermes";
+  const authorData = authorResult.data as {
+    avatar_url?: string | null;
+    display_name?: string | null;
+  } | null;
+  const authorName = authorData?.display_name ?? "Hermes";
 
   const payload = JSON.stringify({
     body: `${authorName}: ${truncatePushBody(input.body)}`,
+    // Avatar de quem enviou (o SW cai na marca do Panteon se vier vazio).
+    icon: authorData?.avatar_url ?? undefined,
     tag: `pulsex-message-${input.messageId}`,
     title: `Nova mensagem em ${channelName}`,
     url: `/hermes?channel=${encodeURIComponent(input.channelId)}`,

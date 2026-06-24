@@ -403,6 +403,7 @@ export function HermesNotificationProvider({
       });
       showBrowserHermesNotification({
         body: `${message.authorName ?? HERMES_MODULE_LABEL}: ${truncateNotificationBody(message.body)}`,
+        icon: message.authorAvatarUrl,
         onClickPath: getHermesChannelPath(channel.id),
         tag: `pulsex-message-${message.id}`,
         title: notification.title,

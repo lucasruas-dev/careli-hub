@@ -1,5 +1,6 @@
 type HermesNotificationInput = {
   body: string;
+  icon?: string;
   onClickPath?: string;
   tag?: string;
   title: string;
@@ -126,6 +127,7 @@ export function registerHermesNotificationPermissionIntent() {
 
 export function showBrowserHermesNotification({
   body,
+  icon,
   onClickPath,
   tag,
   title,
@@ -136,9 +138,10 @@ export function showBrowserHermesNotification({
 
   const notify = () => {
     const notification = new Notification(title, {
-      badge: "/logoc.png",
+      badge: "/panteon-mark.png",
       body,
-      icon: "/logo-careli-c2x.png",
+      // Avatar de quem enviou; fallback na marca do Panteon quando nao houver.
+      icon: icon || "/panteon-mark.png",
       tag,
     });
 

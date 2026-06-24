@@ -40,12 +40,13 @@ self.addEventListener("push", (event) => {
       const title = payload.title || "Nova mensagem no Hermes";
 
       await self.registration.showNotification(title, {
-        badge: "/logoc.png",
+        badge: "/panteon-mark.png",
         body: payload.body || "",
         // Mesma tag da notificacao in-app: o navegador colapsa duplicatas.
         tag: payload.tag || "pulsex-message",
         data: { url: payload.url || "/hermes" },
-        icon: "/logo-careli-c2x.png",
+        // Avatar de quem enviou; fallback na marca do Panteon.
+        icon: payload.icon || "/panteon-mark.png",
       });
     })(),
   );
