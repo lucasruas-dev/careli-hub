@@ -2069,62 +2069,6 @@ export function ZeusPage({
   const pageContent = (
     <>
       <WorkspaceLayout>
-        {!isHelpDeskView && activeView !== "health" ? (
-        <>
-        <section className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <span className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-50 px-3 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
-              <FileText className="size-4 text-[#A07C3B]" />
-              {operationsSource.mode === "structured"
-                ? "hub_engineering_operation_records"
-                : (activeOperations?.sourcePath ??
-                  "docs/operations/engineering-operations.md")}
-            </span>
-            <div className="flex flex-wrap items-center gap-2">
-              {!standalone ? (
-              <button
-                className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                onClick={openHubModulesSidebar}
-                type="button"
-              >
-                <LayoutGrid
-                  aria-hidden="true"
-                  className="size-4 text-[#A07C3B]"
-                />
-                Módulos do Panteon
-              </button>
-              ) : null}
-              <Badge variant="warning">AGUARDANDO RELEASEOPS</Badge>
-              <Badge variant="info">Engineering Operations</Badge>
-              <span className="text-xs font-semibold text-slate-500">
-                {activeOperations
-                  ? `Atualizado: ${formatGeneratedAt(activeOperations.generatedAt)}`
-                  : "Aguardando leitura"}
-              </span>
-            </div>
-          </div>
-        </section>
-
-        <OperationsSourcePanel
-          isImportingLocalFile={isImportingOperationsFile}
-          isSyncing={isSyncingOperations}
-          onCreateRecord={() => setIsOperationRecordModalOpen(true)}
-          onImportLocalFile={() => operationsFileInputRef.current?.click()}
-          onRefresh={() => void loadStructuredOperations()}
-          onSync={() => void syncStructuredOperations()}
-          source={operationsSource}
-        />
-        <input
-          accept=".md,text/markdown,text/plain"
-          aria-label="Importar Engineering Operations local"
-          className="sr-only"
-          onChange={(event) => void importLocalOperationsFile(event)}
-          ref={operationsFileInputRef}
-          type="file"
-        />
-        </>
-        ) : null}
-
         {error ? (
           <Surface bordered className="border-red-100 bg-red-50 p-4">
             <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
@@ -2133,35 +2077,6 @@ export function ZeusPage({
             </div>
           </Surface>
         ) : null}
-
-        {!isHelpDeskView && activeView !== "health" ? (
-        <ZeusCommandCenter
-          actionCount={actionCount}
-          isLoading={isLoading}
-          latestRecord={latestRecord}
-          metrics={activeOperations?.metrics}
-          monitoringAlertCount={visibleMonitoringAlertCount}
-          nextSquad={nextSquad}
-          onOpenPoAi={() => setIsPoAiOpen(true)}
-          onOpenAudits={() => setActiveView("audits")}
-          onOpenTimeline={() => setActiveView("timeline")}
-          onOpenCritical={() => setActiveView("overview")}
-          onOpenMonitoring={() => setActiveView("monitoring")}
-        />
-        ) : null}
-
-        <ZeusViewTabs
-          activeView={activeView}
-          addressCatalogCount={addressCatalogCount}
-          actionCount={actionCount}
-          deployCount={deployRecords.length}
-          filteredCount={filteredRecords.length}
-          itTicketAttentionCount={itTicketAttentionCount}
-          itTicketCount={itTicketCount}
-          monitoringAlertCount={visibleMonitoringAlertCount}
-          onChange={setActiveView}
-          routineCount={auditRoutines.length}
-        />
 
         <ZeusOpsPresenceBar
           activeView={activeView}
@@ -2183,6 +2098,19 @@ export function ZeusPage({
           operationActionCount={actionCount}
           presenceStatus={zeusPresenceStatus}
           userName={hubUser?.name ?? "Sessao"}
+        />
+
+        <ZeusViewTabs
+          activeView={activeView}
+          addressCatalogCount={addressCatalogCount}
+          actionCount={actionCount}
+          deployCount={deployRecords.length}
+          filteredCount={filteredRecords.length}
+          itTicketAttentionCount={itTicketAttentionCount}
+          itTicketCount={itTicketCount}
+          monitoringAlertCount={visibleMonitoringAlertCount}
+          onChange={setActiveView}
+          routineCount={auditRoutines.length}
         />
 
         {activeView === "itTickets" ? (
