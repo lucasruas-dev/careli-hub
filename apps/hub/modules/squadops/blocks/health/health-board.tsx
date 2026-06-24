@@ -2,12 +2,16 @@
 
 import type { ReactNode } from "react";
 
+import type { OperationsSourceGroup } from "@/lib/operations/data-sources";
 import type {
+  OperationsCheckMetric,
   OperationsGeneralStatus,
   OperationsMonitoringSnapshot,
   OperationsRiskLevel,
+  OperationsTimeRisk,
   OpsWatcherDecision,
 } from "@/lib/operations/monitoring";
+import { classifyResponseTime } from "@/lib/operations/monitoring";
 import {
   getAverageResponseMs,
   getMaxResponseMs,
@@ -62,6 +66,78 @@ const riskPill: Record<OperationsRiskLevel, string> = {
   medio: "bg-amber-50 text-amber-700 ring-amber-200/70",
 };
 
+// Regua de latencia: cores derivam de classifyResponseTime (fonte unica do timeRisk
+// e dos alertas). Faixas: bom <=500 / atencao <=1500 / lento <=3000 / critico >3000ms.
+const timeRiskTone: Record<
+  OperationsTimeRisk,
+  { border: string; dot: string; icon: string; label: string; range: string; value: string }
+> = {
+  atencao: {
+    border: "border-amber-200/80",
+    dot: "bg-amber-400",
+    icon: "bg-amber-50 text-amber-600",
+    label: "Atencao",
+    range: "500-1500",
+    value: "text-amber-700",
+  },
+  bom: {
+    border: "border-emerald-200/80",
+    dot: "bg-emerald-500",
+    icon: "bg-emerald-50 text-emerald-600",
+    label: "Bom",
+    range: "<500ms",
+    value: "text-emerald-700",
+  },
+  critico: {
+    border: "border-rose-200/80",
+    dot: "bg-rose-500",
+    icon: "bg-rose-50 text-rose-600",
+    label: "Critico",
+    range: ">3000ms",
+    value: "text-rose-700",
+  },
+  lento: {
+    border: "border-orange-200/80",
+    dot: "bg-orange-500",
+    icon: "bg-orange-50 text-orange-600",
+    label: "Lento",
+    range: "1500-3000",
+    value: "text-orange-700",
+  },
+};
+
+// Ordem de leitura da regua (bom -> critico), independente da ordem alfabetica do mapa.
+const TIME_RISK_ORDER: OperationsTimeRisk[] = [
+  "bom",
+  "atencao",
+  "lento",
+  "critico",
+];
+
+// Integracoes externas exibidas como dots, derivadas dos checks do snapshot.
+const INTEGRATION_GROUPS: OperationsSourceGroup[] = [
+  "asaas",
+  "asana",
+  "d4sign",
+  "meta",
+  "openai",
+  "vercel",
+];
+
+function checkToGeneralStatus(
+  check: OperationsCheckMetric,
+): OperationsGeneralStatus {
+  if (!check.ok) {
+    return check.statusCode === 0 ? "indisponivel" : "critico";
+  }
+
+  if (check.timeRisk === "critico" || check.timeRisk === "lento") {
+    return "operacional_com_atencao";
+  }
+
+  return "operacional";
+}
+
 type HealthBoardProps = {
   generatedAt?: string;
   isLoading?: boolean;
@@ -73,16 +149,27 @@ type HealthBoardProps = {
 function StatusDot({
   detail,
   label,
+  responseMs,
   status,
 }: {
   detail: string;
   label: string;
+  responseMs?: number;
   status: OperationsGeneralStatus;
 }) {
   const tone = statusTone[status];
+  const latency =
+    typeof responseMs === "number" ? timeRiskTone[classifyResponseTime(responseMs)] : null;
 
   return (
-    <Tooltip content={`${label}: ${tone.label} - ${detail}`} placement="top">
+    <Tooltip
+      content={
+        latency
+          ? `${label}: ${tone.label} - ${detail} · latencia ${latency.label} (${latency.range})`
+          : `${label}: ${tone.label} - ${detail}`
+      }
+      placement="top"
+    >
       <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm font-medium text-slate-700">
         <span className={`size-2.5 rounded-full ${tone.dot}`} aria-hidden />
         {label}
@@ -94,31 +181,41 @@ function StatusDot({
 function MetricCard({
   icon,
   label,
+  timeRisk,
   tone = "default",
   value,
 }: {
   icon: ReactNode;
   label: string;
+  timeRisk?: OperationsTimeRisk;
   tone?: "alert" | "default";
   value: string;
 }) {
+  const latency = timeRisk ? timeRiskTone[timeRisk] : null;
+  const borderClass = latency
+    ? latency.border
+    : tone === "alert"
+      ? "border-rose-200/70"
+      : "border-slate-200/70";
+  const iconClass = latency
+    ? latency.icon
+    : tone === "alert"
+      ? "bg-rose-50 text-rose-600"
+      : "bg-slate-50 text-[#A07C3B]";
+  const valueClass = latency ? latency.value : "text-slate-950";
+
   return (
     <div
-      className={`flex items-center gap-3 rounded-xl border bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
-        tone === "alert" ? "border-rose-200/70" : "border-slate-200/70"
-      }`}
+      className={`flex items-center gap-3 rounded-xl border bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${borderClass}`}
+      title={latency ? `${label}: ${latency.label} (${latency.range})` : undefined}
     >
       <span
-        className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${
-          tone === "alert"
-            ? "bg-rose-50 text-rose-600"
-            : "bg-slate-50 text-[#A07C3B]"
-        }`}
+        className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${iconClass}`}
       >
         {icon}
       </span>
       <div className="min-w-0">
-        <p className="m-0 text-xl font-semibold leading-none text-slate-950">
+        <p className={`m-0 text-xl font-semibold leading-none ${valueClass}`}>
           {value}
         </p>
         <p className="m-0 mt-1 truncate text-xs font-medium text-slate-500">
@@ -185,11 +282,13 @@ export function HealthBoard({
         <MetricCard
           icon={<Gauge className="size-4" />}
           label="Latencia media"
+          timeRisk={classifyResponseTime(avgMs)}
           value={`${avgMs}ms`}
         />
         <MetricCard
           icon={<Clock className="size-4" />}
           label="Maior latencia"
+          timeRisk={classifyResponseTime(maxMs)}
           value={`${maxMs}ms`}
         />
         <MetricCard
@@ -212,6 +311,32 @@ export function HealthBoard({
         />
       </div>
 
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <Tooltip
+          content="Faixa de latencia das respostas. Mesma regua que classifica risco e alertas."
+          placement="top"
+        >
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            <Gauge className="size-3.5" />
+            Regua latencia
+          </span>
+        </Tooltip>
+        {TIME_RISK_ORDER.map((risk) => {
+          const tone = timeRiskTone[risk];
+
+          return (
+            <span
+              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500"
+              key={risk}
+            >
+              <span className={`size-2 rounded-full ${tone.dot}`} aria-hidden />
+              {tone.label}
+              <span className="text-slate-400">{tone.range}</span>
+            </span>
+          );
+        })}
+      </div>
+
       <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <p className="m-0 mb-3 text-xs font-semibold text-slate-500">
           Integracoes
@@ -220,23 +345,42 @@ export function HealthBoard({
           <StatusDot
             detail={`${cards.supabase.responseMs}ms`}
             label="Supabase Auth"
+            responseMs={cards.supabase.responseMs}
             status={cards.supabase.auth}
           />
           <StatusDot
             detail={`${cards.supabase.responseMs}ms`}
             label="Supabase Realtime"
+            responseMs={cards.supabase.responseMs}
             status={cards.supabase.realtime}
           />
           <StatusDot
             detail={`${cards.supabase.responseMs}ms`}
             label="Supabase REST"
+            responseMs={cards.supabase.responseMs}
             status={cards.supabase.rest}
           />
           <StatusDot
             detail={`${cards.c2x.database} - ${cards.c2x.responseMs}ms`}
             label="Banco C2X"
+            responseMs={cards.c2x.responseMs}
             status={cards.c2x.status}
           />
+          {checks
+            .filter((check) => INTEGRATION_GROUPS.includes(check.group))
+            .map((check) => {
+              const configured = check.endpoint !== "not-configured";
+
+              return (
+                <StatusDot
+                  detail={configured ? `${check.responseMs}ms` : "nao configurado"}
+                  key={check.id}
+                  label={check.label}
+                  responseMs={configured ? check.responseMs : undefined}
+                  status={checkToGeneralStatus(check)}
+                />
+              );
+            })}
         </div>
       </div>
 

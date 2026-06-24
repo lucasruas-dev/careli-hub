@@ -789,7 +789,7 @@ function checkToStatus(
   return "operacional";
 }
 
-function classifyResponseTime(responseMs: number): OperationsTimeRisk {
+export function classifyResponseTime(responseMs: number): OperationsTimeRisk {
   if (responseMs <= 500) {
     return "bom";
   }
