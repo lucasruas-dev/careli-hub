@@ -806,14 +806,8 @@ OPERACIONAL COM ATENCAO se houver pendencias abertas; AGUARDANDO RELEASEOPS quan
 
 const zeusViews = [
   { id: "itTickets", label: "HelpDesk" },
-  { id: "health", label: "Saúde do HUB" },
-  { id: "address", label: "Address" },
-  { id: "overview", label: "Visão geral" },
-  { id: "monitoring", label: "Database Monitoring" },
+  { id: "health", label: "Monitoring" },
   { id: "deploys", label: "Deploys" },
-  { id: "timeline", label: "Timeline" },
-  { id: "audits", label: "Auditorias" },
-  { id: "records", label: "Registros" },
 ] as const satisfies readonly { id: ZeusView; label: string }[];
 
 export function ZeusPage({
@@ -2265,7 +2259,6 @@ export function ZeusPage({
             }
             onCopyCommand={(command, id) => void copyAgentCommand(command, id)}
             onIgnoreProtocol={(protocol) => void ignoreAlertProtocol(protocol)}
-            onOpenFullCenter={() => setActiveView("monitoring")}
             onRefresh={() => void loadMonitoringSnapshot()}
             snapshot={monitoringSnapshot}
             watcher={watcherDecision}
