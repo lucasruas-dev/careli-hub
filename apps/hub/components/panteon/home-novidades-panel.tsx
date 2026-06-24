@@ -2,7 +2,9 @@
 
 import { Surface } from "@repo/uix";
 import { Sparkles } from "lucide-react";
+import { useState } from "react";
 
+import { PANTEON_BUILD_TAG } from "@/lib/build-info";
 import {
   PANTEON_CHANGELOG,
   type ChangelogEntry,
@@ -48,31 +50,53 @@ function formatBrDate(iso: string) {
   return `${dd}/${mm}/${yy}`;
 }
 
-const MAX_NOVIDADES = 4;
+const INITIAL_NOVIDADES = 5;
+const LOAD_MORE_STEP = 10;
 
 export function HomeNovidadesPanel() {
-  const entries = PANTEON_CHANGELOG.slice(0, MAX_NOVIDADES);
+  const [visibleCount, setVisibleCount] = useState(INITIAL_NOVIDADES);
+
+  const entries = PANTEON_CHANGELOG.slice(0, visibleCount);
+  const current = PANTEON_CHANGELOG[0];
+  const remaining = PANTEON_CHANGELOG.length - entries.length;
 
   return (
     <Surface
       bordered
       className="col-span-12 border-[#d9e0e7] bg-white p-5 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)] xl:col-span-5"
     >
-      <div className="flex items-center gap-2.5">
-        <span className="grid size-8 place-items-center rounded-lg bg-[#A07C3B]/10 text-[#A07C3B]">
-          <Sparkles size={18} />
-        </span>
-        <div>
-          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[#A07C3B]">
-            Novidades
-          </p>
-          <p className="m-0 text-sm font-semibold text-[#17202f]">
-            O que mudou no Hub
-          </p>
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-2.5">
+          <span className="grid size-8 place-items-center rounded-lg bg-[#A07C3B]/10 text-[#A07C3B]">
+            <Sparkles size={18} />
+          </span>
+          <div>
+            <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[#A07C3B]">
+              Novidades
+            </p>
+            <p className="m-0 text-sm font-semibold text-[#17202f]">
+              O que mudou no Panteon
+            </p>
+          </div>
         </div>
+
+        {current ? (
+          <div className="shrink-0 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/[0.06] px-2.5 py-1 text-right">
+            <p className="m-0 text-[9px] font-semibold uppercase tracking-wide text-[#98a2b3]">
+              Build atual
+            </p>
+            <p className="m-0 font-mono text-sm font-bold leading-none text-[#7A5E2C]">
+              {current.version}
+            </p>
+          </div>
+        ) : null}
       </div>
 
-      <div className="mt-4 flex max-h-[22rem] flex-col gap-3 overflow-y-auto pr-1">
+      <p className="m-0 mt-1.5 text-[10px] text-[#98a2b3]">
+        build <code className="text-[#667085]">{PANTEON_BUILD_TAG}</code>
+      </p>
+
+      <div className="mt-3 flex max-h-[22rem] flex-col gap-3 overflow-y-auto pr-1">
         {entries.length === 0 ? (
           <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
             Nenhuma novidade registrada ainda.
@@ -83,6 +107,16 @@ export function HomeNovidadesPanel() {
           ))
         )}
       </div>
+
+      {remaining > 0 ? (
+        <button
+          className="mt-3 w-full rounded-lg border border-[#d9e0e7] bg-[#fafbfc] px-3 py-2 text-xs font-semibold text-[#475467] transition hover:bg-[#f0f2f5]"
+          onClick={() => setVisibleCount((count) => count + LOAD_MORE_STEP)}
+          type="button"
+        >
+          Carregar mais {Math.min(LOAD_MORE_STEP, remaining)}
+        </button>
+      ) : null}
     </Surface>
   );
 }
@@ -97,6 +131,9 @@ function NovidadeCard({ entry }: { entry: ChangelogEntry }) {
           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${tone.chip}`}
         >
           {tone.emoji} {tone.label}
+        </span>
+        <span className="font-mono text-[11px] font-semibold text-[#7A5E2C]">
+          {entry.version}
         </span>
         <span className="text-[11px] text-[#98a2b3]">
           {formatBrDate(entry.deployedAt)}
