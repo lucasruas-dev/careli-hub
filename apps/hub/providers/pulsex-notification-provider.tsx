@@ -44,6 +44,7 @@ import {
   markHermesChannelRead,
   mapHermesRealtimeMessageRow,
 } from "@/lib/pulsex/supabase-data";
+import { registerHermesPushSubscription } from "@/lib/pulsex/push-client";
 import { withChannelUnreadCounts } from "@/lib/pulsex/workspace-messages";
 import {
   PANTEON_ACTIVITY_NOTIFICATION_PREFIX,
@@ -494,6 +495,56 @@ export function HermesNotificationProvider({
   );
 
   useEffect(() => registerHermesNotificationPermissionIntent(), []);
+
+  // Web Push: registra a subscription do usuario (best-effort) quando logado e com
+  // permissao concedida. Reatenta no foco (cobre permissao concedida depois) com
+  // throttle de 60s. Qualquer falha aqui e silenciada e nao afeta o resto do Hermes.
+  useEffect(() => {
+    if (
+      !currentUserId ||
+      profileStatus !== "ready" ||
+      !hasHubSupabaseConfig()
+    ) {
+      return;
+    }
+
+    const client = getHubSupabaseClient();
+
+    if (!client) {
+      return;
+    }
+
+    let cancelled = false;
+    let lastAttemptAt = 0;
+
+    const subscribePush = async () => {
+      const now = Date.now();
+
+      if (now - lastAttemptAt < 60_000) {
+        return;
+      }
+
+      lastAttemptAt = now;
+      const { data } = await client.auth.getSession();
+      const accessToken = data.session?.access_token;
+
+      if (!cancelled && accessToken) {
+        await registerHermesPushSubscription(accessToken);
+      }
+    };
+
+    void subscribePush();
+    const handleFocus = () => {
+      void subscribePush();
+    };
+
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [currentUserId, profileStatus]);
 
   useEffect(() => {
     activeHermesChannelIdRef.current = activeHermesChannelId;

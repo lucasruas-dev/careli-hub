@@ -8,9 +8,10 @@ import {
   getHermesDirectPeerUserId,
   parseHermesDirectChannelId,
 } from "@/lib/pulsex/direct-channel";
+import { sendHermesMessagePush } from "@/lib/pulsex/push";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import { createClient } from "@supabase/supabase-js";
-import { NextResponse, type NextRequest } from "next/server";
+import { after, NextResponse, type NextRequest } from "next/server";
 
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 
@@ -441,6 +442,21 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  // Web Push best-effort, APOS a resposta (after) e sem bloquear o envio: notifica os
+  // membros do canal com o app fechado/minimizado. Qualquer erro fica isolado aqui.
+  after(async () => {
+    try {
+      await sendHermesMessagePush({
+        authorUserId: context.user.id,
+        body: payload.data.body,
+        channelId: payload.data.channelId,
+        messageId: data.id,
+      });
+    } catch {
+      // Intencional: push nunca pode afetar o envio da mensagem.
+    }
+  });
 
   return NextResponse.json({ data: compactHermesMessageRow(data) });
 }
