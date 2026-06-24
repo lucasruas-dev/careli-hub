@@ -408,6 +408,9 @@ function costBarColor(cost: number) {
 }
 
 // Histórico diário do uso variável (mini gráfico de barras, cor pela régua de risco).
+// Alturas em PIXELS (porcentagem nao resolve dentro do flex sem altura definida).
+const COST_BARS_HEIGHT = 48;
+
 function CostDailyBars({
   points,
 }: {
@@ -416,9 +419,12 @@ function CostDailyBars({
   const max = Math.max(...points.map((point) => point.cost), 0.01);
 
   return (
-    <div className="flex h-14 items-end gap-1">
+    <div className="flex items-end gap-1">
       {points.map((point) => {
-        const heightPct = Math.max((point.cost / max) * 100, 5);
+        const barHeight = Math.max(
+          Math.round((point.cost / max) * COST_BARS_HEIGHT),
+          3,
+        );
 
         return (
           <Tooltip
@@ -426,11 +432,16 @@ function CostDailyBars({
             key={point.day}
             placement="top"
           >
-            <div className="flex h-full flex-1 flex-col items-center justify-end gap-1">
+            <div className="flex flex-1 flex-col items-center gap-1">
               <div
-                className={`w-full rounded-sm ${costBarColor(point.cost)}`}
-                style={{ height: `${heightPct}%` }}
-              />
+                className="flex w-full items-end"
+                style={{ height: COST_BARS_HEIGHT }}
+              >
+                <div
+                  className={`w-full rounded-sm ${costBarColor(point.cost)}`}
+                  style={{ height: barHeight }}
+                />
+              </div>
               <span className="text-[9px] tabular-nums text-slate-400">
                 {point.day.slice(8)}
               </span>
