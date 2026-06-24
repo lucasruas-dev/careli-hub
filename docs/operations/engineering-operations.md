@@ -38446,3 +38446,15 @@ Conclusao:
 - Impacto pratico: ataca a causa estrutural das regressoes (deploys partindo de bases velhas); daqui pra frente todo recorte nasce da main e volta pra main.
 - Precisa de acao: Lucas decidir sobre push pro GitHub e autorizar a poda do entulho.
 - Proximo passo: limpar worktrees/branches antigas e seguir para a frente Iris pelo novo processo.
+
+## 2026-06-24 16:15:00 -03:00 - Zeus - Sincronizacao da main com producao e faxina de custo Supabase
+
+- Status: `EM_PRODUCAO / REGISTRADO`.
+- Tipo: `INFRA / GIT / CUSTO`.
+- Contexto: a `main` estava parada no marco-zero (`96b9726`) enquanto a producao do `c2x.app.br` rodava o conteudo da branch `fix/hermes-mensageria-20260623`. Meta: `main` = producao, sem regressao.
+- Blindagem confirmada: o projeto Vercel `careli-hub-hub-i2bs` ja estava DESCONECTADO do GitHub (Project -> Settings -> Git: secao "Connected Git Repository" so com botoes de conectar; "Deploy Hooks" informa "not connected to a Git repository"). Logo, push na `main` nao dispara auto-deploy. A armadilha do incidente de 23/jun (push reapontava c2x E ops) fica neutralizada enquanto o Git seguir desconectado.
+- Acao: `git merge --no-ff fix/hermes-mensageria-20260623` na `main` (merge `dd8e18d`, 25 arquivos Hermes/Chronos, sem conflito) -> `git push origin main` (`96b9726..dd8e18d`).
+- Verificacao SEM regressao: `c2x.app.br` -> `dpl_BjPQuyeD` (24/jun) e `ops.c2x.app.br` -> `dpl_2CENG` (18/jun) seguem intocados; o push nao gerou deploy.
+- Permissao: Lucas liberou `"Bash(git push:*)"` em `.claude/settings.local.json` para os proximos pushes do Zeus.
+- Custo Supabase: o projeto de homologacao `careli-hub-homolog` (`qanlldynttyxgmcwkxqv`) foi DELETADO por Lucas. Org Pro nao permite pausar projeto pago (pause so free-tier), entao deletar foi o unico jeito de cortar a cobranca (~$10/mes; `get_cost` confirmou $10/projeto). Sobrou so `careli-hub-dev` (producao). Homologacao agora e sob demanda: schema reproduzivel das migrations `0016`..`0021`; homolog do OPS passa a usar previews Vercel (gratis, apontando Supabase de producao, seguro por ser read-only/monitoramento).
+- Pendencias: (1) OPS (`ops/health-board-20260623`: painel de custo + 3 abas + aba Deploy) ainda fora da `main` e fora do ar -> promover pro `ops.c2x.app.br` e mergear na `main`. (2) Vercel com fatura Overdue (risco de suspensao = c2x e ops caem) -> Lucas precisa quitar.
