@@ -427,26 +427,25 @@ function CostDailyBars({
         );
 
         return (
-          <Tooltip
-            content={`${point.day}: ${formatUsd(point.cost)}`}
+          // title nativo (o Tooltip do uix e inline e era cortado pelo overflow do card).
+          <div
+            className="flex flex-1 flex-col items-center gap-1"
             key={point.day}
-            placement="top"
+            title={`${point.day}: ${formatUsd(point.cost)}`}
           >
-            <div className="flex flex-1 flex-col items-center gap-1">
+            <div
+              className="flex w-full items-end"
+              style={{ height: COST_BARS_HEIGHT }}
+            >
               <div
-                className="flex w-full items-end"
-                style={{ height: COST_BARS_HEIGHT }}
-              >
-                <div
-                  className={`w-full rounded-sm ${costBarColor(point.cost)}`}
-                  style={{ height: barHeight }}
-                />
-              </div>
-              <span className="text-[9px] tabular-nums text-slate-400">
-                {point.day.slice(8)}
-              </span>
+                className={`w-full rounded-sm ${costBarColor(point.cost)}`}
+                style={{ height: barHeight }}
+              />
             </div>
-          </Tooltip>
+            <span className="text-[9px] tabular-nums text-slate-400">
+              {point.day.slice(8)}
+            </span>
+          </div>
         );
       })}
     </div>
@@ -509,15 +508,6 @@ function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
         </div>
       </div>
 
-      {vercel.configured && vercel.dailySeries.length > 1 ? (
-        <div className="mb-3">
-          <p className="m-0 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Custo por dia (Vercel · faturado)
-          </p>
-          <CostDailyBars points={vercel.dailySeries} />
-        </div>
-      ) : null}
-
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-slate-200/70 bg-slate-50/40 p-3">
           <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
@@ -579,6 +569,15 @@ function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
           <p className="m-0 mt-1 text-[11px] text-slate-500">{supabase.note}</p>
         </div>
       </div>
+
+      {vercel.configured && vercel.dailySeries.length > 1 ? (
+        <div className="mt-3">
+          <p className="m-0 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+            Custo por dia (Vercel · faturado)
+          </p>
+          <CostDailyBars points={vercel.dailySeries} />
+        </div>
+      ) : null}
 
       <p className="m-0 mt-3 text-[11px] text-slate-400">
         Plano fixo: Vercel {formatUsd(vercel.monthlyFixedCost)} + Supabase{" "}
