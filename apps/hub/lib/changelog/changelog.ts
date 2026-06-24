@@ -32,6 +32,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-24-novidades-workflow",
+    deployedAt: "2026-06-24T17:30:00-03:00",
+    modules: [
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "A Home ganhou um painel de Novidades mostrando o que mudou no Panteon (e a build atual).",
+            ],
+            screen: "Home",
+          },
+        ],
+      },
+      {
+        module: "HelpDesk",
+        screens: [
+          {
+            items: [
+              "As etapas do seu chamado agora sao as MESMAS que a TI usa: Backlog, Novo, Em tratativa, Validacao, Revisao e Finalizado.",
+            ],
+            screen: "Meus chamados",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-huqm0q57v",
+    technical: {
+      done: "Novo HomeNovidadesPanel (le o changelog). Workflow unificado em lib/hub-it-tickets/workflow.ts; board do Zeus e painel do time importam a mesma logica.",
+      motivation:
+        "O painel de Rotina (Asana) deu lugar a Novidades; e o time via 11 status crus enquanto a TI via 5 etapas no Zeus - agora os dois usam o mesmo fluxo.",
+    },
+    title: "Novidades na Home + fluxo de chamados unificado",
+    type: "melhoria",
+    version: "v1.3.0",
+  },
+  {
     buildTag: "2026-06-24-thread-google-hd",
     deployedAt: "2026-06-24T14:11:00-03:00",
     modules: [
@@ -156,5 +193,32 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     title: "Respostas: edicao, emoji e alinhamento",
     type: "novidade",
     version: "v1.0.0",
+  },
+  {
+    buildTag: "2026-06-22-hermes-lote",
+    deployedAt: "2026-06-22T19:00:00-03:00",
+    modules: [
+      {
+        module: "Hermes",
+        screens: [
+          {
+            items: [
+              "Som de notificacao corrigido (sem duplicar ao reabrir).",
+              "Respostas em thread carregando os dados certos.",
+              "Envio de imagens grandes (ate 50MB) por link assinado.",
+              "Historico de mensagens e da aba diario corrigidos.",
+            ],
+            screen: "Conversa",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done: "Lote consolidado de correcoes do Hermes (som, thread data, central, respostas-notif, historico, imagens 50MB).",
+      motivation: "Apontamentos do time em 22/jun.",
+    },
+    title: "Lote de correcoes do Hermes",
+    type: "correcao",
+    version: "v0.9.0",
   },
 ];

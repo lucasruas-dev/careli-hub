@@ -4,7 +4,6 @@ import { Surface } from "@repo/uix";
 import { Sparkles } from "lucide-react";
 import { useState } from "react";
 
-import { PANTEON_BUILD_TAG } from "@/lib/build-info";
 import {
   PANTEON_CHANGELOG,
   type ChangelogEntry,
@@ -92,11 +91,7 @@ export function HomeNovidadesPanel() {
         ) : null}
       </div>
 
-      <p className="m-0 mt-1.5 text-[10px] text-[#98a2b3]">
-        build <code className="text-[#667085]">{PANTEON_BUILD_TAG}</code>
-      </p>
-
-      <div className="mt-3 flex max-h-[22rem] flex-col gap-3 overflow-y-auto pr-1">
+      <div className="mt-4 flex max-h-[22rem] flex-col gap-3 overflow-y-auto pr-1">
         {entries.length === 0 ? (
           <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
             Nenhuma novidade registrada ainda.

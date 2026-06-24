@@ -1,4 +1,7 @@
-// Marcacao de build para verificacao visual (hover no avatar do topbar do usuario).
-// Bump manual a cada deploy de producao: serve para confirmar, com certeza, que o
-// build novo carregou (a PWA cacheia o app, entao isto evita testar o codigo antigo).
-export const PANTEON_BUILD_TAG = "2026-06-24-thread-google-hd";
+// Versao atual do Panteon, exibida pro usuario (hover no avatar do topbar e no
+// painel de Novidades da Home). Bump manual a cada deploy de producao: serve
+// para confirmar, com certeza, que o build novo carregou (a PWA cacheia o app).
+export const PANTEON_VERSION = "v1.3.0";
+
+// Marcador tecnico detalhado do build (uso interno / diagnostico no Zeus).
+export const PANTEON_BUILD_TAG = "2026-06-24-novidades-workflow";
