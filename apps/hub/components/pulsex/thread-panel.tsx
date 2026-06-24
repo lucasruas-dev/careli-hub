@@ -16,6 +16,7 @@ import {
   Mic,
   Paperclip,
   Send,
+  Smile,
   Video,
   X,
 } from "lucide-react";
@@ -29,6 +30,7 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
+import { composerEmojiOptions } from "./message-composer";
 import { MessageItem } from "./message-item";
 
 type ThreadPanelProps = {
@@ -83,6 +85,7 @@ export function ThreadPanel({
 }: ThreadPanelProps) {
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const replyTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const [attachment, setAttachment] = useState<HermesMessageAttachment | null>(
     null,
   );
@@ -93,6 +96,7 @@ export function ThreadPanel({
     trigger: string;
   } | null>(null);
   const [activeMentionIndex, setActiveMentionIndex] = useState(0);
+  const [isEmojiPickerOpen, setIsEmojiPickerOpen] = useState(false);
   const [mediaError, setMediaError] = useState<string | null>(null);
   const mentionOptions = useMemo(() => {
     if (!activeMention) {
@@ -114,10 +118,53 @@ export function ThreadPanel({
 
     textarea.style.height = "0px";
     textarea.style.height = `${Math.min(
-      Math.max(textarea.scrollHeight, 44),
+      Math.max(textarea.scrollHeight, 40),
       144,
     )}px`;
   }, [replyValue]);
+
+  useEffect(() => {
+    if (!isEmojiPickerOpen) {
+      return;
+    }
+
+    function handlePointerDown(event: PointerEvent) {
+      const target = event.target;
+
+      if (
+        target instanceof Node &&
+        emojiPickerRef.current?.contains(target)
+      ) {
+        return;
+      }
+
+      setIsEmojiPickerOpen(false);
+    }
+
+    document.addEventListener("pointerdown", handlePointerDown, true);
+
+    return () => {
+      document.removeEventListener("pointerdown", handlePointerDown, true);
+    };
+  }, [isEmojiPickerOpen]);
+
+  function insertEmoji(emoji: string) {
+    const textarea = replyTextareaRef.current;
+    const start = textarea?.selectionStart ?? replyValue.length;
+    const end = textarea?.selectionEnd ?? replyValue.length;
+    const nextValue = `${replyValue.slice(0, start)}${emoji}${replyValue.slice(end)}`;
+    const nextCaretIndex = start + emoji.length;
+
+    onChangeReply(nextValue, replyMentions);
+    setIsEmojiPickerOpen(false);
+    window.requestAnimationFrame(() => {
+      replyTextareaRef.current?.focus();
+      replyTextareaRef.current?.setSelectionRange(
+        nextCaretIndex,
+        nextCaretIndex,
+      );
+    });
+  }
 
   function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -354,6 +401,7 @@ export function ThreadPanel({
                 author={users.find((user) => user.id === row.reply.authorId)}
                 currentUserId={currentUserId}
                 message={mapThreadReplyToMessage(row.reply, message)}
+                onEditMessage={onEditMessage}
                 onPreviewAttachment={onPreviewAttachment}
                 onToggleReaction={onToggleReaction}
                 onToggleTag={onToggleTag}
@@ -401,7 +449,35 @@ export function ThreadPanel({
               ))}
             </div>
           ) : null}
-          <div className="flex items-end gap-2">
+          <div className="flex items-end gap-1">
+            <div className="relative shrink-0" ref={emojiPickerRef}>
+              <button
+                aria-label="Emojis"
+                aria-pressed={isEmojiPickerOpen || undefined}
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-[#A07C3B]/10 aria-pressed:text-[#7b5f2d]"
+                onClick={() => setIsEmojiPickerOpen((current) => !current)}
+                type="button"
+              >
+                <Smile aria-hidden="true" size={18} />
+              </button>
+              {isEmojiPickerOpen ? (
+                <div className="absolute bottom-full left-0 z-40 mb-2 max-h-72 w-72 overflow-auto rounded-md border border-[#d9e0ea] bg-white p-2 shadow-xl">
+                  <div className="grid grid-cols-7 gap-1">
+                    {composerEmojiOptions.map((emoji) => (
+                      <button
+                        aria-label={`Inserir ${emoji}`}
+                        className="grid h-9 w-9 place-items-center rounded-md text-[1.3rem] outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                        key={emoji}
+                        onClick={() => insertEmoji(emoji)}
+                        type="button"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ) : null}
+            </div>
             <button
               aria-label="Anexar arquivo"
               className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
@@ -450,7 +526,7 @@ export function ThreadPanel({
                 }
                 aria-expanded={isMentionOpen}
                 aria-label="Responder"
-                className="max-h-36 min-h-11 w-full resize-none overflow-y-auto border-0 bg-transparent px-1 py-1.5 text-sm leading-5 text-[var(--uix-text-primary)] outline-none placeholder:text-[var(--uix-text-muted)]"
+                className="block max-h-36 min-h-10 w-full resize-none overflow-y-auto border-0 bg-transparent px-2 py-2.5 text-sm leading-5 text-[var(--uix-text-primary)] outline-none placeholder:text-[var(--uix-text-muted)]"
                 onBlur={() => window.setTimeout(closeMentionMenu, 120)}
                 onChange={handleReplyChange}
                 onKeyDown={handleKeyDown}
@@ -544,6 +620,7 @@ function mapThreadReplyToMessage(
     body: reply.body,
     channelId: reply.channelId,
     createdAt: reply.createdAt,
+    editedAt: reply.editedAt,
     id: reply.id,
     mentionUserIds: reply.mentionUserIds,
     mentions: reply.mentions,

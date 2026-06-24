@@ -1,5 +1,6 @@
 import {
   loadChronosGoogleCalendarStatus,
+  startChronosGoogleCalendarAuthorization,
   syncChronosGoogleCalendar,
 } from "@/lib/chronos/client";
 import {
@@ -332,7 +333,26 @@ export function ChronosAgendaScreen({
     ) {
       const returnTo = `${window.location.pathname}${window.location.search}`;
 
-      window.location.href = `${googleCalendarStatus.authorizationPath}?returnTo=${encodeURIComponent(returnTo)}`;
+      setGoogleCalendarSyncing(true);
+      setGoogleCalendarSyncError(null);
+
+      try {
+        // Busca a URL de consentimento via fetch autenticado (com Bearer) e
+        // navega para o Google. Navegar direto para a rota /authorize nao manda
+        // o token e cai em "Sessao ausente para Chronos".
+        const authorizationUrl =
+          await startChronosGoogleCalendarAuthorization(returnTo);
+
+        window.location.href = authorizationUrl;
+      } catch (error) {
+        setGoogleCalendarSyncError(
+          error instanceof Error
+            ? error.message
+            : "Nao foi possivel conectar o Google Agenda.",
+        );
+        setGoogleCalendarSyncing(false);
+      }
+
       return;
     }
 

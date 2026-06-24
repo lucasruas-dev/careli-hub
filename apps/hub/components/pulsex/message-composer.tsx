@@ -965,7 +965,7 @@ const HERMES_STICKER_STORAGE_KEY_PREFIX = "panteon:hermes:stickers";
 const MAX_SAVED_STICKERS = 24;
 const MAX_STICKER_BYTES = 512 * 1024;
 
-const composerEmojiOptions = [
+export const composerEmojiOptions = [
   "😀",
   "😃",
   "😄",

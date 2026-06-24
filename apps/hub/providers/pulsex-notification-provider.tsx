@@ -26,7 +26,6 @@ import type {
 import {
   playHermesIncomingMessageSound,
   registerHermesNotificationPermissionIntent,
-  showBrowserHermesNotification,
 } from "@/lib/pulsex/notification-effects";
 import {
   PULSEX_MESSAGE_BROADCAST_EVENT,
@@ -83,6 +82,9 @@ const HERMES_MODULE_LABEL = "Hermes";
 const HERMES_SNAPSHOT_INTERVAL_MS = 120_000;
 const PANTEON_ACTIVITY_SNAPSHOT_INTERVAL_MS = 90_000;
 const FLOATING_NOTIFICATION_TTL_MS = 9_000;
+// Cap do array de notificacoes. Maior que antes (80) para o historico diario por
+// mensagem caber num dia movimentado sem perder mensagens antigas do dia.
+const MAX_PANTEON_NOTIFICATION_ITEMS = 150;
 
 export function HermesNotificationProvider({
   children,
@@ -103,6 +105,10 @@ export function HermesNotificationProvider({
     useState<HermesMessage | null>(null);
   const notifiedMessageIdsRef = useRef<Set<string>>(new Set());
   const activeHermesChannelIdRef = useRef<HermesChannel["id"] | null>(null);
+  // Canal que o usuario esta vendo no workspace do Hermes (/hermes). O workspace
+  // emite "careli:hermes:active-channel"; usamos para NAO alertar (som/toast) a
+  // conversa que ele ja esta olhando.
+  const activeWorkspaceChannelIdRef = useRef<HermesChannel["id"] | null>(null);
   const globalRealtimeChannelRef = useRef<HubRealtimeChannel | null>(null);
   const globalRealtimeReadyRef = useRef(false);
   const hermesChannelsByIdRef = useRef<Map<string, HermesChannel>>(new Map());
@@ -121,7 +127,7 @@ export function HermesNotificationProvider({
       const nextNotification = normalizePanteonNotification(notification);
 
       setItems((currentItems) =>
-        upsertNotification(currentItems, nextNotification).slice(0, 80),
+        upsertNotification(currentItems, nextNotification).slice(0, MAX_PANTEON_NOTIFICATION_ITEMS),
       );
     },
     [],
@@ -288,6 +294,37 @@ export function HermesNotificationProvider({
       hermesNotifications.map((notification) => notification.id),
     );
 
+    // #2: log diario por mensagem — inclui as recebidas com o app fechado (o snapshot
+    // recarrega o historico ao reabrir). Cada msg de HOJE (de outros) vira uma linha.
+    const channelById = new Map(
+      channelsWithUnread.map((channel) => [channel.id, channel] as const),
+    );
+    const messageLogItems = messages
+      .filter(
+        (message) =>
+          message.authorId !== currentUserId &&
+          !message.deletedAt &&
+          !message.threadParentMessageId &&
+          isPanteonNotificationFromToday(
+            message.createdAt ?? message.timestamp,
+          ),
+      )
+      .map((message) => {
+        const channel = channelById.get(message.channelId);
+
+        if (!channel) {
+          return null;
+        }
+
+        return createHermesMessageLogItem({
+          channel,
+          mentioned: message.mentionUserIds?.includes(currentUserId) ?? false,
+          message,
+        });
+      })
+      .filter((item): item is PanteonNotificationItem => item !== null);
+    const messageLogIds = new Set(messageLogItems.map((item) => item.id));
+
     setHermesChannels(channelsWithUnread);
     setItems((currentItems) => {
       const retainedItems = currentItems.filter(
@@ -295,12 +332,16 @@ export function HermesNotificationProvider({
           item.moduleId !== HERMES_MODULE_ID ||
           !item.context?.hermesChannelId ||
           hermesNotificationIds.has(item.id) ||
+          messageLogIds.has(item.id) ||
           // #5 + renovacao diaria: mantem como historico apenas as LIDAS de HOJE
           // (vira o dia, o snapshot expurga as lidas antigas).
           (item.read && isPanteonNotificationFromToday(item.createdAt)),
       );
 
-      return mergeNotifications(retainedItems, hermesNotifications).slice(0, 80);
+      return mergeNotifications(retainedItems, [
+        ...hermesNotifications,
+        ...messageLogItems,
+      ]).slice(0, MAX_PANTEON_NOTIFICATION_ITEMS);
     });
   }, [currentUserId, hubUser?.role, profileStatus]);
 
@@ -319,7 +360,7 @@ export function HermesNotificationProvider({
           (item) => !item.id.startsWith(PANTEON_ACTIVITY_NOTIFICATION_PREFIX),
         ),
         activityNotifications,
-      ).slice(0, 80),
+      ).slice(0, MAX_PANTEON_NOTIFICATION_ITEMS),
     );
   }, [currentUserId, profileStatus]);
 
@@ -337,16 +378,35 @@ export function HermesNotificationProvider({
       setLatestHermesPopupMessage(message);
 
       // B: ponte do broadcast GLOBAL (confiavel) -> conversa ativa. Entrega a mensagem
-      // na hora no workspace, sem depender do broadcast por-canal/poll de 8s (que fazia
-      // a msg so aparecer ~15s depois da notificacao). Disparado ANTES do early-return
-      // para cobrir tambem o canal que a pessoa esta vendo.
+      // na hora no workspace, sem depender do broadcast por-canal/poll de 8s.
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("careli:hermes:message", { detail: { message } }),
         );
       }
 
-      if (activeHermesChannelIdRef.current === channel.id) {
+      const mentioned = message.mentionUserIds?.includes(currentUserId) ?? false;
+
+      // #2: log diario por mensagem (entra como LIDA = historico). Registrado SEMPRE,
+      // inclusive para o canal que o usuario esta vendo, para o historico ficar completo.
+      setItems((currentItems) =>
+        upsertNotification(
+          currentItems,
+          createHermesMessageLogItem({ channel, mentioned, message }),
+        ).slice(0, MAX_PANTEON_NOTIFICATION_ITEMS),
+      );
+
+      const isVisible =
+        typeof document === "undefined" ||
+        document.visibilityState === "visible";
+      // Conversa que o usuario esta olhando agora (popup flutuante OU workspace /hermes).
+      const isViewingChannel =
+        isVisible &&
+        (activeHermesChannelIdRef.current === channel.id ||
+          activeWorkspaceChannelIdRef.current === channel.id);
+
+      if (isViewingChannel) {
+        // Esta vendo a conversa: marca lida, sem badge nem alerta.
         markChannelNotificationsRead(channel.id);
         markHermesChannelRead({ channelId: channel.id }).catch(
           (error: unknown) => {
@@ -359,7 +419,7 @@ export function HermesNotificationProvider({
         return;
       }
 
-      const mentioned = message.mentionUserIds?.includes(currentUserId);
+      // Central: 1 notificacao por canal (badge "novas").
       const notification = normalizePanteonNotification({
         actionLabel: "Abrir conversa",
         context: {
@@ -381,7 +441,7 @@ export function HermesNotificationProvider({
       });
 
       setItems((currentItems) =>
-        upsertNotification(currentItems, notification).slice(0, 80),
+        upsertNotification(currentItems, notification).slice(0, MAX_PANTEON_NOTIFICATION_ITEMS),
       );
       setHermesChannels((currentChannels) =>
         currentChannels.map((currentChannel) =>
@@ -395,19 +455,18 @@ export function HermesNotificationProvider({
             : currentChannel,
         ),
       );
-      pushFloatingNotification(notification);
 
-      playHermesIncomingMessageSound({
-        mentioned,
-        messageId: message.id,
-      });
-      showBrowserHermesNotification({
-        body: `${message.authorName ?? HERMES_MODULE_LABEL}: ${truncateNotificationBody(message.body)}`,
-        icon: message.authorAvatarUrl,
-        onClickPath: getHermesChannelPath(channel.id),
-        tag: `pulsex-message-${message.id}`,
-        title: notification.title,
-      });
+      // Alerta IN-APP (som + toast) so com a aba VISIVEL. Em segundo plano/fechado
+      // quem alerta e o Web Push (SW) — com avatar e sem duplicar. A notificacao de
+      // SO saiu daqui de proposito: era generica (o payload do realtime nao traz o
+      // avatar), entao deixamos o Web Push como unica notificacao do sistema.
+      if (isVisible) {
+        pushFloatingNotification(notification);
+        playHermesIncomingMessageSound({
+          mentioned,
+          messageId: message.id,
+        });
+      }
     },
     [currentUserId, markChannelNotificationsRead, pushFloatingNotification],
   );
@@ -551,6 +610,30 @@ export function HermesNotificationProvider({
     activeHermesChannelIdRef.current = activeHermesChannelId;
   }, [activeHermesChannelId]);
 
+  // O workspace (/hermes) avisa qual conversa esta aberta para nao alertarmos o
+  // canal que o usuario ja esta vendo (som/toast). Some ao sair do /hermes.
+  useEffect(() => {
+    const handleActiveWorkspaceChannel = (event: Event) => {
+      const detail = (
+        event as CustomEvent<{ channelId: HermesChannel["id"] | null }>
+      ).detail;
+
+      activeWorkspaceChannelIdRef.current = detail?.channelId ?? null;
+    };
+
+    window.addEventListener(
+      "careli:hermes:active-channel",
+      handleActiveWorkspaceChannel,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "careli:hermes:active-channel",
+        handleActiveWorkspaceChannel,
+      );
+    };
+  }, []);
+
   useEffect(() => {
     hermesChannelsByIdRef.current = new Map(
       hermesChannels.map((channel) => [channel.id, channel] as const),
@@ -587,7 +670,7 @@ export function HermesNotificationProvider({
     }
 
     setItems((currentItems) =>
-      mergeNotifications(storedItems, currentItems).slice(0, 80),
+      mergeNotifications(storedItems, currentItems).slice(0, MAX_PANTEON_NOTIFICATION_ITEMS),
     );
   }, [currentUserId]);
 
@@ -1236,7 +1319,7 @@ function writeStoredPanteonNotifications(
       JSON.stringify(
         items
           .filter((item) => isPanteonNotificationFromToday(item.createdAt))
-          .slice(0, 80),
+          .slice(0, MAX_PANTEON_NOTIFICATION_ITEMS),
       ),
     );
   } catch {
@@ -1366,6 +1449,42 @@ function getUnreadMessages({
 
 function getHermesChannelNotificationId(channelId: HermesChannel["id"]) {
   return `${HERMES_MODULE_ID}:channel:${channelId}`;
+}
+
+function getHermesMessageLogId(messageId: HermesMessage["id"]) {
+  return `${HERMES_MODULE_ID}:msg:${messageId}`;
+}
+
+// #2: item do historico diario por mensagem. Diferente da notificacao por-canal
+// (que colapsa e vira o badge "novas"), cada mensagem recebida vira UMA linha no
+// historico, com horario. Ja entra como LIDA (read) para ser puro historico.
+function createHermesMessageLogItem({
+  channel,
+  mentioned,
+  message,
+}: {
+  channel: HermesChannel;
+  mentioned: boolean;
+  message: HermesMessage;
+}): PanteonNotificationItem {
+  return normalizePanteonNotification({
+    actionLabel: "Abrir conversa",
+    context: {
+      hermesChannelId: channel.id,
+      entityId: message.id,
+      entityType: "message",
+    },
+    createdAt: message.createdAt ?? new Date().toISOString(),
+    description: `${message.authorName ?? HERMES_MODULE_LABEL}: ${truncateNotificationBody(message.body)}`,
+    href: getHermesChannelPath(channel.id),
+    id: getHermesMessageLogId(message.id),
+    kind: "mensagem",
+    moduleId: HERMES_MODULE_ID,
+    moduleLabel: HERMES_MODULE_LABEL,
+    read: true,
+    severity: mentioned ? "warning" : "info",
+    title: `Mensagem em ${channel.name}`,
+  });
 }
 
 function getHermesChannelPath(channelId: HermesChannel["id"]) {

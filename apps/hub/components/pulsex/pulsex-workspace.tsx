@@ -30,9 +30,7 @@ import {
   getHermesDirectPeerUserId,
 } from "@/lib/pulsex/direct-channel";
 import {
-  playHermesIncomingMessageSound,
   registerHermesNotificationPermissionIntent,
-  showBrowserHermesNotification,
 } from "@/lib/pulsex/notification-effects";
 import {
   getMessageRecipientUserIds,
@@ -823,60 +821,36 @@ export function HermesWorkspace() {
     };
   }, [dataStatus, refreshPresenceStatuses]);
 
+  // Notificacao do Hermes foi CENTRALIZADA no HermesNotificationProvider (som +
+  // toast + Central + log por mensagem) e no Web Push (notificacao do SO, sempre com
+  // avatar). O workspace nao alerta mais — isso elimina o duplo-disparo, o re-disparo
+  // ao reabrir (catch-up/poll) e a notificacao de SO generica do time. Mantido como
+  // no-op para nao mexer nos call sites (carga inicial / realtime).
   const notifyIncomingMessages = useCallback(
-    (newMessages: readonly HermesMessage[]) => {
-      if (newMessages.length === 0) {
-        return;
-      }
-
-      newMessages.forEach((message) => {
-        const mentioned = isMessageMentioningUser(message, currentUserId);
-        const messageChannel = channelsById.get(message.channelId);
-        const channelName = messageChannel?.name ?? activeChannel.name;
-        const title = mentioned
-          ? "Voce foi mencionado no Hermes"
-          : `Nova mensagem em ${channelName}`;
-        const description = `${message.authorName ?? "Hermes"}: ${message.body}`;
-        const notification = {
-          channelId: message.channelId,
-          description,
-          id: `notification-${message.id}-${Date.now()}`,
-          mentioned,
-          title,
-        } satisfies HermesToastNotification;
-
-        // O som e a notificacao do SO precisam chegar DEPOIS da mensagem aparecer.
-        // O caller ja chamou setMessages antes daqui; adiando um tick garantimos que
-        // o React commitou a mensagem no DOM antes do som tocar (corrige "som antes
-        // da mensagem"). setTimeout (nao requestAnimationFrame) continua disparando
-        // mesmo com a aba em segundo plano, que e justamente quando o alerta importa.
-        window.setTimeout(() => {
-          playHermesIncomingMessageSound({
-            mentioned,
-            messageId: message.id,
-          });
-          showBrowserHermesNotification({
-            body: description,
-            icon: message.authorAvatarUrl,
-            onClickPath: `/hermes?channel=${encodeURIComponent(message.channelId)}`,
-            // Mesma tag do provider global para o navegador colapsar a notificacao
-            // duplicada do SO quando os dois notificadores disparam o mesmo id.
-            tag: `pulsex-message-${message.id}`,
-            title,
-          });
-        }, 0);
-        setNotifications((currentNotifications) =>
-          [notification, ...currentNotifications].slice(0, 4),
-        );
-        window.setTimeout(() => {
-          setNotifications((currentNotifications) =>
-            currentNotifications.filter((item) => item.id !== notification.id),
-          );
-        }, 6_000);
-      });
-    },
-    [activeChannel.name, channelsById, currentUserId],
+    (_newMessages: readonly HermesMessage[]) => {},
+    [],
   );
+
+  // Avisa o provider global qual conversa esta aberta para ele NAO alertar
+  // (som/toast) o canal que o usuario ja esta vendo. Limpa ao trocar/sair.
+  useEffect(() => {
+    const channelId =
+      activeChannel.id === emptyHermesChannel.id ? null : activeChannel.id;
+
+    window.dispatchEvent(
+      new CustomEvent("careli:hermes:active-channel", {
+        detail: { channelId },
+      }),
+    );
+
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("careli:hermes:active-channel", {
+          detail: { channelId: null },
+        }),
+      );
+    };
+  }, [activeChannel.id]);
 
   const loadActiveChannelMessages = useCallback(
     (shouldApply: () => boolean = () => true) => {
@@ -1851,11 +1825,22 @@ export function HermesWorkspace() {
     body: string,
   ) {
     const nextBody = body.trim();
+
+    if (!nextBody) {
+      return;
+    }
+
     const previousMessage = messages.find(
       (message) => message.id === messageId,
     );
 
-    if (!previousMessage || !nextBody || previousMessage.body === nextBody) {
+    if (!previousMessage) {
+      // Nao esta na lista principal: e uma resposta dentro de uma thread.
+      await editThreadReplyMessage(messageId, nextBody);
+      return;
+    }
+
+    if (previousMessage.body === nextBody) {
       return;
     }
 
@@ -1912,6 +1897,53 @@ export function HermesWorkspace() {
     }
   }
 
+  // Edita uma resposta de thread (vive em `threadReplies`, nao na lista principal).
+  async function editThreadReplyMessage(
+    messageId: HermesThreadReply["id"],
+    nextBody: string,
+  ) {
+    const previousReply = Object.values(threadReplies)
+      .flat()
+      .find((reply) => reply.id === messageId);
+
+    if (!previousReply || previousReply.body === nextBody) {
+      return;
+    }
+
+    const editedAt = new Date().toISOString();
+
+    updateThreadReplyState(messageId, (reply) => ({
+      ...reply,
+      body: nextBody,
+      editedAt,
+    }));
+
+    if (!hasHubSupabaseConfig() || messageId.startsWith("local-")) {
+      return;
+    }
+
+    try {
+      const savedMessage = await updateHermesMessageBody({
+        body: nextBody,
+        messageId,
+      });
+
+      if (!savedMessage) {
+        throw new Error("Resposta nao atualizada.");
+      }
+
+      applySavedThreadReplyMessage(savedMessage);
+    } catch (error: unknown) {
+      updateThreadReplyState(messageId, () => previousReply);
+
+      if (isLocalDevelopmentRuntime()) {
+        console.warn("[pulsex] edit thread reply error", error);
+      }
+
+      throw error;
+    }
+  }
+
   function updateThreadReplyState(
     replyId: HermesThreadReply["id"],
     updater: (reply: HermesThreadReply) => HermesThreadReply,
@@ -1946,6 +1978,7 @@ export function HermesWorkspace() {
       body: savedMessage.body,
       channelId: savedMessage.channelId,
       createdAt: savedMessage.createdAt,
+      editedAt: savedMessage.editedAt,
       reactions: savedMessage.reactions,
       tags: savedMessage.tags,
       timestamp: savedMessage.timestamp,
