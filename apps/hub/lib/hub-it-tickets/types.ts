@@ -35,18 +35,25 @@ export const hubItTicketDeliveryDecisionStatuses = [
   "reprogramada",
 ] as const;
 
+export const hubItTicketRoadmapTypes = [
+  "melhoria",
+  "bug",
+  "divida_tecnica",
+  "automacao_integracao",
+] as const;
+
 export const hubItTicketStatusLabels = {
-  aguardando_cliente: "Aguardando cliente",
-  em_analise: "Em analise",
-  em_execucao: "Em execucao",
-  em_homologacao: "Em homologacao",
-  em_producao: "Em producao",
-  em_revisao: "Em revisao",
+  aguardando_cliente: "Validacao",
+  em_analise: "Em tratativa",
+  em_execucao: "Em tratativa",
+  em_homologacao: "Validacao",
+  em_producao: "Validacao",
+  em_revisao: "Revisao",
   em_tratativa: "Em tratativa",
-  em_triagem: "Em triagem",
-  fechado: "Fechado",
+  em_triagem: "Em tratativa",
+  fechado: "Finalizado",
   novo: "Novo",
-  resolvido: "Resolvido",
+  resolvido: "Validacao",
 } as const satisfies Record<HubItTicketStatus, string>;
 
 export const hubItTicketCategoryLabels = {
@@ -66,11 +73,20 @@ export const hubItTicketPriorityLabels = {
   media: "Media",
 } as const satisfies Record<HubItTicketPriority, string>;
 
+export const hubItTicketRoadmapTypeLabels = {
+  automacao_integracao: "Automacao / integracao",
+  bug: "Bug",
+  divida_tecnica: "Divida tecnica",
+  melhoria: "Melhoria",
+} as const satisfies Record<HubItTicketRoadmapType, string>;
+
 export type HubItTicketCategory = (typeof hubItTicketCategories)[number];
 export type HubItTicketPriority = (typeof hubItTicketPriorities)[number];
 export type HubItTicketStatus = (typeof hubItTicketStatuses)[number];
 export type HubItTicketDeliveryDecisionStatus =
   (typeof hubItTicketDeliveryDecisionStatuses)[number];
+export type HubItTicketRoadmapType =
+  (typeof hubItTicketRoadmapTypes)[number];
 
 export type HubItTicketDeliveryDecisionAction =
   | "approve_requested"
@@ -84,6 +100,19 @@ export type HubItTicketRequester = {
 };
 
 export type HubItTicketUserRef = HubItTicketRequester;
+
+export type HubItTicketRoadmap = {
+  active: boolean;
+  createdAt?: string | null;
+  createdBy?: HubItTicketUserRef | null;
+  module: string;
+  note?: string | null;
+  priority: HubItTicketPriority;
+  screen: string;
+  type: HubItTicketRoadmapType;
+  updatedAt?: string | null;
+  updatedBy?: HubItTicketUserRef | null;
+};
 
 export type HubItTicketAttachment = {
   capturedAt: string;
@@ -141,6 +170,7 @@ export type HubItTicket = {
   requestedDeliveryDate?: string | null;
   resolutionSummary?: string | null;
   resolvedAt?: string | null;
+  roadmap?: HubItTicketRoadmap | null;
   sourcePath?: string | null;
   sourceUrl?: string | null;
   status: HubItTicketStatus;
@@ -148,6 +178,14 @@ export type HubItTicket = {
   title: string;
   updatedAt: string;
   userDescription: string;
+};
+
+export type HubItTicketBacklogInput = {
+  module: string;
+  note?: string;
+  priority: HubItTicketPriority;
+  screen: string;
+  type: HubItTicketRoadmapType;
 };
 
 export type HubItTicketCreateInput = {
@@ -192,6 +230,7 @@ export type HubItTicketUpdateInput = {
   attachments?: HubItTicketAttachmentInput[];
   customerResponse?: string;
   approvedDeliveryDate?: string;
+  backlog?: HubItTicketBacklogInput;
   deliveryDecision?: HubItTicketDeliveryDecisionAction;
   deliveryDecisionNote?: string;
   protocol: string;

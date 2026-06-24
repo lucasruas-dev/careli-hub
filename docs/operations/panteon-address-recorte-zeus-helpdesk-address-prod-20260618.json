@@ -1,0 +1,199 @@
+{
+  "schemaVersion": "panteon.address-recorte.v1",
+  "deploymentManifestId": "PNT-DEP-ZEUS-20260618-009",
+  "protocolId": "ZEUS-20260618-009-HELPDESK-ADDRESS-PROD",
+  "title": "Zeus HelpDesk persistente e Address Catalog em producao OPS",
+  "module": "zeus",
+  "agent": "Zeus",
+  "status": "EM_PRODUCAO",
+  "riskLevel": "MEDIO",
+  "approvedBy": "Lucas - 2026-06-18 - corrigir HelpDesk e publicar tela Address somente em ops.c2x.app.br",
+  "addressing": {
+    "cityAddressCode": "PNT-01-00-00-000",
+    "cityAddressId": "PNT-CID-01",
+    "districtAddressCode": "PNT-01-50-00-000",
+    "districtAddressId": "PNT-BRR-ZEUS-01",
+    "streetAddressCode": "PNT-01-50-30-000",
+    "streetAddressId": "PNT-RUA-ZEUS-ADDRESS-CATALOG-01",
+    "houseAddressCodes": [
+      "PNT-01-50-30-001"
+    ],
+    "houseAddressIds": [
+      "PNT-CASA-ZEUS-ADDRESS-CATALOG-001"
+    ],
+    "registryFile": "docs/operations/panteon-address-registry.json",
+    "scopeSummary": "Publicar somente no dominio OPS a tela Address Catalog e os ajustes finais do HelpDesk: estado persistente da tela/ticket, lista Desk com departamento e filtros melhores, entrega apenas por data colorida, sem rolagem horizontal, detalhe sem workflow duplicado, gestao sem cabecalho escuro, popups com filtros/recolher/expandir e calendario semanal."
+  },
+  "baseline": {
+    "productionDomain": "https://ops.c2x.app.br",
+    "expectedProductionDeploymentId": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F",
+    "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-8ymyjzg62-lucasruas-devs-projects.vercel.app",
+    "candidateSourceCommit": "fb40a94c89cc9f0d27bdcf42c35ae3a562e1f403",
+    "sourceWorktreeClean": true,
+    "basePackagePath": ".codex-deploy/zeus-helpdesk-address-prod-20260618/base",
+    "candidatePackagePath": ".codex-deploy/zeus-helpdesk-address-prod-20260618/candidate",
+    "rollbackDeploymentId": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F"
+  },
+  "scope": {
+    "includedFiles": [
+      "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "apps/hub/modules/squadops/ZeusPage.tsx",
+      "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+      "apps/hub/lib/squadops/address-registry-source.ts",
+      "apps/hub/app/api/zeus/address-catalog/route.ts",
+      "docs/operations/panteon-address-registry.json",
+      "docs/operations/panteon-address-architecture-implementation-plan.md",
+      "docs/operations/panteon-address-recorte-zeus-address-catalog-20260618.json",
+      "docs/operations/panteon-address-recorte-zeus-helpdesk-address-prod-20260618.json",
+      "docs/operations/production-module-safety-gate-zeus-20260618-009-helpdesk-address.json",
+      "docs/operations/engineering-operations.md"
+    ],
+    "excludedPaths": [
+      ".env",
+      ".env*",
+      ".vercel/**",
+      ".git/**",
+      "node_modules/**",
+      ".next/**",
+      ".turbo/**",
+      "packages/database/migrations/**"
+    ],
+    "allowedChangedPaths": [
+      "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "apps/hub/modules/squadops/ZeusPage.tsx",
+      "apps/hub/modules/squadops/blocks/address/**",
+      "apps/hub/lib/squadops/address-registry-source.ts",
+      "apps/hub/app/api/zeus/address-catalog/**",
+      "docs/operations/**"
+    ],
+    "protectedPaths": [
+      "apps/hub/modules/chronos/**",
+      "apps/hub/app/chronos/**",
+      "apps/hub/app/api/chronos/**",
+      "apps/hub/lib/chronos/**",
+      "apps/hub/modules/caredesk/**",
+      "apps/hub/app/iris/**",
+      "apps/hub/app/api/iris/**",
+      "apps/hub/modules/guardian/**",
+      "apps/hub/app/hades/**",
+      "apps/hub/app/hermes/**",
+      "apps/hub/app/api/hades/**",
+      "apps/hub/app/api/hermes/**",
+      "apps/hub/components/pulsex/**",
+      "apps/hub/lib/pulsex/**",
+      "apps/hub/app/setup/**",
+      "packages/database/migrations/**"
+    ],
+    "requiredMarkers": [
+      {
+        "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+        "includes": [
+          "helpDeskViewStorageKey",
+          "readStoredHelpDeskViewState",
+          "buildManagementDepartmentOptions",
+          "departmentByTicketProtocol",
+          "getStackedBarWidth",
+          "laterTickets",
+          "label=\"Departamento\""
+        ]
+      },
+      {
+        "path": "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+        "includes": [
+          "PanteonAddressCatalog",
+          "AddressTreeNode",
+          "buildManifestSeed",
+          "label=\"Manifesto\""
+        ]
+      },
+      {
+        "path": "apps/hub/lib/squadops/address-registry-source.ts",
+        "includes": [
+          "loadPanteonAddressRegistry",
+          "PanteonAddressRegistrySummary"
+        ]
+      },
+      {
+        "path": "apps/hub/app/api/zeus/address-catalog/route.ts",
+        "includes": [
+          "authorizeZeusAdminRequest",
+          "loadPanteonAddressRegistry"
+        ]
+      }
+    ],
+    "forbiddenMarkers": [
+      {
+        "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+        "includes": [
+          "Fila Ativa",
+          "overflow-x-auto",
+          "overdueTickets",
+          "futureTickets"
+        ]
+      }
+    ],
+    "sensitiveOperations": []
+  },
+  "validations": {
+    "local": [
+      "npm.cmd run check-types: PASS, com aviso conhecido de turbo global",
+      "npx.cmd eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+      "npm.cmd run lint: BLOQUEADO por 20 warnings preexistentes de Chronos/turbo env fora do recorte; sem erro no arquivo HelpDesk",
+      "npm.cmd run build: PASS, com warnings conhecidos de worktree .codex-tmp/Turbopack/NFT fora do recorte",
+      "GET http://localhost:3021/zeus: 200 OK",
+      "GET http://localhost:3021/api/zeus/address-catalog: 200 OK",
+      "Browser interno http://localhost:3021/zeus: rota abriu no login local do Panteon, sem erro de console e sem overflow horizontal na primeira renderizacao; validacao autenticada local ficou limitada por sessao"
+    ],
+    "addressing": [
+      "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-address-prod-20260618.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/ZeusPage.tsx,apps/hub/modules/squadops/blocks/address/address-catalog.tsx,apps/hub/lib/squadops/address-registry-source.ts,apps/hub/app/api/zeus/address-catalog/route.ts,docs/operations/panteon-address-registry.json,docs/operations/panteon-address-architecture-implementation-plan.md,docs/operations/panteon-address-recorte-zeus-address-catalog-20260618.json,docs/operations/panteon-address-recorte-zeus-helpdesk-address-prod-20260618.json,docs/operations/production-module-safety-gate-zeus-20260618-009-helpdesk-address.json,docs/operations/engineering-operations.md: PASS, com avisos esperados de baseline OPS divergindo da cidade base"
+    ],
+    "productionGate": [
+      "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260618-009-helpdesk-address.json: PASS, 11 mudancas detectadas"
+    ],
+    "production": [
+      "Deployment tecnico descartado sem alias dpl_CSUvngqZgokSr9RDr9zt81bL6V6e: rota /api/zeus/address-catalog ausente no snapshot remoto",
+      "Deployment tecnico descartado sem alias dpl_EH3uvGQLCDftucxVkj5MHihWKFa9: rota /api/zeus/address-catalog ausente no snapshot remoto",
+      "npx.cmd vercel deploy --prod --skip-domain --yes --archive=tgz --force --scope lucasruas-devs-projects a partir de pacote temporario limpo fora do repo: PASS, dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW",
+      "URL tecnica validada: https://careli-hub-hub-i2bs-2xdumpc1n-lucasruas-devs-projects.vercel.app",
+      "GET URL tecnica /zeus: 200",
+      "GET URL tecnica /api/zeus/address-catalog: 401 esperado sem sessao",
+      "npx.cmd vercel alias set https://careli-hub-hub-i2bs-2xdumpc1n-lucasruas-devs-projects.vercel.app ops.c2x.app.br --scope lucasruas-devs-projects: PASS, somente OPS",
+      "npx.cmd vercel inspect https://ops.c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW",
+      "npx.cmd vercel inspect https://c2x.app.br --scope lucasruas-devs-projects: Ready em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU; dominio principal preservado",
+      "GET https://ops.c2x.app.br/login: 200",
+      "GET https://ops.c2x.app.br/zeus: 200",
+      "GET https://ops.c2x.app.br/api/pwa/manifest: 200",
+      "GET https://ops.c2x.app.br/api/zeus/address-catalog: 401 esperado sem sessao",
+      "GET https://ops.c2x.app.br/api/hub/it-tickets?details=list&scope=all: 401 esperado sem sessao",
+      "GET https://ops.c2x.app.br/api/zeus/release-registers: 401 esperado sem sessao",
+      "GET https://c2x.app.br/: 200",
+      "GET https://c2x.app.br/api/zeus/address-catalog: 404 esperado, rota nova fora do dominio principal",
+      "npx.cmd vercel logs https://careli-hub-hub-i2bs-2xdumpc1n-lucasruas-devs-projects.vercel.app --since 10m --scope lucasruas-devs-projects: apenas 200/401 esperados; sem 500/502"
+    ]
+  },
+  "blockingRules": [
+    "BLOQUEADO se o pacote incluir env, secret, migration, banco, dominio principal, alias principal, Vercel env ou operacao sensivel.",
+    "BLOQUEADO se qualquer arquivo fora de allowedChangedPaths entrar no pacote.",
+    "BLOQUEADO se o preflight CEP retornar BLOQUEADO.",
+    "BLOQUEADO se ops.c2x.app.br nao estiver em dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F antes do deploy.",
+    "BLOQUEADO para qualquer alteracao em https://c2x.app.br."
+  ],
+  "release": {
+    "targetEnvironment": "production",
+    "targetDomain": "https://ops.c2x.app.br",
+    "productionDomain": "https://ops.c2x.app.br",
+    "productionDeploymentId": "dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW",
+    "productionTechnicalUrl": "https://careli-hub-hub-i2bs-2xdumpc1n-lucasruas-devs-projects.vercel.app",
+    "publishedAt": "2026-06-18 09:22:59 -03:00",
+    "rollbackPlan": "Se houver regressao critica, reapontar https://ops.c2x.app.br para dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F. Nao alterar https://c2x.app.br."
+  },
+  "notes": [
+    "Lucas autorizou corrigir HelpDesk e subir a tela Address em 2026-06-18.",
+    "Publicar somente no dominio OPS: https://ops.c2x.app.br.",
+    "Nao alterar dominio principal https://c2x.app.br.",
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte.",
+    "Sync direto para hub_engineering_operation_records fica bloqueado por envolver Supabase/banco sem autorizacao separada.",
+    "Deployments tecnicos dpl_CSUvngqZgokSr9RDr9zt81bL6V6e e dpl_EH3uvGQLCDftucxVkj5MHihWKFa9 nao receberam alias por divergencia de snapshot remoto sem a rota Address.",
+    "Deployment final publicado em OPS: dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW."
+  ]
+}

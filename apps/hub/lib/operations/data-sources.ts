@@ -5,8 +5,13 @@ import {
 
 export type OperationsSourceGroup =
   | "api"
+  | "asaas"
+  | "asana"
   | "c2x"
+  | "d4sign"
   | "guardian-queue"
+  | "meta"
+  | "openai"
   | "page"
   | "protected-api"
   | "supabase"
@@ -47,6 +52,9 @@ type EndpointCheckConfig = {
   label: string;
   method?: "GET" | "HEAD";
   module: string;
+  // URL real do fetch quando o segredo precisa ir na query (ex.: D4Sign). Nunca e
+  // armazenada/exibida: o estado salvo usa sempre `endpoint` (sanitizado, sem segredo).
+  requestUrl?: string;
   timeoutMs?: number;
 };
 
@@ -74,6 +82,16 @@ export async function collectOperationsDataSources({
       ...createProtectedEndpointChecks(normalizedOrigin).map(measureEndpoint),
       ...createSupabaseChecks().map(measureEndpoint),
       ...createVercelChecks().map(measureEndpoint),
+    ])),
+  );
+
+  checks.push(
+    ...(await Promise.all([
+      ...createAsaasChecks().map(measureEndpoint),
+      ...createAsanaChecks().map(measureEndpoint),
+      ...createD4SignChecks().map(measureEndpoint),
+      ...createMetaWhatsappChecks().map(measureEndpoint),
+      ...createOpenAiChecks().map(measureEndpoint),
     ])),
   );
 
@@ -221,14 +239,12 @@ function createSupabaseChecks(): EndpointCheckConfig[] {
 
 function createVercelChecks(): EndpointCheckConfig[] {
   const serverEnv = process.env as Record<string, string | undefined>;
+  // Alvo estavel da producao publica. Override opcional via OPERATIONS_PRODUCTION_URL;
+  // default no dominio oficial. Evita depender de NEXT_PUBLIC_APP_URL, que varia por
+  // ambiente e ja apontou para uma URL errada (Supabase homolog) gerando falso vermelho.
+  // `||` (e nao `??`) para que um override vazio caia no default.
   const productionUrl =
-    serverEnv.NEXT_PUBLIC_APP_URL ??
-    serverEnv.VERCEL_PROJECT_PRODUCTION_URL ??
-    serverEnv.VERCEL_URL;
-
-  if (!productionUrl) {
-    return [];
-  }
+    serverEnv.OPERATIONS_PRODUCTION_URL?.trim() || "https://c2x.app.br";
 
   const endpoint = productionUrl.startsWith("http")
     ? productionUrl
@@ -244,6 +260,170 @@ function createVercelChecks(): EndpointCheckConfig[] {
       label: "Vercel production",
       module: "Vercel",
       timeoutMs: 5_000,
+    },
+  ];
+}
+
+function createAsaasChecks(): EndpointCheckConfig[] {
+  const env = process.env as Record<string, string | undefined>;
+  const baseUrl = env.ASAAS_API_BASE_URL?.replace(/\/+$/, "");
+  const apiKey = env.ASAAS_API_KEY;
+
+  if (!baseUrl || !apiKey) {
+    return [
+      createSyntheticCheckConfig({
+        group: "asaas",
+        id: "asaas-config",
+        label: "Asaas",
+        module: "Asaas",
+      }),
+    ];
+  }
+
+  // A base do .env nao inclui /v3; normaliza para nao duplicar nem faltar o prefixo.
+  const accountUrl = baseUrl.endsWith("/v3")
+    ? `${baseUrl}/myAccount`
+    : `${baseUrl}/v3/myAccount`;
+
+  return [
+    {
+      endpoint: accountUrl,
+      expectedDescription: "200 conta Asaas",
+      expectedStatusCodes: [200],
+      group: "asaas",
+      headers: { access_token: apiKey },
+      id: "asaas-myaccount",
+      label: "Asaas",
+      module: "Hades",
+      timeoutMs: 5_000,
+    },
+  ];
+}
+
+function createAsanaChecks(): EndpointCheckConfig[] {
+  const token = process.env.ASANA_ACCESS_TOKEN;
+
+  if (!token) {
+    return [
+      createSyntheticCheckConfig({
+        group: "asana",
+        id: "asana-config",
+        label: "Asana",
+        module: "Asana",
+      }),
+    ];
+  }
+
+  return [
+    {
+      endpoint: "https://app.asana.com/api/1.0/users/me",
+      expectedDescription: "200 usuario Asana",
+      expectedStatusCodes: [200],
+      group: "asana",
+      headers: { Authorization: `Bearer ${token}` },
+      id: "asana-users-me",
+      label: "Asana",
+      module: "Asana",
+      timeoutMs: 5_000,
+    },
+  ];
+}
+
+function createD4SignChecks(): EndpointCheckConfig[] {
+  const env = process.env as Record<string, string | undefined>;
+  const tokenApi = env.D4SIGN_TOKEN_API;
+  const cryptKey = env.D4SIGN_CRYPT_KEY;
+
+  if (!tokenApi || !cryptKey) {
+    return [
+      createSyntheticCheckConfig({
+        group: "d4sign",
+        id: "d4sign-config",
+        label: "D4Sign",
+        module: "D4Sign",
+      }),
+    ];
+  }
+
+  const baseUrl =
+    env.D4SIGN_API_BASE_URL?.replace(/\/+$/, "") ??
+    "https://secure.d4sign.com.br/api/v1";
+  const endpoint = `${baseUrl}/safes`;
+  const query = `?tokenAPI=${encodeURIComponent(tokenApi)}&cryptKey=${encodeURIComponent(cryptKey)}`;
+
+  return [
+    {
+      // Segredo vai apenas no requestUrl; o endpoint salvo/exibido fica sem a query.
+      endpoint,
+      expectedDescription: "200 safes D4Sign",
+      expectedStatusCodes: [200],
+      group: "d4sign",
+      id: "d4sign-safes",
+      label: "D4Sign",
+      module: "D4Sign",
+      requestUrl: `${endpoint}${query}`,
+      timeoutMs: 6_000,
+    },
+  ];
+}
+
+function createMetaWhatsappChecks(): EndpointCheckConfig[] {
+  const env = process.env as Record<string, string | undefined>;
+  const token = env.META_WHATSAPP_ACCESS_TOKEN;
+  const phoneNumberId = env.META_WHATSAPP_PHONE_NUMBER_ID;
+  const graphVersion = env.META_WHATSAPP_GRAPH_VERSION ?? "v21.0";
+
+  if (!token || !phoneNumberId) {
+    return [
+      createSyntheticCheckConfig({
+        group: "meta",
+        id: "meta-whatsapp-config",
+        label: "Meta WhatsApp",
+        module: "Iris",
+      }),
+    ];
+  }
+
+  return [
+    {
+      endpoint: `https://graph.facebook.com/${graphVersion}/${phoneNumberId}`,
+      expectedDescription: "200 numero WhatsApp",
+      expectedStatusCodes: [200],
+      group: "meta",
+      headers: { Authorization: `Bearer ${token}` },
+      id: "meta-whatsapp-phone",
+      label: "Meta WhatsApp",
+      module: "Iris",
+      timeoutMs: 5_000,
+    },
+  ];
+}
+
+function createOpenAiChecks(): EndpointCheckConfig[] {
+  const apiKey = process.env.OPENAI_API_KEY;
+
+  if (!apiKey) {
+    return [
+      createSyntheticCheckConfig({
+        group: "openai",
+        id: "openai-config",
+        label: "OpenAI",
+        module: "Iris",
+      }),
+    ];
+  }
+
+  return [
+    {
+      endpoint: "https://api.openai.com/v1/models",
+      expectedDescription: "200 modelos OpenAI",
+      expectedStatusCodes: [200],
+      group: "openai",
+      headers: { Authorization: `Bearer ${apiKey}` },
+      id: "openai-models",
+      label: "OpenAI",
+      module: "Iris",
+      timeoutMs: 6_000,
     },
   ];
 }
@@ -296,7 +476,7 @@ async function measureEndpoint(config: EndpointCheckConfig): Promise<OperationsR
   );
 
   try {
-    const response = await fetch(config.endpoint, {
+    const response = await fetch(config.requestUrl ?? config.endpoint, {
       cache: "no-store",
       headers: config.headers,
       method: config.method ?? "GET",

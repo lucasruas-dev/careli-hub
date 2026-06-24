@@ -1,0 +1,148 @@
+{
+  "schemaVersion": "panteon.address-recorte.v1",
+  "deploymentManifestId": "PNT-DEP-ZEUS-20260618-008",
+  "protocolId": "ZEUS-20260618-008-ADDRESS-CATALOG",
+  "title": "Zeus Address Catalog digital do CEP operacional",
+  "module": "zeus",
+  "agent": "Zeus",
+  "status": "VALIDADO_LOCAL",
+  "riskLevel": "BAIXO",
+  "approvedBy": "Lucas - 2026-06-18 - continuidade da acao Address em validacao local",
+  "addressing": {
+    "cityAddressCode": "PNT-01-00-00-000",
+    "cityAddressId": "PNT-CID-01",
+    "districtAddressCode": "PNT-01-50-00-000",
+    "districtAddressId": "PNT-BRR-ZEUS-01",
+    "streetAddressCode": "PNT-01-50-30-000",
+    "streetAddressId": "PNT-RUA-ZEUS-ADDRESS-CATALOG-01",
+    "houseAddressCodes": [
+      "PNT-01-50-30-001"
+    ],
+    "houseAddressIds": [
+      "PNT-CASA-ZEUS-ADDRESS-CATALOG-001"
+    ],
+    "registryFile": "docs/operations/panteon-address-registry.json",
+    "scopeSummary": "Criar a primeira tela consultavel do catalogo CEP no Zeus, lendo o registry local pelo servidor, exibindo cidade/bairro/rua/casa, filtros, detalhes, marcadores e geracao assistida de semente de manifesto."
+  },
+  "baseline": {
+    "productionDomain": "https://ops.c2x.app.br",
+    "expectedProductionDeploymentId": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F",
+    "candidateSourceCommit": "d52d8abbd9ff706244117669f1aaaeab98fc2ac1",
+    "sourceWorktreeClean": false,
+    "rollbackDeploymentId": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F"
+  },
+  "scope": {
+    "includedFiles": [
+      "apps/hub/modules/squadops/ZeusPage.tsx",
+      "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+      "apps/hub/lib/squadops/address-registry-source.ts",
+      "apps/hub/app/api/zeus/address-catalog/route.ts",
+      "docs/operations/panteon-address-registry.json",
+      "docs/operations/panteon-address-architecture-implementation-plan.md",
+      "docs/operations/panteon-address-recorte-zeus-address-catalog-20260618.json",
+      "docs/operations/engineering-operations.md"
+    ],
+    "excludedPaths": [
+      ".env",
+      ".env*",
+      ".vercel/**",
+      ".git/**",
+      "node_modules/**",
+      ".next/**",
+      ".turbo/**",
+      "packages/database/migrations/**"
+    ],
+    "allowedChangedPaths": [
+      "apps/hub/modules/squadops/ZeusPage.tsx",
+      "apps/hub/modules/squadops/blocks/address/**",
+      "apps/hub/lib/squadops/address-registry-source.ts",
+      "apps/hub/app/api/zeus/address-catalog/**",
+      "docs/operations/**"
+    ],
+    "protectedPaths": [
+      "apps/hub/modules/guardian/**",
+      "apps/hub/modules/caredesk/**",
+      "apps/hub/components/pulsex/**",
+      "apps/hub/modules/chronos/**",
+      "apps/hub/app/hades/**",
+      "apps/hub/app/hermes/**",
+      "apps/hub/app/iris/**",
+      "apps/hub/lib/hub-it-tickets/**",
+      "packages/database/migrations/**"
+    ],
+    "requiredMarkers": [
+      {
+        "path": "apps/hub/modules/squadops/ZeusPage.tsx",
+        "includes": [
+          "addressCatalogCount",
+          "PanteonAddressCatalog",
+          "handleAddressCatalogSummaryChange"
+        ]
+      },
+      {
+        "path": "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+        "includes": [
+          "PanteonAddressCatalog",
+          "AddressTreeNode",
+          "buildManifestSeed",
+          "label=\"Manifesto\""
+        ]
+      },
+      {
+        "path": "apps/hub/lib/squadops/address-registry-source.ts",
+        "includes": [
+          "loadPanteonAddressRegistry",
+          "PanteonAddressRegistrySummary"
+        ]
+      },
+      {
+        "path": "apps/hub/app/api/zeus/address-catalog/route.ts",
+        "includes": [
+          "authorizeZeusAdminRequest",
+          "loadPanteonAddressRegistry"
+        ]
+      }
+    ],
+    "forbiddenMarkers": [],
+    "sensitiveOperations": []
+  },
+  "validations": {
+    "local": [
+      "node -e JSON.parse para docs/operations/panteon-address-registry.json e docs/operations/panteon-address-recorte-zeus-address-catalog-20260618.json: PASS",
+      "npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/ZeusPage.tsx modules/squadops/blocks/address/address-catalog.tsx app/api/zeus/address-catalog/route.ts lib/squadops/address-registry-source.ts --max-warnings 0: PASS, com warning conhecido MODULE_TYPELESS_PACKAGE_JSON",
+      "npm.cmd run check-types:hub: PASS, com aviso conhecido de turbo global",
+      "npm.cmd run build --workspace @repo/hub: PASS, com warnings conhecidos de worktree .codex-tmp/Turbopack/NFT fora do recorte",
+      "git diff --check do recorte: PASS, com avisos LF/CRLF do Git",
+      "GET http://localhost:3021/zeus: 200 OK",
+      "GET http://localhost:3021/api/zeus/address-catalog: 200 OK no modo dev local sem token, conforme liberacao local existente em authorizeZeusAdminRequest"
+    ],
+    "addressing": [
+      "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-address-catalog-20260618.json --files apps/hub/modules/squadops/ZeusPage.tsx,apps/hub/modules/squadops/blocks/address/address-catalog.tsx,apps/hub/lib/squadops/address-registry-source.ts,apps/hub/app/api/zeus/address-catalog/route.ts,docs/operations/panteon-address-registry.json,docs/operations/panteon-address-architecture-implementation-plan.md,docs/operations/panteon-address-recorte-zeus-address-catalog-20260618.json,docs/operations/engineering-operations.md: PASS, com avisos esperados de baseline OPS divergindo da cidade base PNT-01-00-00-000"
+    ],
+    "production": [
+      "BLOQUEADO: sem deploy, alias, dominio, banco, env, secret ou producao neste recorte."
+    ]
+  },
+  "blockingRules": [
+    "BLOQUEADO se o pacote incluir env, secret, migration, banco, dominio, alias principal, Vercel env ou operacao sensivel.",
+    "BLOQUEADO se qualquer arquivo fora de allowedChangedPaths entrar no pacote.",
+    "BLOQUEADO se o preflight CEP retornar BLOQUEADO.",
+    "BLOQUEADO para producao ate Lucas autorizar publicacao do recorte."
+  ],
+  "release": {
+    "targetEnvironment": "local",
+    "targetDomain": "https://ops.c2x.app.br",
+    "previewUrl": null,
+    "productionDomain": "https://ops.c2x.app.br",
+    "productionDeploymentId": null,
+    "publishedAt": null,
+    "rollbackPlan": "Sem publicacao neste recorte. Se futuramente publicado em OPS e houver regressao critica, reapontar https://ops.c2x.app.br para dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F. Nao alterar https://c2x.app.br."
+  },
+  "notes": [
+    "Etapa 7 do Address saiu de bloqueio por autorizacao de continuidade do Lucas em 2026-06-18.",
+    "Catalogo digital fica como aba Address dentro do Zeus, separado de HelpDesk e Releases.",
+    "A API do catalogo le o registry em runtime server-side e exige autorizacao Zeus admin.",
+    "Tela inclui resumo, filtros, arvore CEP, detalhes de escopo, marcadores e copia de semente de manifesto.",
+    "Sem alteracao em Hades, Hermes, Iris, Chronos, Atlas, Setup, banco, env, secret, Vercel ou dominio."
+  ]
+}

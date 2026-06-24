@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "ZEUS-20260617-004-HELPDESK-GESTAO-UI",
+  "module": "zeus",
+  "agent": "Zeus",
+  "title": "Zeus HelpDesk gestao executiva e mensagem de encerramento",
+  "domain": "https://ops.c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk",
+  "candidateSourceCommit": "4bd91629c6cd0923d3435329270a505ae3b1e747",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/zeus-helpdesk-gestao-ui-prod-20260617-4bd916/base",
+  "candidatePackagePath": ".codex-deploy/zeus-helpdesk-gestao-ui-prod-20260617-4bd916/candidate",
+  "rollbackDeploymentId": "dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk",
+  "addressManifest": "docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-ui-20260617.json",
+  "addressCheckFiles": [
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/lib/hub-it-tickets/server.ts",
+    "docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-ui-20260617.json",
+    "docs/operations/production-module-safety-gate-zeus-20260617-004-helpdesk-gestao-ui.json"
+  ],
+  "allowedChangedPaths": [
+    "apps/hub/modules/squadops/**",
+    "apps/hub/lib/hub-it-tickets/**",
+    "docs/operations/**"
+  ],
+  "protectedPaths": [
+    "apps/hub/modules/chronos/**",
+    "apps/hub/app/chronos/**",
+    "apps/hub/app/api/chronos/**",
+    "apps/hub/lib/chronos/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/app/setup/**",
+    "packages/database/migrations/**"
+  ],
+  "ignoredPaths": [],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "HelpDeskManagementToolbar",
+        "Painel executivo",
+        "CollaboratorDemandTable",
+        "DemandDimensionPanel",
+        "getTicketEventDisplayMessage",
+        "Ticket encerrado",
+        "applyTicketToDimension",
+        "sortDepartmentDimensions"
+      ]
+    },
+    {
+      "path": "apps/hub/lib/hub-it-tickets/server.ts",
+      "includes": [
+        "ZEUS_VALIDATION_TIMEOUT_MESSAGE",
+        "Ticket encerrado"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "WorkflowSummaryGrid",
+        "QueueMetric"
+      ]
+    }
+  ],
+  "requiredPaths": [
+    "apps/hub/modules/squadops/ZeusPage.tsx",
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/lib/hub-it-tickets/server.ts",
+    "apps/hub/modules/squadops/blocks/shared/operations-ui.tsx",
+    "apps/hub/modules/squadops/blocks/po-ai/po-ai-panel.tsx"
+  ],
+  "validations": [
+    "git diff --check",
+    "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-ui-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/lib/hub-it-tickets/server.ts,docs/operations/panteon-address-recorte-zeus-helpdesk-gestao-ui-20260617.json",
+    "npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx lib/hub-it-tickets/server.ts --max-warnings 0",
+    "npm.cmd run check-types:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "GET http://localhost:3017/zeus",
+    "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-004-helpdesk-gestao-ui.json"
+  ],
+  "notes": [
+    "Lucas autorizou producao em 2026-06-17 somente para ops.c2x.app.br.",
+    "Nao alterar alias do dominio principal c2x.app.br.",
+    "Rollback OPS: reapontar ops.c2x.app.br para dpl_HXxohFEoBUJgro9ChcxLsUhDs9uk.",
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte."
+  ]
+}

@@ -1,0 +1,139 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "ZEUS-20260618-009-HELPDESK-ADDRESS-PROD",
+  "module": "zeus",
+  "agent": "Zeus",
+  "title": "Zeus HelpDesk persistente e Address Catalog em producao OPS",
+  "domain": "https://ops.c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F",
+  "candidateSourceCommit": "fb40a94c89cc9f0d27bdcf42c35ae3a562e1f403",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/zeus-helpdesk-address-prod-20260618/base",
+  "candidatePackagePath": ".codex-deploy/zeus-helpdesk-address-prod-20260618/candidate",
+  "rollbackDeploymentId": "dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F",
+  "addressManifest": "docs/operations/panteon-address-recorte-zeus-helpdesk-address-prod-20260618.json",
+  "addressCheckFiles": [
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/modules/squadops/ZeusPage.tsx",
+    "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+    "apps/hub/lib/squadops/address-registry-source.ts",
+    "apps/hub/app/api/zeus/address-catalog/route.ts",
+    "docs/operations/panteon-address-registry.json",
+    "docs/operations/panteon-address-architecture-implementation-plan.md",
+    "docs/operations/panteon-address-recorte-zeus-address-catalog-20260618.json",
+    "docs/operations/panteon-address-recorte-zeus-helpdesk-address-prod-20260618.json",
+    "docs/operations/production-module-safety-gate-zeus-20260618-009-helpdesk-address.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "allowedChangedPaths": [
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/modules/squadops/ZeusPage.tsx",
+    "apps/hub/modules/squadops/blocks/address/**",
+    "apps/hub/lib/squadops/address-registry-source.ts",
+    "apps/hub/app/api/zeus/address-catalog/**",
+    "docs/operations/**"
+  ],
+  "protectedPaths": [
+    "apps/hub/modules/chronos/**",
+    "apps/hub/app/chronos/**",
+    "apps/hub/app/api/chronos/**",
+    "apps/hub/lib/chronos/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/app/setup/**",
+    "packages/database/migrations/**"
+  ],
+  "ignoredPaths": [],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "helpDeskViewStorageKey",
+        "readStoredHelpDeskViewState",
+        "buildManagementDepartmentOptions",
+        "departmentByTicketProtocol",
+        "getStackedBarWidth",
+        "laterTickets",
+        "label=\"Departamento\""
+      ]
+    },
+    {
+      "path": "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+      "includes": [
+        "PanteonAddressCatalog",
+        "AddressTreeNode",
+        "buildManifestSeed",
+        "label=\"Manifesto\""
+      ]
+    },
+    {
+      "path": "apps/hub/lib/squadops/address-registry-source.ts",
+      "includes": [
+        "loadPanteonAddressRegistry",
+        "PanteonAddressRegistrySummary"
+      ]
+    },
+    {
+      "path": "apps/hub/app/api/zeus/address-catalog/route.ts",
+      "includes": [
+        "authorizeZeusAdminRequest",
+        "loadPanteonAddressRegistry"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "Fila Ativa",
+        "overflow-x-auto",
+        "overdueTickets",
+        "futureTickets"
+      ]
+    }
+  ],
+  "requiredPaths": [
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "apps/hub/modules/squadops/ZeusPage.tsx",
+    "apps/hub/modules/squadops/blocks/address/address-catalog.tsx",
+    "apps/hub/lib/squadops/address-registry-source.ts",
+    "apps/hub/app/api/zeus/address-catalog/route.ts"
+  ],
+  "validations": [
+    "npm.cmd run check-types",
+    "npx.cmd eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx --max-warnings 0",
+    "npm.cmd run build",
+    "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-address-prod-20260618.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/ZeusPage.tsx,apps/hub/modules/squadops/blocks/address/address-catalog.tsx,apps/hub/lib/squadops/address-registry-source.ts,apps/hub/app/api/zeus/address-catalog/route.ts,docs/operations/panteon-address-registry.json,docs/operations/panteon-address-architecture-implementation-plan.md,docs/operations/panteon-address-recorte-zeus-address-catalog-20260618.json,docs/operations/panteon-address-recorte-zeus-helpdesk-address-prod-20260618.json,docs/operations/production-module-safety-gate-zeus-20260618-009-helpdesk-address.json,docs/operations/engineering-operations.md",
+    "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260618-009-helpdesk-address.json"
+  ],
+  "publishedDeploymentId": "dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW",
+  "publishedTechnicalUrl": "https://careli-hub-hub-i2bs-2xdumpc1n-lucasruas-devs-projects.vercel.app",
+  "publishedAt": "2026-06-18 09:22:59 -03:00",
+  "postDeployChecks": [
+    "Deployments tecnicos dpl_CSUvngqZgokSr9RDr9zt81bL6V6e e dpl_EH3uvGQLCDftucxVkj5MHihWKFa9 foram descartados sem alias por nao exporem /api/zeus/address-catalog",
+    "Deployment final dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW foi gerado a partir de pacote temporario limpo fora do root linkado",
+    "ops.c2x.app.br Ready em dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW",
+    "c2x.app.br Ready em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU, sem troca do dominio principal",
+    "Rotas OPS /login, /zeus e /api/pwa/manifest: 200",
+    "Rota OPS /api/zeus/address-catalog: 401 esperado sem sessao",
+    "APIs protegidas sem sessao seguem retornando 401 esperado",
+    "Rota principal https://c2x.app.br/api/zeus/address-catalog: 404 esperado, confirmando que o dominio principal nao recebeu o recorte",
+    "Logs 10m do deployment final: apenas 200/401 esperados; sem 500/502",
+    "Sem env, secret, banco, migration ou alias principal alterado"
+  ],
+  "notes": [
+    "Lucas autorizou publicar somente no dominio OPS em 2026-06-18.",
+    "Nao alterar alias do dominio principal https://c2x.app.br.",
+    "Rollback OPS: reapontar ops.c2x.app.br para dpl_A2vcwAA7Waos6TCnUGLGDjXTPe6F.",
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte."
+  ]
+}

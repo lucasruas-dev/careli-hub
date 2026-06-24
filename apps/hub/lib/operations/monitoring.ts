@@ -1,3 +1,4 @@
+import type { OperationsCostSnapshot } from "./cost";
 import type { OperationsRawCheck } from "./data-sources";
 
 export type OperationsGeneralStatus =
@@ -136,6 +137,7 @@ export type OperationsAgent =
 export type OperationsMonitoringSnapshot = {
   alertProtocols: OperationsAlertProtocolSummary[];
   alerts: OperationsAlert[];
+  cost?: OperationsCostSnapshot;
   cards: {
     activeAlerts: {
       highestLevel: OperationsRiskLevel | "nenhum";
@@ -789,7 +791,7 @@ function checkToStatus(
   return "operacional";
 }
 
-function classifyResponseTime(responseMs: number): OperationsTimeRisk {
+export function classifyResponseTime(responseMs: number): OperationsTimeRisk {
   if (responseMs <= 500) {
     return "bom";
   }

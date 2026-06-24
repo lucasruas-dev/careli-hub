@@ -1,0 +1,82 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "HERMES-YYYYMMDD-001-EXAMPLE",
+  "module": "hermes",
+  "agent": "Zeus/Hefesto",
+  "title": "Deploy modular seguro de exemplo",
+  "domain": "https://c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_atual_do_dominio_alvo",
+  "candidateSourceCommit": "sha_commit_limpo_do_recorte",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/base-producao-atual",
+  "candidatePackagePath": ".codex-deploy/candidato-modulo",
+  "rollbackDeploymentId": "dpl_rollback_conhecido",
+  "addressManifest": "docs/operations/panteon-address-recorte-template.json",
+  "addressCheckFiles": [
+    "apps/hub/app/hermes/page.tsx",
+    "apps/hub/app/api/hermes/messages/route.ts",
+    "apps/hub/components/pulsex/pulsex-workspace.tsx"
+  ],
+  "allowedChangedPaths": [
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/pulsex/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/app/api/pulsex/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/providers/pulsex-call-provider.tsx",
+    "docs/operations/**"
+  ],
+  "protectedPaths": [
+    "apps/hub/modules/chronos/**",
+    "apps/hub/app/chronos/**",
+    "apps/hub/app/api/chronos/**",
+    "apps/hub/lib/chronos/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/modules/squadops/**",
+    "apps/hub/app/ares/**",
+    "apps/hub/lib/ares/**"
+  ],
+  "ignoredPaths": [
+    "docs/operations/engineering-operations.md",
+    "docs/operations/releases-production.md",
+    "docs/operations/panteon-recorte-protocols.md"
+  ],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+      "includes": [
+        "ChronosAgendaScreen",
+        "ChronosDriveLibraryScreen"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/chronos/ChronosPage.tsx",
+      "includes": [
+        "v1 executiva"
+      ]
+    }
+  ],
+  "requiredPaths": [
+    "apps/hub/modules/chronos/components/chronos-agenda-screen.tsx",
+    "apps/hub/modules/chronos/components/chronos-drive-library-screen.tsx",
+    "apps/hub/app/chronos/[roomSlug]/page.tsx"
+  ],
+  "validations": [
+    "npx.cmd eslint <arquivos-do-modulo> --max-warnings 0",
+    "npm.cmd run build --workspace @repo/hub",
+    "node scripts/panteon-address-recorte-check.mjs --manifest <addressManifest> --files <arquivos-do-recorte>",
+    "node scripts/production-module-safety-gate.mjs --manifest <este-arquivo>"
+  ],
+  "notes": [
+    "Copie este template para um manifesto real.",
+    "Substitua addressManifest pelo manifesto CEP do recorte aprovado.",
+    "Substitua addressCheckFiles pelos arquivos reais alterados pelo recorte.",
+    "Atualize allowedChangedPaths para o modulo autorizado.",
+    "Nunca publique se o gate retornar BLOQUEADO."
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "schemaVersion": "panteon.production-module-safety-gate.v1",
+  "protocolId": "ZEUS-20260617-006-HELPDESK-QUEUE-VIEWS",
+  "module": "zeus",
+  "agent": "Zeus",
+  "title": "Zeus HelpDesk filtros, lista, kanban, calendario e gestao interativa",
+  "domain": "https://ops.c2x.app.br",
+  "expectedProjectName": "careli-hub-hub-i2bs",
+  "currentProductionDeploymentId": "dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq",
+  "candidateSourceCommit": "6e7897a8ef0a98e095fa980958f2cd9a9544fea6",
+  "sourceWorktreeClean": true,
+  "basePackagePath": ".codex-deploy/zeus-helpdesk-queue-views-prod-20260617-5b51299/base",
+  "candidatePackagePath": ".codex-deploy/zeus-helpdesk-queue-views-prod-20260617-5b51299/candidate",
+  "rollbackDeploymentId": "dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq",
+  "addressManifest": "docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json",
+  "addressCheckFiles": [
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json",
+    "docs/operations/production-module-safety-gate-zeus-20260617-006-helpdesk-queue-views.json",
+    "docs/operations/engineering-operations.md"
+  ],
+  "allowedChangedPaths": [
+    "apps/hub/modules/squadops/**",
+    "docs/operations/**"
+  ],
+  "protectedPaths": [
+    "apps/hub/modules/chronos/**",
+    "apps/hub/app/chronos/**",
+    "apps/hub/app/api/chronos/**",
+    "apps/hub/lib/chronos/**",
+    "apps/hub/modules/caredesk/**",
+    "apps/hub/app/iris/**",
+    "apps/hub/app/api/iris/**",
+    "apps/hub/modules/guardian/**",
+    "apps/hub/app/hades/**",
+    "apps/hub/app/hermes/**",
+    "apps/hub/app/api/hades/**",
+    "apps/hub/app/api/hermes/**",
+    "apps/hub/components/pulsex/**",
+    "apps/hub/lib/pulsex/**",
+    "apps/hub/app/setup/**",
+    "packages/database/migrations/**"
+  ],
+  "ignoredPaths": [],
+  "requiredMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "TicketWorkflowKanban",
+        "TicketDeliveryCalendar",
+        "QueueFilterSelect",
+        "TicketQueueDisplayMode",
+        "MeetingTicketDisclosure",
+        "buildTicketInsightGroups",
+        "buildTicketDeliveryCalendar",
+        "isTicketSentToValidationOnDate"
+      ]
+    }
+  ],
+  "forbiddenMarkers": [
+    {
+      "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "includes": [
+        "TicketKanbanBoard",
+        "QueueViewButton",
+        "TicketQueueItem"
+      ]
+    }
+  ],
+  "requiredPaths": [
+    "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+    "docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json"
+  ],
+  "validations": [
+    "npm.cmd exec --workspace @repo/hub -- eslint modules/squadops/blocks/helpdesk/helpdesk-board.tsx --max-warnings 0",
+    "npm.cmd run check-types:hub",
+    "npm.cmd run build --workspace @repo/hub",
+    "GET http://localhost:3018/zeus",
+    "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json --files apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,docs/operations/panteon-address-recorte-zeus-helpdesk-queue-views-20260617.json,docs/operations/production-module-safety-gate-zeus-20260617-006-helpdesk-queue-views.json,docs/operations/engineering-operations.md",
+    "node scripts/production-module-safety-gate.mjs --manifest docs/operations/production-module-safety-gate-zeus-20260617-006-helpdesk-queue-views.json"
+  ],
+  "publishedDeploymentId": "dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp",
+  "publishedTechnicalUrl": "https://careli-hub-hub-i2bs-94q9c5f3q-lucasruas-devs-projects.vercel.app",
+  "publishedAt": "2026-06-17 23:13:51 -03:00",
+  "postDeployChecks": [
+    "ops.c2x.app.br: Ready em dpl_FMuAubf3CXUfTDoCG8Lw7HQNXpjp",
+    "c2x.app.br: Ready em dpl_8voSqS84aMPV5jyacdyW7h3NBxnU, sem troca do dominio principal",
+    "Rotas OPS /, /login, /zeus e /api/pwa/manifest: 200",
+    "APIs protegidas sem sessao: 401 esperado",
+    "Sem env, secret, banco, migration ou alias principal alterado"
+  ],
+  "notes": [
+    "Lucas autorizou publicar o protocolo 006 em 2026-06-17.",
+    "Publicar somente no dominio OPS: https://ops.c2x.app.br.",
+    "Nao alterar alias do dominio principal https://c2x.app.br.",
+    "Rollback OPS: reapontar ops.c2x.app.br para dpl_5nX447SUgLUrTE4JbjPNbC4qLVNq.",
+    "Sem env, secret, Supabase mutavel, banco ou migration neste recorte."
+  ]
+}

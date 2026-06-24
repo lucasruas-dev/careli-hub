@@ -18,16 +18,34 @@ export function proxy(request: NextRequest) {
     request.headers.get("host")?.split(":")[0]?.toLowerCase() ?? "";
   const { pathname } = request.nextUrl;
 
-  if (host === zeusDedicatedHost) {
+  // Em preview (host nao-produtivo) o modo OPS standalone pode ser forcado
+  // com ?ops=1; um cookie persiste a escolha entre navegacoes. Nao afeta
+  // os hosts reais de producao (ops/c2x).
+  const isKnownHubHost =
+    host === zeusDedicatedHost || hubHostsWithoutZeus.has(host);
+  const queryOps = request.nextUrl.searchParams.get("ops") === "1";
+  const previewOps =
+    !isKnownHubHost &&
+    (queryOps || request.cookies.get("zeus_preview_ops")?.value === "1");
+
+  if (host === zeusDedicatedHost || previewOps) {
     if (pathname === "/zeus" || pathname === "/login") {
-      return NextResponse.next();
+      const response = NextResponse.next();
+      if (queryOps) {
+        response.cookies.set("zeus_preview_ops", "1", { path: "/" });
+      }
+      return response;
     }
 
     const url = request.nextUrl.clone();
     url.pathname = "/zeus";
     url.search = "";
 
-    return NextResponse.redirect(url);
+    const response = NextResponse.redirect(url);
+    if (queryOps) {
+      response.cookies.set("zeus_preview_ops", "1", { path: "/" });
+    }
+    return response;
   }
 
   if (

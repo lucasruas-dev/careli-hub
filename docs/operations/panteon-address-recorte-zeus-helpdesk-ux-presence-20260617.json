@@ -1,0 +1,146 @@
+{
+  "schemaVersion": "panteon.address-recorte.v1",
+  "deploymentManifestId": "PNT-DEP-ZEUS-20260617-001",
+  "protocolId": "ZEUS-20260617-001-HELPDESK-UX-PRESENCE",
+  "title": "Zeus HelpDesk UX, presenca e historico",
+  "module": "zeus",
+  "agent": "Zeus",
+  "status": "APROVADO_PRODUCAO_OPS",
+  "riskLevel": "MEDIO",
+  "approvedBy": "Lucas autorizou producao para ops.c2x.app.br em 2026-06-17; dominio principal c2x.app.br fora do escopo.",
+  "addressing": {
+    "cityAddressCode": "PNT-01-00-00-000",
+    "cityAddressId": "PNT-CID-01",
+    "districtAddressCode": "PNT-01-50-00-000",
+    "districtAddressId": "PNT-BRR-ZEUS-01",
+    "streetAddressCode": "PNT-01-50-10-000",
+    "streetAddressId": "PNT-RUA-ZEUS-OPERATIONS-CENTER-01",
+    "houseAddressCodes": [
+      "PNT-01-50-10-001"
+    ],
+    "houseAddressIds": [
+      "PNT-CASA-ZEUS-HELPDESK-001"
+    ],
+    "registryFile": "docs/operations/panteon-address-registry.json",
+    "scopeSummary": "Ajustar somente UX, presenca e comunicacoes automaticas do Zeus HelpDesk."
+  },
+  "baseline": {
+    "productionDomain": "https://ops.c2x.app.br",
+    "expectedProductionDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj",
+    "expectedProductionTechnicalUrl": null,
+    "candidateSourceCommit": null,
+    "sourceWorktreeClean": true,
+    "basePackagePath": ".codex-deploy/zeus-helpdesk-ux-prod-20260617/base",
+    "candidatePackagePath": ".codex-deploy/zeus-helpdesk-ux-prod-20260617/candidate",
+    "rollbackDeploymentId": "dpl_Gitf6mZqC4Wq23ChG16fYP34toZj"
+  },
+  "scope": {
+    "includedFiles": [
+      "apps/hub/modules/squadops/ZeusPage.tsx",
+      "apps/hub/modules/squadops/blocks/audits/audit-routines.tsx",
+      "apps/hub/modules/squadops/blocks/deploys/release-cards.tsx",
+      "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+      "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary.ts",
+      "apps/hub/modules/squadops/blocks/monitoring/alerts-panel.tsx",
+      "apps/hub/modules/squadops/blocks/monitoring/peaks-panel.tsx",
+      "apps/hub/modules/squadops/blocks/monitoring/performance-utils.ts",
+      "apps/hub/modules/squadops/blocks/monitoring/source-grid.tsx",
+      "apps/hub/modules/squadops/blocks/po-ai/po-ai-panel.tsx",
+      "apps/hub/modules/squadops/blocks/records/timeline-records.tsx",
+      "apps/hub/modules/squadops/blocks/shared/operations-ui.tsx",
+      "apps/hub/lib/hub-it-tickets/server.ts",
+      "docs/operations/panteon-address-recorte-zeus-helpdesk-ux-presence-20260617.json",
+      "docs/operations/engineering-operations.md"
+    ],
+    "excludedPaths": [
+      ".env",
+      ".env*",
+      ".vercel/**",
+      ".git/**",
+      "node_modules/**",
+      ".next/**",
+      ".turbo/**",
+      "packages/database/migrations/**"
+    ],
+    "allowedChangedPaths": [
+      "apps/hub/modules/squadops/ZeusPage.tsx",
+      "apps/hub/modules/squadops/blocks/**",
+      "apps/hub/lib/hub-it-tickets/**",
+      "docs/operations/**"
+    ],
+    "protectedPaths": [
+      "apps/hub/modules/guardian/**",
+      "apps/hub/modules/caredesk/**",
+      "apps/hub/components/pulsex/**",
+      "apps/hub/modules/chronos/**",
+      "packages/database/migrations/**"
+    ],
+    "requiredMarkers": [
+      {
+        "path": "apps/hub/modules/squadops/ZeusPage.tsx",
+        "includes": [
+          "zeus-operations-center",
+          "HelpDesk"
+        ]
+      },
+      {
+        "path": "apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx",
+        "includes": [
+          "TicketHistoryTable",
+          "Ticket, colaborador ou assunto",
+          "Validacao"
+        ]
+      },
+      {
+        "path": "apps/hub/lib/hub-it-tickets/server.ts",
+        "includes": [
+          "ZEUS_VALIDATION_TIMEOUT_MESSAGE",
+          "Zeus: ticket aberto pelo usuario"
+        ]
+      }
+    ],
+    "forbiddenMarkers": [
+      {
+        "path": "apps/hub/lib/hub-it-tickets/server.ts",
+        "includes": [
+          "HelpDesk aberto pelo usuario via Athena"
+        ]
+      }
+    ],
+    "sensitiveOperations": []
+  },
+  "validations": {
+    "local": [
+      "git diff --check -- apps/hub/modules/squadops/ZeusPage.tsx apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx apps/hub/lib/hub-it-tickets/server.ts docs/operations/panteon-address-recorte-zeus-helpdesk-ux-presence-20260617.json docs/operations/engineering-operations.md",
+      "npx.cmd eslint apps/hub/modules/squadops/ZeusPage.tsx apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx apps/hub/lib/hub-it-tickets/server.ts --max-warnings 0",
+      "npm.cmd run check-types:hub",
+      "npm.cmd run build --workspace @repo/hub"
+    ],
+    "addressing": [
+      "node scripts/panteon-address-recorte-check.mjs --manifest docs/operations/panteon-address-recorte-zeus-helpdesk-ux-presence-20260617.json --files apps/hub/modules/squadops/ZeusPage.tsx,apps/hub/modules/squadops/blocks/helpdesk/helpdesk-board.tsx,apps/hub/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary.ts,apps/hub/modules/squadops/blocks/shared/operations-ui.tsx,apps/hub/lib/hub-it-tickets/server.ts,docs/operations/panteon-address-recorte-zeus-helpdesk-ux-presence-20260617.json,docs/operations/engineering-operations.md"
+    ],
+    "productionGate": [
+      "node scripts/production-module-safety-gate.mjs --manifest .codex-deploy/zeus-helpdesk-ux-prod-20260617/production-module-safety-gate.json"
+    ]
+  },
+  "blockingRules": [
+    "BLOQUEADO para Preview, Homologacao ou Producao sem autorizacao explicita do Lucas.",
+    "BLOQUEADO se o pacote incluir env, secret, migration, banco, dominio, alias, Vercel ou operacao sensivel.",
+    "BLOQUEADO se qualquer arquivo fora de allowedChangedPaths entrar no pacote.",
+    "BLOQUEADO se o preflight CEP retornar BLOQUEADO."
+  ],
+  "release": {
+    "targetEnvironment": "production",
+    "targetDomain": "https://ops.c2x.app.br",
+    "previewUrl": null,
+    "previewDeploymentId": null,
+    "homologationAlias": "https://homo.c2x.app.br",
+    "productionDomain": "https://ops.c2x.app.br",
+    "rollbackPlan": "Reapontar ops.c2x.app.br para dpl_Gitf6mZqC4Wq23ChG16fYP34toZj se houver regressao critica no modulo Zeus."
+  },
+  "notes": [
+    "Lucas autorizou producao somente em ops.c2x.app.br.",
+    "Sem env, sem secret, sem banco, sem migration e sem alteracao no dominio principal c2x.app.br.",
+    "Worktree principal estava sujo com frentes paralelas; deploy deve ocorrer somente pelo pacote limpo deste protocolo."
+  ]
+}

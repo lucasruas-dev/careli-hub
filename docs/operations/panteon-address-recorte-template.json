@@ -1,0 +1,98 @@
+{
+  "schemaVersion": "panteon.address-recorte.v1",
+  "deploymentManifestId": "PNT-DEP-<MODULO>-YYYYMMDD-001",
+  "protocolId": "<MODULO>-YYYYMMDD-001-<TEMA>",
+  "title": "Recorte com CEP operacional",
+  "module": "<modulo>",
+  "agent": "<agente>",
+  "status": "EM_DESENVOLVIMENTO",
+  "riskLevel": "BAIXO",
+  "approvedBy": null,
+  "addressing": {
+    "cityAddressCode": "PNT-01-00-00-000",
+    "cityAddressId": "PNT-CID-01",
+    "districtAddressCode": "PNT-01-<BB>-00-000",
+    "streetAddressCode": "PNT-01-<BB>-<RR>-000",
+    "houseAddressCodes": [
+      "PNT-01-<BB>-<RR>-001"
+    ],
+    "houseAddressIds": [
+      "<PNT-CASA-...>"
+    ],
+    "registryFile": "docs/operations/panteon-address-registry.json",
+    "scopeSummary": "Alterar somente as casas declaradas neste manifesto."
+  },
+  "baseline": {
+    "productionDomain": "https://c2x.app.br",
+    "expectedProductionDeploymentId": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5",
+    "expectedProductionTechnicalUrl": "https://careli-hub-hub-i2bs-2hmz65b0s-lucasruas-devs-projects.vercel.app",
+    "candidateSourceCommit": null,
+    "sourceWorktreeClean": false,
+    "basePackagePath": null,
+    "candidatePackagePath": null,
+    "rollbackDeploymentId": "dpl_4FyaXUbn47T45KBWJNGmA3a8orz5"
+  },
+  "scope": {
+    "includedFiles": [],
+    "excludedPaths": [
+      ".env",
+      ".env*",
+      ".vercel/**",
+      ".git/**",
+      "node_modules/**",
+      ".next/**",
+      ".turbo/**",
+      "packages/database/migrations/**"
+    ],
+    "allowedChangedPaths": [],
+    "protectedPaths": [],
+    "requiredMarkers": [],
+    "forbiddenMarkers": [],
+    "sensitiveOperations": []
+  },
+  "validations": {
+    "local": [
+      "git status --short --branch",
+      "git worktree list",
+      "git diff --check -- <arquivos-do-recorte>",
+      "npm.cmd run check-types:hub",
+      "npm.cmd run lint:hub",
+      "npm.cmd run build --workspace @repo/hub"
+    ],
+    "addressing": [
+      "Confirmar que todos os arquivos alterados pertencem aos houseAddressCodes declarados.",
+      "Confirmar que protectedPaths nao mudaram.",
+      "Confirmar requiredMarkers presentes e forbiddenMarkers ausentes.",
+      "node scripts/panteon-address-recorte-check.mjs --manifest <este-arquivo> --files <arquivos-do-recorte>"
+    ],
+    "productionGate": [
+      "node scripts/production-module-safety-gate.mjs --manifest <manifesto-producao>"
+    ]
+  },
+  "blockingRules": [
+    "BLOQUEADO se nao houver protocolId.",
+    "BLOQUEADO se nao houver cityAddressCode.",
+    "BLOQUEADO se a producao ativa nao bater com expectedProductionDeploymentId.",
+    "BLOQUEADO se qualquer diff tocar CEP/casa fora de houseAddressCodes.",
+    "BLOQUEADO se protectedPaths mudarem.",
+    "BLOQUEADO se requiredMarkers sumirem.",
+    "BLOQUEADO se forbiddenMarkers aparecerem.",
+    "BLOQUEADO se sourceWorktreeClean nao for true para producao.",
+    "BLOQUEADO se candidateSourceCommit nao for commit limpo para producao.",
+    "BLOQUEADO se envolver env, secret, Supabase, banco, migration, dominio, alias, Vercel ou production deployment sem autorizacao explicita do Lucas."
+  ],
+  "release": {
+    "targetEnvironment": "local",
+    "targetDomain": null,
+    "previewUrl": null,
+    "previewDeploymentId": null,
+    "homologationAlias": "https://homo.c2x.app.br",
+    "productionDomain": null,
+    "rollbackPlan": "Restaurar deployment/base anterior registrada no manifesto se houver regressao critica."
+  },
+  "notes": [
+    "Copie este template para um manifesto real do recorte.",
+    "Preencha os CEPs a partir de docs/operations/panteon-address-registry.json.",
+    "Nao use este template como autorizacao para deploy; ele apenas estrutura o recorte."
+  ]
+}

@@ -9,11 +9,16 @@ import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
 import {
   hubItTicketCategories,
+  hubItTicketPriorityLabels,
   hubItTicketPriorities,
+  hubItTicketRoadmapTypeLabels,
+  hubItTicketRoadmapTypes,
+  hubItTicketStatusLabels,
   hubItTicketStatuses,
   type HubItTicket,
   type HubItTicketAttachment,
   type HubItTicketAttachmentInput,
+  type HubItTicketBacklogInput,
   type HubItTicketCategory,
   type HubItTicketDeliveryDecisionAction,
   type HubItTicketDeliveryDecisionStatus,
@@ -24,6 +29,8 @@ import {
   type HubItTicketStatus,
   type HubItTicketUpdateInput,
 } from "./types";
+
+const ZEUS_VALIDATION_TIMEOUT_MESSAGE = "Ticket encerrado";
 
 type HubItTicketUserRow = {
   avatar_url?: string | null;
@@ -141,10 +148,34 @@ type HubItTicketAttachmentRow = {
   type: HubItTicketAttachment["type"];
 };
 
+type HubNotificationSeverity = "danger" | "info" | "neutral" | "success" | "warning";
+
+type HubNotificationRow = {
+  action_href: string | null;
+  created_at: string;
+  id: string;
+  module_id: string | null;
+  read_at: string | null;
+  recipient_user_id: string;
+  severity: HubNotificationSeverity;
+  title: string;
+  workspace_id: string | null;
+};
+
+type HubNotificationInsert = {
+  action_href?: string | null;
+  module_id?: string | null;
+  recipient_user_id: string;
+  severity?: HubNotificationSeverity;
+  title: string;
+  workspace_id?: string | null;
+};
+
 type HubItTicketsDatabase = {
   public: {
     CompositeTypes: Record<string, never>;
     Enums: {
+      hub_event_severity: HubNotificationSeverity;
       hub_it_ticket_category: HubItTicketCategory;
       hub_it_ticket_priority: HubItTicketPriority;
       hub_it_ticket_status: HubItTicketStatus;
@@ -168,6 +199,12 @@ type HubItTicketsDatabase = {
         Relationships: [];
         Row: HubItTicketRow;
         Update: HubItTicketUpdate;
+      };
+      hub_notifications: {
+        Insert: HubNotificationInsert;
+        Relationships: [];
+        Row: HubNotificationRow;
+        Update: never;
       };
       hub_users: {
         Insert: never;
@@ -197,8 +234,14 @@ type HubItTicketsLocalStore = {
 };
 
 const maxTextLength = 5_000;
-const maxAttachmentCount = 4;
 const maxAttachmentBytes = 6_000_000;
+const staleValidationThresholdMs = 3 * 86_400_000;
+const validationTicketStatuses = new Set<HubItTicketStatus>([
+  "aguardando_cliente",
+  "em_homologacao",
+  "em_producao",
+  "resolvido",
+]);
 const localStorePath = path.join(
   process.cwd(),
   ".next",
@@ -331,11 +374,13 @@ export async function listHubItTickets({
       throw new Error(error.message);
     }
 
+    const rows = await autoFinalizeStaleValidationRows(adminClient, data ?? []);
+
     if (!includeDetails) {
-      return (data ?? []).map((row) => mapTicketRow(row, [], []));
+      return rows.map((row) => mapTicketRow(row, [], []));
     }
 
-    return hydrateTicketRows(adminClient, data ?? []);
+    return hydrateTicketRows(adminClient, rows);
   } catch (error) {
     if (shouldUseLocalFallback(error)) {
       return listLocalHubItTickets({ canSeeAll, protocol, userId: user.id });
@@ -405,7 +450,7 @@ export async function createHubItTicket({
 
     await insertTicketEvent(adminClient, {
       createdByUserId: user.id,
-      message: `HelpDesk aberto pelo usuario via Athena. Data solicitada: ${formatDateOnlyForMessage(normalizedInput.requestedDeliveryDate)}.`,
+      message: `Zeus: ticket aberto pelo usuario. Data solicitada: ${formatDateOnlyForMessage(normalizedInput.requestedDeliveryDate)}.`,
       metadata: {
         deliveryAgreement: deliveryMetadata,
         source: "hub-athena-ticket-ti",
@@ -443,6 +488,69 @@ export async function createHubItTicket({
 
     throw error;
   }
+}
+
+async function autoFinalizeStaleValidationRows(
+  adminClient: HubItTicketsClient,
+  rows: HubItTicketRow[],
+) {
+  const now = new Date();
+  const nowIso = now.toISOString();
+  const staleRows = rows.filter((row) => isStaleValidationRow(row, now));
+
+  if (staleRows.length === 0) {
+    return rows;
+  }
+
+  const updatedRowsById = new Map<string, HubItTicketRow>();
+
+  for (const row of staleRows) {
+    const { data: updatedRow, error } = await adminClient
+      .from("hub_it_tickets")
+      .update({
+        resolved_at: nowIso,
+        status: "fechado",
+      })
+      .eq("id", row.id)
+      .in("status", Array.from(validationTicketStatuses))
+      .select("*")
+      .maybeSingle<HubItTicketRow>();
+
+    if (error || !updatedRow) {
+      continue;
+    }
+
+    updatedRowsById.set(row.id, updatedRow);
+    await insertTicketEvent(adminClient, {
+      createdByUserId: null,
+      message: ZEUS_VALIDATION_TIMEOUT_MESSAGE,
+      metadata: { source: "helpdesk-validation-timeout" },
+      technicalNote: null,
+      ticketId: row.id,
+      type: "closed",
+      visibleToRequester: true,
+    });
+  }
+
+  if (updatedRowsById.size === 0) {
+    return rows;
+  }
+
+  return rows.map((row) => updatedRowsById.get(row.id) ?? row);
+}
+
+function isStaleValidationRow(row: HubItTicketRow, now: Date) {
+  if (!validationTicketStatuses.has(row.status)) {
+    return false;
+  }
+
+  const updatedAt = new Date(row.updated_at);
+
+  if (Number.isNaN(updatedAt.getTime())) {
+    return false;
+  }
+
+  return now.getTime() - updatedAt.getTime() >= staleValidationThresholdMs;
 }
 
 export async function updateHubItTicket({
@@ -500,7 +608,11 @@ export async function updateHubItTicket({
           last_response_by_name: user.name,
           last_response_by_user_id: user.id,
           resolved_at:
-            userAction === "customer_close" ? now : currentTicket.resolved_at,
+            userAction === "customer_close"
+              ? now
+              : userAction === "customer_review"
+                ? null
+                : currentTicket.resolved_at,
           status: nextStatus,
         })
         .eq("protocol", normalizedInput.protocol)
@@ -523,7 +635,7 @@ export async function updateHubItTicket({
             : normalizedInput.customerResponse ||
               (userAction === "customer_review"
                 ? "Solicitante devolveu o ticket para revisao."
-                : "Solicitante enviou uma mensagem para Zeus."),
+                : "Solicitante enviou uma mensagem para o operador."),
         metadata: { source: "hub-ticket-ti-user" },
         technicalNote: null,
         ticketId: ticket.id,
@@ -549,6 +661,20 @@ export async function updateHubItTicket({
         });
       }
 
+      await insertHelpDeskNotification(adminClient, {
+        actionHref: `/zeus?ticket=${encodeURIComponent(ticket.protocol)}`,
+        actorUserId: user.id,
+        protocol: ticket.protocol,
+        recipientUserId: ticket.assigned_to_user_id,
+        severity: userAction === "customer_close" ? "success" : "warning",
+        title:
+          userAction === "customer_close"
+            ? `HelpDesk ${ticket.protocol} finalizado pelo solicitante`
+            : userAction === "customer_review"
+              ? `HelpDesk ${ticket.protocol} voltou para revisao`
+              : `Nova mensagem no HelpDesk ${ticket.protocol}`,
+      });
+
       const [hydratedTicket] = await hydrateTicketRows(adminClient, [ticket]);
 
       return hydratedTicket;
@@ -558,14 +684,22 @@ export async function updateHubItTicket({
       throw new Error("Somente Zeus adm pode responder HelpDesk.");
     }
 
-    const nextStatus =
-      normalizedInput.status ??
-      (normalizedInput.adminResponse || normalizedInput.resolutionSummary
-        ? "aguardando_cliente"
-        : "em_analise");
+    const adminAttachments = normalizedInput.attachments ?? [];
+    const nextStatus = resolveAdminTicketNextStatus({
+      currentRoadmap: getRoadmapFromMetadata(currentTicket.metadata),
+      currentStatus: currentTicket.status,
+      input: normalizedInput,
+    });
     const deliveryDecision = buildDeliveryDecisionMetadata({
       currentMetadata: currentTicket.metadata,
       input: normalizedInput,
+      now,
+      user,
+    });
+    const roadmapBacklog = buildRoadmapBacklogMetadata({
+      currentMetadata: deliveryDecision.metadata,
+      input: normalizedInput,
+      nextStatus,
       now,
       user,
     });
@@ -584,8 +718,8 @@ export async function updateHubItTicket({
       status: nextStatus,
     };
 
-    if (deliveryDecision.changed) {
-      updatePayload.metadata = deliveryDecision.metadata;
+    if (deliveryDecision.changed || roadmapBacklog.changed) {
+      updatePayload.metadata = roadmapBacklog.metadata;
     }
 
     const { data: ticket, error } = await adminClient
@@ -603,17 +737,31 @@ export async function updateHubItTicket({
       throw new Error(error.message);
     }
 
+    const ticketEventMetadata = roadmapBacklog.metadata as Record<
+      string,
+      unknown
+    >;
+
     await insertTicketEvent(adminClient, {
       createdByUserId: user.id,
       message:
         buildAdminTicketEventMessage({
+          actorName: user.name,
           deliveryMessage: deliveryDecision.message,
+          roadmapMessage: roadmapBacklog.message,
+          attachmentsCount: adminAttachments.length,
           response: normalizedInput.adminResponse,
           status: nextStatus,
         }),
       metadata: {
         ...(deliveryDecision.changed
-          ? { deliveryAgreement: deliveryDecision.metadata.deliveryAgreement }
+          ? { deliveryAgreement: ticketEventMetadata["deliveryAgreement"] }
+          : {}),
+        ...(roadmapBacklog.changed
+          ? { roadmap: ticketEventMetadata["roadmap"] }
+          : {}),
+        ...(adminAttachments.length > 0
+          ? { attachmentsCount: adminAttachments.length }
           : {}),
         source: "squadops-ticket-ti",
       },
@@ -622,10 +770,31 @@ export async function updateHubItTicket({
       type:
         nextStatus === "fechado"
           ? "resolved"
-          : deliveryDecision.changed && !normalizedInput.adminResponse
+          : (deliveryDecision.changed || roadmapBacklog.changed) &&
+              !normalizedInput.adminResponse
             ? "status_changed"
             : "admin_reply",
       visibleToRequester: true,
+    });
+
+    if (adminAttachments.length > 0) {
+      await insertTicketAttachments(adminClient, {
+        attachments: adminAttachments,
+        ticketId: ticket.id,
+        userId: user.id,
+      });
+    }
+
+    await insertHelpDeskNotification(adminClient, {
+      actionHref: "/",
+      actorUserId: user.id,
+      protocol: ticket.protocol,
+      recipientUserId: ticket.requested_by_user_id,
+      severity: nextStatus === "aguardando_cliente" ? "success" : "info",
+      title:
+        nextStatus === "aguardando_cliente"
+          ? `HelpDesk ${ticket.protocol} pronto para sua validacao`
+          : `Nova devolutiva no HelpDesk ${ticket.protocol}`,
     });
 
     const [hydratedTicket] = await hydrateTicketRows(adminClient, [ticket]);
@@ -756,6 +925,35 @@ async function insertTicketEvent(
   }
 }
 
+async function insertHelpDeskNotification(
+  adminClient: HubItTicketsClient,
+  input: {
+    actionHref: string;
+    actorUserId: string;
+    protocol: string;
+    recipientUserId?: string | null;
+    severity: HubNotificationSeverity;
+    title: string;
+  },
+) {
+  if (!input.recipientUserId || input.recipientUserId === input.actorUserId) {
+    return;
+  }
+
+  const { error } = await adminClient.from("hub_notifications").insert({
+    action_href: input.actionHref,
+    module_id: "zeus",
+    recipient_user_id: input.recipientUserId,
+    severity: input.severity,
+    title: input.title,
+  });
+
+  if (error) {
+    // Notification is helpful, but ticket persistence is the source of truth.
+    return;
+  }
+}
+
 async function insertTicketAttachments(
   adminClient: HubItTicketsClient,
   input: {
@@ -799,7 +997,7 @@ function normalizeCreateInput(input: unknown): HubItTicketCreateInput & {
   const title = sanitizeRequiredText(payload.title, "Informe um titulo tecnico.", 4);
   const technicalSummary = sanitizeRequiredText(
     payload.technicalSummary,
-    "A leitura tecnica da Athena e obrigatoria.",
+    "A leitura tecnica do Zeus e obrigatoria.",
     10,
   );
   const moduleName = sanitizeRequiredText(payload.module, "Informe o modulo.", 2);
@@ -851,25 +1049,65 @@ function normalizeUpdateInput(input: unknown): HubItTicketUpdateInput {
     deliveryDecision === "reject_with_new_date"
       ? normalizeDateOnly(
           payload.approvedDeliveryDate,
-          "Informe a nova data proposta por Zeus.",
+          "Informe a nova data proposta.",
         )
       : normalizeOptionalDateOnly(payload.approvedDeliveryDate);
   const deliveryDecisionNote = sanitizeOptionalText(
     payload.deliveryDecisionNote,
     800,
   );
+  const backlog = normalizeBacklogInput(payload.backlog);
 
   return {
     action,
     adminResponse,
     approvedDeliveryDate,
     attachments: normalizeAttachments(payload.attachments),
+    backlog,
     customerResponse,
     deliveryDecision,
     deliveryDecisionNote,
     protocol,
     resolutionSummary,
     status,
+  };
+}
+
+function normalizeBacklogInput(
+  value: unknown,
+): HubItTicketBacklogInput | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const payload = recordFromUnknown(value);
+
+  if (!payload) {
+    throw new Error("Informe os dados de Backlog.");
+  }
+
+  if (!isRoadmapType(payload.type)) {
+    throw new Error("Informe se o Backlog e melhoria, bug, divida tecnica ou automacao/integracao.");
+  }
+
+  if (!isTicketPriority(payload.priority)) {
+    throw new Error("Informe a prioridade do Backlog.");
+  }
+
+  return {
+    module: sanitizeRequiredText(
+      payload.module,
+      "Informe o modulo do Backlog.",
+      2,
+    ),
+    note: sanitizeOptionalText(payload.note, 1_200),
+    priority: payload.priority,
+    screen: sanitizeRequiredText(
+      payload.screen,
+      "Informe a tela ou fluxo do Backlog.",
+      2,
+    ),
+    type: payload.type,
   };
 }
 
@@ -880,7 +1118,7 @@ function normalizeAttachments(
     return [];
   }
 
-  return attachments.slice(0, maxAttachmentCount).flatMap((attachment) => {
+  return attachments.flatMap((attachment) => {
     const fileName = sanitizeOptionalText(attachment.fileName, 120);
     const mimeType = sanitizeOptionalText(attachment.mimeType, 120);
     const dataUrl = sanitizeOptionalText(attachment.dataUrl, 8_500_000);
@@ -920,6 +1158,7 @@ function mapTicketRow(
   attachments: HubItTicketAttachment[],
 ): HubItTicket {
   const deliveryAgreement = getDeliveryAgreementFromMetadata(row.metadata);
+  const roadmap = getRoadmapFromMetadata(row.metadata);
 
   return {
     actualResult: row.actual_result,
@@ -930,7 +1169,7 @@ function mapTicketRow(
           avatarUrl: row.assigned_to_avatar_url,
           email: row.assigned_to_email,
           id: row.assigned_to_user_id,
-          name: row.assigned_to_name ?? "Zeus",
+          name: row.assigned_to_name ?? "Operador",
         }
       : null,
     assignedToUserId: row.assigned_to_user_id,
@@ -964,6 +1203,7 @@ function mapTicketRow(
     requestedDeliveryDate: deliveryAgreement.requestedDate,
     resolutionSummary: row.resolution_summary,
     resolvedAt: row.resolved_at,
+    roadmap,
     sourcePath: row.source_path,
     sourceUrl: row.source_url,
     status: row.status,
@@ -1045,12 +1285,154 @@ function getDeliveryAgreementFromMetadata(
           avatarUrl: sanitizeOptionalText(decidedByRecord.avatarUrl, 500) ?? null,
           email: sanitizeOptionalText(decidedByRecord.email, 240) ?? null,
           id: sanitizeOptionalText(decidedByRecord.id, 120) ?? "zeus",
-          name: sanitizeOptionalText(decidedByRecord.name, 160) ?? "Zeus",
+          name: sanitizeOptionalText(decidedByRecord.name, 160) ?? "Operador",
         }
       : null,
     note: sanitizeOptionalText(agreement.note, 800) ?? null,
     requestedDate,
     status,
+  };
+}
+
+function getRoadmapFromMetadata(
+  metadata: Record<string, unknown>,
+): HubItTicket["roadmap"] {
+  const roadmap = recordFromUnknown(metadata.roadmap) ?? {};
+
+  if (roadmap.active !== true) {
+    return null;
+  }
+
+  const type = isRoadmapType(roadmap.type) ? roadmap.type : "melhoria";
+  const moduleName = sanitizeOptionalText(roadmap.module, 120);
+  const screen = sanitizeOptionalText(roadmap.screen, 180);
+
+  if (!moduleName || !screen) {
+    return null;
+  }
+
+  return {
+    active: true,
+    createdAt: sanitizeOptionalText(roadmap.createdAt, 80) ?? null,
+    createdBy: readMetadataUserRef(roadmap.createdBy),
+    module: moduleName,
+    note: sanitizeOptionalText(roadmap.note, 1_200) ?? null,
+    priority: isTicketPriority(roadmap.priority) ? roadmap.priority : "media",
+    screen,
+    type,
+    updatedAt: sanitizeOptionalText(roadmap.updatedAt, 80) ?? null,
+    updatedBy: readMetadataUserRef(roadmap.updatedBy),
+  };
+}
+
+function buildRoadmapBacklogMetadata({
+  currentMetadata,
+  input,
+  nextStatus,
+  now,
+  user,
+}: {
+  currentMetadata: Record<string, unknown>;
+  input: HubItTicketUpdateInput;
+  nextStatus: HubItTicketStatus;
+  now: string;
+  user: AuthorizedHubItTicketUser;
+}) {
+  const currentRoadmap = getRoadmapFromMetadata(currentMetadata);
+
+  if (input.backlog) {
+    const actor = buildDeliveryActor(user);
+    const nextRoadmap = {
+      active: true,
+      createdAt: currentRoadmap?.createdAt ?? now,
+      createdBy: currentRoadmap?.createdBy ?? actor,
+      module: input.backlog.module,
+      note: input.backlog.note ?? null,
+      priority: input.backlog.priority,
+      screen: input.backlog.screen,
+      type: input.backlog.type,
+      updatedAt: now,
+      updatedBy: actor,
+      history: [
+        {
+          action: "moved_to_backlog",
+          createdAt: now,
+          createdBy: actor,
+          module: input.backlog.module,
+          note: input.backlog.note ?? null,
+          priority: input.backlog.priority,
+          screen: input.backlog.screen,
+          type: input.backlog.type,
+        },
+        ...arrayFromUnknown(recordFromUnknown(currentMetadata.roadmap)?.history)
+          .slice(0, 24),
+      ],
+    };
+
+    return {
+      changed: true,
+      message: `${actor.name} moveu este ticket para Backlog como ${hubItTicketRoadmapTypeLabels[input.backlog.type]} (${hubItTicketPriorityLabels[input.backlog.priority]}) em ${input.backlog.module} / ${input.backlog.screen}.`,
+      metadata: {
+        ...currentMetadata,
+        roadmap: nextRoadmap,
+      },
+    };
+  }
+
+  if (currentRoadmap?.active && nextStatus !== "em_analise") {
+    const actor = buildDeliveryActor(user);
+    const previousRoadmap = recordFromUnknown(currentMetadata.roadmap) ?? {};
+
+    return {
+      changed: true,
+      message: undefined,
+      metadata: {
+        ...currentMetadata,
+        roadmap: {
+          ...previousRoadmap,
+          active: false,
+          archivedAt: now,
+          archivedBy: actor,
+          history: [
+            {
+              action: "removed_from_backlog",
+              createdAt: now,
+              createdBy: actor,
+              nextStatus,
+            },
+            ...arrayFromUnknown(previousRoadmap.history).slice(0, 24),
+          ],
+        },
+      },
+    };
+  }
+
+  return {
+    changed: false,
+    message: undefined,
+    metadata: currentMetadata,
+  };
+}
+
+function readMetadataUserRef(value: unknown): HubItTicket["requester"] | null {
+  const record = recordFromUnknown(value);
+
+  if (!record) {
+    return null;
+  }
+
+  const id = sanitizeOptionalText(record.id, 120);
+  const name = sanitizeOptionalText(record.name, 160);
+
+  if (!id || !name) {
+    return null;
+  }
+
+  return {
+    avatarUrl: sanitizeOptionalText(record.avatarUrl, 500) ?? null,
+    email: sanitizeOptionalText(record.email, 240) ?? null,
+    id,
+    name,
   };
 }
 
@@ -1077,6 +1459,7 @@ function buildDeliveryDecisionMetadata({
   const nextDecision = resolveDeliveryDecision({
     action: input.deliveryDecision,
     approvedDeliveryDate: input.approvedDeliveryDate,
+    actorName: user.name,
     note: input.deliveryDecisionNote,
     requestedDate: currentAgreement.requestedDate,
   });
@@ -1135,6 +1518,7 @@ function buildLocalDeliveryDecision({
   const nextDecision = resolveDeliveryDecision({
     action: input.deliveryDecision,
     approvedDeliveryDate: input.approvedDeliveryDate,
+    actorName: user.name,
     note: input.deliveryDecisionNote,
     requestedDate: currentTicket.requestedDeliveryDate,
   });
@@ -1150,13 +1534,70 @@ function buildLocalDeliveryDecision({
   };
 }
 
+function buildLocalRoadmapBacklog({
+  currentTicket,
+  input,
+  nextStatus,
+  now,
+  user,
+}: {
+  currentTicket: HubItTicket;
+  input: HubItTicketUpdateInput;
+  nextStatus: HubItTicketStatus;
+  now: string;
+  user: AuthorizedHubItTicketUser;
+}) {
+  if (input.backlog) {
+    const actor = buildDeliveryActor(user);
+    const roadmap = {
+      active: true,
+      createdAt: currentTicket.roadmap?.createdAt ?? now,
+      createdBy: currentTicket.roadmap?.createdBy ?? actor,
+      module: input.backlog.module,
+      note: input.backlog.note ?? null,
+      priority: input.backlog.priority,
+      screen: input.backlog.screen,
+      type: input.backlog.type,
+      updatedAt: now,
+      updatedBy: actor,
+    } satisfies NonNullable<HubItTicket["roadmap"]>;
+
+    return {
+      changed: true,
+      message: `${actor.name} moveu este ticket para Backlog como ${hubItTicketRoadmapTypeLabels[input.backlog.type]} (${hubItTicketPriorityLabels[input.backlog.priority]}) em ${input.backlog.module} / ${input.backlog.screen}.`,
+      roadmap,
+    };
+  }
+
+  if (currentTicket.roadmap?.active && nextStatus !== "em_analise") {
+    return {
+      changed: true,
+      message: undefined,
+      roadmap: {
+        ...currentTicket.roadmap,
+        active: false,
+        updatedAt: now,
+        updatedBy: buildDeliveryActor(user),
+      } satisfies NonNullable<HubItTicket["roadmap"]>,
+    };
+  }
+
+  return {
+    changed: false,
+    message: undefined,
+    roadmap: currentTicket.roadmap ?? null,
+  };
+}
+
 function resolveDeliveryDecision({
   action,
   approvedDeliveryDate,
+  actorName,
   note,
   requestedDate,
 }: {
   action: HubItTicketDeliveryDecisionAction;
+  actorName: string;
   approvedDeliveryDate?: string;
   note?: string;
   requestedDate?: string | null;
@@ -1168,7 +1609,7 @@ function resolveDeliveryDecision({
 
     return {
       approvedDate: requestedDate,
-      message: `Data solicitada aprovada para ${formatDateOnlyForMessage(requestedDate)}.`,
+      message: `${actorName} aprovou a data solicitada para ${formatDateOnlyForMessage(requestedDate)}.`,
       note: note ?? null,
       status: "aprovada" satisfies HubItTicketDeliveryDecisionStatus,
     };
@@ -1176,12 +1617,12 @@ function resolveDeliveryDecision({
 
   const nextDate = normalizeDateOnly(
     approvedDeliveryDate,
-    "Informe a nova data proposta por Zeus.",
+    "Informe a nova data proposta.",
   );
 
   return {
     approvedDate: nextDate,
-    message: `Data solicitada rejeitada. Nova data proposta por Zeus: ${formatDateOnlyForMessage(nextDate)}.`,
+    message: `${actorName} reprogramou a data para ${formatDateOnlyForMessage(nextDate)}.`,
     note: note ?? null,
     status: "reprogramada" satisfies HubItTicketDeliveryDecisionStatus,
   };
@@ -1196,20 +1637,63 @@ function buildDeliveryActor(user: AuthorizedHubItTicketUser) {
   };
 }
 
+function resolveAdminTicketNextStatus({
+  currentRoadmap,
+  currentStatus,
+  input,
+}: {
+  currentRoadmap: HubItTicket["roadmap"];
+  currentStatus: HubItTicketStatus;
+  input: HubItTicketUpdateInput;
+}) {
+  if (input.backlog) {
+    return "em_analise";
+  }
+
+  if (input.status) {
+    return input.status;
+  }
+
+  if (currentRoadmap?.active && currentStatus === "em_analise") {
+    return "em_analise";
+  }
+
+  if (input.adminResponse && currentStatus === "novo") {
+    return "em_tratativa";
+  }
+
+  return currentStatus;
+}
+
 function buildAdminTicketEventMessage({
+  actorName,
+  attachmentsCount = 0,
   deliveryMessage,
+  roadmapMessage,
   response,
   status,
 }: {
+  actorName: string;
+  attachmentsCount?: number;
   deliveryMessage?: string;
+  roadmapMessage?: string;
   response?: string;
   status: HubItTicketStatus;
 }) {
-  if (response && deliveryMessage) {
-    return `${response}\n\n${deliveryMessage}`;
-  }
+  const attachmentMessage =
+    attachmentsCount > 0
+      ? `${attachmentsCount} anexo(s) enviado(s) por ${actorName}.`
+      : null;
+  const messageParts = [
+    response,
+    roadmapMessage,
+    deliveryMessage,
+    attachmentMessage,
+  ].filter((messagePart): messagePart is string => Boolean(messagePart));
 
-  return response ?? deliveryMessage ?? `Status atualizado para ${status}.`;
+  return messageParts.length > 0
+    ? messageParts.join("\n\n")
+    : `Fluxo atualizado para ${hubItTicketStatusLabels[status]}.`;
 }
 
 function groupByTicketId<TItem extends { ticket_id: string }>(items: TItem[]) {
@@ -1234,13 +1718,59 @@ async function listLocalHubItTickets({
   userId: string;
 }) {
   const store = await readLocalStore();
+  const now = new Date();
+  let changed = false;
+  const tickets: HubItTicket[] = store.tickets.map((ticket) => {
+    if (!isStaleValidationTicket(ticket, now)) {
+      return ticket;
+    }
 
-  return store.tickets
+    changed = true;
+    const nowIso = now.toISOString();
+
+    return {
+      ...ticket,
+      events: [
+        {
+          actor: null,
+          createdAt: nowIso,
+          id: `local-event-${randomBytes(6).toString("hex")}`,
+          message: ZEUS_VALIDATION_TIMEOUT_MESSAGE,
+          type: "closed" as const,
+          visibleToRequester: true,
+        },
+        ...ticket.events,
+      ],
+      resolvedAt: nowIso,
+      status: "fechado" as const,
+      updatedAt: nowIso,
+    };
+  });
+
+  if (changed) {
+    await writeLocalStore({ tickets });
+  }
+
+  return tickets
     .filter((ticket) => canSeeAll || ticket.requester.id === userId)
     .filter((ticket) => !protocol || ticket.protocol === protocol)
     .sort((firstTicket, secondTicket) =>
       secondTicket.updatedAt.localeCompare(firstTicket.updatedAt),
     );
+}
+
+function isStaleValidationTicket(ticket: HubItTicket, now: Date) {
+  if (!validationTicketStatuses.has(ticket.status)) {
+    return false;
+  }
+
+  const updatedAt = new Date(ticket.updatedAt);
+
+  if (Number.isNaN(updatedAt.getTime())) {
+    return false;
+  }
+
+  return now.getTime() - updatedAt.getTime() >= staleValidationThresholdMs;
 }
 
 async function createLocalHubItTicket({
@@ -1286,7 +1816,7 @@ async function createLocalHubItTicket({
         actor,
         createdAt: now,
         id: `local-event-${randomBytes(6).toString("hex")}`,
-        message: `HelpDesk aberto pelo usuario via Athena. Data solicitada: ${formatDateOnlyForMessage(input.requestedDeliveryDate)}.`,
+        message: `Zeus: ticket aberto pelo usuario. Data solicitada: ${formatDateOnlyForMessage(input.requestedDeliveryDate)}.`,
         type: "created",
         visibleToRequester: true,
       },
@@ -1378,7 +1908,7 @@ async function updateLocalHubItTicket({
               : input.customerResponse ||
                 (userAction === "customer_review"
                   ? "Solicitante devolveu o ticket para revisao."
-                  : "Solicitante enviou uma mensagem para Zeus."),
+                  : "Solicitante enviou uma mensagem para o operador."),
           type:
             userAction === "customer_close"
               ? "closed"
@@ -1391,7 +1921,11 @@ async function updateLocalHubItTicket({
       ],
       lastResponseBy: actor,
       resolvedAt:
-        userAction === "customer_close" ? now : currentTicket.resolvedAt,
+        userAction === "customer_close"
+          ? now
+          : userAction === "customer_review"
+            ? null
+            : currentTicket.resolvedAt,
       status: nextStatus,
       updatedAt: now,
     };
@@ -1406,15 +1940,26 @@ async function updateLocalHubItTicket({
     throw new Error("Somente Zeus adm pode responder HelpDesk.");
   }
 
-  const nextStatus =
-    input.status ??
-    (input.adminResponse || input.resolutionSummary
-      ? "aguardando_cliente"
-      : "em_analise");
-  const isResolved = nextStatus === "resolvido" || nextStatus === "fechado";
+  const adminAttachments = (input.attachments ?? []).map((attachment) => ({
+    ...attachment,
+    id: `local-att-${randomBytes(6).toString("hex")}`,
+  }));
+  const nextStatus = resolveAdminTicketNextStatus({
+    currentRoadmap: currentTicket.roadmap ?? null,
+    currentStatus: currentTicket.status,
+    input,
+  });
+  const isResolved = nextStatus === "fechado";
   const deliveryDecision = buildLocalDeliveryDecision({
     currentTicket,
     input,
+    now,
+    user,
+  });
+  const roadmapBacklog = buildLocalRoadmapBacklog({
+    currentTicket,
+    input,
+    nextStatus,
     now,
     user,
   });
@@ -1439,23 +1984,29 @@ async function updateLocalHubItTicket({
         createdAt: now,
         id: `local-event-${randomBytes(6).toString("hex")}`,
         message: buildAdminTicketEventMessage({
+          actorName: user.name,
+          attachmentsCount: adminAttachments.length,
           deliveryMessage: deliveryDecision.message,
+          roadmapMessage: roadmapBacklog.message,
           response: input.adminResponse,
           status: nextStatus,
         }),
         type:
           isResolved
             ? "resolved"
-            : deliveryDecision.changed && !input.adminResponse
+            : (deliveryDecision.changed || roadmapBacklog.changed) &&
+                !input.adminResponse
               ? "status_changed"
               : "admin_reply",
         visibleToRequester: true,
       },
       ...currentTicket.events,
     ],
+    attachments: [...adminAttachments, ...currentTicket.attachments],
     lastResponseBy: actor,
     resolutionSummary: input.resolutionSummary,
     resolvedAt: isResolved ? now : null,
+    roadmap: roadmapBacklog.roadmap,
     status: nextStatus,
     updatedAt: now,
   };
@@ -1572,6 +2123,14 @@ function isTicketPriority(value: unknown): value is HubItTicketPriority {
 
 function isTicketStatus(value: unknown): value is HubItTicketStatus {
   return hubItTicketStatuses.includes(value as HubItTicketStatus);
+}
+
+function isRoadmapType(
+  value: unknown,
+): value is HubItTicketBacklogInput["type"] {
+  return hubItTicketRoadmapTypes.includes(
+    value as HubItTicketBacklogInput["type"],
+  );
 }
 
 function isTicketUpdateAction(
