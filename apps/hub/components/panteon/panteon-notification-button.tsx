@@ -133,7 +133,10 @@ export function PanteonNotificationButton({
                     key={item.id}
                     onOpen={() => {
                       if (item.context?.hermesChannelId) {
-                        openHermesChannel(item.context.hermesChannelId);
+                        openHermesChannel(
+                          item.context.hermesChannelId,
+                          item.context.threadParentMessageId,
+                        );
                         setOpen(false);
                         return;
                       }

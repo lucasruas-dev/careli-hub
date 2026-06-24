@@ -70,7 +70,10 @@ type PanteonNotificationsContextValue = {
   items: readonly PanteonNotificationItem[];
   publishNotification: (notification: PanteonNotificationInput) => void;
   markAllRead: () => void;
-  openHermesChannel: (channelId: HermesChannel["id"]) => void;
+  openHermesChannel: (
+    channelId: HermesChannel["id"],
+    threadParentMessageId?: HermesMessage["id"],
+  ) => void;
   unreadCount: number;
 };
 
@@ -191,11 +194,16 @@ export function HermesNotificationProvider({
   );
 
   const openHermesChannel = useCallback(
-    (channelId: HermesChannel["id"]) => {
+    (
+      channelId: HermesChannel["id"],
+      threadParentMessageId?: HermesMessage["id"],
+    ) => {
       if (isHermesWorkspaceRoute()) {
         window.dispatchEvent(
           new CustomEvent("careli:hermes:open-channel", {
-            detail: { channelId },
+            // threadParentMessageId: abre direto na thread quando a notificacao e de
+            // uma resposta (em vez de so abrir o canal).
+            detail: { channelId, threadParentMessageId },
           }),
         );
         setActiveHermesChannelId(null);
@@ -426,10 +434,11 @@ export function HermesNotificationProvider({
           hermesChannelId: channel.id,
           entityId: message.id,
           entityType: "message",
+          threadParentMessageId: message.threadParentMessageId,
         },
         createdAt: message.createdAt ?? new Date().toISOString(),
         description: `${message.authorName ?? HERMES_MODULE_LABEL}: ${truncateNotificationBody(message.body)}`,
-        href: getHermesChannelPath(channel.id),
+        href: getHermesChannelPath(channel.id, message.threadParentMessageId),
         id: getHermesChannelNotificationId(channel.id),
         kind: "mensagem",
         moduleId: HERMES_MODULE_ID,
@@ -969,7 +978,10 @@ export function HermesNotificationProvider({
         }
         onOpen={(notification) => {
           if (notification.context?.hermesChannelId) {
-            openHermesChannel(notification.context.hermesChannelId);
+            openHermesChannel(
+              notification.context.hermesChannelId,
+              notification.context.threadParentMessageId,
+            );
           }
         }}
       />
@@ -1473,10 +1485,11 @@ function createHermesMessageLogItem({
       hermesChannelId: channel.id,
       entityId: message.id,
       entityType: "message",
+      threadParentMessageId: message.threadParentMessageId,
     },
     createdAt: message.createdAt ?? new Date().toISOString(),
     description: `${message.authorName ?? HERMES_MODULE_LABEL}: ${truncateNotificationBody(message.body)}`,
-    href: getHermesChannelPath(channel.id),
+    href: getHermesChannelPath(channel.id, message.threadParentMessageId),
     id: getHermesMessageLogId(message.id),
     kind: "mensagem",
     moduleId: HERMES_MODULE_ID,
@@ -1487,8 +1500,15 @@ function createHermesMessageLogItem({
   });
 }
 
-function getHermesChannelPath(channelId: HermesChannel["id"]) {
-  return `/hermes?channel=${encodeURIComponent(channelId)}`;
+function getHermesChannelPath(
+  channelId: HermesChannel["id"],
+  threadParentMessageId?: HermesMessage["id"],
+) {
+  const base = `/hermes?channel=${encodeURIComponent(channelId)}`;
+
+  return threadParentMessageId
+    ? `${base}&thread=${encodeURIComponent(threadParentMessageId)}`
+    : base;
 }
 
 function upsertNotification(

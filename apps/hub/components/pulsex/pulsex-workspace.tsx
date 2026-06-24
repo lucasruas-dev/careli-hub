@@ -583,9 +583,8 @@ export function HermesWorkspace() {
       return;
     }
 
-    const channelId = new URLSearchParams(window.location.search).get(
-      "channel",
-    );
+    const params = new URLSearchParams(window.location.search);
+    const channelId = params.get("channel");
 
     if (!channelId || !channels.some((channel) => channel.id === channelId)) {
       queryChannelAppliedRef.current = true;
@@ -594,6 +593,14 @@ export function HermesWorkspace() {
 
     queryChannelAppliedRef.current = true;
     setActiveChannelId(channelId);
+
+    // ?thread=<parentId>: abre direto na thread (notificacao de resposta clicada
+    // de fora do Hermes / via link).
+    const threadParentMessageId = params.get("thread");
+
+    if (threadParentMessageId) {
+      setActiveThreadMessageId(threadParentMessageId);
+    }
   }, [channels]);
 
   useLayoutEffect(() => {
@@ -1313,11 +1320,37 @@ export function HermesWorkspace() {
       const message = (event as CustomEvent<{ message?: HermesMessage }>).detail
         ?.message;
 
-      if (
-        !message ||
-        message.channelId !== activeChannel.id ||
-        message.threadParentMessageId
-      ) {
+      if (!message || message.channelId !== activeChannel.id) {
+        return;
+      }
+
+      // Resposta de thread: marca a mensagem-pai em TEMPO REAL (botao de resposta
+      // fica azul = nao-lida) sem precisar abrir. Incrementa o threadCount; como o
+      // receipt ja foi semeado no count anterior, o delta vira "nao-lida". Abrir a
+      // thread (markThreadRepliesRead) zera o delta de volta a dourado. Pula se a
+      // thread desse pai ja esta aberta (o poll de 8s + marcacao de leitura cuidam).
+      if (message.threadParentMessageId) {
+        if (
+          message.authorId === currentUserId ||
+          activeThreadMessageId === message.threadParentMessageId
+        ) {
+          return;
+        }
+
+        const parentId = message.threadParentMessageId;
+
+        setMessages((currentMessages) =>
+          currentMessages.map((current) =>
+            current.id === parentId
+              ? {
+                  ...current,
+                  threadCount: (current.threadCount ?? 0) + 1,
+                  lastThreadReplyAt:
+                    message.createdAt ?? current.lastThreadReplyAt,
+                }
+              : current,
+          ),
+        );
         return;
       }
 
@@ -1356,7 +1389,7 @@ export function HermesWorkspace() {
         "careli:hermes:message",
         handleGlobalHermesMessage,
       );
-  }, [activeChannel.id, channels]);
+  }, [activeChannel.id, activeThreadMessageId, channels, currentUserId]);
 
   useEffect(() => {
     if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
@@ -1496,14 +1529,25 @@ export function HermesWorkspace() {
 
   useEffect(() => {
     function handleOpenChannel(event: Event) {
-      const channelId = (event as CustomEvent<{ channelId?: string }>).detail
-        ?.channelId;
+      const detail = (
+        event as CustomEvent<{
+          channelId?: string;
+          threadParentMessageId?: string;
+        }>
+      ).detail;
+      const channelId = detail?.channelId;
 
       if (!channelId || !channels.some((channel) => channel.id === channelId)) {
         return;
       }
 
       handleSelectChannel(channelId);
+
+      // Notificacao de uma resposta: abre direto na thread. handleSelectChannel
+      // zera a thread, entao reabrimos logo em seguida.
+      if (detail?.threadParentMessageId) {
+        setActiveThreadMessageId(detail.threadParentMessageId);
+      }
     }
 
     window.addEventListener("careli:hermes:open-channel", handleOpenChannel);
