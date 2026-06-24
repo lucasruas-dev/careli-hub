@@ -2254,6 +2254,7 @@ export function ZeusPage({
 
         {activeView === "health" ? (
           <HealthBoard
+            accessToken={zeusAccessToken}
             acknowledgingProtocol={acknowledgingProtocol}
             copiedCommandId={copiedCommandId}
             generatedAt={monitoringSnapshot?.generatedAt}

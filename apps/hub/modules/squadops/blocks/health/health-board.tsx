@@ -1,9 +1,10 @@
 "use client";
 
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 
 import type {
   OperationsCostDailyPoint,
+  OperationsCostHistory,
   OperationsCostSnapshot,
 } from "@/lib/operations/cost";
 import type { OperationsSourceGroup } from "@/lib/operations/data-sources";
@@ -34,6 +35,7 @@ import {
   ChevronRight,
   ClipboardCheck,
   Clock,
+  CalendarRange,
   DollarSign,
   EyeOff,
   Gauge,
@@ -44,6 +46,7 @@ import {
   TrendingDown,
   TrendingUp,
   WandSparkles,
+  X,
   Zap,
 } from "lucide-react";
 
@@ -161,6 +164,7 @@ function checkToGeneralStatus(
 }
 
 type HealthBoardProps = {
+  accessToken?: string | null;
   acknowledgingProtocol?: string | null;
   copiedCommandId?: string | null;
   generatedAt?: string;
@@ -385,6 +389,13 @@ function formatUsd(value: number) {
   }).format(value);
 }
 
+// Padrao de data do modulo: dd/mm/aa. Recebe "YYYY-MM-DD".
+function formatBrDate(dayKey: string) {
+  const [year, month, day] = dayKey.split("-");
+
+  return day && month && year ? `${day}/${month}/${year.slice(2)}` : dayKey;
+}
+
 const costTrendVisual = {
   down: { Icon: TrendingDown, className: "text-emerald-600", label: "abaixo da média" },
   flat: { Icon: Minus, className: "text-slate-400", label: "na média" },
@@ -431,7 +442,7 @@ function CostDailyBars({
           <div
             className="flex flex-1 flex-col items-center gap-1"
             key={point.day}
-            title={`${point.day}: ${formatUsd(point.cost)}`}
+            title={`${formatBrDate(point.day)}: ${formatUsd(point.cost)}`}
           >
             <div
               className="flex w-full items-end"
@@ -452,9 +463,155 @@ function CostDailyBars({
   );
 }
 
+function localDateKey(offsetDays = 0) {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+}
+
+// Popup de histórico: filtro por período (datas) que busca o custo faturado por dia.
+function CostHistoryModal({
+  accessToken,
+  onClose,
+}: {
+  accessToken?: string;
+  onClose: () => void;
+}) {
+  const [from, setFrom] = useState(() => localDateKey(-30));
+  const [to, setTo] = useState(() => localDateKey(0));
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [history, setHistory] = useState<OperationsCostHistory | null>(null);
+
+  async function loadHistory() {
+    if (!from || !to) {
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const headers: Record<string, string> = {};
+
+      if (accessToken) {
+        headers.Authorization = `Bearer ${accessToken}`;
+      }
+
+      const response = await fetch(
+        `/api/operations/cost/history?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`,
+        { cache: "no-store", headers },
+      );
+      const data = (await response.json()) as OperationsCostHistory & {
+        error?: string;
+      };
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? "Falha ao carregar histórico.");
+      }
+
+      setHistory(data);
+    } catch (caught: unknown) {
+      setError(
+        caught instanceof Error ? caught.message : "Falha ao carregar histórico.",
+      );
+      setHistory(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-[var(--uix-z-modal)] flex items-center justify-center bg-slate-900/40 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="mb-4 flex items-center justify-between gap-2">
+          <p className="m-0 flex items-center gap-2 text-sm font-semibold text-slate-900">
+            <CalendarRange className="size-4 text-[#A07C3B]" />
+            Histórico de custo (Vercel · faturado)
+          </p>
+          <button
+            aria-label="Fechar"
+            className="grid size-8 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        <div className="flex flex-wrap items-end gap-2">
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-500">
+            De
+            <input
+              className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-[#A07C3B]"
+              onChange={(event) => setFrom(event.target.value)}
+              type="date"
+              value={from}
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-500">
+            Até
+            <input
+              className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-[#A07C3B]"
+              onChange={(event) => setTo(event.target.value)}
+              type="date"
+              value={to}
+            />
+          </label>
+          <button
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#A07C3B] px-3 text-sm font-semibold text-white transition hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={loading}
+            onClick={() => void loadHistory()}
+            type="button"
+          >
+            {loading ? <Loader2 className="size-4 animate-spin" /> : null}
+            Buscar
+          </button>
+        </div>
+
+        {error ? (
+          <p className="m-0 mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
+            {error}
+          </p>
+        ) : null}
+
+        {history ? (
+          <div className="mt-4">
+            <p className="m-0 mb-2 text-xs text-slate-500">
+              {formatBrDate(history.from)} – {formatBrDate(history.to)} ·{" "}
+              <span className="font-semibold text-slate-900">
+                total {formatUsd(history.total)}
+              </span>
+            </p>
+            {history.days.length > 1 ? (
+              <CostDailyBars points={history.days} />
+            ) : (
+              <p className="m-0 text-xs text-slate-400">Sem dados no período.</p>
+            )}
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
 // Custo D-1 (trilho anti-Hermes): Vercel = uso variavel real (EffectiveCost);
 // Supabase = estimativa pelo plano. Regua de cor pelo risco do custo do dia.
-function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
+function CostPanel({
+  accessToken,
+  cost,
+}: {
+  accessToken?: string;
+  cost: OperationsCostSnapshot;
+}) {
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const { monthAccumulated, monthLabel, monthProjection, supabase, vercel } =
     cost;
   const fixedMonthly = vercel.monthlyFixedCost + supabase.estimateMonthlyCost;
@@ -470,16 +627,26 @@ function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
             Custo · ciclo {monthLabel}
           </p>
         </div>
-        <Tooltip
-          content="Risco pelo uso variável de ontem na Vercel (o que dispara em abuso). Verde dentro do normal, vermelho se estourar o teto."
-          placement="top"
-        >
-          <span
-            className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ${riskPill[vercel.risk]}`}
+        <div className="flex items-center gap-2">
+          <button
+            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+            onClick={() => setIsHistoryOpen(true)}
+            type="button"
           >
-            {vercel.risk}
-          </span>
-        </Tooltip>
+            <CalendarRange className="size-3.5" />
+            Histórico
+          </button>
+          <Tooltip
+            content="Risco pelo uso variável de ontem na Vercel (o que dispara em abuso). Verde dentro do normal, vermelho se estourar o teto."
+            placement="top"
+          >
+            <span
+              className={`rounded-full px-2 py-0.5 text-xs font-semibold ring-1 ${riskPill[vercel.risk]}`}
+            >
+              {vercel.risk}
+            </span>
+          </Tooltip>
+        </div>
       </div>
 
       {/* Destaque: acumulado do mes + expectativa final (projecao ate o fim do mes) */}
@@ -511,7 +678,7 @@ function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border border-slate-200/70 bg-slate-50/40 p-3">
           <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
-            Vercel · uso variável
+            Vercel · uso variável{vercel.day ? ` · ${formatBrDate(vercel.day)}` : ""}
           </p>
           {vercel.configured ? (
             <>
@@ -583,11 +750,19 @@ function CostPanel({ cost }: { cost: OperationsCostSnapshot }) {
         Plano fixo: Vercel {formatUsd(vercel.monthlyFixedCost)} + Supabase{" "}
         {formatUsd(supabase.estimateMonthlyCost)} ≈ {formatUsd(fixedMonthly)}/mês
       </p>
+
+      {isHistoryOpen ? (
+        <CostHistoryModal
+          accessToken={accessToken}
+          onClose={() => setIsHistoryOpen(false)}
+        />
+      ) : null}
     </div>
   );
 }
 
 export function HealthBoard({
+  accessToken,
   acknowledgingProtocol,
   copiedCommandId,
   generatedAt,
@@ -705,7 +880,9 @@ export function HealthBoard({
         })}
       </div>
 
-      {snapshot.cost ? <CostPanel cost={snapshot.cost} /> : null}
+      {snapshot.cost ? (
+        <CostPanel accessToken={accessToken ?? undefined} cost={snapshot.cost} />
+      ) : null}
 
       <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <p className="m-0 mb-3 text-xs font-semibold text-slate-500">

@@ -91,6 +91,92 @@ export async function getOperationsCostSnapshot(): Promise<OperationsCostSnapsho
   return value;
 }
 
+export type OperationsCostHistory = {
+  configured: boolean;
+  days: OperationsCostDailyPoint[];
+  error?: string;
+  from: string;
+  to: string;
+  total: number;
+};
+
+// Historico por periodo (popup com filtro). On-demand, sem cache. Soma BilledCost
+// (fatura real) por dia no intervalo [from, to] (inclusivo, datas "YYYY-MM-DD").
+export async function getVercelCostHistory(
+  fromKey: string,
+  toKey: string,
+): Promise<OperationsCostHistory> {
+  const token = process.env.VERCEL_API_TOKEN?.trim();
+  const base: OperationsCostHistory = {
+    configured: Boolean(token),
+    days: [],
+    from: fromKey,
+    to: toKey,
+    total: 0,
+  };
+
+  if (!token || !/^\d{4}-\d{2}-\d{2}$/.test(fromKey) || !/^\d{4}-\d{2}-\d{2}$/.test(toKey)) {
+    return base;
+  }
+
+  try {
+    const from = new Date(
+      Date.parse(`${fromKey}T00:00:00Z`) - 2 * 86400000,
+    ).toISOString();
+    const to = new Date(
+      Date.parse(`${toKey}T00:00:00Z`) + 86400000,
+    ).toISOString();
+    const url = `${VERCEL_BILLING_API}?teamId=${encodeURIComponent(
+      VERCEL_BILLING_TEAM_ID,
+    )}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`;
+
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    if (!response.ok) {
+      return { ...base, error: `HTTP ${response.status}` };
+    }
+
+    const billedByDay = new Map<string, number>();
+    for (const line of (await response.text()).split("\n")) {
+      const trimmed = line.trim();
+
+      if (!trimmed) {
+        continue;
+      }
+
+      const row = safeParse(trimmed);
+      const day = row ? String(row.ChargePeriodStart ?? "").slice(0, 10) : "";
+
+      if (!day || day < fromKey || day > toKey) {
+        continue;
+      }
+
+      billedByDay.set(
+        day,
+        (billedByDay.get(day) ?? 0) + (Number(row?.BilledCost) || 0),
+      );
+    }
+
+    const days = [...billedByDay.keys()]
+      .sort()
+      .map((day) => ({ cost: round2(billedByDay.get(day) ?? 0), day }));
+
+    return {
+      ...base,
+      days,
+      total: round2(days.reduce((total, item) => total + item.cost, 0)),
+    };
+  } catch (error: unknown) {
+    return {
+      ...base,
+      error:
+        error instanceof Error ? error.message : "falha ao ler historico Vercel",
+    };
+  }
+}
+
 type CycleContext = {
   daysElapsed: number;
   daysInCycle: number;
@@ -144,7 +230,7 @@ function getCycleContext(): CycleContext {
   return {
     daysElapsed,
     daysInCycle,
-    label: `${pad(cycleDay, 2)}/${pad(startMonth, 2)} – ${pad(cycleDay, 2)}/${pad(endMonth, 2)}`,
+    label: `${pad(cycleDay, 2)}/${pad(startMonth, 2)}/${pad(startYear % 100, 2)} – ${pad(cycleDay, 2)}/${pad(endMonth, 2)}/${pad(endYear % 100, 2)}`,
     startKey,
     startMs,
     todayKey,
