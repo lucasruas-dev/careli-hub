@@ -50,6 +50,7 @@ import {
 } from "@/modules/squadops/blocks/helpdesk/helpdesk-ticket-summary";
 import { PanteonAddressCatalog } from "@/modules/squadops/blocks/address/address-catalog";
 import { HealthBoard } from "@/modules/squadops/blocks/health/health-board";
+import { DeployView } from "@/modules/squadops/blocks/deploy/deploy-view";
 import {
   getHubSupabaseClient,
   hubSupabaseConfig,
@@ -2293,25 +2294,7 @@ export function ZeusPage({
           />
         ) : null}
 
-        {activeView === "deploys" ? (
-          <>
-            <OperationsFiltersBar
-              filters={filters}
-              options={deployFilterOptions}
-              onChange={setFilters}
-            />
-            <DeployProtocolsView
-              accessToken={zeusAccessToken}
-              copiedCommandId={copiedCommandId}
-              filters={filters}
-              onCopyCommand={(command, id) => void copyAgentCommand(command, id)}
-              onSelectRecord={setSelectedRecord}
-              records={deployRecords}
-              releaseRegisterError={releaseRegistersError}
-              releaseRegisters={releaseRegisters}
-            />
-          </>
-        ) : null}
+        {activeView === "deploys" ? <DeployView /> : null}
 
         {activeView === "timeline" ? (
           <>
