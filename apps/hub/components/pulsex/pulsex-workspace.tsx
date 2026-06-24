@@ -1157,6 +1157,29 @@ export function HermesWorkspace() {
     };
   }, [activeChannel.id, activeChannel.kind, loadActiveChannelMessages]);
 
+  // Catch-up ao focar/restaurar: o navegador congela a PWA minimizada (websocket
+  // realtime suspenso, poll parado). Ao voltar o foco, refetch imediato do canal ativo
+  // para nao esperar o proximo ciclo de poll — era o "demorou a aparecer" ao reabrir.
+  useEffect(() => {
+    if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
+      return;
+    }
+
+    const handleFocusCatchUp = () => {
+      if (document.visibilityState === "visible") {
+        loadActiveChannelMessages();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleFocusCatchUp);
+    window.addEventListener("focus", handleFocusCatchUp);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleFocusCatchUp);
+      window.removeEventListener("focus", handleFocusCatchUp);
+    };
+  }, [activeChannel.id, loadActiveChannelMessages]);
+
   useEffect(() => {
     if (!hasHubSupabaseConfig() || dataStatus !== "ready") {
       return;

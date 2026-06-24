@@ -576,6 +576,48 @@ export function HermesNotificationProvider({
     };
   }, [currentUserId, profileStatus, refreshHermesSnapshot]);
 
+  // Catch-up ao focar: atualiza nao-lidas/notificacoes assim que o app volta do
+  // background (minimizado congela os intervalos), sem esperar os 120s. Throttle de 5s
+  // evita refetch repetido em alt-tab rapido (consciencia de custo).
+  useEffect(() => {
+    if (
+      !currentUserId ||
+      profileStatus !== "ready" ||
+      !hasHubSupabaseConfig()
+    ) {
+      return;
+    }
+
+    let lastFocusRefreshAt = 0;
+
+    const handleFocusCatchUp = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (now - lastFocusRefreshAt < 5_000) {
+        return;
+      }
+
+      lastFocusRefreshAt = now;
+      void refreshHermesSnapshot().catch((error: unknown) => {
+        logSupabaseDiagnostic("pulsex", "global focus snapshot error", {
+          error: serializeDiagnosticError(error),
+        });
+      });
+    };
+
+    document.addEventListener("visibilitychange", handleFocusCatchUp);
+    window.addEventListener("focus", handleFocusCatchUp);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleFocusCatchUp);
+      window.removeEventListener("focus", handleFocusCatchUp);
+    };
+  }, [currentUserId, profileStatus, refreshHermesSnapshot]);
+
   useEffect(() => {
     if (
       !currentUserId ||
