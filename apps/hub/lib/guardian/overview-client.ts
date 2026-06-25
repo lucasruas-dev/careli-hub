@@ -5,9 +5,16 @@ import type {
   HadesEnterpriseDistributions,
   HadesOverviewSnapshot,
 } from "@/lib/guardian/overview";
+import type { HadesOperationalIntelligence } from "@/lib/guardian/read-model";
 
 export async function getHadesOverviewSnapshot(): Promise<HadesOverviewSnapshot> {
   return fetchHadesOverviewData<HadesOverviewSnapshot>("/api/hades/overview");
+}
+
+export async function getHadesOperationalIntelligence(): Promise<HadesOperationalIntelligence> {
+  return fetchHadesOverviewData<HadesOperationalIntelligence>(
+    "/api/guardian/operational-intelligence",
+  );
 }
 
 export async function getHadesOverviewEnterpriseDistributions(

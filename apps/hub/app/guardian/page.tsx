@@ -28,9 +28,11 @@ import type {
   HadesEnterprisePerformance,
 } from "@/lib/guardian/overview";
 import {
+  getHadesOperationalIntelligence,
   getHadesOverviewEnterpriseDistributions,
   getHadesOverviewSnapshot,
 } from "@/lib/guardian/overview-client";
+import type { HadesOperationalIntelligence } from "@/lib/guardian/read-model";
 
 type DashboardKpiId =
   | "totalPortfolio"
@@ -153,6 +155,38 @@ export default function HadesPage() {
     ai: true,
     operators: false,
   });
+  const [opsIntel, setOpsIntel] = useState<HadesOperationalIntelligence | null>(
+    null,
+  );
+  const [opsIntelError, setOpsIntelError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOpsIntel() {
+      try {
+        const data = await getHadesOperationalIntelligence();
+        if (!cancelled) {
+          setOpsIntel(data);
+          setOpsIntelError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOpsIntelError(
+            error instanceof Error
+              ? error.message
+              : "Falha ao carregar a inteligência da operação.",
+          );
+        }
+      }
+    }
+
+    void loadOpsIntel();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -493,49 +527,6 @@ export default function HadesPage() {
         </DashboardPanel>
 
         <DashboardPanel
-          badge={MOCK_DASH}
-          expanded={expandedPanels.desk}
-          id="desk"
-          onToggle={togglePanel}
-          summary={MOCK_DASH}
-          title="Iris"
-          tone="danger"
-        >
-          <ActionMetricGrid
-            metrics={[
-              ["Tickets abertos", MOCK_DASH, "Abrir Iris", "gold"],
-              ["SLA crítico", MOCK_DASH, "Ver críticos", "danger"],
-              ["Tempo médio resposta", MOCK_DASH, "Monitorar SLA", "neutral"],
-              ["Mensagens sem resposta", MOCK_DASH, "Abrir fila", "danger"],
-              ["Operadores online", MOCK_DASH, "Ver operadores", "gold"],
-              ["Aguardando operador", MOCK_DASH, "Distribuir", "danger"],
-              ["Tickets prioritários", MOCK_DASH, "Priorizar", "gold"],
-              ["Encerrados hoje", MOCK_DASH, "Ver produtividade", "neutral"],
-            ]}
-          />
-        </DashboardPanel>
-
-        <DashboardPanel
-          expanded={expandedPanels.workflow}
-          id="workflow"
-          onToggle={togglePanel}
-          summary={MOCK_DASH}
-          title="Workflow"
-          tone="danger"
-        >
-          <ActionMetricGrid
-            metrics={[
-              ["Workflow operacional", MOCK_DASH, "Ver etapas", "neutral"],
-              ["Clientes críticos", MOCK_DASH, "Abrir fila", "danger"],
-              ["Follow-ups vencendo", MOCK_DASH, "Priorizar", "gold"],
-              ["Promessas hoje", MOCK_DASH, "Abrir promessas", "gold"],
-              ["Risco operacional", MOCK_DASH, "Ver diagnóstico", "danger"],
-              ["Tickets prioritários", MOCK_DASH, "Abrir Iris", "danger"],
-            ]}
-          />
-        </DashboardPanel>
-
-        <DashboardPanel
           expanded={expandedPanels.ai}
           id="ai"
           onToggle={togglePanel}
@@ -543,26 +534,9 @@ export default function HadesPage() {
           title="IA operacional"
           tone="gold"
         >
-          <ExecutiveAiBlock />
+          <ExecutiveAiBlock data={opsIntel} error={opsIntelError} />
         </DashboardPanel>
 
-        <DashboardPanel
-          expanded={expandedPanels.operators}
-          id="operators"
-          onToggle={togglePanel}
-          summary={MOCK_DASH}
-          title="Operadores"
-          tone="neutral"
-        >
-          <ActionMetricGrid
-            metrics={[
-              ["Operadores online", MOCK_DASH, "Ver escala", "gold"],
-              ["Em atendimento", MOCK_DASH, "Abrir Iris", "neutral"],
-              ["Sobrecarregados", MOCK_DASH, "Redistribuir", "danger"],
-              ["Produtividade", MOCK_DASH, "Ver ranking", "gold"],
-            ]}
-          />
-        </DashboardPanel>
       </div>
 
       {selectedKpiMeta ? (
@@ -663,27 +637,121 @@ function ActionMetricGrid({ metrics }: { metrics: Array<[string, string, string,
   );
 }
 
-function ExecutiveAiBlock() {
+function ExecutiveAiBlock({
+  data,
+  error,
+}: {
+  data: HadesOperationalIntelligence | null;
+  error: string | null;
+}) {
+  if (error) {
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+        {error}
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm font-medium text-slate-500">
+        Carregando inteligência da operação...
+      </div>
+    );
+  }
+
+  const maxAgingClients = Math.max(
+    1,
+    ...data.agingByClient.map((bucket) => bucket.clients),
+  );
+
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
-      <InsightCard
-        title="Gargalo"
-        value={MOCK_DASH}
-        text={MOCK_DASH}
-        tone="danger"
-      />
-      <InsightCard
-        title="Previsões"
-        value={MOCK_DASH}
-        text={MOCK_DASH}
-        tone="gold"
-      />
-      <InsightCard
-        title="Recomendação IA"
-        value={MOCK_DASH}
-        text={MOCK_DASH}
-        tone="neutral"
-      />
+    <div className="space-y-4">
+      {data.syncedAt ? (
+        <p className="text-xs font-medium text-slate-400">
+          Base de inadimplência · {formatCount(data.totalOverdueClients)} clientes
+          em atraso · atualizado em{" "}
+          {new Date(data.syncedAt).toLocaleString("pt-BR")}
+        </p>
+      ) : null}
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <h3 className="text-sm font-semibold text-slate-950">
+            Aging por cliente
+          </h3>
+          <p className="mt-0.5 text-xs font-medium text-slate-500">
+            Clientes distintos por faixa de atraso.
+          </p>
+          <div className="mt-3 space-y-2.5">
+            {data.agingByClient.map((bucket) => (
+              <div key={bucket.label}>
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
+                  <span>{bucket.label}</span>
+                  <span>{formatCount(bucket.clients)}</span>
+                </div>
+                <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                  <div
+                    className="h-full rounded-full bg-[#A07C3B]"
+                    style={{
+                      width: `${Math.round((bucket.clients / maxAgingClients) * 100)}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-slate-200 bg-white p-4">
+          <h3 className="text-sm font-semibold text-slate-950">
+            Top 15 clientes inadimplentes
+          </h3>
+          <p className="mt-0.5 text-xs font-medium text-slate-500">
+            Maior valor em aberto.
+          </p>
+          <div className="mt-3 max-h-80 overflow-y-auto pr-1">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 bg-white text-[11px] uppercase tracking-wide text-slate-400">
+                <tr>
+                  <th className="py-1 pr-2 font-semibold">#</th>
+                  <th className="py-1 pr-2 font-semibold">Cliente</th>
+                  <th className="py-1 pr-2 font-semibold">Empreend.</th>
+                  <th className="py-1 pr-2 text-right font-semibold">Parc.</th>
+                  <th className="py-1 pr-2 text-right font-semibold">Em aberto</th>
+                  <th className="py-1 text-right font-semibold">Atraso</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.topClients.map((client, index) => (
+                  <tr
+                    key={`${client.name}-${index}`}
+                    className="border-t border-slate-100"
+                  >
+                    <td className="py-1.5 pr-2 font-semibold text-slate-400">
+                      {index + 1}
+                    </td>
+                    <td className="py-1.5 pr-2 font-medium text-slate-800">
+                      {client.name}
+                    </td>
+                    <td className="py-1.5 pr-2 text-slate-500">
+                      {client.enterprise ?? "—"}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right text-slate-600">
+                      {formatCount(client.overduePayments)}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right font-semibold text-slate-900">
+                      <MoneyValue value={client.overdueAmount} />
+                    </td>
+                    <td className="py-1.5 text-right text-slate-600">
+                      {formatCount(client.overdueDays)}d
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </div>
     </div>
   );
 }

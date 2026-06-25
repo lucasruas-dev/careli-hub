@@ -336,7 +336,7 @@ export async function loadHadesEnterpriseDistributions(
       left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
       left join enterprises e on e.id = eu.enterprise_id
       where pt.id in (1, 2, 3)
-        and p.payment_status_id in (5, 6, 7)
+        and p.payment_status_id = 7
         and ${activePaymentWhere}
         and ${validEnterpriseWhere}
       group by enterprise_name, pt.id, pt.name
@@ -535,7 +535,7 @@ export async function loadHadesOverview(): Promise<
         pt.id as sort_order
       from parcel_types pt
       left join payments p on p.parcel_type_id = pt.id
-        and p.payment_status_id in (5, 6, 7)
+        and p.payment_status_id = 7
         and ${activePaymentWhere}
       left join acquisition_requests ar on ar.id = p.acquisition_request_id
       left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
