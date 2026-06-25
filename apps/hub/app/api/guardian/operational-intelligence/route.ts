@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { loadHadesOperationalIntelligence } from "@/lib/guardian/overview";
 import { loadHadesOperationalIntelligenceReadModel } from "@/lib/guardian/read-model";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
@@ -17,7 +18,7 @@ export async function GET(request: NextRequest) {
     return auth.response;
   }
 
-  const data = await loadHadesOperationalIntelligenceReadModel();
+  const data = await loadOperationalIntelligence();
 
   if (!data) {
     return NextResponse.json(
@@ -33,6 +34,25 @@ export async function GET(request: NextRequest) {
     { data },
     { headers: { "Cache-Control": "no-store" } },
   );
+}
+
+// Mesma fonte/filtros dos cards: tenta C2X ao vivo; se o legado nao responder,
+// cai no read-model (Supabase) como fallback.
+async function loadOperationalIntelligence() {
+  try {
+    const live = await loadHadesOperationalIntelligence();
+
+    if (live) {
+      return live;
+    }
+  } catch (error) {
+    console.error(
+      "[hades] inteligencia operacional ao vivo falhou; usando read-model",
+      error,
+    );
+  }
+
+  return loadHadesOperationalIntelligenceReadModel();
 }
 
 async function authorizeHadesUser(request: NextRequest) {

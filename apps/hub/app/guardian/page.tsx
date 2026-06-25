@@ -353,6 +353,11 @@ export default function HadesPage() {
   const billingCompositionRows = selectedEnterprisePerformance
     ? selectedEnterpriseDistributions?.billingComposition ?? []
     : realKpis?.billingComposition ?? [];
+  const agingByClientRows: HadesDistributionBucket[] = [
+    ...(opsIntel?.agingByClient ?? []),
+  ]
+    .sort((first, second) => first.sortOrder - second.sortOrder)
+    .map((bucket) => ({ label: bucket.label, total: bucket.clients }));
   const showFinancialLoadingOverlay =
     isRealKpisLoading && financialEnterpriseRows.length === 0;
   const financialEnterpriseOptions = useMemo(
@@ -506,9 +511,9 @@ export default function HadesPage() {
                 onSelect={(value) => setEnterprise((current) => (current === value ? "Todos" : value))}
               />
               <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-1">
-                <DistributionCard
-                  title="Aging da inadimplência"
-                  data={overdueAgingRows}
+                <AgingDistributionCard
+                  parcelaData={overdueAgingRows}
+                  clienteData={agingByClientRows}
                   emptyMessage={distributionEmptyMessage}
                   isLoading={showFinancialLoadingOverlay}
                 />
@@ -660,11 +665,6 @@ function ExecutiveAiBlock({
     );
   }
 
-  const maxAgingClients = Math.max(
-    1,
-    ...data.agingByClient.map((bucket) => bucket.clients),
-  );
-
   return (
     <div className="space-y-4">
       {data.syncedAt ? (
@@ -674,38 +674,10 @@ function ExecutiveAiBlock({
           {new Date(data.syncedAt).toLocaleString("pt-BR")}
         </p>
       ) : null}
-      <div className="grid gap-4 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-slate-950">
-            Aging por cliente
-          </h3>
-          <p className="mt-0.5 text-xs font-medium text-slate-500">
-            Clientes distintos por faixa de atraso.
-          </p>
-          <div className="mt-3 space-y-2.5">
-            {data.agingByClient.map((bucket) => (
-              <div key={bucket.label}>
-                <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                  <span>{bucket.label}</span>
-                  <span>{formatCount(bucket.clients)}</span>
-                </div>
-                <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
-                  <div
-                    className="h-full rounded-full bg-[#A07C3B]"
-                    style={{
-                      width: `${Math.round((bucket.clients / maxAgingClients) * 100)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <section className="rounded-xl border border-slate-200 bg-white p-4">
-          <h3 className="text-sm font-semibold text-slate-950">
-            Top 15 clientes inadimplentes
-          </h3>
+      <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-slate-950">
+          Top 15 clientes inadimplentes
+        </h3>
           <p className="mt-0.5 text-xs font-medium text-slate-500">
             Maior valor em aberto.
           </p>
@@ -750,8 +722,7 @@ function ExecutiveAiBlock({
               </tbody>
             </table>
           </div>
-        </section>
-      </div>
+      </section>
     </div>
   );
 }
@@ -1075,7 +1046,7 @@ function EnterprisePerformanceTable({
             : "Nao foi possivel carregar o consolidado real. Os dados serao exibidos quando o C2X responder."}
         </div>
       ) : null}
-      <div className="max-h-[408px] min-h-72 overflow-auto">
+      <div className="max-h-[640px] min-h-72 overflow-auto">
         <table className="w-full min-w-[1120px] text-left text-sm">
           <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
             <tr>
@@ -1256,6 +1227,103 @@ function getEnterpriseSortValue(
 
 function getRatio(value: number, total: number) {
   return total > 0 ? value / total : 0;
+}
+
+function AgingDistributionCard({
+  parcelaData,
+  clienteData,
+  emptyMessage = "Aguardando dados reais do C2X.",
+  isLoading = false,
+}: {
+  parcelaData: HadesDistributionBucket[];
+  clienteData: HadesDistributionBucket[];
+  emptyMessage?: string;
+  isLoading?: boolean;
+}) {
+  const [view, setView] = useState<"cliente" | "parcela">("parcela");
+  const data = view === "parcela" ? parcelaData : clienteData;
+  const isLoadingEmptyState = /^carregando/i.test(emptyMessage);
+  const total = Math.max(
+    data.reduce((subtotal, item) => subtotal + item.total, 0),
+    1,
+  );
+
+  return (
+    <section className="relative rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-slate-950">
+            Aging da inadimplência
+          </h2>
+          <p className="mt-0.5 text-xs font-medium text-slate-500">
+            Por {view === "parcela" ? "parcelas" : "clientes"} · faixa de atraso
+          </p>
+        </div>
+        <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
+          <Tooltip content="Por parcela">
+            <button
+              type="button"
+              onClick={() => setView("parcela")}
+              aria-label="Aging por parcela"
+              aria-pressed={view === "parcela"}
+              className={`flex size-7 items-center justify-center rounded-md transition ${
+                view === "parcela"
+                  ? "bg-white text-[#A07C3B] shadow-sm"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <Banknote className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip content="Por cliente">
+            <button
+              type="button"
+              onClick={() => setView("cliente")}
+              aria-label="Aging por cliente"
+              aria-pressed={view === "cliente"}
+              className={`flex size-7 items-center justify-center rounded-md transition ${
+                view === "cliente"
+                  ? "bg-white text-[#A07C3B] shadow-sm"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <Users className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </div>
+      </div>
+      <div className="mt-5 min-h-40 space-y-4">
+        {data.length > 0 ? (
+          data.map((item) => {
+            const percentage = Math.round((item.total / total) * 100);
+
+            return (
+              <Bar
+                key={item.label}
+                label={item.label}
+                percentage={percentage}
+                sub={formatCount(item.total)}
+                value={`${percentage}%`}
+              />
+            );
+          })
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-500">
+            {isLoading ? (
+              "Carregando"
+            ) : isLoadingEmptyState ? (
+              <span className="inline-flex items-center gap-2">
+                <PanteonLoadingMark size="xs" />
+                {emptyMessage}
+              </span>
+            ) : (
+              emptyMessage
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
 }
 
 function DistributionCard({

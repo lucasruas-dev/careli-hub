@@ -1,8 +1,11 @@
 import { createSupabaseAdminClient } from "@/lib/guardian/read-model-sync";
 import type {
+  HadesAgingByClientBucket,
   HadesDistributionBucket,
   HadesEnterprisePerformance,
+  HadesOperationalIntelligence,
   HadesOverviewSnapshot,
+  HadesTopDelinquentClient,
 } from "@/lib/guardian/overview";
 import type {
   AgreementRisk,
@@ -230,25 +233,10 @@ export async function loadHadesAttendanceQueueReadModel(
   };
 }
 
-export type HadesAgingByClientBucket = {
-  clients: number;
-  label: string;
-  sortOrder: number;
-};
-
-export type HadesTopDelinquentClient = {
-  enterprise: string | null;
-  name: string;
-  overdueAmount: number;
-  overdueDays: number;
-  overduePayments: number;
-};
-
-export type HadesOperationalIntelligence = {
-  agingByClient: HadesAgingByClientBucket[];
-  syncedAt: string | null;
-  topClients: HadesTopDelinquentClient[];
-  totalOverdueClients: number;
+export type {
+  HadesAgingByClientBucket,
+  HadesOperationalIntelligence,
+  HadesTopDelinquentClient,
 };
 
 const AGING_CLIENT_BUCKETS = [

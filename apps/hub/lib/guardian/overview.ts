@@ -115,6 +115,29 @@ export type HadesOverviewSnapshot = {
   summary: HadesOverviewSummary;
 };
 
+// Inteligencia operacional (aging por cliente + top 15) — tipos ficam aqui,
+// junto da fonte ao vivo; o read-model reexporta para fallback.
+export type HadesAgingByClientBucket = {
+  clients: number;
+  label: string;
+  sortOrder: number;
+};
+
+export type HadesTopDelinquentClient = {
+  enterprise: string | null;
+  name: string;
+  overdueAmount: number;
+  overdueDays: number;
+  overduePayments: number;
+};
+
+export type HadesOperationalIntelligence = {
+  agingByClient: HadesAgingByClientBucket[];
+  syncedAt: string | null;
+  topClients: HadesTopDelinquentClient[];
+  totalOverdueClients: number;
+};
+
 type SummaryRow = RowDataPacket & {
   available_units: number | string;
   critical_contracts: number | string;
@@ -278,6 +301,28 @@ const overdueAgingLabels = [
 ];
 
 const billingCompositionLabels = ["Ato", "Sinal", "Parcela"];
+
+const operationalAgingLabels: { label: string; sortOrder: number }[] = [
+  { label: "1 a 15 dias", sortOrder: 1 },
+  { label: "16 a 30 dias", sortOrder: 2 },
+  { label: "31 a 60 dias", sortOrder: 3 },
+  { label: "61 a 90 dias", sortOrder: 4 },
+  { label: "90+ dias", sortOrder: 5 },
+];
+
+type OperationalAgingRow = RowDataPacket & {
+  clients: number | string;
+  label: string;
+  sort_order: number | string;
+};
+
+type OperationalTopClientRow = RowDataPacket & {
+  client_name: string | null;
+  enterprise_name: string | null;
+  overdue_amount: number | string | null;
+  overdue_days: number | string | null;
+  overdue_payments: number | string;
+};
 
 export async function loadHadesEnterpriseDistributions(
   enterpriseName: string,
@@ -517,36 +562,32 @@ export async function loadHadesOverview(): Promise<
             else 5
           end as sort_order
         from payments p
-        left join acquisition_requests ar on ar.id = p.acquisition_request_id
-        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
-        left join enterprises e on e.id = eu.enterprise_id
-        where p.payment_status_id = 7
-          and p.due_date is not null
-          and ${activePaymentWhere}
-          and ${validEnterpriseWhere}
+        where ${overdueWhere}
       ) bucket
       group by bucket.label, bucket.sort_order
       order by bucket.sort_order asc
     `),
     pool.query<DistributionRow[]>(`
-      select
-        pt.name as label,
-        count(p.id) as total,
-        pt.id as sort_order
-      from parcel_types pt
-      left join payments p on p.parcel_type_id = pt.id
-        and p.payment_status_id = 7
-        and ${activePaymentWhere}
-      left join acquisition_requests ar on ar.id = p.acquisition_request_id
-      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
-      left join enterprises e on e.id = eu.enterprise_id
-      where pt.id in (1, 2, 3)
-        and (
-          p.id is null
-          or (${validEnterpriseWhere})
-        )
-      group by pt.id, pt.name
-      order by pt.id asc
+      select bucket.label, count(*) as total, bucket.sort_order
+      from (
+        select
+          case
+            when p.parcel_type_id = 1 then 'Ato'
+            when p.parcel_type_id = 2 then 'Sinal'
+            when p.parcel_type_id = 3 then 'Parcela'
+            else 'Outros'
+          end as label,
+          case
+            when p.parcel_type_id = 1 then 1
+            when p.parcel_type_id = 2 then 2
+            when p.parcel_type_id = 3 then 3
+            else 4
+          end as sort_order
+        from payments p
+        where ${overdueWhere}
+      ) bucket
+      group by bucket.label, bucket.sort_order
+      order by bucket.sort_order asc
     `),
     pool.query<ProposalRow[]>(`
       select
@@ -647,7 +688,7 @@ export async function loadHadesOverview(): Promise<
 
   return {
     data: {
-      billingComposition: billingCompositionResult[0].map(mapDistribution),
+      billingComposition: completeBillingComposition(billingCompositionResult[0]),
       enterprisePerformance: enterprisePerformanceResult[0].map(
         mapEnterprisePerformance,
       ),
@@ -685,6 +726,110 @@ export async function loadHadesOverview(): Promise<
   };
 }
 
+// Inteligencia operacional ao vivo (mesma fonte e filtros dos cards). Aging por
+// cliente (clientes distintos por faixa, pela parcela mais antiga) + top 15 por
+// valor em aberto. Usa exatamente o predicado de "clientes em atraso" do card
+// (status 7 + ativo + empreendimento mapeado), entao os totais batem. O cron
+// mantem o read-model como fallback (loadHadesOperationalIntelligenceReadModel).
+export async function loadHadesOperationalIntelligence(): Promise<HadesOperationalIntelligence | null> {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return null;
+  }
+
+  const { pool } = poolResult;
+  const [agingResult, topResult] = await Promise.all([
+    pool.query<OperationalAgingRow[]>(`
+      select bucket.label, count(*) as clients, bucket.sort_order
+      from (
+        select
+          case
+            when datediff(curdate(), min(p.due_date)) between 1 and 15 then '1 a 15 dias'
+            when datediff(curdate(), min(p.due_date)) between 16 and 30 then '16 a 30 dias'
+            when datediff(curdate(), min(p.due_date)) between 31 and 60 then '31 a 60 dias'
+            when datediff(curdate(), min(p.due_date)) between 61 and 90 then '61 a 90 dias'
+            else '90+ dias'
+          end as label,
+          case
+            when datediff(curdate(), min(p.due_date)) between 1 and 15 then 1
+            when datediff(curdate(), min(p.due_date)) between 16 and 30 then 2
+            when datediff(curdate(), min(p.due_date)) between 31 and 60 then 3
+            when datediff(curdate(), min(p.due_date)) between 61 and 90 then 4
+            else 5
+          end as sort_order
+        from payments p
+        join acquisition_requests ar on ar.id = p.acquisition_request_id
+        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+        left join enterprises e on e.id = eu.enterprise_id
+        where p.payment_status_id = 7
+          and ${activePaymentWhere}
+          and ${validEnterpriseWhere}
+          and ar.client_id is not null
+        group by ar.client_id
+      ) bucket
+      group by bucket.label, bucket.sort_order
+      order by bucket.sort_order asc
+    `),
+    pool.query<OperationalTopClientRow[]>(`
+      select
+        client.name as client_name,
+        substring_index(
+          group_concat(
+            ${enterpriseDisplayExpression}
+            order by ${outstandingAmountExpression} desc
+            separator '<#>'
+          ),
+          '<#>',
+          1
+        ) as enterprise_name,
+        count(*) as overdue_payments,
+        coalesce(sum(${outstandingAmountExpression}), 0) as overdue_amount,
+        max(datediff(curdate(), p.due_date)) as overdue_days
+      from payments p
+      join acquisition_requests ar on ar.id = p.acquisition_request_id
+      left join users client on client.id = ar.client_id
+      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      left join enterprises e on e.id = eu.enterprise_id
+      where p.payment_status_id = 7
+        and ${activePaymentWhere}
+        and ${validEnterpriseWhere}
+        and ar.client_id is not null
+      group by ar.client_id, client.name
+      order by overdue_amount desc
+      limit 15
+    `),
+  ]);
+
+  const totalsByLabel = new Map(
+    agingResult[0].map((row) => [row.label, toNumber(row.clients)]),
+  );
+  const agingByClient = operationalAgingLabels.map((bucket) => ({
+    clients: totalsByLabel.get(bucket.label) ?? 0,
+    label: bucket.label,
+    sortOrder: bucket.sortOrder,
+  }));
+  const topClients = topResult[0].map((row) => ({
+    enterprise: row.enterprise_name
+      ? formatEnterpriseName(row.enterprise_name)
+      : null,
+    name: row.client_name?.trim() || "Sem nome",
+    overdueAmount: toNumber(row.overdue_amount),
+    overdueDays: toNumber(row.overdue_days),
+    overduePayments: toNumber(row.overdue_payments),
+  }));
+
+  return {
+    agingByClient,
+    syncedAt: new Date().toISOString(),
+    topClients,
+    totalOverdueClients: agingByClient.reduce(
+      (subtotal, bucket) => subtotal + bucket.clients,
+      0,
+    ),
+  };
+}
+
 function mapStage(row: StageRow): HadesStageBucket {
   return {
     amount: toNumber(row.amount),
@@ -714,6 +859,22 @@ function completeDistribution(rows: DistributionRow[], labels: string[]) {
     label,
     total: totalsByLabel.get(label) ?? 0,
   }));
+}
+
+// Garante Ato/Sinal/Parcela sempre presentes (0 default) e acrescenta "Outros"
+// quando houver parcelas vencidas de outro tipo — assim a composicao sempre
+// fecha com o total de parcelas vencidas dos cards.
+function completeBillingComposition(rows: DistributionRow[]) {
+  const totalsByLabel = new Map(
+    rows.map((row) => [row.label, toNumber(row.total)]),
+  );
+  const base = billingCompositionLabels.map((label) => ({
+    label,
+    total: totalsByLabel.get(label) ?? 0,
+  }));
+  const outros = totalsByLabel.get("Outros") ?? 0;
+
+  return outros > 0 ? [...base, { label: "Outros", total: outros }] : base;
 }
 
 function filterEnterpriseDistributionRows(
