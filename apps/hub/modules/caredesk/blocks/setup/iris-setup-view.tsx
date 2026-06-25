@@ -2031,32 +2031,6 @@ function IrisTemplateSetupPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <IrisTemplateMetricCard
-          icon={MessageSquareText}
-          label="Templates"
-          value={formatCount(templateStats.total)}
-        />
-        <IrisTemplateMetricCard
-          icon={CheckCircle2}
-          label="Aprovados"
-          tone="green"
-          value={formatCount(templateStats.approved)}
-        />
-        <IrisTemplateMetricCard
-          icon={Clock3}
-          label="Pendentes"
-          tone="gold"
-          value={formatCount(templateStats.pending)}
-        />
-        <IrisTemplateMetricCard
-          icon={CircleStop}
-          label="Rejeitados"
-          tone="red"
-          value={formatCount(templateStats.rejected)}
-        />
-      </div>
-
       <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.1fr)]">
         <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -2064,9 +2038,6 @@ function IrisTemplateSetupPanel({
               <h4 className="text-sm font-semibold text-[#101820]">
                 Biblioteca de templates
               </h4>
-              <p className="mt-1 text-xs font-medium text-[#63708a]">
-                Fila, assunto e status Meta em uma visao unica.
-              </p>
             </div>
             <div className="flex flex-wrap items-center gap-2">
               <Tooltip
@@ -2134,6 +2105,13 @@ function IrisTemplateSetupPanel({
           <div className="mt-3 flex flex-wrap gap-2">
             {IRIS_TEMPLATE_STATUS_FILTERS.map((filter) => {
               const selected = statusFilter === filter.id;
+              const count =
+                filter.id === "all"
+                  ? templates.length
+                  : templates.filter(
+                      (template) =>
+                        readTemplateStatusGroup(template) === filter.id,
+                    ).length;
 
               return (
                 <button
@@ -2141,13 +2119,23 @@ function IrisTemplateSetupPanel({
                   type="button"
                   onClick={() => setStatusFilter(filter.id)}
                   className={[
-                    "inline-flex h-8 items-center rounded-full px-3 text-xs font-semibold ring-1 transition-colors",
+                    "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold ring-1 transition-colors",
                     selected
                       ? "bg-[#101820] text-white ring-[#101820]"
                       : "bg-white text-[#63708a] ring-[#dbe3ef] hover:text-[#101820]",
                   ].join(" ")}
                 >
                   {filter.label}
+                  <span
+                    className={[
+                      "inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums",
+                      selected
+                        ? "bg-white/20 text-white"
+                        : "bg-[#eef2f8] text-[#34415a]",
+                    ].join(" ")}
+                  >
+                    {count}
+                  </span>
                 </button>
               );
             })}
@@ -2227,45 +2215,6 @@ function IrisTemplateSetupPanel({
         </section>
 
         <aside className="min-w-0 space-y-3">
-          <div className="rounded-2xl border border-[#dbe3ef] bg-white p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-                  Biblioteca base
-                </p>
-                <h4 className="mt-1 text-sm font-semibold text-[#101820]">
-                  Modelos Meta para partir
-                </h4>
-                <p className="mt-1 text-xs font-medium text-[#63708a]">
-                  Selecione um modelo para preencher o formulario e acelerar a
-                  criacao.
-                </p>
-              </div>
-            </div>
-            <div className="mt-3 space-y-2">
-              {IRIS_META_TEMPLATE_LIBRARY_PRESETS.map((preset) => (
-                <button
-                  key={preset.id}
-                  type="button"
-                  onClick={() => applyTemplateLibraryPreset(preset)}
-                  className="w-full rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3 text-left transition-colors hover:border-[#A07C3B]/35 hover:bg-[#fff8ec]"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-xs font-semibold text-[#101820]">
-                      {preset.title}
-                    </p>
-                    <span className="rounded-full bg-white px-2 py-0.5 text-[10px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
-                      {preset.category}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[11px] font-medium leading-5 text-[#63708a]">
-                    {preset.description}
-                  </p>
-                </button>
-              ))}
-            </div>
-          </div>
-
           <div className="rounded-2xl border border-[#dbe3ef] bg-white p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
