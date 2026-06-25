@@ -38,7 +38,7 @@ Cada operacao sensivel deve registrar:
 
 - `Zeus`: ambientes, envs, Vercel, Supabase runtime, healthchecks, aliases, dominios, protecao, safe mode e estabilidade.
 - `Zeus`: schema, migrations, grants, RLS, seeds e validacao de banco. Nao aplica migration real sem confirmacao do Lucas.
-- `Hefesto`: commit, release, build, deploy, rollback e rastreabilidade apos recorte validado.
+- `Zeus`: commit, release, build, deploy, rollback e rastreabilidade apos recorte validado.
 - `Zeus`: diagnostico de incidente, logs, regressao, impacto em usuario e evidencia tecnica.
 - Squads de produto: podem apontar necessidade, mas nao alteram chaves, envs, banco, dominio ou producao diretamente.
 

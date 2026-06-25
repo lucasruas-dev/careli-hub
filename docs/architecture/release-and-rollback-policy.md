@@ -33,10 +33,10 @@ Antes de publicar:
 - O registro de homologacao deve informar modulo, pacote, atividades/protocolos, branch/commit, deployment/alias de homologacao, validacoes, riscos, pendencias e status.
 - O registro objetivo de homologacao deve ser feito em `docs/operations/releases-homologation.md`; o resumo consolidado continua no diario `docs/operations/engineering-operations.md`.
 - Quando o recorte estiver aprovado em homologacao, o agente sinaliza `PRONTO PARA PRODUCAO` no Zeus/Operations Center.
-- `Hefesto` recebe o handoff por modulo e promove producao somente do que estiver homologado, validado e autorizado.
-- Antes de promover producao, `Hefesto` deve consultar `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, o diario canonico e o Git/worktree.
-- Se um commit ou pacote misturar modulos ou itens aprovados e reprovados, `Hefesto` deve bloquear ou exigir novo recorte limpo antes da producao.
-- Apos uma promocao para producao, `Hefesto` deve reconciliar `https://homo.c2x.app.br` para um deployment Preview gerado do mesmo commit/recorte publicado. Se homologacao precisar divergir de producao, a divergencia deve ser intencional, justificada e registrada.
+- O `Zeus` recebe o handoff por modulo e promove producao somente do que estiver homologado, validado e autorizado.
+- Antes de promover producao, o `Zeus` deve consultar `docs/operations/releases-homologation.md`, `docs/operations/releases-production.md`, o diario canonico e o Git/worktree.
+- Se um commit ou pacote misturar modulos ou itens aprovados e reprovados, o `Zeus` deve bloquear ou exigir novo recorte limpo antes da producao.
+- Apos uma promocao para producao, o `Zeus` deve reconciliar `https://homo.c2x.app.br` para um deployment Preview gerado do mesmo commit/recorte publicado. Se homologacao precisar divergir de producao, a divergencia deve ser intencional, justificada e registrada.
 
 ## Registro minimo de deploy
 

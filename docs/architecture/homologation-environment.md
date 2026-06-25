@@ -187,12 +187,12 @@ Obrigatorios antes de promover para producao:
 ## Fluxo De Release
 
 1. Dev do modulo implementa e valida localmente.
-2. Hefesto revisa o recorte contra Git e Engineering Operations.
-3. Hefesto publica em homologacao.
+2. Zeus revisa o recorte contra Git e Engineering Operations.
+3. Zeus publica em homologacao.
 4. Lucas valida visual/funcionalmente quando necessario.
-5. Hefesto executa healthchecks de homologacao.
+5. Zeus executa healthchecks de homologacao.
 6. Zeus aplica migrations em ambiente correto quando houver schema.
-7. Hefesto promove/publica producao.
+7. Zeus promove/publica producao.
 8. Healthcheck pos-producao.
 9. Registro final no Engineering Operations.
 

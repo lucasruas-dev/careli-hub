@@ -62,7 +62,7 @@ Uma mudanca sensivel so pode sair de `BLOQUEADO` quando:
 
 - Lucas autorizou;
 - homologacao passou ou houve justificativa registrada;
-- Hefesto publicou recorte limpo;
+- o Zeus publicou recorte limpo;
 - Zeus validou ambiente;
 - Zeus/Zeus foram acionados quando necessario;
 - rollback path esta registrado.

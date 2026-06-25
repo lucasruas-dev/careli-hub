@@ -15,7 +15,7 @@ Contexto obrigatorio:
 - Hades e cobranca/financeiro.
 - Hermes e comunicacao interna.
 - Zeus e operacoes.
-- Hefesto e release/producao.
+- O proprio Zeus cuida de release/producao (papel antes chamado Hefesto, absorvido em 2026-06-23).
 
 Antes de qualquer alteracao, leia obrigatoriamente:
 - AGENTS.md

@@ -30,7 +30,7 @@ Novas atividades operacionais nao devem depender de commit no Markdown nem de de
 - A criacao corrente acontece pela API protegida `POST /api/zeus/operations/structured` com `action = create-record`; `/api/squadops/operations/structured` permanece compatibilidade tecnica.
 - A API grava em `hub_engineering_operation_records` usando service role apenas server-side.
 - O banco ainda gera o protocolo legado `AT-0000` para registros estruturados do Zeus ate migration autorizada. A regra canonica aprovada em 2026-05-20 reserva `AT` para atendimentos Iris e move novas atividades operacionais Zeus para `OP`.
-- O campo `Necessita deploy` define se o item fica apenas no historico ou entra como candidato para Hefesto agrupar em um `DP`.
+- O campo `Necessita deploy` define se o item fica apenas no historico ou entra como candidato para o Zeus agrupar em um `DP`.
 - O botao `Novo registro` no Zeus cria o registro vivo e a timeline pode ser atualizada pela API sem publicar novo build.
 - O Markdown canonico continua como memoria narrativa, exportacao, auditoria e fallback; ele nao deve ser a fonte principal de estado operacional corrente.
 
@@ -53,7 +53,7 @@ O comportamento obrigatorio e:
 
 Quando o proprio `Zeus` executar o fluxo completo autorizado por Lucas - implementacao, validacao, registro, commit, publicacao e reconciliacao da tela Zeus -, o registro final deve ficar `EM PRODUCAO`. Nao deixar como `AGUARDANDO RELEASEOPS` se o agente assumiu a operacao de ponta a ponta.
 
-Use `AGUARDANDO RELEASEOPS`, `BLOQUEADO`, `EM HOMOLOGACAO` ou outro status intermediario apenas quando existir dependencia real fora do Zeus ou quando Lucas decidir transferir a publicacao/revisao para Hefesto. Use `FINALIZADO` para decisao/processo sem mudanca de tela ou sem necessidade de publicacao.
+Use `AGUARDANDO RELEASEOPS`, `BLOQUEADO`, `EM HOMOLOGACAO` ou outro status intermediario apenas quando existir dependencia real fora do Zeus ou quando Lucas decidir adiar a publicacao/revisao. Use `FINALIZADO` para decisao/processo sem mudanca de tela ou sem necessidade de publicacao.
 
 ## Sync local do diario para o banco
 
@@ -99,8 +99,8 @@ Necessita deploy: sim|nao
 
 Regra:
 
-- `Necessita deploy: nao`: fica no historico, nao entra na fila de Hefesto.
-- `Necessita deploy: sim`: vira candidato a deploy e pode ser agrupado por Hefesto em um `DP`.
+- `Necessita deploy: nao`: fica no historico, nao entra na fila de deploy do Zeus.
+- `Necessita deploy: sim`: vira candidato a deploy e pode ser agrupado pelo Zeus em um `DP`.
 
 Tambem devem ser registrados:
 
@@ -122,9 +122,9 @@ Tambem devem ser registrados:
 4. O agente do modulo agrupa os itens do proprio modulo em um pacote `DP` ou pacote equivalente de homologacao.
 5. O agente do modulo publica o recorte em homologacao quando Lucas autorizar e registra commit, deployment, validacoes, riscos e status no Zeus/Operations Center.
 6. Lucas valida item por item em homologacao.
-7. Itens aprovados ficam `PRONTO PARA PRODUCAO` por modulo e geram handoff/prompt para Hefesto.
+7. Itens aprovados ficam `PRONTO PARA PRODUCAO` por modulo e geram handoff/prompt de release para o Zeus.
 8. Itens reprovados, bloqueados ou pendentes ficam fora da rodada e permanecem no modulo de origem.
-9. Hefesto publica producao somente dos recortes homologados por modulo, registra commit, deployment, healthchecks e resultado.
+9. O Zeus publica producao somente dos recortes homologados por modulo, registra commit, deployment, healthchecks e resultado.
 10. Tickets vinculados recebem atualizacao de status quando o protocolo associado muda.
 
 ## Status recomendados

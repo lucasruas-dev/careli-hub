@@ -10,7 +10,7 @@ Qualquer acao que crie, altere, remova, copie, rotacione ou exponha chave, token
 
 ## Como analisar uma conexao
 
-1. Identifique o modulo dono: Zeus, Iris, Hades, Hermes, Atlas, Chronos, Apolo, Setup ou Hefesto.
+1. Identifique o modulo dono: Zeus, Iris, Hades, Hermes, Atlas, Chronos, Apolo ou Setup.
 2. Identifique o tipo de conexao: browser publica, server-only, banco, webhook, provider externo, AI, deploy ou sync operacional.
 3. Liste apenas os nomes das envs envolvidas.
 4. Classifique cada env:

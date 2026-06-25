@@ -47,11 +47,11 @@ segredos.
 | `GUARDIAN_DB_*` | Zeus/Hades Core | Conexao C2X/Hades. | Critica |
 | `ASAAS_*`, `D4SIGN_*`, `OPENAI_API_KEY`, `GUARDIAN_SYNC_SECRET` | Zeus/Squad responsavel | Integracoes externas. | Critica |
 | `META_WHATSAPP_*` | Iris Core/Zeus | Cloud API da Meta, webhook e envio WhatsApp. | Critica |
-| `ASANA_*` | Zeus/Hefesto | Integracao operacional com Asana. | Alta |
+| `ASANA_*` | Zeus | Integracao operacional com Asana. | Alta |
 | `NEXT_PUBLIC_PULSEX_TURN_*` | Hermes Core | Configuracao WebRTC/TURN exposta ao browser. | Alta |
 | `ATLAS_SUPABASE_*`, `SOURCE_SUPABASE_*`, `TARGET_SUPABASE_*` | Atlas Core/Zeus | Fontes Supabase Atlas e rotinas de copia/sync. | Critica |
 | `SQUADOPS_*` | Zeus | Sync e administracao operacional do Operations Center. | Critica |
-| `VERCEL_GIT_COMMIT_REF` | Hefesto/Zeus | Rastreabilidade de build/deploy. | Baixa |
+| `VERCEL_GIT_COMMIT_REF` | Zeus | Rastreabilidade de build/deploy. | Baixa |
 
 ## Regras por ambiente
 

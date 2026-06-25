@@ -6,7 +6,7 @@ Esta pasta e a casa operacional do Panteon. Ela separa o diario vivo de operacao
 
 - Produto/plataforma: `Panteon` (antes Careli Hub).
 - `Zeus`: antigo SquadOps e agente central de Operations Center, SupportOps, DataOps e InfraOps.
-- `Hefesto`: agente de promocao para producao, healthchecks finais, rollback e rastreabilidade oficial de producao.
+- `Hefesto`: papel de promocao para producao, healthchecks finais, rollback e rastreabilidade oficial de producao. **Absorvido pelo `Zeus` em 2026-06-23** (Lucas saiu do Codex; tudo consolidado no Zeus). Mencoes a Hefesto em registros antigos sao historicas.
 - `Hades`: antigo Guardian.
 - `Iris`: antigo CareDesk/CoreDesk.
 - `Hermes`: antigo PulseX.
@@ -45,10 +45,10 @@ Nomes tecnicos legados em tabelas, envs, migrations, rotas antigas e historico o
 - Nao registre valores de secrets, tokens, senhas, service role, `POSTGRES_URL` ou chaves externas.
 - Toda operacao sensivel comeca `BLOQUEADO` ate autorizacao expressa do Lucas.
 - Homologacao e o caminho padrao antes de producao quando houver risco operacional.
-- Cada agente de modulo publica o proprio recorte em homologacao quando Lucas autorizar, registra modulo, pacote, atividades, commit/deploy, validacoes, riscos e status. `Hefesto` recebe esses handoffs homologados e promove producao por modulo, sem assumir homologacao de todos os recortes.
+- Cada agente de modulo publica o proprio recorte em homologacao quando Lucas autorizar, registra modulo, pacote, atividades, commit/deploy, validacoes, riscos e status. O `Zeus` recebe esses handoffs homologados e promove producao por modulo, sem assumir homologacao de todos os recortes.
 - Se `Zeus` for autorizado por Lucas a executar/publicar seu proprio recorte, o fechamento nao pode ficar so no chat nem so no Markdown: o agente deve atualizar a fonte estruturada do Operations Center, reconciliar protocolos `AT/CB/TI/OP/AL/DP`, preencher commit/deploy/validacoes/status real e depois registrar a decisao no diario canonico. Quando o recorte for da tela Zeus e o Zeus fizer o processo inteiro com publicacao, o registro final deve ficar `EM PRODUCAO`, nao `AGUARDANDO RELEASEOPS`.
-- Como `https://c2x.app.br` e `https://ops.c2x.app.br` compartilham o mesmo projeto/deployment Vercel, todo deploy de producao deve inspecionar os dois aliases antes e depois. Se o pacote nao preservar o estado vigente do Panteon principal e do Zeus/OPS, `Hefesto` deve bloquear, preparar recorte limpo que preserve ambos ou registrar rollback/restauracao de alias antes de publicar.
-- Paridade homologacao/producao: depois de qualquer deploy de producao, `Hefesto` deve garantir que `https://homo.c2x.app.br` aponte para um deployment Preview gerado do mesmo commit/recorte aprovado, ou registrar explicitamente o motivo da divergencia. Nao usar worktree sujo para esse espelhamento; gerar pacote limpo a partir do commit publicado em producao.
+- Como `https://c2x.app.br` e `https://ops.c2x.app.br` compartilham o mesmo projeto/deployment Vercel, todo deploy de producao deve inspecionar os dois aliases antes e depois. Se o pacote nao preservar o estado vigente do Panteon principal e do Zeus/OPS, o `Zeus` deve bloquear, preparar recorte limpo que preserve ambos ou registrar rollback/restauracao de alias antes de publicar.
+- Paridade homologacao/producao: depois de qualquer deploy de producao, o `Zeus` deve garantir que `https://homo.c2x.app.br` aponte para um deployment Preview gerado do mesmo commit/recorte aprovado, ou registrar explicitamente o motivo da divergencia. Nao usar worktree sujo para esse espelhamento; gerar pacote limpo a partir do commit publicado em producao.
 
 ## Padrao visual oficial
 

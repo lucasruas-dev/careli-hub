@@ -35,7 +35,7 @@ Se voce for agente de modulo:
 - nao registre em `releases-production.md`, salvo autorizacao explicita para producao;
 - entregue status `EM HOMOLOGACAO`, `HOMOLOGADO`, `PRONTO PARA PRODUCAO`, `BLOQUEADO` ou `NECESSITA CORRECAO`.
 
-Se voce for Hefesto:
+Se voce for o Zeus (release/producao):
 
 - leia `releases-homologation.md`, `releases-production.md`, diario canonico e Git antes de publicar;
 - promova para producao somente recorte homologado, aprovado e autorizado;

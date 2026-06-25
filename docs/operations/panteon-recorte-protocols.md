@@ -10,7 +10,7 @@ Este documento define o protocolo operacional que marca cada recorte alterado, m
 - Permitir que Lucas aprove exatamente o que testou.
 - Impedir deploy por conversa, memoria de chat ou worktree misto.
 - Facilitar que Zeus publique Preview/Homo somente pelo protocolo informado.
-- Facilitar que Hefesto promova producao apenas por protocolo homologado.
+- Facilitar que o Zeus promova producao apenas por protocolo homologado.
 
 ## Regra central
 
@@ -135,7 +135,7 @@ Regras:
 7. Se Lucas aprovar, informa o `protocolId` para Zeus.
 8. Zeus busca o protocolo, confere CEP, arquivos, validacoes e riscos.
 9. Zeus decide com Safety Gate se publica Preview ou move `homo.c2x.app.br`.
-10. Hefesto promove producao somente a partir de protocolo homologado, validado e autorizado.
+10. O Zeus promove producao somente a partir de protocolo homologado, validado e autorizado.
 
 ## Regras de deploy
 
@@ -143,7 +143,7 @@ Regras:
 - Preview Vercel e opcional e deve ter `protocolId` no manifesto.
 - Novo protocolo sem CEP operacional validado nao pode virar Preview, Homo ou Producao.
 - `homo.c2x.app.br` so deve receber protocolo aprovado por Lucas e reconciliado por Zeus.
-- Producao so deve receber protocolo homologado e aprovado, via Hefesto.
+- Producao so deve receber protocolo homologado e aprovado, via Zeus.
 - Worktree misto, protocolo ausente, arquivos nao declarados ou divergencia de alias bloqueiam deploy.
 
 ## Manifesto Safety Gate
@@ -269,7 +269,7 @@ O manifesto de homologacao deve incluir:
 
 - O protocolo passa a ser a unidade oficial de recorte, teste, homologacao e promocao.
 - O CEP operacional passa a ser a prova obrigatoria de escopo para novos protocolos candidatos a Preview, Homo ou Producao.
-- O impacto pratico e que Lucas aprova por identificador, Zeus publica por identificador e Hefesto promove por identificador.
+- O impacto pratico e que Lucas aprova por identificador e o Zeus publica/promove por identificador.
 - A proxima acao de qualquer agente e criar ou atualizar o protocolo antes de pedir Preview, Homo ou Producao.
 
 ## IRIS-20260526-005-QUEUE-LOAD-TIMEOUT-HOMO

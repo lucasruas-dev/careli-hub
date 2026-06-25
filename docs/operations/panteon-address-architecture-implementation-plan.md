@@ -55,11 +55,11 @@ Preview, homologacao ou producao.
 | 3 | Criar validador local | Zeus | Script de check | `CONCLUIDO` |
 | 4 | Integrar protocolo de recorte | Zeus | Protocolo de recorte | `CONCLUIDO` |
 | 5 | Expandir cobertura dos modulos | Zeus + agentes | Registry por modulo | `CONCLUIDO` |
-| 6 | Integrar Safety Gates | Zeus/Hefesto | Homologation/Production gates | `CONCLUIDO` |
+| 6 | Integrar Safety Gates | Zeus | Homologation/Production gates | `CONCLUIDO` |
 | 7 | Criar catalogo digital | Zeus | Tela no Operations Center | `VALIDADO_LOCAL` |
-| 8 | Automatizar esteira | Zeus/Hefesto | Check em release/CI | `FUTURO` |
+| 8 | Automatizar esteira | Zeus | Check em release/CI | `FUTURO` |
 | 9 | Treinar agentes por CEP | Zeus | Prompts e handoffs | `FUTURO` |
-| 10 | Manter e auditar catalogo | Zeus/Hefesto | Diario, registry e relatorios | `FUTURO` |
+| 10 | Manter e auditar catalogo | Zeus | Diario, registry e relatorios | `FUTURO` |
 
 ## Etapa 0 - congelar marco zero
 

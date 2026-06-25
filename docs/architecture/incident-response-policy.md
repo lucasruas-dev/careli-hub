@@ -29,7 +29,7 @@ Abrir incidente quando houver:
 - `Zeus`: diagnostico inicial, sintomas, logs, reproducao, impacto em usuario e evidencias.
 - `Zeus`: Vercel, envs, Supabase runtime, dominio, alias, protection bypass, healthchecks e safe mode.
 - `Zeus`: banco, migrations, RLS, grants, schema, dados e conexao Postgres.
-- `Hefesto`: publica correcao somente depois que o recorte estiver validado e autorizado.
+- `Zeus`: publica correcao somente depois que o recorte estiver validado e autorizado.
 - Lucas: aprova operacoes sensiveis e decide continuidade/rollback quando houver risco.
 
 ## Incidente por env ou chave

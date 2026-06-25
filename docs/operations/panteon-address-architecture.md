@@ -68,7 +68,7 @@ Panteon Marco Zero > Hades > Cobranca > Fila de cobranca
 
 A cidade representa uma base validada inteira. Ela nao deve ser alterada
 diretamente por recortes comuns. Um novo codigo de cidade so deve existir quando
-Lucas validar uma nova base oficial e Zeus/Hefesto registrarem essa decisao.
+Lucas validar uma nova base oficial e o Zeus registrar essa decisao.
 
 Exemplo:
 
@@ -251,7 +251,7 @@ produto fora do escopo e sem operacao sensivel sem autorizacao.
 
 ## Conclusao
 
-A arquitetura de enderecamento cria uma linguagem comum entre Lucas, Zeus,
-Hefesto e agentes de modulo. O impacto pratico e simples: antes de mudar algo,
+A arquitetura de enderecamento cria uma linguagem comum entre Lucas, Zeus
+e agentes de modulo. O impacto pratico e simples: antes de mudar algo,
 o agente precisa dizer exatamente onde esta mexendo e provar que o resto da
 cidade continua igual.

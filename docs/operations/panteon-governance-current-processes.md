@@ -22,7 +22,7 @@ A regra agora e simples:
 Quando houver conflito entre documentos, use esta ordem:
 
 1. Autorizacao explicita do Lucas na conversa atual, respeitando os bloqueios de seguranca.
-2. `AGENTS.md` — contrato atualizado em 2026-06-19 com o papel oficial do Hefesto como camada estrategica Claude acima do Zeus Codex.
+2. `AGENTS.md` — contrato do operating model. Atualizado em 2026-06-23: Lucas saiu do Codex e consolidou tudo no `Zeus` (Claude), agora central, estrategico e executor, absorvendo o antigo papel do Hefesto.
 3. Este arquivo: `docs/operations/panteon-governance-current-processes.md`.
 4. `docs/operations/README.md`.
 5. Politicas especificas em `docs/architecture/*`.
@@ -237,7 +237,7 @@ Zeus, publicar Preview/Homo do protocolo <PROTOCOL_ID>. Somente <modulo>. Se hou
 Producao:
 
 ```text
-Hefesto/Zeus, subir o protocolo <PROTOCOL_ID> para producao em <dominio>. Somente <modulo>. Exigir commit limpo, base ativa correta e Safety Gate PASS. Se qualquer outro modulo mudar, bloquear.
+Zeus, subir o protocolo <PROTOCOL_ID> para producao em <dominio>. Somente <modulo>. Exigir commit limpo, base ativa correta e Safety Gate PASS. Se qualquer outro modulo mudar, bloquear.
 ```
 
 ## Arquivos antigos e conflito

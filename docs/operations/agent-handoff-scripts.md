@@ -2,11 +2,11 @@
 
 Use estes scripts para acionar cada squad sem misturar recortes. Eles ja carregam o bloqueio operacional definido por Lucas: nenhuma operacao sensivel em Vercel, Supabase, banco, Production, dominio, env, secret ou migration pode seguir sem autorizacao explicita.
 
-## Padrao atual - modulo homologa, Hefesto produz
+## Padrao atual - modulo homologa, Zeus produz
 
 ```text
 Assunto:
-[Hefesto] Promover producao por modulo homologado
+[Zeus] Promover producao por modulo homologado
 
 Contexto:
 O agente do modulo ja publicou homologacao do proprio recorte autorizado pelo Lucas e registrou no Zeus/Operations Center o modulo, pacote, atividades/protocolos, commit/deployment de homologacao, validacoes, riscos e status.
