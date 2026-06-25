@@ -57,8 +57,9 @@ export async function POST(request: NextRequest) {
   }
 }
 
-function parseDeliveryMode(value: unknown): BoletoResendMode {
-  return value === "asaas" ? "asaas" : "link";
+function parseDeliveryMode(_value: unknown): BoletoResendMode {
+  // Disparo nativo do Asaas (pago) desativado por decisao de custo: sempre "link".
+  return "link";
 }
 
 async function authorizeHadesAction(request: NextRequest) {
