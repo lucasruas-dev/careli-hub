@@ -404,7 +404,7 @@ export function IntelligencePage() {
                     <BrainCircuit className="size-4" aria-hidden="true" />
                   </div>
                   <div>
-                    <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{insight.label}</p>
+                    <p className="text-xs font-medium tracking-[0.14em] text-slate-500">{insight.label}</p>
                     <h3 className="mt-1 text-sm font-semibold text-slate-950">{insight.value}</h3>
                     <p className="mt-2 text-sm leading-6 text-slate-500">{insight.detail}</p>
                   </div>
@@ -552,7 +552,7 @@ function KpiContractsDrawer({
         <header className="border-b border-slate-100 px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-[0.14em] text-[#A07C3B]">Detalhamento do KPI</p>
+              <p className="text-xs font-medium tracking-[0.14em] text-[#A07C3B]">Detalhamento do KPI</p>
               <h2 className="mt-2 text-lg font-semibold text-slate-950">{title}</h2>
               <p className="mt-1 text-sm text-slate-500">Clientes e contratos relacionados ao indicador selecionado.</p>
             </div>
@@ -612,7 +612,7 @@ function RiskByEnterpriseBlock() {
     <DetailSection title="Risco por empreendimento" icon={BarChart3} accent className="h-full">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="text-xs uppercase tracking-normal text-slate-500">
+          <thead className="text-xs tracking-normal text-slate-500">
             <tr className="border-b border-slate-100">
               <th className="pb-3 font-medium">Empreendimento</th>
               <th className="pb-3 font-medium">Score médio</th>
@@ -727,7 +727,7 @@ function OperationalMapBlock() {
               <div />
               {visibleHeatmapRows[0].cells.map((cell) => (
                 <div key={cell.enterprise} className="px-3 pb-1">
-                  <p className="text-xs font-semibold uppercase tracking-normal text-slate-500">{cell.enterprise}</p>
+                  <p className="text-xs font-semibold tracking-normal text-slate-500">{cell.enterprise}</p>
                 </div>
               ))}
 
@@ -782,7 +782,7 @@ function OperationalMapBlock() {
             <header className="border-b border-slate-100 px-5 py-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-[#A07C3B]">Mapa operacional</p>
+                  <p className="text-xs font-medium tracking-[0.14em] text-[#A07C3B]">Mapa operacional</p>
                   <h2 className="mt-2 text-lg font-semibold text-slate-950">{selectedCell.enterprise}</h2>
                   <p className="mt-1 text-sm text-slate-500">{selectedCell.city} · {selectedCell.range}</p>
                 </div>
@@ -817,7 +817,7 @@ function OperationalMapBlock() {
               </article>
 
               <div>
-                <p className="mb-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Clientes</p>
+                <p className="mb-3 text-xs font-medium tracking-[0.14em] text-slate-500">Clientes</p>
                 <div className="space-y-2">
                   {selectedCell.clientNames.map((client, index) => (
                     <div key={client} className="flex items-center justify-between rounded-xl border border-slate-200/70 bg-slate-50/70 px-3 py-3">
@@ -851,7 +851,7 @@ function TrendMetricCard({
 }) {
   return (
     <article className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
-      <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">{label}</p>
+      <p className="text-xs font-medium tracking-[0.14em] text-slate-500">{label}</p>
       <p className={`mt-2 text-xl font-semibold tracking-normal ${getToneTextClass(tone)}`}>{value}</p>
       <p className="mt-1 text-sm text-slate-500">{helper}</p>
     </article>
@@ -1048,7 +1048,7 @@ function HadesIntelligenceAssistant() {
               </div>
 
               <div>
-                <p className="mb-2 text-xs font-medium uppercase tracking-normal text-slate-400">Sugestões rápidas</p>
+                <p className="mb-2 text-xs font-medium tracking-normal text-slate-400">Sugestões rápidas</p>
                 <div className="flex flex-wrap gap-2">
                   {assistantSuggestions.map((suggestion) => (
                     <button

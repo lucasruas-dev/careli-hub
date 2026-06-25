@@ -35,7 +35,10 @@ type HadesApiDatabase = {
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const READ_MODEL_MAX_AGE_MS = 60_000;
+// Alinhado ao cron de sync (a cada 15 min) com folga p/ um run falho: enquanto o
+// read-model estiver dentro dessa janela, o poll do dashboard serve do cache barato
+// (Supabase) em vez de bater no legado C2X vivo a cada 30s.
+const READ_MODEL_MAX_AGE_MS = 1_800_000;
 
 export async function GET(request: NextRequest) {
   const context = await createAuthorizedContext(request);

@@ -30,7 +30,6 @@ import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { TicketOperationsQueue } from "@/modules/guardian/attendance/components/TicketOperationsQueue";
 import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/components/WhatsAppConversationPanel";
-import { queueClients } from "@/modules/guardian/attendance/data";
 import type { OperationalTimelineEvent, QueueClient } from "@/modules/guardian/attendance/types";
 
 type DeskPageProps = {
@@ -45,7 +44,7 @@ const emptyQueueClients: QueueClient[] = [];
 
 export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFromC2x = false }: DeskPageProps) {
   const initialClients = useMemo(
-    () => (clients.length > 0 ? clients : loadFromC2x ? emptyQueueClients : queueClients),
+    () => (clients.length > 0 ? clients : emptyQueueClients),
     [clients, loadFromC2x]
   );
   const [sourceClients, setSourceClients] = useState(initialClients);
@@ -57,7 +56,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
 
   useEffect(() => {
     if (loadFromC2x) return;
-    const nextClients = clients.length > 0 ? clients : queueClients;
+    const nextClients = clients.length > 0 ? clients : emptyQueueClients;
     setSourceClients(nextClients);
     setSelectedId((current) => (nextClients.some((client) => client.id === current) ? current : nextClients[0]?.id ?? ""));
   }, [clients, loadFromC2x]);
@@ -151,7 +150,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
                 <span className="absolute -right-1 -top-1 size-3 rounded-full bg-emerald-400 ring-2 ring-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">
                   {embedded ? "Iris / Hades" : "Iris"}
                 </p>
                 <h1 className="mt-1 text-xl font-semibold tracking-normal text-slate-950">
@@ -276,7 +275,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
             </div>
 
             <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-              <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Caso recomendado</p>
+              <p className="text-xs font-semibold tracking-normal text-slate-400">Caso recomendado</p>
               <p className="mt-1 truncate text-sm font-semibold text-slate-950">
                 {iris.focusClient?.nome ?? "Nenhum cliente carregado"}
               </p>
@@ -383,7 +382,7 @@ function DeskMetric({
           <Icon className="size-4" aria-hidden="true" />
         </span>
         <div className="min-w-0">
-          <p className="truncate text-[11px] font-semibold uppercase tracking-normal text-slate-400">{label}</p>
+          <p className="truncate text-[11px] font-semibold tracking-normal text-slate-400">{label}</p>
           <p className="mt-0.5 text-sm font-semibold text-slate-950">{value}</p>
         </div>
       </div>
@@ -424,7 +423,7 @@ function MiniSignal({ label, value }: { label: string; value: number }) {
   return (
     <div className="rounded-xl border border-[#A07C3B]/15 bg-white px-3 py-2">
       <p className="text-lg font-semibold text-slate-950">{formatCount(value)}</p>
-      <p className="mt-0.5 truncate text-[11px] font-semibold uppercase tracking-normal text-slate-400">{label}</p>
+      <p className="mt-0.5 truncate text-[11px] font-semibold tracking-normal text-slate-400">{label}</p>
     </div>
   );
 }

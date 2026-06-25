@@ -705,7 +705,7 @@ export function WhatsAppConversationPanel({
               <>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Inbox WhatsApp</p>
+                <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Inbox WhatsApp</p>
                 <h2 className="mt-1 text-sm font-semibold text-slate-950">Conversas</h2>
               </div>
               <button
@@ -1358,7 +1358,7 @@ function TicketSetupModal({
       />
       <section className="relative z-10 w-full max-w-4xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
         <header className="border-b border-slate-100 px-5 py-4">
-          <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+          <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">
             {mode === "complete" ? "Completar cobranca" : "Abertura Iris"}
           </p>
           <h2 className="mt-1 text-lg font-semibold text-slate-950">
@@ -1517,7 +1517,7 @@ function TicketSetupModal({
           </div>
 
           <aside className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Iris</p>
+            <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Iris</p>
             <div className="mt-3 grid gap-2">
               <ReadonlyField label="Canal" value={selectedChannel?.name ?? EMPTY_FIELD} />
               <ReadonlyField label="Fila" value={selectedQueue?.name ?? EMPTY_FIELD} />
@@ -1623,7 +1623,7 @@ function TicketCloseModal({
       <section className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Encerrar atendimento</p>
+            <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Encerrar atendimento</p>
             <h2 className="mt-1 text-lg font-semibold text-slate-950">Ticket {ticket.protocol}</h2>
           </div>
           <button
@@ -1640,7 +1640,7 @@ function TicketCloseModal({
           <EditableField label="Resultado do atendimento" value={result} onChange={setResult} />
           <EditableField label="Próximo passo" value={nextStep} onChange={setNextStep} />
           <label className="block rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-            <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">Observação final</span>
+            <span className="text-xs font-semibold tracking-normal text-slate-400">Observação final</span>
             <textarea
               value={finalNote}
               onChange={(event) => setFinalNote(event.target.value)}
@@ -1754,7 +1754,7 @@ function OperationDrawer({
       <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+            <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">
               WhatsApp operacional
             </p>
             <h2 className="mt-1 text-lg font-semibold text-slate-950">
@@ -1834,7 +1834,7 @@ function OperationDrawer({
             <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Consulta C2X</p>
+                  <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Consulta C2X</p>
                   <p className="mt-1 text-sm font-semibold text-slate-950">Boletos originais vinculados à unidade</p>
                 </div>
                 <span className="w-fit rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
@@ -1877,7 +1877,7 @@ function OperationDrawer({
                 <div className="mt-3 rounded-lg border border-dashed border-slate-300 bg-white p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Preview C2X</p>
+                      <p className="text-xs font-semibold tracking-normal text-slate-400">Preview C2X</p>
                       <p className="mt-1 text-sm font-semibold text-slate-950">Boleto original • Parcela {selectedBoleto.parcela}</p>
                       <p className="mt-1 font-mono text-xs text-slate-500">{selectedBoleto.linhaDigitavel}</p>
                     </div>
@@ -1891,7 +1891,7 @@ function OperationDrawer({
           ) : null}
 
           <label className="mt-4 block rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-            <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">Observação</span>
+            <span className="text-xs font-semibold tracking-normal text-slate-400">Observação</span>
             <textarea
               value={note}
               onChange={(event) => setNote(event.target.value)}
@@ -1959,7 +1959,7 @@ function ClientContextPanel({
       <div className="border-b border-slate-100 p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Contexto</p>
+            <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Contexto</p>
             <h3 className="mt-1 truncate text-sm font-semibold text-slate-950">{client.nome}</h3>
             <p className="mt-0.5 text-xs text-slate-500">{client.dados360.telefone}</p>
           </div>
@@ -2012,7 +2012,7 @@ function ClientContextPanel({
             <ContextItem label="Unidade vinculada" value={selectedUnit?.matricula ?? "-"} />
             </div>
             <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Unidades</p>
+              <p className="text-xs font-semibold tracking-normal text-slate-400">Unidades</p>
               {client.carteira.unidades.map((unit) => {
               const active = selectedUnitId === unit.id;
 
@@ -2152,7 +2152,7 @@ function TemplateModal({
       <section className="relative z-10 w-full max-w-2xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Templates WhatsApp</p>
+            <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Templates WhatsApp</p>
             <h2 className="mt-1 text-lg font-semibold text-slate-950">Usar template</h2>
           </div>
           <button

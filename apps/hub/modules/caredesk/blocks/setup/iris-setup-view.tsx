@@ -1133,6 +1133,7 @@ function IrisTemplateSetupPanel({
   const [checkingTemplate, setCheckingTemplate] = useState(false);
   const [syncingMetaTemplates, setSyncingMetaTemplates] = useState(false);
   const [creatingTemplate, setCreatingTemplate] = useState(false);
+  const [templateEditorOpen, setTemplateEditorOpen] = useState(false);
   const [uploadingTemplateMedia, setUploadingTemplateMedia] = useState(false);
   const [autoRefreshStatus, setAutoRefreshStatus] = useState(true);
   const [lastTemplateRefreshAt, setLastTemplateRefreshAt] = useState("");
@@ -1316,6 +1317,7 @@ function IrisTemplateSetupPanel({
     setMetaStatus(null);
     setLastTemplateRefreshAt("");
     setTemplateFeedback("");
+    setTemplateEditorOpen(true);
     setTemplateForm({
       ...createIrisTemplateDraft(),
       phoneNumberId:
@@ -1392,6 +1394,7 @@ function IrisTemplateSetupPanel({
 
   function loadTemplateIntoForm(template: IrisTemplate) {
     setSelectedTemplateId(template.id);
+    setTemplateEditorOpen(true);
     setMetaStatus(readTemplateMetaStatus(template));
     setTemplateFeedback("");
     setTemplateForm((current) => {
@@ -2071,7 +2074,7 @@ function IrisTemplateSetupPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.1fr)]">
+      <div className={`grid gap-4 ${templateEditorOpen ? "xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.1fr)]" : ""}`}>
         <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -2254,16 +2257,27 @@ function IrisTemplateSetupPanel({
           </div>
         </section>
 
+        {templateEditorOpen ? (
         <aside className="min-w-0 space-y-3">
           <div className="rounded-2xl border border-[#dbe3ef] bg-white p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-                  Criacao
-                </p>
-                <h4 className="mt-1 text-sm font-semibold text-[#101820]">
-                  Template Meta
-                </h4>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setTemplateEditorOpen(false)}
+                  aria-label="Fechar editor"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#dbe3ef] text-[#63708a] transition-colors hover:border-[#A07C3B]/35 hover:text-[#101820]"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                    Criacao
+                  </p>
+                  <h4 className="mt-1 text-sm font-semibold text-[#101820]">
+                    {selectedTemplateId ? "Editar template" : "Novo template"}
+                  </h4>
+                </div>
               </div>
               <div className="flex flex-wrap items-center justify-end gap-2">
                 <span
@@ -2745,6 +2759,7 @@ function IrisTemplateSetupPanel({
             </div>
           </div>
         </aside>
+        ) : null}
       </div>
     </div>
   );

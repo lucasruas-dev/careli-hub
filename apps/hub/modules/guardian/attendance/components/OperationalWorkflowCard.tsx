@@ -19,7 +19,7 @@ export function OperationalWorkflowCard({ client }: OperationalWorkflowCardProps
         <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+              <p className="text-xs font-semibold tracking-normal text-slate-400">
                 Etapa atual
               </p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -48,7 +48,7 @@ export function OperationalWorkflowCard({ client }: OperationalWorkflowCardProps
               <Sparkles className="size-4" aria-hidden="true" />
             </div>
             <div>
-              <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+              <p className="text-xs font-semibold tracking-normal text-slate-400">
                 Próxima ação
               </p>
               <p className="mt-1 text-sm leading-6 text-slate-700">{workflow.nextAction}</p>
@@ -57,7 +57,7 @@ export function OperationalWorkflowCard({ client }: OperationalWorkflowCardProps
         </div>
 
         <div className="rounded-xl border border-slate-200/70 bg-white p-4">
-          <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+          <p className="text-xs font-semibold tracking-normal text-slate-400">
             Histórico de alteração
           </p>
           <div className="mt-3 space-y-3">

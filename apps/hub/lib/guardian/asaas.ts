@@ -25,7 +25,10 @@ export type PaymentViewingInfo = {
   viewed: boolean;
 };
 
-export type BoletoResendMode = "asaas" | "link";
+// Disparo nativo do Asaas (pago) desativado por decisao de custo. So existe "link":
+// reentrega o link do boleto (que continua pagavel; o Asaas atualiza juros/multa no
+// pagamento) pelo canal da Iris/WhatsApp, que e gratis.
+export type BoletoResendMode = "link";
 
 export type BoletoResendAction = {
   asaasPaymentId?: string;
@@ -34,7 +37,7 @@ export type BoletoResendAction = {
   faturaUrl?: string;
   message: string;
   paymentId: string;
-  providerAction: "asaas-notification-unavailable" | "link-ready";
+  providerAction: "link-ready";
 };
 
 export async function loadPaymentViewingInfo(
@@ -137,18 +140,6 @@ export async function prepareBoletoResendAction(
 
   if (!boletoUrl) {
     throw new Error("Esta parcela nao possui link de boleto no C2X.");
-  }
-
-  if (mode === "asaas") {
-    return {
-      asaasPaymentId: firstFilled(payment.asaas_payment_id),
-      boletoUrl,
-      deliveryMode: mode,
-      message:
-        "O link do boleto esta pronto, mas o disparo manual pelo Asaas ainda precisa de endpoint oficial confirmado. Use o link pelo Iris enquanto a integracao nativa nao estiver liberada.",
-      paymentId,
-      providerAction: "asaas-notification-unavailable",
-    };
   }
 
   return {

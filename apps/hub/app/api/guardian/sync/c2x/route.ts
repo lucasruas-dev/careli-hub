@@ -40,6 +40,54 @@ export async function POST(request: NextRequest) {
   });
 }
 
+export async function GET(request: NextRequest) {
+  if (!isAuthorizedSyncCron(request)) {
+    return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
+  }
+
+  const result = await syncHadesC2xReadModel();
+
+  if (!result.ok) {
+    return NextResponse.json({ error: result.error }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    data: {
+      rowsWritten: result.rowsWritten,
+      source: "cron",
+      syncRunId: result.syncRunId,
+    },
+  });
+}
+
+function isAuthorizedSyncCron(request: NextRequest) {
+  // Cron interno do Vercel — este header e removido de requisicoes externas.
+  if (request.headers.get("x-vercel-cron")) {
+    return true;
+  }
+
+  const authorization = request.headers.get("authorization");
+  const token = authorization?.startsWith("Bearer ")
+    ? authorization.slice("Bearer ".length).trim()
+    : "";
+  const cronSecret = process.env.CRON_SECRET?.trim();
+
+  if (cronSecret && token === cronSecret) {
+    return true;
+  }
+
+  const syncSecret = process.env.GUARDIAN_SYNC_SECRET?.trim();
+
+  if (
+    syncSecret &&
+    request.headers.get("x-guardian-sync-secret") === syncSecret
+  ) {
+    return true;
+  }
+
+  return false;
+}
+
 async function authorizeSyncRequest(
   request: NextRequest,
   adminClient: NonNullable<ReturnType<typeof createSupabaseAdminClient>>,

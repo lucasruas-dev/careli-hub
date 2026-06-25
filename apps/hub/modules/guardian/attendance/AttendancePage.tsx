@@ -19,7 +19,6 @@ import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/compone
 import { IrisPage } from "@/modules/caredesk/IrisPage";
 import { useAuth } from "@/providers/auth-provider";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
-import { queueClients } from "@/modules/guardian/attendance/data";
 import type {
   AttendancePriority,
   OperationalTimelineEvent,
@@ -76,7 +75,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     searchParams.get("clientId") ??
     searchParams.get("client") ??
     searchParams.get("hadesClientId");
-  const initialClients = clients ?? queueClients;
+  const initialClients = clients ?? [];
   const [sourceClients, setSourceClients] = useState(initialClients);
   const [queueTotalCount, setQueueTotalCount] = useState(initialClients.length);
   const [queueLoading, setQueueLoading] = useState(loadFromC2x && initialClients.length === 0);
@@ -886,7 +885,7 @@ function AgreementsPanel({
   return (
     <section className="overflow-hidden rounded-xl border border-[#d9e0e7] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="border-b border-[#edf1f5] px-5 py-4">
-        <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-400">
           Hades
         </p>
         <div className="mt-1 flex items-center justify-between gap-3">

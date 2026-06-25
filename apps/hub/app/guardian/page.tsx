@@ -8,7 +8,6 @@ import {
   Building2,
   ChevronDown,
   CircleDollarSign,
-  Filter,
   Percent,
   TrendingUp,
   Users,
@@ -26,12 +25,16 @@ import type {
   HadesDistributionBucket,
   HadesEnterpriseDistributions,
   HadesEnterprisePerformance,
+  HadesKpiDrilldownRow,
+  HadesTopDelinquentClient,
 } from "@/lib/guardian/overview";
 import {
+  getHadesKpiDrilldown,
+  getHadesOperationalIntelligence,
   getHadesOverviewEnterpriseDistributions,
   getHadesOverviewSnapshot,
 } from "@/lib/guardian/overview-client";
-import { hadesMockClients } from "@/modules/guardian/hadesMockData";
+import type { HadesOperationalIntelligence } from "@/lib/guardian/read-model";
 
 type DashboardKpiId =
   | "totalPortfolio"
@@ -59,23 +62,6 @@ type RealHadesKpis = {
   totalPortfolioPayments: number;
 };
 
-type ContractRecord = {
-  cliente: string;
-  empreendimento: string;
-  unidadeLote: string;
-  perfil: string;
-  status: string;
-  vencimento: string;
-  carteira: number;
-  atraso: number;
-  atrasoDias: number;
-  score: number;
-  risco: string;
-  responsavel: string;
-  filaStatus: string;
-  recuperado: number;
-};
-
 type EnterprisePerformanceItem = {
   delinquencyBaseAmount: number;
   enterpriseName: string;
@@ -101,25 +87,6 @@ type EnterprisePerformanceSortKey =
 
 const MOCK_DASH = "-";
 
-const contracts: ContractRecord[] = hadesMockClients.map((client) => ({
-  cliente: client.nome,
-  empreendimento: client.empreendimento,
-  unidadeLote: client.unidadeLote,
-  perfil: client.perfilParcela,
-  status: client.parcelasVencidas > 0 ? "Vencidas" : client.parcelasAVencer > 0 ? "A vencer" : "Liquidadas",
-  vencimento: client.vencimento,
-  carteira: client.valorUnidade + (client.segundaUnidade?.valorUnidade ?? 0),
-  atraso: client.saldoAtraso,
-  atrasoDias: client.atrasoDias,
-  score: client.scoreRisco,
-  risco: client.prioridade,
-  responsavel: client.responsavel,
-  filaStatus: client.status,
-  recuperado: client.recuperado,
-}));
-
-const profileOptions = ["Todos", "Ato", "Sinal", "Parcela"];
-const statusOptions = ["Todos", "Vencidas", "A vencer", "Liquidadas"];
 
 function buildEnterpriseScopedKpis(
   kpis: RealHadesKpis,
@@ -132,6 +99,7 @@ function buildEnterpriseScopedKpis(
 
   return {
     ...kpis,
+    criticalContracts: enterprise.criticalContracts,
     liquidatedAmount,
     liquidatedPayments: 0,
     monthlyRecoveryAmount: enterprise.monthlyRecoveryAmount,
@@ -146,10 +114,6 @@ function buildEnterpriseScopedKpis(
 
 export default function HadesPage() {
   const [enterprise, setEnterprise] = useState("Todos");
-  const [profile, setProfile] = useState("Todos");
-  const [status, setStatus] = useState("Todos");
-  const [dateStart, setDateStart] = useState("");
-  const [dateEnd, setDateEnd] = useState("");
   const [selectedKpi, setSelectedKpi] = useState<DashboardKpiId | null>(null);
   const [realKpis, setRealKpis] = useState<RealHadesKpis | null>(null);
   const [enterpriseDistributions, setEnterpriseDistributions] = useState<
@@ -167,6 +131,85 @@ export default function HadesPage() {
     ai: true,
     operators: false,
   });
+  const [opsIntel, setOpsIntel] = useState<HadesOperationalIntelligence | null>(
+    null,
+  );
+  const [opsIntelError, setOpsIntelError] = useState<string | null>(null);
+  const [kpiDrilldownRows, setKpiDrilldownRows] = useState<
+    HadesKpiDrilldownRow[]
+  >([]);
+  const [kpiDrilldownLoading, setKpiDrilldownLoading] = useState(false);
+  const [kpiDrilldownError, setKpiDrilldownError] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!selectedKpi) {
+      return;
+    }
+
+    let cancelled = false;
+    const kpiToLoad = selectedKpi;
+    setKpiDrilldownLoading(true);
+    setKpiDrilldownError(null);
+    setKpiDrilldownRows([]);
+
+    async function loadDrilldown() {
+      try {
+        const rows = await getHadesKpiDrilldown(kpiToLoad);
+
+        if (!cancelled) {
+          setKpiDrilldownRows(rows);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setKpiDrilldownError(
+            error instanceof Error
+              ? error.message
+              : "Falha ao carregar o detalhamento.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setKpiDrilldownLoading(false);
+        }
+      }
+    }
+
+    void loadDrilldown();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedKpi]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadOpsIntel() {
+      try {
+        const data = await getHadesOperationalIntelligence();
+        if (!cancelled) {
+          setOpsIntel(data);
+          setOpsIntelError(null);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setOpsIntelError(
+            error instanceof Error
+              ? error.message
+              : "Falha ao carregar a inteligência da operação.",
+          );
+        }
+      }
+    }
+
+    void loadOpsIntel();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     let isMounted = true;
@@ -209,7 +252,7 @@ export default function HadesPage() {
     void refreshRealKpis();
     const intervalId = window.setInterval(() => {
       void refreshRealKpis();
-    }, 30000);
+    }, 60000);
 
     return () => {
       isMounted = false;
@@ -274,22 +317,6 @@ export default function HadesPage() {
     };
   }, [enterprise, realKpis]);
 
-  const filtered = useMemo(
-    () =>
-      contracts.filter((item) => {
-        const time = new Date(item.vencimento).getTime();
-
-        return (
-          (enterprise === "Todos" || item.empreendimento === enterprise) &&
-          (profile === "Todos" || item.perfil === profile) &&
-          (status === "Todos" || item.status === status) &&
-          (!dateStart || time >= new Date(dateStart).getTime()) &&
-          (!dateEnd || time <= new Date(dateEnd).getTime())
-        );
-      }),
-    [dateEnd, dateStart, enterprise, profile, status],
-  );
-
   const selectedEnterprisePerformance = useMemo(
     () =>
       enterprise === "Todos"
@@ -333,17 +360,28 @@ export default function HadesPage() {
   const billingCompositionRows = selectedEnterprisePerformance
     ? selectedEnterpriseDistributions?.billingComposition ?? []
     : realKpis?.billingComposition ?? [];
+  const agingByClientRows: HadesDistributionBucket[] = selectedEnterprisePerformance
+    ? selectedEnterpriseDistributions?.overdueAgingByClient ?? []
+    : [...(opsIntel?.agingByClient ?? [])]
+        .sort((first, second) => first.sortOrder - second.sortOrder)
+        .map((bucket) => ({ label: bucket.label, total: bucket.clients }));
+  const operationalTopClients: HadesTopDelinquentClient[] =
+    selectedEnterprisePerformance
+      ? selectedEnterpriseDistributions?.topClients ?? []
+      : opsIntel?.topClients ?? [];
+  const operationalClientsCount = selectedEnterprisePerformance
+    ? agingByClientRows.reduce((subtotal, bucket) => subtotal + bucket.total, 0)
+    : opsIntel?.totalOverdueClients ?? 0;
+  const operationalError = selectedEnterprisePerformance ? null : opsIntelError;
+  const operationalLoading = selectedEnterprisePerformance
+    ? isLoadingEnterpriseDistributions && !selectedEnterpriseDistributions
+    : !opsIntel && !opsIntelError;
+  const operationalSummary =
+    operationalClientsCount > 0
+      ? `${formatCount(operationalClientsCount)} clientes em atraso`
+      : MOCK_DASH;
   const showFinancialLoadingOverlay =
     isRealKpisLoading && financialEnterpriseRows.length === 0;
-  const financialEnterpriseOptions = useMemo(
-    () => [
-      "Todos",
-      ...Array.from(
-        new Set(realKpis?.enterprisePerformance.map((item) => item.enterpriseName) ?? []),
-      ),
-    ],
-    [realKpis],
-  );
   const financialSummary = scopedRealKpis
     ? `${money(scopedRealKpis.overduePrincipalAmount)} em atraso | ${money(
         scopedRealKpis.monthlyRecoveryAmount,
@@ -412,23 +450,14 @@ export default function HadesPage() {
     {
       id: "criticalContracts" as const,
       title: "Contratos críticos",
-      value: scopedRealKpis
-        ? isEnterpriseScoped
-          ? "--"
-          : formatCount(scopedRealKpis.criticalContracts)
-        : "...",
-      variation: scopedRealKpis ? (isEnterpriseScoped ? "geral" : "> 3 parcelas") : "--",
-      description: scopedRealKpis
-        ? isEnterpriseScoped
-          ? "recorte pendente"
-          : "contratos em atraso"
-        : realDataDescription,
+      value: scopedRealKpis ? formatCount(scopedRealKpis.criticalContracts) : "...",
+      variation: scopedRealKpis ? "> 3 parcelas" : "--",
+      description: scopedRealKpis ? "contratos em atraso" : realDataDescription,
       icon: AlertTriangle,
     },
   ];
 
   const selectedKpiMeta = selectedKpi ? kpis.find((item) => item.id === selectedKpi) : null;
-  const drawerItems = selectedKpi ? buildKpiDrawerItems(selectedKpi, filtered) : [];
 
   function togglePanel(panel: DashboardPanelId) {
     setExpandedPanels((current) => ({ ...current, [panel]: !current[panel] }));
@@ -437,20 +466,6 @@ export default function HadesPage() {
   return (
     <MainLayout>
       <div className="flex w-full flex-col gap-6">
-        <GlobalFilters
-          dateEnd={dateEnd}
-          dateStart={dateStart}
-          enterprise={enterprise}
-          enterpriseOptions={financialEnterpriseOptions}
-          profile={profile}
-          setDateEnd={setDateEnd}
-          setDateStart={setDateStart}
-          setEnterprise={setEnterprise}
-          setProfile={setProfile}
-          setStatus={setStatus}
-          status={status}
-        />
-
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-6">
           {kpis.map((kpi) => (
             <KpiCard key={kpi.id} {...kpi} onClick={() => setSelectedKpi(kpi.id)} />
@@ -486,9 +501,9 @@ export default function HadesPage() {
                 onSelect={(value) => setEnterprise((current) => (current === value ? "Todos" : value))}
               />
               <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-1">
-                <DistributionCard
-                  title="Aging da inadimplência"
-                  data={overdueAgingRows}
+                <AgingDistributionCard
+                  parcelaData={overdueAgingRows}
+                  clienteData={agingByClientRows}
                   emptyMessage={distributionEmptyMessage}
                   isLoading={showFinancialLoadingOverlay}
                 />
@@ -507,81 +522,27 @@ export default function HadesPage() {
         </DashboardPanel>
 
         <DashboardPanel
-          badge={MOCK_DASH}
-          expanded={expandedPanels.desk}
-          id="desk"
-          onToggle={togglePanel}
-          summary={MOCK_DASH}
-          title="Iris"
-          tone="danger"
-        >
-          <ActionMetricGrid
-            metrics={[
-              ["Tickets abertos", MOCK_DASH, "Abrir Iris", "gold"],
-              ["SLA crítico", MOCK_DASH, "Ver críticos", "danger"],
-              ["Tempo médio resposta", MOCK_DASH, "Monitorar SLA", "neutral"],
-              ["Mensagens sem resposta", MOCK_DASH, "Abrir fila", "danger"],
-              ["Operadores online", MOCK_DASH, "Ver operadores", "gold"],
-              ["Aguardando operador", MOCK_DASH, "Distribuir", "danger"],
-              ["Tickets prioritários", MOCK_DASH, "Priorizar", "gold"],
-              ["Encerrados hoje", MOCK_DASH, "Ver produtividade", "neutral"],
-            ]}
-          />
-        </DashboardPanel>
-
-        <DashboardPanel
-          expanded={expandedPanels.workflow}
-          id="workflow"
-          onToggle={togglePanel}
-          summary={MOCK_DASH}
-          title="Workflow"
-          tone="danger"
-        >
-          <ActionMetricGrid
-            metrics={[
-              ["Workflow operacional", MOCK_DASH, "Ver etapas", "neutral"],
-              ["Clientes críticos", MOCK_DASH, "Abrir fila", "danger"],
-              ["Follow-ups vencendo", MOCK_DASH, "Priorizar", "gold"],
-              ["Promessas hoje", MOCK_DASH, "Abrir promessas", "gold"],
-              ["Risco operacional", MOCK_DASH, "Ver diagnóstico", "danger"],
-              ["Tickets prioritários", MOCK_DASH, "Abrir Iris", "danger"],
-            ]}
-          />
-        </DashboardPanel>
-
-        <DashboardPanel
           expanded={expandedPanels.ai}
           id="ai"
           onToggle={togglePanel}
-          summary={MOCK_DASH}
-          title="IA operacional"
+          summary={operationalSummary}
+          title="Ranking de inadimplência"
           tone="gold"
         >
-          <ExecutiveAiBlock />
-        </DashboardPanel>
-
-        <DashboardPanel
-          expanded={expandedPanels.operators}
-          id="operators"
-          onToggle={togglePanel}
-          summary={MOCK_DASH}
-          title="Operadores"
-          tone="neutral"
-        >
-          <ActionMetricGrid
-            metrics={[
-              ["Operadores online", MOCK_DASH, "Ver escala", "gold"],
-              ["Em atendimento", MOCK_DASH, "Abrir Iris", "neutral"],
-              ["Sobrecarregados", MOCK_DASH, "Redistribuir", "danger"],
-              ["Produtividade", MOCK_DASH, "Ver ranking", "gold"],
-            ]}
+          <ExecutiveAiBlock
+            topClients={operationalTopClients}
+            error={operationalError}
+            isLoading={operationalLoading}
           />
         </DashboardPanel>
+
       </div>
 
       {selectedKpiMeta ? (
         <DashboardKpiDrawer
-          items={drawerItems}
+          rows={kpiDrilldownRows}
+          isLoading={kpiDrilldownLoading}
+          error={kpiDrilldownError}
           onClose={() => setSelectedKpi(null)}
           title={selectedKpiMeta.title}
         />
@@ -664,7 +625,7 @@ function ActionMetricGrid({ metrics }: { metrics: Array<[string, string, string,
             className="group w-full rounded-xl border border-slate-200/70 bg-slate-50/50 p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
           >
             <div className="flex items-start justify-between gap-2">
-              <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{label}</p>
+              <p className="text-xs font-semibold tracking-normal text-slate-400">{label}</p>
               <ArrowUpRight className="size-3.5 text-[#A07C3B] opacity-70 transition-opacity group-hover:opacity-100" aria-hidden="true" />
             </div>
             <p className={`mt-1.5 text-xl font-semibold ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}>
@@ -677,27 +638,88 @@ function ActionMetricGrid({ metrics }: { metrics: Array<[string, string, string,
   );
 }
 
-function ExecutiveAiBlock() {
+function ExecutiveAiBlock({
+  topClients,
+  error,
+  isLoading,
+}: {
+  topClients: HadesTopDelinquentClient[];
+  error: string | null;
+  isLoading: boolean;
+}) {
+  if (error) {
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+        {error}
+      </div>
+    );
+  }
+
+  if (isLoading) {
+    return (
+      <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm font-medium text-slate-500">
+        Carregando ranking de inadimplência...
+      </div>
+    );
+  }
+
   return (
-    <div className="grid gap-3 lg:grid-cols-3">
-      <InsightCard
-        title="Gargalo"
-        value={MOCK_DASH}
-        text={MOCK_DASH}
-        tone="danger"
-      />
-      <InsightCard
-        title="Previsões"
-        value={MOCK_DASH}
-        text={MOCK_DASH}
-        tone="gold"
-      />
-      <InsightCard
-        title="Recomendação IA"
-        value={MOCK_DASH}
-        text={MOCK_DASH}
-        tone="neutral"
-      />
+    <div className="space-y-4">
+      <section className="rounded-xl border border-slate-200 bg-white p-4">
+        <h3 className="text-sm font-semibold text-slate-950">
+          Top 15 clientes inadimplentes
+        </h3>
+        <p className="mt-0.5 text-xs font-medium text-slate-500">
+          Maior valor em aberto.
+        </p>
+        {topClients.length > 0 ? (
+          <div className="mt-3 max-h-80 overflow-y-auto pr-1">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 z-10 bg-white text-[11px] tracking-wide text-slate-400">
+                <tr>
+                  <th className="py-1 pr-2 font-semibold">#</th>
+                  <th className="py-1 pr-2 font-semibold">Cliente</th>
+                  <th className="py-1 pr-2 font-semibold">Empreend.</th>
+                  <th className="py-1 pr-2 text-right font-semibold">Parc.</th>
+                  <th className="py-1 pr-2 text-right font-semibold">Em aberto</th>
+                  <th className="py-1 text-right font-semibold">Atraso</th>
+                </tr>
+              </thead>
+              <tbody>
+                {topClients.map((client, index) => (
+                  <tr
+                    key={`${client.name}-${index}`}
+                    className="border-t border-slate-100"
+                  >
+                    <td className="py-1.5 pr-2 font-semibold text-slate-400">
+                      {index + 1}
+                    </td>
+                    <td className="py-1.5 pr-2 font-medium text-slate-800">
+                      {client.name}
+                    </td>
+                    <td className="py-1.5 pr-2 text-slate-500">
+                      {client.enterprise ?? "—"}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right text-slate-600">
+                      {formatCount(client.overduePayments)}
+                    </td>
+                    <td className="py-1.5 pr-2 text-right font-semibold text-slate-900">
+                      <MoneyValue value={client.overdueAmount} />
+                    </td>
+                    <td className="py-1.5 text-right text-slate-600">
+                      {formatCount(client.overdueDays)}d
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-500">
+            Nenhum cliente inadimplente neste recorte.
+          </div>
+        )}
+      </section>
     </div>
   );
 }
@@ -734,95 +756,16 @@ function InsightCard({
   );
 }
 
-function GlobalFilters(props: {
-  enterprise: string;
-  enterpriseOptions: string[];
-  profile: string;
-  status: string;
-  dateStart: string;
-  dateEnd: string;
-  setEnterprise: (value: string) => void;
-  setProfile: (value: string) => void;
-  setStatus: (value: string) => void;
-  setDateStart: (value: string) => void;
-  setDateEnd: (value: string) => void;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const activeFilters = [
-    props.enterprise !== "Todos" ? { label: "Empreendimento", value: props.enterprise, clear: () => props.setEnterprise("Todos") } : null,
-    props.profile !== "Todos" ? { label: "Perfil", value: props.profile, clear: () => props.setProfile("Todos") } : null,
-    props.status !== "Todos" ? { label: "Status", value: props.status, clear: () => props.setStatus("Todos") } : null,
-    props.dateStart ? { label: "Inicial", value: props.dateStart, clear: () => props.setDateStart("") } : null,
-    props.dateEnd ? { label: "Final", value: props.dateEnd, clear: () => props.setDateEnd("") } : null,
-  ].filter(Boolean) as Array<{ label: string; value: string; clear: () => void }>;
-
-  function clear() {
-    props.setEnterprise("Todos");
-    props.setProfile("Todos");
-    props.setStatus("Todos");
-    props.setDateStart("");
-    props.setDateEnd("");
-  }
-
-  return (
-    <section className="rounded-xl border border-slate-200/70 bg-white p-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          onClick={() => setExpanded((current) => !current)}
-          className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-600 hover:bg-[#A07C3B]/5"
-          aria-expanded={expanded}
-        >
-          <Filter className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
-          Filtros{activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
-          <ChevronDown className={`size-3.5 text-[#A07C3B] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
-        </button>
-        {activeFilters.map((filter) => (
-          <Tooltip key={`${filter.label}-${filter.value}`} content={`Remover ${filter.label}`} placement="top">
-            <button
-              type="button"
-              onClick={filter.clear}
-              className="inline-flex h-7 max-w-48 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
-            >
-              <span className="truncate">{filter.value}</span>
-              <X className="size-3" aria-hidden="true" />
-            </button>
-          </Tooltip>
-        ))}
-        {activeFilters.length > 0 ? (
-          <Tooltip content="Limpar filtros" placement="bottom">
-            <button
-              type="button"
-              onClick={clear}
-              aria-label="Limpar filtros"
-              className="flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
-            >
-              <X className="size-4" aria-hidden="true" />
-            </button>
-          </Tooltip>
-        ) : null}
-      </div>
-      <div className={`grid transition-all duration-300 ease-out ${expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
-        <div className="min-h-0 overflow-hidden">
-          <div className="grid gap-3 pt-3 md:grid-cols-2 xl:grid-cols-5">
-            <Select label="Empreendimento" value={props.enterprise} onChange={props.setEnterprise} options={props.enterpriseOptions} />
-            <Select label="Perfil da parcela" value={props.profile} onChange={props.setProfile} options={profileOptions} />
-            <Select label="Status" value={props.status} onChange={props.setStatus} options={statusOptions} />
-            <Input label="Vencimento inicial" value={props.dateStart} onChange={props.setDateStart} />
-            <Input label="Vencimento final" value={props.dateEnd} onChange={props.setDateEnd} />
-          </div>
-        </div>
-      </div>
-    </section>
-  );
-}
-
 function DashboardKpiDrawer({
-  items,
+  rows,
+  isLoading,
+  error,
   onClose,
   title,
 }: {
-  items: ReturnType<typeof buildKpiDrawerItems>;
+  rows: HadesKpiDrilldownRow[];
+  isLoading: boolean;
+  error: string | null;
   onClose: () => void;
   title: string;
 }) {
@@ -837,16 +780,22 @@ function DashboardKpiDrawer({
         className={`absolute inset-0 bg-slate-950/20 backdrop-blur-[2px] transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
       />
       <aside
-        className={`absolute right-0 top-0 flex h-full w-full max-w-[860px] flex-col border-l border-slate-200/70 bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out ${
+        className={`absolute right-0 top-0 flex h-full w-full max-w-[1120px] flex-col border-l border-slate-200/70 bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
         <header className="border-b border-slate-100 px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
-              <p className="text-xs font-medium uppercase tracking-normal text-[#A07C3B]">Detalhamento do indicador</p>
+              <p className="text-xs font-medium tracking-normal text-[#A07C3B]">Detalhamento do indicador</p>
               <h2 className="mt-2 text-lg font-semibold text-slate-950">{title}</h2>
-              <p className="mt-1 text-sm text-slate-500">Detalhamento operacional em preparacao para a base real do C2X.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                {isLoading
+                  ? "Carregando base real do C2X..."
+                  : error
+                    ? error
+                    : `${formatCount(rows.length)} ${rows.length === 1 ? "registro" : "registros"}${rows.length === 200 ? "+ (mostrando os 200 maiores)" : ""}`}
+              </p>
             </div>
             <button
               type="button"
@@ -860,104 +809,59 @@ function DashboardKpiDrawer({
         </header>
 
         <div className="flex-1 overflow-y-auto p-5">
-          <div className="overflow-x-auto rounded-xl border border-slate-200/70">
-            <table className="w-full min-w-[980px] text-left text-sm">
-              <thead className="bg-slate-50/80 text-xs uppercase tracking-normal text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Cliente</th>
-                  <th className="px-4 py-3 font-medium">Empreendimento</th>
-                  <th className="px-4 py-3 font-medium">Unidade/lote</th>
-                  <th className="px-4 py-3 font-medium">Contrato</th>
-                  <th className="px-4 py-3 font-medium">Perfil</th>
-                  <th className="px-4 py-3 font-medium">Referência</th>
-                  <th className="px-4 py-3 font-medium">Vencimento</th>
-                  <th className="px-4 py-3 font-medium">Saldo</th>
-                  <th className="px-4 py-3 font-medium">Atraso</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Responsável</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {items.map((item) => (
-                  <tr key={`${title}-${item.contrato}`} className="hover:bg-slate-50/60">
-                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-950">{item.cliente}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.empreendimento}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.unidadeLote}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.contrato}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.perfil}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.referencia}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.vencimento}</td>
-                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-950">{item.saldo}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.atraso}</td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.responsavel}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {items.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 text-sm text-slate-500">
-              Nenhum registro encontrado para os filtros atuais.
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <PanteonLoadingMark size="sm" />
             </div>
-          ) : null}
+          ) : error ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+              {error}
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 text-sm text-slate-500">
+              Nenhum registro encontrado.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200/70">
+              <table className="w-full min-w-[920px] text-left text-sm">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-xs tracking-normal text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Cliente</th>
+                    <th className="px-4 py-3 font-medium">Empreendimento</th>
+                    <th className="px-4 py-3 font-medium">Unidade</th>
+                    <th className="px-4 py-3 text-right font-medium">Parcelas</th>
+                    <th className="px-4 py-3 font-medium">Vencimento</th>
+                    <th className="px-4 py-3 text-right font-medium">Saldo</th>
+                    <th className="px-4 py-3 text-right font-medium">Atraso</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {rows.map((row, index) => (
+                    <tr key={`${title}-${index}`} className="hover:bg-slate-50/60">
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-950">{row.cliente}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.empreendimento}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.unidade}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
+                        {row.parcelas === null ? "—" : formatCount(row.parcelas)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                        {row.vencimento ? formatDate(row.vencimento) : "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-950">
+                        <MoneyValue value={row.saldo} />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
+                        {row.atraso === null ? "—" : `${formatCount(row.atraso)}d`}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </aside>
     </div>
-  );
-}
-
-function Select({
-  label,
-  value,
-  onChange,
-  options,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  options: string[];
-}) {
-  return (
-    <label>
-      <span className="text-xs font-medium text-slate-500">{label}</span>
-      <select
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-medium text-slate-700 outline-none"
-      >
-        {options.map((option) => (
-          <option key={option}>{option}</option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function Input({
-  label,
-  value,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label>
-      <span className="text-xs font-medium text-slate-500">{label}</span>
-      <input
-        type="date"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-medium text-slate-700 outline-none"
-      />
-    </label>
   );
 }
 
@@ -1010,7 +914,6 @@ function EnterprisePerformanceTable({
           </div>
           <div>
             <h2 className="text-base font-semibold text-slate-950">Performance por empreendimento</h2>
-            <p className="mt-1 text-sm text-slate-500">Clique nos cabeçalhos para ordenar os campos.</p>
           </div>
         </div>
       </div>
@@ -1021,9 +924,9 @@ function EnterprisePerformanceTable({
             : "Nao foi possivel carregar o consolidado real. Os dados serao exibidos quando o C2X responder."}
         </div>
       ) : null}
-      <div className="max-h-[408px] min-h-72 overflow-auto">
+      <div className="max-h-[640px] min-h-72 overflow-auto">
         <table className="w-full min-w-[1120px] text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
+          <thead className="sticky top-0 z-10 bg-slate-50 text-xs tracking-normal text-slate-500">
             <tr>
               <SortableEnterpriseHeader
                 activeSort={sort}
@@ -1204,6 +1107,103 @@ function getRatio(value: number, total: number) {
   return total > 0 ? value / total : 0;
 }
 
+function AgingDistributionCard({
+  parcelaData,
+  clienteData,
+  emptyMessage = "Aguardando dados reais do C2X.",
+  isLoading = false,
+}: {
+  parcelaData: HadesDistributionBucket[];
+  clienteData: HadesDistributionBucket[];
+  emptyMessage?: string;
+  isLoading?: boolean;
+}) {
+  const [view, setView] = useState<"cliente" | "parcela">("parcela");
+  const data = view === "parcela" ? parcelaData : clienteData;
+  const isLoadingEmptyState = /^carregando/i.test(emptyMessage);
+  const total = Math.max(
+    data.reduce((subtotal, item) => subtotal + item.total, 0),
+    1,
+  );
+
+  return (
+    <section className="relative rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h2 className="text-base font-semibold text-slate-950">
+            Aging da inadimplência
+          </h2>
+          <p className="mt-0.5 text-xs font-medium text-slate-500">
+            Por {view === "parcela" ? "parcelas" : "clientes"} · faixa de atraso
+          </p>
+        </div>
+        <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
+          <Tooltip content="Por parcela">
+            <button
+              type="button"
+              onClick={() => setView("parcela")}
+              aria-label="Aging por parcela"
+              aria-pressed={view === "parcela"}
+              className={`flex size-7 items-center justify-center rounded-md transition ${
+                view === "parcela"
+                  ? "bg-white text-[#A07C3B] shadow-sm"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <Banknote className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
+          <Tooltip content="Por cliente">
+            <button
+              type="button"
+              onClick={() => setView("cliente")}
+              aria-label="Aging por cliente"
+              aria-pressed={view === "cliente"}
+              className={`flex size-7 items-center justify-center rounded-md transition ${
+                view === "cliente"
+                  ? "bg-white text-[#A07C3B] shadow-sm"
+                  : "text-slate-400 hover:text-slate-600"
+              }`}
+            >
+              <Users className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
+        </div>
+      </div>
+      <div className="mt-5 min-h-40 space-y-4">
+        {data.length > 0 ? (
+          data.map((item) => {
+            const percentage = Math.round((item.total / total) * 100);
+
+            return (
+              <Bar
+                key={item.label}
+                label={item.label}
+                percentage={percentage}
+                sub={formatCount(item.total)}
+                value={`${percentage}%`}
+              />
+            );
+          })
+        ) : (
+          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-500">
+            {isLoading ? (
+              "Carregando"
+            ) : isLoadingEmptyState ? (
+              <span className="inline-flex items-center gap-2">
+                <PanteonLoadingMark size="xs" />
+                {emptyMessage}
+              </span>
+            ) : (
+              emptyMessage
+            )}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function DistributionCard({
   title,
   data,
@@ -1282,36 +1282,6 @@ function Bar({
       </div>
     </div>
   );
-}
-
-function buildKpiDrawerItems(kpi: DashboardKpiId, records: ContractRecord[]) {
-  const filteredRecords = {
-    criticalContracts: records.filter((item) => item.risco === "Crítica"),
-    delinquency: records.filter((item) => item.atraso > 0),
-    monthlyRecovery: records.filter((item) => item.recuperado > 0),
-    overdueAmount: records.filter((item) => item.atraso > 0),
-    overdueClients: records.filter((item) => item.status === "Vencidas"),
-    totalPortfolio: records,
-  }[kpi];
-
-  return filteredRecords.map((item, index) => ({
-    atraso: item.atraso > 0 ? `${item.atrasoDias} dias` : "0 dias",
-    cliente: item.cliente,
-    contrato: `CTR-${String(1200 + index * 137).padStart(4, "0")}`,
-    empreendimento: item.empreendimento,
-    perfil: item.perfil,
-    referencia: getReference(item.vencimento),
-    responsavel: item.responsavel,
-    saldo: money(item.atraso > 0 ? item.atraso : item.carteira),
-    status: item.filaStatus,
-    unidadeLote: item.unidadeLote,
-    vencimento: formatDate(item.vencimento),
-  }));
-}
-
-function getReference(date: string) {
-  const parsed = new Date(date);
-  return parsed.toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" });
 }
 
 function formatDate(date: string) {

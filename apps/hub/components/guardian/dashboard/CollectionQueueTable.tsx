@@ -36,7 +36,7 @@ export function CollectionQueueTable({ items }: { items: DashboardQueueItem[] })
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] text-left text-sm">
-          <thead className="bg-slate-50/70 text-xs uppercase tracking-normal text-slate-500">
+          <thead className="bg-slate-50/70 text-xs tracking-normal text-slate-500">
             <tr>
               <th className="px-5 py-3 font-medium">Cliente</th>
               <th className="px-5 py-3 font-medium">Empreendimento</th>

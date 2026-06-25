@@ -88,7 +88,7 @@ function InfoPanel({
     >
       <div className="mb-2 flex items-center gap-2">
         <Sparkles className="size-4 text-[#A07C3B]" aria-hidden="true" />
-        <p className="text-xs font-medium uppercase tracking-normal text-slate-500">{title}</p>
+        <p className="text-xs font-medium tracking-normal text-slate-500">{title}</p>
       </div>
       <p className="text-sm leading-6 text-slate-700">{value}</p>
     </article>

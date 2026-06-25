@@ -49,9 +49,12 @@ export type HadesEnterpriseDistributions = {
   enterpriseName: string;
   generatedAt: string;
   overdueAging: HadesDistributionBucket[];
+  overdueAgingByClient: HadesDistributionBucket[];
+  topClients: HadesTopDelinquentClient[];
 };
 
 export type HadesEnterprisePerformance = {
+  criticalContracts: number;
   delinquencyBaseAmount: number;
   enterpriseName: string;
   monthlyRecoveryAmount: number;
@@ -115,6 +118,49 @@ export type HadesOverviewSnapshot = {
   summary: HadesOverviewSummary;
 };
 
+// Inteligencia operacional (aging por cliente + top 15) — tipos ficam aqui,
+// junto da fonte ao vivo; o read-model reexporta para fallback.
+export type HadesAgingByClientBucket = {
+  clients: number;
+  label: string;
+  sortOrder: number;
+};
+
+export type HadesTopDelinquentClient = {
+  enterprise: string | null;
+  name: string;
+  overdueAmount: number;
+  overdueDays: number;
+  overduePayments: number;
+};
+
+export type HadesOperationalIntelligence = {
+  agingByClient: HadesAgingByClientBucket[];
+  syncedAt: string | null;
+  topClients: HadesTopDelinquentClient[];
+  totalOverdueClients: number;
+};
+
+export type HadesKpiDrilldownKey =
+  | "totalPortfolio"
+  | "delinquency"
+  | "overdueAmount"
+  | "monthlyRecovery"
+  | "overdueClients"
+  | "criticalContracts";
+
+export type HadesKpiDrilldownRow = {
+  atraso: number | null;
+  cliente: string;
+  contrato: string;
+  empreendimento: string;
+  parcelas: number | null;
+  saldo: number;
+  status: string;
+  unidade: string;
+  vencimento: string | null;
+};
+
 type SummaryRow = RowDataPacket & {
   available_units: number | string;
   critical_contracts: number | string;
@@ -167,6 +213,11 @@ type EnterprisePerformanceRow = RowDataPacket & {
   overdue_principal_payments: number | string;
   total_portfolio_amount: number | string | null;
   total_portfolio_payments: number | string;
+};
+
+type EnterpriseCriticalRow = RowDataPacket & {
+  critical_contracts: number | string;
+  enterprise_name: string;
 };
 
 type ProposalRow = RowDataPacket & {
@@ -279,6 +330,48 @@ const overdueAgingLabels = [
 
 const billingCompositionLabels = ["Ato", "Sinal", "Parcela"];
 
+const operationalAgingLabels: { label: string; sortOrder: number }[] = [
+  { label: "1 a 15 dias", sortOrder: 1 },
+  { label: "16 a 30 dias", sortOrder: 2 },
+  { label: "31 a 60 dias", sortOrder: 3 },
+  { label: "61 a 90 dias", sortOrder: 4 },
+  { label: "90+ dias", sortOrder: 5 },
+];
+
+type OperationalAgingRow = RowDataPacket & {
+  clients: number | string;
+  label: string;
+  sort_order: number | string;
+};
+
+type OperationalTopClientRow = RowDataPacket & {
+  client_name: string | null;
+  enterprise_name: string | null;
+  overdue_amount: number | string | null;
+  overdue_days: number | string | null;
+  overdue_payments: number | string;
+};
+
+type EnterpriseTopClientRow = RowDataPacket & {
+  client_name: string | null;
+  enterprise_name: string;
+  overdue_amount: number | string | null;
+  overdue_days: number | string | null;
+  overdue_payments: number | string;
+};
+
+type KpiDrilldownRow = RowDataPacket & {
+  atraso: number | string | null;
+  cliente: string | null;
+  contrato: string | null;
+  empreendimento: string | null;
+  parcelas: number | string | null;
+  saldo: number | string | null;
+  status: string | null;
+  unidade: string | null;
+  vencimento: Date | string | null;
+};
+
 export async function loadHadesEnterpriseDistributions(
   enterpriseName: string,
 ): Promise<
@@ -292,7 +385,12 @@ export async function loadHadesEnterpriseDistributions(
   }
 
   const { pool } = poolResult;
-  const [overdueAgingResult, billingCompositionResult] = await Promise.all([
+  const [
+    overdueAgingResult,
+    billingCompositionResult,
+    overdueAgingByClientResult,
+    overdueTopClientResult,
+  ] = await Promise.all([
     pool.query<EnterpriseDistributionRow[]>(`
       select bucket.enterprise_name, bucket.label, count(*) as total, bucket.sort_order
       from (
@@ -336,11 +434,63 @@ export async function loadHadesEnterpriseDistributions(
       left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
       left join enterprises e on e.id = eu.enterprise_id
       where pt.id in (1, 2, 3)
-        and p.payment_status_id in (5, 6, 7)
+        and p.payment_status_id = 7
         and ${activePaymentWhere}
         and ${validEnterpriseWhere}
       group by enterprise_name, pt.id, pt.name
       order by enterprise_name asc, pt.id asc
+    `),
+    pool.query<EnterpriseDistributionRow[]>(`
+      select bucket.enterprise_name, bucket.label, count(*) as total, bucket.sort_order
+      from (
+        select
+          ${enterpriseDisplayExpression} as enterprise_name,
+          ar.client_id,
+          case
+            when datediff(curdate(), min(p.due_date)) between 1 and 15 then '1 a 15 dias'
+            when datediff(curdate(), min(p.due_date)) between 16 and 30 then '16 a 30 dias'
+            when datediff(curdate(), min(p.due_date)) between 31 and 60 then '31 a 60 dias'
+            when datediff(curdate(), min(p.due_date)) between 61 and 90 then '61 a 90 dias'
+            else '90+ dias'
+          end as label,
+          case
+            when datediff(curdate(), min(p.due_date)) between 1 and 15 then 1
+            when datediff(curdate(), min(p.due_date)) between 16 and 30 then 2
+            when datediff(curdate(), min(p.due_date)) between 31 and 60 then 3
+            when datediff(curdate(), min(p.due_date)) between 61 and 90 then 4
+            else 5
+          end as sort_order
+        from payments p
+        join acquisition_requests ar on ar.id = p.acquisition_request_id
+        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+        left join enterprises e on e.id = eu.enterprise_id
+        where p.payment_status_id = 7
+          and ${activePaymentWhere}
+          and ${validEnterpriseWhere}
+          and ar.client_id is not null
+        group by enterprise_name, ar.client_id
+      ) bucket
+      group by bucket.enterprise_name, bucket.label, bucket.sort_order
+      order by bucket.enterprise_name asc, bucket.sort_order asc
+    `),
+    pool.query<EnterpriseTopClientRow[]>(`
+      select
+        ${enterpriseDisplayExpression} as enterprise_name,
+        client.name as client_name,
+        count(*) as overdue_payments,
+        coalesce(sum(${outstandingAmountExpression}), 0) as overdue_amount,
+        max(datediff(curdate(), p.due_date)) as overdue_days
+      from payments p
+      join acquisition_requests ar on ar.id = p.acquisition_request_id
+      left join users client on client.id = ar.client_id
+      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      left join enterprises e on e.id = eu.enterprise_id
+      where p.payment_status_id = 7
+        and ${activePaymentWhere}
+        and ${validEnterpriseWhere}
+        and ar.client_id is not null
+      group by enterprise_name, ar.client_id, client.name
+      order by overdue_amount desc
     `),
   ]);
   const filteredAgingRows = filterEnterpriseDistributionRows(
@@ -351,6 +501,25 @@ export async function loadHadesEnterpriseDistributions(
     billingCompositionResult[0],
     enterpriseName,
   );
+  const filteredAgingByClientRows = filterEnterpriseDistributionRows(
+    overdueAgingByClientResult[0],
+    enterpriseName,
+  );
+  const targetEnterprise = formatEnterpriseName(enterpriseName);
+  const topClients = overdueTopClientResult[0]
+    .filter(
+      (row) => formatEnterpriseName(row.enterprise_name) === targetEnterprise,
+    )
+    .slice(0, 15)
+    .map((row) => ({
+      enterprise: row.enterprise_name
+        ? formatEnterpriseName(row.enterprise_name)
+        : null,
+      name: row.client_name?.trim() ? formatPersonName(row.client_name) : "Sem nome",
+      overdueAmount: toNumber(row.overdue_amount),
+      overdueDays: toNumber(row.overdue_days),
+      overduePayments: toNumber(row.overdue_payments),
+    }));
 
   return {
     data: {
@@ -361,6 +530,11 @@ export async function loadHadesEnterpriseDistributions(
       enterpriseName,
       generatedAt: new Date().toISOString(),
       overdueAging: completeDistribution(filteredAgingRows, overdueAgingLabels),
+      overdueAgingByClient: completeDistribution(
+        filteredAgingByClientRows,
+        overdueAgingLabels,
+      ),
+      topClients,
     },
     ok: true,
   };
@@ -382,6 +556,7 @@ export async function loadHadesOverview(): Promise<
     stageResult,
     paymentStatusResult,
     enterprisePerformanceResult,
+    enterpriseCriticalResult,
     overdueAgingResult,
     billingCompositionResult,
     recentProposalResult,
@@ -498,6 +673,25 @@ export async function loadHadesOverview(): Promise<
       order by total_portfolio_amount desc, enterprise_name asc
       limit 20
     `),
+    pool.query<EnterpriseCriticalRow[]>(`
+      select bucket.enterprise_name, count(*) as critical_contracts
+      from (
+        select
+          ${enterpriseDisplayExpression} as enterprise_name,
+          p.acquisition_request_id
+        from payments p
+        left join acquisition_requests ar on ar.id = p.acquisition_request_id
+        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+        left join enterprises e on e.id = eu.enterprise_id
+        where p.payment_status_id = 7
+          and ${activePaymentWhere}
+          and ${validEnterpriseWhere}
+          and p.acquisition_request_id is not null
+        group by enterprise_name, p.acquisition_request_id
+        having count(*) > 3
+      ) bucket
+      group by bucket.enterprise_name
+    `),
     pool.query<DistributionRow[]>(`
       select bucket.label, count(*) as total, bucket.sort_order
       from (
@@ -517,36 +711,32 @@ export async function loadHadesOverview(): Promise<
             else 5
           end as sort_order
         from payments p
-        left join acquisition_requests ar on ar.id = p.acquisition_request_id
-        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
-        left join enterprises e on e.id = eu.enterprise_id
-        where p.payment_status_id = 7
-          and p.due_date is not null
-          and ${activePaymentWhere}
-          and ${validEnterpriseWhere}
+        where ${overdueWhere}
       ) bucket
       group by bucket.label, bucket.sort_order
       order by bucket.sort_order asc
     `),
     pool.query<DistributionRow[]>(`
-      select
-        pt.name as label,
-        count(p.id) as total,
-        pt.id as sort_order
-      from parcel_types pt
-      left join payments p on p.parcel_type_id = pt.id
-        and p.payment_status_id in (5, 6, 7)
-        and ${activePaymentWhere}
-      left join acquisition_requests ar on ar.id = p.acquisition_request_id
-      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
-      left join enterprises e on e.id = eu.enterprise_id
-      where pt.id in (1, 2, 3)
-        and (
-          p.id is null
-          or (${validEnterpriseWhere})
-        )
-      group by pt.id, pt.name
-      order by pt.id asc
+      select bucket.label, count(*) as total, bucket.sort_order
+      from (
+        select
+          case
+            when p.parcel_type_id = 1 then 'Ato'
+            when p.parcel_type_id = 2 then 'Sinal'
+            when p.parcel_type_id = 3 then 'Parcela'
+            else 'Outros'
+          end as label,
+          case
+            when p.parcel_type_id = 1 then 1
+            when p.parcel_type_id = 2 then 2
+            when p.parcel_type_id = 3 then 3
+            else 4
+          end as sort_order
+        from payments p
+        where ${overdueWhere}
+      ) bucket
+      group by bucket.label, bucket.sort_order
+      order by bucket.sort_order asc
     `),
     pool.query<ProposalRow[]>(`
       select
@@ -645,12 +835,26 @@ export async function loadHadesOverview(): Promise<
     total_portfolio_payments: 0,
   };
 
+  const criticalByEnterprise = new Map(
+    enterpriseCriticalResult[0].map((row) => [
+      formatEnterpriseName(row.enterprise_name),
+      toNumber(row.critical_contracts),
+    ]),
+  );
+  const enterprisePerformance = enterprisePerformanceResult[0].map((row) => {
+    const performance = mapEnterprisePerformance(row);
+
+    return {
+      ...performance,
+      criticalContracts:
+        criticalByEnterprise.get(performance.enterpriseName) ?? 0,
+    };
+  });
+
   return {
     data: {
-      billingComposition: billingCompositionResult[0].map(mapDistribution),
-      enterprisePerformance: enterprisePerformanceResult[0].map(
-        mapEnterprisePerformance,
-      ),
+      billingComposition: completeBillingComposition(billingCompositionResult[0]),
+      enterprisePerformance,
       generatedAt: new Date().toISOString(),
       overduePayments: overduePaymentResult[0].map(mapPayment),
       overdueAging: completeDistribution(overdueAgingResult[0], overdueAgingLabels),
@@ -685,6 +889,280 @@ export async function loadHadesOverview(): Promise<
   };
 }
 
+// Inteligencia operacional ao vivo (mesma fonte e filtros dos cards). Aging por
+// cliente (clientes distintos por faixa, pela parcela mais antiga) + top 15 por
+// valor em aberto. Usa exatamente o predicado de "clientes em atraso" do card
+// (status 7 + ativo + empreendimento mapeado), entao os totais batem. O cron
+// mantem o read-model como fallback (loadHadesOperationalIntelligenceReadModel).
+export async function loadHadesOperationalIntelligence(): Promise<HadesOperationalIntelligence | null> {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return null;
+  }
+
+  const { pool } = poolResult;
+  const [agingResult, topResult] = await Promise.all([
+    pool.query<OperationalAgingRow[]>(`
+      select bucket.label, count(*) as clients, bucket.sort_order
+      from (
+        select
+          case
+            when datediff(curdate(), min(p.due_date)) between 1 and 15 then '1 a 15 dias'
+            when datediff(curdate(), min(p.due_date)) between 16 and 30 then '16 a 30 dias'
+            when datediff(curdate(), min(p.due_date)) between 31 and 60 then '31 a 60 dias'
+            when datediff(curdate(), min(p.due_date)) between 61 and 90 then '61 a 90 dias'
+            else '90+ dias'
+          end as label,
+          case
+            when datediff(curdate(), min(p.due_date)) between 1 and 15 then 1
+            when datediff(curdate(), min(p.due_date)) between 16 and 30 then 2
+            when datediff(curdate(), min(p.due_date)) between 31 and 60 then 3
+            when datediff(curdate(), min(p.due_date)) between 61 and 90 then 4
+            else 5
+          end as sort_order
+        from payments p
+        join acquisition_requests ar on ar.id = p.acquisition_request_id
+        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+        left join enterprises e on e.id = eu.enterprise_id
+        where p.payment_status_id = 7
+          and ${activePaymentWhere}
+          and ${validEnterpriseWhere}
+          and ar.client_id is not null
+        group by ar.client_id
+      ) bucket
+      group by bucket.label, bucket.sort_order
+      order by bucket.sort_order asc
+    `),
+    pool.query<OperationalTopClientRow[]>(`
+      select
+        client.name as client_name,
+        substring_index(
+          group_concat(
+            ${enterpriseDisplayExpression}
+            order by ${outstandingAmountExpression} desc
+            separator '<#>'
+          ),
+          '<#>',
+          1
+        ) as enterprise_name,
+        count(*) as overdue_payments,
+        coalesce(sum(${outstandingAmountExpression}), 0) as overdue_amount,
+        max(datediff(curdate(), p.due_date)) as overdue_days
+      from payments p
+      join acquisition_requests ar on ar.id = p.acquisition_request_id
+      left join users client on client.id = ar.client_id
+      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      left join enterprises e on e.id = eu.enterprise_id
+      where p.payment_status_id = 7
+        and ${activePaymentWhere}
+        and ${validEnterpriseWhere}
+        and ar.client_id is not null
+      group by ar.client_id, client.name
+      order by overdue_amount desc
+      limit 15
+    `),
+  ]);
+
+  const totalsByLabel = new Map(
+    agingResult[0].map((row) => [row.label, toNumber(row.clients)]),
+  );
+  const agingByClient = operationalAgingLabels.map((bucket) => ({
+    clients: totalsByLabel.get(bucket.label) ?? 0,
+    label: bucket.label,
+    sortOrder: bucket.sortOrder,
+  }));
+  const topClients = topResult[0].map((row) => ({
+    enterprise: row.enterprise_name
+      ? formatEnterpriseName(row.enterprise_name)
+      : null,
+    name: row.client_name?.trim() ? formatPersonName(row.client_name) : "Sem nome",
+    overdueAmount: toNumber(row.overdue_amount),
+    overdueDays: toNumber(row.overdue_days),
+    overduePayments: toNumber(row.overdue_payments),
+  }));
+
+  return {
+    agingByClient,
+    syncedAt: new Date().toISOString(),
+    topClients,
+    totalOverdueClients: agingByClient.reduce(
+      (subtotal, bucket) => subtotal + bucket.clients,
+      0,
+    ),
+  };
+}
+
+// Detalhamento (drill-down) ao vivo por indicador do dashboard. Cada card abre a
+// lista real do C2X correspondente (mesmos predicados dos cards), limitada a 200
+// linhas e ordenada pelo mais relevante. Fonte ao vivo (mesma do overview).
+export async function loadHadesKpiDrilldown(
+  kpi: HadesKpiDrilldownKey,
+): Promise<HadesKpiDrilldownRow[] | null> {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return null;
+  }
+
+  const { pool } = poolResult;
+  const [rows] = await pool.query<KpiDrilldownRow[]>(buildKpiDrilldownSql(kpi));
+
+  return rows.map(mapKpiDrilldownRow);
+}
+
+function buildKpiDrilldownSql(kpi: HadesKpiDrilldownKey): string {
+  const baseJoins = `
+    left join acquisition_requests ar on ar.id = p.acquisition_request_id
+    left join users client on client.id = ar.client_id
+    left join payment_statuses ps on ps.id = p.payment_status_id
+    left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+    left join enterprises e on e.id = eu.enterprise_id
+  `;
+  const dominantEnterprise = `
+    substring_index(
+      group_concat(${enterpriseDisplayExpression} order by ${outstandingAmountExpression} desc separator '<#>'),
+      '<#>', 1
+    )
+  `;
+
+  if (kpi === "overdueClients") {
+    return `
+      select
+        client.name as cliente,
+        ${dominantEnterprise} as empreendimento,
+        substring_index(group_concat(eu.name order by ${outstandingAmountExpression} desc separator '<#>'), '<#>', 1) as unidade,
+        '-' as contrato,
+        count(*) as parcelas,
+        min(p.due_date) as vencimento,
+        coalesce(sum(${outstandingAmountExpression}), 0) as saldo,
+        max(datediff(curdate(), p.due_date)) as atraso,
+        'Em atraso' as status
+      from payments p
+      join acquisition_requests ar on ar.id = p.acquisition_request_id
+      left join users client on client.id = ar.client_id
+      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      left join enterprises e on e.id = eu.enterprise_id
+      where p.payment_status_id = 7
+        and ${activePaymentWhere}
+        and ${validEnterpriseWhere}
+        and ar.client_id is not null
+      group by ar.client_id, client.name
+      order by saldo desc
+      limit 200
+    `;
+  }
+
+  if (kpi === "criticalContracts") {
+    return `
+      select
+        client.name as cliente,
+        ${dominantEnterprise} as empreendimento,
+        max(eu.name) as unidade,
+        ar.code as contrato,
+        count(*) as parcelas,
+        min(p.due_date) as vencimento,
+        coalesce(sum(${outstandingAmountExpression}), 0) as saldo,
+        max(datediff(curdate(), p.due_date)) as atraso,
+        'Crítico' as status
+      from payments p
+      join acquisition_requests ar on ar.id = p.acquisition_request_id
+      left join users client on client.id = ar.client_id
+      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      left join enterprises e on e.id = eu.enterprise_id
+      where p.payment_status_id = 7
+        and ${activePaymentWhere}
+        and ${validEnterpriseWhere}
+      group by ar.id, ar.code, client.name
+      having count(*) > 3
+      order by parcelas desc, saldo desc
+      limit 200
+    `;
+  }
+
+  if (kpi === "monthlyRecovery") {
+    return `
+      select
+        client.name as cliente,
+        ${enterpriseDisplayExpression} as empreendimento,
+        eu.name as unidade,
+        ar.code as contrato,
+        null as parcelas,
+        p.due_date as vencimento,
+        coalesce(p.paid_value, 0) as saldo,
+        datediff(p.payment_date, p.due_date) as atraso,
+        'Recuperada' as status
+      from payments p
+      ${baseJoins}
+      where ${monthlyRecoveryWhere}
+      order by p.payment_date desc
+      limit 200
+    `;
+  }
+
+  if (kpi === "totalPortfolio") {
+    return `
+      select
+        client.name as cliente,
+        ${enterpriseDisplayExpression} as empreendimento,
+        eu.name as unidade,
+        ar.code as contrato,
+        null as parcelas,
+        p.due_date as vencimento,
+        coalesce(p.initial_value, 0) as saldo,
+        case when p.payment_status_id = 7 then datediff(curdate(), p.due_date) else null end as atraso,
+        ps.name as status
+      from payments p
+      ${baseJoins}
+      where p.payment_status_id in (5, 6, 7)
+        and ${activePaymentWhere}
+      order by saldo desc
+      limit 200
+    `;
+  }
+
+  // overdueAmount + delinquency: parcelas vencidas (mesmo predicado dos cards).
+  return `
+    select
+      client.name as cliente,
+      ${enterpriseDisplayExpression} as empreendimento,
+      eu.name as unidade,
+      ar.code as contrato,
+      null as parcelas,
+      p.due_date as vencimento,
+      ${outstandingAmountExpression} as saldo,
+      datediff(curdate(), p.due_date) as atraso,
+      ps.name as status
+    from payments p
+    ${baseJoins}
+    where ${overdueWhere}
+    order by saldo desc
+    limit 200
+  `;
+}
+
+function mapKpiDrilldownRow(row: KpiDrilldownRow): HadesKpiDrilldownRow {
+  return {
+    atraso:
+      row.atraso === null || row.atraso === undefined
+        ? null
+        : toNumber(row.atraso),
+    cliente: row.cliente?.trim() ? formatPersonName(row.cliente) : "Sem nome",
+    contrato: row.contrato?.trim() || "-",
+    empreendimento: row.empreendimento
+      ? formatEnterpriseName(row.empreendimento)
+      : "-",
+    parcelas:
+      row.parcelas === null || row.parcelas === undefined
+        ? null
+        : toNumber(row.parcelas),
+    saldo: toNumber(row.saldo),
+    status: row.status?.trim() || "-",
+    unidade: row.unidade?.trim() || "-",
+    vencimento: toIsoString(row.vencimento) ?? null,
+  };
+}
+
 function mapStage(row: StageRow): HadesStageBucket {
   return {
     amount: toNumber(row.amount),
@@ -716,6 +1194,22 @@ function completeDistribution(rows: DistributionRow[], labels: string[]) {
   }));
 }
 
+// Garante Ato/Sinal/Parcela sempre presentes (0 default) e acrescenta "Outros"
+// quando houver parcelas vencidas de outro tipo — assim a composicao sempre
+// fecha com o total de parcelas vencidas dos cards.
+function completeBillingComposition(rows: DistributionRow[]) {
+  const totalsByLabel = new Map(
+    rows.map((row) => [row.label, toNumber(row.total)]),
+  );
+  const base = billingCompositionLabels.map((label) => ({
+    label,
+    total: totalsByLabel.get(label) ?? 0,
+  }));
+  const outros = totalsByLabel.get("Outros") ?? 0;
+
+  return outros > 0 ? [...base, { label: "Outros", total: outros }] : base;
+}
+
 function filterEnterpriseDistributionRows(
   rows: EnterpriseDistributionRow[],
   enterpriseName: string,
@@ -731,6 +1225,7 @@ function mapEnterprisePerformance(
   row: EnterprisePerformanceRow,
 ): HadesEnterprisePerformance {
   return {
+    criticalContracts: 0,
     delinquencyBaseAmount: toNumber(row.delinquency_base_amount),
     enterpriseName: formatEnterpriseName(row.enterprise_name),
     monthlyRecoveryAmount: toNumber(row.monthly_recovery_amount),
@@ -741,6 +1236,28 @@ function mapEnterprisePerformance(
     totalPortfolioAmount: toNumber(row.total_portfolio_amount),
     totalPortfolioPayments: toNumber(row.total_portfolio_payments),
   };
+}
+
+// Nomes de clientes vem em CAIXA ALTA do C2X — normaliza para "Primeira
+// Maiuscula" preservando preposicoes (de/da/dos...).
+function formatPersonName(value: string) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  if (!normalized) {
+    return "";
+  }
+
+  const minorWords = new Set(["a", "as", "da", "das", "de", "do", "dos", "e"]);
+
+  return normalized
+    .toLocaleLowerCase("pt-BR")
+    .split(" ")
+    .map((word, index) =>
+      index > 0 && minorWords.has(word)
+        ? word
+        : word.charAt(0).toLocaleUpperCase("pt-BR") + word.slice(1),
+    )
+    .join(" ");
 }
 
 function formatEnterpriseName(value: string) {

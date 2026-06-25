@@ -1,8 +1,11 @@
 import { createSupabaseAdminClient } from "@/lib/guardian/read-model-sync";
 import type {
+  HadesAgingByClientBucket,
   HadesDistributionBucket,
   HadesEnterprisePerformance,
+  HadesOperationalIntelligence,
   HadesOverviewSnapshot,
+  HadesTopDelinquentClient,
 } from "@/lib/guardian/overview";
 import type {
   AgreementRisk,
@@ -227,6 +230,89 @@ export async function loadHadesAttendanceQueueReadModel(
     ),
     count: count ?? null,
     syncedAt: latestSyncedAt(data),
+  };
+}
+
+export type {
+  HadesAgingByClientBucket,
+  HadesOperationalIntelligence,
+  HadesTopDelinquentClient,
+};
+
+const AGING_CLIENT_BUCKETS = [
+  { label: "1 a 15 dias", max: 15, min: 1, sortOrder: 1 },
+  { label: "16 a 30 dias", max: 30, min: 16, sortOrder: 2 },
+  { label: "31 a 60 dias", max: 60, min: 31, sortOrder: 3 },
+  { label: "61 a 90 dias", max: 90, min: 61, sortOrder: 4 },
+  { label: "90+ dias", max: Number.POSITIVE_INFINITY, min: 91, sortOrder: 5 },
+];
+
+type OperationalIntelligenceRow = {
+  client_name: string | null;
+  enterprise_name: string | null;
+  overdue_amount: number | string | null;
+  overdue_days: number | null;
+  overdue_payments: number | null;
+  synced_at: string | null;
+};
+
+// Inteligência operacional do dashboard (overview): aging por cliente + top 15
+// inadimplentes, a partir da tabela read-model (Supabase, barata). O cron mantem
+// fresca em prod; em preview reflete a ultima sync (carimbo syncedAt na UI).
+export async function loadHadesOperationalIntelligenceReadModel(): Promise<HadesOperationalIntelligence | null> {
+  const adminClient = createSupabaseAdminClient();
+
+  if (!adminClient) {
+    return null;
+  }
+
+  const { data, error } = await adminClient
+    .from("c2x_guardian_attendance_queue")
+    .select(
+      "client_name, enterprise_name, overdue_payments, overdue_amount, overdue_days, synced_at",
+    )
+    .eq("is_current", true)
+    .returns<OperationalIntelligenceRow[]>();
+
+  if (error || !data?.length) {
+    return null;
+  }
+
+  const agingByClient = AGING_CLIENT_BUCKETS.map((bucket) => ({
+    clients: data.filter((row) => {
+      const days = Number(row.overdue_days ?? 0);
+
+      return days >= bucket.min && days <= bucket.max;
+    }).length,
+    label: bucket.label,
+    sortOrder: bucket.sortOrder,
+  }));
+
+  const topClients = data
+    .map((row) => ({
+      enterprise: row.enterprise_name ?? null,
+      name: row.client_name ?? "Sem nome",
+      overdueAmount: Number(row.overdue_amount ?? 0),
+      overdueDays: Number(row.overdue_days ?? 0),
+      overduePayments: Number(row.overdue_payments ?? 0),
+    }))
+    .sort((first, second) => second.overdueAmount - first.overdueAmount)
+    .slice(0, 15);
+
+  const syncedAt =
+    data
+      .map((row) => row.synced_at)
+      .filter((value): value is string => Boolean(value))
+      .sort()
+      .at(-1) ?? null;
+
+  return {
+    agingByClient,
+    syncedAt,
+    topClients,
+    totalOverdueClients: data.filter(
+      (row) => Number(row.overdue_days ?? 0) > 0,
+    ).length,
   };
 }
 

@@ -1,6 +1,5 @@
 /* eslint-disable */
 // @ts-nocheck
-import { hadesMockClients } from "@/modules/guardian/hadesMockData";
 import type { HadesMockClient } from "@/modules/guardian/hadesMockData";
 import type { PaymentPromiseStatus, QueueClient } from "@/modules/guardian/attendance/types";
 
@@ -64,8 +63,6 @@ export type HadesAttendanceSourceClient = HadesMockClient & {
   tipoPessoa?: string;
   unitId?: string;
 };
-
-export const queueClients: QueueClient[] = buildQueueClientsFromSources(hadesMockClients);
 
 export function buildQueueClientsFromSources(
   clients: HadesAttendanceSourceClient[]

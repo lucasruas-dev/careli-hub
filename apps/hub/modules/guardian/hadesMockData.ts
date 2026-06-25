@@ -40,5 +40,3 @@ export type HadesMockClient = {
     valorUnidade: number;
   };
 };
-
-export const hadesMockClients: HadesMockClient[] = [];

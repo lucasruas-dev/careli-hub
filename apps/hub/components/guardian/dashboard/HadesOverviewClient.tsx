@@ -219,7 +219,7 @@ function MetricCard({
     <article className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+          <p className="text-xs font-semibold tracking-normal text-slate-400">
             {title}
           </p>
           <p className="mt-2 text-2xl font-semibold tracking-normal text-slate-950">
@@ -412,7 +412,7 @@ function DataTable({
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="bg-slate-50/80 text-xs uppercase tracking-normal text-slate-500">
+          <thead className="bg-slate-50/80 text-xs tracking-normal text-slate-500">
             <tr>
               {headers.map((header) => (
                 <th key={header} className="px-4 py-3 font-medium">

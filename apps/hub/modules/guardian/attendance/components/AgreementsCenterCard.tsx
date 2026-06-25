@@ -557,7 +557,7 @@ function CommitmentInsights({
         </div>
         <p className="text-sm leading-6 text-slate-600">{client.agreement.aiSuggestion.composition}</p>
         <div className="mt-3 rounded-xl bg-slate-50/80 p-3 ring-1 ring-slate-200/70">
-          <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+          <p className="text-xs font-semibold tracking-normal text-slate-400">
             Próxima ação
           </p>
           <p className="mt-1 text-sm leading-6 text-slate-700">
@@ -605,7 +605,7 @@ function CommitmentDrawer({
       <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+            <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">
               Central Operacional
             </p>
             <h2 className="mt-1 text-lg font-semibold text-slate-950">{mode}</h2>
@@ -735,7 +735,7 @@ function CreateCommitmentForm({
       </div>
 
       <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-        <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Observação</p>
+        <p className="text-xs font-semibold tracking-normal text-slate-400">Observação</p>
         <textarea
           value={draft.note}
           onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))}
@@ -869,7 +869,7 @@ function CommitmentDetail({
       </div>
 
       <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-        <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">Observação</p>
+        <p className="text-xs font-semibold tracking-normal text-slate-400">Observação</p>
         <textarea
           value={draft.note}
           onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))}

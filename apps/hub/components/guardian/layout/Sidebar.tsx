@@ -42,13 +42,13 @@ const menuItems = [
     label: "Inteligência",
     icon: Bot,
     href: "/hades/inteligencia",
-    released: false,
+    released: true,
   },
   {
     label: "Monitoramento",
     icon: LineChart,
     href: "/hades/monitoramento",
-    released: false,
+    released: true,
   },
   { label: "Relatórios", icon: BarChart3, href: "#", released: false },
   { label: "Setup", icon: Settings, href: "#", released: false },
@@ -225,7 +225,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
       <div className={`pb-5 pt-4 ${collapsed ? "px-3" : "px-6"}`}>
         <p
-          className={`truncate text-xs font-medium uppercase tracking-[0.16em] text-[#8E8EA0] transition-opacity duration-200 ${
+          className={`truncate text-xs font-medium tracking-[0.16em] text-[#8E8EA0] transition-opacity duration-200 ${
             collapsed ? "opacity-0" : "opacity-100"
           }`}
         >
