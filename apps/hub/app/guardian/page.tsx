@@ -829,12 +829,10 @@ function DashboardKpiDrawer({
                     <th className="px-4 py-3 font-medium">Cliente</th>
                     <th className="px-4 py-3 font-medium">Empreendimento</th>
                     <th className="px-4 py-3 font-medium">Unidade</th>
-                    <th className="px-4 py-3 font-medium">Contrato</th>
                     <th className="px-4 py-3 text-right font-medium">Parcelas</th>
                     <th className="px-4 py-3 font-medium">Vencimento</th>
                     <th className="px-4 py-3 text-right font-medium">Saldo</th>
                     <th className="px-4 py-3 text-right font-medium">Atraso</th>
-                    <th className="px-4 py-3 font-medium">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 bg-white">
@@ -843,7 +841,6 @@ function DashboardKpiDrawer({
                       <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-950">{row.cliente}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.empreendimento}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.unidade}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.contrato}</td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
                         {row.parcelas === null ? "—" : formatCount(row.parcelas)}
                       </td>
@@ -855,11 +852,6 @@ function DashboardKpiDrawer({
                       </td>
                       <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
                         {row.atraso === null ? "—" : `${formatCount(row.atraso)}d`}
-                      </td>
-                      <td className="whitespace-nowrap px-4 py-3">
-                        <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
-                          {row.status}
-                        </span>
                       </td>
                     </tr>
                   ))}
