@@ -40696,3 +40696,12 @@ Conclusao:
 - O hotfix do HelpDesk foi publicado com sucesso somente no `ops.c2x.app.br`.
 - O impacto pratico e que Lucas deve ver o Desk abrindo em Kanban, o grafico de movimento por dia visivel, calendario pulando sabado/domingo e a lista sem a coluna de evidencias quebrando layout.
 - Precisa de acao agora: Lucas pode validar visualmente em `https://ops.c2x.app.br/zeus`; Zeus mantem rollback para `dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW` se houver regressao critica.
+
+## 2026-06-24 17:50:00 -03:00 - Zeus - Novidades na Home + workflow unico (v1.3.0) em producao
+
+- Status: `EM_PRODUCAO`.
+- `c2x.app.br` -> `dpl_3csW9iYtck7qDzKAGygtmH2akd8K` (`4thdoz7f2`, commit `cdf2902`), HTTP 200. `ops` intocado. Rollback: `careli-hub-hub-i2bs-huqm0q57v`.
+- Home: painel "Rotina/Agenda" (Asana) substituido por "Novidades" (le o changelog; mostra a versao/build atual; botao "carregar mais 10").
+- HelpDesk: workflow unificado time<->Zeus. Fonte unica em `lib/hub-it-tickets/workflow.ts` (5 etapas + finalizado: Backlog/Novo/Em tratativa/Validacao/Revisao/Finalizado). Board do Zeus e "Meus chamados" do time importam a mesma logica (sem duplicacao).
+- Build exibido como versao limpa (`v1.3.0`) no avatar e no painel (removido o nome extenso `*-thread-google-hd`). `PANTEON_VERSION` em `build-info.ts`.
+- `main` = producao (cdf2902 pushada).
