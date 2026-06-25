@@ -206,6 +206,8 @@ function SetupView({
   const [savingProfile, setSavingProfile] = useState(false);
   const [queueFeedback, setQueueFeedback] = useState<string | null>(null);
   const [profileFeedback, setProfileFeedback] = useState<string | null>(null);
+  const [queueModalOpen, setQueueModalOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [setupTab, setSetupTab] = useState<"profiles" | "templates">(
     "profiles",
   );
@@ -294,6 +296,7 @@ function SetupView({
     setEditingQueueId("");
     setQueueFeedback(null);
     setQueueForm(createQueueForm());
+    setQueueModalOpen(true);
   }
 
   function startEditQueue(queue: IrisQueueConfig) {
@@ -305,6 +308,7 @@ function SetupView({
       ...current,
       queueId: current.queueId || queue.id,
     }));
+    setQueueModalOpen(true);
   }
 
   function startNewProfile() {
@@ -315,12 +319,14 @@ function SetupView({
         selectedQueueId === "all" ? firstQueueId : selectedQueueId,
       ),
     );
+    setProfileModalOpen(true);
   }
 
   function startEditProfile(profile: IrisTicketProfileConfig) {
     setEditingProfileId(profile.id);
     setProfileFeedback(null);
     setProfileForm(profileToForm(profile));
+    setProfileModalOpen(true);
   }
 
   async function saveQueue(event: React.FormEvent<HTMLFormElement>) {
@@ -354,6 +360,7 @@ function SetupView({
         queueId: current.queueId || savedQueue.id,
       }));
       setQueueFeedback("Fila salva no Iris.");
+      setQueueModalOpen(false);
     } catch (error) {
       setQueueFeedback(
         error instanceof Error
@@ -407,6 +414,7 @@ function SetupView({
       setEditingProfileId(savedProfile.id);
       setProfileForm(profileToForm(savedProfile));
       setProfileFeedback("Assunto de atendimento salvo no Iris.");
+      setProfileModalOpen(false);
     } catch (error) {
       setProfileFeedback(
         error instanceof Error
@@ -456,10 +464,6 @@ function SetupView({
             <h3 className="mt-1 text-base font-semibold text-[#101820]">
               Filas e assuntos
             </h3>
-            <p className="mt-1 max-w-2xl text-sm leading-6 text-[#63708a]">
-              Cada fila define roteamento e SLA base. Cada assunto define o tipo
-              de atendimento que o operador vai usar no ticket.
-            </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <IrisSetupTabs active={setupTab} onChange={setSetupTab} />
@@ -508,7 +512,7 @@ function SetupView({
           />
         </div>
 
-        <div className="mt-4 grid gap-4 xl:grid-cols-[300px_minmax(0,1fr)_360px] 2xl:grid-cols-[320px_minmax(0,1fr)_390px]">
+        <div className="mt-4 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
           <div className="min-w-0 space-y-3 xl:max-h-[calc(100vh-300px)] xl:overflow-y-auto xl:pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
             <div className="rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
               <div className="flex items-center justify-between gap-3">
@@ -602,20 +606,36 @@ function SetupView({
               </div>
             </div>
 
+            {queueModalOpen ? (
+            <div
+              className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-[#101820]/45 p-4 backdrop-blur-sm sm:items-center"
+              onClick={() => setQueueModalOpen(false)}
+            >
             <form
               onSubmit={saveQueue}
-              className="rounded-2xl border border-[#dbe3ef] bg-white p-3"
+              onClick={(event) => event.stopPropagation()}
+              className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#dbe3ef] bg-white p-4 shadow-2xl [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
             >
-              <div className="mb-3 flex items-center gap-2">
-                <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
-                  <Workflow className="h-4 w-4" aria-hidden="true" />
-                </span>
-                <div>
-                  <h4 className="text-sm font-semibold text-[#101820]">
-                    {editingQueueId ? "Editar fila" : "Nova fila"}
-                  </h4>
-                  <p className="text-xs text-[#63708a]">caredesk_queues</p>
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
+                    <Workflow className="h-4 w-4" aria-hidden="true" />
+                  </span>
+                  <div>
+                    <h4 className="text-sm font-semibold text-[#101820]">
+                      {editingQueueId ? "Editar fila" : "Nova fila"}
+                    </h4>
+                    <p className="text-xs text-[#63708a]">caredesk_queues</p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={() => setQueueModalOpen(false)}
+                  aria-label="Fechar"
+                  className="grid h-8 w-8 place-items-center rounded-lg border border-[#dbe3ef] text-[#63708a] transition-colors hover:border-[#A07C3B]/35 hover:text-[#101820]"
+                >
+                  <X className="h-4 w-4" aria-hidden="true" />
+                </button>
               </div>
 
               <div className="space-y-3">
@@ -756,6 +776,8 @@ function SetupView({
                 {savingQueue ? "Salvando..." : "Salvar fila"}
               </button>
             </form>
+            </div>
+            ) : null}
           </div>
 
           <div className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3 xl:max-h-[calc(100vh-300px)] xl:overflow-hidden">
@@ -853,22 +875,38 @@ function SetupView({
             </div>
           </div>
 
+          {profileModalOpen ? (
+          <div
+            className="fixed inset-0 z-[60] flex items-start justify-center overflow-y-auto bg-[#101820]/45 p-4 backdrop-blur-sm sm:items-center"
+            onClick={() => setProfileModalOpen(false)}
+          >
           <form
             onSubmit={saveProfile}
-            className="rounded-2xl border border-[#dbe3ef] bg-white p-3 xl:max-h-[calc(100vh-300px)] xl:overflow-y-auto xl:pr-3 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
+            onClick={(event) => event.stopPropagation()}
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#dbe3ef] bg-white p-4 shadow-2xl [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
           >
-            <div className="mb-3 flex items-center gap-2">
-              <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
-                <Settings2 className="h-4 w-4" aria-hidden="true" />
-              </span>
-              <div>
-                <h4 className="text-sm font-semibold text-[#101820]">
-                  {editingProfileId ? "Editar assunto" : "Novo assunto"}
-                </h4>
-                <p className="text-xs text-[#63708a]">
-                  caredesk_ticket_profiles
-                </p>
+            <div className="mb-3 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
+                  <Settings2 className="h-4 w-4" aria-hidden="true" />
+                </span>
+                <div>
+                  <h4 className="text-sm font-semibold text-[#101820]">
+                    {editingProfileId ? "Editar assunto" : "Novo assunto"}
+                  </h4>
+                  <p className="text-xs text-[#63708a]">
+                    caredesk_ticket_profiles
+                  </p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setProfileModalOpen(false)}
+                aria-label="Fechar"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-[#dbe3ef] text-[#63708a] transition-colors hover:border-[#A07C3B]/35 hover:text-[#101820]"
+              >
+                <X className="h-4 w-4" aria-hidden="true" />
+              </button>
             </div>
 
             <div className="space-y-3">
@@ -1028,6 +1066,8 @@ function SetupView({
               {savingProfile ? "Salvando..." : "Salvar assunto"}
             </button>
           </form>
+            </div>
+          ) : null}
         </div>
       </section>
     </div>
