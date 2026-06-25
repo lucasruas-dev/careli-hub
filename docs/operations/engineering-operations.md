@@ -40788,3 +40788,30 @@ Conclusao:
 - Iris (CACA + cockpit + Setup de templates/filas) no ar em v1.4.0, com a `main` sincronizada com producao.
 - Impacto: Setup mais enxuto e estruturado (forms em modal), alem do atendimento IA ja validado.
 - Proximo: itens de fechamento acima, em chat fresco.
+
+## 2026-06-25 - Zeus - Dashboard do Hades reformulado (v1.5.0) em producao [registro tardio / backfill]
+
+Assunto: [Hades] Reforma do Dashboard do Hades em producao (backfill do release no diario)
+
+- Status: `EM_PRODUCAO`. Registro tardio: o release subiu em 2026-06-25 e NAO foi lancado no diario na hora (lacuna sinalizada no handoff). Backfill feito pelo Zeus do chat seguinte a partir da memoria de projeto + estado do repo/git (commit/build-info conferidos); nenhum deploy novo neste registro.
+- `c2x.app.br` -> deployment `careli-hub-hub-i2bs-fyue6qzpt` (**v1.5.0**, build `2026-06-25-hades-dashboard-cockpit`, commit `a84547a`), HTTP 200. `ops.c2x.app.br` intocado (307). Rollback: `careli-hub-hub-i2bs-p5quqx6yg` (`dpl_BHkqe1CGnmcPCnc3DRswrJH6w6vA`, go-live da Iris de mais cedo).
+- Reconciliacao de alias: `141yk4w06` (commit `89472e2`) foi o PRIMEIRO alias do dashboard; republicado como **v1.5.0** ao adicionar o changelog + bump de build (`a84547a` em cima de `89472e2`). Sem divergencia real.
+- `main` mergeada em `9338fb4` = producao (depois entraram `8ae9eb2` docs/handoff e merge `873a524`).
+- Escopo (somente Hades / `guardian`; nenhum outro modulo tocado):
+  - **Fonte unica ao vivo:** todos os paineis saem do C2X ao vivo com os MESMOS filtros dos cards (`overdueWhere`); read-model virou fallback. Fim da divergencia 236!=548 e do "Portal dos Vales fantasma" do snapshot congelado de 17/mai. Aging-parcela e Composicao fecham 1.373.
+  - **Aging unico** com toggle (parcela <-> cliente); filtra por empreendimento ao clicar na Performance.
+  - **Removida a barra de Filtros** (mock); filtro de empreendimento = clique na Performance.
+  - **Primeira Maiuscula** em TODO o Hades (sem `uppercase`); nomes de cliente do C2X em Title Case.
+  - **Contratos criticos por empreendimento** (KPI deixou de mostrar "--").
+  - **Drill-down dos KPIs com dados reais** (`/api/guardian/kpi-drilldown`, ao vivo, 200 maiores): valor em atraso, clientes, contratos criticos, recuperacao, carteira. Colunas Contrato/Status removidas a pedido.
+  - **A1** (read-model + cron de sync 15min via `vercel.json` -> `/api/guardian/sync/c2x` GET + `READ_MODEL_MAX_AGE_MS` 30min + Asaas link-only) subiu junto.
+- Verdade do Hades = **C2X ao vivo: 1.373 parcelas vencidas / 236 clientes / R$ 1.090.682,80**.
+- Registro do release: changelog (Home Novidades + Zeus Deploy) + `build-info.ts` (`PANTEON_VERSION` v1.5.0 / `PANTEON_BUILD_TAG` 2026-06-25-hades-dashboard-cockpit).
+- Validacoes: `check-types:hub` PASS; preview `--skip-domain` validado pelo Lucas; go-live por alias; `c2x` 200 / `ops` 307.
+- Follow-ups (abertos): (1) confirmar que o **cron** de sync registrou em prod (`c2x_sync_runs`, origem cron apos ~15min) -> read-model fresco como fallback; (2) Lucas validar conteudo das 5 queries de drill-down ao vivo (MySQL legado, nao testavel fora de prod); (3) poda das tabelas snapshot `c2x_guardian_*`; (4) paydown de `@ts-nocheck` (cobranca + attendance).
+
+Conclusao:
+
+- O Dashboard do Hades reformulado esta no ar em `c2x.app.br` (v1.5.0) desde 2026-06-25, com fonte unica ao vivo (fim da divergencia de numeros), drill-down real e A1 do read-model; `ops` preservado e rollback gravado.
+- Impacto: numeros do Hades batem com o C2X de referencia (1.373/236); a operacao pode confiar no dashboard.
+- Proximo: a frente segue na tela de **Cobranca** (`/hades/cobranca`), em modo pontuar-e-guardar com o Lucas.
