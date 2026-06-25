@@ -1031,10 +1031,10 @@ function buildKpiDrilldownSql(kpi: HadesKpiDrilldownKey): string {
       select
         client.name as cliente,
         ${dominantEnterprise} as empreendimento,
-        '-' as unidade,
+        substring_index(group_concat(eu.name order by ${outstandingAmountExpression} desc separator '<#>'), '<#>', 1) as unidade,
         '-' as contrato,
         count(*) as parcelas,
-        null as vencimento,
+        min(p.due_date) as vencimento,
         coalesce(sum(${outstandingAmountExpression}), 0) as saldo,
         max(datediff(curdate(), p.due_date)) as atraso,
         'Em atraso' as status
@@ -1058,10 +1058,10 @@ function buildKpiDrilldownSql(kpi: HadesKpiDrilldownKey): string {
       select
         client.name as cliente,
         ${dominantEnterprise} as empreendimento,
-        '-' as unidade,
+        max(eu.name) as unidade,
         ar.code as contrato,
         count(*) as parcelas,
-        null as vencimento,
+        min(p.due_date) as vencimento,
         coalesce(sum(${outstandingAmountExpression}), 0) as saldo,
         max(datediff(curdate(), p.due_date)) as atraso,
         'Crítico' as status
