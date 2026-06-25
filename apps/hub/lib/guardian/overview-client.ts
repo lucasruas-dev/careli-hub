@@ -3,6 +3,8 @@
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
   HadesEnterpriseDistributions,
+  HadesKpiDrilldownKey,
+  HadesKpiDrilldownRow,
   HadesOverviewSnapshot,
 } from "@/lib/guardian/overview";
 import type { HadesOperationalIntelligence } from "@/lib/guardian/read-model";
@@ -14,6 +16,16 @@ export async function getHadesOverviewSnapshot(): Promise<HadesOverviewSnapshot>
 export async function getHadesOperationalIntelligence(): Promise<HadesOperationalIntelligence> {
   return fetchHadesOverviewData<HadesOperationalIntelligence>(
     "/api/guardian/operational-intelligence",
+  );
+}
+
+export async function getHadesKpiDrilldown(
+  kpi: HadesKpiDrilldownKey,
+): Promise<HadesKpiDrilldownRow[]> {
+  const params = new URLSearchParams({ kpi });
+
+  return fetchHadesOverviewData<HadesKpiDrilldownRow[]>(
+    `/api/guardian/kpi-drilldown?${params.toString()}`,
   );
 }
 

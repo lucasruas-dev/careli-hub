@@ -25,9 +25,11 @@ import type {
   HadesDistributionBucket,
   HadesEnterpriseDistributions,
   HadesEnterprisePerformance,
+  HadesKpiDrilldownRow,
   HadesTopDelinquentClient,
 } from "@/lib/guardian/overview";
 import {
+  getHadesKpiDrilldown,
   getHadesOperationalIntelligence,
   getHadesOverviewEnterpriseDistributions,
   getHadesOverviewSnapshot,
@@ -60,23 +62,6 @@ type RealHadesKpis = {
   totalPortfolioPayments: number;
 };
 
-type ContractRecord = {
-  cliente: string;
-  empreendimento: string;
-  unidadeLote: string;
-  perfil: string;
-  status: string;
-  vencimento: string;
-  carteira: number;
-  atraso: number;
-  atrasoDias: number;
-  score: number;
-  risco: string;
-  responsavel: string;
-  filaStatus: string;
-  recuperado: number;
-};
-
 type EnterprisePerformanceItem = {
   delinquencyBaseAmount: number;
   enterpriseName: string;
@@ -101,10 +86,6 @@ type EnterprisePerformanceSortKey =
   | "recoveryRate";
 
 const MOCK_DASH = "-";
-
-// Lista de contratos do dashboard: por ora vazia (sem fonte real ligada ainda;
-// o mock foi removido). Wire-up com dado real do C2X fica como melhoria de UI.
-const contracts: ContractRecord[] = [];
 
 
 function buildEnterpriseScopedKpis(
@@ -154,6 +135,53 @@ export default function HadesPage() {
     null,
   );
   const [opsIntelError, setOpsIntelError] = useState<string | null>(null);
+  const [kpiDrilldownRows, setKpiDrilldownRows] = useState<
+    HadesKpiDrilldownRow[]
+  >([]);
+  const [kpiDrilldownLoading, setKpiDrilldownLoading] = useState(false);
+  const [kpiDrilldownError, setKpiDrilldownError] = useState<string | null>(
+    null,
+  );
+
+  useEffect(() => {
+    if (!selectedKpi) {
+      return;
+    }
+
+    let cancelled = false;
+    const kpiToLoad = selectedKpi;
+    setKpiDrilldownLoading(true);
+    setKpiDrilldownError(null);
+    setKpiDrilldownRows([]);
+
+    async function loadDrilldown() {
+      try {
+        const rows = await getHadesKpiDrilldown(kpiToLoad);
+
+        if (!cancelled) {
+          setKpiDrilldownRows(rows);
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setKpiDrilldownError(
+            error instanceof Error
+              ? error.message
+              : "Falha ao carregar o detalhamento.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setKpiDrilldownLoading(false);
+        }
+      }
+    }
+
+    void loadDrilldown();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedKpi]);
 
   useEffect(() => {
     let cancelled = false;
@@ -430,7 +458,6 @@ export default function HadesPage() {
   ];
 
   const selectedKpiMeta = selectedKpi ? kpis.find((item) => item.id === selectedKpi) : null;
-  const drawerItems = selectedKpi ? buildKpiDrawerItems(selectedKpi, contracts) : [];
 
   function togglePanel(panel: DashboardPanelId) {
     setExpandedPanels((current) => ({ ...current, [panel]: !current[panel] }));
@@ -513,7 +540,9 @@ export default function HadesPage() {
 
       {selectedKpiMeta ? (
         <DashboardKpiDrawer
-          items={drawerItems}
+          rows={kpiDrilldownRows}
+          isLoading={kpiDrilldownLoading}
+          error={kpiDrilldownError}
           onClose={() => setSelectedKpi(null)}
           title={selectedKpiMeta.title}
         />
@@ -728,11 +757,15 @@ function InsightCard({
 }
 
 function DashboardKpiDrawer({
-  items,
+  rows,
+  isLoading,
+  error,
   onClose,
   title,
 }: {
-  items: ReturnType<typeof buildKpiDrawerItems>;
+  rows: HadesKpiDrilldownRow[];
+  isLoading: boolean;
+  error: string | null;
   onClose: () => void;
   title: string;
 }) {
@@ -747,7 +780,7 @@ function DashboardKpiDrawer({
         className={`absolute inset-0 bg-slate-950/20 backdrop-blur-[2px] transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
       />
       <aside
-        className={`absolute right-0 top-0 flex h-full w-full max-w-[860px] flex-col border-l border-slate-200/70 bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out ${
+        className={`absolute right-0 top-0 flex h-full w-full max-w-[920px] flex-col border-l border-slate-200/70 bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -756,7 +789,13 @@ function DashboardKpiDrawer({
             <div>
               <p className="text-xs font-medium tracking-normal text-[#A07C3B]">Detalhamento do indicador</p>
               <h2 className="mt-2 text-lg font-semibold text-slate-950">{title}</h2>
-              <p className="mt-1 text-sm text-slate-500">Detalhamento operacional em preparacao para a base real do C2X.</p>
+              <p className="mt-1 text-sm text-slate-500">
+                {isLoading
+                  ? "Carregando base real do C2X..."
+                  : error
+                    ? error
+                    : `${formatCount(rows.length)} ${rows.length === 1 ? "registro" : "registros"}${rows.length === 200 ? "+ (mostrando os 200 maiores)" : ""}`}
+              </p>
             </div>
             <button
               type="button"
@@ -770,52 +809,64 @@ function DashboardKpiDrawer({
         </header>
 
         <div className="flex-1 overflow-y-auto p-5">
-          <div className="overflow-x-auto rounded-xl border border-slate-200/70">
-            <table className="w-full min-w-[980px] text-left text-sm">
-              <thead className="bg-slate-50/80 text-xs tracking-normal text-slate-500">
-                <tr>
-                  <th className="px-4 py-3 font-medium">Cliente</th>
-                  <th className="px-4 py-3 font-medium">Empreendimento</th>
-                  <th className="px-4 py-3 font-medium">Unidade/lote</th>
-                  <th className="px-4 py-3 font-medium">Contrato</th>
-                  <th className="px-4 py-3 font-medium">Perfil</th>
-                  <th className="px-4 py-3 font-medium">Referência</th>
-                  <th className="px-4 py-3 font-medium">Vencimento</th>
-                  <th className="px-4 py-3 font-medium">Saldo</th>
-                  <th className="px-4 py-3 font-medium">Atraso</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Responsável</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 bg-white">
-                {items.map((item) => (
-                  <tr key={`${title}-${item.contrato}`} className="hover:bg-slate-50/60">
-                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-950">{item.cliente}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.empreendimento}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.unidadeLote}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.contrato}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.perfil}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.referencia}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.vencimento}</td>
-                    <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-950">{item.saldo}</td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.atraso}</td>
-                    <td className="whitespace-nowrap px-4 py-3">
-                      <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
-                        {item.status}
-                      </span>
-                    </td>
-                    <td className="whitespace-nowrap px-4 py-3 text-slate-600">{item.responsavel}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          {items.length === 0 ? (
-            <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 text-sm text-slate-500">
-              Nenhum registro encontrado para os filtros atuais.
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <PanteonLoadingMark size="sm" />
             </div>
-          ) : null}
+          ) : error ? (
+            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+              {error}
+            </div>
+          ) : rows.length === 0 ? (
+            <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 text-sm text-slate-500">
+              Nenhum registro encontrado.
+            </div>
+          ) : (
+            <div className="overflow-x-auto rounded-xl border border-slate-200/70">
+              <table className="w-full min-w-[920px] text-left text-sm">
+                <thead className="sticky top-0 z-10 bg-slate-50 text-xs tracking-normal text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-medium">Cliente</th>
+                    <th className="px-4 py-3 font-medium">Empreendimento</th>
+                    <th className="px-4 py-3 font-medium">Unidade</th>
+                    <th className="px-4 py-3 font-medium">Contrato</th>
+                    <th className="px-4 py-3 text-right font-medium">Parcelas</th>
+                    <th className="px-4 py-3 font-medium">Vencimento</th>
+                    <th className="px-4 py-3 text-right font-medium">Saldo</th>
+                    <th className="px-4 py-3 text-right font-medium">Atraso</th>
+                    <th className="px-4 py-3 font-medium">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 bg-white">
+                  {rows.map((row, index) => (
+                    <tr key={`${title}-${index}`} className="hover:bg-slate-50/60">
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-950">{row.cliente}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.empreendimento}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.unidade}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.contrato}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
+                        {row.parcelas === null ? "—" : formatCount(row.parcelas)}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                        {row.vencimento ? formatDate(row.vencimento) : "—"}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-950">
+                        <MoneyValue value={row.saldo} />
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
+                        {row.atraso === null ? "—" : `${formatCount(row.atraso)}d`}
+                      </td>
+                      <td className="whitespace-nowrap px-4 py-3">
+                        <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                          {row.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
         </div>
       </aside>
     </div>
@@ -1239,36 +1290,6 @@ function Bar({
       </div>
     </div>
   );
-}
-
-function buildKpiDrawerItems(kpi: DashboardKpiId, records: ContractRecord[]) {
-  const filteredRecords = {
-    criticalContracts: records.filter((item) => item.risco === "Crítica"),
-    delinquency: records.filter((item) => item.atraso > 0),
-    monthlyRecovery: records.filter((item) => item.recuperado > 0),
-    overdueAmount: records.filter((item) => item.atraso > 0),
-    overdueClients: records.filter((item) => item.status === "Vencidas"),
-    totalPortfolio: records,
-  }[kpi];
-
-  return filteredRecords.map((item, index) => ({
-    atraso: item.atraso > 0 ? `${item.atrasoDias} dias` : "0 dias",
-    cliente: item.cliente,
-    contrato: `CTR-${String(1200 + index * 137).padStart(4, "0")}`,
-    empreendimento: item.empreendimento,
-    perfil: item.perfil,
-    referencia: getReference(item.vencimento),
-    responsavel: item.responsavel,
-    saldo: money(item.atraso > 0 ? item.atraso : item.carteira),
-    status: item.filaStatus,
-    unidadeLote: item.unidadeLote,
-    vencimento: formatDate(item.vencimento),
-  }));
-}
-
-function getReference(date: string) {
-  const parsed = new Date(date);
-  return parsed.toLocaleDateString("pt-BR", { month: "2-digit", year: "numeric" });
 }
 
 function formatDate(date: string) {

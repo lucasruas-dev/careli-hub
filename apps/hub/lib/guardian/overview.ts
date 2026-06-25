@@ -141,6 +141,26 @@ export type HadesOperationalIntelligence = {
   totalOverdueClients: number;
 };
 
+export type HadesKpiDrilldownKey =
+  | "totalPortfolio"
+  | "delinquency"
+  | "overdueAmount"
+  | "monthlyRecovery"
+  | "overdueClients"
+  | "criticalContracts";
+
+export type HadesKpiDrilldownRow = {
+  atraso: number | null;
+  cliente: string;
+  contrato: string;
+  empreendimento: string;
+  parcelas: number | null;
+  saldo: number;
+  status: string;
+  unidade: string;
+  vencimento: string | null;
+};
+
 type SummaryRow = RowDataPacket & {
   available_units: number | string;
   critical_contracts: number | string;
@@ -338,6 +358,18 @@ type EnterpriseTopClientRow = RowDataPacket & {
   overdue_amount: number | string | null;
   overdue_days: number | string | null;
   overdue_payments: number | string;
+};
+
+type KpiDrilldownRow = RowDataPacket & {
+  atraso: number | string | null;
+  cliente: string | null;
+  contrato: string | null;
+  empreendimento: string | null;
+  parcelas: number | string | null;
+  saldo: number | string | null;
+  status: string | null;
+  unidade: string | null;
+  vencimento: Date | string | null;
 };
 
 export async function loadHadesEnterpriseDistributions(
@@ -958,6 +990,176 @@ export async function loadHadesOperationalIntelligence(): Promise<HadesOperation
       (subtotal, bucket) => subtotal + bucket.clients,
       0,
     ),
+  };
+}
+
+// Detalhamento (drill-down) ao vivo por indicador do dashboard. Cada card abre a
+// lista real do C2X correspondente (mesmos predicados dos cards), limitada a 200
+// linhas e ordenada pelo mais relevante. Fonte ao vivo (mesma do overview).
+export async function loadHadesKpiDrilldown(
+  kpi: HadesKpiDrilldownKey,
+): Promise<HadesKpiDrilldownRow[] | null> {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return null;
+  }
+
+  const { pool } = poolResult;
+  const [rows] = await pool.query<KpiDrilldownRow[]>(buildKpiDrilldownSql(kpi));
+
+  return rows.map(mapKpiDrilldownRow);
+}
+
+function buildKpiDrilldownSql(kpi: HadesKpiDrilldownKey): string {
+  const baseJoins = `
+    left join acquisition_requests ar on ar.id = p.acquisition_request_id
+    left join users client on client.id = ar.client_id
+    left join payment_statuses ps on ps.id = p.payment_status_id
+    left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+    left join enterprises e on e.id = eu.enterprise_id
+  `;
+  const dominantEnterprise = `
+    substring_index(
+      group_concat(${enterpriseDisplayExpression} order by ${outstandingAmountExpression} desc separator '<#>'),
+      '<#>', 1
+    )
+  `;
+
+  if (kpi === "overdueClients") {
+    return `
+      select
+        client.name as cliente,
+        ${dominantEnterprise} as empreendimento,
+        '-' as unidade,
+        '-' as contrato,
+        count(*) as parcelas,
+        null as vencimento,
+        coalesce(sum(${outstandingAmountExpression}), 0) as saldo,
+        max(datediff(curdate(), p.due_date)) as atraso,
+        'Em atraso' as status
+      from payments p
+      join acquisition_requests ar on ar.id = p.acquisition_request_id
+      left join users client on client.id = ar.client_id
+      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      left join enterprises e on e.id = eu.enterprise_id
+      where p.payment_status_id = 7
+        and ${activePaymentWhere}
+        and ${validEnterpriseWhere}
+        and ar.client_id is not null
+      group by ar.client_id, client.name
+      order by saldo desc
+      limit 200
+    `;
+  }
+
+  if (kpi === "criticalContracts") {
+    return `
+      select
+        client.name as cliente,
+        ${dominantEnterprise} as empreendimento,
+        '-' as unidade,
+        ar.code as contrato,
+        count(*) as parcelas,
+        null as vencimento,
+        coalesce(sum(${outstandingAmountExpression}), 0) as saldo,
+        max(datediff(curdate(), p.due_date)) as atraso,
+        'Crítico' as status
+      from payments p
+      join acquisition_requests ar on ar.id = p.acquisition_request_id
+      left join users client on client.id = ar.client_id
+      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      left join enterprises e on e.id = eu.enterprise_id
+      where p.payment_status_id = 7
+        and ${activePaymentWhere}
+        and ${validEnterpriseWhere}
+      group by ar.id, ar.code, client.name
+      having count(*) > 3
+      order by parcelas desc, saldo desc
+      limit 200
+    `;
+  }
+
+  if (kpi === "monthlyRecovery") {
+    return `
+      select
+        client.name as cliente,
+        ${enterpriseDisplayExpression} as empreendimento,
+        eu.name as unidade,
+        ar.code as contrato,
+        null as parcelas,
+        p.due_date as vencimento,
+        coalesce(p.paid_value, 0) as saldo,
+        datediff(p.payment_date, p.due_date) as atraso,
+        'Recuperada' as status
+      from payments p
+      ${baseJoins}
+      where ${monthlyRecoveryWhere}
+      order by p.payment_date desc
+      limit 200
+    `;
+  }
+
+  if (kpi === "totalPortfolio") {
+    return `
+      select
+        client.name as cliente,
+        ${enterpriseDisplayExpression} as empreendimento,
+        eu.name as unidade,
+        ar.code as contrato,
+        null as parcelas,
+        p.due_date as vencimento,
+        coalesce(p.initial_value, 0) as saldo,
+        case when p.payment_status_id = 7 then datediff(curdate(), p.due_date) else null end as atraso,
+        ps.name as status
+      from payments p
+      ${baseJoins}
+      where p.payment_status_id in (5, 6, 7)
+        and ${activePaymentWhere}
+      order by saldo desc
+      limit 200
+    `;
+  }
+
+  // overdueAmount + delinquency: parcelas vencidas (mesmo predicado dos cards).
+  return `
+    select
+      client.name as cliente,
+      ${enterpriseDisplayExpression} as empreendimento,
+      eu.name as unidade,
+      ar.code as contrato,
+      null as parcelas,
+      p.due_date as vencimento,
+      ${outstandingAmountExpression} as saldo,
+      datediff(curdate(), p.due_date) as atraso,
+      ps.name as status
+    from payments p
+    ${baseJoins}
+    where ${overdueWhere}
+    order by saldo desc
+    limit 200
+  `;
+}
+
+function mapKpiDrilldownRow(row: KpiDrilldownRow): HadesKpiDrilldownRow {
+  return {
+    atraso:
+      row.atraso === null || row.atraso === undefined
+        ? null
+        : toNumber(row.atraso),
+    cliente: row.cliente?.trim() ? formatPersonName(row.cliente) : "Sem nome",
+    contrato: row.contrato?.trim() || "-",
+    empreendimento: row.empreendimento
+      ? formatEnterpriseName(row.empreendimento)
+      : "-",
+    parcelas:
+      row.parcelas === null || row.parcelas === undefined
+        ? null
+        : toNumber(row.parcelas),
+    saldo: toNumber(row.saldo),
+    status: row.status?.trim() || "-",
+    unidade: row.unidade?.trim() || "-",
+    vencimento: toIsoString(row.vencimento) ?? null,
   };
 }
 
