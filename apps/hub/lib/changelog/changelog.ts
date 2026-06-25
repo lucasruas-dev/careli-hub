@@ -32,6 +32,40 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-25-iris-caca-templates-ui",
+    deployedAt: "2026-06-25T03:00:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              'A Iris agora tem a assistente de IA "CACA" atendendo no WhatsApp: ela identifica o cliente, confirma o cadastro com seguranca e ja envia o boleto.',
+              "Quando precisa, ela transfere pra um atendente humano com o resumo do caso.",
+            ],
+            screen: "Atendimento",
+          },
+          {
+            items: [
+              "Tela de Templates mais limpa: a contagem (aprovados, pendentes, rejeitados) foi pros filtros.",
+              'Filas e Assuntos agora cadastram em janela (pop-up): clique na fila pra filtrar os assuntos, no lapis pra editar e no "+" pra criar.',
+            ],
+            screen: "Setup",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-chs97qv89",
+    technical: {
+      done: "Port da Iris avancada decomposta + CACA (runtime V10 via Responses API, auth deterministica por fragmento de CPF, cache de billing por instancia TTL 120s) sobre a main; token Meta permanente (System User); hotfix Send/X na tela de templates; reforma de UI do Setup (templates enxuta + Filas&Assuntos com forms em modal). Prod dpl_GGAQgo52hENW38pbdbJcimxaTruv; merge feat/iris-caca-port->main (e509124).",
+      motivation:
+        "Levar o atendimento com IA da Iris (CACA, antes so em homolog) para producao, com Setup mais enxuto e estruturado conforme pedido do Lucas.",
+    },
+    title: "Iris: atendimento com IA (CACA) + Setup remodelado",
+    type: "novidade",
+    version: "v1.4.0",
+  },
+  {
     buildTag: "2026-06-24-novidades-workflow",
     deployedAt: "2026-06-24T17:30:00-03:00",
     modules: [
