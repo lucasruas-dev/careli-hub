@@ -31,7 +31,6 @@ import {
   getHadesOverviewEnterpriseDistributions,
   getHadesOverviewSnapshot,
 } from "@/lib/guardian/overview-client";
-import { hadesMockClients } from "@/modules/guardian/hadesMockData";
 
 type DashboardKpiId =
   | "totalPortfolio"
@@ -101,22 +100,9 @@ type EnterprisePerformanceSortKey =
 
 const MOCK_DASH = "-";
 
-const contracts: ContractRecord[] = hadesMockClients.map((client) => ({
-  cliente: client.nome,
-  empreendimento: client.empreendimento,
-  unidadeLote: client.unidadeLote,
-  perfil: client.perfilParcela,
-  status: client.parcelasVencidas > 0 ? "Vencidas" : client.parcelasAVencer > 0 ? "A vencer" : "Liquidadas",
-  vencimento: client.vencimento,
-  carteira: client.valorUnidade + (client.segundaUnidade?.valorUnidade ?? 0),
-  atraso: client.saldoAtraso,
-  atrasoDias: client.atrasoDias,
-  score: client.scoreRisco,
-  risco: client.prioridade,
-  responsavel: client.responsavel,
-  filaStatus: client.status,
-  recuperado: client.recuperado,
-}));
+// Lista de contratos do dashboard: por ora vazia (sem fonte real ligada ainda;
+// o mock foi removido). Wire-up com dado real do C2X fica como melhoria de UI.
+const contracts: ContractRecord[] = [];
 
 const profileOptions = ["Todos", "Ato", "Sinal", "Parcela"];
 const statusOptions = ["Todos", "Vencidas", "A vencer", "Liquidadas"];

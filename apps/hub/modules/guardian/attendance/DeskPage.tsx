@@ -30,7 +30,6 @@ import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { TicketOperationsQueue } from "@/modules/guardian/attendance/components/TicketOperationsQueue";
 import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/components/WhatsAppConversationPanel";
-import { queueClients } from "@/modules/guardian/attendance/data";
 import type { OperationalTimelineEvent, QueueClient } from "@/modules/guardian/attendance/types";
 
 type DeskPageProps = {
@@ -45,7 +44,7 @@ const emptyQueueClients: QueueClient[] = [];
 
 export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFromC2x = false }: DeskPageProps) {
   const initialClients = useMemo(
-    () => (clients.length > 0 ? clients : loadFromC2x ? emptyQueueClients : queueClients),
+    () => (clients.length > 0 ? clients : emptyQueueClients),
     [clients, loadFromC2x]
   );
   const [sourceClients, setSourceClients] = useState(initialClients);
@@ -57,7 +56,7 @@ export function DeskPage({ clients = emptyQueueClients, embedded = false, loadFr
 
   useEffect(() => {
     if (loadFromC2x) return;
-    const nextClients = clients.length > 0 ? clients : queueClients;
+    const nextClients = clients.length > 0 ? clients : emptyQueueClients;
     setSourceClients(nextClients);
     setSelectedId((current) => (nextClients.some((client) => client.id === current) ? current : nextClients[0]?.id ?? ""));
   }, [clients, loadFromC2x]);

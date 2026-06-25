@@ -19,7 +19,6 @@ import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/compone
 import { IrisPage } from "@/modules/caredesk/IrisPage";
 import { useAuth } from "@/providers/auth-provider";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
-import { queueClients } from "@/modules/guardian/attendance/data";
 import type {
   AttendancePriority,
   OperationalTimelineEvent,
@@ -76,7 +75,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     searchParams.get("clientId") ??
     searchParams.get("client") ??
     searchParams.get("hadesClientId");
-  const initialClients = clients ?? queueClients;
+  const initialClients = clients ?? [];
   const [sourceClients, setSourceClients] = useState(initialClients);
   const [queueTotalCount, setQueueTotalCount] = useState(initialClients.length);
   const [queueLoading, setQueueLoading] = useState(loadFromC2x && initialClients.length === 0);
