@@ -207,7 +207,7 @@ export function TicketOperationsQueue({
       <header className="border-b border-slate-100 px-4 py-3">
         <div className="flex flex-col gap-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">Fila operacional de tickets</p>
+            <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Fila operacional de tickets</p>
             <h2 className="mt-1 text-base font-semibold text-slate-950">Inbox operacional</h2>
             <p className="hidden">
               Gestão consolidada de tickets, WhatsApp, promessas, acordos, SLA e follow-ups auditáveis.
@@ -268,7 +268,7 @@ export function TicketOperationsQueue({
           </div>
 
           <div className="overflow-hidden rounded-xl border border-slate-200/70">
-            <div className="hidden grid-cols-[1.05fr_0.85fr_0.75fr_0.8fr_0.8fr_0.9fr_0.75fr_0.85fr] gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-2 text-xs font-semibold uppercase tracking-normal text-slate-400 xl:grid">
+            <div className="hidden grid-cols-[1.05fr_0.85fr_0.75fr_0.8fr_0.8fr_0.9fr_0.75fr_0.85fr] gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-2 text-xs font-semibold tracking-normal text-slate-400 xl:grid">
               <span>Ticket</span>
               <span>Perfil</span>
               <span>Operador</span>
@@ -429,7 +429,7 @@ function KpiCard({
         </span>
         <span className="min-w-0">
           <span className="block truncate text-base font-semibold leading-5 text-slate-950">{value}</span>
-          <span className="block truncate text-[11px] font-semibold uppercase tracking-normal text-slate-400">{shortLabel}</span>
+          <span className="block truncate text-[11px] font-semibold tracking-normal text-slate-400">{shortLabel}</span>
         </span>
       </span>
     </Tooltip>
@@ -478,7 +478,7 @@ function FilterSummaryBar({
 function InsightCard({ description, title, value }: { description: string; title: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-200/70 bg-white p-4">
-      <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{title}</p>
+      <p className="text-xs font-semibold tracking-normal text-slate-400">{title}</p>
       <p className="mt-1 text-base font-semibold text-slate-950">{value}</p>
       <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
     </div>

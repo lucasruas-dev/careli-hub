@@ -50,6 +50,7 @@ export type HadesEnterpriseDistributions = {
   generatedAt: string;
   overdueAging: HadesDistributionBucket[];
   overdueAgingByClient: HadesDistributionBucket[];
+  topClients: HadesTopDelinquentClient[];
 };
 
 export type HadesEnterprisePerformance = {
@@ -325,6 +326,14 @@ type OperationalTopClientRow = RowDataPacket & {
   overdue_payments: number | string;
 };
 
+type EnterpriseTopClientRow = RowDataPacket & {
+  client_name: string | null;
+  enterprise_name: string;
+  overdue_amount: number | string | null;
+  overdue_days: number | string | null;
+  overdue_payments: number | string;
+};
+
 export async function loadHadesEnterpriseDistributions(
   enterpriseName: string,
 ): Promise<
@@ -342,6 +351,7 @@ export async function loadHadesEnterpriseDistributions(
     overdueAgingResult,
     billingCompositionResult,
     overdueAgingByClientResult,
+    overdueTopClientResult,
   ] = await Promise.all([
     pool.query<EnterpriseDistributionRow[]>(`
       select bucket.enterprise_name, bucket.label, count(*) as total, bucket.sort_order
@@ -425,6 +435,25 @@ export async function loadHadesEnterpriseDistributions(
       group by bucket.enterprise_name, bucket.label, bucket.sort_order
       order by bucket.enterprise_name asc, bucket.sort_order asc
     `),
+    pool.query<EnterpriseTopClientRow[]>(`
+      select
+        ${enterpriseDisplayExpression} as enterprise_name,
+        client.name as client_name,
+        count(*) as overdue_payments,
+        coalesce(sum(${outstandingAmountExpression}), 0) as overdue_amount,
+        max(datediff(curdate(), p.due_date)) as overdue_days
+      from payments p
+      join acquisition_requests ar on ar.id = p.acquisition_request_id
+      left join users client on client.id = ar.client_id
+      left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      left join enterprises e on e.id = eu.enterprise_id
+      where p.payment_status_id = 7
+        and ${activePaymentWhere}
+        and ${validEnterpriseWhere}
+        and ar.client_id is not null
+      group by enterprise_name, ar.client_id, client.name
+      order by overdue_amount desc
+    `),
   ]);
   const filteredAgingRows = filterEnterpriseDistributionRows(
     overdueAgingResult[0],
@@ -438,6 +467,21 @@ export async function loadHadesEnterpriseDistributions(
     overdueAgingByClientResult[0],
     enterpriseName,
   );
+  const targetEnterprise = formatEnterpriseName(enterpriseName);
+  const topClients = overdueTopClientResult[0]
+    .filter(
+      (row) => formatEnterpriseName(row.enterprise_name) === targetEnterprise,
+    )
+    .slice(0, 15)
+    .map((row) => ({
+      enterprise: row.enterprise_name
+        ? formatEnterpriseName(row.enterprise_name)
+        : null,
+      name: row.client_name?.trim() || "Sem nome",
+      overdueAmount: toNumber(row.overdue_amount),
+      overdueDays: toNumber(row.overdue_days),
+      overduePayments: toNumber(row.overdue_payments),
+    }));
 
   return {
     data: {
@@ -452,6 +496,7 @@ export async function loadHadesEnterpriseDistributions(
         filteredAgingByClientRows,
         overdueAgingLabels,
       ),
+      topClients,
     },
     ok: true,
   };

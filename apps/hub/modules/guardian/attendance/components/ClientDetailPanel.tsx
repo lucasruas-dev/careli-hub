@@ -1923,7 +1923,7 @@ function MetricTile({
 function InfoPanel({ title, value }: { title: string; value: string }) {
   return (
     <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-      <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+      <p className="text-xs font-semibold tracking-normal text-slate-400">
         {title}
       </p>
       <Tooltip content={value} placement="bottom">

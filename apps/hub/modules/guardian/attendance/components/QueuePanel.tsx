@@ -244,7 +244,7 @@ export function QueuePanel({
           <div className={`grid transition-all duration-300 ease-out ${filtersOpen ? "mt-3 grid-rows-[1fr] opacity-100" : "mt-0 grid-rows-[0fr] opacity-0"}`}>
             <div className="min-h-0 overflow-hidden">
               <label className="mb-3 block">
-                <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                <span className="text-xs font-semibold tracking-normal text-slate-400">
                   Empreendimento
                 </span>
                 <select
@@ -281,7 +281,7 @@ export function QueuePanel({
 
               <div className="mt-3">
                 <div className="mb-2 flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                  <p className="text-xs font-semibold tracking-normal text-slate-400">
                     Workflow operacional
                   </p>
                   <span className="text-xs font-medium text-slate-500">{clients.length} na etapa</span>

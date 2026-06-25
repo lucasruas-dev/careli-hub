@@ -225,7 +225,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
       <div className={`pb-5 pt-4 ${collapsed ? "px-3" : "px-6"}`}>
         <p
-          className={`truncate text-xs font-medium uppercase tracking-[0.16em] text-[#8E8EA0] transition-opacity duration-200 ${
+          className={`truncate text-xs font-medium tracking-[0.16em] text-[#8E8EA0] transition-opacity duration-200 ${
             collapsed ? "opacity-0" : "opacity-100"
           }`}
         >

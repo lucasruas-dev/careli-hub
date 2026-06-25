@@ -456,7 +456,7 @@ function MonitoringKpi({
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{label}</p>
+            <p className="text-xs font-semibold tracking-normal text-slate-400">{label}</p>
             <p className="mt-2 text-xl font-semibold tracking-normal text-slate-950">{value}</p>
             <p className="mt-1 line-clamp-1 text-xs text-slate-500">{helper}</p>
           </div>
@@ -589,7 +589,7 @@ function DeskOperatorsRealtimeBlock() {
     <DetailSection title="Lista operacional realtime" icon={Radio} accent className="h-full">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1040px] text-left text-sm">
-          <thead className="text-xs uppercase tracking-normal text-slate-500">
+          <thead className="text-xs tracking-normal text-slate-500">
             <tr className="border-b border-slate-100">
               <th className="pb-3 font-medium">Operador</th>
               <th className="pb-3 font-medium">Tickets</th>
@@ -648,7 +648,7 @@ function DeskHeatmapBlock() {
                   : "border-slate-200/70 bg-slate-50/60"
             }`}
           >
-            <p className="truncate text-[11px] font-semibold uppercase tracking-normal text-slate-400">{operator}</p>
+            <p className="truncate text-[11px] font-semibold tracking-normal text-slate-400">{operator}</p>
             <p className="mt-1 truncate text-xs font-medium text-slate-500">{metric}</p>
             <p className={`mt-2 text-lg font-semibold ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}>
               {value > 0 ? `${value}%` : EMPTY_FIELD}
@@ -686,7 +686,7 @@ function TodayAppointmentsBlock() {
     <DetailSection title="Atendimentos de hoje" icon={CalendarDays} accent className="h-full">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px] text-left text-sm">
-          <thead className="text-xs uppercase tracking-normal text-slate-500">
+          <thead className="text-xs tracking-normal text-slate-500">
             <tr className="border-b border-slate-100">
               <th className="pb-3 font-medium">Horário</th>
               <th className="pb-3 font-medium">Cliente</th>
@@ -786,7 +786,7 @@ function OperatorPlanBlock() {
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </div>
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Próxima melhor ação</p>
+                  <p className="text-xs font-medium tracking-[0.14em] text-slate-500">Próxima melhor ação</p>
                   <p className="mt-2 text-sm leading-6 text-slate-700">{plan.nextBestAction}</p>
                 </div>
               </div>
@@ -803,7 +803,7 @@ function OperatorsBlock() {
     <DetailSection title="Operadores" icon={Radio}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[820px] text-left text-sm">
-          <thead className="text-xs uppercase tracking-normal text-slate-500">
+          <thead className="text-xs tracking-normal text-slate-500">
             <tr className="border-b border-slate-100">
               <th className="pb-3 font-medium">Operador</th>
               <th className="pb-3 font-medium">Status</th>
@@ -918,7 +918,7 @@ function KpiDrawer({ data, onClose }: { data: DrawerDataset | null; onClose: () 
             <div className="border-b border-slate-100 px-5 py-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <p className="text-xs font-medium uppercase tracking-[0.14em] text-[#A07C3B]">Detalhamento</p>
+                  <p className="text-xs font-medium tracking-[0.14em] text-[#A07C3B]">Detalhamento</p>
                   <h2 className="mt-2 text-lg font-semibold text-slate-950">{data.title}</h2>
                   <p className="mt-1 text-sm leading-6 text-slate-500">{data.description}</p>
                 </div>

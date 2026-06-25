@@ -43,7 +43,7 @@ export function KpiCard({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">{title}</p>
+          <p className="text-xs font-semibold tracking-normal text-slate-400">{title}</p>
           <Tooltip content={valueTitle ?? value} placement="top">
             <span className="mt-2 block text-xl font-semibold tracking-normal text-slate-950">
               {value}
