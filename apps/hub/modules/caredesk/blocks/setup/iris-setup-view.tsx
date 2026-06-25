@@ -430,9 +430,6 @@ function SetupView({
               <h3 className="mt-1 text-base font-semibold text-[#101820]">
                 Templates Meta WhatsApp
               </h3>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-[#63708a]">
-                Criacao, status Meta e variaveis CRM 360 para contato ativo.
-              </p>
             </div>
             <IrisSetupTabs active={setupTab} onChange={setSetupTab} />
           </div>
@@ -2554,25 +2551,26 @@ function IrisTemplateSetupPanel({
                   Meta {`{{1}}`}, {`{{2}}`}
                 </span>
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
                 {IRIS_META_TEMPLATE_VARIABLES.map((variable) => (
                   <button
                     key={variable.key}
                     type="button"
                     onClick={() => addTemplateVariable(variable)}
-                    className="min-w-0 rounded-lg border border-[#dbe3ef] bg-white p-2 text-left transition-colors hover:border-[#A07C3B]/35 hover:bg-[#fbf6ec]"
+                    title={`${variable.label} · ${variable.readiness}`}
+                    className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[#dbe3ef] bg-white px-2.5 py-1.5 text-left transition-colors hover:border-[#A07C3B]/35 hover:bg-[#fbf6ec]"
                   >
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-semibold text-[#101820]">
-                        {variable.label}
+                    <span className="min-w-0 truncate text-xs font-semibold text-[#101820]">
+                      {variable.label}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      <span className="font-mono text-[11px] text-[#A07C3B]">
+                        {variable.placeholder}
                       </span>
-                      <span className="shrink-0 rounded-full bg-[#f4f6fa] px-1.5 py-0.5 text-[10px] font-semibold text-[#63708a]">
+                      <span className="rounded-full bg-[#f4f6fa] px-1.5 py-0.5 text-[10px] font-semibold text-[#63708a]">
                         {variable.readiness}
                       </span>
-                    </div>
-                    <p className="mt-1 font-mono text-[11px] text-[#A07C3B]">
-                      {variable.placeholder}
-                    </p>
+                    </span>
                   </button>
                 ))}
               </div>
