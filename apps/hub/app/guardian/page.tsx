@@ -209,7 +209,7 @@ export default function HadesPage() {
     void refreshRealKpis();
     const intervalId = window.setInterval(() => {
       void refreshRealKpis();
-    }, 30000);
+    }, 60000);
 
     return () => {
       isMounted = false;
