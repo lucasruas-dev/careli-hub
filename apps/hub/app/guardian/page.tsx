@@ -353,11 +353,11 @@ export default function HadesPage() {
   const billingCompositionRows = selectedEnterprisePerformance
     ? selectedEnterpriseDistributions?.billingComposition ?? []
     : realKpis?.billingComposition ?? [];
-  const agingByClientRows: HadesDistributionBucket[] = [
-    ...(opsIntel?.agingByClient ?? []),
-  ]
-    .sort((first, second) => first.sortOrder - second.sortOrder)
-    .map((bucket) => ({ label: bucket.label, total: bucket.clients }));
+  const agingByClientRows: HadesDistributionBucket[] = selectedEnterprisePerformance
+    ? selectedEnterpriseDistributions?.overdueAgingByClient ?? []
+    : [...(opsIntel?.agingByClient ?? [])]
+        .sort((first, second) => first.sortOrder - second.sortOrder)
+        .map((bucket) => ({ label: bucket.label, total: bucket.clients }));
   const showFinancialLoadingOverlay =
     isRealKpisLoading && financialEnterpriseRows.length === 0;
   const financialEnterpriseOptions = useMemo(

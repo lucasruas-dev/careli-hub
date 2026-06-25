@@ -49,6 +49,7 @@ export type HadesEnterpriseDistributions = {
   enterpriseName: string;
   generatedAt: string;
   overdueAging: HadesDistributionBucket[];
+  overdueAgingByClient: HadesDistributionBucket[];
 };
 
 export type HadesEnterprisePerformance = {
@@ -337,7 +338,11 @@ export async function loadHadesEnterpriseDistributions(
   }
 
   const { pool } = poolResult;
-  const [overdueAgingResult, billingCompositionResult] = await Promise.all([
+  const [
+    overdueAgingResult,
+    billingCompositionResult,
+    overdueAgingByClientResult,
+  ] = await Promise.all([
     pool.query<EnterpriseDistributionRow[]>(`
       select bucket.enterprise_name, bucket.label, count(*) as total, bucket.sort_order
       from (
@@ -387,6 +392,39 @@ export async function loadHadesEnterpriseDistributions(
       group by enterprise_name, pt.id, pt.name
       order by enterprise_name asc, pt.id asc
     `),
+    pool.query<EnterpriseDistributionRow[]>(`
+      select bucket.enterprise_name, bucket.label, count(*) as total, bucket.sort_order
+      from (
+        select
+          ${enterpriseDisplayExpression} as enterprise_name,
+          ar.client_id,
+          case
+            when datediff(curdate(), min(p.due_date)) between 1 and 15 then '1 a 15 dias'
+            when datediff(curdate(), min(p.due_date)) between 16 and 30 then '16 a 30 dias'
+            when datediff(curdate(), min(p.due_date)) between 31 and 60 then '31 a 60 dias'
+            when datediff(curdate(), min(p.due_date)) between 61 and 90 then '61 a 90 dias'
+            else '90+ dias'
+          end as label,
+          case
+            when datediff(curdate(), min(p.due_date)) between 1 and 15 then 1
+            when datediff(curdate(), min(p.due_date)) between 16 and 30 then 2
+            when datediff(curdate(), min(p.due_date)) between 31 and 60 then 3
+            when datediff(curdate(), min(p.due_date)) between 61 and 90 then 4
+            else 5
+          end as sort_order
+        from payments p
+        join acquisition_requests ar on ar.id = p.acquisition_request_id
+        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+        left join enterprises e on e.id = eu.enterprise_id
+        where p.payment_status_id = 7
+          and ${activePaymentWhere}
+          and ${validEnterpriseWhere}
+          and ar.client_id is not null
+        group by enterprise_name, ar.client_id
+      ) bucket
+      group by bucket.enterprise_name, bucket.label, bucket.sort_order
+      order by bucket.enterprise_name asc, bucket.sort_order asc
+    `),
   ]);
   const filteredAgingRows = filterEnterpriseDistributionRows(
     overdueAgingResult[0],
@@ -394,6 +432,10 @@ export async function loadHadesEnterpriseDistributions(
   );
   const filteredCompositionRows = filterEnterpriseDistributionRows(
     billingCompositionResult[0],
+    enterpriseName,
+  );
+  const filteredAgingByClientRows = filterEnterpriseDistributionRows(
+    overdueAgingByClientResult[0],
     enterpriseName,
   );
 
@@ -406,6 +448,10 @@ export async function loadHadesEnterpriseDistributions(
       enterpriseName,
       generatedAt: new Date().toISOString(),
       overdueAging: completeDistribution(filteredAgingRows, overdueAgingLabels),
+      overdueAgingByClient: completeDistribution(
+        filteredAgingByClientRows,
+        overdueAgingLabels,
+      ),
     },
     ok: true,
   };
