@@ -5,6 +5,15 @@
 ## 🎯 Missão
 Revisar (criteriosamente) e **PORTAR a Iris avançada — em especial o agente CACÁ — do snapshot sujo para produção**, com cuidado. NÃO é hackear: o código é bom; o trabalho é **revisar + integrar + testar**.
 
+## 📚 LER PRIMEIRO — contexto obrigatório (nesta ordem, ANTES de tocar em código)
+Não comece sem ler. Você precisa do contexto completo do projeto e do estado vivo:
+1. **`careli-hub/CLAUDE.md`** — o cérebro do projeto (auto-carrega; confirme que absorveu: quem você é/Zeus, módulos, regra-mãe, padrão de deploy, infra).
+2. **Sua memória** — `MEMORY.md` (índice) + leia os arquivos relevantes: `project_iris.md` (estado completo da Iris + go-live + descoberta do CACÁ), `project_ops_autodeploy_incident.md`, `project_hermes_cost.md`, `project_supabase_homolog_deleted.md`, `feedback_lucas_does_clicks.md`, `feedback_deploy_team_message.md`, `feedback_handoff_protocol.md`, `user_lucas.md`.
+3. **`careli-hub/docs/operations/engineering-operations.md`** — o **diário canônico vivo** (o que aconteceu; as entradas mais recentes ficam no FIM do arquivo). Leia ao menos as últimas entradas (v1.3.0, sync da main, Iris go-live).
+4. **`careli-hub/AGENTS.md`** — governança do operating model dos agentes.
+5. **`careli-hub/docs/operations/releases-production.md`** + `releases-homologation.md` — logs de release.
+6. **Específicos da Iris (essenciais p/ esta missão):** `docs/operations/iris-ai-attendant-agent-operating-contract.md` (contrato/spec do CACÁ), `docs/operations/panteon-iris-decomposition-map-2026-05-30.md` (arquitetura decomposta), `docs/modules/caredesk-operational-memory.md`, `docs/modules/caredesk-meta-whatsapp-setup.md`.
+
 ## ✅ Estado em PRODUÇÃO hoje (c2x.app.br / main)
 - **Iris WhatsApp + atendimento humano VALIDADO em prod (2026-06-25):** mensagem real → ticket `AT-000002`; **contexto Apolo automático** (identificou o cliente: nome, CPF mascarado, CRM 360, fila, SLA); cockpit; **resposta humana chegando no WhatsApp** (outbound OK).
 - Migration **0024** aplicada em prod (`caredesk_meta_webhook_events` + `caredesk_whatsapp_message_refs`) — versão SEM o UPDATE do canal (que regrediria `inbound/outbound_enabled`).
@@ -46,4 +55,7 @@ Toda op sensível (deploy/alias/promote/redeploy/Supabase/migration/env/secret/t
 ---
 
 ### Resumo curto para colar no chat novo
-> Zeus, retomar o **port + melhoria do CACÁ / Iris avançada** pra produção. Estado: WhatsApp+humano JÁ no ar em prod (ticket `AT-000002` validado, migration 0024 aplicada, webhook → c2x com verify token novo). A Iris avançada (CACÁ 2930 linhas, fila, 24h, cockpit decomposto, relatórios, Hades) está no branch `wip/principal-dirty-20260623` (worktree `careli-hub-worktrees/iris-wip-analise`). CACÁ é V10, bem feito (Responses API, auth determinística, guardrails) — sem bug óbvio; ganhos = custo/contexto + port. Plano: branch da main → portar Iris decomposta (compilar) → trazer CACÁ → revisar custo → 24h → preview → go-live. Ler `docs/operations/iris-caca-port-startup-prompt-2026-06-25.md` e `panteon-iris-decomposition-map-2026-05-30.md`. Respeitar a regra-mãe.
+> Zeus, retomar o **port + melhoria do CACÁ / Iris avançada** pra produção.
+> **LEIA PRIMEIRO, antes de tocar em código (nesta ordem):** (1) este handoff completo `docs/operations/iris-caca-port-startup-prompt-2026-06-25.md`; (2) `CLAUDE.md`; (3) sua **memória** — `MEMORY.md` + `project_iris.md` e os feedbacks; (4) o **diário canônico** `docs/operations/engineering-operations.md` (últimas entradas: v1.3.0, sync da main, Iris go-live); (5) `AGENTS.md`; (6) os docs da Iris — `iris-ai-attendant-agent-operating-contract.md` (contrato CACÁ) e `panteon-iris-decomposition-map-2026-05-30.md` (arquitetura).
+> **Estado:** WhatsApp+humano JÁ no ar em prod (ticket `AT-000002` validado, migration 0024 aplicada, webhook → c2x com verify token novo). A Iris avançada (CACÁ 2.930 linhas, fila, regra 24h, cockpit decomposto, relatórios, integração Hades) está no branch `wip/principal-dirty-20260623` (worktree `careli-hub-worktrees/iris-wip-analise`). CACÁ é V10, bem feito (Responses API, auth determinística, guardrails) — sem bug óbvio; ganhos = custo/contexto + port.
+> **Plano:** branch da `main` → portar Iris decomposta (compilar/typecheck) → trazer CACÁ → revisar custo/contexto → regra 24h → preview `--skip-domain` → go-live `c2x` (com OK) → registrar. **Respeitar a regra-mãe** (toda op sensível BLOQUEADA até OK explícito do Lucas; Lucas faz os cliques no browser, Zeus guia).
