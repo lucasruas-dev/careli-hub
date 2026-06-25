@@ -118,6 +118,7 @@ function buildEnterpriseScopedKpis(
 
   return {
     ...kpis,
+    criticalContracts: enterprise.criticalContracts,
     liquidatedAmount,
     liquidatedPayments: 0,
     monthlyRecoveryAmount: enterprise.monthlyRecoveryAmount,
@@ -343,9 +344,6 @@ export default function HadesPage() {
   const operationalClientsCount = selectedEnterprisePerformance
     ? agingByClientRows.reduce((subtotal, bucket) => subtotal + bucket.total, 0)
     : opsIntel?.totalOverdueClients ?? 0;
-  const operationalSyncedAt = selectedEnterprisePerformance
-    ? selectedEnterpriseDistributions?.generatedAt ?? null
-    : opsIntel?.syncedAt ?? null;
   const operationalError = selectedEnterprisePerformance ? null : opsIntelError;
   const operationalLoading = selectedEnterprisePerformance
     ? isLoadingEnterpriseDistributions && !selectedEnterpriseDistributions
@@ -424,17 +422,9 @@ export default function HadesPage() {
     {
       id: "criticalContracts" as const,
       title: "Contratos críticos",
-      value: scopedRealKpis
-        ? isEnterpriseScoped
-          ? "--"
-          : formatCount(scopedRealKpis.criticalContracts)
-        : "...",
-      variation: scopedRealKpis ? (isEnterpriseScoped ? "geral" : "> 3 parcelas") : "--",
-      description: scopedRealKpis
-        ? isEnterpriseScoped
-          ? "recorte pendente"
-          : "contratos em atraso"
-        : realDataDescription,
+      value: scopedRealKpis ? formatCount(scopedRealKpis.criticalContracts) : "...",
+      variation: scopedRealKpis ? "> 3 parcelas" : "--",
+      description: scopedRealKpis ? "contratos em atraso" : realDataDescription,
       icon: AlertTriangle,
     },
   ];
@@ -514,8 +504,6 @@ export default function HadesPage() {
         >
           <ExecutiveAiBlock
             topClients={operationalTopClients}
-            totalOverdueClients={operationalClientsCount}
-            syncedAt={operationalSyncedAt}
             error={operationalError}
             isLoading={operationalLoading}
           />
@@ -623,14 +611,10 @@ function ActionMetricGrid({ metrics }: { metrics: Array<[string, string, string,
 
 function ExecutiveAiBlock({
   topClients,
-  totalOverdueClients,
-  syncedAt,
   error,
   isLoading,
 }: {
   topClients: HadesTopDelinquentClient[];
-  totalOverdueClients: number;
-  syncedAt: string | null;
   error: string | null;
   isLoading: boolean;
 }) {
@@ -652,12 +636,6 @@ function ExecutiveAiBlock({
 
   return (
     <div className="space-y-4">
-      {syncedAt ? (
-        <p className="text-xs font-medium text-slate-400">
-          Base de inadimplência · {formatCount(totalOverdueClients)} clientes em
-          atraso · atualizado em {new Date(syncedAt).toLocaleString("pt-BR")}
-        </p>
-      ) : null}
       <section className="rounded-xl border border-slate-200 bg-white p-4">
         <h3 className="text-sm font-semibold text-slate-950">
           Top 15 clientes inadimplentes
@@ -668,7 +646,7 @@ function ExecutiveAiBlock({
         {topClients.length > 0 ? (
           <div className="mt-3 max-h-80 overflow-y-auto pr-1">
             <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 bg-white text-[11px] tracking-wide text-slate-400">
+              <thead className="sticky top-0 z-10 bg-white text-[11px] tracking-wide text-slate-400">
                 <tr>
                   <th className="py-1 pr-2 font-semibold">#</th>
                   <th className="py-1 pr-2 font-semibold">Cliente</th>
@@ -893,7 +871,6 @@ function EnterprisePerformanceTable({
           </div>
           <div>
             <h2 className="text-base font-semibold text-slate-950">Performance por empreendimento</h2>
-            <p className="mt-1 text-sm text-slate-500">Clique nos cabeçalhos para ordenar os campos.</p>
           </div>
         </div>
       </div>

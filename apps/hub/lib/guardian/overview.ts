@@ -54,6 +54,7 @@ export type HadesEnterpriseDistributions = {
 };
 
 export type HadesEnterprisePerformance = {
+  criticalContracts: number;
   delinquencyBaseAmount: number;
   enterpriseName: string;
   monthlyRecoveryAmount: number;
@@ -192,6 +193,11 @@ type EnterprisePerformanceRow = RowDataPacket & {
   overdue_principal_payments: number | string;
   total_portfolio_amount: number | string | null;
   total_portfolio_payments: number | string;
+};
+
+type EnterpriseCriticalRow = RowDataPacket & {
+  critical_contracts: number | string;
+  enterprise_name: string;
 };
 
 type ProposalRow = RowDataPacket & {
@@ -477,7 +483,7 @@ export async function loadHadesEnterpriseDistributions(
       enterprise: row.enterprise_name
         ? formatEnterpriseName(row.enterprise_name)
         : null,
-      name: row.client_name?.trim() || "Sem nome",
+      name: row.client_name?.trim() ? formatPersonName(row.client_name) : "Sem nome",
       overdueAmount: toNumber(row.overdue_amount),
       overdueDays: toNumber(row.overdue_days),
       overduePayments: toNumber(row.overdue_payments),
@@ -518,6 +524,7 @@ export async function loadHadesOverview(): Promise<
     stageResult,
     paymentStatusResult,
     enterprisePerformanceResult,
+    enterpriseCriticalResult,
     overdueAgingResult,
     billingCompositionResult,
     recentProposalResult,
@@ -633,6 +640,25 @@ export async function loadHadesOverview(): Promise<
         or monthly_recovery_amount > 0
       order by total_portfolio_amount desc, enterprise_name asc
       limit 20
+    `),
+    pool.query<EnterpriseCriticalRow[]>(`
+      select bucket.enterprise_name, count(*) as critical_contracts
+      from (
+        select
+          ${enterpriseDisplayExpression} as enterprise_name,
+          p.acquisition_request_id
+        from payments p
+        left join acquisition_requests ar on ar.id = p.acquisition_request_id
+        left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+        left join enterprises e on e.id = eu.enterprise_id
+        where p.payment_status_id = 7
+          and ${activePaymentWhere}
+          and ${validEnterpriseWhere}
+          and p.acquisition_request_id is not null
+        group by enterprise_name, p.acquisition_request_id
+        having count(*) > 3
+      ) bucket
+      group by bucket.enterprise_name
     `),
     pool.query<DistributionRow[]>(`
       select bucket.label, count(*) as total, bucket.sort_order
@@ -777,12 +803,26 @@ export async function loadHadesOverview(): Promise<
     total_portfolio_payments: 0,
   };
 
+  const criticalByEnterprise = new Map(
+    enterpriseCriticalResult[0].map((row) => [
+      formatEnterpriseName(row.enterprise_name),
+      toNumber(row.critical_contracts),
+    ]),
+  );
+  const enterprisePerformance = enterprisePerformanceResult[0].map((row) => {
+    const performance = mapEnterprisePerformance(row);
+
+    return {
+      ...performance,
+      criticalContracts:
+        criticalByEnterprise.get(performance.enterpriseName) ?? 0,
+    };
+  });
+
   return {
     data: {
       billingComposition: completeBillingComposition(billingCompositionResult[0]),
-      enterprisePerformance: enterprisePerformanceResult[0].map(
-        mapEnterprisePerformance,
-      ),
+      enterprisePerformance,
       generatedAt: new Date().toISOString(),
       overduePayments: overduePaymentResult[0].map(mapPayment),
       overdueAging: completeDistribution(overdueAgingResult[0], overdueAgingLabels),
@@ -904,7 +944,7 @@ export async function loadHadesOperationalIntelligence(): Promise<HadesOperation
     enterprise: row.enterprise_name
       ? formatEnterpriseName(row.enterprise_name)
       : null,
-    name: row.client_name?.trim() || "Sem nome",
+    name: row.client_name?.trim() ? formatPersonName(row.client_name) : "Sem nome",
     overdueAmount: toNumber(row.overdue_amount),
     overdueDays: toNumber(row.overdue_days),
     overduePayments: toNumber(row.overdue_payments),
@@ -983,6 +1023,7 @@ function mapEnterprisePerformance(
   row: EnterprisePerformanceRow,
 ): HadesEnterprisePerformance {
   return {
+    criticalContracts: 0,
     delinquencyBaseAmount: toNumber(row.delinquency_base_amount),
     enterpriseName: formatEnterpriseName(row.enterprise_name),
     monthlyRecoveryAmount: toNumber(row.monthly_recovery_amount),
@@ -993,6 +1034,28 @@ function mapEnterprisePerformance(
     totalPortfolioAmount: toNumber(row.total_portfolio_amount),
     totalPortfolioPayments: toNumber(row.total_portfolio_payments),
   };
+}
+
+// Nomes de clientes vem em CAIXA ALTA do C2X — normaliza para "Primeira
+// Maiuscula" preservando preposicoes (de/da/dos...).
+function formatPersonName(value: string) {
+  const normalized = value.trim().replace(/\s+/g, " ");
+
+  if (!normalized) {
+    return "";
+  }
+
+  const minorWords = new Set(["a", "as", "da", "das", "de", "do", "dos", "e"]);
+
+  return normalized
+    .toLocaleLowerCase("pt-BR")
+    .split(" ")
+    .map((word, index) =>
+      index > 0 && minorWords.has(word)
+        ? word
+        : word.charAt(0).toLocaleUpperCase("pt-BR") + word.slice(1),
+    )
+    .join(" ");
 }
 
 function formatEnterpriseName(value: string) {
