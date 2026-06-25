@@ -4,6 +4,7 @@ import {
   MetaWhatsAppSendError,
   type MetaWhatsAppSendMessageResult,
   getMetaWhatsAppConfigStatus,
+  getMetaWhatsAppOutboundConfig,
   sendMetaWhatsAppAudioMessage,
   sendMetaWhatsAppReactionMessage,
   sendMetaWhatsAppTextMessage,
@@ -17,6 +18,7 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 const IRIS_AUDIO_MAX_BASE64_LENGTH = 4_000_000;
+const CUSTOMER_SERVICE_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 type SendMessageBody = {
   action?: unknown;
@@ -34,6 +36,13 @@ type SendMessageBody = {
 type OperatorIdentity = {
   avatarUrl: string | null;
   label: string;
+};
+
+type CustomerServiceWindowState = {
+  expiresAt: string | null;
+  lastCustomerMessageAt: string | null;
+  open: boolean;
+  reason: "contact_required" | "expired" | "no_customer_reply" | "open";
 };
 
 export async function POST(request: NextRequest) {
@@ -121,6 +130,58 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: replyContext.error }, { status: 400 });
   }
   const replyPreview = replyContext?.preview ?? null;
+  let customerServiceWindow: CustomerServiceWindowState;
+
+  try {
+    customerServiceWindow = await getCustomerServiceWindow({
+      client: authorization.client,
+      contactId,
+      ticketId,
+      to,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? `Nao foi possivel validar a janela de 24h do WhatsApp: ${error.message}`
+            : "Nao foi possivel validar a janela de 24h do WhatsApp.",
+      },
+      { status: 500 },
+    );
+  }
+
+  if (!customerServiceWindow.open) {
+    return NextResponse.json(
+      customerServiceWindowErrorPayload(customerServiceWindow),
+      { status: 409 },
+    );
+  }
+  let metaPhoneNumberId: string | null = null;
+
+  try {
+    metaPhoneNumberId = await resolveTicketMetaPhoneNumberId({
+      client: authorization.client,
+      ticketId,
+    });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error:
+          error instanceof Error
+            ? `Nao foi possivel validar o telefone de envio do ticket: ${error.message}`
+            : "Nao foi possivel validar o telefone de envio do ticket.",
+      },
+      { status: 500 },
+    );
+  }
+
+  const metaSendConfig = metaPhoneNumberId
+    ? {
+        ...getMetaWhatsAppOutboundConfig(),
+        phoneNumberId: metaPhoneNumberId,
+      }
+    : undefined;
 
   if (messageId) {
     const prepared = await prepareExistingTicketMessage({
@@ -180,6 +241,7 @@ export async function POST(request: NextRequest) {
         audioMedia
           ? sendMetaWhatsAppAudioMessage({
               audioBase64: audioMedia.base64,
+              ...(metaSendConfig ? { config: metaSendConfig } : {}),
               contextMessageId: replyPreview?.externalMessageId ?? null,
               fileName: audioMedia.fileName,
               mimeType: audioMedia.mimeType,
@@ -187,6 +249,7 @@ export async function POST(request: NextRequest) {
             })
           : sendMetaWhatsAppTextMessage({
               body: outboundBody,
+              ...(metaSendConfig ? { config: metaSendConfig } : {}),
               contextMessageId: replyPreview?.externalMessageId ?? null,
               to: candidate,
             }),
@@ -203,6 +266,8 @@ export async function POST(request: NextRequest) {
       localMessageId: localMessage?.id ?? null,
       messageId: result.messageId,
       payload: result.raw,
+      phoneNumberId:
+        metaPhoneNumberId ?? process.env.META_WHATSAPP_PHONE_NUMBER_ID ?? null,
       to: sendAttempt.sentTo,
       waContactId: result.contactWaId,
     });
@@ -228,6 +293,7 @@ export async function POST(request: NextRequest) {
         message: updatedMessage ?? localMessage,
         ok: true,
         persistence,
+        customerServiceWindow,
         usedFallback: sendAttempt.usedFallback,
       },
       {
@@ -383,6 +449,334 @@ async function sendMetaWhatsAppMessageWithFallback({
   }
 
   throw lastError;
+}
+
+async function getCustomerServiceWindow({
+  client,
+  contactId,
+  ticketId,
+  to,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  contactId: string | null;
+  ticketId: string | null;
+  to: string | null;
+}): Promise<CustomerServiceWindowState> {
+  const resolvedContactIds = await resolveCustomerServiceWindowContactIds({
+    client,
+    contactId,
+    ticketId,
+    to,
+  });
+
+  if (resolvedContactIds.length > 0) {
+    const lastCustomerMessageAt = await findLatestCustomerInboundAtByContactIds({
+      client,
+      contactIds: resolvedContactIds,
+    });
+
+    return describeCustomerServiceWindow(lastCustomerMessageAt);
+  }
+
+  if (!ticketId) {
+    return {
+      expiresAt: null,
+      lastCustomerMessageAt: null,
+      open: false,
+      reason: "contact_required",
+    };
+  }
+
+  const fallbackLastCustomerMessageAt = await findLatestCustomerInboundAtByTicket({
+    client,
+    ticketId,
+  });
+
+  return describeCustomerServiceWindow(fallbackLastCustomerMessageAt);
+}
+
+async function resolveCustomerServiceWindowContactIds({
+  client,
+  contactId,
+  ticketId,
+  to,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  contactId: string | null;
+  ticketId: string | null;
+  to: string | null;
+}) {
+  const contactIds = new Set<string>();
+
+  if (contactId) {
+    contactIds.add(contactId);
+  }
+
+  if (ticketId) {
+    const ticketContactId = await findContactIdByTicketId({ client, ticketId });
+
+    if (ticketContactId) {
+      contactIds.add(ticketContactId);
+    }
+  }
+
+  if (to) {
+    const contactIdsByDestination = await findContactIdsByDestination({
+      client,
+      to,
+    });
+
+    for (const destinationContactId of contactIdsByDestination) {
+      contactIds.add(destinationContactId);
+    }
+  }
+
+  return Array.from(contactIds);
+}
+
+async function findContactIdByTicketId({
+  client,
+  ticketId,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  ticketId: string;
+}) {
+  const { data, error } = await client
+    .from("caredesk_tickets")
+    .select("contact_id")
+    .eq("id", ticketId)
+    .maybeSingle<{ contact_id: string | null }>();
+
+  if (error) {
+    throw error;
+  }
+
+  return normalizeUuid(data?.contact_id);
+}
+
+async function findContactIdsByDestination({
+  client,
+  to,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  to: string;
+}) {
+  const candidates = buildBrazilWhatsAppDestinationCandidates(to);
+  const contactIds = new Set<string>();
+
+  if (!candidates.length) {
+    return [];
+  }
+
+  const [whatsappResult, phoneResult] = await Promise.all([
+    client
+      .from("caredesk_contacts")
+      .select("id")
+      .in("whatsapp_phone", candidates)
+      .limit(60),
+    client
+      .from("caredesk_contacts")
+      .select("id")
+      .in("phone", candidates)
+      .limit(60),
+  ]);
+
+  if (whatsappResult.error) {
+    throw whatsappResult.error;
+  }
+
+  if (phoneResult.error) {
+    throw phoneResult.error;
+  }
+
+  for (const row of [
+    ...(whatsappResult.data ?? []),
+    ...(phoneResult.data ?? []),
+  ] as Array<{ id?: string | null }>) {
+    const normalizedContactId = normalizeUuid(row.id);
+
+    if (normalizedContactId) {
+      contactIds.add(normalizedContactId);
+    }
+  }
+
+  return Array.from(contactIds);
+}
+
+async function findLatestCustomerInboundAtByContactIds({
+  client,
+  contactIds,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  contactIds: string[];
+}) {
+  if (!contactIds.length) {
+    return null;
+  }
+
+  const latestBySenderContact = await client
+    .from("caredesk_messages")
+    .select("created_at,sent_at")
+    .eq("direction", "inbound")
+    .in("sender_contact_id", contactIds)
+    .eq("sender_type", "customer")
+    .order("sent_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ created_at: string | null; sent_at: string | null }>();
+
+  if (latestBySenderContact.error) {
+    throw latestBySenderContact.error;
+  }
+
+  if (latestBySenderContact.data) {
+    return (
+      latestBySenderContact.data.sent_at ??
+      latestBySenderContact.data.created_at ??
+      null
+    );
+  }
+
+  const { data: ticketRows, error: ticketError } = await client
+    .from("caredesk_tickets")
+    .select("id")
+    .in("contact_id", contactIds)
+    .order("opened_at", { ascending: false })
+    .limit(120);
+
+  if (ticketError) {
+    throw ticketError;
+  }
+
+  const ticketIds = (ticketRows ?? [])
+    .map((row) => normalizeUuid((row as Record<string, unknown>).id))
+    .filter((id): id is string => Boolean(id));
+
+  if (!ticketIds.length) {
+    return null;
+  }
+
+  const latestByTicket = await client
+    .from("caredesk_messages")
+    .select("created_at,sent_at")
+    .in("ticket_id", ticketIds)
+    .eq("direction", "inbound")
+    .eq("sender_type", "customer")
+    .order("sent_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ created_at: string | null; sent_at: string | null }>();
+
+  if (latestByTicket.error) {
+    throw latestByTicket.error;
+  }
+
+  return latestByTicket.data?.sent_at ?? latestByTicket.data?.created_at ?? null;
+}
+
+async function findLatestCustomerInboundAtByTicket({
+  client,
+  ticketId,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  ticketId: string;
+}) {
+  const { data, error } = await client
+    .from("caredesk_messages")
+    .select("created_at,sent_at")
+    .eq("ticket_id", ticketId)
+    .eq("direction", "inbound")
+    .eq("sender_type", "customer")
+    .order("sent_at", { ascending: false })
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ created_at: string | null; sent_at: string | null }>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.sent_at ?? data?.created_at ?? null;
+}
+
+async function resolveTicketMetaPhoneNumberId({
+  client,
+  ticketId,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  ticketId: string | null;
+}) {
+  if (!ticketId) {
+    return null;
+  }
+
+  const { data, error } = await client
+    .from("caredesk_tickets")
+    .select("metadata,source_context")
+    .eq("id", ticketId)
+    .maybeSingle<{ metadata?: unknown; source_context?: unknown }>();
+
+  if (error) {
+    throw error;
+  }
+
+  if (!data) {
+    return null;
+  }
+
+  return (
+    readPayloadString(data.metadata, "metaPhoneNumberId") ??
+    readPayloadString(data.metadata, "phoneNumberId") ??
+    readPayloadString(data.source_context, "phoneNumberId") ??
+    readPayloadString(data.source_context, "metaPhoneNumberId") ??
+    null
+  );
+}
+
+function describeCustomerServiceWindow(
+  lastCustomerMessageAt: string | null,
+): CustomerServiceWindowState {
+  if (!lastCustomerMessageAt) {
+    return {
+      expiresAt: null,
+      lastCustomerMessageAt: null,
+      open: false,
+      reason: "no_customer_reply",
+    };
+  }
+
+  const openedAt = new Date(lastCustomerMessageAt).getTime();
+
+  if (Number.isNaN(openedAt)) {
+    return {
+      expiresAt: null,
+      lastCustomerMessageAt: null,
+      open: false,
+      reason: "no_customer_reply",
+    };
+  }
+
+  const expiresAt = new Date(openedAt + CUSTOMER_SERVICE_WINDOW_MS).toISOString();
+  const open = Date.now() < openedAt + CUSTOMER_SERVICE_WINDOW_MS;
+
+  return {
+    expiresAt,
+    lastCustomerMessageAt,
+    open,
+    reason: open ? "open" : "expired",
+  };
+}
+
+function customerServiceWindowErrorPayload(window: CustomerServiceWindowState) {
+  const baseMessage =
+    window.reason === "contact_required"
+      ? "Envio livre bloqueado: a Iris precisa identificar o contato para validar a janela de 24h do WhatsApp."
+      : "Janela de 24h do WhatsApp fechada. Envie um template aprovado e aguarde a resposta do cliente antes de usar mensagem livre.";
+
+  return {
+    customerServiceWindow: window,
+    error: baseMessage,
+  };
 }
 
 type ReplyContextPreview = {
@@ -554,14 +948,16 @@ async function reactToIrisMessage({
 }) {
   const { data: existing, error } = await client
     .from("caredesk_messages")
-    .select(`${MESSAGE_SELECT},ticket_id`)
+    .select(`${MESSAGE_SELECT},sender_contact_id,ticket_id`)
     .eq("id", messageId)
     .maybeSingle<{
       direction: string | null;
       external_message_id: string | null;
       id: string;
       provider_payload?: unknown;
+      sender_contact_id?: string | null;
       sender_type: string | null;
+      ticket_id: string | null;
     }>();
 
   if (error || !existing) {
@@ -612,8 +1008,62 @@ async function reactToIrisMessage({
     Boolean(to);
 
   if (shouldSendMetaReaction) {
+    let customerServiceWindow: CustomerServiceWindowState;
+
+    try {
+      customerServiceWindow = await getCustomerServiceWindow({
+        client,
+        contactId: normalizeUuid(existing.sender_contact_id),
+        ticketId: existing.ticket_id,
+        to,
+      });
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? `Nao foi possivel validar a janela de 24h do WhatsApp: ${error.message}`
+            : "Nao foi possivel validar a janela de 24h do WhatsApp.",
+        ok: false as const,
+        status: 500,
+      };
+    }
+
+    if (!customerServiceWindow.open) {
+      return {
+        error: customerServiceWindowErrorPayload(customerServiceWindow).error,
+        ok: false as const,
+        status: 409,
+      };
+    }
+
+    let metaPhoneNumberId: string | null = null;
+
+    try {
+      metaPhoneNumberId = await resolveTicketMetaPhoneNumberId({
+        client,
+        ticketId: existing.ticket_id,
+      });
+    } catch (error) {
+      return {
+        error:
+          error instanceof Error
+            ? `Nao foi possivel validar o telefone de envio do ticket: ${error.message}`
+            : "Nao foi possivel validar o telefone de envio do ticket.",
+        ok: false as const,
+        status: 500,
+      };
+    }
+
+    const metaSendConfig = metaPhoneNumberId
+      ? {
+          ...getMetaWhatsAppOutboundConfig(),
+          phoneNumberId: metaPhoneNumberId,
+        }
+      : undefined;
+
     try {
       await sendMetaWhatsAppReactionMessage({
+        ...(metaSendConfig ? { config: metaSendConfig } : {}),
         emoji,
         messageId: existing.external_message_id!,
         to: to!,
@@ -879,6 +1329,7 @@ async function persistOutboundReference({
   localMessageId,
   messageId,
   payload,
+  phoneNumberId,
   to,
   waContactId,
 }: {
@@ -886,6 +1337,7 @@ async function persistOutboundReference({
   localMessageId: string | null;
   messageId: string;
   payload: unknown;
+  phoneNumberId: string | null;
   to: string;
   waContactId: string | null;
 }) {
@@ -904,7 +1356,7 @@ async function persistOutboundReference({
         direction: "outbound",
         message_id: localMessageId,
         payload: normalizeJsonPayload(payload),
-        phone_number_id: process.env.META_WHATSAPP_PHONE_NUMBER_ID ?? null,
+        phone_number_id: phoneNumberId,
         provider: "meta",
         wa_contact_id: waContactId ?? to,
         wa_message_id: messageId,
