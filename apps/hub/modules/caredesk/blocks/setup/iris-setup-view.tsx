@@ -2074,7 +2074,7 @@ function IrisTemplateSetupPanel({
 
   return (
     <div className="space-y-4">
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.1fr)]">
+      <div className={`grid gap-4 ${templateEditorOpen ? "xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.1fr)]" : ""}`}>
         <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -2257,9 +2257,8 @@ function IrisTemplateSetupPanel({
           </div>
         </section>
 
+        {templateEditorOpen ? (
         <aside className="min-w-0 space-y-3">
-          {templateEditorOpen ? (
-          <>
           <div className="rounded-2xl border border-[#dbe3ef] bg-white p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-center gap-2">
@@ -2759,30 +2758,8 @@ function IrisTemplateSetupPanel({
               ) : null}
             </div>
           </div>
-          </>
-          ) : (
-            <div className="flex min-h-[420px] flex-col items-center justify-center rounded-2xl border border-dashed border-[#dbe3ef] bg-[#fbfcfe] p-8 text-center">
-              <span className="grid h-12 w-12 place-items-center rounded-2xl bg-[#fbf6ec] text-[#A07C3B]">
-                <MessageSquareText className="h-6 w-6" aria-hidden="true" />
-              </span>
-              <h4 className="mt-4 text-sm font-semibold text-[#101820]">
-                Nenhum template aberto
-              </h4>
-              <p className="mt-1 max-w-xs text-xs font-medium text-[#63708a]">
-                Selecione um template na lista para ver e editar, ou clique em
-                Novo.
-              </p>
-              <button
-                type="button"
-                onClick={startNewTemplate}
-                className="mt-4 inline-flex h-10 items-center gap-2 rounded-xl bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1f2937]"
-              >
-                <Plus className="h-4 w-4" aria-hidden="true" />
-                Novo template
-              </button>
-            </div>
-          )}
         </aside>
+        ) : null}
       </div>
     </div>
   );
