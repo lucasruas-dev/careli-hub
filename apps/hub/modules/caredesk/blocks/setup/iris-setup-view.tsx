@@ -22,6 +22,7 @@ import {
   Route,
   Save,
   Search,
+  Send,
   Settings2,
   SlidersHorizontal,
   Smartphone,
@@ -30,6 +31,7 @@ import {
   Upload,
   Video,
   Workflow,
+  X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
