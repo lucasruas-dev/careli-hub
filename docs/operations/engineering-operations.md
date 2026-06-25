@@ -40768,3 +40768,23 @@ Conclusao:
 - A tela de templates voltou e o primeiro template da Meta foi trazido para o Panteon.
 - Impacto: Setup de templates operacional em prod.
 - Proximo (fechamento, nao urgente): merge `feat/iris-caca-port`->`main`, bump `PANTEON_BUILD_TAG` v1.4.0 + anuncio do time, limpar `AT-000001`.
+
+## 2026-06-25 - Zeus - UI Iris (templates enxuta + Filas&Assuntos em modal) + v1.4.0 + main sincronizada
+
+Assunto: [Iris] Reforma de UI do Setup + release v1.4.0 e merge na main
+
+- Status: `EM_PRODUCAO`.
+- `c2x.app.br` -> `dpl_GGAQgo52hENW38pbdbJcimxaTruv` (`dbdrn3dvw`, **v1.4.0**). `ops` 307 intocado. Rollback: `dpl_AG3MRka64sRgCGsdXBYP6vrxvw53`.
+- Escopo (UI, `iris-setup-view.tsx` + `build-info.ts`):
+  - **Templates** enxuta: removidos a "Biblioteca base" e os 4 KPI cards; contagem movida para os chips de filtro; subtitulo removido; variaveis compactas (3 colunas).
+  - **Filas & Assuntos**: forms "Nova fila"/"Novo assunto" viraram **modais** (overlay fixo; abrem pelo `+` de cada secao e pelo lapis no card de fila; fecham no save/X/clique-fora); **clicar no card de fila filtra os assuntos**; removido o filtro "Fila" da busca e os botoes redundantes do topo; layout 2 colunas.
+  - bump `PANTEON_VERSION` v1.3.0 -> **v1.4.0**; `PANTEON_BUILD_TAG` 2026-06-25-iris-caca-templates-ui.
+- Validacao: typecheck normal (JSX) PASS; varredura TS2304 nos arquivos `@ts-nocheck` = 0 (licao do Send/X aplicada a cada rodada); build PASS; preview validado pelo Lucas.
+- **main sincronizada:** merge `--no-ff` `feat/iris-caca-port` -> `main` (`e509124`) + push (`bdab517..e509124`). origin/main = local. A `main` agora reflete producao.
+- Pendencias (proximo dia): (a) Templates form-on-demand; (b) limpar `AT-000001`; (c) canal e-mail; (d) consolidar `caredesk`->`iris`.
+
+Conclusao:
+
+- Iris (CACA + cockpit + Setup de templates/filas) no ar em v1.4.0, com a `main` sincronizada com producao.
+- Impacto: Setup mais enxuto e estruturado (forms em modal), alem do atendimento IA ja validado.
+- Proximo: itens de fechamento acima, em chat fresco.
