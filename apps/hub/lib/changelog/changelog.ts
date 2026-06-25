@@ -32,6 +32,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-25-hades-dashboard-cockpit",
+    deployedAt: "2026-06-25T18:40:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "Os numeros do Dashboard agora batem entre si — cards, paineis e graficos saem todos da mesma fonte ao vivo do C2X.",
+              "Aging com um botao pra alternar a visao por parcela e por cliente.",
+              "Clicar num card abre o detalhamento real (parcelas, clientes ou contratos).",
+              "Clicar num empreendimento filtra tudo: aging, ranking de inadimplentes e contratos criticos.",
+              "Visual mais limpo: sem os filtros que nao usavamos e com textos mais enxutos.",
+            ],
+            screen: "Dashboard",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-p5quqx6yg",
+    technical: {
+      done: "Dashboard do Hades passou a fonte unica ao vivo (loadHadesOperationalIntelligence + drill-down /api/guardian/kpi-drilldown), com os MESMOS predicados dos cards (overdueWhere); read-model virou fallback. Aging unico com toggle parcela/cliente + escopo por empreendimento; contratos criticos por empreendimento; nomes do C2X em Title Case; uppercase->Primeira Maiuscula em todo o Hades; barra de filtros mock removida. A1 (read-model + cron 15min + Asaas link-only) subiu junto. Prod careli-hub-hub-i2bs (HEAD pos-merge); rollback careli-hub-hub-i2bs-p5quqx6yg.",
+      motivation:
+        "Os paineis divergiam dos cards (mistura de read-model congelado de 17/mai com dados ao vivo); reconciliacao + limpeza de UI pedida pelo Lucas, com drill-down real por indicador.",
+    },
+    title: "Dashboard do Hades: numeros reconciliados + detalhamento real",
+    type: "melhoria",
+    version: "v1.5.0",
+  },
+  {
     buildTag: "2026-06-25-iris-caca-templates-ui",
     deployedAt: "2026-06-25T03:00:00-03:00",
     modules: [

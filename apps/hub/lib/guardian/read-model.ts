@@ -336,6 +336,7 @@ function mapEnterpriseRows(
   rows: EnterprisePerformanceRow[],
 ): HadesEnterprisePerformance[] {
   return rows.map((row) => ({
+    criticalContracts: 0,
     delinquencyBaseAmount: toNumber(row.delinquency_base_amount),
     enterpriseName: row.enterprise_name,
     monthlyRecoveryAmount: toNumber(row.monthly_recovery_amount),
