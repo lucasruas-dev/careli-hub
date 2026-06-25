@@ -16,6 +16,7 @@ import {
   Inbox,
   LayoutDashboard,
   MessageSquareText,
+  Pencil,
   Play,
   Plus,
   RefreshCw,
@@ -467,22 +468,6 @@ function SetupView({
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <IrisSetupTabs active={setupTab} onChange={setSetupTab} />
-            <button
-              type="button"
-              onClick={startNewQueue}
-              className="inline-flex h-10 items-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Nova fila
-            </button>
-            <button
-              type="button"
-              onClick={startNewProfile}
-              className="inline-flex h-10 items-center gap-2 rounded-xl bg-[#101820] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1f2937]"
-            >
-              <Plus className="h-4 w-4" aria-hidden="true" />
-              Novo assunto
-            </button>
           </div>
         </div>
 
@@ -562,12 +547,19 @@ function SetupView({
                   ).length;
 
                   return (
-                    <button
+                    <div
                       key={queue.id}
-                      type="button"
-                      onClick={() => startEditQueue(queue)}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setSelectedQueueId(queue.id)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" || event.key === " ") {
+                          event.preventDefault();
+                          setSelectedQueueId(queue.id);
+                        }
+                      }}
                       className={[
-                        "w-full rounded-xl border p-3 text-left transition-colors",
+                        "w-full cursor-pointer rounded-xl border p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40",
                         selected
                           ? "border-[#A07C3B]/55 bg-[#fbf6ec]"
                           : "border-[#e4eaf3] bg-white hover:border-[#A07C3B]/35",
@@ -588,9 +580,22 @@ function SetupView({
                             {queue.slug} | {queue.assignmentStrategy}
                           </p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
-                          {setupStatusLabel[queue.status] ?? queue.status}
-                        </span>
+                        <div className="flex shrink-0 items-center gap-1.5">
+                          <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                            {setupStatusLabel[queue.status] ?? queue.status}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              startEditQueue(queue);
+                            }}
+                            aria-label="Editar fila"
+                            className="grid h-7 w-7 place-items-center rounded-lg border border-[#dbe3ef] bg-white text-[#63708a] transition-colors hover:border-[#A07C3B]/35 hover:text-[#A07C3B]"
+                          >
+                            <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
+                          </button>
+                        </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
                         <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
@@ -600,7 +605,7 @@ function SetupView({
                           {formatCount(queueSubjects)} assuntos
                         </span>
                       </div>
-                    </button>
+                    </div>
                   );
                 })}
               </div>
@@ -790,12 +795,22 @@ function SetupView({
                   {selectedQueue?.name ?? "Todas as filas"}
                 </h4>
               </div>
-              <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
-                {formatCount(visibleProfiles.length)} visiveis
-              </span>
+              <div className="flex items-center gap-2">
+                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                  {formatCount(visibleProfiles.length)} visiveis
+                </span>
+                <button
+                  type="button"
+                  onClick={startNewProfile}
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-[#dbe3ef] bg-white text-[#A07C3B] transition-colors hover:border-[#A07C3B]/35"
+                  aria-label="Novo assunto"
+                >
+                  <Plus className="h-4 w-4" aria-hidden="true" />
+                </button>
+              </div>
             </div>
 
-            <div className="mt-3 grid gap-2 lg:grid-cols-[minmax(0,1fr)_180px]">
+            <div className="mt-3">
               <label className="relative block min-w-0">
                 <Search
                   className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#A07C3B]"
@@ -808,18 +823,6 @@ function SetupView({
                   className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white pl-9 pr-3 text-sm font-semibold text-[#34415a] outline-none"
                 />
               </label>
-              <FilterSelect
-                label="Fila"
-                value={selectedQueueId}
-                options={["all", ...data.queues.map((queue) => queue.id)]}
-                optionLabels={{
-                  all: "Todas",
-                  ...Object.fromEntries(
-                    data.queues.map((queue) => [queue.id, queue.name]),
-                  ),
-                }}
-                onChange={setSelectedQueueId}
-              />
             </div>
 
             <div className="mt-3 max-h-[calc(100vh-430px)] overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
