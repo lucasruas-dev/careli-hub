@@ -40750,3 +40750,21 @@ Conclusao:
 - O outbound da CACA passa a usar token permanente; risco de expiracao eliminado.
 - Impacto: atendimento CACA estavel em producao (entrega real de boleto validada).
 - Proximo: merge para `main`, bump de versao + anuncio do time, limpeza do ticket de teste.
+
+## 2026-06-25 - Zeus - Hotfix tela de templates (Send/X) + import de template Meta
+
+Assunto: [Iris] Hotfix ReferenceError na tela de templates + import de template da Meta
+
+- Status: `EM_PRODUCAO`.
+- Bug: tela Setup -> Templates quebrava em prod com `Uncaught ReferenceError: Send is not defined` (client-side; runtime logs do Vercel vazios). Causa: `iris-setup-view.tsx` tem `// @ts-nocheck` (herdado), entao `check-types`/`build` nao pegaram os icones lucide `Send` e `X` usados sem import.
+- Fix: adicionado import de `Send` e `X` no `iris-setup-view.tsx` (commit `401a0b9`). Varredura TS2304 nos 3 arquivos `@ts-nocheck` do port (setup-view, embed, IrisPage) confirmou que eram as unicas referencias indefinidas.
+- Deploy: redeploy `--prod --skip-domain` -> `dpl_DknyRVp2MXQsoSKa1pyzW9vBXcch` (`cd71ch9f6`); alias somente `c2x.app.br`. `ops` 307 intocado.
+- `c2x.app.br` agora serve `dpl_DknyRVp2MXQsoSKa1pyzW9vBXcch`.
+- Validacao: Lucas confirmou tela de templates carregando + importou o template Meta `cobranca_geral` para o Panteon (via Consultar/Sincronizar; import exige assunto+fila).
+- Licao operacional: apos portar arquivos com `@ts-nocheck`, rodar varredura TS2304 (stripar `@ts-nocheck` temporario) para achar imports faltando que passam no build mas crasham em runtime.
+
+Conclusao:
+
+- A tela de templates voltou e o primeiro template da Meta foi trazido para o Panteon.
+- Impacto: Setup de templates operacional em prod.
+- Proximo (fechamento, nao urgente): merge `feat/iris-caca-port`->`main`, bump `PANTEON_BUILD_TAG` v1.4.0 + anuncio do time, limpar `AT-000001`.
