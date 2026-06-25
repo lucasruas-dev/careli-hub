@@ -40728,3 +40728,25 @@ Conclusao:
 - A Iris avancada + CACA estao no ar em `c2x.app.br` e validadas E2E no WhatsApp real, com `ops` preservado e rollback gravado.
 - Impacto: atendimento com IA (CACA) respondendo cliente com auth deterministica e entrega de boleto do C2X legado, alem do cockpit decomposto.
 - Precisa de acao: gerar token Meta permanente (time-sensitive), refletir a `main` e anunciar a versao ao time apos o bump.
+
+## 2026-06-25 - Zeus - Token Meta permanente aplicado + redeploy (CACA outbound)
+
+Assunto: [Iris] System User token permanente da Meta em producao
+
+- Status: `EM_PRODUCAO`.
+- Motivo: o `META_WHATSAPP_ACCESS_TOKEN` em prod era temporario (expiraria e quebraria o outbound da CACA).
+- Acao (Lucas clicou, Zeus guiou; Zeus nao manipulou o valor do token):
+  - System User `Iris Core` (id `61589902123429`, Admin) ja tinha o app `Iris - Panteon` e as contas do WhatsApp com acesso total;
+  - gerado token com expiracao **Nunca** e permissoes `whatsapp_business_messaging` + `whatsapp_business_management`;
+  - Lucas atualizou `META_WHATSAPP_ACCESS_TOKEN` (Production) na Vercel (env Sensitive);
+  - redeploy `--prod --skip-domain` do mesmo commit `95934be` -> deployment `dpl_GKiDCvMKwRq6X9kAR7rDxkaoByT2` (`bhwgdjj7c`);
+  - alias somente `c2x.app.br` -> `dpl_GKiD`. `ops` intocado (307).
+- `c2x.app.br` agora serve `dpl_GKiDCvMKwRq6X9kAR7rDxkaoByT2`. Rollback pre-port segue `dpl_4pB8KqaLZgYZM9zsqVnZYnpVZPij` (`5yma8rwce`); o `dpl_8LaBM5xki6GAi2FzDkTWZzWLcANB` (token temporario) fica como rollback intermediario do port.
+- Validacao E2E (WhatsApp real): CACA confirmou cadastro, listou e **entregou o boleto** com link oficial Asaas (`asaas.com/i/...`) -> outbound OK com o token permanente.
+- Pendente: revogar o token temporario antigo na Meta (higiene, opcional); bump `PANTEON_BUILD_TAG` v1.4.0; merge `feat/iris-caca-port`->`main`; limpar `AT-000001`.
+
+Conclusao:
+
+- O outbound da CACA passa a usar token permanente; risco de expiracao eliminado.
+- Impacto: atendimento CACA estavel em producao (entrega real de boleto validada).
+- Proximo: merge para `main`, bump de versao + anuncio do time, limpeza do ticket de teste.
