@@ -4579,3 +4579,38 @@ Registro de producao:
 - Rollback:
   - se houver regressao critica no OPS, reapontar `https://ops.c2x.app.br` para `dpl_5e13gAZf8TXKtwxYsUFGoGAdLYCW`;
   - manter `https://c2x.app.br` em `dpl_8voSqS84aMPV5jyacdyW7h3NBxnU`.
+
+## 2026-06-25 - Iris - Port da Iris avancada + CACA para producao (c2x)
+
+Assunto: [Iris] Port do CACA + Iris avancada decompostos em producao
+
+- Nome da squad/agente: `Zeus`.
+- Tipo da acao: `PUBLICACAO_PRODUCAO / IRIS / CACA`.
+- Status: `EM_PRODUCAO`.
+- Autorizacao: Lucas autorizou Preview e go-live em 2026-06-25 ("pode subir em producao, o principal e testar o atendimento da caca").
+- Branch/worktree: `feat/iris-caca-port` em `careli-hub-worktrees/iris-port` (partindo da `main`).
+- Commit candidato: `95934be`.
+- Deployment publicado: `dpl_8LaBM5xki6GAi2FzDkTWZzWLcANB` (`careli-hub-hub-i2bs-oqoebv5u0-lucasruas-devs-projects.vercel.app`).
+- Alias: somente `https://c2x.app.br`. `ops.c2x.app.br` intocado.
+- Rollback: reapontar `c2x.app.br` para `dpl_4pB8KqaLZgYZM9zsqVnZYnpVZPij` (`5yma8rwce`).
+- Escopo publicado:
+  - cockpit Iris decomposto (blocks shell/board/conversation/caca/history/reports/setup/start-attendance + data-client + types);
+  - CACA runtime V10 (caca-agent + caca-media-analysis + `/api/iris/attendant`) ligado no inbound via `maybeSendCacaAutoReply`;
+  - backend Meta avancado (whatsapp/inbound/messages/templates/templates-media/tickets) + regra janela 24h;
+  - cache de billing por instancia (TTL 120s) no `loadCacaRichContext` (entrega real do boleto via `loadBillingItems` sem cache);
+  - 28 arquivos Iris + `turbo.json` (declarado `HUB_IRIS_ATTENDANT_MODEL`).
+- Validacoes locais: `check-types:hub` PASS; `build` Next.js PASS (rota `/iris`); lint focado 0 erros.
+- Validacoes pos-publicacao:
+  - `GET https://c2x.app.br/`: 200; `/login`: 200;
+  - `GET https://c2x.app.br/api/iris/attendant`: 405 (rota nova existe); `/api/iris/meta/templates/media`: 405; `/api/iris/meta/webhook`: 403 esperado;
+  - `vercel inspect c2x.app.br`: Ready em `dpl_8LaBM5xki6GAi2FzDkTWZzWLcANB`;
+  - `GET https://ops.c2x.app.br/`: 307 (intocado).
+- Teste E2E CACA (WhatsApp real, +55 31 9072-8420): conversa geral (strogonoff via OpenAI) -> intencao boleto -> auth por CPF -> match cadastro -> confirmacao de nome -> listagem de boleto real do C2X legado (Recanto do Para QE L190, R$ 6.535,04, vencida ha 56 dias). PASS.
+- Escopo preservado: nenhum env/secret/token/banco/migration/Supabase/alias adicional alterado; `ops.c2x.app.br` preservado.
+- Follow-ups: token Meta permanente (o atual e temporario); bump `PANTEON_BUILD_TAG` v1.3.0->v1.4.0; merge `feat/iris-caca-port`->`main`; limpar ticket de teste `AT-000001`; canal e-mail; consolidar `caredesk`->`iris`.
+
+Conclusao:
+
+- O port da Iris avancada + CACA foi publicado em producao em `c2x.app.br` e validado E2E no WhatsApp real.
+- Impacto: a Iris passa a ter cockpit decomposto + atendente IA (CACA) respondendo o cliente com auth deterministica e entrega de boleto do C2X legado.
+- Proximo: gerar token Meta permanente, anunciar a versao ao time (apos bump) e refletir a `main`.

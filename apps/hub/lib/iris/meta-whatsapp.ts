@@ -8,6 +8,8 @@ export const META_WHATSAPP_ENV_KEYS = [
   "META_WHATSAPP_APP_SECRET",
   "META_WHATSAPP_ACCESS_TOKEN",
   "META_WHATSAPP_BUSINESS_ACCOUNT_ID",
+  "META_WHATSAPP_PHONE_DISPLAY_NUMBER",
+  "META_WHATSAPP_PHONE_NUMBER",
   "META_WHATSAPP_PHONE_NUMBER_ID",
   "META_WHATSAPP_WEBHOOK_VERIFY_TOKEN",
   "META_WHATSAPP_GRAPH_VERSION",
@@ -35,6 +37,8 @@ export type MetaWhatsAppWebhookConfig = {
 
 export type MetaWhatsAppOutboundConfig = {
   accessToken?: string;
+  appId?: string;
+  phoneDisplayNumber?: string;
   graphVersion?: string;
   phoneNumberId?: string;
   whatsappBusinessAccountId?: string;
@@ -44,6 +48,13 @@ export type MetaWhatsAppSendMessageResult = {
   contactWaId: string | null;
   messageId: string | null;
   raw: unknown;
+};
+
+export type MetaWhatsAppDownloadedMedia = {
+  buffer: Buffer;
+  fileSize: number | null;
+  mimeType: string | null;
+  sha256: string | null;
 };
 
 export type MetaWhatsAppSendTextResult = MetaWhatsAppSendMessageResult;
@@ -62,6 +73,31 @@ export type MetaWhatsAppTemplateSummary = {
   language: string | null;
   name: string | null;
   status: string | null;
+};
+
+export type MetaWhatsAppTemplateHeaderMedia = {
+  fileName?: string | null;
+  id?: string | null;
+  link?: string | null;
+  type: "document" | "image" | "video";
+};
+
+export type MetaWhatsAppTemplateHeaderMediaUploadResult = {
+  handle: string | null;
+  raw: unknown;
+  uploadSessionId: string | null;
+};
+
+export type MetaWhatsAppPhoneNumberSummary = {
+  codeVerificationStatus: string | null;
+  displayPhoneNumber: string | null;
+  id: string;
+  isDefault: boolean;
+  label: string;
+  nameStatus: string | null;
+  qualityRating: string | null;
+  verifiedName: string | null;
+  whatsappBusinessAccountId: string | null;
 };
 
 export type MetaWhatsAppPhoneNumberLinkStatus = {
@@ -195,7 +231,11 @@ export function getMetaWhatsAppOutboundConfig(
 ): MetaWhatsAppOutboundConfig {
   return {
     accessToken: readEnvValue(env.META_WHATSAPP_ACCESS_TOKEN),
+    appId: readEnvValue(env.META_WHATSAPP_APP_ID),
     graphVersion: readEnvValue(env.META_WHATSAPP_GRAPH_VERSION),
+    phoneDisplayNumber:
+      readEnvValue(env.META_WHATSAPP_PHONE_DISPLAY_NUMBER) ??
+      readEnvValue(env.META_WHATSAPP_PHONE_NUMBER),
     phoneNumberId: readEnvValue(env.META_WHATSAPP_PHONE_NUMBER_ID),
     whatsappBusinessAccountId: readEnvValue(
       env.META_WHATSAPP_BUSINESS_ACCOUNT_ID,
@@ -276,15 +316,100 @@ export async function sendMetaWhatsAppTextMessage({
   };
 }
 
+export async function downloadMetaWhatsAppMedia({
+  config = getMetaWhatsAppOutboundConfig(),
+  mediaId,
+}: {
+  config?: MetaWhatsAppOutboundConfig;
+  mediaId: string;
+}): Promise<MetaWhatsAppDownloadedMedia> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+
+  if (!accessToken || !graphVersion) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao Meta WhatsApp incompleta para leitura de midia.",
+      503,
+    );
+  }
+
+  const metadataResponse = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${encodeURIComponent(mediaId)}`,
+    {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      method: "GET",
+    },
+  );
+  const metadata = (await metadataResponse.json().catch(() => null)) as
+    | {
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        file_size?: unknown;
+        mime_type?: unknown;
+        sha256?: unknown;
+        url?: unknown;
+      }
+    | null;
+
+  if (!metadataResponse.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(metadata?.error?.message) ??
+        "Meta WhatsApp rejeitou a leitura de metadados da midia.",
+      metadataResponse.status,
+      {
+        code: normalizeErrorCode(metadata?.error?.code),
+        details: metadata?.error ?? null,
+      },
+    );
+  }
+
+  const mediaUrl = normalizeText(metadata?.url);
+
+  if (!mediaUrl) {
+    throw new MetaWhatsAppSendError(
+      "Meta WhatsApp nao retornou URL temporaria da midia.",
+      502,
+    );
+  }
+
+  const mediaResponse = await fetch(mediaUrl, {
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+    },
+    method: "GET",
+  });
+
+  if (!mediaResponse.ok) {
+    throw new MetaWhatsAppSendError(
+      "Meta WhatsApp rejeitou o download da midia.",
+      mediaResponse.status,
+    );
+  }
+
+  const arrayBuffer = await mediaResponse.arrayBuffer();
+
+  return {
+    buffer: Buffer.from(arrayBuffer),
+    fileSize: normalizeNumber(metadata?.file_size),
+    mimeType: normalizeText(metadata?.mime_type),
+    sha256: normalizeText(metadata?.sha256),
+  };
+}
+
 export async function sendMetaWhatsAppTemplateMessage({
   bodyParameters = [],
   config = getMetaWhatsAppOutboundConfig(),
+  headerMedia,
   language,
   name,
   to,
 }: {
   bodyParameters?: string[];
   config?: MetaWhatsAppOutboundConfig;
+  headerMedia?: MetaWhatsAppTemplateHeaderMedia | null;
   language: string;
   name: string;
   to: string;
@@ -300,14 +425,17 @@ export async function sendMetaWhatsAppTemplateMessage({
     );
   }
 
-  const components = bodyParameters.length
-    ? [
-        {
-          parameters: bodyParameters.map((text) => ({ text, type: "text" })),
-          type: "body",
-        },
-      ]
-    : [];
+  const components = [
+    ...(headerMedia ? [buildTemplateHeaderMediaComponent(headerMedia)] : []),
+    ...(bodyParameters.length
+      ? [
+          {
+            parameters: bodyParameters.map((text) => ({ text, type: "text" })),
+            type: "body",
+          },
+        ]
+      : []),
+  ];
 
   const response = await fetch(
     `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
@@ -360,72 +488,336 @@ export async function sendMetaWhatsAppTemplateMessage({
 
 export async function listMetaWhatsAppMessageTemplates({
   config = getMetaWhatsAppOutboundConfig(),
+  language,
   limit = 20,
   name,
+  phoneNumberId,
 }: {
   config?: MetaWhatsAppOutboundConfig;
+  language?: string | null;
   limit?: number;
   name?: string | null;
+  phoneNumberId?: string | null;
 } = {}): Promise<MetaWhatsAppTemplateSummary[]> {
   const accessToken = readEnvValue(config.accessToken);
   const graphVersion = normalizeGraphVersion(config.graphVersion);
-  const whatsappBusinessAccountId =
-    await resolveMetaWhatsAppTemplateBusinessAccountId(config);
+  const scope = await resolveMetaWhatsAppTemplateScope({
+    config,
+    phoneNumberId,
+  });
 
-  if (!accessToken || !graphVersion || !whatsappBusinessAccountId) {
+  if (!accessToken || !graphVersion || !scope.whatsappBusinessAccountId) {
     throw new MetaWhatsAppSendError(
       "Configuracao de templates Meta WhatsApp incompleta.",
       503,
     );
   }
 
-  const searchParams = new URLSearchParams({
-    fields: "id,name,status,category,language,components",
-    limit: String(Math.min(Math.max(Math.trunc(limit), 1), 100)),
-  });
+  const requestedLimit = Math.min(Math.max(Math.trunc(limit), 1), 500);
+  const pageLimit = Math.min(requestedLimit, 100);
+  const normalizedName = normalizeMetaTemplateLookupName(name);
+  const normalizedLanguage = normalizeMetaTemplateLookupLanguage(language);
+  const templates: MetaWhatsAppTemplateSummary[] = [];
+  let after: string | null = null;
 
-  if (name?.trim()) {
-    searchParams.set("name", name.trim());
+  for (let pageIndex = 0; pageIndex < 10; pageIndex += 1) {
+    const searchParams = new URLSearchParams({
+      fields: "id,name,status,category,language,components",
+      limit: String(pageLimit),
+    });
+
+    if (after) {
+      searchParams.set("after", after);
+    }
+
+    const page = await listMetaWhatsAppMessageTemplatesByNode({
+      accessToken,
+      graphVersion,
+      nodeId: scope.whatsappBusinessAccountId,
+      searchParams,
+    });
+
+    for (const template of page.templates) {
+      const templateName = normalizeMetaTemplateLookupName(template.name);
+      const templateLanguage = normalizeMetaTemplateLookupLanguage(
+        template.language,
+      );
+
+      if (normalizedName && templateName !== normalizedName) {
+        continue;
+      }
+
+      if (normalizedLanguage && templateLanguage !== normalizedLanguage) {
+        continue;
+      }
+
+      templates.push(template);
+
+      if (templates.length >= requestedLimit) {
+        break;
+      }
+    }
+
+    if (templates.length >= requestedLimit) {
+      break;
+    }
+
+    if (normalizedName && templates.length > 0) {
+      break;
+    }
+
+    if (!page.nextAfter || page.templates.length === 0) {
+      break;
+    }
+
+    after = page.nextAfter;
   }
 
-  const response = await fetch(
-    `https://graph.facebook.com/${graphVersion}/${whatsappBusinessAccountId}/message_templates?${searchParams.toString()}`,
+  return templates;
+}
+
+export async function uploadMetaWhatsAppTemplateHeaderMedia({
+  config = getMetaWhatsAppOutboundConfig(),
+  fileBuffer,
+  fileLength,
+  fileName,
+  mimeType,
+}: {
+  config?: MetaWhatsAppOutboundConfig;
+  fileBuffer: Buffer;
+  fileLength: number;
+  fileName: string;
+  mimeType: string;
+}): Promise<MetaWhatsAppTemplateHeaderMediaUploadResult> {
+  const accessToken = readEnvValue(config.accessToken);
+  const appId = readEnvValue(config.appId);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+
+  if (!accessToken || !appId || !graphVersion) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao de upload de midia para templates Meta incompleta.",
+      503,
+    );
+  }
+
+  const sessionParams = new URLSearchParams({
+    file_length: String(fileLength),
+    file_name: fileName,
+    file_type: mimeType,
+  });
+  const sessionResponse = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${appId}/uploads?${sessionParams.toString()}`,
     {
       cache: "no-store",
       headers: {
-        Authorization: `Bearer ${accessToken}`,
+        Authorization: `OAuth ${accessToken}`,
       },
+      method: "POST",
     },
   );
-  const payload = (await response.json().catch(() => null)) as
+  const sessionPayload = (await sessionResponse.json().catch(() => null)) as
     | {
-        data?: Array<Record<string, unknown>>;
         error?: { code?: unknown; message?: unknown; type?: unknown };
+        id?: unknown;
       }
     | null;
 
-  if (!response.ok) {
+  if (!sessionResponse.ok) {
     throw new MetaWhatsAppSendError(
-      normalizeText(payload?.error?.message) ??
-        "Meta WhatsApp rejeitou a consulta de templates.",
-      response.status,
+      normalizeText(sessionPayload?.error?.message) ??
+        "Meta WhatsApp rejeitou o inicio do upload da midia.",
+      sessionResponse.status,
       {
-        code: normalizeErrorCode(payload?.error?.code),
-        details: payload?.error ?? null,
+        code: normalizeErrorCode(sessionPayload?.error?.code),
+        details: sessionPayload?.error ?? null,
       },
     );
   }
 
-  return Array.isArray(payload?.data)
-    ? payload.data.map((template) => ({
-        category: normalizeText(template.category),
-        components: template.components ?? null,
-        id: normalizeText(template.id),
-        language: normalizeText(template.language),
-        name: normalizeText(template.name),
-        status: normalizeText(template.status),
-      }))
-    : [];
+  const uploadSessionId = normalizeText(sessionPayload?.id);
+
+  if (!uploadSessionId) {
+    throw new MetaWhatsAppSendError(
+      "Meta WhatsApp nao retornou a sessao de upload da midia.",
+      502,
+    );
+  }
+
+  const uploadResponse = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${uploadSessionId}`,
+    {
+      body: fileBuffer as unknown as BodyInit,
+      cache: "no-store",
+      headers: {
+        Authorization: `OAuth ${accessToken}`,
+        "Content-Type": mimeType,
+        file_offset: "0",
+      },
+      method: "POST",
+    },
+  );
+  const uploadPayload = (await uploadResponse.json().catch(() => null)) as
+    | {
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        h?: unknown;
+      }
+    | null;
+
+  if (!uploadResponse.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(uploadPayload?.error?.message) ??
+        "Meta WhatsApp rejeitou o upload da midia.",
+      uploadResponse.status,
+      {
+        code: normalizeErrorCode(uploadPayload?.error?.code),
+        details: uploadPayload?.error ?? null,
+      },
+    );
+  }
+
+  return {
+    handle: normalizeText(uploadPayload?.h),
+    raw: uploadPayload,
+    uploadSessionId,
+  };
+}
+
+export async function listMetaWhatsAppPhoneNumbers({
+  config = getMetaWhatsAppOutboundConfig(),
+}: {
+  config?: MetaWhatsAppOutboundConfig;
+} = {}): Promise<MetaWhatsAppPhoneNumberSummary[]> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const configuredBusinessAccountId = readEnvValue(
+    config.whatsappBusinessAccountId,
+  );
+  const configuredDisplayPhoneNumber = normalizeMetaDisplayPhoneNumber(
+    config.phoneDisplayNumber,
+  );
+  const configuredPhoneNumberId = readEnvValue(config.phoneNumberId);
+  const phoneBusinessAccountId = await readMetaWhatsAppPhoneBusinessAccountId({
+    config,
+  });
+  const businessAccountIds = uniqueTextValues([
+    phoneBusinessAccountId,
+    configuredBusinessAccountId,
+  ]);
+
+  if (!accessToken || !graphVersion || !businessAccountIds.length) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao de telefones Meta WhatsApp incompleta.",
+      503,
+    );
+  }
+
+  const phoneNumbers: MetaWhatsAppPhoneNumberSummary[] = [];
+  const seen = new Set<string>();
+  let lastUnsupportedNodeError: MetaWhatsAppSendError | null = null;
+
+  for (const businessAccountId of businessAccountIds) {
+    let businessPhoneNumbers: MetaWhatsAppPhoneNumberSummary[];
+
+    try {
+      businessPhoneNumbers = await listMetaWhatsAppPhoneNumbersByBusiness({
+        accessToken,
+        businessAccountId,
+        configuredDisplayPhoneNumber,
+        configuredPhoneNumberId,
+        graphVersion,
+      });
+    } catch (error) {
+      if (isMetaUnsupportedObjectError(error)) {
+        lastUnsupportedNodeError =
+          error instanceof MetaWhatsAppSendError ? error : null;
+        continue;
+      }
+
+      throw error;
+    }
+
+    for (const phoneNumber of businessPhoneNumbers) {
+      if (seen.has(phoneNumber.id)) {
+        continue;
+      }
+
+      seen.add(phoneNumber.id);
+      phoneNumbers.push(phoneNumber);
+    }
+  }
+
+  if (
+    configuredPhoneNumberId &&
+    !phoneNumbers.some((phoneNumber) => phoneNumber.id === configuredPhoneNumberId)
+  ) {
+    const fallbackPhoneNumber = await readMetaWhatsAppPhoneNumberSummary({
+      config,
+      configuredDisplayPhoneNumber,
+      phoneNumberId: configuredPhoneNumberId,
+    });
+
+    phoneNumbers.unshift(
+      fallbackPhoneNumber ??
+        createConfiguredMetaPhoneNumberSummary({
+          displayPhoneNumber: configuredDisplayPhoneNumber,
+          phoneNumberId: configuredPhoneNumberId,
+          whatsappBusinessAccountId:
+            phoneBusinessAccountId ?? configuredBusinessAccountId,
+        }),
+    );
+  }
+
+  if (!phoneNumbers.length && lastUnsupportedNodeError) {
+    throw createMetaTemplateAccessError(lastUnsupportedNodeError);
+  }
+
+  const enrichedPhoneNumbers = await enrichMetaWhatsAppPhoneNumbers({
+    config,
+    configuredDisplayPhoneNumber,
+    phoneNumbers,
+  });
+
+  return enrichedPhoneNumbers.sort((left, right) => {
+    if (left.isDefault !== right.isDefault) {
+      return left.isDefault ? -1 : 1;
+    }
+
+    return left.label.localeCompare(right.label, "pt-BR");
+  });
+}
+
+function buildTemplateHeaderMediaComponent(
+  headerMedia: MetaWhatsAppTemplateHeaderMedia,
+) {
+  const mediaId = normalizeText(headerMedia.id);
+  const mediaLink = normalizeText(headerMedia.link);
+
+  if (!mediaId && !mediaLink) {
+    throw new MetaWhatsAppSendError(
+      "Template com midia precisa de id ou URL publica para envio.",
+      400,
+      {
+        code: "IRIS_TEMPLATE_MEDIA_MISSING",
+      },
+    );
+  }
+
+  const mediaPayload = {
+    ...(mediaId ? { id: mediaId } : { link: mediaLink }),
+    ...(headerMedia.type === "document" && headerMedia.fileName
+      ? { filename: headerMedia.fileName }
+      : {}),
+  };
+
+  return {
+    parameters: [
+      {
+        [headerMedia.type]: mediaPayload,
+        type: headerMedia.type,
+      },
+    ],
+    type: "header",
+  };
 }
 
 export async function getMetaWhatsAppPhoneNumberLinkStatus({
@@ -453,15 +845,16 @@ export async function getMetaWhatsAppPhoneNumberLinkStatus({
     };
   }
 
-  if (!whatsappBusinessAccountId) {
+  const templateBusinessAccountId =
+    phoneBusinessAccountId ?? whatsappBusinessAccountId;
+
+  if (!templateBusinessAccountId) {
     return {
       configured: false,
       linked: null,
       phoneBusinessAccountDetected: Boolean(phoneBusinessAccountId),
       phoneCount: null,
-      templateBusinessAccountSource: phoneBusinessAccountId
-        ? "phone"
-        : "missing_config",
+      templateBusinessAccountSource: "missing_config",
     };
   }
 
@@ -470,7 +863,7 @@ export async function getMetaWhatsAppPhoneNumberLinkStatus({
     limit: "100",
   });
   const response = await fetch(
-    `https://graph.facebook.com/${graphVersion}/${whatsappBusinessAccountId}/phone_numbers?${searchParams.toString()}`,
+    `https://graph.facebook.com/${graphVersion}/${templateBusinessAccountId}/phone_numbers?${searchParams.toString()}`,
     {
       cache: "no-store",
       headers: {
@@ -518,36 +911,23 @@ export async function createMetaWhatsAppMessageTemplate({
   config = getMetaWhatsAppOutboundConfig(),
   language,
   name,
-  preferPhoneNumberEdge = false,
+  phoneNumberId,
 }: {
   category: "AUTHENTICATION" | "MARKETING" | "UTILITY";
   components: unknown[];
   config?: MetaWhatsAppOutboundConfig;
   language: string;
   name: string;
-  preferPhoneNumberEdge?: boolean;
+  phoneNumberId?: string | null;
 }): Promise<MetaWhatsAppCreateTemplateResult> {
   const accessToken = readEnvValue(config.accessToken);
   const graphVersion = normalizeGraphVersion(config.graphVersion);
-  const phoneNumberId = readEnvValue(config.phoneNumberId);
+  const scope = await resolveMetaWhatsAppTemplateScope({
+    config,
+    phoneNumberId,
+  });
 
-  if (preferPhoneNumberEdge && accessToken && graphVersion && phoneNumberId) {
-    return createMetaWhatsAppMessageTemplateByNode({
-      accessToken,
-      category,
-      components,
-      graphVersion,
-      language,
-      name,
-      nodeId: phoneNumberId,
-      nodeKind: "phone",
-    });
-  }
-
-  const whatsappBusinessAccountId =
-    await resolveMetaWhatsAppTemplateBusinessAccountId(config);
-
-  if (!accessToken || !graphVersion || !whatsappBusinessAccountId) {
+  if (!accessToken || !graphVersion || !scope.whatsappBusinessAccountId) {
     throw new MetaWhatsAppSendError(
       "Configuracao de templates Meta WhatsApp incompleta.",
       503,
@@ -561,8 +941,7 @@ export async function createMetaWhatsAppMessageTemplate({
     graphVersion,
     language,
     name,
-    nodeId: whatsappBusinessAccountId,
-    nodeKind: "business",
+    nodeId: scope.whatsappBusinessAccountId,
   });
 }
 
@@ -574,7 +953,6 @@ async function createMetaWhatsAppMessageTemplateByNode({
   language,
   name,
   nodeId,
-  nodeKind,
 }: {
   accessToken: string;
   category: "AUTHENTICATION" | "MARKETING" | "UTILITY";
@@ -583,7 +961,6 @@ async function createMetaWhatsAppMessageTemplateByNode({
   language: string;
   name: string;
   nodeId: string;
-  nodeKind: "business" | "phone";
 }) {
   const response = await fetch(
     `https://graph.facebook.com/${graphVersion}/${nodeId}/message_templates`,
@@ -613,13 +990,9 @@ async function createMetaWhatsAppMessageTemplateByNode({
     | null;
 
   if (!response.ok) {
-    const fallbackMessage =
-      nodeKind === "phone"
-        ? "Meta WhatsApp nao permitiu criar o template diretamente pelo telefone de envio. Ajuste a WABA do telefone nas configuracoes Meta e tente novamente."
-        : "Meta WhatsApp rejeitou a criacao do template.";
-
     throw new MetaWhatsAppSendError(
-      normalizeText(payload?.error?.message) ?? fallbackMessage,
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou a criacao do template.",
       response.status,
       {
         code: normalizeErrorCode(payload?.error?.code),
@@ -635,16 +1008,6 @@ async function createMetaWhatsAppMessageTemplateByNode({
     raw: payload,
     status: normalizeText(payload?.status),
   };
-}
-
-async function resolveMetaWhatsAppTemplateBusinessAccountId(
-  config: MetaWhatsAppOutboundConfig,
-) {
-  const phoneBusinessAccountId = await readMetaWhatsAppPhoneBusinessAccountId({
-    config,
-  });
-
-  return phoneBusinessAccountId ?? readEnvValue(config.whatsappBusinessAccountId);
 }
 
 async function readMetaWhatsAppPhoneBusinessAccountId({
@@ -681,6 +1044,509 @@ async function readMetaWhatsAppPhoneBusinessAccountId({
   }
 
   return normalizeText(payload?.whatsapp_business_account?.id);
+}
+
+async function listMetaWhatsAppMessageTemplatesByNode({
+  accessToken,
+  graphVersion,
+  nodeId,
+  searchParams,
+}: {
+  accessToken: string;
+  graphVersion: string;
+  nodeId: string;
+  searchParams: URLSearchParams;
+}): Promise<{
+  nextAfter: string | null;
+  templates: MetaWhatsAppTemplateSummary[];
+}> {
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${nodeId}/message_templates?${searchParams.toString()}`,
+    {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        data?: Array<Record<string, unknown>>;
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        paging?: {
+          cursors?: {
+            after?: unknown;
+          };
+        };
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou a consulta de templates.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return {
+    nextAfter: normalizeText(payload?.paging?.cursors?.after),
+    templates: Array.isArray(payload?.data)
+      ? payload.data.map((template) => ({
+          category: normalizeText(template.category),
+          components: template.components ?? null,
+          id: normalizeText(template.id),
+          language: normalizeText(template.language),
+          name: normalizeText(template.name),
+          status: normalizeText(template.status),
+        }))
+      : [],
+  };
+}
+
+function normalizeMetaTemplateLookupName(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim().toLowerCase().replace(/-/g, "_");
+
+  return normalized || null;
+}
+
+function normalizeMetaTemplateLookupLanguage(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const normalized = value.trim();
+
+  return normalized || null;
+}
+
+async function resolveMetaWhatsAppTemplateScope({
+  config,
+  phoneNumberId,
+}: {
+  config: MetaWhatsAppOutboundConfig;
+  phoneNumberId?: string | null;
+}) {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const requestedPhoneNumberId = readEnvValue(phoneNumberId ?? undefined);
+  const configuredPhoneNumberId = readEnvValue(config.phoneNumberId);
+  const selectedPhoneNumberId = requestedPhoneNumberId ?? configuredPhoneNumberId;
+
+  if (!selectedPhoneNumberId) {
+    throw new MetaWhatsAppSendError(
+      "Selecione o telefone de envio antes de operar templates Meta.",
+      400,
+      {
+        code: "IRIS_TEMPLATE_PHONE_MISSING",
+      },
+    );
+  }
+
+  const selectedConfig = {
+    ...config,
+    phoneNumberId: selectedPhoneNumberId,
+  };
+  const phoneBusinessAccountId = await readMetaWhatsAppPhoneBusinessAccountId({
+    config: selectedConfig,
+  });
+
+  const configuredBusinessAccountId = readEnvValue(
+    config.whatsappBusinessAccountId,
+  );
+  let whatsappBusinessAccountId = phoneBusinessAccountId;
+  const templateBusinessAccountSource: MetaWhatsAppPhoneNumberLinkStatus["templateBusinessAccountSource"] =
+    phoneBusinessAccountId ? "phone" : "configured";
+
+  if (
+    !whatsappBusinessAccountId &&
+    configuredBusinessAccountId &&
+    accessToken &&
+    graphVersion
+  ) {
+    const configuredPhoneNumbers = await listMetaWhatsAppPhoneNumbersByBusiness({
+      accessToken,
+      businessAccountId: configuredBusinessAccountId,
+      configuredPhoneNumberId,
+      graphVersion,
+    });
+
+    if (
+      configuredPhoneNumbers.some(
+        (phoneNumber) => phoneNumber.id === selectedPhoneNumberId,
+      )
+    ) {
+      whatsappBusinessAccountId = configuredBusinessAccountId;
+    }
+  }
+
+  if (
+    requestedPhoneNumberId &&
+    !whatsappBusinessAccountId
+  ) {
+    throw new MetaWhatsAppSendError(
+      "A Iris nao conseguiu confirmar a WABA do telefone selecionado.",
+      400,
+      {
+        code: "IRIS_TEMPLATE_PHONE_WABA_MISSING",
+        details: {
+          hint:
+            "Selecione um telefone listado com numero real no Setup. A Iris nao deve criar ou consultar template usando WABA diferente do telefone escolhido.",
+        },
+      },
+    );
+  }
+
+  if (!whatsappBusinessAccountId) {
+    throw new MetaWhatsAppSendError(
+      "A Iris nao encontrou a WABA para criar ou consultar templates.",
+      503,
+      {
+        code: "IRIS_TEMPLATE_WABA_MISSING",
+      },
+    );
+  }
+
+  return {
+    phoneNumberId: selectedPhoneNumberId,
+    templateBusinessAccountSource,
+    whatsappBusinessAccountId,
+  };
+}
+
+async function listMetaWhatsAppPhoneNumbersByBusiness({
+  accessToken,
+  businessAccountId,
+  configuredDisplayPhoneNumber,
+  configuredPhoneNumberId,
+  graphVersion,
+}: {
+  accessToken: string;
+  businessAccountId: string;
+  configuredDisplayPhoneNumber?: string | null;
+  configuredPhoneNumberId?: string | null;
+  graphVersion: string;
+}) {
+  const searchParams = new URLSearchParams({
+    fields:
+      "id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status",
+    limit: "100",
+  });
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${businessAccountId}/phone_numbers?${searchParams.toString()}`,
+    {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        data?: Array<Record<string, unknown>>;
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou a consulta de telefones.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return Array.isArray(payload?.data)
+    ? payload.data
+        .map((phoneNumber) =>
+          mapMetaPhoneNumberSummary({
+            configuredDisplayPhoneNumber,
+            configuredPhoneNumberId,
+            phoneNumber,
+            whatsappBusinessAccountId: businessAccountId,
+          }),
+        )
+        .filter((phoneNumber): phoneNumber is MetaWhatsAppPhoneNumberSummary =>
+          Boolean(phoneNumber),
+        )
+    : [];
+}
+
+async function enrichMetaWhatsAppPhoneNumbers({
+  config,
+  configuredDisplayPhoneNumber,
+  phoneNumbers,
+}: {
+  config: MetaWhatsAppOutboundConfig;
+  configuredDisplayPhoneNumber?: string | null;
+  phoneNumbers: MetaWhatsAppPhoneNumberSummary[];
+}) {
+  const enrichedPhoneNumbers: MetaWhatsAppPhoneNumberSummary[] = [];
+
+  for (const phoneNumber of phoneNumbers) {
+    if (phoneNumber.displayPhoneNumber) {
+      enrichedPhoneNumbers.push(phoneNumber);
+      continue;
+    }
+
+    const detail = await readMetaWhatsAppPhoneNumberSummary({
+      config,
+      configuredDisplayPhoneNumber,
+      phoneNumberId: phoneNumber.id,
+    });
+
+    enrichedPhoneNumbers.push(
+      detail ? mergeMetaPhoneNumberSummary(phoneNumber, detail) : phoneNumber,
+    );
+  }
+
+  return enrichedPhoneNumbers;
+}
+
+async function readMetaWhatsAppPhoneNumberSummary({
+  config,
+  configuredDisplayPhoneNumber,
+  phoneNumberId,
+}: {
+  config: MetaWhatsAppOutboundConfig;
+  configuredDisplayPhoneNumber?: string | null;
+  phoneNumberId: string;
+}) {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const configuredPhoneNumberId = readEnvValue(config.phoneNumberId);
+
+  if (!accessToken || !graphVersion) {
+    return null;
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${phoneNumberId}?fields=id,display_phone_number,verified_name,quality_rating,code_verification_status,name_status,whatsapp_business_account`,
+    {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | (Record<string, unknown> & {
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        whatsapp_business_account?: { id?: unknown };
+      })
+    | null;
+
+  if (!response.ok || !payload) {
+    return null;
+  }
+
+  return mapMetaPhoneNumberSummary({
+    configuredDisplayPhoneNumber,
+    configuredPhoneNumberId,
+    phoneNumber: payload,
+    whatsappBusinessAccountId: normalizeText(
+      payload.whatsapp_business_account?.id,
+    ),
+  });
+}
+
+function mergeMetaPhoneNumberSummary(
+  base: MetaWhatsAppPhoneNumberSummary,
+  detail: MetaWhatsAppPhoneNumberSummary,
+): MetaWhatsAppPhoneNumberSummary {
+  const displayPhoneNumber =
+    detail.displayPhoneNumber ?? base.displayPhoneNumber ?? null;
+  const verifiedName = detail.verifiedName ?? base.verifiedName ?? null;
+
+  return {
+    codeVerificationStatus:
+      detail.codeVerificationStatus ?? base.codeVerificationStatus,
+    displayPhoneNumber,
+    id: base.id,
+    isDefault: base.isDefault || detail.isDefault,
+    label:
+      (base.isDefault || detail.isDefault) && !displayPhoneNumber && !verifiedName
+        ? `Telefone configurado da Iris (${formatMetaNodeIdSuffix(base.id)})`
+        : buildMetaPhoneNumberLabel({
+            displayPhoneNumber,
+            id: base.id,
+            verifiedName,
+          }),
+    nameStatus: detail.nameStatus ?? base.nameStatus,
+    qualityRating: detail.qualityRating ?? base.qualityRating,
+    verifiedName,
+    whatsappBusinessAccountId:
+      detail.whatsappBusinessAccountId ?? base.whatsappBusinessAccountId,
+  };
+}
+
+function mapMetaPhoneNumberSummary({
+  configuredDisplayPhoneNumber,
+  configuredPhoneNumberId,
+  phoneNumber,
+  whatsappBusinessAccountId,
+}: {
+  configuredDisplayPhoneNumber?: string | null;
+  configuredPhoneNumberId?: string | null;
+  phoneNumber: Record<string, unknown>;
+  whatsappBusinessAccountId?: string | null;
+}) {
+  const id = normalizeText(phoneNumber.id);
+
+  if (!id) {
+    return null;
+  }
+
+  const isDefault = Boolean(configuredPhoneNumberId && id === configuredPhoneNumberId);
+  const displayPhoneNumber =
+    normalizeText(phoneNumber.display_phone_number) ??
+    (isDefault ? normalizeMetaDisplayPhoneNumber(configuredDisplayPhoneNumber) : null);
+  const verifiedName = normalizeText(phoneNumber.verified_name);
+  const label =
+    isDefault && !displayPhoneNumber && !verifiedName
+      ? `Telefone configurado da Iris (${formatMetaNodeIdSuffix(id)})`
+      : buildMetaPhoneNumberLabel({
+          displayPhoneNumber,
+          id,
+          verifiedName,
+        });
+
+  return {
+    codeVerificationStatus: normalizeText(phoneNumber.code_verification_status),
+    displayPhoneNumber,
+    id,
+    isDefault,
+    label,
+    nameStatus: normalizeText(phoneNumber.name_status),
+    qualityRating: normalizeText(phoneNumber.quality_rating),
+    verifiedName,
+    whatsappBusinessAccountId: normalizeText(whatsappBusinessAccountId),
+  };
+}
+
+function buildMetaPhoneNumberLabel({
+  displayPhoneNumber,
+  id,
+  verifiedName,
+}: {
+  displayPhoneNumber?: string | null;
+  id: string;
+  verifiedName?: string | null;
+}) {
+  const display = normalizeMetaDisplayPhoneNumber(displayPhoneNumber);
+  const name = normalizeText(verifiedName);
+
+  return (
+    [display, name].filter(Boolean).join(" - ") ||
+    `Telefone sem numero (${formatMetaNodeIdSuffix(id)})`
+  );
+}
+
+function normalizeMetaDisplayPhoneNumber(value?: string | null) {
+  const normalized = normalizeText(value);
+
+  if (!normalized) {
+    return null;
+  }
+
+  const digits = normalized.replace(/\D/g, "");
+
+  if (!digits) {
+    return null;
+  }
+
+  if (normalized.startsWith("+") && normalized.replace(/\D/g, "") === digits) {
+    return normalized;
+  }
+
+  if (digits.length === 12 && digits.startsWith("55")) {
+    return `+${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 8)}-${digits.slice(8)}`;
+  }
+
+  if (digits.length === 13 && digits.startsWith("55")) {
+    return `+${digits.slice(0, 2)} ${digits.slice(2, 4)} ${digits.slice(4, 9)}-${digits.slice(9)}`;
+  }
+
+  return normalized.startsWith("+") ? normalized : `+${digits}`;
+}
+
+function createConfiguredMetaPhoneNumberSummary({
+  displayPhoneNumber,
+  phoneNumberId,
+  whatsappBusinessAccountId,
+}: {
+  displayPhoneNumber?: string | null;
+  phoneNumberId: string;
+  whatsappBusinessAccountId?: string | null;
+}): MetaWhatsAppPhoneNumberSummary {
+  const normalizedDisplayPhoneNumber =
+    normalizeMetaDisplayPhoneNumber(displayPhoneNumber);
+
+  return {
+    codeVerificationStatus: null,
+    displayPhoneNumber: normalizedDisplayPhoneNumber,
+    id: phoneNumberId,
+    isDefault: true,
+    label: normalizedDisplayPhoneNumber
+      ? buildMetaPhoneNumberLabel({
+          displayPhoneNumber: normalizedDisplayPhoneNumber,
+          id: phoneNumberId,
+          verifiedName: null,
+        })
+      : `Telefone configurado da Iris (${formatMetaNodeIdSuffix(phoneNumberId)})`,
+    nameStatus: null,
+    qualityRating: null,
+    verifiedName: null,
+    whatsappBusinessAccountId: normalizeText(whatsappBusinessAccountId),
+  };
+}
+
+function formatMetaNodeIdSuffix(value?: string | null) {
+  const normalized = normalizeText(value);
+
+  return normalized ? `ID final ${normalized.slice(-4)}` : "ID Meta sem numero";
+}
+
+function isMetaUnsupportedObjectError(error: unknown) {
+  if (!(error instanceof MetaWhatsAppSendError)) {
+    return false;
+  }
+
+  if (String(error.code ?? "") !== "100") {
+    return false;
+  }
+
+  const message = error.message.toLowerCase();
+
+  return (
+    message.includes("unsupported post request") ||
+    message.includes("unsupported get request") ||
+    message.includes("object with id") ||
+    message.includes("missing permissions")
+  );
+}
+
+function createMetaTemplateAccessError(error: MetaWhatsAppSendError) {
+  return new MetaWhatsAppSendError(
+    "A Meta recusou a operacao no telefone selecionado para templates. Verifique no Meta Manager se o telefone de envio e a WABA estao vinculados ao mesmo app/token da Iris.",
+    error.status,
+    {
+      code: error.code,
+      details: error.details,
+    },
+  );
 }
 
 export async function sendMetaWhatsAppAudioMessage({
@@ -1057,12 +1923,33 @@ function normalizeText(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
+function uniqueTextValues(values: Array<string | null | undefined>) {
+  const seen = new Set<string>();
+
+  return values
+    .map((value) => normalizeText(value))
+    .filter((value): value is string => {
+      if (!value || seen.has(value)) {
+        return false;
+      }
+
+      seen.add(value);
+      return true;
+    });
+}
+
 function normalizeErrorCode(value: unknown) {
   if (typeof value === "number" || typeof value === "string") {
     return value;
   }
 
   return null;
+}
+
+function normalizeNumber(value: unknown) {
+  const numberValue = Number(value);
+
+  return Number.isFinite(numberValue) ? numberValue : null;
 }
 
 function readEnvValue(value: string | undefined) {

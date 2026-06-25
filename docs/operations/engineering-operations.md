@@ -40705,3 +40705,66 @@ Conclusao:
 - HelpDesk: workflow unificado time<->Zeus. Fonte unica em `lib/hub-it-tickets/workflow.ts` (5 etapas + finalizado: Backlog/Novo/Em tratativa/Validacao/Revisao/Finalizado). Board do Zeus e "Meus chamados" do time importam a mesma logica (sem duplicacao).
 - Build exibido como versao limpa (`v1.3.0`) no avatar e no painel (removido o nome extenso `*-thread-google-hd`). `PANTEON_VERSION` em `build-info.ts`.
 - `main` = producao (cdf2902 pushada).
+
+## 2026-06-25 - Zeus - Iris avancada + CACA portados e VALIDADOS em producao (c2x)
+
+Assunto: [Iris] Port do CACA + Iris avancada para producao
+
+- Status: `EM_PRODUCAO`.
+- Autorizacao: Lucas autorizou Preview e go-live em 2026-06-25.
+- `c2x.app.br` -> `dpl_8LaBM5xki6GAi2FzDkTWZzWLcANB` (`oqoebv5u0`, commit `95934be`), HTTP 200. `ops.c2x.app.br` intocado (307). Rollback: `dpl_4pB8KqaLZgYZM9zsqVnZYnpVZPij` (`5yma8rwce`).
+- Fonte: branch `feat/iris-caca-port` (worktree `careli-hub-worktrees/iris-port`), portado de `wip/principal-dirty-20260623`. Merge para `main` ainda PENDENTE.
+- Metodo do port (5 fases, typecheck verde entre cada): (0) baseline da main na worktree nova — atencao: worktree nova exige `turbo build` dos `@repo/*` antes do `check-types` (resolucao de dist); (1) 19 aditivos de decomposicao; (2) swap de 5 vivos monolito->decomposto (read-diff confirmou assinatura webhook + tabelas 0024 + env keys identicos a prod); (3) bundle CACA (caca-agent V10 + caca-media-analysis + attendant/route) ligado no inbound via `maybeSendCacaAutoReply`; (4) regra janela 24h intacta; (5) preview `--skip-domain` -> go-live por alias.
+- Escopo: 28 arquivos Iris + `turbo.json` (declarado `HUB_IRIS_ATTENDANT_MODEL`). Nenhum outro modulo tocado.
+- Custo (revisao do CACA): ja era cost-conscious (event-driven, output capado 500 tk, input bounded, identidade Apolo cacheada em state, carga pesada gated atras do vinculo C2X). Unica ineficiencia: `loadHadesAttendanceClient` (~3 queries MySQL legado) por turno -> adicionado cache em memoria por instancia (TTL 120s) no `loadCacaRichContext` para contratos/financeiro agregado; a ENTREGA real do boleto (`loadBillingItems`) continua sem cache (sem risco de boleto pago/stale).
+- Gating do auto-reply: `shouldCacaAutomationRun(ticket)` = aberto + sem `assigned_to_user_id` + sem handoff + nao-active-contact. CACA so atende ticket NAO-atribuido.
+- Validacoes locais: `check-types:hub` PASS; `build` Next.js PASS (rota `/iris`); lint focado 0 erros.
+- Validacoes pos-publicacao: `c2x.app.br/` 200, `/login` 200; rotas novas `/api/iris/attendant` e `/api/iris/meta/templates/media` 405 (existem); `/api/iris/meta/webhook` 403 esperado; `ops` 307.
+- TESTE E2E CACA (WhatsApp real, +55 31 9072-8420): strogonoff (OpenAI) -> intencao boleto -> pediu CPF (auth deterministica) -> match por CPF -> confirmacao de nome (Leonardo Meneses Faria) -> listou boleto real do C2X legado (Recanto do Para QE L190, R$ 6.535,04, vencida ha 56 dias). PASS.
+- Follow-ups: (1) token Meta TEMPORARIO -> gerar System User token permanente (senao outbound da CACA quebra ao expirar); (2) bump `PANTEON_BUILD_TAG` v1.3.0->v1.4.0 + redeploy p/ anuncio do time (nao bumpei antes do deploy); (3) merge `feat/iris-caca-port`->`main`; (4) limpar ticket de teste `AT-000001`; (5) canal e-mail; (6) consolidar `caredesk`->`iris`.
+
+Conclusao:
+
+- A Iris avancada + CACA estao no ar em `c2x.app.br` e validadas E2E no WhatsApp real, com `ops` preservado e rollback gravado.
+- Impacto: atendimento com IA (CACA) respondendo cliente com auth deterministica e entrega de boleto do C2X legado, alem do cockpit decomposto.
+- Precisa de acao: gerar token Meta permanente (time-sensitive), refletir a `main` e anunciar a versao ao time apos o bump.
+
+## 2026-06-25 - Zeus - Token Meta permanente aplicado + redeploy (CACA outbound)
+
+Assunto: [Iris] System User token permanente da Meta em producao
+
+- Status: `EM_PRODUCAO`.
+- Motivo: o `META_WHATSAPP_ACCESS_TOKEN` em prod era temporario (expiraria e quebraria o outbound da CACA).
+- Acao (Lucas clicou, Zeus guiou; Zeus nao manipulou o valor do token):
+  - System User `Iris Core` (id `61589902123429`, Admin) ja tinha o app `Iris - Panteon` e as contas do WhatsApp com acesso total;
+  - gerado token com expiracao **Nunca** e permissoes `whatsapp_business_messaging` + `whatsapp_business_management`;
+  - Lucas atualizou `META_WHATSAPP_ACCESS_TOKEN` (Production) na Vercel (env Sensitive);
+  - redeploy `--prod --skip-domain` do mesmo commit `95934be` -> deployment `dpl_GKiDCvMKwRq6X9kAR7rDxkaoByT2` (`bhwgdjj7c`);
+  - alias somente `c2x.app.br` -> `dpl_GKiD`. `ops` intocado (307).
+- `c2x.app.br` agora serve `dpl_GKiDCvMKwRq6X9kAR7rDxkaoByT2`. Rollback pre-port segue `dpl_4pB8KqaLZgYZM9zsqVnZYnpVZPij` (`5yma8rwce`); o `dpl_8LaBM5xki6GAi2FzDkTWZzWLcANB` (token temporario) fica como rollback intermediario do port.
+- Validacao E2E (WhatsApp real): CACA confirmou cadastro, listou e **entregou o boleto** com link oficial Asaas (`asaas.com/i/...`) -> outbound OK com o token permanente.
+- Pendente: revogar o token temporario antigo na Meta (higiene, opcional); bump `PANTEON_BUILD_TAG` v1.4.0; merge `feat/iris-caca-port`->`main`; limpar `AT-000001`.
+
+Conclusao:
+
+- O outbound da CACA passa a usar token permanente; risco de expiracao eliminado.
+- Impacto: atendimento CACA estavel em producao (entrega real de boleto validada).
+- Proximo: merge para `main`, bump de versao + anuncio do time, limpeza do ticket de teste.
+
+## 2026-06-25 - Zeus - Hotfix tela de templates (Send/X) + import de template Meta
+
+Assunto: [Iris] Hotfix ReferenceError na tela de templates + import de template da Meta
+
+- Status: `EM_PRODUCAO`.
+- Bug: tela Setup -> Templates quebrava em prod com `Uncaught ReferenceError: Send is not defined` (client-side; runtime logs do Vercel vazios). Causa: `iris-setup-view.tsx` tem `// @ts-nocheck` (herdado), entao `check-types`/`build` nao pegaram os icones lucide `Send` e `X` usados sem import.
+- Fix: adicionado import de `Send` e `X` no `iris-setup-view.tsx` (commit `401a0b9`). Varredura TS2304 nos 3 arquivos `@ts-nocheck` do port (setup-view, embed, IrisPage) confirmou que eram as unicas referencias indefinidas.
+- Deploy: redeploy `--prod --skip-domain` -> `dpl_DknyRVp2MXQsoSKa1pyzW9vBXcch` (`cd71ch9f6`); alias somente `c2x.app.br`. `ops` 307 intocado.
+- `c2x.app.br` agora serve `dpl_DknyRVp2MXQsoSKa1pyzW9vBXcch`.
+- Validacao: Lucas confirmou tela de templates carregando + importou o template Meta `cobranca_geral` para o Panteon (via Consultar/Sincronizar; import exige assunto+fila).
+- Licao operacional: apos portar arquivos com `@ts-nocheck`, rodar varredura TS2304 (stripar `@ts-nocheck` temporario) para achar imports faltando que passam no build mas crasham em runtime.
+
+Conclusao:
+
+- A tela de templates voltou e o primeiro template da Meta foi trazido para o Panteon.
+- Impacto: Setup de templates operacional em prod.
+- Proximo (fechamento, nao urgente): merge `feat/iris-caca-port`->`main`, bump `PANTEON_BUILD_TAG` v1.4.0 + anuncio do time, limpar `AT-000001`.
