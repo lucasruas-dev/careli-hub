@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-26-processos-pop",
+    deployedAt: "2026-06-26T00:20:00-03:00",
+    modules: [
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              'Nova aba "Processos POP" na Home: a biblioteca de processos e regras de negocio da Careli, organizada por modulo e tela.',
+              "Cada processo tem fluxograma interativo (passe o mouse pra ver gatilho e SLA, clique pra focar o caminho), regras, SLA e ficha.",
+              "Estreia com o Hades/Cobranca: o workflow de cobranca (a regua) e a classificacao de risco e prioridade.",
+            ],
+            screen: "Processos POP",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-fyue6qzpt",
+    technical: {
+      done: 'Nova area Hub-level "Processos POP" como aba da Home (app/page.tsx HomeTab; e aba, nao modulo no sidebar). Catalogo tipado em lib/processos/catalog.ts (Modulo->Tela->Processo, campos O&M + execucao BPM-ready); biblioteca com busca + pastas aninhadas (modulo->tela); detalhe em modal e visao full inline; fluxograma interativo proprio em SVG (hover com gatilho/SLA, click-to-focus, zoom, rotulos Sim/Nao). Seed: workflow de cobranca (maquina de estados) + classificacao de risco (arvore de decisao do score 0-99 -> prioridade). Sem dependencia nova, sem polling, sem migration. v1.5.0 -> v1.6.0.',
+      motivation:
+        "Centralizar os POPs e regras de negocio num lugar visual e vivo no Hub (O&M), comecando pela documentacao do workflow e do score de risco da Cobranca, com base que pode evoluir para BPM executavel.",
+    },
+    title: "Processos POP: biblioteca de processos e regras com fluxograma interativo",
+    type: "novidade",
+    version: "v1.6.0",
+  },
+  {
     buildTag: "2026-06-25-hades-dashboard-cockpit",
     deployedAt: "2026-06-25T18:40:00-03:00",
     modules: [

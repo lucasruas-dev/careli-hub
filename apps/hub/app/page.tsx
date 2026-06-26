@@ -23,6 +23,7 @@ import {
 } from "@/lib/asana-performance";
 import { HubUserTicketsPanel } from "@/components/hub-support/hub-user-tickets-panel";
 import { HomeNovidadesPanel } from "@/components/panteon/home-novidades-panel";
+import { ProcessosLibrary } from "@/modules/processos/ProcessosLibrary";
 import {
   PanteonLoadingMark,
   PanteonLoadingState,
@@ -53,7 +54,7 @@ import {
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 type HomePresenceStatus = Exclude<HubPresenceStatus, "busy">;
-type HomeTab = "availability" | "overview" | "tickets";
+type HomeTab = "availability" | "overview" | "processos" | "tickets";
 type AvailabilityEventFilter =
   | "all"
   | "away"
@@ -261,6 +262,8 @@ export default function HomePage() {
 
         {activeHomeTab === "tickets" ? (
           <HubUserTicketsPanel title="Meus chamados" />
+        ) : activeHomeTab === "processos" ? (
+          <ProcessosLibrary />
         ) : activeHomeTab === "availability" && isAdmin ? (
           <AvailabilityAdminPanel snapshot={snapshot?.availability ?? null} />
         ) : (
@@ -358,7 +361,7 @@ function HomeTabs({
   return (
     <nav
       className={`inline-grid w-fit rounded-lg border border-[#d9e0e7] bg-white p-1 shadow-[0_8px_22px_rgb(16_24_32_/_0.05)] ${
-        isAdmin ? "grid-cols-3" : "grid-cols-2"
+        isAdmin ? "grid-cols-4" : "grid-cols-3"
       }`}
     >
       <button
@@ -376,6 +379,14 @@ function HomeTabs({
         type="button"
       >
         HelpDesk
+      </button>
+      <button
+        aria-pressed={activeTab === "processos"}
+        className={tabClassName("processos")}
+        onClick={() => onTabChange("processos")}
+        type="button"
+      >
+        Processos POP
       </button>
       {isAdmin ? (
         <button
