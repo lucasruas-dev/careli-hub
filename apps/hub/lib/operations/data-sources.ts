@@ -99,8 +99,8 @@ export async function collectOperationsDataSources({
     ...(await Promise.all([
       measureEndpoint({
         endpoint: `${normalizedOrigin}/api/hades/attendance/queue?limit=20`,
-        expectedDescription: "200 com limite seguro 20",
-        expectedStatusCodes: [200],
+        expectedDescription: "401 esperado sem bearer (fila protegida)",
+        expectedStatusCodes: [401],
         group: "guardian-queue",
         id: "guardian-queue-20",
         label: "Hades Queue limit=20",
@@ -109,8 +109,8 @@ export async function collectOperationsDataSources({
       }),
       measureEndpoint({
         endpoint: `${normalizedOrigin}/api/hades/attendance/queue?limit=50`,
-        expectedDescription: "200 com limite seguro 50",
-        expectedStatusCodes: [200],
+        expectedDescription: "401 esperado sem bearer (fila protegida)",
+        expectedStatusCodes: [401],
         group: "guardian-queue",
         id: "guardian-queue-50",
         label: "Hades Queue limit=50",

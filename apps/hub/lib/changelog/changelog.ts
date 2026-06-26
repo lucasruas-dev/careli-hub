@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-26-security-gate-central",
+    deployedAt: "2026-06-26T10:30:00-03:00",
+    modules: [
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "Reforco de seguranca em todo o Hub: qualquer informacao agora exige login. So a videochamada do Chronos (cliente externo, sem login no sistema) fica aberta — como deve ser.",
+              "Tapados 3 pontos que ainda respondiam sem login: a busca do Apolo (CRM), a visualizacao de boleto na Cobranca e a checagem de banco.",
+            ],
+            screen: "Plataforma",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-71eyvk82g",
+    technical: {
+      done: "Auditoria de seguranca de todas as ~100 rotas /api (todos os modulos). Achado: nao havia middleware global; cada rota so tinha a auth que ela mesma fazia. A maioria ja estava protegida por helper de modulo (authorizeHadesRead / authorizeChronosRequest / createAuthorizedAresContext / authorizeIrisMetaRequest / authorizeZeusAdminRequest etc.). CAMADA 1 (3 rotas abertas tapadas): apolo/search (vazava nome/CPF mascarado/perfil do CRM) -> novo lib/apolo/auth.ts (authorizeApoloRead); guardian/asaas/payment-viewing -> authorizeHadesRead + InstallmentsCard.tsx passou a enviar o Bearer; guardian/db/health -> removido o nome do banco (vira liveness puro). CAMADA 2 (gate central): novo apps/hub/middleware.ts exige Bearer em todo /api/* fora da allowlist (chronos/public da videochamada, webhook Meta, crons, OAuth callback, login, db/health, pwa/manifest); matcher so /api, paginas intocadas (ninguem deslogado). Monitor OPS: probes da fila Hades passaram a esperar 401 (protegidas desde o A5). Sem migration. v1.6.2 -> v1.6.3.",
+      motivation:
+        "Cumprir a politica do Lucas (tudo exige login, exceto a videochamada do Chronos) de forma sistemica: alem de tapar os 3 buracos remanescentes, o middleware garante que qualquer rota /api nova ja nasca trancada (defense-in-depth), evitando novos vazamentos de PII como o da fila/detalhe (A5).",
+    },
+    title: "Segurança: gate central de login em todas as APIs",
+    type: "correcao",
+    version: "v1.6.3",
+  },
+  {
     buildTag: "2026-06-26-hades-fila-auth",
     deployedAt: "2026-06-26T08:45:00-03:00",
     modules: [

@@ -10,6 +10,7 @@ import {
   PanteonLoadingState,
 } from "@/components/panteon/panteon-loading";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
+import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type { PortfolioUnit, QueueClient } from "@/modules/guardian/attendance/types";
 
 const sortOptions = [
@@ -483,9 +484,18 @@ function PaymentViewingIndicator({ installment }: { installment: Installment }) 
       setState({ status: "loading" });
 
       try {
+        // Rota protegida (PII de cobranca): envia o Bearer da sessao do Hub.
+        const supabase = getHubSupabaseClient();
+        const accessToken =
+          (await supabase?.auth.getSession())?.data.session?.access_token ?? "";
         const response = await fetch(
           `/api/hades/asaas/payment-viewing?paymentId=${encodeURIComponent(installment.id ?? "")}`,
-          { cache: "no-store" }
+          {
+            cache: "no-store",
+            headers: accessToken
+              ? { Authorization: `Bearer ${accessToken}` }
+              : undefined,
+          }
         );
         const payload = (await response.json().catch(() => null)) as
           | {

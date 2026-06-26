@@ -20,10 +20,11 @@ export async function GET() {
       );
     }
 
+    // Liveness probe (consumido server-side pelo monitor OPS, na allowlist do
+    // middleware). NAO expor o nome do banco aqui — so sinal de vida + latencia.
     return NextResponse.json({
       ok: true,
       status: "connected",
-      database: result.databaseName,
       elapsedMs: result.elapsedMs,
       serverTime: result.serverTime,
     });

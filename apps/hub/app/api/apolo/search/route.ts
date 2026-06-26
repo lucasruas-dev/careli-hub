@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { authorizeApoloRead } from "@/lib/apolo/auth";
 import { loadApoloDashboard } from "@/lib/apolo/server";
 import type { ApoloEntity, ApoloProfile } from "@/lib/apolo/types";
 
@@ -9,6 +10,12 @@ export const runtime = "nodejs";
 const MAX_LIMIT = 50;
 
 export async function GET(request: Request) {
+  const auth = await authorizeApoloRead(request);
+
+  if (!auth.ok) {
+    return auth.response;
+  }
+
   const url = new URL(request.url);
   const query = normalizeSearch(url.searchParams.get("q") ?? "");
   const profile = normalizeProfile(url.searchParams.get("profile"));
