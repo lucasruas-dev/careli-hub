@@ -40854,3 +40854,18 @@ Conclusao:
 - A arquitetura da Cobranca (workflow + risco + acordos/promessas + regua de lembretes) esta **desenhada, conectada e no ar** no Processos POP (v1.6.1); os processos do Hub agora se **linkam** (arvore navegavel).
 - Impacto: o time enxerga a regua de cobranca ponta a ponta; base de processo-como-dado pronta pra virar BPM.
 - Proximo (chat fresco): **executar o motor** da Cobranca — entidade de compromissos, sequencias de protocolo, cron da regua + templates, e a UI. Ver handoff `2026-06-26`.
+
+## 2026-06-26 - Zeus - Seguranca: fila/detalhe da Cobranca agora exigem login (A5 / PII / LGPD) (v1.6.2)
+
+Assunto: [Hades] A5 — fecha exposicao de PII na fila/detalhe da cobranca
+
+- Status: `EM_PRODUCAO`. Autorizacao: Lucas ("pode subir"), 2026-06-26 (~08:45).
+- `c2x.app.br` -> `careli-hub-hub-i2bs-71eyvk82g` (`dpl_3SEfVBmW3BRkd37r5PsgtYHZMwRf`, **v1.6.2**, build `2026-06-26-hades-fila-auth`, commit `0592ef4`), HTTP 200. `ops` 307. Rollback: `careli-hub-hub-i2bs-7uxsw7al2` (`dpl_3pKVCN5xrG6vk7t21hrVCejAeVHh`, v1.6.1).
+- **Achado (vazamento real):** NAO ha middleware global em `apps/hub`; as rotas `/api/guardian/attendance/queue` e `/client/[id]` **nao validavam sessao** e devolviam **PII do C2X** (nome/CPF/divida/endereco/conjuge) a **qualquer requisicao sem auth** — Lucas confirmou abrindo a URL direto na prod (dump JSON com a carteira). Risco LGPD.
+- **Fix:** helper `lib/guardian/auth.ts` (`authorizeHadesRead`: valida Bearer Supabase via service role + `hub_user` ativo com role admin/leader/operator/viewer) aplicado nas 2 rotas. A pagina ja enviava o Bearer; agora o servidor valida. Sem migration, sem env.
+- **Verificado em PROD:** fila sem auth -> **401** (era 200+PII); logado -> carrega normal; Dashboard ja estava protegido (`createAuthorizedContext`). (Atencao: apos `alias set` ha ~alguns segundos de propagacao — 1a checagem deu 200 stale; retry deu 401.)
+- **POLITICA definida pelo Lucas:** **tudo exige login, EXCETO a pagina de videochamada do Chronos** (clientes externos entram na call sem login do sistema). Endpoints de maquina (webhook Meta, cron) ficam em allowlist, trancados pela propria chave, nunca abertos a humano.
+
+Conclusao:
+- Vazamento de PII na cobranca **fechado em producao** (v1.6.2).
+- **PROXIMO (frente prioritaria):** **auditoria completa de seguranca** de TODOS os modulos (Iris/Hermes/Chronos/Hades/Zeus/Apolo) — achar qualquer rota/tela aberta — e um **gate central (middleware + allowlist: videochamada Chronos + webhook + cron + login + estaticos)** pra cumprir a politica e blindar rotas futuras. Depois, retomar a EXECUCAO do motor da Cobranca.

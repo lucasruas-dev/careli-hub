@@ -4663,3 +4663,18 @@ Conclusao:
 - Cobranca desenhada ponta a ponta e conectada no Processos POP (v1.6.1), no ar em `c2x.app.br`.
 - Impacto: arvore de processos navegavel; base de processo-como-dado pronta pra virar BPM.
 - Proximo: engenharia do motor (migration + cron + UI), em chat fresco.
+
+## 2026-06-26 - Seguranca: fila/detalhe da Cobranca exigem login (A5) - v1.6.2 - EM PRODUCAO
+
+- Modulo: Hades. Status: `EM PRODUCAO`. Autorizacao: Lucas ("pode subir"), 2026-06-26.
+- Branch: `main`; commit `0592ef4`.
+- Deployment: `dpl_3SEfVBmW3BRkd37r5PsgtYHZMwRf` (`careli-hub-hub-i2bs-71eyvk82g`), v1.6.2, build `2026-06-26-hades-fila-auth`.
+- Alias: somente `c2x.app.br`. `ops.c2x.app.br` intocado.
+- Rollback: `dpl_3pKVCN5xrG6vk7t21hrVCejAeVHh` (`careli-hub-hub-i2bs-7uxsw7al2`, v1.6.1).
+- Escopo: `lib/guardian/auth.ts` (authorizeHadesRead = Bearer Supabase + hub_user ativo) + auth nas rotas `attendance/queue` e `attendance/client/[id]` (que vaziam PII do C2X sem auth); changelog v1.6.2; bump build-info. Sem migration/env.
+- Validacoes: `check-types:hub` PASS; PROD: c2x home 200, ops 307, **fila sem auth 401** (era 200+PII).
+- Follow-up: **auditoria completa de seguranca** (todos os modulos) + **gate central** (middleware + allowlist). Politica: tudo exige login exceto a videochamada do Chronos.
+
+Conclusao:
+- Exposicao de PII na fila/detalhe da cobranca **fechada em producao**.
+- Proximo: auditoria de seguranca de todos os modulos + gate central de auth.
