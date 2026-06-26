@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { ArrowLeft, FolderOpen, Maximize2, Search, X } from "lucide-react";
+import { ArrowLeft, FolderOpen, Link2, Maximize2, Search, X } from "lucide-react";
 
-import { POP_CATALOG, type PopProcess } from "@/lib/processos/catalog";
+import { POP_CATALOG, getProcessRelations, type PopProcess } from "@/lib/processos/catalog";
 import { ProcessFlowchart } from "@/modules/processos/ProcessFlowchart";
 
 type FlatProcess = {
@@ -79,7 +79,13 @@ export function ProcessosLibrary() {
   const openRow = filtered.find((row) => row.process.id === openId) ?? null;
 
   if (fullRow) {
-    return <ProcessFullView onClose={() => setFullId(null)} row={fullRow} />;
+    return (
+      <ProcessFullView
+        onClose={() => setFullId(null)}
+        onOpenProcess={(id) => setFullId(id)}
+        row={fullRow}
+      />
+    );
   }
 
   return (
@@ -116,6 +122,7 @@ export function ProcessosLibrary() {
             setFullId(openRow.process.id);
             setOpenId(null);
           }}
+          onOpenProcess={(id) => setOpenId(id)}
           row={openRow}
         />
       ) : null}
@@ -243,10 +250,12 @@ function ProcessHeaderInfo({ row }: { row: FlatProcess }) {
 function ProcessModal({
   onClose,
   onExpand,
+  onOpenProcess,
   row,
 }: {
   onClose: () => void;
   onExpand: () => void;
+  onOpenProcess?: (processId: string) => void;
   row: FlatProcess;
 }) {
   useEffect(() => {
@@ -294,14 +303,22 @@ function ProcessModal({
           </div>
         </header>
         <div className="overflow-y-auto px-5 py-4">
-          <ProcessDetail process={row.process} />
+          <ProcessDetail onOpenProcess={onOpenProcess} process={row.process} />
         </div>
       </div>
     </div>
   );
 }
 
-function ProcessFullView({ onClose, row }: { onClose: () => void; row: FlatProcess }) {
+function ProcessFullView({
+  onClose,
+  onOpenProcess,
+  row,
+}: {
+  onClose: () => void;
+  onOpenProcess?: (processId: string) => void;
+  row: FlatProcess;
+}) {
   return (
     <section className="rounded-xl border border-[#d9e0e7] bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="mb-4 flex items-start gap-3 border-b border-[#edf1f5] pb-4">
@@ -315,18 +332,37 @@ function ProcessFullView({ onClose, row }: { onClose: () => void; row: FlatProce
         </button>
         <ProcessHeaderInfo row={row} />
       </div>
-      <ProcessDetail process={row.process} />
+      <ProcessDetail onOpenProcess={onOpenProcess} process={row.process} />
     </section>
   );
 }
 
-function ProcessDetail({ process }: { process: PopProcess }) {
+function ProcessDetail({
+  onOpenProcess,
+  process,
+}: {
+  onOpenProcess?: (processId: string) => void;
+  process: PopProcess;
+}) {
   const [tab, setTab] = useState<DetailTab>("ficha");
 
   const stateLabel = useMemo(() => {
     const map = new Map<string, string>();
     process.estados.forEach((state) => map.set(state.id, state.label));
     return map;
+  }, [process]);
+
+  const relations = useMemo(() => {
+    const result = getProcessRelations(process.id);
+    const map = new Map<string, { in: boolean; nome: string; out: boolean }>();
+    result.outgoing.forEach((relation) =>
+      map.set(relation.id, { in: false, nome: relation.nome, out: true }),
+    );
+    result.incoming.forEach((relation) => {
+      const existing = map.get(relation.id);
+      map.set(relation.id, { in: true, nome: relation.nome, out: existing?.out ?? false });
+    });
+    return [...map.entries()];
   }, [process]);
 
   const tabs: Array<{ id: DetailTab; label: string }> = [
@@ -338,6 +374,22 @@ function ProcessDetail({ process }: { process: PopProcess }) {
 
   return (
     <div>
+      {relations.length > 0 ? (
+        <div className="mb-4 flex flex-wrap items-center gap-2">
+          <span className="text-xs font-medium text-slate-400">Processos vinculados:</span>
+          {relations.map(([id, info]) => (
+            <button
+              className="inline-flex items-center gap-1 rounded-full border border-[#A07C3B]/30 bg-[#FFF9EF] px-2.5 py-1 text-xs font-medium text-[#8A6A2F] transition hover:bg-[#fdf3e0]"
+              key={id}
+              onClick={() => onOpenProcess?.(id)}
+              type="button"
+            >
+              <Link2 aria-hidden="true" size={12} />
+              {info.in && info.out ? "⇄" : info.out ? "→" : "←"} {info.nome}
+            </button>
+          ))}
+        </div>
+      ) : null}
       <div className="mb-4 flex gap-1 border-b border-[#edf1f5]">
         {tabs.map((item) => (
           <button
@@ -369,7 +421,7 @@ function ProcessDetail({ process }: { process: PopProcess }) {
 
       {tab === "fluxo" ? (
         <div>
-          <ProcessFlowchart process={process} />
+          <ProcessFlowchart onOpenProcess={onOpenProcess} process={process} />
           <div className="mt-3 flex flex-wrap items-center gap-4 text-xs text-slate-500">
             <Legend swatch="line">fluxo normal</Legend>
             <Legend swatch="gold">quebra / 2ª chance</Legend>

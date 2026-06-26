@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-26-processos-pop-cross-link",
+    deployedAt: "2026-06-26T03:03:00-03:00",
+    modules: [
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "Processos POP agora tem processos CONECTADOS: clique num passo do fluxograma e ele abre o processo ligado.",
+              'Cada processo mostra "Processos vinculados" no topo (chips) e o painel de Novidades passou a mostrar a hora, alem da data.',
+              "A Cobranca ganhou os processos Acordos & Promessas e Regua de lembretes, ligados ao Workflow.",
+            ],
+            screen: "Processos POP",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-8cp13ddzj",
+    technical: {
+      done: "Iteracao da Processos POP: cross-link entre processos (PopState.processoLink + onOpenProcess no ProcessFlowchart; clique abre o processo alvo no modal/full) + relacoes automaticas derivadas (getProcessRelations) exibidas como 'Processos vinculados'. Workflow de cobranca renomeado Promessa/Acordo -> Proposta/Acerto; A&P reestruturado (termina no Acerto, braco acordo com envio) + novo processo Regua de lembretes (D-3/2/1/0, cron diario). Fork rotulo reposicionado (ponto na bezier). Painel Novidades passou a exibir data + hora (formatBrDate). v1.6.0 -> v1.6.1.",
+      motivation:
+        "Conectar os processos da Cobranca numa arvore navegavel (workflow <-> acordos/promessas <-> regua), deixando o desenho do motor de cobranca completo e visual para o time; e registrar a hora dos deploys no painel de Novidades.",
+    },
+    title: "Processos POP: processos conectados (cross-link) + Cobrança completa",
+    type: "melhoria",
+    version: "v1.6.1",
+  },
+  {
     buildTag: "2026-06-26-processos-pop",
     deployedAt: "2026-06-26T00:20:00-03:00",
     modules: [

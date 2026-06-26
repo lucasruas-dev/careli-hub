@@ -24,6 +24,8 @@ export type PopState = {
   x: number;
   y: number;
   nota?: string;
+  // Quando preenchido, o no vira um link: clicar abre o processo com esse id.
+  processoLink?: string;
 };
 
 export type PopTransitionMode = "auto" | "manual";
@@ -92,8 +94,8 @@ export const POP_CATALOG: readonly PopModule[] = [
               { id: "acionar", label: "Acionar", kind: "etapa", x: 150, y: 86 },
               { id: "contato", label: "Contato", kind: "etapa", x: 326, y: 86 },
               { id: "negociacao", label: "Negociação", kind: "etapa", x: 502, y: 86 },
-              { id: "promessa", label: "Promessa de pagamento", kind: "etapa", x: 678, y: 86 },
-              { id: "acordo", label: "Acordo", kind: "etapa", x: 860, y: 86 },
+              { id: "proposta", label: "Proposta", kind: "etapa", x: 678, y: 86, processoLink: "acordos-promessas", nota: "Operador gera a promessa ou o acordo (oferta na mesa). Clique para abrir o processo Acordos & Promessas." },
+              { id: "acerto", label: "Acerto", kind: "etapa", x: 860, y: 86, processoLink: "regua-lembretes", nota: "Cliente aceitou (promessa/acordo enviado). A régua de lembretes cuida do pagamento. Clique para abrir a Régua de lembretes." },
               { id: "pago", label: "Pago / Finalizado", kind: "fim-sucesso", x: 860, y: 226 },
               { id: "juridico", label: "Jurídico", kind: "fim-escalonamento", x: 326, y: 242 },
             ],
@@ -102,11 +104,11 @@ export const POP_CATALOG: readonly PopModule[] = [
               { de: "acionar", para: "contato", gatilho: "operador faz contato (meta 1/dia)", modo: "manual" },
               { de: "contato", para: "negociacao", gatilho: "cliente responde no WhatsApp (Iris)", modo: "auto" },
               { de: "contato", para: "juridico", gatilho: "5 tentativas sem resposta", modo: "auto" },
-              { de: "negociacao", para: "promessa", gatilho: "operador registra promessa/acordo (protocolo)", modo: "manual" },
-              { de: "promessa", para: "acordo", gatilho: "operador marca acordo aceito", modo: "manual" },
-              { de: "acordo", para: "pago", gatilho: "débito do cliente zera", modo: "auto" },
-              { de: "acordo", para: "negociacao", gatilho: "não paga (1ª vez)", modo: "auto", tag: "quebra" },
-              { de: "negociacao", para: "juridico", gatilho: "2º acordo não pago", modo: "auto", tag: "quebra" },
+              { de: "negociacao", para: "proposta", gatilho: "operador propõe a condição (data de promessa ou acordo)", modo: "manual" },
+              { de: "proposta", para: "acerto", gatilho: "cliente aceita a proposta", modo: "manual" },
+              { de: "acerto", para: "pago", gatilho: "débito do cliente zera", modo: "auto" },
+              { de: "acerto", para: "negociacao", gatilho: "não paga (1ª vez)", modo: "auto", tag: "quebra" },
+              { de: "negociacao", para: "juridico", gatilho: "2ª quebra (acerto não pago de novo)", modo: "auto", tag: "quebra" },
             ],
             sla: [
               { item: "Entrada no funil", valor: "parcela vencida há mais de 3 dias" },
@@ -117,10 +119,11 @@ export const POP_CATALOG: readonly PopModule[] = [
             ],
             decisoes: [
               "Interação = resposta do cliente no canal de mensageria (Hades → Iris).",
-              "Quebra é uma TAG: 1º acordo não pago volta para Negociação; 2º não pago vai direto ao Jurídico.",
-              "Promessa → Acordo é manual: o operador sinaliza o aceite.",
+              "Quebra é uma TAG: 1º acerto não pago volta para Negociação; na 2ª quebra vai direto ao Jurídico.",
+              "Proposta → Acerto: o operador propõe e o cliente aceita a condição (data de promessa ou acordo).",
+              "O nó Acerto abre o processo Acordos & Promessas, que detalha promessa × acordo e o desfecho.",
               "Pago é automático: ao zerar o débito o cliente sai do Hades e a timeline registra o encerramento com o protocolo.",
-              "Protocolos encadeados: Atendimento (AT) → Cobrança (CB) → Promessa/Acordo.",
+              "Protocolos encadeados: Atendimento (AT) → Cobrança (CB) → Promessa (PR) / Acordo (AC).",
               "SLAs ficam em constantes no código (ajustáveis sob demanda).",
             ],
             execucao: { automatizado: false },
@@ -178,6 +181,112 @@ export const POP_CATALOG: readonly PopModule[] = [
             ],
             execucao: { automatizado: true, indicadores: ["distribuição por prioridade", "score médio da carteira"] },
           },
+          {
+            id: "acordos-promessas",
+            nome: "Acordos & Promessas",
+            resumo:
+              "Detalha a Proposta da régua: o operador propõe uma PROMESSA (cliente paga o que já deve até uma data) ou um ACORDO (renegocia com desconto, entrada e parcelas), registra e ENVIA ao cliente. Termina no Acerto — daí a Régua de lembretes cuida do pagamento. (Desenho fechado; execução pendente.)",
+            disciplina: "O&M",
+            status: "rascunho",
+            objetivo:
+              "Padronizar o registro e o envio de promessas e acordos, com a cobrança via C2X/Asaas, deixando o cliente em Acerto na régua.",
+            responsavel: "Operação de Cobrança (Hades)",
+            entradas: [
+              "Proposta na régua de cobrança (ver Workflow de cobrança)",
+              "Parcelas / unidade do C2X selecionadas",
+            ],
+            saidas: [
+              "Promessa ou acordo registrado, com protocolo (PR / AC)",
+              "Boletos / link enviados ao cliente pelo Iris",
+              "Cliente em Acerto na régua (lembretes lá)",
+            ],
+            estados: [
+              { id: "inicio", label: "Proposta", kind: "inicio", x: 12, y: 134, nota: "Vem da régua (workflow): o operador vai propor a condição." },
+              { id: "decisao", label: "Promessa ou acordo?", kind: "etapa", x: 140, y: 130 },
+              { id: "prom_reg", label: "Promessa registrada", kind: "etapa", x: 350, y: 24 },
+              { id: "prom_envio", label: "Link enviado", kind: "etapa", x: 545, y: 24 },
+              { id: "ac_aguard", label: "Aguardando emissão", kind: "etapa", x: 350, y: 244 },
+              { id: "ac_emitido", label: "Boletos emitidos", kind: "etapa", x: 540, y: 244 },
+              { id: "ac_envio", label: "Faturas enviadas", kind: "etapa", x: 720, y: 244 },
+              { id: "acerto", label: "Acerto → régua", kind: "fim-sucesso", x: 770, y: 130, processoLink: "regua-lembretes", nota: "Tudo enviado: o cliente está em Acerto na régua. Clique para abrir a Régua de lembretes." },
+            ],
+            transicoes: [
+              { de: "inicio", para: "decisao", gatilho: "operador vai propor a condição ao cliente", modo: "manual" },
+              { de: "decisao", para: "prom_reg", gatilho: "cliente só promete pagar o que já deve, sem renegociar", modo: "manual", rotulo: "Promessa" },
+              { de: "decisao", para: "ac_aguard", gatilho: "cliente renegocia; operador abre atividade pro financeiro (Asana) emitir os boletos novos no C2X", modo: "manual", rotulo: "Acordo" },
+              { de: "prom_reg", para: "prom_envio", gatilho: "operador reenvia o link do boleto (que já existe no C2X) pelo Iris", modo: "manual" },
+              { de: "prom_envio", para: "acerto", gatilho: "link enviado ao cliente", modo: "manual" },
+              { de: "ac_aguard", para: "ac_emitido", gatilho: "financeiro emite os boletos novos no C2X", modo: "manual" },
+              { de: "ac_emitido", para: "ac_envio", gatilho: "operador seleciona as faturas + template de acordo", modo: "manual" },
+              { de: "ac_envio", para: "acerto", gatilho: "faturas enviadas ao cliente pelo Iris", modo: "manual" },
+            ],
+            sla: [
+              { item: "Promessa · financeiro", valor: "nenhuma atividade — o boleto da parcela já existe no C2X" },
+              { item: "Acordo · financeiro", valor: "atividade manual (Asana) → financeiro emite os boletos novos no C2X" },
+              { item: "Envio", valor: "operador seleciona as faturas + template e encaminha pelo Iris" },
+              { item: "Cobrança", valor: "boletos sempre gerados no C2X (integrado ao Asaas); Hades não emite" },
+              { item: "Fim do processo", valor: "ao enviar, o cliente fica em Acerto na régua (lembretes lá)" },
+            ],
+            decisoes: [
+              "Hades REGISTRA e orquestra; o C2X COBRA (gera o boleto). Hades não emite boleto.",
+              "Braço Promessa = registro simples: só a data + parcela(s), sem atividade financeira; o boleto já existe no C2X (operador reenvia o link pelo Iris).",
+              "Braço Acordo = renegociação: atividade pro financeiro (Asana hoje) emitir os boletos novos no C2X; depois o operador encaminha as faturas.",
+              "Operador aponta as faturas na devolutiva — o seletor de parcelas relacionadas já existe no fluxo de cobrança pela Iris.",
+              "O processo termina no Acerto: a partir daí a Régua de lembretes (no Workflow) cuida do pagamento e da quebra.",
+              "Protocolos encadeados: Atendimento (AT) → Cobrança (CB) → Promessa (PR) / Acordo (AC).",
+              "Desenho aprovado com o Lucas; a entidade e o envio ainda serão construídos (precisa de migration).",
+            ],
+            execucao: { automatizado: false },
+          },
+          {
+            id: "regua-lembretes",
+            nome: "Régua de lembretes",
+            resumo:
+              "Depois do Acerto, todo dia o sistema confere o vencimento e dispara um lembrete por WhatsApp em D-3, D-2, D-1 e no dia. Se pagar, finaliza; se vencer sem pagar, volta à régua de cobrança. (Desenho fechado; execução pendente — é a 1ª automação BPM.)",
+            disciplina: "O&M",
+            status: "rascunho",
+            objetivo:
+              "Lembrar o cliente do vencimento da promessa/acordo de forma automática e barata (WhatsApp), maximizando o pagamento no prazo.",
+            responsavel: "Operação de Cobrança (Hades)",
+            entradas: [
+              "Cliente em Acerto (promessa ou acordo enviado)",
+              "Vencimento da parcela / data prometida (C2X)",
+            ],
+            saidas: [
+              "Lembretes disparados (D-3, D-2, D-1, no dia)",
+              "Pagamento (sai do Hades) ou quebra (volta à régua de cobrança)",
+            ],
+            estados: [
+              { id: "inicio", label: "Acerto", kind: "inicio", x: 12, y: 130, nota: "Promessa/acordo enviado, aguardando pagamento." },
+              { id: "check", label: "Régua diária", kind: "etapa", x: 160, y: 126, nota: "Todo dia confere o C2X e a distância até o vencimento." },
+              { id: "lembrete", label: "Lembrete WhatsApp", kind: "etapa", x: 390, y: 20, nota: "Dispara em D-3, D-2, D-1 e no dia do vencimento." },
+              { id: "pago", label: "Pago", kind: "fim-sucesso", x: 390, y: 130 },
+              { id: "quebra", label: "Quebra → régua", kind: "fim-escalonamento", x: 390, y: 244, processoLink: "workflow-cobranca", nota: "Venceu sem pagar: volta pra Negociação na régua. Clique para abrir o Workflow." },
+            ],
+            transicoes: [
+              { de: "inicio", para: "check", gatilho: "o acerto entra na régua de lembretes", modo: "auto" },
+              { de: "check", para: "lembrete", gatilho: "faltam 3, 2, 1 dias ou vence hoje — e ainda não pagou", modo: "auto", rotulo: "lembra" },
+              { de: "check", para: "pago", gatilho: "boleto pago no C2X (débito zera)", modo: "auto", rotulo: "pagou" },
+              { de: "check", para: "quebra", gatilho: "venceu sem pagamento", modo: "auto", rotulo: "venceu" },
+            ],
+            sla: [
+              { item: "Lembretes", valor: "D-3, D-2, D-1 e no dia do vencimento / data prometida" },
+              { item: "Antes de lembrar", valor: "confere no C2X se o boleto já não foi pago" },
+              { item: "Canal", valor: "WhatsApp (Iris), com template Meta aprovado" },
+              { item: "Custo", valor: "WhatsApp é mais barato que o disparo do Asaas (Lucas)" },
+              { item: "Cadência", valor: "cron diário (1x/dia), sem polling; idempotente (não duplica)" },
+              { item: "Quebra", valor: "venceu sem pagar → volta à régua (Negociação)" },
+            ],
+            decisoes: [
+              "Roda num cron diário: 1 verificação por dia, sem polling (consciência de custo).",
+              "Antes de disparar, confere no C2X se já pagou; se pagou, finaliza e não manda.",
+              "4 pontos de lembrete: D-3, D-2, D-1 e no dia. Custo de WhatsApp aprovado (mais barato que o Asaas).",
+              "Log de lembrete enviado (idempotência) pra não duplicar se o cron rodar de novo.",
+              "É a 1ª peça executável (BPM) da Cobrança — o resto ainda é O&M (documentado).",
+              "Desenho aprovado com o Lucas; a automação ainda será construída (cron + template + log).",
+            ],
+            execucao: { automatizado: false },
+          },
         ],
       },
     ],
@@ -196,6 +305,40 @@ export function findPopProcess(processId: string): PopProcess | undefined {
   }
 
   return undefined;
+}
+
+export function getProcessRelations(processId: string): {
+  incoming: { id: string; nome: string }[];
+  outgoing: { id: string; nome: string }[];
+} {
+  const byId = new Map<string, PopProcess>();
+  POP_CATALOG.forEach((mod) =>
+    mod.telas.forEach((screen) =>
+      screen.processos.forEach((process) => byId.set(process.id, process)),
+    ),
+  );
+
+  const outgoing = new Set<string>();
+  byId.get(processId)?.estados.forEach((state) => {
+    if (state.processoLink && state.processoLink !== processId && byId.has(state.processoLink)) {
+      outgoing.add(state.processoLink);
+    }
+  });
+
+  const incoming = new Set<string>();
+  byId.forEach((process, id) => {
+    if (id === processId) {
+      return;
+    }
+    if (process.estados.some((state) => state.processoLink === processId)) {
+      incoming.add(id);
+    }
+  });
+
+  const toEntries = (ids: Set<string>) =>
+    [...ids].map((id) => ({ id, nome: byId.get(id)?.nome ?? id }));
+
+  return { incoming: toEntries(incoming), outgoing: toEntries(outgoing) };
 }
 
 export function firstPopProcessId(): string {

@@ -128,7 +128,30 @@ type Hovered =
   | { id: string; kind: "node" }
   | null;
 
-export function ProcessFlowchart({ process }: { process: PopProcess }) {
+function bezierPoint(geometry: EdgeGeometry, t: number) {
+  const mt = 1 - t;
+
+  return {
+    x:
+      mt * mt * mt * geometry.start.x +
+      3 * mt * mt * t * geometry.c1.x +
+      3 * mt * t * t * geometry.c2.x +
+      t * t * t * geometry.end.x,
+    y:
+      mt * mt * mt * geometry.start.y +
+      3 * mt * mt * t * geometry.c1.y +
+      3 * mt * t * t * geometry.c2.y +
+      t * t * t * geometry.end.y,
+  };
+}
+
+export function ProcessFlowchart({
+  onOpenProcess,
+  process,
+}: {
+  onOpenProcess?: (processId: string) => void;
+  process: PopProcess;
+}) {
   const [hovered, setHovered] = useState<Hovered>(null);
   const [focused, setFocused] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
@@ -241,6 +264,7 @@ export function ProcessFlowchart({ process }: { process: PopProcess }) {
             const tagged = Boolean(transition.tag);
             const active = isEdgeActive(transition.de, transition.para);
             const rotuloWidth = transition.rotulo ? transition.rotulo.length * 7 + 14 : 0;
+            const labelPoint = bezierPoint(geometry, 0.42);
 
             return (
               <g key={`edge-${index}`} style={{ opacity: active ? 1 : 0.16, transition: "opacity .15s" }}>
@@ -263,10 +287,10 @@ export function ProcessFlowchart({ process }: { process: PopProcess }) {
                       rx={8}
                       stroke="#e2e8f0"
                       width={rotuloWidth}
-                      x={geometry.mid.x - rotuloWidth / 2}
-                      y={geometry.mid.y - 8}
+                      x={labelPoint.x - rotuloWidth / 2}
+                      y={labelPoint.y - 8}
                     />
-                    <text fill="#475569" fontSize={10} fontWeight={600} textAnchor="middle" x={geometry.mid.x} y={geometry.mid.y + 3.5}>
+                    <text fill="#475569" fontSize={10} fontWeight={600} textAnchor="middle" x={labelPoint.x} y={labelPoint.y + 3.5}>
                       {transition.rotulo}
                     </text>
                   </g>
@@ -290,7 +314,11 @@ export function ProcessFlowchart({ process }: { process: PopProcess }) {
             return (
               <g
                 key={state.id}
-                onClick={() => setFocused((current) => (current === state.id ? null : state.id))}
+                onClick={() =>
+                  state.processoLink && onOpenProcess
+                    ? onOpenProcess(state.processoLink)
+                    : setFocused((current) => (current === state.id ? null : state.id))
+                }
                 onMouseEnter={() => setHovered({ id: state.id, kind: "node" })}
                 onMouseLeave={() => setHovered(null)}
                 style={{ cursor: "pointer", opacity: active ? 1 : 0.22, transition: "opacity .15s" }}
@@ -318,6 +346,14 @@ export function ProcessFlowchart({ process }: { process: PopProcess }) {
                     {line}
                   </text>
                 ))}
+                {state.processoLink ? (
+                  <g pointerEvents="none">
+                    <circle cx={box.x + box.w - 13} cy={box.y + 13} fill="#A07C3B" r={9} />
+                    <text fill="#ffffff" fontSize={12} fontWeight={700} textAnchor="middle" x={box.x + box.w - 13} y={box.y + 17}>
+                      ↗
+                    </text>
+                  </g>
+                ) : null}
               </g>
             );
           })}
