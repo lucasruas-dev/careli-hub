@@ -40869,3 +40869,21 @@ Assunto: [Hades] A5 — fecha exposicao de PII na fila/detalhe da cobranca
 Conclusao:
 - Vazamento de PII na cobranca **fechado em producao** (v1.6.2).
 - **PROXIMO (frente prioritaria):** **auditoria completa de seguranca** de TODOS os modulos (Iris/Hermes/Chronos/Hades/Zeus/Apolo) — achar qualquer rota/tela aberta — e um **gate central (middleware + allowlist: videochamada Chronos + webhook + cron + login + estaticos)** pra cumprir a politica e blindar rotas futuras. Depois, retomar a EXECUCAO do motor da Cobranca.
+
+## 2026-06-26 - Zeus - Gate central de login em todas as APIs + tapa 3 rotas abertas (v1.6.3)
+
+Assunto: [Panteon] Auditoria de seguranca + gate central (a "revisa tudo isso" do Lucas)
+
+- Status: `EM_PRODUCAO`. Autorizacao: Lucas ("pode fazer as duas camadas" + "pode subir em producao de uma vez"), 2026-06-26.
+- `c2x.app.br` -> `careli-hub-hub-i2bs-jur4gvue9` (`dpl_4FDPWQY1XoJrhqHEGEa7WviZxsLU`, **v1.6.3**, build `2026-06-26-security-gate-central`, commit `3dc5c4f`), HTTP 200. `ops` 307. Rollback: `careli-hub-hub-i2bs-71eyvk82g` (`dpl_3SEfVBmW3BRkd37r5PsgtYHZMwRf`, v1.6.2).
+- **Auditoria (read-only) de ~100 rotas /api (todos os modulos):** a maioria ja estava protegida por helper de modulo (authorizeHadesRead/Chronos/Ares/Iris/Zeus etc.). **Correcao do diagnostico anterior:** EXISTE um arquivo global — `apps/hub/proxy.ts` (Next 16 renomeou `middleware` -> `proxy`) — mas so fazia roteamento por host/rotas legadas e **excluia `/api` do matcher**; nao fazia auth. Sobraram **3 rotas abertas servindo dado:** `apolo/search` (nome/CPF mascarado/perfil do CRM), `guardian/asaas/payment-viewing` (dado de boleto), `guardian/db/health` (nome do banco).
+- **CAMADA 1 (3 rotas tapadas):** novo `lib/apolo/auth.ts` (`authorizeApoloRead`) em `apolo/search`; `authorizeHadesRead` em `payment-viewing` + `InstallmentsCard.tsx` passou a enviar o Bearer; `db/health` virou liveness puro (removido o nome do banco).
+- **CAMADA 2 (gate central):** branch de seguranca mesclado no `apps/hub/proxy.ts` — `/api/*` exige Bearer fora da allowlist (videochamada Chronos, webhook Meta, crons, OAuth callback, login, db/health, pwa/manifest); matcher ampliado pra cobrir `/api`; paginas intocadas (ninguem deslogado). Rota nova **nasce trancada**. Monitor OPS: probes da fila Hades passaram a esperar 401.
+- **Percalco/fix:** 1o build falhou — Next 16 nao aceita `middleware.ts` junto de `proxy.ts`. Solucao: remover o `middleware.ts` e integrar o gate no `proxy.ts`. Build local OK depois.
+- **Verificado em PROD (c2x.app.br):** apolo/search sem auth -> **401** (era dump de CRM); payment-viewing -> **401**; fila -> **401**; hub/home -> **401**; db/health -> **200** sem o nome do banco; home **200**; ops **307**.
+- Sem migration, sem env, sem secret. `main` pushed (`3dc5c4f`).
+
+Conclusao:
+- Politica do Lucas cumprida de forma sistemica: **tudo exige login, exceto a videochamada do Chronos**. 3 buracos remanescentes fechados + gate central garante rota /api nova ja trancada (defense-in-depth).
+- Follow-up (chip criado): unificar `apolo/relationships` no helper `authorizeApoloRead` (hoje tem auth inline duplicada).
+- Proximo: retomar a EXECUCAO do motor da Cobranca (entidade `guardian_compromissos`, sequencias CB/PR/AC, cron da regua + templates, UI) — precisa de migration.

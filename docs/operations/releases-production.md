@@ -4678,3 +4678,18 @@ Conclusao:
 Conclusao:
 - Exposicao de PII na fila/detalhe da cobranca **fechada em producao**.
 - Proximo: auditoria de seguranca de todos os modulos + gate central de auth.
+
+## 2026-06-26 - Seguranca: gate central de login nas APIs + 3 rotas tapadas (v1.6.3) - EM PRODUCAO
+
+- Modulo: Panteon (todos). Status: `EM PRODUCAO`. Autorizacao: Lucas ("pode subir em producao de uma vez"), 2026-06-26.
+- Branch: `main`; commits `6a652a8` (camadas) + `3dc5c4f` (gate no proxy.ts).
+- Deployment: `dpl_4FDPWQY1XoJrhqHEGEa7WviZxsLU` (`careli-hub-hub-i2bs-jur4gvue9`), v1.6.3, build `2026-06-26-security-gate-central`.
+- Alias: somente `c2x.app.br`. `ops.c2x.app.br` intocado (307).
+- Rollback: `dpl_3SEfVBmW3BRkd37r5PsgtYHZMwRf` (`careli-hub-hub-i2bs-71eyvk82g`, v1.6.2).
+- Escopo: CAMADA 1 — `apolo/search` (+novo `lib/apolo/auth.ts`), `guardian/asaas/payment-viewing` (+Bearer no `InstallmentsCard.tsx`), `guardian/db/health` (removido nome do banco). CAMADA 2 — gate de sessao mesclado no `apps/hub/proxy.ts` (`/api/*` exige Bearer fora da allowlist; matcher ampliado pra /api). Monitor OPS: probes da fila -> 401. Sem migration/env.
+- Validacoes: `check-types:hub` PASS; build local PASS (apos remover middleware.ts conflitante / Next 16 = proxy.ts); PROD: c2x 200, ops 307, apolo-search/payment-viewing/fila/hub-home sem auth = 401, db/health = 200.
+- Follow-up: unificar auth do Apolo (relationships -> helper compartilhado); depois, motor da Cobranca.
+
+Conclusao:
+- Politica cumprida: tudo exige login exceto a videochamada do Chronos; rota /api nova nasce trancada.
+- Proximo: motor da Cobranca (migration + cron + UI).
