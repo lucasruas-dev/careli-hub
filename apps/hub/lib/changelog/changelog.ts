@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-26-hades-fila-auth",
+    deployedAt: "2026-06-26T08:45:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "Reforco de seguranca: a fila de cobranca e o detalhe do cliente agora exigem login pra carregar — os dados sensiveis do cliente ficam protegidos de acesso nao autenticado.",
+            ],
+            screen: "Cobranca",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-7uxsw7al2",
+    technical: {
+      done: "A5 (auth/PII): as rotas /api/guardian/attendance/queue e /client/[id] nao validavam sessao e devolviam PII do C2X (nome/CPF/divida/endereco/conjuge) a requisicoes sem auth (nao ha middleware global). Helper compartilhado lib/guardian/auth.ts (authorizeHadesRead: valida Bearer Supabase + hub_user ativo) aplicado nas duas rotas; a pagina ja enviava o Bearer, agora o servidor valida. Sem migration. Confirmado: sem auth -> 401; logado -> carrega. Dashboard ja estava protegido (createAuthorizedContext). v1.6.1 -> v1.6.2.",
+      motivation:
+        "Fechar exposicao de dados pessoais (LGPD) na fila/detalhe da cobranca. Politica do Lucas: tudo exige login, exceto a videochamada do Chronos. Proximo: auditoria completa de todos os modulos + gate central (middleware + allowlist).",
+    },
+    title: "Segurança: fila e detalhe da Cobrança agora exigem login",
+    type: "correcao",
+    version: "v1.6.2",
+  },
+  {
     buildTag: "2026-06-26-processos-pop-cross-link",
     deployedAt: "2026-06-26T03:03:00-03:00",
     modules: [

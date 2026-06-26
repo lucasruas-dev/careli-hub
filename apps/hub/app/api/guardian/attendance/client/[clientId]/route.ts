@@ -1,5 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import { authorizeHadesRead } from "@/lib/guardian/auth";
 import { loadHadesAttendanceClient } from "@/lib/guardian/attendance";
 import { sanitizeHadesDbError } from "@/lib/guardian/db";
 
@@ -7,9 +8,15 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   context: { params: Promise<{ clientId: string }> },
 ) {
+  const auth = await authorizeHadesRead(request);
+
+  if (!auth.ok) {
+    return auth.response;
+  }
+
   const { clientId } = await context.params;
 
   if (!clientId) {

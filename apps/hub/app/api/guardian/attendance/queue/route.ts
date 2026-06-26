@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 
+import { authorizeHadesRead } from "@/lib/guardian/auth";
 import {
   loadHadesAttendanceQueue,
   loadHadesAttendanceQueueSummary,
@@ -29,6 +30,12 @@ type QueueResponsePayload = {
 };
 
 export async function GET(request: Request) {
+  const auth = await authorizeHadesRead(request);
+
+  if (!auth.ok) {
+    return auth.response;
+  }
+
   try {
     const url = new URL(request.url);
     const limit = parseQueueLimit(url.searchParams.get("limit"));
