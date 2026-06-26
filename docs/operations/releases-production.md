@@ -4640,3 +4640,26 @@ Conclusao:
 - Area "Processos POP" publicada em producao em `c2x.app.br` (v1.6.0), estreando com o workflow de cobranca e o score de risco do Hades.
 - Impacto: casa visual e viva dos POPs/regras de negocio no Hub; base de processo-como-dado.
 - Proximo: voltar pra Cobranca (A2 Acordos & Promessas; depois o motor do workflow A1).
+
+## 2026-06-26 - Processos POP cross-link + Cobranca desenhada - v1.6.1 - EM PRODUCAO
+
+- Modulo: Panteon / Hades (Processos POP).
+- Status: `EM PRODUCAO`. Autorizacao: Lucas ("pode commitar e subir"), 2026-06-26.
+- Branch: `main` (continuacao do v1.6.0); commit `2a9eeb3`.
+- Deployment: `dpl_3pKVCN5xrG6vk7t21hrVCejAeVHh` (`careli-hub-hub-i2bs-7uxsw7al2-lucasruas-devs-projects.vercel.app`), v1.6.1, build `2026-06-26-processos-pop-cross-link`.
+- Alias: somente `https://c2x.app.br`. `ops.c2x.app.br` intocado.
+- Rollback: reapontar `c2x.app.br` para `dpl_FCkxx84gTupsYetMTuoepNwcX8zo` (`careli-hub-hub-i2bs-8cp13ddzj`, v1.6.0).
+- Escopo publicado:
+  - cross-link entre processos (`PopState.processoLink` + `onOpenProcess` no ProcessFlowchart; clique abre o processo alvo no modal/full);
+  - "Processos vinculados" = relacoes derivadas automaticamente (`getProcessRelations`), chips clicaveis;
+  - 4 processos da Cobranca documentados e conectados: Workflow (Proposta/Acerto), Classificacao de risco, Acordos & Promessas, Regua de lembretes;
+  - painel de Novidades da Home com data + hora;
+  - changelog v1.6.1 + bump build-info.
+- Validacoes: `check-types:hub` PASS; previews `--skip-domain` validados pelo Lucas; `GET c2x.app.br` 200; `GET ops.c2x.app.br` 307.
+- Escopo preservado: sem env/secret/migration/Supabase/alias adicional; sem dependencia nova; `ops` preservado.
+- Follow-up: EXECUTAR o motor da Cobranca (entidade `guardian_compromissos`, sequencias de protocolo CB/PR/AC, cron da regua + templates Meta, UI) — proxima frente de engenharia, precisa de migration.
+
+Conclusao:
+- Cobranca desenhada ponta a ponta e conectada no Processos POP (v1.6.1), no ar em `c2x.app.br`.
+- Impacto: arvore de processos navegavel; base de processo-como-dado pronta pra virar BPM.
+- Proximo: engenharia do motor (migration + cron + UI), em chat fresco.

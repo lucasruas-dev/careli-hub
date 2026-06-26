@@ -40834,3 +40834,23 @@ Conclusao:
 - "Processos POP" no ar em `c2x.app.br` (v1.6.0): o Hub ganhou a casa visual dos POPs e regras de negocio, estreando com a documentacao viva do **workflow de cobranca** e do **score de risco** do Hades.
 - Impacto: time enxerga como cada processo funciona (fluxograma interativo + regras + SLA + ficha); base de processo-como-dado que pode alimentar o motor de workflow (BPM) no futuro.
 - Proximo: voltar pra **Cobranca** (A2: Acordos & Promessas como entidade; depois o motor do workflow A1).
+
+## 2026-06-26 - Zeus - Processos POP conectados (cross-link) + Cobranca desenhada ponta a ponta (v1.6.1)
+
+Assunto: [Hades] Cobranca desenhada no Processos POP + cross-link entre processos
+
+- Status: `EM_PRODUCAO`. Autorizacao: Lucas autorizou go-live ("pode commitar e subir") em 2026-06-26 (~03:03).
+- `c2x.app.br` -> `careli-hub-hub-i2bs-7uxsw7al2` (`dpl_3pKVCN5xrG6vk7t21hrVCejAeVHh`, **v1.6.1**, build `2026-06-26-processos-pop-cross-link`, commit `2a9eeb3`), HTTP 200. `ops` intocado (307). Rollback: `careli-hub-hub-i2bs-8cp13ddzj` (`dpl_FCkxx84gTupsYetMTuoepNwcX8zo`, v1.6.0).
+- Feature nova: **cross-link entre processos** no Processos POP — `PopState.processoLink` + `onOpenProcess` no `ProcessFlowchart` (clicar num no abre o processo alvo, no modal e em tela cheia) + **"Processos vinculados"** (relacoes derivadas automaticamente via `getProcessRelations`, chips clicaveis no topo). Painel de Novidades da Home passou a exibir **data + hora** (`formatBrDate`).
+- **Desenho da Cobranca (A1+A2) FECHADO com o Lucas e documentado no Processos POP** (Hades -> Cobranca, 4 processos conectados):
+  1. **Workflow de cobranca (regua):** Acionar -> Contato -> Negociacao -> **Proposta** -> **Acerto** -> Pago/Juridico (renomeado de Promessa/Acordo). 5 tentativas (1/dia, sem resposta) -> Juridico; quebra=tag, 2a quebra -> Juridico. Proposta LINKA -> Acordos & Promessas; Acerto LINKA -> Regua de lembretes.
+  2. **Classificacao de risco:** arvore de decisao do score 0-99 -> Critica/Alta/Media/Baixa (do `riskAnalysisFor` real).
+  3. **Acordos & Promessas:** Proposta -> fork "Promessa ou acordo?" -> (promessa: registra + envia link) / (acordo: aguardando emissao -> boletos emitidos -> faturas enviadas) -> termina no **Acerto** (linka -> Regua). Hades REGISTRA; C2X COBRA (gera boleto, integrado ao Asaas). Operador aponta as faturas na devolutiva (seletor ja existe). Atividade financeira do acordo = manual (Asana hoje; modulo de task no futuro). Protocolos AT -> CB -> PR/AC.
+  4. **Regua de lembretes (1a peca BPM):** cron diario, dispara WhatsApp em D-3/D-2/D-1/no dia; confere C2X se ja pagou; idempotente. Pago / quebra -> volta a regua. Custo OK (Lucas: WhatsApp < disparo Asaas).
+- **IMPORTANTE:** tudo e **DESENHO documentado** (O&M). O **MOTOR** (entidade `guardian_compromissos`, sequencias de protocolo CB/PR/AC, cron da regua, templates Meta, UI) **NAO foi construido** — e a proxima frente de engenharia (precisa de migration). Ver memoria `project_hades_cobranca_design`.
+- Validacoes: `check-types:hub` PASS (varios ciclos); ~8 previews `--skip-domain` validados visualmente pelo Lucas. Pos: c2x 200, ops 307. `main` pushed (`2a9eeb3`).
+
+Conclusao:
+- A arquitetura da Cobranca (workflow + risco + acordos/promessas + regua de lembretes) esta **desenhada, conectada e no ar** no Processos POP (v1.6.1); os processos do Hub agora se **linkam** (arvore navegavel).
+- Impacto: o time enxerga a regua de cobranca ponta a ponta; base de processo-como-dado pronta pra virar BPM.
+- Proximo (chat fresco): **executar o motor** da Cobranca — entidade de compromissos, sequencias de protocolo, cron da regua + templates, e a UI. Ver handoff `2026-06-26`.
