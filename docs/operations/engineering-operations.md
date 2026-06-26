@@ -40815,3 +40815,22 @@ Conclusao:
 - O Dashboard do Hades reformulado esta no ar em `c2x.app.br` (v1.5.0) desde 2026-06-25, com fonte unica ao vivo (fim da divergencia de numeros), drill-down real e A1 do read-model; `ops` preservado e rollback gravado.
 - Impacto: numeros do Hades batem com o C2X de referencia (1.373/236); a operacao pode confiar no dashboard.
 - Proximo: a frente segue na tela de **Cobranca** (`/hades/cobranca`), em modo pontuar-e-guardar com o Lucas.
+
+## 2026-06-26 - Zeus - Processos POP (biblioteca de processos) em producao (v1.6.0)
+
+Assunto: [Panteon] Nova area "Processos POP" no Hub em producao
+
+- Status: `EM_PRODUCAO`. Autorizacao: Lucas autorizou go-live ("sobe so essa parte do processo") em 2026-06-26.
+- `c2x.app.br` -> deployment `careli-hub-hub-i2bs-8cp13ddzj` (`dpl_FCkxx84gTupsYetMTuoepNwcX8zo`, **v1.6.0**, build `2026-06-26-processos-pop`, merge `a5ca7d8` / recorte `5396c7f`), HTTP 200. `ops.c2x.app.br` intocado (307). Rollback: `careli-hub-hub-i2bs-fyue6qzpt` (`dpl_3asRLpaSAstB1iLMir9B7yyhmKXK`, v1.5.0).
+- O que e: nova area **Hub-level "Processos POP"** como **aba da Home** (nao modulo no sidebar, por decisao do Lucas) = biblioteca de processos e regras de negocio por **Modulo -> Tela -> Processo**, com busca + pastas aninhadas, detalhe em **modal** + **visao full inline** (maximizar mantem topbar/sidebar), e **fluxograma interativo proprio em SVG** (hover com gatilho/SLA, click-to-focus, zoom, rotulos Sim/Nao).
+- Arquitetura: catalogo **no codigo** (`apps/hub/lib/processos/catalog.ts`, tipado; Modulo/Tela/Processo com campos O&M + `execucao` BPM-ready) — mesmo padrao do changelog. **Sem dependencia nova, sem polling, sem migration, sem Supabase.** UI em `apps/hub/modules/processos/` (ProcessosLibrary + ProcessFlowchart). Aba em `app/page.tsx` (HomeTab "processos"). Fiacao de modulo no registry/permissoes/shell foi tentada e revertida (virou aba).
+- Conteudo (estreia Hades/Cobranca): (1) **Workflow de cobranca (a regua)** = maquina de estados (Acionar->Contato->Negociacao->Promessa->Acordo->Pago/Juridico, com tag de quebra e 2a chance) — o A1 fechado com o Lucas; (2) **Classificacao de risco e prioridade** = arvore de decisao do score 0-99 -> Critica/Alta/Media/Baixa (extraida do `riskAnalysisFor` real do `lib/guardian/attendance.ts`).
+- Decisao de framing: **O&M como base** (documentar/padronizar POP), **BPM como evolucao** (quando um processo virar executavel/medido). Etiqueta O&M/BPM removida da UI por ser nuance interna; volta quando houver processo BPM real.
+- Validacoes: `check-types:hub` PASS (arquivos novos TIPADOS, fora da divida de @ts-nocheck); build Next.js PASS; varios previews `--skip-domain` validados visualmente pelo Lucas (iteracoes: grid, pastas aninhadas, fullscreen inline, arvore de decisao didatica, tamanho do fluxograma, botao voltar).
+- Pos-publicacao: `c2x.app.br` 200; `ops.c2x.app.br` 307 (intocado). `main` mergeada (`a5ca7d8`).
+
+Conclusao:
+
+- "Processos POP" no ar em `c2x.app.br` (v1.6.0): o Hub ganhou a casa visual dos POPs e regras de negocio, estreando com a documentacao viva do **workflow de cobranca** e do **score de risco** do Hades.
+- Impacto: time enxerga como cada processo funciona (fluxograma interativo + regras + SLA + ficha); base de processo-como-dado que pode alimentar o motor de workflow (BPM) no futuro.
+- Proximo: voltar pra **Cobranca** (A2: Acordos & Promessas como entidade; depois o motor do workflow A1).

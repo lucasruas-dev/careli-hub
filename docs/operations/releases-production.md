@@ -4614,3 +4614,29 @@ Conclusao:
 - O port da Iris avancada + CACA foi publicado em producao em `c2x.app.br` e validado E2E no WhatsApp real.
 - Impacto: a Iris passa a ter cockpit decomposto + atendente IA (CACA) respondendo o cliente com auth deterministica e entrega de boleto do C2X legado.
 - Proximo: gerar token Meta permanente, anunciar a versao ao time (apos bump) e refletir a `main`.
+
+## 2026-06-26 - Processos POP (biblioteca de processos) - v1.6.0 - EM PRODUCAO
+
+- Modulo: Panteon (area Hub-level "Processos POP", aba da Home).
+- Status: `EM PRODUCAO`.
+- Autorizacao: Lucas autorizou go-live ("sobe so essa parte do processo") em 2026-06-26.
+- Branch/worktree: `feat/processos` (a partir da `main`), recorte `5396c7f`; merge `--no-ff` na `main` = `a5ca7d8`.
+- Deployment publicado: `dpl_FCkxx84gTupsYetMTuoepNwcX8zo` (`careli-hub-hub-i2bs-8cp13ddzj-lucasruas-devs-projects.vercel.app`), v1.6.0, build `2026-06-26-processos-pop`.
+- Alias: somente `https://c2x.app.br`. `ops.c2x.app.br` intocado.
+- Rollback: reapontar `c2x.app.br` para `dpl_3asRLpaSAstB1iLMir9B7yyhmKXK` (`careli-hub-hub-i2bs-fyue6qzpt`, v1.5.0 Dashboard do Hades).
+- Escopo publicado:
+  - nova aba "Processos POP" na Home (`app/page.tsx` HomeTab), nao modulo no sidebar;
+  - catalogo tipado `apps/hub/lib/processos/catalog.ts` (Modulo->Tela->Processo; campos O&M + `execucao` BPM-ready);
+  - UI `apps/hub/modules/processos/` = ProcessosLibrary (busca + pastas aninhadas modulo->tela + cards + modal + visao full inline) + ProcessFlowchart (SVG interativo: hover gatilho/SLA, click-to-focus, zoom, rotulos Sim/Nao);
+  - seed Hades/Cobranca: workflow de cobranca (maquina de estados) + classificacao de risco (arvore de decisao score 0-99);
+  - changelog v1.6.0 + bump `build-info.ts` (v1.5.0 -> v1.6.0).
+- Validacoes locais: `check-types:hub` PASS (arquivos novos tipados, fora de @ts-nocheck); build Next.js PASS.
+- Validacoes pos-publicacao: `GET https://c2x.app.br/`: 200; `vercel inspect c2x.app.br`: Ready em `dpl_FCkxx84gTupsYetMTuoepNwcX8zo`; `GET https://ops.c2x.app.br/`: 307 (intocado).
+- Escopo preservado: nenhum env/secret/token/banco/migration/Supabase/alias adicional alterado; sem dependencia nova; `ops.c2x.app.br` preservado.
+- Follow-ups: documentar mais processos (outros modulos/telas); quando um processo virar BPM, ativar etiqueta + indicadores; opcional: deep-link por processo.
+
+Conclusao:
+
+- Area "Processos POP" publicada em producao em `c2x.app.br` (v1.6.0), estreando com o workflow de cobranca e o score de risco do Hades.
+- Impacto: casa visual e viva dos POPs/regras de negocio no Hub; base de processo-como-dado.
+- Proximo: voltar pra Cobranca (A2 Acordos & Promessas; depois o motor do workflow A1).
