@@ -40887,3 +40887,14 @@ Conclusao:
 - Politica do Lucas cumprida de forma sistemica: **tudo exige login, exceto a videochamada do Chronos**. 3 buracos remanescentes fechados + gate central garante rota /api nova ja trancada (defense-in-depth).
 - Follow-up (chip criado): unificar `apolo/relationships` no helper `authorizeApoloRead` (hoje tem auth inline duplicada).
 - Proximo: retomar a EXECUCAO do motor da Cobranca (entidade `guardian_compromissos`, sequencias CB/PR/AC, cron da regua + templates, UI) — precisa de migration.
+
+## 2026-06-26 - Zeus - Motor da Cobranca: tijolo 1 (migration 0036) + handoff p/ sessao nova
+
+- Migration **0036 guardian_cobranca_motor APLICADA em prod** (`bxgukywoxgivlrhjkwjx`, commit `ef9c995`): 3 tabelas (`guardian_compromissos`/`_parcelas`/`_lembretes`) + funcao protocolo PR-/AC- + RLS por papel + indices do cron. **Aditiva** (nada no app referencia ainda). Verificado: 3 tabelas, RLS nas 3, 6 policies, sequence em 1 (1o = PR-000001).
+- Estados: status(ativo/cumprido/quebrado/cancelado) + stage(promessa=aguardando_pagamento; acordo=aguardando_emissao/emitido/enviado) com constraint de coerencia. Lembretes idempotentes (unique compromisso/parcela/kind NULLS NOT DISTINCT).
+- **Decisao do Lucas:** migrar para **sessao nova** p/ tocar os tijolos 2-5 (lib server + tipos TS, rotas API protegidas, cron da regua + templates Meta, UI no atendimento). Sem nova migration.
+- **Handoff:** `docs/operations/cobranca-motor-handoff-new-chat-startup-prompt-2026-06-26.md`.
+
+Conclusao:
+- Foundation de dados do motor da Cobranca **no ar**; seguranca (gate no proxy.ts, v1.6.3) fechada. `main` = `ef9c995`, c2x = `jur4gvue9`.
+- Proximo (sessao nova): lib server -> rotas criar/listar compromisso -> cron da regua -> UI.
