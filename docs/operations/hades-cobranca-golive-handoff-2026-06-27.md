@@ -3,7 +3,15 @@
 > Chat saturado. Este doc é o ponto de partida do próximo Zeus. Próxima frente: **Iris go-live na segunda** — muito do Hades será reaproveitado.
 
 ## Estado em uma frase
-Toda a frente de **cobrança (Hades)** + adjacências (Athena, CACÁ automática, módulo Meu dia, Home bento, timeline) foi **consolidada no commit `36ecb75c` (main, LOCAL — não pushado)**. O build de produção já existe (preview `careli-hub-hub-i2bs-d2ph65a67`). **O GO-LIVE (alias) está PENDENTE** — o guard bloqueou por exigir OK explícito nomeando o alias.
+Toda a frente de **cobrança (Hades)** + adjacências (Athena, CACÁ automática, módulo Meu dia, Home bento, timeline) foi **consolidada no commit `36ecb75c` (main, LOCAL — não pushado)** e **ESTÁ NO AR EM PRODUÇÃO desde 28/jun** (alias `c2x.app.br` → `d2ph65a67`; verificado c2x=200, ops=307).
+
+## GO-LIVE FEITO (28/jun)
+- Prod `c2x.app.br` = `careli-hub-hub-i2bs-d2ph65a67`. **Rollback** = `careli-hub-hub-i2bs-jur4gvue9` (v1.6.3).
+- **Dados de teste limpos** em prod (5 compromissos AC-/PR- apagados; 0 restantes).
+- **Fila mantida ABERTA** (`validEnterpriseWhere` = `e.id is not null`) — Lucas precisa do **SDT liberado pro treinamento de segunda**. NÃO re-travar.
+- ⚠️ **CACÁ automática ATIVA** — monitorar o 1º "Receber boleto" real.
+- Cron da régua segue **OFF** (falta o template Meta novo).
+- `main` local nos commits `36ecb75c` + `b613807` (handoff) — **não pushado** (considerar push; Git desconectado do auto-deploy).
 
 ## Go-live (FALTA — precisa do OK explícito do Lucas, nomeando o alias)
 - **Build a subir:** `careli-hub-hub-i2bs-d2ph65a67-lucasruas-devs-projects.vercel.app`
