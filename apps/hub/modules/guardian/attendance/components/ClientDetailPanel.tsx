@@ -2,7 +2,7 @@
 // @ts-nocheck
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowRight,
   BotMessageSquare,
@@ -24,9 +24,12 @@ import {
   ShieldAlert,
   ThumbsDown,
   ThumbsUp,
+  UserRound,
   X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
+import { HadesAttendanceModal } from "@/modules/guardian/attendance/components/HadesAttendanceModal";
+import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { AgreementsCenterCard } from "@/modules/guardian/attendance/components/AgreementsCenterCard";
 import { AiSuggestionsModal } from "@/modules/guardian/attendance/components/AiSuggestionsModal";
@@ -34,6 +37,7 @@ import { DetailSection } from "@/modules/guardian/attendance/components/DetailSe
 import { ExpandableDetailSection } from "@/modules/guardian/attendance/components/ExpandableDetailSection";
 import { InstallmentsCard } from "@/modules/guardian/attendance/components/InstallmentsCard";
 import { OperationalWorkflowCard } from "@/modules/guardian/attendance/components/OperationalWorkflowCard";
+import { PropostasPanel } from "@/modules/guardian/attendance/components/PropostasPanel";
 import { OperationalTimeline } from "@/modules/guardian/attendance/components/OperationalTimeline";
 import {
   agreementRiskStyles,
@@ -45,6 +49,7 @@ import type {
   OperationalTimelineEvent,
   PortfolioUnit,
   QueueClient,
+  WorkflowStage,
 } from "@/modules/guardian/attendance/types";
 
 const EMPTY_FIELD = "-";
@@ -82,10 +87,10 @@ const workspaceTabs: Array<{
   icon: typeof LayoutDashboard;
 }> = [
   { id: "overview", label: "Visão geral", icon: LayoutDashboard },
-  { id: "client", label: "Cliente", icon: Building2 },
+  { id: "client", label: "Cliente", icon: UserRound },
   { id: "portfolio", label: "Carteira", icon: MapPinned },
+  { id: "agreements", label: "Propostas", icon: HandCoins },
   { id: "timeline", label: "Timeline", icon: Clock3 },
-  { id: "agreements", label: "Acordos", icon: HandCoins },
 ];
 
 const unitSubtabs: Array<{
@@ -101,38 +106,99 @@ const unitSubtabs: Array<{
   { id: "documents", label: "Documentos da unidade", icon: FileText },
 ];
 
+// Tela de carregamento PADRAO Panteon (a marca `/panteon-mark.png` girando)
+// injetada no popup do documento enquanto o PDF do D4Sign baixa — no lugar da
+// tela branca. URL absoluta porque o popup nasce como about:blank.
+function documentLoadingHtml() {
+  const origin = window.location.origin;
+
+  return `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Carregando contrato…</title><style>body{margin:0;height:100vh;display:flex;align-items:center;justify-content:center;background:#fff;font-family:system-ui,-apple-system,'Segoe UI',sans-serif}.w{display:flex;flex-direction:column;align-items:center;gap:14px}.m{width:44px;height:44px;display:grid;place-items:center;border-radius:50%;border:1px solid rgba(160,124,59,.2);background:#fff;box-shadow:0 1px 2px rgba(15,23,42,.06);animation:spin .9s linear infinite}.m img{width:28px;height:28px;display:block}@keyframes spin{to{transform:rotate(360deg)}}p{margin:0;font-size:14px;font-weight:500;color:#101820}</style></head><body><div class="w"><div class="m"><img src="${origin}/panteon-mark.png" alt=""></div><p>Carregando contrato…</p></div></body></html>`;
+}
+
 export function ClientDetailPanel({
   client,
   extraTimelineEvents = [],
+  initialTab,
+  initialEditProposalId,
   onCreateCommitment,
   onCreateTimelineEvent,
   onOpenWhatsApp,
   onUpdateCommitment,
 }: ClientDetailPanelProps) {
-  const firstUnitId = client.carteira.unidades[0]?.id ?? "";
-  const [activeTab, setActiveTab] = useState<WorkspaceTab>("overview");
+  // Identidade da unidade selecionada = matricula (Cod. unidade): unica e
+  // estavel. O `id` do read-model pode colidir/instavel entre unidades.
+  const firstUnitId = client.carteira.unidades[0]?.matricula ?? "";
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>(
+    initialTab ?? "overview",
+  );
   const [portfolioUnitId, setPortfolioUnitId] = useState(firstUnitId);
   const [portfolioListCollapsed, setPortfolioListCollapsed] = useState(false);
   const [portfolioMaximized, setPortfolioMaximized] = useState(false);
-  const [unitSubtab, setUnitSubtab] = useState<UnitSubtab>("summary");
+  const [unitSubtab, setUnitSubtab] = useState<UnitSubtab>("installments");
   const [unitFilterId, setUnitFilterId] = useState<"all" | string>("all");
   const [agreementFocus, setAgreementFocus] = useState<"default" | "recovery">(
     "default",
   );
   const [aiModalOpen, setAiModalOpen] = useState(false);
   const [riskModalOpen, setRiskModalOpen] = useState(false);
+  const [attendanceOpen, setAttendanceOpen] = useState(false);
 
   const paymentBehavior = buildPaymentBehavior(client);
   const PaymentBehaviorIcon = paymentBehavior.icon;
   const portfolioUnit =
-    client.carteira.unidades.find((unit) => unit.id === portfolioUnitId) ??
+    client.carteira.unidades.find((unit) => unit.matricula === portfolioUnitId) ??
     client.carteira.unidades[0];
   const timelineEvents = [...extraTimelineEvents, ...client.timeline];
+
+  // Auto-avanco do workflow: deriva a etapa a partir dos compromissos do motor
+  // (proposta registrada -> Negociacao; acordo/promessa aprovado -> Acordo/
+  // Promessa). Auto - Hades. O override manual (popup) continua valendo na sessao.
+  const [motorWorkflow, setMotorWorkflow] = useState<{
+    nextAction: string;
+    stage: WorkflowStage;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const match = client.id.match(/(\d+)/g);
+    const clientC2xId = match ? Number(match[match.length - 1]) : null;
+
+    if (!clientC2xId) {
+      setMotorWorkflow(null);
+      return;
+    }
+
+    void (async () => {
+      try {
+        const supabase = getHubSupabaseClient();
+        const session = await supabase?.auth.getSession();
+        const token = session?.data.session?.access_token ?? "";
+        const response = await fetch(
+          `/api/guardian/compromissos?clientId=${clientC2xId}`,
+          {
+            cache: "no-store",
+            headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+          },
+        );
+        const payload = await response.json().catch(() => null);
+        if (cancelled || !response.ok) {
+          return;
+        }
+        setMotorWorkflow(deriveMotorWorkflow(payload?.data ?? []));
+      } catch {
+        // best-effort: sem motor, mantem a etapa atual da fila
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [client.id]);
 
   function openPortfolio(unitId?: string) {
     if (unitId) {
       setPortfolioUnitId(unitId);
-      setUnitSubtab("summary");
+      setUnitSubtab("installments");
     }
     setActiveTab("portfolio");
   }
@@ -185,11 +251,11 @@ export function ClientDetailPanel({
           </div>
 
           <div className="flex flex-wrap items-center gap-1.5">
-            <Tooltip content="Abrir Iris" placement="bottom">
+            <Tooltip content="Abrir atendimento" placement="bottom">
               <button
                 type="button"
-                onClick={onOpenWhatsApp}
-                aria-label="Abrir Iris"
+                onClick={() => setAttendanceOpen(true)}
+                aria-label="Abrir atendimento"
                 className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
               >
                 <MessageCircle className="size-4" aria-hidden="true" />
@@ -271,6 +337,8 @@ export function ClientDetailPanel({
             onSetUnitSubtab: setUnitSubtab,
             onUnitFilterChange: setUnitFilterId,
             onUpdateCommitment,
+            initialEditProposalId,
+            motorWorkflow,
             portfolioListCollapsed,
             portfolioMaximized,
             portfolioUnit,
@@ -291,6 +359,16 @@ export function ClientDetailPanel({
         open={riskModalOpen}
         onClose={() => setRiskModalOpen(false)}
       />
+      {attendanceOpen ? (
+        <HadesAttendanceModal
+          client={client}
+          onClose={() => setAttendanceOpen(false)}
+          onCreated={() => {
+            setAttendanceOpen(false);
+            window.dispatchEvent(new CustomEvent("guardian:motor-changed"));
+          }}
+        />
+      ) : null}
     </section>
   );
 }
@@ -434,6 +512,8 @@ function renderWorkspaceTab(props: {
     onSetUnitSubtab,
     onUnitFilterChange,
     onUpdateCommitment,
+    initialEditProposalId,
+    motorWorkflow,
     portfolioListCollapsed,
     portfolioMaximized,
     portfolioUnit,
@@ -463,7 +543,7 @@ function renderWorkspaceTab(props: {
           onCreateCommitment={onCreateCommitment}
           onCreateTimelineEvent={onCreateTimelineEvent}
           onSelectSubtab={onSetUnitSubtab}
-          onSelectUnit={(unitId) => onOpenUnitSubtab("summary", unitId)}
+          onSelectUnit={(unitId) => onOpenUnitSubtab(unitSubtab, unitId)}
           onUpdateCommitment={onUpdateCommitment}
         />
       );
@@ -477,56 +557,123 @@ function renderWorkspaceTab(props: {
       );
     case "agreements":
       return (
-        <>
-          <UnitScopeControl
-            client={client}
-            selectedUnitId={unitFilterId}
-            onChange={onUnitFilterChange}
-          />
-          {agreementFocus === "recovery" ? (
-            <RecoveryFocus client={client} />
-          ) : null}
-          <AgreementsCenterCard
-            key={`${client.id}-${selectedAgreementUnit?.id ?? "all"}`}
-            client={client}
-            onCreateCommitment={onCreateCommitment}
-            onUpdateCommitment={onUpdateCommitment}
-            unit={selectedAgreementUnit}
-          />
-        </>
+        <PropostasPanel
+          client={client}
+          initialEditProposalId={initialEditProposalId}
+        />
       );
     case "overview":
     default:
       return (
         <>
-          <ExecutiveCockpit
+          <OverviewStrategicHeader
             client={client}
-            onGoToAgreements={onGoToAgreements}
+            timelineEvents={timelineEvents}
+            motorWorkflow={motorWorkflow}
             onOpenUnitInstallments={() => onOpenUnitSubtab("installments")}
-            onOpenRiskAnalysis={onOpenRiskAnalysis}
-            onGoToTimeline={onGoToTimeline}
+            onOpenPortfolio={() => onOpenPortfolio()}
             onOpenWhatsApp={onOpenWhatsApp}
-          />
-          <CommitmentOverviewCards
-            client={client}
-            onGoToAgreements={() => onGoToAgreements()}
           />
           <RiskCockpit
             client={client}
             onOpenRiskAnalysis={onOpenRiskAnalysis}
+            onOpenAi={onOpenAi}
           />
-          <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
-            <AiExecutiveCard client={client} onOpenAi={onOpenAi} />
-            <PortfolioSummaryCard
-              client={client}
-              onOpenPortfolio={() => onOpenPortfolio()}
-            />
-          </div>
-          <OperationalWorkflowCard client={client} />
-          <OverviewTimelineAndAlerts client={client} />
         </>
       );
   }
+}
+
+// Faixa estrategica da aba Visao geral: 4 KPIs que importam de cara + o Resumo
+// da carteira promovido ao topo (com destaque). Substitui o paredao de 12+ KPIs;
+// os contadores de promessa/acordo migraram para a aba Acordos.
+function OverviewStrategicHeader({
+  client,
+  timelineEvents,
+  motorWorkflow,
+  onOpenUnitInstallments,
+  onOpenPortfolio,
+  onOpenWhatsApp,
+}: {
+  client: QueueClient;
+  timelineEvents: OperationalTimelineEvent[];
+  motorWorkflow: { nextAction: string; stage: WorkflowStage } | null;
+  onOpenUnitInstallments: () => void;
+  onOpenPortfolio: () => void;
+  onOpenWhatsApp: () => void;
+}) {
+  // Primeira fila (decisao do Lucas): Saldo/Parcela empilhados -> Resumo da
+  // carteira -> Workflow (stacked, igual ao print) -> Ultimos eventos. O Cockpit
+  // vai na segunda fila (full width). Score e Estagio sairam dos KPIs.
+  return (
+    <div className="grid items-start gap-2.5 xl:grid-cols-[140px_minmax(0,1fr)_minmax(0,1.9fr)_minmax(0,1fr)]">
+      <div className="grid gap-2.5 content-start">
+        <CompactKpi
+          label="Saldo em atraso"
+          value={client.saldoDevedor}
+          onClick={onOpenUnitInstallments}
+        />
+        <CompactKpi
+          label="Parcelas vencidas"
+          value={`${client.parcelas.vencidas}`}
+          tone="danger"
+          onClick={onOpenUnitInstallments}
+        />
+      </div>
+      <PortfolioSummaryCard
+        client={client}
+        onOpenPortfolio={onOpenPortfolio}
+        onOpenWhatsApp={onOpenWhatsApp}
+      />
+      <OperationalWorkflowCard
+        client={client}
+        stacked
+        autoStage={motorWorkflow?.stage}
+        autoNextAction={motorWorkflow?.nextAction}
+      />
+      <OverviewEventsCard events={timelineEvents} />
+    </div>
+  );
+}
+
+// KPI denso (substitui o ActionMetric espacoso no cabecalho da Visao geral).
+function CompactKpi({
+  label,
+  value,
+  tone = "neutral",
+  onClick,
+}: {
+  label: string;
+  value: string;
+  tone?: "neutral" | "gold" | "danger";
+  onClick: () => void;
+}) {
+  const toneClass =
+    tone === "danger"
+      ? "text-rose-700"
+      : tone === "gold"
+        ? "text-[#7A5E2C]"
+        : "text-slate-950";
+
+  return (
+    <Tooltip
+      content={`${label}: ${value}`}
+      placement="bottom"
+      className="w-full"
+      triggerClassName="w-full"
+    >
+      <button
+        type="button"
+        onClick={onClick}
+        className="w-full rounded-xl border border-slate-200/70 bg-white px-3 py-2 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+      >
+        <p className="truncate text-[11px] font-medium text-slate-500">{label}</p>
+        <p className={`mt-0.5 truncate text-base font-semibold ${toneClass}`}>
+          {value}
+        </p>
+      </button>
+    </Tooltip>
+  );
 }
 
 function ExecutiveCockpit({
@@ -731,9 +878,11 @@ function AiExecutiveCard({
 function RiskCockpit({
   client,
   onOpenRiskAnalysis,
+  onOpenAi,
 }: {
   client: QueueClient;
   onOpenRiskAnalysis: () => void;
+  onOpenAi?: () => void;
 }) {
   const evasionTrend = Math.min(
     client.scoreRisco + Math.floor(client.atrasoDias / 3),
@@ -756,7 +905,7 @@ function RiskCockpit({
           <button
             type="button"
             onClick={onOpenRiskAnalysis}
-            className="w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+            className="w-full rounded-xl border border-slate-200/70 bg-white p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
           >
             <p className="text-xs font-medium text-slate-500">Score de risco</p>
             <p className="mt-2 text-lg font-semibold text-rose-700">
@@ -777,16 +926,21 @@ function RiskCockpit({
           <button
             type="button"
             onClick={onOpenRiskAnalysis}
-            className="w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+            className="w-full rounded-xl border border-slate-200/70 bg-white p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
           >
-            <p className="text-xs font-medium text-slate-500">
-              Tendência de evasão
-            </p>
+            <div className="flex items-center gap-2">
+              <p className="text-xs font-medium text-slate-500">
+                Tendência de evasão
+              </p>
+              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
+                regra
+              </span>
+            </div>
             <p className="mt-2 text-lg font-semibold text-slate-950">
               {evasionTrend}%
             </p>
             <p className="mt-2 text-xs text-slate-500">
-              Baseada em atraso e resposta operacional
+              Atraso, parcelas e resposta operacional
             </p>
           </button>
         </Tooltip>
@@ -799,7 +953,7 @@ function RiskCockpit({
           <button
             type="button"
             onClick={onOpenRiskAnalysis}
-            className="w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+            className="w-full rounded-xl border border-slate-200/70 bg-white p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
           >
             <p className="text-xs font-medium text-slate-500">
               Risco operacional
@@ -821,7 +975,7 @@ function RiskCockpit({
           <button
             type="button"
             onClick={onOpenRiskAnalysis}
-            className="w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+            className="w-full rounded-xl border border-slate-200/70 bg-white p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
           >
             <p className="text-xs font-medium text-slate-500">
               Risco financeiro
@@ -836,13 +990,36 @@ function RiskCockpit({
         </Tooltip>
       </div>
 
-      <div className="mt-4 grid gap-3 xl:grid-cols-3">
+      <div className="mt-4 flex items-center gap-2">
+        <BotMessageSquare className="size-4 text-[#A07C3B]" aria-hidden="true" />
+        <p className="text-sm font-semibold text-slate-950">
+          Inteligência da cobrança
+        </p>
+        <span className="rounded-full bg-[#A07C3B]/8 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+          cérebro de IA
+        </span>
+        {onOpenAi ? (
+          <Tooltip content="Abrir sugestões IA" placement="top">
+            <button
+              type="button"
+              onClick={onOpenAi}
+              aria-label="Abrir sugestões IA"
+              className="ml-auto inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+            >
+              <BotMessageSquare className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
+        ) : null}
+      </div>
+      <div className="mt-3 grid gap-3 xl:grid-cols-3">
         <InfoPanel
           title="Comportamento do cliente"
+          tag="IA"
           value={`${client.parcelas.vencidas} parcela(s) vencida(s), ${client.atrasoDias} dias de atraso e status operacional ${client.workflow.stage.toLowerCase()}.`}
         />
         <InfoPanel
           title="Alerta crítico"
+          tag="IA"
           value={
             hasAgreementRisk
               ? client.agreement.aiSuggestion.breakChance >= 50
@@ -853,6 +1030,7 @@ function RiskCockpit({
         />
         <InfoPanel
           title="Próxima ação recomendada"
+          tag="IA"
           value={client.workflow.nextAction}
         />
       </div>
@@ -887,7 +1065,7 @@ function ClientTab({ client }: { client: QueueClient }) {
     <>
       <ExpandableDetailSection
         title="Dados do cliente"
-        icon={Building2}
+        icon={UserRound}
         className="p-6"
         primaryItems={[
           { label: "Nome", value: client.nome },
@@ -1018,37 +1196,74 @@ function isKnownValue(value?: string | null) {
 function PortfolioSummaryCard({
   client,
   onOpenPortfolio,
+  onOpenWhatsApp,
 }: {
   client: QueueClient;
   onOpenPortfolio: () => void;
+  onOpenWhatsApp?: () => void;
 }) {
   const mainUnit = client.carteira.unidades[0];
 
   return (
-    <DetailSection title="Resumo da carteira" icon={MapPinned}>
-      <div className="grid gap-3">
-        <CompactInfo
-          label="Unidades/lotes"
+    <div className="rounded-xl border border-[#A07C3B]/25 bg-[#A07C3B]/8 p-3">
+      <div className="flex items-center gap-2">
+        <MapPinned className="size-4 text-[#7A5E2C]" aria-hidden="true" />
+        <p className="text-sm font-semibold text-[#5C461F]">Resumo da carteira</p>
+      </div>
+      <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
+        <CarteiraStat
+          label="Unidades"
           value={`${client.carteira.unidades.length}`}
         />
-        <CompactInfo
-          label="Empreendimento principal"
+        <CarteiraStat
+          label="Empreendimento"
           value={mainUnit?.empreendimento ?? "-"}
         />
-        <CompactInfo
+        <CarteiraStat
           label="Valor de tabela"
           value={mainUnit?.valorTabela ?? "-"}
         />
       </div>
-      <button
-        type="button"
-        onClick={onOpenPortfolio}
-        className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-3 text-sm font-medium text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
-      >
-        Ver carteira
-        <ArrowRight className="size-4" aria-hidden="true" />
-      </button>
-    </DetailSection>
+      <p className="mt-2 truncate text-xs">
+        <span className="text-[#7A5E2C]">Contato: </span>
+        <span className="font-semibold text-[#4A3717]">
+          {client.dados360.telefone}
+        </span>
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <Tooltip content="Ver carteira" placement="top">
+          <button
+            type="button"
+            onClick={onOpenPortfolio}
+            aria-label="Ver carteira"
+            className="flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
+          >
+            <ArrowRight className="size-4" aria-hidden="true" />
+          </button>
+        </Tooltip>
+        {onOpenWhatsApp ? (
+          <Tooltip content="Abrir Iris" placement="top">
+            <button
+              type="button"
+              onClick={onOpenWhatsApp}
+              aria-label="Abrir Iris"
+              className="flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
+            >
+              <MessageCircle className="size-4" aria-hidden="true" />
+            </button>
+          </Tooltip>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function CarteiraStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0">
+      <p className="text-[11px] text-[#7A5E2C]">{label}</p>
+      <p className="truncate text-sm font-semibold text-[#4A3717]">{value}</p>
+    </div>
   );
 }
 
@@ -1099,7 +1314,7 @@ function PortfolioTab({
     >
       {!maximized ? (
         <aside
-          className={`min-w-0 rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-300 ${
+          className={`min-w-0 self-start 2xl:sticky 2xl:top-0 2xl:max-h-[calc(100vh-160px)] 2xl:overflow-y-auto rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-300 ${
             listCollapsed ? "p-2" : "p-4"
           }`}
         >
@@ -1124,18 +1339,17 @@ function PortfolioTab({
             <div className="flex flex-col items-center gap-2">
               {client.carteira.unidades.map((unit, index) => (
                 <Tooltip
-                  key={unit.id}
+                  key={`${unit.matricula}-${index}`}
                   content={`${unit.empreendimento} · ${unit.quadra} ${unit.lote}`}
                   placement="right"
                 >
                   <button
                     type="button"
                     onClick={() => {
-                      onSelectUnit(unit.id);
-                      onSelectSubtab("summary");
+                      onSelectUnit(unit.matricula);
                     }}
                     className={`flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset transition-colors ${
-                      selectedUnit.id === unit.id
+                      selectedUnit.matricula === unit.matricula
                         ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/20"
                         : "bg-slate-50 text-slate-500 ring-slate-200/70 hover:bg-[#A07C3B]/5"
                     }`}
@@ -1149,7 +1363,7 @@ function PortfolioTab({
             <>
               <div className="mb-4">
                 <p className="text-sm font-semibold text-slate-950">
-                  Unidades e lotes
+                  Unidades
                 </p>
                 <p className="mt-1 text-xs text-slate-500">
                   Selecione uma unidade para operar.
@@ -1157,16 +1371,15 @@ function PortfolioTab({
               </div>
 
               <div className="space-y-3">
-                {client.carteira.unidades.map((unit) => (
+                {client.carteira.unidades.map((unit, index) => (
                   <button
                     type="button"
-                    key={unit.id}
+                    key={`${unit.matricula}-${index}`}
                     onClick={() => {
-                      onSelectUnit(unit.id);
-                      onSelectSubtab("summary");
+                      onSelectUnit(unit.matricula);
                     }}
                     className={`group w-full rounded-xl border p-4 text-left transition-colors ${
-                      selectedUnit.id === unit.id
+                      selectedUnit.matricula === unit.matricula
                         ? "border-[#A07C3B]/30 bg-[#A07C3B]/5"
                         : "border-slate-200/70 bg-slate-50/60 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
                     }`}
@@ -1255,21 +1468,11 @@ function PortfolioTab({
           </div>
         </div>
 
-        <SubtabNav
-          selectedSubtab={selectedSubtab}
-          onSelectSubtab={onSelectSubtab}
-        />
-
+        {/* Carteira abre direto em Parcelas (decisao do Lucas): sem submenu de
+            unidade. Resumo/Acordos/Timeline/Risco/Documentos sairam — viram
+            abas principais (por cliente) ou ja vivem no Cockpit/Cliente. */}
         <div className="mt-5">
-          {renderUnitSubtab({
-            client,
-            onCreateCommitment,
-            onCreateTimelineEvent,
-            onUpdateCommitment,
-            subtab: selectedSubtab,
-            timelineEvents,
-            unit: selectedUnit,
-          })}
+          <InstallmentsCard client={client} unit={selectedUnit} />
         </div>
       </DetailSection>
     </section>
@@ -1375,11 +1578,6 @@ function renderUnitSubtab({
       <CompactInfo label="Cod. unidade" value={unit.matricula} />
       <CompactInfo label="Área" value={unit.area} />
       <CompactInfo label="Valor de tabela" value={unit.valorTabela} />
-      <CompactInfo label="Status do contrato" value={unit.statusVenda} />
-      <CompactInfo
-        label="Imobiliária/corretor"
-        value={unit.imobiliariaCorretor}
-      />
     </div>
   );
 }
@@ -1497,55 +1695,16 @@ function DocumentsTab({
   const unitLabel = selectedUnit
     ? `${selectedUnit.empreendimento} ${selectedUnit.quadra} ${selectedUnit.lote}`.trim()
     : "Unidade não selecionada";
-  const agreementDocuments = client.commitments
-    .filter((commitment) => commitment.type === "Acordo")
-    .filter(
-      (agreement) =>
-        !selectedUnit || agreement.unitCode === selectedUnit.matricula,
-    )
-    .map((agreement) => ({
-      detail: agreement.protocol,
-      id: agreement.id,
-      meta: `${agreement.negotiatedValue} · ${agreement.installmentsCount} parcelas`,
-      status: agreement.status,
-      title: "Acordo",
-      unitBadge: agreement.unitCode,
-    }));
+  // Documentos do cliente: por ora so o Contrato (D4Sign). Acordo/Boleto/
+  // Historico de cobranca saem daqui — vivem em outro lugar (decisao do Lucas).
+  // Sem badge de codigo (redundante com o link) nem status.
   const documents = [
     {
       detail: contractCode,
       href: contractUrl,
       id: "contract",
       meta: unitLabel,
-      status: contractDocumentId
-        ? (selectedUnit?.signedContractStatus ?? "Assinado")
-        : "Não localizado",
       title: "Contrato",
-      unitBadge: contractCode,
-    },
-    ...(agreementDocuments.length > 0
-      ? agreementDocuments
-      : [
-          {
-            detail: client.agreement.id.toUpperCase(),
-            id: "agreement-planned",
-            meta: `${client.agreement.negotiatedValue} · ${client.agreement.installmentsCount} parcelas`,
-            status: client.agreement.status,
-            title: "Acordo",
-            unitBadge: contractCode,
-          },
-        ]),
-    {
-      detail: client.agreement.id.toUpperCase(),
-      id: "boleto-c2x",
-      status: client.agreement.status,
-      title: "Boleto C2X",
-    },
-    {
-      detail: `${client.timeline.length} eventos`,
-      id: "collection-history",
-      status: "Registrado",
-      title: "Histórico de cobrança",
     },
   ];
 
@@ -1554,6 +1713,9 @@ function DocumentsTab({
 
     if (previewWindow) {
       previewWindow.opener = null;
+      // Tela de carregamento Panteon no lugar do branco enquanto o PDF baixa.
+      previewWindow.document.write(documentLoadingHtml());
+      previewWindow.document.close();
     }
 
     try {
@@ -1630,7 +1792,11 @@ function DocumentsTab({
                     className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-white px-2 py-1 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
                   >
                     <span className="truncate">{document.detail}</span>
-                    <ExternalLink className="size-3" aria-hidden="true" />
+                    {openingDocumentId === document.id ? (
+                      <PanteonLoadingMark size="xs" />
+                    ) : (
+                      <ExternalLink className="size-3" aria-hidden="true" />
+                    )}
                   </button>
                 ) : (
                   <p className="mt-1 truncate text-xs text-slate-500">
@@ -1643,16 +1809,20 @@ function DocumentsTab({
                   </p>
                 ) : null}
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-2">
-                {document.unitBadge ? (
-                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
-                    {document.unitBadge}
-                  </span>
-                ) : null}
-                <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
-                  {document.status}
-                </span>
-              </div>
+              {document.unitBadge || document.status ? (
+                <div className="flex shrink-0 flex-col items-end gap-2">
+                  {document.unitBadge ? (
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
+                      {document.unitBadge}
+                    </span>
+                  ) : null}
+                  {document.status ? (
+                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                      {document.status}
+                    </span>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
           </article>
         ))}
@@ -1780,12 +1950,69 @@ function RiskAnalysisModal({
   );
 }
 
-function OverviewTimelineAndAlerts({ client }: { client: QueueClient }) {
+// Deriva a etapa do workflow a partir dos compromissos do motor (Auto - Hades):
+// proposta registrada/pendente -> Negociacao; acordo aprovado -> Acordo;
+// promessa aprovada -> Promessa de pagamento; tudo quebrado -> Quebra.
+function deriveMotorWorkflow(items) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return null;
+  }
+
+  const active = items.filter((item) => item.status === "ativo");
+  const hasApprovedAcordo = active.some(
+    (item) => item.kind === "acordo" && item.approvalStatus === "aprovado",
+  );
+  const hasApprovedPromessa = active.some(
+    (item) => item.kind === "promessa" && item.approvalStatus === "aprovado",
+  );
+  const hasPending = active.some((item) => item.approvalStatus === "pendente");
+  const hasBroken = items.some((item) => item.status === "quebrado");
+
+  if (hasApprovedAcordo) {
+    return {
+      nextAction: "Acompanhar o pagamento das parcelas do acordo.",
+      stage: "Acordo",
+    };
+  }
+  if (hasApprovedPromessa) {
+    return {
+      nextAction: "Aguardar a data prometida (régua de lembretes).",
+      stage: "Promessa de pagamento",
+    };
+  }
+  if (hasPending) {
+    return {
+      nextAction: "Proposta registrada aguardando aprovação do gestor.",
+      stage: "Negociação",
+    };
+  }
+  if (hasBroken) {
+    return {
+      nextAction: "Acordo quebrado — reabrir negociação.",
+      stage: "Quebra",
+    };
+  }
+
+  return null;
+}
+
+// "Ultimos eventos" compacto (coluna unica), ligado a timeline/motor, na faixa
+// de topo. O painel de "Alertas importantes" foi removido por decisao do Lucas
+// (ja ha alertas demais; o alerta critico vive no Cockpit).
+function OverviewEventsCard({
+  events: source,
+}: {
+  events: OperationalTimelineEvent[];
+}) {
+  // Fonte viva: o merge timelineEvents (extraTimelineEvents do motor/manuais +
+  // client.timeline do C2X), nao mais so o snapshot estatico da fila.
+  const events = source.slice(0, 4);
+
   return (
-    <div className="grid gap-5 xl:grid-cols-2">
-      <DetailSection title="Últimos eventos" icon={Clock3}>
-        <div className="space-y-2">
-          {client.timeline.slice(0, 4).map((event) => (
+    <DetailSection title="Últimos eventos" icon={Clock3}>
+      {events.length > 0 ? (
+        <div className="grid gap-2">
+          {events.map((event) => (
             <div
               key={event.id}
               className="rounded-lg border border-slate-200/70 bg-slate-50/70 px-3 py-2"
@@ -1804,32 +2031,12 @@ function OverviewTimelineAndAlerts({ client }: { client: QueueClient }) {
             </div>
           ))}
         </div>
-      </DetailSection>
-      <DetailSection title="Alertas importantes" icon={ShieldAlert} accent>
-        <div className="space-y-2">
-          <InfoPanel
-            title="Risco de quebra"
-            value={
-              client.agreement.risk === EMPTY_FIELD
-                ? EMPTY_FIELD
-                : `${client.agreement.aiSuggestion.breakChance}% de chance prevista no acordo atual.`
-            }
-          />
-          <InfoPanel
-            title="Ação operacional"
-            value={client.workflow.nextAction}
-          />
-          <InfoPanel
-            title="Acordo"
-            value={
-              client.agreement.risk === EMPTY_FIELD
-                ? EMPTY_FIELD
-                : `${client.agreement.status}, risco ${client.agreement.risk}.`
-            }
-          />
-        </div>
-      </DetailSection>
-    </div>
+      ) : (
+        <p className="text-xs text-slate-400">
+          Sem eventos recentes para este cliente.
+        </p>
+      )}
+    </DetailSection>
   );
 }
 
@@ -1920,12 +2127,35 @@ function MetricTile({
   );
 }
 
-function InfoPanel({ title, value }: { title: string; value: string }) {
+function InfoPanel({
+  title,
+  value,
+  tag,
+}: {
+  title: string;
+  value: string;
+  // Marca a origem do campo: `IA` (sugerido por modelo) ou `regra` (heuristica
+  // explicavel sobre dado real). Honestidade do cockpit — nada de fingir IA.
+  tag?: "IA" | "regra";
+}) {
   return (
     <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-      <p className="text-xs font-semibold tracking-normal text-slate-400">
-        {title}
-      </p>
+      <div className="flex items-center gap-2">
+        <p className="text-xs font-semibold tracking-normal text-slate-400">
+          {title}
+        </p>
+        {tag ? (
+          <span
+            className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${
+              tag === "IA"
+                ? "bg-indigo-50 text-indigo-700 ring-indigo-100"
+                : "bg-slate-100 text-slate-600 ring-slate-200"
+            }`}
+          >
+            {tag}
+          </span>
+        ) : null}
+      </div>
       <Tooltip content={value} placement="bottom">
         <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">
           {value}

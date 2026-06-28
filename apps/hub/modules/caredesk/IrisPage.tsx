@@ -2,7 +2,14 @@
 // @ts-nocheck
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import {
   Activity,
   ArrowLeft,
@@ -19,6 +26,8 @@ import {
   DatabaseZap,
   Edit3,
   FileText,
+  Forward,
+  HandCoins,
   ImageIcon,
   Inbox,
   LayoutDashboard,
@@ -94,6 +103,19 @@ import {
   type IrisConversationReadOnlyRenderers,
 } from "./blocks/conversation/iris-conversation-readonly";
 import {
+  IrisCobrancaContextSidebar,
+  type CobrancaProposalRenderArgs,
+} from "./blocks/conversation/iris-cobranca-context";
+import {
+  IrisAthenaPanel,
+  type AthenaAction,
+  type AthenaMessage,
+} from "./blocks/caca/iris-athena-panel";
+import {
+  IrisCobrancaCloseModal,
+  IrisCobrancaTransferModal,
+} from "./blocks/conversation/iris-cobranca-actions";
+import {
   IRIS_QUEUE_LOAD_TIMEOUT_MS,
   buildIrisSnapshot,
   emptyIrisData,
@@ -144,9 +166,22 @@ import type {
 
 type IrisPageProps = {
   boardOnly?: boolean;
+  // Cockpit de cobranca do Hades: contexto proprio (parcelas/link de boleto),
+  // rotulos e o "+" do board apontam pro fluxo do Hades. Iris segue o motor.
+  cobrancaMode?: boolean;
   embedded?: boolean;
+  // Reabre a conversa de um protocolo (AT-xxxx) ao montar — usado pelo "Voltar
+  // ao atendimento" do Hades, que volta pra conversa e nao pro board.
+  initialAttendanceProtocol?: string | null;
   initialTickets?: IrisTicket[];
   loadFromSupabase?: boolean;
+  // Quando definido, o "+" / Novo atendimento do board embarcado chama este
+  // override (ex.: Hades abre o seletor de cliente + form proprio) em vez do
+  // IrisStartAttendanceModal padrao.
+  onStartAttendanceOverride?: (() => void) | null;
+  // Render-prop do guardian: renderiza o ProposalModal (acordo/promessa) INLINE
+  // no cockpit de cobranca, sem import circular caredesk->guardian.
+  renderCobrancaProposal?: (args: CobrancaProposalRenderArgs) => ReactNode;
   operatorScoped?: boolean;
   queueSlugFilter?: string | null;
 };
@@ -172,6 +207,21 @@ function readIrisTemplateSyncNotificationId(
     sync.metaStatus ?? "unknown",
     sync.localStatus ?? "unknown",
   ].join(":");
+}
+
+// Extrai o id de cliente C2X do ticket de cobranca (metadata.cobranca.clientId =
+// "c2x-client-NNN") para vincular retornos/tarefas criados do atendimento.
+function readTicketCobrancaC2xId(
+  metadata: Record<string, unknown> | null | undefined,
+): number | null {
+  const cobranca =
+    metadata && typeof metadata.cobranca === "object" && metadata.cobranca
+      ? (metadata.cobranca as Record<string, unknown>)
+      : null;
+  const clientId =
+    typeof cobranca?.clientId === "string" ? cobranca.clientId : null;
+  const match = clientId?.match(/(\d+)\s*$/);
+  return match ? Number(match[1]) : null;
 }
 
 function buildIrisHistoryFocus(ticket: IrisTicket): IrisHistoryFocus {
@@ -447,11 +497,15 @@ const IRIS_META_TEMPLATE_LIBRARY_PRESETS = [
 
 export function IrisPage({
   boardOnly = false,
+  cobrancaMode = false,
   embedded = false,
+  initialAttendanceProtocol = null,
   initialTickets = emptyIrisTickets,
   loadFromSupabase = true,
+  onStartAttendanceOverride = null,
   operatorScoped = false,
   queueSlugFilter = null,
+  renderCobrancaProposal = null,
 }: IrisPageProps) {
   const { hubUser } = useAuth();
   const operatorUserId = operatorScoped ? (hubUser?.id ?? null) : null;
@@ -464,6 +518,7 @@ export function IrisPage({
     initialTickets[0]?.id ?? "",
   );
   const [activeView, setActiveView] = useState<IrisView>("gestao");
+  const attendanceProtocolHandledRef = useRef(false);
   const [historyFocus, setHistoryFocus] = useState<IrisHistoryFocus | null>(
     null,
   );
@@ -758,6 +813,22 @@ export function IrisPage({
     );
   }, [irisData.tickets, selectedTicketId]);
 
+  // "Voltar ao atendimento" do Hades: reabre a conversa do protocolo, uma vez.
+  useEffect(() => {
+    if (!initialAttendanceProtocol || attendanceProtocolHandledRef.current) {
+      return;
+    }
+    const normalized = initialAttendanceProtocol.trim().toUpperCase();
+    const target = irisData.tickets.find(
+      (ticket) => (ticket.protocol ?? "").trim().toUpperCase() === normalized,
+    );
+    if (target) {
+      attendanceProtocolHandledRef.current = true;
+      setSelectedTicketId(target.id);
+      setActiveView("atendimento");
+    }
+  }, [initialAttendanceProtocol, irisData.tickets]);
+
   const snapshot = useMemo(
     () => buildIrisSnapshot(irisData, onlineOperators),
     [irisData, onlineOperators],
@@ -962,13 +1033,15 @@ export function IrisPage({
         />
       ) : null}
       {embeddedBoardOnly ? (
-        <section className="h-[min(820px,calc(100vh-9rem))] min-h-[560px] overflow-hidden rounded-2xl border border-[#dbe3ef] bg-[#f3f6fa] p-3">
+        <section className="h-[calc(100vh-11rem)] min-h-[560px] overflow-hidden rounded-2xl border border-[#dbe3ef] bg-[#f3f6fa] p-3">
           {loadError ? (
             <div className="h-full rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
               {loadError}
             </div>
           ) : activeView === "atendimento" ? (
             <AttendanceView
+              cobrancaMode={cobrancaMode}
+              renderCobrancaProposal={renderCobrancaProposal}
               ticket={selectedTicket}
               tickets={irisData.tickets}
               selectedTicketId={selectedTicket?.id ?? selectedTicketId}
@@ -988,6 +1061,10 @@ export function IrisPage({
               onOpenAttendance={openAttendance}
               onSelectTicket={setSelectedTicketId}
               onStartAttendance={(queueLabel) => {
+                if (onStartAttendanceOverride) {
+                  onStartAttendanceOverride();
+                  return;
+                }
                 setStartAttendanceQueueLabel(
                   queueLabel && queueLabel !== "Todos" ? queueLabel : null,
                 );
@@ -1044,6 +1121,8 @@ export function IrisPage({
             />
           ) : activeView === "atendimento" ? (
             <AttendanceView
+              cobrancaMode={cobrancaMode}
+              renderCobrancaProposal={renderCobrancaProposal}
               ticket={selectedTicket}
               tickets={irisData.tickets}
               selectedTicketId={selectedTicket?.id ?? selectedTicketId}
@@ -1156,6 +1235,7 @@ function ManagementView({
 }
 
 function AttendanceView({
+  cobrancaMode = false,
   onClose,
   onOpenHistoryForTicket,
   onMessageCreated,
@@ -1163,10 +1243,13 @@ function AttendanceView({
   onTicketClosed,
   onTicketContextUpdated,
   onSelectTicket,
+  renderCobrancaProposal,
   selectedTicketId,
   ticket,
   tickets,
 }: {
+  cobrancaMode?: boolean;
+  renderCobrancaProposal?: ((args: CobrancaProposalRenderArgs) => ReactNode) | null;
   onClose: () => void;
   onOpenHistoryForTicket: (ticket: IrisTicket) => void;
   onMessageCreated: (ticketId: string, message: IrisMessage) => void;
@@ -1193,6 +1276,8 @@ function AttendanceView({
 
   return (
     <IrisConversationPanel
+      cobrancaMode={cobrancaMode}
+      renderCobrancaProposal={renderCobrancaProposal}
       ticket={ticket}
       tickets={tickets}
       selectedTicketId={selectedTicketId}
@@ -1207,7 +1292,40 @@ function AttendanceView({
   );
 }
 
+function cobrancaAssunto(label: string): string {
+  return label.trim().toLowerCase() === "primeiro contato" ? "Contato" : label;
+}
+
+function athenaActionLabel(action: AthenaAction): string {
+  switch (action) {
+    case "boletos":
+      return "Enviar boletos";
+    case "total":
+      return "Total em aberto";
+    case "resumir":
+      return "Resumir conversa";
+    case "ajustar_tom":
+      return "Ajustar o tom da minha mensagem";
+    default:
+      return "";
+  }
+}
+
+function readCobrancaClientId(ticket: IrisTicket): string | null {
+  const metadata = ticket.metadata;
+  const cobranca =
+    metadata && typeof metadata === "object" && !Array.isArray(metadata)
+      ? (metadata as Record<string, unknown>).cobranca
+      : null;
+  if (cobranca && typeof cobranca === "object" && !Array.isArray(cobranca)) {
+    const clientId = (cobranca as Record<string, unknown>).clientId;
+    if (typeof clientId === "string" && clientId.trim()) return clientId;
+  }
+  return null;
+}
+
 function IrisConversationPanel({
+  cobrancaMode = false,
   onClose,
   onOpenHistoryForTicket,
   onMessageCreated,
@@ -1215,10 +1333,13 @@ function IrisConversationPanel({
   onTicketClosed,
   onTicketContextUpdated,
   onSelectTicket,
+  renderCobrancaProposal,
   selectedTicketId,
   ticket,
   tickets,
 }: {
+  cobrancaMode?: boolean;
+  renderCobrancaProposal?: ((args: CobrancaProposalRenderArgs) => ReactNode) | null;
   onClose: () => void;
   onOpenHistoryForTicket: (ticket: IrisTicket) => void;
   onMessageCreated: (ticketId: string, message: IrisMessage) => void;
@@ -1254,6 +1375,20 @@ function IrisConversationPanel({
   const [showPreviousTickets, setShowPreviousTickets] = useState(false);
   const [conversationListCollapsed, setConversationListCollapsed] =
     useState(false);
+  const [contextCollapsed, setContextCollapsed] = useState(false);
+  const [closeModalOpen, setCloseModalOpen] = useState(false);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [transferring, setTransferring] = useState(false);
+  // Sinal pro contexto abrir o popup de registrar acordo/promessa (icone no header).
+  const [proposalSignal, setProposalSignal] = useState(0);
+  // Athena (assistente do operador) — thread/prompt/loading.
+  const [athenaThread, setAthenaThread] = useState<AthenaMessage[]>([]);
+  const [athenaPrompt, setAthenaPrompt] = useState("");
+  const [athenaLoading, setAthenaLoading] = useState(false);
+  // Mensagem da conversa selecionada como contexto pra Athena ("responda essa…").
+  const [athenaContextMessage, setAthenaContextMessage] = useState<string | null>(
+    null,
+  );
   const [attendantOpen, setAttendantOpen] = useState(false);
   const [attendantPrompt, setAttendantPrompt] = useState("");
   const [attendantDocumentFragment, setAttendantDocumentFragment] =
@@ -1701,16 +1836,144 @@ function IrisConversationPanel({
     window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
   }
 
-  async function closeTicket() {
-    if (ticketClosed || closingTicket) {
-      return;
+  const cobrancaClientId = cobrancaMode ? readCobrancaClientId(ticket) : null;
+
+  function insertDraftText(text: string) {
+    const value = text.trim();
+    if (!value) return;
+    setDraft((current) => (current.trim() ? `${current}\n${value}` : value));
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+  }
+
+  function askAthenaAboutMessage(message: IrisMessage) {
+    const body = (message.body ?? "").trim();
+    if (!body) return;
+    setAthenaContextMessage(body);
+    setAttendantOpen(true);
+    setAthenaPrompt((current) =>
+      current.trim() ? current : "Responda esta mensagem ",
+    );
+  }
+
+  async function transcribeAudio(audio: Blob): Promise<string> {
+    try {
+      const accessToken = await getIrisAccessToken();
+      const form = new FormData();
+      form.append("audio", audio, "athena-audio.webm");
+      const response = await fetch("/api/iris/athena/transcribe", {
+        body: form,
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${accessToken}` },
+        method: "POST",
+      });
+      const body = (await response.json().catch(() => null)) as {
+        text?: string;
+      } | null;
+      return typeof body?.text === "string" ? body.text.trim() : "";
+    } catch {
+      return "";
+    }
+  }
+
+  async function runAthena(
+    action: AthenaAction,
+    promptOverride?: string,
+    audioUrl?: string,
+  ) {
+    if (athenaLoading) return;
+    const userText =
+      action === "livre"
+        ? (promptOverride ?? athenaPrompt).trim()
+        : athenaActionLabel(action);
+    if (action === "livre" && !userText) return;
+
+    setAthenaLoading(true);
+    const stamp = Date.now();
+    setAthenaThread((current) => [
+      ...current,
+      { audioUrl, id: `op-${stamp}`, role: "operator", text: userText },
+    ]);
+    if (action === "livre") {
+      setAthenaPrompt("");
     }
 
-    const confirmed = window.confirm(
-      `Encerrar o chat e finalizar o protocolo ${ticket.protocol}?`,
-    );
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/athena", {
+        body: JSON.stringify({
+          action,
+          contextMessage: athenaContextMessage ?? "",
+          draft,
+          prompt: action === "livre" ? userText : "",
+          ticketId: ticket.id,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const body = (await response.json().catch(() => null)) as {
+        error?: string;
+        replyText?: string;
+      } | null;
+      const text =
+        body?.replyText ??
+        body?.error ??
+        "Não consegui responder agora. Tente de novo.";
+      setAthenaThread((current) => [
+        ...current,
+        { id: `at-${Date.now()}`, role: "athena", text },
+      ]);
+    } catch {
+      setAthenaThread((current) => [
+        ...current,
+        {
+          id: `at-${Date.now()}`,
+          role: "athena",
+          text: "Não consegui falar com a Athena agora.",
+        },
+      ]);
+    } finally {
+      setAthenaLoading(false);
+    }
+  }
 
-    if (!confirmed) {
+  // Auto-registro na timeline do cliente (Hades) das acoes do atendimento de
+  // cobranca. Best-effort — nao bloqueia a acao se falhar.
+  async function logCobrancaTimeline(title: string, description: string) {
+    if (!cobrancaMode || !cobrancaClientId) {
+      return;
+    }
+    try {
+      const accessToken = await getIrisAccessToken();
+      await fetch("/api/hades/attendance/manual-events", {
+        body: JSON.stringify({
+          client: { id: cobrancaClientId, name: ticketContactLabel(ticket) },
+          event: {
+            description,
+            occurredAt: new Date().toISOString(),
+            status: "Registrado",
+            title,
+            type: "Atendimento",
+          },
+          kind: "timeline",
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+    } catch {
+      // timeline e best-effort.
+    }
+  }
+
+  async function performClose(options: { closeReason?: string; subject?: string }) {
+    if (ticketClosed || closingTicket) {
       return;
     }
 
@@ -1722,7 +1985,9 @@ function IrisConversationPanel({
       const response = await fetch("/api/iris/tickets", {
         body: JSON.stringify({
           action: "close",
-          closeReason: "Encerrado manualmente no atendimento Iris.",
+          closeReason:
+            options.closeReason ?? "Encerrado manualmente no atendimento Iris.",
+          ...(options.subject ? { subject: options.subject } : {}),
           ticketId: ticket.id,
         }),
         cache: "no-store",
@@ -1776,6 +2041,13 @@ function IrisConversationPanel({
       setEditingMessageId(null);
       setEmojiPickerOpen(false);
       setReplyToMessage(null);
+      setCloseModalOpen(false);
+      await logCobrancaTimeline(
+        "Atendimento encerrado",
+        `Protocolo ${ticket.protocol}${options.subject ? ` · ${options.subject}` : ""}${
+          options.closeReason ? ` · ${options.closeReason}` : ""
+        }`,
+      );
       setFeedback(
         payload?.alreadyClosed
           ? "Protocolo ja estava encerrado."
@@ -1789,6 +2061,73 @@ function IrisConversationPanel({
       );
     } finally {
       setClosingTicket(false);
+    }
+  }
+
+  async function closeTicket() {
+    if (ticketClosed || closingTicket) {
+      return;
+    }
+    const confirmed = window.confirm(
+      `Encerrar o chat e finalizar o protocolo ${ticket.protocol}?`,
+    );
+    if (!confirmed) {
+      return;
+    }
+    await performClose({});
+  }
+
+  async function transferTicket(input: {
+    queueId: string | null;
+    queueSlug: string | null;
+    reason: string;
+    userId: string | null;
+  }) {
+    if (ticketClosed || transferring) {
+      return;
+    }
+    setTransferring(true);
+    setFeedback("");
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/tickets", {
+        body: JSON.stringify({
+          action: "transfer",
+          targetQueueId: input.queueId,
+          targetQueueSlug: input.queueSlug,
+          targetUserId: input.userId,
+          ticketId: ticket.id,
+          transferReason: input.reason,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel direcionar o atendimento.",
+        );
+      }
+      setTransferModalOpen(false);
+      await logCobrancaTimeline(
+        "Atendimento direcionado",
+        `Protocolo ${ticket.protocol} · ${input.reason}`,
+      );
+      onClose();
+    } catch (error) {
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel direcionar o atendimento agora.",
+      );
+    } finally {
+      setTransferring(false);
     }
   }
 
@@ -2407,6 +2746,7 @@ function IrisConversationPanel({
     renderMessageBubble: ({ message, ticket }) => (
       <MessageBubble
         message={message}
+        onAskAthena={cobrancaMode ? askAthenaAboutMessage : undefined}
         onEdit={prepareEdit}
         onReact={reactToMessage}
         onReply={prepareReply}
@@ -2421,6 +2761,7 @@ function IrisConversationPanel({
   return (
     <section className="relative flex h-full min-h-0 w-full overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <IrisConversationInboxSidebar
+        cobrancaMode={cobrancaMode}
         collapsed={conversationListCollapsed}
         conversations={conversations}
         filter={conversationFilter}
@@ -2434,7 +2775,7 @@ function IrisConversationPanel({
         selectedTicketId={selectedTicketId}
       />
 
-      <main className="flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
         <header className="shrink-0 border-b border-slate-100 bg-white">
           <div className="flex flex-col gap-2 px-4 py-2.5 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 items-center gap-3">
@@ -2447,6 +2788,14 @@ function IrisConversationPanel({
                   <span>{ticket.protocol}</span>
                   <span aria-hidden="true">-</span>
                   <span>{statusLabel[ticketStatus]}</span>
+                  {cobrancaMode && ticket.contactPhone ? (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="font-semibold text-slate-700">
+                        {ticket.contactPhone}
+                      </span>
+                    </>
+                  ) : null}
                   {ticketIncomplete ? (
                     <>
                       <span aria-hidden="true">-</span>
@@ -2466,16 +2815,19 @@ function IrisConversationPanel({
 
             <div className="flex min-w-0 items-center gap-2 xl:justify-end">
               <label className="hidden h-9 max-w-full items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/70 px-2 text-xs font-semibold text-slate-600 sm:inline-flex">
-                <span className="shrink-0">Perfil</span>
+                <span className="shrink-0">{cobrancaMode ? "Assunto" : "Perfil"}</span>
                 <select
-                  value={ticket.profileLabel}
+                  value={cobrancaMode ? cobrancaAssunto(ticket.profileLabel) : ticket.profileLabel}
                   disabled
                   className="h-6 max-w-52 bg-transparent text-xs font-semibold text-slate-700 outline-none"
-                  aria-label="Perfil do ticket"
+                  aria-label={cobrancaMode ? "Assunto do atendimento" : "Perfil do ticket"}
                 >
-                  <option>{ticket.profileLabel}</option>
+                  <option>
+                    {cobrancaMode ? cobrancaAssunto(ticket.profileLabel) : ticket.profileLabel}
+                  </option>
                 </select>
               </label>
+              {cobrancaMode ? null : (
               <Tooltip
                 content={attendantOpen ? "Ocultar Cacá" : "Acionar Cacá"}
                 placement="bottom"
@@ -2495,26 +2847,68 @@ function IrisConversationPanel({
                   <Bot className="h-4 w-4" aria-hidden="true" />
                 </button>
               </Tooltip>
+              )}
+              {cobrancaMode && cobrancaClientId && renderCobrancaProposal ? (
+                <Tooltip content="Registrar acordo / promessa" placement="bottom">
+                  <button
+                    type="button"
+                    onClick={() => setProposalSignal((current) => current + 1)}
+                    aria-label="Registrar acordo ou promessa"
+                    className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12"
+                  >
+                    <HandCoins className="size-4" aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              ) : null}
+              {cobrancaMode ? (
+                <Tooltip content="Direcionar atendimento" placement="bottom">
+                  <button
+                    type="button"
+                    onClick={() => setTransferModalOpen(true)}
+                    disabled={ticketClosed || transferring}
+                    aria-label="Direcionar atendimento"
+                    className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                  >
+                    <Forward className="size-4" aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              ) : null}
               <Tooltip
                 content={
                   ticketClosed
-                    ? "Chat encerrado"
+                    ? cobrancaMode
+                      ? "Atendimento encerrado"
+                      : "Chat encerrado"
                     : closingTicket
-                      ? "Encerrando chat..."
-                      : "Encerrar chat"
+                      ? cobrancaMode
+                        ? "Encerrando atendimento..."
+                        : "Encerrando chat..."
+                      : cobrancaMode
+                        ? "Encerrar atendimento"
+                        : "Encerrar chat"
                 }
                 placement="bottom"
               >
                 <button
                   type="button"
-                  onClick={() => void closeTicket()}
+                  onClick={() =>
+                    cobrancaMode
+                      ? setCloseModalOpen(true)
+                      : void closeTicket()
+                  }
                   disabled={ticketClosed || closingTicket}
                   aria-label={
                     ticketClosed
-                      ? "Chat encerrado"
+                      ? cobrancaMode
+                        ? "Atendimento encerrado"
+                        : "Chat encerrado"
                       : closingTicket
-                        ? "Encerrando chat"
-                        : "Encerrar chat"
+                        ? cobrancaMode
+                          ? "Encerrando atendimento"
+                          : "Encerrando chat"
+                        : cobrancaMode
+                          ? "Encerrar atendimento"
+                          : "Encerrar chat"
                   }
                   className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200/70 bg-rose-50/70 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
                 >
@@ -2522,7 +2916,7 @@ function IrisConversationPanel({
                 </button>
               </Tooltip>
               <div className="flex w-fit items-center gap-1 rounded-lg border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                <Tooltip content="Voltar para o board" placement="bottom">
+                <Tooltip content="Voltar" placement="bottom">
                   <button
                     type="button"
                     onClick={onClose}
@@ -2532,24 +2926,28 @@ function IrisConversationPanel({
                     <ArrowLeft className="size-4" aria-hidden="true" />
                   </button>
                 </Tooltip>
-                <Tooltip content="Protocolo" placement="bottom">
-                  <button
-                    type="button"
-                    aria-label="Protocolo"
-                    className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
-                  >
-                    <FileText className="size-4" aria-hidden="true" />
-                  </button>
-                </Tooltip>
-                <Tooltip content="SLA" placement="bottom">
-                  <button
-                    type="button"
-                    aria-label="SLA"
-                    className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
-                  >
-                    <Clock3 className="size-4" aria-hidden="true" />
-                  </button>
-                </Tooltip>
+                {cobrancaMode ? null : (
+                  <>
+                    <Tooltip content="Protocolo" placement="bottom">
+                      <button
+                        type="button"
+                        aria-label="Protocolo"
+                        className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+                      >
+                        <FileText className="size-4" aria-hidden="true" />
+                      </button>
+                    </Tooltip>
+                    <Tooltip content="SLA" placement="bottom">
+                      <button
+                        type="button"
+                        aria-label="SLA"
+                        className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+                      >
+                        <Clock3 className="size-4" aria-hidden="true" />
+                      </button>
+                    </Tooltip>
+                  </>
+                )}
               </div>
             </div>
           </div>
@@ -2561,7 +2959,7 @@ function IrisConversationPanel({
           </div>
         ) : null}
 
-        {attendantOpen ? (
+        {attendantOpen && !cobrancaMode ? (
           <IrisAttendantPanel
             disabled={ticketClosed}
             documentFragment={attendantDocumentFragment}
@@ -2592,9 +2990,18 @@ function IrisConversationPanel({
         />
 
         <IrisConversationComposerActions
+          agendaContext={{
+            clientC2xId: readTicketCobrancaC2xId(ticket.metadata),
+            clientName: ticket.contactLabel,
+            module: cobrancaMode ? "hades" : "iris",
+            protocol: ticket.protocol,
+          }}
+          attendantOpen={attendantOpen}
           blockedTooltip={blockedTooltip}
           canSendFreeForm={canSendFreeForm}
+          cobrancaMode={cobrancaMode}
           composerReady={composerReady}
+          onToggleAttendant={() => setAttendantOpen((current) => !current)}
           customerServiceWindow={
             customerServiceWindow as IrisConversationComposerWindow
           }
@@ -2618,17 +3025,101 @@ function IrisConversationPanel({
           ticketChecklist={ticketChecklist}
           ticketClosed={ticketClosed}
         />
+
+        {cobrancaMode && attendantOpen ? (
+          <div className="absolute bottom-[84px] right-3 z-30 w-[380px] max-w-[calc(100%-1.5rem)]">
+            <IrisAthenaPanel
+              contextMessage={athenaContextMessage}
+              disabled={ticketClosed}
+              loading={athenaLoading}
+              onClearContext={() => setAthenaContextMessage(null)}
+              onClose={() => {
+                setAttendantOpen(false);
+                setAthenaContextMessage(null);
+              }}
+              onPromptChange={setAthenaPrompt}
+              onSend={(action, promptOverride, audioUrl) =>
+                void runAthena(action, promptOverride, audioUrl)
+              }
+              onTranscribe={transcribeAudio}
+              onUseReply={(text) => insertDraftText(text)}
+              prompt={athenaPrompt}
+              thread={athenaThread}
+            />
+          </div>
+        ) : null}
       </main>
 
-      <IrisConversationContextSidebar
-        contextShortcuts={contextShortcuts}
-        customerServiceWindowContextLabel={customerServiceWindow.contextLabel}
-        helpers={irisConversationReadOnlyHelpers}
-        previousTickets={previousTickets}
-        renderers={irisConversationReadOnlyRenderers}
-        ticket={ticket}
-        ticketContextNote={ticketContextNote}
-      />
+      {cobrancaMode ? (
+        <IrisCobrancaContextSidebar
+          clienteFields={[
+            { label: "Cliente", value: irisConversationReadOnlyHelpers.crm360ContextLabel(ticket.crm360Registration) },
+            { label: "Telefone", value: ticket.contactPhone ?? "-" },
+            { label: "CPF/CNPJ", value: ticket.contactDocument ?? "-" },
+            { label: "E-mail", value: ticket.contactEmail ?? "-" },
+            { label: "Fila", value: ticket.queueLabel },
+            { label: "Operador", value: ticket.assignedToLabel },
+            { label: "Assunto", value: cobrancaAssunto(ticket.profileLabel) },
+            { label: "SLA", value: irisConversationReadOnlyHelpers.slaLabel(ticket) },
+            { label: "Prioridade", value: irisConversationReadOnlyHelpers.priorityLabel[ticket.priority] },
+            { label: "Origem", value: ticket.sourceLabel },
+            { label: "Canal", value: irisConversationReadOnlyHelpers.formatIrisChannelLabel(ticket.channelLabel) },
+            { label: "Janela WhatsApp", value: customerServiceWindow.contextLabel },
+          ]}
+          clientId={cobrancaClientId}
+          collapsed={contextCollapsed}
+          currentTicketId={ticket.id}
+          formatDateTime={irisConversationReadOnlyHelpers.formatDateTime}
+          note={ticketContextNote}
+          onInsertDraftText={insertDraftText}
+          onSelectTicket={onSelectTicket}
+          onToggleCollapsed={() => setContextCollapsed((current) => !current)}
+          proposalOpenSignal={proposalSignal}
+          renderProposal={renderCobrancaProposal ?? undefined}
+          tickets={[
+            ticket,
+            ...previousTickets.filter((item) => item.id !== ticket.id),
+          ].map((item) => ({
+            id: item.id,
+            openedAt: item.openedAt,
+            protocol: item.protocol,
+            status: item.status,
+            subject: cobrancaAssunto(item.subject),
+          }))}
+        />
+      ) : (
+        <IrisConversationContextSidebar
+          contextShortcuts={contextShortcuts}
+          customerServiceWindowContextLabel={customerServiceWindow.contextLabel}
+          helpers={irisConversationReadOnlyHelpers}
+          previousTickets={previousTickets}
+          renderers={irisConversationReadOnlyRenderers}
+          ticket={ticket}
+          ticketContextNote={ticketContextNote}
+        />
+      )}
+
+      {closeModalOpen ? (
+        <IrisCobrancaCloseModal
+          currentSubject={ticket.subject}
+          protocol={ticket.protocol}
+          submitting={closingTicket}
+          onCancel={() => setCloseModalOpen(false)}
+          onConfirm={({ note, subject }) =>
+            void performClose({
+              closeReason: note || undefined,
+              subject: subject || undefined,
+            })
+          }
+        />
+      ) : null}
+      {transferModalOpen ? (
+        <IrisCobrancaTransferModal
+          submitting={transferring}
+          onCancel={() => setTransferModalOpen(false)}
+          onConfirm={(input) => void transferTicket(input)}
+        />
+      ) : null}
 
       {contextModalMode ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[2px]">
@@ -3224,12 +3715,14 @@ function ContactAvatar({
 
 function MessageBubble({
   message,
+  onAskAthena,
   onEdit,
   onReact,
   onReply,
   ticket,
 }: {
   message: IrisMessage;
+  onAskAthena?: (message: IrisMessage) => void;
   onEdit: (message: IrisMessage) => void;
   onReact: (message: IrisMessage, emoji: string) => void;
   onReply: (message: IrisMessage) => void;
@@ -3278,6 +3771,7 @@ function MessageBubble({
           <MessageBubbleActions
             canEdit={canEdit}
             message={message}
+            onAskAthena={onAskAthena}
             onEdit={onEdit}
             onReact={onReact}
             onReply={onReply}
@@ -3332,6 +3826,7 @@ function MessageBubble({
 function MessageBubbleActions({
   canEdit,
   message,
+  onAskAthena,
   onEdit,
   onReact,
   onReply,
@@ -3339,6 +3834,7 @@ function MessageBubbleActions({
 }: {
   canEdit: boolean;
   message: IrisMessage;
+  onAskAthena?: (message: IrisMessage) => void;
   onEdit: (message: IrisMessage) => void;
   onReact: (message: IrisMessage, emoji: string) => void;
   onReply: (message: IrisMessage) => void;
@@ -3373,6 +3869,18 @@ function MessageBubbleActions({
           <Reply className="size-3.5" aria-hidden="true" />
         </button>
       </Tooltip>
+      {onAskAthena ? (
+        <Tooltip content="Pedir à Athena sobre esta mensagem" placement="top">
+          <button
+            type="button"
+            onClick={() => onAskAthena(message)}
+            className="flex size-7 items-center justify-center rounded-full text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+            aria-label="Pedir à Athena sobre esta mensagem"
+          >
+            <Sparkles className="size-3.5" aria-hidden="true" />
+          </button>
+        </Tooltip>
+      ) : null}
       {canEdit ? (
         <Tooltip content="Editar no Iris" placement="top">
           <button

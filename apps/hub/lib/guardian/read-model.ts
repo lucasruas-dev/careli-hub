@@ -379,7 +379,9 @@ function mapAttendanceQueueRow(
     100,
   );
   const priority = mapHadesPriority(row.priority);
-  const workflowStage = mapWorkflowStage(row.workflow_status, overdueDays);
+  // Regra (Lucas): todos entram na 1a etapa "A acionar"; o estagio avanca
+  // manual (popup) ou auto (acao). Nao derivamos mais por dias de atraso.
+  const workflowStage: WorkflowStage = "A acionar";
   const nextAction = nextActionForStage(workflowStage, priority);
   const rowId = String(row.client_c2x_id ?? row.id);
   const metadata = options.compact ? null : (row.metadata ?? null);
@@ -654,41 +656,6 @@ function mapHadesPriority(value: string | null): AttendancePriority {
   }
 
   return "Baixa";
-}
-
-function mapWorkflowStage(value: string | null, overdueDays = 0): WorkflowStage {
-  if (overdueDays >= 91) {
-    return "Jurídico";
-  }
-
-  const normalized = String(value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .trim()
-    .toLowerCase();
-  const initialStage = overdueDays >= 3 ? "Contato" : "A acionar";
-  const map: Record<string, WorkflowStage> = {
-    "": initialStage,
-    "a acionar": "A acionar",
-    acordo: "Acordo",
-    "aguardando pagamento": "Promessa de pagamento",
-    contato: "Contato",
-    critico: "Quebra",
-    "distrato/evasao": "Jurídico",
-    "em negociacao": "Negociação",
-    juridico: "Jurídico",
-    negociacao: "Negociação",
-    "novo atraso": initialStage,
-    pago: "Acordo",
-    "primeiro contato": "Contato",
-    "promessa de pagamento": "Promessa de pagamento",
-    "promessa realizada": "Promessa de pagamento",
-    quebra: "Quebra",
-    "quebra de promessa": "Quebra",
-    "sem retorno": "Contato",
-  };
-
-  return map[normalized] ?? initialStage;
 }
 
 function nextActionForStage(

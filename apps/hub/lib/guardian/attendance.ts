@@ -115,6 +115,7 @@ type AttendanceInstallmentRow = RowDataPacket & {
   asaas_payment_id: string | null;
   mulct_value: number | string | null;
   payment_date_value: string | null;
+  reference_date_value: string | null;
   paid_value: number | string | null;
   parcel_type_id: number | string | null;
   parcel_type_name: string | null;
@@ -173,13 +174,20 @@ const enterpriseDisplayExpression = `
   end
 `;
 
+// TEMPORARIO (27/jun, pedido do Lucas para teste): allowlist de empreendimentos
+// LIBERADA — qualquer empreendimento valido entra na fila (ex.: SDT/CLI1347). O
+// Lucas vai pedir para RE-TRAVAR depois; basta restaurar o bloco comentado abaixo.
 const validEnterpriseWhere = `
   e.id is not null
-  and upper(trim(coalesce(e.code, ''))) in (
-    'REP', 'EDL', 'LOU', 'LOS', 'PDV', 'PVS', 'RDP', 'RPS', 'RPC',
-    'LBR', 'LBP', 'LBF', 'MDS', 'MLN', 'VDO', 'VAL', 'VDP'
-  )
 `;
+// Allowlist original (re-travar quando o Lucas pedir):
+// const validEnterpriseWhere = `
+//   e.id is not null
+//   and upper(trim(coalesce(e.code, ''))) in (
+//     'REP', 'EDL', 'LOU', 'LOS', 'PDV', 'PVS', 'RDP', 'RPS', 'RPC',
+//     'LBR', 'LBP', 'LBF', 'MDS', 'MLN', 'VDO', 'VAL', 'VDP'
+//   )
+// `;
 
 function guardianDbConfigError(missing: string[]) {
   return Object.assign(
@@ -594,6 +602,7 @@ async function loadInstallmentsByRequestId(
         p.due_date,
         date_format(p.due_date, '%Y-%m-%d') as due_date_value,
         date_format(p.payment_date, '%Y-%m-%d') as payment_date_value,
+        date_format(p.reference_date, '%Y-%m-%d') as reference_date_value,
         p.paid_value,
         p.initial_value,
         p.interest_value,
@@ -624,7 +633,12 @@ async function loadInstallmentsByRequestId(
     const dueDateInput = normalizeDateOnly(row.due_date_value) || formatDateInput(toDate(row.due_date));
     const originalDueDateInput = dueDateInput;
     const paymentDateInput = normalizeDateOnly(row.payment_date_value);
-    const referenceInput = originalDueDateInput || dueDateInput;
+    // Competencia (referencia) vem direto do C2X (coluna reference_date); cai
+    // pro vencimento apenas se a coluna vier vazia.
+    const referenceInput =
+      normalizeDateOnly(row.reference_date_value) ||
+      originalDueDateInput ||
+      dueDateInput;
     const valueNumber = amountFromRow(row);
 
     current.push({
@@ -1153,10 +1167,13 @@ function parcelNumber(row: AttendanceInstallmentRow) {
     parcelTypeId === 2
       ? toNumber(row.total_signal_parcels)
       : toNumber(row.total_parcels);
+  // Tipo correto do C2X (1=Ato, 2=Sinal, 3=Parcela, 4=Avulso). Antes voltava so
+  // o numero ("01/04") e a UI prefixava "Parcela" fixo -> Sinal virava "Parcela
+  // 01/04". Agora o numero carrega o tipo: "Sinal 01/04", "Parcela 06/120", "Ato".
   const label = row.parcel_type_name ? formatName(row.parcel_type_name) : "Parcela";
 
   if (current > 0 && total > 0) {
-    return `${String(current).padStart(2, "0")}/${String(total).padStart(2, "0")}`;
+    return `${label} ${String(current).padStart(2, "0")}/${String(total).padStart(2, "0")}`;
   }
 
   return label;

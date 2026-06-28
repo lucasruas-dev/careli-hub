@@ -3,7 +3,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { ChevronDown, Filter, Search, X } from "lucide-react";
+import { ChevronDown, Filter, PanelLeftClose, Search, X } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { ClientQueueCard } from "@/modules/guardian/attendance/components/ClientQueueCard";
 import { workflowStageDots, workflowStages, workflowStageStyles } from "@/modules/guardian/attendance/workflow";
@@ -50,10 +50,11 @@ type QueuePanelProps = {
   onModeChange: (mode: QueueMode) => void;
   onOverdueRangeChange: (range: OverdueRangeFilter) => void;
   onPriorityChange: (priority: AttendancePriority | "Todos") => void;
-  onOpenWhatsApp: (clientId: string) => void;
+  onOpenAttendance: (clientId: string) => void;
   onSearchChange: (search: string) => void;
   onStageChange: (stage: WorkflowStage | "Todas") => void;
   onSelectClient: (id: string) => void;
+  onCollapse?: () => void;
 };
 
 export function QueuePanel({
@@ -78,10 +79,11 @@ export function QueuePanel({
   onModeChange,
   onOverdueRangeChange,
   onPriorityChange,
-  onOpenWhatsApp,
+  onOpenAttendance,
   onSearchChange,
   onStageChange,
   onSelectClient,
+  onCollapse,
 }: QueuePanelProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [distributionOpen, setDistributionOpen] = useState(false);
@@ -127,13 +129,25 @@ export function QueuePanel({
     <section className="flex min-h-0 rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:sticky xl:top-20 xl:h-[calc(100vh-112px)]">
       <div className="flex min-h-0 w-full flex-col">
         <div className="shrink-0 border-b border-slate-100 px-5 py-4">
-          <div className="flex items-center justify-between gap-3">
+          <div className="flex items-start justify-between gap-3">
             <div>
               <h1 className="text-base font-semibold text-slate-950">
                 {mode === "daily" ? "Fila diária" : "Fila geral"}
               </h1>
               <p className="mt-1 text-xs font-medium text-slate-500">{profileLabel}</p>
             </div>
+            {onCollapse ? (
+              <Tooltip content="Recolher fila" placement="left">
+                <button
+                  type="button"
+                  onClick={onCollapse}
+                  aria-label="Recolher fila diária"
+                  className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-[#A07C3B]/35 hover:text-[#8A6A2F]"
+                >
+                  <PanelLeftClose className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            ) : null}
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2 rounded-xl border border-slate-200/70 bg-slate-50/80 p-1">
@@ -379,7 +393,7 @@ export function QueuePanel({
               key={client.id}
               client={client}
               selected={client.id === selectedClientId}
-              onOpenWhatsApp={() => onOpenWhatsApp(client.id)}
+              onOpenAttendance={() => onOpenAttendance(client.id)}
               onSelect={() => onSelectClient(client.id)}
               contactedToday={contactedTodayClientIds.has(client.id)}
               mode={mode}

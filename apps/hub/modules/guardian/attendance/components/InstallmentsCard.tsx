@@ -14,7 +14,7 @@ import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type { PortfolioUnit, QueueClient } from "@/modules/guardian/attendance/types";
 
 const sortOptions = [
-  "Referência",
+  "Competência",
   "Vencimento",
   "Dias de atraso",
   "Valor",
@@ -62,7 +62,7 @@ export function InstallmentsCard({
   defaultStatusFilter = "Todas",
   unit,
 }: InstallmentsCardProps) {
-  const [sortBy, setSortBy] = useState<SortOption>("Referência");
+  const [sortBy, setSortBy] = useState<SortOption>("Competência");
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [referenceStart, setReferenceStart] = useState("");
   const [referenceEnd, setReferenceEnd] = useState("");
@@ -104,8 +104,8 @@ export function InstallmentsCard({
   const visibleInstallments = showAllInstallments ? installments : installments.slice(0, 4);
   const canToggleInstallments = installments.length > 4;
   const activeFilters = [
-    referenceStart ? { label: "Ref. inicial", value: referenceStart, clear: () => setReferenceStart("") } : null,
-    referenceEnd ? { label: "Ref. final", value: referenceEnd, clear: () => setReferenceEnd("") } : null,
+    referenceStart ? { label: "Comp. inicial", value: referenceStart, clear: () => setReferenceStart("") } : null,
+    referenceEnd ? { label: "Comp. final", value: referenceEnd, clear: () => setReferenceEnd("") } : null,
     dueDateStart ? { label: "Venc. inicial", value: dueDateStart, clear: () => setDueDateStart("") } : null,
     dueDateEnd ? { label: "Venc. final", value: dueDateEnd, clear: () => setDueDateEnd("") } : null,
     statusFilter !== "Todas" ? { label: "Status", value: statusFilter, clear: () => setStatusFilter("Todas") } : null,
@@ -215,13 +215,13 @@ export function InstallmentsCard({
         <div className="mb-4 rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <FilterInput
-              label="Referência inicial"
+              label="Competência inicial"
               placeholder="03/2026"
               value={referenceStart}
               onChange={setReferenceStart}
             />
             <FilterInput
-              label="Referência final"
+              label="Competência final"
               placeholder="07/2026"
               value={referenceEnd}
               onChange={setReferenceEnd}
@@ -282,13 +282,13 @@ export function InstallmentsCard({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <p className="text-sm font-semibold text-slate-950">
-                    Parcela {installment.number}
+                    {installment.number}
                   </p>
                   <StatusBadge status={installment.status} />
                 </div>
 
                 <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-6">
-                  <InstallmentInfo label="Referência" value={installment.reference} />
+                  <InstallmentInfo label="Competência" value={installment.reference} />
                   <InstallmentInfo
                     label="Vencimento original"
                     tone="blue"

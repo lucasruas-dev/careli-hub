@@ -1719,13 +1719,25 @@ function shouldCacaAutomationRun(ticket: IrisTicketRow) {
     return false;
   }
 
-  if (isActiveContactTicket(ticket)) {
+  const state = readCacaAutomationState(ticket.metadata);
+
+  if (state.handoffRequired) {
     return false;
   }
 
-  const state = readCacaAutomationState(ticket.metadata);
+  if (isActiveContactTicket(ticket)) {
+    // Cobranca: a CACA assume o contato ATIVO (processo validado) quando o
+    // cliente responde — estamos processando um inbound, entao o cliente
+    // respondeu. Demais contatos ativos seguem sem automacao.
+    return isCobrancaActiveContactTicket(ticket);
+  }
 
-  return !state.handoffRequired;
+  return true;
+}
+
+function isCobrancaActiveContactTicket(ticket: IrisTicketRow) {
+  const metadata = isRecord(ticket.metadata) ? ticket.metadata : null;
+  return isRecord(metadata?.cobranca);
 }
 
 function isActiveContactTicket(ticket: IrisTicketRow) {

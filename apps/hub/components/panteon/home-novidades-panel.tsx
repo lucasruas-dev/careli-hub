@@ -1,8 +1,7 @@
 "use client";
 
 import { Surface } from "@repo/uix";
-import { Sparkles } from "lucide-react";
-import { useState } from "react";
+import { Megaphone } from "lucide-react";
 
 import {
   PANTEON_CHANGELOG,
@@ -51,25 +50,20 @@ function formatBrDate(iso: string) {
   return `${dd}/${mm}/${yy} · ${hh}:${min}`;
 }
 
-const INITIAL_NOVIDADES = 5;
-const LOAD_MORE_STEP = 10;
-
 export function HomeNovidadesPanel() {
-  const [visibleCount, setVisibleCount] = useState(INITIAL_NOVIDADES);
-
-  const entries = PANTEON_CHANGELOG.slice(0, visibleCount);
+  const entries = PANTEON_CHANGELOG;
   const current = PANTEON_CHANGELOG[0];
-  const remaining = PANTEON_CHANGELOG.length - entries.length;
 
   return (
     <Surface
       bordered
-      className="col-span-12 border-[#d9e0e7] bg-white p-5 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)] xl:col-span-5"
+      className="relative col-span-12 h-full min-h-[20rem] overflow-hidden border-[#d9e0e7] bg-white p-0 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)] xl:col-span-5"
     >
+      <div className="absolute inset-0 flex flex-col p-5">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
           <span className="grid size-8 place-items-center rounded-lg bg-[#A07C3B]/10 text-[#A07C3B]">
-            <Sparkles size={18} />
+            <Megaphone size={18} />
           </span>
           <div>
             <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[#A07C3B]">
@@ -93,7 +87,7 @@ export function HomeNovidadesPanel() {
         ) : null}
       </div>
 
-      <div className="mt-4 flex max-h-[22rem] flex-col gap-3 overflow-y-auto pr-1">
+      <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
         {entries.length === 0 ? (
           <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
             Nenhuma novidade registrada ainda.
@@ -104,16 +98,7 @@ export function HomeNovidadesPanel() {
           ))
         )}
       </div>
-
-      {remaining > 0 ? (
-        <button
-          className="mt-3 w-full rounded-lg border border-[#d9e0e7] bg-[#fafbfc] px-3 py-2 text-xs font-semibold text-[#475467] transition hover:bg-[#f0f2f5]"
-          onClick={() => setVisibleCount((count) => count + LOAD_MORE_STEP)}
-          type="button"
-        >
-          Carregar mais {Math.min(LOAD_MORE_STEP, remaining)}
-        </button>
-      ) : null}
+      </div>
     </Surface>
   );
 }

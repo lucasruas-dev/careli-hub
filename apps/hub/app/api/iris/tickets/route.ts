@@ -49,8 +49,14 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const [channelsResult, queuesResult, profilesResult, templatesResult, operator] =
-      await Promise.all([
+    const [
+      channelsResult,
+      queuesResult,
+      profilesResult,
+      templatesResult,
+      usersResult,
+      operator,
+    ] = await Promise.all([
         client
           .from("caredesk_channels")
           .select("id,name,slug,kind,provider,status")
@@ -79,6 +85,13 @@ export async function GET(request: NextRequest) {
           .eq("channel_kind", "whatsapp")
           .eq("status", "active")
           .order("name", { ascending: true }),
+        client
+          .from("hub_users")
+          .select(
+            "id,display_name,role,status,hub_user_assignments(status,hub_departments(name))",
+          )
+          .eq("status", "active")
+          .order("display_name", { ascending: true }),
         getOperatorIdentity(client, authorization.user.id),
       ]);
 
@@ -94,6 +107,14 @@ export async function GET(request: NextRequest) {
       {
         channels: channelsResult.data ?? [],
         operator,
+        operators: ((usersResult.data ?? []) as Array<Record<string, unknown>>)
+          .filter((row) => row.id && row.display_name)
+          .map((row) => ({
+            department: readActiveDepartment(row.hub_user_assignments),
+            id: String(row.id),
+            label: String(row.display_name),
+            role: typeof row.role === "string" ? row.role : null,
+          })),
         profiles: profilesResult.data ?? [],
         queues: queuesResult.data ?? [],
         templates: mapApprovedTemplateRows(templatesResult.data ?? []),
@@ -636,13 +657,16 @@ export async function PATCH(request: NextRequest) {
   const closeReason =
     normalizeText(input?.closeReason) ??
     "Encerrado pelo operador no modulo Iris.";
+  const updatedSubject = normalizeText(input?.subject);
   const transferReason =
     normalizeText(input?.transferReason) ??
     "Transferido para a fila de atendimento pelo operador na Iris.";
   const targetQueueId = normalizeUuid(input?.targetQueueId);
+  const targetUserId = normalizeUuid(input?.targetUserId);
+  // Direcionar so para um colaborador (sem trocar de fila) mantem a fila atual.
   const targetQueueSlug =
     normalizeQueueSlug(input?.targetQueueSlug) ??
-    DEFAULT_TRANSFER_QUEUE_SLUG;
+    (targetUserId ? null : DEFAULT_TRANSFER_QUEUE_SLUG);
 
   if (!ticketId) {
     return NextResponse.json(
@@ -690,6 +714,7 @@ export async function PATCH(request: NextRequest) {
         explicitTargetBySlug,
         fallbackQueue,
         operator,
+        targetOperator,
       ] = await Promise.all([
         fromQueueId ? getQueueById(client, fromQueueId) : Promise.resolve(null),
         targetQueueId ? getQueueById(client, targetQueueId) : Promise.resolve(null),
@@ -698,8 +723,14 @@ export async function PATCH(request: NextRequest) {
           : Promise.resolve(null),
         getDefaultQueue(client),
         getOperatorIdentity(client, authorization.user.id),
+        targetUserId
+          ? getOperatorIdentity(client, targetUserId)
+          : Promise.resolve(null),
       ]);
-      const targetQueue = explicitTargetById ?? explicitTargetBySlug ?? fallbackQueue;
+      const targetQueue =
+        explicitTargetById ??
+        explicitTargetBySlug ??
+        (targetUserId ? (sourceQueue ?? fallbackQueue) : fallbackQueue);
 
       if (!targetQueue?.id) {
         return NextResponse.json(
@@ -724,6 +755,8 @@ export async function PATCH(request: NextRequest) {
         reason: transferReason,
         toQueueId: targetQueue.id,
         toQueueLabel: targetQueue.name ?? targetQueue.slug ?? "atendimento",
+        toUserId: targetUserId ?? null,
+        toUserLabel: targetOperator?.label ?? null,
       };
       const nextMetadata = {
         ...currentMetadata,
@@ -731,6 +764,8 @@ export async function PATCH(request: NextRequest) {
         handoffToOperatorAt: nowIso,
         handoffToOperatorByUserId: authorization.user.id,
         handoffToOperatorReason: transferReason,
+        handoffToUserId: targetUserId ?? null,
+        handoffToUserLabel: targetOperator?.label ?? null,
         handlingOwner: "operator",
         lastTransfer: transferEntry,
         transferHistory: [transferEntry, ...transferHistory].slice(
@@ -748,7 +783,7 @@ export async function PATCH(request: NextRequest) {
       const { data: updated, error: updateError } = await client
         .from("caredesk_tickets")
         .update({
-          assigned_to_user_id: null,
+          assigned_to_user_id: targetUserId ?? null,
           metadata: nextMetadata,
           profile_id: targetProfile?.id ?? normalizeUuid(existing.profile_id) ?? null,
           queue_id: targetQueue.id,
@@ -774,8 +809,13 @@ export async function PATCH(request: NextRequest) {
 
       const transferMessage = [
         `Transferencia registrada: ${transferEntry.fromQueueLabel} -> ${transferEntry.toQueueLabel}.`,
+        targetOperator?.label
+          ? `Direcionado para ${targetOperator.label}.`
+          : null,
         `Motivo: ${transferReason}.`,
-      ].join(" ");
+      ]
+        .filter(Boolean)
+        .join(" ");
       const [timelineInsert, chatInsert] = await Promise.all([
         client.from("caredesk_ticket_events").insert({
           actor_type: "user",
@@ -996,6 +1036,7 @@ export async function PATCH(request: NextRequest) {
         closed_at: effectiveClosedAt,
         metadata: nextMetadata,
         status: "closed",
+        ...(updatedSubject ? { subject: updatedSubject } : {}),
         updated_at: nowIso,
       })
       .eq("id", ticketId)
@@ -1416,6 +1457,31 @@ async function getProfileById(client: SupabaseClient, profileId: string) {
     .maybeSingle();
 
   return data ?? null;
+}
+
+function readActiveDepartment(value: unknown): string | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  const records = value.filter(
+    (item): item is Record<string, unknown> =>
+      Boolean(item && typeof item === "object" && !Array.isArray(item)),
+  );
+  const active = records.find((item) => item.status === "active") ?? records[0];
+  if (!active) {
+    return null;
+  }
+  const departmentRaw = active.hub_departments;
+  const department = Array.isArray(departmentRaw)
+    ? departmentRaw[0]
+    : departmentRaw;
+  if (department && typeof department === "object" && !Array.isArray(department)) {
+    const name = (department as Record<string, unknown>).name;
+    if (typeof name === "string" && name.trim()) {
+      return name.trim();
+    }
+  }
+  return null;
 }
 
 async function getDefaultProfile(client: SupabaseClient) {

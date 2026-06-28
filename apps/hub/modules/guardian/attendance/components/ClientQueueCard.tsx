@@ -11,7 +11,7 @@ type ClientQueueCardProps = {
   contactedToday?: boolean;
   mode?: "daily" | "general";
   selected: boolean;
-  onOpenWhatsApp: () => void;
+  onOpenAttendance: () => void;
   onSelect: () => void;
 };
 
@@ -20,7 +20,7 @@ export function ClientQueueCard({
   contactedToday = false,
   mode = "daily",
   selected,
-  onOpenWhatsApp,
+  onOpenAttendance,
   onSelect,
 }: ClientQueueCardProps) {
   return (
@@ -37,11 +37,11 @@ export function ClientQueueCard({
           <p className="mt-1 text-xs text-slate-500">Responsável: {client.responsavel}</p>
         </button>
 
-        <Tooltip content={`Abrir Iris de ${client.nome}`} placement="top">
+        <Tooltip content="Abrir atendimento" placement="top">
           <button
             type="button"
-            onClick={onOpenWhatsApp}
-            aria-label={`Abrir Iris de ${client.nome}`}
+            onClick={onOpenAttendance}
+            aria-label="Abrir atendimento"
             className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
           >
             <MessageCircle className="size-4" aria-hidden="true" />
@@ -70,9 +70,6 @@ export function ClientQueueCard({
             Contatado hoje
           </span>
         ) : null}
-        <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
-          {client.workflow.nextAction}
-        </span>
       </button>
 
       <button type="button" onClick={onSelect} className="mt-4 grid w-full grid-cols-4 gap-3 text-left">

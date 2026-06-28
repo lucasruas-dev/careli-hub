@@ -4,7 +4,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Handshake, Inbox, MessageCircle } from "lucide-react";
+import {
+  ArrowLeft,
+  Handshake,
+  Inbox,
+  MessageCircle,
+  PanelLeftOpen,
+} from "lucide-react";
 import {
   mapLegacyRoleToOperationalProfile,
   type HubUserContext,
@@ -13,7 +19,11 @@ import {
 import { Tooltip } from "@repo/uix";
 import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { ClientDetailPanel } from "@/modules/guardian/attendance/components/ClientDetailPanel";
+import { HadesAttendanceModal } from "@/modules/guardian/attendance/components/HadesAttendanceModal";
+import { HadesClientPicker } from "@/modules/guardian/attendance/components/HadesClientPicker";
+import { ManagerApprovalCenter } from "@/modules/guardian/attendance/components/ManagerApprovalCenter";
 import { AiCopilotDrawer } from "@/modules/guardian/attendance/components/AiCopilotDrawer";
+import { ProposalModal } from "@/modules/guardian/attendance/components/PropostasPanel";
 import { QueuePanel } from "@/modules/guardian/attendance/components/QueuePanel";
 import { WhatsAppConversationPanel } from "@/modules/guardian/attendance/components/WhatsAppConversationPanel";
 import { IrisPage } from "@/modules/caredesk/IrisPage";
@@ -75,6 +85,16 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     searchParams.get("clientId") ??
     searchParams.get("client") ??
     searchParams.get("hadesClientId");
+  const routeTab = searchParams.get("tab");
+  const routeFrom = searchParams.get("from");
+  // Protocolo dedicado pra "Voltar ao atendimento" reabrir a conversa (sem
+  // colidir com `at`, que abre o painel antigo de conversa).
+  const routeReopenProtocol = searchParams.get("reopenAt");
+  const routeEditProposal = searchParams.get("editProposal");
+  const clientOpenHandledRef = useRef(false);
+  const [initialDetailTab, setInitialDetailTab] = useState<string | null>(null);
+  const [backToCentral, setBackToCentral] = useState(false);
+  const [backToAtendimento, setBackToAtendimento] = useState(false);
   const initialClients = clients ?? [];
   const [sourceClients, setSourceClients] = useState(initialClients);
   const [queueTotalCount, setQueueTotalCount] = useState(initialClients.length);
@@ -87,15 +107,23 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const [stage, setStage] = useState<WorkflowStage | "Todas">("Todas");
   const [queueMode, setQueueMode] = useState<QueueMode>("daily");
   const [overdueRange, setOverdueRange] = useState<OverdueRangeFilter>("all");
+  const [queueCollapsed, setQueueCollapsed] = useState(false);
   const [activeSection, setActiveSection] = useState<AttendanceSection>("queue");
   const [whatsAppClientId, setWhatsAppClientId] = useState<string | null>(null);
   const [whatsAppAttendanceProtocol, setWhatsAppAttendanceProtocol] = useState<string | null>(null);
+  // Form de abertura de atendimento (Hades) — aberto a partir do card da fila.
+  const [attendanceClientId, setAttendanceClientId] = useState<string | null>(null);
+  // Seletor de cliente do "Novo atendimento" da Fila de atendimento (sem cliente pre-selecionado).
+  const [attendancePickerOpen, setAttendancePickerOpen] = useState(false);
   const [timelineEventsByClient, setTimelineEventsByClient] = useState<
     Record<string, OperationalTimelineEvent[]>
   >({});
   const [manualOperationsByClient, setManualOperationsByClient] = useState<
     Record<string, ManualHadesOperations>
   >({});
+  // Bump para re-buscar os eventos manuais/motor do cliente selecionado quando
+  // uma proposta (acordo/promessa) e criada/editada (evento "guardian:motor-changed").
+  const [motorRefreshTick, setMotorRefreshTick] = useState(0);
 
   useEffect(() => {
     setSourceClients(initialClients);
@@ -140,7 +168,25 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
 
         setSourceClients(payload.clients);
         setQueueTotalCount(payload.meta?.count ?? payload.clients.length);
-        setSelectedId(payload.clients[0]?.id ?? "");
+        // Honra o deep-link "Abrir no cliente" (?clientId=<c2xId>) e seta a aba
+        // NO MESMO batch (senao o painel monta em "overview" antes da aba chegar).
+        const routed = findClientByRouteId(payload.clients, routeClientId);
+        if (routed) {
+          clientOpenHandledRef.current = true;
+          setSelectedId(routed.id);
+          setQueueMode("general");
+          if (routeTab === "propostas") {
+            setInitialDetailTab("agreements");
+            setBackToCentral(true);
+          } else if (routeTab === "cliente") {
+            setInitialDetailTab("client");
+          }
+          if (routeFrom === "atendimento") {
+            setBackToAtendimento(true);
+          }
+        } else {
+          setSelectedId(payload.clients[0]?.id ?? "");
+        }
       } catch (error) {
         console.error("[guardian-attendance] queue load failed", error);
         if (!cancelled) {
@@ -278,7 +324,78 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     return () => {
       cancelled = true;
     };
-  }, [selectedId]);
+  }, [selectedId, motorRefreshTick]);
+
+  // Quando uma proposta e criada/editada no motor (PropostasPanel), re-busca os
+  // eventos do cliente selecionado para a Visao geral / Timeline atualizarem na
+  // hora, sem precisar reselecionar o cliente.
+  useEffect(() => {
+    function onMotorChanged() {
+      setMotorRefreshTick((tick) => tick + 1);
+    }
+
+    window.addEventListener("guardian:motor-changed", onMotorChanged);
+
+    return () => {
+      window.removeEventListener("guardian:motor-changed", onMotorChanged);
+    };
+  }, []);
+
+  // Etapa do workflow (Auto - Hades) derivada do motor em LOTE, aplicada na FONTE
+  // (sourceClients) para a fila e o detalhe mostrarem a MESMA etapa. Idempotente:
+  // applyClientStage devolve a mesma referencia quando nada muda, entao o
+  // setSourceClients nao dispara re-render em loop. Re-deriva quando uma proposta
+  // e criada/editada (motorRefreshTick).
+  useEffect(() => {
+    if (sourceClients.length === 0) {
+      return;
+    }
+
+    let cancelled = false;
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/guardian/compromissos/stages", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${await getHadesAccessToken()}` },
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          data?: {
+            clientC2xId: number;
+            nextAction: string;
+            operator: string | null;
+            stage: string;
+          }[];
+        } | null;
+
+        if (cancelled || !response.ok) {
+          return;
+        }
+
+        const stageByClient = new Map(
+          (payload?.data ?? []).map((entry) => [Number(entry.clientC2xId), entry]),
+        );
+
+        setSourceClients((previous) => {
+          let changed = false;
+          const next = previous.map((client) => {
+            const applied = applyClientStage(client, stageByClient);
+            if (applied !== client) {
+              changed = true;
+            }
+            return applied;
+          });
+          return changed ? next : previous;
+        });
+      } catch {
+        // best-effort: sem motor, a fila mantem a etapa atual
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [sourceClients, motorRefreshTick]);
 
   useEffect(() => {
     if (routeOpenHandledRef.current || !routeAttendanceProtocol || sourceClients.length === 0) {
@@ -301,6 +418,41 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     setWhatsAppClientId(routeClient.id);
     setWhatsAppAttendanceProtocol(routeAttendanceProtocol);
   }, [routeAttendanceProtocol, routeClientId, selectedId, sourceClients]);
+
+  // Deep-link "Abrir no cliente" (?clientId=<c2xId>&tab=propostas) vindo da
+  // Central de Propostas: seleciona o cliente casando pelo c2x id embutido no
+  // id da fila (o id da fila nao e o numero cru) e abre na aba Propostas.
+  useEffect(() => {
+    if (
+      clientOpenHandledRef.current ||
+      !routeClientId ||
+      routeAttendanceProtocol ||
+      sourceClients.length === 0
+    ) {
+      return;
+    }
+
+    const target = findClientByRouteId(sourceClients, routeClientId);
+
+    if (!target) {
+      return;
+    }
+
+    clientOpenHandledRef.current = true;
+    setSelectedId(target.id);
+    // Fila geral pra o cliente do deep-link aparecer na lista (a diaria pode
+    // nao conter ele).
+    setQueueMode("general");
+    if (routeTab === "propostas") {
+      setInitialDetailTab("agreements");
+      setBackToCentral(true);
+    } else if (routeTab === "cliente") {
+      setInitialDetailTab("client");
+    }
+    if (routeFrom === "atendimento") {
+      setBackToAtendimento(true);
+    }
+  }, [routeAttendanceProtocol, routeClientId, routeFrom, routeTab, sourceClients]);
 
   const operationalProfile = useMemo(
     () => resolveHadesOperationalProfile(hubUser),
@@ -409,11 +561,13 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   }, [dailyQueueClients, queueMode, searchableClients, stage, todayContactClientIds]);
 
   const selectedClient =
+    // Match EXATO do selectedId em qualquer lista vence o "primeiro da fila":
+    // senao o deep-link (cliente fora da fila filtrada) abre o cliente errado.
     filteredClients.find((client) => client.id === selectedId) ??
-    filteredClients[0] ??
     overdueScopedClients.find((client) => client.id === selectedId) ??
-    overdueScopedClients[0] ??
     sourceClients.find((client) => client.id === selectedId) ??
+    filteredClients[0] ??
+    overdueScopedClients[0] ??
     sourceClients[0];
   const selectedManualOperations =
     manualOperationsByClient[selectedClient?.id ?? ""] ?? emptyManualOperations;
@@ -487,6 +641,16 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     setWhatsAppClientId(clientId);
     setWhatsAppAttendanceProtocol(normalizeAttendanceProtocol(attendanceProtocol));
   }
+
+  function openAttendance(clientId = selectedClient.id) {
+    if (!clientId) return;
+    setSelectedId(clientId);
+    setAttendanceClientId(clientId);
+  }
+
+  const attendanceClient = attendanceClientId
+    ? sourceClients.find((client) => client.id === attendanceClientId) ?? null
+    : null;
 
   async function saveManualTimelineEvent(
     clientId: string,
@@ -640,6 +804,36 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
         />
       ) : (
         <div className="space-y-5">
+          {backToCentral && activeSection !== "agreements" ? (
+            <Tooltip content="Voltar à Central de Propostas" placement="right">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSection("agreements");
+                  setBackToCentral(false);
+                }}
+                aria-label="Voltar à Central de Propostas"
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#FFF9EF] text-[#7A5E2C] transition-colors hover:bg-[#FCF3E2]"
+              >
+                <ArrowLeft className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
+          ) : null}
+          {backToAtendimento && activeSection !== "desk" ? (
+            <Tooltip content="Voltar ao atendimento" placement="right">
+              <button
+                type="button"
+                onClick={() => {
+                  setActiveSection("desk");
+                  setBackToAtendimento(false);
+                }}
+                aria-label="Voltar ao atendimento"
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#FFF9EF] text-[#7A5E2C] transition-colors hover:bg-[#FCF3E2]"
+              >
+                <ArrowLeft className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
+          ) : null}
           <nav
             aria-label="Atalhos do Hades"
             className="inline-flex items-center gap-1 rounded-xl border border-[#d9e0e7] bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
@@ -675,40 +869,50 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
           </nav>
 
           {activeSection === "desk" ? (
-            <IrisPage embedded boardOnly operatorScoped />
-          ) : activeSection === "agreements" ? (
-            <div className="grid w-full items-start gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
-              <AgreementsPanel
-                clients={agreementClients}
-                selectedClientId={selectedAgreementClient?.id ?? ""}
-                onSelectClient={setSelectedId}
-              />
-              {selectedAgreementClientWithManualOperations ? (
-                <ClientDetailPanel
-                  key={selectedAgreementClientWithManualOperations.id}
-                  client={selectedAgreementClientWithManualOperations}
-                  extraTimelineEvents={selectedAgreementExtraTimelineEvents}
-                  onCreateCommitment={(record) =>
-                    saveManualCommitment(record, selectedAgreementClientWithManualOperations)
-                  }
-                  onCreateTimelineEvent={(event) =>
-                    saveManualTimelineEvent(selectedAgreementClientWithManualOperations.id, event)
-                  }
-                  onOpenWhatsApp={() => openWhatsApp(selectedAgreementClientWithManualOperations.id)}
-                  onUpdateCommitment={(record) =>
-                    updateManualCommitment(record, selectedAgreementClientWithManualOperations)
-                  }
+            <IrisPage
+              embedded
+              boardOnly
+              cobrancaMode
+              operatorScoped
+              queueSlugFilter="cobranca"
+              initialAttendanceProtocol={routeReopenProtocol}
+              onStartAttendanceOverride={() => setAttendancePickerOpen(true)}
+              renderCobrancaProposal={(args) => (
+                <ProposalModal
+                  kind={args.kind}
+                  client={args.client}
+                  clientC2xId={args.clientC2xId}
+                  overdue={args.overdue}
+                  onClose={args.onClose}
+                  onCreated={args.onCreated}
                 />
-              ) : (
-                <div className="rounded-xl border border-[#d9e0e7] bg-white p-8 text-center text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-                  Nenhum acordo feito encontrado na fila carregada.
-                </div>
               )}
-            </div>
+            />
+          ) : activeSection === "agreements" ? (
+            <ManagerApprovalCenter />
           ) : (
-            <div className="grid w-full items-start gap-5 xl:grid-cols-[400px_minmax(0,1fr)]">
-              <QueuePanel
-                clients={filteredClients}
+            <div
+              className={`grid w-full items-start gap-5 ${
+                queueCollapsed
+                  ? "xl:grid-cols-[44px_minmax(0,1fr)]"
+                  : "xl:grid-cols-[400px_minmax(0,1fr)]"
+              }`}
+            >
+              {queueCollapsed ? (
+                <Tooltip content="Expandir fila" placement="right">
+                  <button
+                    type="button"
+                    onClick={() => setQueueCollapsed(false)}
+                    aria-label="Expandir fila diária"
+                    className="flex size-11 items-center justify-center rounded-xl border border-[#d9e0e7] bg-white text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/35 hover:text-[#8A6A2F]"
+                  >
+                    <PanelLeftOpen className="size-4" aria-hidden="true" />
+                  </button>
+                </Tooltip>
+              ) : (
+                <QueuePanel
+                  onCollapse={() => setQueueCollapsed(true)}
+                  clients={filteredClients}
                 contactedTodayClientIds={todayContactClientIds}
                 dailyCount={dailyQueueClients.length}
                 generalCount={searchableClients.length}
@@ -729,14 +933,19 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
                 onModeChange={setQueueMode}
                 onOverdueRangeChange={setOverdueRange}
                 onPriorityChange={setPriority}
-                onOpenWhatsApp={(clientId) => openWhatsApp(clientId)}
+                onOpenAttendance={(clientId) => openAttendance(clientId)}
                 onSearchChange={setSearch}
                 onStageChange={setStage}
                 onSelectClient={setSelectedId}
-              />
+                />
+              )}
               <ClientDetailPanel
                 key={selectedClient.id}
                 client={selectedClientWithManualOperations}
+                initialTab={initialDetailTab}
+                initialEditProposalId={
+                  initialDetailTab === "agreements" ? routeEditProposal : null
+                }
                 extraTimelineEvents={selectedExtraTimelineEvents}
                 onCreateCommitment={saveManualCommitment}
                 onCreateTimelineEvent={(event) =>
@@ -755,6 +964,27 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
         queueClients={overdueScopedClients}
         queueTotalCount={overdueScopedClients.length || queueTotalCount}
       />
+      {attendancePickerOpen ? (
+        <HadesClientPicker
+          clients={sourceClients}
+          onClose={() => setAttendancePickerOpen(false)}
+          onSelect={(clientId) => {
+            setAttendancePickerOpen(false);
+            openAttendance(clientId);
+          }}
+        />
+      ) : null}
+      {attendanceClient ? (
+        <HadesAttendanceModal
+          client={attendanceClient}
+          queueClients={sourceClients}
+          onClose={() => setAttendanceClientId(null)}
+          onCreated={() => {
+            setAttendanceClientId(null);
+            window.dispatchEvent(new CustomEvent("guardian:motor-changed"));
+          }}
+        />
+      ) : null}
     </>
   );
 }
@@ -957,6 +1187,94 @@ function AgreementsPanel({
         )}
       </div>
     </section>
+  );
+}
+
+// Aplica a etapa derivada do motor num cliente da fila. Devolve a MESMA
+// referencia quando nao ha mudanca (idempotente, evita loop de render). Carimba
+// a transicao no historico como Auto - Hades.
+function applyClientStage(
+  client: QueueClient,
+  stageByClient: Map<
+    number,
+    { nextAction: string; operator: string | null; stage: string }
+  >,
+): QueueClient {
+  const match = String(client.id).match(/(\d+)/g);
+  const clientC2xId = match ? Number(match[match.length - 1]) : null;
+  const derived = clientC2xId ? stageByClient.get(clientC2xId) : null;
+
+  if (!derived) {
+    return client;
+  }
+
+  const stageChanged = derived.stage !== client.workflow.stage;
+  // Operador que esta tratando = quem enviou a proposta mais recente. Cai pro
+  // responsavel atual quando nao houver proposta.
+  const responsavel =
+    derived.operator && derived.operator !== "-"
+      ? derived.operator
+      : client.responsavel;
+  const responsavelChanged = responsavel !== client.responsavel;
+
+  if (!stageChanged && !responsavelChanged) {
+    return client; // mesma referencia: idempotente (evita loop de render)
+  }
+
+  return {
+    ...client,
+    responsavel,
+    workflow: stageChanged
+      ? {
+          ...client.workflow,
+          stage: derived.stage as WorkflowStage,
+          nextAction: derived.nextAction,
+          history: [
+            {
+              changedAt: new Date().toLocaleString("pt-BR", {
+                day: "2-digit",
+                hour: "2-digit",
+                minute: "2-digit",
+                month: "2-digit",
+                year: "numeric",
+              }),
+              from: client.workflow.stage,
+              id: `${client.id}-wf-auto-${derived.stage}`,
+              operator: "Hades",
+              origin: "auto",
+              reason: derived.nextAction,
+              to: derived.stage as WorkflowStage,
+            },
+            ...(client.workflow.history ?? []),
+          ],
+        }
+      : client.workflow,
+  };
+}
+
+// Casa o cliente do deep-link: por id exato OU pelo c2x id embutido no id da
+// fila (o id da fila nao e o numero cru). Usado pelo "Abrir no cliente".
+function findClientByRouteId(
+  clients: QueueClient[],
+  routeId: string | null,
+): QueueClient | null {
+  if (!routeId) {
+    return null;
+  }
+  const direct = clients.find((client) => client.id === routeId);
+  if (direct) {
+    return direct;
+  }
+  const digits = String(routeId).match(/(\d+)/g);
+  const wanted = digits ? Number(digits[digits.length - 1]) : NaN;
+  if (!Number.isFinite(wanted)) {
+    return null;
+  }
+  return (
+    clients.find((client) => {
+      const match = String(client.id).match(/(\d+)/g);
+      return match ? Number(match[match.length - 1]) === wanted : false;
+    }) ?? null
   );
 }
 

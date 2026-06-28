@@ -89,6 +89,7 @@ export function IrisConversationEmptyState() {
 }
 
 export function IrisConversationInboxSidebar({
+  cobrancaMode = false,
   collapsed,
   conversations,
   filter,
@@ -101,6 +102,7 @@ export function IrisConversationInboxSidebar({
   search,
   selectedTicketId,
 }: {
+  cobrancaMode?: boolean;
   collapsed: boolean;
   conversations: IrisConversationTicket[];
   filter: string;
@@ -143,11 +145,13 @@ export function IrisConversationInboxSidebar({
           <>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-                  Inbox WhatsApp
-                </p>
-                <h2 className="mt-1 text-sm font-semibold text-slate-950">
-                  Conversas
+                {cobrancaMode ? null : (
+                  <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                    Inbox WhatsApp
+                  </p>
+                )}
+                <h2 className="text-sm font-semibold text-slate-950">
+                  {cobrancaMode ? "Fila de atendimento" : "Conversas"}
                 </h2>
               </div>
               <button
@@ -169,23 +173,25 @@ export function IrisConversationInboxSidebar({
                 className="h-7 w-full bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
               />
             </label>
-            <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100/70 p-1">
-              {conversationFilters.map((option) => (
-                <button
-                  key={option}
-                  type="button"
-                  onClick={() => onFilterChange(option)}
-                  className={[
-                    "h-7 rounded-md text-[11px] font-semibold transition-colors",
-                    filter === option
-                      ? "bg-white text-[#7A5E2C] shadow-sm"
-                      : "text-slate-500 hover:bg-white/70",
-                  ].join(" ")}
-                >
-                  {option}
-                </button>
-              ))}
-            </div>
+            {cobrancaMode ? null : (
+              <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100/70 p-1">
+                {conversationFilters.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => onFilterChange(option)}
+                    className={[
+                      "h-7 rounded-md text-[11px] font-semibold transition-colors",
+                      filter === option
+                        ? "bg-white text-[#7A5E2C] shadow-sm"
+                        : "text-slate-500 hover:bg-white/70",
+                    ].join(" ")}
+                  >
+                    {option}
+                  </button>
+                ))}
+              </div>
+            )}
           </>
         )}
       </div>

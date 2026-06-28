@@ -345,6 +345,27 @@ export async function runCacaAgentTurn({
     });
   }
 
+  // Contato ATIVO de cobranca (processo validado): a CACA so resolve "Receber
+  // boleto" sozinha. "Negociar parcelas"/"Falar com atendente" -> operador humano.
+  const cobrancaActiveC2xId = readCobrancaActiveContactC2xId(ticket);
+  if (
+    cobrancaActiveC2xId &&
+    !hasOngoingBoletoState(state) &&
+    isCobrancaNegotiationRequest(textForUnderstanding)
+  ) {
+    return buildHandoffReply({
+      reason: "Cliente de cobranca pediu negociacao/atendimento humano.",
+      replyText:
+        "Perfeito! Já estou te encaminhando para um atendente da nossa equipe para seguir com você. Em instantes alguém te responde por aqui.",
+      state: buildNextCacaState(state, {
+        handoffRequired: true,
+        originalIntent: sanitizePromptText(textForUnderstanding, 500),
+      }),
+      toolsUsed,
+      trace,
+    });
+  }
+
   const selectedBoletoOptions = state.awaitingBoletoSelection
     ? resolveSelectedBoletoOptions(textForUnderstanding, state)
     : [];
@@ -770,6 +791,88 @@ export async function runCacaAgentTurn({
     });
   }
 
+  // Contato ATIVO de cobranca: "Receber boleto" entrega os boletos direto, sem
+  // pedir pro cliente escolher numero (o processo ja foi validado pelo operador).
+  if (cobrancaActiveC2xId && !state.awaitingBoletoSelection) {
+    try {
+      const deliveredBoletos: Array<{ label: string; url: string }> = [];
+
+      for (const item of billing.items.slice(0, 6)) {
+        const boleto = await prepareBoletoResendAction(item.id, "link");
+        if (boleto.boletoUrl) {
+          deliveredBoletos.push({
+            label: buildBillingOptionLabel(item),
+            url: boleto.boletoUrl,
+          });
+        }
+      }
+
+      if (deliveredBoletos.length > 0) {
+        traceTool(trace, toolsUsed, {
+          metadata: { payments: deliveredBoletos.length },
+          status: "ok",
+          summary:
+            "Boletos entregues direto no contato ativo de cobranca (sem selecao).",
+          tool: "hades_get_boleto_delivery_asset",
+        });
+
+        const deliveredList =
+          deliveredBoletos.length === 1
+            ? buildDeliveredBoletoLine(deliveredBoletos[0])
+            : deliveredBoletos
+                .map(
+                  (item, index) =>
+                    `${index + 1}. ${item.label}\nLink do boleto: ${item.url}`,
+                )
+                .join("\n\n");
+
+        return finalizeTurn({
+          handoff: { reason: null, required: false },
+          model: null,
+          nextState: buildNextCacaState(state, {
+            apoloC2xClientId: customerAccess.c2xClientId,
+            apoloDisplayName: customerAccess.displayName,
+            apoloEntityId: customerAccess.entityId,
+            apoloValidationSource: customerAccess.validationSource,
+            awaitingBoletoSelection: false,
+            awaitingCadastroConfirmation: false,
+            awaitingCpfDocument: false,
+            awaitingCustomerIdentity: false,
+            awaitingDocumentFragment: false,
+            boletoOptions: [],
+            handoffRequired: false,
+            identityAttempts: 0,
+            originalIntent: null,
+          }),
+          nextStep: "boleto_ready",
+          replyText: [
+            deliveredBoletos.length === 1
+              ? "*Segue o seu boleto.*"
+              : "*Seguem os seus boletos.*",
+            "",
+            deliveredList,
+            "",
+            "*Confira os dados antes de concluir o pagamento.*",
+            "",
+            "Qualquer duvida, e so me chamar por aqui.",
+          ].join("\n"),
+          source: "deterministic",
+          toolsUsed,
+          trace,
+        });
+      }
+    } catch (error) {
+      traceTool(trace, toolsUsed, {
+        metadata: { error: errorMessage(error) },
+        status: "error",
+        summary:
+          "Falha na entrega direta de boletos do contato ativo; caindo na listagem.",
+        tool: "hades_get_boleto_delivery_asset",
+      });
+      // Fallback seguro: segue pra listagem + selecao normal abaixo.
+    }
+  }
+
   const visibleItems = billing.items.slice(0, 6);
   const list = visibleItems
     .map((item, index) => {
@@ -870,6 +973,45 @@ export function readCacaAutomationState(
   };
 }
 
+// Contato ATIVO de cobranca: o ticket foi aberto pelo operador via form validado
+// e carrega metadata.cobranca.clientId ("c2x-client-NNN"). Como veio de processo
+// validado, a CACA dispensa autenticacao por CPF e entrega os boletos direto.
+function readCobrancaActiveContactC2xId(ticket: CacaAgentTicket): string | null {
+  const metadata = isRecord(ticket.metadata) ? ticket.metadata : null;
+  const cobranca =
+    metadata && isRecord(metadata.cobranca)
+      ? (metadata.cobranca as Record<string, unknown>)
+      : null;
+  const clientId = readString(cobranca?.clientId);
+  if (!clientId) {
+    return null;
+  }
+  const match = clientId.match(/(\d+)\s*$/);
+  return match?.[1] ?? null;
+}
+
+function hasOngoingBoletoState(state: CacaAutomationState): boolean {
+  return Boolean(
+    state.awaitingBoletoSelection ||
+      state.awaitingCadastroConfirmation ||
+      state.awaitingCpfDocument ||
+      state.awaitingCustomerIdentity ||
+      state.awaitingDocumentFragment,
+  );
+}
+
+// "Negociar parcelas" / "Falar com atendente" -> operador humano (a CACA so
+// resolve o "Receber boleto" automaticamente). Pedido com "boleto" NUNCA cai aqui.
+function isCobrancaNegotiationRequest(text: string): boolean {
+  const normalized = normalizeForIntent(text);
+  if (normalized.includes("boleto")) {
+    return false;
+  }
+  return /(negociar|renegoci|acordo|atendente|falar com|parcelar)/.test(
+    normalized,
+  );
+}
+
 type CustomerIdentityHint = {
   documentDigits: string | null;
   documentFragment: string | null;
@@ -965,6 +1107,30 @@ async function resolveBoletoCustomerAccess({
   toolsUsed: string[];
   trace: CacaAgentTraceStep[];
 }): Promise<BoletoCustomerAccess> {
+  // Contato ATIVO de cobranca: veio de processo validado pelo operador (o ticket
+  // ja traz o c2xClientId). Dispensa autenticacao por CPF e segue direto.
+  const cobrancaActiveC2xId = readCobrancaActiveContactC2xId(ticket);
+  if (cobrancaActiveC2xId) {
+    traceTool(trace, toolsUsed, {
+      metadata: {
+        c2xClientKnown: true,
+        validationSource: "active_contact",
+      },
+      status: "ok",
+      summary:
+        "Contato ativo de cobranca (processo validado): identidade ja confirmada, sem CPF.",
+      tool: "cobranca_active_contact_identity",
+    });
+
+    return {
+      c2xClientId: cobrancaActiveC2xId,
+      displayName: state.apoloDisplayName ?? contact.display_name ?? null,
+      entityId: state.apoloEntityId ?? null,
+      status: "verified",
+      validationSource: "state",
+    };
+  }
+
   const storedC2xClientId =
     state.apoloC2xClientId ?? extractC2xClientId(contact, ticket);
 

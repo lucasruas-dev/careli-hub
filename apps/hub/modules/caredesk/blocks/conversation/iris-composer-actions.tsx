@@ -1,22 +1,26 @@
 "use client";
 
-import type { KeyboardEvent, ReactNode, RefObject } from "react";
+import { useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
 import {
   CalendarClock,
   CheckCircle2,
   CircleStop,
   ClipboardList,
   Clock3,
-  FileText,
   LockKeyhole,
   Mic,
   Paperclip,
   Send,
   Smile,
-  TicketCheck,
+  Sparkles,
   X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
+
+import {
+  AgendaQuickCreateModal,
+  type AgendaQuickCreateContext,
+} from "@/modules/agenda/AgendaQuickCreateModal";
 
 export type IrisConversationComposerChecklistItem = {
   id: string;
@@ -30,8 +34,11 @@ export type IrisConversationComposerWindow = {
 };
 
 export function IrisConversationComposerActions({
+  agendaContext,
+  attendantOpen = false,
   blockedTooltip,
   canSendFreeForm,
+  cobrancaMode = false,
   composerReady,
   customerServiceWindow,
   draft,
@@ -44,6 +51,7 @@ export function IrisConversationComposerActions({
   onDraftChange,
   onInsertEmoji,
   onSendMessage,
+  onToggleAttendant,
   onToggleAudioRecording,
   onToggleEmojiPicker,
   operationReady,
@@ -54,8 +62,11 @@ export function IrisConversationComposerActions({
   ticketChecklist,
   ticketClosed,
 }: {
+  agendaContext?: AgendaQuickCreateContext | null;
+  attendantOpen?: boolean;
   blockedTooltip: string;
   canSendFreeForm: boolean;
+  cobrancaMode?: boolean;
   composerReady: boolean;
   customerServiceWindow: IrisConversationComposerWindow;
   draft: string;
@@ -68,6 +79,7 @@ export function IrisConversationComposerActions({
   onDraftChange: (value: string) => void;
   onInsertEmoji: (emoji: string) => void;
   onSendMessage: () => void;
+  onToggleAttendant?: () => void;
   onToggleAudioRecording: () => void;
   onToggleEmojiPicker: () => void;
   operationReady: boolean;
@@ -78,6 +90,9 @@ export function IrisConversationComposerActions({
   ticketChecklist: IrisConversationComposerChecklistItem[];
   ticketClosed: boolean;
 }) {
+  const [agendaModalKind, setAgendaModalKind] = useState<
+    "retorno" | "tarefa" | null
+  >(null);
   const hasComposerContext = Boolean(editingMessageBody || replyToMessageBody);
   const composerContextBody =
     editingMessageBody ?? replyToMessageBody ?? "Mensagem selecionada";
@@ -103,9 +118,9 @@ export function IrisConversationComposerActions({
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
           <div className="flex items-center gap-2 text-xs font-semibold text-amber-800">
             <LockKeyhole className="size-3.5" aria-hidden="true" />
-            <span>Ticket encerrado</span>
+            <span>{cobrancaMode ? "Atendimento encerrado" : "Ticket encerrado"}</span>
           </div>
-          <TicketChecklist items={ticketChecklist} />
+          {cobrancaMode ? null : <TicketChecklist items={ticketChecklist} />}
         </div>
       ) : null}
 
@@ -137,8 +152,30 @@ export function IrisConversationComposerActions({
       ) : null}
 
       <div className="mb-2 flex items-center justify-between gap-2">
-        <OperationalToolbar disabled={!operationReady} />
-        {operationReady ? (
+        <OperationalToolbar
+          disabled={!operationReady}
+          onCreate={(kind) => setAgendaModalKind(kind)}
+        />
+        {cobrancaMode ? (
+          onToggleAttendant ? (
+            <Tooltip content="Athena" placement="top">
+              <button
+                type="button"
+                onClick={onToggleAttendant}
+                disabled={ticketClosed}
+                aria-label="Athena — assistente"
+                className={[
+                  "flex size-8 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-45",
+                  attendantOpen
+                    ? "border-[#A07C3B]/40 bg-[#A07C3B] text-white hover:bg-[#8E6F35]"
+                    : "border-[#A07C3B]/25 bg-[#fbf6ec] text-[#7A5E2C] hover:bg-[#f4ebdc]",
+                ].join(" ")}
+              >
+                <Sparkles className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
+          ) : null
+        ) : operationReady ? (
           <TicketChecklist items={ticketChecklist} compact />
         ) : null}
       </div>
@@ -183,7 +220,7 @@ export function IrisConversationComposerActions({
 
         <div
           className={[
-            "flex items-end gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-2 transition-opacity",
+            "flex items-center gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-2 transition-opacity",
             composerReady ? "opacity-100" : "opacity-55",
           ].join(" ")}
         >
@@ -236,16 +273,32 @@ export function IrisConversationComposerActions({
           </Tooltip>
         </div>
       </div>
+
+      {agendaModalKind && agendaContext ? (
+        <AgendaQuickCreateModal
+          context={agendaContext}
+          kind={agendaModalKind}
+          onClose={() => setAgendaModalKind(null)}
+        />
+      ) : null}
     </footer>
   );
 }
 
-function OperationalToolbar({ disabled }: { disabled: boolean }) {
-  const tools = [
-    { icon: FileText, label: "Nota" },
-    { icon: CalendarClock, label: "Retorno" },
-    { icon: ClipboardList, label: "Tarefa" },
-    { icon: TicketCheck, label: "Ticket" },
+function OperationalToolbar({
+  disabled,
+  onCreate,
+}: {
+  disabled: boolean;
+  onCreate: (kind: "retorno" | "tarefa") => void;
+}) {
+  const tools: Array<{
+    icon: typeof CalendarClock;
+    kind: "retorno" | "tarefa";
+    label: string;
+  }> = [
+    { icon: CalendarClock, kind: "retorno", label: "Retorno" },
+    { icon: ClipboardList, kind: "tarefa", label: "Tarefa" },
   ];
 
   return (
@@ -255,6 +308,7 @@ function OperationalToolbar({ disabled }: { disabled: boolean }) {
           <button
             type="button"
             disabled={disabled}
+            onClick={() => onCreate(tool.kind)}
             aria-label={tool.label}
             className="flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-400 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-45"
           >

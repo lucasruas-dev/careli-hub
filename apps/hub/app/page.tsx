@@ -24,6 +24,7 @@ import {
 import { HubUserTicketsPanel } from "@/components/hub-support/hub-user-tickets-panel";
 import { HomeNovidadesPanel } from "@/components/panteon/home-novidades-panel";
 import { ProcessosLibrary } from "@/modules/processos/ProcessosLibrary";
+import { MeuDiaHomeCard } from "@/modules/agenda/MeuDiaHomeCard";
 import {
   PanteonLoadingMark,
   PanteonLoadingState,
@@ -268,65 +269,11 @@ export default function HomePage() {
           <AvailabilityAdminPanel snapshot={snapshot?.availability ?? null} />
         ) : (
           <>
-            <section className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
-              <PulseMetric icon={<CalendarCheck2 size={18} />} label="agenda" value={agendaCount} />
-              <PulseMetric icon={<ListChecks size={18} />} label="tasks" value={taskCount} />
-              <PulseMetric icon={<MessageSquareText size={18} />} label="mensagens hoje" value={messagesTodayCount} />
-              <PulseMetric icon={<Bell size={18} />} label="notificacoes" value={unreadNotificationsCount} />
-              <PulseMetric icon={<Users size={18} />} label="usuarios ativos" value={peopleCount} />
-              <PulseMetric icon={<TimerReset size={18} />} label="modulos ativos" value={availableModules.length} />
-            </section>
-
             <section className="grid grid-cols-12 gap-5">
-              <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)] xl:col-span-7">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <PanelTitle
-                    eyebrow={isAdmin ? "Central adm" : "Mapa operacional"}
-                    title="Ritmo da equipe"
-                  />
-                </div>
-                <div className="mt-4 grid grid-cols-5 gap-2">
-                  <StatusPill label="online" value={onlineCount} variant="online" />
-                  <StatusPill label="ausentes" value={awayCount} variant="away" />
-                  <StatusPill label="almoco" value={lunchCount} variant="lunch" />
-                  <StatusPill label="agenda" value={agendaCount} variant="meeting" />
-                  <StatusPill label="offline" value={offlineCount} variant="offline" />
-                </div>
-                <div className="mt-4 grid grid-cols-2 gap-3">
-                  {teamMembers.map((member) => (
-                    <article
-                      className="grid min-h-20 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
-                      key={member.id}
-                    >
-                      <TeamAvatar member={member} />
-                      <div className="min-w-0">
-                        <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
-                          {member.name}
-                        </p>
-                        <p className="m-0 mt-1 truncate text-xs text-[#667085]">
-                          {member.scopeLabel} / {member.lastSignal}
-                        </p>
-                      </div>
-                      <span
-                        className={`rounded-full border px-2 py-1 text-xs font-semibold ${operationStatusStyle[member.status]}`}
-                      >
-                        {operationStatusLabel[member.status]}
-                      </span>
-                    </article>
-                  ))}
-                  {teamMembers.length === 0 ? (
-                    <div className="col-span-2 rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
-                      Nenhum usuario ativo encontrado no Supabase.
-                    </div>
-                  ) : null}
-                </div>
-              </Surface>
-
+              <MeuDiaHomeCard className="col-span-12" />
               <HomeNovidadesPanel />
-
-              <PresenceTodayPanel className="col-span-12 xl:col-span-4" />
               <AsanaPerformancePanel
-                className="col-span-12 xl:col-span-8"
+                className="col-span-12 xl:col-span-7"
                 error={asanaError}
                 isLoading={isAsanaLoading}
                 onRefresh={() => loadAsanaPerformance()}
@@ -370,7 +317,7 @@ function HomeTabs({
         onClick={() => onTabChange("overview")}
         type="button"
       >
-        Principal
+        Início
       </button>
       <button
         aria-pressed={activeTab === "tickets"}

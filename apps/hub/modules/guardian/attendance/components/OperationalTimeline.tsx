@@ -15,7 +15,9 @@ import {
   Plus,
   ReceiptText,
   Scale,
+  Search,
   ShieldAlert,
+  User,
   UserRoundPen,
   X,
 } from "lucide-react";
@@ -159,7 +161,20 @@ export function OperationalTimeline({
   const [drawerType, setDrawerType] = useState<TimelineEventType | null>(null);
   const [feedback, setFeedback] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [filterSearch, setFilterSearch] = useState("");
+  const [filterType, setFilterType] = useState("all");
+  const [filterDate, setFilterDate] = useState("");
   const currentOperator = operatorFromLogin(hubUser?.name, client?.responsavel);
+  const availableTypes = [
+    ...new Set((events ?? []).map((event) => event?.type).filter(Boolean)),
+  ];
+  const filteredEvents = filterTimelineEvents(events, {
+    date: filterDate,
+    search: filterSearch,
+    type: filterType,
+  });
+  const groupedEvents = groupTimelineByDay(filteredEvents);
+  const hasFilter = Boolean(filterSearch || filterType !== "all" || filterDate);
 
   async function handleCreate(input: {
     attachments?: QueueClient["timeline"][number]["attachments"];
@@ -209,33 +224,68 @@ export function OperationalTimeline({
 
   return (
     <DetailSection title="Timeline operacional do cliente" icon={ClipboardList} accent>
-      <div className="mb-3 flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="hidden text-sm font-medium text-slate-700">
-            Histórico cronológico completo
-          </p>
+      <div className="mb-3 flex flex-col gap-3">
+        <div className="flex items-center justify-between gap-3">
           <p className="text-xs font-semibold tracking-normal text-slate-400">
-            {events.length} eventos
+            {filteredEvents.length === events.length
+              ? `${events.length} eventos`
+              : `${filteredEvents.length} de ${events.length} eventos`}
           </p>
+          <button
+            type="button"
+            onClick={() => setDrawerType("Observação operacional")}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8E6F35]"
+          >
+            <Plus className="size-4" aria-hidden="true" />
+            Adicionar
+          </button>
         </div>
 
-        <div className="flex gap-2 overflow-x-auto pb-1 lg:pb-0">
-          {actionItems.map((action) => {
-            const Icon = action.icon;
-            const type = manualTypeForAction(action.label);
-
-            return (
-              <button
-                key={action.label}
-                type="button"
-                onClick={() => setDrawerType(type)}
-                className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-              >
-                <Icon className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
-                {action.label}
-              </button>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="relative min-w-[160px] flex-1">
+            <Search
+              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400"
+              aria-hidden="true"
+            />
+            <input
+              value={filterSearch}
+              onChange={(event) => setFilterSearch(event.target.value)}
+              placeholder="Buscar protocolo, texto…"
+              className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-2.5 text-xs text-slate-800 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+            />
+          </div>
+          <select
+            value={filterType}
+            onChange={(event) => setFilterType(event.target.value)}
+            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#A07C3B]/40"
+          >
+            <option value="all">Todas as atividades</option>
+            {availableTypes.map((type) => (
+              <option key={type} value={type}>
+                {type}
+              </option>
+            ))}
+          </select>
+          <input
+            type="date"
+            value={filterDate}
+            onChange={(event) => setFilterDate(event.target.value)}
+            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#A07C3B]/40"
+          />
+          {hasFilter ? (
+            <button
+              type="button"
+              onClick={() => {
+                setFilterSearch("");
+                setFilterType("all");
+                setFilterDate("");
+              }}
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50"
+            >
+              <X className="size-3.5" aria-hidden="true" />
+              Limpar
+            </button>
+          ) : null}
         </div>
       </div>
 
@@ -246,89 +296,107 @@ export function OperationalTimeline({
       ) : null}
 
       <div className="max-h-[640px] overflow-y-auto pr-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
-        <div className="relative space-y-3 before:absolute before:left-[18px] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-slate-200">
-          {events.map((event) => {
-            const visual = eventVisuals[event.type];
-            const Icon = visual.icon;
+        <div className="space-y-4">
+          {groupedEvents.length === 0 ? (
+            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-3 py-6 text-center text-xs text-slate-500">
+              {hasFilter
+                ? "Nenhum evento para esse filtro."
+                : "Sem eventos na timeline."}
+            </p>
+          ) : null}
+          {groupedEvents.map((group) => (
+            <div key={group.key}>
+              <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-normal text-slate-400">
+                {group.label}
+                <span className="h-px flex-1 bg-slate-100" />
+              </p>
+              <div className="relative space-y-2 before:absolute before:left-[16px] before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
+                {group.events.map((event) => {
+                  const visual =
+                    eventVisuals[event.type] ?? eventVisuals["Observação operacional"];
+                  const Icon = visual.icon;
+                  const origin = originForEvent(event);
 
-            return (
-              <article key={event.id} className="relative grid grid-cols-[38px_minmax(0,1fr)] gap-3">
-                <div className="relative z-10 flex justify-center pt-3">
-                  <div className="flex size-8 items-center justify-center rounded-lg bg-white ring-1 ring-slate-200 shadow-[0_1px_2px_rgba(15,23,42,0.06)]">
-                    <span className={`size-2 rounded-full ${visual.dotClassName}`} />
-                  </div>
-                </div>
+                  return (
+                    <article key={event.id} className="relative flex gap-3">
+                      <span
+                        className={`relative z-10 mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ${visual.className}`}
+                      >
+                        <Icon className="size-4" aria-hidden="true" />
+                      </span>
 
-                <div className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300">
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span
-                          className={`inline-flex size-7 items-center justify-center rounded-lg ring-1 ${visual.className}`}
-                        >
-                          <Icon className="size-3.5" aria-hidden="true" />
-                        </span>
-                        <p className="text-sm font-semibold text-slate-950">{event.title}</p>
-                        <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
-                          {event.type}
-                        </span>
-                      </div>
+                      <div className="min-w-0 flex-1 rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300">
+                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                          <div className="min-w-0">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="text-sm font-semibold text-slate-950">{event.title}</p>
+                              <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                                {event.type}
+                              </span>
+                            </div>
 
-                      <Tooltip content={event.description} placement="bottom">
-                        <span className="mt-1 line-clamp-1 text-xs leading-5 text-slate-500">{event.description}</span>
-                      </Tooltip>
-                      {event.protocol || event.unitCode ? (
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {event.protocol ? (
-                            <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                              {event.protocol}
-                            </span>
-                          ) : null}
-                          {event.unitCode ? (
-                            <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
-                              Unidade {event.unitCode}
-                            </span>
-                          ) : null}
-                          {event.actionType ? (
-                            <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
-                              {event.actionType}
-                            </span>
-                          ) : null}
+                            {event.description ? (
+                              <p className="mt-1 text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">
+                                {event.description}
+                              </p>
+                            ) : null}
+                            {event.protocol || event.unitCode ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {event.protocol ? (
+                                  <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                                    {event.protocol}
+                                  </span>
+                                ) : null}
+                                {event.unitCode ? (
+                                  <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                                    Unidade {event.unitCode}
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : null}
+                            {event.attachments?.length ? (
+                              <EventAttachments attachments={event.attachments} />
+                            ) : null}
+                          </div>
+
+                          <span
+                            className={`w-fit shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
+                              statusStyles[event.status]
+                            }`}
+                          >
+                            {event.status}
+                          </span>
                         </div>
-                      ) : null}
-                      {event.attachments?.length ? (
-                        <EventAttachments attachments={event.attachments} />
-                      ) : null}
-                    </div>
 
-                    <span
-                      className={`w-fit shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${
-                        statusStyles[event.status]
-                      }`}
-                    >
-                      {event.status}
-                    </span>
-                  </div>
-
-                  <div className="mt-2 flex flex-col gap-1 border-t border-slate-100 pt-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
-                    <span className="font-medium text-slate-600">{event.operator}</span>
-                    <time dateTime={event.occurredAt}>{event.occurredAt}</time>
-                  </div>
-                </div>
-              </article>
-            );
-          })}
+                        <div className="mt-2 flex flex-col gap-1 border-t border-slate-100 pt-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                          <span className="inline-flex flex-wrap items-center gap-1.5">
+                            <span
+                              className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                                origin === "auto"
+                                  ? "bg-[#A07C3B]/10 text-[#7A5E2C]"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {origin === "auto" ? (
+                                <Bot className="size-3" aria-hidden="true" />
+                              ) : (
+                                <User className="size-3" aria-hidden="true" />
+                              )}
+                              {origin === "auto" ? "Auto · Hades" : "Manual · operador"}
+                            </span>
+                            <span className="font-medium text-slate-600">{event.operator}</span>
+                          </span>
+                          <time dateTime={event.occurredAt}>{event.occurredAt}</time>
+                        </div>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
         </div>
       </div>
-
-      <button
-        type="button"
-        onClick={() => setDrawerType("Observação operacional")}
-        className="mt-3 inline-flex h-8 items-center gap-2 rounded-lg border border-dashed border-slate-300 bg-slate-50/60 px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-slate-950"
-      >
-        <Plus className="size-4 text-[#A07C3B]" aria-hidden="true" />
-        Adicionar evento operacional
-      </button>
 
       {drawerType ? (
         <ManualTimelineDrawer
@@ -427,33 +495,35 @@ function ManualTimelineDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
         aria-label="Fechar registro operacional"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-950/25 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
       />
-      <aside className="relative z-10 flex h-full w-full max-w-lg flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)]">
         <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
-          <div>
-            <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">
-              Hades manual
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">
-              Registrar atividade
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              {client?.nome ?? "Cliente selecionado"}
-            </p>
+          <div className="flex items-center gap-3">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-[#A07C3B]/10 text-[#7A5E2C]">
+              <ClipboardList className="size-5" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="text-base font-semibold text-slate-950">
+                Registrar atividade
+              </h2>
+              <p className="text-xs text-slate-500">
+                {client?.nome ?? "Cliente selecionado"}
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fechar drawer"
-            className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            aria-label="Fechar"
+            className="flex size-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-900"
           >
-            x
+            <X className="size-4" aria-hidden="true" />
           </button>
         </header>
 
@@ -605,7 +675,7 @@ function ManualTimelineDrawer({
             {saving ? "Salvando..." : "Salvar registro"}
           </button>
         </div>
-      </aside>
+      </div>
     </div>
   );
 }
@@ -790,6 +860,134 @@ function nowForInputDisplay() {
     minute: "2-digit",
     month: "2-digit",
     year: "numeric",
+  });
+}
+
+// occurredAt pode vir ISO ou no formato display "DD/MM/AAAA, HH:MM" — parse os dois.
+function parseTimelineDate(value) {
+  if (!value) {
+    return Number.NaN;
+  }
+  const iso = Date.parse(value);
+  if (!Number.isNaN(iso)) {
+    return iso;
+  }
+  const match = String(value).match(
+    /(\d{2})\/(\d{2})\/(\d{4})(?:[,\s]+(\d{2}):(\d{2}))?/,
+  );
+  if (match) {
+    const [, dd, mm, yyyy, hh = "00", min = "00"] = match;
+    return new Date(
+      Number(yyyy),
+      Number(mm) - 1,
+      Number(dd),
+      Number(hh),
+      Number(min),
+    ).getTime();
+  }
+  return Number.NaN;
+}
+
+function timelineDayLabel(time) {
+  const day = new Date(time);
+  day.setHours(0, 0, 0, 0);
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diff = Math.round((today.getTime() - day.getTime()) / 86_400_000);
+  if (diff === 0) {
+    return "Hoje";
+  }
+  if (diff === 1) {
+    return "Ontem";
+  }
+  return new Date(time).toLocaleDateString("pt-BR", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  });
+}
+
+const AUTO_TIMELINE_TYPES = new Set([
+  "Interação da IA",
+  "Quebra de acordo",
+  "Alteração de risco",
+]);
+
+function originForEvent(event) {
+  const operator = String(event?.operator ?? "").toLowerCase();
+  const auto =
+    AUTO_TIMELINE_TYPES.has(event?.type) ||
+    !event?.operator ||
+    /hades|sistema|cron|autom|athena|cac[áa]|r[ée]gua/.test(operator);
+  return auto ? "auto" : "manual";
+}
+
+function groupTimelineByDay(events) {
+  const sorted = [...(events ?? [])].sort((first, second) => {
+    const firstTime = parseTimelineDate(first?.occurredAt);
+    const secondTime = parseTimelineDate(second?.occurredAt);
+    if (Number.isNaN(firstTime) && Number.isNaN(secondTime)) {
+      return 0;
+    }
+    if (Number.isNaN(firstTime)) {
+      return 1;
+    }
+    if (Number.isNaN(secondTime)) {
+      return -1;
+    }
+    return secondTime - firstTime;
+  });
+
+  const groups = [];
+  for (const event of sorted) {
+    const time = parseTimelineDate(event?.occurredAt);
+    const hasTime = !Number.isNaN(time);
+    const key = hasTime
+      ? String(new Date(time).setHours(0, 0, 0, 0))
+      : "sem-data";
+    const label = hasTime ? timelineDayLabel(time) : "Sem data";
+    let group = groups.find((item) => item.key === key);
+    if (!group) {
+      group = { events: [], key, label };
+      groups.push(group);
+    }
+    group.events.push(event);
+  }
+  return groups;
+}
+
+// Filtro macro: texto (titulo/descricao/protocolo/tipo) + atividade (tipo) + dia.
+function filterTimelineEvents(events, filters) {
+  const search = String(filters?.search ?? "").trim().toLowerCase();
+  const type = filters?.type ?? "all";
+  const date = filters?.date ?? "";
+  return [...(events ?? [])].filter((event) => {
+    if (type !== "all" && event?.type !== type) {
+      return false;
+    }
+    if (search) {
+      const haystack = `${event?.title ?? ""} ${event?.description ?? ""} ${
+        event?.protocol ?? ""
+      } ${event?.type ?? ""}`.toLowerCase();
+      if (!haystack.includes(search)) {
+        return false;
+      }
+    }
+    if (date) {
+      const time = parseTimelineDate(event?.occurredAt);
+      if (Number.isNaN(time)) {
+        return false;
+      }
+      const day = new Date(time);
+      const key = `${day.getFullYear()}-${String(day.getMonth() + 1).padStart(
+        2,
+        "0",
+      )}-${String(day.getDate()).padStart(2, "0")}`;
+      if (key !== date) {
+        return false;
+      }
+    }
+    return true;
   });
 }
 

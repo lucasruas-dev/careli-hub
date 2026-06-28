@@ -40898,3 +40898,26 @@ Conclusao:
 Conclusao:
 - Foundation de dados do motor da Cobranca **no ar**; seguranca (gate no proxy.ts, v1.6.3) fechada. `main` = `ef9c995`, c2x = `jur4gvue9`.
 - Proximo (sessao nova): lib server -> rotas criar/listar compromisso -> cron da regua -> UI.
+
+## 2026-06-26 - Zeus - Cobranca: redesign tela-a-tela + motor de Propostas (Fase 1) [PREVIEW, NAO em prod]
+
+Assunto: [Hades] Cobranca — redesign da tela aba-a-aba + Acordos&Promessas ligado ao motor (Fase 1)
+
+- Status: **TUDO EM PREVIEW** (`--skip-domain`), **NAO deployado em prod**. `c2x.app.br` segue v1.6.3 (`jur4gvue9`). Ultimo preview: `careli-hub-hub-i2bs-q5e69k9ao`. Metodo do dia: print a print, Lucas validando cada aba.
+- Manha (registrada antes): motor tijolos 2-4 (lib/rotas/cron de `guardian_compromissos`, migration 0036 ja em prod). Tarde: refazer `/hades/cobranca` (AttendancePage/ClientDetailPanel, @ts-nocheck) + ligar as Propostas no motor.
+
+**Abas do detalhe do cliente (reestruturadas):** Visao geral · Cliente · Carteira · Propostas · Timeline.
+- **Visao geral (estrategica):** faixa de topo (Saldo/Parcelas | Resumo da carteira em destaque, contato via Apolo) + **Cockpit unificado** (risco+IA, selos `regra`/`IA`) + **Workflow** (botao Editar->popup com motivo obrigatorio, log **Manual/Auto**, historico ao lado) + Ultimos eventos. Removidos paredao de KPIs e painel de Alertas. **Todos entram em "A acionar"** (estagio manual/auto; fim da derivacao por dias de atraso — `read-model.ts` + `data.ts`). Botao recolher fila no topo-direito do painel.
+- **Cliente:** icone UserRound; **Documentos** so o Contrato (D4Sign, loading Panteon no popup); Acordo/Boleto/Historico removidos (docs do cliente: decidir C2X-direto vs Apolo-agregador — recomendado Apolo). Relacionamento->vinculo de pessoas (Apolo, futuro).
+- **Carteira:** abre **direto em Parcelas** (sem submenu); aside de unidades **sticky**; selecao por **matricula** (id do read-model colide); trocar unidade mantem o subtab. **Referencia->Competencia** (de `payments.reference_date`, fim da gambiarra). **Tipo de parcela correto** (Ato/Sinal/Parcela/Avulso) — antes Sinal aparecia como "Parcela 01/04" (`parcelNumber` em attendance.ts).
+- **Propostas (ex-Acordos):** `PropostasPanel.tsx` (NOVO, tipado, sem @ts-nocheck) ligado ao MOTOR: lista compromissos reais (GET), cria **promessa** (parcela + nova data) e **acordo** (parcelas->Valor original; Desconto/Juros/Multa %|R$ ->Valor do acordo; A vista/Parcelado com entrada + Nx **tabela editavel**, ultima parcela absorve centavos; total verde/vermelho bloqueia envio) via POST. Valores com **virgula** (bug do ponto corrigido). Estado em `metadata.approval_status='pendente'`. **Botao Editar** (lapis em pendentes) -> rota **PUT** `replaceGuardianCompromissoDraft`.
+
+**Decisoes de produto:** toda proposta (promessa E acordo) -> aprovacao do **Admin**; estados Em elaboracao->Pendente->Aprovada/Reprovada(motivo); central do gestor = **3o icone da tela**; **thread de comentarios**; **desconto** entra (abate). Templates Meta: **um por acao** (criar depois). Pesquisa de IA em cobranca (roll-rate/segmentacao nao-pode-vs-nao-quer/NBA) feita e aceita como direcao (heuristica `regra` agora, LLM depois).
+
+**Backend tocado (SEM migration nova):** `lib/guardian/compromissos.ts` (+`replaceGuardianCompromissoDraft`, Update type expandido), rotas `/api/guardian/compromissos` POST/GET + `/[id]` GET/PATCH/PUT, `lib/guardian/attendance.ts` (reference_date + parcelNumber com tipo). Typecheck/lint verdes; varredura TS2304 nos @ts-nocheck (licao do onCollapse).
+
+**Dado de teste:** criei compromissos de teste (AC-000002/AC-000004/PR-000001/PR-000003...) no Supabase de **PROD** (preview usa prod). **Limpar antes do go-live.**
+
+Conclusao:
+- Tela de Cobranca refeita aba a aba e Propostas ligadas ao motor (Fase 1: criar/listar/editar promessa+acordo), tudo validado visualmente em PREVIEW.
+- Proximo (**Fase 2**): **migration 0037** (colunas de aprovacao em guardian_compromissos + tabela `guardian_compromisso_comments`) -> **central do gestor** (aprovar/reprovar+motivo+comentarios) -> execucao pos-aprovacao (regua/Iris) -> templates Meta -> **deploy pra prod** de toda a frente. Ver [[project_cobranca_motor_ui]] e o handoff `cobranca-propostas-handoff-new-chat-startup-prompt-2026-06-26.md`.

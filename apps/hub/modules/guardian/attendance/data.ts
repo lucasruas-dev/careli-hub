@@ -366,7 +366,8 @@ function buildInstallmentRange(count: number) {
 }
 
 function buildWorkflow(client: HadesMockClient): QueueClient["workflow"] {
-  const stage = workflowStageForClient(client);
+  // Regra (Lucas): todos comecam na 1a etapa "A acionar"; avanca manual/auto.
+  const stage: QueueClient["workflow"]["stage"] = "A acionar";
 
   return {
     stage,

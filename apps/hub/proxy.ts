@@ -31,6 +31,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/caredesk/meta/webhook", // re-export do webhook Meta
   "/api/guardian/sync/c2x", // cron (segredo proprio)
   "/api/hades/sync/c2x", // cron (re-export)
+  "/api/guardian/lembretes/cron", // cron da regua de lembretes (segredo proprio)
   "/api/apolo/sync/c2x", // cron
   "/api/chronos/recordings/egress-cron", // cron
   "/api/chronos/google-calendar/callback", // OAuth (redirect do Google, sem Bearer)
