@@ -5,8 +5,10 @@
 ## Estado em uma frase
 Toda a frente de **cobrança (Hades)** + adjacências (Athena, CACÁ automática, módulo Meu dia, Home bento, timeline) foi **consolidada no commit `36ecb75c` (main, LOCAL — não pushado)** e **ESTÁ NO AR EM PRODUÇÃO desde 28/jun** (alias `c2x.app.br` → `d2ph65a67`; verificado c2x=200, ops=307).
 
-## GO-LIVE FEITO (28/jun)
-- Prod `c2x.app.br` = `careli-hub-hub-i2bs-d2ph65a67`. **Rollback** = `careli-hub-hub-i2bs-jur4gvue9` (v1.6.3).
+## GO-LIVE FEITO (28/jun) — v1.7.0
+- Prod `c2x.app.br` = `careli-hub-hub-i2bs-lt09r87jc` (**v1.7.0**, com a entrada do painel de Novidades). **Rollback** = `careli-hub-hub-i2bs-jur4gvue9` (v1.6.3). (Build intermediário sem changelog: `d2ph65a67`.)
+- Changelog: entrada **v1.7.0** adicionada no `PANTEON_CHANGELOG` (regra: sempre atualizar o painel de Novidades a cada release — ver memória `feedback_novidades_changelog`).
+- Commits na main local: `36ecb75c` (trabalho) · `b613807`/`edb843d` (docs) · `b82126a` (changelog v1.7.0).
 - **Dados de teste limpos** em prod (5 compromissos AC-/PR- apagados; 0 restantes).
 - **Fila mantida ABERTA** (`validEnterpriseWhere` = `e.id is not null`) — Lucas precisa do **SDT liberado pro treinamento de segunda**. NÃO re-travar.
 - ⚠️ **CACÁ automática ATIVA** — monitorar o 1º "Receber boleto" real.
