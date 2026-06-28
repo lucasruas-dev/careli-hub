@@ -32,6 +32,52 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-28-hades-cobranca-golive",
+    deployedAt: "2026-06-28T00:30:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "Nova tela de atendimento de cobranca (fila · conversa · contexto do cliente) com a Athena, a assistente do operador: ela escreve a resposta, resume a conversa, organiza os boletos e ate le o contrato (D4Sign) pra tirar duvida.",
+              "Da pra registrar acordo e promessa direto no atendimento; e a CACA responde sozinha quando o cliente toca \"Receber boleto\".",
+            ],
+            screen: "Atendimento",
+          },
+          {
+            items: [
+              "Historico reorganizado: agrupado por dia, com o tipo claro (acordo, promessa, quitacao, atendimento, quebra...) e a origem (automatico do Hades ou manual do operador).",
+              "Filtro por data, atividade e protocolo; registrar atividade virou um popup central com o botao + no canto.",
+            ],
+            screen: "Timeline do cliente",
+          },
+        ],
+      },
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "Novo \"Meu dia\": sua agenda, tarefas e retornos num lugar so — puxa as reunioes do Chronos e as tarefas do Asana.",
+              "Home reformulada e melhorias de interface (os tooltips nao cortam mais).",
+            ],
+            screen: "Home",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-jur4gvue9",
+    technical: {
+      done: "Go-live (28/jun, c2x.app.br -> careli-hub-hub-i2bs-d2ph65a67) consolidando a frente de cobranca (Hades) + adjacencias no commit 36ecb75c. Cockpit de atendimento do Hades (3 zonas) reusando o motor da Iris, contexto proprio (Cliente/Parcelas/Propostas/Timeline/Tickets), direcionamento/encerramento e registro de acordo/promessa inline (render-prop, sem import circular). Athena (assistente do operador, /api/iris/athena, gpt-5.5): escrita/atalhos/selecionar msg/audio (whisper)/leitura de contrato via D4Sign (contract-reader). CACA automatica: contato ativo de cobranca pula CPF e manda boleto direto no inbound 'Receber boleto' (caca-agent + meta-inbound-processor); ativa so em prod. Central de Propostas (aprovacao/chat) + motor de compromissos (lib/rotas) + regua-cron OFF ate o template Meta novo. Modulo Meu dia (hub_agenda_items, migration 0038): rotas /api/agenda/{items,meetings,asana}, reunioes do Chronos e ponte read-only do Asana; Home em bento; botoes Retorno/Tarefa do composer vinculam o protocolo. Timeline (cliente OperationalTimeline + cockpit) reorganizada (agrupada/tipada/origem; popup central + filtro macro). Tooltip do uix via portal. Migrations 0037/0038 ja em prod. Dados de teste (5 compromissos AC-/PR-) limpos no go-live; fila (validEnterpriseWhere) mantida aberta pro treinamento. v1.6.3 -> v1.7.0.",
+      motivation:
+        "Levar pra producao todo o trabalho da frente de cobranca validado em previews (cockpit + Athena + CACA + propostas) e o modulo Meu dia, antes do go-live da Iris (segunda) — muito disso sera reaproveitado la.",
+    },
+    title: "Hades: atendimento de cobrança com a Athena + Meu dia na Home",
+    type: "novidade",
+    version: "v1.7.0",
+  },
+  {
     buildTag: "2026-06-26-security-gate-central",
     deployedAt: "2026-06-26T10:30:00-03:00",
     modules: [
