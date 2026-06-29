@@ -13,6 +13,10 @@ import {
   type CacaInboundMediaType,
 } from "@/lib/iris/caca-media-analysis";
 import {
+  isCacaClaudeEngineEnabled,
+  runCacaClaudeTurn,
+} from "@/lib/iris/caca/agent";
+import {
   downloadMetaWhatsAppMedia,
   getMetaWhatsAppOutboundConfig,
   type MetaWhatsAppDownloadedMedia,
@@ -1747,12 +1751,25 @@ async function maybeSendCacaAutoReply({
     return false;
   }
 
-  const reply = await runCacaAgentTurn({
-    client,
-    contact,
-    messageDetail,
-    ticket,
-  });
+  // Engine novo (Cacá super-agente Claude) atrás de flag, com fallback automático pra
+  // Cacá determinística se a Claude não estiver configurada ou falhar — nenhum atendimento
+  // fica sem resposta.
+  let reply: CacaAutoReply;
+
+  if (isCacaClaudeEngineEnabled()) {
+    try {
+      reply = await runCacaClaudeTurn({ client, contact, messageDetail, ticket });
+    } catch (error) {
+      console.error(
+        "[iris] Cacá-Claude falhou; usando a Cacá deterministica",
+        errorMessage(error),
+      );
+      reply = await runCacaAgentTurn({ client, contact, messageDetail, ticket });
+    }
+  } else {
+    reply = await runCacaAgentTurn({ client, contact, messageDetail, ticket });
+  }
+
   const queuedMessage = await insertCacaOutboundMessage({
     body: reply.replyText,
     channelId,

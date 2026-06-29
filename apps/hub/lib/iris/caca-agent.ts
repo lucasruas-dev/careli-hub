@@ -214,7 +214,7 @@ export type CacaAgentTurn = {
     | "general_reply"
     | "handoff";
   replyText: string;
-  source: "deterministic" | "openai";
+  source: "claude" | "deterministic" | "openai";
   toolsUsed: string[];
   trace: CacaAgentTraceStep[];
 };
@@ -1444,7 +1444,7 @@ function askForCpfIdentity({
   };
 }
 
-async function lookupApoloByPhone(
+export async function lookupApoloByPhone(
   client: SupabaseClient,
   contact: CacaAgentContact,
 ) {
@@ -1467,7 +1467,7 @@ async function lookupApoloByPhone(
   return lookupApoloByIdentifierHashes(client, ["phone"], hashes);
 }
 
-async function lookupApoloByDocument(
+export async function lookupApoloByDocument(
   client: SupabaseClient,
   documentDigits: string,
 ) {

@@ -32,6 +32,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-29-caca-claude-super-agente",
+    deployedAt: "2026-06-29T11:31:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Cacá agora é um agente de verdade: lê a conversa inteira, consulta o financeiro do cliente (parcelas, valores, vencimentos) e responde de forma mais natural e resolutiva — menos 'menu', mais atendente.",
+              "Quando o numero do WhatsApp e o mesmo do cadastro, ela ja atende sem pedir CPF; quando nao e, valida com seguranca antes de mostrar dado ou enviar boleto.",
+              "Separa a informacao da parcela do link do boleto: se a parcela existe mas o link nao esta disponivel, ela avisa e encaminha pro time — nao diz mais que 'nao ha boleto'.",
+              "Quando precisa de uma pessoa, ela transfere de verdade pro time interno.",
+              "Le imagem e PDF que o cliente envia e entende audios (transcricao).",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-qtbc68otu",
+    technical: {
+      done: "Cacá migrada de OpenAI (gpt-5.5, máquina de estados) para um agente Claude com tool-use (Opus 4.8) atrás da flag CACA_ENGINE=claude, com FALLBACK automático para a Cacá determinística se a Claude falhar/estiver ausente (try/catch em maybeSendCacaAutoReply) — nenhum atendimento fica sem resposta. Novos arquivos: lib/ai/claude.ts (client + roteamento Sonnet/Opus/Haiku), lib/ai/claude-agent.ts (loop manual de tool-use + prompt caching no system + thinking adaptativo + effort + cap de iterações), lib/iris/caca/{persona,tools,executors,agent}.ts. 5 ferramentas (validar_identidade, consultar_financeiro, listar_boletos, gerar_link_boleto, transferir_para_humano) ligadas em Hades (loadHadesAttendanceClient), Asaas (prepareBoletoResendAction modo link, nunca disparo pago) e Apolo (lookupApoloByDocument/lookupApoloByPhone, exportados). Trava de identidade nas ferramentas (ensureVerified) + identidade por TELEFONE (número do WhatsApp == cadastro de comprador com unidade → verificado sem CPF). Imagem nativa (URL do bucket iris-media) + transcrição segue na OpenAI (Whisper; Claude não faz speech-to-text). v1.11.0 -> v1.12.0.",
+      motivation:
+        "A Cacá estava 'burrinha': máquina de estados rígida que só sabia entregar boleto, não consultava o banco pra responder, não lia o contexto da conversa (re-perguntava o que o cliente já tinha dito) e dizia que ia transferir sem transferir. O agente Claude com ferramentas reais resolve os casos que o Lucas apontou (Elício: consulta financeiro; Brenda: separa info de link; Lais: lê contexto; print 1: transfere de verdade). Custo liberado pelo Lucas → Opus 4.8 no raciocínio. Migração entra atrás de flag com fallback pra não arriscar o atendimento ao vivo.",
+    },
+    title: "Iris: Cacá vira um super-agente (Claude)",
+    type: "novidade",
+    version: "v1.12.0",
+  },
+  {
     buildTag: "2026-06-29-iris-midia-atendimento",
     deployedAt: "2026-06-29T10:13:00-03:00",
     modules: [
