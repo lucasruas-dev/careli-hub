@@ -24,6 +24,7 @@ import {
   ClipboardList,
   CircleStop,
   DatabaseZap,
+  Download,
   Edit3,
   FileText,
   Forward,
@@ -135,6 +136,11 @@ import {
   registerIrisNotificationPermissionIntent,
   showBrowserIrisNotification,
 } from "@/lib/iris/notification-effects";
+import {
+  audioExtensionForMime,
+  audioNeedsTranscode,
+  transcodeAudioToMp3,
+} from "@/lib/iris/audio-transcode";
 import { getHubPresenceSnapshot } from "@/lib/hub-presence";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
@@ -1418,6 +1424,12 @@ function IrisConversationPanel({
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [recordingAudio, setRecordingAudio] = useState(false);
+  const [recordingElapsedMs, setRecordingElapsedMs] = useState(0);
+  const [audioPreview, setAudioPreview] = useState<{
+    blob: Blob;
+    durationMs: number | null;
+    url: string;
+  } | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<IrisReplyPreview | null>(
     null,
   );
@@ -1455,6 +1467,8 @@ function IrisConversationPanel({
   const [attendantFeedback, setAttendantFeedback] = useState("");
   const audioChunksRef = useRef<Blob[]>([]);
   const audioStartedAtRef = useRef<number | null>(null);
+  const audioCancelledRef = useRef(false);
+  const recordingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
   const emojiPickerRef = useRef<HTMLDivElement | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -2767,13 +2781,56 @@ function IrisConversationPanel({
     void sendMessage();
   }
 
-  async function toggleAudioRecording() {
-    if (sending) {
+  function clearRecordingTimer() {
+    if (recordingTimerRef.current) {
+      clearInterval(recordingTimerRef.current);
+      recordingTimerRef.current = null;
+    }
+  }
+
+  function stopAudioRecording() {
+    if (!recordingAudio) {
       return;
     }
 
+    mediaRecorderRef.current?.stop();
+  }
+
+  function discardAudioPreview() {
+    setAudioPreview((current) => {
+      if (current) {
+        URL.revokeObjectURL(current.url);
+      }
+
+      return null;
+    });
+  }
+
+  // Cancela a gravação em curso (descarta) ou o preview ainda não enviado.
+  function cancelAudioRecording() {
     if (recordingAudio) {
+      audioCancelledRef.current = true;
       mediaRecorderRef.current?.stop();
+      return;
+    }
+
+    discardAudioPreview();
+  }
+
+  function sendRecordedAudio() {
+    if (!audioPreview) {
+      return;
+    }
+
+    const { blob, durationMs, url } = audioPreview;
+
+    URL.revokeObjectURL(url);
+    setAudioPreview(null);
+    void sendAudioMessage(blob, durationMs);
+  }
+
+  async function startAudioRecording() {
+    if (sending || recordingAudio || audioPreview) {
       return;
     }
 
@@ -2795,9 +2852,11 @@ function IrisConversationPanel({
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       const recorder = new MediaRecorder(stream);
 
+      audioCancelledRef.current = false;
       audioChunksRef.current = [];
       audioStartedAtRef.current = Date.now();
       mediaRecorderRef.current = recorder;
+      setRecordingElapsedMs(0);
       recorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
@@ -2810,24 +2869,40 @@ function IrisConversationPanel({
           : null;
 
         stream.getTracks().forEach((track) => track.stop());
+        clearRecordingTimer();
         setRecordingAudio(false);
         mediaRecorderRef.current = null;
         audioStartedAtRef.current = null;
         audioChunksRef.current = [];
 
-        if (chunks.length) {
-          const audioBlob = new Blob(chunks, {
-            type: recorder.mimeType || "audio/webm",
-          });
-          void sendAudioMessage(audioBlob, durationMs);
+        if (audioCancelledRef.current || !chunks.length) {
+          audioCancelledRef.current = false;
+          return;
         }
+
+        // Em vez de enviar direto, monta um preview pro operador ouvir antes (igual WhatsApp).
+        const audioBlob = new Blob(chunks, {
+          type: recorder.mimeType || "audio/webm",
+        });
+
+        setAudioPreview({
+          blob: audioBlob,
+          durationMs,
+          url: URL.createObjectURL(audioBlob),
+        });
       };
       recorder.start();
       setRecordingAudio(true);
-      setFeedback("Gravando audio. Clique novamente no microfone para enviar.");
+      setFeedback("");
+      recordingTimerRef.current = setInterval(() => {
+        if (audioStartedAtRef.current) {
+          setRecordingElapsedMs(Date.now() - audioStartedAtRef.current);
+        }
+      }, 200);
     } catch (error) {
       console.error("[caredesk] microfone indisponivel", error);
       setRecordingAudio(false);
+      clearRecordingTimer();
       setFeedback("Nao foi possivel acessar o microfone.");
     }
   }
@@ -2851,7 +2926,20 @@ function IrisConversationPanel({
     setFeedback("");
 
     try {
-      const dataUrl = await readBlobAsDataUrl(audioBlob);
+      // O WhatsApp rejeita webm (formato do Chrome); converte pra mp3 quando necessario.
+      const sourceMime = audioBlob.type || "audio/webm";
+      let outboundBlob = audioBlob;
+      let outboundMime = sourceMime;
+
+      if (audioNeedsTranscode(sourceMime)) {
+        setFeedback("Convertendo audio...");
+        outboundBlob = await transcodeAudioToMp3(audioBlob);
+        outboundMime = "audio/mpeg";
+        setFeedback("");
+      }
+
+      const outboundExt = audioExtensionForMime(outboundMime);
+      const dataUrl = await readBlobAsDataUrl(outboundBlob);
 
       if (dataUrl.length > IRIS_AUDIO_MAX_DATA_URL_LENGTH) {
         throw new Error("Audio muito grande para este recorte de homologacao.");
@@ -2866,8 +2954,8 @@ function IrisConversationPanel({
           media: {
             dataUrl,
             durationMs,
-            fileName: `iris-audio-${Date.now()}.webm`,
-            mimeType: audioBlob.type || "audio/webm",
+            fileName: `iris-audio-${Date.now()}.${outboundExt}`,
+            mimeType: outboundMime,
             type: "audio",
           },
           replyToMessageId: replyToMessage?.messageId ?? null,
@@ -3162,7 +3250,12 @@ function IrisConversationPanel({
           onDraftChange={setDraft}
           onInsertEmoji={insertEmoji}
           onSendMessage={sendMessage}
-          onToggleAudioRecording={toggleAudioRecording}
+          onStartAudioRecording={startAudioRecording}
+          onStopAudioRecording={stopAudioRecording}
+          onCancelAudio={cancelAudioRecording}
+          onSendAudioPreview={sendRecordedAudio}
+          audioPreviewUrl={audioPreview?.url ?? null}
+          recordingElapsedLabel={formatAudioDuration(recordingElapsedMs)}
           onToggleEmojiPicker={() => setEmojiPickerOpen((current) => !current)}
           operationReady={operationReady}
           recordingAudio={recordingAudio}
@@ -4104,13 +4197,7 @@ function MessageBubble({
                 outbound={outbound}
               />
             ) : null}
-            {message.messageType === "audio" ? (
-              <AudioMessageContent message={message} outbound={outbound} />
-            ) : (
-              <p className="whitespace-pre-wrap leading-6 [overflow-wrap:anywhere]">
-                {message.body}
-              </p>
-            )}
+            <MessageContent message={message} outbound={outbound} />
             <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-slate-400">
               {message.editedAt ? <span>editada</span> : null}
               <span>{formatDateTime(message.createdAt)}</span>
@@ -4253,6 +4340,188 @@ function MessageReactionStrip({
       ))}
     </div>
   );
+}
+
+function MessageContent({
+  message,
+  outbound,
+}: {
+  message: IrisMessage;
+  outbound: boolean;
+}) {
+  const kind = message.mediaKind ?? message.messageType ?? null;
+  const mediaUrl = message.mediaUrl ?? null;
+  const caption = isGenericMediaPlaceholder(message.body) ? null : message.body;
+
+  if (message.messageType === "audio" || kind === "audio") {
+    return <AudioMessageContent message={message} outbound={outbound} />;
+  }
+
+  if (mediaUrl && kind === "image") {
+    return (
+      <ImageMessageContent
+        caption={caption}
+        fileName={message.mediaFileName ?? null}
+        url={mediaUrl}
+      />
+    );
+  }
+
+  if (mediaUrl && kind === "video") {
+    return (
+      <div className="space-y-1.5">
+        <video controls src={mediaUrl} className="max-h-72 w-full rounded-lg" />
+        {caption ? <MessageCaption text={caption} /> : null}
+      </div>
+    );
+  }
+
+  if (mediaUrl && kind === "document") {
+    return (
+      <div className="space-y-1.5">
+        <a
+          href={mediaUrl}
+          target="_blank"
+          rel="noreferrer"
+          download={message.mediaFileName ?? undefined}
+          className={[
+            "flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors",
+            outbound
+              ? "border-white/40 bg-white/15 hover:bg-white/25"
+              : "border-slate-200 bg-white hover:bg-slate-50",
+          ].join(" ")}
+        >
+          <FileText className="size-5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0 flex-1 truncate text-sm font-medium">
+            {message.mediaFileName ?? "Documento recebido"}
+          </span>
+          <Download className="size-4 shrink-0 opacity-70" aria-hidden="true" />
+        </a>
+        {caption ? <MessageCaption text={caption} /> : null}
+      </div>
+    );
+  }
+
+  if (message.messageType === "unsupported") {
+    return (
+      <p className="whitespace-pre-wrap italic leading-6 opacity-80 [overflow-wrap:anywhere]">
+        Mensagem nao suportada pelo WhatsApp (ex.: enquete, contato ou "ver uma
+        vez").
+      </p>
+    );
+  }
+
+  return (
+    <p className="whitespace-pre-wrap leading-6 [overflow-wrap:anywhere]">
+      {message.body}
+    </p>
+  );
+}
+
+function MessageCaption({ text }: { text: string }) {
+  return (
+    <p className="whitespace-pre-wrap leading-6 [overflow-wrap:anywhere]">
+      {text}
+    </p>
+  );
+}
+
+function ImageMessageContent({
+  caption,
+  fileName,
+  url,
+}: {
+  caption: string | null;
+  fileName: string | null;
+  url: string;
+}) {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="space-y-1.5">
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="block overflow-hidden rounded-lg"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt={fileName ?? "Imagem recebida pelo WhatsApp"}
+          className="max-h-72 w-auto cursor-zoom-in rounded-lg object-cover transition hover:opacity-95"
+        />
+      </button>
+      {caption ? <MessageCaption text={caption} /> : null}
+      {open ? (
+        <ImageLightbox
+          alt={fileName ?? "Imagem recebida pelo WhatsApp"}
+          onClose={() => setOpen(false)}
+          url={url}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function ImageLightbox({
+  alt,
+  onClose,
+  url,
+}: {
+  alt: string;
+  onClose: () => void;
+  url: string;
+}) {
+  useEffect(() => {
+    function handleKey(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    }
+
+    document.addEventListener("keydown", handleKey);
+
+    return () => document.removeEventListener("keydown", handleKey);
+  }, [onClose]);
+
+  return (
+    <div
+      role="dialog"
+      aria-modal="true"
+      onClick={onClose}
+      className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-950/80 p-4 backdrop-blur-[2px]"
+    >
+      <button
+        type="button"
+        onClick={onClose}
+        aria-label="Fechar"
+        className="absolute right-4 top-4 flex size-9 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+      >
+        <X className="size-5" aria-hidden="true" />
+      </button>
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt={alt}
+        onClick={(event) => event.stopPropagation()}
+        className="max-h-[90vh] max-w-[90vw] rounded-lg object-contain shadow-2xl"
+      />
+      <a
+        href={url}
+        target="_blank"
+        rel="noreferrer"
+        onClick={(event) => event.stopPropagation()}
+        className="absolute bottom-4 right-4 flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/20"
+      >
+        <Download className="size-4" aria-hidden="true" />
+        Abrir original
+      </a>
+    </div>
+  );
+}
+
+function isGenericMediaPlaceholder(body: string) {
+  return /^Mensagem .+ recebida pelo WhatsApp\.$/.test(body.trim());
 }
 
 function AudioMessageContent({

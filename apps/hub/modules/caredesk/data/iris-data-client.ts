@@ -450,6 +450,10 @@ export function mapMessageRow(row: any): IrisMessage {
     deliveredAt: row.delivered_at ?? null,
     externalMessageId: row.external_message_id ?? null,
     id: row.id,
+    mediaFileName: readMessageMediaFileName(row),
+    mediaKind: readMessageMediaKind(row),
+    mediaMimeType: readMessageAudioMimeType(row),
+    mediaUrl: readMessageAudioUrl(row),
     messageType: row.message_type ?? readMessageType(row),
     operatorAvatarUrl: readMessageOperatorAvatarUrl(row),
     readAt: row.read_at ?? null,
@@ -682,6 +686,22 @@ function readMessageMediaPayload(row: any): Record<string, unknown> | null {
 
   return media && typeof media === "object" && !Array.isArray(media)
     ? (media as Record<string, unknown>)
+    : null;
+}
+
+function readMessageMediaKind(row: any) {
+  const media = readMessageMediaPayload(row);
+  const kind = media?.type;
+
+  return typeof kind === "string" && kind.trim() ? kind.trim() : null;
+}
+
+function readMessageMediaFileName(row: any) {
+  const media = readMessageMediaPayload(row);
+  const fileName = media?.fileName;
+
+  return typeof fileName === "string" && fileName.trim()
+    ? fileName.trim()
     : null;
 }
 

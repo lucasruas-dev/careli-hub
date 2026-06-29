@@ -48,6 +48,10 @@ export type IrisMessage = {
   editedAt?: string | null;
   externalMessageId?: string | null;
   id: string;
+  mediaFileName?: string | null;
+  mediaKind?: string | null;
+  mediaMimeType?: string | null;
+  mediaUrl?: string | null;
   messageType?: string | null;
   operatorAvatarUrl?: string | null;
   readAt?: string | null;

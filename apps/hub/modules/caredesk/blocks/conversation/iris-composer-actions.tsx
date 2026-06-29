@@ -14,6 +14,7 @@ import {
   Smile,
   Sparkles,
   StickyNote,
+  Trash2,
   X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
@@ -55,7 +56,12 @@ export function IrisConversationComposerActions({
   onInsertEmoji,
   onSendMessage,
   onToggleAttendant,
-  onToggleAudioRecording,
+  onStartAudioRecording,
+  onStopAudioRecording,
+  onCancelAudio,
+  onSendAudioPreview,
+  audioPreviewUrl = null,
+  recordingElapsedLabel = "0:00",
   onToggleEmojiPicker,
   operationReady,
   recordingAudio,
@@ -85,7 +91,12 @@ export function IrisConversationComposerActions({
   onInsertEmoji: (emoji: string) => void;
   onSendMessage: () => void;
   onToggleAttendant?: () => void;
-  onToggleAudioRecording: () => void;
+  onStartAudioRecording: () => void;
+  onStopAudioRecording: () => void;
+  onCancelAudio: () => void;
+  onSendAudioPreview: () => void;
+  audioPreviewUrl?: string | null;
+  recordingElapsedLabel?: string;
   onToggleEmojiPicker: () => void;
   operationReady: boolean;
   recordingAudio: boolean;
@@ -249,53 +260,125 @@ export function IrisConversationComposerActions({
             composerReady ? "opacity-100" : "opacity-55",
           ].join(" ")}
         >
-          <ComposerIconButton
-            disabled={!composerReady}
-            label="Emoji"
-            onClick={onToggleEmojiPicker}
-          >
-            <Smile className="size-4" aria-hidden="true" />
-          </ComposerIconButton>
-          <ComposerIconButton
-            disabled
-            label="Anexos em breve"
-            onClick={() => undefined}
-          >
-            <Paperclip className="size-4" aria-hidden="true" />
-          </ComposerIconButton>
-          <textarea
-            ref={textareaRef}
-            value={draft}
-            onChange={(event) => onDraftChange(event.target.value)}
-            onKeyDown={onComposerKeyDown}
-            placeholder={composerPlaceholder}
-            disabled={!composerReady}
-            className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
-          />
-          <ComposerIconButton
-            disabled={!canSendFreeForm || sending}
-            label={recordingAudio ? "Parar e enviar audio" : "Enviar audio"}
-            onClick={onToggleAudioRecording}
-          >
-            {recordingAudio ? (
-              <CircleStop className="size-4 text-rose-500" aria-hidden="true" />
-            ) : (
-              <Mic className="size-4" aria-hidden="true" />
-            )}
-          </ComposerIconButton>
-          <Tooltip content={sendLabel} placement="top">
-            <button
-              type="button"
-              disabled={
-                sending || !draft.trim() || !composerReady || recordingAudio
-              }
-              onClick={onSendMessage}
-              className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
-              aria-label={sendLabel}
-            >
-              <Send className="size-4" aria-hidden="true" />
-            </button>
-          </Tooltip>
+          {recordingAudio ? (
+            <div className="flex w-full items-center gap-3 px-1.5 py-1">
+              <span className="relative flex size-3 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                <span className="relative inline-flex size-3 rounded-full bg-rose-500" />
+              </span>
+              <span className="text-sm font-medium text-slate-600">
+                Gravando
+              </span>
+              <span className="font-mono text-sm tabular-nums text-rose-500">
+                {recordingElapsedLabel}
+              </span>
+              <span className="flex flex-1 items-end gap-0.5 overflow-hidden">
+                {[0, 1, 2, 3, 4, 5, 6, 7].map((bar) => (
+                  <span
+                    key={bar}
+                    className="w-1 animate-pulse rounded-full bg-rose-300"
+                    style={{
+                      animationDelay: `${bar * 110}ms`,
+                      height: `${8 + ((bar * 5) % 14)}px`,
+                    }}
+                  />
+                ))}
+              </span>
+              <Tooltip content="Cancelar" placement="top">
+                <button
+                  type="button"
+                  onClick={onCancelAudio}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-rose-500"
+                  aria-label="Cancelar gravacao"
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+              <Tooltip content="Parar" placement="top">
+                <button
+                  type="button"
+                  onClick={onStopAudioRecording}
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35]"
+                  aria-label="Parar gravacao"
+                >
+                  <CircleStop className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
+          ) : audioPreviewUrl ? (
+            <div className="flex w-full items-center gap-2 px-1">
+              <Tooltip content="Descartar" placement="top">
+                <button
+                  type="button"
+                  onClick={onCancelAudio}
+                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-rose-500"
+                  aria-label="Descartar audio"
+                >
+                  <Trash2 className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+              <audio
+                controls
+                src={audioPreviewUrl}
+                className="h-9 min-w-0 flex-1"
+              />
+              <Tooltip content="Enviar audio" placement="top">
+                <button
+                  type="button"
+                  disabled={sending}
+                  onClick={onSendAudioPreview}
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  aria-label="Enviar audio"
+                >
+                  <Send className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </div>
+          ) : (
+            <>
+              <ComposerIconButton
+                disabled={!composerReady}
+                label="Emoji"
+                onClick={onToggleEmojiPicker}
+              >
+                <Smile className="size-4" aria-hidden="true" />
+              </ComposerIconButton>
+              <ComposerIconButton
+                disabled
+                label="Anexos em breve"
+                onClick={() => undefined}
+              >
+                <Paperclip className="size-4" aria-hidden="true" />
+              </ComposerIconButton>
+              <textarea
+                ref={textareaRef}
+                value={draft}
+                onChange={(event) => onDraftChange(event.target.value)}
+                onKeyDown={onComposerKeyDown}
+                placeholder={composerPlaceholder}
+                disabled={!composerReady}
+                className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+              />
+              <ComposerIconButton
+                disabled={!canSendFreeForm || sending}
+                label="Gravar audio"
+                onClick={onStartAudioRecording}
+              >
+                <Mic className="size-4" aria-hidden="true" />
+              </ComposerIconButton>
+              <Tooltip content={sendLabel} placement="top">
+                <button
+                  type="button"
+                  disabled={sending || !draft.trim() || !composerReady}
+                  onClick={onSendMessage}
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  aria-label={sendLabel}
+                >
+                  <Send className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            </>
+          )}
         </div>
       </div>
 

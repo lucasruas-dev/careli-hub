@@ -2,6 +2,7 @@ import { Buffer } from "node:buffer";
 
 import {
   downloadMetaWhatsAppMedia,
+  type MetaWhatsAppDownloadedMedia,
   type MetaWhatsAppOutboundConfig,
 } from "@/lib/iris/meta-whatsapp";
 
@@ -18,6 +19,8 @@ export type CacaInboundMedia = {
   mimeType?: string | null;
   providerMediaId?: string | null;
   sha256?: string | null;
+  // URL pública durável após persistir no Supabase Storage (preenchida no inbound, p/ o player tocar).
+  storedUrl?: string | null;
   type: CacaInboundMediaType;
   voice?: boolean | null;
 };
@@ -49,9 +52,12 @@ const MEDIA_SIZE_LIMITS_BYTES: Record<CacaInboundMediaType, number> = {
 export async function analyzeCacaInboundMedia({
   config,
   media,
+  preloaded,
 }: {
   config?: MetaWhatsAppOutboundConfig;
   media: CacaInboundMedia;
+  // Download já feito no inbound (compartilhado com o upload pro Storage) — evita baixar 2x.
+  preloaded?: MetaWhatsAppDownloadedMedia | null;
 }): Promise<CacaInboundMediaAnalysis> {
   const mediaType = normalizeCacaMediaType(media.type, media.mimeType);
   const providerMediaId = media.providerMediaId?.trim();
@@ -77,10 +83,12 @@ export async function analyzeCacaInboundMedia({
   }
 
   try {
-    const downloaded = await downloadMetaWhatsAppMedia({
-      config,
-      mediaId: providerMediaId,
-    });
+    const downloaded =
+      preloaded ??
+      (await downloadMetaWhatsAppMedia({
+        config,
+        mediaId: providerMediaId,
+      }));
     const mimeType =
       downloaded.mimeType ?? media.mimeType ?? "application/octet-stream";
     const normalizedType = normalizeCacaMediaType(mediaType, mimeType);

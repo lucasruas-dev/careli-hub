@@ -32,6 +32,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-29-iris-midia-atendimento",
+    deployedAt: "2026-06-29T10:13:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Audios recebidos do cliente agora tocam direto na conversa (antes ficava so um aviso, sem som).",
+              "Para responder por audio: ao gravar aparece uma animacao com cronometro e, ao parar, um preview pra voce ouvir antes de enviar — so vai pro cliente quando voce confirma.",
+              "Imagens e documentos recebidos aparecem na conversa: a imagem abre em tela cheia sem sair da Iris e o documento vira um cartao com download.",
+              "Mensagens que o WhatsApp nao repassa (enquete, contato, 'ver uma vez') agora mostram um aviso claro em vez de 'unsupported'.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-1qfzgyn3l",
+    technical: {
+      done: "Midia inbound (audio/imagem/documento/video) baixada 1x da Meta (download compartilhado entre Storage e a leitura da CACA via param preloaded em analyzeCacaInboundMedia) e persistida num bucket publico iris-media (lib/iris/meta-media-storage.ts: uploadIrisMediaBuffer/uploadInboundMediaBuffer/persistInboundMediaToStorage), gravando provider_payload.media.url + providerMediaId no inbound (meta-inbound-processor) — o front (iris-data-client: mediaUrl/mediaKind/mediaFileName) renderiza player/preview/cartao. Rendering novo (MessageContent em IrisPage): imagem com lightbox (overlay + Esc), documento com download, video com player, audio como antes; rotulo amigavel para type 'unsupported'. Envio de voz: Chrome grava webm/opus (Meta recusa) -> transcodifica client-side pra MP3 (lib/iris/audio-transcode.ts via @breezystack/lamejs: decode Web Audio -> downmix mono -> encode), parser de dataUrl da rota /api/iris/meta/messages corrigido (aceita ';codecs=opus'); audio enviado tambem guardado no Storage (createQueuedTicketMessage -> uploadIrisMediaBuffer outbound) pra tocar no cockpit. Composer com gravacao estilo WhatsApp: animacao+cronometro gravando e preview (ouvir/descartar/enviar) ao parar (estado audioPreview + start/stop/cancelAudioRecording + sendRecordedAudio). Endpoint admin POST /api/iris/meta/media/backfill recupera midia ja recebida (id via provider_payload ou log de webhook). Bucket iris-media criado no Supabase de producao. v1.10.0 -> v1.11.0.",
+      motivation:
+        "Operadores precisavam ouvir os audios e ver as imagens/documentos que os clientes enviam (chegavam so como aviso de texto, sem conteudo) e poder responder por audio. A Meta nao entrega URL duravel da midia e o carregador de mensagens roda no browser (auth Bearer nao-cookie), entao a midia e persistida num Storage publico (mesmo modelo do Hermes) e a URL fica na propria mensagem. O envio exige transcodificar porque o WhatsApp Cloud API nao aceita webm. O preview antes de enviar (igual WhatsApp) evita mandar audio errado pro cliente.",
+    },
+    title: "Iris: audio, imagens e documentos no atendimento",
+    type: "melhoria",
+    version: "v1.11.0",
+  },
+  {
     buildTag: "2026-06-29-iris-abertura-template",
     deployedAt: "2026-06-29T05:59:00-03:00",
     modules: [

@@ -1,3 +1,5 @@
+import { Buffer } from "node:buffer";
+
 import { NextResponse, type NextRequest } from "next/server";
 
 import {
@@ -9,6 +11,7 @@ import {
   sendMetaWhatsAppReactionMessage,
   sendMetaWhatsAppTextMessage,
 } from "@/lib/iris/meta-whatsapp";
+import { uploadIrisMediaBuffer } from "@/lib/iris/meta-media-storage";
 import {
   authorizeIrisMetaRequest,
   createIrisMetaAdminClient,
@@ -1142,6 +1145,17 @@ async function createQueuedTicketMessage({
     return assignment;
   }
 
+  // Guarda o áudio enviado no Storage pra o operador conseguir reouvir no cockpit (best-effort).
+  const mediaPayload = media
+    ? {
+        durationMs: media.durationMs,
+        fileName: media.fileName,
+        mimeType: media.mimeType,
+        type: "audio",
+        url: await uploadOutboundAudio(client, media),
+      }
+    : null;
+
   const { data, error } = await client
     .from("caredesk_messages")
     .insert({
@@ -1152,14 +1166,7 @@ async function createQueuedTicketMessage({
       message_type: messageType,
       provider_payload: {
         destination: to,
-        media: media
-          ? {
-              durationMs: media.durationMs,
-              fileName: media.fileName,
-              mimeType: media.mimeType,
-              type: "audio",
-            }
-          : null,
+        media: mediaPayload,
         operatorAvatarUrl: operatorIdentity.avatarUrl,
         operatorLabel: operatorIdentity.label,
         provider: "meta",
@@ -1185,6 +1192,27 @@ async function createQueuedTicketMessage({
     message: data,
     ok: true as const,
   };
+}
+
+async function uploadOutboundAudio(
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>,
+  media: NormalizedAudioMedia,
+): Promise<string | null> {
+  try {
+    const persisted = await uploadIrisMediaBuffer({
+      buffer: Buffer.from(media.base64, "base64"),
+      client,
+      folder: "outbound",
+      mimeType: media.mimeType,
+      name: crypto.randomUUID(),
+    });
+
+    return persisted?.url ?? null;
+  } catch (error) {
+    console.error("[iris] falha ao persistir audio enviado", error);
+
+    return null;
+  }
 }
 
 async function prepareExistingTicketMessage({
@@ -1554,15 +1582,21 @@ function normalizeAudioMedia(value: unknown): NormalizedAudioMedia | null {
     return null;
   }
 
-  const dataUrlMatch = /^data:([^;,]+);base64,(.+)$/i.exec(
-    record.dataUrl.trim(),
-  );
+  // O header pode trazer parâmetros do tipo de mídia (ex.: o Chrome grava
+  // "audio/webm;codecs=opus"), então capturamos tudo até a vírgula e isolamos o mime base.
+  const dataUrlMatch = /^data:([^,]+),(.+)$/i.exec(record.dataUrl.trim());
 
   if (!dataUrlMatch) {
     return null;
   }
 
-  const mimeType = dataUrlMatch[1]?.toLowerCase();
+  const header = dataUrlMatch[1]?.toLowerCase() ?? "";
+
+  if (!header.includes("base64")) {
+    return null;
+  }
+
+  const mimeType = header.split(";")[0]?.trim();
 
   if (!mimeType?.startsWith("audio/")) {
     return null;

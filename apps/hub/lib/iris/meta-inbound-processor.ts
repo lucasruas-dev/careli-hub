@@ -13,10 +13,13 @@ import {
   type CacaInboundMediaType,
 } from "@/lib/iris/caca-media-analysis";
 import {
+  downloadMetaWhatsAppMedia,
   getMetaWhatsAppOutboundConfig,
+  type MetaWhatsAppDownloadedMedia,
   type MetaWhatsAppSendMessageResult,
   sendMetaWhatsAppTextMessage,
 } from "@/lib/iris/meta-whatsapp";
+import { uploadInboundMediaBuffer } from "@/lib/iris/meta-media-storage";
 
 type Json =
   | boolean
@@ -293,7 +296,7 @@ async function processInboundMessage({
   const activeTicket = ticketAfterCoalesce.ticket;
   const ticketCreated = ticketResult.ticketCreated && !ticketAfterCoalesce.coalesced;
   const enrichedMessageDetail =
-    await enrichInboundMessageDetailWithMediaAnalysis(messageDetail, event);
+    await enrichInboundMessageDetailWithMediaAnalysis(messageDetail, event, client);
   const message = await insertInboundMessage({
     channelId,
     client,
@@ -1474,25 +1477,77 @@ async function insertTicketTimelineEvent({
 async function enrichInboundMessageDetailWithMediaAnalysis(
   messageDetail: InboundMessageDetail,
   event: IrisMetaWebhookEventRow,
+  client: IrisMetaProcessorClient,
 ): Promise<InboundMessageDetail> {
   if (!messageDetail.media) {
     return messageDetail;
   }
 
-  const mediaAnalysis = await analyzeCacaInboundMedia({
-    config: event.phone_number_id
-      ? {
-          ...getMetaWhatsAppOutboundConfig(),
-          phoneNumberId: event.phone_number_id,
-        }
-      : undefined,
-    media: messageDetail.media,
-  });
+  const config = event.phone_number_id
+    ? {
+        ...getMetaWhatsAppOutboundConfig(),
+        phoneNumberId: event.phone_number_id,
+      }
+    : undefined;
+  const media = messageDetail.media;
+
+  // 1 download só da Meta, reusado pelo Storage (exibição) E pela CACÁ (leitura/transcrição).
+  let downloaded: MetaWhatsAppDownloadedMedia | null = null;
+
+  if (media.providerMediaId) {
+    try {
+      downloaded = await downloadMetaWhatsAppMedia({
+        config,
+        mediaId: media.providerMediaId,
+      });
+    } catch (error) {
+      console.error("[iris] falha ao baixar midia inbound", errorMessage(error));
+    }
+  }
+
+  const [storedUrl, mediaAnalysis] = await Promise.all([
+    downloaded
+      ? persistInboundMediaForPlayback({ client, downloaded, media })
+      : Promise.resolve(null),
+    analyzeCacaInboundMedia({ config, media, preloaded: downloaded }),
+  ]);
 
   return {
     ...messageDetail,
+    media: storedUrl ? { ...media, storedUrl } : media,
     mediaAnalysis,
   };
+}
+
+// Sobe a mídia recebida (qualquer tipo — imagem, documento, vídeo, áudio) no Storage e devolve a
+// URL pública pra exibição. Best-effort: falha aqui não derruba o inbound.
+async function persistInboundMediaForPlayback({
+  client,
+  downloaded,
+  media,
+}: {
+  client: IrisMetaProcessorClient;
+  downloaded: MetaWhatsAppDownloadedMedia;
+  media: CacaInboundMedia;
+}): Promise<string | null> {
+  if (!media.providerMediaId) {
+    return null;
+  }
+
+  try {
+    const persisted = await uploadInboundMediaBuffer({
+      buffer: downloaded.buffer,
+      client,
+      mediaId: media.providerMediaId,
+      mimeType: downloaded.mimeType ?? media.mimeType,
+    });
+
+    return persisted?.url ?? null;
+  } catch (error) {
+    console.error("[iris] falha ao persistir midia inbound", errorMessage(error));
+
+    return null;
+  }
 }
 
 function buildInboundProviderPayload(
@@ -1524,8 +1579,12 @@ function sanitizeInboundMediaPayload(media: CacaInboundMedia) {
     fileName: media.fileName ?? null,
     hasProviderMediaId: Boolean(media.providerMediaId),
     mimeType: media.mimeType ?? null,
+    // id real da mídia → habilita backfill/re-download enquanto a Meta retém o arquivo.
+    providerMediaId: media.providerMediaId ?? null,
     sha256: media.sha256 ?? null,
     type: media.type,
+    // URL pública persistida no Storage → o player do front (`media.url`) toca direto.
+    url: media.storedUrl ?? null,
     voice: media.voice ?? null,
   };
 }
