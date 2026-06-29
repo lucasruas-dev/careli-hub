@@ -4413,7 +4413,7 @@ function MessageContent({
 
   return (
     <p className="whitespace-pre-wrap leading-6 [overflow-wrap:anywhere]">
-      {message.body}
+      <WhatsAppText text={message.body} />
     </p>
   );
 }
@@ -4421,9 +4421,44 @@ function MessageContent({
 function MessageCaption({ text }: { text: string }) {
   return (
     <p className="whitespace-pre-wrap leading-6 [overflow-wrap:anywhere]">
-      {text}
+      <WhatsAppText text={text} />
     </p>
   );
+}
+
+// Renderiza a formatação do WhatsApp no cockpit (o operador vê negrito/itálico igual o cliente,
+// sem o `*`/`_` literal). *negrito* -> bold, _italico_ -> italic, ~tachado~ -> strikethrough.
+function WhatsAppText({ text }: { text: string }) {
+  const nodes: Array<JSX.Element | string> = [];
+  const pattern = /(\*[^*\n]+\*)|(_[^_\n]+_)|(~[^~\n]+~)/g;
+  let lastIndex = 0;
+  let key = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      nodes.push(text.slice(lastIndex, match.index));
+    }
+
+    const token = match[0];
+    const inner = token.slice(1, -1);
+
+    if (token.startsWith("*")) {
+      nodes.push(<strong key={key++}>{inner}</strong>);
+    } else if (token.startsWith("_")) {
+      nodes.push(<em key={key++}>{inner}</em>);
+    } else {
+      nodes.push(<s key={key++}>{inner}</s>);
+    }
+
+    lastIndex = pattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    nodes.push(text.slice(lastIndex));
+  }
+
+  return <>{nodes}</>;
 }
 
 function ImageMessageContent({

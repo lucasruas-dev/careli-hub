@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-29-cockpit-formatacao-whatsapp",
+    deployedAt: "2026-06-29T11:54:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "No painel de atendimento, o negrito/itálico das mensagens agora aparece formatado (antes mostrava os asteriscos `*` literais). O cliente sempre viu o negrito; agora o operador também vê.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-4ed6if9pm",
+    technical: {
+      done: "Componente WhatsAppText em IrisPage.tsx renderiza a formatação do WhatsApp no cockpit: *negrito*->strong, _italico_->em, ~tachado~->s. Aplicado no texto da mensagem (MessageContent) e na legenda de mídia (MessageCaption). O WhatsApp do cliente já renderizava; o cockpit mostrava o marcador literal. v1.12.1 -> v1.12.2.",
+      motivation:
+        "Lucas (acompanhando os atendimentos da Cacá pelo cockpit): 'gosto do negrito, mas o * não'. A Cacá usa negrito do WhatsApp (*texto*); no app do cliente vira negrito, mas o painel mostrava o asterisco. Renderizar no cockpit mantém o negrito e tira o marcador.",
+    },
+    title: "Iris: negrito do WhatsApp formatado no cockpit",
+    type: "correcao",
+    version: "v1.12.2",
+  },
+  {
     buildTag: "2026-06-29-caca-atender-terceiros",
     deployedAt: "2026-06-29T11:45:00-03:00",
     modules: [
