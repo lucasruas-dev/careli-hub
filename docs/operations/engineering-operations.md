@@ -38,6 +38,15 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 
 ## Pendencias criticas atuais
 
+### 2026-06-29 - Iris - cockpit redesign + abertura de janela + binding de variaveis + multi-WABA (v1.10.0)
+
+- Status: `NO AR / PRODUCAO`. Deployment `careli-hub-hub-i2bs-1qfzgyn3l` (v1.10.0). Rollback `2to2i7hgp` (v1.9.0). `ops` intocado (307).
+- Commit `2777702` na `main`, pushado p/ origin (git desconectado da Vercel; push nao dispara deploy). Working tree limpo.
+- Entregue: (1) redesign do atendimento da Iris espelhando o Hades (fila Espera/Pendente+cronometro, cockpit 5 abas fonte Apolo, Athena no rodape, board com linha inteira clicavel); (2) form de abertura de janela estilo Hades (busca Apolo, toggle Tickets/Parcelas); (3) binding de variaveis de template por chave (builder atribui placeholder sequencial; backend `buildTemplateBodyParameters` resolve por chave com fallback legado e trava `allKeysKnown`); (4) multi-WABA (lista+resolve telefones de WABAs extras via `META_WHATSAPP_EXTRA_BUSINESS_ACCOUNT_IDS` -> 4143/Elife aparece no Setup p/ criar template).
+- Pendencias externas (nao-codigo): template `retorno_principal` (abertura, 4143) aguardando aprovacao da Meta; WABA id da Gurgel p/ multi-numero; limpar tickets de teste; fallback C2X-direto da Iris a reverter (arquitetura Iris<-Apolo).
+- Handoff completo: `docs/operations/zeus-new-chat-startup-prompt-2026-06-29.md`. Arquivos-alvo de bug-fix listados la (secao 5).
+- ⚠️ `apps/hub/modules/caredesk/blocks/setup/iris-setup-view.tsx` e `@ts-nocheck` — typecheck nao protege; testar builder de template manualmente.
+
 ### 2026-06-20 - Hades - alinhamento de clientes em atraso entre Dashboard e Cobranca
 
 - Status: `VALIDADO_LOCAL / AGUARDANDO_TESTE_LUCAS`.
