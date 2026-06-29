@@ -169,6 +169,13 @@ export async function POST(request: NextRequest) {
     normalizeText(input?.sourceEntityType) ?? "apolo-crm360";
   const sourceModule = normalizeSourceModule(input?.sourceModule);
   const subject = normalizeText(input?.subject);
+  // Contexto do template (Iris vs Hades). "atendimento" troca a ordem das
+  // variaveis do corpo para [nome, protocolo, assunto]; ausente = ordem legada
+  // da cobranca [nome, parcelas, protocolo] (Hades nao passa o flag).
+  const templateContext = normalizeText(input?.templateContext);
+  // No atendimento, o operador pode referenciar o protocolo de um ticket
+  // existente (single-select de tickets); senao usa o protocolo recem-gerado.
+  const templateReferenceProtocol = normalizeText(input?.templateReferenceProtocol);
   const metadataInput = normalizeRecord(input?.metadata);
   const linkedAttendanceProtocol =
     normalizeAttendanceProtocol(input?.linkedAttendanceProtocol) ??
@@ -320,10 +327,15 @@ export async function POST(request: NextRequest) {
       formatTemplateInstallmentSummary(relatedInstallmentLabels);
     const templateBodyParameters = shouldSendTemplate
       ? buildTemplateBodyParameters({
+          context: templateContext,
           firstName,
+          fullName: contactName,
           installmentsSummary: templateInstallmentSummary,
-          protocolReference: templateProtocolReference,
+          operatorName: operator?.label,
+          protocolReference: templateReferenceProtocol ?? templateProtocolReference,
+          subject,
           templateBody,
+          templateVariables: localTemplate?.variables,
         })
       : [];
     const templatePreview =
@@ -1207,7 +1219,47 @@ function mapLocalTemplateRow(row: Record<string, unknown>) {
     phoneNumberId: normalizeText(metadata.metaPhoneNumberId),
     slug: normalizeText(row.slug),
     templateName,
+    variables: normalizeTemplateVariables(row.variables),
   };
+}
+
+// Variaveis declaradas no template (builder): cada {{n}} vinculado a uma chave
+// (primeiro_nome, protocolo, assunto, parcelas...). Usado para preencher o corpo
+// por chave em vez de posicao fixa.
+function normalizeTemplateVariables(
+  value: unknown,
+): { key: string; placeholder: string }[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+      const record = item as Record<string, unknown>;
+      const key = normalizeText(record.key);
+      const placeholder = normalizeText(record.placeholder);
+      if (!key || !placeholder) {
+        return null;
+      }
+      return { key, placeholder };
+    })
+    .filter((item): item is { key: string; placeholder: string } =>
+      Boolean(item),
+    );
+}
+
+function parsePlaceholderIndex(placeholder: string | null | undefined) {
+  if (!placeholder) {
+    return 0;
+  }
+  const match = /{{\s*(\d+)\s*}}/.exec(placeholder);
+  if (!match) {
+    return 0;
+  }
+  const index = Number.parseInt(match[1] ?? "", 10);
+  return Number.isNaN(index) ? 0 : index;
 }
 
 function buildTemplateHeaderMedia(template: {
@@ -1788,22 +1840,82 @@ function formatTemplateInstallmentSummary(labels: string[]) {
 }
 
 function buildTemplateBodyParameters({
+  context,
   firstName,
+  fullName,
   installmentsSummary,
+  operatorName,
   protocolReference,
+  subject,
   templateBody,
+  templateVariables,
 }: {
+  context?: string | null;
   firstName: string;
+  fullName?: string | null;
   installmentsSummary: string;
+  operatorName?: string | null;
   protocolReference: string;
+  subject?: string | null;
   templateBody: string | null;
+  templateVariables?: { key: string; placeholder: string }[] | null;
 }) {
   const expectedCount = countTemplateBodyVariables(templateBody);
-  const baseParameters = [
-    firstName,
-    installmentsSummary,
-    protocolReference,
-  ];
+
+  // Valor de cada variavel por chave (catalogo do builder). As de CRM ainda nao
+  // calculadas no envio caem em "-".
+  const valuesByKey: Record<string, string> = {
+    assunto: subject?.trim() || "-",
+    empreendimento: "-",
+    link: "-",
+    nome_cliente: fullName?.trim() || firstName,
+    operador: operatorName?.trim() || "-",
+    parcelas: installmentsSummary,
+    primeiro_nome: firstName,
+    protocolo: protocolReference,
+    unidade: "-",
+    valor: "-",
+    vencimento: "-",
+  };
+
+  // Resolucao por chave: o template declara quais variaveis usa e em que ordem
+  // (cada {{n}} vinculado a uma variavel no builder). Preenche cada posicao com
+  // o valor da variavel escolhida.
+  const orderedVariables = (templateVariables ?? [])
+    .map((variable) => ({
+      index: parsePlaceholderIndex(variable.placeholder),
+      key: variable.key,
+    }))
+    .filter((variable) => variable.index > 0)
+    .sort((first, second) => first.index - second.index);
+  // So resolve por chave se TODAS as chaves declaradas forem conhecidas — senao
+  // cai no fallback legado (protege templates antigos com chaves estranhas).
+  const allKeysKnown =
+    orderedVariables.length > 0 &&
+    orderedVariables.every((variable) =>
+      Object.prototype.hasOwnProperty.call(valuesByKey, variable.key),
+    );
+
+  if (allKeysKnown) {
+    const maxIndex = Math.max(
+      expectedCount,
+      ...orderedVariables.map((variable) => variable.index),
+    );
+    const parameters: string[] = [];
+    for (let index = 1; index <= maxIndex; index += 1) {
+      const variable = orderedVariables.find((item) => item.index === index);
+      const value = variable ? valuesByKey[variable.key] ?? "-" : "-";
+      parameters.push(trimTemplateVariable(value));
+    }
+    return parameters.slice(0, expectedCount || maxIndex);
+  }
+
+  // Sem variaveis declaradas: ordem legada. Atendimento (Iris): [nome, protocolo,
+  // assunto]. Cobranca (Hades/legado): [nome, resumo das parcelas, protocolo].
+  const baseParameters =
+    context === "atendimento"
+      ? [firstName, protocolReference, subject?.trim() || "-"]
+      : [firstName, installmentsSummary, protocolReference];
   const parameters = baseParameters.slice(0, expectedCount);
 
   while (parameters.length < expectedCount) {

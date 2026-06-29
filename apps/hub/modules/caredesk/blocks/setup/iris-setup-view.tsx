@@ -1418,10 +1418,23 @@ function IrisTemplateSetupPanel({
   ) {
     setTemplateFeedback("");
     setTemplateForm((current) => {
-      const variables = mergeTemplateVariable(current.variables, variable);
-      const bodyText = current.bodyText.includes(variable.placeholder)
-        ? current.bodyText
-        : `${current.bodyText.trim()} ${variable.placeholder}`.trim();
+      // Cada variavel inserida pega o PROXIMO numero em sequencia ({{1}}, {{2}}...)
+      // e guarda o vinculo numero->variavel. A Meta exige numeros contiguos e o
+      // backend preenche por chave (ver buildTemplateBodyParameters).
+      if (current.variables.some((item) => item.key === variable.key)) {
+        return current;
+      }
+      const placeholder = `{{${current.variables.length + 1}}}`;
+      const variables = [
+        ...current.variables,
+        {
+          example: variable.example,
+          key: variable.key,
+          label: variable.label,
+          placeholder,
+        },
+      ];
+      const bodyText = `${current.bodyText.trim()} ${placeholder}`.trim();
 
       return {
         ...current,
@@ -2622,7 +2635,7 @@ function IrisTemplateSetupPanel({
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5">
                       <span className="font-mono text-[11px] text-[#A07C3B]">
-                        {variable.placeholder}
+                        +
                       </span>
                       <span className="rounded-full bg-[#f4f6fa] px-1.5 py-0.5 text-[10px] font-semibold text-[#63708a]">
                         {variable.readiness}

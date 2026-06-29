@@ -212,14 +212,18 @@ export type IrisApoloContextContact = {
 export type IrisApoloContextInstallment = {
   dueDate?: string | null;
   id?: string;
+  invoiceUrl?: string | null;
   number?: string;
   paidAt?: string | null;
+  paymentUrl?: string | null;
   reference?: string | null;
   status?: string | null;
   value?: string | null;
 };
 
 export type IrisApoloContextCommercialLink = {
+  contractStatus?: string | null;
+  contractUrl?: string | null;
   enterprise?: string | null;
   installments?: IrisApoloContextInstallment[];
   referenceLabel?: string | null;

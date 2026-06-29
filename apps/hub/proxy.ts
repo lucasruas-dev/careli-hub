@@ -113,19 +113,10 @@ export function proxy(request: NextRequest) {
     return response;
   }
 
-  if (
-    hubHostsWithoutZeus.has(host) &&
-    (pathname === "/zeus" ||
-      pathname.startsWith("/zeus/") ||
-      pathname === "/squadops" ||
-      pathname.startsWith("/squadops/"))
-  ) {
-    const url = request.nextUrl.clone();
-    url.pathname = "/";
-    url.search = "";
-
-    return NextResponse.redirect(url);
-  }
+  // Zeus voltou a ser modulo do hub: /zeus fica acessivel no c2x.app.br (o
+  // ZeusPage ja se restringe a admin via canAccessZeusAsAdmin). /squadops cai
+  // no redirect legado abaixo (-> /zeus). O host dedicado ops.c2x.app.br vira
+  // redundante e sera removido junto com o alias.
 
   for (const [legacyPath, pantheonPath] of legacyVisualRoutes) {
     if (pathname === legacyPath || pathname.startsWith(`${legacyPath}/`)) {

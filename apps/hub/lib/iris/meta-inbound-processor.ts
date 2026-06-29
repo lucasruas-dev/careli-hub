@@ -212,9 +212,15 @@ async function processInboundMessage({
     event.provider_message_id,
   );
   const workspaceId = await getDefaultWorkspaceId(client);
-  const channel = await getWhatsAppChannel(client);
+  const channel = await getWhatsAppChannel(client, event.phone_number_id);
   const channelId = channel?.id ?? null;
-  const queue = await getDefaultQueue(client);
+  const channelQueueSlug = readChannelQueueSlug(channel);
+  const channelCacaEnabled = readChannelCacaEnabled(channel);
+  const queue =
+    (await getQueueBySlug(client, channelQueueSlug)) ??
+    (channelQueueSlug === DEFAULT_QUEUE_SLUG
+      ? null
+      : await getDefaultQueue(client));
   const profile = queue ? await getDefaultProfile(client, queue.id) : null;
   const contact = await findOrCreateContact({
     channelId,
@@ -319,6 +325,7 @@ async function processInboundMessage({
   ]);
 
   const autoReplySent = await maybeSendCacaAutoReply({
+    cacaEnabled: channelCacaEnabled,
     channelId,
     client,
     contact,
@@ -447,13 +454,76 @@ async function getDefaultWorkspaceId(client: IrisMetaProcessorClient) {
   return data?.id ?? null;
 }
 
-async function getWhatsAppChannel(client: IrisMetaProcessorClient) {
+type IrisChannelRow = {
+  config: Record<string, unknown> | null;
+  external_account_id: string | null;
+  id: string;
+  phone_number: string | null;
+};
+
+const WHATSAPP_CHANNEL_SELECT = "id,phone_number,external_account_id,config";
+const QUEUE_SELECT =
+  "id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes";
+
+// Resolve o canal WhatsApp pelo phone_number_id de entrada (multi-numero).
+// Se nao houver canal mapeado pra esse numero, faz fallback no canal padrao por
+// slug — preservando o comportamento atual (numero unico -> canal/fila padrao).
+async function getWhatsAppChannel(
+  client: IrisMetaProcessorClient,
+  phoneNumberId?: string | null,
+): Promise<IrisChannelRow | null> {
+  const normalizedPhoneNumberId = phoneNumberId?.trim();
+
+  if (normalizedPhoneNumberId) {
+    const { data, error } = await client
+      .from("caredesk_channels")
+      .select(WHATSAPP_CHANNEL_SELECT)
+      .eq("provider", META_PROVIDER)
+      .eq("external_account_id", normalizedPhoneNumberId)
+      .maybeSingle<IrisChannelRow>();
+
+    if (error) {
+      throw error;
+    }
+
+    if (data) {
+      return data;
+    }
+  }
+
   const { data, error } = await client
     .from("caredesk_channels")
-    .select("id,phone_number")
+    .select(WHATSAPP_CHANNEL_SELECT)
     .eq("slug", WHATSAPP_CHANNEL_SLUG)
     .eq("provider", META_PROVIDER)
-    .maybeSingle<{ id: string; phone_number: string | null }>();
+    .maybeSingle<IrisChannelRow>();
+
+  if (error) {
+    throw error;
+  }
+
+  return data;
+}
+
+// Slug da fila default deste canal (config.defaultQueueSlug); cai no padrao.
+function readChannelQueueSlug(channel: IrisChannelRow | null): string {
+  const config = channel && isRecord(channel.config) ? channel.config : null;
+  return readString(config?.defaultQueueSlug) ?? DEFAULT_QUEUE_SLUG;
+}
+
+// CACA so atende quando o canal habilita (config.cacaEnabled). Default = true
+// pra nao desligar a automacao do canal atual que ainda nao tem a flag.
+function readChannelCacaEnabled(channel: IrisChannelRow | null): boolean {
+  const config = channel && isRecord(channel.config) ? channel.config : null;
+  return config?.cacaEnabled !== false;
+}
+
+async function getQueueBySlug(client: IrisMetaProcessorClient, slug: string) {
+  const { data, error } = await client
+    .from("caredesk_queues")
+    .select(QUEUE_SELECT)
+    .eq("slug", slug)
+    .maybeSingle<IrisQueueRow>();
 
   if (error) {
     throw error;
@@ -463,19 +533,7 @@ async function getWhatsAppChannel(client: IrisMetaProcessorClient) {
 }
 
 async function getDefaultQueue(client: IrisMetaProcessorClient) {
-  const { data, error } = await client
-    .from("caredesk_queues")
-    .select(
-      "id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes",
-    )
-    .eq("slug", DEFAULT_QUEUE_SLUG)
-    .maybeSingle<IrisQueueRow>();
-
-  if (error) {
-    throw error;
-  }
-
-  return data;
+  return getQueueBySlug(client, DEFAULT_QUEUE_SLUG);
 }
 
 async function getDefaultProfile(
@@ -1608,6 +1666,7 @@ function extractStatusDetail(payload: Json, statusId: string) {
 }
 
 async function maybeSendCacaAutoReply({
+  cacaEnabled,
   channelId,
   client,
   contact,
@@ -1615,6 +1674,7 @@ async function maybeSendCacaAutoReply({
   messageDetail,
   ticket,
 }: {
+  cacaEnabled: boolean;
   channelId: string | null;
   client: IrisMetaProcessorClient;
   contact: IrisContactRow;
@@ -1624,7 +1684,7 @@ async function maybeSendCacaAutoReply({
 }) {
   const destination = normalizeWhatsAppId(event.contact_wa_id);
 
-  if (!destination || !shouldCacaAutomationRun(ticket)) {
+  if (!cacaEnabled || !destination || !shouldCacaAutomationRun(ticket)) {
     return false;
   }
 

@@ -1,6 +1,6 @@
 {
-  "buildCommand": "npx turbo build --filter=@repo/hub",
-  "installCommand": "npm install",
+  "buildCommand": "npm install --include=dev && npx turbo build --filter=@repo/hub",
+  "installCommand": "npm install --include=dev",
   "outputDirectory": "apps/hub/.next",
   "crons": [
     {
@@ -10,6 +10,14 @@
     {
       "path": "/api/guardian/sync/c2x",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/apolo/sync/c2x",
+      "schedule": "20 */6 * * *"
+    },
+    {
+      "path": "/api/apolo/sync/c2x/incremental",
+      "schedule": "*/5 * * * *"
     },
     {
       "path": "/api/guardian/lembretes/cron",

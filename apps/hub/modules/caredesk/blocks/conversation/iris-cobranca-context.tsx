@@ -3,16 +3,20 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   ArrowRight,
+  Barcode,
   Bot,
   Building2,
   CalendarCheck,
   Check,
   CheckCircle2,
+  ChevronDown,
+  ChevronUp,
   ClipboardList,
   Clock3,
   ExternalLink,
   FileText,
   HandCoins,
+  LandPlot,
   Link2,
   Loader2,
   MessageSquare,
@@ -23,6 +27,7 @@ import {
   Send,
   Ticket,
   User,
+  Wallet,
   X,
   XCircle,
   type LucideIcon,
@@ -30,6 +35,10 @@ import {
 import { Tooltip } from "@repo/uix";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
+import type {
+  IrisApoloContextEntity,
+  IrisApoloContextInstallment,
+} from "@/modules/caredesk/types/iris-types";
 
 // Painel de CONTEXTO do cockpit de cobranca do Hades (zona direita da tela de
 // atendimento). Reaproveita o motor da Iris (conversa) mas com UI propria: puxa
@@ -38,11 +47,22 @@ import type { QueueClient } from "@/modules/guardian/attendance/types";
 // operador insere o LINK do boleto no rascunho da mensagem (a gente nao gera
 // boleto; so reenvia o link existente, sem custo).
 
-type CobrancaTab = "cliente" | "parcelas" | "propostas" | "timeline" | "tickets";
+type CobrancaTab =
+  | "carteira"
+  | "cliente"
+  | "financeiro"
+  | "parcelas"
+  | "propostas"
+  | "timeline"
+  | "tickets";
+
+export type IrisCockpitMode = "atendimento" | "cobranca";
 
 export type CockpitTicket = {
+  closedAt?: string | null;
   id: string;
   openedAt?: string | null;
+  operator?: string | null;
   protocol: string;
   status?: string | null;
   subject: string;
@@ -75,12 +95,23 @@ const TABS: { icon: LucideIcon; id: CobrancaTab; label: string }[] = [
   { icon: Ticket, id: "tickets", label: "Tickets" },
 ];
 
+// Atendimento (Iris): sem Parcelas/Propostas (cobranca); Parcelas -> Carteira (Apolo).
+const TABS_ATENDIMENTO: { icon: LucideIcon; id: CobrancaTab; label: string }[] = [
+  { icon: User, id: "cliente", label: "Cliente" },
+  { icon: Wallet, id: "carteira", label: "Carteira" },
+  { icon: HandCoins, id: "financeiro", label: "Financeiro" },
+  { icon: Clock3, id: "timeline", label: "Timeline" },
+  { icon: Ticket, id: "tickets", label: "Tickets" },
+];
+
 export function IrisCobrancaContextSidebar({
+  apoloEntity,
   clienteFields,
   clientId,
   collapsed,
   currentTicketId,
   formatDateTime,
+  mode = "cobranca",
   note,
   onInsertDraftText,
   onSelectTicket,
@@ -89,11 +120,13 @@ export function IrisCobrancaContextSidebar({
   renderProposal,
   tickets,
 }: {
+  apoloEntity?: IrisApoloContextEntity | null;
   clienteFields: { label: string; value: string }[];
   clientId: string | null;
   collapsed: boolean;
   currentTicketId: string;
   formatDateTime: (value?: string | null) => string;
+  mode?: IrisCockpitMode;
   note?: { text?: string | null; updatedAt?: string | null } | null;
   onInsertDraftText: (text: string) => void;
   onSelectTicket: (ticketId: string) => void;
@@ -103,7 +136,9 @@ export function IrisCobrancaContextSidebar({
   renderProposal?: (args: CobrancaProposalRenderArgs) => ReactNode;
   tickets: CockpitTicket[];
 }) {
-  const [tab, setTab] = useState<CobrancaTab>("parcelas");
+  const [tab, setTab] = useState<CobrancaTab>(
+    mode === "atendimento" ? "cliente" : "parcelas",
+  );
   const [client, setClient] = useState<QueueClient | null>(null);
   const [loading, setLoading] = useState(false);
   const [inserted, setInserted] = useState<Set<string>>(new Set());
@@ -204,6 +239,18 @@ export function IrisCobrancaContextSidebar({
     [client?.c2xInstallments],
   );
 
+  const tabs = mode === "atendimento" ? TABS_ATENDIMENTO : TABS;
+
+  // Timeline do Apolo (modo atendimento) mapeada pro formato da TimelineTab.
+  const apoloTimelineEvents = useMemo<TimelineDisplayEvent[]>(() => {
+    return (apoloEntity?.timeline ?? []).map((event, index) => ({
+      description: event.description ?? undefined,
+      id: `apolo-${index}`,
+      occurredAt: event.date ?? null,
+      title: event.title ?? "Evento",
+    }));
+  }, [apoloEntity?.timeline]);
+
   function insertBoleto(installment: NonNullable<QueueClient["c2xInstallments"]>[number]) {
     const url = installment.invoiceUrl ?? installment.paymentUrl ?? "";
     if (!url) return;
@@ -239,8 +286,13 @@ export function IrisCobrancaContextSidebar({
     <aside className="hidden w-[340px] shrink-0 flex-col border-l border-slate-100 bg-white xl:flex">
       <div className="border-b border-slate-100 p-3">
         <div className="flex items-center gap-2">
-          <div className="grid flex-1 grid-cols-5 gap-1 rounded-lg bg-slate-100/70 p-1">
-            {TABS.map((option) => (
+          <div
+            className={[
+              "grid flex-1 gap-1 rounded-lg bg-slate-100/70 p-1",
+              tabs.length >= 5 ? "grid-cols-5" : "grid-cols-4",
+            ].join(" ")}
+          >
+            {tabs.map((option) => (
               <Tooltip content={option.label} key={option.id} placement="bottom">
                 <button
                   type="button"
@@ -269,7 +321,7 @@ export function IrisCobrancaContextSidebar({
           </button>
         </div>
 
-        {client ? (
+        {mode === "cobranca" && client ? (
           <div className="mt-3 grid grid-cols-3 gap-1.5">
             <Indicator
               tone="danger"
@@ -323,9 +375,18 @@ export function IrisCobrancaContextSidebar({
             client={client}
             clienteFields={clienteFields}
             clientId={clientId}
-            formatDateTime={formatDateTime}
-            note={note}
           />
+        ) : null}
+
+        {tab === "carteira" ? (
+          <CarteiraTab
+            apoloEntity={apoloEntity ?? null}
+            onInsertDraftText={onInsertDraftText}
+          />
+        ) : null}
+
+        {tab === "financeiro" ? (
+          <FinanceiroTab apoloEntity={apoloEntity ?? null} />
         ) : null}
 
         {tab === "propostas" ? (
@@ -334,7 +395,11 @@ export function IrisCobrancaContextSidebar({
 
         {tab === "timeline" ? (
           <TimelineTab
-            events={[...guardianEvents, ...(client?.timeline ?? [])]}
+            events={
+              mode === "atendimento"
+                ? apoloTimelineEvents
+                : [...guardianEvents, ...(client?.timeline ?? [])]
+            }
             formatDateTime={formatDateTime}
           />
         ) : null}
@@ -535,6 +600,256 @@ function ProposalChoiceModal({
   );
 }
 
+// Aba Carteira (atendimento/Iris): empreendimentos/unidades/contratos do cliente
+// vindos do Apolo (commercialLinks). Entra no lugar de Parcelas (que e cobranca).
+function apoloInstallmentTone(
+  installment: IrisApoloContextInstallment,
+): "avencer" | "liquidada" | "vencida" {
+  const status = (installment.status ?? "").toLowerCase();
+  if (installment.paidAt || status.includes("liquid") || status.includes("pag")) {
+    return "liquidada";
+  }
+  if (status.includes("vencid") || status.includes("atras")) {
+    return "vencida";
+  }
+  return "avencer";
+}
+
+function CarteiraStat({
+  label,
+  tone,
+  value,
+}: {
+  label: string;
+  tone: "danger" | "neutral" | "success";
+  value: number;
+}) {
+  const color =
+    tone === "success"
+      ? "text-emerald-600"
+      : tone === "danger"
+        ? "text-rose-600"
+        : "text-slate-900";
+
+  return (
+    <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center">
+      <p className={`text-sm font-semibold ${color}`}>{value}</p>
+      <p className="text-[10px] text-slate-500">{label}</p>
+    </div>
+  );
+}
+
+// Carteira da Iris: cada unidade (commercialLink) é um accordion. Aberta mostra
+// resumo (contagem por status) + as parcelas; recolhida só o cabeçalho. Iris vê
+// TODAS as parcelas (adimplente + inadimplente). Boleto: a URL ainda nao vem no
+// contexto do Apolo — botao de boleto entra quando o sync trouxer o link.
+function CarteiraTab({
+  apoloEntity,
+  onInsertDraftText,
+}: {
+  apoloEntity: IrisApoloContextEntity | null;
+  onInsertDraftText?: (text: string) => void;
+}) {
+  const links = apoloEntity?.commercialLinks ?? [];
+  const [expanded, setExpanded] = useState<Set<number>>(
+    () => new Set(links.length === 1 ? [0] : []),
+  );
+
+  if (links.length === 0) {
+    return (
+      <EmptyHint text="Nenhuma unidade/contrato no Apolo para este cliente." />
+    );
+  }
+
+  return (
+    <div className="space-y-2">
+      {links.map((link, index) => {
+        const isOpen = expanded.has(index);
+        const installments = link.installments ?? [];
+        const counts = installments.reduce(
+          (acc, item) => {
+            acc[apoloInstallmentTone(item)] += 1;
+            return acc;
+          },
+          { avencer: 0, liquidada: 0, vencida: 0 },
+        );
+        const unitLabel = (link.unit ?? link.unitCode ?? "").trim();
+
+        return (
+          <div
+            key={`${link.enterprise ?? "link"}-${index}`}
+            className="overflow-hidden rounded-xl border border-slate-200/70 bg-white"
+          >
+            <button
+              type="button"
+              onClick={() =>
+                setExpanded((current) => {
+                  const next = new Set(current);
+                  if (next.has(index)) {
+                    next.delete(index);
+                  } else {
+                    next.add(index);
+                  }
+                  return next;
+                })
+              }
+              className={`flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-slate-50 ${
+                isOpen ? "border-b border-slate-100 bg-slate-50/70" : ""
+              }`}
+            >
+              <LandPlot
+                className="size-4 shrink-0 text-[#7A5E2C]"
+                aria-hidden="true"
+              />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-slate-900">
+                  {unitLabel || "Unidade"}
+                </p>
+                <p className="truncate text-[11px] text-slate-500">
+                  <span className="capitalize">
+                    {(link.enterprise ?? "").toLowerCase()}
+                  </span>
+                  {" · "}
+                  <span
+                    className={`font-medium ${
+                      counts.vencida > 0 ? "text-rose-600" : "text-emerald-600"
+                    }`}
+                  >
+                    {counts.vencida > 0
+                      ? `${counts.vencida} vencida${counts.vencida > 1 ? "s" : ""}`
+                      : "em dia"}
+                  </span>
+                </p>
+              </div>
+              {isOpen ? (
+                <ChevronUp
+                  className="size-4 shrink-0 text-slate-400"
+                  aria-hidden="true"
+                />
+              ) : (
+                <ChevronDown
+                  className="size-4 shrink-0 text-slate-400"
+                  aria-hidden="true"
+                />
+              )}
+            </button>
+
+            {isOpen ? (
+              <div className="px-3 py-3">
+                {link.contractUrl ? (
+                  <a
+                    href={link.contractUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mb-3 flex items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-white px-3 py-2 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
+                  >
+                    <FileText className="size-4" aria-hidden="true" /> Ver contrato
+                  </a>
+                ) : null}
+                <div className="mb-3 grid grid-cols-3 gap-2">
+                  <CarteiraStat
+                    label="Liquidadas"
+                    tone="success"
+                    value={counts.liquidada}
+                  />
+                  <CarteiraStat
+                    label="A vencer"
+                    tone="neutral"
+                    value={counts.avencer}
+                  />
+                  <CarteiraStat
+                    label="Vencidas"
+                    tone="danger"
+                    value={counts.vencida}
+                  />
+                </div>
+
+                {installments.length ? (
+                  <div className="overflow-hidden rounded-xl border border-slate-200/70">
+                    {installments.map((item, itemIndex) => {
+                      const tone = apoloInstallmentTone(item);
+                      const dotClass =
+                        tone === "vencida"
+                          ? "bg-rose-500"
+                          : tone === "liquidada"
+                            ? "bg-emerald-500"
+                            : "bg-sky-500";
+                      const statusColor =
+                        tone === "vencida"
+                          ? "text-rose-600"
+                          : tone === "liquidada"
+                            ? "text-emerald-600"
+                            : "text-slate-500";
+                      const statusLine =
+                        tone === "liquidada"
+                          ? `liquidada${item.paidAt ? ` · pago ${item.paidAt}` : ""}`
+                          : tone === "vencida"
+                            ? `vencida${item.dueDate ? ` · venceu ${item.dueDate}` : ""}`
+                            : `a vencer${item.dueDate ? ` · vence ${item.dueDate}` : ""}`;
+
+                      return (
+                        <div
+                          key={item.id ?? `${index}-${itemIndex}`}
+                          className={`flex items-center gap-2.5 px-3 py-2 ${
+                            itemIndex > 0 ? "border-t border-slate-100" : ""
+                          }`}
+                        >
+                          <span
+                            className={`size-2 shrink-0 rounded-full ${dotClass}`}
+                            aria-hidden="true"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <p className="truncate text-xs font-semibold text-slate-900">
+                              {item.reference ?? "Parcela"}
+                              {item.number ? (
+                                <span className="font-normal text-slate-400">
+                                  {" "}
+                                  · {item.number}
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className={`truncate text-[11px] ${statusColor}`}>
+                              {statusLine}
+                            </p>
+                          </div>
+                          <div className="shrink-0 text-right">
+                            <p className="text-xs font-semibold text-slate-900">
+                              {item.value ?? "-"}
+                            </p>
+                            {tone !== "liquidada" &&
+                            onInsertDraftText &&
+                            (item.invoiceUrl || item.paymentUrl) ? (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  onInsertDraftText(
+                                    `Segue o boleto da ${item.reference ?? "parcela"}: ${item.invoiceUrl ?? item.paymentUrl}`,
+                                  )
+                                }
+                                aria-label="Inserir boleto no rascunho"
+                                title="Inserir boleto no rascunho"
+                                className="mt-0.5 inline-flex size-6 items-center justify-center rounded-md text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+                              >
+                                <Barcode className="size-4" aria-hidden="true" />
+                              </button>
+                            ) : null}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <EmptyHint text="Sem parcelas nesta unidade." />
+                )}
+              </div>
+            ) : null}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function ParcelasTab({
   client,
   inserted,
@@ -688,15 +1003,11 @@ function ClienteTab({
   client,
   clienteFields,
   clientId,
-  formatDateTime,
-  note,
 }: {
   atProtocol: string;
   client: QueueClient | null;
   clienteFields: { label: string; value: string }[];
   clientId: string | null;
-  formatDateTime: (value?: string | null) => string;
-  note?: { text?: string | null; updatedAt?: string | null } | null;
 }) {
   // Enriquece e-mail/CPF com o cadastro do Hades quando o ticket nao trouxe.
   const fields = clienteFields.map((field) => {
@@ -711,31 +1022,18 @@ function ClienteTab({
   });
   return (
     <div className="space-y-2.5">
-      <div className="rounded-xl border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-3 py-2.5">
-        <p className="text-[11px] font-semibold uppercase tracking-normal text-[#A07C3B]">
-          Nota do operador
-        </p>
-        <p className="mt-1 text-sm font-medium text-slate-700 [overflow-wrap:anywhere]">
-          {note?.text?.trim() || "Sem nota registrada para este cliente."}
-        </p>
-        <p className="mt-1 text-[11px] text-slate-500">
-          {note?.updatedAt
-            ? `Atualizada em ${formatDateTime(note.updatedAt)}`
-            : "Use o ícone de nota para registrar observações."}
-        </p>
-      </div>
       <div className="overflow-hidden rounded-xl border border-slate-200/70 bg-white">
         {fields.map((field, index) => (
           <div
             key={field.label}
-            className={`flex items-start justify-between gap-3 px-3 py-2 ${
+            className={`flex items-start justify-between gap-4 px-4 py-3.5 ${
               index > 0 ? "border-t border-slate-100" : ""
             }`}
           >
-            <span className="shrink-0 text-[11px] font-medium text-slate-500">
+            <span className="shrink-0 text-sm font-medium text-slate-500">
               {field.label}
             </span>
-            <span className="min-w-0 break-words text-right text-xs font-semibold text-slate-900 [overflow-wrap:anywhere]">
+            <span className="min-w-0 break-words text-right text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">
               {field.value}
             </span>
           </div>
@@ -752,6 +1050,73 @@ function ClienteTab({
           Abrir cadastro no Hades
         </a>
       ) : null}
+    </div>
+  );
+}
+
+// Financeiro da Iris: situação financeira (do apoloEntity.financial) + acordos/
+// promessas. Os acordos/promessas ainda não vêm no contexto do Apolo (são do
+// Hades via commitments) → por ora empty-state; entram quando o dado for ligado.
+function FinanceiroTab({
+  apoloEntity,
+}: {
+  apoloEntity: IrisApoloContextEntity | null;
+}) {
+  const financial = apoloEntity?.financial;
+
+  if (!financial) {
+    return (
+      <EmptyHint text="Sem situação financeira no Apolo para este cliente." />
+    );
+  }
+
+  const behavior = financial.paymentBehavior?.trim();
+  const risk = financial.risk?.trim();
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-3 gap-2">
+        <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center">
+          <p className="text-sm font-semibold text-slate-900">
+            {financial.totalPortfolio ?? "-"}
+          </p>
+          <p className="text-[10px] text-slate-500">Carteira</p>
+        </div>
+        <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center">
+          <p className="text-sm font-semibold text-emerald-600">
+            {financial.paidAmount ?? "-"}
+          </p>
+          <p className="text-[10px] text-slate-500">Pago</p>
+        </div>
+        <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center">
+          <p className="text-sm font-semibold text-rose-600">
+            {financial.overdueAmount ?? "-"}
+          </p>
+          <p className="text-[10px] text-slate-500">Vencido</p>
+        </div>
+      </div>
+
+      {behavior || risk ? (
+        <div className="flex flex-wrap gap-2">
+          {behavior ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-amber-50 px-2.5 py-1 text-[11px] font-medium capitalize text-amber-700 ring-1 ring-amber-200">
+              {behavior.toLowerCase()}
+            </span>
+          ) : null}
+          {risk ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium capitalize text-slate-600 ring-1 ring-slate-200">
+              Risco {risk.toLowerCase()}
+            </span>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div>
+        <p className="mb-2 text-xs font-semibold text-slate-500">
+          Acordos e promessas
+        </p>
+        <EmptyHint text="Nenhum acordo ou promessa registrado para este cliente." />
+      </div>
     </div>
   );
 }
@@ -1067,9 +1432,17 @@ function TicketsTab({
             <p className="mt-0.5 truncate text-xs font-semibold text-slate-900">
               {item.subject || "Sem assunto"}
             </p>
-            <p className="mt-0.5 text-[10px] text-slate-400">
-              Aberto em {formatDateTime(item.openedAt)}
+            <p className="mt-1 text-[10px] text-slate-400">
+              Aberto {formatDateTime(item.openedAt)}
+              {item.closedAt
+                ? ` · encerrado ${formatDateTime(item.closedAt)}`
+                : ""}
             </p>
+            {item.operator ? (
+              <p className="mt-0.5 truncate text-[10px] text-slate-400">
+                Operador: {item.operator}
+              </p>
+            ) : null}
           </button>
         );
       })}

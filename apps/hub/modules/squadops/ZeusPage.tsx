@@ -2078,27 +2078,9 @@ export function ZeusPage({
           </Surface>
         ) : null}
 
-        <ZeusOpsPresenceBar
-          activeView={activeView}
-          avatarUrl={hubUser?.avatarUrl}
-          isOnline={
-            canAccessZeus &&
-            profileStatus === "ready" &&
-            Boolean(zeusAccessToken)
-          }
-          itTicketAttentionCount={itTicketAttentionCount}
-          lastSeenAt={zeusPresenceLastSeenAt}
-          monitoringAlertCount={visibleMonitoringAlertCount}
-          onOpenHelpDesk={() => setActiveView("itTickets")}
-          onOpenMonitoring={() => setActiveView("monitoring")}
-          onPresenceStatusChange={handleZeusPresenceStatusChange}
-          onSignOut={() => {
-            void signOut();
-          }}
-          operationActionCount={actionCount}
-          presenceStatus={zeusPresenceStatus}
-          userName={hubUser?.name ?? "Sessao"}
-        />
+        {/* ZeusOpsPresenceBar removido: o Zeus usa o chrome PADRAO do hub
+            (central de notificacao + barra do avatar do HubShell). Sem header
+            proprio -> sem duplicacao. */}
 
         <ZeusViewTabs
           activeView={activeView}

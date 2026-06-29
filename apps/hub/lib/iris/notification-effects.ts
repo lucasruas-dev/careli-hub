@@ -53,7 +53,31 @@ export function showBrowserIrisNotification({
   registerIrisNotificationPermissionIntent();
 }
 
+// Som compartilhado Iris + Hades (atendimento). Arquivo fornecido pelo Lucas.
+// Hermes mantem o som proprio dele (panteon-notification / hermes-call-ringtone).
+const IRIS_NOTIFICATION_SOUND_SRC = "/sounds/iris-notification.mp3";
+
 export function playIrisInboundSound() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    const audio = new Audio(IRIS_NOTIFICATION_SOUND_SRC);
+    audio.volume = 0.9;
+    const played = audio.play();
+
+    if (played && typeof played.catch === "function") {
+      // Autoplay pode ser bloqueado sem interacao previa -> cai no tom sintetizado.
+      played.catch(() => playIrisInboundFallbackTone());
+    }
+  } catch {
+    playIrisInboundFallbackTone();
+  }
+}
+
+// Fallback (tom sintetizado) caso o navegador bloqueie o arquivo de audio.
+function playIrisInboundFallbackTone() {
   if (typeof window === "undefined") {
     return;
   }

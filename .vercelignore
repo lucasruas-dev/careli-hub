@@ -21,3 +21,14 @@ node_modules
 # Local Codex work artifacts
 .codex-artifacts
 .codex-deploy
+.codex-tmp
+.codex
+.codex-logs
+.codex-output
+.codex-runtime
+.agents
+.tmp
+
+# VCS history e saidas locais (nao usados no build)
+.git
+outputs

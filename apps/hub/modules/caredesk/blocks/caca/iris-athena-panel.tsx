@@ -21,6 +21,7 @@ export type AthenaAction =
   | "boletos"
   | "livre"
   | "resumir"
+  | "tickets"
   | "total";
 
 export type AthenaMessage = {
@@ -35,10 +36,14 @@ const SHORTCUTS: { action: AthenaAction; icon: typeof Coins; label: string }[] =
   { action: "total", icon: Coins, label: "Total em aberto" },
   { action: "resumir", icon: ListChecks, label: "Resumir conversa" },
 ];
+// Iris (atendimento): a Athena traz a lista de tickets do cliente.
+const IRIS_SHORTCUTS: { action: AthenaAction; icon: typeof Coins; label: string }[] =
+  [{ action: "tickets", icon: ListChecks, label: "Lista de tickets" }];
 
 // ATHENA — assistente do operador (Hades). UI discreta, estilo chat, junto ao
 // compositor. Nunca envia sozinha: cada resposta vai pro rascunho.
 export function IrisAthenaPanel({
+  cobrancaMode = false,
   contextMessage,
   disabled,
   loading,
@@ -51,6 +56,7 @@ export function IrisAthenaPanel({
   prompt,
   thread,
 }: {
+  cobrancaMode?: boolean;
   contextMessage?: string | null;
   disabled: boolean;
   loading: boolean;
@@ -177,7 +183,7 @@ export function IrisAthenaPanel({
         </div>
 
         <div className="flex shrink-0 flex-wrap gap-1.5 border-b border-slate-100 px-3 py-2.5">
-          {SHORTCUTS.map((shortcut) => (
+          {(cobrancaMode ? SHORTCUTS : IRIS_SHORTCUTS).map((shortcut) => (
             <Tooltip key={shortcut.action} content={shortcut.label} placement="top">
               <button
                 type="button"

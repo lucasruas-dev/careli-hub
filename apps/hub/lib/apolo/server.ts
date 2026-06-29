@@ -43,6 +43,7 @@ type ApoloDashboardOptions = {
 
 type C2xUsersQueryOptions = {
   limit?: number | null;
+  userIds?: number[];
 };
 
 type ApoloEntityRow = {
@@ -213,6 +214,7 @@ type C2xUserRow = RowDataPacket & {
   person_type_id: number | null;
   person_type_name: string | null;
   phone: string | null;
+  phone_list: string | null;
   payment_count: number | string | null;
   profile_id: number | null;
   profile_name: string | null;
@@ -437,10 +439,262 @@ export async function syncApoloFromC2x(): Promise<SyncResult> {
   }
 }
 
+type ApoloIncrementalCursors = {
+  actionLogId: number;
+  auditId: number;
+  usersUpdatedAt: string | null;
+};
+
+// Sync incremental: le os feeds de mudanca que o C2X ja mantem (read-only) e
+// re-sincroniza SO os usuarios afetados, em vez do resync completo.
+//   - action_logs  -> eventos de pagamento do Asaas (financeiro near-real-time)
+//   - audits       -> Payment / AcquisitionRequest (operacional)
+//   - users.updated_at -> cadastro
+// Cursores guardados na metadata de apolo_sync_runs (sem tabela nova).
+export async function syncApoloIncrementalFromC2x(): Promise<SyncResult> {
+  const adminClient = createApoloAdminClient();
+
+  if (!adminClient) {
+    return { error: "Configuracao server-side do Supabase ausente.", ok: false };
+  }
+
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return {
+      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
+      ok: false,
+    };
+  }
+
+  const pool = poolResult.pool;
+
+  try {
+    const existing = await readApoloIncrementalCursors(adminClient);
+
+    // Primeira execucao: so registra os cursores atuais (o resync completo cuida
+    // da base historica). A partir daqui, processamos apenas o que for novo.
+    if (!existing) {
+      const head = await readC2xHeadCursors(pool);
+      await writeApoloIncrementalRun(adminClient, head, 0, 0);
+      return { ok: true, rowsWritten: 0, syncRunId: "incremental-bootstrap" };
+    }
+
+    let nextActionLogId = existing.actionLogId;
+    let nextAuditId = existing.auditId;
+    let nextUsersUpdatedAt = existing.usersUpdatedAt;
+    const dirtyUserIds = new Set<number>();
+    const paymentIds = new Set<number>();
+    const acqRequestIds = new Set<number>();
+
+    const [actionRows] = await pool.query<
+      (RowDataPacket & { id: number; loggable_id: number | null })[]
+    >(
+      "select id, loggable_id from action_logs where id > ? and loggable_type = 'Payment' order by id asc limit 5000",
+      [existing.actionLogId],
+    );
+    for (const row of actionRows) {
+      nextActionLogId = Math.max(nextActionLogId, Number(row.id));
+      if (row.loggable_id) paymentIds.add(Number(row.loggable_id));
+    }
+
+    const [auditRows] = await pool.query<
+      (RowDataPacket & {
+        id: number;
+        auditable_type: string | null;
+        auditable_id: number | null;
+      })[]
+    >(
+      "select id, auditable_type, auditable_id from audits where id > ? order by id asc limit 5000",
+      [existing.auditId],
+    );
+    for (const row of auditRows) {
+      nextAuditId = Math.max(nextAuditId, Number(row.id));
+
+      if (!row.auditable_id) {
+        continue;
+      }
+
+      if (row.auditable_type === "Payment") {
+        paymentIds.add(Number(row.auditable_id));
+      } else if (row.auditable_type === "AcquisitionRequest") {
+        acqRequestIds.add(Number(row.auditable_id));
+      }
+    }
+
+    if (paymentIds.size) {
+      const [rows] = await pool.query<
+        (RowDataPacket & { acquisition_request_id: number | null })[]
+      >(
+        "select distinct acquisition_request_id from payments where id in (?) and acquisition_request_id is not null",
+        [Array.from(paymentIds)],
+      );
+      for (const row of rows) {
+        if (row.acquisition_request_id) {
+          acqRequestIds.add(Number(row.acquisition_request_id));
+        }
+      }
+    }
+
+    if (acqRequestIds.size) {
+      const [rows] = await pool.query<
+        (RowDataPacket & Record<string, number | null>)[]
+      >(
+        "select client_id, client_2_id, client_3_id, client_4_id, client_5_id from acquisition_requests where id in (?)",
+        [Array.from(acqRequestIds)],
+      );
+      for (const row of rows) {
+        for (const key of [
+          "client_id",
+          "client_2_id",
+          "client_3_id",
+          "client_4_id",
+          "client_5_id",
+        ] as const) {
+          const value = row[key];
+          if (value) {
+            dirtyUserIds.add(Number(value));
+          }
+        }
+      }
+    }
+
+    if (existing.usersUpdatedAt) {
+      const [rows] = await pool.query<
+        (RowDataPacket & { id: number; ua: string })[]
+      >(
+        "select id, date_format(updated_at, '%Y-%m-%d %H:%i:%s.%f') as ua from users where updated_at > ? order by updated_at asc limit 5000",
+        [existing.usersUpdatedAt],
+      );
+      for (const row of rows) {
+        dirtyUserIds.add(Number(row.id));
+        if (!nextUsersUpdatedAt || row.ua > nextUsersUpdatedAt) {
+          nextUsersUpdatedAt = row.ua;
+        }
+      }
+    }
+
+    const ids = Array.from(dirtyUserIds).filter(
+      (id) => Number.isFinite(id) && id > 0,
+    );
+    let rowsWritten = 0;
+
+    if (ids.length) {
+      const now = new Date().toISOString();
+      const syncRun = await startApoloSyncRun(adminClient);
+      const syncRunId = syncRun.ok ? syncRun.syncRunId : "incremental";
+
+      for (let index = 0; index < ids.length; index += SYNC_BATCH_SIZE) {
+        const batchIds = ids.slice(index, index + SYNC_BATCH_SIZE);
+        const [userRows] = await pool.query<C2xUserRow[]>(
+          c2xUsersQuery({ userIds: batchIds }),
+        );
+        rowsWritten += await persistApoloEntityBatch(
+          adminClient,
+          userRows,
+          syncRunId,
+          now,
+        );
+      }
+    }
+
+    await writeApoloIncrementalRun(
+      adminClient,
+      {
+        actionLogId: nextActionLogId,
+        auditId: nextAuditId,
+        usersUpdatedAt: nextUsersUpdatedAt,
+      },
+      ids.length,
+      rowsWritten,
+    );
+
+    return { ok: true, rowsWritten, syncRunId: "incremental" };
+  } catch (error) {
+    console.error("[apolo:incremental] sync failed", {
+      code: (error as { code?: string })?.code,
+      message: apoloSafeErrorMessage(error),
+    });
+    return { error: apoloSafeErrorMessage(error), ok: false };
+  }
+}
+
+async function readApoloIncrementalCursors(
+  adminClient: ApoloSupabaseClient,
+): Promise<ApoloIncrementalCursors | null> {
+  const { data } = await adminClient
+    .from("apolo_sync_runs")
+    .select("metadata")
+    .eq("status", "completed")
+    .order("created_at", { ascending: false })
+    .limit(25);
+
+  for (const row of data ?? []) {
+    const metadata = metadataRecord((row as { metadata?: unknown }).metadata);
+    const cursors = metadataRecord(metadata?.cursors);
+
+    if (cursors) {
+      return {
+        actionLogId: toNumber(cursors.actionLogId),
+        auditId: toNumber(cursors.auditId),
+        usersUpdatedAt:
+          typeof cursors.usersUpdatedAt === "string"
+            ? cursors.usersUpdatedAt
+            : null,
+      };
+    }
+  }
+
+  return null;
+}
+
+async function readC2xHeadCursors(
+  pool: HadesC2xPool,
+): Promise<ApoloIncrementalCursors> {
+  const [actionRows] = await pool.query<(RowDataPacket & { v: number | null })[]>(
+    "select max(id) as v from action_logs",
+  );
+  const [auditRows] = await pool.query<(RowDataPacket & { v: number | null })[]>(
+    "select max(id) as v from audits",
+  );
+  const [nowRows] = await pool.query<(RowDataPacket & { v: string })[]>(
+    "select date_format(now(6), '%Y-%m-%d %H:%i:%s.%f') as v",
+  );
+
+  return {
+    actionLogId: toNumber(actionRows[0]?.v),
+    auditId: toNumber(auditRows[0]?.v),
+    usersUpdatedAt: nowRows[0]?.v ?? null,
+  };
+}
+
+async function writeApoloIncrementalRun(
+  adminClient: ApoloSupabaseClient,
+  cursors: ApoloIncrementalCursors,
+  scanned: number,
+  upserted: number,
+) {
+  const now = new Date().toISOString();
+
+  await adminClient.from("apolo_sync_runs").insert({
+    finished_at: now,
+    metadata: { cursors, strategy: "incremental" },
+    scanned_count: scanned,
+    source_system: "c2x",
+    status: "completed",
+    updated_at: now,
+    upserted_count: upserted,
+  });
+}
+
 export function createApoloAdminClient() {
   const { serviceRoleKey, url } = getServerSupabaseConfig();
 
-  if (!url || !serviceRoleKey || isSupabaseSecretKey(serviceRoleKey)) {
+  // Aceita tanto o service_role JWT legado quanto a nova chave sb_secret_ do
+  // Supabase (igual aos demais modulos: guardian/iris/chronos/atlas usam a
+  // mesma key via createClient direto). A rejeicao anterior de sb_secret_
+  // zerava o admin client em producao e quebrava o sync (500).
+  if (!url || !serviceRoleKey) {
     return null;
   }
 
@@ -601,6 +855,26 @@ async function loadApoloTablesDashboard(
     await fetchC2xDocumentLabelsByEntity(sourceLinks);
   const c2xPortfolioByEntity =
     await fetchC2xPortfolioByEntity(sourceLinks);
+  const identifierRows = await fetchRows<{
+    entity_id: string;
+    identifier_type: string;
+    value_hash: string;
+  }>(
+    adminClient,
+    "apolo_entity_identifiers",
+    "entity_id,identifier_type,value_hash",
+    entityIds,
+  );
+  const docHashByEntityId = new Map<string, string>();
+  for (const row of identifierRows) {
+    if (
+      (row.identifier_type === "cpf" || row.identifier_type === "cnpj") &&
+      row.value_hash &&
+      !docHashByEntityId.has(row.entity_id)
+    ) {
+      docHashByEntityId.set(row.entity_id, `${row.identifier_type}:${row.value_hash}`);
+    }
+  }
 
   const profilesByEntity = groupRowsBy(profiles, "entity_id");
   const entities = entityRows.map((row) =>
@@ -619,12 +893,13 @@ async function loadApoloTablesDashboard(
     }, documentLabelsByEntity.get(row.id), c2xPortfolioByEntity.get(row.id)),
   );
 
+  const collapsedEntities = collapseDuplicateApoloEntities(entities, docHashByEntityId);
   const usuarioCount = profileSummaries.find((summary) => summary.profile === "usuario")?.count ?? 0;
 
   return {
     data: {
       buyerUsersCount,
-      entities,
+      entities: collapsedEntities,
       linkedUsersCount,
       meta: {
         generatedAt: new Date().toISOString(),
@@ -645,8 +920,119 @@ async function loadApoloTablesDashboard(
   };
 }
 
-function isSupabaseSecretKey(value: string) {
-  return value.startsWith("sb_secret_");
+// Colapsa entidades que compartilham o mesmo documento (CPF/CNPJ) em um unico
+// registro de exibicao. Causa-raiz: a entidade e chaveada pelo user.id do C2X,
+// entao a mesma pessoa com varios cadastros vira varias apolo_entities. Aqui o
+// dedup acontece na leitura (nao mexe em dado gravado).
+function collapseDuplicateApoloEntities(
+  entities: ApoloEntity[],
+  docHashByEntityId: Map<string, string>,
+): ApoloEntity[] {
+  const groups = new Map<string, ApoloEntity[]>();
+  const order: string[] = [];
+
+  for (const entity of entities) {
+    const docHash = docHashByEntityId.get(entity.id);
+    const key = docHash ? `doc:${docHash}` : `id:${entity.id}`;
+    const bucket = groups.get(key);
+
+    if (bucket) {
+      bucket.push(entity);
+    } else {
+      groups.set(key, [entity]);
+      order.push(key);
+    }
+  }
+
+  return order.map((key) => {
+    const bucket = groups.get(key) ?? [];
+    return bucket.length > 1 ? mergeApoloEntities(bucket) : bucket[0]!;
+  });
+}
+
+function mergeApoloEntities(group: ApoloEntity[]): ApoloEntity {
+  const ranked = [...group].sort((a, b) => {
+    if (b.commercialLinks.length !== a.commercialLinks.length) {
+      return b.commercialLinks.length - a.commercialLinks.length;
+    }
+
+    if (b.confidenceScore !== a.confidenceScore) {
+      return b.confidenceScore - a.confidenceScore;
+    }
+
+    return b.profiles.length - a.profiles.length;
+  });
+  const base = ranked[0]!;
+
+  const firstFilledFrom = (pick: (entity: ApoloEntity) => string | undefined) => {
+    for (const entity of ranked) {
+      const value = pick(entity)?.trim();
+
+      if (value) {
+        return value;
+      }
+    }
+
+    return undefined;
+  };
+
+  return {
+    ...base,
+    addresses: dedupeBy(
+      group.flatMap((entity) => entity.addresses),
+      (item) => `${item.value}::${item.number ?? ""}::${item.city}::${item.state}`,
+    ),
+    audit: dedupeBy(
+      group.flatMap((entity) => entity.audit),
+      (item) => item.field,
+    ),
+    commercialLinks: dedupeBy(
+      group.flatMap((entity) => entity.commercialLinks),
+      (item) =>
+        `${item.enterprise}::${item.unit}::${item.role}::${item.referenceLabel}::${item.unitCode ?? ""}`,
+    ),
+    confidenceScore: Math.max(...group.map((entity) => entity.confidenceScore)),
+    contacts: dedupeBy(
+      group.flatMap((entity) => entity.contacts),
+      (item) => `${item.type}::${item.value}`,
+    ),
+    documents: dedupeBy(
+      group.flatMap((entity) => entity.documents),
+      (item) => item.label,
+    ),
+    hadesClientId: base.hadesClientId ?? firstFilledFrom((entity) => entity.hadesClientId),
+    legalName: base.legalName ?? firstFilledFrom((entity) => entity.legalName),
+    profiles: uniqueProfiles(group.flatMap((entity) => entity.profiles)),
+    relationships: dedupeBy(
+      group.flatMap((entity) => entity.relationships),
+      (item) => `${item.relation}::${item.label}`,
+    ),
+    serviceSignals: dedupeBy(
+      group.flatMap((entity) => entity.serviceSignals),
+      (item) => `${item.protocol}::${item.channel}`,
+    ),
+    timeline: dedupeBy(
+      group.flatMap((entity) => entity.timeline),
+      (item) => `${item.date}::${item.title}::${item.description}`,
+    ),
+    tradeName: base.tradeName ?? firstFilledFrom((entity) => entity.tradeName),
+  };
+}
+
+function dedupeBy<T>(items: T[], keyOf: (item: T) => string): T[] {
+  const seen = new Set<string>();
+  const result: T[] = [];
+
+  for (const item of items) {
+    const key = keyOf(item);
+
+    if (!seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    }
+  }
+
+  return result;
 }
 
 function hasStaleCommercialPortfolio(rows: ApoloCommercialLinkRow[]) {
@@ -1666,6 +2052,13 @@ function c2xCrmAggregateQuery() {
 
 function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
   const limitClause = c2xUsersLimitClause(options.limit);
+  const idFilter = (options.userIds ?? [])
+    .map((id) => Math.trunc(id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+  const outerIdClause = idFilter.length ? `where u.id in (${idFilter.join(", ")})` : "";
+  const participantsIdClause = idFilter.length
+    ? `where participants.user_id in (${idFilter.join(", ")})`
+    : "";
 
   return `
     select
@@ -1688,6 +2081,17 @@ function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
       u.email,
       u.phone,
       u.cellphone,
+      (
+        select group_concat(
+          nullif(trim(ph.phone), '')
+          order by ph.is_whatsapp desc, ph.updated_at desc, ph.id desc
+          separator '||'
+        )
+        from phones ph
+        where ph.ownertable_type = 'User'
+          and ph.ownertable_id = u.id
+          and trim(coalesce(ph.phone, '')) <> ''
+      ) as phone_list,
       u.vinculed_by_id,
       coalesce(
         nullif(trim(linked.fantasy_name), ''),
@@ -1803,8 +2207,10 @@ function c2xUsersQuery(options: C2xUsersQueryOptions = {}) {
       left join enterprise_unities eu on eu.id = ar.enterprise_unity_id
       left join enterprises e on e.id = eu.enterprise_id
       left join payments pmt on pmt.acquisition_request_id = ar.id
+      ${participantsIdClause}
       group by participants.user_id
     ) portfolio on portfolio.user_id = u.id
+    ${outerIdClause}
     order by
       case u.profile_id
         when 2 then 1
@@ -1834,6 +2240,175 @@ function c2xUsersLimitClause(value: number | null | undefined) {
   }
 
   return `limit ${Math.min(normalizedLimit, LIVE_C2X_MAX_ENTITY_LIMIT)}`;
+}
+
+type HadesC2xPool = Extract<
+  ReturnType<typeof getHadesDbPool>,
+  { ok: true }
+>["pool"];
+
+const c2xPhoneNormColumns = ["u.cellphone", "u.phone"] as const;
+
+function c2xPhoneNormExpr(column: string) {
+  return `replace(replace(replace(replace(replace(replace(replace(coalesce(${column}, ''), '+', ''), ' ', ''), '-', ''), '(', ''), ')', ''), '.', ''), '/', '')`;
+}
+
+function c2xDocumentNormExpr(column: string) {
+  return `replace(replace(replace(replace(coalesce(${column}, ''), '.', ''), '-', ''), '/', ''), ' ', '')`;
+}
+
+// Variantes BR (DDD, 9o digito, +55) em digitos puros para casar com o telefone do C2X.
+function c2xPhoneDigitVariants(phones: string[]): string[] {
+  const variants = new Set<string>();
+
+  for (const raw of phones) {
+    const digits = String(raw ?? "").replace(/\D/g, "");
+
+    if (digits.length < 8) {
+      continue;
+    }
+
+    const national = digits.startsWith("55") ? digits.slice(2) : digits;
+    const candidates = new Set<string>([digits, national, `55${national}`]);
+
+    if (national.length === 11 && national[2] === "9") {
+      const without9 = `${national.slice(0, 2)}${national.slice(3)}`;
+      candidates.add(without9);
+      candidates.add(`55${without9}`);
+    }
+
+    if (national.length === 10) {
+      const with9 = `${national.slice(0, 2)}9${national.slice(2)}`;
+      candidates.add(with9);
+      candidates.add(`55${with9}`);
+    }
+
+    for (const candidate of candidates) {
+      if (candidate.length >= 8) {
+        variants.add(candidate);
+      }
+    }
+  }
+
+  return Array.from(variants);
+}
+
+async function findC2xUserIdsByContact(
+  pool: HadesC2xPool,
+  input: {
+    documents: string[];
+    limit: number;
+    name: string;
+    phoneVariants: string[];
+  },
+): Promise<number[]> {
+  const conditions: string[] = [];
+  const params: unknown[] = [];
+
+  if (input.phoneVariants.length) {
+    for (const column of c2xPhoneNormColumns) {
+      conditions.push(`${c2xPhoneNormExpr(column)} in (?)`);
+      params.push(input.phoneVariants);
+    }
+  }
+
+  if (input.documents.length) {
+    conditions.push(`${c2xDocumentNormExpr("u.cpf")} in (?)`);
+    params.push(input.documents);
+    conditions.push(`${c2xDocumentNormExpr("u.cnpj")} in (?)`);
+    params.push(input.documents);
+  }
+
+  if (input.name.length >= 3) {
+    const like = `%${input.name}%`;
+    conditions.push("u.name like ?");
+    params.push(like);
+    conditions.push("u.social_name like ?");
+    params.push(like);
+    conditions.push("u.fantasy_name like ?");
+    params.push(like);
+  }
+
+  if (!conditions.length) {
+    return [];
+  }
+
+  const safeLimit = Math.min(Math.max(Math.trunc(input.limit), 1), 25);
+  const sql = `
+    select u.id
+    from users u
+    where ${conditions.join(" or ")}
+    order by
+      case u.profile_id
+        when 2 then 1
+        when 3 then 2
+        when 6 then 3
+        when 7 then 4
+        when 1 then 5
+        when 5 then 6
+        when 4 then 7
+        else 8
+      end,
+      u.updated_at desc,
+      u.id desc
+    limit ${safeLimit}
+  `;
+  const [rows] = await pool.query<(RowDataPacket & { id: number })[]>(sql, params);
+
+  return rows
+    .map((row) => Number(row.id))
+    .filter((id) => Number.isFinite(id) && id > 0);
+}
+
+// Resolve o cliente direto no C2X (fonte da verdade) por telefone/CPF/nome e
+// devolve a entidade rica (mesmo shape do Apolo) via mapeador ao vivo. Usado
+// pela Iris para o cockpit/CACA nao dependerem do read-model defasado.
+export async function resolveC2xEntitiesByContact(input: {
+  documents?: string[];
+  limit?: number;
+  phones?: string[];
+  query?: string;
+}): Promise<{ entities: ApoloEntity[]; ok: true } | { error: string; ok: false }> {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return {
+      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
+      ok: false,
+    };
+  }
+
+  try {
+    const phoneVariants = c2xPhoneDigitVariants(input.phones ?? []);
+    const documents = (input.documents ?? [])
+      .map((value) => String(value ?? "").replace(/\D/g, ""))
+      .filter((value) => value.length === 11 || value.length === 14);
+    const name = (input.query ?? "").trim();
+
+    if (!phoneVariants.length && !documents.length && name.length < 3) {
+      return { entities: [], ok: true };
+    }
+
+    const ids = await findC2xUserIdsByContact(poolResult.pool, {
+      documents,
+      limit: input.limit ?? 10,
+      name,
+      phoneVariants,
+    });
+
+    if (!ids.length) {
+      return { entities: [], ok: true };
+    }
+
+    const [rows] = await poolResult.pool.query<C2xUserRow[]>(
+      c2xUsersQuery({ userIds: ids }),
+    );
+    const entities = rows.map(mapC2xUserToApoloEntity);
+
+    return { entities, ok: true };
+  } catch (error) {
+    return { error: apoloSafeErrorMessage(error), ok: false };
+  }
 }
 
 function mapApoloEntityRow(
@@ -1956,10 +2531,14 @@ async function startApoloSyncRun(adminClient: ApoloSupabaseClient): Promise<Sync
 
 async function persistApoloEntityBatch(
   adminClient: ApoloSupabaseClient,
-  users: C2xUserRow[],
+  rawUsers: C2xUserRow[],
   syncRunId: string,
   syncedAt: string,
 ) {
+  // A query do C2X pode retornar o mesmo user.id mais de uma vez (fan-out de
+  // joins). Sem dedupe, o upsert estoura com "ON CONFLICT DO UPDATE command
+  // cannot affect row a second time". Deduplicamos por id antes de montar.
+  const users = dedupeBy(rawUsers, (user) => String(user.id));
   const entityRows = users.map((user) => {
     const document = user.cpf ?? user.cnpj ?? null;
     const documentDisplay = formatDocumentForDisplay(document);
@@ -1988,13 +2567,16 @@ async function persistApoloEntityBatch(
       workspace_id: "careli",
     };
   });
-  const profileRows = users.flatMap((user) =>
-    mapC2xProfiles(user.profile_id, user.person_type_id).map((profile) => ({
-      entity_id: deterministicUuid(`apolo:c2x:users:${user.id}`),
-      profile,
-      status: "active",
-      updated_at: syncedAt,
-    })),
+  const profileRows = dedupeBy(
+    users.flatMap((user) =>
+      mapC2xProfiles(user.profile_id, user.person_type_id).map((profile) => ({
+        entity_id: deterministicUuid(`apolo:c2x:users:${user.id}`),
+        profile,
+        status: "active",
+        updated_at: syncedAt,
+      })),
+    ),
+    (row) => `${row.entity_id}::${row.profile}`,
   );
   const sourceRows = users.map((user) => ({
     entity_id: deterministicUuid(`apolo:c2x:users:${user.id}`),
@@ -2008,8 +2590,9 @@ async function persistApoloEntityBatch(
     sync_run_id: syncRunId,
     updated_at: syncedAt,
   }));
-  const identifierRows = users.flatMap((user) =>
-    buildIdentifierRows(user, syncRunId, syncedAt),
+  const identifierRows = dedupeBy(
+    users.flatMap((user) => buildIdentifierRows(user, syncRunId, syncedAt)),
+    (row) => `${row.entity_id}::${row.identifier_type}::${row.value_hash}`,
   );
   const contactRows = users.flatMap((user) => buildContactRows(user, syncedAt));
   const addressRows = users.flatMap((user) => buildAddressRows(user, syncedAt));
@@ -2115,6 +2698,41 @@ async function upsertApoloRows(
   }
 }
 
+// Telefones do C2X moram na tabela polimorfica `phones` (ownertable_type='User'),
+// NAO em users.cellphone/phone (que estao quase vazios: ~92 de 4.076). Aqui
+// mesclamos as duas fontes: primeiro os da tabela `phones` (vem do phone_list ja
+// ordenado por is_whatsapp/recencia, entao o 1o e o numero de WhatsApp), depois
+// os campos legados do users como fallback. Dedup por digitos para nao gerar
+// identifiers/contatos repetidos. O 1o numero e tratado como o principal.
+function collectC2xUserPhones(user: C2xUserRow): string[] {
+  const ordered: string[] = [];
+  const seen = new Set<string>();
+  const candidates = [
+    ...(user.phone_list ? user.phone_list.split("||") : []),
+    user.cellphone,
+    user.phone,
+  ];
+
+  for (const candidate of candidates) {
+    const value = candidate?.trim();
+
+    if (!value) {
+      continue;
+    }
+
+    const digits = onlyDigits(value);
+
+    if (!digits || seen.has(digits)) {
+      continue;
+    }
+
+    seen.add(digits);
+    ordered.push(value);
+  }
+
+  return ordered;
+}
+
 function buildIdentifierRows(
   user: C2xUserRow,
   syncRunId: string,
@@ -2155,14 +2773,12 @@ function buildIdentifierRows(
     });
   }
 
-  for (const phone of [user.cellphone, user.phone]) {
-    if (phone) {
-      identifiers.push({
-        identifier_type: "phone",
-        maskedValue: maskPhone(phone),
-        rawValue: onlyDigits(phone),
-      });
-    }
+  for (const phone of collectC2xUserPhones(user)) {
+    identifiers.push({
+      identifier_type: "phone",
+      maskedValue: maskPhone(phone),
+      rawValue: onlyDigits(phone),
+    });
   }
 
   return identifiers
@@ -2198,23 +2814,17 @@ function buildContactRows(user: C2xUserRow, syncedAt: string) {
     contact_type: "email" | "phone" | "whatsapp";
     label: string;
     rawValue: string | null;
-  }> = [
-    {
-      contact_type: "whatsapp",
-      label: "Celular",
-      rawValue: user.cellphone,
-    },
-    {
-      contact_type: "phone",
-      label: "Telefone",
-      rawValue: user.phone && user.phone !== user.cellphone ? user.phone : null,
-    },
-    {
-      contact_type: "email",
-      label: "E-mail",
-      rawValue: user.email,
-    },
-  ];
+  }> = collectC2xUserPhones(user).map((phone, index) => ({
+    contact_type: index === 0 ? "whatsapp" : "phone",
+    label: index === 0 ? "Celular" : "Telefone",
+    rawValue: phone,
+  }));
+
+  contacts.push({
+    contact_type: "email",
+    label: "E-mail",
+    rawValue: user.email,
+  });
 
   return contacts
     .filter((contact) => contact.rawValue)
@@ -2605,23 +3215,14 @@ function deriveC2xConfidenceScore(
 function buildMaskedContacts(row: C2xUserRow): ApoloContactPoint[] {
   const contacts: ApoloContactPoint[] = [];
 
-  if (row.cellphone) {
+  collectC2xUserPhones(row).forEach((phone, index) => {
     contacts.push({
-      label: "Celular",
+      label: index === 0 ? "Celular" : "Telefone",
       status: "pending",
-      type: "whatsapp",
-      value: row.cellphone,
+      type: index === 0 ? "whatsapp" : "phone",
+      value: phone,
     });
-  }
-
-  if (row.phone && row.phone !== row.cellphone) {
-    contacts.push({
-      label: "Telefone",
-      status: "pending",
-      type: "phone",
-      value: row.phone,
-    });
-  }
+  });
 
   if (row.email) {
     contacts.push({

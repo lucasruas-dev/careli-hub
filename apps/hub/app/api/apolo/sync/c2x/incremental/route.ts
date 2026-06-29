@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import {
   createApoloAdminClient,
-  syncApoloFromC2x,
+  syncApoloIncrementalFromC2x,
 } from "@/lib/apolo/server";
 
 type HubUserRole = "admin" | "leader" | "operator" | "viewer";
@@ -10,6 +10,27 @@ type HubUserRole = "admin" | "leader" | "operator" | "viewer";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+export async function GET(request: NextRequest) {
+  if (!isAuthorizedIncrementalCron(request)) {
+    return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
+  }
+
+  const result = await syncApoloIncrementalFromC2x();
+
+  if (!result.ok) {
+    console.error("[apolo:incremental] route 500:", result.error);
+    return NextResponse.json({ error: result.error }, { status: 500 });
+  }
+
+  return NextResponse.json({
+    data: {
+      rowsWritten: result.rowsWritten,
+      source: "cron",
+      syncRunId: result.syncRunId,
+    },
+  });
+}
 
 export async function POST(request: NextRequest) {
   const adminClient = createApoloAdminClient();
@@ -27,7 +48,7 @@ export async function POST(request: NextRequest) {
     return authorization.response;
   }
 
-  const result = await syncApoloFromC2x();
+  const result = await syncApoloIncrementalFromC2x();
 
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 500 });
@@ -41,29 +62,7 @@ export async function POST(request: NextRequest) {
   });
 }
 
-export async function GET(request: NextRequest) {
-  if (!isAuthorizedApoloSyncCron(request)) {
-    return NextResponse.json({ error: "Nao autorizado." }, { status: 401 });
-  }
-
-  const result = await syncApoloFromC2x();
-
-  if (!result.ok) {
-    console.error("[apolo:full] route 500:", result.error);
-    return NextResponse.json({ error: result.error }, { status: 500 });
-  }
-
-  return NextResponse.json({
-    data: {
-      rowsWritten: result.rowsWritten,
-      source: "cron",
-      syncRunId: result.syncRunId,
-    },
-  });
-}
-
-function isAuthorizedApoloSyncCron(request: NextRequest) {
-  // Cron interno do Vercel — este header e removido de requisicoes externas.
+function isAuthorizedIncrementalCron(request: NextRequest) {
   if (request.headers.get("x-vercel-cron")) {
     return true;
   }
@@ -93,9 +92,8 @@ async function authorizeApoloSyncRequest(
     };
   }
 
-  const { data: authData, error: authError } = await adminClient.auth.getUser(
-    accessToken,
-  );
+  const { data: authData, error: authError } =
+    await adminClient.auth.getUser(accessToken);
 
   if (authError || !authData.user) {
     return {

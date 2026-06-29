@@ -32,6 +32,105 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-29-iris-abertura-template",
+    deployedAt: "2026-06-29T05:59:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Novo formulario de abrir atendimento (mesmo estilo do Hades): busca o cliente, mostra a carteira e os tickets dele, e voce escolhe se personaliza a mensagem por ticket (protocolo) ou por parcelas.",
+            ],
+            screen: "Atendimento",
+          },
+          {
+            items: [
+              "Montagem de template mais inteligente: ao inserir uma variavel (Primeiro nome, Operador, Protocolo, Assunto, Parcelas...), ela ja entra numerada em ordem e o envio preenche cada uma com o valor certo — da pra montar qualquer mensagem.",
+              "O telefone 4143 (atendimento) agora aparece na lista de telefones de envio dos templates.",
+            ],
+            screen: "Configuracoes",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-2to2i7hgp",
+    technical: {
+      done: "Form de abertura de janela reescrito (blocks/start-attendance/iris-start-attendance-modal.tsx) no estilo HadesAttendanceModal, mesma assinatura de props (sem mexer no wiring do IrisPage): busca Apolo + hidrata parcelas via /api/apolo/relationships + toggle Tickets|Parcelas (tickets single-select -> protocolo+assunto; parcelas multi-select = Hades) + envio janela-aberta-primeiro/409->template. Binding de variaveis por chave: builder (addTemplateVariable) atribui placeholder sequencial {{n}} e guarda nº->chave em variables; backend buildTemplateBodyParameters resolve por chave (valuesByKey: primeiro_nome/nome_cliente/protocolo/assunto/parcelas/operador; CRM->'-') ordenando pelo placeholder, com trava allKeysKnown (fallback legado [nome,parcelas,protocolo] p/ templates antigos); mapLocalTemplateRow expoe variables; chaves assunto+parcelas no catalogo. Multi-WABA: listMetaWhatsAppPhoneNumbers passa a consultar tambem META_WHATSAPP_EXTRA_BUSINESS_ACCOUNT_IDS (WABA Elife 1278786467773434 do 4143; extensivel por env CSV) -> 4143 no dropdown; e resolveMetaWhatsAppTemplateScope busca a WABA do telefone selecionado nas WABAs configurada+extras (corrige IRIS_TEMPLATE_PHONE_WABA_MISSING ao criar/consultar template no 4143). Go-live 29/jun ~05:59. v1.9.0 -> v1.10.0.",
+      motivation:
+        "Fechar o redesign da Iris: abrir atendimento ativo igual ao Hades e deixar o operador montar templates escolhendo variaveis (cada {{n}} vinculado a uma variavel, preenchido por chave no envio). Multi-WABA porque o 4143 (atendimento, catch-all) vive na WABA da Elife, separada da Panteon; templates sao por-WABA, entao o template de abertura precisa existir na WABA do 4143. Billing proprio na WABA Elife configurado por Lucas (29/jun) destrava o envio fora da janela de 24h.",
+    },
+    title: "Iris: abrir atendimento + templates com variaveis",
+    type: "novidade",
+    version: "v1.10.0",
+  },
+  {
+    buildTag: "2026-06-29-iris-cockpit-redesign",
+    deployedAt: "2026-06-29T05:09:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Tela de atendimento totalmente repensada: a fila agora mostra quem esta em espera ou pendente, com cronometro; toca um som quando chega mensagem; e clicar no card ja abre a conversa (nao precisa mais acertar o icone).",
+              "Cockpit do cliente em 5 abas (Cliente, Carteira, Financeiro, Linha do tempo e Tickets), igual ao do Hades e lendo do Apolo — a Carteira traz boleto e contrato por unidade.",
+              "Assunto do atendimento fica em destaque, da pra editar e e obrigatorio pra encerrar; perfil e situacao (adimplente/inadimplente) aparecem no topo; e a Athena, a assistente do operador, foi pro rodape.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-7k4y6t9t8",
+    technical: {
+      done: "Go-live (29/jun ~05:09, c2x.app.br -> careli-hub-hub-i2bs-161bke09i, rollback 7k4y6t9t8; ops 307 intocado). Redesign completo da tela de atendimento da Iris espelhando o Hades: fila renomeada 'Fila de atendimento' com marcadores Espera/Pendente + cronometro, som compartilhado Iris/Hades, central de notificacoes + clique no card abre atendimento (board-click), composer travado quando a CACA conduz, fila da CACA so admin/lider, cores WhatsApp/Hermes, Athena movida pro rodape (lista de tickets na Iris), chrome do centro limpo (assunto editavel no separador sticky, data com dia da semana), perfil + adimplente/inadimplente no header, botao Notas, assunto obrigatorio no encerramento, cockpit IrisCobrancaContextSidebar com 5 abas (Cliente/Carteira c/ boleto+contrato/Financeiro mock/Timeline/Tickets) com fonte Apolo, variavel Assunto {{10}} adicionada ao builder de template. Codigo ainda em working tree (nao commitado). v1.8.0 -> v1.9.0.",
+      motivation:
+        "Lucas quer o atendimento da Iris IDENTICO ao do Hades (mesma fila, conversa, cockpit em abas e Athena), lendo o contexto do cliente do Apolo, para unificar a operacao de atendimento e cobranca. Pendente: form de abertura de janela (copiar do HadesAttendanceModal, toggle tickets/parcelas) + substituicao da variavel Assunto no envio.",
+    },
+    title: "Iris: nova tela de atendimento (cockpit do cliente)",
+    type: "novidade",
+    version: "v1.9.0",
+  },
+  {
+    buildTag: "2026-06-28-zeus-hub-apolo",
+    deployedAt: "2026-06-28T22:55:00-03:00",
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "O Zeus (centro de operacoes) agora vive DENTRO do Hub: aparece no menu para admins, com o mesmo cabecalho/avatar dos outros modulos. O dominio separado (ops) sera desligado em breve.",
+            ],
+            screen: "Operacoes",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Telas do cliente em evolucao: Resumo repensado (ativo desde, perfil, ultimos eventos e cenario financeiro) e Financeiro com a visao do cliente. A aba Documentos saiu.",
+              "Sincronizacao automatica com o C2X ligada (a cada 6h) — os dados do cliente passam a se atualizar sozinhos, sem depender de carga manual.",
+            ],
+            screen: "CRM 360",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-6ja4kr7ot",
+    technical: {
+      done: "Go-live (28/jun noite, c2x.app.br -> careli-hub-hub-i2bs-r5782mwun, rollback 6ja4kr7ot). Zeus reintegrado ao Hub: proxy.ts parou de esconder /zeus+/squadops nos hosts do hub; hub-shell exibe Zeus no menu/launcher so para admin (canAccessZeusModule); removido o ZeusOpsPresenceBar (chrome proprio) -> usa o chrome padrao do hub (sem duplicacao). Apolo: modularizacao completa (ApoloPage 3.530->~334; blocks/data/types como Iris/Hades), dedup de entidades por documento NA LEITURA (collapseDuplicateApoloEntities em server.ts), cron de sync /api/apolo/sync/c2x 6/6h (GET autenticado x-vercel-cron/CRON_SECRET + entrada no vercel.json), busca escopada no banco (/api/apolo/search), cockpit em redesenho (Resumo+Financeiro mocks, Documentos removido, Carteira/Financeiro so comprador, Timeline unica). Iris: resolver C2X-direto presente (sera revertido; arquitetura Iris<-Apolo). Deploy via CLI tgz (git desconectado) exige working tree limpo (.turbo/.next/.codex*/outputs/.vercel-snapshots) + .npmrc production=false + buildCommand 'npm install --include=dev && turbo build'. v1.7.0 -> v1.8.0.",
+      motivation:
+        "Trazer o Zeus pra dentro do Hub (um dominio so, rumo a desligar o ops e reconectar o git, acabando com a fragilidade do deploy via CLI) e ligar o cron do Apolo — o read-model estava defasado desde 21/mai, o que travava a resolucao do cliente na Iris. Cockpit do Apolo em redesenho, validado por mock.",
+    },
+    title: "Zeus dentro do Hub + Apolo em evolucao",
+    type: "novidade",
+    version: "v1.8.0",
+  },
+  {
     buildTag: "2026-06-28-hades-cobranca-golive",
     deployedAt: "2026-06-28T00:30:00-03:00",
     modules: [

@@ -47,16 +47,9 @@ export function IrisCobrancaCloseModal({
           queues?: { id: string; slug: string }[];
         } | null;
         if (cancelled || !response.ok || !payload) return;
-        const cobrancaQueue = (payload.queues ?? []).find(
-          (queue) => queue.slug === "cobranca",
-        );
-        const cobrancaProfiles = (payload.profiles ?? []).filter(
-          (profile) => profile.queue_id === cobrancaQueue?.id,
-        );
-        const list = (cobrancaProfiles.length
-          ? cobrancaProfiles
-          : payload.profiles ?? []
-        ).map((profile) =>
+        // Catalogo de assuntos cadastrados (Setup). Mostra todos — vale p/ Iris e
+        // Hades; o operador escolhe o assunto da lista.
+        const list = (payload.profiles ?? []).map((profile) =>
           profile.slug === "primeiro-contato" ||
           profile.name.toLowerCase() === "primeiro contato"
             ? "Contato"
@@ -85,13 +78,15 @@ export function IrisCobrancaCloseModal({
     >
       <label className="block">
         <span className="mb-1 block text-[11px] font-semibold text-slate-500">
-          Assunto do atendimento
+          Assunto do atendimento{" "}
+          <span className="font-normal text-rose-500">(obrigatório)</span>
         </span>
         <select
           value={subject}
           onChange={(event) => setSubject(event.target.value)}
           className="h-9 w-full rounded-lg border border-slate-200/70 bg-white px-2 text-sm text-slate-800 outline-none focus:border-[#A07C3B]/40"
         >
+          <option value="">Selecione o assunto…</option>
           {subjectOptions.map((option) => (
             <option key={option} value={option}>
               {option}
@@ -114,6 +109,7 @@ export function IrisCobrancaCloseModal({
       </label>
       <ModalFooter
         confirmLabel="Encerrar"
+        disabled={!subject.trim()}
         onCancel={onCancel}
         onConfirm={() => onConfirm({ note: note.trim(), subject: subject.trim() })}
         submitting={submitting}

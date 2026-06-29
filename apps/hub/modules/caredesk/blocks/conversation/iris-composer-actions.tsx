@@ -13,6 +13,7 @@ import {
   Send,
   Smile,
   Sparkles,
+  StickyNote,
   X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
@@ -46,6 +47,8 @@ export function IrisConversationComposerActions({
   emojiOptions,
   emojiPickerOpen,
   emojiPickerRef,
+  lockedByCaca = false,
+  onOpenNotes,
   onCancelComposerContext,
   onComposerKeyDown,
   onDraftChange,
@@ -74,6 +77,8 @@ export function IrisConversationComposerActions({
   emojiOptions: string[];
   emojiPickerOpen: boolean;
   emojiPickerRef: RefObject<HTMLDivElement | null>;
+  lockedByCaca?: boolean;
+  onOpenNotes?: () => void;
   onCancelComposerContext: () => void;
   onComposerKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
   onDraftChange: (value: string) => void;
@@ -124,7 +129,17 @@ export function IrisConversationComposerActions({
         </div>
       ) : null}
 
-      {!ticketClosed ? (
+      {!ticketClosed && lockedByCaca ? (
+        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#fbf6ec] px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
+          <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
+          <span className="min-w-0">
+            Atendimento conduzido pela Caca. Voce pode acompanhar e direcionar, mas
+            nao enviar mensagens (use Direcionar se precisar intervir).
+          </span>
+        </div>
+      ) : null}
+
+      {!ticketClosed && !lockedByCaca ? (
         <div
           className={[
             "mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2",
@@ -156,8 +171,20 @@ export function IrisConversationComposerActions({
           disabled={!operationReady}
           onCreate={(kind) => setAgendaModalKind(kind)}
         />
-        {cobrancaMode ? (
-          onToggleAttendant ? (
+        <div className="flex items-center gap-1.5">
+          {onOpenNotes ? (
+            <Tooltip content="Notas do atendimento" placement="top">
+              <button
+                type="button"
+                onClick={onOpenNotes}
+                aria-label="Notas do atendimento"
+                className="flex size-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white text-slate-500 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+              >
+                <StickyNote className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
+          ) : null}
+          {onToggleAttendant ? (
             <Tooltip content="Athena" placement="top">
               <button
                 type="button"
@@ -174,10 +201,8 @@ export function IrisConversationComposerActions({
                 <Sparkles className="size-4" aria-hidden="true" />
               </button>
             </Tooltip>
-          ) : null
-        ) : operationReady ? (
-          <TicketChecklist items={ticketChecklist} compact />
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       {hasComposerContext ? (

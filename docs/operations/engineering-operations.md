@@ -40921,3 +40921,72 @@ Assunto: [Hades] Cobranca — redesign da tela aba-a-aba + Acordos&Promessas lig
 Conclusao:
 - Tela de Cobranca refeita aba a aba e Propostas ligadas ao motor (Fase 1: criar/listar/editar promessa+acordo), tudo validado visualmente em PREVIEW.
 - Proximo (**Fase 2**): **migration 0037** (colunas de aprovacao em guardian_compromissos + tabela `guardian_compromisso_comments`) -> **central do gestor** (aprovar/reprovar+motivo+comentarios) -> execucao pos-aprovacao (regua/Iris) -> templates Meta -> **deploy pra prod** de toda a frente. Ver [[project_cobranca_motor_ui]] e o handoff `cobranca-propostas-handoff-new-chat-startup-prompt-2026-06-26.md`.
+
+## 2026-06-28 - Zeus - Iris multi-WABA: numero principal 4143 conectado (recebe OK, envia trava no single-numero)
+
+Assunto: [Iris] Migracao do numero principal de atendimento (4143) para a Iris - Fase 1 (conexao da WABA)
+
+- Contexto: inicio da frente de trazer os numeros REAIS de atendimento pra Iris. Numeros: **principal 4143** (+55 31 99926-4143), **filial Gurgel 8025-7389**, **juridico/teste 9072-8420**. Hoje 4143 e Gurgel estao em WABAs operadas pela **Elife** (BSP via Smarters, **contrato ENCERRADO**); 9072 ja esta na WABA propria **Careli - Panteon** (`994894846427478`), que a Iris usa. **WABA oficial da Iris = Careli - Panteon** (corrigido pelo Lucas).
+- Modelo de roteamento definido com Lucas: **4143 = catch-all** (todas as filas EXCETO juridico e Gurgel); **juridico e Gurgel = numero+fila dedicados**. Regra tecnica obrigatoria: **outbound SEMPRE pelo numero de entrada do ticket** (janela de 24h e por numero).
+- Decisao de caminho (driblando trava da Meta): mover numero entre WABAs esbarra na regra oficial "o numero nao pode ter enviado mensagem paga nos ultimos 30 dias" + o numero esta sob BSP. Em vez de mover, **CONECTAR o app da Iris (Iris-Panteon) a WABA onde o 4143 ja esta** (`Elife - Careli CX`, id `1278786467773434`) via `subscribed_apps`. **Conectar != mover -> sem trava de 30 dias.**
+- Implementado (VALIDADO_LOCAL, typecheck verde; **NAO commitado**, working tree):
+  - `apps/hub/lib/iris/meta-whatsapp.ts`: `subscribeMetaWhatsAppAppToWaba` + `listMetaWhatsAppWabaSubscribedApps` (token server-side via `getMetaWhatsAppOutboundConfig`; nao expoem token).
+  - `apps/hub/app/api/iris/meta/subscribe-waba/route.ts`: POST **admin-only** (`authorizeIrisMetaRequest ["admin"]`), body `{wabaId}`. Nasce trancada pelo gate (`proxy.ts`).
+  - Deploy: apenas **preview** `--prod --skip-domain` `dpl_Hgf31V6N5i73hG8j4deUGX77k2ug` (URL `careli-hub-hub-i2bs-a5vho1xd8`). `c2x.app.br` (200) e `ops` (307) **intocados**.
+- Executado (Lucas logou na URL do preview; Zeus rodou o fetch autenticado pelo console do navegador): **subscribe da WABA `1278786467773434` -> `success:true`**. Agora a WABA tem 2 apps subscritos (Elife/Smarters + Iris-Panteon).
+- **RECEBE VALIDADO em prod:** msg de texto do celular do Lucas (`553183013616`) -> 4143 (`display 553199264143`, WABA `1278786467773434`, **phone_number_id `1028514833675763`**) em 2026-06-28 05:06:55 UTC -> status `processed`; ticket **AT-000003** nasceu na Iris no ar, CRM 360 identificou o cliente. O webhook do 4143 cai no `c2x.app.br/api/iris/meta/webhook` (live) -> **independe do preview**.
+- **ENVIA TRAVA (esperado, single-numero):** a Iris/CACA tenta responder pelo **9072** (env `META_WHATSAPP_PHONE_NUMBER_ID`), mas o ticket e do **4143** -> Meta rejeita (sem janela de 24h com o 9072) -> UI mostra "Erro no envio". Os unicos envios entregues hoje sairam pelo 4143 e eram da **Elife** (status "ignorado: sem referencia local") = Elife ainda responde em paralelo (resposta dobrada).
+- Licao: **subscribe (conectar app a WABA) != mover numero -> nao cai na trava de 30 dias da Meta.**
+
+Proximos passos:
+
+1. **ENVIA pelo numero certo:** (a) teste rapido = trocar env `META_WHATSAPP_PHONE_NUMBER_ID` -> `1028514833675763` (single-numero, tira o 9072 do envio) **ou** (b) **multi-numero (Fase 2):** inbound resolver canal por `phone_number_id` (hoje `getWhatsAppChannel` pega slug fixo) + outbound pelo `phone_number_id` do canal do ticket + fila por numero (4143 catch-all; juridico/Gurgel dedicados).
+2. **Desligar a Elife/Smarters** (parceiro "controle total" + linha de credito de pagamento na WABA Elife) -> DEPOIS da Iris operar + **billing proprio** na WABA.
+3. Conectar **Gurgel** (8025-7389, nome "Rejeitado") e confirmar **juridico** (9072) no novo modelo.
+4. **Commitar** a rota `subscribe-waba` na main / decidir deploy prod (hoje so local + preview).
+
+Conclusao:
+- Fase 1 da migracao do numero principal **batida**: o **4143 chega na Iris (recebe)**, sem mover numero, sem tocar em alias/env de producao, sem trava de 30 dias.
+- O **"envia" depende do multi-numero** (responder pelo numero do ticket) **+ desligar a Elife**. Nada disso esta no ar; producao (`c2x` v1.7.0) intocada. Ver [[project_iris]].
+
+### Atualizacao 2026-06-28 (madrugada) - ENVIO DESTRAVADO: 4143 e Gurgel OPERACIONAIS na Iris
+
+- **VIRADA:** a carencia da Meta ("talvez sem envio ate 1/jul") era **pior caso e NAO se aplicou**. Removendo a Smarters (parceiro/BSP) das WABAs Elife, o envio pela Iris **liberou na hora** (nos dois numeros).
+- **Causa raiz do `#200` confirmada:** era o **controle de "Mensagens" da Smarters** na WABA. Removido o parceiro -> nosso System User (acesso total) passou a enviar. Nao era env nem codigo.
+- **Gurgel** (`8025-7389`, WABA `974323418861729`, phone_id `1122924254236087`): Smarters removida -> subscribe + recebe + **envia** (test-send: sent->delivered). Cobaia validou o fluxo.
+- **`4143` (PRINCIPAL**, WABA `1278786467773434`, phone_id `1028514833675763`): Smarters removida -> **recebe + envia pelo cockpit E pela CACA** (ticket **AT-000009**, status `processed` sent->delivered, ✓✓). **100% operacional na Iris.**
+- **DESCOBERTA: a Iris JA e multi-numero no envio** -> `resolveTicketMetaPhoneNumberId` (rota `messages`) usa `source_context.phoneNumberId` do TICKET; o env e so fallback. Ticket novo nasce com o numero de entrada -> responde por ele. O bug do `AT-000003` era ticket ANTIGO com `source_context.phoneNumberId=9072` -> respondia pelo 9072; tickets novos nascem certos.
+- **Rotas novas (working tree, NAO commitadas):** `app/api/iris/meta/subscribe-waba` (subscreve WABA ao app) + `app/api/iris/meta/test-send` (envia por phone_number_id explicito, admin-only). `c2x` atual = `q059akk7e` (env -> 4143). Smarters **removida das 2 WABAs Elife** (contrato encerrado).
+
+PENDENCIAS (amanha; o recebe/envia ja funcionam):
+1. **Billing proprio** nas WABAs Elife (4143/Gurgel): linha de credito era da Smarters (saiu). Atendimento reativo <24h e gratis; **template/mensagem paga fora da janela precisa de metodo de pagamento proprio** -> CRITICO pra cobranca via template.
+2. **Display name:** `4143` "Careli" Em analise; Gurgel "Rejeitado". Resolver antes de soltar pro cliente.
+3. **Tickets antigos contaminados** (`source_context.phoneNumberId=9072`, ex `AT-000003`): poucos, da transicao -> encerrar/atualizar. Tickets novos OK.
+4. **Commitar** `subscribe-waba` + `test-send` na main + redeploy limpo (c2x esta em deployment de working tree nao-commitado).
+5. **9072** (WABA Careli-Panteon): decidir destino (era teste/juridico).
+
+Conclusao da virada:
+- **`4143` (principal) e Gurgel recebem E enviam pela Iris.** O que parecia travado pela carencia foi destravado removendo a Smarters. Go-live de segunda: o principal opera na Iris; falta so **billing proprio** (template/cobranca) e **display name**.
+
+### Atualizacao 2026-06-28 (madrugada, cont.) - Roteamento multicanal NO AR + Athena no atendimento (preview)
+
+**BLOCO 1 — Roteamento por numero + CACA por canal: NO AR e TESTADO pelo Lucas.**
+- Canais (caredesk_channels; `config.defaultQueueSlug` + `config.cacaEnabled`; resolvidos por `external_account_id` = phone_number_id):
+  - **WhatsApp Atendimento** (slug `whatsapp-careli`, ext `1028514833675763` = 4143) -> fila `atendimento`, **CACA ON**.
+  - **WhatsApp Gurgel** (`whatsapp-gurgel`, `1122924254236087`) -> fila `gurgel`, **CACA OFF**.
+  - **WhatsApp Juridico** (`whatsapp-juridico`, `1208477435676689` = 9072) -> fila `juridico`, **CACA OFF**.
+  - Fila **Juridico reativada** (estava archived).
+- Codigo (`meta-inbound-processor.ts`): `getWhatsAppChannel(phone_number_id)` resolve canal por `external_account_id` (fallback slug); fila via `config.defaultQueueSlug`; CACA so roda se `config.cacaEnabled` (default true = retrocompativel).
+- Prod: **c2x = `6ja4kr7ot`** (env 4143). **TESTE do Lucas (3 numeros) PASSOU:** 4143 -> fila Atendimento + CACA respondeu (AT-000010); Gurgel -> fila Gurgel sem CACA (AT-000011); Juridico -> fila Juridico sem CACA (AT-000012). `ops` 307.
+
+**BLOCO 2 — Cockpit de atendimento = front do Hades (EM ANDAMENTO, decidido fazer com calma):**
+- Pedido do Lucas (com prints): o atendimento (`4143`) deve ficar **IDENTICO ao Hades** — painel de **abas** a direita + **Athena na mesma posicao (embaixo)** + mesma disposicao — com **fonte APOLO** (nao Hades) e **SEM Propostas**.
+- **Corte 1 FEITO** (preview **`834x5wdoa`**, NAO no ar): a **Athena do Hades** (`IrisAthenaPanel` + `/api/iris/athena`) ligada no atendimento (substituiu o `IrisAttendantPanel` antigo); `onAskAthena` sempre; render por `attendantOpen`. `runAthena` usa so `ticketId` -> funciona no atendimento. 3 edits no `IrisPage` (`@ts-nocheck`); typecheck verde + build OK.
+- **ACHADO-CHAVE (o trabalho que falta):** o painel de abas do Hades (`IrisCobrancaContextSidebar`, ~1117 linhas) e **HARD-CODED pro Hades** — busca cliente via `/api/hades/attendance/client/{clientId}`, timeline via `/api/hades/attendance/manual-events`, parcelas/saldo de cobranca. Pra ter o MESMO painel no atendimento com fonte Apolo, precisa **GENERALIZAR a fonte do componente** (Hades->Apolo) ou criar a versao Apolo + tirar Propostas + link do Hades. NAO e flag — e **reforma de UI com iteracao visual**.
+
+PENDENCIAS (para retomar):
+- c2x = `6ja4kr7ot` (roteamento + env 4143). **Athena no atendimento so no preview `834x5wdoa`** (aguarda validacao visual + a reforma do cockpit).
+- **Codigo NAO commitado** (working tree): roteamento (`meta-inbound-processor`) + rotas `subscribe-waba`/`test-send` + Athena (`IrisPage`). Commitar + deploy limpo.
+- **Billing proprio** nas WABAs Elife (template/cobranca). **Display name** (4143 "Em analise", Gurgel "Rejeitado").
+- **Tickets de teste a limpar:** AT-000003 (contaminado com phone do 9072), AT-000009/010/011/012.
+- **Bloco 2 (cockpit identico):** generalizar `IrisCobrancaContextSidebar` pra fonte Apolo + tirar Propostas + Athena identica. Validar print-a-print (luz do dia). Ver [[project_iris]].

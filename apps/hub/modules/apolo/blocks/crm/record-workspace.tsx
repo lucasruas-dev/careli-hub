@@ -1,0 +1,560 @@
+import { useEffect, useState } from "react";
+import {
+  Building2,
+  CalendarClock,
+  Clock3,
+  ContactRound,
+  FileText,
+  HandCoins,
+  LayoutDashboard,
+  MapPinned,
+  MessageCircle,
+} from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+
+import { Tooltip } from "@repo/uix";
+import { PanteonLoadingMark, PanteonLoadingState } from "@/components/panteon/panteon-loading";
+import { apoloProfileLabels } from "@/lib/apolo/catalog";
+import { ClientDetailPanel } from "@/modules/guardian/attendance/components/ClientDetailPanel";
+import type { OperationalTimelineEvent, QueueClient } from "@/modules/guardian/attendance/types";
+import type { ApoloEntity } from "@/lib/apolo/types";
+
+import { InfoTile, PanelTitle } from "../shared/apolo-ui";
+import {
+  activeRegistrationLabel,
+  buyerStatusLabel,
+  canUseHadesWorkspace,
+  displayHeaderName,
+  documentLabel,
+  isApoloTabUnavailableForEntity,
+  isCompanyEntity,
+  primaryBusinessProfile,
+  profileLabelList,
+  sanitizeOperationalMessage,
+  summaryName,
+} from "../../data/apolo-derive";
+import {
+  emptyManualHadesOperations,
+  getApoloAccessToken,
+  loadHadesManualOperations,
+  persistHadesManualOperation,
+  upsertById,
+} from "../../data/apolo-operations";
+import type { ApoloTab, ManualHadesOperations } from "../../types/apolo-local";
+import { apoloTabs } from "./crm-tabs";
+import {
+  AuditPanel,
+  FinancialPanel,
+  PortfolioPanel,
+  RegistrationPanel,
+  SummaryPanel,
+  TimelinePanel,
+} from "./panels";
+import { HeaderAction } from "../shell/apolo-shell";
+
+function RecordWorkspace({
+  activeTab,
+  entity,
+  loading,
+  onChangeTab,
+  onOpenCommercialRelationship,
+}: {
+  activeTab: ApoloTab;
+  entity: ApoloEntity | null;
+  loading: boolean;
+  onChangeTab: (tab: ApoloTab) => void;
+  onOpenCommercialRelationship: (label: string) => void;
+}) {
+  if (entity && canUseHadesWorkspace()) {
+    return <HadesRecordWorkspace entity={entity} />;
+  }
+
+  return (
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      {entity ? <RecordHeader entity={entity} /> : <RecordHeaderEmpty loading={loading} />}
+      <TabStrip activeTab={activeTab} disabled={!entity} entity={entity} onChangeTab={onChangeTab} />
+      <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        {entity ? (
+          <TabPanel
+            activeTab={activeTab}
+            entity={entity}
+            onOpenCommercialRelationship={onOpenCommercialRelationship}
+          />
+        ) : (
+          <div className="grid min-h-64 place-items-center rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm font-semibold text-slate-500">
+            {loading ? "Carregando detalhe 360" : "Selecione um relacionamento"}
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function HadesRecordWorkspace({ entity }: { entity: ApoloEntity }) {
+  const [client, setClient] = useState<QueueClient | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [manualOperations, setManualOperations] = useState<ManualHadesOperations>(
+    emptyManualHadesOperations,
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadHadesClient() {
+      const clientId = entity.hadesClientId;
+
+      setClient(null);
+      setError(null);
+      setLoading(true);
+      setManualOperations(emptyManualHadesOperations);
+
+      if (!clientId) {
+        setLoading(false);
+        setError("Cadastro sem compra vinculada.");
+        return;
+      }
+
+      try {
+        const accessToken = await getApoloAccessToken(false);
+        const headers = accessToken
+          ? { Authorization: `Bearer ${accessToken}` }
+          : undefined;
+        const response = await fetch(
+          `/api/hades/attendance/client/${encodeURIComponent(clientId)}`,
+          {
+            cache: "no-store",
+            headers,
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as
+          | { client?: QueueClient; error?: string }
+          | null;
+
+        if (cancelled) {
+          return;
+        }
+
+        if (!response.ok || !payload?.client) {
+          throw new Error(payload?.error ?? "Cadastro sem carteira operacional.");
+        }
+
+        setClient(payload.client);
+
+        if (!accessToken) {
+          return;
+        }
+
+        const manualPayload = await loadHadesManualOperations(payload.client.id, accessToken);
+
+        if (!cancelled) {
+          setManualOperations(manualPayload);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setError(
+            loadError instanceof Error
+              ? sanitizeOperationalMessage(loadError.message)
+              : "Nao foi possivel carregar a carteira operacional.",
+          );
+        }
+      } finally {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadHadesClient();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [entity.hadesClientId]);
+
+  async function saveManualTimelineEvent(event: OperationalTimelineEvent) {
+    if (!client) {
+      return;
+    }
+
+    const payload = await persistHadesManualOperation({
+      body: {
+        client: {
+          c2xAcquisitionRequestId: client.c2xAcquisitionRequestId,
+          id: client.id,
+          name: client.nome,
+        },
+        event,
+        kind: "timeline",
+      },
+      method: "POST",
+    });
+
+    upsertManualOperations(payload);
+  }
+
+  async function saveManualCommitment(record: QueueClient["commitments"][number]) {
+    if (!client) {
+      return;
+    }
+
+    const payload = await persistHadesManualOperation({
+      body: {
+        client: {
+          c2xAcquisitionRequestId: client.c2xAcquisitionRequestId,
+          id: client.id,
+          name: client.nome,
+        },
+        commitment: record,
+        kind: "commitment",
+      },
+      method: "POST",
+    });
+
+    upsertManualOperations(payload);
+  }
+
+  async function updateManualCommitment(record: QueueClient["commitments"][number]) {
+    const isPersistedRecord = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(record.id);
+
+    if (!isPersistedRecord) {
+      await saveManualCommitment(record);
+      return;
+    }
+
+    const payload = await persistHadesManualOperation({
+      body: {
+        commitment: record,
+        id: record.id,
+        kind: "commitment",
+      },
+      method: "PATCH",
+    });
+
+    upsertManualOperations(payload);
+  }
+
+  function upsertManualOperations(payload: ManualHadesOperations) {
+    setManualOperations((current) => ({
+      commitments: upsertById(payload.commitments ?? [], current.commitments),
+      events: upsertById(payload.events ?? [], current.events),
+    }));
+  }
+
+  if (loading) {
+    return <HadesWorkspaceLoading entity={entity} />;
+  }
+
+  if (!client) {
+    return <HadesUnavailableWorkspace entity={entity} message={error} />;
+  }
+
+  const clientWithManualOperations = {
+    ...client,
+    commitments: upsertById(manualOperations.commitments, client.commitments),
+  };
+  const extraTimelineEvents = upsertById(manualOperations.events, []);
+
+  return (
+    <ClientDetailPanel
+      key={client.id}
+      client={clientWithManualOperations}
+      extraTimelineEvents={extraTimelineEvents}
+      onCreateCommitment={saveManualCommitment}
+      onCreateTimelineEvent={saveManualTimelineEvent}
+      onOpenWhatsApp={() => {
+        window.location.href = "/iris";
+      }}
+      onUpdateCommitment={updateManualCommitment}
+    />
+  );
+}
+
+function HadesWorkspaceLoading({ entity }: { entity: ApoloEntity }) {
+  return (
+    <section className="flex min-h-0 flex-col rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:h-[calc(100vh-112px)]">
+      <RecordHeader entity={entity} />
+      <PanteonLoadingState
+        className="flex-1 rounded-none border-0 bg-slate-50/35"
+        minHeightClassName="min-h-72"
+        title="Carregando carteira, acordos, documentos e contrato"
+      />
+    </section>
+  );
+}
+
+function HadesUnavailableWorkspace({
+  entity,
+  message,
+}: {
+  entity: ApoloEntity;
+  message: string | null;
+}) {
+  const statusMessage =
+    sanitizeOperationalMessage(message) ??
+    "Carteira detalhada ainda nao encontrada no modulo operacional.";
+  const disabledTabs = [
+    { icon: LayoutDashboard, label: "Visao geral", enabled: true },
+    { icon: Building2, label: "Cliente", enabled: true },
+    { icon: MapPinned, label: "Carteira", enabled: false },
+    { icon: Clock3, label: "Timeline", enabled: true },
+    { icon: HandCoins, label: "Acordos", enabled: false },
+  ] as const satisfies readonly {
+    enabled: boolean;
+    icon: LucideIcon;
+    label: string;
+  }[];
+
+  return (
+    <section className="flex min-h-0 flex-col rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:h-[calc(100vh-112px)]">
+      <RecordHeader entity={entity} />
+      <nav
+        aria-label="Workspace operacional"
+        className="shrink-0 border-b border-slate-100 px-4 py-3"
+      >
+        <div className="flex w-fit flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1">
+          {disabledTabs.map((tab) => {
+            const Icon = tab.icon;
+
+            return (
+              <Tooltip content={tab.label} key={tab.label} placement="bottom">
+                <button
+                  aria-label={tab.label}
+                  className={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${
+                    tab.enabled
+                      ? "bg-white text-slate-600 ring-slate-200/70"
+                      : "cursor-not-allowed bg-slate-50 text-slate-300 ring-slate-200/70"
+                  }`}
+                  disabled={!tab.enabled}
+                  type="button"
+                >
+                  <Icon className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
+            );
+          })}
+        </div>
+      </nav>
+      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/35 p-4 sm:p-5">
+        <div className="grid gap-5">
+          <section className="rounded-xl border border-slate-200/70 bg-white p-5">
+            <PanelTitle eyebrow="Visao geral" title="Cadastro no CRM com carteira operacional pendente" />
+            <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <InfoTile label={isCompanyEntity(entity) ? "Razao social" : "Nome"} value={summaryName(entity)} />
+              <InfoTile label={documentLabel(entity)} value={entity.documentMasked} />
+              <InfoTile label="Perfil" value={profileLabelList(entity)} />
+              <InfoTile label="Compra" value={buyerStatusLabel(entity)} />
+            </div>
+            <p className="m-0 mt-4 text-sm font-medium text-slate-500">
+              {statusMessage}
+            </p>
+          </section>
+          <section className="grid gap-3 md:grid-cols-3">
+            <DisabledOperationCard
+              icon={MapPinned}
+              label="Carteira"
+              value="Detalhe financeiro ainda indisponivel"
+            />
+            <DisabledOperationCard
+              icon={HandCoins}
+              label="Acordos"
+              value="Aguardando carteira detalhada"
+            />
+            <DisabledOperationCard
+              icon={FileText}
+              label="Contrato"
+              value="Contrato nao localizado no detalhe operacional"
+            />
+          </section>
+          <RegistrationPanel entity={entity} />
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function DisabledOperationCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon: LucideIcon;
+  label: string;
+  value: string;
+}) {
+  return (
+    <article className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <div className="flex items-start gap-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400 ring-1 ring-slate-200/70">
+          <Icon className="size-4" aria-hidden="true" />
+        </span>
+        <div className="min-w-0">
+          <p className="m-0 text-sm font-semibold text-slate-950">{label}</p>
+          <p className="m-0 mt-1 text-xs font-medium text-slate-500">{value}</p>
+          <button
+            className="mt-3 inline-flex h-8 cursor-not-allowed items-center rounded-lg border border-slate-200/70 bg-slate-50 px-3 text-xs font-semibold text-slate-400"
+            disabled
+            type="button"
+          >
+            Indisponivel
+          </button>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function RecordHeader({ entity }: { entity: ApoloEntity }) {
+  const primaryProfile = primaryBusinessProfile(entity);
+  const registrationLabel = activeRegistrationLabel(entity);
+  const headerName = displayHeaderName(entity);
+
+  return (
+    <header className="shrink-0 border-b border-slate-100 px-4 py-3">
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
+          <div className="flex items-center gap-3">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+              {entity.kind === "pj" || entity.kind === "organization" ? (
+                <Building2 className="size-4" aria-hidden="true" />
+              ) : (
+                <ContactRound className="size-4" aria-hidden="true" />
+              )}
+            </div>
+            <div className="min-w-0">
+              <h2 className="m-0 truncate text-lg font-semibold tracking-normal text-slate-950">
+                {headerName}
+              </h2>
+              <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs">
+                <span className="truncate text-slate-500">
+                  {entity.locationLabel}
+                </span>
+                <span className="inline-flex shrink-0 rounded-full bg-[#A07C3B]/8 px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                  {apoloProfileLabels[primaryProfile]}
+                </span>
+                <span className="inline-flex shrink-0 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70">
+                  {registrationLabel}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <HeaderAction icon={MessageCircle} label="Abrir atendimento" tone="emerald" />
+          <HeaderAction icon={CalendarClock} label="Agenda" tone="amber" />
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function RecordHeaderEmpty({ loading }: { loading: boolean }) {
+  return (
+    <header className="shrink-0 border-b border-slate-100 px-4 py-3">
+      <div className="flex items-center gap-3">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400 ring-1 ring-slate-200/70">
+          {loading ? (
+            <PanteonLoadingMark size="xs" />
+          ) : (
+            <ContactRound className="size-4" aria-hidden="true" />
+          )}
+        </div>
+        <div>
+          <h2 className="m-0 text-lg font-semibold text-slate-950">
+            {loading ? "Carregando" : "Sem relacionamento selecionado"}
+          </h2>
+          <p className="m-0 mt-1 text-xs text-slate-500">
+            O detalhe aparece quando houver um item selecionado.
+          </p>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function TabStrip({
+  activeTab,
+  disabled,
+  entity,
+  onChangeTab,
+}: {
+  activeTab: ApoloTab;
+  disabled: boolean;
+  entity: ApoloEntity | null;
+  onChangeTab: (tab: ApoloTab) => void;
+}) {
+  return (
+    <nav
+      aria-label="Areas do relacionamento"
+      className="shrink-0 overflow-x-auto border-b border-slate-100 px-3 py-2"
+    >
+      <div className="flex gap-1">
+        {apoloTabs.map((tab) => {
+          const Icon = tab.icon;
+          const active = activeTab === tab.id;
+          const tabDisabled = disabled || isApoloTabUnavailableForEntity(tab.id, entity);
+          const tooltipContent = tabDisabled && entity ? `${tab.label} indisponivel sem pagamentos` : tab.label;
+
+          return (
+            <Tooltip content={tooltipContent} key={tab.id} placement="bottom">
+              <button
+                aria-current={active ? "page" : undefined}
+                className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-50 ${
+                  active
+                    ? "bg-slate-950 text-white"
+                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                }`}
+                disabled={tabDisabled}
+                onClick={() => onChangeTab(tab.id)}
+                type="button"
+              >
+                <Icon className="size-4" aria-hidden="true" />
+                {tab.label}
+              </button>
+            </Tooltip>
+          );
+        })}
+      </div>
+    </nav>
+  );
+}
+
+function TabPanel({
+  activeTab,
+  entity,
+  onOpenCommercialRelationship,
+}: {
+  activeTab: ApoloTab;
+  entity: ApoloEntity;
+  onOpenCommercialRelationship: (label: string) => void;
+}) {
+  if (activeTab === "cadastro") {
+    return <RegistrationPanel entity={entity} />;
+  }
+
+  if (activeTab === "carteira") {
+    return <PortfolioPanel entity={entity} />;
+  }
+
+  if (activeTab === "financeiro") {
+    return <FinancialPanel entity={entity} />;
+  }
+
+  if (activeTab === "timeline") {
+    return <TimelinePanel events={entity.timeline} />;
+  }
+
+  if (activeTab === "auditoria") {
+    return <AuditPanel audit={entity.audit} />;
+  }
+
+  return (
+    <SummaryPanel
+      entity={entity}
+      onOpenCommercialRelationship={onOpenCommercialRelationship}
+    />
+  );
+}
+
+
+export { RecordWorkspace };

@@ -2,6 +2,7 @@
 
 import type { ReactNode, RefObject } from "react";
 import {
+  Clock3,
   MessageCircle,
   MessageSquareText,
   PanelLeftClose,
@@ -48,8 +49,17 @@ export type IrisConversationContextShortcut = {
   onClick: () => void;
 };
 
+export type IrisConversationWaitState = {
+  label: string;
+  tone: "encerrado" | "espera" | "pendente";
+};
+
 export type IrisConversationReadOnlyHelpers = {
   conversationTime: (ticket: IrisConversationTicket) => string;
+  conversationWaitAge: (ticket: IrisConversationTicket) => string;
+  conversationWaitState: (
+    ticket: IrisConversationTicket,
+  ) => IrisConversationWaitState;
   crm360ContextLabel: (
     registration?: IrisConversationCrm360Registration | null,
   ) => string;
@@ -75,8 +85,6 @@ export type IrisConversationReadOnlyRenderers = {
   ) => ReactNode;
 };
 
-const conversationFilters = ["Abertas", "Pendentes", "Encerradas"] as const;
-
 export function IrisConversationEmptyState() {
   return (
     <div className="flex h-full min-h-0 items-center justify-center rounded-2xl border border-[#dbe3ef] bg-white">
@@ -89,13 +97,10 @@ export function IrisConversationEmptyState() {
 }
 
 export function IrisConversationInboxSidebar({
-  cobrancaMode = false,
   collapsed,
   conversations,
-  filter,
   helpers,
   onCollapseChange,
-  onFilterChange,
   onSearchChange,
   onSelectTicket,
   renderers,
@@ -145,13 +150,8 @@ export function IrisConversationInboxSidebar({
           <>
             <div className="flex items-start justify-between gap-3">
               <div>
-                {cobrancaMode ? null : (
-                  <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-                    Inbox WhatsApp
-                  </p>
-                )}
                 <h2 className="text-sm font-semibold text-slate-950">
-                  {cobrancaMode ? "Fila de atendimento" : "Conversas"}
+                  Fila de atendimento
                 </h2>
               </div>
               <button
@@ -173,25 +173,6 @@ export function IrisConversationInboxSidebar({
                 className="h-7 w-full bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
               />
             </label>
-            {cobrancaMode ? null : (
-              <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100/70 p-1">
-                {conversationFilters.map((option) => (
-                  <button
-                    key={option}
-                    type="button"
-                    onClick={() => onFilterChange(option)}
-                    className={[
-                      "h-7 rounded-md text-[11px] font-semibold transition-colors",
-                      filter === option
-                        ? "bg-white text-[#7A5E2C] shadow-sm"
-                        : "text-slate-500 hover:bg-white/70",
-                    ].join(" ")}
-                  >
-                    {option}
-                  </button>
-                ))}
-              </div>
-            )}
           </>
         )}
       </div>
@@ -225,6 +206,42 @@ export function IrisConversationInboxSidebar({
                     <p className="mt-1 line-clamp-1 text-xs text-slate-500 [overflow-wrap:anywhere]">
                       {conversation.lastMessagePreview}
                     </p>
+                    {(() => {
+                      const waitState = helpers.conversationWaitState(conversation);
+                      const waitAge = helpers.conversationWaitAge(conversation);
+                      const toneClasses =
+                        waitState.tone === "pendente"
+                          ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-[#A07C3B]/25"
+                          : waitState.tone === "espera"
+                            ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
+                            : "bg-slate-100 text-slate-500 ring-slate-200";
+                      const dotClass =
+                        waitState.tone === "pendente"
+                          ? "bg-[#A07C3B]"
+                          : waitState.tone === "espera"
+                            ? "bg-emerald-500"
+                            : "bg-slate-400";
+
+                      return (
+                        <div className="mt-1.5 flex items-center gap-1.5">
+                          <span
+                            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${toneClasses}`}
+                          >
+                            <span
+                              className={`size-1.5 rounded-full ${dotClass}`}
+                              aria-hidden="true"
+                            />
+                            {waitState.label}
+                          </span>
+                          {waitAge ? (
+                            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-slate-400">
+                              <Clock3 className="size-3" aria-hidden="true" />
+                              {waitAge}
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </div>
                 </div>
               </button>

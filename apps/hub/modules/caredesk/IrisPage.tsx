@@ -101,6 +101,7 @@ import {
   IrisConversationMessagesTimeline,
   type IrisConversationReadOnlyHelpers,
   type IrisConversationReadOnlyRenderers,
+  type IrisConversationWaitState,
 } from "./blocks/conversation/iris-conversation-readonly";
 import {
   IrisCobrancaContextSidebar,
@@ -137,6 +138,7 @@ import {
 import { getHubPresenceSnapshot } from "@/lib/hub-presence";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
+import { usePanteonNotifications } from "@/providers/pulsex-notification-provider";
 import type {
   IrisAgendaTimelineEntry,
   IrisApoloClientOption,
@@ -357,6 +359,20 @@ const IRIS_META_TEMPLATE_VARIABLES = [
     readiness: "Pronta",
   },
   {
+    example: "Segunda via de boleto",
+    key: "assunto",
+    label: "Assunto",
+    placeholder: "{{4}}",
+    readiness: "Iris",
+  },
+  {
+    example: "12 · mai/26 · R$ 1.200,00",
+    key: "parcelas",
+    label: "Parcelas",
+    placeholder: "{{4}}",
+    readiness: "Iris",
+  },
+  {
     example: "Lagoa Bonita",
     key: "empreendimento",
     label: "Empreendimento",
@@ -508,6 +524,11 @@ export function IrisPage({
   renderCobrancaProposal = null,
 }: IrisPageProps) {
   const { hubUser } = useAuth();
+  const { publishNotification } = usePanteonNotifications();
+  // Fila da Caca: so lider/coordenador (leader) e admin enxergam. Operadores e
+  // viewers nao veem os tickets conduzidos pela Caca.
+  const canSeeCacaQueue =
+    hubUser?.role === "admin" || hubUser?.role === "leader";
   const operatorUserId = operatorScoped ? (hubUser?.id ?? null) : null;
   const scopedQueueSlug = normalizeOptionalIrisQueueSlug(queueSlugFilter);
   const [irisData, setIrisData] = useState<IrisData>({
@@ -518,7 +539,7 @@ export function IrisPage({
     initialTickets[0]?.id ?? "",
   );
   const [activeView, setActiveView] = useState<IrisView>("gestao");
-  const attendanceProtocolHandledRef = useRef(false);
+  const attendanceProtocolHandledRef = useRef<string | null>(null);
   const [historyFocus, setHistoryFocus] = useState<IrisHistoryFocus | null>(
     null,
   );
@@ -559,6 +580,21 @@ export function IrisPage({
       body: notice.body,
       tag: `iris-${ticket.id}`,
       title: `Iris - ${notice.title}`,
+    });
+    // Registra na central de notificacoes do Panteon (o sininho), igual o Hermes —
+    // assim a notificacao fica persistida mesmo depois de lida.
+    publishNotification({
+      actionLabel: "Abrir",
+      context: { entityId: ticket.id, entityType: "iris-ticket" },
+      createdAt: message.createdAt,
+      description: notice.body,
+      href: `${cobrancaMode ? "/hades" : "/iris"}?atendimento=${encodeURIComponent(ticket.protocol)}`,
+      id: `iris-msg-${message.id}`,
+      kind: "atendimento",
+      moduleId: cobrancaMode ? "hades" : "iris",
+      moduleLabel: cobrancaMode ? "Hades" : "Iris",
+      severity: "info",
+      title: notice.title,
     });
   }
 
@@ -813,17 +849,22 @@ export function IrisPage({
     );
   }, [irisData.tickets, selectedTicketId]);
 
-  // "Voltar ao atendimento" do Hades: reabre a conversa do protocolo, uma vez.
+  // Reabre a conversa do protocolo (deep-link): "Voltar ao atendimento" do Hades
+  // e o clique na notificacao da central. Rastreia o ultimo protocolo tratado pra
+  // suportar abrir notificacoes diferentes sem remontar a tela.
   useEffect(() => {
-    if (!initialAttendanceProtocol || attendanceProtocolHandledRef.current) {
+    if (!initialAttendanceProtocol) {
       return;
     }
     const normalized = initialAttendanceProtocol.trim().toUpperCase();
+    if (attendanceProtocolHandledRef.current === normalized) {
+      return;
+    }
     const target = irisData.tickets.find(
       (ticket) => (ticket.protocol ?? "").trim().toUpperCase() === normalized,
     );
     if (target) {
-      attendanceProtocolHandledRef.current = true;
+      attendanceProtocolHandledRef.current = normalized;
       setSelectedTicketId(target.id);
       setActiveView("atendimento");
     }
@@ -1055,6 +1096,7 @@ export function IrisPage({
             />
           ) : (
             <ManagementView
+              canSeeCacaQueue={canSeeCacaQueue}
               data={irisData}
               loading={loading}
               snapshot={snapshot}
@@ -1093,6 +1135,7 @@ export function IrisPage({
             </div>
           ) : activeView === "gestao" ? (
             <ManagementView
+              canSeeCacaQueue={canSeeCacaQueue}
               data={irisData}
               loading={loading}
               snapshot={snapshot}
@@ -1167,6 +1210,7 @@ export function IrisPage({
 }
 
 function ManagementView({
+  canSeeCacaQueue,
   data,
   loading,
   snapshot,
@@ -1174,6 +1218,7 @@ function ManagementView({
   onSelectTicket,
   onStartAttendance,
 }: {
+  canSeeCacaQueue: boolean;
   data: IrisData;
   loading: boolean;
   snapshot: ReturnType<typeof buildIrisSnapshot>;
@@ -1182,8 +1227,13 @@ function ManagementView({
   onStartAttendance: (queueLabel?: string) => void;
 }) {
   const openTickets = useMemo(
-    () => data.tickets.filter((ticket) => !isClosedTicket(ticket)),
-    [data.tickets],
+    () =>
+      data.tickets.filter(
+        (ticket) =>
+          !isClosedTicket(ticket) &&
+          (canSeeCacaQueue || !isCacaOwnedTicket(ticket)),
+      ),
+    [canSeeCacaQueue, data.tickets],
   );
   const boardActionItems = useMemo<IrisBoardActionItem[]>(
     () => [
@@ -1222,6 +1272,7 @@ function ManagementView({
         <IrisLoading />
       ) : (
         <IrisTicketQueue
+          canSeeCacaQueue={canSeeCacaQueue}
           helpers={irisTicketQueueHelpers}
           renderers={irisTicketQueueRenderers}
           tickets={openTickets}
@@ -1304,6 +1355,8 @@ function athenaActionLabel(action: AthenaAction): string {
       return "Total em aberto";
     case "resumir":
       return "Resumir conversa";
+    case "tickets":
+      return "Lista de tickets";
     case "ajustar_tom":
       return "Ajustar o tom da minha mensagem";
     default:
@@ -1422,6 +1475,13 @@ function IrisConversationPanel({
     string | null
   >(null);
   const [contextNoteDraft, setContextNoteDraft] = useState("");
+  const [notesModalOpen, setNotesModalOpen] = useState(false);
+  // Assunto do atendimento: o operador escolhe no bloco fixo do topo (catalogo do
+  // Setup) e o valor carrega pro encerramento. Mensagem nova vem em branco.
+  const [attendanceSubject, setAttendanceSubject] = useState(
+    ticket?.subject ?? "",
+  );
+  const [subjectCatalog, setSubjectCatalog] = useState<string[]>([]);
   const [contextAgendaEvents, setContextAgendaEvents] = useState<
     IrisTicketContextAgendaEvent[]
   >([]);
@@ -1500,6 +1560,18 @@ function IrisConversationPanel({
     ticket.crm360Registration,
   );
   const portfolioShortcutEnabled = hasUserPortfolio || fallbackUserProfile;
+  // Marcadores do header (centro): perfil do contato + adimplencia (so comprador).
+  const contactProfileLabel =
+    apoloContextEntity?.profiles?.find((profile) => profile?.trim())?.trim() ||
+    (ticket.profileLabel && ticket.profileLabel !== "Sem perfil"
+      ? ticket.profileLabel
+      : null);
+  const contactDelinquency: "adimplente" | "inadimplente" | null =
+    hasUserPortfolio
+      ? (apoloContextEntity?.financial?.overdueInstallments ?? 0) > 0
+        ? "inadimplente"
+        : "adimplente"
+      : null;
   const agendaTimeline = useMemo(
     () =>
       buildIrisMergedAgendaEntries({
@@ -1585,6 +1657,9 @@ function IrisConversationPanel({
       let resolvedEntity: IrisApoloContextEntity | null = null;
       let lastResponseError: string | null = null;
 
+      // 1) Fonte: read-model do Apolo (Iris<-Apolo). O loader hidrata o portfolio
+      // (parcelas/contrato) via fetchC2xPortfolioByEntity, entao a Carteira vem
+      // completa — mesma informacao de parcelas do Hades.
       for (const candidate of queryCandidates) {
         const response = await fetch(
           `/api/apolo/relationships?q=${encodeURIComponent(candidate)}&limit=20`,
@@ -1620,6 +1695,37 @@ function IrisConversationPanel({
 
         if (resolvedEntity) {
           break;
+        }
+      }
+
+      // 2) Fallback: resolver direto no C2X (so se o read-model nao achou).
+      if (!resolvedEntity) {
+        try {
+          const c2xResponse = await fetch("/api/iris/c2x/resolve", {
+            body: JSON.stringify({
+              phones: ticket.contactPhone ? [ticket.contactPhone] : [],
+              query: ticketContactLabel(ticket),
+            }),
+            cache: "no-store",
+            headers: {
+              Authorization: `Bearer ${accessToken}`,
+              "Content-Type": "application/json",
+            },
+            method: "POST",
+          });
+          const c2xPayload = (await c2xResponse.json().catch(() => null)) as {
+            data?: { entities?: IrisApoloContextEntity[] };
+            error?: string;
+          } | null;
+
+          if (c2xResponse.ok && Array.isArray(c2xPayload?.data?.entities)) {
+            resolvedEntity = pickIrisApoloEntityForTicket(
+              c2xPayload.data.entities,
+              ticket,
+            );
+          }
+        } catch {
+          // Sem C2X disponivel: fica so com o read-model do Apolo.
         }
       }
 
@@ -1668,7 +1774,43 @@ function IrisConversationPanel({
       ),
     );
     setContextModalMode(null);
-  }, [ticket.id]);
+    setAttendanceSubject(ticket.subject ?? "");
+  }, [ticket.id, ticket.subject]);
+
+  // Catalogo de assuntos cadastrados (Setup) p/ o select do bloco fixo. Mesma
+  // fonte do close modal (GET /api/iris/tickets -> profiles).
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const token = await getIrisAccessToken();
+        const response = await fetch("/api/iris/tickets", {
+          cache: "no-store",
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        const payload = (await response.json().catch(() => null)) as {
+          profiles?: { name: string; slug?: string }[];
+        } | null;
+        if (cancelled || !response.ok || !payload) {
+          return;
+        }
+        const list = (payload.profiles ?? [])
+          .map((profile) =>
+            profile.slug === "primeiro-contato" ||
+            profile.name?.toLowerCase() === "primeiro contato"
+              ? "Contato"
+              : profile.name,
+          )
+          .filter(Boolean);
+        setSubjectCatalog(Array.from(new Set(list)));
+      } catch {
+        // segue sem catalogo; o assunto atual continua editavel como texto.
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const latestCustomerMessage = useMemo(() => {
     for (let index = ticket.messages.length - 1; index >= 0; index -= 1) {
@@ -1699,8 +1841,14 @@ function IrisConversationPanel({
     ? (ticket.messages.find((message) => message.id === editingMessageId) ??
       null)
     : null;
-  const canSendFreeForm = operationReady && customerServiceWindow.open;
-  const composerReady = editingMessage ? operationReady : canSendFreeForm;
+  // Quando a Caca conduz o atendimento, o operador NAO pode atropelar (enviar):
+  // so acompanha e direciona/transfere. O composer fica travado.
+  const attendanceWithCaca = isCacaOwnedTicket(ticket);
+  const canSendFreeForm =
+    operationReady && customerServiceWindow.open && !attendanceWithCaca;
+  const composerReady = editingMessage
+    ? operationReady && !attendanceWithCaca
+    : canSendFreeForm;
   const blockedTooltip = ticketClosed
     ? "Ticket encerrado"
     : customerServiceWindow.open
@@ -1881,6 +2029,36 @@ function IrisConversationPanel({
     audioUrl?: string,
   ) {
     if (athenaLoading) return;
+
+    // "Lista de tickets": montada localmente a partir dos tickets do cliente
+    // (atual + anteriores), sem chamar o backend da Athena.
+    if (action === "tickets") {
+      const clientTickets = [ticket, ...previousTickets];
+      const lines = clientTickets.length
+        ? clientTickets
+            .map((item) => {
+              const opened = formatDateTime(item.openedAt);
+              const closedValue = item.closedAt ?? item.resolvedAt;
+              const period = closedValue
+                ? `aberto ${opened} · encerrado ${formatDateTime(closedValue)}`
+                : `aberto ${opened} · em aberto`;
+              return `• ${item.protocol} — ${item.subject || "Sem assunto"}\n  ${period} · ${item.assignedToLabel}`;
+            })
+            .join("\n")
+        : "Este cliente ainda nao possui outros tickets.";
+      const stamp = Date.now();
+      setAthenaThread((current) => [
+        ...current,
+        { id: `op-${stamp}`, role: "operator", text: athenaActionLabel("tickets") },
+        {
+          id: `at-${stamp}`,
+          role: "athena",
+          text: `Tickets deste cliente:\n${lines}`,
+        },
+      ]);
+      return;
+    }
+
     const userText =
       action === "livre"
         ? (promptOverride ?? athenaPrompt).trim()
@@ -2746,15 +2924,21 @@ function IrisConversationPanel({
     renderMessageBubble: ({ message, ticket }) => (
       <MessageBubble
         message={message}
-        onAskAthena={cobrancaMode ? askAthenaAboutMessage : undefined}
+        onAskAthena={askAthenaAboutMessage}
         onEdit={prepareEdit}
         onReact={reactToMessage}
         onReply={prepareReply}
         ticket={ticket}
       />
     ),
-    renderTicketSeparator: (ticket, compact) => (
-      <TicketSeparator ticket={ticket} compact={compact} />
+    renderTicketSeparator: (separatorTicket, compact) => (
+      <TicketSeparator
+        ticket={separatorTicket}
+        compact={compact}
+        subject={compact ? undefined : attendanceSubject}
+        subjectOptions={compact ? undefined : subjectCatalog}
+        onSubjectChange={compact ? undefined : setAttendanceSubject}
+      />
     ),
   };
 
@@ -2788,6 +2972,28 @@ function IrisConversationPanel({
                   <span>{ticket.protocol}</span>
                   <span aria-hidden="true">-</span>
                   <span>{statusLabel[ticketStatus]}</span>
+                  {contactProfileLabel ? (
+                    <>
+                      <span aria-hidden="true">·</span>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold capitalize text-slate-600 ring-1 ring-slate-200">
+                        {contactProfileLabel.toLowerCase()}
+                      </span>
+                    </>
+                  ) : null}
+                  {contactDelinquency ? (
+                    <span
+                      className={[
+                        "rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1",
+                        contactDelinquency === "inadimplente"
+                          ? "bg-rose-50 text-rose-700 ring-rose-200"
+                          : "bg-emerald-50 text-emerald-700 ring-emerald-200",
+                      ].join(" ")}
+                    >
+                      {contactDelinquency === "inadimplente"
+                        ? "Inadimplente"
+                        : "Adimplente"}
+                    </span>
+                  ) : null}
                   {cobrancaMode && ticket.contactPhone ? (
                     <>
                       <span aria-hidden="true">·</span>
@@ -2796,58 +3002,24 @@ function IrisConversationPanel({
                       </span>
                     </>
                   ) : null}
-                  {ticketIncomplete ? (
-                    <>
-                      <span aria-hidden="true">-</span>
-                      <Tooltip
-                        content="Ticket criado e aguardando dados operacionais."
-                        placement="bottom"
-                      >
-                        <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                          Autoaberto
-                        </span>
-                      </Tooltip>
-                    </>
-                  ) : null}
                 </div>
               </div>
             </div>
 
             <div className="flex min-w-0 items-center gap-2 xl:justify-end">
-              <label className="hidden h-9 max-w-full items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/70 px-2 text-xs font-semibold text-slate-600 sm:inline-flex">
-                <span className="shrink-0">{cobrancaMode ? "Assunto" : "Perfil"}</span>
-                <select
-                  value={cobrancaMode ? cobrancaAssunto(ticket.profileLabel) : ticket.profileLabel}
-                  disabled
-                  className="h-6 max-w-52 bg-transparent text-xs font-semibold text-slate-700 outline-none"
-                  aria-label={cobrancaMode ? "Assunto do atendimento" : "Perfil do ticket"}
-                >
-                  <option>
-                    {cobrancaMode ? cobrancaAssunto(ticket.profileLabel) : ticket.profileLabel}
-                  </option>
-                </select>
-              </label>
-              {cobrancaMode ? null : (
-              <Tooltip
-                content={attendantOpen ? "Ocultar Cacá" : "Acionar Cacá"}
-                placement="bottom"
-              >
-                <button
-                  type="button"
-                  onClick={() => setAttendantOpen((current) => !current)}
-                  disabled={ticketClosed}
-                  aria-label={attendantOpen ? "Ocultar Cacá" : "Acionar Cacá"}
-                  className={[
-                    "inline-flex size-9 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400",
-                    attendantOpen
-                      ? "border-[#A07C3B]/40 bg-[#101820] text-white hover:bg-[#17212b]"
-                      : "border-[#A07C3B]/20 bg-[#fbf6ec] text-[#7A5E2C] hover:border-[#A07C3B]/35 hover:bg-[#f4ebdc]",
-                  ].join(" ")}
-                >
-                  <Bot className="h-4 w-4" aria-hidden="true" />
-                </button>
-              </Tooltip>
-              )}
+              {cobrancaMode ? (
+                <label className="hidden h-9 max-w-full items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/70 px-2 text-xs font-semibold text-slate-600 sm:inline-flex">
+                  <span className="shrink-0">Assunto</span>
+                  <select
+                    value={cobrancaAssunto(ticket.profileLabel)}
+                    disabled
+                    className="h-6 max-w-52 bg-transparent text-xs font-semibold text-slate-700 outline-none"
+                    aria-label="Assunto do atendimento"
+                  >
+                    <option>{cobrancaAssunto(ticket.profileLabel)}</option>
+                  </select>
+                </label>
+              ) : null}
               {cobrancaMode && cobrancaClientId && renderCobrancaProposal ? (
                 <Tooltip content="Registrar acordo / promessa" placement="bottom">
                   <button
@@ -2860,19 +3032,17 @@ function IrisConversationPanel({
                   </button>
                 </Tooltip>
               ) : null}
-              {cobrancaMode ? (
-                <Tooltip content="Direcionar atendimento" placement="bottom">
-                  <button
-                    type="button"
-                    onClick={() => setTransferModalOpen(true)}
-                    disabled={ticketClosed || transferring}
-                    aria-label="Direcionar atendimento"
-                    className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
-                  >
-                    <Forward className="size-4" aria-hidden="true" />
-                  </button>
-                </Tooltip>
-              ) : null}
+              <Tooltip content="Direcionar / transferir atendimento" placement="bottom">
+                <button
+                  type="button"
+                  onClick={() => setTransferModalOpen(true)}
+                  disabled={ticketClosed || transferring}
+                  aria-label="Direcionar / transferir atendimento"
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                >
+                  <Forward className="size-4" aria-hidden="true" />
+                </button>
+              </Tooltip>
               <Tooltip
                 content={
                   ticketClosed
@@ -2891,11 +3061,7 @@ function IrisConversationPanel({
               >
                 <button
                   type="button"
-                  onClick={() =>
-                    cobrancaMode
-                      ? setCloseModalOpen(true)
-                      : void closeTicket()
-                  }
+                  onClick={() => setCloseModalOpen(true)}
                   disabled={ticketClosed || closingTicket}
                   aria-label={
                     ticketClosed
@@ -2926,28 +3092,6 @@ function IrisConversationPanel({
                     <ArrowLeft className="size-4" aria-hidden="true" />
                   </button>
                 </Tooltip>
-                {cobrancaMode ? null : (
-                  <>
-                    <Tooltip content="Protocolo" placement="bottom">
-                      <button
-                        type="button"
-                        aria-label="Protocolo"
-                        className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
-                      >
-                        <FileText className="size-4" aria-hidden="true" />
-                      </button>
-                    </Tooltip>
-                    <Tooltip content="SLA" placement="bottom">
-                      <button
-                        type="button"
-                        aria-label="SLA"
-                        className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
-                      >
-                        <Clock3 className="size-4" aria-hidden="true" />
-                      </button>
-                    </Tooltip>
-                  </>
-                )}
               </div>
             </div>
           </div>
@@ -2959,7 +3103,8 @@ function IrisConversationPanel({
           </div>
         ) : null}
 
-        {attendantOpen && !cobrancaMode ? (
+        {/* Athena do Hades agora cobre tambem o atendimento (ver IrisAthenaPanel abaixo). */}
+        {false ? (
           <IrisAttendantPanel
             disabled={ticketClosed}
             documentFragment={attendantDocumentFragment}
@@ -3010,6 +3155,8 @@ function IrisConversationPanel({
           emojiOptions={IRIS_EMOJI_OPTIONS}
           emojiPickerOpen={emojiPickerOpen}
           emojiPickerRef={emojiPickerRef}
+          lockedByCaca={attendanceWithCaca}
+          onOpenNotes={() => setNotesModalOpen(true)}
           onCancelComposerContext={cancelComposerContext}
           onComposerKeyDown={handleComposerKeyDown}
           onDraftChange={setDraft}
@@ -3026,9 +3173,10 @@ function IrisConversationPanel({
           ticketClosed={ticketClosed}
         />
 
-        {cobrancaMode && attendantOpen ? (
+        {attendantOpen ? (
           <div className="absolute bottom-[84px] right-3 z-30 w-[380px] max-w-[calc(100%-1.5rem)]">
             <IrisAthenaPanel
+              cobrancaMode={cobrancaMode}
               contextMessage={athenaContextMessage}
               disabled={ticketClosed}
               loading={athenaLoading}
@@ -3081,27 +3229,96 @@ function IrisConversationPanel({
             ...previousTickets.filter((item) => item.id !== ticket.id),
           ].map((item) => ({
             id: item.id,
+            closedAt: item.closedAt ?? item.resolvedAt,
             openedAt: item.openedAt,
+            operator: item.assignedToLabel,
             protocol: item.protocol,
             status: item.status,
             subject: cobrancaAssunto(item.subject),
           }))}
         />
       ) : (
-        <IrisConversationContextSidebar
-          contextShortcuts={contextShortcuts}
-          customerServiceWindowContextLabel={customerServiceWindow.contextLabel}
-          helpers={irisConversationReadOnlyHelpers}
-          previousTickets={previousTickets}
-          renderers={irisConversationReadOnlyRenderers}
-          ticket={ticket}
-          ticketContextNote={ticketContextNote}
+        <IrisCobrancaContextSidebar
+          apoloEntity={apoloContextEntity}
+          clienteFields={[
+            {
+              label: "Cliente",
+              value:
+                capitalizeName(apoloContextEntity?.displayName) ||
+                capitalizeName(ticket.crm360Registration?.label) ||
+                "-",
+            },
+            ...(ticket.crm360Registration?.relationLabel
+              ? [
+                  {
+                    label: "Imobiliária",
+                    value: capitalizeName(
+                      ticket.crm360Registration.relationLabel,
+                    ),
+                  },
+                ]
+              : []),
+            {
+              label: "Telefone",
+              value: ticket.contactPhone
+                ? formatPhoneForDisplay(ticket.contactPhone)
+                : "-",
+            },
+            {
+              label: "CPF/CNPJ",
+              value:
+                apoloContextEntity?.documentMasked?.trim() ||
+                ticket.contactDocument ||
+                "-",
+            },
+            {
+              label: "E-mail",
+              value:
+                ticket.contactEmail ||
+                apoloContextEntity?.contacts?.find(
+                  (contact) => contact.type === "email" && contact.value,
+                )?.value ||
+                "-",
+            },
+            { label: "Operador", value: ticket.assignedToLabel },
+            {
+              label: "Assunto",
+              value: attendanceSubject.trim() || ticket.subject?.trim() || "-",
+            },
+            {
+              label: "Origem",
+              value: ticketOrigin(ticket) === "active" ? "Ativo" : "Passivo",
+            },
+            { label: "Canal", value: "WhatsApp" },
+            { label: "Janela WhatsApp", value: customerServiceWindow.contextLabel },
+          ]}
+          clientId={null}
+          collapsed={contextCollapsed}
+          currentTicketId={ticket.id}
+          formatDateTime={irisConversationReadOnlyHelpers.formatDateTime}
+          mode="atendimento"
+          note={ticketContextNote}
+          onInsertDraftText={insertDraftText}
+          onSelectTicket={onSelectTicket}
+          onToggleCollapsed={() => setContextCollapsed((current) => !current)}
+          tickets={[
+            ticket,
+            ...previousTickets.filter((item) => item.id !== ticket.id),
+          ].map((item) => ({
+            id: item.id,
+            closedAt: item.closedAt ?? item.resolvedAt,
+            openedAt: item.openedAt,
+            operator: item.assignedToLabel,
+            protocol: item.protocol,
+            status: item.status,
+            subject: item.subject,
+          }))}
         />
       )}
 
       {closeModalOpen ? (
         <IrisCobrancaCloseModal
-          currentSubject={ticket.subject}
+          currentSubject={attendanceSubject || ticket.subject}
           protocol={ticket.protocol}
           submitting={closingTicket}
           onCancel={() => setCloseModalOpen(false)}
@@ -3119,6 +3336,58 @@ function IrisConversationPanel({
           onCancel={() => setTransferModalOpen(false)}
           onConfirm={(input) => void transferTicket(input)}
         />
+      ) : null}
+
+      {notesModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[2px]">
+          <button
+            type="button"
+            aria-label="Fechar notas"
+            onClick={() => setNotesModalOpen(false)}
+            className="absolute inset-0 cursor-default"
+          />
+          <section className="relative z-10 flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_90px_rgba(15,23,42,0.24)]">
+            <header className="border-b border-slate-100 px-5 py-4">
+              <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
+                Atendimento {ticket.protocol}
+              </p>
+              <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                Nota do atendimento
+              </h2>
+              <p className="mt-0.5 text-xs text-slate-500">
+                Fica registrada no ticket, visivel pra equipe.
+              </p>
+            </header>
+            <div className="px-5 py-4">
+              <textarea
+                value={contextNoteDraft}
+                onChange={(event) => setContextNoteDraft(event.target.value)}
+                rows={5}
+                placeholder="Escreva uma observacao sobre este atendimento..."
+                className="w-full resize-none rounded-xl border border-slate-200/70 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#A07C3B]/40"
+              />
+            </div>
+            <footer className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
+              <button
+                type="button"
+                onClick={() => setNotesModalOpen(false)}
+                className="inline-flex h-9 items-center rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  void saveContextNote();
+                  setNotesModalOpen(false);
+                }}
+                className="inline-flex h-9 items-center rounded-lg bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35]"
+              >
+                Salvar nota
+              </button>
+            </footer>
+          </section>
+        </div>
       ) : null}
 
       {contextModalMode ? (
@@ -3434,15 +3703,33 @@ function IrisConversationPanel({
 
 function TicketSeparator({
   compact = false,
+  onSubjectChange,
+  subject,
+  subjectOptions,
   ticket,
 }: {
   compact?: boolean;
+  onSubjectChange?: (value: string) => void;
+  subject?: string;
+  subjectOptions?: string[];
   ticket: IrisTicket;
 }) {
   const status = effectiveIrisStatus(ticket);
+  const subjectChoices = Array.from(
+    new Set([subject, ...(subjectOptions ?? [])]),
+  ).filter((value): value is string => Boolean(value && value.trim()));
+  const openedDayLabel = ticket.openedAt
+    ? `${new Date(ticket.openedAt).toLocaleDateString("pt-BR")} · ${new Date(
+        ticket.openedAt,
+      ).toLocaleDateString("pt-BR", { weekday: "long" })}`
+    : "-";
 
   return (
-    <div className="flex items-center justify-center gap-3">
+    <div
+      className={`flex items-center justify-center gap-3 ${
+        compact ? "" : "sticky top-0 z-10 bg-slate-50/95 py-2 backdrop-blur-sm"
+      }`}
+    >
       <div className="h-px flex-1 bg-slate-200/70" />
       <div
         className={[
@@ -3460,12 +3747,31 @@ function TicketSeparator({
         </div>
         {!compact ? (
           <>
-            <p className="mt-2 text-sm font-semibold text-slate-950">
-              {ticketCrmSubtitle(ticket)}
-            </p>
-            <p className="mt-1 text-xs font-medium text-slate-500">
-              {formatDateTime(ticket.openedAt)} - {ticket.queueLabel} -{" "}
-              {formatIrisChannelLabel(ticket.channelLabel)}
+            {onSubjectChange ? (
+              <select
+                value={subject ?? ""}
+                onChange={(event) => onSubjectChange(event.target.value)}
+                aria-label="Assunto do atendimento"
+                className={`mt-2 block w-full rounded-lg border px-2 py-1 text-center text-sm font-semibold outline-none focus:border-[#A07C3B]/40 ${
+                  (subject ?? "").trim()
+                    ? "border-slate-200/70 bg-white text-slate-950"
+                    : "border-rose-300 bg-rose-50 text-rose-700"
+                }`}
+              >
+                <option value="">Selecione o assunto…</option>
+                {subjectChoices.map((option) => (
+                  <option key={option} value={option}>
+                    {option}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <p className="mt-2 text-sm font-semibold text-slate-950">
+                {ticket.subject?.trim() || ticketCrmSubtitle(ticket)}
+              </p>
+            )}
+            <p className="mt-1 text-xs font-medium capitalize text-slate-500">
+              {openedDayLabel} · WhatsApp · {ticket.queueLabel}
             </p>
           </>
         ) : (
@@ -3781,13 +4087,13 @@ function MessageBubble({
             className={[
               "min-w-[128px] max-w-full rounded-2xl px-4 py-3 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.05)] [overflow-wrap:anywhere]",
               outbound
-                ? "border border-[#eadcc2] bg-[#f8f4ed] text-slate-900"
+                ? "border border-[#c8ecd7] bg-[#eaf8f0] text-slate-900"
                 : "border border-slate-200 bg-white text-slate-800",
             ].join(" ")}
           >
             {outbound && message.senderLabel ? (
               <div className="mb-1.5 flex items-center justify-end gap-1.5">
-                <span className="rounded-full border border-[#eadcc2] bg-white/70 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
+                <span className="rounded-full border border-[#c8ecd7] bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-[#0f766e]">
                   {message.senderLabel}
                 </span>
               </div>
@@ -4301,6 +4607,8 @@ const irisTicketQueueRenderers: IrisTicketQueueRenderers = {
 
 const irisConversationReadOnlyHelpers: IrisConversationReadOnlyHelpers = {
   conversationTime,
+  conversationWaitAge,
+  conversationWaitState,
   crm360ContextLabel,
   formatDateTime,
   formatIrisChannelLabel,
@@ -4342,6 +4650,70 @@ function buildTicketChecklist(ticket: IrisTicket) {
       ok: slaLabel(ticket) !== "Sem SLA",
     },
   ];
+}
+
+// Primeira Maiúscula em nomes que vêm em CAIXA ALTA do C2X (regra de UI do Lucas).
+function capitalizeName(value?: string | null): string {
+  if (!value) {
+    return "";
+  }
+
+  return value
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .map((word) =>
+      word ? word.charAt(0).toUpperCase() + word.slice(1) : word,
+    )
+    .join(" ");
+}
+
+function conversationWaitState(ticket: IrisTicket): IrisConversationWaitState {
+  const status = effectiveIrisStatus(ticket);
+
+  if (status === "closed" || status === "resolved" || status === "cancelled") {
+    return { label: "Encerrado", tone: "encerrado" };
+  }
+
+  // waiting_customer = ultima mensagem foi nossa (operador/Caca) -> aguardando o cliente
+  if (status === "waiting_customer") {
+    return { label: "Espera", tone: "espera" };
+  }
+
+  // new / open / pending / waiting_operator = ultima foi do cliente -> aguardando a gente
+  return { label: "Pendente", tone: "pendente" };
+}
+
+function conversationWaitAge(ticket: IrisTicket): string {
+  const value = ticket.lastMessageAt ?? ticket.openedAt;
+
+  if (!value) {
+    return "";
+  }
+
+  const time = new Date(value).getTime();
+
+  if (Number.isNaN(time)) {
+    return "";
+  }
+
+  const diffMinutes = Math.floor((Date.now() - time) / 60000);
+
+  if (diffMinutes < 1) {
+    return "agora";
+  }
+
+  if (diffMinutes < 60) {
+    return `${diffMinutes}min`;
+  }
+
+  const diffHours = Math.floor(diffMinutes / 60);
+
+  if (diffHours < 24) {
+    return `${diffHours}h`;
+  }
+
+  return `${Math.floor(diffHours / 24)}d`;
 }
 
 function conversationTime(ticket: IrisTicket) {

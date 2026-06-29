@@ -142,8 +142,9 @@ export function HubShell({
       return false;
     }
 
+    // Zeus voltou ao hub: aparece no menu/launcher SO para admin (gate proprio).
     if (isZeusModuleId(hubModule.id)) {
-      return false;
+      return canAccessZeusModule(hubUser);
     }
 
     if (!releasedModuleIds) {

@@ -17,10 +17,13 @@ export async function GET(request: Request) {
   }
 
   const url = new URL(request.url);
-  const query = normalizeSearch(url.searchParams.get("q") ?? "");
+  const rawQuery = url.searchParams.get("q") ?? "";
+  const query = normalizeSearch(rawQuery);
   const profile = normalizeProfile(url.searchParams.get("profile"));
   const limit = parseLimit(url.searchParams.get("limit"));
-  const dashboard = await loadApoloDashboard();
+  // Empurra o filtro para o banco em vez de carregar o dashboard inteiro e
+  // filtrar em memoria (evitava 16+ queries + enriquecimento C2X desperdicados).
+  const dashboard = await loadApoloDashboard({ limit, profile, query: rawQuery });
   const results = dashboard.entities
     .filter((entity) => matchesSearch(entity, query, profile))
     .slice(0, limit)

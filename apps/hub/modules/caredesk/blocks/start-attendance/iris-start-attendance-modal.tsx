@@ -1,15 +1,22 @@
 "use client";
 
+import { useEffect, useMemo, useState, type ComponentType } from "react";
 import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ComponentType,
-} from "react";
-import { Search, Send, Smartphone, X } from "lucide-react";
+  Check,
+  ChevronDown,
+  Headset,
+  Info,
+  Loader2,
+  MessageCircle,
+  Search,
+  Send,
+  Ticket,
+  Wallet,
+  X,
+} from "lucide-react";
 import type {
   IrisApoloClientOption,
+  IrisApoloContextEntity,
   IrisData,
   IrisMetaPhoneNumberLink,
   IrisMetaPhoneNumberOption,
@@ -19,6 +26,7 @@ import type {
   IrisQueueConfig,
   IrisTemplate,
   IrisTemplateFeedback,
+  IrisTicket,
   IrisTicketProfileConfig,
 } from "../../types/iris-types";
 
@@ -95,49 +103,64 @@ type IrisStartAttendanceModalProps = {
   onTemplatesSynced?: () => void;
 };
 
+// O que personaliza o template do contato ativo: tickets (protocolo + assunto,
+// fila de atendimento) ou parcelas (resumo das vencidas, igual ao Hades).
+type IrisStartContextMode = "tickets" | "parcelas";
+
+type IrisStartOverdueRow = {
+  id: string;
+  number: string;
+  reference: string;
+  unitCode: string | null;
+  value: string;
+};
+
+// Form de abertura de janela da Iris (estilo Hades). Busca o cliente no Apolo,
+// escolhe assunto + template aprovado e personaliza com tickets ou parcelas.
+// Tenta a janela de 24h aberta primeiro; se fechada, envia o template aprovado.
 export function IrisStartAttendanceModal({
   data,
   helpers,
   initialQueueLabel,
   onClose,
   onTicketCreated,
-  onTemplatesSynced,
 }: IrisStartAttendanceModalProps) {
   const {
-    TemplateFeedbackBox,
-    createIrisTemplateFeedback,
-    createIrisTemplateFeedbackFromPayload,
     defaultIrisQueueId,
     extractIrisApoloClientOptions,
-    findMetaPhoneNumberOption,
-    formatMetaPhoneNumberOption,
     formatPhoneForDisplay,
-    formatSelectedTemplatePhoneForDisplay,
     getIrisAccessToken,
     irisOptInTemplate,
     isMetaTemplateApprovedStatus,
     isMetaTemplateUnavailableStatus,
-    normalizeIrisSelectionLabel,
-    phoneNumberLinkFeedback,
-    readIrisTemplateSyncNotificationId,
-    readTemplateButtons,
-    readTemplateMetadataString,
     readTemplateMetaName,
     readTemplateMetaStatus,
-    readTemplateQueueLabel,
-    readTemplateSubjectLabel,
-    renderSelectedIrisTemplatePreview,
+    readTemplateMetadataString,
     sortIrisProfiles,
     sortIrisQueues,
     sortIrisTemplatesForSetup,
-    templateStatusLabel,
-    templateStatusTone,
   } = helpers;
+
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<IrisApoloClientOption[]>([]);
+  const [searching, setSearching] = useState(false);
   const [selectedClient, setSelectedClient] =
     useState<IrisApoloClientOption | null>(null);
-  const [searching, setSearching] = useState(false);
+
+  const [entityDetail, setEntityDetail] =
+    useState<IrisApoloContextEntity | null>(null);
+  const [loadingDetail, setLoadingDetail] = useState(false);
+
+  const [contextMode, setContextMode] =
+    useState<IrisStartContextMode>("tickets");
+  const [selectedTicketId, setSelectedTicketId] = useState("");
+  const [selectedInstallments, setSelectedInstallments] = useState<Set<string>>(
+    new Set(),
+  );
+
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+
   const activeQueues = useMemo(
     () =>
       data.queues
@@ -168,7 +191,8 @@ export function IrisStartAttendanceModal({
     subjectOptions.find((profile) => profile.id === selectedProfileId) ??
     subjectOptions[0] ??
     null;
-  const activeContactTemplates = useMemo(
+
+  const templateOptions = useMemo(
     () =>
       data.templates
         .filter(
@@ -187,105 +211,17 @@ export function IrisStartAttendanceModal({
       sortIrisTemplatesForSetup,
     ],
   );
-  const templateOptions = useMemo(() => {
-    const queueLabel = normalizeIrisSelectionLabel(selectedQueue?.name);
-    const subjectLabel = normalizeIrisSelectionLabel(selectedProfile?.name);
-
-    return activeContactTemplates.filter((template) => {
-      return (
-        normalizeIrisSelectionLabel(readTemplateQueueLabel(template)) ===
-          queueLabel &&
-        normalizeIrisSelectionLabel(readTemplateSubjectLabel(template)) ===
-          subjectLabel
-      );
-    });
-  }, [
-    activeContactTemplates,
-    normalizeIrisSelectionLabel,
-    readTemplateQueueLabel,
-    readTemplateSubjectLabel,
-    selectedProfile,
-    selectedQueue,
-  ]);
-  const [selectedLocalTemplateId, setSelectedLocalTemplateId] = useState("");
-  const selectedLocalTemplate =
-    templateOptions.find(
-      (template) => template.id === selectedLocalTemplateId,
-    ) ??
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const selectedTemplate =
+    templateOptions.find((template) => template.id === selectedTemplateId) ??
     templateOptions[0] ??
     null;
-  const [templateStatus, setTemplateStatus] = useState<string | null>(null);
-  const [templateMeta, setTemplateMeta] =
-    useState<IrisMetaTemplateOption | null>(null);
-  const [templatePhoneLink, setTemplatePhoneLink] =
-    useState<IrisMetaPhoneNumberLink | null>(null);
-  const [templatePhoneNumbers, setTemplatePhoneNumbers] = useState<
-    IrisMetaPhoneNumberOption[]
-  >([]);
-  const templateSyncNotifiedRef = useRef(new Set<string>());
-  const [selectedTemplatePhoneNumberId, setSelectedTemplatePhoneNumberId] =
-    useState("");
-  const [templateFeedback, setTemplateFeedback] = useState<
-    IrisTemplateFeedback | string
-  >("");
-  const [error, setError] = useState("");
-  const [startingTicket, setStartingTicket] = useState(false);
-  const selectedLocalTemplatePhoneNumberId = readTemplateMetadataString(
-    selectedLocalTemplate,
-    "metaPhoneNumberId",
-  );
-
-  const firstName = selectedClient?.firstName ?? irisOptInTemplate.exampleName;
-  const preview = selectedLocalTemplate
-    ? renderSelectedIrisTemplatePreview(selectedLocalTemplate, firstName)
-    : "";
-  const templateButtons = selectedLocalTemplate
-    ? readTemplateButtons(selectedLocalTemplate)
-    : [];
-  const templateApproved = isMetaTemplateApprovedStatus(templateStatus);
-  const startTemplateName =
-    templateMeta?.name ??
-    readTemplateMetaName(selectedLocalTemplate) ??
-    selectedLocalTemplate?.slug.replace(/-/g, "_") ??
-    irisOptInTemplate.name;
-  const startTemplateLanguage =
-    templateMeta?.language ??
-    readTemplateMetadataString(selectedLocalTemplate, "metaLanguage") ??
-    irisOptInTemplate.language;
-  const selectedTemplatePhoneNumber = findMetaPhoneNumberOption(
-    templatePhoneNumbers,
-    selectedTemplatePhoneNumberId,
-  );
-  const selectedTemplatePhoneLabel = formatSelectedTemplatePhoneForDisplay({
-    phoneNumber: selectedTemplatePhoneNumber,
-    template: selectedLocalTemplate,
-    phoneNumberId: selectedTemplatePhoneNumberId,
-  });
-  const selectedTemplatePhoneDisplayNumber =
-    selectedTemplatePhoneNumber?.displayPhoneNumber ??
-    readTemplateMetadataString(selectedLocalTemplate, "metaPhoneDisplayNumber");
-  const templatePhoneDisplayMissing = Boolean(
-    selectedTemplatePhoneNumberId && !selectedTemplatePhoneDisplayNumber,
-  );
-  const selectedTemplatePhoneNumberIsListed = templatePhoneNumbers.some(
-    (phoneNumber) => phoneNumber.id === selectedTemplatePhoneNumberId,
-  );
-  const templatePhoneMismatch =
-    templatePhoneLink?.checkStatus === "checked" &&
-    templatePhoneLink.linked === false;
-  const templateReadyToSend =
-    Boolean(selectedLocalTemplate) &&
-    templateApproved &&
-    Boolean(selectedTemplatePhoneNumberId) &&
-    !templatePhoneMismatch;
-  const templateCanStart = Boolean(selectedQueue) && Boolean(selectedProfile);
 
   useEffect(() => {
     if (!activeQueues.length) {
       setSelectedQueueId("");
       return;
     }
-
     if (
       !selectedQueueId ||
       !activeQueues.some((queue) => queue.id === selectedQueueId)
@@ -299,7 +235,6 @@ export function IrisStartAttendanceModal({
       setSelectedProfileId("");
       return;
     }
-
     if (
       !selectedProfileId ||
       !subjectOptions.some((profile) => profile.id === selectedProfileId)
@@ -310,211 +245,19 @@ export function IrisStartAttendanceModal({
 
   useEffect(() => {
     if (!templateOptions.length) {
-      setSelectedLocalTemplateId("");
+      setSelectedTemplateId("");
       return;
     }
-
     if (
-      !selectedLocalTemplateId ||
-      !templateOptions.some(
-        (template) => template.id === selectedLocalTemplateId,
-      )
+      !selectedTemplateId ||
+      !templateOptions.some((template) => template.id === selectedTemplateId)
     ) {
-      setSelectedLocalTemplateId(templateOptions[0]?.id ?? "");
+      setSelectedTemplateId(templateOptions[0]?.id ?? "");
     }
-  }, [selectedLocalTemplateId, templateOptions]);
-
-  useEffect(() => {
-    const templatePhoneNumberId = readTemplateMetadataString(
-      selectedLocalTemplate,
-      "metaPhoneNumberId",
-    );
-
-    setSelectedTemplatePhoneNumberId(templatePhoneNumberId ?? "");
-  }, [readTemplateMetadataString, selectedLocalTemplate]);
-
-  useEffect(() => {
-    let active = true;
-
-    async function loadTemplateStatus() {
-      const templateName = readTemplateMetaName(selectedLocalTemplate);
-      const templateLanguage = readTemplateMetadataString(
-        selectedLocalTemplate,
-        "metaLanguage",
-      );
-      const effectivePhoneNumberId =
-        selectedLocalTemplatePhoneNumberId ?? selectedTemplatePhoneNumberId;
-
-      if (!selectedLocalTemplate || !templateName) {
-        setTemplateStatus(null);
-        setTemplateMeta(null);
-        setTemplatePhoneLink(null);
-        setTemplatePhoneNumbers([]);
-        setSelectedTemplatePhoneNumberId("");
-        setTemplateFeedback(
-          createIrisTemplateFeedback({
-            message:
-              selectedProfile && selectedQueue
-                ? "Nenhum template aprovado localizado para esta fila e assunto."
-                : "Escolha fila e assunto para localizar templates aprovados.",
-            title: "Template obrigatorio",
-            tone: "warning",
-          }),
-        );
-        return;
-      }
-
-      setTemplateStatus(readTemplateMetaStatus(selectedLocalTemplate));
-      setTemplateMeta({
-        language: templateLanguage ?? irisOptInTemplate.language,
-        name: templateName,
-        status: readTemplateMetaStatus(selectedLocalTemplate),
-      });
-
-      try {
-        const accessToken = await getIrisAccessToken();
-        const params = new URLSearchParams({
-          language: templateLanguage ?? irisOptInTemplate.language,
-          name: templateName,
-        });
-
-        if (effectivePhoneNumberId) {
-          params.set("phoneNumberId", effectivePhoneNumberId);
-        }
-
-        const response = await fetch(
-          `/api/iris/meta/templates?${params.toString()}`,
-          {
-            cache: "no-store",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          },
-        );
-        const payload = (await response
-          .json()
-          .catch(() => null)) as IrisMetaTemplatesResponse | null;
-
-        if (!active) {
-          return;
-        }
-
-        if (!response.ok) {
-          setTemplateFeedback(
-            createIrisTemplateFeedbackFromPayload(
-              payload,
-              "Nao foi possivel consultar o template Meta neste ambiente.",
-            ),
-          );
-          return;
-        }
-
-        const templateSyncId = readIrisTemplateSyncNotificationId(
-          payload?.localTemplateSync,
-        );
-        if (
-          templateSyncId &&
-          !templateSyncNotifiedRef.current.has(templateSyncId)
-        ) {
-          templateSyncNotifiedRef.current.add(templateSyncId);
-          onTemplatesSynced?.();
-        }
-
-        const template = payload?.templates?.[0];
-        const phoneNumbers = Array.isArray(payload?.phoneNumbers)
-          ? payload.phoneNumbers
-          : [];
-        const selectedPhoneNumberId =
-          payload?.selectedPhoneNumberId ??
-          effectivePhoneNumberId ??
-          phoneNumbers.find((phoneNumber) => phoneNumber.isDefault)?.id ??
-          phoneNumbers[0]?.id ??
-          "";
-        setTemplatePhoneNumbers(phoneNumbers);
-        setSelectedTemplatePhoneNumberId(
-          (current) => current || selectedPhoneNumberId,
-        );
-        setTemplateStatus(template?.status ?? "NOT_FOUND");
-        setTemplateMeta(
-          template ?? {
-            language: templateLanguage ?? irisOptInTemplate.language,
-            name: templateName,
-            status: "NOT_FOUND",
-          },
-        );
-        setTemplatePhoneLink(payload?.phoneNumberLink ?? null);
-        const phoneMismatch =
-          payload?.phoneNumberLink?.checkStatus === "checked" &&
-          payload.phoneNumberLink.linked === false;
-        setTemplateFeedback(
-          phoneMismatch
-            ? createIrisTemplateFeedback({
-                action:
-                  "Crie ou selecione um template aprovado para o telefone de envio escolhido.",
-                cause:
-                  "Existe template aprovado com esse nome em outra WABA, mas ele nao pertence ao telefone selecionado.",
-                message:
-                  "O template aprovado nao esta vinculado ao telefone de envio deste atendimento.",
-                title: "Telefone divergente",
-                tone: "error",
-              })
-            : createIrisTemplateFeedback({
-                action: phoneNumberLinkFeedback(payload?.phoneNumberLink),
-                cause: payload?.ignoredTemplateCount
-                  ? "Existe template com esse nome em outra WABA, mas ele nao pertence ao telefone de envio selecionado."
-                  : undefined,
-                message: template
-                  ? `Template Meta ${templateStatusLabel(template.status)}.`
-                  : "Template nao encontrado na Meta para este telefone, nome e idioma.",
-                title: template
-                  ? "Consulta concluida"
-                  : "Template nao localizado",
-                tone: template ? "success" : "warning",
-              }),
-        );
-      } catch (templateError) {
-        if (active) {
-          setTemplateFeedback(
-            createIrisTemplateFeedback({
-              message:
-                templateError instanceof Error
-                  ? templateError.message
-                  : "Nao foi possivel consultar o template Meta.",
-              title: "Falha ao consultar a Meta",
-              tone: "error",
-            }),
-          );
-        }
-      }
-    }
-
-    void loadTemplateStatus();
-
-    return () => {
-      active = false;
-    };
-  }, [
-    createIrisTemplateFeedback,
-    createIrisTemplateFeedbackFromPayload,
-    getIrisAccessToken,
-    irisOptInTemplate.language,
-    onTemplatesSynced,
-    phoneNumberLinkFeedback,
-    readIrisTemplateSyncNotificationId,
-    readTemplateMetaName,
-    readTemplateMetaStatus,
-    readTemplateMetadataString,
-    selectedLocalTemplate,
-    selectedLocalTemplatePhoneNumberId,
-    selectedProfile,
-    selectedQueue,
-    selectedTemplatePhoneNumberId,
-    templateStatusLabel,
-  ]);
+  }, [selectedTemplateId, templateOptions]);
 
   useEffect(() => {
     const normalized = query.trim();
-
     if (normalized.length < 2) {
       setResults([]);
       return;
@@ -524,26 +267,21 @@ export function IrisStartAttendanceModal({
     const timeout = window.setTimeout(async () => {
       setSearching(true);
       setError("");
-
       try {
         const accessToken = await getIrisAccessToken();
         const response = await fetch(
           `/api/iris/apolo/search?q=${encodeURIComponent(normalized)}&limit=12`,
           {
             cache: "no-store",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
+            headers: { Authorization: `Bearer ${accessToken}` },
           },
         );
         const payload = await response.json().catch(() => null);
-
         if (!response.ok) {
           throw new Error(
             payload?.error ?? "Nao foi possivel buscar no CRM 360.",
           );
         }
-
         if (active) {
           setResults(extractIrisApoloClientOptions(payload));
         }
@@ -569,12 +307,181 @@ export function IrisStartAttendanceModal({
     };
   }, [extractIrisApoloClientOptions, getIrisAccessToken, query]);
 
-  async function startTicket() {
-    if (!selectedClient || !templateCanStart) {
+  // Limpa as selecoes ao trocar de cliente.
+  useEffect(() => {
+    setSelectedTicketId("");
+    setSelectedInstallments(new Set());
+  }, [selectedClient]);
+
+  // Hidrata o portfolio (parcelas/contrato) do cliente — mesma fonte do cockpit.
+  useEffect(() => {
+    if (!selectedClient) {
+      setEntityDetail(null);
       return;
     }
+    let active = true;
+    void (async () => {
+      setLoadingDetail(true);
+      try {
+        const accessToken = await getIrisAccessToken();
+        const candidate = digitsOnly(selectedClient.phone) || selectedClient.label;
+        const response = await fetch(
+          `/api/apolo/relationships?q=${encodeURIComponent(candidate)}&limit=20`,
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
+        );
+        const payload = (await response.json().catch(() => null)) as {
+          data?: { entities?: IrisApoloContextEntity[] };
+        } | null;
+        if (!active) return;
+        const entities = Array.isArray(payload?.data?.entities)
+          ? payload?.data?.entities ?? []
+          : [];
+        const match =
+          entities.find((entity) => entity.id === selectedClient.id) ??
+          entities[0] ??
+          null;
+        setEntityDetail(match);
+      } catch {
+        if (active) setEntityDetail(null);
+      } finally {
+        if (active) setLoadingDetail(false);
+      }
+    })();
+    return () => {
+      active = false;
+    };
+  }, [getIrisAccessToken, selectedClient]);
 
-    setStartingTicket(true);
+  const clientTickets = useMemo(() => {
+    if (!selectedClient) return [] as IrisTicket[];
+    const phoneDigits = digitsOnly(selectedClient.phone);
+    return data.tickets
+      .filter((ticket) => {
+        const entityId = ticket.crm360Registration?.entityId;
+        if (entityId && entityId === selectedClient.id) {
+          return true;
+        }
+        const ticketPhone = digitsOnly(ticket.contactPhone ?? "");
+        return (
+          Boolean(phoneDigits) &&
+          Boolean(ticketPhone) &&
+          (ticketPhone.endsWith(phoneDigits) ||
+            phoneDigits.endsWith(ticketPhone))
+        );
+      })
+      .sort((first, second) =>
+        (second.createdAt ?? "").localeCompare(first.createdAt ?? ""),
+      )
+      .slice(0, 8);
+  }, [data.tickets, selectedClient]);
+
+  const overdue = useMemo<IrisStartOverdueRow[]>(() => {
+    if (!entityDetail?.commercialLinks) return [];
+    const rows: IrisStartOverdueRow[] = [];
+    entityDetail.commercialLinks.forEach((link) => {
+      (link.installments ?? []).forEach((installment) => {
+        if (
+          !installment.status ||
+          !installment.status.toLowerCase().includes("venc")
+        ) {
+          return;
+        }
+        rows.push({
+          id:
+            installment.id ??
+            `${link.unitCode ?? ""}-${installment.number ?? ""}-${installment.reference ?? ""}`,
+          number: installment.number ?? "-",
+          reference: installment.reference ?? "-",
+          unitCode: link.unitCode ?? null,
+          value: installment.value ?? "-",
+        });
+      });
+    });
+    return rows;
+  }, [entityDetail]);
+
+  const selectedTicket =
+    clientTickets.find((ticket) => ticket.id === selectedTicketId) ?? null;
+
+  // Ao escolher um ticket, herda o assunto dele se houver um perfil igual.
+  useEffect(() => {
+    if (contextMode !== "tickets" || !selectedTicket) return;
+    const match = subjectOptions.find(
+      (profile) =>
+        profile.name.trim().toLowerCase() ===
+        selectedTicket.subject.trim().toLowerCase(),
+    );
+    if (match) setSelectedProfileId(match.id);
+  }, [contextMode, selectedTicket, subjectOptions]);
+
+  function toggleInstallment(id: string) {
+    setSelectedInstallments((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function toggleAllInstallments() {
+    setSelectedInstallments((current) => {
+      const every =
+        overdue.length > 0 && overdue.every((row) => current.has(row.id));
+      return every ? new Set<string>() : new Set(overdue.map((row) => row.id));
+    });
+  }
+
+  const selectedInstallmentRows = overdue.filter((row) =>
+    selectedInstallments.has(row.id),
+  );
+  const installmentLabels = selectedInstallmentRows.map(
+    (row) =>
+      `${row.unitCode ? `${row.unitCode} · ` : ""}${row.number} · ${row.reference}`,
+  );
+  const allInstallmentsSelected =
+    overdue.length > 0 && overdue.every((row) => selectedInstallments.has(row.id));
+
+  const firstName = selectedClient?.firstName ?? irisOptInTemplate.exampleName;
+  const startTemplateName =
+    readTemplateMetaName(selectedTemplate) ??
+    selectedTemplate?.slug.replace(/-/g, "_") ??
+    irisOptInTemplate.name;
+  const startTemplateLanguage =
+    readTemplateMetadataString(selectedTemplate, "metaLanguage") ??
+    irisOptInTemplate.language;
+  const templateApproved = isMetaTemplateApprovedStatus(
+    readTemplateMetaStatus(selectedTemplate),
+  );
+
+  const referenceProtocol =
+    contextMode === "tickets"
+      ? selectedTicket?.protocol ?? "(gerado na abertura)"
+      : "(gerado na abertura)";
+  const previewParams =
+    contextMode === "tickets"
+      ? [firstName, referenceProtocol, selectedProfile?.name ?? "-"]
+      : [
+          firstName,
+          formatStartInstallmentSummary(installmentLabels),
+          "(gerado na abertura)",
+        ];
+  const previewText = selectedTemplate?.body
+    ? renderStartTemplatePreview(selectedTemplate.body, previewParams)
+    : null;
+
+  const canStart =
+    Boolean(selectedClient) &&
+    Boolean(selectedQueue) &&
+    Boolean(selectedProfile) &&
+    Boolean(selectedTemplate) &&
+    !submitting;
+
+  async function submit() {
+    if (!selectedClient || !selectedQueue || !selectedProfile) return;
+    setSubmitting(true);
     setError("");
 
     try {
@@ -585,27 +492,29 @@ export function IrisStartAttendanceModal({
         contactName: selectedClient.label,
         firstName: selectedClient.firstName,
         metadata: {
-          activeContactTemplateId: selectedLocalTemplate?.id,
-          activeContactTemplateName: selectedLocalTemplate?.name,
-          activeContactTemplateQueue: selectedQueue?.name,
-          activeContactTemplateSubject: selectedProfile?.name,
+          contextMode,
+          relatedInstallments:
+            contextMode === "parcelas" ? installmentLabels : [],
+          relatedTickets:
+            contextMode === "tickets" && selectedTicket
+              ? [selectedTicket.protocol]
+              : [],
         },
         phone: selectedClient.phone,
-        phoneNumberId: selectedTemplatePhoneNumberId,
-        profileId: selectedProfile?.id,
-        queueId: selectedQueue?.id,
-        subject: selectedProfile?.name,
-        templateId: selectedLocalTemplate?.id,
+        profileId: selectedProfile.id,
+        queueId: selectedQueue.id,
+        subject: selectedProfile.name,
+        templateContext: contextMode === "tickets" ? "atendimento" : undefined,
+        templateId: selectedTemplate?.id,
         templateLanguage: startTemplateLanguage,
         templateName: startTemplateName,
+        templateReferenceProtocol:
+          contextMode === "tickets" ? selectedTicket?.protocol : undefined,
       };
 
-      const attemptStartTicket = async (sendTemplate: boolean) => {
+      const attempt = async (sendTemplate: boolean) => {
         const response = await fetch("/api/iris/tickets", {
-          body: JSON.stringify({
-            ...requestPayload,
-            sendTemplate,
-          }),
+          body: JSON.stringify({ ...requestPayload, sendTemplate }),
           cache: "no-store",
           headers: {
             Authorization: `Bearer ${accessToken}`,
@@ -614,12 +523,10 @@ export function IrisStartAttendanceModal({
           method: "POST",
         });
         const payload = await response.json().catch(() => null);
-
         return { payload, response };
       };
 
-      const windowAttempt = await attemptStartTicket(false);
-
+      const windowAttempt = await attempt(false);
       if (windowAttempt.response.ok) {
         onTicketCreated(windowAttempt.payload?.ticket?.id);
         return;
@@ -628,30 +535,27 @@ export function IrisStartAttendanceModal({
       const windowError =
         windowAttempt.payload?.error ??
         "Nao foi possivel iniciar o atendimento.";
-      const requiresTemplate =
+      const needsTemplate =
         windowAttempt.response.status === 409 &&
         typeof windowError === "string" &&
-        windowError.toLowerCase().includes("janela de 24h fechada");
-
-      if (!requiresTemplate) {
+        windowError.toLowerCase().includes("janela de 24h");
+      if (!needsTemplate) {
         throw new Error(windowError);
       }
 
-      if (!templateReadyToSend) {
+      if (!selectedTemplate) {
         throw new Error(
-          "Janela de 24h fechada. Selecione template aprovado e telefone de envio para iniciar o contato ativo.",
+          "Janela de 24h fechada. Selecione um template aprovado para iniciar o contato.",
         );
       }
 
-      const templateAttempt = await attemptStartTicket(true);
-
+      const templateAttempt = await attempt(true);
       if (!templateAttempt.response.ok) {
         throw new Error(
           templateAttempt.payload?.error ??
             "Nao foi possivel iniciar o atendimento.",
         );
       }
-
       onTicketCreated(templateAttempt.payload?.ticket?.id);
     } catch (ticketError) {
       setError(
@@ -659,385 +563,457 @@ export function IrisStartAttendanceModal({
           ? ticketError.message
           : "Nao foi possivel iniciar o atendimento.",
       );
-    } finally {
-      setStartingTicket(false);
+      setSubmitting(false);
     }
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/30 px-4 py-6 backdrop-blur-[2px]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
-        aria-label="Fechar novo atendimento"
+        aria-label="Fechar"
         onClick={onClose}
-        className="absolute inset-0 cursor-default"
+        className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
       />
-      <section className="relative z-10 flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_90px_rgba(15,23,42,0.24)]">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-              Contato ativo
-            </p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">
-              Novo atendimento
-            </h2>
-            <p className="mt-1 text-sm text-slate-500">
-              Buscar cliente no CRM 360 e iniciar o atendimento. Se a janela de
-              24h estiver aberta, a Iris reaproveita a conversa sem novo
-              template.
-            </p>
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+          <div className="flex items-center gap-2.5">
+            <span className="flex size-8 items-center justify-center rounded-lg bg-[#101820] text-white">
+              <Headset className="size-4" aria-hidden="true" />
+            </span>
+            <div>
+              <h2 className="text-base font-semibold text-slate-950">
+                Abrir atendimento
+              </h2>
+              <p className="text-[11px] text-slate-500">
+                cria o protocolo AT (Iris) e a janela de 24h
+              </p>
+            </div>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fechar formulario"
-            className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            aria-label="Fechar"
+            className="flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
         </header>
 
-        <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1fr)_360px] [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-          <div className="min-w-0 space-y-4">
-            <label className="block rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-              <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
-                Cliente CRM 360 / Apolo
-              </span>
-              <div className="mt-2 flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-500">
-                <Search className="size-4 text-[#A07C3B]" aria-hidden="true" />
+        <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto p-5 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+          {selectedClient ? (
+            <div className="flex items-center gap-3 rounded-xl bg-slate-50/80 px-3 py-2.5">
+              <div className="flex size-9 items-center justify-center rounded-full bg-[#101820]/10 text-[11px] font-semibold text-[#101820]">
+                {initials(selectedClient.label)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-slate-950">
+                  {selectedClient.label}
+                </p>
+                <p className="truncate text-[11px] text-slate-500">
+                  {selectedClient.profileLabel} ·{" "}
+                  {formatPhoneForDisplay(selectedClient.phone)}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedClient(null);
+                  setResults([]);
+                  setQuery("");
+                }}
+                className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                <Search className="size-3" aria-hidden="true" />
+                trocar
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <div className="flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3">
+                <Search className="size-4 text-[#101820]" aria-hidden="true" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Buscar por cliente ou telefone..."
-                  className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+                  placeholder="Buscar cliente no CRM 360 por nome ou telefone..."
+                  className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
                 />
+                {searching ? (
+                  <Loader2
+                    className="size-4 animate-spin text-slate-400"
+                    aria-hidden="true"
+                  />
+                ) : null}
               </div>
-              {searching ? (
-                <p className="mt-2 text-xs font-medium text-slate-500">
-                  Buscando no CRM 360...
-                </p>
-              ) : null}
-            </label>
-
-            <div className="rounded-xl border border-slate-200/70">
-              <div className="border-b border-slate-100 bg-slate-50/70 px-3 py-2 text-xs font-semibold uppercase tracking-normal text-slate-400">
-                Resultado da busca
-              </div>
-              <div className="max-h-72 overflow-y-auto p-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-                {results.length ? (
-                  results.map((client) => {
-                    const active = selectedClient?.id === client.id;
-
-                    return (
+              {query.trim().length >= 2 ? (
+                <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-200/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+                  {results.length ? (
+                    results.map((client) => (
                       <button
                         key={client.id}
                         type="button"
                         onClick={() => setSelectedClient(client)}
-                        className={[
-                          "mb-2 grid w-full gap-1 rounded-lg border px-3 py-2 text-left transition-colors last:mb-0",
-                          active
-                            ? "border-[#A07C3B]/35 bg-[#A07C3B]/5"
-                            : "border-slate-200/70 bg-white hover:bg-slate-50",
-                        ].join(" ")}
+                        className="flex w-full flex-col gap-0.5 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50"
                       >
-                        <div className="flex min-w-0 items-center justify-between gap-3">
-                          <p className="truncate text-sm font-semibold text-slate-950">
-                            {client.label}
-                          </p>
-                          <span className="shrink-0 rounded-full bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700 ring-1 ring-emerald-100">
-                            CRM 360
-                          </span>
-                        </div>
-                        <p className="truncate text-xs text-slate-500">
+                        <span className="truncate text-sm font-semibold text-slate-950">
+                          {client.label}
+                        </span>
+                        <span className="truncate text-[11px] text-slate-500">
                           {client.profileLabel} ·{" "}
                           {formatPhoneForDisplay(client.phone)}
-                        </p>
-                        <p className="truncate text-xs text-slate-400">
-                          {client.documentMasked ??
-                            client.locationLabel ??
-                            "Cadastro Apolo"}
-                        </p>
+                        </span>
                       </button>
-                    );
-                  })
-                ) : (
-                  <div className="px-3 py-8 text-center text-sm text-slate-500">
-                    {query.trim().length < 2
-                      ? "Digite pelo menos 2 caracteres para buscar."
-                      : "Nenhum cliente localizado com telefone para WhatsApp."}
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <aside className="min-w-0 space-y-4">
-            <div className="rounded-xl border border-slate-200/70 bg-white p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
-                    Template Meta
-                  </p>
-                  <h3 className="mt-1 text-sm font-semibold text-slate-950">
-                    {selectedLocalTemplate?.name ?? "Escolha um template"}
-                  </h3>
-                  <p className="mt-0.5 truncate text-xs font-medium text-slate-500">
-                    {[selectedQueue?.name, selectedProfile?.name]
-                      .filter(Boolean)
-                      .join(" / ") || "Fila e assunto"}
-                  </p>
+                    ))
+                  ) : (
+                    <p className="px-3 py-6 text-center text-xs text-slate-400">
+                      {searching
+                        ? "Buscando no CRM 360..."
+                        : "Nenhum cliente localizado com telefone para WhatsApp."}
+                    </p>
+                  )}
                 </div>
-                <span
-                  className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${templateStatusTone(templateStatus)}`}
-                >
-                  {templateStatusLabel(templateStatus)}
-                </span>
+              ) : (
+                <p className="px-1 text-[11px] text-slate-400">
+                  Digite pelo menos 2 caracteres para buscar.
+                </p>
+              )}
+            </div>
+          )}
+
+          {selectedClient ? (
+            <>
+              <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100/70 p-1">
+                {(
+                  [
+                    { icon: Ticket, label: "Tickets", value: "tickets" },
+                    { icon: Wallet, label: "Parcelas", value: "parcelas" },
+                  ] as const
+                ).map((option) => {
+                  const Icon = option.icon;
+                  const active = contextMode === option.value;
+                  return (
+                    <button
+                      key={option.value}
+                      type="button"
+                      onClick={() => setContextMode(option.value)}
+                      className={`flex h-8 items-center justify-center gap-1.5 rounded-md text-[13px] font-semibold transition-colors ${
+                        active
+                          ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200"
+                          : "text-slate-500 hover:text-slate-700"
+                      }`}
+                    >
+                      <Icon className="size-4" aria-hidden="true" />
+                      {option.label}
+                    </button>
+                  );
+                })}
               </div>
 
-              <div className="mt-4 space-y-3">
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
-                    Fila
-                  </span>
-                  <select
-                    value={selectedQueue?.id ?? ""}
-                    onChange={(event) => {
-                      setSelectedQueueId(event.target.value);
-                      setSelectedProfileId("");
-                      setSelectedLocalTemplateId("");
-                    }}
-                    className="mt-2 h-10 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/60"
-                  >
-                    <option value="">Selecione a fila</option>
-                    {activeQueues.map((queue) => (
-                      <option key={queue.id} value={queue.id}>
-                        {queue.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+              {contextMode === "tickets" ? (
+                <div>
+                  <p className="mb-1.5 text-[11px] font-semibold text-slate-500">
+                    Ticket relacionado{" "}
+                    <span className="font-normal text-slate-400">
+                      (referencia o protocolo no template)
+                    </span>
+                  </p>
+                  <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+                    {clientTickets.length === 0 ? (
+                      <p className="px-3 py-4 text-xs text-slate-400">
+                        Sem tickets anteriores deste cliente. O template usa o
+                        protocolo gerado na abertura.
+                      </p>
+                    ) : (
+                      clientTickets.map((ticket) => {
+                        const checked = selectedTicketId === ticket.id;
+                        return (
+                          <button
+                            type="button"
+                            key={ticket.id}
+                            onClick={() =>
+                              setSelectedTicketId(checked ? "" : ticket.id)
+                            }
+                            className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-xs last:border-b-0 hover:bg-slate-50"
+                          >
+                            <span
+                              className={`flex size-4 items-center justify-center rounded-full ${
+                                checked
+                                  ? "bg-emerald-600 text-white"
+                                  : "border border-slate-300"
+                              }`}
+                            >
+                              {checked ? (
+                                <Check className="size-3" aria-hidden="true" />
+                              ) : null}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-slate-700">
+                              <span className="font-semibold text-slate-900">
+                                {ticket.protocol}
+                              </span>{" "}
+                              · {ticket.subject}
+                            </span>
+                            <span className="shrink-0 text-[11px] text-slate-400">
+                              {formatStartDate(ticket.createdAt)}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div>
+                  <div className="mb-1.5 flex items-end justify-between gap-2">
+                    <p className="text-[11px] font-semibold text-slate-500">
+                      Parcelas relacionadas{" "}
+                      <span className="font-normal text-slate-400">
+                        (resumo no template)
+                      </span>
+                    </p>
+                    {overdue.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={toggleAllInstallments}
+                        className="shrink-0 whitespace-nowrap rounded-md border border-emerald-600/25 bg-emerald-50 px-2 py-1 text-[11px] font-semibold text-emerald-700 transition-colors hover:bg-emerald-100"
+                      >
+                        {allInstallmentsSelected ? "Limpar" : "Selecionar todas"}
+                      </button>
+                    ) : null}
+                  </div>
+                  <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+                    {loadingDetail && overdue.length === 0 ? (
+                      <p className="flex items-center gap-2 px-3 py-4 text-xs text-slate-400">
+                        <Loader2
+                          className="size-4 animate-spin"
+                          aria-hidden="true"
+                        />
+                        Carregando parcelas do cliente…
+                      </p>
+                    ) : overdue.length === 0 ? (
+                      <p className="px-3 py-4 text-xs text-slate-400">
+                        Sem parcelas vencidas carregadas para este cliente.
+                      </p>
+                    ) : (
+                      overdue.map((row) => {
+                        const checked = selectedInstallments.has(row.id);
+                        return (
+                          <button
+                            type="button"
+                            key={row.id}
+                            onClick={() => toggleInstallment(row.id)}
+                            className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-xs last:border-b-0 hover:bg-slate-50"
+                          >
+                            <span
+                              className={`flex size-4 items-center justify-center rounded ${
+                                checked
+                                  ? "bg-emerald-600 text-white"
+                                  : "border border-slate-300"
+                              }`}
+                            >
+                              {checked ? (
+                                <Check className="size-3" aria-hidden="true" />
+                              ) : null}
+                            </span>
+                            <span className="min-w-0 flex-1 truncate text-slate-700">
+                              {row.unitCode ? (
+                                <span className="text-emerald-700">
+                                  {row.unitCode}
+                                  {" · "}
+                                </span>
+                              ) : null}
+                              <span className="font-semibold text-slate-900">
+                                {row.number}
+                              </span>{" "}
+                              · {row.reference}
+                            </span>
+                            <span className="shrink-0 font-semibold text-slate-950">
+                              {row.value}
+                            </span>
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                  {overdue.length > 0 ? (
+                    <p className="mt-1 text-[11px] text-slate-500">
+                      {selectedInstallmentRows.length} de {overdue.length}{" "}
+                      selecionadas
+                    </p>
+                  ) : null}
+                </div>
+              )}
 
+              <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">
                     Assunto
                   </span>
-                  <select
-                    value={selectedProfile?.id ?? ""}
-                    onChange={(event) => {
-                      setSelectedProfileId(event.target.value);
-                      setSelectedLocalTemplateId("");
-                    }}
-                    disabled={!selectedQueue || !subjectOptions.length}
-                    className="mt-2 h-10 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/60 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-                  >
-                    <option value="">Selecione o assunto</option>
-                    {subjectOptions.map((profile) => (
-                      <option key={profile.id} value={profile.id}>
-                        {profile.name}
-                      </option>
-                    ))}
-                  </select>
+                  <div className="relative">
+                    <select
+                      value={selectedProfile?.id ?? ""}
+                      onChange={(event) =>
+                        setSelectedProfileId(event.target.value)
+                      }
+                      disabled={!subjectOptions.length}
+                      className="h-9 w-full appearance-none rounded-lg border border-slate-200/70 bg-white px-2 pr-7 text-sm text-slate-700 outline-none focus:border-[#101820]/40 disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      {subjectOptions.length ? (
+                        subjectOptions.map((profile) => (
+                          <option key={profile.id} value={profile.id}>
+                            {profile.name}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">Sem assuntos na fila</option>
+                      )}
+                    </select>
+                    <ChevronDown
+                      className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+                      aria-hidden="true"
+                    />
+                  </div>
                 </label>
-
-                <label className="block">
-                  <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
-                    Template aprovado
+                <div>
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+                    Canal
                   </span>
-                  <select
-                    value={selectedLocalTemplate?.id ?? ""}
-                    onChange={(event) =>
-                      setSelectedLocalTemplateId(event.target.value)
-                    }
-                    disabled={!selectedProfile || !templateOptions.length}
-                    className="mt-2 h-10 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/60 disabled:cursor-not-allowed disabled:bg-slate-50 disabled:text-slate-400"
-                  >
-                    <option value="">Selecione o template</option>
-                    {templateOptions.map((template) => (
-                      <option key={template.id} value={template.id}>
-                        {template.name}
-                      </option>
-                    ))}
-                  </select>
-                  <p className="mt-1 truncate text-xs font-medium text-slate-500">
-                    {templateOptions.length
-                      ? `${templateOptions.length} template(s) aprovado(s) para esta combinacao.`
-                      : "Nenhum template aprovado para esta fila e assunto."}
-                  </p>
-                </label>
+                  <div className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200/70 px-2.5 text-sm text-slate-700">
+                    <MessageCircle
+                      className="size-4 text-emerald-600"
+                      aria-hidden="true"
+                    />
+                    WhatsApp · {selectedQueue?.name ?? "Atendimento"}
+                  </div>
+                </div>
               </div>
 
-              <label className="mt-4 block">
-                <span className="text-xs font-semibold uppercase tracking-normal text-slate-400">
-                  Telefone de envio
+              <label className="block">
+                <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+                  Template aprovado (Meta)
                 </span>
-                <div className="mt-2 flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3">
-                  <Smartphone
-                    className="size-4 shrink-0 text-[#A07C3B]"
+                <div className="relative">
+                  <select
+                    value={selectedTemplate?.id ?? ""}
+                    onChange={(event) =>
+                      setSelectedTemplateId(event.target.value)
+                    }
+                    disabled={!templateOptions.length}
+                    className="h-9 w-full appearance-none rounded-lg border border-slate-200/70 bg-white px-2 pr-7 text-sm text-slate-700 outline-none focus:border-[#101820]/40 disabled:bg-slate-50 disabled:text-slate-400"
+                  >
+                    {templateOptions.length ? (
+                      templateOptions.map((template) => (
+                        <option key={template.id} value={template.id}>
+                          {template.name}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="">Nenhum template aprovado</option>
+                    )}
+                  </select>
+                  <ChevronDown
+                    className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-slate-400"
                     aria-hidden="true"
                   />
-                  <select
-                    value={selectedTemplatePhoneNumberId}
-                    onChange={(event) =>
-                      setSelectedTemplatePhoneNumberId(event.target.value)
-                    }
-                    disabled={
-                      !selectedLocalTemplate ||
-                      Boolean(selectedLocalTemplatePhoneNumberId)
-                    }
-                    className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-slate-700 outline-none disabled:cursor-not-allowed disabled:text-slate-500"
-                  >
-                    <option value="">Selecione o telefone</option>
-                    {selectedTemplatePhoneNumberId &&
-                    !selectedTemplatePhoneNumberIsListed ? (
-                      <option value={selectedTemplatePhoneNumberId}>
-                        {selectedTemplatePhoneLabel}
-                      </option>
-                    ) : null}
-                    {templatePhoneNumbers.map((phoneNumber) => (
-                      <option key={phoneNumber.id} value={phoneNumber.id}>
-                        {formatMetaPhoneNumberOption(phoneNumber)}
-                      </option>
-                    ))}
-                  </select>
                 </div>
-                <p className="mt-1 truncate text-xs font-medium text-slate-500">
-                  {selectedLocalTemplatePhoneNumberId
-                    ? `${selectedTemplatePhoneLabel} esta salvo no template aprovado.`
-                    : selectedTemplatePhoneNumber
-                      ? `${formatMetaPhoneNumberOption(selectedTemplatePhoneNumber)} define a WABA do template.`
-                      : "A Iris consulta e cria o template na WABA do telefone selecionado."}
-                </p>
+                {selectedTemplate && !templateApproved ? (
+                  <p className="mt-1 text-[10px] font-semibold text-amber-700">
+                    Esse template ainda nao consta aprovado na Meta — so envia com
+                    a janela aberta.
+                  </p>
+                ) : null}
               </label>
 
-              <div className="mt-4 rounded-xl border border-[#e7dfd3] bg-[#f8f4ec] p-3">
-                {selectedLocalTemplate ? (
-                  <>
-                    <p className="text-sm font-medium leading-6 text-slate-800">
-                      {preview}
-                    </p>
-                    {templateButtons.length ? (
-                      <div className="mt-3 grid grid-cols-2 gap-2">
-                        {templateButtons.map((button) => (
-                          <span
-                            key={button}
-                            className="inline-flex h-9 items-center justify-center rounded-lg border border-emerald-100 bg-white text-sm font-semibold text-emerald-700"
-                          >
-                            {button}
-                          </span>
-                        ))}
-                      </div>
-                    ) : null}
-                  </>
-                ) : (
-                  <p className="text-sm font-medium leading-6 text-slate-500">
-                    Escolha fila e assunto para carregar os templates aprovados.
+              {selectedTemplate ? (
+                <div>
+                  <p className="mb-1 text-[11px] font-semibold text-slate-500">
+                    Pré-visualização{" "}
+                    <span className="font-normal text-slate-400">
+                      (enviada só com a janela de 24h fechada)
+                    </span>
                   </p>
-                )}
-              </div>
+                  <div className="rounded-lg border border-slate-200/70 bg-slate-50/70 px-3 py-2 text-xs leading-relaxed whitespace-pre-line text-slate-700">
+                    {previewText ?? "Template aprovado."}
+                  </div>
+                </div>
+              ) : null}
 
-              <p className="mt-3 text-xs leading-5 text-slate-500">
-                No contato ativo, a Iris envia template aprovado apenas quando a
-                janela de 24h estiver fechada.
-              </p>
-
-              <TemplateFeedbackBox feedback={templateFeedback} />
-            </div>
-
-            <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-              <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
-                Atendimento
-              </p>
-              <div className="mt-3 space-y-2">
-                <ReadonlyMini
-                  label="Cliente"
-                  value={selectedClient?.label ?? "-"}
-                />
-                <ReadonlyMini
-                  label="Telefone"
-                  value={
-                    selectedClient
-                      ? formatPhoneForDisplay(selectedClient.phone)
-                      : "-"
-                  }
-                />
-                <ReadonlyMini label="Origem" value="Ativo" />
-                <ReadonlyMini label="Status inicial" value="Espera" />
-                <ReadonlyMini label="Fila" value={selectedQueue?.name ?? "-"} />
-                <ReadonlyMini
-                  label="Assunto"
-                  value={selectedProfile?.name ?? "-"}
-                />
-                <ReadonlyMini
-                  label="Template"
-                  value={selectedLocalTemplate?.name ?? "-"}
-                />
-              </div>
-            </div>
-          </aside>
-        </div>
-
-        <footer className="border-t border-slate-100 p-4">
-          {error ? (
-            <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
+              {error ? (
+                <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+                  {error}
+                </p>
+              ) : null}
+            </>
+          ) : error ? (
+            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
               {error}
             </p>
           ) : null}
-          {templatePhoneMismatch ? (
-            <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-medium text-rose-700">
-              O template aprovado nao pertence ao telefone de envio selecionado.
-              Crie ou selecione um template aprovado para este telefone.
-            </p>
-          ) : null}
-          {templatePhoneDisplayMissing ? (
-            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
-              A Meta ainda nao retornou o numero exibivel deste telefone. A Iris
-              vai usar o ID do telefone selecionado e a validacao server-side da
-              WABA.
-            </p>
-          ) : null}
-          {!selectedLocalTemplate ? (
-            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
-              Se a janela de 24h estiver fechada, selecione um template aprovado
-              para iniciar o contato ativo.
-            </p>
-          ) : !templateApproved ? (
-            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
-              Se a janela de 24h estiver fechada, o template precisa estar
-              aprovado pela Meta antes de iniciar contato ativo real.
-            </p>
-          ) : null}
-          {selectedLocalTemplate && !selectedTemplatePhoneNumberId ? (
-            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
-              Se a janela de 24h estiver fechada, selecione o telefone de envio.
-              Esse telefone define onde o template existe na Meta.
-            </p>
-          ) : null}
-          <button
-            type="button"
-            onClick={startTicket}
-            disabled={!selectedClient || !templateCanStart || startingTicket}
-            className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1f2c3a] disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            <Send className="size-4" aria-hidden="true" />
-            {startingTicket
-              ? "Iniciando atendimento..."
-              : "Iniciar atendimento"}
-          </button>
+        </div>
+
+        <footer className="flex items-center justify-between gap-3 border-t border-slate-100 px-5 py-3.5">
+          <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+            <Info className="size-3.5" aria-hidden="true" />
+            Janela aberta reaproveita a conversa
+          </span>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="inline-flex h-9 items-center rounded-lg border border-slate-200/70 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            >
+              Cancelar
+            </button>
+            <button
+              type="button"
+              disabled={!canStart}
+              onClick={() => void submit()}
+              aria-label="Abrir atendimento"
+              className="flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1f2c3a] disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {submitting ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Send className="size-4" aria-hidden="true" />
+              )}
+              Abrir
+            </button>
+          </div>
         </footer>
-      </section>
+      </div>
     </div>
   );
 }
 
-function ReadonlyMini({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-lg border border-slate-200/70 bg-white px-3 py-2">
-      <p className="text-[11px] font-semibold uppercase tracking-normal text-slate-400">
-        {label}
-      </p>
-      <p className="mt-0.5 truncate text-sm font-semibold text-slate-800">
-        {value}
-      </p>
-    </div>
-  );
+function digitsOnly(value: string) {
+  return value.replace(/\D+/g, "");
+}
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0]!.slice(0, 2).toUpperCase();
+  return `${parts[0]![0] ?? ""}${parts[parts.length - 1]![0] ?? ""}`.toUpperCase();
+}
+
+// Mesmo corte do backend (3 visiveis + "+N parcela(s)") pra nao estourar o
+// template do WhatsApp.
+function formatStartInstallmentSummary(labels: string[]) {
+  if (!labels.length) return "Sem parcela informada";
+  const preview = labels.slice(0, 3).join(" | ");
+  const suffix = labels.length > 3 ? ` +${labels.length - 3} parcela(s)` : "";
+  return `${preview}${suffix}`;
+}
+
+function renderStartTemplatePreview(body: string, params: string[]) {
+  return body.replace(/{{\s*(\d+)\s*}}/g, (placeholder, rawIndex) => {
+    const index = Number.parseInt(rawIndex, 10);
+    if (Number.isNaN(index) || index <= 0) return placeholder;
+    return params[index - 1] ?? placeholder;
+  });
+}
+
+function formatStartDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }

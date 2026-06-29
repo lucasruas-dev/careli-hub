@@ -110,6 +110,7 @@ export type IrisTicketQueueRenderers = {
 };
 
 export function IrisTicketQueue({
+  canSeeCacaQueue = true,
   helpers,
   onOpenAttendance,
   onSelectTicket,
@@ -117,6 +118,7 @@ export function IrisTicketQueue({
   renderers,
   tickets,
 }: {
+  canSeeCacaQueue?: boolean;
   helpers: IrisTicketQueueHelpers;
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
@@ -126,13 +128,19 @@ export function IrisTicketQueue({
 }) {
   const [ownerView, setOwnerView] =
     useState<IrisTicketQueueOwnerView>("Todos");
+  // A aba/fila da Caca so aparece p/ lider/coordenador/admin.
+  const ownerViewOptions: readonly IrisTicketQueueOwnerView[] = canSeeCacaQueue
+    ? ownerOptions
+    : ownerOptions.filter((option) => option !== cacaOwnerLabel);
+  const effectiveOwnerView: IrisTicketQueueOwnerView =
+    ownerViewOptions.includes(ownerView) ? ownerView : "Todos";
   const [queue, setQueue] = useState("Todos");
   const [status, setStatus] = useState("Todos");
   const [priority, setPriority] = useState("Todas");
   const [search, setSearch] = useState("");
   const ownerScopedTickets = useMemo(
-    () => helpers.filterTicketsByBoardOwner(tickets, ownerView),
-    [helpers, ownerView, tickets],
+    () => helpers.filterTicketsByBoardOwner(tickets, effectiveOwnerView),
+    [effectiveOwnerView, helpers, tickets],
   );
   const ownerCounters = useMemo<Record<IrisTicketQueueOwnerView, number>>(
     () => ({
@@ -269,9 +277,14 @@ export function IrisTicketQueue({
               tone={tickets.some(helpers.isWaitingForIris) ? "danger" : "gold"}
             />
           </div>
-          <div className="grid grid-cols-3 gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-1.5">
-            {ownerOptions.map((option) => {
-              const active = ownerView === option;
+          <div
+            className={[
+              "grid gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-1.5",
+              ownerViewOptions.length === 3 ? "grid-cols-3" : "grid-cols-2",
+            ].join(" ")}
+          >
+            {ownerViewOptions.map((option) => {
+              const active = effectiveOwnerView === option;
 
               return (
                 <button
@@ -424,15 +437,24 @@ export function IrisTicketRow({
 
   return (
     <article
-      className={`grid min-w-0 gap-2 overflow-hidden border-b border-slate-100 px-3 py-2.5 transition-colors last:border-b-0 hover:bg-slate-50/70 xl:grid-cols-[repeat(10,minmax(0,1fr))_40px] xl:items-center ${
+      role="button"
+      tabIndex={0}
+      onClick={() => {
+        onSelectTicket(ticket.id);
+        onOpenAttendance(ticket.id);
+      }}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onSelectTicket(ticket.id);
+          onOpenAttendance(ticket.id);
+        }
+      }}
+      className={`grid min-w-0 cursor-pointer gap-2 overflow-hidden border-b border-slate-100 px-3 py-2.5 transition-colors last:border-b-0 hover:bg-slate-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#A07C3B]/30 xl:grid-cols-[repeat(10,minmax(0,1fr))_40px] xl:items-center ${
         ticket.unread ? "bg-[#A07C3B]/5 shadow-[inset_3px_0_0_#A07C3B]" : ""
       }`}
     >
-      <button
-        type="button"
-        onClick={() => onSelectTicket(ticket.id)}
-        className="min-w-0 text-left"
-      >
+      <div className="min-w-0 text-left">
         <div className="flex items-start gap-2">
           {renderers.renderContactAvatar(ticket, "sm")}
           <div className="min-w-0">
@@ -461,7 +483,7 @@ export function IrisTicketRow({
             ) : null}
           </div>
         </div>
-      </button>
+      </div>
 
       <div className="min-w-0">
         <p className="truncate text-sm font-semibold text-slate-800">

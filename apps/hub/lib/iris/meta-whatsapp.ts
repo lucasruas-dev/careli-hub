@@ -243,6 +243,117 @@ export function getMetaWhatsAppOutboundConfig(
   };
 }
 
+export type MetaWhatsAppSubscribeResult = {
+  raw: unknown;
+  success: boolean;
+};
+
+// Subscreve o app da Iris (identificado pelo proprio access token) ao webhook de
+// uma WABA. Necessario para a Iris receber eventos (mensagens/status) de cada
+// conta do WhatsApp Business — ter acesso de System User a WABA NAO subscreve o
+// webhook; sao coisas separadas. Base do multi-WABA (principal/Gurgel/juridico).
+export async function subscribeMetaWhatsAppAppToWaba({
+  config = getMetaWhatsAppOutboundConfig(),
+  wabaId,
+}: {
+  config?: MetaWhatsAppOutboundConfig;
+  wabaId: string;
+}): Promise<MetaWhatsAppSubscribeResult> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const normalizedWabaId = readEnvValue(wabaId);
+
+  if (!accessToken || !graphVersion) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao Meta WhatsApp incompleta para subscrever a WABA.",
+      503,
+    );
+  }
+
+  if (!normalizedWabaId) {
+    throw new MetaWhatsAppSendError("WABA id ausente.", 400);
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${normalizedWabaId}/subscribed_apps`,
+    {
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: { code?: unknown; message?: unknown }; success?: boolean }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou a subscricao da WABA.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return {
+    raw: payload,
+    success: payload?.success === true,
+  };
+}
+
+// Lista os apps subscritos ao webhook de uma WABA — usado para confirmar a
+// subscricao depois do POST (read-only).
+export async function listMetaWhatsAppWabaSubscribedApps({
+  config = getMetaWhatsAppOutboundConfig(),
+  wabaId,
+}: {
+  config?: MetaWhatsAppOutboundConfig;
+  wabaId: string;
+}): Promise<unknown> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const normalizedWabaId = readEnvValue(wabaId);
+
+  if (!accessToken || !graphVersion) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao Meta WhatsApp incompleta para listar apps da WABA.",
+      503,
+    );
+  }
+
+  if (!normalizedWabaId) {
+    throw new MetaWhatsAppSendError("WABA id ausente.", 400);
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${normalizedWabaId}/subscribed_apps`,
+    {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${accessToken}` },
+      method: "GET",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as {
+    error?: { message?: unknown };
+  } | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Falha ao listar apps subscritos da WABA.",
+      response.status,
+    );
+  }
+
+  return payload;
+}
+
 export async function sendMetaWhatsAppTextMessage({
   body,
   config = getMetaWhatsAppOutboundConfig(),
@@ -682,6 +793,22 @@ export async function uploadMetaWhatsAppTemplateHeaderMedia({
   };
 }
 
+// WABAs adicionais consultadas ao listar telefones de envio (multi-WABA). O 4143
+// (atendimento) vive na WABA da Elife, separada da WABA padrao (Panteon). Pode
+// ser estendido via env META_WHATSAPP_EXTRA_BUSINESS_ACCOUNT_IDS (CSV) sem deploy.
+const META_WHATSAPP_EXTRA_BUSINESS_ACCOUNT_IDS = ["1278786467773434"];
+
+function readExtraBusinessAccountIds(
+  env: NodeJS.ProcessEnv = process.env,
+): string[] {
+  const raw = readEnvValue(env.META_WHATSAPP_EXTRA_BUSINESS_ACCOUNT_IDS);
+  const fromEnv = raw ? raw.split(",").map((value) => value.trim()) : [];
+  return uniqueTextValues([
+    ...fromEnv,
+    ...META_WHATSAPP_EXTRA_BUSINESS_ACCOUNT_IDS,
+  ]);
+}
+
 export async function listMetaWhatsAppPhoneNumbers({
   config = getMetaWhatsAppOutboundConfig(),
 }: {
@@ -702,6 +829,7 @@ export async function listMetaWhatsAppPhoneNumbers({
   const businessAccountIds = uniqueTextValues([
     phoneBusinessAccountId,
     configuredBusinessAccountId,
+    ...readExtraBusinessAccountIds(),
   ]);
 
   if (!accessToken || !graphVersion || !businessAccountIds.length) {
@@ -1166,25 +1294,41 @@ async function resolveMetaWhatsAppTemplateScope({
   const templateBusinessAccountSource: MetaWhatsAppPhoneNumberLinkStatus["templateBusinessAccountSource"] =
     phoneBusinessAccountId ? "phone" : "configured";
 
-  if (
-    !whatsappBusinessAccountId &&
-    configuredBusinessAccountId &&
-    accessToken &&
-    graphVersion
-  ) {
-    const configuredPhoneNumbers = await listMetaWhatsAppPhoneNumbersByBusiness({
-      accessToken,
-      businessAccountId: configuredBusinessAccountId,
-      configuredPhoneNumberId,
-      graphVersion,
-    });
+  if (!whatsappBusinessAccountId && accessToken && graphVersion) {
+    // Procura o telefone na WABA configurada (Panteon) E nas extras (Elife/4143)
+    // — o {phone}?fields=whatsapp_business_account pode voltar vazio quando o
+    // token nao le esse campo no telefone de outra WABA.
+    const candidateBusinessAccountIds = uniqueTextValues([
+      configuredBusinessAccountId,
+      ...readExtraBusinessAccountIds(),
+    ]);
 
-    if (
-      configuredPhoneNumbers.some(
-        (phoneNumber) => phoneNumber.id === selectedPhoneNumberId,
-      )
-    ) {
-      whatsappBusinessAccountId = configuredBusinessAccountId;
+    for (const candidateBusinessAccountId of candidateBusinessAccountIds) {
+      let candidatePhoneNumbers: MetaWhatsAppPhoneNumberSummary[];
+
+      try {
+        candidatePhoneNumbers = await listMetaWhatsAppPhoneNumbersByBusiness({
+          accessToken,
+          businessAccountId: candidateBusinessAccountId,
+          configuredPhoneNumberId,
+          graphVersion,
+        });
+      } catch (error) {
+        if (isMetaUnsupportedObjectError(error)) {
+          continue;
+        }
+
+        throw error;
+      }
+
+      if (
+        candidatePhoneNumbers.some(
+          (phoneNumber) => phoneNumber.id === selectedPhoneNumberId,
+        )
+      ) {
+        whatsappBusinessAccountId = candidateBusinessAccountId;
+        break;
+      }
     }
   }
 
