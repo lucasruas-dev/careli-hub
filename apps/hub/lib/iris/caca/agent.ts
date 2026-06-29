@@ -15,6 +15,7 @@ import {
   readCacaAutomationState,
 } from "@/lib/iris/caca-agent";
 
+import { readClientNotes } from "./client-memory";
 import { buildCacaTools, type CacaToolContext } from "./executors";
 import { buildCacaSystemPrompt } from "./persona";
 
@@ -84,13 +85,16 @@ export async function runCacaClaudeTurn({
   const toolContext: CacaToolContext = {
     c2xClientId,
     client,
+    contactId: contact.id ?? null,
     customerName,
     handoff: { reason: null, requested: false },
     identityVerified,
     validationSource,
   };
 
+  const clientNotes = readClientNotes(contact);
   const system = buildCacaSystemPrompt({
+    clientNotes: clientNotes.map((entry) => entry.note),
     customerName: toolContext.customerName ?? undefined,
     greeting: greetingForNow(),
     identityVerified,

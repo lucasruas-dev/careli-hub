@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-29-caca-memoria-por-cliente",
+    deployedAt: "2026-06-29T12:06:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Cacá agora tem memória por cliente: ela lembra de coisas úteis dos atendimentos anteriores (ex.: 'prefere boleto por e-mail', 'fala mais formal') e personaliza o atendimento. Ela mesma registra o que aprende; nunca guarda dado sensível.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-5696af7wp",
+    technical: {
+      done: "Memória por cliente da Cacá SEM migration: guardada em caredesk_contacts.metadata.cacaNotes (lib/iris/caca/client-memory.ts: readClientNotes/appendClientNote, cap 20, dedup). Lida no início do turno (runCacaClaudeTurn) e injetada na persona ('O que já sabemos deste cliente'); escrita pela ferramenta nova anotar_sobre_cliente (input nota), com guard de não anotar dado sensível na descrição+persona. v1.12.2 -> v1.12.3.",
+      motivation:
+        "Lucas perguntou se a Cacá aprende/conhece melhor os clientes com o tempo e aprovou a memória por cliente. Não é treino de modelo: são anotações curtas e duradouras que a Cacá lê e escreve por contato, pra personalizar (preferências, jeito, situação recorrente).",
+    },
+    title: "Iris: Cacá ganha memória por cliente",
+    type: "novidade",
+    version: "v1.12.3",
+  },
+  {
     buildTag: "2026-06-29-cockpit-formatacao-whatsapp",
     deployedAt: "2026-06-29T11:54:00-03:00",
     modules: [

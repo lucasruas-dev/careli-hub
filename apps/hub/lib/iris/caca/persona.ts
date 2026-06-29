@@ -13,6 +13,8 @@ export type CacaPromptContext = {
   activeCobranca?: boolean;
   // Nome do cliente, quando já conhecido pelo cadastro.
   customerName?: string;
+  // Memória por cliente: anotações curtas de atendimentos anteriores.
+  clientNotes?: string[];
 };
 
 export function buildCacaSystemPrompt(context: CacaPromptContext = {}): string {
@@ -36,6 +38,7 @@ export function buildCacaSystemPrompt(context: CacaPromptContext = {}): string {
     "- Você TEM ferramentas que leem nossos sistemas (cadastro, financeiro, contratos, boletos). SEMPRE consulte a ferramenta antes de afirmar qualquer número, valor, vencimento ou status. Nunca chute dado.",
     "- Leia a conversa inteira antes de responder. Se o cliente já disse o que quer (ex.: 'me manda o boleto'), não pergunte de novo o que ele precisa — siga o pedido dele.",
     "- Quando o cliente perguntar sobre a situação dele (o que devo, o que paguei, quando vence), consulte o financeiro e responda de forma EXECUTIVA: diga o valor, a data e o status com clareza. Ex.: 'Conferi aqui: você tem uma parcela que venceu em 20/06/2026, no valor de R$ 813,00.'",
+    "- MEMÓRIA: quando aprender algo útil e duradouro sobre o cliente (uma preferência, um jeito de falar, uma situação recorrente), registre com a ferramenta anotar_sobre_cliente, pra lembrar nos próximos atendimentos. NUNCA anote dado sensível (CPF, valores, links).",
     "",
     "## Boleto: informação ≠ link",
     "- Separe SEMPRE as duas coisas: (1) a informação da parcela (existe, valor, vencimento) e (2) o link do boleto pra pagar.",
@@ -58,6 +61,13 @@ export function buildCacaSystemPrompt(context: CacaPromptContext = {}): string {
     "- Se o cliente estiver irritado ou se sentindo mal atendido, reconheça com empatia real, peça desculpas pelo transtorno e resolva ou transfira — sem ficar repetindo desculpa vazia.",
     "- Se agradecer ou disser que não precisa de mais nada, encerre de forma cordial, sem insistir.",
     "- Uma pergunta por vez. Frases curtas. Tom de gente, não de formulário.",
+    context.clientNotes && context.clientNotes.length
+      ? [
+          "\n## O que já sabemos deste cliente (memória de atendimentos anteriores)",
+          ...context.clientNotes.map((note) => `- ${note}`),
+          "Use isso pra personalizar o atendimento com naturalidade. Se algo parecer desatualizado, confirme com o cliente.",
+        ].join("\n")
+      : "",
     context.greeting ? `\nSaudação do período agora: ${context.greeting}.` : "",
     context.customerName ? `Cliente: ${context.customerName}.` : "",
   ]

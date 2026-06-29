@@ -59,6 +59,21 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "anotar_sobre_cliente",
+    description:
+      "Registra uma anotação curta e DURADOURA sobre o cliente, pra você lembrar nos próximos atendimentos (ex.: 'prefere boleto por e-mail', 'costuma pagar com atraso', 'já reclamou de demora', 'fala de forma mais formal', 'tem 2 lotes'). Use quando aprender algo útil e estável sobre a pessoa. NÃO registre dado sensível (CPF, valores, links) nem coisas efêmeras do momento.",
+    input_schema: {
+      type: "object",
+      properties: {
+        nota: {
+          type: "string",
+          description: "A anotação curta e objetiva sobre o cliente.",
+        },
+      },
+      required: ["nota"],
+    },
+  },
+  {
     name: "transferir_para_humano",
     description:
       "Encaminha o atendimento para um atendente humano e ENCERRA a atuação da Cacá neste ticket. Chame sempre que você decidir que não consegue resolver com segurança: negociação/acordo de dívida, validação de identidade que falhou, link de boleto indisponível, pedido fora do seu alcance, ou cliente irritado pedindo uma pessoa. Dizer que vai transferir NÃO basta — só esta ferramenta faz a transferência acontecer.",

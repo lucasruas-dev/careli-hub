@@ -5,6 +5,7 @@ import { prepareBoletoResendAction } from "@/lib/guardian/asaas";
 import { loadHadesAttendanceClient } from "@/lib/guardian/attendance";
 import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
 
+import { appendClientNote } from "./client-memory";
 import { CACA_TOOL_DEFINITIONS } from "./tools";
 
 // Estado mutável do turno: as ferramentas leem e escrevem aqui. Depois do loop, o caller lê
@@ -13,6 +14,7 @@ import { CACA_TOOL_DEFINITIONS } from "./tools";
 export type CacaToolContext = {
   c2xClientId: string | null;
   client: SupabaseClient;
+  contactId: string | null;
   customerName: string | null;
   handoff: { reason: string | null; requested: boolean };
   identityVerified: boolean;
@@ -42,10 +44,35 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
       run: async (input) => gerarLinkBoleto(context, input),
     },
     {
+      definition: requireDefinition("anotar_sobre_cliente"),
+      run: async (input) => anotarSobreCliente(context, input),
+    },
+    {
       definition: requireDefinition("transferir_para_humano"),
       run: async (input) => transferirParaHumano(context, input),
     },
   ];
+}
+
+async function anotarSobreCliente(
+  context: CacaToolContext,
+  input: Record<string, unknown>,
+) {
+  const nota = readString(input.nota);
+
+  if (!nota) {
+    return "Anotação vazia — nada registrado.";
+  }
+
+  if (!context.contactId) {
+    return "Não consegui registrar a anotação agora.";
+  }
+
+  const ok = await appendClientNote(context.client, context.contactId, nota);
+
+  return ok
+    ? "Anotação registrada sobre o cliente para os próximos atendimentos."
+    : "Não consegui registrar a anotação agora.";
 }
 
 async function validarIdentidade(
