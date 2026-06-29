@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-29-caca-atender-terceiros",
+    deployedAt: "2026-06-29T11:45:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Cacá agora atende quando alguém pede informação de outra pessoa (parente, filho, esposa, amigo ajudando) — desde que confirme o CPF do proponente e o nome (ou outro dado do cadastro). Antes ela recusava de cara.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-d97qjcp3j",
+    technical: {
+      done: "Ajuste na persona da Cacá (lib/iris/caca/persona.ts): regra de 'atender pela outra pessoa'. É comum um parente/amigo ajudar o titular; a Cacá não deve recusar de cara. Pode tratar do cadastro de um terceiro DESDE QUE confirme a identidade do proponente (CPF/CNPJ + nome ou outro dado, via validar_identidade). A ferramenta já suportava; o texto da persona estava restrito demais ('só posso falar do seu cadastro'). v1.12.0 -> v1.12.1.",
+      motivation:
+        "No teste ao vivo (Lucas), a Cacá recusou dar info de outra pessoa. Regra de negócio: muitos titulares são atendidos por parentes próximos; a Cacá deve poder atender, validando o proponente (CPF + nome/cadastro) antes de expor dado ou enviar boleto.",
+    },
+    title: "Iris: Cacá atende por outra pessoa (com validação)",
+    type: "correcao",
+    version: "v1.12.1",
+  },
+  {
     buildTag: "2026-06-29-caca-claude-super-agente",
     deployedAt: "2026-06-29T11:31:00-03:00",
     modules: [
