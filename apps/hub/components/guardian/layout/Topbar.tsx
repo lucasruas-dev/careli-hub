@@ -1,7 +1,6 @@
 /* eslint-disable */
 // @ts-nocheck
 import { ShieldCheck } from "lucide-react";
-import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 
 export function Topbar() {
   return (
@@ -17,10 +16,6 @@ export function Topbar() {
             </span>
           </div>
 
-        </div>
-
-        <div className="flex items-center gap-2 sm:gap-3">
-          <PanteonTopbarUser />
         </div>
       </div>
     </header>

@@ -32,6 +32,42 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-30-barra-panteon-central-notificacoes",
+    deployedAt: "2026-06-30T17:30:00-03:00",
+    modules: [
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "Chegou a barra Panteon no topo de todo o sistema: os módulos que você abre viram abas, como num navegador. Trocar de módulo agora é só clicar na aba — sem reabrir o menu.",
+              "O '+' abre o menu de módulos, o 'x' fecha a aba e 'Panteon' (na ponta esquerda) leva pra Home. As abas abertas ficam salvas.",
+              "Cada aba mostra o contador de não-lidos do módulo — ex.: mensagem nova no Hermes aparece na aba do Hermes.",
+            ],
+            screen: "Barra de navegação (todos os módulos)",
+          },
+          {
+            items: [
+              "A central do sino foi reorganizada por módulo: dá pra filtrar por 'Todos', Hermes, Zeus, Iris… com a contagem de cada um.",
+              "O Zeus agora também notifica na central (antes não aparecia) e cada módulo tem seu próprio som.",
+              "O som parou de falhar: toca mesmo quando a notificação chega pelo modo de segurança, não só ao vivo.",
+            ],
+            screen: "Central de notificações (sino)",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-nhe4im7lw",
+    technical: {
+      done: "Frente 1 (barra): PanteonModuleTabsBar vira o topbar de TODO chrome do HubShell (operacional + dashboard); abas dos módulos abertos persistem em localStorage (careli:hub-open-modules); Panteon = 1ª aba (Home). PanteonTopbarUser (sino/presença/avatar) movido pra barra (onDark) e removido dos 6 cabeçalhos de módulo (single presence controller). Botão launcher removido das 6 sidebars (o '+' cobre). Zeus virou chrome operacional in-hub (standalone ops.c2x intocado). Home: chrome operational + layoutMode=module (sem padding do ContentArea) + HomeModuleRail (lista de módulos alfabética, edge-to-edge). Fix guardian Sidebar (inset-y-0 -> top-[3.25rem]). Frente 2 (central): backbone único em hub_notifications (migrations 0039 colunas+RLS+publicação realtime, 0040 solta FK module_id); lib/notifications (publishHubNotification = insere linha + Web Push genérico). Zeus helpdesk emite pela central. Provider assina hub_notifications por realtime filtrado por usuário + catch-up foco/45s; som por módulo desacoplado do realtime + autoplay unlock; unreadByModule. UI panteon-notification-button com chips por módulo. v1.14.2 -> v1.15.0.",
+      motivation:
+        "Lucas pediu navegação por abas (trocar de módulo sem reabrir o launcher) e a revisão da central de comunicação: Hermes com som intermitente e gente sem receber, Zeus desconectado da central, e organizar as notificações de vários módulos por módulo.",
+    },
+    title: "Barra Panteon com abas + Central de notificações reorganizada",
+    type: "novidade",
+    version: "v1.15.0",
+  },
+  {
     buildTag: "2026-06-30-iris-responder-como-caca-restrito",
     deployedAt: "2026-06-30T11:50:00-03:00",
     modules: [

@@ -2348,7 +2348,11 @@ export function ZeusPage({
     );
   }
 
-  return <HubShell layoutMode="module">{pageContent}</HubShell>;
+  return (
+    <HubShell chrome="operational" layoutMode="module">
+      <div className="h-full overflow-y-auto bg-[#f3f6fa]">{pageContent}</div>
+    </HubShell>
+  );
 }
 
 function AlertProtocolFeedbackDrawer({
@@ -2532,7 +2536,11 @@ function ZeusAccessState({
     );
   }
 
-  return <HubShell layoutMode="module">{content}</HubShell>;
+  return (
+    <HubShell chrome="operational" layoutMode="module">
+      <div className="h-full overflow-y-auto bg-[#f3f6fa]">{content}</div>
+    </HubShell>
+  );
 }
 
 function canAccessZeusAsAdmin(user: HubUserContext | null) {

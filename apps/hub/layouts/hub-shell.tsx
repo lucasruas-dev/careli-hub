@@ -1,6 +1,10 @@
 "use client";
 
 import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
+import {
+  PanteonModuleTabsBar,
+  type PanteonModuleTab,
+} from "@/components/panteon/panteon-module-tabs";
 import { AthenaTicketRecordingProvider } from "@/components/hub-support/athena-ticket-recording-provider";
 import { HubSupportDock } from "@/components/hub-support/hub-support-dock";
 import { useAuth } from "@/providers/auth-provider";
@@ -12,6 +16,7 @@ import {
   serializeDiagnosticError,
 } from "@/lib/supabase/client";
 import { useRealtime } from "@/providers/realtime-provider";
+import { usePanteonNotifications } from "@/providers/pulsex-notification-provider";
 import {
   ActionGroup,
   AppShell,
@@ -75,7 +80,7 @@ const isShellHomologationEnvironment =
   shellAppUrl.includes("homo.c2x.app.br") ||
   shellAppUrl.includes("homolog.c2x.app.br");
 
-const moduleIconMap: Record<string, ReactNode> = {
+export const moduleIconMap: Record<string, ReactNode> = {
   agenda: <CalendarDays aria-hidden="true" size={18} />,
   apolo: <ContactRound aria-hidden="true" size={18} />,
   atlas: <BarChart3 aria-hidden="true" size={18} />,
@@ -102,6 +107,7 @@ const minimumReleasedModuleIds = [
   "setup",
 ] as const;
 const hiddenProductionModuleIds = new Set<string>();
+const OPEN_MODULES_STORAGE_KEY = "careli:hub-open-modules";
 
 export function HubShell({
   children,
@@ -121,14 +127,17 @@ export function HubShell({
   );
   const { hubUser, profileStatus, signOut } = useAuth();
   const { realtimeState } = useRealtime();
+  const { unreadByModule } = usePanteonNotifications();
   const pathname = usePathname();
   const router = useRouter();
+  const [openModuleIds, setOpenModuleIds] = useState<string[]>([]);
   const panteonBrandIconSrc = isHomologationBrand
     ? "/panteon-mark-homolog.png"
     : "/panteon-mark-light.png";
   const activeModule = orderedHubModules.find((hubModule) =>
     pathname.startsWith(hubModule.basePath),
   );
+  const activeModuleId = activeModule?.id ?? null;
 
   useEffect(() => {
     setIsHomologationBrand(
@@ -136,6 +145,40 @@ export function HubShell({
         isHomologationHostname(window.location.hostname),
     );
   }, []);
+
+  // Abas do Panteon (modo operacional): carrega os modulos abertos persistidos.
+  useEffect(() => {
+    try {
+      const stored = window.localStorage.getItem(OPEN_MODULES_STORAGE_KEY);
+
+      if (!stored) {
+        return;
+      }
+
+      const parsed: unknown = JSON.parse(stored);
+
+      if (Array.isArray(parsed)) {
+        setOpenModuleIds(
+          parsed.filter((id): id is string => typeof id === "string"),
+        );
+      }
+    } catch {
+      // Persistencia das abas e best-effort.
+    }
+  }, []);
+
+  // Ao navegar para um modulo, garante que ele exista como aba (estilo navegador).
+  useEffect(() => {
+    if (!activeModuleId) {
+      return;
+    }
+
+    setOpenModuleIds((current) =>
+      current.includes(activeModuleId)
+        ? current
+        : persistOpenModules([...current, activeModuleId]),
+    );
+  }, [activeModuleId]);
 
   const visibleHubModules = orderedHubModules.filter((hubModule) => {
     if (!isVisibleInCurrentEnvironment(hubModule.id, isHomologationBrand)) {
@@ -377,6 +420,51 @@ export function HubShell({
     });
   }
 
+  const moduleTabs: PanteonModuleTab[] = openModuleIds
+    .map((moduleId) =>
+      orderedHubModules.find((hubModule) => hubModule.id === moduleId),
+    )
+    .filter(
+      (hubModule): hubModule is (typeof orderedHubModules)[number] =>
+        hubModule !== undefined && visibleHubModules.includes(hubModule),
+    )
+    .map((hubModule) => ({
+      active: hubModule.id === activeModuleId,
+      basePath: hubModule.basePath,
+      icon: moduleIconMap[hubModule.id] ?? (
+        <FileText aria-hidden="true" size={18} />
+      ),
+      id: hubModule.id,
+      label: hubModule.name,
+      unread: unreadByModule[hubModule.id] ?? 0,
+    }));
+
+  function handleSelectModuleTab(basePath: string) {
+    router.push(basePath);
+  }
+
+  function handleCloseModuleTab(moduleId: string) {
+    setOpenModuleIds((current) => {
+      const next = persistOpenModules(current.filter((id) => id !== moduleId));
+
+      if (moduleId === activeModuleId) {
+        const fallback = next
+          .map((id) =>
+            orderedHubModules.find((hubModule) => hubModule.id === id),
+          )
+          .find((hubModule) => hubModule !== undefined);
+
+        router.push(fallback ? fallback.basePath : "/");
+      }
+
+      return next;
+    });
+  }
+
+  function handleOpenModuleLauncher() {
+    window.dispatchEvent(new Event("careli:toggle-module-launcher"));
+  }
+
   return (
     <AthenaTicketRecordingProvider>
       <AppShell
@@ -476,7 +564,17 @@ export function HubShell({
           )
         }
         topbar={
-          isOperationalChrome ? null : (
+          isOperationalChrome ? (
+            <PanteonModuleTabsBar
+              brandSrc={panteonBrandIconSrc}
+              homeActive={!activeModuleId}
+              onCloseTab={handleCloseModuleTab}
+              onOpenLauncher={handleOpenModuleLauncher}
+              onSelectHome={() => router.push("/")}
+              onSelectTab={handleSelectModuleTab}
+              tabs={moduleTabs}
+            />
+          ) : (
             <Topbar
               actions={
                 <ActionGroup align="end">
@@ -514,7 +612,7 @@ export function HubShell({
         <ContentArea
           className={
             isOperationalChrome
-              ? "h-[100dvh] max-h-[100dvh] min-h-0"
+              ? "h-[calc(100dvh-3.25rem)] max-h-[calc(100dvh-3.25rem)] min-h-0"
               : undefined
           }
           padded={layoutMode === "dashboard"}
@@ -747,6 +845,19 @@ function isHomologationHostname(hostname: string) {
     normalizedHostname.includes("homo") ||
     normalizedHostname.includes("homolog")
   );
+}
+
+function persistOpenModules(moduleIds: string[]): string[] {
+  try {
+    window.localStorage.setItem(
+      OPEN_MODULES_STORAGE_KEY,
+      JSON.stringify(moduleIds),
+    );
+  } catch {
+    // Persistencia das abas e best-effort.
+  }
+
+  return moduleIds;
 }
 
 function isShellPathActive(pathname: string, itemPath: string) {

@@ -47,16 +47,6 @@ export function ChronosModuleSidebar({
             <span className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.035] text-[#d5dde8]">
               <CalendarClock aria-hidden="true" size={18} />
             </span>
-            <Tooltip content="Abrir sidebar do Panteon" placement="right">
-              <button
-                aria-label="Abrir sidebar do Panteon"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                onClick={handleOpenModuleLauncher}
-                type="button"
-              >
-                <LayoutGrid aria-hidden="true" size={15} />
-              </button>
-            </Tooltip>
             <Tooltip content="Expandir Chronos" placement="right">
               <button
                 aria-label="Expandir sidebar Chronos"
@@ -69,7 +59,7 @@ export function ChronosModuleSidebar({
             </Tooltip>
           </div>
         ) : (
-          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
+          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
             <div className="flex min-w-0 items-center gap-2.5 text-[#d5dde8]">
               <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
                 <CalendarClock aria-hidden="true" size={18} />
@@ -80,16 +70,6 @@ export function ChronosModuleSidebar({
                 </span>
               </span>
             </div>
-            <Tooltip content="Abrir sidebar do Panteon" placement="right">
-              <button
-                aria-label="Abrir sidebar do Panteon"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                onClick={handleOpenModuleLauncher}
-                type="button"
-              >
-                <LayoutGrid aria-hidden="true" size={15} />
-              </button>
-            </Tooltip>
             <Tooltip content="Recolher Chronos" placement="right">
               <button
                 aria-label="Recolher sidebar Chronos"

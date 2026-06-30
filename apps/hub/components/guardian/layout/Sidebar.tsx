@@ -69,7 +69,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
 
   return (
     <aside
-      className={`panteon-module-sidebar fixed inset-y-0 left-0 z-40 hidden text-[#ECECF1] transition-[width] duration-300 ease-out lg:flex lg:flex-col ${
+      className={`panteon-module-sidebar fixed bottom-0 left-0 top-[3.25rem] z-30 hidden text-[#ECECF1] transition-[width] duration-300 ease-out lg:flex lg:flex-col ${
         collapsed ? "w-[72px]" : "w-60"
       }`}
     >
@@ -85,16 +85,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 <ShieldCheck className="size-[18px]" aria-hidden="true" />
               </Link>
             </Tooltip>
-            <Tooltip content="Abrir sidebar do Panteon" placement="right">
-              <button
-                type="button"
-                onClick={handleOpenModuleLauncher}
-                aria-label="Abrir sidebar do Panteon"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-              >
-                <LayoutGrid className="size-[15px]" aria-hidden="true" />
-              </button>
-            </Tooltip>
             <Tooltip content="Expandir sidebar" placement="right">
               <button
                 type="button"
@@ -107,7 +97,7 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
             </Tooltip>
           </div>
         ) : (
-          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
+          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
             <Link
               aria-label="Voltar ao Panteon"
               href="/"
@@ -122,16 +112,6 @@ export function Sidebar({ collapsed, onToggle }: SidebarProps) {
                 </span>
               </span>
             </Link>
-            <Tooltip content="Abrir sidebar do Panteon" placement="right">
-              <button
-                type="button"
-                onClick={handleOpenModuleLauncher}
-                aria-label="Abrir sidebar do Panteon"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-              >
-                <LayoutGrid className="size-[15px]" aria-hidden="true" />
-              </button>
-            </Tooltip>
             <Tooltip content="Recolher sidebar" placement="right">
               <button
                 type="button"

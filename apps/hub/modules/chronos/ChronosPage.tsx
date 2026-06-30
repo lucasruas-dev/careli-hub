@@ -13,7 +13,6 @@ import {
   updateChronosRoom,
   updateChronosMeeting,
 } from "@/lib/chronos/client";
-import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 import {
   defaultChronosMeetingProfiles,
   type ChronosCreateMeetingInput,
@@ -455,7 +454,6 @@ export function ChronosPage() {
                 <RefreshCcw aria-hidden="true" size={16} />
               )}
             </button>
-            <PanteonTopbarUser className="ml-1 border-l border-[#d9e0e7] pl-3" />
           </div>
         </div>
 

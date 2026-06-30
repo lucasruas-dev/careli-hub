@@ -3,14 +3,11 @@
 import type { ReactNode } from "react";
 import {
   Headphones,
-  LayoutGrid,
   PanelLeftClose,
   PanelLeftOpen,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
-
-import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 
 import { IrisNavButton } from "../shared/iris-ui";
 
@@ -25,7 +22,6 @@ export function IrisModuleShell<TView extends string>({
   children,
   collapsed,
   navigationItems,
-  onOpenModuleLauncher,
   onSelectView,
   onToggleCollapsed,
 }: {
@@ -33,7 +29,6 @@ export function IrisModuleShell<TView extends string>({
   children: ReactNode;
   collapsed: boolean;
   navigationItems: Array<IrisShellNavigationItem<TView>>;
-  onOpenModuleLauncher: () => void;
   onSelectView: (view: TView) => void;
   onToggleCollapsed: () => void;
 }) {
@@ -54,7 +49,6 @@ export function IrisModuleShell<TView extends string>({
       >
         <IrisSidebarHeader
           collapsed={collapsed}
-          onOpenModuleLauncher={onOpenModuleLauncher}
           onToggleCollapsed={onToggleCollapsed}
         />
 
@@ -87,11 +81,9 @@ export function IrisModuleShell<TView extends string>({
 
 function IrisSidebarHeader({
   collapsed,
-  onOpenModuleLauncher,
   onToggleCollapsed,
 }: {
   collapsed: boolean;
-  onOpenModuleLauncher: () => void;
   onToggleCollapsed: () => void;
 }) {
   return (
@@ -106,16 +98,6 @@ function IrisSidebarHeader({
           <span className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.035] text-[#d5dde8]">
             <Headphones className="h-4 w-4" />
           </span>
-          <Tooltip content="Abrir sidebar do Panteon" placement="right">
-            <button
-              type="button"
-              onClick={onOpenModuleLauncher}
-              aria-label="Abrir sidebar do Panteon"
-              className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
-            >
-              <LayoutGrid aria-hidden="true" size={15} />
-            </button>
-          </Tooltip>
           <Tooltip content="Expandir sidebar" placement="right">
             <button
               type="button"
@@ -128,7 +110,7 @@ function IrisSidebarHeader({
           </Tooltip>
         </div>
       ) : (
-        <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
+        <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
           <div className="flex min-w-0 items-center gap-2.5 text-[#d5dde8]">
             <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
               <Headphones className="h-4 w-4" />
@@ -139,16 +121,6 @@ function IrisSidebarHeader({
               </span>
             </span>
           </div>
-          <Tooltip content="Abrir sidebar do Panteon" placement="right">
-            <button
-              type="button"
-              onClick={onOpenModuleLauncher}
-              aria-label="Abrir sidebar do Panteon"
-              className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
-            >
-              <LayoutGrid aria-hidden="true" size={15} />
-            </button>
-          </Tooltip>
           <Tooltip content="Recolher sidebar" placement="right">
             <button
               type="button"
@@ -171,10 +143,6 @@ function IrisTopbar() {
       <div className="flex flex-wrap items-center gap-4">
         <div className="min-w-[230px]">
           <h2 className="text-lg font-semibold text-[#101820]">Ticket</h2>
-        </div>
-
-        <div className="ml-auto flex items-center gap-2">
-          <PanteonTopbarUser className="ml-1 border-l border-[#dbe3ef] pl-3" compact />
         </div>
       </div>
     </header>

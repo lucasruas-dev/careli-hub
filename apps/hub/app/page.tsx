@@ -29,7 +29,7 @@ import {
   PanteonLoadingMark,
   PanteonLoadingState,
 } from "@/components/panteon/panteon-loading";
-import { HubShell } from "@/layouts/hub-shell";
+import { HubShell, moduleIconMap } from "@/layouts/hub-shell";
 import { useAuth } from "@/providers/auth-provider";
 import {
   canAccessModule,
@@ -44,6 +44,8 @@ import {
   ChevronDown,
   CheckCircle2,
   Clock3,
+  FileText,
+  LayoutGrid,
   KeyRound,
   ListChecks,
   MessageSquareText,
@@ -52,6 +54,7 @@ import {
   TimerReset,
   Users,
 } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 
 type HomePresenceStatus = Exclude<HubPresenceStatus, "busy">;
@@ -242,13 +245,16 @@ export default function HomePage() {
   }, [loadAsanaPerformance]);
 
   return (
-    <HubShell>
-      <WorkspaceLayout
-        className="careli-home"
-        header={
-          <WorkspaceHeader title={`${getGreeting()}, ${displayName}.`} />
-        }
-      >
+    <HubShell chrome="operational" layoutMode="module">
+      <div className="flex h-full min-h-0">
+        <HomeModuleRail />
+        <div className="min-w-0 flex-1 overflow-y-auto px-6 py-5">
+          <WorkspaceLayout
+            className="careli-home"
+            header={
+              <WorkspaceHeader title={`${getGreeting()}, ${displayName}.`} />
+            }
+          >
         {homeError ? (
           <Surface bordered className="border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
             {homeError}
@@ -284,8 +290,71 @@ export default function HomePage() {
             </section>
           </>
         )}
-      </WorkspaceLayout>
+          </WorkspaceLayout>
+        </div>
+      </div>
     </HubShell>
+  );
+}
+
+// Sidebar lateral da Home = lista de modulos (atalho de navegacao). Clicar abre o
+// modulo como aba na barra Panteon. Espelha o visual do sidebar dos modulos.
+function HomeModuleRail() {
+  const { hubUser } = useAuth();
+  const router = useRouter();
+  const pathname = usePathname();
+  const modules = orderedHubModules
+    .filter(
+      (hubModule) =>
+        isHubModuleActive(hubModule) &&
+        hubUser !== null &&
+        canAccessModule(hubUser, hubModule),
+    )
+    .sort((first, second) => first.name.localeCompare(second.name, "pt-BR"));
+
+  return (
+    <aside className="panteon-module-sidebar relative flex h-full w-[15rem] shrink-0 flex-col overflow-y-auto border-r px-4 py-4 text-[#ECECF1]">
+      <div className="panteon-module-sidebar__top -mx-4 mb-4 px-4">
+        <div className="grid min-h-12 items-center rounded-xl bg-white/[0.035] px-2.5 py-2">
+          <div className="flex min-w-0 items-center gap-2.5 text-[#d5dde8]">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+              <LayoutGrid aria-hidden="true" className="h-4 w-4" />
+            </span>
+            <span className="min-w-0 truncate text-sm font-semibold leading-tight text-white">
+              Modulos
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <nav className="flex flex-col gap-1">
+        {modules.map((hubModule) => {
+          const active =
+            pathname === hubModule.basePath ||
+            pathname.startsWith(`${hubModule.basePath}/`);
+
+          return (
+            <button
+              className={`flex h-11 items-center gap-3 rounded-lg border px-2.5 text-left text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[#d0ad69] ${
+                active
+                  ? "border-[#A07C3B]/35 bg-[#171b23] text-white"
+                  : "border-transparent text-[#c5ced9] hover:border-white/[0.08] hover:bg-white/[0.06] hover:text-white"
+              }`}
+              key={hubModule.id}
+              onClick={() => router.push(hubModule.basePath)}
+              type="button"
+            >
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.055] text-[#d7dee8]">
+                {moduleIconMap[hubModule.id] ?? (
+                  <FileText aria-hidden="true" size={18} />
+                )}
+              </span>
+              <span className="min-w-0 truncate">{hubModule.name}</span>
+            </button>
+          );
+        })}
+      </nav>
+    </aside>
   );
 }
 

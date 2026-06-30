@@ -23,7 +23,6 @@ import { Tooltip } from "@repo/uix";
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
 import Image from "next/image";
-import { PanteonTopbarUser } from "@/components/panteon/panteon-topbar-user";
 
 type ConversationHeaderProps = {
   callHistory: readonly HermesCallHistoryEntry[];
@@ -159,7 +158,6 @@ export function ConversationHeader({
           ariaLabel="Mais opcoes"
           icon={<MoreHorizontal size={18} />}
         />
-        <PanteonTopbarUser className="ml-2 border-l border-[#d9e0ea] pl-3" compact />
       </div>
     </header>
   );

@@ -1023,10 +1023,6 @@ export function IrisPage({
     }));
   }
 
-  function handleOpenModuleLauncher() {
-    window.dispatchEvent(new Event("careli:toggle-module-launcher"));
-  }
-
   const visibleNavigationItems = boardOnly
     ? navigationItems.filter((item) => item.id === "gestao")
     : navigationItems;
@@ -1123,7 +1119,6 @@ export function IrisPage({
           activeView={activeView}
           collapsed={sidebarCollapsed}
           navigationItems={visibleNavigationItems}
-          onOpenModuleLauncher={handleOpenModuleLauncher}
           onSelectView={(itemId) => {
             if (itemId === "historico") {
               setHistoryFocus(null);

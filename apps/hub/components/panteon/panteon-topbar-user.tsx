@@ -19,12 +19,14 @@ import { PanteonNotificationButton } from "@/components/panteon/panteon-notifica
 type PanteonTopbarUserProps = {
   className?: string;
   compact?: boolean;
+  onDark?: boolean;
   source?: string;
 };
 
 export function PanteonTopbarUser({
   className = "",
   compact = false,
+  onDark = false,
   source = "hub-shell",
 }: PanteonTopbarUserProps) {
   const { hubUser, profileStatus, signOut } = useAuth();
@@ -86,8 +88,10 @@ export function PanteonTopbarUser({
       </span>
 
       <span
-        className={`max-w-28 truncate text-sm font-medium text-[#243044] ${
-          compact ? "hidden xl:block" : "hidden sm:block"
+        className={`max-w-28 truncate text-sm font-medium ${
+          onDark ? "text-[#d5dde8]" : "text-[#243044]"
+        } ${
+          onDark ? "hidden" : compact ? "hidden xl:block" : "hidden sm:block"
         }`}
       >
         {name}
@@ -96,7 +100,11 @@ export function PanteonTopbarUser({
       <Tooltip content="Sair" placement="bottom">
         <button
           aria-label="Sair"
-          className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-[#526078] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          className={`grid h-8 w-8 shrink-0 place-items-center rounded-md outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+            onDark
+              ? "text-[#a5afbd] hover:bg-white/10 hover:text-white"
+              : "text-[#526078] hover:bg-[#f3f6fa] hover:text-[#101820]"
+          }`}
           onClick={() => {
             void signOut();
           }}
