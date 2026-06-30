@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-30-caca-le-pdf-imagem-claude",
+    deployedAt: "2026-06-30T19:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Cacá voltou a LER os PDFs e imagens que o cliente envia — agora pelo Claude. Antes ela dependia da OpenAI para isso, que estava bloqueada (sem saldo), e por isso respondia 'não consigo abrir o conteúdo'.",
+              "Áudio continua sendo transcrito normalmente (segue na OpenAI/Whisper).",
+            ],
+            screen: "Atendimento (Cacá)",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-86wrgi6od",
+    technical: {
+      done: "lib/iris/caca-media-analysis.ts: summarizeCacaMedia reescrito de OpenAI (/v1/responses, modelo gpt-5.5) para a Messages API do Claude via getAnthropicClient()/resolveClaudeModel('default')=Sonnet 4.6. Imagem -> bloco image (base64), PDF -> bloco document (base64, application/pdf); video e documento nao-PDF -> retorna null (fallback amigavel da Caca). Audio segue no Whisper (OpenAI) — guard de OPENAI_API_KEY movido para o ramo de audio. Removidos helpers OpenAI orfaos (readOpenAiError/extractOpenAiText/isRecord). Corrige o erro real visto no provider_payload: 'You exceeded your current quota' da OpenAI bloqueando TODA leitura de midia. v1.15.1 -> v1.15.2.",
+      motivation:
+        "A chave da OpenAI estourou a quota e travou a leitura de PDF/imagem/audio da Cacá. Lucas pediu para tirar a dependencia da OpenAI movendo a leitura para o Claude (texto da Cacá ja esta no Claude).",
+    },
+    title: "Iris: Cacá volta a ler PDF e imagem (agora pelo Claude)",
+    type: "correcao",
+    version: "v1.15.2",
+  },
+  {
     buildTag: "2026-06-30-produtores-central-notificacoes",
     deployedAt: "2026-06-30T18:05:00-03:00",
     modules: [

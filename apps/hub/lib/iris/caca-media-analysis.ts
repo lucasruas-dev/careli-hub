@@ -1,5 +1,8 @@
 import { Buffer } from "node:buffer";
 
+import type Anthropic from "@anthropic-ai/sdk";
+
+import { getAnthropicClient, resolveClaudeModel } from "@/lib/ai/claude";
 import {
   downloadMetaWhatsAppMedia,
   type MetaWhatsAppDownloadedMedia,
@@ -38,7 +41,6 @@ export type CacaInboundMediaAnalysis = {
   transcript?: string | null;
 };
 
-const DEFAULT_MEDIA_MODEL = "gpt-5.5";
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
 const OPENAI_MEDIA_TIMEOUT_MS = 20_000;
 const MEDIA_SIZE_LIMITS_BYTES: Record<CacaInboundMediaType, number> = {
@@ -71,16 +73,8 @@ export async function analyzeCacaInboundMedia({
     };
   }
 
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-
-  if (!apiKey) {
-    return {
-      mediaType,
-      mimeType: media.mimeType ?? null,
-      reason: "OPENAI_API_KEY indisponivel para leitura automatica.",
-      status: "skipped",
-    };
-  }
+  // OpenAI agora SO transcreve audio (Whisper). Imagem e PDF leem via Claude.
+  const openAiKey = process.env.OPENAI_API_KEY?.trim();
 
   try {
     const downloaded =
@@ -108,11 +102,22 @@ export async function analyzeCacaInboundMedia({
     }
 
     if (normalizedType === "audio") {
+      if (!openAiKey) {
+        return {
+          fileName,
+          mediaType: normalizedType,
+          mimeType,
+          reason: "OPENAI_API_KEY ausente para transcricao de audio (Whisper).",
+          sizeBytes,
+          status: "skipped",
+        };
+      }
+
       const model =
         process.env.HUB_IT_TICKET_TRANSCRIPTION_MODEL?.trim() ||
         DEFAULT_TRANSCRIPTION_MODEL;
       const transcript = await transcribeCacaAudio({
-        apiKey,
+        apiKey: openAiKey,
         buffer: downloaded.buffer,
         fileName,
         mimeType,
@@ -136,29 +141,25 @@ export async function analyzeCacaInboundMedia({
       };
     }
 
-    const model =
-      process.env.HUB_IRIS_ATTENDANT_MODEL?.trim() ||
-      DEFAULT_MEDIA_MODEL;
+    // Imagem e PDF leem via Claude (visao/documento nativo). Video o Claude nao processa.
     const summary = await summarizeCacaMedia({
-      apiKey,
       buffer: downloaded.buffer,
       caption: media.caption ?? null,
       fileName,
       mediaType: normalizedType,
       mimeType,
-      model,
     });
 
     return {
       fileName,
       mediaType: normalizedType,
       mimeType,
-      model,
+      model: resolveClaudeModel("default"),
       sizeBytes,
       status: summary ? "ok" : "skipped",
       summary:
         summary ||
-        "Midia recebida, mas a OpenAI nao retornou leitura utilizavel.",
+        "Midia recebida, mas a leitura automatica (Claude) nao retornou conteudo utilizavel.",
     };
   } catch (error) {
     return {
@@ -218,90 +219,106 @@ async function transcribeCacaAudio({
 }
 
 async function summarizeCacaMedia({
-  apiKey,
   buffer,
   caption,
   fileName,
   mediaType,
   mimeType,
-  model,
 }: {
-  apiKey: string;
   buffer: Buffer;
   caption: string | null;
   fileName: string;
   mediaType: CacaInboundMediaType;
   mimeType: string;
-  model: string;
-}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPENAI_MEDIA_TIMEOUT_MS);
-  const dataUrl = `data:${mimeType};base64,${buffer.toString("base64")}`;
-  const attachment =
-    mediaType === "image"
-      ? {
-          image_url: dataUrl,
-          type: "input_image",
-        }
-      : {
-          file_data: dataUrl,
-          filename: fileName,
-          type: "input_file",
-        };
-
-  try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      body: JSON.stringify({
-        input: [
-          {
-            content: [
-              {
-                text: [
-                  "Analise este anexo recebido no atendimento WhatsApp da Iris.",
-                  "Extraia somente informacoes uteis para a Caca responder o cliente com seguranca.",
-                  "Nao invente dados. Se algo estiver ilegivel, informe a limitacao.",
-                  "Responda em ate 8 linhas, em portugues do Brasil.",
-                  `Tipo de midia: ${mediaType}`,
-                  `Nome do arquivo: ${fileName}`,
-                  `Legenda/caption enviada pelo cliente: ${caption ?? "nao informada"}`,
-                ].join("\n"),
-                type: "input_text",
-              },
-              attachment,
-            ],
-            role: "user",
-          },
-        ],
-        max_output_tokens: 500,
-        model,
-        reasoning: {
-          effort: "medium",
-        },
-        text: {
-          verbosity: "low",
-        },
-      }),
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
-    });
-    const payload = (await response.json().catch(() => null)) as
-      | Record<string, unknown>
-      | null;
-
-    if (!response.ok) {
-      throw new Error(
-        readOpenAiError(payload) ?? "OpenAI nao conseguiu analisar o anexo.",
-      );
-    }
-
-    return truncateForPrompt(extractOpenAiText(payload ?? {}), 1800);
-  } finally {
-    clearTimeout(timeout);
+}): Promise<string | null> {
+  // Claude le IMAGEM e PDF nativo. Video o Claude nao processa; documento que nao e PDF
+  // (planilha, etc.) tambem nao -> retorna null (cai no fallback amigavel da Caca).
+  if (mediaType === "video") {
+    return null;
   }
+
+  const client = getAnthropicClient();
+
+  if (!client) {
+    return null;
+  }
+
+  const isImage = mediaType === "image";
+  const isPdf = mimeType.toLowerCase().includes("pdf");
+
+  if (!isImage && !isPdf) {
+    return null;
+  }
+
+  const base64 = buffer.toString("base64");
+  const mediaBlock: Anthropic.ContentBlockParam = isImage
+    ? {
+        source: {
+          data: base64,
+          media_type: normalizeClaudeImageMediaType(mimeType),
+          type: "base64",
+        },
+        type: "image",
+      }
+    : {
+        source: {
+          data: base64,
+          media_type: "application/pdf",
+          type: "base64",
+        },
+        type: "document",
+      };
+  const instruction = [
+    "Analise este anexo recebido no atendimento WhatsApp da Iris.",
+    "Extraia somente informacoes uteis para a Caca responder o cliente com seguranca.",
+    "Nao invente dados. Se algo estiver ilegivel, informe a limitacao.",
+    "Responda em ate 8 linhas, em portugues do Brasil.",
+    `Tipo de midia: ${mediaType}`,
+    `Nome do arquivo: ${fileName}`,
+    `Legenda/caption enviada pelo cliente: ${caption ?? "nao informada"}`,
+  ].join("\n");
+
+  const response = await client.messages.create(
+    {
+      max_tokens: 500,
+      messages: [
+        {
+          content: [{ text: instruction, type: "text" }, mediaBlock],
+          role: "user",
+        },
+      ],
+      model: resolveClaudeModel("default"),
+    },
+    { timeout: OPENAI_MEDIA_TIMEOUT_MS },
+  );
+
+  const text = response.content
+    .filter((block): block is Anthropic.TextBlock => block.type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+
+  return text ? truncateForPrompt(text, 1800) : null;
+}
+
+function normalizeClaudeImageMediaType(
+  mimeType: string,
+): "image/gif" | "image/jpeg" | "image/png" | "image/webp" {
+  const normalized = mimeType.toLowerCase();
+
+  if (normalized.includes("png")) {
+    return "image/png";
+  }
+
+  if (normalized.includes("gif")) {
+    return "image/gif";
+  }
+
+  if (normalized.includes("webp")) {
+    return "image/webp";
+  }
+
+  return "image/jpeg";
 }
 
 function normalizeCacaMediaType(
@@ -377,38 +394,6 @@ function extensionForMime(mimeType: string) {
   return "bin";
 }
 
-function readOpenAiError(payload: Record<string, unknown> | null) {
-  const error = isRecord(payload?.error) ? payload.error : null;
-
-  return readString(error?.message);
-}
-
-function extractOpenAiText(data: Record<string, unknown>) {
-  const directText = readString(data.output_text);
-
-  if (directText) {
-    return directText;
-  }
-
-  const output = Array.isArray(data.output) ? data.output : [];
-
-  for (const item of output) {
-    const content = isRecord(item) && Array.isArray(item.content)
-      ? item.content
-      : [];
-
-    for (const part of content) {
-      const text = isRecord(part) ? readString(part.text) : null;
-
-      if (text) {
-        return text;
-      }
-    }
-  }
-
-  return "";
-}
-
 function truncateForPrompt(value: string, maxLength: number) {
   return value.length > maxLength ? `${value.slice(0, maxLength - 1)}...` : value;
 }
@@ -421,8 +406,4 @@ function sanitizeMediaError(error: unknown) {
 
 function readString(value: unknown) {
   return typeof value === "string" && value.trim() ? value.trim() : null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
