@@ -25,8 +25,19 @@ import type {
 } from "@/lib/pulsex";
 import {
   playHermesIncomingMessageSound,
+  playPanteonModuleSound,
   registerHermesNotificationPermissionIntent,
+  registerNotificationAudioUnlock,
 } from "@/lib/pulsex/notification-effects";
+import {
+  fetchRecentHubNotifications,
+  getHubNotificationRowId,
+  isHubNotificationItemId,
+  mapHubNotificationRow,
+  markHubNotificationRowsRead,
+  HUB_NOTIFICATIONS_REALTIME_TOPIC,
+  type HubNotificationRow,
+} from "@/lib/notifications/client";
 import {
   PULSEX_MESSAGE_BROADCAST_EVENT,
   broadcastHermesMessage,
@@ -70,10 +81,12 @@ type PanteonNotificationsContextValue = {
   items: readonly PanteonNotificationItem[];
   publishNotification: (notification: PanteonNotificationInput) => void;
   markAllRead: () => void;
+  markNotificationRead: (notificationId: PanteonNotificationItem["id"]) => void;
   openHermesChannel: (
     channelId: HermesChannel["id"],
     threadParentMessageId?: HermesMessage["id"],
   ) => void;
+  unreadByModule: Readonly<Record<string, number>>;
   unreadCount: number;
 };
 
@@ -84,6 +97,10 @@ const HERMES_MODULE_ID = "hermes";
 const HERMES_MODULE_LABEL = "Hermes";
 const HERMES_SNAPSHOT_INTERVAL_MS = 120_000;
 const PANTEON_ACTIVITY_SNAPSHOT_INTERVAL_MS = 90_000;
+// Catch-up da central unica (hub_notifications): rede de seguranca caso o realtime
+// perca um INSERT (cold-start do tenant). So roda com a aba VISIVEL (2o plano fica com
+// o Web Push), entao 45s e barato e deixa a entrega bem mais responsiva.
+const HUB_NOTIFICATIONS_SNAPSHOT_INTERVAL_MS = 45_000;
 const FLOATING_NOTIFICATION_TTL_MS = 9_000;
 // Cap do array de notificacoes. Maior que antes (80) para o historico diario por
 // mensagem caber num dia movimentado sem perder mensagens antigas do dia.
@@ -119,11 +136,27 @@ export function HermesNotificationProvider({
   const pendingGlobalIncomingMessagesRef = useRef<HermesMessage[]>([]);
   const floatingTimeoutsRef = useRef<Map<string, number>>(new Map());
   const didHydrateNotificationsRef = useRef(false);
+  // Central unica: ids ja vistos + flag de 1a carga, para tocar som de itens NOVOS que
+  // cheguem pelo refresh/foco (quando o realtime perde o evento) sem soar o historico.
+  const knownHubNotificationIdsRef = useRef<Set<string>>(new Set());
+  const hubNotificationsInitializedRef = useRef(false);
 
   const unreadCount = useMemo(
     () => items.filter((item) => !item.read).length,
     [items],
   );
+  // Nao-lidas por modulo: alimenta os chips da central e o badge da aba do modulo.
+  const unreadByModule = useMemo(() => {
+    const counts: Record<string, number> = {};
+
+    for (const item of items) {
+      if (!item.read) {
+        counts[item.moduleId] = (counts[item.moduleId] ?? 0) + 1;
+      }
+    }
+
+    return counts;
+  }, [items]);
 
   const publishNotification = useCallback(
     (notification: PanteonNotificationInput) => {
@@ -162,7 +195,27 @@ export function HermesNotificationProvider({
           },
         );
       });
-  }, [hermesChannels]);
+
+    // Central unica: persiste read_at das notificacoes hub ainda nao lidas.
+    const unreadHubRowIds = items
+      .filter((item) => !item.read && isHubNotificationItemId(item.id))
+      .map((item) => getHubNotificationRowId(item.id))
+      .filter((rowId): rowId is string => rowId !== null);
+
+    if (unreadHubRowIds.length > 0 && hasHubSupabaseConfig()) {
+      const client = getHubSupabaseClient();
+
+      if (client) {
+        void markHubNotificationRowsRead(client, unreadHubRowIds).catch(
+          (error: unknown) => {
+            logSupabaseDiagnostic("hub-notifications", "mark all read error", {
+              error: serializeDiagnosticError(error),
+            });
+          },
+        );
+      }
+    }
+  }, [hermesChannels, items]);
 
   const markChannelNotificationsRead = useCallback(
     (channelId: HermesChannel["id"]) => {
@@ -372,6 +425,84 @@ export function HermesNotificationProvider({
     );
   }, [currentUserId, profileStatus]);
 
+  // Central unica (hub_notifications): re-le as notificacoes recentes do proprio
+  // usuario e substitui as do tipo hub no estado (o banco e a fonte da verdade).
+  const refreshHubNotifications = useCallback(async () => {
+    if (!currentUserId || profileStatus !== "ready" || !hasHubSupabaseConfig()) {
+      return;
+    }
+
+    const client = getHubSupabaseClient();
+
+    if (!client) {
+      return;
+    }
+
+    const hubItems = await fetchRecentHubNotifications(client, currentUserId);
+
+    // Som desacoplado do realtime: se o evento ao vivo se perdeu (cold-start do tenant)
+    // e a notificacao chega pelo refresh/foco, ainda alertamos (som + toast) — uma vez
+    // por id (dedup interno do som). Na 1a carga so populamos o conjunto conhecido, sem
+    // soar o historico inteiro.
+    if (hubNotificationsInitializedRef.current) {
+      const isVisible =
+        typeof document === "undefined" ||
+        document.visibilityState === "visible";
+
+      if (isVisible) {
+        for (const item of hubItems) {
+          if (knownHubNotificationIdsRef.current.has(item.id) || item.read) {
+            continue;
+          }
+
+          playPanteonModuleSound(item.moduleId, { notificationId: item.id });
+          pushFloatingNotification(item);
+        }
+      }
+    }
+
+    for (const item of hubItems) {
+      knownHubNotificationIdsRef.current.add(item.id);
+    }
+    hubNotificationsInitializedRef.current = true;
+
+    setItems((currentItems) =>
+      mergeNotifications(
+        currentItems.filter((item) => !isHubNotificationItemId(item.id)),
+        hubItems,
+      ).slice(0, MAX_PANTEON_NOTIFICATION_ITEMS),
+    );
+  }, [currentUserId, profileStatus, pushFloatingNotification]);
+
+  // Marca uma notificacao como lida. Para itens da central unica, persiste o read_at
+  // no banco (RLS escopa ao proprio destinatario); para os demais, so no estado local.
+  const markNotificationRead = useCallback(
+    (notificationId: PanteonNotificationItem["id"]) => {
+      setItems((currentItems) =>
+        currentItems.map((item) =>
+          item.id === notificationId ? { ...item, read: true } : item,
+        ),
+      );
+
+      const rowId = getHubNotificationRowId(notificationId);
+
+      if (rowId && hasHubSupabaseConfig()) {
+        const client = getHubSupabaseClient();
+
+        if (client) {
+          void markHubNotificationRowsRead(client, [rowId]).catch(
+            (error: unknown) => {
+              logSupabaseDiagnostic("hub-notifications", "mark read error", {
+                error: serializeDiagnosticError(error),
+              });
+            },
+          );
+        }
+      }
+    },
+    [],
+  );
+
   const handleHermesMessage = useCallback(
     (channel: HermesChannel, message: HermesMessage) => {
       if (
@@ -564,6 +695,9 @@ export function HermesNotificationProvider({
   );
 
   useEffect(() => registerHermesNotificationPermissionIntent(), []);
+
+  // Destrava o audio no primeiro gesto (autoplay policy) — corrige o "as vezes nao toca".
+  useEffect(() => registerNotificationAudioUnlock(), []);
 
   // Web Push: registra a subscription do usuario (best-effort) quando logado e com
   // permissao concedida. Reatenta no foco (cobre permissao concedida depois) com
@@ -794,6 +928,110 @@ export function HermesNotificationProvider({
     };
   }, [currentUserId, profileStatus, refreshPanteonActivityNotifications]);
 
+  // Central unica (hub_notifications): assina o realtime do PROPRIO usuario (RLS) +
+  // catch-up no foco e por intervalo. Entrega determinista por destinatario (filtro
+  // recipient_user_id), sem o fan-out do barramento global do Hermes.
+  useEffect(() => {
+    if (!currentUserId || profileStatus !== "ready" || !hasHubSupabaseConfig()) {
+      return;
+    }
+
+    const client = getHubSupabaseClient();
+
+    if (!client) {
+      return;
+    }
+
+    void refreshHubNotifications().catch((error: unknown) => {
+      logSupabaseDiagnostic("hub-notifications", "central snapshot error", {
+        error: serializeDiagnosticError(error),
+      });
+    });
+
+    const channel = client
+      .channel(HUB_NOTIFICATIONS_REALTIME_TOPIC)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          filter: `recipient_user_id=eq.${currentUserId}`,
+          schema: "public",
+          table: "hub_notifications",
+        },
+        (payload) => {
+          const item = mapHubNotificationRow(payload.new as HubNotificationRow);
+
+          // Marca como ja visto para o refresh nao re-soar o mesmo item.
+          knownHubNotificationIdsRef.current.add(item.id);
+
+          setItems((currentItems) =>
+            upsertNotification(currentItems, item).slice(
+              0,
+              MAX_PANTEON_NOTIFICATION_ITEMS,
+            ),
+          );
+
+          const isVisible =
+            typeof document === "undefined" ||
+            document.visibilityState === "visible";
+
+          if (!item.read && isVisible) {
+            playPanteonModuleSound(item.moduleId, { notificationId: item.id });
+            pushFloatingNotification(item);
+          }
+        },
+      )
+      .subscribe((status) => {
+        logSupabaseDiagnostic("hub-notifications", "central status", {
+          status,
+        });
+      });
+
+    let lastFocusRefreshAt = 0;
+    const handleFocusCatchUp = () => {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      const now = Date.now();
+
+      if (now - lastFocusRefreshAt < 5_000) {
+        return;
+      }
+
+      lastFocusRefreshAt = now;
+      void refreshHubNotifications().catch(() => undefined);
+    };
+
+    const intervalId = window.setInterval(() => {
+      // So com a aba visivel: 2o plano fica com o Web Push (consciencia de custo).
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      void refreshHubNotifications().catch((error: unknown) => {
+        logSupabaseDiagnostic("hub-notifications", "central interval error", {
+          error: serializeDiagnosticError(error),
+        });
+      });
+    }, HUB_NOTIFICATIONS_SNAPSHOT_INTERVAL_MS);
+
+    document.addEventListener("visibilitychange", handleFocusCatchUp);
+    window.addEventListener("focus", handleFocusCatchUp);
+
+    return () => {
+      window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", handleFocusCatchUp);
+      window.removeEventListener("focus", handleFocusCatchUp);
+      void client.removeChannel(channel);
+    };
+  }, [
+    currentUserId,
+    profileStatus,
+    pushFloatingNotification,
+    refreshHubNotifications,
+  ]);
+
   useEffect(() => {
     if (
       !currentUserId ||
@@ -945,8 +1183,10 @@ export function HermesNotificationProvider({
       hermesChannels,
       items,
       markAllRead,
+      markNotificationRead,
       openHermesChannel,
       publishNotification,
+      unreadByModule,
       unreadCount,
     }),
     [
@@ -955,8 +1195,10 @@ export function HermesNotificationProvider({
       hermesChannels,
       items,
       markAllRead,
+      markNotificationRead,
       openHermesChannel,
       publishNotification,
+      unreadByModule,
       unreadCount,
     ],
   );

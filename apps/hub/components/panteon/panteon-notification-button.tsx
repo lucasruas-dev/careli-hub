@@ -15,12 +15,14 @@ export function PanteonNotificationButton({
 }: {
   className?: string;
 }) {
-  const { items, markAllRead, openHermesChannel, unreadCount } =
+  const { items, markAllRead, markNotificationRead, openHermesChannel, unreadCount } =
     usePanteonNotifications();
   const [open, setOpen] = useState(false);
   // C: separa as notificacoes em "novas" (nao lidas) e "historico" (lidas). A Central
   // abre nas novas; o icone de historico mostra as lidas num so popup.
   const [showHistory, setShowHistory] = useState(false);
+  // Chips por modulo: filtra a lista pelo modulo escolhido (null = Todos).
+  const [selectedModule, setSelectedModule] = useState<string | null>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const unreadItems = items.filter((item) => !item.read);
   // Historico = lidas de hoje. As notificacoes do Hermes POR CANAL (que colapsam e
@@ -32,11 +34,21 @@ export function PanteonNotificationButton({
       isPanteonNotificationFromToday(item.createdAt) &&
       !item.id.startsWith("hermes:channel:"),
   );
-  const visibleItems = showHistory ? readItems : unreadItems;
+  const baseItems = showHistory ? readItems : unreadItems;
+  const moduleChips = buildModuleChips(baseItems);
+  const activeModule =
+    selectedModule &&
+    moduleChips.some((chip) => chip.moduleId === selectedModule)
+      ? selectedModule
+      : null;
+  const visibleItems = activeModule
+    ? baseItems.filter((item) => item.moduleId === activeModule)
+    : baseItems;
 
   useEffect(() => {
     if (!open) {
       setShowHistory(false);
+      setSelectedModule(null);
     }
   }, [open]);
 
@@ -106,7 +118,10 @@ export function PanteonNotificationButton({
                     ? "border-[#A07C3B] bg-[#f7f3eb] text-[#7b5f2d]"
                     : "border-[#d9e0e7] text-[#526078] hover:bg-[#f8fafc] hover:text-[#101820]"
                 }`}
-                onClick={() => setShowHistory((current) => !current)}
+                onClick={() => {
+                  setShowHistory((current) => !current);
+                  setSelectedModule(null);
+                }}
                 type="button"
               >
                 <History aria-hidden="true" size={14} />
@@ -124,6 +139,26 @@ export function PanteonNotificationButton({
               )}
             </div>
           </header>
+          {moduleChips.length > 1 ? (
+            <div className="flex items-center gap-1.5 overflow-x-auto border-b border-[#e4e9ef] px-3 py-2">
+              <ModuleChip
+                active={activeModule === null}
+                count={baseItems.length}
+                label="Todos"
+                onClick={() => setSelectedModule(null)}
+              />
+              {moduleChips.map((chip) => (
+                <ModuleChip
+                  active={activeModule === chip.moduleId}
+                  count={chip.count}
+                  dot={getModuleAccentDot(chip.moduleId)}
+                  key={chip.moduleId}
+                  label={chip.label}
+                  onClick={() => setSelectedModule(chip.moduleId)}
+                />
+              ))}
+            </div>
+          ) : null}
           <div className="max-h-[28rem] overflow-y-auto p-2">
             {visibleItems.length > 0 ? (
               <div className="grid gap-1.5">
@@ -141,8 +176,12 @@ export function PanteonNotificationButton({
                         return;
                       }
 
+                      markNotificationRead(item.id);
+
                       if (item.href) {
                         window.location.assign(item.href);
+                      } else {
+                        setOpen(false);
                       }
                     }}
                   />
@@ -162,6 +201,85 @@ export function PanteonNotificationButton({
         </div>
       ) : null}
     </div>
+  );
+}
+
+type ModuleChipData = { count: number; label: string; moduleId: string };
+
+function buildModuleChips(
+  items: readonly PanteonNotificationItem[],
+): ModuleChipData[] {
+  const byModule = new Map<string, ModuleChipData>();
+
+  for (const item of items) {
+    const current = byModule.get(item.moduleId);
+
+    if (current) {
+      current.count += 1;
+    } else {
+      byModule.set(item.moduleId, {
+        count: 1,
+        label: item.moduleLabel,
+        moduleId: item.moduleId,
+      });
+    }
+  }
+
+  return [...byModule.values()].sort((first, second) =>
+    first.label.localeCompare(second.label, "pt-BR"),
+  );
+}
+
+const MODULE_ACCENT_DOT: Record<string, string> = {
+  apolo: "#D85A30",
+  atlas: "#185FA5",
+  chronos: "#0F6E56",
+  hades: "#7F77DD",
+  hermes: "#378ADD",
+  iris: "#1D9E75",
+  zeus: "#BA7517",
+};
+
+function getModuleAccentDot(moduleId: string): string {
+  return MODULE_ACCENT_DOT[moduleId] ?? "#94a3b8";
+}
+
+function ModuleChip({
+  active,
+  count,
+  dot,
+  label,
+  onClick,
+}: {
+  active: boolean;
+  count: number;
+  dot?: string;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      aria-pressed={active}
+      className={`inline-flex shrink-0 items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+        active
+          ? "border-[#101820] bg-[#101820] text-white"
+          : "border-[#d9e0e7] text-[#526078] hover:bg-[#f8fafc] hover:text-[#101820]"
+      }`}
+      onClick={onClick}
+      type="button"
+    >
+      {dot ? (
+        <span
+          aria-hidden="true"
+          className="h-1.5 w-1.5 rounded-full"
+          style={{ backgroundColor: dot }}
+        />
+      ) : null}
+      {label}
+      <span className={active ? "text-white/80" : "text-[#8a96a6]"}>
+        {count}
+      </span>
+    </button>
   );
 }
 

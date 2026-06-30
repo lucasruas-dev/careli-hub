@@ -55,6 +55,7 @@ export type SupabaseDiagnosticScope =
   | "auth"
   | "client"
   | "health"
+  | "hub-notifications"
   | "pulsex"
   | "setup"
   | "shell";

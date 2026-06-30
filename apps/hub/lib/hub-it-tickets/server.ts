@@ -5,6 +5,7 @@ import path from "node:path";
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { publishHubNotification } from "@/lib/notifications/publish";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
 import {
@@ -661,7 +662,7 @@ export async function updateHubItTicket({
         });
       }
 
-      await insertHelpDeskNotification(adminClient, {
+      await insertHelpDeskNotification({
         actionHref: `/zeus?ticket=${encodeURIComponent(ticket.protocol)}`,
         actorUserId: user.id,
         protocol: ticket.protocol,
@@ -785,7 +786,7 @@ export async function updateHubItTicket({
       });
     }
 
-    await insertHelpDeskNotification(adminClient, {
+    await insertHelpDeskNotification({
       actionHref: "/",
       actorUserId: user.id,
       protocol: ticket.protocol,
@@ -925,33 +926,31 @@ async function insertTicketEvent(
   }
 }
 
-async function insertHelpDeskNotification(
-  adminClient: HubItTicketsClient,
-  input: {
-    actionHref: string;
-    actorUserId: string;
-    protocol: string;
-    recipientUserId?: string | null;
-    severity: HubNotificationSeverity;
-    title: string;
-  },
-) {
+async function insertHelpDeskNotification(input: {
+  actionHref: string;
+  actorUserId: string;
+  protocol: string;
+  recipientUserId?: string | null;
+  severity: HubNotificationSeverity;
+  title: string;
+}) {
   if (!input.recipientUserId || input.recipientUserId === input.actorUserId) {
     return;
   }
 
-  const { error } = await adminClient.from("hub_notifications").insert({
-    action_href: input.actionHref,
-    module_id: "zeus",
-    recipient_user_id: input.recipientUserId,
+  // Central unica do Panteon: grava a linha em hub_notifications (a central assina por
+  // realtime) E dispara o Web Push do SO. Best-effort: o ticket e a fonte da verdade.
+  await publishHubNotification({
+    actionHref: input.actionHref,
+    body: `Chamado ${input.protocol}`,
+    context: { protocol: input.protocol },
+    kind: "atendimento",
+    moduleId: "zeus",
+    push: { url: input.actionHref },
+    recipientUserIds: [input.recipientUserId],
     severity: input.severity,
     title: input.title,
   });
-
-  if (error) {
-    // Notification is helpful, but ticket persistence is the source of truth.
-    return;
-  }
 }
 
 async function insertTicketAttachments(

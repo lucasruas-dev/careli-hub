@@ -17,8 +17,15 @@ type HermesIncomingMessageSoundInput = {
 const PULSEX_MESSAGE_SOUND_DEDUPE_MS = 600_000;
 const HERMES_CALL_SOUND_SRC = "/sounds/hermes-call-ringtone.mp3";
 const PANTEON_NOTIFICATION_SOUND_SRC = "/sounds/panteon-notification.mp3";
+// Som por modulo na central. Cai no som padrao do Panteon quando o modulo nao tem
+// timbre proprio. Hermes usa o caminho proprio (playHermesIncomingMessageSound).
+const PANTEON_MODULE_SOUND_SRC: Record<string, string> = {
+  iris: "/sounds/iris-notification.mp3",
+  zeus: "/sounds/zeus-notification.mp3",
+};
 const playedMessageSoundAtById = new Map<string, number>();
 let hermesCallRingtoneAudio: HTMLAudioElement | null = null;
+let notificationAudioUnlocked = false;
 
 export function playHermesMessageSound() {
   playAudioAsset(PANTEON_NOTIFICATION_SOUND_SRC, 0.82);
@@ -42,6 +49,67 @@ export function playHermesIncomingMessageSound({
   }
 
   playHermesMessageSound();
+}
+
+// Som da central por modulo (Zeus/Iris/...). Dedupe por id da notificacao para nao
+// tocar duas vezes a mesma (ex.: chega pelo realtime e depois pelo snapshot de catch-up).
+export function playPanteonModuleSound(
+  moduleId: string,
+  options?: { notificationId?: string },
+) {
+  if (
+    options?.notificationId &&
+    shouldSkipRepeatedMessageSound(options.notificationId)
+  ) {
+    return;
+  }
+
+  const src = PANTEON_MODULE_SOUND_SRC[moduleId] ?? PANTEON_NOTIFICATION_SOUND_SRC;
+
+  playAudioAsset(src, 0.85);
+}
+
+// "Destrava" o audio no primeiro gesto do usuario (clique/tecla) tocando o som da
+// central com volume 0. Sem isso, a politica de autoplay do navegador pode bloquear
+// `audio.play()` quando a notificacao chega sem um gesto recente — causa do "as vezes
+// nao toca". Best-effort e idempotente.
+export function registerNotificationAudioUnlock() {
+  if (
+    typeof window === "undefined" ||
+    notificationAudioUnlocked
+  ) {
+    return () => undefined;
+  }
+
+  const unlock = () => {
+    notificationAudioUnlocked = true;
+
+    try {
+      const audio = new Audio(PANTEON_NOTIFICATION_SOUND_SRC);
+
+      audio.volume = 0;
+      void audio
+        .play()
+        .then(() => {
+          audio.pause();
+          audio.currentTime = 0;
+        })
+        .catch(() => undefined);
+    } catch {
+      // Audio pode estar indisponivel; destravar e best-effort.
+    }
+
+    cleanup();
+  };
+  const cleanup = () => {
+    window.removeEventListener("keydown", unlock);
+    window.removeEventListener("pointerdown", unlock);
+  };
+
+  window.addEventListener("keydown", unlock, { once: true });
+  window.addEventListener("pointerdown", unlock, { once: true });
+
+  return cleanup;
 }
 
 export function playHermesCallSound() {
