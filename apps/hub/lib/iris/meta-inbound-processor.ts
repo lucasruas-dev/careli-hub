@@ -26,6 +26,7 @@ import {
   signWhatsAppBody,
 } from "@/lib/iris/meta-whatsapp";
 import { uploadInboundMediaBuffer } from "@/lib/iris/meta-media-storage";
+import { publishHubNotification } from "@/lib/notifications/publish";
 
 type Json =
   | boolean
@@ -332,6 +333,31 @@ async function processInboundMessage({
     }),
     markWebhookEvent(client, event.id, "processed"),
   ]);
+
+  // Central de notificacoes (best-effort, isolado): quando o ticket pertence a um
+  // operador HUMANO (assigned_to_user_id setado), avisa que o cliente mandou mensagem.
+  // Tickets sob a Caca ficam SEM assigned (ela usa handlingOwner no metadata) -> nao
+  // notifica. Fire-and-forget: NUNCA pode quebrar o recebimento do WhatsApp.
+  if (activeTicket.assigned_to_user_id) {
+    const irisTicketHref = `/iris?ticket=${encodeURIComponent(activeTicket.protocol)}`;
+    const inboundPreview =
+      enrichedMessageDetail.body.replace(/\s+/g, " ").trim().slice(0, 140) ||
+      "(mensagem)";
+
+    void publishHubNotification({
+      actionHref: irisTicketHref,
+      body: `${contact.display_name}: ${inboundPreview}`,
+      context: { entityId: activeTicket.id, entityType: "iris-ticket" },
+      kind: "atendimento",
+      moduleId: "iris",
+      push: { url: irisTicketHref },
+      recipientUserIds: [activeTicket.assigned_to_user_id],
+      severity: ticketCreated ? "warning" : "info",
+      title: ticketCreated
+        ? `Novo atendimento ${activeTicket.protocol}`
+        : `Nova mensagem em ${activeTicket.protocol}`,
+    }).catch(() => undefined);
+  }
 
   const autoReplySent = await maybeSendCacaAutoReply({
     cacaEnabled: channelCacaEnabled,

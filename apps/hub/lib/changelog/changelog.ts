@@ -32,6 +32,65 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-30-produtores-central-notificacoes",
+    deployedAt: "2026-06-30T18:05:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Quando o cliente responde num atendimento que é SEU (atribuído a você), você recebe uma notificação na central (com som e push) — mesmo sem estar na tela da Iris. Atendimentos sob a Cacá não geram aviso.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+      {
+        module: "Meu dia",
+        screens: [
+          {
+            items: [
+              "Tarefas e retornos com lembrete agora te avisam na hora certa, na central.",
+            ],
+            screen: "Agenda",
+          },
+        ],
+      },
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "Você é avisado na central cerca de 20 minutos antes de uma reunião que vai participar.",
+            ],
+            screen: "Reuniões",
+          },
+        ],
+      },
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "Um resumo diário dos contratos críticos da carteira chega pros admins na central.",
+            ],
+            screen: "Cobrança",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-4ktsbcdhp",
+    technical: {
+      done: "Produtores da central (hub_notifications). Iris (evento): meta-inbound-processor emite publishHubNotification para o assigned_to_user_id quando chega mensagem do cliente (so quando ha operador humano atribuido; Caca usa handlingOwner no metadata, sem assigned). Cron unico /api/notifications/sweep (a cada 15min, allowlist no proxy.ts, auth x-vercel-cron/CRON_SECRET): (1) Meu dia — hub_agenda_items com remind_at vencido e reminded_at null, dedup nativo; (2) Chronos — chronos_meetings starts_at em [now,+20min], dedup via hub_notifications da ultima 1h por meetingReminderId, notifica chronos_participants; (3) Hades — digest diario (janela 12:00-12:14 BRT, dedup pelo proprio insert do dia) com loadHadesOverview().summary.criticalContracts -> admins. Atlas read-only (occurrences vem de sync, sem evento de criacao) e 'Chronos novo convite' redundante com o reminder -> fora de proposito. v1.15.0 -> v1.15.1.",
+      motivation:
+        "Lucas pediu que TODOS os modulos (menos Apolo/Ares) virem produtores da central, incluindo os baseados em estado (crons), com dedup e consciencia de custo.",
+    },
+    title: "Notificações: Iris, Meu dia, Chronos e Hades passam a avisar na central",
+    type: "melhoria",
+    version: "v1.15.1",
+  },
+  {
     buildTag: "2026-06-30-barra-panteon-central-notificacoes",
     deployedAt: "2026-06-30T17:30:00-03:00",
     modules: [

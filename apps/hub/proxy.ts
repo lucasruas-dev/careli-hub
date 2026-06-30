@@ -34,6 +34,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/guardian/lembretes/cron", // cron da regua de lembretes (segredo proprio)
   "/api/apolo/sync/c2x", // cron
   "/api/chronos/recordings/egress-cron", // cron
+  "/api/notifications/sweep", // cron de varredura da central (segredo proprio)
   "/api/chronos/google-calendar/callback", // OAuth (redirect do Google, sem Bearer)
   "/api/chronos/google-calendar/authorize", // OAuth (inicio, navegacao do browser)
   "/api/auth/session", // login (ainda nao ha Bearer)
