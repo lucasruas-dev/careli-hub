@@ -7,7 +7,10 @@ import {
   CircleStop,
   ClipboardList,
   Clock3,
+  Headset,
+  Loader2,
   LockKeyhole,
+  MessageSquare,
   Mic,
   Paperclip,
   Send,
@@ -41,14 +44,19 @@ export function IrisConversationComposerActions({
   blockedTooltip,
   canSendFreeForm,
   cobrancaMode = false,
+  composerMode = "reply",
   composerReady,
   customerServiceWindow,
   draft,
+  mustWhisper = false,
+  onComposerModeChange,
   editingMessageBody,
   emojiOptions,
   emojiPickerOpen,
   emojiPickerRef,
   lockedByCaca = false,
+  onSendAsCaca,
+  sendingAsCaca = false,
   onOpenNotes,
   onCancelComposerContext,
   onComposerKeyDown,
@@ -76,14 +84,19 @@ export function IrisConversationComposerActions({
   blockedTooltip: string;
   canSendFreeForm: boolean;
   cobrancaMode?: boolean;
+  composerMode?: "reply" | "note";
   composerReady: boolean;
   customerServiceWindow: IrisConversationComposerWindow;
   draft: string;
+  mustWhisper?: boolean;
+  onComposerModeChange?: (mode: "reply" | "note") => void;
   editingMessageBody?: string | null;
   emojiOptions: string[];
   emojiPickerOpen: boolean;
   emojiPickerRef: RefObject<HTMLDivElement | null>;
   lockedByCaca?: boolean;
+  onSendAsCaca?: (text: string) => void | Promise<void>;
+  sendingAsCaca?: boolean;
   onOpenNotes?: () => void;
   onCancelComposerContext: () => void;
   onComposerKeyDown: (event: KeyboardEvent<HTMLTextAreaElement>) => void;
@@ -109,27 +122,70 @@ export function IrisConversationComposerActions({
   const [agendaModalKind, setAgendaModalKind] = useState<
     "retorno" | "tarefa" | null
   >(null);
+  const [cacaReplyOpen, setCacaReplyOpen] = useState(false);
+  const [cacaText, setCacaText] = useState("");
   const hasComposerContext = Boolean(editingMessageBody || replyToMessageBody);
   const composerContextBody =
     editingMessageBody ?? replyToMessageBody ?? "Mensagem selecionada";
   const composerContextLabel = editingMessageBody
     ? "Editando mensagem"
     : "Respondendo";
-  const composerPlaceholder = composerReady
-    ? editingMessageBody
-      ? "Editar mensagem no Iris..."
-      : "Escrever mensagem WhatsApp..."
-    : ticketClosed
-      ? "Ticket encerrado"
-      : "Aguardando janela WhatsApp";
-  const sendLabel = composerReady
-    ? editingMessageBody
-      ? "Salvar edicao"
-      : "Enviar mensagem"
-    : blockedTooltip;
+  const noteMode = composerMode === "note";
+  const composerPlaceholder = noteMode
+    ? "Mensagem assistida — nao vai pro cliente..."
+    : composerReady
+      ? editingMessageBody
+        ? "Editar mensagem no Iris..."
+        : "Escrever mensagem WhatsApp..."
+      : ticketClosed
+        ? "Ticket encerrado"
+        : "Aguardando janela WhatsApp";
+  const sendLabel = noteMode
+    ? "Enviar no modo assistido"
+    : composerReady
+      ? editingMessageBody
+        ? "Salvar edicao"
+        : "Enviar mensagem"
+      : blockedTooltip;
 
   return (
     <footer className="shrink-0 border-t border-slate-100 bg-white p-2.5">
+      {!ticketClosed ? (
+        <div className="mb-2 flex items-center gap-2">
+          <div className="inline-flex rounded-lg border border-slate-200/70 bg-slate-50/70 p-0.5">
+            <button
+              type="button"
+              onClick={() => onComposerModeChange?.("reply")}
+              disabled={mustWhisper}
+              aria-pressed={!noteMode}
+              className={[
+                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+                !noteMode
+                  ? "bg-white text-[#0f766e] shadow-sm ring-1 ring-emerald-100"
+                  : "text-slate-500 hover:text-slate-700",
+              ].join(" ")}
+            >
+              <MessageSquare className="size-3.5" aria-hidden="true" />
+              Responder cliente
+            </button>
+            <button
+              type="button"
+              onClick={() => onComposerModeChange?.("note")}
+              aria-pressed={noteMode}
+              className={[
+                "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
+                noteMode
+                  ? "bg-[#fbf6ec] text-[#7A5E2C] shadow-sm ring-1 ring-[#A07C3B]/25"
+                  : "text-slate-500 hover:text-slate-700",
+              ].join(" ")}
+            >
+              <Headset className="size-3.5" aria-hidden="true" />
+              Assistido
+            </button>
+          </div>
+        </div>
+      ) : null}
+
       {ticketClosed ? (
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
           <div className="flex items-center gap-2 text-xs font-semibold text-amber-800">
@@ -140,17 +196,75 @@ export function IrisConversationComposerActions({
         </div>
       ) : null}
 
-      {!ticketClosed && lockedByCaca ? (
-        <div className="mb-2 flex flex-wrap items-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#fbf6ec] px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
-          <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
-          <span className="min-w-0">
-            Atendimento conduzido pela Caca. Voce pode acompanhar e direcionar, mas
-            nao enviar mensagens (use Direcionar se precisar intervir).
-          </span>
+      {!ticketClosed && !noteMode && lockedByCaca ? (
+        <div className="mb-2 rounded-lg border border-[#A07C3B]/25 bg-[#fbf6ec] px-3 py-2">
+          <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#7A5E2C]">
+            <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="min-w-0 flex-1">
+              Atendimento conduzido pela Caca. Voce acompanha e direciona; para
+              intervir, use Direcionar ou responda como Caca.
+            </span>
+            {onSendAsCaca ? (
+              <button
+                type="button"
+                onClick={() => setCacaReplyOpen((current) => !current)}
+                aria-pressed={cacaReplyOpen}
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[#A07C3B]/40 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#7A5E2C] transition-colors hover:bg-[#f4ebdc]"
+              >
+                <Sparkles className="size-3.5" aria-hidden="true" />
+                Responder como Caca
+              </button>
+            ) : null}
+          </div>
+
+          {onSendAsCaca && cacaReplyOpen ? (
+            <div className="mt-2 space-y-2">
+              <textarea
+                value={cacaText}
+                onChange={(event) => setCacaText(event.target.value)}
+                rows={3}
+                placeholder="Mensagem enviada ao cliente assinada como Caca..."
+                className="w-full resize-none rounded-lg border border-[#A07C3B]/30 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/60"
+              />
+              <div className="flex items-center justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCacaReplyOpen(false);
+                    setCacaText("");
+                  }}
+                  className="inline-flex h-8 items-center rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  disabled={!cacaText.trim() || sendingAsCaca}
+                  onClick={async () => {
+                    const value = cacaText.trim();
+                    if (!value) {
+                      return;
+                    }
+                    await onSendAsCaca(value);
+                    setCacaText("");
+                    setCacaReplyOpen(false);
+                  }}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {sendingAsCaca ? (
+                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                  ) : (
+                    <Send className="size-3.5" aria-hidden="true" />
+                  )}
+                  Enviar como Caca
+                </button>
+              </div>
+            </div>
+          ) : null}
         </div>
       ) : null}
 
-      {!ticketClosed && !lockedByCaca ? (
+      {!ticketClosed && !noteMode && !lockedByCaca ? (
         <div
           className={[
             "mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2",
@@ -256,7 +370,10 @@ export function IrisConversationComposerActions({
 
         <div
           className={[
-            "flex items-center gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-2 transition-opacity",
+            "flex items-center gap-2 rounded-xl border p-2 transition-opacity",
+            noteMode
+              ? "border-[#A07C3B]/40 bg-[#fbf6ec]"
+              : "border-slate-200/70 bg-slate-50/70",
             composerReady ? "opacity-100" : "opacity-55",
           ].join(" ")}
         >
@@ -360,8 +477,8 @@ export function IrisConversationComposerActions({
                 className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
               />
               <ComposerIconButton
-                disabled={!canSendFreeForm || sending}
-                label="Gravar audio"
+                disabled={!canSendFreeForm || sending || noteMode}
+                label={noteMode ? "Audio indisponivel na nota" : "Gravar audio"}
                 onClick={onStartAudioRecording}
               >
                 <Mic className="size-4" aria-hidden="true" />

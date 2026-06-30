@@ -2,20 +2,10 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import {
-  CheckCircle2,
-  Clock3,
-  Inbox,
-  MessageCircle,
-  Plus,
-  Search,
-  ShieldAlert,
-  Sparkles,
-  TicketCheck,
-} from "lucide-react";
+import { Bot, Inbox, Plus, Search } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
-import { EmptyState, FilterSelect, KpiCard } from "../shared/iris-ui";
+import { EmptyState, FilterSelect } from "../shared/iris-ui";
 
 const cacaOwnerLabel = "Cac\u00e1";
 const ownerOptions = ["Todos", cacaOwnerLabel, "Operadores"] as const;
@@ -42,6 +32,7 @@ export type IrisTicketStatusTone =
   | "neutral";
 
 export type IrisBoardTicket = {
+  assignedToAvatarUrl?: string | null;
   assignedToLabel: string;
   channelLabel: string;
   closedAt?: string | null;
@@ -50,6 +41,7 @@ export type IrisBoardTicket = {
   crm360Registration?: unknown;
   firstRespondedAt?: string | null;
   firstResponseDueAt?: string | null;
+  hasDeliveryError?: boolean;
   id: string;
   lastMessageAt?: string | null;
   lastMessagePreview: string;
@@ -65,6 +57,7 @@ export type IrisBoardTicket = {
   status: IrisBoardTicketStatus;
   subject: string;
   unread?: boolean;
+  unreadCount?: number;
 };
 
 export type IrisTicketQueueHelpers = {
@@ -77,6 +70,7 @@ export type IrisTicketQueueHelpers = {
   ) => IrisBoardTicket[];
   formatDateTime: (value?: string | null) => string;
   formatIrisChannelLabel: (value: string) => string;
+  isCacaOwned: (ticket: IrisBoardTicket) => boolean;
   isClosedTicket: (ticket: IrisBoardTicket) => boolean;
   isClosedToday: (ticket: IrisBoardTicket) => boolean;
   isSlaCritical: (ticket: IrisBoardTicket) => boolean;
@@ -237,46 +231,6 @@ export function IrisTicketQueue({
               </button>
             </Tooltip>
           </div>
-          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-6">
-            <KpiCard
-              icon={TicketCheck}
-              label="Tickets abertos"
-              shortLabel="Tickets"
-              value={`${tickets.filter((ticket) => !helpers.isClosedTicket(ticket)).length}`}
-            />
-            <KpiCard
-              icon={ShieldAlert}
-              label="SLA critico"
-              shortLabel="SLA"
-              value={`${tickets.filter(helpers.isSlaCritical).length}`}
-              tone="danger"
-            />
-            <KpiCard
-              icon={Clock3}
-              label="Tempo de primeira resposta"
-              shortLabel="1a resp."
-              value={helpers.estimateFirstResponse(tickets)}
-            />
-            <KpiCard
-              icon={Clock3}
-              label="Media de resposta"
-              shortLabel="Media"
-              value={helpers.estimateAverageResponse(tickets)}
-            />
-            <KpiCard
-              icon={CheckCircle2}
-              label="Encerrados hoje"
-              shortLabel="Hoje"
-              value={`${tickets.filter(helpers.isClosedToday).length}`}
-            />
-            <KpiCard
-              icon={Sparkles}
-              label="Sem resposta"
-              shortLabel="Sem resp."
-              value={`${tickets.filter(helpers.isWaitingForIris).length}`}
-              tone={tickets.some(helpers.isWaitingForIris) ? "danger" : "gold"}
-            />
-          </div>
           <div
             className={[
               "grid gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-1.5",
@@ -389,27 +343,154 @@ export function IrisTicketQueue({
   );
 }
 
-export function IrisTicketListHeader({
-  showChatTitle = false,
-}: {
-  showChatTitle?: boolean;
-}) {
+// Inbox: sem cabecalho de colunas (cada linha e um cartao de conversa).
+// Mantido como no-op pra nao quebrar os callers (board/historico).
+export function IrisTicketListHeader(_props: { showChatTitle?: boolean }) {
+  return null;
+}
+
+// Iniciais do operador (1a + ultima palavra) pro avatar pequeno do responsavel.
+export function operatorInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+
+  if (!parts.length) {
+    return "?";
+  }
+
+  const first = parts[0]?.[0] ?? "";
+  const last = parts.length > 1 ? (parts[parts.length - 1]?.[0] ?? "") : "";
+
+  return (first + last).toUpperCase() || "?";
+}
+
+// Cor da pílula por fila — pra diferenciar Atendimento / Cobrança / Gurgel / Jurídico.
+export function queueChipClasses(queueLabel: string): string {
+  const key = queueLabel.trim().toLowerCase();
+
+  if (key.includes("cobran")) {
+    return "border-[#A07C3B]/25 bg-[#A07C3B]/10 text-[#7A5E2C]";
+  }
+  if (key.includes("gurgel")) {
+    return "border-violet-200 bg-violet-50 text-violet-700";
+  }
+  if (key.includes("jurid") || key.includes("juríd")) {
+    return "border-rose-200 bg-rose-50 text-rose-700";
+  }
+  if (key.includes("atend")) {
+    return "border-sky-200 bg-sky-50 text-sky-700";
+  }
+
+  return "border-slate-200 bg-slate-50 text-slate-500";
+}
+
+// Papel do contato pro card, a partir do CRM360 do Apolo (crm360Registration).
+// Regra Careli: cliente vira Comprador (tem carteira = snapshot financeiro) ou
+// Prospect (sem). Demais papéis: nome curto (Imob./Incorp./Forn./Parc.).
+// A bolinha de adimplência (verde/vermelho) só existe pro Comprador.
+const PROFILE_PRIORITY = [
+  "usuario",
+  "incorporador",
+  "imobiliaria",
+  "corretor",
+  "colaborador",
+  "fornecedor",
+  "parceiro",
+];
+
+const PROFILE_LABELS: Record<string, string> = {
+  imobiliaria: "Imob.",
+  corretor: "Corretor",
+  incorporador: "Incorp.",
+  colaborador: "Colab.",
+  fornecedor: "Forn.",
+  parceiro: "Parc.",
+};
+
+function normalizeProfileKey(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[̀-ͯ]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+export type BoardCrmChip = {
+  dotColor: "green" | "red" | null;
+  label: string | null;
+};
+
+export function readBoardTicketCrm(value: unknown): BoardCrmChip {
+  if (!value || typeof value !== "object") {
+    return { dotColor: null, label: null };
+  }
+
+  const record = value as {
+    delinquency?: unknown;
+    profileLabel?: unknown;
+    profiles?: unknown;
+    status?: unknown;
+  };
+
+  if (record.status !== "registered") {
+    return { dotColor: null, label: null };
+  }
+
+  const profileKeys = new Set<string>();
+  if (Array.isArray(record.profiles)) {
+    for (const profile of record.profiles) {
+      if (typeof profile === "string" && profile.trim()) {
+        profileKeys.add(normalizeProfileKey(profile));
+      }
+    }
+  }
+  if (typeof record.profileLabel === "string" && record.profileLabel.trim()) {
+    profileKeys.add(normalizeProfileKey(record.profileLabel));
+  }
+
+  const delinquency =
+    record.delinquency === "adimplente" || record.delinquency === "inadimplente"
+      ? record.delinquency
+      : null;
+
+  const role = PROFILE_PRIORITY.find((candidate) => profileKeys.has(candidate));
+
+  if (role === "usuario") {
+    if (delinquency) {
+      return {
+        dotColor: delinquency === "inadimplente" ? "red" : "green",
+        label: "Comprador",
+      };
+    }
+    return { dotColor: null, label: "Prospect" };
+  }
+
+  if (role && PROFILE_LABELS[role]) {
+    return { dotColor: null, label: PROFILE_LABELS[role] };
+  }
+
+  return { dotColor: null, label: null };
+}
+
+export function BoardProfileChip({ crm }: { crm: BoardCrmChip }) {
+  if (!crm.label) {
+    return null;
+  }
+
   return (
-    <div className="hidden min-w-0 grid-cols-[repeat(10,minmax(0,1fr))_40px] gap-2 border-b border-slate-100 bg-slate-50/80 px-3 py-2 text-xs font-semibold uppercase tracking-normal text-slate-400 xl:grid">
-      <span>Ticket</span>
-      <span>Fila</span>
-      <span>Canal</span>
-      <span>Status</span>
-      <span>SLA</span>
-      <span>Origem</span>
-      <span>Perfil</span>
-      <span>Assunto</span>
-      <span>TDR</span>
-      <span>Responsavel</span>
-      <span className="text-right" title={showChatTitle ? "Atendimento" : undefined}>
-        Chat
-      </span>
-    </div>
+    <span
+      title={crm.label}
+      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-medium text-slate-600"
+    >
+      {crm.dotColor ? (
+        <span
+          className={`size-1.5 shrink-0 rounded-full ${
+            crm.dotColor === "red" ? "bg-rose-500" : "bg-emerald-500"
+          }`}
+          aria-hidden="true"
+        />
+      ) : null}
+      {crm.label}
+    </span>
   );
 }
 
@@ -429,7 +510,18 @@ export function IrisTicketRow({
   ticket: IrisBoardTicket;
 }) {
   const effectiveStatus = helpers.effectiveIrisStatus(ticket);
-  const origin = helpers.ticketOrigin(ticket);
+  const slaCritical = helpers.isSlaCritical(ticket);
+  // Cliente esperando a gente = ultima fala foi dele (sem prefixo).
+  // Caso contrario, a ultima fala foi nossa (prefixa "Voce:"/"Caca:").
+  const waitingForUs = helpers.isWaitingForIris(ticket);
+  const assigneeName = (ticket.assignedToLabel ?? "").trim();
+  const handledByCaca = assigneeName === "" || assigneeName === cacaOwnerLabel;
+  const previewPrefix = waitingForUs ? "" : handledByCaca ? "Cacá: " : "Você: ";
+  const contactName = helpers.ticketContactLabel(ticket);
+  const crm = readBoardTicketCrm(ticket.crm360Registration);
+  const lastMessageAt = helpers.formatDateTime(
+    ticket.lastMessageAt ?? ticket.openedAt,
+  );
   const timelineStartedAt = helpers.formatDateTime(ticket.openedAt);
   const timelineClosedAt = helpers.formatDateTime(
     ticket.closedAt ?? ticket.resolvedAt ?? ticket.lastMessageAt,
@@ -450,126 +542,92 @@ export function IrisTicketRow({
           onOpenAttendance(ticket.id);
         }
       }}
-      className={`grid min-w-0 cursor-pointer gap-2 overflow-hidden border-b border-slate-100 px-3 py-2.5 transition-colors last:border-b-0 hover:bg-slate-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#A07C3B]/30 xl:grid-cols-[repeat(10,minmax(0,1fr))_40px] xl:items-center ${
+      className={`flex min-w-0 cursor-pointer items-center gap-2.5 border-b border-slate-100 px-3 py-2 transition-colors last:border-b-0 hover:bg-slate-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#A07C3B]/30 ${
         ticket.unread ? "bg-[#A07C3B]/5 shadow-[inset_3px_0_0_#A07C3B]" : ""
       }`}
     >
-      <div className="min-w-0 text-left">
-        <div className="flex items-start gap-2">
-          {renderers.renderContactAvatar(ticket, "sm")}
-          <div className="min-w-0">
-            <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-              <span className="min-w-0 truncate font-mono text-sm font-semibold text-[#7A5E2C]">
-                {ticket.protocol}
-              </span>
-              {ticket.unread ? (
-                <span className="rounded-full bg-[#A07C3B] px-2 py-0.5 text-[11px] font-semibold text-white shadow-[0_0_0_3px_rgba(160,124,59,0.12)]">
-                  nova
-                </span>
-              ) : null}
-              {renderers.renderPriorityPill(ticket.priority)}
-              {renderers.renderCrm360Badge(ticket.crm360Registration, true)}
-            </div>
-            <p className="mt-1 truncate text-sm font-semibold text-slate-950">
-              {helpers.ticketContactLabel(ticket)}
-            </p>
-            <p className="mt-0.5 truncate text-xs text-slate-500">
-              {helpers.ticketCrmSubtitle(ticket)}
-            </p>
-            {showTimeline ? (
-              <p className="mt-1 truncate text-[11px] font-medium text-slate-500">
-                Inicio: {timelineStartedAt} | Encerramento: {timelineClosedAt}
-              </p>
-            ) : null}
-          </div>
+      <div className="shrink-0">{renderers.renderContactAvatar(ticket, "sm")}</div>
+
+      <div className="min-w-0 flex-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <span
+            className={`truncate text-sm text-slate-950 ${
+              ticket.unread ? "font-bold" : "font-medium"
+            }`}
+            title={contactName}
+          >
+            {contactName}
+          </span>
+          <BoardProfileChip crm={crm} />
+          <span
+            className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${queueChipClasses(
+              ticket.queueLabel,
+            )}`}
+          >
+            {ticket.queueLabel}
+          </span>
+          {ticket.unread ? (
+            <span
+              className="ml-auto size-2 shrink-0 rounded-full bg-[#A07C3B]"
+              aria-label="Nao lida"
+              title="Nao lida"
+            />
+          ) : null}
         </div>
-      </div>
-
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-slate-800">
-          {ticket.queueLabel}
+        <p
+          className={`mt-0.5 truncate text-xs ${
+            ticket.unread ? "font-medium text-slate-600" : "text-slate-400"
+          }`}
+          title={ticket.lastMessagePreview}
+        >
+          {previewPrefix}
+          {ticket.lastMessagePreview}
         </p>
-      </div>
-
-      <div className="min-w-0 text-sm font-medium text-slate-600">
-        <p className="truncate">
-          {helpers.formatIrisChannelLabel(ticket.channelLabel)}
-        </p>
-      </div>
-
-      <div className="min-w-0 overflow-hidden">
-        {renderers.renderStatusPill({
-          label: helpers.statusLabel[effectiveStatus],
-          tone: helpers.statusTone(effectiveStatus),
-        })}
-        {effectiveStatus === "pending" && ticket.status === "new" ? (
-          <p className="mt-1 truncate text-xs text-rose-500">+3 min</p>
+        {showTimeline ? (
+          <p className="mt-1 truncate text-[11px] font-medium text-slate-500">
+            Inicio: {timelineStartedAt} | Encerramento: {timelineClosedAt}
+          </p>
         ) : null}
       </div>
 
-      <div className="min-w-0">
+      <div className="flex shrink-0 flex-col items-end gap-1">
         <span
-          className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${helpers.slaClasses(ticket)}`}
+          className={`text-[11px] tabular-nums ${
+            slaCritical ? "font-semibold text-rose-500" : "text-slate-400"
+          }`}
+          title={`Última mensagem: ${lastMessageAt}`}
         >
-          {helpers.slaLabel(ticket)}
+          {lastMessageAt}
         </span>
-        <p className="mt-1 text-xs text-slate-400">
-          {helpers.formatDateTime(ticket.openedAt)}
-        </p>
+        <div className="flex items-center gap-1.5">
+          {slaCritical ? (
+            <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-500">
+              Vencido
+            </span>
+          ) : null}
+          {renderers.renderStatusPill({
+            label: helpers.statusLabel[effectiveStatus],
+            tone: helpers.statusTone(effectiveStatus),
+          })}
+        </div>
       </div>
 
-      <div className="min-w-0">
-        {renderers.renderOriginPill(origin)}
-        <p className="mt-1 truncate text-xs text-slate-400">
-          {ticket.sourceLabel}
-        </p>
-      </div>
-
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-slate-800">
-          {ticket.profileLabel}
-        </p>
-      </div>
-
-      <div className="min-w-0 overflow-hidden">
-        <p className="truncate text-sm font-semibold text-slate-800">
-          {ticket.subject}
-        </p>
-        <p
-          className="mt-1 max-w-full truncate text-xs text-slate-500"
-          title={ticket.lastMessagePreview}
-        >
-          {ticket.lastMessagePreview}
-        </p>
-      </div>
-
-      <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-slate-800">
-          {helpers.ticketResponseTimeLabel(ticket)}
-        </p>
-        <p className="mt-0.5 truncate text-xs text-slate-500">
-          {helpers.ticketResponseTimeState(ticket)}
-        </p>
-      </div>
-
-      <p className="truncate text-sm font-medium text-slate-600">
-        {ticket.assignedToLabel}
-      </p>
-
-      <div className="flex justify-end">
-        <button
-          type="button"
-          onClick={(event) => {
-            event.stopPropagation();
-            onSelectTicket(ticket.id);
-            onOpenAttendance(ticket.id);
-          }}
-          title="Abrir atendimento"
-          aria-label="Abrir atendimento do ticket"
-          className="inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
-        >
-          <MessageCircle className="size-4" aria-hidden="true" />
-        </button>
+      <div className="shrink-0" title={handledByCaca ? "Cacá" : assigneeName}>
+        {handledByCaca ? (
+          <span className="flex size-6 items-center justify-center rounded-full bg-[#A07C3B]/10 text-[#7A5E2C]">
+            <Bot className="size-3.5" aria-hidden="true" />
+          </span>
+        ) : ticket.assignedToAvatarUrl ? (
+          <img
+            src={ticket.assignedToAvatarUrl}
+            alt={assigneeName}
+            className="size-6 rounded-full object-cover"
+          />
+        ) : (
+          <span className="flex size-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[9px] font-bold text-slate-600">
+            {operatorInitials(assigneeName)}
+          </span>
+        )}
       </div>
     </article>
   );

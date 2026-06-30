@@ -510,6 +510,64 @@ export async function downloadMetaWhatsAppMedia({
   };
 }
 
+// Assina a mensagem livre enviada ao cliente com o nome de quem esta atendendo
+// (operador ou "Caca"), em negrito do WhatsApp. Vai so no texto enviado ao cliente —
+// o cockpit mostra o autor pelo selo, entao o corpo salvo localmente fica sem assinatura.
+export function signWhatsAppBody(name: string, body: string): string {
+  const cleanName = name.trim();
+
+  if (!cleanName) {
+    return body;
+  }
+
+  return `*${cleanName}*\n${body}`;
+}
+
+// REGRA ÚNICA DE IDENTIDADE DO NÚMERO (Lucas, 30/jun): a "base" de um número BR é
+// sempre a mesma — o 9º dígito de celular e o DDI 55 são só formato. A Meta normaliza
+// o waId removendo o 9 (e o cadastro do Apolo grava COM o 9), então o MESMO cliente
+// chega em dois formatos. Para NUNCA duplicar contato/ticket, toda resolução de
+// contato deve casar por TODAS as variantes equivalentes (com/sem 9, com/sem 55).
+// Use isto em todo ponto que busca contato por telefone.
+export function buildBrazilianPhoneVariants(
+  value: string | null | undefined,
+): string[] {
+  const digits = typeof value === "string" ? value.replace(/\D/g, "") : "";
+
+  if (digits.length < 8) {
+    return [];
+  }
+
+  const variants = new Set<string>();
+  variants.add(digits);
+
+  // Garante uma forma com DDI 55 pra raciocinar sobre DDD + 9º dígito.
+  const withCountry =
+    digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+  variants.add(withCountry);
+
+  // Cruza o 9º dígito de celular (55 + DDD + [9] + 8 dígitos) nos dois sentidos.
+  const withoutNinth = /^55(\d{2})9(\d{8})$/.exec(withCountry);
+  const withNinth = /^55(\d{2})(\d{8})$/.exec(withCountry);
+
+  if (withoutNinth) {
+    variants.add(`55${withoutNinth[1]}${withoutNinth[2]}`);
+  }
+
+  if (withNinth) {
+    variants.add(`55${withNinth[1]}9${withNinth[2]}`);
+  }
+
+  // Também oferece as variantes SEM o DDI 55 (contatos legados sem código de país).
+  for (const variant of Array.from(variants)) {
+    if (variant.startsWith("55") && variant.length > 11) {
+      variants.add(variant.slice(2));
+    }
+  }
+
+  return Array.from(variants).filter((variant) => variant.length >= 8);
+}
+
 export async function sendMetaWhatsAppTemplateMessage({
   bodyParameters = [],
   config = getMetaWhatsAppOutboundConfig(),

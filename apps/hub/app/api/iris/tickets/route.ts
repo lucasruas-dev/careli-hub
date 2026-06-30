@@ -4,6 +4,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import {
   MetaWhatsAppSendError,
   type MetaWhatsAppTemplateHeaderMedia,
+  buildBrazilianPhoneVariants,
   getMetaWhatsAppOutboundConfig,
   listMetaWhatsAppMessageTemplates,
   sendMetaWhatsAppTemplateMessage,
@@ -274,6 +275,37 @@ export async function POST(request: NextRequest) {
       contactName,
       phone,
     });
+
+    // Check 1: um cliente não pode ter dois tickets ativos NO MESMO NÚMERO (canal).
+    // Filas em números diferentes (Jurídico/Gurgel) são chats separados e não
+    // entram. O fluxo do Hades (cobrança) gerencia o próprio ciclo e pode vincular
+    // a um atendimento existente — por isso não entra nessa guarda.
+    if (sourceModule !== "hades" && !linkedAttendanceTicket) {
+      const activeTicket = await findActiveTicketForContactIdentity(
+        client,
+        contact.id,
+        phone,
+        channel.id,
+      );
+
+      if (activeTicket) {
+        const queuePart = activeTicket.queueLabel
+          ? ` na fila ${activeTicket.queueLabel}`
+          : "";
+        const assigneePart = activeTicket.assigneeLabel
+          ? ` com ${activeTicket.assigneeLabel}`
+          : "";
+
+        return NextResponse.json(
+          {
+            activeTicket,
+            error: `Esse cliente já está em atendimento ativo (${activeTicket.protocol})${queuePart}${assigneePart}. Abra o atendimento existente para continuar — não é permitido abrir um segundo ticket para o mesmo cliente nesse número.`,
+          },
+          { status: 409 },
+        );
+      }
+    }
+
     const customerServiceWindow = await getContactCustomerServiceWindow(
       client,
       contact.id,
@@ -1219,7 +1251,14 @@ function mapLocalTemplateRow(row: Record<string, unknown>) {
     phoneNumberId: normalizeText(metadata.metaPhoneNumberId),
     slug: normalizeText(row.slug),
     templateName,
-    variables: normalizeTemplateVariables(row.variables),
+    // Preferir metadata.variables (forma rica {key, placeholder}) sobre a coluna
+    // `variables` (que costuma ser so um array de chaves) — senao o builder nao
+    // sabe ligar cada {{n}} a sua variavel e cai no fallback legado (ordem errada).
+    variables: normalizeTemplateVariables(
+      Array.isArray(metadata.variables) && metadata.variables.length
+        ? metadata.variables
+        : row.variables,
+    ),
   };
 }
 
@@ -1233,17 +1272,24 @@ function normalizeTemplateVariables(
     return [];
   }
   return value
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
+    .map((item, index) => {
+      // Forma rica: { key, placeholder } (vem de metadata.variables).
+      if (item && typeof item === "object") {
+        const record = item as Record<string, unknown>;
+        const key = normalizeText(record.key);
+        const placeholder = normalizeText(record.placeholder);
+        if (!key || !placeholder) {
+          return null;
+        }
+        return { key, placeholder };
       }
-      const record = item as Record<string, unknown>;
-      const key = normalizeText(record.key);
-      const placeholder = normalizeText(record.placeholder);
-      if (!key || !placeholder) {
-        return null;
+      // Forma simples: array de chaves em ordem (coluna `variables`) — sintetiza
+      // o placeholder pela posicao: 1a chave -> {{1}}, 2a -> {{2}}, ...
+      if (typeof item === "string") {
+        const key = normalizeText(item);
+        return key ? { key, placeholder: `{{${index + 1}}}` } : null;
       }
-      return { key, placeholder };
+      return null;
     })
     .filter((item): item is { key: string; placeholder: string } =>
       Boolean(item),
@@ -1597,29 +1643,29 @@ async function findOrCreateContact({
   contactName: string;
   phone: string;
 }) {
+  // Casa o contato por TODAS as variantes do número (com/sem 9º dígito, com/sem 55).
+  // Garante que o atendimento ativo reaproveite o MESMO contato que o inbound da Meta
+  // vai resolver depois — senão o cliente vira dois contatos e duplica o ticket.
+  const phoneVariants = buildBrazilianPhoneVariants(phone);
+  const phoneFilterList = (phoneVariants.length ? phoneVariants : [phone]).join(",");
+
   const existingWhatsapp = await client
     .from("caredesk_contacts")
-    .select("id")
-    .eq("whatsapp_phone", phone)
-    .maybeSingle();
+    .select("id,whatsapp_phone")
+    .or(`whatsapp_phone.in.(${phoneFilterList}),phone.in.(${phoneFilterList})`)
+    .order("updated_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ id: string; whatsapp_phone: string | null }>();
 
   if (existingWhatsapp.data?.id) {
-    return existingWhatsapp.data;
-  }
+    if (!existingWhatsapp.data.whatsapp_phone) {
+      await client
+        .from("caredesk_contacts")
+        .update({ whatsapp_phone: phone })
+        .eq("id", existingWhatsapp.data.id);
+    }
 
-  const existingPhone = await client
-    .from("caredesk_contacts")
-    .select("id")
-    .eq("phone", phone)
-    .maybeSingle();
-
-  if (existingPhone.data?.id) {
-    await client
-      .from("caredesk_contacts")
-      .update({ whatsapp_phone: phone })
-      .eq("id", existingPhone.data.id);
-
-    return existingPhone.data;
+    return { id: existingWhatsapp.data.id };
   }
 
   const inserted = await client
@@ -1769,6 +1815,105 @@ async function resolveWindowContactIdsByIdentity({
   }
 
   return Array.from(ids);
+}
+
+type ActiveTicketSummary = {
+  assigneeLabel: string | null;
+  protocol: string;
+  queueLabel: string | null;
+  status: string | null;
+  ticketId: string;
+};
+
+type ActiveTicketRow = {
+  assigned_to_user_id: string | null;
+  id: string;
+  metadata: Record<string, unknown> | null;
+  protocol: string | null;
+  queue_id: string | null;
+  status: string | null;
+};
+
+// Check 1 (regra Lucas 30/jun): um cliente NÃO pode ter dois tickets ativos NO
+// MESMO NÚMERO (canal). Filas em números diferentes (ex.: Jurídico/Gurgel) são
+// chats separados pro cliente e NÃO entram na regra — por isso escopa por
+// channel_id (igual o reuso de ticket do inbound). Procura ticket aberto do
+// cliente nesse canal (por todas as variantes do número) e resume fila/analista
+// pra UI explicar e oferecer abrir o existente em vez de criar um segundo.
+async function findActiveTicketForContactIdentity(
+  client: SupabaseClient,
+  contactId: string,
+  phone: string | null | undefined,
+  channelId: string | null | undefined,
+): Promise<ActiveTicketSummary | null> {
+  const contactIds = await resolveWindowContactIdsByIdentity({
+    client,
+    contactId,
+    phone,
+  });
+  const scopedContactIds = contactIds.length ? contactIds : [contactId];
+
+  let query = client
+    .from("caredesk_tickets")
+    .select("id,protocol,status,queue_id,assigned_to_user_id,metadata,opened_at")
+    .in("contact_id", scopedContactIds)
+    .order("opened_at", { ascending: false })
+    .limit(40);
+
+  if (channelId) {
+    query = query.eq("channel_id", channelId);
+  }
+
+  const { data, error } = await query;
+
+  if (error) {
+    throw error;
+  }
+
+  const openTicket = ((data ?? []) as Array<ActiveTicketRow & { opened_at?: string | null }>).find(
+    (row) => !isClosedTicketStatus(row.status),
+  );
+
+  if (!openTicket) {
+    return null;
+  }
+
+  const [queue, assigneeLabel] = await Promise.all([
+    openTicket.queue_id
+      ? getQueueById(client, openTicket.queue_id)
+      : Promise.resolve(null),
+    resolveTicketAssigneeLabel(client, openTicket),
+  ]);
+
+  return {
+    assigneeLabel,
+    protocol: normalizeText(openTicket.protocol) ?? openTicket.id,
+    queueLabel: normalizeText(queue?.name) ?? null,
+    status: normalizeText(openTicket.status),
+    ticketId: openTicket.id,
+  };
+}
+
+async function resolveTicketAssigneeLabel(
+  client: SupabaseClient,
+  ticket: Pick<ActiveTicketRow, "assigned_to_user_id" | "metadata">,
+): Promise<string | null> {
+  if (ticket.assigned_to_user_id) {
+    const identity = await getOperatorIdentity(client, ticket.assigned_to_user_id);
+
+    return identity.label;
+  }
+
+  const metadata = normalizeRecord(ticket.metadata);
+
+  if (
+    metadata.cacaAutomation ||
+    normalizeText(metadata.assignedToLabel)?.toLowerCase() === "caca"
+  ) {
+    return "Cacá";
+  }
+
+  return null;
 }
 
 function describeCustomerServiceWindow(
@@ -2019,21 +2164,11 @@ function normalizeWhatsAppDestination(value: unknown) {
 }
 
 function buildBrazilWhatsAppDestinationCandidates(to: string) {
-  const candidates = [to];
-  const withoutBrazilianNinthDigit = /^55(\d{2})(\d{8})$/.exec(to);
-  const withBrazilianNinthDigit = /^55(\d{2})9(\d{8})$/.exec(to);
+  // Regra única de identidade do número (com/sem 9º dígito, com/sem 55) — ver
+  // meta-whatsapp.ts. Mantém o próprio número primeiro como preferência.
+  const variants = buildBrazilianPhoneVariants(to);
 
-  if (withoutBrazilianNinthDigit) {
-    candidates.push(
-      `55${withoutBrazilianNinthDigit[1]}9${withoutBrazilianNinthDigit[2]}`,
-    );
-  }
-
-  if (withBrazilianNinthDigit) {
-    candidates.push(`55${withBrazilianNinthDigit[1]}${withBrazilianNinthDigit[2]}`);
-  }
-
-  return Array.from(new Set(candidates));
+  return variants.length ? Array.from(new Set([to, ...variants])) : [to];
 }
 
 function normalizeTemplateName(value: unknown) {

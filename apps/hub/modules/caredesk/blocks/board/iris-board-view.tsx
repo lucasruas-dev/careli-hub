@@ -1,15 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
-import {
-  CalendarClock,
-  Clock3,
-  MessageCircle,
-  ShieldAlert,
-  TicketCheck,
-} from "lucide-react";
+import { Clock3, MessageCircle, ShieldAlert, TicketCheck } from "lucide-react";
 
-import { ActionPanel, SignalCard } from "../shared/iris-ui";
+import { SignalCard } from "../shared/iris-ui";
 
 export type IrisBoardMetrics = {
   averageHandlingTimeLabel: string;
@@ -26,11 +20,11 @@ export type IrisBoardActionItem = {
 };
 
 export function IrisBoardView({
-  actionItems,
   children,
   metrics,
 }: {
-  actionItems: IrisBoardActionItem[];
+  // Mantido no contrato p/ nao quebrar o caller; a Agenda saiu do board (inbox em largura total).
+  actionItems?: IrisBoardActionItem[];
   children: ReactNode;
   metrics: IrisBoardMetrics;
 }) {
@@ -63,17 +57,7 @@ export function IrisBoardView({
         />
       </div>
 
-      <div className="grid min-h-0 gap-3 xl:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="min-h-0 min-w-0">{children}</div>
-
-        <aside className="min-h-0 space-y-3 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-          <ActionPanel
-            icon={CalendarClock}
-            title="Agenda"
-            items={actionItems}
-          />
-        </aside>
-      </div>
+      <div className="min-h-0 min-w-0">{children}</div>
     </div>
   );
 }

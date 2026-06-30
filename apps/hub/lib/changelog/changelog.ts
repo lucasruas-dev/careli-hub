@@ -32,6 +32,138 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-06-30-iris-responder-como-caca-restrito",
+    deployedAt: "2026-06-30T11:50:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O botão 'Responder como Cacá' passou a ser restrito: só o usuário autorizado (dono) consegue ver e usar essa ação nos atendimentos da Cacá.",
+            ],
+            screen: "Atendimento (Cacá)",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-gojhsmcz4",
+    technical: {
+      done: "Controle de acesso de 'Responder como Cacá' centralizado em lib/iris/caca-reply-access.ts (canReplyAsCaca + allowlist de user ids). Endpoint /api/iris/tickets/caca-reply devolve 403 se o user não estiver na allowlist; IrisPage só passa onSendAsCaca (que faz o botão aparecer) quando canReplyAsCaca(hubUser.id). v1.14.1 -> v1.14.2.",
+      motivation:
+        "Lucas pediu que a ação de responder como Cacá fique disponível somente para o usuário dele.",
+    },
+    title: "Iris: 'Responder como Cacá' restrito ao usuário autorizado",
+    type: "melhoria",
+    version: "v1.14.2",
+  },
+  {
+    buildTag: "2026-06-30-iris-responder-como-caca",
+    deployedAt: "2026-06-30T11:25:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Nos atendimentos conduzidos pela Cacá, o operador agora pode enviar uma mensagem ao cliente assinada como Cacá (botão 'Responder como Cacá' no rodapé). Útil para uma correção ou complemento pontual sem precisar assumir o atendimento — a conversa continua com a Cacá.",
+            ],
+            screen: "Atendimento (Cacá)",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-4bcaiid8h",
+    technical: {
+      done: "Novo endpoint POST /api/iris/tickets/caca-reply (auth operator/leader/admin): resolve contato/canal/phone_number_id do ticket, envia via sendMetaWhatsAppTextMessage com signWhatsAppBody('Cacá', body) e registra em caredesk_messages (provider_payload.automation='caca', operatorLabel='Cacá', manualCaca=true, manualSenderUserId) + upsert em caredesk_whatsapp_message_refs. NÃO reatribui o ticket (segue Cacá). UI: IrisConversationComposerActions ganhou botão 'Responder como Cacá' + mini-composer no banner travado (lockedByCaca); IrisPage.handleSendAsCaca posta no endpoint e injeta a mensagem via onMessageCreated. Caminho do operador (/api/iris/meta/messages) intocado. v1.14.0 -> v1.14.1.",
+      motivation:
+        "Permitir uma correção/complemento na voz da Cacá (ex.: corrigir uma informação) sem tirar o atendimento dela nem expor credenciais — o servidor de produção envia. Construído para resolver a correção de uma parcela informada errada, mas fica reutilizável.",
+    },
+    title: "Iris: responder como Cacá nos atendimentos dela",
+    type: "melhoria",
+    version: "v1.14.1",
+  },
+  {
+    buildTag: "2026-06-30-caca-parcela-tickets-mesmo-numero",
+    deployedAt: "2026-06-30T10:50:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Corrigido um erro em que a Cacá podia informar a próxima parcela errada — ela apontava uma parcela de meses à frente em vez da que vence primeiro. Agora ela sempre calcula a próxima parcela na ordem correta.",
+            ],
+            screen: "Atendimento (Cacá)",
+          },
+          {
+            items: [
+              "Um cliente não pode mais ter dois atendimentos abertos ao mesmo tempo no mesmo número: ao tentar abrir, o sistema avisa que já existe um atendimento ativo (em qual fila e com quem) e oferece abrir o existente. Filas em números diferentes (ex.: Jurídico) seguem como conversas separadas, do jeito que o cliente vê no WhatsApp.",
+              "O mesmo cliente deixa de virar dois contatos por causa do 9º dígito do celular (com 9 e sem 9 passam a ser a mesma pessoa) — o que evitava atendimentos e tickets duplicados.",
+            ],
+            screen: "Abrir atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-q3cuzarte",
+    technical: {
+      done: "Cacá (lib/iris/caca/executors.ts, consultarFinanceiro): a próxima parcela ordenava aVencer por item.dueDate em formato BR DD/MM/AAAA via String.localeCompare -> '20/01/2027' vinha antes de '20/07/2026' -> apontava parcela errada como próxima. Passou a ordenar por dueDateInput (ISO AAAA-MM-DD). Tickets: regra única buildBrazilianPhoneVariants (com/sem 9º dígito e com/sem 55) em meta-whatsapp.ts, aplicada em findOrCreateContact (inbound e operador), buildWhatsAppIdVariants e nos candidatos da janela de 24h -> inbound deixa de forkar contato pelo 9º dígito. Check 1: findActiveTicketForContactIdentity no POST de /api/iris/tickets bloqueia 2º ticket ativo no MESMO channel_id (número), devolve 409 com activeTicket {protocol, queueLabel, assigneeLabel}; iris-start-attendance-modal trata o 409 com card âmbar + 'Abrir o atendimento existente'. Fluxo Hades/cobrança e vínculo de atendimento ficam fora da guarda. v1.13.0 -> v1.14.0.",
+      motivation:
+        "Cacá entregou dado financeiro incorreto a um cliente (parcela errada por bug de ordenação de data) — corrigido com urgência. E fechar a duplicidade de contatos/tickets pelo 9º dígito brasileiro, respeitando que filas em números diferentes (Jurídico/Gurgel) são chats separados pro cliente e não entram na regra de um-ticket-por-número.",
+    },
+    title:
+      "Cacá: parcela correta + tickets sem duplicar (9º dígito e um por número)",
+    type: "correcao",
+    version: "v1.14.0",
+  },
+  {
+    buildTag: "2026-06-30-iris-board-fila-perfil-caca",
+    deployedAt: "2026-06-30T08:25:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Novo Board em kanban: visão macro com colunas que se organizam sozinhas (Erro de envio · Com a Cacá · Pendente · Aguardando cliente · Resolvido hoje), indicadores no topo (abertos, SLA crítico, 1ª resposta, TDR, tempo médio), busca única e ordenação. Dá pra alternar entre kanban e lista. Já nasce pensado pra multicanal (WhatsApp hoje, e-mail depois).",
+              "Fila de atendimento repaginada: nome do cliente em destaque, o perfil ao lado (Comprador / Prospect / Imobiliária…), bolinha de status e um número verde com quantas mensagens do cliente estão sem resposta. Os atendimentos conduzidos pela Cacá ficam isolados, sem poluir a fila.",
+              "Cards e cockpit mostram o PERFIL do contato (Comprador, Prospect, Imobiliária, Corretor…) e, pra quem comprou, se está adimplente (verde) ou inadimplente (vermelho).",
+            ],
+            screen: "Board e Fila",
+          },
+          {
+            items: [
+              "A Cacá passa a respeitar o horário de atendimento (segunda a sexta, das 9h às 18h): fora do expediente, ao transferir ela avisa que o time não está atendendo agora e quando vamos retornar — sem prometer resposta imediata.",
+              "Ao precisar de um analista, a Cacá mostra que analisou o caso (ex.: identifica a parcela em aberto) e explica por que vai transferir — pro cliente sentir que ela entendeu o problema antes de passar adiante.",
+              "As mensagens enviadas ao cliente saem assinadas com o nome de quem está atendendo (o operador, ou 'Cacá').",
+            ],
+            screen: "Atendimento (Cacá)",
+          },
+          {
+            items: [
+              "Template de abertura do atendimento ativo corrigido (o nome do operador e o assunto saíam trocados no texto).",
+              "Quando um envio falha, agora aparece o motivo real do WhatsApp/Meta (ex.: problema de pagamento) em vez do genérico 'Falha no envio'.",
+              "O assunto do ticket começa em branco — o operador define.",
+              "'CRM 360' virou 'Apolo' nos textos das telas.",
+            ],
+            screen: "Operação e ajustes",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-2plaomin8",
+    technical: {
+      done: "Board kanban novo (blocks/board/iris-board-kanban.tsx) substituindo a lista; colunas auto por statusColumnKey (erro via hasDeliveryError, Cacá via isCacaOwned exposto nos helpers), busca/ordenação client-side, indicador TDR (responseTimeLabel), toggle kanban/lista. Fila (IrisConversationInboxSidebar) refinada + badge de não-lidas (computeUnreadCount = inbound desde a última outbound) + filtro isCacaOwnedTicket. Perfil Comprador/Prospect + adimplência: readBoardTicketCrm/BoardProfileChip; phone-match estendido pra puxar apolo_financial_snapshots em batch (delinquency). Cabeçalho da conversa mostra perfil (não tipo de pessoa) + fila. Assinatura WhatsApp (signWhatsAppBody, assina na troca de remetente; Cacá assina sempre). Fix do mapeamento de variáveis do template (metadata.variables). Motivo do erro Meta capturado no webhook (extractStatusError) + traduzido na tela. Persona Cacá: horário (businessHoursForNow) + transferência demonstrando análise e encaminhando a 'analista da Careli'. Assunto inbound = null + data-client sem fallback. 'CRM 360'->'Apolo'. v1.12.3 -> v1.13.0.",
+      motivation:
+        "Lote grande de UX da Iris (Board macro multicanal, fila legível com perfil/adimplência, cards Comprador/Prospect) + Cacá mais 'humana' (ciente do horário, transferência consciente que demonstra análise) pra que o cliente associe a Cacá a um agente que resolve — reduzindo a dependência de atendimento humano ao longo do tempo.",
+    },
+    title:
+      "Iris: novo Board, fila repaginada, perfil/adimplência e Cacá mais esperta",
+    type: "novidade",
+    version: "v1.13.0",
+  },
+  {
     buildTag: "2026-06-29-caca-memoria-por-cliente",
     deployedAt: "2026-06-29T12:06:00-03:00",
     modules: [

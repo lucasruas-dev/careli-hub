@@ -47,6 +47,7 @@ export type IrisMessage = {
   direction: IrisMessageDirection;
   editedAt?: string | null;
   externalMessageId?: string | null;
+  failureReason?: string | null;
   id: string;
   mediaFileName?: string | null;
   mediaKind?: string | null;
@@ -64,6 +65,7 @@ export type IrisMessage = {
 };
 
 export type IrisCrm360Registration = {
+  delinquency?: "adimplente" | "inadimplente" | null;
   documentMasked?: string | null;
   entityId?: string;
   entityKind?: string;
@@ -77,8 +79,11 @@ export type IrisCrm360Registration = {
 
 export type IrisTicket = {
   crm360Registration?: IrisCrm360Registration | null;
+  assignedToAvatarUrl?: string | null;
   assignedToLabel: string;
+  assignedToUserId?: string | null;
   channelId?: string | null;
+  hasDeliveryError?: boolean;
   channelLabel: string;
   contactAvatarUrl?: string | null;
   contactDocument?: string | null;
@@ -108,6 +113,7 @@ export type IrisTicket = {
   status: IrisStatus;
   subject: string;
   unread: boolean;
+  unreadCount?: number;
 };
 
 export type IrisQueueConfig = {

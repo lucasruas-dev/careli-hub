@@ -35,7 +35,6 @@ import {
   Megaphone,
   MessageCircle,
   MessageSquareReply,
-  MessageSquareText,
   Mic,
   Network,
   Play,
@@ -64,15 +63,12 @@ import {
   IrisModuleShell,
   type IrisShellNavigationItem,
 } from "./blocks/shell/iris-shell";
+import { IrisBoardKanban } from "./blocks/board/iris-board-kanban";
+import { type IrisBoardMetrics } from "./blocks/board/iris-board-view";
 import {
-  IrisBoardView,
-  type IrisBoardActionItem,
-  type IrisBoardMetrics,
-} from "./blocks/board/iris-board-view";
-import {
-  IrisTicketQueue,
   type IrisTicketQueueHelpers,
   type IrisTicketQueueRenderers,
+  queueChipClasses,
 } from "./blocks/board/iris-ticket-queue";
 import {
   IrisHistoryView,
@@ -142,6 +138,7 @@ import {
   transcodeAudioToMp3,
 } from "@/lib/iris/audio-transcode";
 import { getHubPresenceSnapshot } from "@/lib/hub-presence";
+import { canReplyAsCaca } from "@/lib/iris/caca-reply-access";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
 import { usePanteonNotifications } from "@/providers/pulsex-notification-provider";
@@ -1232,29 +1229,15 @@ function ManagementView({
   onSelectTicket: (ticketId: string) => void;
   onStartAttendance: (queueLabel?: string) => void;
 }) {
-  const openTickets = useMemo(
+  // Board (kanban): abertos + encerrados HOJE (pra alimentar a coluna "Resolvido hoje").
+  const boardTickets = useMemo(
     () =>
       data.tickets.filter(
         (ticket) =>
-          !isClosedTicket(ticket) &&
-          (canSeeCacaQueue || !isCacaOwnedTicket(ticket)),
+          (canSeeCacaQueue || !isCacaOwnedTicket(ticket)) &&
+          (!isClosedTicket(ticket) || isClosedToday(ticket)),
       ),
     [canSeeCacaQueue, data.tickets],
-  );
-  const boardActionItems = useMemo<IrisBoardActionItem[]>(
-    () => [
-      {
-        detail: "Tickets com proxima resposta vencendo",
-        title: "Retornos",
-        value: formatCount(snapshot.followUpsToday),
-      },
-      {
-        detail: "Demandas que pedem distribuicao",
-        title: "Escalados",
-        value: formatCount(snapshot.waitingOperator),
-      },
-    ],
-    [snapshot.followUpsToday, snapshot.waitingOperator],
   );
   const boardMetrics = useMemo<IrisBoardMetrics>(
     () => ({
@@ -1272,22 +1255,18 @@ function ManagementView({
     ],
   );
 
-  return (
-    <IrisBoardView actionItems={boardActionItems} metrics={boardMetrics}>
-      {loading ? (
-        <IrisLoading />
-      ) : (
-        <IrisTicketQueue
-          canSeeCacaQueue={canSeeCacaQueue}
-          helpers={irisTicketQueueHelpers}
-          renderers={irisTicketQueueRenderers}
-          tickets={openTickets}
-          onOpenAttendance={onOpenAttendance}
-          onSelectTicket={onSelectTicket}
-          onStartAttendance={onStartAttendance}
-        />
-      )}
-    </IrisBoardView>
+  return loading ? (
+    <IrisLoading />
+  ) : (
+    <IrisBoardKanban
+      helpers={irisTicketQueueHelpers}
+      metrics={boardMetrics}
+      onOpenAttendance={onOpenAttendance}
+      onSelectTicket={onSelectTicket}
+      onStartAttendance={onStartAttendance}
+      renderers={irisTicketQueueRenderers}
+      tickets={boardTickets}
+    />
   );
 }
 
@@ -1477,6 +1456,10 @@ function IrisConversationPanel({
   const { hubUser } = useAuth();
   const operatorLabel = formatIrisOperatorLabel(hubUser?.name);
   const operatorAvatarUrl = hubUser?.avatarUrl ?? null;
+  // Operação assistida: "reply" fala com o cliente, "note" é sussurro interno.
+  const [composerMode, setComposerMode] = useState<"reply" | "note">("reply");
+  // Responder como Cacá (operador dispara, servidor envia assinado como Cacá).
+  const [sendingAsCaca, setSendingAsCaca] = useState(false);
   const [contextModalMode, setContextModalMode] =
     useState<IrisContextModalMode>(null);
   const [apoloContextEntity, setApoloContextEntity] =
@@ -1522,6 +1505,12 @@ function IrisConversationPanel({
           item.lastMessagePreview.toLowerCase().includes(normalized);
 
         if (!matchesSearch) {
+          return false;
+        }
+
+        // Cacá isolada: atendimentos conduzidos por ela não entram nesta fila.
+        // (No handoff o ticket deixa de ser dela e volta a aparecer aqui.)
+        if (isCacaOwnedTicket(item)) {
           return false;
         }
 
@@ -1574,12 +1563,38 @@ function IrisConversationPanel({
     ticket.crm360Registration,
   );
   const portfolioShortcutEnabled = hasUserPortfolio || fallbackUserProfile;
-  // Marcadores do header (centro): perfil do contato + adimplencia (so comprador).
-  const contactProfileLabel =
-    apoloContextEntity?.profiles?.find((profile) => profile?.trim())?.trim() ||
-    (ticket.profileLabel && ticket.profileLabel !== "Sem perfil"
-      ? ticket.profileLabel
-      : null);
+  // Marcadores do header (centro): PERFIL do contato (papel Careli) + adimplencia.
+  // Cliente vira Comprador (tem carteira) ou Prospect; demais papeis vêm do Apolo
+  // (pulando "pessoa fisica/juridica", que é tipo de pessoa, não perfil).
+  const contactProfileLabel = (() => {
+    if (hasUserPortfolio) {
+      return "Comprador";
+    }
+
+    const apoloProfiles = apoloContextEntity?.profiles ?? [];
+    const isUsuario =
+      fallbackUserProfile ||
+      apoloProfiles.some((profile) =>
+        (profile ?? "").toLowerCase().includes("usuario"),
+      );
+
+    if (isUsuario) {
+      return "Prospect";
+    }
+
+    const role = apoloProfiles.find((profile) => {
+      const key = (profile ?? "").toLowerCase().trim();
+
+      return key !== "" && !key.includes("pessoa") && !key.includes("usuario");
+    });
+
+    return (
+      role ??
+      (ticket.profileLabel && ticket.profileLabel !== "Sem perfil"
+        ? ticket.profileLabel
+        : null)
+    );
+  })();
   const contactDelinquency: "adimplente" | "inadimplente" | null =
     hasUserPortfolio
       ? (apoloContextEntity?.financial?.overdueInstallments ?? 0) > 0
@@ -1863,6 +1878,20 @@ function IrisConversationPanel({
   const composerReady = editingMessage
     ? operationReady && !attendanceWithCaca
     : canSendFreeForm;
+  // Operação assistida (sussurro): quem NÃO é o dono do atendimento só pode mandar
+  // nota interna (pra assumir o cliente é por transferência/encerramento). Nota não
+  // depende da janela de 24h nem da trava da Cacá — só do ticket estar aberto.
+  const ticketHasOwner = Boolean(ticket.assignedToUserId);
+  const viewerIsOwner = Boolean(
+    hubUser?.id &&
+      ticket.assignedToUserId &&
+      hubUser.id === ticket.assignedToUserId,
+  );
+  const mustWhisper = !ticketClosed && ticketHasOwner && !viewerIsOwner;
+  const effectiveComposerMode: "reply" | "note" =
+    mustWhisper && !editingMessage ? "note" : composerMode;
+  const noteModeActive = effectiveComposerMode === "note" && !editingMessage;
+  const composerReadyForMode = noteModeActive ? operationReady : composerReady;
   const blockedTooltip = ticketClosed
     ? "Ticket encerrado"
     : customerServiceWindow.open
@@ -1892,6 +1921,11 @@ function IrisConversationPanel({
     setAttendantDocumentFragment("");
     setAttendantPrompt(latestCustomerMessage);
   }, [latestCustomerMessage, ticket.id]);
+
+  // Ao trocar de conversa, volta o composer pro modo "responder cliente".
+  useEffect(() => {
+    setComposerMode("reply");
+  }, [ticket.id]);
 
   useEffect(() => {
     if (!canSendFreeForm || sending || !ticket.contactPhone) {
@@ -2467,6 +2501,11 @@ function IrisConversationPanel({
       return;
     }
 
+    if (noteModeActive) {
+      await sendInternalNote(body);
+      return;
+    }
+
     if (!canSendFreeForm) {
       setFeedback(customerServiceWindow.label);
       return;
@@ -2543,6 +2582,135 @@ function IrisConversationPanel({
         error instanceof Error
           ? error.message
           : "Nao foi possivel enviar a mensagem agora.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // Responder como Cacá: o operador escreve, mas o servidor de produção envia
+  // assinado como Cacá e registra como automação dela (sem reatribuir o ticket).
+  async function handleSendAsCaca(text: string) {
+    const value = text.trim();
+
+    if (!value || sendingAsCaca) {
+      return;
+    }
+
+    setSendingAsCaca(true);
+    setFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/tickets/caca-reply", {
+        body: JSON.stringify({ body: value, ticketId: ticket.id }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: Record<string, unknown> | null;
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Nao foi possivel enviar como Caca.");
+      }
+
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorIdentity(mapMessageRow(payload.message), "Cacá", null),
+        );
+      }
+
+      setFeedback("Mensagem enviada como Caca.");
+    } catch (error) {
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar como Caca.",
+      );
+    } finally {
+      setSendingAsCaca(false);
+    }
+  }
+
+  async function sendInternalNote(body: string) {
+    if (!body || sending || !operationReady) {
+      return;
+    }
+
+    setSending(true);
+    setFeedback("");
+
+    try {
+      const now = new Date().toISOString();
+      const optimisticNote: IrisMessage = {
+        body,
+        createdAt: now,
+        deliveryStatus: "sent",
+        direction: "internal",
+        id: `local-note-${now}`,
+        messageType: "note",
+        operatorAvatarUrl,
+        senderLabel: operatorLabel,
+        senderType: "operator",
+      };
+
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/notes", {
+        body: JSON.stringify({
+          body,
+          channelId: ticket.channelId ?? null,
+          ticketId: ticket.id,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: Record<string, unknown> | null;
+      } | null;
+
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel registrar a nota interna.",
+        );
+      }
+
+      if (!payload?.message) {
+        onMessageCreated(ticket.id, optimisticNote);
+      }
+
+      setDraft("");
+      setReplyToMessage(null);
+      setEmojiPickerOpen(false);
+      setFeedback("Mensagem assistida registrada.");
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel registrar nota interna", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel registrar a nota agora.",
       );
     } finally {
       setSending(false);
@@ -3060,6 +3228,14 @@ function IrisConversationPanel({
                   <span>{ticket.protocol}</span>
                   <span aria-hidden="true">-</span>
                   <span>{statusLabel[ticketStatus]}</span>
+                  <span aria-hidden="true">·</span>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${queueChipClasses(
+                      ticket.queueLabel,
+                    )}`}
+                  >
+                    {ticket.queueLabel}
+                  </span>
                   {contactProfileLabel ? (
                     <>
                       <span aria-hidden="true">·</span>
@@ -3233,7 +3409,10 @@ function IrisConversationPanel({
           blockedTooltip={blockedTooltip}
           canSendFreeForm={canSendFreeForm}
           cobrancaMode={cobrancaMode}
-          composerReady={composerReady}
+          composerMode={effectiveComposerMode}
+          composerReady={composerReadyForMode}
+          mustWhisper={mustWhisper}
+          onComposerModeChange={setComposerMode}
           onToggleAttendant={() => setAttendantOpen((current) => !current)}
           customerServiceWindow={
             customerServiceWindow as IrisConversationComposerWindow
@@ -3244,6 +3423,10 @@ function IrisConversationPanel({
           emojiPickerOpen={emojiPickerOpen}
           emojiPickerRef={emojiPickerRef}
           lockedByCaca={attendanceWithCaca}
+          onSendAsCaca={
+            canReplyAsCaca(hubUser?.id) ? handleSendAsCaca : undefined
+          }
+          sendingAsCaca={sendingAsCaca}
           onOpenNotes={() => setNotesModalOpen(true)}
           onCancelComposerContext={cancelComposerContext}
           onComposerKeyDown={handleComposerKeyDown}
@@ -4139,6 +4322,26 @@ function MessageBubble({
     : ticket.contactAvatarUrl;
 
   if (internal) {
+    // Nota interna de operador (sussurro) = cartão dourado com autor; só a equipe vê.
+    // Mensagens de sistema (transferência etc.) seguem como pílula cinza central.
+    if (message.messageType === "note") {
+      return (
+        <div className="flex justify-center">
+          <div className="w-full max-w-[80%] rounded-xl border border-[#A07C3B]/30 bg-[#fbf6ec] px-3.5 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="mb-1 text-[11px] font-semibold text-slate-900">
+              {message.senderLabel ?? "Operador"}
+            </div>
+            <p className="whitespace-pre-wrap text-sm text-slate-700 [overflow-wrap:anywhere]">
+              {message.body}
+            </p>
+            <div className="mt-1 text-right text-[11px] text-[#A07C3B]/70">
+              {formatDateTime(message.createdAt)}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="flex justify-center">
         <div className="max-w-[70%] rounded-full border border-slate-200/70 bg-white px-3 py-1.5 text-center text-xs font-semibold text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] [overflow-wrap:anywhere]">
@@ -4665,7 +4868,11 @@ function MessageDeliveryIndicator({ message }: { message: IrisMessage }) {
       : normalized === "failed"
         ? "text-rose-500"
         : "text-slate-400";
-  const tooltip = pendingMetaSend ? "Aguardando envio pela Meta" : label;
+  const tooltip = pendingMetaSend
+    ? "Aguardando envio pela Meta"
+    : normalized === "failed" && message.failureReason
+      ? `${label}: ${message.failureReason}`
+      : label;
 
   return (
     <Tooltip content={tooltip} placement="top">
@@ -4867,6 +5074,7 @@ const irisTicketQueueHelpers: IrisTicketQueueHelpers = {
   filterTicketsByBoardOwner,
   formatDateTime,
   formatIrisChannelLabel,
+  isCacaOwned: isCacaOwnedTicket,
   isClosedTicket,
   isClosedToday,
   isSlaCritical,
@@ -5119,12 +5327,12 @@ function ticketCrmSubtitle(ticket: IrisTicket) {
       registration.profileLabel ??
       registration.profiles?.join(" | ") ??
       registration.relationLabel ??
-      "CRM 360"
+      "Apolo"
     );
   }
 
   if (registration?.status === "missing") {
-    return "Telefone sem cadastro no CRM 360";
+    return "Telefone sem cadastro no Apolo";
   }
 
   return ticket.subject;
@@ -5358,7 +5566,7 @@ function formatApoloProfileLabel(profiles: string[], kind?: string) {
     return "Pessoa fisica";
   }
 
-  return "CRM 360";
+  return "Apolo";
 }
 
 function extractFirstName(value: string) {

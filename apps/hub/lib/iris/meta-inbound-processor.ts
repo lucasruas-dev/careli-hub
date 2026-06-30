@@ -17,11 +17,13 @@ import {
   runCacaClaudeTurn,
 } from "@/lib/iris/caca/agent";
 import {
+  buildBrazilianPhoneVariants,
   downloadMetaWhatsAppMedia,
   getMetaWhatsAppOutboundConfig,
   type MetaWhatsAppDownloadedMedia,
   type MetaWhatsAppSendMessageResult,
   sendMetaWhatsAppTextMessage,
+  signWhatsAppBody,
 } from "@/lib/iris/meta-whatsapp";
 import { uploadInboundMediaBuffer } from "@/lib/iris/meta-media-storage";
 
@@ -424,10 +426,47 @@ async function processStatusUpdate({
       messageStatusPatch.read_at = event.received_at;
     }
 
-    await client
-      .from("caredesk_messages")
-      .update(messageStatusPatch)
-      .in("id", messageIds);
+    const deliveryError =
+      deliveryStatus === "failed"
+        ? extractStatusError(event.payload, providerStatusId)
+        : null;
+
+    if (deliveryError) {
+      // Falha: guarda o motivo (merge no provider_payload existente) pra tela
+      // mostrar "por que falhou". Read-modify-write so no caminho de erro (raro).
+      const { data: failedRows } = await client
+        .from("caredesk_messages")
+        .select("id,provider_payload")
+        .in("id", messageIds);
+
+      for (const row of failedRows ?? []) {
+        const current =
+          row.provider_payload && typeof row.provider_payload === "object"
+            ? (row.provider_payload as Record<string, unknown>)
+            : {};
+
+        await client
+          .from("caredesk_messages")
+          .update({
+            ...messageStatusPatch,
+            provider_payload: {
+              ...current,
+              deliveryError: {
+                at: event.received_at,
+                code: deliveryError.code,
+                message: deliveryError.message,
+                title: deliveryError.title,
+              },
+            },
+          })
+          .eq("id", row.id);
+      }
+    } else {
+      await client
+        .from("caredesk_messages")
+        .update(messageStatusPatch)
+        .in("id", messageIds);
+    }
   }
 
   await markWebhookEvent(client, event.id, "processed");
@@ -580,12 +619,17 @@ async function findOrCreateContact({
     throw new Error("Mensagem inbound sem contato WhatsApp.");
   }
 
+  // Casa o contato por TODAS as variantes do número (com/sem 9º dígito, com/sem 55).
+  // A Meta manda o waId SEM o 9; o cadastro do Apolo grava COM o 9 — sem isto, o
+  // inbound forka um contato novo e duplica o ticket.
+  const phoneVariants = buildBrazilianPhoneVariants(waId);
+  const phoneFilterList = (phoneVariants.length ? phoneVariants : [waId]).join(",");
   const { data: existingContacts, error: lookupError } = await client
     .from("caredesk_contacts")
     .select(
       "id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload,created_at,updated_at",
     )
-    .or(`whatsapp_phone.eq.${waId},phone.eq.${waId}`)
+    .or(`whatsapp_phone.in.(${phoneFilterList}),phone.in.(${phoneFilterList})`)
     .limit(24);
 
   if (lookupError) {
@@ -979,16 +1023,12 @@ function buildWhatsAppIdVariants(waId: string) {
     return [];
   }
 
-  const variants = new Set<string>();
-  variants.add(normalized);
+  // Regra única: variantes com/sem 9º dígito e com/sem 55 (ver meta-whatsapp.ts).
+  const variants = buildBrazilianPhoneVariants(normalized);
 
-  if (normalized.startsWith("55") && normalized.length > 11) {
-    variants.add(normalized.slice(2));
-  } else if (!normalized.startsWith("55")) {
-    variants.add(`55${normalized}`);
-  }
-
-  return Array.from(variants).filter((value) => Boolean(normalizeWhatsAppId(value)));
+  return (variants.length ? variants : [normalized]).filter((value) =>
+    Boolean(normalizeWhatsAppId(value)),
+  );
 }
 
 async function findOldestOpenTicketByWhatsAppIdentity({
@@ -1332,7 +1372,8 @@ async function createTicketFromInbound({
       source_entity_type: "meta-whatsapp-message",
       source_module: "iris",
       status: "new",
-      subject: `WhatsApp - ${contact.display_name}`,
+      // Assunto começa EM BRANCO — o operador define (regra Lucas).
+      subject: null,
       workspace_id: workspaceId,
     })
     .select(INBOUND_TICKET_SELECT)
@@ -1728,6 +1769,36 @@ function extractStatusDetail(payload: Json, statusId: string) {
   return readString(status?.status);
 }
 
+// Motivo de uma falha de entrega (Meta manda em statuses[].errors[]). Guardamos
+// code/title/message pra tela explicar "por que falhou" em vez do generico.
+function extractStatusError(payload: Json, statusId: string) {
+  const status = findStatuses(payload).find(
+    (candidate) => readString(candidate.id) === statusId,
+  );
+  const errors = Array.isArray(status?.errors) ? status?.errors : [];
+  const first = asRecord(errors[0]);
+
+  if (!first) {
+    return null;
+  }
+
+  const errorData = asRecord(first.error_data);
+  const rawCode = readString(first.code);
+  const code = rawCode && Number.isFinite(Number(rawCode)) ? Number(rawCode) : null;
+  const title = readString(first.title) || null;
+  const message =
+    readString(first.message) ||
+    readString(errorData?.details) ||
+    title ||
+    null;
+
+  if (!code && !title && !message) {
+    return null;
+  }
+
+  return { code, message, title };
+}
+
 async function maybeSendCacaAutoReply({
   cacaEnabled,
   channelId,
@@ -1780,8 +1851,9 @@ async function maybeSendCacaAutoReply({
   });
 
   try {
+    // Assina pro cliente como "Cacá" (o corpo salvo localmente fica sem assinatura).
     const result = await sendMetaWhatsAppTextMessage({
-      body: reply.replyText,
+      body: signWhatsAppBody(CACA_OPERATOR_LABEL, reply.replyText),
       config: event.phone_number_id
         ? {
             ...getMetaWhatsAppOutboundConfig(),

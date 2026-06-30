@@ -373,6 +373,47 @@ export function mapTicketProfileRow(
   };
 }
 
+// Não-lidas: quantas mensagens do CLIENTE chegaram desde a última resposta nossa
+// (igual o Hermes). Conta as inbound do fim pra trás até bater numa outbound.
+// Notas internas não contam nem zeram. Ticket fechado = 0.
+function computeUnreadCount(messages: IrisMessage[], status: unknown): number {
+  if (["closed", "resolved", "cancelled"].includes(String(status ?? ""))) {
+    return 0;
+  }
+
+  let count = 0;
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const direction = messages[index]?.direction;
+
+    if (direction === "outbound") {
+      break;
+    }
+    if (direction === "inbound") {
+      count += 1;
+    }
+  }
+
+  return count;
+}
+
+// Erro de envio: o ticket está "em erro" se a ÚLTIMA mensagem de saída falhou
+// (ex.: 131042/pagamento). Se uma mensagem posterior saiu, o ticket sai do erro.
+function hasTicketDeliveryError(messages: IrisMessage[]): boolean {
+  const outbound = messages.filter(
+    (message) => message.direction === "outbound",
+  );
+
+  if (!outbound.length) {
+    return false;
+  }
+
+  const latest = outbound.reduce((current, candidate) =>
+    (candidate.createdAt ?? "") >= (current.createdAt ?? "") ? candidate : current,
+  );
+
+  return latest.deliveryStatus === "failed";
+}
+
 function mapTicketRow(input: {
   assignedUser?: any;
   channel: any;
@@ -386,12 +427,17 @@ function mapTicketRow(input: {
   const sourceModule = String(input.row.source_module ?? "").trim();
 
   return {
+    assignedToAvatarUrl: isUsableUrl(input.assignedUser?.avatar_url)
+      ? input.assignedUser.avatar_url
+      : null,
     assignedToLabel: readTicketAssignedToLabel(
       input.assignedUser,
       input.messages,
     ),
+    assignedToUserId: input.row.assigned_to_user_id ?? null,
     channelId: input.row.channel_id,
     channelLabel: input.channel?.name ?? "Canal nao definido",
+    hasDeliveryError: hasTicketDeliveryError(input.messages),
     contactAvatarUrl: getContactAvatarUrl(input.contact),
     contactDocument: input.contact?.document ?? null,
     contactEmail: input.contact?.email ?? null,
@@ -427,13 +473,14 @@ function mapTicketRow(input: {
         : null,
     sourceLabel: sourceModule ? labelForSource(sourceModule) : "Entrada direta",
     status: normalizeStatus(input.row.status),
-    subject:
-      input.row.subject ?? input.profile?.category ?? "Atendimento ao cliente",
+    // Assunto em branco até o operador definir (regra Lucas) — sem fallback automático.
+    subject: input.row.subject ?? "",
     unread: Boolean(
       lastMessage &&
         lastMessage.direction === "inbound" &&
         !["closed", "resolved", "cancelled"].includes(input.row.status),
     ),
+    unreadCount: computeUnreadCount(input.messages, input.row.status),
   };
 }
 
@@ -449,6 +496,7 @@ export function mapMessageRow(row: any): IrisMessage {
     editedAt: readMessageEditedAt(row),
     deliveredAt: row.delivered_at ?? null,
     externalMessageId: row.external_message_id ?? null,
+    failureReason: readMessageFailureReason(row),
     id: row.id,
     mediaFileName: readMessageMediaFileName(row),
     mediaKind: readMessageMediaKind(row),
@@ -463,6 +511,50 @@ export function mapMessageRow(row: any): IrisMessage {
     senderType: row.sender_type ?? "system",
     sentAt: row.sent_at ?? null,
   };
+}
+
+// Traducao amigavel dos erros de entrega do Meta (codigos da Cloud API) pra
+// tela explicar a falha em vez do generico "Falha no envio".
+const META_DELIVERY_ERROR_LABELS: Record<string, string> = {
+  "131042": "Problema de pagamento na conta do WhatsApp (Meta) — verifique o metodo de pagamento.",
+  "131047": "Fora da janela de 24h — precisa de template aprovado.",
+  "131026": "Mensagem nao entregue (numero invalido ou sem WhatsApp).",
+  "131049": "Bloqueada pela Meta para manter engajamento saudavel.",
+  "130472": "Numero em experimento da Meta (entrega limitada).",
+  "132000": "Parametros do template nao batem com o aprovado.",
+  "132001": "Template nao existe ou nao esta aprovado.",
+};
+
+function readMessageFailureReason(row: any): string | null {
+  const payload = row?.provider_payload;
+
+  if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
+    return null;
+  }
+
+  const deliveryError = (payload as Record<string, unknown>).deliveryError;
+
+  if (!deliveryError || typeof deliveryError !== "object") {
+    return null;
+  }
+
+  const record = deliveryError as Record<string, unknown>;
+  const code =
+    record.code == null ? "" : String(record.code).replace(/\D/g, "");
+  const friendly = code ? META_DELIVERY_ERROR_LABELS[code] : undefined;
+
+  if (friendly) {
+    return friendly;
+  }
+
+  const message =
+    typeof record.message === "string" && record.message.trim()
+      ? record.message.trim()
+      : typeof record.title === "string" && record.title.trim()
+        ? record.title.trim()
+        : null;
+
+  return message;
 }
 
 function readMessageSenderLabel(row: any) {

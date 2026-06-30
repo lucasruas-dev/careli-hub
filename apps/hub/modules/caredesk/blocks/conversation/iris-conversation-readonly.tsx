@@ -2,7 +2,6 @@
 
 import type { ReactNode, RefObject } from "react";
 import {
-  Clock3,
   MessageCircle,
   MessageSquareText,
   PanelLeftClose,
@@ -12,8 +11,10 @@ import {
 import { Tooltip } from "@repo/uix";
 
 import {
+  BoardProfileChip,
   type IrisBoardTicket,
   type IrisBoardTicketPriority,
+  readBoardTicketCrm,
 } from "../board/iris-ticket-queue";
 import { EmptyState } from "../shared/iris-ui";
 
@@ -124,7 +125,7 @@ export function IrisConversationInboxSidebar({
     <aside
       className={[
         "hidden shrink-0 border-r border-slate-300/80 bg-white shadow-[4px_0_18px_rgba(15,23,42,0.05)] transition-all duration-300 lg:flex lg:flex-col",
-        collapsed ? "w-14" : "w-72",
+        collapsed ? "w-14" : "w-80",
       ].join(" ")}
     >
       <div className={collapsed ? "p-2" : "border-b border-slate-100 p-3"}>
@@ -178,76 +179,84 @@ export function IrisConversationInboxSidebar({
       </div>
 
       {!collapsed ? (
-        <div className="min-h-0 flex-1 overflow-y-auto p-2.5 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+        <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
           {conversations.length ? (
-            conversations.map((conversation) => (
-              <button
-                key={conversation.id}
-                type="button"
-                onClick={() => onSelectTicket(conversation.id)}
-                className={[
-                  "mb-2 w-full rounded-lg border px-3 py-2.5 text-left transition-colors",
-                  conversation.id === selectedTicketId
-                    ? "border-[#A07C3B]/25 bg-[#A07C3B]/5"
-                    : "border-slate-200/70 bg-white hover:bg-slate-50",
-                ].join(" ")}
-              >
-                <div className="flex items-start gap-2.5">
-                  {renderers.renderContactAvatar(conversation, "sm")}
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-start justify-between gap-3">
-                      <p className="min-w-0 truncate text-sm font-semibold text-slate-950">
-                        {helpers.ticketContactLabel(conversation)}
-                      </p>
-                      <span className="shrink-0 text-[11px] text-slate-400">
-                        {helpers.conversationTime(conversation)}
-                      </span>
-                    </div>
-                    <p className="mt-1 line-clamp-1 text-xs text-slate-500 [overflow-wrap:anywhere]">
-                      {conversation.lastMessagePreview}
-                    </p>
-                    {(() => {
-                      const waitState = helpers.conversationWaitState(conversation);
-                      const waitAge = helpers.conversationWaitAge(conversation);
-                      const toneClasses =
-                        waitState.tone === "pendente"
-                          ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-[#A07C3B]/25"
-                          : waitState.tone === "espera"
-                            ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
-                            : "bg-slate-100 text-slate-500 ring-slate-200";
-                      const dotClass =
-                        waitState.tone === "pendente"
-                          ? "bg-[#A07C3B]"
-                          : waitState.tone === "espera"
-                            ? "bg-emerald-500"
-                            : "bg-slate-400";
+            conversations.map((conversation) => {
+              const active = conversation.id === selectedTicketId;
+              const waitState = helpers.conversationWaitState(conversation);
+              const waitAge = helpers.conversationWaitAge(conversation);
+              const unreadCount = conversation.unreadCount ?? 0;
+              const crm = readBoardTicketCrm(conversation.crm360Registration);
+              const dotClass =
+                waitState.tone === "pendente"
+                  ? "bg-[#A07C3B]"
+                  : waitState.tone === "espera"
+                    ? "bg-emerald-500"
+                    : "bg-slate-300";
+              const waitTextClass =
+                waitState.tone === "pendente"
+                  ? "text-[#7A5E2C]"
+                  : waitState.tone === "espera"
+                    ? "text-emerald-600"
+                    : "text-slate-400";
 
-                      return (
-                        <div className="mt-1.5 flex items-center gap-1.5">
-                          <span
-                            className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ${toneClasses}`}
-                          >
-                            <span
-                              className={`size-1.5 rounded-full ${dotClass}`}
-                              aria-hidden="true"
-                            />
-                            {waitState.label}
-                          </span>
-                          {waitAge ? (
-                            <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-slate-400">
-                              <Clock3 className="size-3" aria-hidden="true" />
-                              {waitAge}
-                            </span>
-                          ) : null}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                </div>
-              </button>
-            ))
+              return (
+                <button
+                  key={conversation.id}
+                  type="button"
+                  onClick={() => onSelectTicket(conversation.id)}
+                  className={[
+                    "flex w-full items-center gap-2 border-b border-slate-100 px-2.5 py-2 text-left transition-colors",
+                    active
+                      ? "bg-[#A07C3B]/5 shadow-[inset_3px_0_0_#A07C3B]"
+                      : "hover:bg-slate-50/70",
+                  ].join(" ")}
+                >
+                  <span
+                    className={`size-2 shrink-0 rounded-full ${dotClass}`}
+                    aria-hidden="true"
+                    title={waitState.label}
+                  />
+                  <span className="shrink-0">
+                    {renderers.renderContactAvatar(conversation, "sm")}
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <span
+                        className={`min-w-0 truncate text-sm text-slate-950 ${
+                          conversation.unread ? "font-bold" : "font-medium"
+                        }`}
+                      >
+                        {helpers.ticketContactLabel(conversation)}
+                      </span>
+                      <BoardProfileChip crm={crm} />
+                    </span>
+                    <span className="mt-0.5 block truncate text-xs text-slate-500 [overflow-wrap:anywhere]">
+                      {conversation.lastMessagePreview}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 flex-col items-end gap-0.5">
+                    <span className="text-[10px] tabular-nums text-slate-400">
+                      {helpers.conversationTime(conversation)}
+                    </span>
+                    {unreadCount > 0 ? (
+                      <span
+                        className="inline-flex min-w-[18px] items-center justify-center rounded-full bg-emerald-500 px-1.5 py-0.5 text-[10px] font-bold leading-none text-white"
+                        title={`${unreadCount} mensagem(ns) do cliente sem resposta`}
+                      >
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </span>
+                    ) : (
+                      <span className={`text-[10px] font-semibold ${waitTextClass}`}>
+                        {waitAge || waitState.label}
+                      </span>
+                    )}
+                  </span>
+                </button>
+              );
+            })
           ) : (
-            <div className="rounded-lg border border-slate-200/70 bg-white p-4 text-center text-xs font-semibold text-slate-400">
+            <div className="m-2.5 rounded-lg border border-slate-200/70 bg-white p-4 text-center text-xs font-semibold text-slate-400">
               Nenhuma conversa encontrada
             </div>
           )}
@@ -410,7 +419,7 @@ export function IrisConversationContextSidebar({
           value={helpers.ticketContactLabel(ticket)}
         />
         <ConversationContextItem
-          label="CRM 360"
+          label="Apolo"
           value={helpers.crm360ContextLabel(ticket.crm360Registration)}
         />
         <ConversationContextItem

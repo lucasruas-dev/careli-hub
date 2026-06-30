@@ -131,7 +131,7 @@ export function buyerStatusLabel(entity: ApoloEntity) {
   );
 
   if (normalizedLinks.includes("sem compra")) {
-    return "Nao comprador";
+    return "Prospect";
   }
 
   if (entity.commercialLinks.some((link) => normalizeText(link.role) === "usuario comprador")) {
@@ -139,7 +139,7 @@ export function buyerStatusLabel(entity: ApoloEntity) {
   }
 
   if (normalizedLinks.includes("jornada comercial") || normalizedLinks.includes("vinculo comercial")) {
-    return "Em jornada";
+    return "Prospect";
   }
 
   return "Nao comprador";

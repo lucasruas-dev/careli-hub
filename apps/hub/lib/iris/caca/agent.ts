@@ -93,11 +93,14 @@ export async function runCacaClaudeTurn({
   };
 
   const clientNotes = readClientNotes(contact);
+  const businessHours = businessHoursForNow();
   const system = buildCacaSystemPrompt({
+    businessHoursOpen: businessHours.open,
     clientNotes: clientNotes.map((entry) => entry.note),
     customerName: toolContext.customerName ?? undefined,
     greeting: greetingForNow(),
     identityVerified,
+    nextContactLabel: businessHours.nextContactLabel,
   });
   const messages = await buildConversation(client, ticket.id, messageDetail);
   const model = resolveClaudeModel("heavy");
@@ -273,4 +276,34 @@ function greetingForNow(): string {
   }
 
   return "boa noite";
+}
+
+// Atendimento humano: seg-sex 9h-18h (America/Sao_Paulo). Devolve se está aberto agora
+// e quando o time volta a atender (pra Cacá comunicar ao transferir fora do horário).
+function businessHoursForNow(): { nextContactLabel: string; open: boolean } {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    hour: "2-digit",
+    hour12: false,
+    timeZone: "America/Sao_Paulo",
+    weekday: "long",
+  }).formatToParts(new Date());
+  const weekday = parts.find((part) => part.type === "weekday")?.value ?? "";
+  const hour = Number(parts.find((part) => part.type === "hour")?.value ?? "0") % 24;
+  const isWeekend = weekday === "Saturday" || weekday === "Sunday";
+  const isBusinessDay = !isWeekend;
+  const open = isBusinessDay && hour >= 9 && hour < 18;
+
+  let nextContactLabel: string;
+
+  if (open) {
+    nextContactLabel = "ainda hoje, dentro do horário";
+  } else if (isBusinessDay && hour < 9) {
+    nextContactLabel = "hoje a partir das 9h";
+  } else if (weekday === "Friday" || isWeekend) {
+    nextContactLabel = "na segunda-feira";
+  } else {
+    nextContactLabel = "amanhã pela manhã";
+  }
+
+  return { nextContactLabel, open };
 }

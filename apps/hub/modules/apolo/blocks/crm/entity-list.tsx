@@ -189,9 +189,12 @@ function EntityListItem({
           ) : null}
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5">
-          <span className="rounded-full bg-[#A07C3B]/8 px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-            {apoloProfileLabels[primaryProfile]}
-          </span>
+          {/* Pro cliente, o chip Comprador/Prospect (abaixo) já é o perfil — some o "Usuario". */}
+          {!isUsuario ? (
+            <span className="rounded-full bg-[#A07C3B]/8 px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+              {apoloProfileLabels[primaryProfile]}
+            </span>
+          ) : null}
           <span className="rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70">
             {kindLabel(entity.kind)}
           </span>

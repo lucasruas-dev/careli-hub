@@ -38,6 +38,27 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 
 ## Pendencias criticas atuais
 
+### 2026-06-30 - Zeus - auditoria semanal read-only Vercel
+
+- Status: `OPERACIONAL COM ATENCAO / SEM ACAO MUTAVEL`.
+- Tipo da alteracao: `AUDITORIA INFRA / VERCEL / READ-ONLY`.
+- Motivo: auditoria semanal da saude Vercel do Panteon, sem deploy, redeploy, rollback, env, secret, dominio ou alias.
+- Evidencias read-only: projeto `careli-hub-hub-i2bs` segue em Next.js/Node `24.x`; deployments recentes consultados retornaram `READY`; `c2x.app.br`, `homo.c2x.app.br` e `ops.c2x.app.br` apontam para deployments diferentes e preservam a separacao operacional; healthchecks publicos seguros confirmaram `c2x` e `homo` com `200`, `ops /` com redirect esperado para `/zeus`, `/zeus` com `200` e rotas protegidas sem sessao com `401`.
+- Achado novo: erros agregados Vercel dos ultimos 7 dias indicaram 62 ocorrencias de runtime encerrado por falta de memoria em `/api/chronos/meetings`, `/api/hermes/messages` e `/api/hub/presence`; tambem houve 243 warnings de deprecacao `url.parse()` em `/api/hermes/messages`, 1 erro Apolo sync `ON CONFLICT DO UPDATE command cannot affect row a second time` e 1 `ECONNRESET` em Hermes.
+- Risco operacional: atencao para custo/performance e estabilidade de Hermes/presence/Chronos, especialmente pelo historico de custo Hermes e pelo threshold de chamadas frequentes por usuario ativo; sem evidencia nesta amostra de indisponibilidade geral dos dominios publicos.
+- Pendencias: metricas finas de compute/bandwidth/invocations/latencia por funcao nao ficaram disponiveis no conector usado nesta rodada; qualquer ajuste de memoria, funcao, env, dominio, alias, deploy ou rollback permanece `BLOQUEADO` ate autorizacao explicita do Lucas.
+- Proxima acao recomendada: Zeus investigar em recorte read-only a origem dos kills de memoria nas rotas Hermes/Chronos/presence e revisar limites de payload, paginacao e frequencia antes de qualquer mudanca.
+
+### 2026-06-30 - Zeus - auditoria semanal read-only dos bancos Supabase
+
+- Status: `BLOQUEADO PARCIAL / OPERACIONAL COM ATENCAO`.
+- Tipo da alteracao: `AUDITORIA INFRA / SUPABASE / READ-ONLY`.
+- Motivo: automacao semanal "Zeus - Saude semanal dos bancos" executou verificacao read-only dos projetos Supabase acessiveis pelo conector, sem DDL, DML, migration, env, secret, alias, deploy ou operacao destrutiva.
+- Escopo efetivamente coberto: o conector listou apenas `careli-hub-dev` (`ACTIVE_HEALTHY`, Postgres 17.6.1). O projeto de homologacao que apareceu na rodada anterior nao ficou acessivel nesta sessao; a cobertura completa de homologacao/producao permanece bloqueada ate o conector/credencial expor o projeto sem uso de segredo fora do fluxo autorizado.
+- Indicadores principais do projeto acessivel: banco com cerca de 660 MiB, cache hit ~100%, 49 conexoes observadas contra `max_connections=160`, sendo 45 idle, 2 active e 2 backends internos sem estado; 0 deadlocks e 0 conflitos desde `stats_reset` em 2026-05-07; `temp_files=16318` e `temp_bytes` acumulado em cerca de 52,9 GB.
+- Tendencias e riscos: crescimento relevante frente ao baseline anterior de cerca de 492,5 MiB; conexoes idle seguem altas, mas sem estouro de limite; `chronos_timeline_events`, `c2x_guardian_attendance_queue`, `pulsex_messages`, `hub_activity_events` e `hub_presence_events` seguem como principais vetores de tamanho/atividade; Advisors agora retornaram avisos de RLS sem policies, policies permissivas, funcoes `SECURITY DEFINER` executaveis por roles publicas/autenticadas, FKs sem indice e policies multiplas permissivas.
+- Pendencias: priorizar triagem DataOps/Zeus para Advisors de seguranca antes de qualquer ajuste de schema; investigar `temp_bytes` e scans sequenciais de Chronos/Hermes/Hub Presence em recorte proprio; recuperar visibilidade read-only do projeto de homologacao sem expor credenciais.
+
 ### 2026-06-29 - Iris - cockpit redesign + abertura de janela + binding de variaveis + multi-WABA (v1.10.0)
 
 - Status: `NO AR / PRODUCAO`. Deployment `careli-hub-hub-i2bs-1qfzgyn3l` (v1.10.0). Rollback `2to2i7hgp` (v1.9.0). `ops` intocado (307).

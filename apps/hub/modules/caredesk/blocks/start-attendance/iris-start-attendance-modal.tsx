@@ -115,6 +115,16 @@ type IrisStartOverdueRow = {
   value: string;
 };
 
+// Check 1 (regra Lucas 30/jun): cliente já com ticket ativo NO MESMO NÚMERO —
+// devolvido pelo backend pra bloquear a abertura e oferecer abrir o existente.
+type IrisActiveTicketBlock = {
+  assigneeLabel: string | null;
+  protocol: string;
+  queueLabel: string | null;
+  status: string | null;
+  ticketId: string;
+};
+
 // Form de abertura de janela da Iris (estilo Hades). Busca o cliente no Apolo,
 // escolhe assunto + template aprovado e personaliza com tickets ou parcelas.
 // Tenta a janela de 24h aberta primeiro; se fechada, envia o template aprovado.
@@ -160,6 +170,8 @@ export function IrisStartAttendanceModal({
 
   const [error, setError] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [blockedTicket, setBlockedTicket] =
+    useState<IrisActiveTicketBlock | null>(null);
 
   const activeQueues = useMemo(
     () =>
@@ -279,7 +291,7 @@ export function IrisStartAttendanceModal({
         const payload = await response.json().catch(() => null);
         if (!response.ok) {
           throw new Error(
-            payload?.error ?? "Nao foi possivel buscar no CRM 360.",
+            payload?.error ?? "Nao foi possivel buscar no Apolo.",
           );
         }
         if (active) {
@@ -291,7 +303,7 @@ export function IrisStartAttendanceModal({
           setError(
             searchError instanceof Error
               ? searchError.message
-              : "Nao foi possivel buscar no CRM 360.",
+              : "Nao foi possivel buscar no Apolo.",
           );
         }
       } finally {
@@ -311,6 +323,8 @@ export function IrisStartAttendanceModal({
   useEffect(() => {
     setSelectedTicketId("");
     setSelectedInstallments(new Set());
+    setBlockedTicket(null);
+    setError("");
   }, [selectedClient]);
 
   // Hidrata o portfolio (parcelas/contrato) do cliente — mesma fonte do cockpit.
@@ -483,6 +497,7 @@ export function IrisStartAttendanceModal({
     if (!selectedClient || !selectedQueue || !selectedProfile) return;
     setSubmitting(true);
     setError("");
+    setBlockedTicket(null);
 
     try {
       const accessToken = await getIrisAccessToken();
@@ -529,6 +544,19 @@ export function IrisStartAttendanceModal({
       const windowAttempt = await attempt(false);
       if (windowAttempt.response.ok) {
         onTicketCreated(windowAttempt.payload?.ticket?.id);
+        return;
+      }
+
+      // Check 1: cliente já tem atendimento ativo nesse número — não abre outro,
+      // oferece abrir o existente.
+      const activeTicket = windowAttempt.payload
+        ?.activeTicket as IrisActiveTicketBlock | undefined;
+      if (
+        windowAttempt.response.status === 409 &&
+        activeTicket?.ticketId
+      ) {
+        setBlockedTicket(activeTicket);
+        setSubmitting(false);
         return;
       }
 
@@ -635,7 +663,7 @@ export function IrisStartAttendanceModal({
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
-                  placeholder="Buscar cliente no CRM 360 por nome ou telefone..."
+                  placeholder="Buscar cliente no Apolo por nome ou telefone..."
                   className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
                 />
                 {searching ? (
@@ -667,7 +695,7 @@ export function IrisStartAttendanceModal({
                   ) : (
                     <p className="px-3 py-6 text-center text-xs text-slate-400">
                       {searching
-                        ? "Buscando no CRM 360..."
+                        ? "Buscando no Apolo..."
                         : "Nenhum cliente localizado com telefone para WhatsApp."}
                     </p>
                   )}
@@ -681,6 +709,41 @@ export function IrisStartAttendanceModal({
           )}
 
           {selectedClient ? (
+            blockedTicket ? (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3.5">
+                  <div className="flex items-start gap-2.5">
+                    <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700">
+                      <Info className="size-4" aria-hidden="true" />
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-amber-900">
+                        Cliente já está em atendimento
+                      </p>
+                      <p className="mt-0.5 text-xs leading-relaxed text-amber-800">
+                        {blockedTicket.protocol}
+                        {blockedTicket.queueLabel
+                          ? ` · ${blockedTicket.queueLabel}`
+                          : ""}
+                        {blockedTicket.assigneeLabel
+                          ? ` · ${blockedTicket.assigneeLabel}`
+                          : ""}
+                        . Não dá pra abrir um segundo ticket nesse número —
+                        continue no atendimento que já existe.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onTicketCreated(blockedTicket.ticketId)}
+                  className="flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1f2c3a]"
+                >
+                  <Headset className="size-4" aria-hidden="true" />
+                  Abrir o atendimento existente
+                </button>
+              </div>
+            ) : (
             <>
               <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100/70 p-1">
                 {(
@@ -943,6 +1006,7 @@ export function IrisStartAttendanceModal({
                 </p>
               ) : null}
             </>
+            )
           ) : error ? (
             <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
               {error}
@@ -963,20 +1027,22 @@ export function IrisStartAttendanceModal({
             >
               Cancelar
             </button>
-            <button
-              type="button"
-              disabled={!canStart}
-              onClick={() => void submit()}
-              aria-label="Abrir atendimento"
-              className="flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1f2c3a] disabled:cursor-not-allowed disabled:opacity-50"
-            >
-              {submitting ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-              ) : (
-                <Send className="size-4" aria-hidden="true" />
-              )}
-              Abrir
-            </button>
+            {blockedTicket ? null : (
+              <button
+                type="button"
+                disabled={!canStart}
+                onClick={() => void submit()}
+                aria-label="Abrir atendimento"
+                className="flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1f2c3a] disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {submitting ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : (
+                  <Send className="size-4" aria-hidden="true" />
+                )}
+                Abrir
+              </button>
+            )}
           </div>
         </footer>
       </div>

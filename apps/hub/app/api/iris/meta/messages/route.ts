@@ -10,6 +10,7 @@ import {
   sendMetaWhatsAppAudioMessage,
   sendMetaWhatsAppReactionMessage,
   sendMetaWhatsAppTextMessage,
+  signWhatsAppBody,
 } from "@/lib/iris/meta-whatsapp";
 import { uploadIrisMediaBuffer } from "@/lib/iris/meta-media-storage";
 import {
@@ -238,6 +239,14 @@ export async function POST(request: NextRequest) {
     localMessage = created.message;
   }
 
+  // Assina o texto enviado ao cliente com o nome de quem atende — mas só quando o
+  // remetente muda (não repete a assinatura em mensagens seguidas do mesmo operador).
+  const signOutbound = await shouldSignOutboundMessage({
+    client: authorization.client,
+    ticketId,
+    userId: authorization.user.id,
+  });
+
   try {
     const sendAttempt = await sendMetaWhatsAppMessageWithFallback({
       send: (candidate) =>
@@ -251,7 +260,9 @@ export async function POST(request: NextRequest) {
               to: candidate,
             })
           : sendMetaWhatsAppTextMessage({
-              body: outboundBody,
+              body: signOutbound
+                ? signWhatsAppBody(operatorIdentity.label, outboundBody)
+                : outboundBody,
               ...(metaSendConfig ? { config: metaSendConfig } : {}),
               contextMessageId: replyPreview?.externalMessageId ?? null,
               to: candidate,
@@ -1489,6 +1500,46 @@ async function markLocalMessageFailed({
     .single();
 
   return data ?? null;
+}
+
+// Assina a próxima mensagem só quando o remetente muda: lê a última mensagem "real"
+// do ticket (entrada do cliente ou saída já enviada — ignora o rascunho recém-enfileirado)
+// e NÃO assina se ela já foi um envio do mesmo operador (continuação de um turno).
+async function shouldSignOutboundMessage({
+  client,
+  ticketId,
+  userId,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  ticketId: string | null;
+  userId: string;
+}): Promise<boolean> {
+  if (!ticketId) {
+    return true;
+  }
+
+  try {
+    const { data } = await client
+      .from("caredesk_messages")
+      .select("direction,sender_user_id,external_message_id")
+      .eq("ticket_id", ticketId)
+      .or("direction.eq.inbound,external_message_id.not.is.null")
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{
+        direction: string | null;
+        external_message_id: string | null;
+        sender_user_id: string | null;
+      }>();
+
+    if (!data) {
+      return true;
+    }
+
+    return !(data.direction === "outbound" && data.sender_user_id === userId);
+  } catch {
+    return true;
+  }
 }
 
 async function getOperatorIdentity({

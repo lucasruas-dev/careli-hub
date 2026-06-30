@@ -41,6 +41,7 @@ type ApoloRelationshipRow = {
 
 type PhoneMatchResult =
   | {
+      delinquency: "adimplente" | "inadimplente" | null;
       documentMasked: string | null;
       entityId: string;
       entityKind: string;
@@ -214,20 +215,28 @@ export async function POST(request: NextRequest) {
   const extraEntityIds = entityIdsWithRelations.filter(
     (id) => !entityIds.includes(id),
   );
-  const [extraEntitiesResult, profilesResult] = await Promise.all([
-    extraEntityIds.length
-      ? authorization.client
-          .from("apolo_entities")
-          .select("id,display_name,document_masked,entity_kind,status")
-          .in("id", extraEntityIds)
-      : Promise.resolve({ data: [], error: null }),
-    entityIdsWithRelations.length
-      ? authorization.client
-          .from("apolo_entity_profiles")
-          .select("entity_id,profile,status")
-          .in("entity_id", entityIdsWithRelations)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
+  const [extraEntitiesResult, profilesResult, financialResult] =
+    await Promise.all([
+      extraEntityIds.length
+        ? authorization.client
+            .from("apolo_entities")
+            .select("id,display_name,document_masked,entity_kind,status")
+            .in("id", extraEntityIds)
+        : Promise.resolve({ data: [], error: null }),
+      entityIdsWithRelations.length
+        ? authorization.client
+            .from("apolo_entity_profiles")
+            .select("entity_id,profile,status")
+            .in("entity_id", entityIdsWithRelations)
+        : Promise.resolve({ data: [], error: null }),
+      // Financeiro (adimplência) em batch — read-model do Apolo no Supabase, barato.
+      entityIdsWithRelations.length
+        ? authorization.client
+            .from("apolo_financial_snapshots")
+            .select("entity_id,overdue_installments")
+            .in("entity_id", entityIdsWithRelations)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
 
   if (extraEntitiesResult.error || profilesResult.error) {
     return NextResponse.json(
@@ -237,6 +246,16 @@ export async function POST(request: NextRequest) {
       { status: 500 },
     );
   }
+
+  // Quem tem snapshot financeiro = tem carteira (comprador). overdue>0 → inadimplente.
+  const overdueByEntity = new Map(
+    (
+      (financialResult.data ?? []) as {
+        entity_id: string;
+        overdue_installments: number | string | null;
+      }[]
+    ).map((row) => [row.entity_id, Number(row.overdue_installments ?? 0)]),
+  );
 
   const entitiesById = new Map(
     [
@@ -283,10 +302,18 @@ export async function POST(request: NextRequest) {
       const profiles = profileLabels(
         profilesByEntity.get(resolvedEntity?.id ?? match.entity.id) ?? [],
       );
+      const snapshotEntityId = resolvedEntity?.id ?? match.entity.id;
+      const delinquency: "adimplente" | "inadimplente" | null =
+        overdueByEntity.has(snapshotEntityId)
+          ? (overdueByEntity.get(snapshotEntityId) ?? 0) > 0
+            ? "inadimplente"
+            : "adimplente"
+          : null;
 
       return [
         phone,
         {
+          delinquency,
           documentMasked: resolvedEntity?.document_masked ?? match.entity.document_masked,
           entityId: resolvedEntity?.id ?? match.entity.id,
           entityKind: resolvedEntity?.entity_kind ?? match.entity.entity_kind,
