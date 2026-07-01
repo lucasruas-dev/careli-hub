@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-01-aviso-nova-versao",
+    deployedAt: "2026-07-01T15:40:00-03:00",
+    modules: [
+      {
+        module: "Hub",
+        screens: [
+          {
+            items: [
+              'Quando sai uma atualização do Panteon, aparece no topo (ao lado do sino) o aviso "Nova versão" — é só clicar pra recarregar e já ficar na versão nova, sem precisar lembrar do Ctrl+F5.',
+            ],
+            screen: "Barra do topo",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-ctf8d2sup",
+    technical: {
+      done: "Endpoint publico GET /api/version (force-dynamic, no-store) devolve PANTEON_VERSION do build no servidor; liberado no proxy.ts (allowlist PUBLIC_API_PREFIXES, so string de versao). Componente cliente PanteonUpdatePill (components/panteon/panteon-update-pill.tsx) polla /api/version a cada 5min + no focus (ignora aba oculta), compara com a PANTEON_VERSION cozida no bundle e, se diferir, mostra uma pilula dourada ao lado do sino que faz window.location.reload(). Montado no PanteonTopbarUser antes do sino. So aparece quando ha diferenca real de versao; o efeito comeca a valer do PROXIMO deploy depois deste. v1.19.0 -> v1.20.0.",
+      motivation:
+        "Lucas: build novo nao refletia sozinho — o painel de Novidades e o selo de versao do avatar so trocam depois do Ctrl+F5 (o bundle/PWA ficam cacheados na aba). O aviso in-app resolve: o usuario ve que saiu versao nova e recarrega quando quiser.",
+    },
+    title: "Aviso de nova versão no topo (um clique pra atualizar)",
+    type: "melhoria",
+    version: "v1.20.0",
+  },
+  {
     buildTag: "2026-07-01-agentes-para-claude",
     deployedAt: "2026-07-01T11:30:00-03:00",
     modules: [

@@ -15,6 +15,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { PANTEON_VERSION } from "@/lib/build-info";
 import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { PanteonNotificationButton } from "@/components/panteon/panteon-notification-button";
+import { PanteonUpdatePill } from "@/components/panteon/panteon-update-pill";
 
 type PanteonTopbarUserProps = {
   className?: string;
@@ -43,6 +44,8 @@ export function PanteonTopbarUser({
 
   return (
     <div className={`flex h-10 shrink-0 items-center gap-2 ${className}`}>
+      <PanteonUpdatePill onDark={onDark} />
+
       <PanteonNotificationButton />
 
       <PanteonPresenceControl
