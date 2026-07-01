@@ -144,7 +144,7 @@ export function ApoloPage() {
   }
 
   return (
-    <div className="flex h-full min-h-0 max-h-full overflow-hidden bg-[#F8FAFC] text-slate-950">
+    <div className="flex h-[calc(100dvh-3.25rem)] min-h-0 max-h-[calc(100dvh-3.25rem)] overflow-hidden bg-[#F8FAFC] text-slate-950">
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4">
         <ApoloHeader
           dashboard={dashboard}

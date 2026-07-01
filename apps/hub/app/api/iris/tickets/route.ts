@@ -190,6 +190,29 @@ export async function POST(request: NextRequest) {
     metadataInput,
     sourceContextInput,
   });
+  // Total (variavel {{valor}}) e empreendimento (variavel {{empreendimento}})
+  // das parcelas vencidas — calculados no modal a partir do portfolio Apolo.
+  const relatedInstallmentsTotal =
+    normalizeText(metadataInput.relatedInstallmentsTotal) ??
+    normalizeText(sourceContextInput.relatedInstallmentsTotal);
+  const relatedEnterprise =
+    normalizeText(metadataInput.relatedEnterprise) ??
+    normalizeText(sourceContextInput.relatedEnterprise);
+  const relatedUnit =
+    normalizeText(metadataInput.relatedUnit) ??
+    normalizeText(sourceContextInput.relatedUnit);
+  const relatedDueDate =
+    normalizeText(metadataInput.relatedDueDate) ??
+    normalizeText(sourceContextInput.relatedDueDate);
+  const relatedDaysLate =
+    normalizeText(metadataInput.relatedDaysLate) ??
+    normalizeText(sourceContextInput.relatedDaysLate);
+  const relatedOpenBalance =
+    normalizeText(metadataInput.relatedOpenBalance) ??
+    normalizeText(sourceContextInput.relatedOpenBalance);
+  const relatedBoletoLink =
+    normalizeText(metadataInput.relatedBoletoLink) ??
+    normalizeText(sourceContextInput.relatedBoletoLink);
 
   if (!contactName) {
     return NextResponse.json(
@@ -246,6 +269,15 @@ export async function POST(request: NextRequest) {
       ? await getQueueById(client, profile.queue_id)
       : null;
     const queue = profileQueue ?? requestedQueue ?? defaultQueue;
+    // Amarra o canal + número de envio à FILA: cada fila tem um canal WhatsApp
+    // dedicado (config.defaultQueueSlug) — Jurídico → número Jurídico, Gurgel →
+    // Gurgel, Atendimento → 4143. Sem channelId explícito, o canal (e o número)
+    // segue a fila escolhida; com channelId explícito, respeita o que veio.
+    const queueChannel =
+      !channelId && queue ? await getQueueChannel(client, queue) : null;
+    const effectiveChannel = queueChannel ?? channel;
+    const queuePhoneNumberId =
+      normalizeText(effectiveChannel.external_account_id) || null;
     const linkedAttendanceTicket =
       sourceModule === "hades" && linkedAttendanceProtocol
         ? await findTicketByAttendanceProtocol(client, linkedAttendanceProtocol)
@@ -285,7 +317,7 @@ export async function POST(request: NextRequest) {
         client,
         contact.id,
         phone,
-        channel.id,
+        effectiveChannel.id,
       );
 
       if (activeTicket) {
@@ -343,7 +375,10 @@ export async function POST(request: NextRequest) {
       ? await resolveApprovedMetaTemplate({
           language: localTemplate?.language ?? requestedTemplateLanguage,
           name: localTemplate?.templateName ?? requestedTemplateName,
-          phoneNumberId: localTemplate?.phoneNumberId ?? requestedPhoneNumberId,
+          phoneNumberId:
+            requestedPhoneNumberId ??
+            queuePhoneNumberId ??
+            localTemplate?.phoneNumberId,
         })
       : null;
     const templateName = shouldSendTemplate
@@ -359,15 +394,22 @@ export async function POST(request: NextRequest) {
       formatTemplateInstallmentSummary(relatedInstallmentLabels);
     const templateBodyParameters = shouldSendTemplate
       ? buildTemplateBodyParameters({
+          boletoLink: relatedBoletoLink,
           context: templateContext,
+          daysLate: relatedDaysLate,
+          dueDate: relatedDueDate,
+          enterprise: relatedEnterprise,
           firstName,
           fullName: contactName,
           installmentsSummary: templateInstallmentSummary,
+          installmentsTotal: relatedInstallmentsTotal,
+          openBalance: relatedOpenBalance,
           operatorName: operator?.label,
           protocolReference: templateReferenceProtocol ?? templateProtocolReference,
           subject,
           templateBody,
           templateVariables: localTemplate?.variables,
+          unit: relatedUnit,
         })
       : [];
     const templatePreview =
@@ -378,8 +420,11 @@ export async function POST(request: NextRequest) {
       ? buildTemplateHeaderMedia(localTemplate)
       : null;
     const templatePhoneNumberId = shouldSendTemplate
-      ? localTemplate?.phoneNumberId ?? requestedPhoneNumberId ?? null
-      : requestedPhoneNumberId ?? null;
+      ? requestedPhoneNumberId ??
+        queuePhoneNumberId ??
+        localTemplate?.phoneNumberId ??
+        null
+      : requestedPhoneNumberId ?? queuePhoneNumberId ?? null;
     const templateSendConfig =
       shouldSendTemplate && templatePhoneNumberId
         ? {
@@ -523,7 +568,7 @@ export async function POST(request: NextRequest) {
         .from("caredesk_tickets")
         .insert({
           assigned_to_user_id: authorization.user.id,
-          channel_id: channel.id,
+          channel_id: effectiveChannel.id,
           contact_id: contact.id,
           created_by_user_id: authorization.user.id,
           first_response_due_at: addMinutes(now, firstResponseMinutes),
@@ -597,7 +642,7 @@ export async function POST(request: NextRequest) {
         .from("caredesk_messages")
         .insert({
           body: templatePreview,
-          channel_id: channel.id,
+          channel_id: effectiveChannel.id,
           delivery_status: sent?.messageId ? "sent" : "queued",
           direction: "outbound",
           external_message_id: sent?.messageId ?? null,
@@ -634,7 +679,7 @@ export async function POST(request: NextRequest) {
 
       if (sent?.messageId) {
         const refResult = await client.from("caredesk_whatsapp_message_refs").insert({
-          channel_id: channel.id,
+          channel_id: effectiveChannel.id,
           delivery_status: "sent",
           direction: "outbound",
           message_id: messageId,
@@ -780,6 +825,32 @@ export async function PATCH(request: NextRequest) {
         return NextResponse.json(
           { error: "Fila de destino nao foi localizada na Iris." },
           { status: 503 },
+        );
+      }
+
+      // Trava (regra Lucas): transferir SÓ entre filas do MESMO número. A janela
+      // de 24h do WhatsApp é por número — o cliente falou com um número específico
+      // (atendimento=4143, Gurgel, Jurídico=9072), então não dá pra "mudar de
+      // número" no meio da conversa. Cruzar número fica bloqueado.
+      const ticketPhoneNumberId = normalizeText(
+        normalizeRecord(existing.source_context).phoneNumberId,
+      );
+      const targetQueuePhoneNumberId = await getQueuePhoneNumberId(
+        client,
+        targetQueue,
+      );
+
+      if (
+        ticketPhoneNumberId &&
+        targetQueuePhoneNumberId &&
+        ticketPhoneNumberId !== targetQueuePhoneNumberId
+      ) {
+        return NextResponse.json(
+          {
+            error:
+              "Transferência bloqueada: a fila de destino usa outro número de WhatsApp. Como a conversa (janela de 24h) é por número, só dá pra transferir para filas do mesmo número. Para acionar Gurgel/Jurídico, abra um atendimento novo por aquele número.",
+          },
+          { status: 409 },
         );
       }
 
@@ -1472,7 +1543,7 @@ async function getWhatsAppChannel(
 ) {
   let query = client
     .from("caredesk_channels")
-    .select("id,name,slug,status")
+    .select("id,name,slug,status,external_account_id")
     .eq("kind", "whatsapp")
     .eq("provider", "meta")
     .eq("status", "active");
@@ -1488,10 +1559,84 @@ async function getWhatsAppChannel(
   return data ?? null;
 }
 
+// Canal WhatsApp dedicado da fila: cada fila (atendimento/gurgel/juridico) tem o
+// seu próprio número via config.defaultQueueSlug. É o que amarra o número de
+// envio à fila escolhida ao abrir o atendimento (multi-número na mesma WABA).
+async function getWhatsAppChannelForQueue(
+  client: SupabaseClient,
+  queueSlug: string,
+) {
+  const { data } = await client
+    .from("caredesk_channels")
+    .select("id,name,slug,status,external_account_id")
+    .eq("kind", "whatsapp")
+    .eq("provider", "meta")
+    .eq("status", "active")
+    .eq("config->>defaultQueueSlug", queueSlug)
+    .limit(1)
+    .maybeSingle();
+
+  return data ?? null;
+}
+
+async function getChannelById(client: SupabaseClient, channelId: string) {
+  const { data } = await client
+    .from("caredesk_channels")
+    .select("id,name,slug,status,external_account_id")
+    .eq("id", channelId)
+    .eq("kind", "whatsapp")
+    .eq("provider", "meta")
+    .eq("status", "active")
+    .maybeSingle();
+
+  return data ?? null;
+}
+
+// Canal (número) de uma fila. Prioridade: vínculo explícito na fila
+// (metadata.channelId, escolhido no form de criar/editar fila) → legado por
+// config.defaultQueueSlug → número padrão (4143 / whatsapp-careli).
+async function getQueueChannel(
+  client: SupabaseClient,
+  queue: { metadata?: unknown; slug?: string | null } | null | undefined,
+) {
+  const boundChannelId = normalizeUuid(
+    normalizeRecord(queue?.metadata).channelId,
+  );
+
+  if (boundChannelId) {
+    const byId = await getChannelById(client, boundChannelId);
+
+    if (byId) {
+      return byId;
+    }
+  }
+
+  if (queue?.slug) {
+    const bySlug = await getWhatsAppChannelForQueue(client, queue.slug);
+
+    if (bySlug) {
+      return bySlug;
+    }
+  }
+
+  return getWhatsAppChannel(client, null);
+}
+
+// Número (phone_number_id) de uma fila — base da trava de transferir só entre
+// filas do mesmo número.
+async function getQueuePhoneNumberId(
+  client: SupabaseClient,
+  queue: { metadata?: unknown; slug?: string | null } | null | undefined,
+): Promise<string | null> {
+  const channel = await getQueueChannel(client, queue);
+
+  return normalizeText(channel?.external_account_id ?? null);
+}
+
 async function getQueueById(client: SupabaseClient, queueId: string) {
   const { data } = await client
     .from("caredesk_queues")
-    .select("id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
+    .select("id,name,slug,metadata,default_priority,sla_first_response_minutes,sla_resolution_minutes")
     .eq("id", queueId)
     .eq("status", "active")
     .maybeSingle();
@@ -1502,7 +1647,7 @@ async function getQueueById(client: SupabaseClient, queueId: string) {
 async function getQueueBySlug(client: SupabaseClient, queueSlug: string) {
   const { data } = await client
     .from("caredesk_queues")
-    .select("id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
+    .select("id,name,slug,metadata,default_priority,sla_first_response_minutes,sla_resolution_minutes")
     .eq("slug", queueSlug)
     .eq("status", "active")
     .maybeSingle();
@@ -1513,7 +1658,7 @@ async function getQueueBySlug(client: SupabaseClient, queueSlug: string) {
 async function getDefaultQueue(client: SupabaseClient) {
   const { data: atendimento } = await client
     .from("caredesk_queues")
-    .select("id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
+    .select("id,name,slug,metadata,default_priority,sla_first_response_minutes,sla_resolution_minutes")
     .eq("slug", DEFAULT_TRANSFER_QUEUE_SLUG)
     .eq("status", "active")
     .maybeSingle();
@@ -1524,7 +1669,7 @@ async function getDefaultQueue(client: SupabaseClient) {
 
   const { data } = await client
     .from("caredesk_queues")
-    .select("id,name,slug,default_priority,sla_first_response_minutes,sla_resolution_minutes")
+    .select("id,name,slug,metadata,default_priority,sla_first_response_minutes,sla_resolution_minutes")
     .eq("status", "active")
     .order("created_at", { ascending: true })
     .limit(1)
@@ -1985,42 +2130,60 @@ function formatTemplateInstallmentSummary(labels: string[]) {
 }
 
 function buildTemplateBodyParameters({
+  boletoLink,
   context,
+  daysLate,
+  dueDate,
+  enterprise,
   firstName,
   fullName,
   installmentsSummary,
+  installmentsTotal,
+  openBalance,
   operatorName,
   protocolReference,
   subject,
   templateBody,
   templateVariables,
+  unit,
 }: {
+  boletoLink?: string | null;
   context?: string | null;
+  daysLate?: string | null;
+  dueDate?: string | null;
+  enterprise?: string | null;
   firstName: string;
   fullName?: string | null;
   installmentsSummary: string;
+  installmentsTotal?: string | null;
+  openBalance?: string | null;
   operatorName?: string | null;
   protocolReference: string;
   subject?: string | null;
   templateBody: string | null;
   templateVariables?: { key: string; placeholder: string }[] | null;
+  unit?: string | null;
 }) {
   const expectedCount = countTemplateBodyVariables(templateBody);
 
   // Valor de cada variavel por chave (catalogo do builder). As de CRM ainda nao
   // calculadas no envio caem em "-".
+  const boleto = boletoLink?.trim() || "-";
   const valuesByKey: Record<string, string> = {
     assunto: subject?.trim() || "-",
-    empreendimento: "-",
-    link: "-",
+    dias_atraso: daysLate?.trim() || "-",
+    empreendimento: enterprise?.trim() || "-",
+    link: boleto,
+    link_boleto: boleto,
     nome_cliente: fullName?.trim() || firstName,
     operador: operatorName?.trim() || "-",
     parcelas: installmentsSummary,
     primeiro_nome: firstName,
     protocolo: protocolReference,
-    unidade: "-",
-    valor: "-",
-    vencimento: "-",
+    saldo_aberto: openBalance?.trim() || "-",
+    unidade: unit?.trim() || "-",
+    valor: installmentsTotal?.trim() || "-",
+    vencimento: dueDate?.trim() || "-",
   };
 
   // Resolucao por chave: o template declara quais variaveis usa e em que ordem

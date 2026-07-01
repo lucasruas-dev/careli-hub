@@ -365,50 +365,64 @@ const IRIS_META_TEMPLATE_VARIABLES = [
     example: "Segunda via de boleto",
     key: "assunto",
     label: "Assunto",
-    placeholder: "{{4}}",
+    placeholder: "{{5}}",
     readiness: "Iris",
   },
   {
-    example: "12 · mai/26 · R$ 1.200,00",
+    example: "Q01L02 · 12 · mai/26",
     key: "parcelas",
     label: "Parcelas",
-    placeholder: "{{4}}",
+    placeholder: "{{6}}",
     readiness: "Iris",
   },
   {
     example: "Lagoa Bonita",
     key: "empreendimento",
     label: "Empreendimento",
-    placeholder: "{{5}}",
-    readiness: "CRM",
+    placeholder: "{{7}}",
+    readiness: "Cobrança",
   },
   {
     example: "Quadra 01 lote 02",
     key: "unidade",
     label: "Unidade",
-    placeholder: "{{6}}",
-    readiness: "CRM",
+    placeholder: "{{8}}",
+    readiness: "Cobrança",
   },
   {
     example: "25/05/2026",
     key: "vencimento",
     label: "Vencimento",
-    placeholder: "{{7}}",
-    readiness: "Controlada",
+    placeholder: "{{9}}",
+    readiness: "Cobrança",
   },
   {
     example: "R$ 1.200,00",
     key: "valor",
-    label: "Valor",
-    placeholder: "{{8}}",
-    readiness: "Controlada",
+    label: "Valor total",
+    placeholder: "{{10}}",
+    readiness: "Cobrança",
   },
   {
-    example: "https://c2x.app.br/...",
-    key: "link",
-    label: "Link",
-    placeholder: "{{9}}",
-    readiness: "Controlada",
+    example: "R$ 3.600,00",
+    key: "saldo_aberto",
+    label: "Saldo em aberto",
+    placeholder: "{{11}}",
+    readiness: "Cobrança",
+  },
+  {
+    example: "37 dias",
+    key: "dias_atraso",
+    label: "Dias de atraso",
+    placeholder: "{{12}}",
+    readiness: "Cobrança",
+  },
+  {
+    example: "https://cobranca.c2x.app.br/b/abc123",
+    key: "link_boleto",
+    label: "Link do boleto",
+    placeholder: "{{13}}",
+    readiness: "Cobrança",
   },
 ];
 
@@ -1023,9 +1037,13 @@ export function IrisPage({
     }));
   }
 
-  const visibleNavigationItems = boardOnly
-    ? navigationItems.filter((item) => item.id === "gestao")
-    : navigationItems;
+  // Setup do hub (aba Setup da Iris) só para admin.
+  const canManageHubSetup = hubUser?.role === "admin";
+  const visibleNavigationItems = (
+    boardOnly
+      ? navigationItems.filter((item) => item.id === "gestao")
+      : navigationItems
+  ).filter((item) => item.id !== "setup" || canManageHubSetup);
   const embeddedBoardOnly = embedded && boardOnly;
 
   return (
@@ -1182,7 +1200,7 @@ export function IrisPage({
               helpers={irisMetaBroadcastsHelpers}
               snapshot={snapshot}
             />
-          ) : activeView === "setup" ? (
+          ) : activeView === "setup" && canManageHubSetup ? (
             <IrisSetupView
               constants={irisSetupViewConstants}
               data={irisData}
@@ -6311,6 +6329,8 @@ async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
     assignment_strategy: form.assignmentStrategy.trim() || "manual",
     color: /^#[0-9a-fA-F]{6}$/.test(form.color) ? form.color : "#A07C3B",
     default_priority: normalizePriority(form.defaultPriority),
+    // Vínculo fila→número (canal WhatsApp). metadata das filas só guarda isso hoje.
+    metadata: { channelId: form.channelId.trim() || null },
     name: form.name.trim(),
     routing_strategy: form.routingStrategy.trim() || "manual",
     sla_first_response_minutes: normalizePositiveInteger(
@@ -6325,7 +6345,7 @@ async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
     status: setupStatusOptions.includes(form.status) ? form.status : "active",
   };
   const selectColumns =
-    "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy";
+    "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata";
 
   const result = form.id
     ? await supabase
@@ -6384,6 +6404,7 @@ function sortIrisQueues(first: IrisQueueConfig, second: IrisQueueConfig) {
 function createQueueForm() {
   return {
     assignmentStrategy: "manual",
+    channelId: "",
     color: "#A07C3B",
     defaultPriority: "medium" as IrisPriority,
     id: "",
@@ -6399,6 +6420,7 @@ function createQueueForm() {
 function queueToForm(queue: IrisQueueConfig) {
   return {
     assignmentStrategy: queue.assignmentStrategy,
+    channelId: queue.channelId ?? "",
     color: queue.color || "#A07C3B",
     defaultPriority: queue.defaultPriority,
     id: queue.id,

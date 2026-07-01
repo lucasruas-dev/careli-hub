@@ -549,6 +549,11 @@ export function IrisTicketRow({
       <div className="shrink-0">{renderers.renderContactAvatar(ticket, "sm")}</div>
 
       <div className="min-w-0 flex-1">
+        {ticket.protocol ? (
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[#A07C3B] tabular-nums">
+            {ticket.protocol}
+          </p>
+        ) : null}
         <div className="flex min-w-0 items-center gap-1.5">
           <span
             className={`truncate text-sm text-slate-950 ${

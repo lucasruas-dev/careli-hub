@@ -59,6 +59,30 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "consultar_cadastro",
+    description:
+      "Retorna os dados CADASTRAIS do cliente PESSOA FÍSICA já validado: nome, estado civil e regime de bens, nascimento, naturalidade/nacionalidade, profissão, RG, e-mail e telefone do cadastro, endereço completo, nome da mãe e (se casado) os dados do cônjuge. Chame quando o cliente quiser conferir/atualizar os próprios dados de cadastro (endereço, estado civil, profissão, cônjuge etc.). Exige identidade confirmada (validar_identidade ou telefone que bate). NÃO afirme nenhum dado cadastral sem chamar esta ferramenta.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "consultar_cadastro_imobiliaria",
+    description:
+      "Confirma se uma IMOBILIÁRIA / pessoa jurídica (parceira, corretora) tem cadastro na Careli e retorna os dados dela, a partir do CNPJ. Use quando quem fala é uma empresa/imobiliária e quer saber se está cadastrada ou conferir o cadastro. Pessoa jurídica NÃO precisa de validação de identidade: basta o CNPJ (14 dígitos). Se vier um CPF (pessoa física), NÃO use esta ferramenta — peça a validação de identidade do titular.",
+    input_schema: {
+      type: "object",
+      properties: {
+        cnpj: {
+          type: "string",
+          description: "CNPJ da imobiliária/empresa (só os números, 14 dígitos).",
+        },
+      },
+      required: ["cnpj"],
+    },
+  },
+  {
     name: "anotar_sobre_cliente",
     description:
       "Registra uma anotação curta e DURADOURA sobre o cliente, pra você lembrar nos próximos atendimentos (ex.: 'prefere boleto por e-mail', 'costuma pagar com atraso', 'já reclamou de demora', 'fala de forma mais formal', 'tem 2 lotes'). Use quando aprender algo útil e estável sobre a pessoa. NÃO registre dado sensível (CPF, valores, links) nem coisas efêmeras do momento.",

@@ -190,6 +190,11 @@ export function HubShell({
       return canAccessZeusModule(hubUser);
     }
 
+    // Setup: telas de configuração do hub só para admin.
+    if (hubModule.id === "setup") {
+      return hubUser?.role === "admin";
+    }
+
     if (!releasedModuleIds) {
       return (
         isHubModuleActive(hubModule) &&
@@ -876,6 +881,11 @@ function canOpenShellModule(
 ) {
   if (isZeusModuleId(moduleId)) {
     return canAccessZeusModule(hubUser);
+  }
+
+  // Setup: configuração do hub só para admin.
+  if (moduleId === "setup") {
+    return hubUser?.role === "admin";
   }
 
   if (hubUser && canAccessModule(hubUser, hubModule)) {

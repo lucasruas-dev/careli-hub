@@ -1,11 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { completeWithClaude, resolveClaudeModel } from "@/lib/ai/claude";
 import { prepareBoletoResendAction } from "@/lib/guardian/asaas";
 import { loadHadesAttendanceClient } from "@/lib/guardian/attendance";
 import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
-
-const DEFAULT_MODEL = "gpt-5.5";
 
 type IrisAttendantAction = "analyze" | "select_boleto";
 type DocumentFragmentPosition = "first4" | "last4";
@@ -194,14 +193,10 @@ export async function POST(request: NextRequest) {
         ),
       },
       handoff: deterministic.handoff,
-      model: aiReply
-        ? process.env.HUB_IRIS_ATTENDANT_MODEL?.trim() ||
-          process.env.HUB_AI_MODEL?.trim() ||
-          DEFAULT_MODEL
-        : null,
+      model: aiReply ? resolveClaudeModel("default") : null,
       nextStep: deterministic.nextStep,
       replyText,
-      source: aiReply ? "openai" : "fallback",
+      source: aiReply ? "claude" : "fallback",
       ticket: {
         protocol: context.ticket.protocol ?? null,
         status: context.ticket.status ?? null,
@@ -485,99 +480,38 @@ async function requestOpenAiReply({
   deterministicReply: string;
   message: string;
 }) {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-
-  if (!apiKey) {
-    return null;
-  }
-
-  const model =
-    process.env.HUB_IRIS_ATTENDANT_MODEL?.trim() ||
-    process.env.HUB_AI_MODEL?.trim() ||
-    DEFAULT_MODEL;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
+  const model = resolveClaudeModel("default");
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      body: JSON.stringify({
-        input: [
-          {
-            content: [
-              {
-                text: [
-                  `Mensagem do cliente: ${message || "Nao informada."}`,
-                  `Protocolo: ${context.ticket.protocol ?? "Nao informado"}`,
-                  `Cliente: ${context.contact?.display_name ?? "Nao identificado"}`,
-                  `Autenticacao: ${authentication.status}`,
-                  `Resposta operacional base: ${deterministicReply}`,
-                ].join("\n"),
-                type: "input_text",
-              },
-            ],
-            role: "user",
-          },
-        ],
-        instructions:
-          "Voce e a Cacá, agente exclusiva de atendimento ao cliente da Careli dentro da Iris. Responda em portugues do Brasil, com tom educado, breve, prestativo e operacional. Nao atue como agente de bordo do operador; esse papel pertence a Athena. Nao invente dados, nao prometa envio automatico se nao houver confirmacao no contexto, nao solicite documentos completos e encaminhe para humano quando houver risco ou falta de dado.",
-        max_output_tokens: 700,
-        model,
-      }),
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
+    const completion = await completeWithClaude({
+      maxTokens: 700,
+      messages: [
+        {
+          content: [
+            `Mensagem do cliente: ${message || "Nao informada."}`,
+            `Protocolo: ${context.ticket.protocol ?? "Nao informado"}`,
+            `Cliente: ${context.contact?.display_name ?? "Nao identificado"}`,
+            `Autenticacao: ${authentication.status}`,
+            `Resposta operacional base: ${deterministicReply}`,
+          ].join("\n"),
+          role: "user",
+        },
+      ],
+      model,
+      system: [
+        "Voce e a Caca, agente de atendimento ao CLIENTE da Careli dentro da Iris — voce fala diretamente com o cliente.",
+        "Responda em portugues do Brasil: educada, breve, prestativa e objetiva, com naturalidade humana.",
+        "Voce NAO e a Athena (essa e o copiloto interno do operador). Nao aja como assistente de bordo.",
+        "Use a 'Resposta operacional base' como apoio, mas reescreva de forma acolhedora — nao repita rotulos nem soe robotica.",
+        "Nao invente dados nem valores. Nao prometa envio automatico sem confirmacao no contexto. Nao peca documento completo.",
+        "Se houver risco, duvida ou falta de dado, encaminhe para um atendente humano com cordialidade.",
+      ].join("\n"),
     });
 
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = (await response.json()) as Record<string, unknown>;
-    const text = extractOpenAiText(data);
-
-    return text || null;
+    return completion?.text || null;
   } catch {
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
-}
-
-function extractOpenAiText(data: Record<string, unknown>) {
-  const directText = readString(data.output_text);
-
-  if (directText) {
-    return directText;
-  }
-
-  const output = Array.isArray(data.output) ? data.output : [];
-
-  for (const item of output) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-
-    const content = Array.isArray((item as Record<string, unknown>).content)
-      ? ((item as Record<string, unknown>).content as unknown[])
-      : [];
-
-    for (const part of content) {
-      if (!part || typeof part !== "object") {
-        continue;
-      }
-
-      const text = readString((part as Record<string, unknown>).text);
-
-      if (text) {
-        return text;
-      }
-    }
-  }
-
-  return "";
 }
 
 function verifyDocumentFragment({

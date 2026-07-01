@@ -216,7 +216,7 @@ export type HubItTicketEvidenceAnalysis = {
   actualResult?: string;
   evidenceInsights: string[];
   expectedResult?: string;
-  source: "fallback" | "openai";
+  source: "claude" | "fallback" | "openai";
   technicalSummary: string;
 };
 

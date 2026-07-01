@@ -1,6 +1,8 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import { Buffer } from "node:buffer";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { getAnthropicClient, resolveClaudeModel } from "@/lib/ai/claude";
 import { authorizeHubItTicketRequest } from "@/lib/hub-it-tickets/server";
 import {
   hubItTicketCategoryLabels,
@@ -220,62 +222,48 @@ async function analyzeEvidenceWithOpenAi({
   input: HubItTicketEvidenceAnalysisInput;
   visualEvidenceDataUrls: string[];
 }) {
-  const model = process.env.HUB_AI_MODEL?.trim() || DEFAULT_MODEL;
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
+  const client = getAnthropicClient();
+  if (!client) {
+    return fallback;
+  }
+  const model = resolveClaudeModel("heavy");
+
+  const content: Anthropic.ContentBlockParam[] = [
+    {
+      text: buildEvidenceAnalysisPrompt({ audioTranscripts, fallback, input }),
+      type: "text",
+    },
+  ];
+  for (const imageUrl of visualEvidenceDataUrls) {
+    const imageBlock = buildClaudeImageBlock(imageUrl);
+    if (imageBlock) {
+      content.push(imageBlock);
+    }
+  }
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      body: JSON.stringify({
-        input: [
-          {
-            content: [
-              {
-                text: buildEvidenceAnalysisPrompt({
-                  audioTranscripts,
-                  fallback,
-                  input,
-                }),
-                type: "input_text",
-              },
-              ...visualEvidenceDataUrls.map((imageUrl) => ({
-                image_url: imageUrl,
-                type: "input_image",
-              })),
-            ],
-            role: "user",
-          },
-        ],
-        instructions: [
-          "Voce e a Athena, analista operacional do Panteon.",
-          "Leia prints/imagens e quadros extraidos de video quando estiverem presentes.",
-          "Use transcricoes de audio quando estiverem presentes.",
-          "Compare o relato e as evidencias com as regras de negocio do Panteon enviadas no prompt.",
-          "Preencha expectedResult com o comportamento correto segundo a regra de negocio.",
-          "Preencha actualResult com a divergencia observada ou relatada pelo usuario.",
-          "Nao invente evidencia. Se a imagem, audio ou video nao for conclusivo, registre isso de forma objetiva.",
-          "Responda somente JSON valido, sem markdown.",
-        ].join("\n"),
-        max_output_tokens: 1_200,
-        model,
-      }),
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
+    const response = await client.messages.create({
+      max_tokens: 1_200,
+      messages: [{ content, role: "user" }],
+      model,
+      system: [
+        "Voce e a Athena, analista operacional do Panteon.",
+        "Leia prints/imagens e quadros extraidos de video quando estiverem presentes.",
+        "Use transcricoes de audio quando estiverem presentes.",
+        "Compare o relato e as evidencias com as regras de negocio do Panteon enviadas no prompt.",
+        "Preencha expectedResult com o comportamento correto segundo a regra de negocio.",
+        "Preencha actualResult com a divergencia observada ou relatada pelo usuario.",
+        "Nao invente evidencia. Se a imagem, audio ou video nao for conclusivo, registre isso de forma objetiva.",
+        "Responda SOMENTE com JSON valido, sem markdown e sem texto fora do JSON.",
+      ].join("\n"),
     });
-    const result = (await response.json().catch(() => null)) as
-      | Record<string, unknown>
-      | null;
 
-    if (!response.ok) {
-      return fallback;
-    }
-
-    const parsed = parseEvidenceAnalysisJson(extractOutputText(result));
+    const text = response.content
+      .filter((block): block is Anthropic.TextBlock => block.type === "text")
+      .map((block) => block.text)
+      .join("\n")
+      .trim();
+    const parsed = parseEvidenceAnalysisJson(text);
 
     if (!parsed?.technicalSummary) {
       return fallback;
@@ -294,12 +282,31 @@ async function analyzeEvidenceWithOpenAi({
       ...(actualResult ? { actualResult } : {}),
       evidenceInsights,
       ...(expectedResult ? { expectedResult } : {}),
-      source: "openai",
+      source: "claude",
       technicalSummary: parsed.technicalSummary,
     } satisfies HubItTicketEvidenceAnalysis;
-  } finally {
-    clearTimeout(timeout);
+  } catch {
+    return fallback;
   }
+}
+
+function buildClaudeImageBlock(url: string): Anthropic.ImageBlockParam | null {
+  const dataMatch = /^data:(image\/(?:jpeg|png|gif|webp));base64,(.+)$/.exec(url);
+  if (!dataMatch) {
+    return null;
+  }
+  return {
+    source: {
+      data: dataMatch[2] ?? "",
+      media_type: (dataMatch[1] ?? "image/png") as
+        | "image/gif"
+        | "image/jpeg"
+        | "image/png"
+        | "image/webp",
+      type: "base64",
+    },
+    type: "image",
+  };
 }
 
 function buildEvidenceAnalysisPrompt({

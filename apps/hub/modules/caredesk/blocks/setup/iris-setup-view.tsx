@@ -49,6 +49,7 @@ import {
   toneText,
 } from "../shared/iris-ui";
 import type {
+  IrisChannel,
   IrisData,
   IrisMetaPhoneNumberOption,
   IrisMetaTemplateLibraryPreset,
@@ -100,7 +101,7 @@ export type IrisSetupViewProps = {
     setupStatusLabel: Record<string, string>;
     setupStatusOptions: string[];
   };
-  data: Pick<IrisData, "profiles" | "queues" | "templates">;
+  data: Pick<IrisData, "channels" | "profiles" | "queues" | "templates">;
   helpers: Record<string, unknown>;
   onProfilesChanged: (profiles: IrisTicketProfileConfig[]) => void;
   onQueuesChanged: (queues: IrisQueueConfig[]) => void;
@@ -338,6 +339,11 @@ function SetupView({
       return;
     }
 
+    if (!queueForm.channelId.trim()) {
+      setQueueFeedback("Selecione o número (WhatsApp) da fila.");
+      return;
+    }
+
     setSavingQueue(true);
     setQueueFeedback(null);
 
@@ -446,6 +452,7 @@ function SetupView({
           <IrisTemplateSetupPanel
             profiles={data.profiles}
             queues={data.queues}
+            channels={data.channels}
             onTemplatesSynced={onTemplatesSynced}
             templates={data.templates}
           />
@@ -653,6 +660,24 @@ function SetupView({
                     className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                     placeholder="Atendimento"
                   />
+                </SetupField>
+                <SetupField label="Número (WhatsApp) — a fila fica vinculada a ele">
+                  <select
+                    value={queueForm.channelId}
+                    onChange={(event) =>
+                      updateQueueForm("channelId", event.target.value)
+                    }
+                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  >
+                    <option value="">Selecione o número…</option>
+                    {data.channels
+                      .filter((channel) => channel.kind === "whatsapp")
+                      .map((channel) => (
+                        <option key={channel.id} value={channel.id}>
+                          {channel.name.replace(/^WhatsApp\s+/i, "")}
+                        </option>
+                      ))}
+                  </select>
                 </SetupField>
                 <div className="grid grid-cols-[minmax(0,1fr)_72px] gap-2">
                   <SetupField label="Slug">
@@ -1120,11 +1145,13 @@ function IrisTemplateSetupPanel({
   onTemplatesSynced,
   profiles,
   queues,
+  channels,
   templates,
 }: {
   onTemplatesSynced: () => void;
   profiles: IrisTicketProfileConfig[];
   queues: IrisQueueConfig[];
+  channels: IrisChannel[];
   templates: IrisTemplate[];
 }) {
   const [templateForm, setTemplateForm] = useState(() =>
@@ -1141,6 +1168,10 @@ function IrisTemplateSetupPanel({
   const [queueFilter, setQueueFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [templateSearch, setTemplateSearch] = useState("");
+  const [athenaPrompt, setAthenaPrompt] = useState("");
+  const [athenaLoading, setAthenaLoading] = useState(false);
+  const [athenaError, setAthenaError] = useState("");
+  const [athenaWarnings, setAthenaWarnings] = useState([]);
   const [templateFeedback, setTemplateFeedback] = useState<
     IrisTemplateFeedback | string
   >("");
@@ -1411,6 +1442,73 @@ function IrisTemplateSetupPanel({
           "",
       };
     });
+  }
+
+  // Athena (copiloto interno): descreve -> gera template pronto e valido e
+  // pre-preenche o formulario. So chama a rota; o cerebro esta no servidor.
+  async function generateWithAthena() {
+    if (!athenaPrompt.trim() || athenaLoading) return;
+    setAthenaLoading(true);
+    setAthenaError("");
+    setAthenaWarnings([]);
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/athena/templates", {
+        body: JSON.stringify({
+          contextHint: templateForm.queueLabel || null,
+          existingNames: templates
+            .map((template) => template.name)
+            .filter(Boolean),
+          prompt: athenaPrompt.trim(),
+          variables: IRIS_META_TEMPLATE_VARIABLES,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = await response.json().catch(() => null);
+      if (!response.ok || !payload?.draft) {
+        setAthenaError(
+          payload?.error || "A Athena nao conseguiu gerar o template.",
+        );
+        return;
+      }
+      const draft = payload.draft;
+      setTemplateForm((current) => ({
+        ...current,
+        bodyText: draft.bodyText ?? current.bodyText,
+        buttonsText: Array.isArray(draft.buttons)
+          ? draft.buttons.join(", ")
+          : current.buttonsText,
+        category: draft.category ?? current.category,
+        displayName: draft.displayName ?? current.displayName,
+        headerFormat: draft.headerFormat ?? current.headerFormat,
+        language: draft.language ?? current.language,
+        name: draft.name ?? current.name,
+        variables: Array.isArray(draft.variables)
+          ? draft.variables.map((entry) => {
+              const known = IRIS_META_TEMPLATE_VARIABLES.find(
+                (item) => item.key === entry.key,
+              );
+              return {
+                example: known?.example ?? entry.key,
+                key: entry.key,
+                label: known?.label ?? entry.key,
+                placeholder: entry.placeholder,
+              };
+            })
+          : current.variables,
+      }));
+      setTemplateEditorOpen(true);
+      setAthenaWarnings(Array.isArray(draft.warnings) ? draft.warnings : []);
+    } catch {
+      setAthenaError("Falha ao falar com a Athena. Tente de novo.");
+    } finally {
+      setAthenaLoading(false);
+    }
   }
 
   function addTemplateVariable(
@@ -1698,19 +1796,6 @@ function IrisTemplateSetupPanel({
   }
 
   async function syncApprovedMetaTemplates() {
-    if (templateSubjectMissing) {
-      setTemplateFeedback(
-        createIrisTemplateFeedback({
-          action:
-            "Escolha um assunto cadastrado para a Iris vincular fila e contexto antes de importar templates da Meta.",
-          message: "Sincronizacao bloqueada por falta de assunto.",
-          title: "Assunto obrigatorio",
-          tone: "warning",
-        }),
-      );
-      return;
-    }
-
     if (templatePhoneMissing) {
       setTemplateFeedback(
         createIrisTemplateFeedback({
@@ -1842,13 +1927,13 @@ function IrisTemplateSetupPanel({
   }
 
   async function createTemplate() {
-    if (templateSubjectMissing) {
+    if (!templateForm.queueLabel.trim()) {
       setTemplateFeedback(
         createIrisTemplateFeedback({
           action:
-            "Selecione um assunto cadastrado na lista. A fila sera vinculada automaticamente pelo cadastro do assunto.",
-          message: "Template sem assunto vinculado.",
-          title: "Assunto obrigatorio",
+            "Escolha a fila do template. Ela define o número de envio e onde o template aparece.",
+          message: "Template sem fila vinculada.",
+          title: "Fila obrigatoria",
           tone: "warning",
         }),
       );
@@ -2324,7 +2409,6 @@ function IrisTemplateSetupPanel({
                   onClick={createTemplate}
                   disabled={
                     creatingTemplate ||
-                    templateSubjectMissing ||
                     templatePhoneMissing ||
                     templateMediaMissing ||
                     uploadingTemplateMedia
@@ -2337,39 +2421,41 @@ function IrisTemplateSetupPanel({
               </div>
             </div>
 
-            <div className="mt-3 grid gap-3 sm:grid-cols-[minmax(0,1fr)_220px]">
-              <SetupField label="Assunto">
+            <div className="mt-3">
+              <SetupField label="Fila — o template pertence a ela e sai pelo número dela">
                 <select
-                  value={selectedSubjectProfileId}
-                  onChange={(event) =>
-                    selectTemplateSubject(event.target.value)
+                  value={
+                    queues.find(
+                      (queue) => queue.name === templateForm.queueLabel,
+                    )?.id ?? ""
                   }
+                  onChange={(event) => {
+                    const queue = queues.find(
+                      (item) => item.id === event.target.value,
+                    );
+                    updateTemplateForm("queueLabel", queue?.name ?? "");
+                    const numero = queue?.channelId
+                      ? (channels ?? []).find(
+                          (channel) => channel.id === queue.channelId,
+                        )?.phoneNumberId ?? ""
+                      : "";
+                    if (numero) {
+                      setMetaStatus(null);
+                      setLastTemplateRefreshAt("");
+                      updateTemplateForm("phoneNumberId", numero);
+                    }
+                  }}
                   className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
                 >
-                  <option value="">Escolha um assunto</option>
-                  {selectedSubjectProfileId === "__current" ? (
-                    <option value="__current">
-                      {templateForm.subjectLabel} |{" "}
-                      {templateForm.queueLabel || "Fila nao localizada"}
-                    </option>
-                  ) : null}
-                  {subjectProfileOptions.map((profile) => (
-                    <option key={profile.id} value={profile.id}>
-                      {profile.name} | {profile.queueLabel}
-                    </option>
-                  ))}
+                  <option value="">Selecione a fila…</option>
+                  {queues
+                    .filter((queue) => queue.status === "active")
+                    .map((queue) => (
+                      <option key={queue.id} value={queue.id}>
+                        {queue.name}
+                      </option>
+                    ))}
                 </select>
-              </SetupField>
-              <SetupField label="Fila vinculada">
-                <div className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-[#dbe3ef] bg-[#fbfcfe] px-3 text-sm font-semibold text-[#34415a]">
-                  <Route
-                    className="h-4 w-4 shrink-0 text-[#A07C3B]"
-                    aria-hidden="true"
-                  />
-                  <span className="truncate">
-                    {templateForm.queueLabel || "Definida pelo assunto"}
-                  </span>
-                </div>
               </SetupField>
             </div>
 
@@ -2416,6 +2502,54 @@ function IrisTemplateSetupPanel({
                       : "A Meta aprova templates por WABA; a Iris resolve a WABA a partir do telefone escolhido."}
                 </p>
               </SetupField>
+            </div>
+
+            <div className="mt-3 rounded-xl border border-[#e7dfd3] bg-[#f8f4ec] p-3">
+              <div className="mb-2 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-[#101820]">
+                    Athena · Assistente de templates
+                  </p>
+                  <p className="text-[11px] font-medium text-[#8a7a5c]">
+                    Descreva o que você quer — ela monta o template pronto e
+                    válido e preenche os campos abaixo.
+                  </p>
+                </div>
+                <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-[#A07C3B] ring-1 ring-[#e7dfd3]">
+                  Opus 4.8
+                </span>
+              </div>
+              <textarea
+                value={athenaPrompt}
+                onChange={(event) => setAthenaPrompt(event.target.value)}
+                placeholder="Ex.: cobrança citando o empreendimento e o valor total das parcelas vencidas, com botões enviar boleto, negociar e falar com atendente."
+                className="min-h-16 w-full resize-none rounded-lg border border-[#e7dfd3] bg-white px-3 py-2 text-sm font-medium leading-6 text-[#34415a] outline-none"
+              />
+              <div className="mt-2 flex items-center justify-between gap-3">
+                <p className="min-w-0 flex-1 truncate text-[11px] font-medium text-[#b0392e]">
+                  {athenaError}
+                </p>
+                <button
+                  type="button"
+                  disabled={athenaLoading || !athenaPrompt.trim()}
+                  onClick={generateWithAthena}
+                  className="shrink-0 rounded-lg bg-[#A07C3B] px-3 py-2 text-sm font-semibold text-white transition-opacity disabled:opacity-50"
+                >
+                  {athenaLoading ? "Gerando…" : "Gerar com a Athena"}
+                </button>
+              </div>
+              {athenaWarnings.length ? (
+                <ul className="mt-2 space-y-1 border-t border-[#e7dfd3] pt-2">
+                  {athenaWarnings.map((warning) => (
+                    <li
+                      key={warning}
+                      className="text-[11px] font-medium text-[#8a6d2f]"
+                    >
+                      Atenção: {warning}
+                    </li>
+                  ))}
+                </ul>
+              ) : null}
             </div>
 
             <div className="mt-3 grid gap-3 sm:grid-cols-2">
@@ -2736,12 +2870,6 @@ function IrisTemplateSetupPanel({
             <IrisTemplateFeedbackBox feedback={templateFeedback} />
 
             <div className="mt-3 grid gap-2">
-              {templateSubjectMissing ? (
-                <p className="rounded-lg border border-[#f2dfbf] bg-[#fffbeb] px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
-                  Escolha o assunto antes de enviar. A fila sera preenchida pelo
-                  cadastro do assunto.
-                </p>
-              ) : null}
               {templatePhoneMissing ? (
                 <p className="rounded-lg border border-[#f2dfbf] bg-[#fffbeb] px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
                   Escolha o telefone de envio. A Iris cria e consulta o template

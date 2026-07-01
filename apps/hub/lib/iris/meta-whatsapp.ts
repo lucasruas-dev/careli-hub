@@ -354,6 +354,97 @@ export async function listMetaWhatsAppWabaSubscribedApps({
   return payload;
 }
 
+// Registra um numero na Cloud API (POST /{phone_number_id}/register). Passo FINAL para
+// ATIVAR um numero recem-adicionado/migrado para uma WABA: enquanto nao registrado, o
+// numero fica "Pendente" (nao envia/recebe) e a Meta exibe "not registered with Cloud API".
+// O `pin` de 6 digitos vira a verificacao em duas etapas do numero — guardar bem.
+// Se o numero ja tinha 2FA (veio migrado), a Meta pode exigir o MESMO pin (erro de
+// mismatch) — nesse caso desabilitar a verificacao em duas etapas antes e repetir.
+export async function registerMetaWhatsAppPhoneNumber({
+  config = getMetaWhatsAppOutboundConfig(),
+  phoneNumberId,
+  pin,
+}: {
+  config?: MetaWhatsAppOutboundConfig;
+  phoneNumberId: string;
+  pin: string;
+}): Promise<MetaWhatsAppSubscribeResult> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const normalizedPhoneNumberId = readEnvValue(phoneNumberId);
+  const normalizedPin = readEnvValue(pin) ?? "";
+
+  if (!accessToken || !graphVersion) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao Meta WhatsApp incompleta para registrar o numero.",
+      503,
+    );
+  }
+
+  if (!normalizedPhoneNumberId) {
+    throw new MetaWhatsAppSendError("phone_number_id ausente.", 400);
+  }
+
+  if (!/^\d{6}$/.test(normalizedPin)) {
+    throw new MetaWhatsAppSendError(
+      "PIN invalido — precisa ter exatamente 6 digitos.",
+      400,
+    );
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${normalizedPhoneNumberId}/register`,
+    {
+      body: JSON.stringify({
+        messaging_product: "whatsapp",
+        pin: normalizedPin,
+      }),
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | { error?: { code?: unknown; message?: unknown }; success?: boolean }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou o registro do numero.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return {
+    raw: payload,
+    success: payload?.success === true,
+  };
+}
+
+// O WhatsApp usa *negrito* (UM asterisco), _italico_, ~tachado~ — NAO o Markdown com
+// **negrito**. Os modelos (Cacá/Athena) e os operadores escrevem em Markdown, e o
+// WhatsApp mostra os asteriscos/underscores literais sem formatar. Esta funcao converte
+// a formatacao Markdown mais comum para a sintaxe do WhatsApp ANTES de enviar, para o
+// negrito (e afins) aparecer certo no cliente. Roda no ponto unico de envio de texto.
+export function toWhatsAppFormatting(input: string): string {
+  return (
+    input
+      // Cabecalhos Markdown (## Titulo) viram negrito do WhatsApp, sem o #.
+      .replace(/^\s{0,3}#{1,6}[ \t]+(.+?)[ \t]*$/gm, "*$1*")
+      // **negrito** e __negrito__ (Markdown) -> *negrito* (WhatsApp).
+      .replace(/\*\*(.+?)\*\*/gs, "*$1*")
+      .replace(/__(.+?)__/gs, "*$1*")
+  );
+}
+
 export async function sendMetaWhatsAppTextMessage({
   body,
   config = getMetaWhatsAppOutboundConfig(),
@@ -386,7 +477,7 @@ export async function sendMetaWhatsAppTextMessage({
         messaging_product: "whatsapp",
         recipient_type: "individual",
         text: {
-          body,
+          body: toWhatsAppFormatting(body),
           preview_url: false,
         },
         to,

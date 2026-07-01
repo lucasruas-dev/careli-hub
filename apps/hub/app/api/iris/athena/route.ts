@@ -1,6 +1,9 @@
+import type Anthropic from "@anthropic-ai/sdk";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
+import { getAnthropicClient, resolveClaudeModel } from "@/lib/ai/claude";
+import { runClaudeAgent, type ClaudeAgentTool } from "@/lib/ai/claude-agent";
 import { loadHadesAttendanceClient } from "@/lib/guardian/attendance";
 import {
   fetchContractPdfDataUrl,
@@ -13,7 +16,6 @@ import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
 // redigir mensagens, consultar o contexto do cliente (parcelas/saldo/tickets/
 // conversa) e ajustar o tom. NUNCA envia sozinha — devolve um rascunho.
 
-const DEFAULT_MODEL = "gpt-5.5";
 const ATHENA_ACTIONS = new Set([
   "ajustar_tom",
   "boletos",
@@ -102,17 +104,14 @@ export async function POST(request: NextRequest) {
       contractPdf,
       draft,
       prompt,
+      supabase: authorization.client,
     });
 
     return NextResponse.json({
       action,
-      model: reply
-        ? process.env.HUB_IRIS_ATTENDANT_MODEL?.trim() ||
-          process.env.HUB_AI_MODEL?.trim() ||
-          DEFAULT_MODEL
-        : null,
+      model: reply ? resolveClaudeModel("heavy") : null,
       replyText: reply ?? buildFallback({ action, context, draft, prompt }),
-      source: reply ? "openai" : "fallback",
+      source: reply ? "claude" : "fallback",
     });
   } catch (error) {
     console.error("[iris-athena] falha no assistente", error);
@@ -130,8 +129,11 @@ export async function POST(request: NextRequest) {
 
 type AthenaContext = {
   clientName: string;
+  cobrancaClientId: string | null;
+  contactId: string | null;
   contractDocumentId: string | null;
   empreendimentos: string;
+  hasCarteira: boolean;
   messages: string;
   overdueLines: string;
   overdueWithLinkCount: number;
@@ -194,11 +196,13 @@ async function loadAthenaContext(
   let overdueWithLinkCount = 0;
   let empreendimentos = "-";
   let contractDocumentId: string | null = null;
+  let hasCarteira = false;
 
   if (cobrancaClientId) {
     try {
       const hadesClient = await loadHadesAttendanceClient(cobrancaClientId);
       if (hadesClient) {
+        hasCarteira = true;
         clientName = hadesClient.nome ?? clientName;
         saldo = hadesClient.saldoDevedor ?? saldo;
         vencidas = hadesClient.parcelas?.vencidas ?? 0;
@@ -232,8 +236,11 @@ async function loadAthenaContext(
 
   return {
     clientName,
+    cobrancaClientId,
+    contactId: ticket?.contact_id ?? null,
     contractDocumentId,
     empreendimentos,
+    hasCarteira,
     messages: messages || "Sem mensagens registradas.",
     overdueLines,
     overdueWithLinkCount,
@@ -262,6 +269,136 @@ function actionInstruction(action: AthenaAction, draft: string, prompt: string) 
   }
 }
 
+const ATHENA_SYSTEM_PROMPT = [
+  "Voce e a Athena, copiloto INTERNO do OPERADOR da Careli no cockpit de atendimento (Iris/Hades). Voce fala com o OPERADOR, nunca com o cliente.",
+  "Voce e um agente INVESTIGATIVO: BUSQUE VOCE MESMA os dados no hub com as ferramentas antes de pedir qualquer coisa ao operador. Nunca responda 'me passe o historico' se existe ferramenta para isso — chame a ferramenta.",
+  "Entenda o PERFIL do cliente antes de responder: comprador (tem carteira/parcelas), imobiliaria, colaborador, fornecedor ou prospect. Imobiliaria/colaborador/fornecedor/prospect NAO tem parcelas — nunca invente cobranca pra eles nem peca parcelas que nao existem.",
+  "Leia o historico e o TOM das conversas: se o cliente esta irritado, se e inadimplente, o teor dos ultimos atendimentos — e calibre a resposta por isso.",
+  "Missao: redigir mensagens pro cliente, resumir o cliente/atendimentos, responder duvidas com base nos dados REAIS que voce buscar, e ajustar o tom de rascunhos.",
+  "Voce NUNCA envia nada sozinha — sempre entrega rascunho/resposta pro operador revisar.",
+  "Tom: portugues do Brasil, profissional, cordial e firme, direto. Ao redigir mensagem pro cliente, entregue APENAS o texto pronto, sem rotulos/aspas. Assine como equipe Careli (nunca 'equipe do empreendimento' nem o nome do loteamento).",
+  "Nao invente dados, valores, parcelas ou clausulas. Se uma ferramenta nao trouxer o dado, diga com franqueza o que falta.",
+  "Se houver contrato (PDF) anexado, use-o citando o que o documento diz, sem extrapolar.",
+].join("\n");
+
+function buildAthenaSystemPrompt(context: AthenaContext): string {
+  const perfilLinha = context.hasCarteira
+    ? `- Perfil: COMPRADOR com carteira. Situacao: saldo ${context.saldo}, ${context.vencidas} parcela(s) vencida(s)${
+        context.empreendimentos !== "-"
+          ? `, empreendimento ${context.empreendimentos}`
+          : ""
+      }.`
+    : "- Perfil: SEM carteira de compra (provavelmente imobiliaria, colaborador, fornecedor ou prospect). NAO cobre parcelas nem invente saldo — trate pelo perfil real e pelos atendimentos.";
+
+  return [
+    ATHENA_SYSTEM_PROMPT,
+    "",
+    "CONTEXTO-BASE deste atendimento (ja carregado — use antes de acionar ferramentas para o basico):",
+    `- Cliente: ${context.clientName}`,
+    `- Protocolo atual: ${context.protocol}`,
+    perfilLinha,
+    `- Total de atendimentos deste cliente: ${context.ticketsCount}.`,
+    "",
+    "Conversa recente:",
+    context.messages,
+    "",
+    "FERRAMENTAS: 'tickets_do_cliente' (historico com assunto/status/data) e 'situacao_de_cobranca' (parcelas/boletos/saldo — so para comprador). Use-as para responder com dados reais em vez de pedir ao operador.",
+  ].join("\n");
+}
+
+function buildAthenaTools({
+  context,
+  supabase,
+}: {
+  context: AthenaContext;
+  supabase: SupabaseClient;
+}): ClaudeAgentTool[] {
+  return [
+    {
+      definition: {
+        description:
+          "Lista os atendimentos (tickets) deste cliente: protocolo, assunto, status e data. Use para resumir o historico ou entender atendimentos abertos/duplicados.",
+        input_schema: { properties: {}, type: "object" },
+        name: "tickets_do_cliente",
+      },
+      run: async () => {
+        if (!context.contactId) {
+          return "Contato nao identificado — nao consigo listar os tickets.";
+        }
+        const { data } = await supabase
+          .from("caredesk_tickets")
+          .select("protocol,subject,status,opened_at")
+          .eq("contact_id", context.contactId)
+          .order("opened_at", { ascending: false })
+          .limit(25);
+        const rows = (data ?? []) as {
+          opened_at?: string | null;
+          protocol?: string | null;
+          status?: string | null;
+          subject?: string | null;
+        }[];
+        if (!rows.length) {
+          return "Nenhum ticket encontrado para este cliente.";
+        }
+        return rows
+          .map(
+            (row) =>
+              `- ${row.protocol ?? "?"} · ${row.subject?.trim() || "sem assunto"} · status: ${row.status ?? "?"} · ${row.opened_at ?? "?"}`,
+          )
+          .join("\n");
+      },
+    },
+    {
+      definition: {
+        description:
+          "Detalha a cobranca do cliente comprador: saldo devedor, parcelas vencidas (numero, referencia, valor, link do boleto) e empreendimento. So use para cliente com carteira de compra.",
+        input_schema: { properties: {}, type: "object" },
+        name: "situacao_de_cobranca",
+      },
+      run: async () => {
+        if (!context.cobrancaClientId) {
+          return "Este cliente nao tem carteira de compra vinculada (imobiliaria, colaborador, fornecedor ou prospect). Nao ha parcelas nem saldo para cobrar.";
+        }
+        try {
+          const hades = await loadHadesAttendanceClient(
+            context.cobrancaClientId,
+          );
+          if (!hades) {
+            return "Nao encontrei carteira de cobranca para este cliente.";
+          }
+          const overdue = (hades.c2xInstallments ?? []).filter(
+            (item) => item.status === "Vencida",
+          );
+          const lines = overdue.slice(0, 30).map((item) => {
+            const link = item.invoiceUrl ?? item.paymentUrl ?? "";
+            return `- ${item.unitCode ? `${item.unitCode} · ` : ""}${item.number} (${item.reference}) ${item.value}${
+              link ? ` · boleto: ${link}` : " · sem link"
+            }`;
+          });
+          return [
+            `Cliente: ${hades.nome ?? context.clientName}`,
+            `Saldo devedor: ${hades.saldoDevedor ?? "-"}`,
+            `Parcelas vencidas: ${hades.parcelas?.vencidas ?? 0}`,
+            `Empreendimento: ${hades.carteira?.empreendimento ?? "-"}`,
+            overdue.length
+              ? `Parcelas vencidas:\n${lines.join("\n")}`
+              : "Sem parcelas vencidas.",
+          ].join("\n");
+        } catch {
+          return "Falha ao carregar a cobranca agora.";
+        }
+      },
+    },
+  ];
+}
+
+function extractPdfBase64(dataUrl: string | null): string | null {
+  if (!dataUrl) return null;
+  const commaIndex = dataUrl.indexOf(",");
+  const base64 = commaIndex >= 0 ? dataUrl.slice(commaIndex + 1) : dataUrl;
+  return base64.trim() || null;
+}
+
 async function requestAthenaReply({
   action,
   context,
@@ -269,6 +406,7 @@ async function requestAthenaReply({
   contractPdf,
   draft,
   prompt,
+  supabase,
 }: {
   action: AthenaAction;
   context: AthenaContext;
@@ -276,89 +414,56 @@ async function requestAthenaReply({
   contractPdf: string | null;
   draft: string;
   prompt: string;
+  supabase: SupabaseClient;
 }) {
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-  if (!apiKey) {
+  const anthropic = getAnthropicClient();
+  if (!anthropic) {
     return null;
   }
-  const model =
-    process.env.HUB_IRIS_ATTENDANT_MODEL?.trim() ||
-    process.env.HUB_AI_MODEL?.trim() ||
-    DEFAULT_MODEL;
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    contractPdf ? 35_000 : 14_000,
-  );
+
+  const userText = [
+    `Pedido do operador: ${actionInstruction(action, draft, prompt)}`,
+    contextMessage
+      ? `\nMensagem do cliente em foco (responder/considerar esta): """${contextMessage}"""`
+      : "",
+    contractPdf
+      ? "\nO contrato assinado do cliente esta anexado (PDF). Cite o que o documento diz, sem inventar clausulas."
+      : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  const content: Anthropic.ContentBlockParam[] = [
+    { text: userText, type: "text" },
+  ];
+  const pdfBase64 = extractPdfBase64(contractPdf);
+  if (pdfBase64) {
+    content.unshift({
+      source: {
+        data: pdfBase64,
+        media_type: "application/pdf",
+        type: "base64",
+      },
+      type: "document",
+    });
+  }
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      body: JSON.stringify({
-        input: [
-          {
-            content: [
-              {
-                text: [
-                  `Pedido do operador: ${actionInstruction(action, draft, prompt)}`,
-                  contextMessage
-                    ? `\nMensagem do cliente em foco (responder/considerar esta): """${contextMessage}"""`
-                    : "",
-                  contractPdf
-                    ? "\nO contrato assinado do cliente esta anexado (PDF). Use-o para responder duvidas sobre o contrato, citando o que o documento diz. Nao invente clausulas."
-                    : "",
-                  "",
-                  "Contexto do cliente:",
-                  `- Nome: ${context.clientName}`,
-                  `- Empreendimento: ${context.empreendimentos}`,
-                  `- Saldo devedor: ${context.saldo}`,
-                  `- Parcelas vencidas: ${context.vencidas}`,
-                  `- Atendimentos deste cliente: ${context.ticketsCount}`,
-                  `- Protocolo atual: ${context.protocol}`,
-                  "",
-                  "Parcelas vencidas:",
-                  context.overdueLines,
-                  "",
-                  "Conversa recente:",
-                  context.messages,
-                ].join("\n"),
-                type: "input_text",
-              },
-              ...(contractPdf
-                ? [
-                    {
-                      file_data: contractPdf,
-                      filename: "contrato.pdf",
-                      type: "input_file",
-                    },
-                  ]
-                : []),
-            ],
-            role: "user",
-          },
-        ],
-        instructions:
-          "Voce e a Athena, a assistente do OPERADOR de cobranca da Careli (Hades). Ajude o operador a redigir mensagens, responder duvidas sobre o cliente consultando o contexto fornecido, e ajustar o tom. Voce NUNCA envia mensagens sozinha — sempre entrega um rascunho para o operador revisar. Responda em portugues do Brasil, claro e direto. Quando redigir mensagem para o cliente, entregue apenas o texto da mensagem, sem rotulos. Nao invente dados que nao estejam no contexto.",
-        max_output_tokens: 900,
-        model,
-      }),
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
+    const result = await runClaudeAgent({
+      client: anthropic,
+      effort: "high",
+      maxTokens: 900,
+      maxToolIterations: 5,
+      messages: [{ content, role: "user" }],
+      model: resolveClaudeModel("heavy"),
+      system: buildAthenaSystemPrompt(context),
+      thinking: true,
+      tools: buildAthenaTools({ context, supabase }),
     });
-
-    if (!response.ok) {
-      return null;
-    }
-
-    const data = (await response.json()) as Record<string, unknown>;
-    return extractOpenAiText(data) || null;
-  } catch {
+    return result.text.trim() || null;
+  } catch (error) {
+    console.error("[iris-athena] Claude agent failed", error);
     return null;
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -402,32 +507,6 @@ function readCobrancaClientId(value: Record<string, unknown> | null | undefined)
     }
   }
   return null;
-}
-
-function extractOpenAiText(data: Record<string, unknown>) {
-  const directText = readString(data.output_text);
-  if (directText) {
-    return directText;
-  }
-  const output = Array.isArray(data.output) ? data.output : [];
-  for (const item of output) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-    const content = Array.isArray((item as Record<string, unknown>).content)
-      ? ((item as Record<string, unknown>).content as unknown[])
-      : [];
-    for (const part of content) {
-      if (!part || typeof part !== "object") {
-        continue;
-      }
-      const text = readString((part as Record<string, unknown>).text);
-      if (text) {
-        return text;
-      }
-    }
-  }
-  return "";
 }
 
 function firstName(name: string) {

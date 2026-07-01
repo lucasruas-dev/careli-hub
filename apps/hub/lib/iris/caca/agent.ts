@@ -82,18 +82,20 @@ export async function runCacaClaudeTurn({
     }
   }
 
+  const businessHours = businessHoursForNow();
   const toolContext: CacaToolContext = {
+    businessHoursOpen: businessHours.open,
     c2xClientId,
     client,
     contactId: contact.id ?? null,
     customerName,
     handoff: { reason: null, requested: false },
     identityVerified,
+    nextContactLabel: businessHours.nextContactLabel,
     validationSource,
   };
 
   const clientNotes = readClientNotes(contact);
-  const businessHours = businessHoursForNow();
   const system = buildCacaSystemPrompt({
     businessHoursOpen: businessHours.open,
     clientNotes: clientNotes.map((entry) => entry.note),

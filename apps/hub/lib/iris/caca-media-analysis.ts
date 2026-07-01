@@ -3,6 +3,7 @@ import { Buffer } from "node:buffer";
 import type Anthropic from "@anthropic-ai/sdk";
 
 import { getAnthropicClient, resolveClaudeModel } from "@/lib/ai/claude";
+import { extractDocumentText } from "./document-extract";
 import {
   downloadMetaWhatsAppMedia,
   type MetaWhatsAppDownloadedMedia,
@@ -231,8 +232,9 @@ async function summarizeCacaMedia({
   mediaType: CacaInboundMediaType;
   mimeType: string;
 }): Promise<string | null> {
-  // Claude le IMAGEM e PDF nativo. Video o Claude nao processa; documento que nao e PDF
-  // (planilha, etc.) tambem nao -> retorna null (cai no fallback amigavel da Caca).
+  // Claude le IMAGEM e PDF nativo. Video o Claude nao processa. Documento que nao e
+  // PDF (planilha/docx/csv/txt) e binario -> extraimos o texto no servidor e mandamos
+  // o texto pro modelo. So sobra null pra tipos sem leitura (ai a Caca cai no fallback).
   if (mediaType === "video") {
     return null;
   }
@@ -246,28 +248,6 @@ async function summarizeCacaMedia({
   const isImage = mediaType === "image";
   const isPdf = mimeType.toLowerCase().includes("pdf");
 
-  if (!isImage && !isPdf) {
-    return null;
-  }
-
-  const base64 = buffer.toString("base64");
-  const mediaBlock: Anthropic.ContentBlockParam = isImage
-    ? {
-        source: {
-          data: base64,
-          media_type: normalizeClaudeImageMediaType(mimeType),
-          type: "base64",
-        },
-        type: "image",
-      }
-    : {
-        source: {
-          data: base64,
-          media_type: "application/pdf",
-          type: "base64",
-        },
-        type: "document",
-      };
   const instruction = [
     "Analise este anexo recebido no atendimento WhatsApp da Iris.",
     "Extraia somente informacoes uteis para a Caca responder o cliente com seguranca.",
@@ -278,15 +258,49 @@ async function summarizeCacaMedia({
     `Legenda/caption enviada pelo cliente: ${caption ?? "nao informada"}`,
   ].join("\n");
 
+  let content: Anthropic.ContentBlockParam[];
+
+  if (isImage) {
+    content = [
+      { text: instruction, type: "text" },
+      {
+        source: {
+          data: buffer.toString("base64"),
+          media_type: normalizeClaudeImageMediaType(mimeType),
+          type: "base64",
+        },
+        type: "image",
+      },
+    ];
+  } else if (isPdf) {
+    content = [
+      { text: instruction, type: "text" },
+      {
+        source: {
+          data: buffer.toString("base64"),
+          media_type: "application/pdf",
+          type: "base64",
+        },
+        type: "document",
+      },
+    ];
+  } else {
+    const extracted = await extractDocumentText({ buffer, fileName, mimeType });
+    if (!extracted) {
+      return null;
+    }
+    content = [
+      {
+        text: `${instruction}\n\nConteudo extraido do anexo (${extracted.format}):\n"""\n${extracted.text}\n"""`,
+        type: "text",
+      },
+    ];
+  }
+
   const response = await client.messages.create(
     {
       max_tokens: 500,
-      messages: [
-        {
-          content: [{ text: instruction, type: "text" }, mediaBlock],
-          role: "user",
-        },
-      ],
+      messages: [{ content, role: "user" }],
       model: resolveClaudeModel("default"),
     },
     { timeout: OPENAI_MEDIA_TIMEOUT_MS },

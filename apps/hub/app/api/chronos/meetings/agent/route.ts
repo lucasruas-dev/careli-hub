@@ -1,5 +1,6 @@
 import { type NextRequest } from "next/server";
 
+import { completeWithClaude, resolveClaudeModel } from "@/lib/ai/claude";
 import {
   authorizeChronosRequest,
   isChronosForbiddenError,
@@ -1396,108 +1397,37 @@ async function draftChronosMinutes({
   meeting: ChronosMeeting;
   minutesProfile: ChronosMinutesProfile;
 }) {
-  const model = resolveChronosOpenAiModel(
-    DEFAULT_MINUTES_MODEL,
-    process.env.HUB_CHRONOS_MINUTES_MODEL,
-    process.env.HUB_AI_MODEL,
-  );
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-  const requestBody = {
-    input: [
-      {
-        content: [
-          {
-            text: buildChronosMinutesPrompt({ meeting, minutesProfile }),
-            type: "input_text",
-          },
-        ],
-        role: "user",
-      },
-    ],
-    instructions: [
-      "Voce e a Athena, agente executivo do Chronos no Panteon.",
-      "Gere rascunho de ata em portugues do Brasil, executivo e profissional.",
-      "Use apenas fatos recebidos no contexto. Nao invente decisao, participante, prazo ou responsavel.",
-      "Quando faltar informacao, escreva 'Nao informado'.",
-      "A ata nunca deve sair aprovada; ela e rascunho para revisao humana.",
-      "Escreva em Markdown simples: secoes, bullets, negrito com **texto** e tabela markdown para plano de acao.",
-      "Nao despeje a transcricao crua; transforme falas em resumo executivo, decisoes, riscos, pendencias e proximos passos.",
-      "Retorne somente JSON valido com os campos summary e minutes.",
-    ].join("\n"),
-    max_output_tokens: 8_000,
-    model,
-    reasoning: {
-      effort: DEFAULT_MINUTES_REASONING_EFFORT,
-    },
-    text: {
-      format: CHRONOS_MINUTES_RESPONSE_FORMAT,
-    },
-  };
+  const model = resolveClaudeModel("heavy");
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      body: JSON.stringify(requestBody),
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
+    const completion = await completeWithClaude({
+      maxTokens: 8_000,
+      messages: [
+        {
+          content: buildChronosMinutesPrompt({ meeting, minutesProfile }),
+          role: "user",
+        },
+      ],
+      model,
+      system: [
+        "Voce e a Athena, agente executivo do Chronos no Panteon.",
+        "Gere rascunho de ata em portugues do Brasil, executivo e profissional.",
+        "Use apenas fatos recebidos no contexto. Nao invente decisao, participante, prazo ou responsavel.",
+        "Quando faltar informacao, escreva 'Nao informado'.",
+        "A ata nunca deve sair aprovada; ela e rascunho para revisao humana.",
+        "Escreva a ata em Markdown com secoes (##), bullets, negrito com **texto** e uma tabela markdown para o plano de acao.",
+        "Nao despeje a transcricao crua; transforme falas em resumo executivo, decisoes, riscos, pendencias e proximos passos.",
+        'Responda SOMENTE com um JSON valido no formato {"summary": "...", "minutes": "..."}, sem cercas de codigo e sem nenhum texto fora do JSON. O campo minutes contem a ata em Markdown.',
+      ].join("\n"),
     });
-    const payload = (await response.json().catch(() => null)) as OpenAiResponsePayload;
 
-    if (!response.ok) {
-      const errorMessage = getOpenAiErrorMessage(payload, "Falha ao gerar ata.");
-
-      if (shouldRetryChronosJsonObjectFormat(errorMessage)) {
-        const retryResponse = await fetch("https://api.openai.com/v1/responses", {
-          body: JSON.stringify({
-            ...requestBody,
-            text: {
-              format: CHRONOS_JSON_OBJECT_RESPONSE_FORMAT,
-            },
-          }),
-          cache: "no-store",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          method: "POST",
-          signal: controller.signal,
-        });
-        const retryPayload = (await retryResponse.json().catch(
-          () => null,
-        )) as OpenAiResponsePayload;
-
-        if (!retryResponse.ok) {
-          throw new Error(
-            getOpenAiErrorMessage(retryPayload, "Falha ao gerar ata."),
-          );
-        }
-
-        const retryParsed = parseChronosMinutesJson(
-          extractOutputText(retryPayload),
-        );
-
-        if (!retryParsed) {
-          throw new Error(
-            "OpenAI nao retornou JSON estruturado com summary e minutes validos.",
-          );
-        }
-
-        return retryParsed;
-      }
-
-      throw new Error(errorMessage);
-    }
-
-    const parsed = parseChronosMinutesJson(extractOutputText(payload));
+    const parsed = completion
+      ? parseChronosMinutesJson(completion.text)
+      : null;
 
     if (!parsed) {
       throw new Error(
-        "OpenAI nao retornou JSON estruturado com summary e minutes validos.",
+        "A Athena nao retornou JSON estruturado com summary e minutes validos.",
       );
     }
 
@@ -1505,10 +1435,10 @@ async function draftChronosMinutes({
   } catch (error) {
     const message = getChronosAgentErrorMessage(
       error,
-      "OpenAI nao concluiu a geracao estruturada da ata.",
+      "A Athena nao concluiu a geracao estruturada da ata.",
     );
 
-    console.error("[chronos/agent] OpenAI minutes generation failed", {
+    console.error("[chronos/agent] Claude minutes generation failed", {
       meetingId: meeting.id,
       model,
       protocol: meeting.protocol,
@@ -1518,8 +1448,6 @@ async function draftChronosMinutes({
     throw new ChronosOpenAiGenerationError(
       `Athena nao concluiu a ata executiva: ${message}`,
     );
-  } finally {
-    clearTimeout(timeout);
   }
 }
 
@@ -1532,116 +1460,44 @@ async function draftChronosAgenda({
   context: ChronosAgendaGenerationContext;
   meeting?: ChronosMeeting;
 }): Promise<ChronosAgendaDraft> {
-  const model = resolveChronosOpenAiModel(
-    DEFAULT_AGENDA_MODEL,
-    process.env.HUB_CHRONOS_AGENDA_MODEL,
-    process.env.HUB_CHRONOS_MINUTES_MODEL,
-    process.env.HUB_AI_MODEL,
-  );
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-  const requestBody = {
-    input: [
-      {
-        content: [
-          {
-            text: buildChronosAgendaPrompt({ context, meeting }),
-            type: "input_text",
-          },
-        ],
-        role: "user",
-      },
-    ],
-    instructions: [
-      "Voce e a Athena, agente executivo do Chronos no Panteon.",
-      "Monte uma pauta executiva padronizada em portugues do Brasil para revisao humana.",
-      "Escreva como assessoria executiva: profissional, objetiva, com criterio de prioridade e sem tom generico.",
-      "Use apenas o contexto recebido. Nao invente cliente, decisao, prazo, responsavel ou participantes.",
-      "A pauta deve ter objetivo obrigatorio, temas conforme o contexto e estrutura com expectativa de tempo.",
-      "Use negrito em objetivo, decisoes, riscos, tempos, entregas, pontos criticos e termos importantes usando Markdown (**texto**).",
-      "Nao inclua secao de participantes; participantes aparecem no card do evento.",
-      "Retorne somente JSON valido com os campos title, bulletPoints e agendaMarkdown.",
-    ].join("\n"),
-    max_output_tokens: 1_500,
-    model,
-    reasoning: {
-      effort: DEFAULT_AGENDA_REASONING_EFFORT,
-    },
-    text: {
-      format: CHRONOS_AGENDA_RESPONSE_FORMAT,
-    },
-  };
+  const model = resolveClaudeModel("heavy");
 
   try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      body: JSON.stringify(requestBody),
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
+    const completion = await completeWithClaude({
+      maxTokens: 1_500,
+      messages: [
+        {
+          content: buildChronosAgendaPrompt({ context, meeting }),
+          role: "user",
+        },
+      ],
+      model,
+      system: [
+        "Voce e a Athena, agente executivo do Chronos no Panteon.",
+        "Monte uma pauta executiva padronizada em portugues do Brasil para revisao humana.",
+        "Escreva como assessoria executiva: profissional, objetiva, com criterio de prioridade e sem tom generico.",
+        "Use apenas o contexto recebido. Nao invente cliente, decisao, prazo, responsavel ou participantes.",
+        "A pauta deve ter objetivo obrigatorio, temas conforme o contexto e estrutura com expectativa de tempo.",
+        "Use negrito em objetivo, decisoes, riscos, tempos, entregas, pontos criticos e termos importantes usando Markdown (**texto**).",
+        "Nao inclua secao de participantes; participantes aparecem no card do evento.",
+        'Responda SOMENTE com um JSON valido no formato {"title": "...", "bulletPoints": ["..."], "agendaMarkdown": "..."}, sem cercas de codigo e sem nenhum texto fora do JSON.',
+      ].join("\n"),
     });
-    const payload = (await response.json().catch(() => null)) as OpenAiResponsePayload;
 
-    if (!response.ok) {
-      const errorMessage = getOpenAiErrorMessage(payload, "Falha ao gerar pauta.");
-
-      if (shouldRetryChronosJsonObjectFormat(errorMessage)) {
-        const retryResponse = await fetch("https://api.openai.com/v1/responses", {
-          body: JSON.stringify({
-            ...requestBody,
-            text: {
-              format: CHRONOS_JSON_OBJECT_RESPONSE_FORMAT,
-            },
-          }),
-          cache: "no-store",
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-          },
-          method: "POST",
-          signal: controller.signal,
-        });
-        const retryPayload = (await retryResponse.json().catch(
-          () => null,
-        )) as OpenAiResponsePayload;
-
-        if (!retryResponse.ok) {
-          throw new Error(
-            getOpenAiErrorMessage(retryPayload, "Falha ao gerar pauta."),
-          );
-        }
-
-        const retryAgenda = parseChronosAgendaJson(
-          extractOutputText(retryPayload),
-        );
-
-        if (retryAgenda.bulletPoints.length === 0) {
-          throw new Error("OpenAI nao retornou itens de pauta validos.");
-        }
-
-        return retryAgenda;
-      }
-
-      throw new Error(errorMessage);
-    }
-
-    const agenda = parseChronosAgendaJson(extractOutputText(payload));
+    const agenda = parseChronosAgendaJson(completion?.text ?? "");
 
     if (agenda.bulletPoints.length === 0) {
-      throw new Error("OpenAI nao retornou itens de pauta validos.");
+      throw new Error("A Athena nao retornou itens de pauta validos.");
     }
 
     return agenda;
   } catch (error) {
     const message = getChronosAgentErrorMessage(
       error,
-      "OpenAI nao concluiu a geracao da pauta.",
+      "A Athena nao concluiu a geracao da pauta.",
     );
 
-    console.error("[chronos/agent] OpenAI agenda generation failed", {
+    console.error("[chronos/agent] Claude agenda generation failed", {
       meetingId: meeting?.id ?? "draft",
       model,
       protocol: meeting?.protocol ?? "draft",
@@ -1651,8 +1507,6 @@ async function draftChronosAgenda({
     throw new ChronosOpenAiGenerationError(
       `Athena nao concluiu a pauta: ${message}`,
     );
-  } finally {
-    clearTimeout(timeout);
   }
 }
 

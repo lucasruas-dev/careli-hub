@@ -435,8 +435,22 @@ function BoardCard({
           {ticket.queueLabel}
         </span>
         <BoardProfileChip crm={crm} />
+        {(ticket.unreadCount ?? 0) > 0 ? (
+          <span
+            className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-bold tabular-nums text-white"
+            aria-label={`${ticket.unreadCount} mensagens nao lidas`}
+            title={`${ticket.unreadCount} nao lida(s)`}
+          >
+            {(ticket.unreadCount ?? 0) > 9 ? "9+" : ticket.unreadCount}
+          </span>
+        ) : null}
       </div>
 
+      {ticket.protocol ? (
+        <p className="text-[10px] font-semibold uppercase tracking-wide text-[#A07C3B] tabular-nums">
+          {ticket.protocol}
+        </p>
+      ) : null}
       <p className="truncate text-sm font-semibold text-slate-950">
         {helpers.ticketContactLabel(ticket)}
       </p>

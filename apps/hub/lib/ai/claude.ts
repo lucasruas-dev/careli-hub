@@ -4,13 +4,13 @@ import Anthropic from "@anthropic-ai/sdk";
 // copiloto do Zeus, etc.). Centraliza: leitura da chave, roteamento de modelos e os defaults de
 // custo/qualidade. A transcrição de voz (Whisper) NÃO passa por aqui — segue na OpenAI.
 //
-// IDs exatos da Anthropic (NÃO acrescentar sufixo de data):
-//  - default = Sonnet 4.6  → workhorse dos atendimentos (alto volume, bom custo/latência)
+// IDs exatos da Anthropic (família Claude 5 + Opus 4.8):
+//  - default = Sonnet 5    → workhorse dos atendimentos (alto volume, bom custo/latência)
 //  - heavy   = Opus 4.8    → turnos difíceis/escalados (gestão de crise, leitura de contrato)
 //  - fast    = Haiku 4.5   → triagem/classificação barata
 export const CLAUDE_MODEL = {
-  default: process.env.CLAUDE_MODEL_DEFAULT?.trim() || "claude-sonnet-4-6",
-  fast: process.env.CLAUDE_MODEL_FAST?.trim() || "claude-haiku-4-5",
+  default: process.env.CLAUDE_MODEL_DEFAULT?.trim() || "claude-sonnet-5",
+  fast: process.env.CLAUDE_MODEL_FAST?.trim() || "claude-haiku-4-5-20251001",
   heavy: process.env.CLAUDE_MODEL_HEAVY?.trim() || "claude-opus-4-8",
 } as const;
 
@@ -40,4 +40,91 @@ export function getAnthropicClient(): Anthropic | null {
 
 export function resolveClaudeModel(tier: ClaudeModelTier = "default"): string {
   return CLAUDE_MODEL[tier];
+}
+
+export type ClaudeChatMessage = {
+  content: string;
+  role: "assistant" | "user";
+};
+
+// Claude exige mensagens alternando papel e comecando por "user". Junta turnos
+// consecutivos do mesmo papel e descarta lideres "assistant" solto.
+function normalizeClaudeMessages(
+  messages: ClaudeChatMessage[],
+): ClaudeChatMessage[] {
+  const merged: ClaudeChatMessage[] = [];
+
+  for (const message of messages) {
+    const content = message.content?.trim();
+    if (!content) continue;
+    const last = merged[merged.length - 1];
+    if (last && last.role === message.role) {
+      last.content = `${last.content}\n\n${content}`;
+    } else {
+      merged.push({ content, role: message.role });
+    }
+  }
+
+  let firstUser = 0;
+  while (firstUser < merged.length && merged[firstUser]?.role !== "user") {
+    firstUser += 1;
+  }
+
+  return merged.slice(firstUser);
+}
+
+// Completion de texto simples sobre a Messages API da Claude (system + historico
+// -> texto). Motor padrao das migracoes OpenAI->Claude dos agentes do hub que so
+// precisam de texto (sem tool-use). Retorna null se a chave nao estiver setada.
+export async function completeWithClaude({
+  maxTokens = 2048,
+  messages,
+  model,
+  system,
+  temperature,
+}: {
+  maxTokens?: number;
+  messages: ClaudeChatMessage[];
+  model?: string;
+  system?: string;
+  temperature?: number;
+}): Promise<{ model: string; text: string } | null> {
+  const client = getAnthropicClient();
+  if (!client) {
+    return null;
+  }
+
+  const normalized = normalizeClaudeMessages(messages);
+  if (!normalized.length) {
+    return null;
+  }
+
+  const resolvedModel = model ?? resolveClaudeModel("default");
+
+  let response: Anthropic.Message;
+  try {
+    response = await client.messages.create({
+      max_tokens: maxTokens,
+      messages: normalized,
+      model: resolvedModel,
+      ...(system ? { system } : {}),
+      ...(typeof temperature === "number" ? { temperature } : {}),
+    });
+  } catch (error) {
+    console.error("[claude] completeWithClaude failed", {
+      model: resolvedModel,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+
+  const text = response.content
+    .filter(
+      (block): block is Anthropic.TextBlock => block.type === "text",
+    )
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+
+  return { model: response.model, text };
 }

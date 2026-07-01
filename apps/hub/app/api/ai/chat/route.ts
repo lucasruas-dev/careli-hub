@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import {
+  completeWithClaude,
+  isClaudeConfigured,
+  resolveClaudeModel,
+} from "@/lib/ai/claude";
 import { loadHadesAttendanceQueueReadModel } from "@/lib/guardian/read-model";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import type { QueueClient } from "@/modules/guardian/attendance/types";
@@ -26,9 +31,7 @@ type SupabaseUserPayload = {
   id?: unknown;
 };
 
-const DEFAULT_MODEL = "gpt-5.5";
 const GUARDIAN_AI_DATABASE_CONTEXT_LIMIT = 1_000;
-const OPENAI_TIMEOUT_MS = 45_000;
 const MAX_CONTEXT_CHARS = 80_000;
 const MAX_HISTORY_ITEMS = 8;
 
@@ -48,38 +51,43 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: auth.error }, { status: auth.status });
   }
 
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-
-  if (!apiKey) {
+  if (!isClaudeConfigured()) {
     return NextResponse.json(
       {
         error:
-          "Configure OPENAI_API_KEY no ambiente do Panteon para ativar a Athena.",
+          "Configure ANTHROPIC_API_KEY no ambiente do Panteon para ativar a Athena.",
       },
       { status: 503 },
     );
   }
 
-  const model = process.env.HUB_AI_MODEL?.trim() || DEFAULT_MODEL;
+  const model = resolveClaudeModel("default");
 
   try {
     const payload = await enrichHubAiPayload(body.data);
-    const response = await createOpenAiResponse({
-      apiKey,
+    const completion = await completeWithClaude({
+      maxTokens: 2_400,
+      messages: [
+        ...formatHistory(payload.messages),
+        { content: buildUserInput(payload), role: "user" },
+      ],
       model,
-      payload,
-      userId: auth.userId,
+      system: buildSystemInstructions(payload.module, payload.feature),
     });
 
+    if (!completion?.text) {
+      throw new Error("A Athena nao retornou texto para esta pergunta.");
+    }
+
     return NextResponse.json({
-      model,
-      source: "openai",
-      text: response,
+      model: completion.model,
+      source: "claude",
+      text: completion.text,
     });
   } catch (error) {
     return NextResponse.json(
       {
-        error: getOpenAiErrorMessage(error),
+        error: getAthenaErrorMessage(error),
       },
       { status: 502 },
     );
@@ -162,63 +170,6 @@ function sanitizeMessages(messages: unknown) {
       content: message.content.slice(0, 2_000),
       role: message.role,
     }));
-}
-
-async function createOpenAiResponse({
-  apiKey,
-  model,
-  payload,
-  userId,
-}: {
-  apiKey: string;
-  model: string;
-  payload: ParsedHubAiRequest;
-  userId: string;
-}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-
-  try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      body: JSON.stringify({
-        input: [
-          ...formatHistory(payload.messages),
-          {
-            content: buildUserInput(payload),
-            role: "user",
-          },
-        ],
-        instructions: buildSystemInstructions(payload.module, payload.feature),
-        max_output_tokens: 2_400,
-        model,
-        user: userId,
-      }),
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
-    });
-    const result = (await response.json().catch(() => null)) as
-      | Record<string, unknown>
-      | null;
-
-    if (!response.ok) {
-      throw new Error(extractOpenAiError(result) || "Falha ao consultar a OpenAI.");
-    }
-
-    const text = extractOutputText(result);
-
-    if (!text) {
-      throw new Error("A OpenAI nao retornou texto para esta pergunta.");
-    }
-
-    return text;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 async function enrichHubAiPayload(
@@ -559,55 +510,6 @@ function buildSystemInstructions(module: HubAiModule, feature?: string) {
   return base.join("\n");
 }
 
-function extractOutputText(payload: Record<string, unknown> | null) {
-  if (!payload) {
-    return "";
-  }
-
-  if (typeof payload.output_text === "string") {
-    return payload.output_text.trim();
-  }
-
-  const output = Array.isArray(payload.output) ? payload.output : [];
-  const chunks: string[] = [];
-
-  for (const item of output) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-
-    const content = (item as { content?: unknown }).content;
-
-    if (!Array.isArray(content)) {
-      continue;
-    }
-
-    for (const part of content) {
-      if (
-        part &&
-        typeof part === "object" &&
-        typeof (part as { text?: unknown }).text === "string"
-      ) {
-        chunks.push((part as { text: string }).text);
-      }
-    }
-  }
-
-  return chunks.join("\n").trim();
-}
-
-function extractOpenAiError(payload: Record<string, unknown> | null) {
-  const error = payload?.error;
-
-  if (!error || typeof error !== "object") {
-    return "";
-  }
-
-  const message = (error as { message?: unknown }).message;
-
-  return typeof message === "string" ? message : "";
-}
-
 async function authorizeHubAiRequest(request: NextRequest) {
   const { anonKey, url } = getServerSupabaseConfig();
   const supabaseUrl = url?.replace(/\/+$/, "");
@@ -672,7 +574,7 @@ function getBearerToken(request: NextRequest) {
   return authorization.slice("Bearer ".length).trim() || null;
 }
 
-function getOpenAiErrorMessage(error: unknown) {
+function getAthenaErrorMessage(error: unknown) {
   if (error instanceof DOMException && error.name === "AbortError") {
     return "A Athena demorou para responder. Tente novamente em instantes.";
   }

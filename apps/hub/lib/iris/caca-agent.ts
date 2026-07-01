@@ -1309,21 +1309,10 @@ async function resolveBoletoCustomerAccess({
       };
     }
 
-    if (!documentMatch.hasBuyerProfile || !documentMatch.hasUnitPortfolio) {
-      return {
-        reason: "Documento encontrado no sistema sem perfil de comprador com unidade.",
-        replyText:
-          "Localizei o cadastro, mas ele nao aparece como comprador com unidade ativa em nosso sistema. Vou encaminhar para um atendente validar o contrato antes de enviar boleto.",
-        statePatch: {
-          apoloC2xClientId: documentMatch.c2xClientId,
-          apoloDisplayName: documentMatch.displayName,
-          apoloEntityId: documentMatch.entityId,
-          handoffRequired: true,
-        },
-        status: "handoff",
-      };
-    }
-
+    // Antes: se o documento existia mas nao era comprador-com-unidade, encaminhava pro humano.
+    // Agora atende TODO perfil cadastrado (comprador, imobiliaria, colaborador, prospect) — a
+    // identidade segue travada por CPF/CNPJ + nome. Nao-comprador so nao tem carteira/parcelas
+    // (as consultas financeiras respondem "sem carteira"), mas cadastro e contexto ficam acessiveis.
     const providedName =
       identityHint.fullName ??
       state.identityCandidateName ??

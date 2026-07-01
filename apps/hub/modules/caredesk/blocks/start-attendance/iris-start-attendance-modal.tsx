@@ -108,12 +108,35 @@ type IrisStartAttendanceModalProps = {
 type IrisStartContextMode = "tickets" | "parcelas";
 
 type IrisStartOverdueRow = {
+  dueDate: string | null;
+  enterprise: string | null;
   id: string;
   number: string;
+  paymentUrl: string | null;
   reference: string;
   unitCode: string | null;
   value: string;
 };
+
+// Soma valores BRL formatados (ex.: "R$ 1.200,00") das parcelas vencidas
+// selecionadas para preencher a variavel {{valor}} do template de cobranca.
+function parseBrlNumber(raw: string | null | undefined): number {
+  if (!raw) return 0;
+  const cleaned = raw.replace(/[^\d,.-]/g, "");
+  if (!cleaned) return 0;
+  const parsed = Number(cleaned.replace(/\./g, "").replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+// Converte "DD/MM/AAAA" (formato BR do Apolo) em timestamp (UTC), ou null.
+// Usado para achar a parcela vencida mais antiga (vencimento + dias de atraso).
+function parseBrDateMs(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const match = /(\d{2})\/(\d{2})\/(\d{4})/.exec(raw);
+  if (!match) return null;
+  const ms = Date.UTC(Number(match[3]), Number(match[2]) - 1, Number(match[1]));
+  return Number.isFinite(ms) ? ms : null;
+}
 
 // Check 1 (regra Lucas 30/jun): cliente já com ticket ativo NO MESMO NÚMERO —
 // devolvido pelo backend pra bloquear a abertura e oferecer abrir o existente.
@@ -204,6 +227,20 @@ export function IrisStartAttendanceModal({
     subjectOptions[0] ??
     null;
 
+  // Número (phone_number_id) da fila selecionada: fila → canal (queue.channelId)
+  // → external_account_id. É o que amarra os templates à fila.
+  const selectedQueuePhoneNumberId = useMemo(() => {
+    const channelId = selectedQueue?.channelId ?? null;
+
+    if (!channelId) {
+      return null;
+    }
+
+    return (
+      data.channels.find((channel) => channel.id === channelId)?.phoneNumberId ??
+      null
+    );
+  }, [data.channels, selectedQueue]);
   const templateOptions = useMemo(
     () =>
       data.templates
@@ -212,7 +249,12 @@ export function IrisStartAttendanceModal({
             template.channelKind === "whatsapp" &&
             Boolean(readTemplateMetaName(template)) &&
             template.status !== "paused" &&
-            !isMetaTemplateUnavailableStatus(readTemplateMetaStatus(template)),
+            !isMetaTemplateUnavailableStatus(readTemplateMetaStatus(template)) &&
+            // Só os templates DAQUELA fila (tag queueLabel gravada na criação).
+            // Sem fila selecionada, mostra todos (fallback seguro).
+            (!selectedQueue?.name ||
+              readTemplateMetadataString(template, "queueLabel") ===
+                selectedQueue.name),
         )
         .sort(sortIrisTemplatesForSetup),
     [
@@ -220,6 +262,8 @@ export function IrisStartAttendanceModal({
       isMetaTemplateUnavailableStatus,
       readTemplateMetaName,
       readTemplateMetaStatus,
+      readTemplateMetadataString,
+      selectedQueue,
       sortIrisTemplatesForSetup,
     ],
   );
@@ -404,10 +448,13 @@ export function IrisStartAttendanceModal({
           return;
         }
         rows.push({
+          dueDate: installment.dueDate ?? null,
+          enterprise: link.enterprise ?? null,
           id:
             installment.id ??
             `${link.unitCode ?? ""}-${installment.number ?? ""}-${installment.reference ?? ""}`,
           number: installment.number ?? "-",
+          paymentUrl: installment.paymentUrl ?? installment.invoiceUrl ?? null,
           reference: installment.reference ?? "-",
           unitCode: link.unitCode ?? null,
           value: installment.value ?? "-",
@@ -455,6 +502,57 @@ export function IrisStartAttendanceModal({
     (row) =>
       `${row.unitCode ? `${row.unitCode} · ` : ""}${row.number} · ${row.reference}`,
   );
+  // Total (variavel {{valor}}) e empreendimento(s) (variavel {{empreendimento}})
+  // das parcelas vencidas selecionadas — preenchem o template de cobranca.
+  const installmentsTotalValue = selectedInstallmentRows.reduce(
+    (sum, row) => sum + parseBrlNumber(row.value),
+    0,
+  );
+  const installmentsTotalLabel =
+    installmentsTotalValue > 0
+      ? installmentsTotalValue.toLocaleString("pt-BR", {
+          currency: "BRL",
+          style: "currency",
+        })
+      : "";
+  const installmentsEnterpriseLabel = Array.from(
+    new Set(
+      selectedInstallmentRows
+        .map((row) => row.enterprise?.trim())
+        .filter((name): name is string => Boolean(name)),
+    ),
+  ).join(" / ");
+  const installmentsUnitLabel = Array.from(
+    new Set(
+      selectedInstallmentRows
+        .map((row) => row.unitCode?.trim())
+        .filter((code): code is string => Boolean(code)),
+    ),
+  ).join(", ");
+  // Vencimento ({{vencimento}}) e dias de atraso ({{dias_atraso}}) = a parcela
+  // vencida MAIS ANTIGA da seleção (a que puxa a urgência da cobranca).
+  const earliestOverdue = selectedInstallmentRows
+    .map((row) => ({ ms: parseBrDateMs(row.dueDate), row }))
+    .filter(
+      (item): item is { ms: number; row: IrisStartOverdueRow } =>
+        item.ms !== null,
+    )
+    .sort((a, b) => a.ms - b.ms)[0];
+  const installmentsDueLabel = earliestOverdue?.row.dueDate ?? "";
+  const installmentsDaysLate = earliestOverdue
+    ? Math.max(0, Math.floor((Date.now() - earliestOverdue.ms) / 86_400_000))
+    : 0;
+  const installmentsDaysLateLabel =
+    installmentsDaysLate > 0 ? `${installmentsDaysLate} dias` : "";
+  // Saldo em aberto ({{saldo_aberto}}) = total de vencidas do cliente (Apolo);
+  // se o Apolo nao trouxe, cai na soma das parcelas selecionadas.
+  const financialOverdue = entityDetail?.financial?.overdueAmount?.trim() ?? "";
+  const installmentsOpenBalanceLabel = financialOverdue.startsWith("R$")
+    ? financialOverdue
+    : installmentsTotalLabel;
+  // Link do boleto ({{link_boleto}}) = a 1a parcela selecionada com URL de pagamento.
+  const installmentsBoletoLink =
+    selectedInstallmentRows.find((row) => row.paymentUrl)?.paymentUrl ?? "";
   const allInstallmentsSelected =
     overdue.length > 0 && overdue.every((row) => selectedInstallments.has(row.id));
 
@@ -508,12 +606,26 @@ export function IrisStartAttendanceModal({
         firstName: selectedClient.firstName,
         metadata: {
           contextMode,
+          relatedBoletoLink:
+            contextMode === "parcelas" ? installmentsBoletoLink : "",
+          relatedDaysLate:
+            contextMode === "parcelas" ? installmentsDaysLateLabel : "",
+          relatedDueDate:
+            contextMode === "parcelas" ? installmentsDueLabel : "",
+          relatedEnterprise:
+            contextMode === "parcelas" ? installmentsEnterpriseLabel : "",
           relatedInstallments:
             contextMode === "parcelas" ? installmentLabels : [],
+          relatedInstallmentsTotal:
+            contextMode === "parcelas" ? installmentsTotalLabel : "",
+          relatedOpenBalance:
+            contextMode === "parcelas" ? installmentsOpenBalanceLabel : "",
           relatedTickets:
             contextMode === "tickets" && selectedTicket
               ? [selectedTicket.protocol]
               : [],
+          relatedUnit:
+            contextMode === "parcelas" ? installmentsUnitLabel : "",
         },
         phone: selectedClient.phone,
         profileId: selectedProfile.id,
@@ -909,6 +1021,35 @@ export function IrisStartAttendanceModal({
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+                    Fila
+                  </span>
+                  <div className="relative">
+                    <select
+                      value={selectedQueue?.id ?? ""}
+                      onChange={(event) =>
+                        setSelectedQueueId(event.target.value)
+                      }
+                      disabled={!activeQueues.length}
+                      className="h-9 w-full appearance-none rounded-lg border border-slate-200/70 bg-white px-2 pr-7 text-sm text-slate-700 outline-none focus:border-[#101820]/40 disabled:bg-slate-50 disabled:text-slate-400"
+                    >
+                      {activeQueues.length ? (
+                        activeQueues.map((queue) => (
+                          <option key={queue.id} value={queue.id}>
+                            {queue.name}
+                          </option>
+                        ))
+                      ) : (
+                        <option value="">Sem filas</option>
+                      )}
+                    </select>
+                    <ChevronDown
+                      className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+                      aria-hidden="true"
+                    />
+                  </div>
+                </label>
+                <label className="block">
+                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">
                     Assunto
                   </span>
                   <div className="relative">
@@ -936,18 +1077,18 @@ export function IrisStartAttendanceModal({
                     />
                   </div>
                 </label>
-                <div>
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">
-                    Canal
-                  </span>
-                  <div className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200/70 px-2.5 text-sm text-slate-700">
-                    <MessageCircle
-                      className="size-4 text-emerald-600"
-                      aria-hidden="true"
-                    />
-                    WhatsApp · {selectedQueue?.name ?? "Atendimento"}
-                  </div>
-                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+                <MessageCircle
+                  className="size-3.5 text-emerald-600"
+                  aria-hidden="true"
+                />
+                Envia pelo WhatsApp da fila{" "}
+                <span className="font-semibold text-slate-700">
+                  {selectedQueue?.name ?? "Atendimento"}
+                </span>
+                {selectedQueuePhoneNumberId ? null : " · número padrão"}
               </div>
 
               <label className="block">

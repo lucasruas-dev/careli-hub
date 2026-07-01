@@ -5,7 +5,7 @@ export const dynamic = "force-dynamic";
 
 export default function ApoloModulePage() {
   return (
-    <HubShell layoutMode="module">
+    <HubShell chrome="operational" layoutMode="module">
       <ApoloPage />
     </HubShell>
   );

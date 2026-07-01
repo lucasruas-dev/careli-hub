@@ -1,5 +1,10 @@
 import { NextResponse, type NextRequest } from "next/server";
 
+import {
+  completeWithClaude,
+  isClaudeConfigured,
+  resolveClaudeModel,
+} from "@/lib/ai/claude";
 import { collectOperationsDataSources } from "@/lib/operations/data-sources";
 import {
   buildOperationsMonitoringSnapshot,
@@ -32,8 +37,6 @@ type PoAiMessage = {
   role: "assistant" | "user";
 };
 
-const DEFAULT_MODEL = "gpt-5.5";
-const OPENAI_TIMEOUT_MS = 45_000;
 const MAX_CONTEXT_CHARS = 120_000;
 
 const promptTargets = [
@@ -61,11 +64,9 @@ export async function POST(request: NextRequest) {
     return auth.response;
   }
 
-  const apiKey = process.env.OPENAI_API_KEY?.trim();
-
-  if (!apiKey) {
+  if (!isClaudeConfigured()) {
     return NextResponse.json(
-      { error: "Configure OPENAI_API_KEY para ativar o PO AI." },
+      { error: "Configure ANTHROPIC_API_KEY para ativar o PO AI." },
       { status: 503 },
     );
   }
@@ -86,36 +87,48 @@ export async function POST(request: NextRequest) {
     }),
   );
   const codeContext = await loadHubCodeContext(parsedRequest.data.question);
+  const model = resolveClaudeModel("heavy");
 
   try {
-    const answer = await createCopilotAnswer({
-      apiKey,
-      codeContext,
-      messages: parsedRequest.data.messages,
-      model: process.env.HUB_AI_MODEL?.trim() || DEFAULT_MODEL,
-      monitoringSnapshot,
-      operations: operations.data,
-      promptTarget: parsedRequest.data.promptTarget,
-      question: parsedRequest.data.question,
-      structuredOperations: structuredOperations.ok
-        ? structuredOperations.records
-        : [],
-      structuredStatus: structuredOperations.status,
-      userId: auth.userId,
+    const completion = await completeWithClaude({
+      maxTokens: 2_200,
+      messages: [
+        {
+          content: buildCopilotInput({
+            codeContext,
+            messages: parsedRequest.data.messages,
+            monitoringSnapshot,
+            operations: operations.data,
+            promptTarget: parsedRequest.data.promptTarget,
+            question: parsedRequest.data.question,
+            structuredOperations: structuredOperations.ok
+              ? structuredOperations.records
+              : [],
+            structuredStatus: structuredOperations.status,
+          }),
+          role: "user",
+        },
+      ],
+      model,
+      system: buildCopilotInstructions(),
     });
 
+    if (!completion?.text) {
+      throw new Error("O PO AI nao retornou resposta.");
+    }
+
     return NextResponse.json({
-      answer,
+      answer: completion.text,
       codeContext: {
         files: codeContext.files.map((file) => file.path),
         scannedFiles: codeContext.scannedFiles,
       },
-      model: process.env.HUB_AI_MODEL?.trim() || DEFAULT_MODEL,
-      source: "openai",
+      model: completion.model,
+      source: "claude",
     });
   } catch (error) {
     return NextResponse.json(
-      { error: getOpenAiErrorMessage(error) },
+      { error: getPoAiErrorMessage(error) },
       { status: 502 },
     );
   }
@@ -156,85 +169,6 @@ function parseCopilotRequest(input: unknown):
     },
     ok: true,
   };
-}
-
-async function createCopilotAnswer({
-  apiKey,
-  codeContext,
-  messages,
-  model,
-  monitoringSnapshot,
-  operations,
-  promptTarget,
-  question,
-  structuredOperations,
-  structuredStatus,
-  userId,
-}: {
-  apiKey: string;
-  codeContext: HubCodeContext;
-  messages: PoAiMessage[];
-  model: string;
-  monitoringSnapshot: OperationsMonitoringSnapshot;
-  operations: EngineeringOperationsResponse;
-  promptTarget: (typeof promptTargets)[number] | null;
-  question: string;
-  structuredOperations: StructuredEngineeringOperation[];
-  structuredStatus: string;
-  userId: string | null;
-}) {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), OPENAI_TIMEOUT_MS);
-
-  try {
-    const response = await fetch("https://api.openai.com/v1/responses", {
-      body: JSON.stringify({
-        input: [
-          {
-            content: buildCopilotInput({
-              codeContext,
-              messages,
-              monitoringSnapshot,
-              operations,
-              promptTarget,
-              question,
-              structuredOperations,
-              structuredStatus,
-            }),
-            role: "user",
-          },
-        ],
-        instructions: buildCopilotInstructions(),
-        max_output_tokens: 2_200,
-        model,
-        user: userId ?? "local-zeus-admin",
-      }),
-      cache: "no-store",
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
-    });
-    const result = (await response.json().catch(() => null)) as
-      | Record<string, unknown>
-      | null;
-
-    if (!response.ok) {
-      throw new Error(extractOpenAiError(result) || "Falha ao consultar OpenAI.");
-    }
-
-    const answer = extractOutputText(result);
-
-    if (!answer) {
-      throw new Error("OpenAI não retornou resposta para o PO AI.");
-    }
-
-    return answer;
-  } finally {
-    clearTimeout(timeout);
-  }
 }
 
 function buildCopilotInstructions() {
@@ -432,56 +366,7 @@ function parsePoAiMessages(value: unknown): PoAiMessage[] {
     .slice(-10);
 }
 
-function extractOutputText(payload: Record<string, unknown> | null) {
-  if (!payload) {
-    return "";
-  }
-
-  if (typeof payload.output_text === "string") {
-    return payload.output_text.trim();
-  }
-
-  const output = Array.isArray(payload.output) ? payload.output : [];
-  const chunks: string[] = [];
-
-  for (const item of output) {
-    if (!item || typeof item !== "object") {
-      continue;
-    }
-
-    const content = (item as { content?: unknown }).content;
-
-    if (!Array.isArray(content)) {
-      continue;
-    }
-
-    for (const part of content) {
-      if (
-        part &&
-        typeof part === "object" &&
-        typeof (part as { text?: unknown }).text === "string"
-      ) {
-        chunks.push((part as { text: string }).text);
-      }
-    }
-  }
-
-  return chunks.join("\n").trim();
-}
-
-function extractOpenAiError(payload: Record<string, unknown> | null) {
-  const error = payload?.error;
-
-  if (!error || typeof error !== "object") {
-    return "";
-  }
-
-  const message = (error as { message?: unknown }).message;
-
-  return typeof message === "string" ? message : "";
-}
-
-function getOpenAiErrorMessage(error: unknown) {
+function getPoAiErrorMessage(error: unknown) {
   if (error instanceof DOMException && error.name === "AbortError") {
     return "PO AI demorou para responder. Tente novamente em instantes.";
   }

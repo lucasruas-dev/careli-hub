@@ -12,12 +12,14 @@ import { CACA_TOOL_DEFINITIONS } from "./tools";
 // `handoff` (pra executar a transferência de verdade) e `identityVerified`/`c2xClientId`
 // (pra persistir no metadata do ticket entre turnos).
 export type CacaToolContext = {
+  businessHoursOpen: boolean;
   c2xClientId: string | null;
   client: SupabaseClient;
   contactId: string | null;
   customerName: string | null;
   handoff: { reason: string | null; requested: boolean };
   identityVerified: boolean;
+  nextContactLabel: string;
   validationSource: "cpf" | "phone" | null;
 };
 
@@ -42,6 +44,14 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
     {
       definition: requireDefinition("gerar_link_boleto"),
       run: async (input) => gerarLinkBoleto(context, input),
+    },
+    {
+      definition: requireDefinition("consultar_cadastro"),
+      run: async () => consultarCadastro(context),
+    },
+    {
+      definition: requireDefinition("consultar_cadastro_imobiliaria"),
+      run: async (input) => consultarCadastroImobiliaria(context, input),
     },
     {
       definition: requireDefinition("anotar_sobre_cliente"),
@@ -91,10 +101,10 @@ async function validarIdentidade(
     return "Documento não encontrado no nosso cadastro. Não dá pra liberar dado por aqui — transfira para um atendente validar o contrato com segurança.";
   }
 
-  if (!match.hasBuyerProfile || !match.hasUnitPortfolio) {
-    return "Cadastro localizado, mas não consta como comprador com unidade ativa. Transfira para um atendente validar o contrato antes de enviar boleto.";
-  }
-
+  // Antes recusava quem nao fosse comprador-com-unidade. Agora atende TODO perfil
+  // (comprador, imobiliaria, colaborador, prospect) — a identidade segue travada por
+  // CPF/CNPJ + nome. Nao-comprador simplesmente nao tem carteira/parcelas (as tools de
+  // cobranca respondem "sem carteira"), mas o cadastro e o contexto ficam acessiveis.
   const providedName = normalizeName(readString(input.nome_titular));
   const storedName = normalizeName(match.displayName);
 
@@ -112,6 +122,184 @@ async function validarIdentidade(
   context.validationSource = "cpf";
 
   return `Identidade confirmada (${match.displayName}). Agora você pode consultar o financeiro e enviar boleto deste cliente.`;
+}
+
+// Cadastro do cliente PESSOA FÍSICA: só depois de identidade confirmada (mesma trava do
+// financeiro). Lê o dados360 já carregado pelo Hades — não expõe id interno nem inventa campo.
+async function consultarCadastro(context: CacaToolContext) {
+  const guard = ensureVerified(context);
+
+  if (guard) {
+    return guard;
+  }
+
+  const record = await loadClientRecord(context.c2xClientId);
+  const dados = record?.dados360;
+
+  if (!dados) {
+    return "Não consegui carregar o cadastro deste cliente agora. Se precisar, transfira para o time conferir no sistema.";
+  }
+
+  const nome = context.customerName || readString(dados.razaoSocial) || "cliente";
+  const linhas: string[] = [
+    "CADASTRO DO CLIENTE (informe só o que ele perguntar; se um campo estiver vazio, diga que NÃO consta — nunca invente):",
+    `Nome: ${nome}`,
+  ];
+
+  const estadoCivil = readString(dados.estadoCivil);
+
+  if (estadoCivil) {
+    const regime = readString(dados.regimeBens);
+
+    linhas.push(
+      `Estado civil: ${estadoCivil}${regime ? ` (regime de bens: ${regime})` : ""}`,
+    );
+  }
+
+  const nascimento = readString(dados.nascimento);
+
+  if (nascimento) {
+    const idade = readString(dados.idade);
+
+    linhas.push(`Nascimento: ${nascimento}${idade ? ` (${idade})` : ""}`);
+  }
+
+  const naturalidade = readString(dados.naturalidade);
+  const nacionalidade = readString(dados.nacionalidade);
+
+  if (naturalidade || nacionalidade) {
+    linhas.push(
+      `Naturalidade/Nacionalidade: ${[naturalidade, nacionalidade].filter(Boolean).join(" / ")}`,
+    );
+  }
+
+  const profissao = readString(dados.profissao);
+
+  if (profissao) {
+    linhas.push(`Profissão: ${profissao}`);
+  }
+
+  const rg = readString(dados.rg) || readString(dados.documentoIdentidade);
+
+  if (rg) {
+    linhas.push(`RG: ${rg}`);
+  }
+
+  const email = readString(dados.email);
+
+  if (email) {
+    linhas.push(`E-mail no cadastro: ${email}`);
+  }
+
+  const telefone = readString(dados.telefone);
+
+  if (telefone) {
+    linhas.push(`Telefone no cadastro: ${telefone}`);
+  }
+
+  const endereco = formatCadastroEndereco(dados);
+
+  if (endereco) {
+    linhas.push(`Endereço: ${endereco}`);
+  }
+
+  const nomeMae = readString(dados.nomeMae);
+
+  if (nomeMae) {
+    linhas.push(`Nome da mãe: ${nomeMae}`);
+  }
+
+  const conjuge = readString(dados.conjuge);
+
+  if (conjuge) {
+    const conjugeDados = dados.conjugeDados;
+    const extras = conjugeDados
+      ? [
+          readString(conjugeDados.profissao)
+            ? `profissão ${readString(conjugeDados.profissao)}`
+            : null,
+          readString(conjugeDados.nascimento)
+            ? `nascimento ${readString(conjugeDados.nascimento)}`
+            : null,
+        ]
+          .filter(Boolean)
+          .join(", ")
+      : "";
+
+    linhas.push(`Cônjuge: ${conjuge}${extras ? ` (${extras})` : ""}`);
+  }
+
+  return linhas.join("\n");
+}
+
+// Cadastro de IMOBILIÁRIA / pessoa jurídica: regra do Lucas — PJ NÃO precisa validar
+// identidade, basta o CNPJ. Confirma se existe cadastro e devolve os dados da empresa.
+async function consultarCadastroImobiliaria(
+  context: CacaToolContext,
+  input: Record<string, unknown>,
+) {
+  const cnpj = onlyDigits(readString(input.cnpj));
+
+  if (cnpj.length !== 14) {
+    return cnpj.length === 11
+      ? "Isso é um CPF (pessoa física). Dado de pessoa física só depois de confirmar a identidade do titular (validar_identidade) — não use esta ferramenta."
+      : "CNPJ inválido. Peça o CNPJ completo da imobiliária (só os números, 14 dígitos).";
+  }
+
+  const match = await lookupApoloByDocument(context.client, cnpj);
+
+  if (!match) {
+    return "Não localizei nenhum cadastro com esse CNPJ. Confirme o número com a imobiliária; se estiver certo, pode ser que ainda não haja cadastro — nesse caso transfira para o time cadastrar.";
+  }
+
+  const linhas: string[] = [
+    "CADASTRO ENCONTRADO para o CNPJ informado — pode confirmar que a imobiliária TEM cadastro na Careli.",
+    `Razão/Nome: ${match.displayName ?? "não consta"}`,
+  ];
+
+  if (match.profiles.length) {
+    linhas.push(`Perfil no sistema: ${match.profiles.join(", ")}`);
+  }
+
+  // Enriquecimento: se a PJ tiver vínculo C2X, traz razão social/fantasia/contato/endereço.
+  if (match.c2xClientId) {
+    const record = await loadClientRecord(match.c2xClientId);
+    const dados = record?.dados360;
+
+    if (dados) {
+      const razao = readString(dados.razaoSocial);
+      const fantasia = readString(dados.nomeFantasia);
+      const email = readString(dados.email);
+      const telefone = readString(dados.telefone);
+      const endereco = formatCadastroEndereco(dados);
+
+      if (razao) {
+        linhas.push(`Razão social: ${razao}`);
+      }
+
+      if (fantasia) {
+        linhas.push(`Nome fantasia: ${fantasia}`);
+      }
+
+      if (email) {
+        linhas.push(`E-mail no cadastro: ${email}`);
+      }
+
+      if (telefone) {
+        linhas.push(`Telefone no cadastro: ${telefone}`);
+      }
+
+      if (endereco) {
+        linhas.push(`Endereço: ${endereco}`);
+      }
+    }
+  }
+
+  linhas.push(
+    "Informe só o que a imobiliária perguntar. Se pedirem algo que não está aqui, transfira para o time.",
+  );
+
+  return linhas.join("\n");
 }
 
 async function consultarFinanceiro(context: CacaToolContext) {
@@ -231,7 +419,18 @@ function transferirParaHumano(
 
   context.handoff = { reason: motivo, requested: true };
 
-  return "Transferência registrada. Avise o cliente, em uma frase, que você está encaminhando para o nosso time e que em instantes alguém responde.";
+  const hoursGuidance = context.businessHoursOpen
+    ? "O time humano está ATENDENDO agora — pode dizer que um analista da Careli dá continuidade em seguida (sem prometer prazo exato)."
+    : `O time humano NÃO está atendendo agora. NÃO prometa resposta imediata nem diga "em instantes": avise com naturalidade que um analista da Careli retoma ${context.nextContactLabel} e segue a partir daí.`;
+
+  return [
+    "Transferência registrada para um ANALISTA da Careli. Antes de encerrar a sua parte, escreva ao cliente UMA mensagem que DEMONSTRE o atendimento (não genérica):",
+    "1) Diga de forma ESPECÍFICA o que você já identificou sobre o caso (parcela / valor / vencimento / situação real) — use só os dados que você já tem em mãos, NÃO invente.",
+    "2) Explique POR QUE isso foge do que você consegue executar (ex.: o boleto não está emitido ou o link não está disponível pra você).",
+    "3) Deixe claro que vai encaminhar para um ANALISTA da Careli dar continuidade.",
+    hoursGuidance,
+    "Seja calorosa e específica. NUNCA mande algo genérico do tipo 'já encaminhei pro nosso time'. Siga o tom e as regras da sua persona.",
+  ].join("\n");
 }
 
 // ---- helpers ----
@@ -254,6 +453,35 @@ async function loadInstallments(
   const queue = await loadHadesAttendanceClient(c2xClientId);
 
   return (queue?.c2xInstallments ?? []) as CacaInstallment[];
+}
+
+type CacaClientRecord = NonNullable<
+  Awaited<ReturnType<typeof loadHadesAttendanceClient>>
+>;
+
+async function loadClientRecord(
+  c2xClientId: string | null,
+): Promise<CacaClientRecord | null> {
+  if (!c2xClientId) {
+    return null;
+  }
+
+  return (await loadHadesAttendanceClient(c2xClientId)) ?? null;
+}
+
+function formatCadastroEndereco(dados: CacaClientRecord["dados360"]): string {
+  return [
+    readString(dados.endereco),
+    readString(dados.numeroEndereco)
+      ? `nº ${readString(dados.numeroEndereco)}`
+      : "",
+    readString(dados.complementoEndereco),
+    readString(dados.bairro),
+    readString(dados.cidade),
+    readString(dados.cep) ? `CEP ${readString(dados.cep)}` : "",
+  ]
+    .filter(Boolean)
+    .join(", ");
 }
 
 function ensureVerified(context: CacaToolContext): string | null {

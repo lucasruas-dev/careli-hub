@@ -46,7 +46,7 @@ export async function loadIrisData({
   const queuesResult = await supabase
     .from("caredesk_queues")
     .select(
-      "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy",
+      "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata",
     )
     .order("name", { ascending: true });
 
@@ -103,7 +103,7 @@ export async function loadIrisData({
       .order("name", { ascending: true }),
     supabase
       .from("caredesk_channels")
-      .select("id,name,kind,status")
+      .select("id,name,kind,status,external_account_id")
       .order("name", { ascending: true }),
     supabase
       .from("caredesk_broadcasts")
@@ -174,6 +174,10 @@ export async function loadIrisData({
     id: channel.id,
     kind: channel.kind,
     name: channel.name,
+    phoneNumberId:
+      typeof channel.external_account_id === "string"
+        ? channel.external_account_id
+        : null,
     status: channel.status,
   }));
   const templates = (templatesResult.data ?? [])
@@ -341,6 +345,8 @@ export async function withIrisTimeout<T>(
 export function mapQueueRow(row: any): IrisQueueConfig {
   return {
     assignmentStrategy: row.assignment_strategy ?? "manual",
+    channelId:
+      typeof row.metadata?.channelId === "string" ? row.metadata.channelId : null,
     color: row.color ?? "#A07C3B",
     defaultPriority: normalizePriority(row.default_priority),
     id: row.id,

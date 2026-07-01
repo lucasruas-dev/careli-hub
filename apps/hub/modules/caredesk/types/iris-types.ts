@@ -118,6 +118,9 @@ export type IrisTicket = {
 
 export type IrisQueueConfig = {
   assignmentStrategy: string;
+  // Canal WhatsApp (número) ao qual a fila está vinculada. Define de qual número
+  // o atendimento sai e trava transferência entre filas de números diferentes.
+  channelId: string | null;
   color: string;
   defaultPriority: IrisPriority;
   id: string;
@@ -167,6 +170,9 @@ export type IrisChannel = {
   id: string;
   kind: string;
   name: string;
+  // phone_number_id (external_account_id) do canal WhatsApp — usado pra amarrar
+  // a fila ao número e filtrar os templates daquele número.
+  phoneNumberId: string | null;
   status: string;
 };
 

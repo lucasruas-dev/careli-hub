@@ -32,6 +32,180 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-01-agentes-para-claude",
+    deployedAt: "2026-07-01T11:30:00-03:00",
+    modules: [
+      {
+        module: "Hub",
+        screens: [
+          {
+            items: [
+              "Os assistentes de IA do hub (Athena de operação, copiloto do Zeus, ata e pauta do Chronos, análise de evidências e o atendimento) agora rodam no Claude (Opus), com respostas mais precisas. A transcrição de áudio segue na OpenAI.",
+              "A CACÁ e a Athena agora leem anexos de planilha (xlsx), Word (docx), csv e texto — além de imagem e PDF que já liam.",
+              "A Athena do atendimento virou um agente que busca sozinha os dados do cliente no hub (perfil, carteira, histórico de tickets) — respostas mais completas e conscientes do perfil (comprador, imobiliária, colaborador, prospect).",
+            ],
+            screen: "Agentes de IA",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-dliu9omzo",
+    technical: {
+      done: "Migração OpenAI (gpt-5.5) → Claude de 6 agentes de texto. Novo helper lib/ai/claude.ts completeWithClaude (system+historico->texto, normaliza alternancia e 1o-user). Migrados: /api/ai/chat (Athena hub-wide, Sonnet default), /api/squadops/copilot (Opus), /api/iris/athena (Opus + PDF do contrato como document block), /api/iris/attendant (Caca, Sonnet), /api/chronos/meetings/agent (ata+agenda Opus via completeWithClaude + parseChronos*Json existente; transcricao continua OpenAI), /api/hub/it-tickets/evidence-analysis (Opus, imagens como image block base64; transcricao continua OpenAI). Prompts revisados/melhorados por agente. source label -> claude; HubItTicketEvidenceAnalysis.source ganhou 'claude'. Audio (whisper-1/gpt-4o-transcribe*) permanece OpenAI. CACA-Claude (caca/agent.ts) ja existia atras de CACA_ENGINE=claude — flip da flag e env, a parte. v1.18.1 -> v1.19.0.",
+      motivation:
+        "Politica do Lucas: todo agente do hub em Claude (Opus prioridade), OpenAI so de fallback pro que o Claude nao faz (audio). Migracao + melhoria de prompt/tom de uma vez.",
+    },
+    title: "Agentes de IA do hub migrados para Claude (Opus)",
+    type: "melhoria",
+    version: "v1.19.0",
+  },
+  {
+    buildTag: "2026-07-01-apolo-chrome-fix-iris-unread-badge",
+    deployedAt: "2026-07-01T10:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A barra do topo (abas do Panteon) voltou a aparecer no Apolo.",
+            ],
+            screen: "CRM 360",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Os cards do Board agora mostram um selo verde com a quantidade de mensagens não lidas.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-9a39b554o",
+    technical: {
+      done: 'Apolo: apolo/page.tsx passou a usar <HubShell chrome="operational" layoutMode="module"> (era só layoutMode). Sem chrome operacional o shell não renderiza o PanteonModuleTabsBar nem dá altura fixa à ContentArea (isOperationalChrome), então o container h-[calc(100dvh-3.25rem)] do ApoloPage ficava sem encaixe e cobria o topo (pior no PWA, onde 100dvh conta a janela toda); agora consistente com Iris/Hades/Chronos/Atlas. Iris: badge de não lidas no BoardCard (iris-board-kanban) — selo verde (bg-emerald-500, igual à fila de atendimento) com ticket.unreadCount (>9 vira "9+"), só quando >0; unreadCount já vinha de computeUnreadCount e é preservado no update otimista. v1.18.0 -> v1.18.1.',
+      motivation:
+        "Correção da regressão do topo do Apolo (barra fixa) + pedido do Lucas: marcador de mensagens não lidas nos cards do Board da Iris.",
+    },
+    title: "Apolo: topo de volta + Iris: contador de não lidas no Board",
+    type: "correcao",
+    version: "v1.18.1",
+  },
+  {
+    buildTag: "2026-07-01-iris-athena-templates-cobranca-vars",
+    deployedAt: "2026-07-01T04:00:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Nos cards da fila e do board, agora aparece o protocolo (AT-xxxx) acima do nome do contato.",
+              "Criar template ficou mais simples: você escolhe a FILA (não mais o assunto) — o número de envio é preenchido automaticamente pela fila. O assunto passa a ser escolhido só na hora de enviar.",
+              "Ao abrir um atendimento, os templates aparecem filtrados pela fila escolhida — só os daquela fila.",
+              "Nova Athena no Setup → Templates: descreva o template em português e ela monta pronto — categoria certa, corpo, variáveis, botões e sugestão de anexo — e já preenche o formulário pra você.",
+              "Na cobrança, os templates agora preenchem sozinhos empreendimento, valor total, vencimento, unidade, saldo em aberto, dias de atraso e link do boleto das parcelas vencidas.",
+            ],
+            screen: "Atendimento / Configurações · Templates",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A barra de indicadores do topo (Relacionamentos, Compradores, Unidades, Qualidade) agora fica fixa ao rolar a lista.",
+            ],
+            screen: "CRM 360",
+          },
+        ],
+      },
+      {
+        module: "Hub",
+        screens: [
+          {
+            items: [
+              "As telas de Setup (configuração) agora só aparecem para perfil admin.",
+            ],
+            screen: "Setup",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-8r1qrk03h",
+    technical: {
+      done: "Iris: (1) protocolo nos cards (iris-board-kanban + iris-ticket-queue: ticket.protocol acima do nome). (2) Template redesign — criar template sem Assunto (send-time) e com seletor de FILA (iris-setup-view @ts-nocheck): fila seta queueLabel + phoneNumberId (fila.channelId→data.channels[].phoneNumberId); guard 'Fila obrigatoria'; +channels no Pick do prop data. Modal iris-start-attendance-modal ganhou seletor de Fila e filtra templates por FILA (readTemplateMetadataString(t,'queueLabel')===selectedQueue.name); expus phoneNumberId no IrisChannel+iris-data-client. Removidos guards templateSubjectMissing (sync+create) + aviso/disabled. (3) Setup só admin — hub-shell visibleHubModules+canOpenShellModule (id==='setup'→role admin); módulo já tinha page-gate getSetupAccess; aba Setup da Iris (IrisPage @ts-nocheck: filtro navigationItems + render guard canManageHubSetup). Apolo: barra fixa sem perder sidebar — h-[calc(100dvh-3.25rem)] no container do ApoloPage (chrome padrão mantém o rail; layout interno já fixo), scoped (não mexe hermes/setup). HOTFIX: o seletor de Fila do IrisTemplateSetupPanel usava data.queues/data.channels (ReferenceError 'data is not defined' → tela branca no /iris; @ts-nocheck não pega): trocado por props queues/channels (channels adicionado às props do painel + IrisChannel importado). +Wiring empreendimento/valor: iris-start-attendance-modal soma o valor das parcelas vencidas selecionadas (parseBrlNumber) e junta empreendimento(s), envia em metadata.relatedInstallmentsTotal/relatedEnterprise; tickets/route lê e preenche valuesByKey.empreendimento/valor (antes fixos em '-'). +Variáveis de cobrança completas: modal captura dueDate+paymentUrl nas overdue rows, computa unidade (unitCodes únicos), vencimento+dias_atraso (parcela vencida mais antiga via parseBrDateMs), saldo_aberto (financial.overdueAmount|soma) e link_boleto (1a paymentUrl); envia em metadata; route preenche valuesByKey.unidade/vencimento/dias_atraso/saldo_aberto/link+link_boleto. Catálogo IRIS_META_TEMPLATE_VARIABLES: placeholders únicos (fim do {{4}}×3), readiness 'Cobrança', +saldo_aberto/dias_atraso, link→link_boleto. AGENTE ATHENA (autoria de templates, copiloto interno): lib/iris/athena/template-author.ts (Claude Opus via getAnthropicClient, tool emitir_template com schema estruturado, system prompt=catálogo+regras Meta+domínio Careli) + rota /api/iris/athena/templates (auth admin) + painel no iris-setup-view (descreve→gera→pré-preenche templateForm). v1.16.0/v1.17.0(quebrado) -> v1.18.0.",
+      motivation:
+        "Ajustes de UI pedidos pelo Lucas: separar criação do template (fila) do envio, protocolo nos cards, Setup só admin, barra do Apolo fixa. + Cobrança preenche os dados do cliente sozinha e a Athena passa a redigir templates com IA (Claude Opus). Fix da tela branca do /iris.",
+    },
+    title: "Iris: Athena monta templates com IA + cobrança preenche os dados sozinha (e fix da tela branca)",
+    type: "novidade",
+    version: "v1.18.0",
+  },
+  {
+    buildTag: "2026-07-01-iris-fila-vinculada-ao-numero",
+    deployedAt: "2026-07-01T00:20:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Cada FILA agora fica vinculada a um número de WhatsApp: ao criar/editar uma fila, você escolhe o número (Atendimento/4143, Gurgel ou Jurídico). Campo obrigatório.",
+              "Ao abrir um atendimento, ele já sai pelo número da fila — Jurídico manda pelo número do Jurídico, Gurgel pelo da Gurgel, e o restante pelo 4143. Sem escolher número na mão.",
+              "Transferência ficou segura: só dá para transferir entre filas do MESMO número. Como a conversa (janela de 24h) é por número, não é possível passar um atendimento do 4143 para o Jurídico/Gurgel — para isso, abre-se um atendimento novo por aquele número.",
+            ],
+            screen: "Configurações · Filas / Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-gew210p4u",
+    technical: {
+      done: "Iris multi-número: (1) vínculo fila→número em caredesk_queues.metadata.channelId (sem migration) — IrisQueueConfig +channelId, iris-data-client select+mapQueueRow, IrisPage createQueueForm/queueToForm/saveIrisQueue (grava metadata.channelId), iris-setup-view seletor 'Número (WhatsApp)' obrigatório (label sem prefixo WhatsApp). (2) tickets/route.ts: getChannelById+getQueueChannel resolvem o canal por queue.metadata.channelId → legado config.defaultQueueSlug → padrão 4143; abertura de atendimento e trava de transferência usam getQueueChannel/getQueuePhoneNumberId(queue); +metadata nos selects de fila. Corrige também o número de envio após a migração do 4143 (env META_WHATSAPP_PHONE_NUMBER_ID apontava pro id morto). (3) trava: em action=transfer, compara o número da fila destino com source_context.phoneNumberId do ticket → 409 se diferente. (4) rota admin /api/iris/meta/register-number (POST {phoneNumberId,pin}) pra ativar número na Cloud API. As 7 filas migradas: atendimento/suporte/financeiro/comunicados/cobranca→4143, gurgel→Gurgel, juridico→9072. v1.15.3 -> v1.16.0.",
+      motivation:
+        "Migração dos números (Gurgel + 4143) para a WABA própria Careli-Panteon (saindo da Elife/Smarters). Lucas quer tudo separado por número: cada fila vinculada ao seu número, atendimento saindo pelo número certo, e transferência travada entre números diferentes (a janela de 24h do WhatsApp é por número).",
+    },
+    title: "Iris: filas vinculadas ao número (multi-número separado + trava de transferência)",
+    type: "novidade",
+    version: "v1.16.0",
+  },
+  {
+    buildTag: "2026-06-30-caca-cadastro-transferencia",
+    deployedAt: "2026-06-30T20:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Cacá agora responde dúvidas de CADASTRO do cliente (estado civil, profissão, endereço, cônjuge, RG etc.) — sempre depois de confirmar a identidade do titular.",
+              "Imobiliárias/empresas: a Cacá confirma se a empresa TEM cadastro na Careli e informa os dados só com o CNPJ (pessoa jurídica não precisa de validação de identidade).",
+              "Ao transferir para uma pessoa, a Cacá agora DEMONSTRA que analisou o caso (diz a parcela/valor/vencimento que identificou e por que precisa do time), em vez de mandar um genérico 'já encaminhei'.",
+              "Correção: ao informar a próxima parcela, a data agora sai sempre certa (antes, em alguns casos, apontava uma parcela mais distante como se fosse a próxima).",
+            ],
+            screen: "Atendimento (Cacá)",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-alyca001n",
+    technical: {
+      done: "Cacá (motor Claude): 2 ferramentas novas de cadastro — consultar_cadastro (PF, gated por ensureVerified, lê loadHadesAttendanceClient().dados360: estado civil/regime, nascimento, naturalidade/nacionalidade, profissão, RG, e-mail/telefone do cadastro, endereço completo, nome da mãe, cônjuge+conjugeDados) e consultar_cadastro_imobiliaria (PJ, NÃO gated — regra Lucas: PJ só precisa do CNPJ; lookupApoloByDocument 14díg -> confirma existência + displayName/profiles + enriquece com dados360 se houver c2xClientId; rejeita 11díg=CPF pra não vazar PF). persona.ts ganhou a seção 'Dados cadastrais' (como acessa cada dado, regra PF-confirma/PJ-só-CNPJ, e que NÃO altera cadastro -> transfere). + Correção 1: transferirParaHumano reescrito pra DEMONSTRAR a análise (parcela/valor/motivo específicos, nunca genérico) com guidance dentro/fora do horário (CacaToolContext.businessHoursOpen/nextContactLabel, agent.ts calcula businessHoursForNow antes do toolContext). + Fix do sort da próxima parcela por dueDateInput (ISO) em vez de dueDate (BR DD/MM/AAAA). Helpers loadClientRecord/formatCadastroEndereco, tipo CacaClientRecord. v1.15.2 -> v1.15.3.",
+      motivation:
+        "Lucas pediu que a Cacá tire dúvidas cadastrais usando o banco C2X (com a regra de identidade: PF confirma, PJ só CNPJ — caso AT-000063 da imobiliária Fr Freitas) e que a transferência demonstre a análise em vez de soar genérica. Lote único de melhorias da Cacá.",
+    },
+    title: "Iris: Cacá tira dúvidas de cadastro (cliente e imobiliária) e transfere demonstrando análise",
+    type: "melhoria",
+    version: "v1.15.3",
+  },
+  {
     buildTag: "2026-06-30-caca-le-pdf-imagem-claude",
     deployedAt: "2026-06-30T19:30:00-03:00",
     modules: [
