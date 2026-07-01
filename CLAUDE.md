@@ -34,19 +34,20 @@ NADA de operação sensível sem **autorização explícita do Lucas, a cada vez
 - Supabase · banco · migration · env · secret · token · domínio
 
 **E sempre:**
-- **NUNCA mover `ops.c2x.app.br`** — o projeto Vercel hospeda `c2x.app.br` **E** `ops.c2x.app.br`; só mexer em `c2x.app.br`.
+- **`ops.c2x.app.br` está sendo DESATIVADO (1/jul, decisão do Lucas)** — não usamos mais o OPS em domínio próprio; o domínio está sendo removido do projeto Vercel, que passa a servir só `c2x.app.br`. (Antes a regra era "nunca mover ops.c2x" porque os dois dividiam o mesmo projeto e um deploy reapontava os dois — foi o que travou o git automático.)
 - **NUNCA expor** chaves/tokens/senhas em código, log, commit ou mensagem.
 - **Legado C2X = READ-ONLY** sempre; credenciais do legado não são persistidas nem ecoadas.
 - **Consciência de custo** — houve incidente de fatura Vercel alta por polling do Hermes. Não aumentar polling; preferir realtime/broadcast.
 - Preview/build seguro = `--skip-domain` (NÃO vai ao ar). Go-live = `alias … c2x.app.br` (só com OK explícito).
 
-## Padrão de deploy (Vercel)
-1. **Typecheck:** `npm --prefix apps/hub run check-types` (precisa sair limpo).
-2. **Build preview (seguro):** `npx vercel deploy --prod --skip-domain --yes --scope lucasruas-devs-projects`
-   (env `VERCEL_ORG_ID=team_0AsY43vvHN2fwEkcN8u5LKXX`, `VERCEL_PROJECT_ID=prj_7pgq969nAKwdNKSY3YoMFlxU6qdK`). Gera URL `…vercel.app` (NÃO no ar).
-3. **Lucas testa o preview.**
-4. **Go-live (só com autorização explícita):** `npx vercel alias set <url> c2x.app.br --scope lucasruas-devs-projects`.
-5. **Verificar:** `c2x.app.br` → 200; `ops.c2x.app.br` → 307 (intocado).
+## Padrão de deploy (Vercel) — GIT AUTOMÁTICO (desde 1/jul)
+A integração Vercel↔GitHub está **LIGADA**. **Branch de produção = `main`**: todo push na `main` faz **deploy de produção em `c2x.app.br` automaticamente**; branches de feature geram **preview automático**.
+- ⚠️ **PUSH na `main` = DEPLOY EM PROD = operação sensível → exige OK explícito do Lucas a cada vez.** Trabalhe e commite em branch de feature à vontade; só suba pra `main` com autorização.
+1. **Typecheck** antes de qualquer push: `npm --prefix apps/hub run check-types` (limpo).
+2. **Preview:** push da branch de feature (deploy preview automático) — ou `npx vercel deploy --prod --skip-domain --yes --archive=tgz --scope lucasruas-devs-projects` (env `VERCEL_ORG_ID=team_0AsY43vvHN2fwEkcN8u5LKXX`, `VERCEL_PROJECT_ID=prj_7pgq969nAKwdNKSY3YoMFlxU6qdK`; NÃO vai ao ar).
+3. **Lucas valida.**
+4. **Go-live (com OK explícito):** `git push origin main` → deploy automático em `c2x.app.br`.
+5. **Verificar:** `c2x.app.br` → 200.
 6. **Anotar o rollback** (deployment anterior) e registrar no diário.
 - ✅ Hooks de commit: **resilientes e versionados** em `scripts/git-hooks/` (ativar com `pwsh scripts/setup-git-hooks.ps1` → seta `core.hooksPath`). Commit e push liberados. O runner `scripts/panteon-hook-runner.ps1` segue **ausente** (perdido ~2026-05-23), então os hooks são no-op seguro — sem validação automática até recriá-lo.
 
