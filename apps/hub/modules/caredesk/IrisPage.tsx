@@ -120,6 +120,7 @@ import {
   enrichTicketsWithCrm360,
   ensureOperatorIdentity,
   loadIrisData,
+  loadTicketMessages,
   mapMessageRow,
   mapQueueRow,
   mapTicketProfileRow,
@@ -866,6 +867,69 @@ export function IrisPage({
     );
   }, [irisData.tickets, selectedTicketId]);
 
+  // Historico COMPLETO do ticket aberto, buscado sob demanda por ticket_id. A carga em
+  // massa tem teto de 1000 msgs por workspace (PostgREST); aqui a conversa aberta nunca
+  // trunca, qualquer que seja o volume. No render, mesclamos com as mensagens ao vivo do
+  // snapshot (novas/otimistas/editadas), entao continua atualizando em tempo real.
+  const [activeThread, setActiveThread] = useState<{
+    messages: IrisMessage[];
+    ticketId: string;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!loadFromSupabase || !selectedTicketId) {
+      setActiveThread(null);
+      return;
+    }
+
+    let active = true;
+
+    void loadTicketMessages(selectedTicketId)
+      .then((messages) => {
+        if (active) {
+          setActiveThread({ messages, ticketId: selectedTicketId });
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setActiveThread(null);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [loadFromSupabase, selectedTicketId]);
+
+  const selectedTicketForView = useMemo(() => {
+    if (
+      !selectedTicket ||
+      !activeThread ||
+      activeThread.ticketId !== selectedTicket.id ||
+      activeThread.messages.length === 0
+    ) {
+      return selectedTicket;
+    }
+
+    // Uniao por id: base = historico completo (activeThread); as mensagens ao vivo do
+    // snapshot sobrescrevem por id (novas/otimistas/editadas). Ordena ascendente.
+    const byId = new Map<string, IrisMessage>();
+    for (const message of activeThread.messages) {
+      byId.set(message.id, message);
+    }
+    for (const message of selectedTicket.messages) {
+      byId.set(message.id, message);
+    }
+
+    const merged = Array.from(byId.values()).sort(
+      (first, second) =>
+        new Date(first.createdAt ?? 0).getTime() -
+        new Date(second.createdAt ?? 0).getTime(),
+    );
+
+    return { ...selectedTicket, messages: merged };
+  }, [activeThread, selectedTicket]);
+
   // Reabre a conversa do protocolo (deep-link): "Voltar ao atendimento" do Hades
   // e o clique na notificacao da central. Rastreia o ultimo protocolo tratado pra
   // suportar abrir notificacoes diferentes sem remontar a tela.
@@ -1100,7 +1164,7 @@ export function IrisPage({
             <AttendanceView
               cobrancaMode={cobrancaMode}
               renderCobrancaProposal={renderCobrancaProposal}
-              ticket={selectedTicket}
+              ticket={selectedTicketForView}
               tickets={irisData.tickets}
               selectedTicketId={selectedTicket?.id ?? selectedTicketId}
               onSelectTicket={setSelectedTicketId}
@@ -1182,7 +1246,7 @@ export function IrisPage({
             <AttendanceView
               cobrancaMode={cobrancaMode}
               renderCobrancaProposal={renderCobrancaProposal}
-              ticket={selectedTicket}
+              ticket={selectedTicketForView}
               tickets={irisData.tickets}
               selectedTicketId={selectedTicket?.id ?? selectedTicketId}
               onSelectTicket={setSelectedTicketId}

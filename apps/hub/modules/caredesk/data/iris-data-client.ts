@@ -855,6 +855,36 @@ function groupMessagesByTicket(rows: any[]) {
   return groups;
 }
 
+// Historico COMPLETO de UM ticket, buscado sob demanda ao abrir a conversa. A carga em
+// massa (loadIrisData) tem o teto de 1000 linhas do PostgREST por WORKSPACE — aqui
+// filtramos por um unico ticket_id, entao o limite alto e so uma guarda; um ticket
+// isolado nao chega perto disso. No render, o resultado e mesclado (uniao por id) com as
+// mensagens ao vivo do snapshot, para nenhum ticket (novo ou antigo) truncar nunca.
+export async function loadTicketMessages(
+  ticketId: string,
+): Promise<IrisMessage[]> {
+  const supabase = getHubSupabaseClient();
+
+  if (!supabase || !ticketId) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("caredesk_messages")
+    .select(
+      "id,ticket_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
+    )
+    .eq("ticket_id", ticketId)
+    .order("created_at", { ascending: true })
+    .limit(2000);
+
+  if (error || !data) {
+    return [];
+  }
+
+  return data.map((row) => mapMessageRow(row));
+}
+
 export function buildIrisSnapshot(
   data: IrisData,
   onlineOperators = 0,
