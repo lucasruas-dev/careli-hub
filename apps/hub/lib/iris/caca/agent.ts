@@ -16,7 +16,11 @@ import {
 } from "@/lib/iris/caca-agent";
 
 import { readClientNotes } from "./client-memory";
-import { buildCacaTools, type CacaToolContext } from "./executors";
+import {
+  buildCacaTools,
+  describeApoloProfile,
+  type CacaToolContext,
+} from "./executors";
 import { buildCacaSystemPrompt } from "./persona";
 
 const HISTORY_LIMIT = 14;
@@ -60,12 +64,21 @@ export async function runCacaClaudeTurn({
     state.apoloValidationSource === "phone"
       ? state.apoloValidationSource
       : null;
+  let customerProfileLabel: string | null = null;
 
   // Regra do Lucas: se o telefone do WhatsApp bate com o telefone do cadastro (comprador com
   // unidade), a identidade está confirmada — pode consultar e enviar boleto SEM pedir CPF.
   if (!identityVerified) {
     try {
       const byPhone = await lookupApoloByPhone(client, contact);
+
+      // Captura o perfil pelo telefone mesmo quando NÃO é comprador — assim a Cacá já
+      // entende com quem fala (colaborador, parceiro, prospect) e não trata a ausência
+      // de carteira como erro.
+      if (byPhone) {
+        customerProfileLabel =
+          describeApoloProfile(byPhone.profiles) ?? customerProfileLabel;
+      }
 
       if (
         byPhone?.hasBuyerProfile &&
@@ -89,6 +102,7 @@ export async function runCacaClaudeTurn({
     client,
     contactId: contact.id ?? null,
     customerName,
+    customerProfileLabel,
     handoff: { reason: null, requested: false },
     identityVerified,
     nextContactLabel: businessHours.nextContactLabel,
@@ -100,6 +114,7 @@ export async function runCacaClaudeTurn({
     businessHoursOpen: businessHours.open,
     clientNotes: clientNotes.map((entry) => entry.note),
     customerName: toolContext.customerName ?? undefined,
+    customerProfileLabel: toolContext.customerProfileLabel,
     greeting: greetingForNow(),
     identityVerified,
     nextContactLabel: businessHours.nextContactLabel,

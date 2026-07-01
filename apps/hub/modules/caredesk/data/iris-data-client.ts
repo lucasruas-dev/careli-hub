@@ -150,7 +150,13 @@ export async function loadIrisData({
               "id,ticket_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
             )
             .in("ticket_id", ticketIds)
-            .order("created_at", { ascending: true })
+            // Sem .limit explicito o PostgREST corta em 1000 linhas; com ordem
+            // ASCENDENTE isso derrubava as mensagens MAIS NOVAS (tickets recentes
+            // ficavam "sem mensagens" depois que o workspace passou de 1000 msgs).
+            // Buscamos as 1000 MAIS NOVAS (desc) e o groupMessagesByTicket reordena
+            // ascendente por ticket para o resto do codigo (ultima msg, nao-lidas).
+            .order("created_at", { ascending: false })
+            .limit(1000)
         : Promise.resolve({ data: [], error: null }),
       assignedUserIds.length
         ? supabase
@@ -824,7 +830,18 @@ export function ensureOperatorIdentity(
 function groupMessagesByTicket(rows: any[]) {
   const groups = new Map<string, IrisMessage[]>();
 
-  rows.forEach((row) => {
+  // Reordena ASCENDENTE (mais antiga -> mais nova) independentemente da ordem que veio
+  // do banco, porque o resto do fluxo assume essa ordem (ultima mensagem, contagem de
+  // nao-lidas e a thread da conversa). A busca vem desc (1000 mais novas) por causa do
+  // teto de linhas do PostgREST.
+  const ascending = [...rows].sort((a, b) => {
+    const aTime = new Date(a?.created_at ?? 0).getTime();
+    const bTime = new Date(b?.created_at ?? 0).getTime();
+
+    return aTime - bTime;
+  });
+
+  ascending.forEach((row) => {
     const ticketId = row.ticket_id;
     if (!ticketId) {
       return;

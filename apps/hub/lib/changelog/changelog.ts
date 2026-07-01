@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-01-iris-mensagens-e-perfil-caca",
+    deployedAt: "2026-07-01T16:10:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              'As conversas voltaram a aparecer no atendimento: tickets recentes mostravam "Sem mensagens registradas" mesmo com conversa. O sistema carregava as mensagens mais antigas e cortava as novas depois que a central passou de mil mensagens — corrigido.',
+              "A Cacá agora entende o PERFIL de quem fala: se é colaborador, parceiro ou prospect (sem carteira de financiamento), ela não trata a ausência de parcelas/cadastro como erro do sistema — contextualiza pelo perfil da pessoa.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-ctf8d2sup",
+    technical: {
+      done: "Bug de exibicao no cockpit: modules/caredesk/data/iris-data-client.ts carregava caredesk_messages com .order(created_at asc) SEM .limit explicito; o teto de 1000 linhas do PostgREST devolvia as 1000 MAIS ANTIGAS quando o workspace passou de 1000 msgs (total=1029, 1023 antes do ticket ativo), deixando tickets recentes 'sem mensagens'. Fix: buscar as 1000 MAIS NOVAS (desc) + .limit(1000) e reordenar ascendente por ticket em groupMessagesByTicket (preserva ultima-msg, nao-lidas e a thread). Consciencia de perfil da Cacá (motor Claude): CacaToolContext.customerProfileLabel + describeApoloProfile(profiles), setado na verificacao por telefone (agent.ts) e por CPF (validar_identidade); persona.ts ganhou a secao 'Entenda o PERFIL'; consultar_cadastro (dados360 nulo) e consultar_financeiro (tudo vazio) passam a explicar que e ESPERADO p/ nao-comprador, nao erro/instabilidade. v1.20.0 -> v1.20.1.",
+      motivation:
+        "Lucas, em teste real, viu a conversa da Cacá sumida do cockpit da Iris (mensagens no banco, nao exibidas) e a Cacá dizendo 'instabilidade' quando, por ele ser colaborador (sem carteira), simplesmente nao ha financeiro. Ela precisa entender o perfil de quem atende.",
+    },
+    title: "Iris: conversas reaparecem no atendimento + Cacá entende o perfil do contato",
+    type: "correcao",
+    version: "v1.20.1",
+  },
+  {
     buildTag: "2026-07-01-aviso-nova-versao",
     deployedAt: "2026-07-01T15:40:00-03:00",
     modules: [

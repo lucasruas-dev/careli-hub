@@ -17,11 +17,41 @@ export type CacaToolContext = {
   client: SupabaseClient;
   contactId: string | null;
   customerName: string | null;
+  // Perfil do contato no Apolo (comprador, colaborador, imobiliaria, prospect...) para a
+  // Caca entender COM QUEM fala e nao tratar ausencia de carteira como erro. null = desconhecido.
+  customerProfileLabel: string | null;
   handoff: { reason: string | null; requested: boolean };
   identityVerified: boolean;
   nextContactLabel: string;
   validationSource: "cpf" | "phone" | null;
 };
+
+// Traduz os perfis crus do Apolo (usuario/colaborador/imobiliaria/...) num rotulo curto e
+// humano — e sinaliza quem NAO tem carteira, pra Caca contextualizar em vez de dizer que o
+// sistema falhou. Exportado porque o agent.ts tambem usa na verificacao por telefone.
+export function describeApoloProfile(
+  profiles: readonly string[] | null | undefined,
+): string | null {
+  const set = new Set((profiles ?? []).map((profile) => profile.toLowerCase()));
+
+  if (set.has("usuario")) {
+    return "comprador (tem carteira/parcelas)";
+  }
+  if (set.has("imobiliaria") || set.has("corretor")) {
+    return "imobiliária/parceiro (sem carteira própria)";
+  }
+  if (set.has("colaborador") || set.has("funcionario")) {
+    return "colaborador da Careli (sem carteira)";
+  }
+  if (set.has("fornecedor")) {
+    return "fornecedor (sem carteira)";
+  }
+  if (set.has("prospect") || set.has("lead")) {
+    return "prospect — ainda não comprou (sem carteira)";
+  }
+
+  return null;
+}
 
 const DEFINITION_BY_NAME = new Map(
   CACA_TOOL_DEFINITIONS.map((definition) => [definition.name, definition]),
@@ -120,8 +150,14 @@ async function validarIdentidade(
   context.customerName = match.displayName;
   context.identityVerified = true;
   context.validationSource = "cpf";
+  context.customerProfileLabel =
+    describeApoloProfile(match.profiles) ?? context.customerProfileLabel;
 
-  return `Identidade confirmada (${match.displayName}). Agora você pode consultar o financeiro e enviar boleto deste cliente.`;
+  const perfilNota = context.customerProfileLabel
+    ? ` Perfil deste contato: ${context.customerProfileLabel}. Se o perfil não tem carteira, é normal não haver parcelas/boleto — não trate como erro nem ofereça cobrança.`
+    : "";
+
+  return `Identidade confirmada (${match.displayName}). Agora você pode consultar o cadastro e o financeiro deste cliente.${perfilNota}`;
 }
 
 // Cadastro do cliente PESSOA FÍSICA: só depois de identidade confirmada (mesma trava do
@@ -137,7 +173,16 @@ async function consultarCadastro(context: CacaToolContext) {
   const dados = record?.dados360;
 
   if (!dados) {
-    return "Não consegui carregar o cadastro deste cliente agora. Se precisar, transfira para o time conferir no sistema.";
+    const perfil = context.customerProfileLabel;
+
+    return [
+      "Não há ficha de cadastro detalhada vinculada a este contato no módulo de carteira/cobrança.",
+      perfil ? `Perfil deste contato: ${perfil}.` : "",
+      "Isso é ESPERADO quando a pessoa NÃO é um comprador com carteira ativa (ex.: colaborador, imobiliária/parceiro, prospect) — NÃO é erro nem instabilidade do sistema, e você NÃO deve dizer que o sistema falhou.",
+      "Explique com naturalidade pelo perfil da pessoa. Se ela precisar mesmo de algo de cadastro/comercial, confirme o que é e encaminhe para o time certo.",
+    ]
+      .filter(Boolean)
+      .join(" ");
   }
 
   const nome = context.customerName || readString(dados.razaoSocial) || "cliente";
@@ -340,6 +385,14 @@ async function consultarFinanceiro(context: CacaToolContext) {
       : "Sem próxima parcela a vencer registrada.",
   );
   linhas.push(`Parcelas já liquidadas: ${liquidadas.length}.`);
+
+  if (!vencidas.length && !aVencer.length && !liquidadas.length) {
+    linhas.push(
+      context.customerProfileLabel
+        ? `OBSERVAÇÃO: nada consta porque este contato (${context.customerProfileLabel}) provavelmente não tem carteira de financiamento — é ESPERADO, NÃO é erro nem instabilidade. Não diga que o sistema falhou; contextualize pelo perfil.`
+        : "OBSERVAÇÃO: se nada consta, pode ser que este contato não tenha carteira (ex.: não é comprador) — é ESPERADO, NÃO é erro/instabilidade. Contextualize pelo perfil, não diga que o sistema falhou.",
+    );
+  }
 
   return linhas.join("\n");
 }
