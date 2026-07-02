@@ -469,6 +469,36 @@ export async function syncApoloIncrementalFromC2x(): Promise<SyncResult> {
 
   const pool = poolResult.pool;
 
+  // Trava de sobreposicao: o cron roda a cada 5min com maxDuration de 300s —
+  // uma execucao lenta (ou o resync completo de 6/6h) ainda pode estar viva
+  // quando a proxima dispara. Duas escritas de cursor em paralelo podem perder
+  // eventos do C2X. Corte de 10min faz a trava expirar sozinha se um run
+  // morrer sem marcar failed (kill por timeout da Vercel).
+  const overlapCutoff = new Date(Date.now() - 10 * 60_000).toISOString();
+  const { data: activeRuns } = await adminClient
+    .from("apolo_sync_runs")
+    .select("id")
+    .eq("source_system", "c2x")
+    .eq("status", "running")
+    .gte("created_at", overlapCutoff)
+    .limit(1);
+
+  if (activeRuns && activeRuns.length > 0) {
+    return { ok: true, rowsWritten: 0, syncRunId: "incremental-skipped-overlap" };
+  }
+
+  const { data: claimedRun } = await adminClient
+    .from("apolo_sync_runs")
+    .insert({
+      metadata: { strategy: "incremental" },
+      source_system: "c2x",
+      status: "running",
+    })
+    .select("id")
+    .single<{ id: string }>();
+
+  const claimedRunId = claimedRun?.id ?? null;
+
   try {
     const existing = await readApoloIncrementalCursors(adminClient);
 
@@ -476,7 +506,7 @@ export async function syncApoloIncrementalFromC2x(): Promise<SyncResult> {
     // da base historica). A partir daqui, processamos apenas o que for novo.
     if (!existing) {
       const head = await readC2xHeadCursors(pool);
-      await writeApoloIncrementalRun(adminClient, head, 0, 0);
+      await writeApoloIncrementalRun(adminClient, head, 0, 0, claimedRunId);
       return { ok: true, rowsWritten: 0, syncRunId: "incremental-bootstrap" };
     }
 
@@ -607,14 +637,30 @@ export async function syncApoloIncrementalFromC2x(): Promise<SyncResult> {
       },
       ids.length,
       rowsWritten,
+      claimedRunId,
     );
 
-    return { ok: true, rowsWritten, syncRunId: "incremental" };
+    return { ok: true, rowsWritten, syncRunId: claimedRunId ?? "incremental" };
   } catch (error) {
     console.error("[apolo:incremental] sync failed", {
       code: (error as { code?: string })?.code,
       message: apoloSafeErrorMessage(error),
     });
+
+    // Libera a trava marcando o run como failed (senao a proxima rodada so
+    // destrava depois do corte de 10min).
+    if (claimedRunId) {
+      await adminClient
+        .from("apolo_sync_runs")
+        .update({
+          error_message: apoloSafeErrorMessage(error),
+          finished_at: new Date().toISOString(),
+          status: "failed",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", claimedRunId);
+    }
+
     return { error: apoloSafeErrorMessage(error), ok: false };
   }
 }
@@ -673,10 +719,10 @@ async function writeApoloIncrementalRun(
   cursors: ApoloIncrementalCursors,
   scanned: number,
   upserted: number,
+  claimedRunId: string | null = null,
 ) {
   const now = new Date().toISOString();
-
-  await adminClient.from("apolo_sync_runs").insert({
+  const row = {
     finished_at: now,
     metadata: { cursors, strategy: "incremental" },
     scanned_count: scanned,
@@ -684,7 +730,19 @@ async function writeApoloIncrementalRun(
     status: "completed",
     updated_at: now,
     upserted_count: upserted,
-  });
+  };
+
+  // Se este run reivindicou a trava (linha "running" criada no inicio),
+  // completa a MESMA linha — e ela que carrega o cursor pro proximo ciclo.
+  if (claimedRunId) {
+    await adminClient
+      .from("apolo_sync_runs")
+      .update(row)
+      .eq("id", claimedRunId);
+    return;
+  }
+
+  await adminClient.from("apolo_sync_runs").insert(row);
 }
 
 export function createApoloAdminClient() {

@@ -263,8 +263,14 @@ function ticketMatchesHistoryFocus(
 }
 
 const emptyIrisTickets: IrisTicket[] = [];
+// Rede de seguranca APENAS: quem traz novidade na hora e o realtime
+// (postgres_changes logo abaixo). Full-refresh a cada 12s por aba foi o mesmo
+// padrao que gerou a fatura do Hermes em maio/2026 — nao baixar sem medir.
 const IRIS_REFRESH_INTERVAL_MS =
-  process.env.NODE_ENV === "development" ? 120_000 : 12_000;
+  process.env.NODE_ENV === "development" ? 120_000 : 90_000;
+// Janela de coalescencia dos eventos realtime: uma rajada (ex.: burst do
+// webhook Meta) vira UM refresh — cada refresh recarrega a fila INTEIRA.
+const IRIS_REALTIME_REFRESH_DEBOUNCE_MS = 2_500;
 
 const navigationItems: Array<IrisShellNavigationItem<IrisView>> = [
   { id: "gestao", label: "Board", icon: LayoutDashboard },
@@ -769,41 +775,62 @@ export function IrisPage({
       return;
     }
 
+    // Coalesce das rajadas do realtime: N eventos em janela curta viram um
+    // unico refresh (que recarrega a fila inteira). Sem isso, cada mensagem de
+    // um burst dispara uma recarga completa em cada aba aberta.
+    let realtimeDebounceId: number | null = null;
+    let pendingNotifyNewInbound = false;
+
+    const scheduleRealtimeRefresh = (notifyNewInbound: boolean) => {
+      pendingNotifyNewInbound = pendingNotifyNewInbound || notifyNewInbound;
+
+      if (realtimeDebounceId !== null) {
+        return;
+      }
+
+      realtimeDebounceId = window.setTimeout(() => {
+        realtimeDebounceId = null;
+        const notify = pendingNotifyNewInbound;
+        pendingNotifyNewInbound = false;
+        void refreshIrisData({ notifyNewInbound: notify });
+      }, IRIS_REALTIME_REFRESH_DEBOUNCE_MS);
+    };
+
     const channel = client
       .channel("iris-caredesk-live")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "caredesk_messages" },
         () => {
-          void refreshIrisData({ notifyNewInbound: true });
+          scheduleRealtimeRefresh(true);
         },
       )
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "caredesk_messages" },
         () => {
-          void refreshIrisData({ notifyNewInbound: false });
+          scheduleRealtimeRefresh(false);
         },
       )
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "caredesk_tickets" },
         () => {
-          void refreshIrisData({ notifyNewInbound: true });
+          scheduleRealtimeRefresh(true);
         },
       )
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "caredesk_tickets" },
         () => {
-          void refreshIrisData({ notifyNewInbound: false });
+          scheduleRealtimeRefresh(false);
         },
       )
       .on(
         "postgres_changes",
         { event: "UPDATE", schema: "public", table: "caredesk_contacts" },
         () => {
-          void refreshIrisData({ notifyNewInbound: false });
+          scheduleRealtimeRefresh(false);
         },
       )
       .subscribe();
@@ -812,8 +839,19 @@ export function IrisPage({
       void refreshIrisData({ notifyNewInbound: true });
     }, IRIS_REFRESH_INTERVAL_MS);
 
+    // Voltar pra aba = refresh na hora; cobre reconexao do realtime e deixa o
+    // intervalo de fallback ser folgado sem perda de frescor percebido.
+    const handleWindowFocus = () => {
+      scheduleRealtimeRefresh(false);
+    };
+    window.addEventListener("focus", handleWindowFocus);
+
     return () => {
       window.clearInterval(refreshInterval);
+      window.removeEventListener("focus", handleWindowFocus);
+      if (realtimeDebounceId !== null) {
+        window.clearTimeout(realtimeDebounceId);
+      }
       void client.removeChannel(channel);
     };
   }, [loadFromSupabase, refreshIrisData]);

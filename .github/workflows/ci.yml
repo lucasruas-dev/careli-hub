@@ -1,0 +1,37 @@
+# Gate minimo de qualidade do Panteon (P0 do diagnostico de 2/jul/2026).
+# Roda em todo push — como push na main = deploy automatico em prod (Vercel),
+# este workflow e a rede que substitui o runner de hooks perdido.
+# Proximo passo (P1): job de build com envs em GitHub Secrets + vitest.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  validate:
+    name: Typecheck + Lint (@repo/hub)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # Espelha o installCommand do vercel.json (devDependencies inclusas,
+      # senao o turbo some e o workspace nao resolve).
+      - name: Install
+        run: npm install --include=dev
+
+      - name: Typecheck
+        run: npm run check-types:hub
+
+      # Nao-bloqueante por enquanto: ha 96 warnings PRE-existentes (legado
+      # OpenAI/Chronos) e o script usa --max-warnings 0. Zerar o passivo (P1)
+      # e ai remover o continue-on-error pra virar gate de verdade.
+      - name: Lint (informativo)
+        run: npm run lint:hub
+        continue-on-error: true

@@ -41020,3 +41020,20 @@ PENDENCIAS (para retomar):
 - **Billing proprio** nas WABAs Elife (template/cobranca). **Display name** (4143 "Em analise", Gurgel "Rejeitado").
 - **Tickets de teste a limpar:** AT-000003 (contaminado com phone do 9072), AT-000009/010/011/012.
 - **Bloco 2 (cockpit identico):** generalizar `IrisCobrancaContextSidebar` pra fonte Apolo + tirar Propostas + Athena identica. Validar print-a-print (luz do dia). Ver [[project_iris]].
+
+---
+
+## 2026-07-02 — Diagnóstico completo do hub + lote P0 de hardening (branch `chore/hardening-p0`)
+
+**Diagnóstico (Zeus/Claude, análise minuciosa arquitetura+custo+performance):**
+- 🔴 Críticos: (1) push-main=prod SEM testes/CI/hooks; (2) Iris com full-refresh 12s/aba + realtime sem debounce = padrão da fatura Hermes; (3) policies "setup beta" USING(true) — pior caso: `setup beta update hub users` permitia QUALQUER logado editar hub_users inclusive o próprio role (escalação de privilégio via REST); (4) god-files (chronos/server.ts 9.852 linhas, IrisPage 7.838…); (5) zero observabilidade de erros; (6) crons de sync sem trava de sobreposição.
+- 🟡 364 advisors de performance no Supabase (141 FKs sem índice, 83 auth_rls_initplan, 57 policies múltiplas, 82 índices sem uso); higiene de branches/worktrees; 2 motores da Cacá coexistindo.
+- 🟢 Fortes: gate proxy.ts, lib/ai/claude.ts com tiers+prompt caching, CRON_SECRET em todos os crons, legado read-only com pool, governança (CLAUDE.md/diário/migrations).
+
+**Lote P0 implementado nesta branch:**
+1. **Iris custo**: debounce 2,5s nos eventos realtime (rajada vira 1 refresh), fallback 12s→90s, refresh ao focar a aba (`IrisPage.tsx`); ProposalChat 25s→60s.
+2. **Trava de sobreposição** no sync incremental do Apolo (`lib/apolo/server.ts`): claim de linha `running` em `apolo_sync_runs` + skip se há run ativo <10min (auto-expira); run failed libera a trava.
+3. **CI GitHub Actions** (`.github/workflows/ci.yml`): typecheck+lint em todo push — rede de proteção do deploy git-automático.
+4. **Migration 0041** (`0041_security_hardening_setup_policies.sql`): dropa as beta de escrita, cria policies admin-only p/ hub_users/assignments/channel_members, revokes nas funções SECURITY DEFINER. **NÃO APLICADA — aguarda OK do Lucas.**
+
+**Pendências do diagnóstico (dependem do Lucas):** aplicar 0041; ligar leaked password protection (dashboard Supabase, 1 clique); decidir Sentry; apagar cópias antigas do repo em Sistemas/; P1 (índices FK, quebrar god-files, vitest).

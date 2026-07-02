@@ -60,7 +60,9 @@ export function ProposalChat({
 
   useEffect(() => {
     void loadComments();
-    const interval = window.setInterval(() => void loadComments(), 25000);
+    // 60s de fallback + refresh no focus: comentario de proposta nao e chat ao
+    // vivo — polling agressivo multiplica invocacoes (consciencia de custo).
+    const interval = window.setInterval(() => void loadComments(), 60000);
     const onFocus = () => void loadComments();
     window.addEventListener("focus", onFocus);
     return () => {
