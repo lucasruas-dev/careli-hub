@@ -3,6 +3,9 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { ClaudeAgentTool } from "@/lib/ai/claude-agent";
 import { prepareBoletoResendAction } from "@/lib/guardian/asaas";
 import {
+  type C2xImobiliariaClientMatch,
+  findC2xImobiliariaClients,
+  loadC2xImobiliariaCarteiraSummary,
   loadC2xUserCadastro,
   loadHadesAttendanceClient,
 } from "@/lib/guardian/attendance";
@@ -26,6 +29,11 @@ export type CacaToolContext = {
   customerProfileLabel: string | null;
   handoff: { reason: string | null; requested: boolean };
   identityVerified: boolean;
+  // Quando quem fala é uma IMOBILIARIA/corretora já identificada (por telefone ou CNPJ),
+  // guarda o id C2X DELA para escopar consultas aos clientes vinculados (vinculed_by_id).
+  // null = não é imobiliária identificada; as tools de carteira/cliente ficam bloqueadas.
+  imobiliariaC2xClientId: string | null;
+  imobiliariaName: string | null;
   nextContactLabel: string;
   validationSource: "cpf" | "phone" | null;
 };
@@ -86,6 +94,18 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
     {
       definition: requireDefinition("consultar_cadastro_imobiliaria"),
       run: async (input) => consultarCadastroImobiliaria(context, input),
+    },
+    {
+      definition: requireDefinition("resumo_carteira_imobiliaria"),
+      run: async () => resumoCarteiraImobiliaria(context),
+    },
+    {
+      definition: requireDefinition("consultar_cliente_da_imobiliaria"),
+      run: async (input) => consultarClienteDaImobiliaria(context, input),
+    },
+    {
+      definition: requireDefinition("gerar_boleto_cliente_imobiliaria"),
+      run: async (input) => gerarBoletoClienteImobiliaria(context, input),
     },
     {
       definition: requireDefinition("anotar_sobre_cliente"),
@@ -156,6 +176,17 @@ async function validarIdentidade(
   context.validationSource = "cpf";
   context.customerProfileLabel =
     describeApoloProfile(match.profiles) ?? context.customerProfileLabel;
+
+  // Se quem validou é uma imobiliária/corretora, abre também a carteira DELA (clientes
+  // vinculados) — assim ela pode consultar os clientes mesmo tendo se identificado por aqui.
+  const isRealtorProfile = match.profiles.some((profile) =>
+    ["imobiliaria", "corretor"].includes(profile.toLowerCase()),
+  );
+
+  if (isRealtorProfile && match.c2xClientId) {
+    context.imobiliariaC2xClientId = match.c2xClientId;
+    context.imobiliariaName = match.displayName ?? context.imobiliariaName;
+  }
 
   const perfilNota = context.customerProfileLabel
     ? ` Perfil deste contato: ${context.customerProfileLabel}. Se o perfil não tem carteira, é normal não haver parcelas/boleto — não trate como erro nem ofereça cobrança.`
@@ -309,6 +340,18 @@ async function consultarCadastroImobiliaria(
     return "Não localizei nenhum cadastro com esse CNPJ. Confirme o número com a imobiliária; se estiver certo, pode ser que ainda não haja cadastro — nesse caso transfira para o time cadastrar.";
   }
 
+  // Abre o escopo de carteira: a partir daqui a imobiliária pode consultar os clientes DELA
+  // (consultar_cliente_da_imobiliaria / resumo_carteira_imobiliaria), sempre limitado ao
+  // vínculo vinculed_by_id = este id C2X. Só abrimos se o perfil for de fato imobiliária/corretor.
+  const isRealtorProfile = match.profiles.some((profile) =>
+    ["imobiliaria", "corretor"].includes(profile.toLowerCase()),
+  );
+
+  if (isRealtorProfile && match.c2xClientId) {
+    context.imobiliariaC2xClientId = match.c2xClientId;
+    context.imobiliariaName = match.displayName ?? context.imobiliariaName;
+  }
+
   const linhas: string[] = [
     "CADASTRO ENCONTRADO para o CNPJ informado — pode confirmar que a imobiliária TEM cadastro na Careli.",
     `Razão/Nome: ${match.displayName ?? "não consta"}`,
@@ -316,6 +359,12 @@ async function consultarCadastroImobiliaria(
 
   if (match.profiles.length) {
     linhas.push(`Perfil no sistema: ${match.profiles.join(", ")}`);
+  }
+
+  if (isRealtorProfile && match.c2xClientId) {
+    linhas.push(
+      "Esta imobiliária está identificada — você já pode consultar os CLIENTES DELA (cadastro, financeiro e boleto) com consultar_cliente_da_imobiliaria e resumo_carteira_imobiliaria. Só aparecem os clientes vinculados a ela.",
+    );
   }
 
   // Enriquecimento: se a PJ tiver vínculo C2X, traz razão social/fantasia/contato/endereço.
@@ -357,6 +406,237 @@ async function consultarCadastroImobiliaria(
   );
 
   return linhas.join("\n");
+}
+
+// Mensagem-guarda: as tools de carteira/cliente só operam com uma imobiliária identificada.
+function imobiliariaScopeMessage(): string {
+  return "Esta consulta é só para uma IMOBILIÁRIA/corretora identificada ver os clientes DELA. Se quem fala é uma imobiliária, confirme o CNPJ (consultar_cadastro_imobiliaria) que eu abro a carteira. Se for um cliente pessoa física falando do próprio cadastro, use validar_identidade.";
+}
+
+// Panorama da carteira da imobiliária (saúde financeira dos boletos dos clientes dela).
+async function resumoCarteiraImobiliaria(context: CacaToolContext) {
+  const imobId = context.imobiliariaC2xClientId;
+
+  if (!imobId) {
+    return imobiliariaScopeMessage();
+  }
+
+  const summary = await loadC2xImobiliariaCarteiraSummary(imobId);
+
+  if (!summary || summary.clientesComContrato === 0) {
+    return "Não localizei clientes com contrato vinculados a esta imobiliária. Confirme com ela ou transfira para o time conferir a carteira.";
+  }
+
+  const linhas: string[] = [
+    `PANORAMA DA CARTEIRA${context.imobiliariaName ? ` de ${context.imobiliariaName}` : ""} (informe de forma executiva; são os clientes vinculados a esta imobiliária):`,
+    `Clientes com contrato: ${summary.clientesComContrato}`,
+    `Em dia (sem parcela vencida): ${summary.clientesEmDia}`,
+    `Com parcela vencida: ${summary.clientesComVencida}`,
+    `Total vencido na carteira: ${summary.totalVencido}`,
+  ];
+
+  if (summary.destaques.length) {
+    linhas.push("Clientes mais atrasados (para priorizar):");
+    for (const item of summary.destaques) {
+      const doc =
+        item.documentMasked && item.documentMasked !== "-"
+          ? ` (${item.documentMasked})`
+          : "";
+
+      linhas.push(
+        `- ${item.name}${doc}: ${item.vencidas} vencida(s), ${item.valorVencido}, até ${item.diasAtraso} dia(s) de atraso`,
+      );
+    }
+
+    linhas.push(
+      "Para o boleto de um cliente específico, use consultar_cliente_da_imobiliaria e depois gerar_boleto_cliente_imobiliaria.",
+    );
+  }
+
+  return linhas.join("\n");
+}
+
+// Consulta cadastro + financeiro de UM cliente da imobiliária (escopo pelo vínculo).
+async function consultarClienteDaImobiliaria(
+  context: CacaToolContext,
+  input: Record<string, unknown>,
+) {
+  const imobId = context.imobiliariaC2xClientId;
+
+  if (!imobId) {
+    return imobiliariaScopeMessage();
+  }
+
+  const termo = readString(input.cliente).trim();
+
+  if (termo.length < 3) {
+    return "Me diga o nome completo OU o CPF/CNPJ do cliente que você quer consultar.";
+  }
+
+  const matches = await findC2xImobiliariaClients(imobId, termo);
+
+  if (!matches.length) {
+    return "Não encontrei esse cliente vinculado à SUA imobiliária. Confira o nome/CPF; se estiver certo, pode ser que ele não esteja na sua carteira — nesse caso transfira para o time verificar.";
+  }
+
+  if (matches.length > 1) {
+    return [
+      "Encontrei mais de um cliente com esse nome na sua carteira. Pergunte qual é (peça o CPF ou o nome completo):",
+      ...matches.map((match) => `- ${describeClientMatch(match)}`),
+    ].join("\n");
+  }
+
+  const [match] = matches;
+
+  if (!match) {
+    return "Não consegui carregar o cliente agora. Tente de novo em instantes.";
+  }
+
+  return buildImobiliariaClienteReport(match);
+}
+
+async function buildImobiliariaClienteReport(match: C2xImobiliariaClientMatch) {
+  const linhas: string[] = [
+    `CLIENTE DA IMOBILIÁRIA: ${describeClientMatch(match)}`,
+    "(Informe só o que a imobiliária perguntar; se um campo não constar, diga que não consta — nunca invente.)",
+  ];
+
+  const record = await loadClientRecord(match.clientId);
+  let dados = record?.dados360;
+
+  if (!dados) {
+    const cadastroOnly = await loadC2xUserCadastro(match.clientId);
+
+    dados = cadastroOnly?.dados360;
+  }
+
+  if (dados) {
+    const estadoCivil = readString(dados.estadoCivil);
+
+    if (estadoCivil) {
+      linhas.push(`Estado civil: ${estadoCivil}`);
+    }
+
+    const email = readString(dados.email);
+
+    if (email) {
+      linhas.push(`E-mail no cadastro: ${email}`);
+    }
+
+    const telefone = readString(dados.telefone);
+
+    if (telefone) {
+      linhas.push(`Telefone no cadastro: ${telefone}`);
+    }
+
+    const endereco = formatCadastroEndereco(dados);
+
+    if (endereco) {
+      linhas.push(`Endereço: ${endereco}`);
+    }
+  }
+
+  const items = await loadInstallments(match.clientId);
+  const vencidas = items.filter((item) => item.status === "Vencida");
+  const aVencer = items.filter((item) => item.status === "A vencer");
+  const liquidadas = items.filter((item) => item.status === "Liquidada");
+  const proxima = sortInstallmentsByDueDate(aVencer)[0];
+
+  linhas.push("FINANCEIRO DO CLIENTE:");
+
+  if (vencidas.length) {
+    linhas.push(`Parcelas vencidas (${vencidas.length}):`);
+    for (const item of vencidas.slice(0, 8)) {
+      const link = hasBoletoLink(item) ? "link disponível" : "sem link";
+
+      linhas.push(
+        `- ${describeInstallment(item)} | ${overdueLabel(item)} | ${link}`,
+      );
+    }
+  } else {
+    linhas.push("Nenhuma parcela vencida no momento.");
+  }
+
+  linhas.push(
+    proxima
+      ? `Próximo vencimento: ${describeInstallment(proxima)}`
+      : "Sem próxima parcela a vencer registrada.",
+  );
+  linhas.push(`Parcelas já liquidadas: ${liquidadas.length}.`);
+
+  if (!items.length) {
+    linhas.push(
+      "OBSERVAÇÃO: este cliente não tem parcelas registradas — pode não ter carteira ativa. NÃO trate como erro.",
+    );
+  }
+
+  linhas.push(
+    "Para enviar o boleto de uma parcela, use gerar_boleto_cliente_imobiliaria (informe o cliente + a parcela).",
+  );
+
+  return linhas.join("\n");
+}
+
+// Gera o link do boleto de um cliente da imobiliária. Reconfirma o vínculo antes de gerar.
+async function gerarBoletoClienteImobiliaria(
+  context: CacaToolContext,
+  input: Record<string, unknown>,
+) {
+  const imobId = context.imobiliariaC2xClientId;
+
+  if (!imobId) {
+    return imobiliariaScopeMessage();
+  }
+
+  const termo = readString(input.cliente).trim();
+  const parcela = readString(input.parcela);
+
+  if (termo.length < 3) {
+    return "Me diga o nome completo OU o CPF/CNPJ do cliente cujo boleto você quer.";
+  }
+
+  const matches = await findC2xImobiliariaClients(imobId, termo);
+
+  if (!matches.length) {
+    return "Não encontrei esse cliente vinculado à SUA imobiliária. Confira o nome/CPF do cliente.";
+  }
+
+  if (matches.length > 1) {
+    return "Há mais de um cliente com esse nome na sua carteira. Peça o CPF do cliente para eu escolher o certo.";
+  }
+
+  const [match] = matches;
+
+  if (!match) {
+    return "Não consegui carregar o cliente agora. Tente de novo em instantes.";
+  }
+
+  const items = await loadInstallments(match.clientId);
+  const target = items.find(
+    (item) =>
+      normalizeKey(readString(item.number)) === normalizeKey(parcela) ||
+      readString(item.id) === parcela.trim(),
+  );
+
+  if (!target) {
+    return "Não localizei essa parcela na lista do cliente. Consulte o cliente de novo (consultar_cliente_da_imobiliaria) e confira o número da parcela.";
+  }
+
+  if (!hasBoletoLink(target)) {
+    return "Essa parcela NÃO tem link de boleto disponível no sistema. Informe a imobiliária que a parcela existe, mas o link precisa ser emitido pelo time — e transfira.";
+  }
+
+  try {
+    const boleto = await prepareBoletoResendAction(readString(target.id), "link");
+
+    if (!boleto.boletoUrl) {
+      return "Não consegui preparar o link com segurança agora. Informe a imobiliária e transfira para o time.";
+    }
+
+    return `Link do boleto da parcela ${readString(target.number) || ""} do cliente ${match.name}: ${boleto.boletoUrl}\nPeça para conferir os dados antes de pagar.`;
+  } catch {
+    return "Falha ao preparar o link do boleto. Informe a imobiliária e transfira para o time.";
+  }
 }
 
 async function consultarFinanceiro(context: CacaToolContext) {
@@ -583,6 +863,15 @@ function hasBoletoLink(item: CacaInstallment): boolean {
   const record = item as Record<string, unknown>;
 
   return Boolean(readString(record.paymentUrl) || readString(record.invoiceUrl));
+}
+
+function describeClientMatch(match: C2xImobiliariaClientMatch): string {
+  const doc =
+    match.documentMasked && match.documentMasked !== "-"
+      ? ` (${match.documentMasked})`
+      : "";
+
+  return `${match.name}${doc}`;
 }
 
 function requireDefinition(name: string) {

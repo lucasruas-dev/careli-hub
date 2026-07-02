@@ -65,6 +65,10 @@ export async function runCacaClaudeTurn({
       ? state.apoloValidationSource
       : null;
   let customerProfileLabel: string | null = null;
+  // Se quem fala é uma imobiliária/corretora conhecida (telefone bate com o cadastro dela),
+  // já abrimos o escopo da carteira: ela pode consultar os clientes DELA sem digitar o CNPJ.
+  let imobiliariaC2xClientId: string | null = null;
+  let imobiliariaName: string | null = null;
 
   // Regra do Lucas: se o telefone do WhatsApp bate com o telefone do cadastro (comprador com
   // unidade), a identidade está confirmada — pode consultar e enviar boleto SEM pedir CPF.
@@ -78,6 +82,16 @@ export async function runCacaClaudeTurn({
       if (byPhone) {
         customerProfileLabel =
           describeApoloProfile(byPhone.profiles) ?? customerProfileLabel;
+
+        const isRealtor = byPhone.profiles.some((profile) =>
+          ["imobiliaria", "corretor"].includes(profile.toLowerCase()),
+        );
+
+        if (isRealtor && byPhone.c2xClientId) {
+          imobiliariaC2xClientId = byPhone.c2xClientId;
+          imobiliariaName =
+            byPhone.displayName ?? contact.display_name ?? null;
+        }
       }
 
       if (
@@ -105,6 +119,8 @@ export async function runCacaClaudeTurn({
     customerProfileLabel,
     handoff: { reason: null, requested: false },
     identityVerified,
+    imobiliariaC2xClientId,
+    imobiliariaName,
     nextContactLabel: businessHours.nextContactLabel,
     validationSource,
   };
@@ -117,6 +133,7 @@ export async function runCacaClaudeTurn({
     customerProfileLabel: toolContext.customerProfileLabel,
     greeting: greetingForNow(),
     identityVerified,
+    imobiliariaName: toolContext.imobiliariaName,
     nextContactLabel: businessHours.nextContactLabel,
   });
   const messages = await buildConversation(client, ticket.id, messageDetail);

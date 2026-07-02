@@ -823,6 +823,202 @@ export async function loadC2xUserCadastro(
   }
 }
 
+// --- Atendimento de IMOBILIARIA sobre os CLIENTES DELA (Cacá) ---
+//
+// Regra do Lucas (2/jul): uma imobiliária PODE consultar cadastro/financeiro/boleto dos
+// clientes DELA — são clientes dela, sem problema. O vínculo no C2X é
+// `users.vinculed_by_id -> id da imobiliária` (profile_id 6 = Imobiliária, 7 = Corretor;
+// profile_id 2 = Cliente). A autorização é SEMPRE escopada ao vínculo: só retornamos
+// clientes cujo `vinculed_by_id` casa com o id da imobiliária logada — nunca um documento
+// solto que a imobiliária "chute" (isso vazaria cliente de outra). Read-only.
+
+export type C2xImobiliariaClientMatch = {
+  clientId: string;
+  documentMasked: string;
+  name: string;
+};
+
+// Resolve um termo (documento OU nome) para o(s) cliente(s) vinculado(s) à imobiliária.
+// termo com >=11 dígitos => busca por CPF/CNPJ; senão, por nome (LIKE). Limite baixo.
+export async function findC2xImobiliariaClients(
+  imobiliariaId: string,
+  term: string,
+): Promise<C2xImobiliariaClientMatch[]> {
+  const imobId = c2xClientIdFromQueueId(imobiliariaId);
+  const cleanTerm = String(term ?? "").trim();
+
+  if (!imobId || cleanTerm.length < 3) {
+    return [];
+  }
+
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return [];
+  }
+
+  const { pool } = poolResult;
+  const digits = cleanTerm.replace(/\D/g, "");
+  const byDocument = digits.length >= 11;
+
+  try {
+    const [rows] = await pool.query<
+      (RowDataPacket & {
+        cnpj: string | null;
+        cpf: string | null;
+        id: number | string;
+        name: string | null;
+      })[]
+    >(
+      byDocument
+        ? `
+          select c.id, c.name, c.cpf, c.cnpj
+          from users c
+          where c.vinculed_by_id = ?
+            and c.profile_id = 2
+            and (
+              replace(replace(replace(replace(coalesce(c.cpf, ''), '.', ''), '-', ''), '/', ''), ' ', '') = ?
+              or replace(replace(replace(replace(coalesce(c.cnpj, ''), '.', ''), '-', ''), '/', ''), ' ', '') = ?
+            )
+          limit 6
+        `
+        : `
+          select c.id, c.name, c.cpf, c.cnpj
+          from users c
+          where c.vinculed_by_id = ?
+            and c.profile_id = 2
+            and c.name like ?
+          order by c.name asc
+          limit 6
+        `,
+      byDocument ? [imobId, digits, digits] : [imobId, `%${cleanTerm}%`],
+    );
+
+    return rows.map((row) => ({
+      clientId: String(row.id),
+      documentMasked: formatDocument(firstFilled(row.cpf, row.cnpj)),
+      name: formatPersonName(row.name ?? EMPTY_FIELD),
+    }));
+  } catch (error) {
+    console.error(
+      "[guardian] findC2xImobiliariaClients failed",
+      sanitizeHadesDbError(error),
+    );
+
+    return [];
+  }
+}
+
+export type C2xImobiliariaCarteiraSummary = {
+  clientesComContrato: number;
+  clientesComVencida: number;
+  clientesEmDia: number;
+  destaques: Array<{
+    diasAtraso: number;
+    documentMasked: string;
+    name: string;
+    valorVencido: string;
+    vencidas: number;
+  }>;
+  totalVencido: string;
+};
+
+// Panorama da carteira de UMA imobiliária: 1 query agregada por cliente vinculado.
+// vencida = payment_status_id 7 (5=liquidada, 6=pendente). Responde ao pedido real de
+// "saúde financeira dos boletos dos meus clientes" sem varrer cliente-a-cliente.
+export async function loadC2xImobiliariaCarteiraSummary(
+  imobiliariaId: string,
+): Promise<C2xImobiliariaCarteiraSummary | null> {
+  const imobId = c2xClientIdFromQueueId(imobiliariaId);
+
+  if (!imobId) {
+    return null;
+  }
+
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return null;
+  }
+
+  const { pool } = poolResult;
+
+  try {
+    const [rows] = await pool.query<
+      (RowDataPacket & {
+        client_id: number | string;
+        client_name: string | null;
+        cnpj: string | null;
+        cpf: string | null;
+        max_overdue_days: number | string | null;
+        overdue_amount: number | string | null;
+        overdue_payments: number | string;
+      })[]
+    >(
+      `
+      select
+        c.id as client_id,
+        c.name as client_name,
+        c.cpf,
+        c.cnpj,
+        count(case when p.payment_status_id = 7 then p.id end) as overdue_payments,
+        coalesce(sum(case when p.payment_status_id = 7 then ${outstandingAmountExpression} else 0 end), 0) as overdue_amount,
+        max(case when p.payment_status_id = 7 and p.due_date is not null then datediff(curdate(), p.due_date) else 0 end) as max_overdue_days
+      from users c
+      join acquisition_requests ar on ar.client_id = c.id
+      left join payments p
+        on p.acquisition_request_id = ar.id and ${activePaymentWhere}
+      where c.vinculed_by_id = ? and c.profile_id = 2
+      group by c.id, c.name, c.cpf, c.cnpj
+      `,
+      [imobId],
+    );
+
+    const clientesComContrato = rows.length;
+    let clientesComVencida = 0;
+    let totalVencidoNumber = 0;
+    const destaques: C2xImobiliariaCarteiraSummary["destaques"] = [];
+
+    for (const row of rows) {
+      const overdue = toNumber(row.overdue_payments);
+      const overdueAmount = toNumber(row.overdue_amount);
+
+      totalVencidoNumber += overdueAmount;
+
+      if (overdue > 0) {
+        clientesComVencida += 1;
+        destaques.push({
+          diasAtraso: toNumber(row.max_overdue_days),
+          documentMasked: formatDocument(firstFilled(row.cpf, row.cnpj)),
+          name: formatPersonName(row.client_name ?? EMPTY_FIELD),
+          valorVencido: formatCurrency(overdueAmount),
+          vencidas: overdue,
+        });
+      }
+    }
+
+    destaques.sort(
+      (first, second) =>
+        second.diasAtraso - first.diasAtraso || second.vencidas - first.vencidas,
+    );
+
+    return {
+      clientesComContrato,
+      clientesComVencida,
+      clientesEmDia: clientesComContrato - clientesComVencida,
+      destaques: destaques.slice(0, 15),
+      totalVencido: formatCurrency(totalVencidoNumber),
+    };
+  } catch (error) {
+    console.error(
+      "[guardian] loadC2xImobiliariaCarteiraSummary failed",
+      sanitizeHadesDbError(error),
+    );
+
+    return null;
+  }
+}
+
 async function loadInstallmentsByRequestId(
   pool: Pool,
   requestIds: number[],

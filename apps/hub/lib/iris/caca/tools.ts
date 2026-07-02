@@ -83,6 +83,52 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "resumo_carteira_imobiliaria",
+    description:
+      "Só para quando quem fala é uma IMOBILIÁRIA/CORRETORA já identificada (pelo número ou pelo CNPJ confirmado). Retorna o panorama financeiro da carteira de clientes DELA: quantos clientes com contrato, quantos com parcela vencida, quantos em dia, o total vencido e um destaque dos clientes mais atrasados. Use quando a imobiliária pedir uma visão geral / 'saúde financeira dos boletos dos meus clientes'. Só traz os clientes vinculados àquela imobiliária.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "consultar_cliente_da_imobiliaria",
+    description:
+      "Só para IMOBILIÁRIA/CORRETORA já identificada. Consulta o cadastro e o financeiro de UM cliente DELA (informe o nome OU o CPF/CNPJ do cliente). Retorna dados cadastrais + resumo financeiro (parcelas vencidas, próxima, liquidadas) e se cada parcela tem link de boleto. A ferramenta só encontra o cliente se ele estiver vinculado a ESTA imobiliária — se não achar, avise que o cliente não aparece na carteira dela. Não exige validar_identidade (a autorização vem do vínculo imobiliária↔cliente).",
+    input_schema: {
+      type: "object",
+      properties: {
+        cliente: {
+          type: "string",
+          description:
+            "Nome completo OU CPF/CNPJ (só números) do cliente da imobiliária.",
+        },
+      },
+      required: ["cliente"],
+    },
+  },
+  {
+    name: "gerar_boleto_cliente_imobiliaria",
+    description:
+      "Só para IMOBILIÁRIA/CORRETORA já identificada. Gera/recupera o LINK do boleto (Asaas, modo link gratuito) de uma parcela de um cliente DELA, para a imobiliária repassar. Informe o cliente (nome ou CPF/CNPJ) e a parcela (conforme consultar_cliente_da_imobiliaria). A ferramenta reconfirma o vínculo do cliente com a imobiliária antes de gerar. Se a parcela não tiver link, avise e oriente a transferir para o time emitir.",
+    input_schema: {
+      type: "object",
+      properties: {
+        cliente: {
+          type: "string",
+          description:
+            "Nome completo OU CPF/CNPJ (só números) do cliente da imobiliária.",
+        },
+        parcela: {
+          type: "string",
+          description:
+            "Número/identificador da parcela (conforme consultar_cliente_da_imobiliaria).",
+        },
+      },
+      required: ["cliente", "parcela"],
+    },
+  },
+  {
     name: "anotar_sobre_cliente",
     description:
       "Registra uma anotação curta e DURADOURA sobre o cliente, pra você lembrar nos próximos atendimentos (ex.: 'prefere boleto por e-mail', 'costuma pagar com atraso', 'já reclamou de demora', 'fala de forma mais formal', 'tem 2 lotes'). Use quando aprender algo útil e estável sobre a pessoa. NÃO registre dado sensível (CPF, valores, links) nem coisas efêmeras do momento.",
