@@ -17,6 +17,14 @@ export default function MobileNotificationsPage() {
   const { items, markAllRead, markNotificationRead, unreadCount } =
     usePanteonNotifications();
 
+  // Esconde o "diário" por-mensagem do Hermes (id `hermes:msg:*`) na central
+  // mobile — mantém só a notificação POR CANAL (`hermes:channel:*`, some ao abrir
+  // o canal) + os demais módulos. Evita a central "dobrar" (Nova mensagem em X +
+  // Mensagem em X por linha) que confundia.
+  const visibleItems = items.filter(
+    (item) => !item.id.startsWith("hermes:msg:"),
+  );
+
   function openNotification(item: PanteonNotificationItem) {
     markNotificationRead(item.id);
 
@@ -63,7 +71,7 @@ export default function MobileNotificationsPage() {
       </header>
 
       <main className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-[#f5f6f8]">
-        {items.length === 0 ? (
+        {visibleItems.length === 0 ? (
           <MobileEmptyState
             description="Alertas de atendimento, cobrança e mensagens aparecem aqui."
             icon={<BellOff aria-hidden="true" size={22} />}
@@ -71,7 +79,7 @@ export default function MobileNotificationsPage() {
           />
         ) : (
           <ul className="m-0 grid list-none gap-2 p-3">
-            {items.map((item) => (
+            {visibleItems.map((item) => (
               <li key={item.id}>
                 <button
                   className={`flex w-full items-start gap-3 rounded-xl border p-3 text-left outline-none transition active:scale-[0.99] ${
