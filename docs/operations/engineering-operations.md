@@ -41042,3 +41042,10 @@ PENDENCIAS (para retomar):
 1. **Vitest instalado** (`apps/hub`, task `test` no turbo, `test:hub` na raiz, passo no CI): 13 testes nas libs puras — regressão do sort de parcelas da Cacá (bug 30/jun, comparator extraído p/ `lib/iris/caca/installment-order.ts`), `toWhatsAppFormatting` e `buildBrazilianPhoneVariants` (9º dígito).
 2. **Migration 0042** (`0042_fk_indexes_hot_tables.sql`, NÃO aplicada): ~33 índices de FK curados nas tabelas quentes (caredesk_*, c2x_payments/guardian, apolo, hub); `sync_run_id` e FKs de auditoria ficaram FORA de propósito (custo de escrita sem leitura).
 3. **Lint zerado (96→0) e BLOQUEANTE no CI**: envs faltantes no turbo.json (ANTHROPIC_API_KEY, CACA_ENGINE, CLAUDE_MODEL_*, VERCEL_API_TOKEN…), regra unused-vars com prefixo `_`, imports/código morto removido (inclui 645 linhas de 3 componentes mortos: PresenceTodayPanel, ZeusOpsPresenceBar, DeployProtocolsView), 2 fixes reais: stale closure de `mentions` no envio do Hermes mobile + deps intencionais documentadas no Meu dia.
+
+**Migrations 0041+0042+0043 APLICADAS em prod (2/jul, OK explícito do Lucas):**
+- 0041: policies "setup beta" de escrita derrubadas (13 always-true → 0); escalação de privilégio via `hub_users` FECHADA; escrita admin-only em hub_users/user_assignments/pulsex_channel_members; revoke de `has_chronos_permission` p/ anon.
+- 0042: ~33 índices de FK nas tabelas quentes criados.
+- 0043 (complemento descoberto na validação): `sync_hub_user_from_auth` tinha EXECUTE via grant default a PUBLIC — revogado de PUBLIC, mantido só p/ supabase_auth_admin + service_role.
+- Validação: pg_policies/pg_indexes/has_function_privilege conferidos; advisors de segurança re-rodados (WARNs de policy aberta e anon-definer zerados). Restam: 2 `function_search_path_mutable` (follow-up), leaked password protection (clique do Lucas no dashboard).
+- ⚠️ Validar visualmente o Setup (criar/editar depto, setor, canal, usuário como admin) — escrita agora exige role admin ativo.
