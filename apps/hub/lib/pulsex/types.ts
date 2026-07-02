@@ -32,6 +32,8 @@ export type HermesChannel = {
   sectorName?: string;
   status?: "online" | "away" | "busy" | "lunch" | "agenda" | "offline";
   unreadCount?: number;
+  // Nao-lidas em que o usuario foi @mencionado (badge visual distinto).
+  unreadMentionCount?: number;
 };
 
 export type HermesDepartment = {

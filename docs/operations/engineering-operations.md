@@ -41062,3 +41062,9 @@ PENDENCIAS (para retomar):
 3. **Fallback de envio agora dispara push**: rota nova `POST /api/hermes/messages/push` (Bearer; lê a msg do banco; só o autor dispara) chamada fire-and-forget pelo `createHermesMessage` quando o envio cai no INSERT direto — antes, esse caminho = zero notificação de SO.
 4. **Push distinto pra @menção** (`lib/pulsex/push.ts`): título "X mencionou você em #canal" + tag própria (não colapsa com a genérica); resposta em thread ganha título "Nova resposta em..." e o link leva direto pra thread (`&thread=`).
 Typecheck+13 testes+lint verdes. PENDENTE: validação visual do Lucas no preview (2 máquinas: mandar msg com hub minimizado/atrás de janela → push deve chegar; clicar → canal abre instantâneo; @menção → título distinto). Lotes 2-4 no plano (frescor ao abrir canal, menção visual em canal/aba, telemetria de entrega).
+
+**Hermes notificações LOTES 2-4 (mesma branch):**
+- L2: deep-link com app JÁ aberto (evento `panteon:deeplink` provider→workspace — o `?channel=` só era aplicado na montagem, o clique na notificação não trocava de canal com o Hermes aberto); resposta em thread ABERTA aparece na hora (bridge chama `loadThreadReplies`, poll de 8s vira rede de segurança).
+- L3: `unreadMentionCount` por canal (types+workspace-messages+provider, zera junto com o lido); badge âmbar "@N" na lista de canais (expandida+colapsada); aba do topo mostra "@N" âmbar quando há menção (contexto `hermesMentionUnreadCount`+hub-shell+module-tabs); push "X respondeu você em #canal" direcionado ao autor da mensagem-pai da thread.
+- L4: telemetria `[hermes:push]` (1 linha JSON por mensagem nos logs Vercel: members/subscriptions/sent/failed/expired/mentioned/thread — dá pra MEDIR a taxa de entrega).
+Typecheck+13 testes+lint verdes. Aguarda teste do time (roteiro no chat) e OK do Lucas p/ main.

@@ -148,15 +148,19 @@ export function withChannelUnreadCounts({
   return channels.map((channel) => {
     const lastReadAt = channel.memberReadAtByUserId?.[currentUserId];
     const lastReadTime = lastReadAt ? Date.parse(lastReadAt) : Number.NaN;
-    const unreadCount = (messagesByChannelId.get(channel.id) ?? []).filter(
+    const unreadMessages = (messagesByChannelId.get(channel.id) ?? []).filter(
       (message) =>
         message.authorId !== currentUserId &&
         isMessageNewerThanLastRead(message, lastReadTime),
+    );
+    const unreadMentionCount = unreadMessages.filter((message) =>
+      message.mentionUserIds?.includes(currentUserId),
     ).length;
 
     return {
       ...channel,
-      unreadCount,
+      unreadCount: unreadMessages.length,
+      unreadMentionCount,
     };
   });
 }

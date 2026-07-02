@@ -94,6 +94,16 @@ export async function sendHermesMessagePush(input: {
   const rows = (subscriptions ?? []) as PushSubscriptionRow[];
 
   if (rows.length === 0) {
+    console.log(
+      "[hermes:push]",
+      JSON.stringify({
+        channelId: input.channelId,
+        members: memberIds.length,
+        messageId: input.messageId,
+        sent: 0,
+        subscriptions: 0,
+      }),
+    );
     return;
   }
 
@@ -119,6 +129,26 @@ export async function sendHermesMessagePush(input: {
     display_name?: string | null;
   } | null;
   const authorName = authorData?.display_name ?? "Hermes";
+
+  // Resposta em thread: o AUTOR da mensagem-pai ganha aviso direcionado
+  // ("respondeu voce"), mesmo sem @mencao explicita.
+  let threadParentAuthorId: string | null = null;
+
+  if (input.threadParentMessageId) {
+    const { data: parentMessage } = await client
+      .from("pulsex_messages")
+      .select("author_user_id")
+      .eq("id", input.threadParentMessageId)
+      .maybeSingle();
+
+    threadParentAuthorId =
+      (parentMessage as { author_user_id?: string | null } | null)
+        ?.author_user_id ?? null;
+
+    if (threadParentAuthorId === input.authorUserId) {
+      threadParentAuthorId = null;
+    }
+  }
 
   // Link direto: canal + (se for resposta) a thread — mesmo formato do
   // getHermesChannelPath do app, pro clique cair exatamente na conversa.
@@ -146,8 +176,23 @@ export async function sendHermesMessagePush(input: {
     tag: `pulsex-mention-${input.messageId}`,
     title: `${authorName} mencionou voce em ${channelName}`,
   });
+  const replyToAuthorPayload = JSON.stringify({
+    ...basePayload,
+    tag: `pulsex-reply-${input.messageId}`,
+    title: `${authorName} respondeu voce em ${channelName}`,
+  });
 
-  await Promise.allSettled(
+  const pickPayload = (userId: string | null) => {
+    if (userId && mentionedIds.has(userId)) {
+      return mentionPayload;
+    }
+    if (userId && userId === threadParentAuthorId) {
+      return replyToAuthorPayload;
+    }
+    return regularPayload;
+  };
+
+  const outcomes = await Promise.all(
     rows.map(async (row) => {
       try {
         await webpush.sendNotification(
@@ -155,10 +200,9 @@ export async function sendHermesMessagePush(input: {
             endpoint: row.endpoint,
             keys: { auth: row.auth, p256dh: row.p256dh },
           },
-          row.user_id && mentionedIds.has(row.user_id)
-            ? mentionPayload
-            : regularPayload,
+          pickPayload(row.user_id),
         );
+        return "sent";
       } catch (error) {
         const statusCode = (error as { statusCode?: number }).statusCode;
 
@@ -167,9 +211,33 @@ export async function sendHermesMessagePush(input: {
           await client
             .from("hub_push_subscriptions")
             .delete()
-            .eq("id", row.id);
+            .eq("id", row.id)
+            .then(
+              () => undefined,
+              () => undefined,
+            );
+          return "expired";
         }
+
+        return "failed";
       }
+    }),
+  );
+
+  // Telemetria de entrega (Lote 4): 1 linha estruturada por mensagem nos logs da
+  // Vercel — e o que permite MEDIR a taxa de entrega em vez de depender de relato.
+  console.log(
+    "[hermes:push]",
+    JSON.stringify({
+      channelId: input.channelId,
+      expired: outcomes.filter((outcome) => outcome === "expired").length,
+      failed: outcomes.filter((outcome) => outcome === "failed").length,
+      members: memberIds.length,
+      mentioned: mentionedIds.size,
+      messageId: input.messageId,
+      sent: outcomes.filter((outcome) => outcome === "sent").length,
+      subscriptions: rows.length,
+      thread: Boolean(input.threadParentMessageId),
     }),
   );
 }

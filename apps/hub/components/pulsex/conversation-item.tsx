@@ -70,7 +70,14 @@ export function ConversationItem({
           <span className="truncate text-sm font-semibold text-[#f7f8fa]">
             {channel.name}
           </span>
-          {channel.unreadCount ? (
+          {channel.unreadMentionCount ? (
+            <span
+              aria-label={`${channel.unreadMentionCount} mencoes novas`}
+              className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-amber-400 px-1.5 text-[0.68rem] font-bold text-[#1d1e24]"
+            >
+              @{formatUnreadCount(channel.unreadMentionCount)}
+            </span>
+          ) : channel.unreadCount ? (
             <span
               aria-label={`${channel.unreadCount} mensagens novas`}
               className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-[#A07C3B] px-1.5 text-[0.68rem] font-semibold text-white"
@@ -152,7 +159,14 @@ function ChannelAvatar({
           {isDirect ? label : collapsed ? label : (icon ?? label)}
         </span>
       )}
-      {showUnread && channel.unreadCount ? (
+      {showUnread && channel.unreadMentionCount ? (
+        <span
+          aria-label={`${channel.unreadMentionCount} mencoes novas`}
+          className="absolute -right-1 -top-1 z-20 grid h-4 min-w-4 place-items-center rounded-full bg-amber-400 px-1 text-[0.58rem] font-bold text-[#1d1e24]"
+        >
+          @
+        </span>
+      ) : showUnread && channel.unreadCount ? (
         <span
           aria-label={`${channel.unreadCount} mensagens novas`}
           className="absolute -right-1 -top-1 z-20 grid h-4 min-w-4 place-items-center rounded-full bg-[#A07C3B] px-1 text-[0.58rem] font-semibold text-white"

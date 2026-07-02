@@ -89,6 +89,8 @@ type PanteonNotificationsContextValue = {
   ) => void;
   unreadByModule: Readonly<Record<string, number>>;
   unreadCount: number;
+  // Total de @mencoes nao-lidas no Hermes (badge distinto na aba do topo).
+  hermesMentionUnreadCount: number;
 };
 
 const PanteonNotificationsContext =
@@ -156,6 +158,15 @@ export function HermesNotificationProvider({
     [items],
   );
   // Nao-lidas por modulo: alimenta os chips da central e o badge da aba do modulo.
+  const hermesMentionUnreadCount = useMemo(
+    () =>
+      hermesChannels.reduce(
+        (total, channel) => total + (channel.unreadMentionCount ?? 0),
+        0,
+      ),
+    [hermesChannels],
+  );
+
   const unreadByModule = useMemo(() => {
     const counts: Record<string, number> = {};
 
@@ -190,6 +201,7 @@ export function HermesNotificationProvider({
       currentChannels.map((channel) => ({
         ...channel,
         unreadCount: 0,
+        unreadMentionCount: 0,
       })),
     );
 
@@ -248,6 +260,7 @@ export function HermesNotificationProvider({
             ? {
                 ...channel,
                 unreadCount: 0,
+                unreadMentionCount: 0,
               }
             : channel,
         ),
@@ -609,6 +622,9 @@ export function HermesNotificationProvider({
                 lastMessageAt: message.createdAt ?? message.timestamp,
                 preview: truncateNotificationBody(message.body),
                 unreadCount: (currentChannel.unreadCount ?? 0) + 1,
+                unreadMentionCount: mentioned
+                  ? (currentChannel.unreadMentionCount ?? 0) + 1
+                  : (currentChannel.unreadMentionCount ?? 0),
               }
             : currentChannel,
         ),
@@ -736,6 +752,11 @@ export function HermesNotificationProvider({
       }
 
       router.push(data.url);
+      // O deep-link ?channel= do workspace so e aplicado na montagem — este
+      // evento cobre o caso do Hermes JA aberto (troca canal/thread na hora).
+      window.dispatchEvent(
+        new CustomEvent("panteon:deeplink", { detail: { url: data.url } }),
+      );
     };
 
     navigator.serviceWorker.addEventListener(
@@ -1238,6 +1259,7 @@ export function HermesNotificationProvider({
       activeHermesChannelId,
       broadcastHermesMessageEvent,
       hermesChannels,
+      hermesMentionUnreadCount,
       items,
       markAllRead,
       markNotificationRead,
@@ -1250,6 +1272,7 @@ export function HermesNotificationProvider({
       activeHermesChannelId,
       broadcastHermesMessageEvent,
       hermesChannels,
+      hermesMentionUnreadCount,
       items,
       markAllRead,
       markNotificationRead,

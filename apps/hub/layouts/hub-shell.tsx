@@ -127,7 +127,8 @@ export function HubShell({
   );
   const { hubUser, profileStatus, signOut } = useAuth();
   const { realtimeState } = useRealtime();
-  const { unreadByModule } = usePanteonNotifications();
+  const { hermesMentionUnreadCount, unreadByModule } =
+    usePanteonNotifications();
   const pathname = usePathname();
   const router = useRouter();
   const [openModuleIds, setOpenModuleIds] = useState<string[]>([]);
@@ -442,6 +443,8 @@ export function HubShell({
       id: hubModule.id,
       label: hubModule.name,
       unread: unreadByModule[hubModule.id] ?? 0,
+      mentionUnread:
+        hubModule.id === "hermes" ? hermesMentionUnreadCount : 0,
     }));
 
   function handleSelectModuleTab(basePath: string) {

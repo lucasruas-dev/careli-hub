@@ -603,6 +603,32 @@ export function HermesWorkspace() {
     }
   }, [channels]);
 
+  // Deep-link com o app JA aberto (clique na notificacao do SO -> router.push SPA):
+  // o efeito acima so roda uma vez — este listener troca canal/thread na hora.
+  useEffect(() => {
+    const handleDeepLink = (event: Event) => {
+      const url = (event as CustomEvent<{ url?: string }>).detail?.url;
+
+      if (!url || !url.startsWith("/hermes")) {
+        return;
+      }
+
+      const params = new URLSearchParams(url.split("?")[1] ?? "");
+      const channelId = params.get("channel");
+
+      if (!channelId || !channels.some((channel) => channel.id === channelId)) {
+        return;
+      }
+
+      setActiveChannelId(channelId);
+      setActiveThreadMessageId(params.get("thread"));
+    };
+
+    window.addEventListener("panteon:deeplink", handleDeepLink);
+
+    return () => window.removeEventListener("panteon:deeplink", handleDeepLink);
+  }, [channels]);
+
   useLayoutEffect(() => {
     if (
       activeChannel.id === emptyHermesChannel.id ||
@@ -1315,6 +1341,38 @@ export function HermesWorkspace() {
   // B: ponte do broadcast global (confiavel) -> conversa ativa. Funde a mensagem na
   // hora quando o provider a recebe, sem depender do broadcast por-canal/poll. NAO
   // re-notifica aqui (som/central ja sao tratados pelo provider).
+  const loadThreadReplies = useCallback((messageId: HermesMessage["id"]) => {
+    if (!hasHubSupabaseConfig() || messageId.startsWith("local-")) {
+      return;
+    }
+
+    listHermesThreadReplies({ messageId })
+      .then((nextReplies) => {
+        const latestReplyAt = getLatestHermesThreadReplyCreatedAt(nextReplies);
+
+        setThreadReplies((currentReplies) => ({
+          ...currentReplies,
+          [messageId]: nextReplies,
+        }));
+        setMessages((currentMessages) =>
+          currentMessages.map((message) =>
+            message.id === messageId
+              ? {
+                  ...message,
+                  lastThreadReplyAt: latestReplyAt ?? message.lastThreadReplyAt,
+                  threadCount: nextReplies.length,
+                }
+              : message,
+          ),
+        );
+      })
+      .catch((error: unknown) => {
+        if (isLocalDevelopmentRuntime()) {
+          console.warn("[pulsex] list thread replies error", error);
+        }
+      });
+  }, []);
+
   useEffect(() => {
     function handleGlobalHermesMessage(event: Event) {
       const message = (event as CustomEvent<{ message?: HermesMessage }>).detail
@@ -1330,10 +1388,14 @@ export function HermesWorkspace() {
       // thread (markThreadRepliesRead) zera o delta de volta a dourado. Pula se a
       // thread desse pai ja esta aberta (o poll de 8s + marcacao de leitura cuidam).
       if (message.threadParentMessageId) {
-        if (
-          message.authorId === currentUserId ||
-          activeThreadMessageId === message.threadParentMessageId
-        ) {
+        if (message.authorId === currentUserId) {
+          return;
+        }
+
+        // Thread ABERTA: puxa a resposta na hora (o poll de 8s vira so rede de
+        // seguranca — antes a resposta esperava o proximo ciclo pra aparecer).
+        if (activeThreadMessageId === message.threadParentMessageId) {
+          loadThreadReplies(message.threadParentMessageId);
           return;
         }
 
@@ -1389,7 +1451,13 @@ export function HermesWorkspace() {
         "careli:hermes:message",
         handleGlobalHermesMessage,
       );
-  }, [activeChannel.id, activeThreadMessageId, channels, currentUserId]);
+  }, [
+    activeChannel.id,
+    activeThreadMessageId,
+    channels,
+    currentUserId,
+    loadThreadReplies,
+  ]);
 
   useEffect(() => {
     if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
@@ -1414,6 +1482,7 @@ export function HermesWorkspace() {
                     [receipt.userId]: receipt.lastReadAt,
                   },
                   unreadCount: 0,
+                  unreadMentionCount: 0,
                 }
               : channel,
           ),
@@ -1446,38 +1515,6 @@ export function HermesWorkspace() {
       isMounted = false;
     };
   }, [activeChannel.id, activeChannel.kind]);
-
-  const loadThreadReplies = useCallback((messageId: HermesMessage["id"]) => {
-    if (!hasHubSupabaseConfig() || messageId.startsWith("local-")) {
-      return;
-    }
-
-    listHermesThreadReplies({ messageId })
-      .then((nextReplies) => {
-        const latestReplyAt = getLatestHermesThreadReplyCreatedAt(nextReplies);
-
-        setThreadReplies((currentReplies) => ({
-          ...currentReplies,
-          [messageId]: nextReplies,
-        }));
-        setMessages((currentMessages) =>
-          currentMessages.map((message) =>
-            message.id === messageId
-              ? {
-                  ...message,
-                  lastThreadReplyAt: latestReplyAt ?? message.lastThreadReplyAt,
-                  threadCount: nextReplies.length,
-                }
-              : message,
-          ),
-        );
-      })
-      .catch((error: unknown) => {
-        if (isLocalDevelopmentRuntime()) {
-          console.warn("[pulsex] list thread replies error", error);
-        }
-      });
-  }, []);
 
   useEffect(() => {
     if (!activeThreadMessageId) {
@@ -1517,7 +1554,9 @@ export function HermesWorkspace() {
     setThreadComposerMentions([]);
     setChannels((currentChannels) =>
       currentChannels.map((channel) =>
-        channel.id === channelId ? { ...channel, unreadCount: 0 } : channel,
+        channel.id === channelId
+          ? { ...channel, unreadCount: 0, unreadMentionCount: 0 }
+          : channel,
       ),
     );
     setNotifications((currentNotifications) =>
@@ -1773,6 +1812,7 @@ export function HermesWorkspace() {
                 lastMessageAt: timestamp,
                 preview: body || attachment?.label || "Anexo",
                 unreadCount: 0,
+                unreadMentionCount: 0,
               }
             : channel,
         ),
