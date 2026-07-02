@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { MessageSquareDashed } from "lucide-react";
 
 import { usePanteonNotifications } from "@/providers/pulsex-notification-provider";
@@ -15,6 +15,17 @@ import { formatRelativeTime } from "@/modules/mobile/lib/format";
 
 export default function MobileHermesListPage() {
   const { hermesChannels } = usePanteonNotifications();
+
+  // Na LISTA nenhum canal está aberto → limpa a marca de "canal ativo". Assim,
+  // mensagens que chegam enquanto você navega a lista NÃO são auto-marcadas como
+  // lidas (era o que fazia a bolinha de novas sumir sem você abrir o canal).
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("careli:hermes:active-channel", {
+        detail: { channelId: null },
+      }),
+    );
+  }, []);
 
   const channels = useMemo(
     () =>
@@ -64,6 +75,12 @@ export default function MobileHermesListPage() {
                   <MobileAvatar label={channel.name} url={channel.avatarUrl} />
                   <span className="min-w-0 flex-1">
                     <span className="flex items-center gap-2">
+                      {unread > 0 ? (
+                        <span
+                          aria-hidden="true"
+                          className="h-2.5 w-2.5 shrink-0 rounded-full bg-[#1d9e75]"
+                        />
+                      ) : null}
                       <span
                         className={`min-w-0 flex-1 truncate text-sm ${
                           unread > 0

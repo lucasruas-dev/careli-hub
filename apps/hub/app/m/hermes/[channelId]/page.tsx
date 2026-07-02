@@ -97,6 +97,8 @@ export default function MobileHermesChatPage() {
     () => hermesChannels.find((item) => item.id === channelId) ?? null,
     [channelId, hermesChannels],
   );
+  // Minha última leitura do canal — base pra marcar respostas "novas".
+  const channelReadAt = channel?.memberReadAtByUserId?.[currentUserId] ?? null;
 
   const [messages, setMessages] = useState<HermesMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -116,6 +118,10 @@ export default function MobileHermesChatPage() {
   // guarda a altura anterior para manter a posição de leitura após prepender.
   const prependingRef = useRef(false);
   const prevHeightRef = useRef(0);
+  // Só liberamos o "carregar antigas ao rolar" DEPOIS que o scroll inicial pro
+  // fim aconteceu — senão ele dispara na abertura (container começa no topo) e
+  // a conversa nunca fica no fim.
+  const initialScrolledRef = useRef(false);
 
   useEffect(() => {
     if (!channelId) {
@@ -127,6 +133,7 @@ export default function MobileHermesChatPage() {
     setLoading(true);
     setError("");
     setHasMore(false);
+    initialScrolledRef.current = false;
     listChannelMessages(channelId, { limit: INITIAL_LIMIT })
       .then((channelMessages) => {
         if (!mounted) {
@@ -220,8 +227,28 @@ export default function MobileHermesChatPage() {
       return;
     }
 
-    el.scrollTo({ behavior: "smooth", top: el.scrollHeight });
+    // Desce pro fim (instantâneo — evita ficar "no meio"). Só marca pronto
+    // depois de posicionar, liberando o auto-load ao rolar pra cima.
+    el.scrollTop = el.scrollHeight;
+    initialScrolledRef.current = true;
   }, [messages.length]);
+
+  // Reforço: quando o carregamento inicial termina, reancora no fim depois que
+  // imagens/anexos assentam a altura (senão o fim "escorrega" pra cima).
+  useEffect(() => {
+    if (loading || messages.length === 0) {
+      return;
+    }
+
+    const el = scrollRef.current;
+    const timer = window.setTimeout(() => {
+      if (el && !prependingRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }, 220);
+
+    return () => window.clearTimeout(timer);
+  }, [loading, messages.length]);
 
   const loadOlder = useCallback(async () => {
     if (loadingOlder || messages.length === 0) {
@@ -298,7 +325,13 @@ export default function MobileHermesChatPage() {
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
 
-    if (el && el.scrollTop <= 120 && hasMore && !loadingOlder) {
+    if (
+      el &&
+      initialScrolledRef.current &&
+      el.scrollTop <= 120 &&
+      hasMore &&
+      !loadingOlder
+    ) {
       void loadOlder();
     }
   }, [hasMore, loadingOlder, loadOlder]);
@@ -468,6 +501,13 @@ export default function MobileHermesChatPage() {
             {messages.map((message, index) => {
               const own = message.authorId === currentUserId;
               const ts = messageTime(message);
+              const hasNewReplies = Boolean(
+                (message.threadCount ?? 0) > 0 &&
+                  channelReadAt &&
+                  message.lastThreadReplyAt &&
+                  Date.parse(message.lastThreadReplyAt) >
+                    Date.parse(channelReadAt),
+              );
               const previous = index > 0 ? messages[index - 1] : null;
               const newDay =
                 index === 0 || dayKey(ts) !== dayKey(previous ? messageTime(previous) : null);
@@ -553,7 +593,11 @@ export default function MobileHermesChatPage() {
                       </span>
                       {(message.threadCount ?? 0) > 0 ? (
                         <button
-                          className="mt-0.5 flex items-center gap-1 rounded-md bg-black/5 px-2 py-1 text-[0.68rem] font-medium text-[#3a4657] outline-none"
+                          className={`mt-0.5 flex items-center gap-1 rounded-md px-2 py-1 text-[0.68rem] font-medium outline-none ${
+                            hasNewReplies
+                              ? "bg-[#f6ecd7] text-[#8a6d1f]"
+                              : "bg-black/5 text-[#3a4657]"
+                          }`}
                           onClick={(event) => {
                             event.stopPropagation();
                             setThreadMessage(message);
@@ -563,6 +607,15 @@ export default function MobileHermesChatPage() {
                           <MessagesSquare aria-hidden="true" size={12} />
                           {message.threadCount}{" "}
                           {message.threadCount === 1 ? "resposta" : "respostas"}
+                          {hasNewReplies ? (
+                            <span className="ml-0.5 inline-flex items-center gap-1 font-semibold">
+                              · novas
+                              <span
+                                aria-hidden="true"
+                                className="h-1.5 w-1.5 rounded-full bg-[#c0392b]"
+                              />
+                            </span>
+                          ) : null}
                         </button>
                       ) : null}
                     </article>
