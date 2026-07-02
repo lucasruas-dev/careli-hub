@@ -14,6 +14,7 @@ import {
 import {
   enrichTicketsWithCrm360,
   loadIrisData,
+  loadTicketMessages,
 } from "@/modules/caredesk/data/iris-data-client";
 import type {
   IrisMessage,
@@ -26,6 +27,7 @@ type IrisMobileStatus = "error" | "loading" | "ready";
 type IrisMobileContextValue = {
   appendMessage: (ticketId: string, message: IrisMessage) => void;
   error: string | null;
+  hydrateTicketMessages: (ticketId: string) => void;
   refresh: () => void;
   status: IrisMobileStatus;
   tickets: IrisTicket[];
@@ -111,9 +113,49 @@ export function IrisMobileProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  // Conversa aberta carrega o histórico COMPLETO do ticket (mesmo conserto do
+  // desktop: por-ticket sob demanda, sem o teto de 1000 do PostgREST) e mescla
+  // por id com o que já veio do snapshot em massa.
+  const hydrateTicketMessages = useCallback((ticketId: string) => {
+    void loadTicketMessages(ticketId)
+      .then((fullHistory) => {
+        if (!fullHistory.length) {
+          return;
+        }
+
+        setTickets((current) =>
+          current.map((ticket) => {
+            if (ticket.id !== ticketId) {
+              return ticket;
+            }
+
+            const byId = new Map(
+              fullHistory.map((message) => [message.id, message]),
+            );
+
+            for (const message of ticket.messages) {
+              if (!byId.has(message.id)) {
+                byId.set(message.id, message);
+              }
+            }
+
+            return { ...ticket, messages: [...byId.values()] };
+          }),
+        );
+      })
+      .catch(() => undefined);
+  }, []);
+
   const value = useMemo<IrisMobileContextValue>(
-    () => ({ appendMessage, error, refresh, status, tickets }),
-    [appendMessage, error, refresh, status, tickets],
+    () => ({
+      appendMessage,
+      error,
+      hydrateTicketMessages,
+      refresh,
+      status,
+      tickets,
+    }),
+    [appendMessage, error, hydrateTicketMessages, refresh, status, tickets],
   );
 
   return (

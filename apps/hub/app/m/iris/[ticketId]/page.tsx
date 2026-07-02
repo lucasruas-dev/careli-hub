@@ -55,7 +55,15 @@ export default function MobileIrisConversationPage() {
   const params = useParams<{ ticketId: string }>();
   const ticketId = decodeURIComponent(params.ticketId ?? "");
   const { hubUser } = useAuth();
-  const { appendMessage, status, tickets } = useIrisMobile();
+  const { appendMessage, hydrateTicketMessages, status, tickets } =
+    useIrisMobile();
+
+  // Histórico completo do ticket ao abrir (sem o teto do snapshot em massa).
+  useEffect(() => {
+    if (ticketId) {
+      hydrateTicketMessages(ticketId);
+    }
+  }, [hydrateTicketMessages, ticketId]);
 
   const ticket = useMemo(
     () => tickets.find((item) => item.id === ticketId) ?? null,
