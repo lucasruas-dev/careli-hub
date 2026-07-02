@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-02-app-mobile",
+    deployedAt: "2026-07-02T14:30:00-03:00",
+    modules: [
+      {
+        module: "Panteon Mobile",
+        screens: [
+          {
+            items: [
+              'Agora o Panteon tem APP no celular! Para instalar é só ACESSAR c2x.app.br/m pelo navegador do celular e tocar em "Adicionar à tela de início" — ele abre como app, em tela cheia. (Android: menu ⋮ → Instalar app / Adicionar à tela inicial. iPhone: Compartilhar → Adicionar à Tela de Início.)',
+              "No app você usa a Iris (fila de atendimento agrupada por seção, ficha do cliente e cronômetro de \"sem resposta\") e o Hermes (canais e conversas estilo WhatsApp: responder em thread, reações, tags e @menção). As notificações ficam no sino no topo.",
+              "É a mesma conta e os mesmos dados de sempre — só que na palma da mão.",
+            ],
+            screen: "App no celular — c2x.app.br/m",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 02fa4994",
+    technical: {
+      done: "App mobile do Panteon publicado em /m (PWA standalone; manifest-mobile com id/scope/start_url /m). Rotas ADITIVAS em app/m/* + modules/mobile/*, reaproveitando providers/dados de producao (usePanteonNotifications, loadIrisData + loadTicketMessages, listChannelMessages/createHermesMessage/threads, cockpit via /api/apolo/relationships buscando por DOCUMENTO). Casca: barra topo (avatar+abas Hermes/Iris+sino); fila Iris por secao (perfil colorido + cronometro sem-resposta) + cockpit Apolo em popup; Hermes chat (separador de data, avatar, historico paginado, threads/reacoes/tags/@mencao, anexos visiveis, abre no fim, bolinha verde de novas); login mobile dedicado; central sem-dobrar (esconde diario por-mensagem, mantem 1 por canal). globals.css neutraliza o min-width:1024 do desktop via :has(.panteon-mobile-root). Fez merge limpo com a linha de producao (Chronos/agentes da outra sessao). v1.20.2 -> v1.21.0.",
+      motivation:
+        "Lucas: 'como eu faco para levar o Panteon para meu celular que de para usar bem? hoje fica tudo quebrado, nao tem uma UI legal'. O desktop nao encaixa no celular — a solucao foi um app mobile-first estilo WhatsApp sob /m, instalavel como PWA, aprovado tela a tela via mockup.",
+    },
+    title: "Chegou o Panteon no celular — app mobile em c2x.app.br/m",
+    type: "novidade",
+    version: "v1.21.0",
+  },
+  {
     buildTag: "2026-07-01-revisao-agentes-ata-cadastro",
     deployedAt: "2026-07-01T17:30:00-03:00",
     modules: [
