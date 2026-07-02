@@ -32,6 +32,55 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-01-revisao-agentes-ata-cadastro",
+    deployedAt: "2026-07-01T17:30:00-03:00",
+    modules: [
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              'O "erro ao gerar a ata" foi corrigido na raiz: a Athena agora entrega a ata (e a pauta) num formato estruturado garantido — sem depender de sorte na formatação da resposta da IA.',
+            ],
+            screen: "Ata e pauta",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Cacá agora consegue consultar o CADASTRO de qualquer perfil validado — colaborador, imobiliária e prospect incluídos (antes só comprador com carteira tinha ficha). A identidade continua travada por CPF/CNPJ + nome.",
+              "Quando um atendimento exige muitas consultas seguidas, a Cacá fecha a resposta com o que já apurou em vez de responder uma frase genérica.",
+            ],
+            screen: "Atendimento (Cacá)",
+          },
+        ],
+      },
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "A análise de evidências dos chamados de TI também passou pro formato estruturado garantido — menos casos caindo na análise local básica.",
+            ],
+            screen: "HelpDesk",
+          },
+        ],
+      },
+    ],
+    rollback: "careli-hub-hub-i2bs-ihdftbgd0",
+    technical: {
+      done: "Revisao completa dos agentes de IA. (1) CAUSA RAIZ do erro da ata: pedir JSON a mao com Markdown grande embutido quebrava no JSON.parse (newline/aspas sem escape). Novo helper completeWithClaudeStructured (lib/ai/claude.ts) = saida estruturada via tool-use FORCADO (tool_choice) — a API serializa o JSON. Aplicado na ata + pauta do Chronos (chronos/meetings/agent) e na analise de evidencias (it-tickets/evidence-analysis, tool inline por causa dos image blocks). (2) runClaudeAgent (lib/ai/claude-agent.ts): ao estourar maxToolIterations fazia text vazio -> fallback generico; agora faz UMA chamada final com tool_choice none pro modelo fechar com o que apurou. (3) CACA cadastro p/ todo perfil: loadC2xUserCadastro (lib/guardian/attendance.ts) le o cadastro DIRETO do users do C2X por id (mesmos joins da fila, SEM exigir payments/acquisition_requests; read-only; carteira zerada); consultarCadastro (caca/executors.ts) cai nesse leitor quando o loader de carteira nao acha. VALIDADO contra o C2X real (users.id=123 via CPF) e contra o Apolo (source c2x/users#123). Agentes texto-puro (ai/chat, squadops/copilot, iris/attendant) e template-author (ja usava tool_choice) revisados sem problema. v1.20.1 -> v1.20.2.",
+      motivation:
+        "Lucas: 'revisa todos os agentes, caca, athena, principalmente na geracao da ata, revisa com cuidado para gente fechar isso de uma vez'. A ata falhava intermitente desde a migracao pro Claude (perdeu o json_schema da OpenAI); o colaborador nao conseguia consultar o proprio cadastro.",
+    },
+    title: "Agentes de IA revisados: ata do Chronos estável + Cacá lê cadastro de qualquer perfil",
+    type: "correcao",
+    version: "v1.20.2",
+  },
+  {
     buildTag: "2026-07-01-iris-mensagens-e-perfil-caca",
     deployedAt: "2026-07-01T16:10:00-03:00",
     modules: [

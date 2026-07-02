@@ -163,12 +163,40 @@ export async function runClaudeAgent({
     conversation.push({ content: toolResults, role: "user" });
   }
 
-  return {
-    iterations,
-    stopReason: stopReason ?? "max_tool_iterations",
-    text: "",
-    trace,
-  };
+  // Estourou o cap de iterações no meio de tool-use. Antes devolvíamos text vazio e o
+  // chamador caía num fallback genérico — péssimo depois de o agente já ter apurado tudo.
+  // Fazemos UMA chamada final com tool_choice "none": o modelo é obrigado a fechar a
+  // resposta com o que já tem, sem pedir mais ferramenta.
+  try {
+    const finalResponse = await client.messages.create({
+      max_tokens: maxTokens,
+      messages: conversation,
+      model,
+      ...(systemBlocks ? { system: systemBlocks } : {}),
+      ...(toolDefinitions.length
+        ? { tool_choice: { type: "none" }, tools: toolDefinitions }
+        : {}),
+    });
+
+    return {
+      iterations,
+      stopReason: finalResponse.stop_reason ?? "max_tool_iterations",
+      text: extractText(finalResponse.content),
+      trace,
+    };
+  } catch (error) {
+    console.error("[claude-agent] final no-tools completion failed", {
+      model,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+
+    return {
+      iterations,
+      stopReason: stopReason ?? "max_tool_iterations",
+      text: "",
+      trace,
+    };
+  }
 }
 
 function extractText(content: Anthropic.ContentBlock[]): string {

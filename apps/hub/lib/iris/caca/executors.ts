@@ -2,7 +2,10 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ClaudeAgentTool } from "@/lib/ai/claude-agent";
 import { prepareBoletoResendAction } from "@/lib/guardian/asaas";
-import { loadHadesAttendanceClient } from "@/lib/guardian/attendance";
+import {
+  loadC2xUserCadastro,
+  loadHadesAttendanceClient,
+} from "@/lib/guardian/attendance";
 import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
 
 import { appendClientNote } from "./client-memory";
@@ -170,7 +173,15 @@ async function consultarCadastro(context: CacaToolContext) {
   }
 
   const record = await loadClientRecord(context.c2xClientId);
-  const dados = record?.dados360;
+  let dados = record?.dados360;
+
+  // Nao-comprador (colaborador, imobiliaria, prospect) nao entra na fila do Hades
+  // (ela parte de contratos/parcelas) — le o cadastro DIRETO do users do C2X.
+  if (!dados && context.c2xClientId) {
+    const cadastroOnly = await loadC2xUserCadastro(context.c2xClientId);
+
+    dados = cadastroOnly?.dados360;
+  }
 
   if (!dados) {
     const perfil = context.customerProfileLabel;

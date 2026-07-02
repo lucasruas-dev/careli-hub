@@ -565,6 +565,264 @@ export async function loadHadesAttendanceClient(clientId: string) {
   return clients[0] ?? null;
 }
 
+// Cadastro DIRETO do `users` do C2X por id — SEM exigir carteira/contrato. A fila de
+// atendimento parte de payments/acquisition_requests, entao quem existe no C2X mas nao
+// e comprador com pedido (colaborador, imobiliaria, prospect) nunca aparece nela. Este
+// leitor serve esses perfis (Caca/Athena consultarem o cadastro apos validar identidade):
+// mesmos joins de cadastro da fila, read-only, carteira zerada no retorno.
+export async function loadC2xUserCadastro(
+  clientId: string,
+): Promise<QueueClient | null> {
+  const c2xClientId = c2xClientIdFromQueueId(clientId);
+
+  if (!c2xClientId) {
+    return null;
+  }
+
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return null;
+  }
+
+  const { pool } = poolResult;
+
+  try {
+    const [rows] = await pool.query<AttendanceContractRow[]>(
+      `
+      select
+        client.id as client_id,
+        client.name as client_name,
+        client.fantasy_name as client_fantasy_name,
+        client.social_name as client_social_name,
+        client.cpf,
+        client.rg,
+        client.cnpj,
+        client.email as client_email,
+        client.phone,
+        client.cellphone,
+        (
+          select ph.phone
+          from phones ph
+          where ph.ownertable_type = 'User'
+            and ph.ownertable_id = client.id
+            and trim(coalesce(ph.phone, '')) <> ''
+          order by ph.is_whatsapp desc, ph.updated_at desc, ph.id desc
+          limit 1
+        ) as contact_phone,
+        client.birthday,
+        client.identification_number,
+        client.mother_name,
+        client.nacionality,
+        client.naturalness,
+        person_type.name as person_type_name,
+        sex.name as sex_name,
+        civil.name as civil_state_name,
+        document_type.name as document_type_name,
+        profession.name as profession_name,
+        property_regime.name as property_regime_name,
+        salary.name as salary_range_name,
+        schooling.name as schooling_name,
+        vinculed.name as vinculed_name,
+        client_address.zipcode as client_address_zipcode,
+        client_address.address as client_address,
+        client_address.number as client_address_number,
+        client_address.complement as client_address_complement,
+        client_address.district as client_address_district,
+        client_city.name as client_city_name,
+        client_state.acronym as client_state_acronym,
+        spouse.name as spouse_name,
+        spouse.cpf as spouse_cpf,
+        spouse.cellphone as spouse_cellphone,
+        spouse.birthday as spouse_birthday,
+        spouse.email as spouse_email,
+        spouse.identification_number as spouse_identification_number,
+        spouse.nacionality as spouse_nacionality,
+        spouse_document_type.name as spouse_document_type_name,
+        spouse_sex.name as spouse_sex_name,
+        spouse_profession.name as spouse_profession_name,
+        spouse_address.zipcode as spouse_address_zipcode,
+        spouse_address.address as spouse_address,
+        spouse_address.number as spouse_address_number,
+        spouse_address.complement as spouse_address_complement,
+        spouse_address.district as spouse_address_district,
+        spouse_city.name as spouse_city_name,
+        spouse_state.acronym as spouse_state_acronym
+      from users client
+      left join users vinculed on vinculed.id = client.vinculed_by_id
+      left join person_types person_type on person_type.id = client.person_type_id
+      left join sexes sex on sex.id = client.sex_id
+      left join civil_states civil on civil.id = client.civil_state_id
+      left join document_types document_type on document_type.id = client.document_type_id
+      left join professions profession on profession.id = client.profession_id
+      left join property_regimes property_regime on property_regime.id = client.property_regime_id
+      left join salary_ranges salary on salary.id = client.salary_range_id
+      left join schoolings schooling on schooling.id = client.schooling_id
+      left join addresses client_address on client_address.id = (
+        select addr.id
+        from addresses addr
+        where addr.ownertable_type = 'User'
+          and addr.ownertable_id = client.id
+        order by addr.updated_at desc, addr.id desc
+        limit 1
+      )
+      left join cities client_city on client_city.id = client_address.city_id
+      left join states client_state on client_state.id = coalesce(client_address.state_id, client_city.state_id)
+      left join spouses spouse on spouse.id = (
+        select sp.id
+        from spouses sp
+        where sp.ownertable_type = 'User'
+          and sp.ownertable_id = client.id
+        order by sp.updated_at desc, sp.id desc
+        limit 1
+      )
+      left join document_types spouse_document_type on spouse_document_type.id = spouse.document_type_id
+      left join sexes spouse_sex on spouse_sex.id = spouse.sex_id
+      left join professions spouse_profession on spouse_profession.id = spouse.profession_id
+      left join addresses spouse_address on spouse_address.id = (
+        select addr.id
+        from addresses addr
+        where addr.ownertable_type = 'Spouse'
+          and addr.ownertable_id = spouse.id
+        order by addr.updated_at desc, addr.id desc
+        limit 1
+      )
+      left join cities spouse_city on spouse_city.id = spouse_address.city_id
+      left join states spouse_state on spouse_state.id = coalesce(spouse_address.state_id, spouse_city.state_id)
+      where client.id = ?
+      limit 1
+      `,
+      [c2xClientId],
+    );
+    const row = rows[0];
+
+    if (!row) {
+      return null;
+    }
+
+    const risk = riskAnalysisFor({
+      liquidatedPayments: 0,
+      overdueAmount: 0,
+      overdueDays: 0,
+      overduePayments: 0,
+      totalPayments: 0,
+    });
+    const clientAddress = formatAddress({
+      address: row.client_address,
+      city: row.client_city_name,
+      complement: row.client_address_complement,
+      district: row.client_address_district,
+      number: row.client_address_number,
+      state: row.client_state_acronym,
+      zipcode: row.client_address_zipcode,
+    });
+    const spouseAddress = formatAddress({
+      address: row.spouse_address,
+      city: row.spouse_city_name,
+      complement: row.spouse_address_complement,
+      district: row.spouse_address_district,
+      number: row.spouse_address_number,
+      state: row.spouse_state_acronym,
+      zipcode: row.spouse_address_zipcode,
+    });
+    const spouseName = firstFilled(row.spouse_name);
+
+    const sourceClient: HadesAttendanceSourceClient = {
+      id: `c2x-client-${c2xClientId}`,
+      nome: formatPersonName(row.client_name ?? EMPTY_FIELD),
+      cpf: formatDocument(firstFilled(row.cpf, row.cnpj)),
+      telefone: formatPhone(
+        firstFilled(row.contact_phone, row.cellphone, row.phone),
+      ),
+      idade: ageFromBirthDate(row.birthday),
+      sexo: formatName(row.sex_name ?? EMPTY_FIELD),
+      estadoCivil: formatName(row.civil_state_name ?? EMPTY_FIELD),
+      profissao: formatName(row.profession_name ?? EMPTY_FIELD),
+      renda: formatName(row.salary_range_name ?? EMPTY_FIELD),
+      cidade: formatCityState(row.client_city_name, row.client_state_acronym),
+      escolaridade: formatName(row.schooling_name ?? EMPTY_FIELD),
+      empreendimento: EMPTY_FIELD,
+      unidadeLote: EMPTY_FIELD,
+      quadra: EMPTY_FIELD,
+      lote: EMPTY_FIELD,
+      area: EMPTY_FIELD,
+      valorUnidade: 0,
+      parcelasTotal: 0,
+      parcelasLiquidadas: 0,
+      parcelasVencidas: 0,
+      parcelasAVencer: 0,
+      saldoAtraso: 0,
+      atrasoDias: 0,
+      scoreRisco: risk.score,
+      prioridade: risk.priority,
+      responsavel: EMPTY_FIELD,
+      status: statusFor(risk.priority, 0, 0),
+      perfilParcela: "Ato",
+      vencimento: formatDateInput(null),
+      recuperado: 0,
+      c2xInstallmentsLoaded: true,
+      c2xInstallments: [],
+      c2xUnits: [],
+      email: row.client_email ?? undefined,
+      tipoPessoa: formatName(firstFilled(row.person_type_name) ?? EMPTY_FIELD),
+      documentoIdentidade: formatDocumentLabel(
+        row.document_type_name,
+        row.identification_number,
+      ),
+      rg: firstFilled(row.rg) ?? EMPTY_FIELD,
+      razaoSocial: formatPersonName(
+        firstFilled(row.client_social_name) ?? EMPTY_FIELD,
+      ),
+      nomeFantasia: formatPersonName(
+        firstFilled(row.client_fantasy_name) ?? EMPTY_FIELD,
+      ),
+      endereco: clientAddress,
+      cep: formatZipcode(row.client_address_zipcode),
+      bairro: formatName(row.client_address_district ?? EMPTY_FIELD),
+      numeroEndereco: firstFilled(row.client_address_number) ?? EMPTY_FIELD,
+      complementoEndereco:
+        firstFilled(row.client_address_complement) ?? EMPTY_FIELD,
+      naturalidade: formatName(row.naturalness ?? EMPTY_FIELD),
+      nacionalidade: formatName(row.nacionality ?? EMPTY_FIELD),
+      nomeMae: formatPersonName(firstFilled(row.mother_name) ?? EMPTY_FIELD),
+      regimeBens: formatName(row.property_regime_name ?? EMPTY_FIELD),
+      conjuge: spouseName ? formatPersonName(spouseName) : EMPTY_FIELD,
+      cpfConjuge: formatDocument(row.spouse_cpf),
+      conjugeDados: {
+        cpf: formatDocument(row.spouse_cpf),
+        documentoIdentidade: formatDocumentLabel(
+          row.spouse_document_type_name,
+          row.spouse_identification_number,
+        ),
+        email: firstFilled(row.spouse_email) ?? EMPTY_FIELD,
+        endereco: spouseAddress,
+        idade: ageFromBirthDate(row.spouse_birthday),
+        nacionalidade: formatName(row.spouse_nacionality ?? EMPTY_FIELD),
+        nascimento: formatDate(toDate(row.spouse_birthday)),
+        nome: spouseName ? formatPersonName(spouseName) : EMPTY_FIELD,
+        profissao: formatName(row.spouse_profession_name ?? EMPTY_FIELD),
+        naturalidade: EMPTY_FIELD,
+        sexo: formatName(row.spouse_sex_name ?? EMPTY_FIELD),
+        telefone: formatPhone(row.spouse_cellphone),
+      },
+      imobiliariaCorretor: formatPersonName(
+        firstFilled(row.vinculed_name) ?? EMPTY_FIELD,
+      ),
+      nascimento: formatDate(toDate(row.birthday)),
+      relacionamento: "Cadastro C2X (sem contrato vinculado)",
+    };
+
+    return buildQueueClientsFromSources([sourceClient])[0] ?? null;
+  } catch (error) {
+    console.error(
+      "[guardian] loadC2xUserCadastro failed",
+      sanitizeHadesDbError(error),
+    );
+
+    return null;
+  }
+}
+
 async function loadInstallmentsByRequestId(
   pool: Pool,
   requestIds: number[],

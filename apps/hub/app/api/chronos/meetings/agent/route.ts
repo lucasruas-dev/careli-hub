@@ -1,6 +1,9 @@
 import { type NextRequest } from "next/server";
 
-import { completeWithClaude, resolveClaudeModel } from "@/lib/ai/claude";
+import {
+  completeWithClaudeStructured,
+  resolveClaudeModel,
+} from "@/lib/ai/claude";
 import {
   authorizeChronosRequest,
   isChronosForbiddenError,
@@ -1400,7 +1403,26 @@ async function draftChronosMinutes({
   const model = resolveClaudeModel("heavy");
 
   try {
-    const completion = await completeWithClaude({
+    const completion = await completeWithClaudeStructured<{
+      minutes?: unknown;
+      summary?: unknown;
+    }>({
+      inputSchema: {
+        properties: {
+          minutes: {
+            description:
+              "Ata executiva completa em Markdown (secoes '## ', subtitulos '### ', tabela do plano de acao). Rascunho para revisao humana.",
+            type: "string",
+          },
+          summary: {
+            description:
+              "Resumo executivo curto da ata (3 a 6 frases), sem citar fallback nem transcricao literal.",
+            type: "string",
+          },
+        },
+        required: ["summary", "minutes"],
+        type: "object",
+      },
       maxTokens: 8_000,
       messages: [
         {
@@ -1415,23 +1437,29 @@ async function draftChronosMinutes({
         "Use apenas fatos recebidos no contexto. Nao invente decisao, participante, prazo ou responsavel.",
         "Quando faltar informacao, escreva 'Nao informado'.",
         "A ata nunca deve sair aprovada; ela e rascunho para revisao humana.",
-        "Escreva a ata em Markdown com secoes (##), bullets, negrito com **texto** e uma tabela markdown para o plano de acao.",
+        "Escreva a ata em Markdown com secoes (##), subtitulos (###), bullets, negrito com **texto** e uma tabela markdown para o plano de acao.",
         "Nao despeje a transcricao crua; transforme falas em resumo executivo, decisoes, riscos, pendencias e proximos passos.",
-        'Responda SOMENTE com um JSON valido no formato {"summary": "...", "minutes": "..."}, sem cercas de codigo e sem nenhum texto fora do JSON. O campo minutes contem a ata em Markdown.',
+        "Entregue o resultado chamando a ferramenta entregar_ata com os campos summary e minutes.",
       ].join("\n"),
+      toolDescription:
+        "Entrega a ata executiva do Chronos (summary + minutes em Markdown).",
+      toolName: "entregar_ata",
     });
 
-    const parsed = completion
-      ? parseChronosMinutesJson(completion.text)
-      : null;
-
-    if (!parsed) {
+    if (!completion) {
       throw new Error(
-        "A Athena nao retornou JSON estruturado com summary e minutes validos.",
+        "A Athena nao retornou a ata estruturada (summary + minutes).",
       );
     }
 
-    return parsed;
+    const summary = normalizeText(completion.data.summary, 2_000);
+    const minutes = normalizeText(completion.data.minutes, 16_000);
+
+    if (!summary || !minutes) {
+      throw new Error("A Athena retornou a ata sem summary ou minutes validos.");
+    }
+
+    return { minutes, summary };
   } catch (error) {
     const message = getChronosAgentErrorMessage(
       error,
@@ -1463,7 +1491,32 @@ async function draftChronosAgenda({
   const model = resolveClaudeModel("heavy");
 
   try {
-    const completion = await completeWithClaude({
+    const completion = await completeWithClaudeStructured<{
+      agendaMarkdown?: unknown;
+      bulletPoints?: unknown;
+      title?: unknown;
+    }>({
+      inputSchema: {
+        properties: {
+          agendaMarkdown: {
+            description:
+              "Pauta executiva completa em Markdown simples, pronta para preencher o campo de pauta.",
+            type: "string",
+          },
+          bulletPoints: {
+            description:
+              "5 a 8 topicos-resumo executivos da pauta, acionaveis, sem participantes.",
+            items: { type: "string" },
+            type: "array",
+          },
+          title: {
+            description: "Titulo executivo curto da pauta.",
+            type: "string",
+          },
+        },
+        required: ["title", "bulletPoints", "agendaMarkdown"],
+        type: "object",
+      },
       maxTokens: 1_500,
       messages: [
         {
@@ -1480,11 +1533,22 @@ async function draftChronosAgenda({
         "A pauta deve ter objetivo obrigatorio, temas conforme o contexto e estrutura com expectativa de tempo.",
         "Use negrito em objetivo, decisoes, riscos, tempos, entregas, pontos criticos e termos importantes usando Markdown (**texto**).",
         "Nao inclua secao de participantes; participantes aparecem no card do evento.",
-        'Responda SOMENTE com um JSON valido no formato {"title": "...", "bulletPoints": ["..."], "agendaMarkdown": "..."}, sem cercas de codigo e sem nenhum texto fora do JSON.',
+        "Entregue o resultado chamando a ferramenta entregar_pauta com title, bulletPoints e agendaMarkdown.",
       ].join("\n"),
+      toolDescription: "Entrega a pauta executiva do Chronos.",
+      toolName: "entregar_pauta",
     });
 
-    const agenda = parseChronosAgendaJson(completion?.text ?? "");
+    const agenda: ChronosAgendaDraft = completion
+      ? {
+          agendaMarkdown: normalizeText(completion.data.agendaMarkdown, 8_000),
+          bulletPoints: parseChronosAgendaLines(
+            completion.data.bulletPoints,
+          ).slice(0, 8),
+          title:
+            normalizeText(completion.data.title, 180) || "Pauta executiva",
+        }
+      : { agendaMarkdown: "", bulletPoints: [], title: "Pauta executiva" };
 
     if (agenda.bulletPoints.length === 0) {
       throw new Error("A Athena nao retornou itens de pauta validos.");

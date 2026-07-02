@@ -242,6 +242,10 @@ async function analyzeEvidenceWithOpenAi({
   }
 
   try {
+    // Saida estruturada garantida via tool-use forcado (mesmo padrao da ata do Chronos):
+    // o modelo preenche o input da ferramenta e a API serializa o JSON — sem depender
+    // de o modelo escrever JSON valido a mao (que quebrava no parse e jogava a analise
+    // do Claude fora, caindo no fallback local a toa).
     const response = await client.messages.create({
       max_tokens: 1_200,
       messages: [{ content, role: "user" }],
@@ -254,16 +258,68 @@ async function analyzeEvidenceWithOpenAi({
         "Preencha expectedResult com o comportamento correto segundo a regra de negocio.",
         "Preencha actualResult com a divergencia observada ou relatada pelo usuario.",
         "Nao invente evidencia. Se a imagem, audio ou video nao for conclusivo, registre isso de forma objetiva.",
-        "Responda SOMENTE com JSON valido, sem markdown e sem texto fora do JSON.",
+        "Entregue a analise chamando a ferramenta entregar_analise.",
       ].join("\n"),
+      tool_choice: { name: "entregar_analise", type: "tool" },
+      tools: [
+        {
+          description:
+            "Entrega a analise tecnica estruturada da evidencia do chamado.",
+          input_schema: {
+            properties: {
+              actualResult: {
+                description:
+                  "Divergencia observada ou relatada pelo usuario (o que ocorreu de errado).",
+                type: "string",
+              },
+              evidenceInsights: {
+                description:
+                  "Achados objetivos extraidos das evidencias (prints, audio, video).",
+                items: { type: "string" },
+                type: "array",
+              },
+              expectedResult: {
+                description:
+                  "Comportamento correto segundo a regra de negocio do Panteon.",
+                type: "string",
+              },
+              technicalSummary: {
+                description:
+                  "Resumo tecnico completo da triagem para o time resolver o chamado.",
+                type: "string",
+              },
+            },
+            required: ["technicalSummary", "evidenceInsights"],
+            type: "object",
+          },
+          name: "entregar_analise",
+        },
+      ],
     });
 
-    const text = response.content
-      .filter((block): block is Anthropic.TextBlock => block.type === "text")
-      .map((block) => block.text)
-      .join("\n")
-      .trim();
-    const parsed = parseEvidenceAnalysisJson(text);
+    const toolUse = response.content.find(
+      (block): block is Anthropic.ToolUseBlock =>
+        block.type === "tool_use" && block.name === "entregar_analise",
+    );
+    const rawInput = (toolUse?.input ?? null) as {
+      actualResult?: unknown;
+      evidenceInsights?: unknown;
+      expectedResult?: unknown;
+      technicalSummary?: unknown;
+    } | null;
+    const parsed = rawInput
+      ? {
+          actualResult: sanitizeText(rawInput.actualResult, 1_000),
+          evidenceInsights: Array.isArray(rawInput.evidenceInsights)
+            ? rawInput.evidenceInsights.filter(
+                (item): item is string =>
+                  typeof item === "string" && item.trim().length > 0,
+              )
+            : [],
+          expectedResult: sanitizeText(rawInput.expectedResult, 1_000),
+          technicalSummary: sanitizeText(rawInput.technicalSummary, 4_000),
+        }
+      : null;
 
     if (!parsed?.technicalSummary) {
       return fallback;

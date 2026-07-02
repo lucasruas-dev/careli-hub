@@ -128,3 +128,75 @@ export async function completeWithClaude({
 
   return { model: response.model, text };
 }
+
+// Saida ESTRUTURADA garantida (equivalente ao response_format json_schema da OpenAI).
+// Em vez de pedir pro modelo escrever JSON valido a mao — fragil quando o valor e um
+// texto grande em Markdown (ata, pauta): newline/aspas literais quebram o JSON.parse —
+// forcamos uma unica tool e lemos o `input` ja estruturado (a API serializa o JSON).
+// Use para agentes que precisam de campos previsiveis (ata do Chronos, pauta, etc.).
+export async function completeWithClaudeStructured<
+  T = Record<string, unknown>,
+>({
+  inputSchema,
+  maxTokens = 4096,
+  messages,
+  model,
+  system,
+  toolDescription,
+  toolName,
+}: {
+  inputSchema: Anthropic.Tool.InputSchema;
+  maxTokens?: number;
+  messages: ClaudeChatMessage[];
+  model?: string;
+  system?: string;
+  toolDescription?: string;
+  toolName: string;
+}): Promise<{ data: T; model: string } | null> {
+  const client = getAnthropicClient();
+  if (!client) {
+    return null;
+  }
+
+  const normalized = normalizeClaudeMessages(messages);
+  if (!normalized.length) {
+    return null;
+  }
+
+  const resolvedModel = model ?? resolveClaudeModel("default");
+
+  let response: Anthropic.Message;
+  try {
+    response = await client.messages.create({
+      max_tokens: maxTokens,
+      messages: normalized,
+      model: resolvedModel,
+      ...(system ? { system } : {}),
+      tool_choice: { name: toolName, type: "tool" },
+      tools: [
+        {
+          description: toolDescription ?? "Entrega o resultado estruturado.",
+          input_schema: inputSchema,
+          name: toolName,
+        },
+      ],
+    });
+  } catch (error) {
+    console.error("[claude] completeWithClaudeStructured failed", {
+      model: resolvedModel,
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    throw error;
+  }
+
+  const toolUse = response.content.find(
+    (block): block is Anthropic.ToolUseBlock =>
+      block.type === "tool_use" && block.name === toolName,
+  );
+
+  if (!toolUse) {
+    return null;
+  }
+
+  return { data: toolUse.input as T, model: response.model };
+}
