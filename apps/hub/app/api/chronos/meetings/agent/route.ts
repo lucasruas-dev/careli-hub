@@ -28,10 +28,10 @@ import {
 } from "@/lib/chronos/minutes";
 import { normalizeChronosMeetingRuntime } from "@/lib/chronos/runtime-meeting";
 
-const DEFAULT_MINUTES_MODEL = "gpt-5.5";
-const DEFAULT_MINUTES_REASONING_EFFORT = "medium";
-const DEFAULT_AGENDA_MODEL = "gpt-5.5";
-const DEFAULT_AGENDA_REASONING_EFFORT = "medium";
+const _DEFAULT_MINUTES_MODEL = "gpt-5.5";
+const _DEFAULT_MINUTES_REASONING_EFFORT = "medium";
+const _DEFAULT_AGENDA_MODEL = "gpt-5.5";
+const _DEFAULT_AGENDA_REASONING_EFFORT = "medium";
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-transcribe-diarize";
 const CHRONOS_TRANSCRIPTION_MODELS = [
   "gpt-4o-transcribe-diarize",
@@ -44,7 +44,7 @@ const MAX_RECORDING_BYTES = 25_000_000;
 const CHRONOS_FULL_RECORDING_SPEAKER_LABEL = "Audio completo da reuniao";
 const CHRONOS_PARTICIPANT_AUDIO_SOURCE =
   "chronos-livekit-egress-participant-audio";
-const CHRONOS_MINUTES_RESPONSE_FORMAT = {
+const _CHRONOS_MINUTES_RESPONSE_FORMAT = {
   name: "chronos_minutes_draft",
   schema: {
     additionalProperties: false,
@@ -66,7 +66,7 @@ const CHRONOS_MINUTES_RESPONSE_FORMAT = {
   strict: true,
   type: "json_schema",
 } as const;
-const CHRONOS_AGENDA_RESPONSE_FORMAT = {
+const _CHRONOS_AGENDA_RESPONSE_FORMAT = {
   name: "chronos_agenda_draft",
   schema: {
     additionalProperties: false,
@@ -95,7 +95,7 @@ const CHRONOS_AGENDA_RESPONSE_FORMAT = {
   strict: true,
   type: "json_schema",
 } as const;
-const CHRONOS_JSON_OBJECT_RESPONSE_FORMAT = {
+const _CHRONOS_JSON_OBJECT_RESPONSE_FORMAT = {
   type: "json_object",
 } as const;
 
@@ -1392,7 +1392,6 @@ async function fetchChronosRecordingFile({
 }
 
 async function draftChronosMinutes({
-  apiKey,
   meeting,
   minutesProfile,
 }: {
@@ -1480,7 +1479,6 @@ async function draftChronosMinutes({
 }
 
 async function draftChronosAgenda({
-  apiKey,
   context,
   meeting,
 }: {
@@ -1574,7 +1572,7 @@ async function draftChronosAgenda({
   }
 }
 
-function resolveChronosOpenAiModel(
+function _resolveChronosOpenAiModel(
   fallback: string,
   ...candidates: Array<string | undefined>
 ) {
@@ -1927,7 +1925,7 @@ function buildChronosChatContext(meeting: ChronosMeeting) {
     .join("\n");
 }
 
-function parseChronosMinutesJson(value: string) {
+function _parseChronosMinutesJson(value: string) {
   const start = value.indexOf("{");
   const end = value.lastIndexOf("}");
 
@@ -1953,7 +1951,7 @@ function parseChronosMinutesJson(value: string) {
   }
 }
 
-function parseChronosAgendaJson(value: string): ChronosAgendaDraft {
+function _parseChronosAgendaJson(value: string): ChronosAgendaDraft {
   const start = value.indexOf("{");
   const end = value.lastIndexOf("}");
 
@@ -1980,7 +1978,7 @@ function parseChronosAgendaJson(value: string): ChronosAgendaDraft {
   }
 }
 
-function extractOutputText(payload: OpenAiResponsePayload) {
+function _extractOutputText(payload: OpenAiResponsePayload) {
   if (!payload) {
     return "";
   }
@@ -2042,7 +2040,7 @@ function normalizeChronosOpenAiErrorMessage(message: string) {
   return message;
 }
 
-function shouldRetryChronosJsonObjectFormat(message: string) {
+function _shouldRetryChronosJsonObjectFormat(message: string) {
   return /option|json_schema|text\.format|response_format|format/i.test(message);
 }
 

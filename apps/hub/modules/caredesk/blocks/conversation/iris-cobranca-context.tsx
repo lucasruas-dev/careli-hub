@@ -112,7 +112,6 @@ export function IrisCobrancaContextSidebar({
   currentTicketId,
   formatDateTime,
   mode = "cobranca",
-  note,
   onInsertDraftText,
   onSelectTicket,
   onToggleCollapsed,

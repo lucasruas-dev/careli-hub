@@ -623,6 +623,8 @@ export function IrisTicketRow({
             <Bot className="size-3.5" aria-hidden="true" />
           </span>
         ) : ticket.assignedToAvatarUrl ? (
+          // avatar externo (URL assinada do WhatsApp) — next/image nao se aplica
+          // eslint-disable-next-line @next/next/no-img-element
           <img
             src={ticket.assignedToAvatarUrl}
             alt={assigneeName}

@@ -42,7 +42,6 @@ import {
   Gauge,
   HandCoins,
   Layers3,
-  LayoutGrid,
   LockKeyhole,
   MessageSquareText,
   PanelLeftClose,
@@ -438,7 +437,7 @@ function AtlasSidebar({
   onSelect: (section: AtlasSection) => void;
   onToggleCollapsed: () => void;
 }) {
-  function handleOpenModuleLauncher() {
+  function _handleOpenModuleLauncher() {
     window.dispatchEvent(new Event("careli:toggle-module-launcher"));
   }
 

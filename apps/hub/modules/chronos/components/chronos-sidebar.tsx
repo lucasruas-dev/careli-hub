@@ -3,7 +3,6 @@ import {
   CalendarClock,
   CalendarDays,
   FileText,
-  LayoutGrid,
   PanelLeftClose,
   PanelLeftOpen,
   Video,
@@ -35,7 +34,7 @@ export function ChronosModuleSidebar({
   onSelect,
   onToggleCollapsed,
 }: ChronosModuleSidebarProps) {
-  function handleOpenModuleLauncher() {
+  function _handleOpenModuleLauncher() {
     window.dispatchEvent(new Event("careli:toggle-module-launcher"));
   }
 

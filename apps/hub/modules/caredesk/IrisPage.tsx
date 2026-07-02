@@ -4797,7 +4797,7 @@ function ImageMessageContent({
         onClick={() => setOpen(true)}
         className="block overflow-hidden rounded-lg"
       >
-        {/* eslint-disable-next-line @next/next/no-img-element */}
+        { }
         <img
           src={url}
           alt={fileName ?? "Imagem recebida pelo WhatsApp"}
@@ -4852,7 +4852,7 @@ function ImageLightbox({
       >
         <X className="size-5" aria-hidden="true" />
       </button>
-      {/* eslint-disable-next-line @next/next/no-img-element */}
+      { }
       <img
         src={url}
         alt={alt}

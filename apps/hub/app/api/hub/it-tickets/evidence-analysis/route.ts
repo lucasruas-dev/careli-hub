@@ -24,9 +24,9 @@ type ParsedEvidenceAnalysisRequest =
       ok: false;
     };
 
-const DEFAULT_MODEL = "gpt-5.5";
+const _DEFAULT_MODEL = "gpt-5.5";
 const DEFAULT_TRANSCRIPTION_MODEL = "gpt-4o-mini-transcribe";
-const OPENAI_TIMEOUT_MS = 45_000;
+const _OPENAI_TIMEOUT_MS = 45_000;
 const MAX_IMAGE_EVIDENCES = 6;
 const MAX_AUDIO_EVIDENCES = 2;
 const MAX_EVIDENCE_ATTACHMENTS = 4;
@@ -210,7 +210,6 @@ function buildFallbackEvidenceAnalysis(
 }
 
 async function analyzeEvidenceWithOpenAi({
-  apiKey,
   audioTranscripts,
   fallback,
   input,
@@ -497,7 +496,7 @@ function buildEvidenceInsights(attachments: HubItTicketAttachmentInput[]) {
   });
 }
 
-function parseEvidenceAnalysisJson(value: string): {
+function _parseEvidenceAnalysisJson(value: string): {
   actualResult?: string;
   evidenceInsights: string[];
   expectedResult?: string;
@@ -539,7 +538,7 @@ function parseEvidenceAnalysisJson(value: string): {
   }
 }
 
-function extractOutputText(payload: Record<string, unknown> | null) {
+function _extractOutputText(payload: Record<string, unknown> | null) {
   if (!payload) {
     return "";
   }

@@ -3,11 +3,8 @@
 import {
   HUB_AUTO_LOGOUT_TIMEOUT_MS,
   HUB_IDLE_TIMEOUT_MS,
-  getHubPresenceLabel,
-  getHubPresenceTodaySummary,
   normalizeHubPresenceStatus,
   type HubPresenceStatus,
-  type HubPresenceSummary,
 } from "@/lib/hub-presence";
 import {
   getHubHomeSnapshot,
@@ -39,7 +36,6 @@ import {
 import { Badge, Surface, WorkspaceHeader, WorkspaceLayout } from "@repo/uix";
 import {
   AlertTriangle,
-  Bell,
   CalendarCheck2,
   ChevronDown,
   CheckCircle2,
@@ -47,12 +43,8 @@ import {
   FileText,
   LayoutGrid,
   KeyRound,
-  ListChecks,
-  MessageSquareText,
   RefreshCw,
   Target,
-  TimerReset,
-  Users,
 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
@@ -149,7 +141,7 @@ export default function HomePage() {
       .filter((access) => access.status === "enabled")
       .map((access) => access.moduleId),
   );
-  const availableModules = orderedHubModules.filter(
+  const _availableModules = orderedHubModules.filter(
     (hubModule) =>
       hubModule.id !== "zeus" &&
       isHubModuleActive(hubModule) &&
@@ -157,15 +149,15 @@ export default function HomePage() {
       activeModuleIds.has(hubModule.id) &&
       enabledModuleIds.has(hubModule.id),
   );
-  const onlineCount = countTeamStatus(teamMembers, "online");
-  const awayCount = countTeamStatus(teamMembers, "away");
-  const lunchCount = countTeamStatus(teamMembers, "lunch");
-  const agendaCount = countTeamStatus(teamMembers, "agenda");
-  const offlineCount = countTeamStatus(teamMembers, "offline");
-  const taskCount = asanaSnapshot?.totals.total ?? 0;
-  const unreadNotificationsCount = snapshot?.notifications.unreadCount ?? 0;
-  const peopleCount = teamMembers.length;
-  const messagesTodayCount = snapshot?.pulsex.messagesTodayCount ?? 0;
+  const _onlineCount = countTeamStatus(teamMembers, "online");
+  const _awayCount = countTeamStatus(teamMembers, "away");
+  const _lunchCount = countTeamStatus(teamMembers, "lunch");
+  const _agendaCount = countTeamStatus(teamMembers, "agenda");
+  const _offlineCount = countTeamStatus(teamMembers, "offline");
+  const _taskCount = asanaSnapshot?.totals.total ?? 0;
+  const _unreadNotificationsCount = snapshot?.notifications.unreadCount ?? 0;
+  const _peopleCount = teamMembers.length;
+  const _messagesTodayCount = snapshot?.pulsex.messagesTodayCount ?? 0;
 
   useEffect(() => {
     if (!isAdmin && activeHomeTab === "availability") {
@@ -418,7 +410,7 @@ function HomeTabs({
   );
 }
 
-function TeamAvatar({ member }: { member: HomeTeamMember }) {
+function _TeamAvatar({ member }: { member: HomeTeamMember }) {
   return (
     <span
       aria-label={`Foto de ${member.name}`}
@@ -435,7 +427,7 @@ function TeamAvatar({ member }: { member: HomeTeamMember }) {
   );
 }
 
-function DayMetric({
+function _DayMetric({
   label,
   note,
   value,
@@ -1094,110 +1086,6 @@ function CompactMetric({
   );
 }
 
-function PresenceTodayPanel({ className }: { className?: string }) {
-  const [summary, setSummary] = useState<HubPresenceSummary | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let isMounted = true;
-
-    function loadSummary() {
-      getHubPresenceTodaySummary()
-        .then((snapshot) => {
-          if (!isMounted) {
-            return;
-          }
-
-          setSummary(snapshot.summary ?? null);
-          setError(null);
-        })
-        .catch((loadError: unknown) => {
-          if (!isMounted) {
-            return;
-          }
-
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Nao foi possivel carregar presenca.",
-          );
-        });
-    }
-
-    loadSummary();
-    const intervalId = window.setInterval(loadSummary, 60_000);
-
-    return () => {
-      isMounted = false;
-      window.clearInterval(intervalId);
-    };
-  }, []);
-
-  const status = summary?.currentStatus ?? "offline";
-  const personalJourneyEvents = createJourneyEventItems(summary?.events ?? []);
-
-  return (
-    <Surface bordered className={`border-[#d9e0e7] bg-white p-5 ${className ?? ""}`}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <PanelTitle eyebrow="Meu dia" title="Historico individual" />
-      </div>
-      <div className="mt-4 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
-        <div>
-          <p className="m-0 text-xs text-[#667085]">Status atual</p>
-          <p className="m-0 mt-1 text-sm font-semibold capitalize text-[#101820]">
-            {getHubPresenceLabel(status)}
-          </p>
-        </div>
-        <span className={`h-3 w-3 rounded-full ${getPresenceDotClassName(status)}`} />
-      </div>
-      <div className="mt-3 grid grid-cols-2 gap-2">
-        <MiniLightMetric
-          label="Logins"
-          value={String(countJourneyEvents(personalJourneyEvents, "login"))}
-        />
-        <MiniLightMetric
-          label="Ausencias"
-          value={String(countJourneyEvents(personalJourneyEvents, "away"))}
-        />
-        <MiniLightMetric
-          label="Almoco"
-          value={String(countJourneyEvents(personalJourneyEvents, "lunch"))}
-        />
-        <MiniLightMetric
-          label="Logouts"
-          value={String(countJourneyEvents(personalJourneyEvents, "logout"))}
-        />
-      </div>
-      {personalJourneyEvents.length ? (
-        <div className="mt-4 grid gap-2">
-          {personalJourneyEvents.slice(0, 6).map(({ event, kind }) => (
-            <div
-              className="rounded-md border border-[#edf0f4] bg-white p-2.5 text-xs"
-              key={event.id}
-            >
-              <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
-                <span className="truncate font-semibold text-[#485466]">
-                  {formatJourneyEventLabel(kind)}
-                </span>
-                <span className="text-[#667085]">
-                  {formatPresenceTime(event.startedAt)}
-                </span>
-              </div>
-              <p className="m-0 mt-1 truncate text-[#667085]">
-                {formatJourneyMacroText(event, kind)}
-              </p>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="m-0 mt-3 text-xs text-[#667085]">
-          {error ?? "Nenhum log registrado hoje."}
-        </p>
-      )}
-    </Surface>
-  );
-}
-
 function PanelTitle({
   dark = false,
   eyebrow,
@@ -1227,7 +1115,7 @@ function PanelTitle({
   );
 }
 
-function PulseMetric({
+function _PulseMetric({
   icon,
   label,
   value,
@@ -1248,7 +1136,7 @@ function PulseMetric({
   );
 }
 
-function StatusPill({
+function _StatusPill({
   label,
   value,
   variant,
@@ -1274,7 +1162,7 @@ function StatusPill({
   );
 }
 
-function MiniLightMetric({ label, value }: { label: string; value: string }) {
+function _MiniLightMetric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-2.5">
       <p className="m-0 text-sm font-semibold text-[#101820]">{value}</p>
@@ -1358,7 +1246,7 @@ function formatJourneyEventLabel(kind: AvailabilityEventKind) {
   return labels[kind];
 }
 
-function countJourneyEvents<T extends { kind: AvailabilityEventKind }>(
+function _countJourneyEvents<T extends { kind: AvailabilityEventKind }>(
   events: T[],
   kind: AvailabilityEventKind,
 ) {

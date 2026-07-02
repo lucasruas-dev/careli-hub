@@ -42,6 +42,9 @@ export function MeuDiaHomeCard({ className }: { className?: string }) {
     };
   }, []);
 
+  // `now` recalcula DE PROPOSITO quando os dados recarregam (mantem "hoje"
+  // fresco em tela aberta) — as deps extras sao intencionais.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const now = useMemo(() => new Date(), [items, meetings]);
   const startToday = useMemo(() => atStartOfDay(now), [now]);
   const endToday = useMemo(() => atEndOfDay(now), [now]);

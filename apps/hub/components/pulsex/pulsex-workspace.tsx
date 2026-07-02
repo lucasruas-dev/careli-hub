@@ -327,7 +327,7 @@ export function HermesWorkspace() {
     () => callHistory.filter((entry) => entry.channelId === activeChannel.id),
     [activeChannel.id, callHistory],
   );
-  const channelsById = useMemo(
+  const _channelsById = useMemo(
     () => new Map(channels.map((channel) => [channel.id, channel] as const)),
     [channels],
   );

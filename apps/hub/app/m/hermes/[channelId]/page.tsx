@@ -291,7 +291,7 @@ export default function MobileHermesChatPage() {
         setSending(false);
       }
     },
-    [broadcastHermesMessageEvent, channelId, currentUserId, draft, sending],
+    [broadcastHermesMessageEvent, channelId, currentUserId, draft, mentions, sending],
   );
 
   // Rolou perto do topo → carrega o histórico mais antigo (como no desktop).

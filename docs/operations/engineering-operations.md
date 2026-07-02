@@ -41037,3 +41037,8 @@ PENDENCIAS (para retomar):
 4. **Migration 0041** (`0041_security_hardening_setup_policies.sql`): dropa as beta de escrita, cria policies admin-only p/ hub_users/assignments/channel_members, revokes nas funções SECURITY DEFINER. **NÃO APLICADA — aguarda OK do Lucas.**
 
 **Pendências do diagnóstico (dependem do Lucas):** aplicar 0041; ligar leaked password protection (dashboard Supabase, 1 clique); decidir Sentry; apagar cópias antigas do repo em Sistemas/; P1 (índices FK, quebrar god-files, vitest).
+
+**Lote P1 (mesma branch `chore/hardening-p0`, 2/jul):**
+1. **Vitest instalado** (`apps/hub`, task `test` no turbo, `test:hub` na raiz, passo no CI): 13 testes nas libs puras — regressão do sort de parcelas da Cacá (bug 30/jun, comparator extraído p/ `lib/iris/caca/installment-order.ts`), `toWhatsAppFormatting` e `buildBrazilianPhoneVariants` (9º dígito).
+2. **Migration 0042** (`0042_fk_indexes_hot_tables.sql`, NÃO aplicada): ~33 índices de FK curados nas tabelas quentes (caredesk_*, c2x_payments/guardian, apolo, hub); `sync_run_id` e FKs de auditoria ficaram FORA de propósito (custo de escrita sem leitura).
+3. **Lint zerado (96→0) e BLOQUEANTE no CI**: envs faltantes no turbo.json (ANTHROPIC_API_KEY, CACA_ENGINE, CLAUDE_MODEL_*, VERCEL_API_TOKEN…), regra unused-vars com prefixo `_`, imports/código morto removido (inclui 645 linhas de 3 componentes mortos: PresenceTodayPanel, ZeusOpsPresenceBar, DeployProtocolsView), 2 fixes reais: stale closure de `mentions` no envio do Hermes mobile + deps intencionais documentadas no Meu dia.

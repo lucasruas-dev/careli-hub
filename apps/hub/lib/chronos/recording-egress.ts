@@ -122,7 +122,7 @@ function buildChronosDriveStoragePath({
   const safeFileName =
     (fileName ?? fallbackName)
       .trim()
-      .replace(/[^\w.\-]+/g, "-")
+      .replace(/[^\w.-]+/g, "-")
       .replace(/^-+|-+$/g, "")
       .slice(-120) || fallbackName;
 

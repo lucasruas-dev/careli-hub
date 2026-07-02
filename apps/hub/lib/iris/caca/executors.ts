@@ -9,6 +9,7 @@ import {
 import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
 
 import { appendClientNote } from "./client-memory";
+import { sortInstallmentsByDueDate } from "./installment-order";
 import { CACA_TOOL_DEFINITIONS } from "./tools";
 
 // Estado mutável do turno: as ferramentas leem e escrevem aqui. Depois do loop, o caller lê
@@ -369,15 +370,9 @@ async function consultarFinanceiro(context: CacaToolContext) {
   const vencidas = items.filter((item) => item.status === "Vencida");
   const aVencer = items.filter((item) => item.status === "A vencer");
   const liquidadas = items.filter((item) => item.status === "Liquidada");
-  // ATENÇÃO: ordenar pelo campo ISO `dueDateInput` (AAAA-MM-DD), NUNCA por `dueDate`
-  // (formato BR DD/MM/AAAA). O localeCompare em DD/MM/AAAA ordena por dia→mês→ano,
-  // então "20/01/2027" vinha ANTES de "20/07/2026" e a Cacá apontava a parcela
-  // errada como próxima (bug 30/jun). O ISO ordena cronologicamente como texto.
-  const proxima = [...aVencer].sort((first, second) =>
-    String(first.dueDateInput ?? first.dueDate ?? "").localeCompare(
-      String(second.dueDateInput ?? second.dueDate ?? ""),
-    ),
-  )[0];
+  // Ordena por dueDateInput ISO — regra e teste de regressão vivem em
+  // installment-order.ts (bug 30/jun: sort por data BR apontava parcela errada).
+  const proxima = sortInstallmentsByDueDate(aVencer)[0];
 
   const linhas: string[] = ["RESUMO FINANCEIRO (não exponha ids internos):"];
 

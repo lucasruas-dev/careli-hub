@@ -29,9 +29,10 @@ jobs:
       - name: Typecheck
         run: npm run check-types:hub
 
-      # Nao-bloqueante por enquanto: ha 96 warnings PRE-existentes (legado
-      # OpenAI/Chronos) e o script usa --max-warnings 0. Zerar o passivo (P1)
-      # e ai remover o continue-on-error pra virar gate de verdade.
-      - name: Lint (informativo)
+      - name: Testes (vitest)
+        run: npm run test:hub
+
+      # Passivo de warnings zerado em 2/jul/2026 — gate pra valer
+      # (--max-warnings 0 no script do hub).
+      - name: Lint
         run: npm run lint:hub
-        continue-on-error: true

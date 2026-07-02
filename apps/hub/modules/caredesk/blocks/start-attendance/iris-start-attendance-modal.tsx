@@ -20,7 +20,6 @@ import type {
   IrisData,
   IrisMetaPhoneNumberLink,
   IrisMetaPhoneNumberOption,
-  IrisMetaTemplateOption,
   IrisMetaTemplatesResponse,
   IrisOptInTemplate,
   IrisQueueConfig,

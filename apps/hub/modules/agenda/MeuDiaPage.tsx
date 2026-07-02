@@ -67,6 +67,9 @@ export function MeuDiaPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [showForm, setShowForm] = useState(false);
+  // `now` recalcula DE PROPOSITO quando os dados recarregam (mantem "hoje"
+  // fresco em tela aberta) — as deps extras sao intencionais.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const now = useMemo(() => new Date(), [items, meetings]);
 
   const refresh = useCallback(async () => {

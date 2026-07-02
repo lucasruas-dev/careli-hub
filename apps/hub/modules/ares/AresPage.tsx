@@ -502,7 +502,7 @@ function AresSidebar({
   onSelect: (section: AresSection) => void;
   onToggleCollapsed: () => void;
 }) {
-  function handleOpenModuleLauncher() {
+  function _handleOpenModuleLauncher() {
     window.dispatchEvent(new Event("careli:toggle-module-launcher"));
   }
 

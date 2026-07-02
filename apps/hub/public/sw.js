@@ -18,7 +18,7 @@ self.addEventListener("push", (event) => {
 
       try {
         payload = event.data ? event.data.json() : {};
-      } catch (error) {
+      } catch {
         payload = {};
       }
 
@@ -71,7 +71,7 @@ self.addEventListener("notificationclick", (event) => {
           if ("navigate" in client) {
             try {
               await client.navigate(targetUrl);
-            } catch (error) {
+            } catch {
               // Navegacao pode falhar se a origem mudou; foco ja garante a janela.
             }
           }

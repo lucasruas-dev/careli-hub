@@ -1176,7 +1176,7 @@ function mapPaymentStatus(row: PaymentStatusRow): HadesPaymentStatusBucket {
   return mapStage(row);
 }
 
-function mapDistribution(row: DistributionRow): HadesDistributionBucket {
+function _mapDistribution(row: DistributionRow): HadesDistributionBucket {
   return {
     label: row.label,
     total: toNumber(row.total),

@@ -1,8 +1,16 @@
 {
   "$schema": "https://turborepo.dev/schema.json",
   "globalEnv": [
+    "ANTHROPIC_API_KEY",
     "ASAAS_API_BASE_URL",
     "ASAAS_API_KEY",
+    "CACA_ENGINE",
+    "CLAUDE_MODEL_DEFAULT",
+    "CLAUDE_MODEL_FAST",
+    "CLAUDE_MODEL_HEAVY",
+    "GOOGLE_CALENDAR_HOSTED_DOMAIN",
+    "VERCEL_API_TOKEN",
+    "VERCEL_BILLING_TEAM_ID",
     "ASANA_ACCESS_TOKEN",
     "ASANA_TASK_LIMIT_PER_USER",
     "ASANA_TASK_WINDOW_DAYS",
@@ -100,6 +108,9 @@
     },
     "check-types": {
       "dependsOn": ["^check-types"]
+    },
+    "test": {
+      "dependsOn": []
     },
     "dev": {
       "cache": false,

@@ -615,7 +615,7 @@ function DashboardPanel({
   );
 }
 
-function ActionMetricGrid({ metrics }: { metrics: Array<[string, string, string, "danger" | "gold" | "neutral"]> }) {
+function _ActionMetricGrid({ metrics }: { metrics: Array<[string, string, string, "danger" | "gold" | "neutral"]> }) {
   return (
     <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
       {metrics.map(([label, value, action, tone]) => (
@@ -724,7 +724,7 @@ function ExecutiveAiBlock({
   );
 }
 
-function InsightCard({
+function _InsightCard({
   text,
   title,
   tone,

@@ -20,7 +20,6 @@ import {
   Building2,
   ChevronDown,
   ChevronRight,
-  LayoutGrid,
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
@@ -145,7 +144,7 @@ export function ConversationSidebar({
     }));
   }
 
-  function handleOpenModuleLauncher() {
+  function _handleOpenModuleLauncher() {
     window.dispatchEvent(new Event("careli:toggle-module-launcher"));
   }
 

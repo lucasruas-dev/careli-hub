@@ -2,9 +2,7 @@
 
 import { HubShell } from "@/layouts/hub-shell";
 import {
-  getHubPresenceLabel,
   HUB_PRESENCE_HEARTBEAT_MS,
-  hubPresenceStatusOptions,
   markHubPresence,
   type HubPresenceStatus,
 } from "@/lib/hub-presence";
@@ -71,18 +69,15 @@ import {
   type EngineeringOperationsResponse,
 } from "@/lib/squadops/engineering-operations-parser";
 import {
-  buildReleaseProtocols,
   getReleaseProtocolEnvironmentLabel,
   getReleaseProtocolStatusLabel,
   type HubReleaseProtocol,
   type ReleaseProtocolStatus,
 } from "@/lib/squadops/release-protocols";
 import {
-  ReleaseModuleGroupSection,
   type ReleaseModuleGroup,
 } from "@/modules/squadops/blocks/deploys/release-cards";
 import {
-  ProtocolRecordCard,
   RecordsTable,
   TimelinePanel,
 } from "@/modules/squadops/blocks/records/timeline-records";
@@ -110,7 +105,6 @@ import type { BadgeVariant } from "@repo/uix";
 import {
   AlertTriangle,
   Activity,
-  Bell,
   Bot,
   ChevronDown,
   ChevronRight,
@@ -122,7 +116,6 @@ import {
   History,
   Layers3,
   LayoutGrid,
-  LogOut,
   Loader2,
   Maximize2,
   Minimize2,
@@ -130,7 +123,6 @@ import {
   RefreshCcw,
   Rocket,
   Search,
-  Settings,
   ShieldAlert,
   Sparkles,
   Upload,
@@ -182,7 +174,7 @@ type AlertFeedbackApiResponse = {
   error?: string;
 };
 
-type HomologationReviewsApiResponse = {
+type _HomologationReviewsApiResponse = {
   error?: string;
   review?: {
     itemProtocol: string;
@@ -816,28 +808,28 @@ export function ZeusPage({
 }: {
   standalone?: boolean;
 } = {}) {
-  const { authState, hubUser, profileStatus, signOut } = useAuth();
+  const { authState, hubUser, profileStatus } = useAuth();
   const canAccessZeus = canAccessZeusAsAdmin(hubUser);
   const authAccessToken = authState.session?.accessToken ?? null;
   const [resolvedAccessToken, setResolvedAccessToken] = useState<string | null>(
     null,
   );
   const zeusAccessToken = authAccessToken ?? resolvedAccessToken;
-  const operationsFileInputRef = useRef<HTMLInputElement | null>(null);
+  const _operationsFileInputRef = useRef<HTMLInputElement | null>(null);
   const [operations, setOperations] =
     useState<EngineeringOperationsResponse | null>(null);
   const [structuredOperations, setStructuredOperations] =
     useState<EngineeringOperationsResponse | null>(null);
   const [releaseRegisters, setReleaseRegisters] =
     useState<ReleaseRegistersApiResponse | null>(null);
-  const [releaseRegistersError, setReleaseRegistersError] = useState<
+  const [_releaseRegistersError, setReleaseRegistersError] = useState<
     string | null
   >(null);
-  const [operationsSource, setOperationsSource] =
+  const [_operationsSource, setOperationsSource] =
     useState<OperationsSourceState>(initialOperationsSourceState);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSyncingOperations, setIsSyncingOperations] = useState(false);
-  const [isImportingOperationsFile, setIsImportingOperationsFile] =
+  const [_isLoading, setIsLoading] = useState(true);
+  const [_isSyncingOperations, setIsSyncingOperations] = useState(false);
+  const [_isImportingOperationsFile, setIsImportingOperationsFile] =
     useState(false);
   const [isCreatingOperationRecord, setIsCreatingOperationRecord] =
     useState(false);
@@ -893,7 +885,7 @@ export function ZeusPage({
   const [itTicketCount, setItTicketCount] = useState(0);
   const [itTicketAttentionCount, setItTicketAttentionCount] = useState(0);
   const [addressCatalogCount, setAddressCatalogCount] = useState(0);
-  const [zeusPresenceLastSeenAt, setZeusPresenceLastSeenAt] = useState<
+  const [_zeusPresenceLastSeenAt, setZeusPresenceLastSeenAt] = useState<
     string | null
   >(null);
   const [zeusPresenceStatus, setZeusPresenceStatus] =
@@ -1005,7 +997,7 @@ export function ZeusPage({
     zeusPresenceStatus,
   ]);
 
-  const handleZeusPresenceStatusChange = useCallback(
+  const _handleZeusPresenceStatusChange = useCallback(
     (nextStatus: HubPresenceStatus) => {
       setZeusPresenceStatus(nextStatus);
 
@@ -1503,7 +1495,7 @@ export function ZeusPage({
   const releaseRegisterRecords = releaseRegisters?.records ?? [];
   const deployRecords =
     releaseRegisterRecords.length > 0 ? releaseRegisterRecords : allReleaseRecords;
-  const deployFilterOptions =
+  const _deployFilterOptions =
     releaseRegisterRecords.length > 0
       ? releaseRegisters?.filters
       : activeOperations?.filters;
@@ -1526,7 +1518,7 @@ export function ZeusPage({
     (alert) => !isProtocolCleared(alert.protocol, alertProtocols),
   ).length;
   const actionCount = criticalRecords.length + overdueRoutines.length;
-  const nextSquad =
+  const _nextSquad =
     criticalRecords[0]?.nextSquad ??
     releaseRecords[0]?.nextSquad ??
     latestRecord?.nextSquad ??
@@ -1883,7 +1875,7 @@ export function ZeusPage({
     }, 1800);
   }
 
-  async function syncStructuredOperations() {
+  async function _syncStructuredOperations() {
     setIsSyncingOperations(true);
     setError(null);
 
@@ -1930,7 +1922,7 @@ export function ZeusPage({
     }
   }
 
-  async function importLocalOperationsFile(event: ChangeEvent<HTMLInputElement>) {
+  async function _importLocalOperationsFile(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0] ?? null;
     event.target.value = "";
 
@@ -2064,7 +2056,7 @@ export function ZeusPage({
     }));
   }
 
-  const isHelpDeskView = activeView === "itTickets";
+  const _isHelpDeskView = activeView === "itTickets";
 
   const pageContent = (
     <>
@@ -2557,11 +2549,11 @@ function getPoAiErrorMessage(error: Error) {
   return error.message;
 }
 
-function openHubModulesSidebar() {
+function _openHubModulesSidebar() {
   window.dispatchEvent(new Event("careli:toggle-module-launcher"));
 }
 
-function OperationsSourcePanel({
+function _OperationsSourcePanel({
   isImportingLocalFile,
   isSyncing,
   onCreateRecord,
@@ -2918,7 +2910,7 @@ function TextAreaField({
   );
 }
 
-function ZeusCommandCenter({
+function _ZeusCommandCenter({
   actionCount,
   isLoading,
   latestRecord,
@@ -4469,199 +4461,7 @@ function ZeusViewTabs({
   );
 }
 
-function ZeusOpsPresenceBar({
-  activeView,
-  avatarUrl,
-  isOnline,
-  itTicketAttentionCount,
-  lastSeenAt,
-  monitoringAlertCount,
-  onOpenHelpDesk,
-  onOpenMonitoring,
-  onPresenceStatusChange,
-  onSignOut,
-  operationActionCount,
-  presenceStatus,
-  userName,
-}: {
-  activeView: ZeusView;
-  avatarUrl?: string | null;
-  isOnline: boolean;
-  itTicketAttentionCount: number;
-  lastSeenAt: string | null;
-  monitoringAlertCount: number;
-  onOpenHelpDesk: () => void;
-  onOpenMonitoring: () => void;
-  onPresenceStatusChange: (status: HubPresenceStatus) => void;
-  onSignOut: () => void;
-  operationActionCount: number;
-  presenceStatus: HubPresenceStatus;
-  userName: string;
-}) {
-  const [isNotificationOpen, setIsNotificationOpen] = useState(false);
-  const [isPresenceMenuOpen, setIsPresenceMenuOpen] = useState(false);
-  const activeViewLabel =
-    zeusViews.find((view) => view.id === activeView)?.label ?? "Zeus";
-  const notificationCount =
-    itTicketAttentionCount + monitoringAlertCount + operationActionCount;
-  const effectivePresenceStatus = isOnline ? presenceStatus : "offline";
-  const presenceTone = getZeusPresenceTone(effectivePresenceStatus);
-
-  return (
-    <section className="rounded-xl border border-slate-200/70 bg-white px-3 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-500">
-          <span className="inline-flex h-8 items-center gap-2 rounded-lg bg-slate-50 px-2.5 ring-1 ring-slate-200">
-            <Activity className="size-4 text-emerald-600" />
-            connected
-          </span>
-          <span className="hidden h-8 items-center gap-2 rounded-lg bg-slate-50 px-2.5 ring-1 ring-slate-200 sm:inline-flex">
-            <Activity className="size-4 text-[#A07C3B]" />
-            OPS / {activeViewLabel}
-          </span>
-          <span className="hidden h-8 items-center rounded-lg bg-slate-50 px-2.5 ring-1 ring-slate-200 lg:inline-flex">
-            {lastSeenAt
-              ? `Pulso: ${formatOperationDateTime(lastSeenAt)}`
-              : "Pulso: aguardando"}
-          </span>
-        </div>
-
-        <div className="flex min-w-0 items-center gap-2">
-          <div className="relative">
-            <Tooltip content="Notificacoes">
-              <button
-                aria-expanded={isNotificationOpen}
-                aria-label="Abrir notificacoes Zeus"
-                className="relative grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
-                onClick={() => setIsNotificationOpen((current) => !current)}
-                type="button"
-              >
-                <Bell className="size-4" />
-                {notificationCount > 0 ? (
-                  <span className="absolute -right-1 -top-1 grid min-h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[0.62rem] font-bold leading-none text-white">
-                    {notificationCount > 99 ? "99+" : notificationCount}
-                  </span>
-                ) : null}
-              </button>
-            </Tooltip>
-            {isNotificationOpen ? (
-              <div className="absolute right-0 top-11 z-[90] w-[22rem] overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl">
-                <div className="border-b border-slate-100 px-4 py-3">
-                  <p className="m-0 text-sm font-semibold text-slate-950">
-                    Notificacoes Zeus
-                  </p>
-                  <p className="m-0 mt-1 text-xs text-slate-500">
-                    Sinais acionaveis do OPS.
-                  </p>
-                </div>
-                <div className="grid gap-2 p-2">
-                  <ZeusNotificationButton
-                    count={itTicketAttentionCount}
-                    label="Tickets aguardando Zeus"
-                    onClick={() => {
-                      setIsNotificationOpen(false);
-                      onOpenHelpDesk();
-                    }}
-                  />
-                  <ZeusNotificationButton
-                    count={monitoringAlertCount}
-                    label="Alertas de monitoramento"
-                    onClick={() => {
-                      setIsNotificationOpen(false);
-                      onOpenMonitoring();
-                    }}
-                  />
-                  <ZeusNotificationButton
-                    count={operationActionCount}
-                    label="Acoes operacionais"
-                    onClick={() => setIsNotificationOpen(false)}
-                  />
-                </div>
-              </div>
-            ) : null}
-          </div>
-          <Tooltip content="Ajustes">
-            <button
-              aria-label="Abrir ajustes"
-              className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
-              type="button"
-            >
-              <Settings className="size-4" />
-            </button>
-          </Tooltip>
-          <div className="relative">
-            <button
-              aria-expanded={isPresenceMenuOpen}
-              aria-label="Alterar status de presenca"
-              className={`inline-flex h-9 items-center gap-2 rounded-lg border px-3 text-xs font-semibold outline-none transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${presenceTone.button}`}
-              onClick={() => setIsPresenceMenuOpen((current) => !current)}
-              type="button"
-            >
-              <span className={`h-2 w-2 rounded-full ${presenceTone.dot}`} />
-              <span className="capitalize">
-                {isOnline
-                  ? getHubPresenceLabel(effectivePresenceStatus)
-                  : "Conectando"}
-              </span>
-              <ChevronDown className="size-3.5" />
-            </button>
-            {isPresenceMenuOpen ? (
-              <div className="absolute right-0 top-11 z-[90] w-44 rounded-lg border border-slate-200 bg-white p-1.5 shadow-xl">
-                {hubPresenceStatusOptions.map((option) => {
-                  const optionTone = getZeusPresenceTone(option);
-
-                  return (
-                    <button
-                      className="flex h-9 w-full cursor-pointer items-center gap-2 rounded-md px-2 text-left text-sm text-slate-800 transition hover:bg-slate-50 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-                      key={option}
-                      onClick={() => {
-                        setIsPresenceMenuOpen(false);
-                        onPresenceStatusChange(option);
-                      }}
-                      type="button"
-                    >
-                      <span className={`h-2.5 w-2.5 rounded-full ${optionTone.dot}`} />
-                      <span className="capitalize">
-                        {getHubPresenceLabel(option)}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            ) : null}
-          </div>
-          <span className="grid size-9 place-items-center overflow-hidden rounded-full bg-[#101820] text-xs font-semibold text-white ring-2 ring-white">
-            {avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                alt=""
-                className="size-full object-cover"
-                src={avatarUrl}
-              />
-            ) : (
-              getZeusUserInitials(userName)
-            )}
-          </span>
-          <span className="hidden max-w-28 truncate text-sm font-medium text-slate-600 sm:inline">
-            {userName}
-          </span>
-          <Tooltip content="Sair">
-            <button
-              aria-label="Sair"
-              className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
-              onClick={onSignOut}
-              type="button"
-            >
-              <LogOut className="size-4" />
-            </button>
-          </Tooltip>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ZeusNotificationButton({
+function _ZeusNotificationButton({
   count,
   label,
   onClick,
@@ -4684,13 +4484,13 @@ function ZeusNotificationButton({
   );
 }
 
-function getZeusUserInitials(name: string) {
+function _getZeusUserInitials(name: string) {
   const [first = "", second = ""] = name.trim().split(/\s+/);
 
   return `${first.charAt(0)}${second.charAt(0)}`.toUpperCase() || "Z";
 }
 
-function getZeusPresenceTone(status: HubPresenceStatus) {
+function _getZeusPresenceTone(status: HubPresenceStatus) {
   const normalizedStatus = status === "busy" ? "agenda" : status;
   const tones = {
     agenda: {
@@ -4724,356 +4524,7 @@ function getZeusPresenceTone(status: HubPresenceStatus) {
   return tones[normalizedStatus];
 }
 
-function DeployProtocolsView({
-  accessToken,
-  copiedCommandId,
-  filters,
-  onCopyCommand,
-  onSelectRecord,
-  records,
-  releaseRegisterError,
-  releaseRegisters,
-}: {
-  accessToken: string | null;
-  copiedCommandId: string | null;
-  filters: OperationsFilters;
-  onCopyCommand: (command: string, id: string) => void;
-  onSelectRecord: (record: EngineeringOperationRecord) => void;
-  records: EngineeringOperationRecord[];
-  releaseRegisterError: string | null;
-  releaseRegisters: ReleaseRegistersApiResponse | null;
-}) {
-  const [homologationReviews, setHomologationReviews] =
-    useState<HomologationReviewState>(() => readHomologationReviews());
-  const [homologationReviewSource, setHomologationReviewSource] = useState<
-    "local" | "loading" | "shared"
-  >("loading");
-  const [homologationReviewError, setHomologationReviewError] = useState<
-    string | null
-  >(null);
-  const filteredRecords = records.filter((record) =>
-    matchesFilters(record, filters),
-  );
-  const filteredReleaseProtocols = buildReleaseProtocols(records).filter(
-    (releaseProtocol) => matchesReleaseProtocolFilters(releaseProtocol, filters),
-  );
-  const homologationProtocols = filteredReleaseProtocols
-    .filter(isReleaseProtocolInHomologation)
-    .slice(0, 8);
-  const releaseModuleGroups = buildReleaseModuleGroups(
-    filteredReleaseProtocols,
-  ).slice(0, 8);
-  const deployCount = filteredReleaseProtocols.length;
-  const moduleGroups = buildProtocolModuleGroups(filteredRecords.slice(0, 120));
-  const usingReleaseRegisters = Boolean(
-    releaseRegisters && releaseRegisters.records.length > 0,
-  );
-
-  useEffect(() => {
-    writeHomologationReviews(homologationReviews);
-  }, [homologationReviews]);
-
-  useEffect(() => {
-    let isActive = true;
-
-    async function loadSharedHomologationReviews() {
-      setHomologationReviewSource("loading");
-      setHomologationReviewError(null);
-
-      try {
-        const currentAccessToken = await getZeusAccessToken(accessToken);
-        const headers: Record<string, string> = {};
-
-        if (currentAccessToken) {
-          headers.Authorization = `Bearer ${currentAccessToken}`;
-        }
-
-        const response = await fetch("/api/zeus/homologation-reviews", {
-          cache: "no-store",
-          headers,
-        });
-        const payload = (await response
-          .json()
-          .catch(() => null)) as HomologationReviewsApiResponse | null;
-
-        if (!isActive) {
-          return;
-        }
-
-        if (!response.ok || !payload?.state) {
-          throw new Error(
-            payload?.error ??
-              "Nao foi possivel carregar homologacao compartilhada.",
-          );
-        }
-
-        setHomologationReviews(payload.state);
-        setHomologationReviewSource("shared");
-      } catch (error) {
-        if (!isActive) {
-          return;
-        }
-
-        setHomologationReviewSource("local");
-        setHomologationReviewError(getHomologationReviewErrorMessage(error));
-      }
-    }
-
-    void loadSharedHomologationReviews();
-
-    return () => {
-      isActive = false;
-    };
-  }, [accessToken]);
-
-  function updateHomologationItem(
-    deployProtocol: string,
-    item: HomologationItem,
-    patch: Partial<Pick<HomologationItemReview, "note" | "status">>,
-  ) {
-    const currentItem = homologationReviews[deployProtocol]?.[item.protocol] ?? {
-      note: "",
-      status: "aguardando_teste" as HomologationReviewStatus,
-      updatedAt: "",
-    };
-    const nextReview: HomologationItemReview = {
-      ...currentItem,
-      ...patch,
-      updatedAt: new Date().toISOString(),
-    };
-
-    setHomologationReviews((current) => {
-      const currentDeploy = current[deployProtocol] ?? {};
-
-      return {
-        ...current,
-        [deployProtocol]: {
-          ...currentDeploy,
-          [item.protocol]: nextReview,
-        },
-      };
-    });
-
-    void persistHomologationItem(deployProtocol, item, nextReview);
-  }
-
-  async function persistHomologationItem(
-    deployProtocol: string,
-    item: HomologationItem,
-    review: HomologationItemReview,
-  ) {
-    try {
-      const currentAccessToken = await getZeusAccessToken(accessToken);
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-      };
-
-      if (currentAccessToken) {
-        headers.Authorization = `Bearer ${currentAccessToken}`;
-      }
-
-      const response = await fetch("/api/zeus/homologation-reviews", {
-        body: JSON.stringify({
-          itemKind: item.kind,
-          itemProtocol: item.protocol,
-          itemTitle: item.title,
-          itemType: item.type,
-          module: item.module,
-          note: review.note,
-          releaseProtocol: deployProtocol,
-          status: review.status,
-        }),
-        cache: "no-store",
-        headers,
-        method: "PATCH",
-      });
-      const payload = (await response
-        .json()
-        .catch(() => null)) as HomologationReviewsApiResponse | null;
-
-      if (!response.ok || !payload?.review) {
-        throw new Error(
-          payload?.error ?? "Nao foi possivel salvar homologacao.",
-        );
-      }
-
-      const savedReview = payload.review;
-
-      setHomologationReviewSource("shared");
-      setHomologationReviewError(null);
-      setHomologationReviews((current) => {
-        const currentDeploy = current[deployProtocol] ?? {};
-
-        return {
-          ...current,
-          [deployProtocol]: {
-            ...currentDeploy,
-            [item.protocol]: {
-              note: savedReview.note,
-              status: savedReview.status,
-              updatedAt: savedReview.updatedAt,
-            },
-          },
-        };
-      });
-    } catch (error) {
-      setHomologationReviewSource("local");
-      setHomologationReviewError(getHomologationReviewErrorMessage(error));
-    }
-  }
-
-  return (
-    <section className="grid gap-5">
-      <ReleaseRegistersSourcePanel
-        error={releaseRegisterError}
-        recordsCount={records.length}
-        releaseRegisters={releaseRegisters}
-        usingReleaseRegisters={usingReleaseRegisters}
-      />
-
-      <HomologationOperationsPanel
-        copiedCommandId={copiedCommandId}
-        reviewError={homologationReviewError}
-        reviewSource={homologationReviewSource}
-        onCopyCommand={onCopyCommand}
-        onSelectRecord={onSelectRecord}
-        onUpdateItem={updateHomologationItem}
-        protocols={homologationProtocols}
-        reviews={homologationReviews}
-      />
-
-      <section className="grid grid-cols-1 gap-5 xl:grid-cols-[minmax(0,0.42fr)_minmax(0,0.58fr)]">
-        <div className="grid content-start gap-5">
-        <Surface
-          bordered
-          className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-        >
-          <PanelTitle
-            eyebrow={`${releaseModuleGroups.length} modulos / ${deployCount} pacotes`}
-            icon={<Rocket size={18} />}
-            title="Deploys por modulo"
-          />
-          <p className="m-0 mt-3 text-sm leading-6 text-slate-600">
-            Cada agente de modulo publica o proprio recorte em homologacao.
-            Zeus organiza modulo, pacote e atividades para Hefesto promover
-            somente o que estiver pronto para producao.
-          </p>
-
-          <div className="mt-4 grid max-h-[58vh] gap-3 overflow-y-auto pr-1">
-            {releaseModuleGroups.length > 0 ? (
-              releaseModuleGroups.map((moduleGroup) => (
-                <ReleaseModuleGroupSection
-                  formatDateTime={formatOperationDateTime}
-                  formatModuleList={formatReleaseModuleList}
-                  getStatusVariant={releaseProtocolStatusVariant}
-                  group={moduleGroup}
-                  isInHomologation={isReleaseProtocolInHomologation}
-                  isReadyForProduction={isReleaseProtocolReadyForProduction}
-                  key={moduleGroup.module}
-                  onSelectRecord={onSelectRecord}
-                />
-              ))
-            ) : (
-              <EmptyState message="Sem deploy registrado para os filtros atuais." />
-            )}
-          </div>
-        </Surface>
-
-        <Surface
-          bordered
-          className="border-slate-200/70 bg-slate-50/60 p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-        >
-          <PanelTitle
-            eyebrow="Regra V1"
-            icon={<GitCommitHorizontal size={18} />}
-            title="Como o protocolo nasce"
-          />
-          <ul className="m-0 mt-4 grid list-none gap-2 p-0 text-sm leading-6 text-slate-600">
-            <li>Atendimento Iris: AT-0001.</li>
-            <li>Cobranca: CB-0001.</li>
-            <li>HelpDesk tecnico: TI-000001.</li>
-            <li>Atividade operacional Zeus: OP-0001.</li>
-            <li>Alerta operacional: AL-0001.</li>
-            <li>Deploy/release macro: DP-0001.</li>
-            <li>Agente do modulo publica homologacao autorizada.</li>
-            <li>O handoff informa modulo, pacote, atividades e validacoes.</li>
-            <li>Hefesto promove producao somente do homologado.</li>
-            <li>
-              O status final fecha o ciclo: homologado, em producao, bloqueado
-              ou rollback.
-            </li>
-          </ul>
-        </Surface>
-        </div>
-
-        <Surface
-          bordered
-          className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
-        >
-          <div className="border-b border-slate-100 p-5">
-            <PanelTitle
-              eyebrow={`${records.length} protocolos`}
-              icon={<Layers3 size={18} />}
-              title="Protocolos por modulo e tipo"
-            />
-          </div>
-          <div className="grid max-h-[72vh] gap-5 overflow-y-auto p-5 pr-4">
-            {moduleGroups.length > 0 ? (
-              moduleGroups.map((moduleGroup) => (
-                <section className="grid gap-3" key={moduleGroup.module}>
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h3 className="m-0 text-base font-semibold text-slate-950">
-                      {formatPanteonModuleName(moduleGroup.module)}
-                    </h3>
-                    <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
-                      {moduleGroup.count} protocolos
-                    </span>
-                  </div>
-                  <div className="grid gap-3">
-                    {moduleGroup.categories.map((category) => (
-                      <div
-                        className="rounded-xl border border-slate-200/70 bg-slate-50/50 p-3"
-                        key={`${moduleGroup.module}-${category.category}`}
-                      >
-                        <div className="mb-3 flex flex-wrap items-center gap-2">
-                          <Badge
-                            variant={protocolCategoryVariant(category.category)}
-                          >
-                            {category.category}
-                          </Badge>
-                          <span className="text-xs font-semibold text-slate-500">
-                            {category.records.length} alteracoes
-                          </span>
-                        </div>
-                        <div className="grid gap-2">
-                          {category.records.map((record) => (
-                            <ProtocolRecordCard
-                              formatDateTime={formatOperationDateTime}
-                              getChangeSummary={getRecordChangeSummary}
-                              getReasonSummary={getRecordReasonSummary}
-                              getStatusVariant={statusVariant}
-                              key={record.id}
-                              onSelect={() => onSelectRecord(record)}
-                              record={record}
-                            />
-                          ))}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </section>
-              ))
-            ) : (
-              <EmptyState message="Sem protocolo encontrado para os filtros atuais." />
-            )}
-          </div>
-        </Surface>
-      </section>
-    </section>
-  );
-}
-
-function ReleaseRegistersSourcePanel({
+function _ReleaseRegistersSourcePanel({
   error,
   recordsCount,
   releaseRegisters,
@@ -5133,7 +4584,7 @@ function ReleaseRegistersSourcePanel({
   );
 }
 
-function HomologationOperationsPanel({
+function _HomologationOperationsPanel({
   copiedCommandId,
   onCopyCommand,
   onSelectRecord,
@@ -5647,7 +5098,7 @@ function getRecordCardSummary(record: EngineeringOperationRecord) {
   return summary ?? "Resumo operacional nao informado.";
 }
 
-function getRecordChangeSummary(record: EngineeringOperationRecord) {
+function _getRecordChangeSummary(record: EngineeringOperationRecord) {
   return getKnownRecordValue([
     record.macroSummary,
     record.how,
@@ -5656,7 +5107,7 @@ function getRecordChangeSummary(record: EngineeringOperationRecord) {
   ]);
 }
 
-function getRecordReasonSummary(record: EngineeringOperationRecord) {
+function _getRecordReasonSummary(record: EngineeringOperationRecord) {
   return getKnownRecordValue([record.reason, record.logic, record.risks]);
 }
 
@@ -5668,7 +5119,7 @@ function getKnownRecordValue(values: string[]) {
   );
 }
 
-function buildProtocolModuleGroups(records: EngineeringOperationRecord[]) {
+function _buildProtocolModuleGroups(records: EngineeringOperationRecord[]) {
   const moduleMap = new Map<
     string,
     Map<string, EngineeringOperationRecord[]>
@@ -5707,7 +5158,7 @@ function buildProtocolModuleGroups(records: EngineeringOperationRecord[]) {
   });
 }
 
-function protocolCategoryVariant(category: string): BadgeVariant {
+function _protocolCategoryVariant(category: string): BadgeVariant {
   const normalizedCategory = normalizeSearchText(category);
 
   if (normalizedCategory.includes("release")) {
@@ -5731,7 +5182,7 @@ function protocolCategoryVariant(category: string): BadgeVariant {
   return "neutral";
 }
 
-function releaseProtocolStatusVariant(
+function _releaseProtocolStatusVariant(
   status: ReleaseProtocolStatus,
 ): BadgeVariant {
   if (
@@ -6063,7 +5514,7 @@ function isKnownDetailValue(value: string) {
   return Boolean(value.trim() && value.trim() !== UNKNOWN_OPERATION_VALUE);
 }
 
-function readHomologationReviews(): HomologationReviewState {
+function _readHomologationReviews(): HomologationReviewState {
   if (typeof window === "undefined") {
     return {};
   }
@@ -6087,7 +5538,7 @@ function readHomologationReviews(): HomologationReviewState {
   }
 }
 
-function writeHomologationReviews(reviews: HomologationReviewState) {
+function _writeHomologationReviews(reviews: HomologationReviewState) {
   if (typeof window === "undefined") {
     return;
   }
@@ -6158,7 +5609,7 @@ function getHomologationModuleSummary(
   };
 }
 
-function isReleaseProtocolReadyForProduction(
+function _isReleaseProtocolReadyForProduction(
   releaseProtocol: HubReleaseProtocol,
 ) {
   return (
@@ -6251,7 +5702,7 @@ function parseOperationDateTime(value: string) {
   return parseLocalDateTime(value)?.getTime() ?? 0;
 }
 
-function isReleaseProtocolInHomologation(releaseProtocol: HubReleaseProtocol) {
+function _isReleaseProtocolInHomologation(releaseProtocol: HubReleaseProtocol) {
   const text = normalizeSearchText(
     [
       releaseProtocol.environment,
@@ -6551,7 +6002,7 @@ function matchesFilters(
   );
 }
 
-function matchesReleaseProtocolFilters(
+function _matchesReleaseProtocolFilters(
   releaseProtocol: HubReleaseProtocol,
   filters: OperationsFilters,
 ) {
@@ -7637,7 +7088,7 @@ function extractZeusAccessToken(input: unknown): string | null {
   );
 }
 
-function getHomologationReviewErrorMessage(error: unknown) {
+function _getHomologationReviewErrorMessage(error: unknown) {
   const message =
     error instanceof Error && error.message.trim()
       ? error.message
