@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-02-iris-anexos",
+    deployedAt: "2026-07-02T19:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Agora dá pra ENVIAR arquivos, fotos e prints no atendimento pelo WhatsApp: clique no clipe (📎) para escolher uma imagem ou documento (PDF, Word, Excel, etc.), ou simplesmente COLE um print com Ctrl+V direto no campo de mensagem.",
+              "Antes de enviar, você vê uma prévia do anexo e pode escrever uma legenda junto. Fotos grandes são reduzidas automaticamente para enviar rápido.",
+              "O emoji (😊) continua ali do lado, para deixar a conversa mais leve.",
+            ],
+            screen: "Atendimento — enviar anexos",
+          },
+        ],
+      },
+    ],
+    rollback: "commit c389bba1",
+    technical: {
+      done: "Envio de mídia de saída na Iris (imagem/documento) espelhando o pipeline do áudio: sendMetaWhatsAppMediaMessage (upload /media -> media_id -> messages com caption/filename) em meta-whatsapp.ts; rota /api/iris/meta/messages ganhou normalizeAttachmentMedia (whitelist jpg/png + PDF/Office/txt, limite ~3MB base64 pelo teto de body da Vercel) e createQueuedTicketMessage generico (provider_payload.media.{url,type,fileName} ja renderizado por MessageContent). No compositor: paperclip real (input file) + colar imagem (onPaste) + preview do anexo com legenda; imagem grande e reduzida no cliente via canvas (max 1600px, JPEG 0.85). Emoji ja funcionava. v1.21.1 -> v1.21.2.",
+      motivation:
+        "Pedido do time: permitir enviar arquivos, fotos, prints e emoji no atendimento da Iris (o clipe estava como 'Anexos em breve').",
+    },
+    title: "Iris: enviar arquivos, fotos e prints no atendimento",
+    type: "melhoria",
+    version: "v1.21.2",
+  },
+  {
     buildTag: "2026-07-02-caca-imobiliaria",
     deployedAt: "2026-07-02T16:15:00-03:00",
     modules: [

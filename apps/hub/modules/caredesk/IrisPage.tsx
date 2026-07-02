@@ -321,6 +321,21 @@ const IRIS_EMOJI_OPTIONS = [
 ];
 const IRIS_REACTION_OPTIONS = ["👍", "❤️", "😂", "🙏", "✅"];
 const IRIS_AUDIO_MAX_DATA_URL_LENGTH = 4_000_000;
+// Anexos de saída (foto/print/documento). Imagem é reduzida no cliente antes de subir.
+const IRIS_ATTACHMENT_MAX_BYTES = 3 * 1024 * 1024;
+const IRIS_ATTACHMENT_DOC_TYPES = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+]);
+const IRIS_ATTACHMENT_INPUT_ACCEPT =
+  "image/*,application/pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv";
 const IRIS_OPT_IN_TEMPLATE = {
   bodyText: "Olá {{1}}, estou testando a Iris, podemos conversar?",
   buttons: ["Sim", "Não"],
@@ -1524,6 +1539,13 @@ function IrisConversationPanel({
     durationMs: number | null;
     url: string;
   } | null>(null);
+  // Anexo pronto pra enviar (foto/print/arquivo). previewUrl = objectURL só de imagem.
+  const [attachmentDraft, setAttachmentDraft] = useState<{
+    file: File;
+    fileName: string;
+    kind: "document" | "image";
+    previewUrl: string | null;
+  } | null>(null);
   const [replyToMessage, setReplyToMessage] = useState<IrisReplyPreview | null>(
     null,
   );
@@ -2605,6 +2627,12 @@ function IrisConversationPanel({
   }
 
   async function sendMessage() {
+    // Anexo em preview tem prioridade: o rascunho vira a legenda.
+    if (attachmentDraft && !editingMessageId && !noteModeActive) {
+      await sendAttachmentDraft();
+      return;
+    }
+
     const body = draft.trim();
 
     if (!body || sending || !operationReady) {
@@ -3057,7 +3085,12 @@ function IrisConversationPanel({
 
     event.preventDefault();
 
-    if (!draft.trim() || sending || !composerReady || recordingAudio) {
+    if (
+      (!draft.trim() && !attachmentDraft) ||
+      sending ||
+      !composerReady ||
+      recordingAudio
+    ) {
       return;
     }
 
@@ -3282,6 +3315,179 @@ function IrisConversationPanel({
         error instanceof Error
           ? error.message
           : "Nao foi possivel enviar o audio agora.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // Escolhe/valida um anexo (foto, print, arquivo) — sem enviar ainda: fica em preview
+  // no compositor, com o rascunho servindo de legenda opcional.
+  function handlePickAttachment(file: File | null | undefined) {
+    if (!file) {
+      return;
+    }
+
+    const isImage = file.type.startsWith("image/");
+    const isDoc = IRIS_ATTACHMENT_DOC_TYPES.has(file.type);
+
+    if (!isImage && !isDoc) {
+      setFeedback(
+        "Tipo de arquivo nao suportado. Envie imagem, PDF, Office ou texto.",
+      );
+      return;
+    }
+
+    if (!isImage && file.size > IRIS_ATTACHMENT_MAX_BYTES) {
+      setFeedback("Arquivo muito grande (maximo ~3MB).");
+      return;
+    }
+
+    setAttachmentDraft((current) => {
+      if (current?.previewUrl) {
+        URL.revokeObjectURL(current.previewUrl);
+      }
+
+      return {
+        file,
+        fileName: file.name || (isImage ? "imagem" : "documento"),
+        kind: isImage ? "image" : "document",
+        previewUrl: isImage ? URL.createObjectURL(file) : null,
+      };
+    });
+    setFeedback("");
+    window.requestAnimationFrame(() => composerTextareaRef.current?.focus());
+  }
+
+  function cancelAttachment() {
+    setAttachmentDraft((current) => {
+      if (current?.previewUrl) {
+        URL.revokeObjectURL(current.previewUrl);
+      }
+
+      return null;
+    });
+  }
+
+  // Colar (Ctrl+V) uma imagem/print direto no compositor vira anexo.
+  function handleComposerPaste(event: React.ClipboardEvent<HTMLTextAreaElement>) {
+    const items = event.clipboardData?.items;
+
+    if (!items) {
+      return;
+    }
+
+    for (const item of items) {
+      if (item.kind === "file" && item.type.startsWith("image/")) {
+        const file = item.getAsFile();
+
+        if (file) {
+          event.preventDefault();
+          handlePickAttachment(file);
+          return;
+        }
+      }
+    }
+  }
+
+  async function sendAttachmentDraft() {
+    if (!attachmentDraft || sending) {
+      return;
+    }
+
+    if (!canSendFreeForm) {
+      setFeedback(customerServiceWindow.label);
+      return;
+    }
+
+    const { file, kind } = attachmentDraft;
+    const caption = draft.trim();
+
+    // Otimista: limpa o preview e o rascunho já; erro volta no feedback.
+    cancelAttachment();
+    setDraft("");
+    await sendAttachmentMessage(file, kind, caption);
+  }
+
+  async function sendAttachmentMessage(
+    file: File,
+    kind: "document" | "image",
+    caption: string,
+  ) {
+    setSending(true);
+    setFeedback("");
+
+    try {
+      let dataUrl: string;
+      let mimeType = file.type;
+      let fileName = file.name || (kind === "image" ? "imagem.jpg" : "documento");
+
+      if (kind === "image") {
+        // Reduz imagem grande no cliente pra caber no body da requisição.
+        const prepared = await prepareOutboundImage(file);
+        dataUrl = prepared.dataUrl;
+        mimeType = prepared.mimeType;
+        fileName = prepared.fileName;
+      } else {
+        dataUrl = await readBlobAsDataUrl(file);
+      }
+
+      if (dataUrl.length > IRIS_AUDIO_MAX_DATA_URL_LENGTH) {
+        throw new Error("Arquivo muito grande para enviar. Reduza o tamanho.");
+      }
+
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          body: caption,
+          channelId: ticket.channelId ?? null,
+          contactId: ticket.contactId ?? null,
+          media: { dataUrl, fileName, mimeType, type: kind },
+          replyToMessageId: replyToMessage?.messageId ?? null,
+          ticketId: ticket.id,
+          to: ticket.contactPhone ?? "",
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: Record<string, unknown> | null;
+      } | null;
+
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel enviar o anexo pelo WhatsApp.",
+        );
+      }
+
+      setReplyToMessage(null);
+      setFeedback(
+        kind === "image"
+          ? "Imagem enviada pelo WhatsApp."
+          : "Documento enviado pelo WhatsApp.",
+      );
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel enviar anexo", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar o anexo agora.",
       );
     } finally {
       setSending(false);
@@ -3553,6 +3759,20 @@ function IrisConversationPanel({
           onCancelAudio={cancelAudioRecording}
           onSendAudioPreview={sendRecordedAudio}
           audioPreviewUrl={audioPreview?.url ?? null}
+          attachmentInputAccept={IRIS_ATTACHMENT_INPUT_ACCEPT}
+          attachmentPreview={
+            attachmentDraft
+              ? {
+                  fileName: attachmentDraft.fileName,
+                  kind: attachmentDraft.kind,
+                  previewUrl: attachmentDraft.previewUrl,
+                }
+              : null
+          }
+          hasAttachment={Boolean(attachmentDraft)}
+          onPickAttachment={handlePickAttachment}
+          onCancelAttachment={cancelAttachment}
+          onComposerPaste={handleComposerPaste}
           recordingElapsedLabel={formatAudioDuration(recordingElapsedMs)}
           onToggleEmojiPicker={() => setEmojiPickerOpen((current) => !current)}
           operationReady={operationReady}
@@ -7312,6 +7532,71 @@ function readBlobAsDataUrl(blob: Blob) {
         : reject(new Error("Audio invalido."));
     reader.readAsDataURL(blob);
   });
+}
+
+function loadImageElement(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("Nao foi possivel ler a imagem."));
+    img.src = src;
+  });
+}
+
+// Prepara a imagem de saída: PNG/JPG pequeno passa direto; grande é reduzido (máx 1600px)
+// e reexportado em JPEG pra caber no body da requisição. Meta aceita jpg/png.
+async function prepareOutboundImage(
+  file: File,
+): Promise<{ dataUrl: string; fileName: string; mimeType: string }> {
+  const MAX_DIM = 1600;
+  const passthroughOk =
+    (file.type === "image/jpeg" || file.type === "image/png") &&
+    file.size <= 900_000;
+  const objectUrl = URL.createObjectURL(file);
+
+  try {
+    const image = await loadImageElement(objectUrl);
+    const scale = Math.min(1, MAX_DIM / Math.max(image.width, image.height));
+
+    if (scale === 1 && passthroughOk) {
+      const dataUrl = await readBlobAsDataUrl(file);
+
+      return {
+        dataUrl,
+        fileName: file.name || "imagem",
+        mimeType: file.type,
+      };
+    }
+
+    const width = Math.max(1, Math.round(image.width * scale));
+    const height = Math.max(1, Math.round(image.height * scale));
+    const canvas = document.createElement("canvas");
+
+    canvas.width = width;
+    canvas.height = height;
+
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      const dataUrl = await readBlobAsDataUrl(file);
+
+      return {
+        dataUrl,
+        fileName: file.name || "imagem",
+        mimeType: file.type,
+      };
+    }
+
+    context.drawImage(image, 0, 0, width, height);
+
+    const dataUrl = canvas.toDataURL("image/jpeg", 0.85);
+    const baseName = (file.name || "imagem").replace(/\.[^.]+$/, "");
+
+    return { dataUrl, fileName: `${baseName}.jpg`, mimeType: "image/jpeg" };
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
 }
 
 function formatAudioDuration(durationMs?: number | null) {
