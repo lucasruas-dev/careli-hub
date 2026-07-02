@@ -41068,3 +41068,5 @@ Typecheck+13 testes+lint verdes. PENDENTE: validação visual do Lucas no previe
 - L3: `unreadMentionCount` por canal (types+workspace-messages+provider, zera junto com o lido); badge âmbar "@N" na lista de canais (expandida+colapsada); aba do topo mostra "@N" âmbar quando há menção (contexto `hermesMentionUnreadCount`+hub-shell+module-tabs); push "X respondeu você em #canal" direcionado ao autor da mensagem-pai da thread.
 - L4: telemetria `[hermes:push]` (1 linha JSON por mensagem nos logs Vercel: members/subscriptions/sent/failed/expired/mentioned/thread — dá pra MEDIR a taxa de entrega).
 Typecheck+13 testes+lint verdes. Aguarda teste do time (roteiro no chat) e OK do Lucas p/ main.
+
+**🚀 GO-LIVE Hermes notificações L1-L4 (2/jul ~23h, OK explícito):** main=`42a6b0e0` → prod **`dpl_A5F2CoqsrxttFFcuw1JjrwiYDszK`** (`k66npsqk9`), READY, c2x.app.br 200, sw.js novo confirmado no ar (postMessage/navegação SPA). **Rollback=`dpl_2aCFaU9PCMs1YMcS87SNe65ubRdY`** (`kqagkuvy6`, commit 2b19fb4f). ⚠️ Time precisa de 1 Ctrl+F5 pra atualizar o SW. Próximo: teste guiado com o time + ler telemetria [hermes:push] nos logs Vercel pra medir taxa de entrega.
