@@ -32,6 +32,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-02-hermes-notificacoes-l1-l4",
+    deployedAt: "2026-07-02T23:15:00-03:00",
+    modules: [
+      {
+        module: "Hermes",
+        screens: [
+          {
+            items: [
+              "A notificação do Windows agora chega SEMPRE — mesmo com o Panteon minimizado ou atrás de outra janela (era a causa do 'tem hora que chega, tem hora que não').",
+              "Clicar na notificação abre a conversa NA HORA, sem recarregar o sistema (adeus espera de ~8 segundos) — e funciona até com o Hermes já aberto em outro canal.",
+              "@Menção ficou de primeira classe: notificação própria ('fulano mencionou você') e badge âmbar com @ no canal e na aba Hermes do topo.",
+              "Resposta na SUA thread avisa direto: 'fulano respondeu você' — e com a thread aberta a resposta aparece instantaneamente.",
+              "⚠️ Na primeira vez, dê um Ctrl+F5 para atualizar o mecanismo de notificação.",
+            ],
+            screen: "Notificações (Windows, canais, aba e central)",
+          },
+        ],
+      },
+    ],
+    rollback: "deployment kqagkuvy6 (dpl_2aCFaU9PCMs1YMcS87SNe65ubRdY)",
+    technical: {
+      done: "Reforma das notificações em 4 lotes. L1: sw.js só suprime push com janela FOCADA (visibilityState visible descartava push com o hub atrás de outro app); clique navega via postMessage->router.push (SPA) no lugar de client.navigate (full reload ~8s); rota nova POST /api/hermes/messages/push (Bearer, autor-only, lê a msg do banco) chamada fire-and-forget pelo fallback de INSERT direto do createHermesMessage — antes esse caminho não disparava push nenhum; payload distinto p/ @menção (título+tag) e thread (título + &thread= no deep-link). L2: evento panteon:deeplink (provider->workspace) aplica canal/thread com o Hermes já montado (?channel= só era lido na montagem); resposta em thread aberta carrega na hora via bridge (poll de 8s vira rede de segurança). L3: unreadMentionCount por canal (types/workspace-messages/provider, zera com o lido) + badge âmbar @N na lista (expandida/colapsada) e na aba do topo (hermesMentionUnreadCount no contexto); push 'respondeu você' direcionado ao autor da mensagem-pai. L4: telemetria [hermes:push] (1 linha JSON por mensagem nos logs Vercel: members/subscriptions/sent/failed/expired/mentioned/thread). v1.21.2 -> v1.22.0.",
+      motivation:
+        "Prioridade máxima do Lucas: notificações do Hermes instáveis há 1+ mês, time reclamando (push engolido, delay de 8s no clique, menção sem destaque). Diagnóstico completo com 3 causas raízes na memória project-hermes-notifications-diagnosis.",
+    },
+    title: "Hermes: notificações confiáveis — Windows, @menção, threads e clique instantâneo",
+    type: "melhoria",
+    version: "v1.22.0",
+  },
+  {
     buildTag: "2026-07-02-iris-anexos",
     deployedAt: "2026-07-02T19:30:00-03:00",
     modules: [

@@ -49,6 +49,7 @@ A integração Vercel↔GitHub está **LIGADA**. **Branch de produção = `main`
 4. **Go-live (com OK explícito):** `git push origin main` → deploy automático em `c2x.app.br`.
 5. **Verificar:** `c2x.app.br` → 200.
 6. **Anotar o rollback** (deployment anterior) e registrar no diário.
+7. **SEMPRE registrar o deploy no changelog** (`lib/changelog/changelog.ts`, entrada nova no índice 0 = painel de Novidades + versão do avatar bumpada automaticamente) — regra do Lucas 2/jul: TODO deploy de produção informado no painel de novidades e na build do avatar.
 - ✅ Hooks de commit: **resilientes e versionados** em `scripts/git-hooks/` (ativar com `pwsh scripts/setup-git-hooks.ps1` → seta `core.hooksPath`). Commit e push liberados. O runner `scripts/panteon-hook-runner.ps1` segue **ausente** (perdido ~2026-05-23), então os hooks são no-op seguro — sem validação automática até recriá-lo.
 
 ## Infra
