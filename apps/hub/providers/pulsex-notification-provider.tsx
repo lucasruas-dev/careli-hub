@@ -377,7 +377,9 @@ export function HermesNotificationProvider({
         (message) =>
           message.authorId !== currentUserId &&
           !message.deletedAt &&
-          !message.threadParentMessageId &&
+          // Respostas de thread TAMBÉM entram na central (decisão Lucas 1/jul):
+          // viram linha com href pra thread (getHermesChannelPath já leva o
+          // threadParentMessageId).
           isPanteonNotificationFromToday(
             message.createdAt ?? message.timestamp,
           ),
@@ -1696,11 +1698,8 @@ function getUnreadMessages({
   const lastReadTime = lastReadAt ? Date.parse(lastReadAt) : Number.NaN;
 
   return messages.filter((message) => {
-    if (
-      message.authorId === currentUserId ||
-      message.deletedAt ||
-      message.threadParentMessageId
-    ) {
+    // Respostas de thread contam como não-lidas também (decisão Lucas 1/jul).
+    if (message.authorId === currentUserId || message.deletedAt) {
       return false;
     }
 

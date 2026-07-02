@@ -97,6 +97,8 @@ export default function MobileHermesChatPage() {
     () => hermesChannels.find((item) => item.id === channelId) ?? null,
     [channelId, hermesChannels],
   );
+  // Minha última leitura do canal — base pra marcar respostas "novas".
+  const channelReadAt = channel?.memberReadAtByUserId?.[currentUserId] ?? null;
 
   const [messages, setMessages] = useState<HermesMessage[]>([]);
   const [loading, setLoading] = useState(true);
@@ -468,6 +470,13 @@ export default function MobileHermesChatPage() {
             {messages.map((message, index) => {
               const own = message.authorId === currentUserId;
               const ts = messageTime(message);
+              const hasNewReplies = Boolean(
+                (message.threadCount ?? 0) > 0 &&
+                  channelReadAt &&
+                  message.lastThreadReplyAt &&
+                  Date.parse(message.lastThreadReplyAt) >
+                    Date.parse(channelReadAt),
+              );
               const previous = index > 0 ? messages[index - 1] : null;
               const newDay =
                 index === 0 || dayKey(ts) !== dayKey(previous ? messageTime(previous) : null);
@@ -553,7 +562,11 @@ export default function MobileHermesChatPage() {
                       </span>
                       {(message.threadCount ?? 0) > 0 ? (
                         <button
-                          className="mt-0.5 flex items-center gap-1 rounded-md bg-black/5 px-2 py-1 text-[0.68rem] font-medium text-[#3a4657] outline-none"
+                          className={`mt-0.5 flex items-center gap-1 rounded-md px-2 py-1 text-[0.68rem] font-medium outline-none ${
+                            hasNewReplies
+                              ? "bg-[#f6ecd7] text-[#8a6d1f]"
+                              : "bg-black/5 text-[#3a4657]"
+                          }`}
                           onClick={(event) => {
                             event.stopPropagation();
                             setThreadMessage(message);
@@ -563,6 +576,15 @@ export default function MobileHermesChatPage() {
                           <MessagesSquare aria-hidden="true" size={12} />
                           {message.threadCount}{" "}
                           {message.threadCount === 1 ? "resposta" : "respostas"}
+                          {hasNewReplies ? (
+                            <span className="ml-0.5 inline-flex items-center gap-1 font-semibold">
+                              · novas
+                              <span
+                                aria-hidden="true"
+                                className="h-1.5 w-1.5 rounded-full bg-[#c0392b]"
+                              />
+                            </span>
+                          ) : null}
                         </button>
                       ) : null}
                     </article>
