@@ -306,18 +306,19 @@ const setupStatusLabel: Record<string, string> = {
   planned: "Planejado",
 };
 const IRIS_EMOJI_OPTIONS = [
-  "😀",
-  "😄",
-  "😊",
-  "😉",
-  "😍",
-  "🙏",
-  "👍",
-  "👏",
-  "✅",
-  "⚠️",
-  "📌",
-  "💬",
+  // Rostos
+  "😀", "😃", "😄", "😁", "😊", "🙂", "😉", "😍",
+  "🥰", "😘", "😎", "🤩", "🤗", "😅", "😂", "🤣",
+  "🙃", "😌", "🤔", "😴", "😢", "😭", "😳", "😡",
+  // Gestos e mãos
+  "👍", "👎", "👏", "🙌", "🙏", "👌", "🤝", "💪",
+  "👋", "✌️", "🤙", "🫶",
+  // Corações e brilhos
+  "❤️", "🧡", "💛", "💚", "💙", "💜", "🔥", "✨",
+  "⭐", "🎉", "💯",
+  // Símbolos úteis do atendimento
+  "✅", "❌", "⚠️", "❗", "❓", "📌", "💬", "📎",
+  "📅", "💰", "🏠", "📞",
 ];
 const IRIS_REACTION_OPTIONS = ["👍", "❤️", "😂", "🙏", "✅"];
 const IRIS_AUDIO_MAX_DATA_URL_LENGTH = 4_000_000;
@@ -4949,11 +4950,65 @@ function MessageContent({
     );
   }
 
+  // Mensagem só de emoji: renderiza grande, como o WhatsApp (tamanho diminui conforme a
+  // quantidade). Vale tanto pro que o cliente manda quanto pro que o operador envia.
+  const emojiOnly = emojiOnlyMessage(message.body);
+
+  if (emojiOnly) {
+    return (
+      <p className={`whitespace-pre-wrap leading-tight ${emojiOnly.sizeClass}`}>
+        {message.body.trim()}
+      </p>
+    );
+  }
+
   return (
     <p className="whitespace-pre-wrap leading-6 [overflow-wrap:anywhere]">
       <WhatsAppText text={message.body} />
     </p>
   );
+}
+
+// Detecta se a mensagem é só emoji (sem texto) e escolhe o tamanho grande conforme a
+// quantidade — imita o WhatsApp (1 emoji = enorme; vai reduzindo). Retorna null se tiver
+// qualquer caractere que não seja emoji/modificador/espaço.
+function emojiOnlyMessage(
+  body: string | null | undefined,
+): { count: number; sizeClass: string } | null {
+  const text = (body ?? "").trim();
+
+  if (!text || text.length > 40) {
+    return null;
+  }
+
+  // Remove emojis, modificadores de tom, ZWJ, seletores de variação, indicadores
+  // regionais (bandeiras) e espaços. Se sobrar QUALQUER coisa (letra, número), não é
+  // só-emoji — assim "😀5" ou "ok 👍" caem no render de texto normal.
+  const withoutEmoji = text.replace(
+    /[\p{Extended_Pictographic}\u{1F1E6}-\u{1F1FF}\u{1F3FB}-\u{1F3FF}\u{FE0F}\u{FE0E}\u{200D}\u{20E3}\s]/gu,
+    "",
+  );
+
+  if (withoutEmoji.length > 0) {
+    return null;
+  }
+
+  const pictographs = text.match(/\p{Extended_Pictographic}/gu) ?? [];
+
+  if (pictographs.length === 0) {
+    return null;
+  }
+
+  const sizeClass =
+    pictographs.length <= 1
+      ? "text-5xl"
+      : pictographs.length <= 3
+        ? "text-4xl"
+        : pictographs.length <= 6
+          ? "text-3xl"
+          : "text-2xl";
+
+  return { count: pictographs.length, sizeClass };
 }
 
 function MessageCaption({ text }: { text: string }) {

@@ -424,7 +424,7 @@ export function IrisConversationComposerActions({
 
       <div ref={emojiPickerRef} className="relative">
         {emojiPickerOpen && composerReady ? (
-          <div className="absolute bottom-full left-0 z-20 mb-2 grid w-56 grid-cols-6 gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.14)]">
+          <div className="absolute bottom-full left-0 z-20 mb-2 grid max-h-56 w-56 grid-cols-6 gap-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.14)]">
             {emojiOptions.map((emoji) => (
               <button
                 key={emoji}
