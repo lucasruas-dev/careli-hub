@@ -1991,6 +1991,177 @@ async function uploadMetaWhatsAppAudio({
   return mediaId;
 }
 
+// Envio de mídia genérico (imagem/documento/vídeo) — mesmo padrão do áudio: sobe o binário
+// pro /media do Meta (pega media_id) e manda a mensagem com o id. A legenda (caption) passa
+// pelo normalizador de formatação do WhatsApp (*negrito*). Documento leva o filename.
+export async function sendMetaWhatsAppMediaMessage({
+  caption,
+  config = getMetaWhatsAppOutboundConfig(),
+  contextMessageId,
+  fileName,
+  kind,
+  mediaBase64,
+  mimeType,
+  to,
+}: {
+  caption?: string | null;
+  config?: MetaWhatsAppOutboundConfig;
+  contextMessageId?: string | null;
+  fileName: string;
+  kind: "document" | "image" | "video";
+  mediaBase64: string;
+  mimeType: string;
+  to: string;
+}): Promise<MetaWhatsAppSendMessageResult> {
+  const accessToken = readEnvValue(config.accessToken);
+  const graphVersion = normalizeGraphVersion(config.graphVersion);
+  const phoneNumberId = readEnvValue(config.phoneNumberId);
+
+  if (!accessToken || !graphVersion || !phoneNumberId) {
+    throw new MetaWhatsAppSendError(
+      "Configuracao outbound Meta WhatsApp incompleta.",
+      503,
+    );
+  }
+
+  const mediaId = await uploadMetaWhatsAppMediaFile({
+    accessToken,
+    base64: mediaBase64,
+    fileName,
+    graphVersion,
+    mimeType,
+    phoneNumberId,
+  });
+
+  const normalizedCaption =
+    typeof caption === "string" && caption.trim()
+      ? toWhatsAppFormatting(caption.trim())
+      : null;
+
+  const mediaObject: Record<string, unknown> = { id: mediaId };
+
+  // Caption só vale pra imagem/vídeo/documento (o Meta ignora em outros tipos).
+  if (normalizedCaption) {
+    mediaObject.caption = normalizedCaption;
+  }
+
+  // Documento mostra o nome do arquivo pro cliente.
+  if (kind === "document") {
+    mediaObject.filename = fileName;
+  }
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/messages`,
+    {
+      body: JSON.stringify({
+        [kind]: mediaObject,
+        ...(contextMessageId
+          ? { context: { message_id: contextMessageId } }
+          : {}),
+        messaging_product: "whatsapp",
+        recipient_type: "individual",
+        to,
+        type: kind,
+      }),
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        contacts?: Array<{ wa_id?: unknown }>;
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        messages?: Array<{ id?: unknown }>;
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou o envio do anexo.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  return {
+    contactWaId: normalizeText(payload?.contacts?.[0]?.wa_id),
+    messageId: normalizeText(payload?.messages?.[0]?.id),
+    raw: payload,
+  };
+}
+
+async function uploadMetaWhatsAppMediaFile({
+  accessToken,
+  base64,
+  fileName,
+  graphVersion,
+  mimeType,
+  phoneNumberId,
+}: {
+  accessToken: string;
+  base64: string;
+  fileName: string;
+  graphVersion: string;
+  mimeType: string;
+  phoneNumberId: string;
+}) {
+  const bytes = Uint8Array.from(Buffer.from(base64, "base64"));
+  const formData = new FormData();
+
+  formData.append("messaging_product", "whatsapp");
+  formData.append("type", mimeType);
+  formData.append("file", new Blob([bytes], { type: mimeType }), fileName);
+
+  const response = await fetch(
+    `https://graph.facebook.com/${graphVersion}/${phoneNumberId}/media`,
+    {
+      body: formData,
+      cache: "no-store",
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+      },
+      method: "POST",
+    },
+  );
+  const payload = (await response.json().catch(() => null)) as
+    | {
+        error?: { code?: unknown; message?: unknown; type?: unknown };
+        id?: unknown;
+      }
+    | null;
+
+  if (!response.ok) {
+    throw new MetaWhatsAppSendError(
+      normalizeText(payload?.error?.message) ??
+        "Meta WhatsApp rejeitou o upload do anexo.",
+      response.status,
+      {
+        code: normalizeErrorCode(payload?.error?.code),
+        details: payload?.error ?? null,
+      },
+    );
+  }
+
+  const mediaId = normalizeText(payload?.id);
+
+  if (!mediaId) {
+    throw new MetaWhatsAppSendError(
+      "Meta WhatsApp nao retornou ID de midia.",
+      502,
+    );
+  }
+
+  return mediaId;
+}
+
 export async function sendMetaWhatsAppReactionMessage({
   config = getMetaWhatsAppOutboundConfig(),
   emoji,

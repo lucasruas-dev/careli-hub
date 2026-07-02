@@ -1,12 +1,21 @@
 "use client";
 
-import { useState, type KeyboardEvent, type ReactNode, type RefObject } from "react";
+import {
+  useRef,
+  useState,
+  type ChangeEvent,
+  type ClipboardEvent,
+  type KeyboardEvent,
+  type ReactNode,
+  type RefObject,
+} from "react";
 import {
   CalendarClock,
   CheckCircle2,
   CircleStop,
   ClipboardList,
   Clock3,
+  FileText,
   Headset,
   Loader2,
   LockKeyhole,
@@ -69,6 +78,12 @@ export function IrisConversationComposerActions({
   onCancelAudio,
   onSendAudioPreview,
   audioPreviewUrl = null,
+  attachmentInputAccept = "image/*",
+  attachmentPreview = null,
+  hasAttachment = false,
+  onPickAttachment,
+  onCancelAttachment,
+  onComposerPaste,
   recordingElapsedLabel = "0:00",
   onToggleEmojiPicker,
   operationReady,
@@ -109,6 +124,16 @@ export function IrisConversationComposerActions({
   onCancelAudio: () => void;
   onSendAudioPreview: () => void;
   audioPreviewUrl?: string | null;
+  attachmentInputAccept?: string;
+  attachmentPreview?: {
+    fileName: string;
+    kind: "document" | "image";
+    previewUrl: string | null;
+  } | null;
+  hasAttachment?: boolean;
+  onPickAttachment?: (file: File | null) => void;
+  onCancelAttachment?: () => void;
+  onComposerPaste?: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   recordingElapsedLabel?: string;
   onToggleEmojiPicker: () => void;
   operationReady: boolean;
@@ -119,6 +144,17 @@ export function IrisConversationComposerActions({
   ticketChecklist: IrisConversationComposerChecklistItem[];
   ticketClosed: boolean;
 }) {
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  function handleAttachmentInputChange(
+    event: ChangeEvent<HTMLInputElement>,
+  ) {
+    const file = event.target.files?.[0] ?? null;
+
+    onPickAttachment?.(file);
+    // Permite reescolher o MESMO arquivo depois (senão o onChange não dispara).
+    event.target.value = "";
+  }
   const [agendaModalKind, setAgendaModalKind] = useState<
     "retorno" | "tarefa" | null
   >(null);
@@ -351,9 +387,44 @@ export function IrisConversationComposerActions({
         </div>
       ) : null}
 
+      {attachmentPreview ? (
+        <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#eadcc2] bg-[#fbf6ec] px-3 py-2">
+          <div className="flex min-w-0 items-center gap-2.5">
+            {attachmentPreview.kind === "image" && attachmentPreview.previewUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={attachmentPreview.previewUrl}
+                alt=""
+                className="size-10 shrink-0 rounded-md object-cover"
+              />
+            ) : (
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-white text-[#7A5E2C]">
+                <FileText className="size-5" aria-hidden="true" />
+              </span>
+            )}
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
+                {attachmentPreview.kind === "image" ? "Imagem" : "Documento"}
+              </p>
+              <p className="mt-0.5 line-clamp-1 text-xs font-medium text-slate-600">
+                {attachmentPreview.fileName}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onCancelAttachment}
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-[#7A5E2C]"
+            aria-label="Remover anexo"
+          >
+            <X className="size-4" aria-hidden="true" />
+          </button>
+        </div>
+      ) : null}
+
       <div ref={emojiPickerRef} className="relative">
         {emojiPickerOpen && composerReady ? (
-          <div className="absolute bottom-full left-0 z-20 mb-2 grid w-56 grid-cols-6 gap-1 rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.14)]">
+          <div className="absolute bottom-full left-0 z-20 mb-2 grid max-h-56 w-56 grid-cols-6 gap-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.14)]">
             {emojiOptions.map((emoji) => (
               <button
                 key={emoji}
@@ -460,10 +531,21 @@ export function IrisConversationComposerActions({
               >
                 <Smile className="size-4" aria-hidden="true" />
               </ComposerIconButton>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept={attachmentInputAccept}
+                className="hidden"
+                onChange={handleAttachmentInputChange}
+              />
               <ComposerIconButton
-                disabled
-                label="Anexos em breve"
-                onClick={() => undefined}
+                disabled={!canSendFreeForm || sending || noteMode}
+                label={
+                  noteMode
+                    ? "Anexo indisponivel na nota"
+                    : "Anexar arquivo, foto ou print"
+                }
+                onClick={() => fileInputRef.current?.click()}
               >
                 <Paperclip className="size-4" aria-hidden="true" />
               </ComposerIconButton>
@@ -472,7 +554,12 @@ export function IrisConversationComposerActions({
                 value={draft}
                 onChange={(event) => onDraftChange(event.target.value)}
                 onKeyDown={onComposerKeyDown}
-                placeholder={composerPlaceholder}
+                onPaste={onComposerPaste}
+                placeholder={
+                  hasAttachment
+                    ? "Adicione uma legenda (opcional)..."
+                    : composerPlaceholder
+                }
                 disabled={!composerReady}
                 className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
               />
@@ -486,7 +573,11 @@ export function IrisConversationComposerActions({
               <Tooltip content={sendLabel} placement="top">
                 <button
                   type="button"
-                  disabled={sending || !draft.trim() || !composerReady}
+                  disabled={
+                    sending ||
+                    (!draft.trim() && !hasAttachment) ||
+                    !composerReady
+                  }
                   onClick={onSendMessage}
                   className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
                   aria-label={sendLabel}

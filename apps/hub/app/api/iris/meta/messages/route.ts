@@ -8,6 +8,7 @@ import {
   getMetaWhatsAppConfigStatus,
   getMetaWhatsAppOutboundConfig,
   sendMetaWhatsAppAudioMessage,
+  sendMetaWhatsAppMediaMessage,
   sendMetaWhatsAppReactionMessage,
   sendMetaWhatsAppTextMessage,
   signWhatsAppBody,
@@ -74,6 +75,9 @@ export async function POST(request: NextRequest) {
   const to = normalizeWhatsAppDestination(input?.to);
   const hasMediaInput = Boolean(input?.media);
   const audioMedia = normalizeAudioMedia(input?.media);
+  const attachmentMedia = audioMedia
+    ? null
+    : normalizeAttachmentMedia(input?.media);
   const body = audioMedia
     ? normalizeMessageBody(input?.body) ?? "Audio WhatsApp"
     : normalizeMessageBody(input?.body);
@@ -90,20 +94,36 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (hasMediaInput && !audioMedia) {
+  if (hasMediaInput && !audioMedia && !attachmentMedia) {
     return NextResponse.json(
-      { error: "Audio invalido ou acima do limite de homologacao." },
+      {
+        error:
+          "Anexo invalido ou acima do limite. Aceito: imagem (JPG/PNG, ate ~3MB) ou documento (PDF/Office/texto).",
+      },
       { status: 400 },
     );
   }
 
-  if (!body && !audioMedia) {
+  if (!body && !audioMedia && !attachmentMedia) {
     return NextResponse.json(
       { error: "Informe a mensagem para enviar pelo WhatsApp." },
       { status: 400 },
     );
   }
-  const outboundBody = body ?? "Audio WhatsApp";
+  const outboundBody = body ?? (audioMedia ? "Audio WhatsApp" : "");
+  // Mídia normalizada (áudio OU anexo) num único formato pra persistir/enviar.
+  const outboundMedia: NormalizedOutboundMedia | null = audioMedia
+    ? { ...audioMedia, type: "audio" }
+    : attachmentMedia
+      ? {
+          base64: attachmentMedia.base64,
+          durationMs: null,
+          fileName: attachmentMedia.fileName,
+          mimeType: attachmentMedia.mimeType,
+          type: attachmentMedia.kind,
+        }
+      : null;
+  const outboundMessageType = outboundMedia?.type ?? "text";
 
   let localMessage:
     | {
@@ -223,8 +243,8 @@ export async function POST(request: NextRequest) {
       channelId,
       client: authorization.client,
       contactId,
-      media: audioMedia,
-      messageType: audioMedia ? "audio" : "text",
+      media: outboundMedia,
+      messageType: outboundMessageType,
       operatorIdentity,
       replyContext: replyPreview,
       ticketId,
@@ -257,6 +277,17 @@ export async function POST(request: NextRequest) {
               contextMessageId: replyPreview?.externalMessageId ?? null,
               fileName: audioMedia.fileName,
               mimeType: audioMedia.mimeType,
+              to: candidate,
+            })
+          : attachmentMedia
+          ? sendMetaWhatsAppMediaMessage({
+              caption: body,
+              ...(metaSendConfig ? { config: metaSendConfig } : {}),
+              contextMessageId: replyPreview?.externalMessageId ?? null,
+              fileName: attachmentMedia.fileName,
+              kind: attachmentMedia.kind,
+              mediaBase64: attachmentMedia.base64,
+              mimeType: attachmentMedia.mimeType,
               to: candidate,
             })
           : sendMetaWhatsAppTextMessage({
@@ -809,6 +840,21 @@ type NormalizedAudioMedia = {
   mimeType: string;
 };
 
+type NormalizedAttachmentMedia = {
+  base64: string;
+  fileName: string;
+  kind: "document" | "image";
+  mimeType: string;
+};
+
+type NormalizedOutboundMedia = {
+  base64: string;
+  durationMs: number | null;
+  fileName: string;
+  mimeType: string;
+  type: "audio" | "document" | "image";
+};
+
 async function getReplyContext({
   client,
   replyToMessageId,
@@ -1138,7 +1184,7 @@ async function createQueuedTicketMessage({
   channelId: string | null;
   client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
   contactId: string | null;
-  media: NormalizedAudioMedia | null;
+  media: NormalizedOutboundMedia | null;
   messageType: string;
   operatorIdentity: OperatorIdentity;
   replyContext: ReplyContextPreview | null;
@@ -1156,14 +1202,15 @@ async function createQueuedTicketMessage({
     return assignment;
   }
 
-  // Guarda o áudio enviado no Storage pra o operador conseguir reouvir no cockpit (best-effort).
+  // Guarda a mídia enviada (áudio/imagem/documento) no Storage pra aparecer no cockpit
+  // (a exibição da conversa lê provider_payload.media.{url,type,fileName}). Best-effort.
   const mediaPayload = media
     ? {
         durationMs: media.durationMs,
         fileName: media.fileName,
         mimeType: media.mimeType,
-        type: "audio",
-        url: await uploadOutboundAudio(client, media),
+        type: media.type,
+        url: await uploadOutboundMedia(client, media),
       }
     : null;
 
@@ -1205,9 +1252,9 @@ async function createQueuedTicketMessage({
   };
 }
 
-async function uploadOutboundAudio(
+async function uploadOutboundMedia(
   client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>,
-  media: NormalizedAudioMedia,
+  media: NormalizedOutboundMedia,
 ): Promise<string | null> {
   try {
     const persisted = await uploadIrisMediaBuffer({
@@ -1220,7 +1267,7 @@ async function uploadOutboundAudio(
 
     return persisted?.url ?? null;
   } catch (error) {
-    console.error("[iris] falha ao persistir audio enviado", error);
+    console.error("[iris] falha ao persistir midia enviada", error);
 
     return null;
   }
@@ -1678,6 +1725,82 @@ function normalizeAudioMedia(value: unknown): NormalizedAudioMedia | null {
     fileName,
     mimeType,
   };
+}
+
+// Anexo de saída (imagem/documento) enviado pelo operador. Mesmo formato dataURL do áudio,
+// com whitelist de mime e limite de tamanho (o body JSON da Vercel tem teto ~4,5MB; imagens
+// grandes são reduzidas no cliente antes de subir).
+const IRIS_ATTACHMENT_MAX_BASE64_LENGTH = 4_500_000;
+
+const IRIS_IMAGE_MIME_WHITELIST = new Set(["image/jpeg", "image/png"]);
+
+const IRIS_DOCUMENT_MIME_WHITELIST = new Set([
+  "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  "application/vnd.ms-powerpoint",
+  "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+  "text/plain",
+  "text/csv",
+]);
+
+function normalizeAttachmentMedia(
+  value: unknown,
+): NormalizedAttachmentMedia | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (
+    (record.type !== "image" && record.type !== "document") ||
+    typeof record.dataUrl !== "string"
+  ) {
+    return null;
+  }
+
+  const dataUrlMatch = /^data:([^,]+),(.+)$/i.exec(record.dataUrl.trim());
+
+  if (!dataUrlMatch) {
+    return null;
+  }
+
+  const header = dataUrlMatch[1]?.toLowerCase() ?? "";
+
+  if (!header.includes("base64")) {
+    return null;
+  }
+
+  const mimeType = header.split(";")[0]?.trim() ?? "";
+  const kind = record.type === "image" ? "image" : "document";
+  const whitelist =
+    kind === "image" ? IRIS_IMAGE_MIME_WHITELIST : IRIS_DOCUMENT_MIME_WHITELIST;
+
+  if (!whitelist.has(mimeType)) {
+    return null;
+  }
+
+  const base64 = dataUrlMatch[2]?.replace(/\s/g, "");
+
+  if (
+    !base64 ||
+    base64.length > IRIS_ATTACHMENT_MAX_BASE64_LENGTH ||
+    !/^[a-z0-9+/=]+$/i.test(base64)
+  ) {
+    return null;
+  }
+
+  const fileName =
+    typeof record.fileName === "string" && record.fileName.trim()
+      ? record.fileName.trim().replace(/[^a-z0-9._-]+/gi, "-").slice(0, 120)
+      : kind === "image"
+        ? "imagem.jpg"
+        : "documento";
+
+  return { base64, fileName, kind, mimeType };
 }
 
 function normalizeEmoji(value: unknown) {
