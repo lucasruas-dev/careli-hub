@@ -62,15 +62,22 @@ export async function GET(request: NextRequest) {
   const deleteFailures: ChronosEgressFailure[] = [];
 
   // === FASE 1: COPIAR (Whereby -> chronos-drive) ===
-  const { data: pendingCopy } = await admin
+  // MAIS NOVAS primeiro: as gravacoes recentes (que o time quer ver no Drive) migram
+  // antes; as antigas que o Whereby ja apagou ficam no fim e nao bloqueiam a fila. Busca
+  // um lote maior e filtra em JS quem ja falhou 3x (evita travar eternamente nas mortas).
+  const { data: copyCandidates } = await admin
     .from("chronos_recordings")
     .select("file_name,id,meeting_id,metadata,mime_type,storage_bucket")
     .eq("storage_bucket", "whereby")
-    .order("created_at", { ascending: true })
-    .limit(COPY_BATCH)
+    .order("created_at", { ascending: false })
+    .limit(COPY_BATCH * 5)
     .returns<ChronosRecordingRow[]>();
 
-  for (const recording of pendingCopy ?? []) {
+  const pendingCopy = (copyCandidates ?? [])
+    .filter((recording) => readChronosEgressAttempts(recording.metadata) < 3)
+    .slice(0, COPY_BATCH);
+
+  for (const recording of pendingCopy) {
     const wherebyRecordingId = readNestedString(
       recording.metadata,
       "whereby",
@@ -114,10 +121,31 @@ export async function GET(request: NextRequest) {
 
       copied.push(recording.id);
     } catch (error: unknown) {
-      copyFailures.push({
-        error: error instanceof Error ? error.message : "Falha ao copiar.",
+      const message =
+        error instanceof Error ? error.message : "Falha ao copiar.";
+      const attempts = readChronosEgressAttempts(recording.metadata) + 1;
+
+      // Loga o motivo (antes so ia na resposta) + conta a tentativa: apos 3 falhas a
+      // gravacao e pulada (provavelmente sumiu do Whereby) e nao trava a fila.
+      console.error("[chronos/egress-cron] copia falhou", {
+        attempts,
+        reason: message,
         recordingId: recording.id,
+        wherebyRecordingId,
       });
+
+      await admin
+        .from("chronos_recordings")
+        .update({
+          metadata: {
+            ...(recording.metadata ?? {}),
+            egressAttempts: attempts,
+            egressLastError: message.slice(0, 300),
+          },
+        })
+        .eq("id", recording.id);
+
+      copyFailures.push({ error: message, recordingId: recording.id });
     }
   }
 
@@ -224,6 +252,14 @@ async function isAuthorizedEgressCron(
   return Boolean(
     hubUser && hubUser.status === "active" && hubUser.role === "admin",
   );
+}
+
+function readChronosEgressAttempts(
+  metadata: Record<string, unknown> | null,
+): number {
+  const value = metadata?.egressAttempts;
+
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
 }
 
 function readNestedObject(
