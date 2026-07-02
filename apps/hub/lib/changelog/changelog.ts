@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-02-caca-imobiliaria",
+    deployedAt: "2026-07-02T16:15:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Cacá agora atende as IMOBILIÁRIAS sobre os clientes DELAS: dá pra pedir um panorama da carteira (quantos clientes em dia, quantos com parcela vencida e o total vencido), consultar um cliente específico (cadastro + situação financeira) e receber o boleto de um cliente — tudo restrito aos clientes vinculados àquela imobiliária.",
+              "A Cacá ficou mais natural na conversa: se o cliente puxar um assunto fora do trabalho, ela responde numa boa, sem ficar forçando o papo de volta pra boleto a cada frase.",
+            ],
+            screen: "Atendimento (Cacá)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit b75c30da",
+    technical: {
+      done: "Cacá (engine Claude) ganhou 3 ferramentas escopadas pela imobiliaria: resumo_carteira_imobiliaria, consultar_cliente_da_imobiliaria e gerar_boleto_cliente_imobiliaria. Autorizacao SEMPRE por vinculo users.vinculed_by_id (a imobiliaria so alcanca clientes vinculados a ela; nunca CPF solto). Escopo abre por telefone que bate com o cadastro da imobiliaria OU CNPJ confirmado. Read-model C2X novo (read-only): findC2xImobiliariaClients (resolve por nome/CPF dentro do vinculo) + loadC2xImobiliariaCarteiraSummary (agregado por cliente, vencida = payment_status_id 7). Persona: secao de atendimento de imobiliaria + liberacao de conversa fora do contexto de trabalho. v1.21.0 -> v1.21.1.",
+      motivation:
+        "Lucas: a imobiliaria pode ver cadastro/financeiro/boleto dos clientes DELA (sao clientes dela) — caso real da Raiane Imobiliaria pedindo a saude financeira dos boletos dos clientes, que a Cacá recusava e transferia. E: nao quero a Cacá presa em boleto/financeiro; se o cliente falar de assunto fora do trabalho, pode responder naturalmente.",
+    },
+    title: "Cacá atende imobiliárias sobre os clientes delas + conversa mais natural",
+    type: "melhoria",
+    version: "v1.21.1",
+  },
+  {
     buildTag: "2026-07-02-app-mobile",
     deployedAt: "2026-07-02T14:30:00-03:00",
     modules: [
