@@ -849,6 +849,7 @@ export async function listChronosSnapshot(
               ...persistedRecordings,
               ...recoveredRecordings,
             ]),
+            { skipWherebySigning: true },
           ),
         );
       }),
@@ -9476,6 +9477,7 @@ function sanitizeChronosStoragePathSegment(value: string) {
 async function hydrateChronosRecordingUrls(
   client: ChronosClient,
   recordings: ChronosRecording[],
+  options: { skipWherebySigning?: boolean } = {},
 ) {
   return Promise.all(
     recordings.map(async (recording) => {
@@ -9488,6 +9490,15 @@ async function hydrateChronosRecordingUrls(
       }
 
       if (recording.storageBucket === "whereby") {
+        // Na LISTAGEM (Drive), assinar o link de TODAS as gravacoes Whereby de uma vez
+        // estoura o rate limit da API (100 pts/min) -> tudo vira "em processamento" E o
+        // egress fica sem budget. Entao pulamos a assinatura Whereby no snapshot; essas
+        // gravacoes viram tocaveis quando o egress as move pro nosso Supabase (assinatura
+        // local, sem rate limit). URLs do chronos-drive seguem sendo assinadas aqui.
+        if (options.skipWherebySigning) {
+          return recording;
+        }
+
         const recordingId =
           readChronosMetadataText(
             readRecordMetadata(recording.metadata?.whereby),
