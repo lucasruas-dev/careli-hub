@@ -22,15 +22,16 @@ self.addEventListener("push", (event) => {
         payload = {};
       }
 
-      // Se o app ja esta aberto E em foco, deixa a notificacao in-app cuidar (evita
-      // duplicar). Para janelas minimizadas/escondidas/fechadas, mostramos o push.
+      // So suprime o push se alguma janela do hub estiver com FOCO real (o usuario
+      // esta olhando o app agora — o alerta in-app cuida). "visibilityState === visible"
+      // NAO serve de criterio: no Windows, janela atras de outro programa ou em outro
+      // monitor continua "visible" — era isso que engolia as notificacoes do time.
       const windowClients = await self.clients.matchAll({
         includeUncontrolled: true,
         type: "window",
       });
       const hasFocusedClient = windowClients.some(
-        (client) =>
-          client.focused === true || client.visibilityState === "visible",
+        (client) => client.focused === true,
       );
 
       if (hasFocusedClient) {
@@ -68,13 +69,10 @@ self.addEventListener("notificationclick", (event) => {
         if ("focus" in client) {
           await client.focus();
 
-          if ("navigate" in client) {
-            try {
-              await client.navigate(targetUrl);
-            } catch {
-              // Navegacao pode falhar se a origem mudou; foco ja garante a janela.
-            }
-          }
+          // Navegacao DENTRO do app (rota SPA via postMessage -> router.push).
+          // client.navigate() recarregava o Panteon inteiro (boot completo) e era
+          // o delay de ~8s entre o clique e a mensagem aparecer.
+          client.postMessage({ type: "panteon:navigate", url: targetUrl });
 
           return;
         }

@@ -41,6 +41,7 @@ type PushSubscriptionRow = {
   endpoint: string;
   id: string;
   p256dh: string;
+  user_id: string | null;
 };
 
 // Envia Web Push aos membros ativos do canal (exceto o autor) que tem subscription.
@@ -50,7 +51,9 @@ export async function sendHermesMessagePush(input: {
   authorUserId: string | null;
   body: string;
   channelId: string;
+  mentionUserIds?: readonly string[];
   messageId: string;
+  threadParentMessageId?: string | null;
 }): Promise<void> {
   if (!ensureVapidConfigured()) {
     return;
@@ -85,7 +88,7 @@ export async function sendHermesMessagePush(input: {
 
   const { data: subscriptions } = await client
     .from("hub_push_subscriptions")
-    .select("id,endpoint,p256dh,auth")
+    .select("id,endpoint,p256dh,auth,user_id")
     .in("user_id", memberIds);
 
   const rows = (subscriptions ?? []) as PushSubscriptionRow[];
@@ -117,13 +120,31 @@ export async function sendHermesMessagePush(input: {
   } | null;
   const authorName = authorData?.display_name ?? "Hermes";
 
-  const payload = JSON.stringify({
+  // Link direto: canal + (se for resposta) a thread — mesmo formato do
+  // getHermesChannelPath do app, pro clique cair exatamente na conversa.
+  const targetUrl = input.threadParentMessageId
+    ? `/hermes?channel=${encodeURIComponent(input.channelId)}&thread=${encodeURIComponent(input.threadParentMessageId)}`
+    : `/hermes?channel=${encodeURIComponent(input.channelId)}`;
+  const mentionedIds = new Set(input.mentionUserIds ?? []);
+  const basePayload = {
     body: `${authorName}: ${truncatePushBody(input.body)}`,
     // Avatar de quem enviou (o SW cai na marca do Panteon se vier vazio).
     icon: authorData?.avatar_url ?? undefined,
+    url: targetUrl,
+  };
+  // Notificacao de @mencao e DIFERENTE (pedido do time): titulo proprio e tag
+  // propria (nao colapsa com a notificacao generica do canal).
+  const regularPayload = JSON.stringify({
+    ...basePayload,
     tag: `pulsex-message-${input.messageId}`,
-    title: `Nova mensagem em ${channelName}`,
-    url: `/hermes?channel=${encodeURIComponent(input.channelId)}`,
+    title: input.threadParentMessageId
+      ? `Nova resposta em ${channelName}`
+      : `Nova mensagem em ${channelName}`,
+  });
+  const mentionPayload = JSON.stringify({
+    ...basePayload,
+    tag: `pulsex-mention-${input.messageId}`,
+    title: `${authorName} mencionou voce em ${channelName}`,
   });
 
   await Promise.allSettled(
@@ -134,7 +155,9 @@ export async function sendHermesMessagePush(input: {
             endpoint: row.endpoint,
             keys: { auth: row.auth, p256dh: row.p256dh },
           },
-          payload,
+          row.user_id && mentionedIds.has(row.user_id)
+            ? mentionPayload
+            : regularPayload,
         );
       } catch (error) {
         const statusCode = (error as { statusCode?: number }).statusCode;

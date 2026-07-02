@@ -41051,3 +41051,14 @@ PENDENCIAS (para retomar):
 - ⚠️ Validar visualmente o Setup (criar/editar depto, setor, canal, usuário como admin) — escrita agora exige role admin ativo.
 
 **0044 APLICADA em prod (2/jul, OK do Lucas) — incidente do Setup resolvido:** teste visual do Lucas pegou "Não foi possível salvar departamento" após a 0041. Causa raiz = DRIFT repo↔prod: existem DUAS migrations "0003" e a `0003_setup_operational_access.sql` (policies admin manage de departments/sectors/channels) NUNCA rodou em prod — as "setup beta" eram a única via de escrita. A 0044 criou as 3 policies admin que faltavam; pg_policies confirmado. Lição: numeração duplicada de migration + aplicar sem trilha = drift silencioso; próximo passo estrutural = conferir TODAS as migrations do repo contra o schema real (auditoria de drift).
+
+---
+
+## 2026-07-02 (noite) — Hermes notificações LOTE 1 (branch `feat/hermes-notificacoes-lote1`)
+
+**Diagnóstico completo na memória `project-hermes-notifications-diagnosis` (3 causas raízes). Lote 1 implementado:**
+1. **SW não engole mais push** (`public/sw.js`): supressão só com janela FOCADA — `visibilityState === "visible"` descartava push com o hub atrás de outro programa/2º monitor (a grande causa do "tem hora que chega, tem hora que não").
+2. **Clique = navegação SPA** (`sw.js` + listener no provider): `client.postMessage` → `router.push` no lugar de `client.navigate` (full reload que causava os ~8s até a mensagem aparecer).
+3. **Fallback de envio agora dispara push**: rota nova `POST /api/hermes/messages/push` (Bearer; lê a msg do banco; só o autor dispara) chamada fire-and-forget pelo `createHermesMessage` quando o envio cai no INSERT direto — antes, esse caminho = zero notificação de SO.
+4. **Push distinto pra @menção** (`lib/pulsex/push.ts`): título "X mencionou você em #canal" + tag própria (não colapsa com a genérica); resposta em thread ganha título "Nova resposta em..." e o link leva direto pra thread (`&thread=`).
+Typecheck+13 testes+lint verdes. PENDENTE: validação visual do Lucas no preview (2 máquinas: mandar msg com hub minimizado/atrás de janela → push deve chegar; clicar → canal abre instantâneo; @menção → título distinto). Lotes 2-4 no plano (frescor ao abrir canal, menção visual em canal/aba, telemetria de entrega).

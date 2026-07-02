@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import {
   ExternalLink,
   MessageSquareText,
@@ -120,6 +121,7 @@ export function HermesNotificationProvider({
   children: ReactNode;
 }>) {
   const { hubUser, profileStatus } = useAuth();
+  const router = useRouter();
   const currentUserId = hubUser?.id ?? "";
   const [items, setItems] = useState<PanteonNotificationItem[]>([]);
   const [floatingItems, setFloatingItems] = useState<PanteonNotificationItem[]>(
@@ -713,6 +715,41 @@ export function HermesNotificationProvider({
   );
 
   useEffect(() => registerHermesNotificationPermissionIntent(), []);
+
+  // Clique na notificação do SO (Web Push): o SW manda a URL por postMessage e a
+  // navegação acontece DENTRO do app (rota SPA). O client.navigate() antigo
+  // recarregava o Panteon inteiro — era o delay de ~8s até a mensagem aparecer.
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+      return;
+    }
+
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      const data = event.data as { type?: string; url?: string } | null;
+
+      if (
+        data?.type !== "panteon:navigate" ||
+        typeof data.url !== "string" ||
+        !data.url.startsWith("/")
+      ) {
+        return;
+      }
+
+      router.push(data.url);
+    };
+
+    navigator.serviceWorker.addEventListener(
+      "message",
+      handleServiceWorkerMessage,
+    );
+
+    return () => {
+      navigator.serviceWorker.removeEventListener(
+        "message",
+        handleServiceWorkerMessage,
+      );
+    };
+  }, [router]);
 
   // Destrava o audio no primeiro gesto (autoplay policy) — corrige o "as vezes nao toca".
   useEffect(() => registerNotificationAudioUnlock(), []);

@@ -2,6 +2,7 @@ export const HERMES_MODULE_ID = "hermes";
 export const HERMES_ROUTE = "/hermes";
 export const LEGACY_PULSEX_ROUTE = "/pulsex";
 export const HERMES_MESSAGES_API_ROUTE = "/api/hermes/messages";
+export const HERMES_MESSAGES_PUSH_API_ROUTE = "/api/hermes/messages/push";
 export const LEGACY_PULSEX_MESSAGES_API_ROUTE = "/api/pulsex/messages";
 
 export function getHermesMessagesApiUrl(input: {

@@ -26,7 +26,10 @@ import { normalizeHermesMessageTags } from "./message-tags";
 import { compactHermesMessageMetadata } from "./message-metadata";
 import { isHermesDirectChannelId } from "./direct-channel";
 import { fetchHermesMessagesApi } from "./messages-api-client";
-import { getHermesMessagesApiUrl } from "./routes";
+import {
+  getHermesMessagesApiUrl,
+  HERMES_MESSAGES_PUSH_API_ROUTE,
+} from "./routes";
 
 type QueryResult<T> = {
   data: T | null;
@@ -681,7 +684,19 @@ export async function createHermesMessage(rawInput: {
 
   assertQuery("enviar mensagem", result);
 
-  return mapMessage((result as QueryResult<HermesMessageRow>).data);
+  const message = mapMessage((result as QueryResult<HermesMessageRow>).data);
+
+  // Reforço de entrega: este caminho (INSERT direto, fallback da API) não passa
+  // pelo servidor — sem esta chamada o Web Push NUNCA seria disparado e a mensagem
+  // chegaria sem notificação de SO. Fire-and-forget: falha aqui não afeta o envio.
+  void fetchHermesMessagesApi({
+    body: { messageId: message.id },
+    client,
+    method: "POST",
+    url: HERMES_MESSAGES_PUSH_API_ROUTE,
+  }).catch(() => null);
+
+  return message;
 }
 
 export async function listHermesThreadReplies(input: {

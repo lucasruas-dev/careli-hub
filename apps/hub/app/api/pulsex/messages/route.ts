@@ -451,7 +451,9 @@ export async function POST(request: NextRequest) {
         authorUserId: context.user.id,
         body: payload.data.body,
         channelId: payload.data.channelId,
+        mentionUserIds: payload.data.mentionUserIds,
         messageId: data.id,
+        threadParentMessageId: payload.data.threadParentMessageId ?? null,
       });
     } catch {
       // Intencional: push nunca pode afetar o envio da mensagem.
