@@ -106,7 +106,8 @@ export function AuthProvider({
   const [authRetryKey, setAuthRetryKey] = useState(0);
   const [profileStatus, setProfileStatus] =
     useState<AuthContextValue["profileStatus"]>("idle");
-  const isLoginRoute = pathname === "/login";
+  const isMobileLoginRoute = pathname === "/m/login";
+  const isLoginRoute = pathname === "/login" || isMobileLoginRoute;
   const isPublicChronosRoute = isChronosPublicRoute(pathname);
   const isAuthBypassRoute = isLoginRoute || isPublicChronosRoute;
   const hubUser = useMemo(
@@ -300,14 +301,21 @@ export function AuthProvider({
     }
 
     if (!isAuthenticated(authState) && !isAuthBypassRoute) {
-      router.replace("/login");
+      router.replace(pathname.startsWith("/m") ? "/m/login" : "/login");
       return;
     }
 
     if (isAuthenticated(authState) && isLoginRoute) {
-      router.replace("/");
+      router.replace(isMobileLoginRoute ? "/m/iris" : "/");
     }
-  }, [authState, isAuthBypassRoute, isLoginRoute, router]);
+  }, [
+    authState,
+    isAuthBypassRoute,
+    isLoginRoute,
+    isMobileLoginRoute,
+    pathname,
+    router,
+  ]);
 
   async function signIn({
     email,

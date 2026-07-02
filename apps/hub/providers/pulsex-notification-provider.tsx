@@ -106,6 +106,14 @@ const FLOATING_NOTIFICATION_TTL_MS = 9_000;
 // mensagem caber num dia movimentado sem perder mensagens antigas do dia.
 const MAX_PANTEON_NOTIFICATION_ITEMS = 150;
 
+// No app mobile (/m) queremos SO a notificacao do sistema (Web Push) — sem o
+// toast/som interno. Fora do /m (desktop) o comportamento segue o de sempre.
+function shouldSuppressInAppAlerts(): boolean {
+  return (
+    typeof window !== "undefined" && window.location.pathname.startsWith("/m")
+  );
+}
+
 export function HermesNotificationProvider({
   children,
 }: Readonly<{
@@ -286,6 +294,10 @@ export function HermesNotificationProvider({
 
   const pushFloatingNotification = useCallback(
     (notification: PanteonNotificationItem) => {
+      if (shouldSuppressInAppAlerts()) {
+        return;
+      }
+
       setFloatingItems((currentItems) =>
         [notification, ...currentItems.filter((item) => item.id !== notification.id)].slice(
           0,
@@ -455,7 +467,9 @@ export function HermesNotificationProvider({
             continue;
           }
 
-          playPanteonModuleSound(item.moduleId, { notificationId: item.id });
+          if (!shouldSuppressInAppAlerts()) {
+            playPanteonModuleSound(item.moduleId, { notificationId: item.id });
+          }
           pushFloatingNotification(item);
         }
       }
@@ -602,10 +616,12 @@ export function HermesNotificationProvider({
       // avatar), entao deixamos o Web Push como unica notificacao do sistema.
       if (isVisible) {
         pushFloatingNotification(notification);
-        playHermesIncomingMessageSound({
-          mentioned,
-          messageId: message.id,
-        });
+        if (!shouldSuppressInAppAlerts()) {
+          playHermesIncomingMessageSound({
+            mentioned,
+            messageId: message.id,
+          });
+        }
       }
     },
     [currentUserId, markChannelNotificationsRead, pushFloatingNotification],
@@ -976,7 +992,9 @@ export function HermesNotificationProvider({
             document.visibilityState === "visible";
 
           if (!item.read && isVisible) {
-            playPanteonModuleSound(item.moduleId, { notificationId: item.id });
+            if (!shouldSuppressInAppAlerts()) {
+              playPanteonModuleSound(item.moduleId, { notificationId: item.id });
+            }
             pushFloatingNotification(item);
           }
         },
