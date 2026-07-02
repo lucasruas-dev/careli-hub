@@ -118,6 +118,10 @@ export default function MobileHermesChatPage() {
   // guarda a altura anterior para manter a posição de leitura após prepender.
   const prependingRef = useRef(false);
   const prevHeightRef = useRef(0);
+  // Só liberamos o "carregar antigas ao rolar" DEPOIS que o scroll inicial pro
+  // fim aconteceu — senão ele dispara na abertura (container começa no topo) e
+  // a conversa nunca fica no fim.
+  const initialScrolledRef = useRef(false);
 
   useEffect(() => {
     if (!channelId) {
@@ -129,6 +133,7 @@ export default function MobileHermesChatPage() {
     setLoading(true);
     setError("");
     setHasMore(false);
+    initialScrolledRef.current = false;
     listChannelMessages(channelId, { limit: INITIAL_LIMIT })
       .then((channelMessages) => {
         if (!mounted) {
@@ -222,8 +227,28 @@ export default function MobileHermesChatPage() {
       return;
     }
 
-    el.scrollTo({ behavior: "smooth", top: el.scrollHeight });
+    // Desce pro fim (instantâneo — evita ficar "no meio"). Só marca pronto
+    // depois de posicionar, liberando o auto-load ao rolar pra cima.
+    el.scrollTop = el.scrollHeight;
+    initialScrolledRef.current = true;
   }, [messages.length]);
+
+  // Reforço: quando o carregamento inicial termina, reancora no fim depois que
+  // imagens/anexos assentam a altura (senão o fim "escorrega" pra cima).
+  useEffect(() => {
+    if (loading || messages.length === 0) {
+      return;
+    }
+
+    const el = scrollRef.current;
+    const timer = window.setTimeout(() => {
+      if (el && !prependingRef.current) {
+        el.scrollTop = el.scrollHeight;
+      }
+    }, 220);
+
+    return () => window.clearTimeout(timer);
+  }, [loading, messages.length]);
 
   const loadOlder = useCallback(async () => {
     if (loadingOlder || messages.length === 0) {
@@ -300,7 +325,13 @@ export default function MobileHermesChatPage() {
   const handleScroll = useCallback(() => {
     const el = scrollRef.current;
 
-    if (el && el.scrollTop <= 120 && hasMore && !loadingOlder) {
+    if (
+      el &&
+      initialScrolledRef.current &&
+      el.scrollTop <= 120 &&
+      hasMore &&
+      !loadingOlder
+    ) {
       void loadOlder();
     }
   }, [hasMore, loadingOlder, loadOlder]);
