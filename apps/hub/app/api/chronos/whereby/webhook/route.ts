@@ -53,7 +53,7 @@ export async function POST(request: NextRequest) {
 
   let event: {
     type?: unknown;
-    data?: { recordingId?: unknown; roomName?: unknown };
+    data?: { filename?: unknown; recordingId?: unknown; roomName?: unknown };
   };
 
   try {
@@ -77,6 +77,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, ignored: "sem recordingId" });
   }
 
+  const roomName =
+    typeof event.data?.roomName === "string" ? event.data.roomName.trim() : "";
+  const eventFileName =
+    typeof event.data?.filename === "string"
+      ? event.data.filename.trim()
+      : null;
+
   const { serviceRoleKey, url: supabaseUrl } = getServerSupabaseConfig();
 
   if (!supabaseUrl || !serviceRoleKey) {
@@ -91,9 +98,11 @@ export async function POST(request: NextRequest) {
   });
 
   try {
-    const result = await egressChronosWherebyRecordingByRecordingId({
+    const result = await egressChronosWherebyRecordingFromEvent({
       admin,
+      eventFileName,
       recordingId,
+      roomName,
     });
 
     return NextResponse.json({ ok: true, ...result });
@@ -112,61 +121,136 @@ export async function POST(request: NextRequest) {
   }
 }
 
-async function egressChronosWherebyRecordingByRecordingId({
+async function egressChronosWherebyRecordingFromEvent({
   admin,
+  eventFileName,
   recordingId,
+  roomName,
 }: {
   admin: SupabaseClient;
+  eventFileName: string | null;
   recordingId: string;
+  roomName: string;
 }) {
-  const { data: recording } = await admin
+  const { data: existing } = await admin
     .from("chronos_recordings")
     .select("file_name,id,meeting_id,metadata,mime_type,storage_bucket")
     .eq("metadata->whereby->>recordingId", recordingId)
     .maybeSingle<ChronosRecordingRow>();
 
-  // Ainda nao persistida (o sync de artefatos cria a linha). Deixa o egress-cron pegar.
-  if (!recording) {
-    return { skipped: "gravacao ainda nao persistida" };
+  // Idempotencia: se ja migrada (nao esta mais em 'whereby'), nao repete — o arquivo no
+  // Whereby ja pode ter sido apagado, e o access-link falharia.
+  if (existing && existing.storage_bucket !== "whereby") {
+    return { skipped: "ja migrada" };
   }
 
-  if (recording.storage_bucket !== "whereby") {
-    return { skipped: "ja migrada" };
+  // A reuniao vem da linha (se persistida) OU do roomName do proprio evento — assim o
+  // egress NAO depende da linha ja existir no nosso banco no instante do webhook (era o
+  // que fazia o egress instantaneo pular).
+  const meetingId =
+    existing?.meeting_id ??
+    (await findChronosMeetingIdByRoomName(admin, roomName));
+
+  if (!meetingId) {
+    // Reuniao ainda nao resolvivel: 500 faz o Whereby reentregar; e o egress-cron e a
+    // rede de seguranca final.
+    throw new Error(`Reuniao Chronos nao encontrada para roomName="${roomName}".`);
   }
 
   const egress = await egressChronosWherebyRecordingToStorage({
     // Apaga do Whereby JA (nao guarda 7 dias): o objetivo e custo de storage ~zero.
     deleteFromWherebyAfterCopy: true,
-    fileName: recording.file_name,
-    meetingId: recording.meeting_id,
-    mimeType: recording.mime_type,
+    fileName: existing?.file_name ?? eventFileName,
+    meetingId,
+    mimeType: existing?.mime_type ?? "video/mp4",
     storage: admin.storage,
     wherebyRecordingId: recordingId,
   });
 
-  const { error: updateError } = await admin
-    .from("chronos_recordings")
-    .update({
-      metadata: {
-        ...(recording.metadata ?? {}),
-        migratedFromWhereby: {
-          at: new Date().toISOString(),
-          deletedFromWhereby: egress.deletedFromWhereby,
-          via: "webhook",
-          wherebyRecordingId: recordingId,
-        },
-      },
-      size_bytes: egress.sizeBytes,
-      storage_bucket: egress.bucket,
-      storage_path: egress.storagePath,
-    })
-    .eq("id", recording.id);
+  const baseMetadata = existing?.metadata ?? {};
+  const nextMetadata = {
+    ...baseMetadata,
+    migratedFromWhereby: {
+      at: new Date().toISOString(),
+      deletedFromWhereby: egress.deletedFromWhereby,
+      via: "webhook",
+      wherebyRecordingId: recordingId,
+    },
+    whereby: { ...readMetadataRecord(baseMetadata.whereby), recordingId },
+  };
 
-  if (updateError) {
-    throw new Error(updateError.message);
+  if (existing) {
+    const { error } = await admin
+      .from("chronos_recordings")
+      .update({
+        metadata: nextMetadata,
+        size_bytes: egress.sizeBytes,
+        status: "available",
+        storage_bucket: egress.bucket,
+        storage_path: egress.storagePath,
+      })
+      .eq("id", existing.id);
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    return { meetingId, migrated: existing.id, sizeBytes: egress.sizeBytes };
   }
 
-  return { migrated: recording.id, sizeBytes: egress.sizeBytes };
+  // Linha ainda nao existia: cria ja apontando pro nosso storage.
+  const { error } = await admin.from("chronos_recordings").insert({
+    file_name: eventFileName,
+    meeting_id: meetingId,
+    metadata: nextMetadata,
+    mime_type: "video/mp4",
+    size_bytes: egress.sizeBytes,
+    status: "available",
+    storage_bucket: egress.bucket,
+    storage_path: egress.storagePath,
+  });
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return { inserted: recordingId, meetingId, sizeBytes: egress.sizeBytes };
+}
+
+async function findChronosMeetingIdByRoomName(
+  admin: SupabaseClient,
+  roomName: string,
+) {
+  if (!roomName) {
+    return null;
+  }
+
+  const stripped = roomName.replace(/^\/+/, "");
+  // O Whereby manda o roomName como ultimo segmento do caminho; nosso metadata pode ter
+  // guardado com ou sem a barra inicial. Tenta as variantes, mais recente primeiro.
+  const candidates = Array.from(new Set([roomName, `/${stripped}`, stripped]));
+
+  for (const candidate of candidates) {
+    const { data } = await admin
+      .from("chronos_meetings")
+      .select("id")
+      .eq("metadata->externalRoom->whereby->>roomName", candidate)
+      .order("created_at", { ascending: false })
+      .limit(1)
+      .maybeSingle<{ id: string }>();
+
+    if (data?.id) {
+      return data.id;
+    }
+  }
+
+  return null;
+}
+
+function readMetadataRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }
 
 function isValidChronosWherebySignature(
