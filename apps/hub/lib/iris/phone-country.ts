@@ -123,12 +123,21 @@ export function flagEmojiForE164(e164: string | null | undefined): string {
     return "🌐";
   }
 
+  // Número JÁ em E.164 (com país). BR = 55 + 10/11 dígitos = 12/13. Estrangeiro sempre chega
+  // com o código (wa_id). Casa o prefixo de discagem mais longo primeiro (ex.: "1" só bate
+  // se não houver "351"/"55"/... na frente).
   for (const length of [3, 2, 1]) {
     const iso2 = DIAL_CODE_TO_ISO2[digits.slice(0, length)];
 
     if (iso2) {
       return iso2ToFlagEmoji(iso2);
     }
+  }
+
+  // Sem código de país reconhecido. Neste sistema (BR-first) um número "solto" de 10-11
+  // dígitos é um nacional BR guardado sem o 55 (ex.: "31983440284") — não a Holanda.
+  if (digits.length >= 10 && digits.length <= 11) {
+    return iso2ToFlagEmoji("BR");
   }
 
   return "🌐";

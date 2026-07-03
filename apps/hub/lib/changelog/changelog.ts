@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-03-iris-bandeira-painel",
+    deployedAt: "2026-07-03T14:00:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A BANDEIRA do país agora aparece ao lado do telefone no painel de cadastro do atendimento (antes só aparecia na visão de histórico). Dá pra identificar num relance quando o número é de fora.",
+            ],
+            screen: "Atendimento — painel do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "commit d13f2085",
+    technical: {
+      done: "A bandeira do país (v1.23.1) tinha sido adicionada só em iris-conversation-readonly.tsx (visão read-only/histórico), mas o painel de contexto do atendimento ao vivo é o IrisCobrancaContextSidebar renderizado em IrisPage.tsx (campos Telefone nas linhas ~3817 modo cobrança e ~3875 modo Apolo). Adicionado flagEmojiForE164(ticket.contactPhone) nos dois campos Telefone + import em IrisPage.tsx. Robustez no helper flagEmojiForE164: número sem código de país reconhecido e com 10-11 dígitos agora assume BR (sistema BR-first) em vez de casar prefixo errado (ex.: nacional '31983440284' virava 🇳🇱).",
+      motivation:
+        "Lucas não via a bandeira: ela tinha ido pro componente errado (histórico) e não pro painel que o operador usa no atendimento.",
+    },
+    title: "Iris: bandeira do país no painel do atendimento",
+    type: "correcao",
+    version: "v1.23.2",
+  },
+  {
     buildTag: "2026-07-03-iris-telefone-estrangeiro",
     deployedAt: "2026-07-03T13:00:00-03:00",
     modules: [

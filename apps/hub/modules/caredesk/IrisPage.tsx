@@ -140,6 +140,7 @@ import {
 } from "@/lib/iris/audio-transcode";
 import { getHubPresenceSnapshot } from "@/lib/hub-presence";
 import { canReplyAsCaca } from "@/lib/iris/caca-reply-access";
+import { flagEmojiForE164 } from "@/lib/iris/phone-country";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { useAuth } from "@/providers/auth-provider";
 import { usePanteonNotifications } from "@/providers/pulsex-notification-provider";
@@ -3814,7 +3815,12 @@ function IrisConversationPanel({
         <IrisCobrancaContextSidebar
           clienteFields={[
             { label: "Cliente", value: irisConversationReadOnlyHelpers.crm360ContextLabel(ticket.crm360Registration) },
-            { label: "Telefone", value: ticket.contactPhone ?? "-" },
+            {
+              label: "Telefone",
+              value: ticket.contactPhone
+                ? `${flagEmojiForE164(ticket.contactPhone)} ${ticket.contactPhone}`
+                : "-",
+            },
             { label: "CPF/CNPJ", value: ticket.contactDocument ?? "-" },
             { label: "E-mail", value: ticket.contactEmail ?? "-" },
             { label: "Fila", value: ticket.queueLabel },
@@ -3873,7 +3879,7 @@ function IrisConversationPanel({
             {
               label: "Telefone",
               value: ticket.contactPhone
-                ? formatPhoneForDisplay(ticket.contactPhone)
+                ? `${flagEmojiForE164(ticket.contactPhone)} ${formatPhoneForDisplay(ticket.contactPhone)}`
                 : "-",
             },
             {
