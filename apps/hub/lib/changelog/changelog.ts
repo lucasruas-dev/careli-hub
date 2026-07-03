@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-03-apresentacao-lancamento",
+    deployedAt: "2026-07-03T12:00:00-03:00",
+    modules: [
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "Nova página pública c2x.app.br/apresentacao com a apresentação interativa do processo de lançamento (Pré, Lançamento e Pós) para loteadores: capa com as marcas, linha do tempo das fases, fluxograma do circuito do dia do evento e projeção em tela cheia.",
+            ],
+            screen: "c2x.app.br/apresentacao",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 280b3e13",
+    technical: {
+      done: "Rewrites no next.config.ts do hub: /apresentacao e /apresentacao/:path* proxiam o site estatico careli-processo-lancamento.vercel.app (projeto Vercel separado da mesma conta; republicar a apresentacao NAO exige deploy do hub). Nenhuma mudanca no gate do proxy.ts: ele so cobre /api/*, e a rota nova e pagina publica sem dado do hub. O HTML da apresentacao e autossuficiente (logos embutidas em base64), entao caminho relativo nao quebra atras do rewrite.",
+      motivation:
+        "Lucas apresenta o processo de lancamento a loteadores contratantes e quer a URL na marca da empresa (c2x.app.br/apresentacao) em vez do dominio vercel.app.",
+    },
+    title: "Apresentação do processo de lançamento em c2x.app.br/apresentacao",
+    type: "novidade",
+    version: "v1.23.0",
+  },
+  {
     buildTag: "2026-07-03-iris-9digito",
     deployedAt: "2026-07-03T09:30:00-03:00",
     modules: [
