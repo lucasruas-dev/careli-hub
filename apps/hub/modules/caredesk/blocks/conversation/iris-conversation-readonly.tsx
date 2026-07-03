@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
+import { flagEmojiForE164 } from "@/lib/iris/phone-country";
 import {
   BoardProfileChip,
   type IrisBoardTicket,
@@ -424,7 +425,11 @@ export function IrisConversationContextSidebar({
         />
         <ConversationContextItem
           label="Telefone"
-          value={ticket.contactPhone ?? "-"}
+          value={
+            ticket.contactPhone
+              ? `${flagEmojiForE164(ticket.contactPhone)} ${ticket.contactPhone}`
+              : "-"
+          }
         />
         <ConversationContextItem
           label="Documento"

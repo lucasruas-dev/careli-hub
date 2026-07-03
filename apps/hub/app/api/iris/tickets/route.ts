@@ -10,6 +10,7 @@ import {
   sendMetaWhatsAppTemplateMessage,
 } from "@/lib/iris/meta-whatsapp";
 import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
+import { loadC2xUserWhatsAppNumber } from "@/lib/guardian/attendance";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -150,7 +151,7 @@ export async function POST(request: NextRequest) {
     | Record<string, unknown>
     | null;
   const contactName = normalizeText(input?.contactName);
-  const phone = normalizeWhatsAppDestination(input?.phone);
+  let phone = normalizeWhatsAppDestination(input?.phone);
   const requestedTemplateName =
     normalizeTemplateName(input?.templateName) ?? IRIS_OPT_IN_TEMPLATE.name;
   const requestedTemplateLanguage =
@@ -231,6 +232,27 @@ export async function POST(request: NextRequest) {
   const { client } = authorization;
 
   try {
+    // Corrige o número pelo PAÍS do cadastro C2X (via a entidade Apolo). Historicamente o
+    // número chegava mangulado (estrangeiro remontado como BR, ex.: +1 -> +55). Só
+    // sobrescreve quando consegue resolver o cliente C2X; senão mantém o que veio.
+    if (apoloEntityId) {
+      try {
+        const corrected = await resolveC2xWhatsAppNumberFromApolo(
+          client,
+          apoloEntityId,
+        );
+
+        if (corrected) {
+          phone = corrected;
+        }
+      } catch (error) {
+        console.error(
+          "[iris/tickets] correcao de telefone pelo pais falhou",
+          error instanceof Error ? error.message : error,
+        );
+      }
+    }
+
     const [channel, requestedQueue, profile, defaultQueue, operator] =
       await Promise.all([
         getWhatsAppChannel(client, channelId),
@@ -1773,6 +1795,31 @@ async function nextTicketProtocol(client: SupabaseClient) {
   }
 
   return `AT-${Date.now()}`;
+}
+
+// Resolve o número de WhatsApp correto (respeitando o país do C2X) a partir da entidade
+// Apolo: entidade -> id do cliente no C2X (apolo_source_links) -> telefone com phone_code.
+// null se não conseguir mapear (aí o caller mantém o número que veio do frontend).
+async function resolveC2xWhatsAppNumberFromApolo(
+  client: SupabaseClient,
+  apoloEntityId: string,
+): Promise<string | null> {
+  const { data } = await client
+    .from("apolo_source_links")
+    .select("source_id")
+    .eq("entity_id", apoloEntityId)
+    .eq("source_system", "c2x")
+    .eq("source_table", "users")
+    .limit(1)
+    .maybeSingle<{ source_id: string | null }>();
+
+  const c2xClientId = data?.source_id;
+
+  if (!c2xClientId || !/^\d+$/.test(String(c2xClientId))) {
+    return null;
+  }
+
+  return loadC2xUserWhatsAppNumber(String(c2xClientId));
 }
 
 async function findOrCreateContact({

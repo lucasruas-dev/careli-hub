@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-03-iris-telefone-estrangeiro",
+    deployedAt: "2026-07-03T13:00:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Números de telefone ESTRANGEIROS (EUA/Canadá, Portugal, etc.) agora são enviados corretamente no disparo ativo. Antes o sistema forçava tudo para o formato brasileiro (ex.: um número dos EUA virava um +55 inexistente e a mensagem não chegava).",
+              "No cadastro/atendimento, o telefone agora mostra a BANDEIRA do país ao lado — dá pra ver num relance quando o número é de fora (e até flagrar cadastro errado).",
+            ],
+            screen: "Atendimento — telefone e disparo",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 245e5527",
+    technical: {
+      done: "Números estrangeiros deixavam de entregar porque o código ignorava o `phone_code` (país) do C2X e montava tudo como BR (ex.: +1 (617) 755-0385 -> +55 (61) 7755-0385). Novo util puro lib/iris/phone-country.ts: buildC2xWhatsAppNumber(phone_code, phone) monta E.164 respeitando o país — BR/vazio = lógica BR (55+9º dígito); estrangeiro = país+nacional sem 9º dígito; celular BR válido (DD+9+8) sempre tratado como BR (cobre phone_code errado no cadastro). VALIDADO contra a base (2.366 BR intactos, 283 estrangeiros corrigidos). Aplicação: lib/guardian/attendance.ts loadC2xUserWhatsAppNumber (lê phone_code do primário) + app/api/iris/tickets/route.ts re-deriva o número certo pela entidade Apolo (apolo_source_links -> c2x user) antes de disparar (fallback pro número que veio se não resolver). Bandeira: flagEmojiForE164 (dial code -> ISO2 -> emoji) no painel de contexto (iris-conversation-readonly). Distribuição: +1=248, +44=15, +351=11, etc. (~283 total).",
+      motivation:
+        "Lucas: disparo ativo falhando 'undeliverable' pra clientes com telefone de fora (caso Elizete, +1 do Canadá). Regra: usar o telefone do cadastro, todos como WhatsApp, e identificar o estrangeiro pelo phone_code.",
+    },
+    title: "Iris: telefone estrangeiro no disparo + bandeira do país",
+    type: "correcao",
+    version: "v1.23.1",
+  },
+  {
     buildTag: "2026-07-03-apresentacao-lancamento",
     deployedAt: "2026-07-03T12:00:00-03:00",
     modules: [

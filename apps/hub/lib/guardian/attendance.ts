@@ -1,6 +1,7 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
 import { getHadesDbPool, sanitizeHadesDbError } from "@/lib/guardian/db";
+import { buildC2xWhatsAppNumber } from "@/lib/iris/phone-country";
 import { buildQueueClientsFromSources } from "@/modules/guardian/attendance/data";
 import type {
   HadesAttendanceSourceClient,
@@ -816,6 +817,56 @@ export async function loadC2xUserCadastro(
   } catch (error) {
     console.error(
       "[guardian] loadC2xUserCadastro failed",
+      sanitizeHadesDbError(error),
+    );
+
+    return null;
+  }
+}
+
+// Número de WhatsApp CORRETO (E.164) do cliente C2X, respeitando o país (`phone_code`).
+// Usado no disparo ativo pra não mangular estrangeiro como BR. Pega o telefone primário
+// (ordem is_whatsapp/recência) direto da tabela `phones` (que tem o phone_code). Read-only.
+export async function loadC2xUserWhatsAppNumber(
+  clientId: string,
+): Promise<string | null> {
+  const c2xClientId = c2xClientIdFromQueueId(clientId);
+
+  if (!c2xClientId) {
+    return null;
+  }
+
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return null;
+  }
+
+  const { pool } = poolResult;
+
+  try {
+    const [rows] = await pool.query<
+      (RowDataPacket & { phone: string | null; phone_code: string | null })[]
+    >(
+      `select ph.phone_code, ph.phone
+       from phones ph
+       where ph.ownertable_type = 'User'
+         and ph.ownertable_id = ?
+         and trim(coalesce(ph.phone, '')) <> ''
+       order by ph.is_whatsapp desc, ph.updated_at desc, ph.id desc
+       limit 1`,
+      [c2xClientId],
+    );
+    const row = rows[0];
+
+    if (!row) {
+      return null;
+    }
+
+    return buildC2xWhatsAppNumber(row.phone_code, row.phone);
+  } catch (error) {
+    console.error(
+      "[guardian] loadC2xUserWhatsAppNumber failed",
       sanitizeHadesDbError(error),
     );
 
