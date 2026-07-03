@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-03-iris-9digito",
+    deployedAt: "2026-07-03T09:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Quando o WhatsApp não entrega uma mensagem de disparo ativo (o famoso \"não entregue\" por causa do 9º dígito do celular), a Iris agora reenvia sozinha na outra variante do número — reduz mensagens que sumiam silenciosamente na cobrança/retorno.",
+            ],
+            screen: "Atendimento — entrega",
+          },
+        ],
+      },
+    ],
+    rollback: "commit a2668043",
+    technical: {
+      done: "Auto-retry do 9o digito no webhook de status do Meta (processStatusUpdate em meta-inbound-processor.ts): ao receber status 'failed' com 'Message undeliverable' generico (code null) num numero BR, reenvia UMA vez (anti-loop via flag nineDigitRetry) na variante oposta do 9o digito — SO se essa variante nao for a que o Meta ja tentou (wa_id que falhou), evitando reenvio inutil + custo de template. Reaponta a mensagem (delivery_status->sent, novo external_message_id) e cria ref pro novo wa_message_id. Vale template (reusa name/language/bodyParameters/phoneNumberId) e texto. Best-effort (nunca quebra o webhook). Diagnostico: em 48h ~280 envios / ~4 falhas (1,4%), todas 'undeliverable' de destinatario — nao era pane.",
+      motivation:
+        "Lucas reportou 'erro de envio'; a analise mostrou envio saudavel (98 entregues/89 lidas/24h) e falhas pontuais de destinatario por normalizacao do 9o digito (ex.: 5531983440284 -> wa_id 553183440284). Auto-retry reduz esses sumicos no disparo ativo.",
+    },
+    title: "Iris: reenvio automático na falha de entrega do 9º dígito",
+    type: "correcao",
+    version: "v1.22.1",
+  },
+  {
     buildTag: "2026-07-02-hermes-notificacoes-l1-l4",
     deployedAt: "2026-07-02T23:15:00-03:00",
     modules: [

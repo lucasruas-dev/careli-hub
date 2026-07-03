@@ -22,6 +22,7 @@ import {
   getMetaWhatsAppOutboundConfig,
   type MetaWhatsAppDownloadedMedia,
   type MetaWhatsAppSendMessageResult,
+  sendMetaWhatsAppTemplateMessage,
   sendMetaWhatsAppTextMessage,
   signWhatsAppBody,
 } from "@/lib/iris/meta-whatsapp";
@@ -462,7 +463,7 @@ async function processStatusUpdate({
       // mostrar "por que falhou". Read-modify-write so no caminho de erro (raro).
       const { data: failedRows } = await client
         .from("caredesk_messages")
-        .select("id,provider_payload")
+        .select("id,body,message_type,provider_payload")
         .in("id", messageIds);
 
       for (const row of failedRows ?? []) {
@@ -486,6 +487,29 @@ async function processStatusUpdate({
             },
           })
           .eq("id", row.id);
+
+        // Auto-retry do 9o digito: "undeliverable" generico em numero BR costuma ser o
+        // Meta ter batido na variante errada do 9o digito. Reenvia UMA vez na outra
+        // variante (so se o Meta ainda nao a tentou). Best-effort — nunca quebra o webhook.
+        try {
+          await maybeRetryBrazilNinthDigit({
+            client,
+            deliveryError,
+            event,
+            row: {
+              body: typeof row.body === "string" ? row.body : null,
+              id: row.id as string,
+              messageType:
+                typeof row.message_type === "string" ? row.message_type : null,
+              providerPayload: current,
+            },
+          });
+        } catch (retryError) {
+          console.error(
+            "[iris/meta] auto-retry 9o digito falhou",
+            retryError instanceof Error ? retryError.message : retryError,
+          );
+        }
       }
     } else {
       await client
@@ -497,6 +521,171 @@ async function processStatusUpdate({
 
   await markWebhookEvent(client, event.id, "processed");
   return true;
+}
+
+// Reenvia UMA vez na outra variante do 9o digito quando o Meta reporta "undeliverable"
+// (generico, sem codigo) num numero BR — cobre o caso do disparo ativo bater na forma
+// errada do celular. Pula o reenvio se a alternativa e justamente a que o Meta ja tentou
+// (o wa_id que falhou), evitando reenvio inutil e custo de template a toa.
+async function maybeRetryBrazilNinthDigit({
+  client,
+  deliveryError,
+  event,
+  row,
+}: {
+  client: IrisMetaProcessorClient;
+  deliveryError: { code: number | null; message: string | null; title: string | null };
+  event: IrisMetaWebhookEventRow;
+  row: {
+    body: string | null;
+    id: string;
+    messageType: string | null;
+    providerPayload: Record<string, unknown>;
+  };
+}): Promise<void> {
+  const reason = `${deliveryError.title ?? ""} ${deliveryError.message ?? ""}`.toLowerCase();
+
+  // So o "undeliverable" generico (sem codigo). Erros com codigo (bloqueio/spam/etc.)
+  // nao sao caso de 9o digito.
+  if (deliveryError.code || !reason.includes("undeliver")) {
+    return;
+  }
+
+  const payload = row.providerPayload;
+
+  // Anti-loop: ja avaliou/reenviou uma vez.
+  if (payload.nineDigitRetry) {
+    return;
+  }
+
+  const sentTo = digitsOnly(readString(payload.destination) ?? "");
+  const metaContacts = asRecord(payload.meta)?.contacts;
+  const failedWaId = digitsOnly(
+    readString(
+      asRecord(Array.isArray(metaContacts) ? metaContacts[0] : null)?.wa_id,
+    ) ?? "",
+  );
+  const alternate = flipBrazilNinthDigit(sentTo);
+
+  if (!alternate || alternate === sentTo || (failedWaId && alternate === failedWaId)) {
+    // Sem alternativa util (ou o Meta ja tentou essa forma). Marca como avaliado e sai.
+    await flagNineDigitRetry(client, row.id, payload, {
+      skipped: failedWaId && alternate === failedWaId ? "meta_ja_tentou" : "sem_alternativa",
+    });
+    return;
+  }
+
+  const template = asRecord(payload.template);
+  const phoneNumberId =
+    readString(template?.phoneNumberId) ||
+    readString(asRecord(payload.meta)?.phoneNumberId) ||
+    "";
+  const baseConfig = getMetaWhatsAppOutboundConfig();
+  const config = phoneNumberId
+    ? { ...baseConfig, phoneNumberId }
+    : baseConfig;
+
+  let result: MetaWhatsAppSendMessageResult;
+
+  if (row.messageType === "template" && template && readString(template.name)) {
+    result = await sendMetaWhatsAppTemplateMessage({
+      bodyParameters: Array.isArray(template.bodyParameters)
+        ? template.bodyParameters.map((value) => String(value))
+        : [],
+      config,
+      language: readString(template.language) || "pt_BR",
+      name: readString(template.name) ?? "",
+      to: alternate,
+    });
+  } else if (row.body) {
+    result = await sendMetaWhatsAppTextMessage({
+      body: row.body,
+      config,
+      to: alternate,
+    });
+  } else {
+    await flagNineDigitRetry(client, row.id, payload, { skipped: "sem_conteudo" });
+    return;
+  }
+
+  if (!result.messageId) {
+    await flagNineDigitRetry(client, row.id, payload, { skipped: "sem_message_id" });
+    return;
+  }
+
+  // Reaponta a mensagem pro novo envio: volta pra "sent", novo external id + rastro do retry.
+  await client
+    .from("caredesk_messages")
+    .update({
+      delivery_status: "sent",
+      external_message_id: result.messageId,
+      sent_at: event.received_at,
+      provider_payload: {
+        ...payload,
+        nineDigitRetry: {
+          at: event.received_at,
+          previousDestination: sentTo,
+          to: alternate,
+          waMessageId: result.messageId,
+        },
+      },
+    })
+    .eq("id", row.id);
+
+  // Nova ref: as proximas atualizacoes de status desse envio caem NESTA mensagem.
+  await client.from("caredesk_whatsapp_message_refs").upsert(
+    {
+      delivery_status: "sent",
+      direction: "outbound",
+      message_id: row.id,
+      phone_number_id: phoneNumberId || null,
+      provider: META_PROVIDER,
+      wa_contact_id: alternate,
+      wa_message_id: result.messageId,
+    },
+    { onConflict: "provider,wa_message_id" },
+  );
+}
+
+async function flagNineDigitRetry(
+  client: IrisMetaProcessorClient,
+  messageId: string,
+  payload: Record<string, unknown>,
+  info: Record<string, unknown>,
+): Promise<void> {
+  await client
+    .from("caredesk_messages")
+    .update({
+      provider_payload: {
+        ...payload,
+        nineDigitRetry: { ...info, at: new Date().toISOString() },
+      },
+    })
+    .eq("id", messageId);
+}
+
+// Devolve a OUTRA variante do 9o digito de um celular BR (com 9 -> sem 9, sem 9 -> com 9),
+// sempre com DDI 55. null se nao for um celular BR reconhecivel.
+function flipBrazilNinthDigit(digits: string): string | null {
+  const withCountry =
+    digits.length === 10 || digits.length === 11 ? `55${digits}` : digits;
+  const withNinth = /^55(\d{2})9(\d{8})$/.exec(withCountry);
+
+  if (withNinth) {
+    return `55${withNinth[1]}${withNinth[2]}`;
+  }
+
+  const withoutNinth = /^55(\d{2})(\d{8})$/.exec(withCountry);
+
+  if (withoutNinth) {
+    return `55${withoutNinth[1]}9${withoutNinth[2]}`;
+  }
+
+  return null;
+}
+
+function digitsOnly(value: string): string {
+  return value.replace(/\D/g, "");
 }
 
 async function findExistingMessage(
