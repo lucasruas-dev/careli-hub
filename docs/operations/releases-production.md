@@ -4693,3 +4693,19 @@ Conclusao:
 Conclusao:
 - Politica cumprida: tudo exige login exceto a videochamada do Chronos; rota /api nova nasce trancada.
 - Proximo: motor da Cobranca (migration + cron + UI).
+
+
+## 2026-07-03 - Panteon: apresentacao do processo de lancamento em /apresentacao (v1.23.0) - EM PRODUCAO
+
+- Modulo: Panteon (rota publica institucional). Status: `EM PRODUCAO`. Autorizacao: Lucas ("pode subir em producao"), 2026-07-03.
+- Branch: `feat/apresentacao-processo-lancamento` -> `main` (ff); commit `245e5527`.
+- Deployment: `careli-hub-hub-i2bs-9vt3dh5jb`, v1.23.0, build `2026-07-03-apresentacao-lancamento`.
+- Alias: somente `c2x.app.br`.
+- Rollback: `careli-hub-hub-i2bs-q2kvi8vsi` (commit `280b3e13`, v1.22.1).
+- Escopo: rewrites no `apps/hub/next.config.ts` (`/apresentacao` e `/apresentacao/:path*` -> site estatico `careli-processo-lancamento.vercel.app`, projeto Vercel separado da mesma conta; republicar a apresentacao NAO exige deploy do hub) + changelog v1.23.0. Gate do `proxy.ts` INTOCADO (so cobre `/api/*`; a rota nova e pagina publica sem dado do hub). Sem migration/env.
+- Conteudo: apresentacao interativa do processo de lancamento p/ loteadores (HTML unico autossuficiente com logos em base64, 3 fases narradas pelo Lucas, fluxograma interativo do circuito do evento, tela cheia com Keyboard Lock pro Esc).
+- Validacoes: `check-types:hub` PASS; preview da branch validado pelo Lucas; PROD: `c2x.app.br/apresentacao` 200 (conteudo + logos ok), `c2x.app.br` raiz 200.
+- Follow-up: nenhum no hub; evolucoes da apresentacao acontecem no projeto Vercel `careli-processo-lancamento` (fonte: `Sistemas/apresentacoes/processo-lancamento/index.html`).
+
+Conclusao:
+- `c2x.app.br/apresentacao` no ar servindo a apresentacao institucional; hub sem mudanca funcional.
