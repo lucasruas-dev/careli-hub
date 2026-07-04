@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-04-caca-voz",
+    deployedAt: "2026-07-04T00:20:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A CACÁ agora responde em ÁUDIO quando o cliente manda um áudio (e continua no texto quando o cliente escreve). A voz é natural, com sotaque carioca, pra o atendimento ficar mais humano e acolhedor.",
+              "Quando a resposta tiver um link de boleto, ela vai por texto (link precisa ser clicável). Se por algum motivo a voz falhar, a CACÁ responde por escrito na hora, então o cliente nunca fica sem resposta.",
+            ],
+            screen: "Atendimento — CACÁ",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 5b4fc79",
+    technical: {
+      done: "Ativada a resposta em voz da CACÁ (fase 2) via env CACA_VOICE_ENABLED=1 (Production). Espelhar: inbound audio -> resposta em voz (ElevenLabs TTS, voz GDzHdQOi6jjf8zaXhCYD/eleven_v3, stability 0.22/style 0.6) enviada por sendMetaWhatsAppAudioMessage (mp3); inbound texto -> texto. Só com o engine Claude. Modo-voz no prompt (persona voiceMode): estilo falado + pontuação reforçada, sem asterisco/emoji/link/número abreviado. Guarda de link (URL -> texto) e fallback pra texto se o TTS falhar. Vale todas as filas. Master switch permite desligar sem deploy (remover a env).",
+      motivation:
+        "Lucas: dar voz à CACÁ pra o atendimento soar mais humano; escolheu a voz carioca no comparador e autorizou o go-live em produção.",
+    },
+    title: "CACÁ responde em áudio (voz no atendimento)",
+    type: "novidade",
+    version: "v1.23.4",
+  },
+  {
     buildTag: "2026-07-03-iris-bandeira-svg",
     deployedAt: "2026-07-03T17:30:00-03:00",
     modules: [
