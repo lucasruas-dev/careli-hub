@@ -41127,3 +41127,5 @@ Gatilho: áudio da CACÁ pra Nívea às 19:44 — ela disse que não achava a im
 Estado: branch `feat/panteon-super-motor`, SEM push na main (aguarda OK do Lucas). Interno da CACÁ → sem changelog.
 
 **🚀 GO-LIVE perfil+inadimplência+cadastro (4/jul, OK do Lucas):** deploy **`dpl_8qVQqaTAQ9Zv77zD2NLP9Gbv6bSJ`** (commit 00041604) READY, `c2x.app.br`. **Rollback = `dpl_92vCa43bhZpzKaDBqSQjpyhCpsk6`**. Motor agora cruza vendas/inadimplência com perfil (faixa_etaria/sexo/estado_civil/faixa_renda/escolaridade) + cadastro/imobiliária de qualquer prospect. Interno da CACÁ → sem changelog.
+
+**🚀 GO-LIVE nova voz da CACÁ (4/jul, OK do Lucas):** voz padrão trocada pra `RVmX026jCrF5VqUvpCk0` (era GDzHdQOi6jjf8zaXhCYD), eleven_v3, preset Natural (stability 0.40 / style 0.45 / speed 1.0 / similarity_boost 0.8 / speaker boost on) — idêntico ao que o Lucas afinou no demo. Deploy **`dpl_51Qqri9UjoPhPdfwNDhktbBuRdMH`** (commit e86808f3) READY, `c2x.app.br`. **Rollback = `dpl_8qVQqaTAQ9Zv77zD2NLP9Gbv6bSJ`**. Interno da CACÁ → sem changelog.
