@@ -223,6 +223,11 @@ export async function runCacaClaudeTurn({
     maxToolIterations: 6,
     messages,
     model,
+    // No modo admin (direção), libera a BUSCA WEB nativa do Claude — pra ela responder
+    // qualquer coisa (placar de jogo, cotação, notícia). Cliente normal NÃO tem web.
+    serverTools: admin.isAdmin
+      ? [{ max_uses: 4, name: "web_search", type: "web_search_20250305" }]
+      : [],
     system,
     thinking: true,
     tools: buildCacaTools(toolContext),
