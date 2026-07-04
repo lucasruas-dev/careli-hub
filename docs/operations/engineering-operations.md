@@ -41125,3 +41125,5 @@ Gatilho: áudio da CACÁ pra Nívea às 19:44 — ela disse que não achava a im
 **Validação (35/35 ✅, script validate-panteon-motor):** inadimplentes=201 e valor_vencido=R$1.021.704,77 vs referência; inadimplentes por faixa_renda com todos os grupos batendo (1 a 3 salários=67); filtro==linha do grupo; clientes_faturados por faixa_etaria soma==total distinto (1456); cadastro de prospect real ("LAUREN COSTA SILVA ARAUJO", imob "MAIS LOTES", 0 unidades) confirmado. Typecheck verde.
 
 Estado: branch `feat/panteon-super-motor`, SEM push na main (aguarda OK do Lucas). Interno da CACÁ → sem changelog.
+
+**🚀 GO-LIVE perfil+inadimplência+cadastro (4/jul, OK do Lucas):** deploy **`dpl_8qVQqaTAQ9Zv77zD2NLP9Gbv6bSJ`** (commit 00041604) READY, `c2x.app.br`. **Rollback = `dpl_92vCa43bhZpzKaDBqSQjpyhCpsk6`**. Motor agora cruza vendas/inadimplência com perfil (faixa_etaria/sexo/estado_civil/faixa_renda/escolaridade) + cadastro/imobiliária de qualquer prospect. Interno da CACÁ → sem changelog.
