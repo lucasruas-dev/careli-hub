@@ -174,6 +174,15 @@ export async function runCacaClaudeTurn({
 
   const businessHours = businessHoursForNow();
   const admin = resolveCacaAdmin(contact);
+
+  // Admin (direção) PREVALECE sobre qualquer escopo de imobiliária deixado no ticket: ele não
+  // é "parceiro da Beltrão", é dono — some com o enquadramento de imobiliária. Ver
+  // [[project-caca-admin-assistant-mode]].
+  if (admin.isAdmin) {
+    imobiliariaC2xClientId = null;
+    imobiliariaName = null;
+  }
+
   const toolContext: CacaToolContext = {
     assistantMode: admin.isAdmin,
     businessHoursOpen: businessHours.open,
