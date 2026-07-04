@@ -279,4 +279,28 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
       properties: {},
     },
   },
+  {
+    name: "consultar_vendas_por_imobiliaria",
+    description:
+      "SÓ no modo assistente/gestão (direção). Ranking das IMOBILIÁRIAS que mais venderam (unidades faturadas), pela imobiliária vinculada ao cliente comprador. Use quando a direção perguntar 'qual imobiliária mais vendeu', 'ranking das imobiliárias', 'quem vende mais'. Vendas sem imobiliária vinculada aparecem como venda direta.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "ler_conversa_iris",
+    description:
+      "SÓ no modo assistente/gestão (direção). Lê a CONVERSA de um atendimento da Iris pelo NOME do cliente: traz o perfil básico (pessoa física/jurídica, cidade) e as últimas mensagens trocadas. Use quando a direção perguntar 'o que esse cliente falou', 'me mostra a conversa do fulano', 'do que se trata esse atendimento'. Pro perfil completo (comprador/imobiliária/prospect), depois cruze com consultar_cliente_c2x. (Áudios do cliente aparecem como marcador, sem transcrição.)",
+    input_schema: {
+      type: "object",
+      properties: {
+        cliente: {
+          type: "string",
+          description: "Nome (ou parte do nome) do cliente do atendimento.",
+        },
+      },
+      required: ["cliente"],
+    },
+  },
 ];

@@ -11,6 +11,7 @@ type TicketRow = {
   status: string;
   queue_id: string | null;
   assigned_to_user_id: string | null;
+  contact_id: string | null;
   updated_at: string | null;
   subject: string | null;
 };
@@ -18,6 +19,7 @@ type TicketRow = {
 export type IrisEspera = {
   fila: string;
   operador: string;
+  cliente: string;
   assunto: string;
   minutosEspera: number;
 };
@@ -36,7 +38,7 @@ export async function loadIrisAtendimentosResumo(
 ): Promise<IrisAtendimentosResumo | null> {
   const { data: tickets, error } = await client
     .from("caredesk_tickets")
-    .select("id, status, queue_id, assigned_to_user_id, updated_at, subject")
+    .select("id, status, queue_id, assigned_to_user_id, contact_id, updated_at, subject")
     .neq("status", "closed")
     .limit(500);
 
@@ -48,10 +50,28 @@ export async function loadIrisAtendimentosResumo(
 
   const rows = (tickets ?? []) as TicketRow[];
 
-  const [{ data: queues }, { data: users }] = await Promise.all([
-    client.from("caredesk_queues").select("id, name"),
-    client.from("hub_users").select("id, display_name, email"),
-  ]);
+  const contactIds = Array.from(
+    new Set(rows.map((row) => row.contact_id).filter(Boolean)),
+  ) as string[];
+
+  const [{ data: queues }, { data: users }, { data: contacts }] =
+    await Promise.all([
+      client.from("caredesk_queues").select("id, name"),
+      client.from("hub_users").select("id, display_name, email"),
+      contactIds.length
+        ? client
+            .from("caredesk_contacts")
+            .select("id, display_name")
+            .in("id", contactIds)
+        : Promise.resolve({ data: [] as { id: string; display_name: string | null }[] }),
+    ]);
+
+  const contactName = new Map(
+    (contacts ?? []).map((c: { id: string; display_name: string | null }) => [
+      c.id,
+      c.display_name?.trim() || "Sem nome",
+    ]),
+  );
 
   const queueName = new Map(
     (queues ?? []).map((q: { id: string; name: string | null }) => [
@@ -89,6 +109,9 @@ export async function loadIrisAtendimentosResumo(
       const updatedAt = row.updated_at ? new Date(row.updated_at).getTime() : now;
       esperandoMais.push({
         assunto: row.subject?.trim() || "Sem assunto",
+        cliente: row.contact_id
+          ? contactName.get(row.contact_id) ?? "Sem nome"
+          : "Sem nome",
         fila,
         minutosEspera: Math.max(0, Math.round((now - updatedAt) / 60000)),
         operador,
@@ -119,6 +142,92 @@ export async function loadIrisAtendimentosResumo(
       abertos: number;
     }[],
     porFila: toSorted(porFila, "fila") as { fila: string; abertos: number }[],
+  };
+}
+
+export type IrisConversa = {
+  cliente: string;
+  perfil: string;
+  statusTicket: string;
+  mensagens: { de: string; texto: string }[];
+};
+
+// Lê a CONVERSA de um atendimento (pelo nome do cliente): as últimas mensagens + o perfil
+// básico do contato (PF/PJ, cidade). Pro perfil completo (comprador/imobiliária/prospect) a
+// CACÁ cruza com consultar_cliente_c2x. Áudio do cliente aparece como marcador (a transcrição
+// não fica no corpo). Ver [[project-caca-admin-assistant-mode]].
+export async function loadIrisConversa(
+  client: SupabaseClient,
+  termo: string,
+): Promise<IrisConversa | null> {
+  const clean = String(termo ?? "").trim();
+
+  if (!clean) {
+    return null;
+  }
+
+  const { data: contacts } = await client
+    .from("caredesk_contacts")
+    .select("id, display_name, person_type, document, city, state")
+    .ilike("display_name", `%${clean}%`)
+    .limit(1);
+
+  const contact = contacts?.[0] as
+    | {
+        id: string;
+        display_name: string | null;
+        person_type: string | null;
+        document: string | null;
+        city: string | null;
+        state: string | null;
+      }
+    | undefined;
+
+  if (!contact) {
+    return null;
+  }
+
+  const { data: tickets } = await client
+    .from("caredesk_tickets")
+    .select("id, status, updated_at")
+    .eq("contact_id", contact.id)
+    .order("updated_at", { ascending: false })
+    .limit(1);
+
+  const ticket = tickets?.[0] as
+    | { id: string; status: string; updated_at: string | null }
+    | undefined;
+
+  if (!ticket) {
+    return null;
+  }
+
+  const { data: msgs } = await client
+    .from("caredesk_messages")
+    .select("direction, sender_type, body")
+    .eq("ticket_id", ticket.id)
+    .order("created_at", { ascending: true })
+    .limit(30);
+
+  const mensagens = ((msgs ?? []) as {
+    direction: string | null;
+    sender_type: string | null;
+    body: string | null;
+  }[]).map((m) => ({
+    de: m.direction === "outbound" ? "CACÁ/operador" : "Cliente",
+    texto: m.body?.trim() || "(sem texto)",
+  }));
+
+  const perfilPartes = [
+    contact.person_type === "company" ? "Pessoa jurídica" : "Pessoa física",
+    [contact.city, contact.state].filter(Boolean).join("/") || null,
+  ].filter(Boolean);
+
+  return {
+    cliente: contact.display_name?.trim() || "Sem nome",
+    mensagens,
+    perfil: perfilPartes.join(" · "),
+    statusTicket: ticket.status,
   };
 }
 

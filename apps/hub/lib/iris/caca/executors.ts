@@ -17,6 +17,7 @@ import {
   loadC2xMovimentacaoResumo,
   loadC2xUnidade,
   loadC2xVendasPorEmpreendimento,
+  loadC2xVendasPorImobiliaria,
 } from "@/lib/guardian/c2x-analytics";
 import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
 import { loadHermesResumo } from "@/lib/iris/hermes-analytics";
@@ -27,6 +28,7 @@ import {
 } from "@/lib/iris/meta-whatsapp";
 import {
   loadIrisAtendimentosResumo,
+  loadIrisConversa,
   loadIrisMovimentacaoPeriodo,
 } from "@/lib/iris/iris-analytics";
 
@@ -179,10 +181,54 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
         definition: requireDefinition("gerar_relatorio_visual"),
         run: async () => gerarRelatorioVisual(context),
       },
+      {
+        definition: requireDefinition("consultar_vendas_por_imobiliaria"),
+        run: async () => consultarVendasPorImobiliaria(),
+      },
+      {
+        definition: requireDefinition("ler_conversa_iris"),
+        run: async (input) => lerConversaIris(context, input),
+      },
     );
   }
 
   return tools;
+}
+
+async function consultarVendasPorImobiliaria(): Promise<string> {
+  const rows = await loadC2xVendasPorImobiliaria();
+
+  if (rows.length === 0) {
+    return "Não consegui puxar o ranking de imobiliárias agora.";
+  }
+
+  return [
+    "Imobiliárias que mais venderam (unidades faturadas):",
+    ...rows.map((row, index) => `${index + 1}. ${row.imobiliaria}: ${row.unidades}`),
+  ].join("\n");
+}
+
+async function lerConversaIris(
+  context: CacaToolContext,
+  input: unknown,
+): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const termo = typeof record.cliente === "string" ? record.cliente : "";
+
+  const conversa = await loadIrisConversa(context.client, termo);
+
+  if (!conversa) {
+    return "Não encontrei um atendimento na Iris pra esse cliente (confira o nome).";
+  }
+
+  const linhas = [
+    `Atendimento de ${conversa.cliente} — ${conversa.perfil} · status ${conversa.statusTicket}.`,
+    "Conversa (mais recente):",
+    ...conversa.mensagens.map((m) => `- ${m.de}: ${m.texto}`),
+  ];
+
+  return linhas.join("\n");
 }
 
 // Gera o relatório em IMAGEM (chama a rota edge de render) e ENVIA como foto no WhatsApp.
@@ -327,7 +373,7 @@ async function consultarAtendimentosIris(
       linhas.push("Esperando a nossa resposta há mais tempo:");
       for (const espera of resumo.esperandoMais) {
         linhas.push(
-          `- ${espera.fila} · ${espera.assunto} · ${espera.minutosEspera} min (operador: ${espera.operador})`,
+          `- ${espera.cliente} · ${espera.fila} · ${espera.assunto} · ${espera.minutosEspera} min (operador: ${espera.operador})`,
         );
       }
     }

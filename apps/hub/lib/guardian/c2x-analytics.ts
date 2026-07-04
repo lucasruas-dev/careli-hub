@@ -311,6 +311,65 @@ export async function loadC2xMovimentacaoDetalhe(
   }
 }
 
+export type C2xImobiliariaVendas = {
+  imobiliaria: string;
+  unidades: number;
+};
+
+// Ranking de imobiliárias por vendas (unidades faturadas distintas). A imobiliária vem do
+// VÍNCULO do cliente comprador (`users.vinculed_by_id`), não de corretor_id (que é sempre
+// nulo no C2X). Nome pela fantasia/social/name. Ver [[reference-c2x-vendas-model]].
+export async function loadC2xVendasPorImobiliaria(
+  limit = 12,
+): Promise<C2xImobiliariaVendas[]> {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return [];
+  }
+
+  const safeLimit = Math.min(Math.max(Math.trunc(limit), 1), 30);
+
+  try {
+    const [rows] = await poolResult.pool.query<
+      (RowDataPacket & { imobiliaria: string | null; unidades: number | string })[]
+    >(
+      `
+      select coalesce(
+               nullif(trim(imob.fantasy_name), ''),
+               nullif(trim(imob.social_name), ''),
+               nullif(trim(imob.name), ''),
+               '(venda direta / sem imobiliária)'
+             ) as imobiliaria,
+             count(distinct ar.enterprise_unity_id) as unidades
+      from acquisition_requests ar
+      join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      join enterprises e on e.id = eu.enterprise_id
+      join users cli on cli.id = ar.client_id
+      left join users imob on imob.id = cli.vinculed_by_id
+      where ar.acquisition_request_stage_id = 4
+        and e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+      group by imobiliaria
+      order by unidades desc
+      limit ${safeLimit}
+      `,
+      [...EXCLUDED_ENTERPRISE_CODES],
+    );
+
+    return rows.map((row) => ({
+      imobiliaria: row.imobiliaria ?? "-",
+      unidades: Number(row.unidades),
+    }));
+  } catch (error) {
+    console.error(
+      "[guardian] loadC2xVendasPorImobiliaria failed",
+      sanitizeHadesDbError(error),
+    );
+
+    return [];
+  }
+}
+
 export type C2xUnidadeDetalhe = {
   empreendimento: string;
   quadraLote: string;
