@@ -5,8 +5,9 @@
 
 const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 
-// Voz escolhida pelo Lucas (biblioteca ElevenLabs): sotaque carioca, "Voz 2" na comparação.
-export const CACA_DEFAULT_VOICE_ID = "GDzHdQOi6jjf8zaXhCYD";
+// Voz escolhida pelo Lucas (biblioteca ElevenLabs) — "Voz 1" do comparador, afinada no demo
+// (preset Natural). Trocada em 4/jul (era GDzHdQOi6jjf8zaXhCYD).
+export const CACA_DEFAULT_VOICE_ID = "RVmX026jCrF5VqUvpCk0";
 // eleven_v3: mais expressivo/natural (escolha do Lucas no teste). Latencia maior, mas ok pra
 // nota de voz assincrona no WhatsApp. multilingual_v2 = alternativa mais rapida/barata.
 export const CACA_DEFAULT_TTS_MODEL = "eleven_v3";
@@ -19,12 +20,13 @@ export type CacaVoiceSettings = {
   speed?: number; // 0.7..1.2 — <1 fala mais calma
 };
 
-// Ajuste "natural" (ponto de partida): estabilidade mais baixa + um tanto de estilo. Refinar
-// por ouvido no demo (query params) antes de fixar. Ver [[project-caca-voice-tts]].
+// Preset "Natural" afinado pelo Lucas no demo (4/jul) e fixado como padrão da CACÁ:
+// stability 0.40 · style 0.45 · speed 1.0 · similarity_boost 0.8 · speaker boost on.
 export const CACA_NATURAL_VOICE_SETTINGS: CacaVoiceSettings = {
-  stability: 0.22,
   similarity_boost: 0.8,
-  style: 0.6,
+  speed: 1,
+  stability: 0.4,
+  style: 0.45,
   use_speaker_boost: true,
 };
 
