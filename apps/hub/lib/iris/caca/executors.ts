@@ -17,6 +17,9 @@ import {
   loadC2xVendasPorEmpreendimento,
 } from "@/lib/guardian/c2x-analytics";
 import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
+import { loadHermesResumo } from "@/lib/iris/hermes-analytics";
+import { loadInfraSaude } from "@/lib/iris/infra-analytics";
+import { loadIrisAtendimentosResumo } from "@/lib/iris/iris-analytics";
 
 import { appendClientNote } from "./client-memory";
 import { sortInstallmentsByDueDate } from "./installment-order";
@@ -44,8 +47,10 @@ export type CacaToolContext = {
   nextContactLabel: string;
   validationSource: "cpf" | "phone" | null;
   // Modo assistente/gestão (número admin verificado: proprietários). Libera as ferramentas
-  // de ANALISTA do C2X (movimentação, vendas por empreendimento). Ver [[project-caca-admin-assistant-mode]].
+  // de ANALISTA (C2X, Iris, Hermes, infra). Ver [[project-caca-admin-assistant-mode]].
   assistantMode?: boolean;
+  // hub_user_id do admin (mapa número→usuário) — pra consultar o Hermes DELE. null = sem conta.
+  assistantHubUserId?: string | null;
 };
 
 // Traduz os perfis crus do Apolo (usuario/colaborador/imobiliaria/...) num rotulo curto e
@@ -127,7 +132,7 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
     },
   ];
 
-  // Ferramentas de ANALISTA do C2X: só no modo assistente/gestão (proprietários).
+  // Ferramentas de ANALISTA: só no modo assistente/gestão (proprietários).
   if (context.assistantMode) {
     tools.push(
       {
@@ -138,10 +143,82 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
         definition: requireDefinition("consultar_vendas_por_empreendimento"),
         run: async () => consultarVendasPorEmpreendimento(),
       },
+      {
+        definition: requireDefinition("consultar_atendimentos_iris"),
+        run: async () => consultarAtendimentosIris(context),
+      },
+      {
+        definition: requireDefinition("consultar_hermes"),
+        run: async () => consultarHermes(context),
+      },
+      {
+        definition: requireDefinition("consultar_saude_sistema"),
+        run: async () => consultarSaudeSistema(),
+      },
     );
   }
 
   return tools;
+}
+
+async function consultarAtendimentosIris(
+  context: CacaToolContext,
+): Promise<string> {
+  const resumo = await loadIrisAtendimentosResumo(context.client);
+
+  if (!resumo) {
+    return "Não consegui consultar os atendimentos da Iris agora.";
+  }
+
+  if (resumo.abertosTotal === 0) {
+    return "Iris: nenhum atendimento aberto no momento. Fila zerada.";
+  }
+
+  const linhas = [
+    `Atendimentos da Iris (agora): ${resumo.abertosTotal} abertos — ${resumo.aguardandoOperador} aguardando a nossa resposta, ${resumo.aguardandoCliente} aguardando o cliente.`,
+    `Por fila: ${resumo.porFila.map((f) => `${f.fila} (${f.abertos})`).join(", ")}`,
+    `Por colaborador: ${resumo.porColaborador.map((c) => `${c.colaborador} (${c.abertos})`).join(", ")}`,
+  ];
+
+  if (resumo.esperandoMais.length > 0) {
+    linhas.push("Esperando a nossa resposta há mais tempo:");
+    for (const espera of resumo.esperandoMais) {
+      linhas.push(
+        `- ${espera.fila} · ${espera.assunto} · ${espera.minutosEspera} min (operador: ${espera.operador})`,
+      );
+    }
+  }
+
+  return linhas.join("\n");
+}
+
+async function consultarHermes(context: CacaToolContext): Promise<string> {
+  if (!context.assistantHubUserId) {
+    return "Essa pessoa não tem conta no Hermes (chat interno), então não há mensagens pra verificar.";
+  }
+
+  const resumo = await loadHermesResumo(context.client, context.assistantHubUserId);
+
+  if (!resumo) {
+    return "Não consegui consultar o Hermes agora.";
+  }
+
+  if (resumo.totalNaoLidas === 0) {
+    return "Hermes: você está em dia, nenhuma mensagem não lida.";
+  }
+
+  return [
+    `Hermes: você tem ${resumo.totalNaoLidas} mensagem(ns) não lida(s).`,
+    ...resumo.canais.map((c) => `- ${c.canal}: ${c.naoLidas}`),
+  ].join("\n");
+}
+
+async function consultarSaudeSistema(): Promise<string> {
+  const saude = await loadInfraSaude();
+
+  return [`Saúde do sistema:`, `- ${saude.vercel}`, `- ${saude.supabase}`].join(
+    "\n",
+  );
 }
 
 // ---- Ferramentas de analista (modo assistente) ----

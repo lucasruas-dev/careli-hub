@@ -197,4 +197,31 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
       properties: {},
     },
   },
+  {
+    name: "consultar_atendimentos_iris",
+    description:
+      "SÓ no modo assistente/gestão (direção). Panorama dos ATENDIMENTOS da Iris agora: quantas chamadas abertas, quantas aguardando a NOSSA resposta versus aguardando o cliente, por fila e por colaborador, e quem está esperando resposta há mais tempo (com os minutos). Use quando a direção perguntar 'como está a Iris', 'quantas chamadas temos', 'tem gente esperando muito', 'quem está com mais atendimentos'.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "consultar_hermes",
+    description:
+      "SÓ no modo assistente/gestão (direção). Verifica se a PESSOA que está falando tem MENSAGENS NÃO LIDAS no Hermes (chat interno da equipe): quantas e em quais canais. Use quando ela perguntar 'tem mensagem pra mim no Hermes', 'o que tem de novo no chat interno'. Só funciona para quem tem conta no hub.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
+  {
+    name: "consultar_saude_sistema",
+    description:
+      "SÓ no modo assistente/gestão (direção). Verifica a SAÚDE do sistema (infra): estado do último deploy na Vercel e alertas dos advisors do Supabase (segurança/performance). Use quando a direção perguntar 'como está o sistema', 'teve algum problema', 'como está o Supabase/a Vercel'. É um resumo executivo, não log cru.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
 ];

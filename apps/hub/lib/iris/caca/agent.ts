@@ -70,18 +70,36 @@ function parseAdminPhoneKeys(env: string | undefined): Set<string> {
   );
 }
 
+// Mapa número→hub_user_id (env CACA_HERMES_USER_MAP = "fone:uuid,fone:uuid"), pra consultar o
+// Hermes do admin. Chave = telefone canonicalizado.
+function parseHermesUserMap(env: string | undefined): Map<string, string> {
+  const map = new Map<string, string>();
+
+  for (const pair of String(env ?? "").split(",")) {
+    const [phone, userId] = pair.split(":").map((part) => part.trim());
+    const key = canonicalPhoneKey(phone);
+
+    if (key && userId) {
+      map.set(key, userId);
+    }
+  }
+
+  return map;
+}
+
 // Modo ASSISTENTE: quem fala é um número admin VERIFICADO (allowlist CACA_ADMIN_PHONES; Nívea
 // em CACA_NIVEA_PHONES ganha tratamento de dona). Gate por número (nunca por alegação), pra
 // ninguém no WhatsApp impersonar. Ver [[project-caca-admin-assistant-mode]].
 function resolveCacaAdmin(contact: CacaAgentContact): {
   isAdmin: boolean;
   isOwner: boolean;
+  hubUserId: string | null;
 } {
   const admins = parseAdminPhoneKeys(process.env.CACA_ADMIN_PHONES);
   const owners = parseAdminPhoneKeys(process.env.CACA_NIVEA_PHONES);
 
   if (admins.size === 0 && owners.size === 0) {
-    return { isAdmin: false, isOwner: false };
+    return { hubUserId: null, isAdmin: false, isOwner: false };
   }
 
   const keys = [contact.whatsapp_phone, contact.phone]
@@ -91,7 +109,11 @@ function resolveCacaAdmin(contact: CacaAgentContact): {
   const isOwner = keys.some((key) => owners.has(key));
   const isAdmin = isOwner || keys.some((key) => admins.has(key));
 
-  return { isAdmin, isOwner };
+  const hermesMap = parseHermesUserMap(process.env.CACA_HERMES_USER_MAP);
+  const hubUserId =
+    keys.map((key) => hermesMap.get(key)).find(Boolean) ?? null;
+
+  return { hubUserId, isAdmin, isOwner };
 }
 
 export async function runCacaClaudeTurn({
@@ -184,6 +206,7 @@ export async function runCacaClaudeTurn({
   }
 
   const toolContext: CacaToolContext = {
+    assistantHubUserId: admin.hubUserId,
     assistantMode: admin.isAdmin,
     businessHoursOpen: businessHours.open,
     c2xClientId,
