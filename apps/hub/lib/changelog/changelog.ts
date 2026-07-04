@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-03-iris-bandeira-svg",
+    deployedAt: "2026-07-03T17:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A bandeira do país ao lado do telefone agora é uma imagem de verdade — aparece igual no Windows, no navegador e no celular. Antes o Windows mostrava só as duas letras do país (ex.: 'BR') num quadradinho, porque o emoji de bandeira não é desenhado no Windows.",
+            ],
+            screen: "Atendimento — painel do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 75f75e75",
+    technical: {
+      done: "A bandeira estava como emoji (regional indicator), que o Windows NÃO renderiza como bandeira (vira 'BR'/'US' em quadradinho — glifo ausente na Segoe UI Emoji). Trocado por SVG real: dep country-flag-icons (React SVG, self-hosted, sem CDN) + componente <PhoneFlag> (modules/caredesk/components/phone-flag.tsx) que deriva o ISO2 do E.164 via novo iso2ForE164 (lib/iris/phone-country.ts) e renderiza o SVG (globo lucide no país desconhecido). Aplicado nos campos Telefone do IrisCobrancaContextSidebar (IrisPage.tsx, modo cobrança e Apolo) e do iris-conversation-readonly (histórico); tipo dos campos passou de string p/ ReactNode. flagEmojiForE164 mantido (refatorado sobre iso2ForE164) p/ contextos de texto puro.",
+      motivation:
+        "Lucas no Windows via 'BR'/'US' em quadradinho em vez da bandeira. Limitação do SO (emoji de bandeira não desenha no Windows) — resolvido renderizando SVG.",
+    },
+    title: "Iris: bandeira do país como imagem (aparece no Windows)",
+    type: "correcao",
+    version: "v1.23.3",
+  },
+  {
     buildTag: "2026-07-03-iris-bandeira-painel",
     deployedAt: "2026-07-03T14:00:00-03:00",
     modules: [

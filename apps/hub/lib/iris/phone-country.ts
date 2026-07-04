@@ -116,31 +116,40 @@ export function flagEmojiForC2xPhone(
 // Bandeira a partir de um número JÁ em E.164 (só dígitos, COM o país — ex.: "16177550385",
 // "5531983440284"). Casa o prefixo de discagem mais longo conhecido (1-3 dígitos). Usado no
 // display do telefone do contato/cadastro. Desconhecido -> 🌐.
-export function flagEmojiForE164(e164: string | null | undefined): string {
+// ISO2 a partir de um número JÁ em E.164 (só dígitos, COM o país). BR = 55 + 10/11 = 12/13.
+// Estrangeiro sempre chega com o código (wa_id). Casa o prefixo de discagem mais longo
+// primeiro (ex.: "1" só bate se não houver "351"/"55"/... na frente). Sem código de país
+// reconhecido e com 10-11 dígitos = nacional BR guardado sem o 55 (ex.: "31983440284" NÃO é
+// Holanda). Retorna null quando não dá pra determinar (mostra globo).
+export function iso2ForE164(e164: string | null | undefined): string | null {
   const digits = String(e164 ?? "").replace(/\D/g, "");
 
   if (!digits) {
-    return "🌐";
+    return null;
   }
 
-  // Número JÁ em E.164 (com país). BR = 55 + 10/11 dígitos = 12/13. Estrangeiro sempre chega
-  // com o código (wa_id). Casa o prefixo de discagem mais longo primeiro (ex.: "1" só bate
-  // se não houver "351"/"55"/... na frente).
   for (const length of [3, 2, 1]) {
     const iso2 = DIAL_CODE_TO_ISO2[digits.slice(0, length)];
 
     if (iso2) {
-      return iso2ToFlagEmoji(iso2);
+      return iso2;
     }
   }
 
-  // Sem código de país reconhecido. Neste sistema (BR-first) um número "solto" de 10-11
-  // dígitos é um nacional BR guardado sem o 55 (ex.: "31983440284") — não a Holanda.
   if (digits.length >= 10 && digits.length <= 11) {
-    return iso2ToFlagEmoji("BR");
+    return "BR";
   }
 
-  return "🌐";
+  return null;
+}
+
+// Bandeira EMOJI a partir do E.164 (mantido p/ onde não dá pra usar componente/imagem — ex.:
+// texto puro). ⚠️ No Windows o emoji de bandeira NÃO desenha (vira "BR"/"US" em quadradinho);
+// pra UI use o componente <PhoneFlag> (SVG). Ver [[project-iris-foreign-phone]].
+export function flagEmojiForE164(e164: string | null | undefined): string {
+  const iso2 = iso2ForE164(e164);
+
+  return iso2 ? iso2ToFlagEmoji(iso2) : "🌐";
 }
 
 // É estrangeiro (não-BR)? Pra o frontend decidir se destaca.
