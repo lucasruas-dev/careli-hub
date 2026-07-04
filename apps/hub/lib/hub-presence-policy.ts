@@ -1,6 +1,10 @@
 export const HUB_IDLE_TIMEOUT_MS = 10 * 60 * 1000;
 export const HUB_AUTO_LOGOUT_TIMEOUT_MS = 2 * 60 * 60 * 1000;
-export const HUB_PRESENCE_HEARTBEAT_MS = 30 * 1000;
+// 90s (era 30s): o heartbeat so mantem o last_seen_at fresco — as transicoes de
+// status (ausente/logout) vem de timers/eventos do proprio cliente, e nada infere
+// offline por last_seen. 30s = 1,57M de UPDATEs em hub_presence no pg_stat
+// (2o maior custo de escrita do banco); 90s corta ~2/3 sem efeito visivel.
+export const HUB_PRESENCE_HEARTBEAT_MS = 90 * 1000;
 
 export const HUB_PRESENCE_POLICY_LABEL = "ausente apos 10 min / logout 2 h";
 

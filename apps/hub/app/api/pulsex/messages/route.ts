@@ -974,6 +974,31 @@ async function ensureDirectChannelAccess(
     };
   }
 
+  // Fast-path: conversa direta ja existente com os DOIS membros ativos retorna
+  // sem NENHUMA escrita. Este ensure roda em todo GET/POST de mensagens de
+  // conversa direta (incluindo o poll de 8s da conversa aberta) — os upserts
+  // incondicionais abaixo somaram ~1,37M de INSERTs de canal + ~1,37M de
+  // membros no pg_stat_statements (CPU/WAL a toa; achado do custo de 2/jul).
+  const { data: existingChannel } = await adminClient
+    .from("pulsex_channels")
+    .select("id,kind,department_id,status")
+    .eq("id", channelId)
+    .eq("status", "active")
+    .maybeSingle<HermesChannelAccessRow>();
+
+  if (existingChannel) {
+    const { count: activeMemberCount } = await adminClient
+      .from("pulsex_channel_members")
+      .select("channel_id", { count: "exact", head: true })
+      .eq("channel_id", channelId)
+      .eq("status", "active")
+      .in("user_id", [...parsedChannel.userIds]);
+
+    if ((activeMemberCount ?? 0) >= 2) {
+      return { channel: existingChannel, ok: true };
+    }
+  }
+
   const { data: participants, error: participantsError } = await adminClient
     .from("hub_users")
     .select("id,display_name,email,status")

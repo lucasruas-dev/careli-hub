@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-02-custo-banco-hermes-presenca",
+    deployedAt: "2026-07-03T00:05:00-03:00",
+    modules: [
+      {
+        module: "Hub",
+        screens: [
+          {
+            items: [
+              "Otimização interna: o sistema ficou mais leve no banco de dados (conversas diretas do Hermes e presença geravam milhões de gravações desnecessárias por semana).",
+              "Nada muda no uso — é economia de infraestrutura e mais folga de desempenho.",
+            ],
+            screen: "Infraestrutura",
+          },
+        ],
+      },
+    ],
+    rollback: "deployment k66npsqk9 (dpl_A5F2CoqsrxttFFcuw1JjrwiYDszK)",
+    technical: {
+      done: "Achados da análise de custos Supabase (fatura Large + pg_stat_statements): (1) ensureDirectChannelAccess fazia UPSERT de pulsex_channels + pulsex_channel_members em TODO GET/POST de mensagens de conversa direta (poll de 8s incluso) = ~1,37M INSERTs de cada acumulados; agora fast-path com 2 SELECTs indexados retorna sem escrita quando canal+2 membros ativos existem. (2) HUB_PRESENCE_HEARTBEAT_MS 30s->90s (1,57M UPDATEs em hub_presence; transições de status vêm de timers/eventos do cliente e nada infere offline por last_seen — corte ~2/3 sem efeito visível). Complementa o downsize do compute Large->Medium (~-US$50/mês) feito no dashboard nesta noite. v1.22.0 -> v1.22.1.",
+      motivation:
+        "Fatura Supabase projetando US$126/mês com compute Large superdimensionado; pg_stat_statements revelou os campeões de escrita inútil. Reduzir carga habilita o próximo degrau (Small).",
+    },
+    title: "Hub mais leve: fim das gravações desnecessárias no banco (Hermes/presença)",
+    type: "correcao",
+    version: "v1.22.1",
+  },
+  {
     buildTag: "2026-07-03-iris-bandeira-painel",
     deployedAt: "2026-07-03T14:00:00-03:00",
     modules: [
