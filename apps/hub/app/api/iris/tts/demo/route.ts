@@ -43,6 +43,7 @@ function numParam(
 function renderPage(demoKey: string): string {
   const keyJson = JSON.stringify(demoKey);
   const phraseJson = JSON.stringify(DEMO_PHRASE);
+  const voiceJson = JSON.stringify(CACA_DEFAULT_VOICE_ID);
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -94,6 +95,8 @@ function renderPage(demoKey: string): string {
       <option value="eleven_multilingual_v2">Multilingual v2 (padrão)</option>
       <option value="eleven_v3">v3 (experimental, mais expressivo)</option>
     </select></label>
+  <label>Voice ID <span class="hint">(cola outro pra testar outra voz)</span>
+    <input type="text" id="voice" style="width:100%;padding:8px;border:1px solid #cbd5e1;border-radius:8px;font-size:13px;font-family:monospace" /></label>
   <button class="play" id="play">&#9654; Ouvir</button>
   <span class="status" id="status"></span>
   <audio id="player" controls></audio>
@@ -101,8 +104,10 @@ function renderPage(demoKey: string): string {
 <script>
   var KEY = ${keyJson};
   var PHRASE = ${phraseJson};
+  var VOICE = ${voiceJson};
   function $(id){ return document.getElementById(id); }
   $("txt").value = PHRASE;
+  $("voice").value = VOICE;
   function sync(){
     $("sv").textContent = (+$("stability").value).toFixed(2);
     $("stv").textContent = (+$("style").value).toFixed(2);
@@ -115,7 +120,8 @@ function renderPage(demoKey: string): string {
     var p = new URLSearchParams({
       key: KEY, audio: "1", text: $("txt").value,
       stability: $("stability").value, style: $("style").value,
-      speed: $("speed").value, model: $("model").value
+      speed: $("speed").value, model: $("model").value,
+      voice: $("voice").value.trim() || VOICE
     });
     fetch("/api/iris/tts/demo?" + p.toString()).then(function(r){
       if(!r.ok){ return r.text().then(function(t){ throw new Error(t); }); }

@@ -5,8 +5,8 @@
 
 const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 
-// Voz "Geni e o Zefelin" (atendente realista, PT-BR) — biblioteca ElevenLabs.
-export const CACA_DEFAULT_VOICE_ID = "JPaHP82NTgRbDP91t8zP";
+// Voz escolhida pelo Lucas (biblioteca ElevenLabs). Anterior: Geni JPaHP82NTgRbDP91t8zP.
+export const CACA_DEFAULT_VOICE_ID = "RVmX026jCrF5VqUvpCk0";
 // Melhor qualidade multilingue (cobre PT-BR). Trocar por turbo/flash se latencia pesar.
 export const CACA_DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
 
