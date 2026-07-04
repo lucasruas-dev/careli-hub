@@ -155,7 +155,7 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
     tools.push(
       {
         definition: requireDefinition("consultar_panteon"),
-        run: async (input) => consultarPanteon(input),
+        run: async (input) => consultarPanteon(context, input),
       },
       {
         definition: requireDefinition("consultar_movimentacao_c2x"),
@@ -230,11 +230,29 @@ async function lerConversaIris(
     return "Não encontrei um atendimento na Iris pra esse cliente (confira o nome).";
   }
 
+  const espera =
+    conversa.quemFalouPorUltimo === "cliente" &&
+    conversa.minutosDesdeUltimaMensagem != null
+      ? `O CLIENTE falou por último há ${conversa.minutosDesdeUltimaMensagem} min (aguardando a nossa resposta).`
+      : conversa.quemFalouPorUltimo === "nós"
+        ? "NÓS falamos por último (a bola está com o cliente)."
+        : "";
+
+  const rajada =
+    conversa.mensagensDoClienteSeguidas >= 2
+      ? `O cliente mandou ${conversa.mensagensDoClienteSeguidas} mensagens seguidas sem resposta nossa (possível impaciência).`
+      : "";
+
   const linhas = [
     `Atendimento de ${conversa.cliente} — ${conversa.perfil} · status ${conversa.statusTicket}.`,
-    "Conversa (mais recente):",
+    espera,
+    rajada,
+    "",
+    "Conversa (ordem cronológica):",
     ...conversa.mensagens.map((m) => `- ${m.de}: ${m.texto}`),
-  ];
+    "",
+    "AVALIE E RESPONDA À DIREÇÃO: (1) o ESTADO EMOCIONAL do cliente pelas mensagens (calmo, impaciente, irritado/agressivo, ansioso, satisfeito ou neutro) com uma evidência curta do texto; (2) a URGÊNCIA e o que ele quer; (3) uma recomendação objetiva de abordagem. Baseie-se SÓ no que está escrito — não invente. Se o tom for ambíguo, diga que está neutro.",
+  ].filter((linha) => linha !== "");
 
   return linhas.join("\n");
 }
@@ -439,12 +457,15 @@ async function consultarSaudeSistema(): Promise<string> {
 
 // SUPER MOTOR: consulta parametrizada (cubo métrica × agrupamento × filtros × período).
 // A validação/whitelist mora em lib/analytics; erro de combinação volta como texto pra
-// CACÁ se corrigir sozinha no próximo turno.
-async function consultarPanteon(input: unknown): Promise<string> {
+// CACÁ se corrigir sozinha no próximo turno. O módulo iris usa o Supabase do contexto.
+async function consultarPanteon(
+  context: CacaToolContext,
+  input: unknown,
+): Promise<string> {
   const record =
     input && typeof input === "object" ? (input as Record<string, unknown>) : {};
 
-  const outcome = await queryPanteon(record);
+  const outcome = await queryPanteon(record, { supabase: context.client });
 
   if (!outcome.ok) {
     return `Não consegui montar essa consulta: ${outcome.erro}`;

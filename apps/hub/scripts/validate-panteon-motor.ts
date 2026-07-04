@@ -23,10 +23,12 @@ for (const line of readFileSync(path.join(here, "..", ".env.local"), "utf8").spl
   const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(line.trim());
 
   if (match && process.env[match[1]!] === undefined) {
-    process.env[match[1]!] = match[2]!;
+    // Tira aspas em volta (o .env.local usa "..." em alguns valores).
+    process.env[match[1]!] = match[2]!.replace(/^["']|["']$/g, "");
   }
 }
 
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import type { RowDataPacket } from "mysql2/promise";
 
 import { queryPanteon } from "@/lib/analytics/query-panteon";
@@ -54,8 +56,13 @@ function check(nome: string, ok: boolean, detalhe: string) {
   }
 }
 
+let supabase: SupabaseClient | null = null;
+
 async function motorTotal(raw: Record<string, unknown>): Promise<number> {
-  const outcome = await queryPanteon({ modulo: "c2x", ...raw });
+  const outcome = await queryPanteon(
+    { modulo: "c2x", ...raw },
+    { supabase },
+  );
 
   if (!outcome.ok) {
     throw new Error(`motor falhou (${JSON.stringify(raw)}): ${outcome.erro}`);
@@ -67,10 +74,30 @@ async function motorTotal(raw: Record<string, unknown>): Promise<number> {
 async function motorGrupos(
   raw: Record<string, unknown>,
 ): Promise<{ total: number; grupos: Map<string, number> }> {
-  const outcome = await queryPanteon({ modulo: "c2x", ...raw });
+  const outcome = await queryPanteon(
+    { modulo: "c2x", ...raw },
+    { supabase },
+  );
 
   if (!outcome.ok) {
     throw new Error(`motor falhou (${JSON.stringify(raw)}): ${outcome.erro}`);
+  }
+
+  return {
+    grupos: new Map(
+      (outcome.resultado.grupos ?? []).map((g) => [g.grupo, g.valor]),
+    ),
+    total: outcome.resultado.total,
+  };
+}
+
+async function motorIris(
+  raw: Record<string, unknown>,
+): Promise<{ total: number; grupos: Map<string, number> }> {
+  const outcome = await queryPanteon({ modulo: "iris", ...raw }, { supabase });
+
+  if (!outcome.ok) {
+    throw new Error(`motor iris falhou (${JSON.stringify(raw)}): ${outcome.erro}`);
   }
 
   return {
@@ -89,6 +116,18 @@ async function main() {
   }
 
   const pool = poolResult.pool;
+
+  const supabaseUrl =
+    process.env.NEXT_PUBLIC_SUPABASE_URL ?? process.env.SUPABASE_URL;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_ROLE_KEY ?? process.env.SUPABASE_SECRET_KEY;
+
+  supabase =
+    supabaseUrl && serviceKey
+      ? createClient(supabaseUrl, serviceKey, {
+          auth: { autoRefreshToken: false, persistSession: false },
+        })
+      : null;
   const ref = async <T extends RowDataPacket>(sql: string, params: unknown[]) =>
     (await pool.query<T[]>(sql, params))[0];
 
@@ -434,6 +473,137 @@ async function main() {
     );
   } else {
     check("filtro imobiliária ativa no ano", false, "nenhuma imobiliária com faturamento no ano");
+  }
+
+  // ---------- 6. Módulo IRIS (Supabase) vs referência independente ----------
+  console.log("\n[6] Módulo Iris (atendimento) vs referência Supabase");
+
+  // O .env.local pode apontar pra um Supabase de homolog fora do ar. Testa a conexão antes;
+  // se não responder, PULA a seção (não derruba a suíte do C2X). Em prod/preview o env aponta
+  // pro projeto vivo e a seção roda de verdade.
+  const irisReachable = await (async () => {
+    if (!supabase) {
+      return false;
+    }
+
+    try {
+      const { error } = await supabase
+        .from("caredesk_tickets")
+        .select("id", { count: "exact", head: true });
+
+      return !error;
+    } catch {
+      return false;
+    }
+  })();
+
+  if (!supabase || !irisReachable) {
+    console.log(
+      "  ⏭️  PULADO — Supabase do env não respondeu (provável homolog fora do ar). Rode com env de prod pra validar a Iris.",
+    );
+  } else {
+    const sb = supabase;
+
+    // Estado: abertos == não terminais; soma por fila == total.
+    const terminal = ["closed", "resolved", "cancelled"];
+    const { count: abertosRef } = await sb
+      .from("caredesk_tickets")
+      .select("id", { count: "exact", head: true })
+      .not("status", "in", `(${terminal.join(",")})`);
+    const abertos = await motorIris({ metrica: "tickets_abertos" });
+
+    check(
+      "tickets_abertos (total)",
+      abertos.total === (abertosRef ?? -1),
+      `motor=${abertos.total} ref=${abertosRef}`,
+    );
+
+    const abertosPorFila = await motorIris({
+      agrupar_por: "fila",
+      metrica: "tickets_abertos",
+    });
+    const somaFila = Array.from(abertosPorFila.grupos.values()).reduce(
+      (a, b) => a + b,
+      0,
+    );
+
+    check(
+      "tickets_abertos: soma das filas == total",
+      somaFila === abertosPorFila.total &&
+        abertosPorFila.total === (abertosRef ?? -1),
+      `soma=${somaFila} total=${abertosPorFila.total} (${abertosPorFila.grupos.size} filas)`,
+    );
+
+    // Aguardando operador/cliente vs contagem direta por status.
+    for (const [metrica, status] of [
+      ["aguardando_operador", "waiting_operator"],
+      ["aguardando_cliente", "waiting_customer"],
+    ] as const) {
+      const { count } = await sb
+        .from("caredesk_tickets")
+        .select("id", { count: "exact", head: true })
+        .eq("status", status);
+      const motor = await motorIris({ metrica });
+
+      check(
+        `${metrica}`,
+        motor.total === (count ?? -1),
+        `motor=${motor.total} ref=${count}`,
+      );
+    }
+
+    // Evento: finalizados este ano vs closed_at na janela; soma por dia == total.
+    const { from: anoF, to: anoT } = resolvePeriodoRange("este_ano");
+    const { count: finRef } = await sb
+      .from("caredesk_tickets")
+      .select("id", { count: "exact", head: true })
+      .gte("closed_at", anoF.toISOString())
+      .lt("closed_at", anoT.toISOString());
+    const fin = await motorIris({
+      metrica: "tickets_finalizados",
+      periodo: "este_ano",
+    });
+
+    check(
+      "tickets_finalizados este_ano",
+      fin.total === (finRef ?? -1),
+      `motor=${fin.total} ref=${finRef}`,
+    );
+
+    const finPorDia = await motorIris({
+      agrupar_por: "dia",
+      metrica: "tickets_finalizados",
+      periodo: "este_ano",
+    });
+    const somaDia = Array.from(finPorDia.grupos.values()).reduce(
+      (a, b) => a + b,
+      0,
+    );
+
+    check(
+      "tickets_finalizados: soma dos dias == total",
+      somaDia === fin.total,
+      `soma=${somaDia} total=${fin.total}`,
+    );
+
+    // Filtro por fila == linha do agrupamento.
+    const topFila = Array.from(abertosPorFila.grupos.entries()).find(
+      ([nome, valor]) => valor > 0 && nome !== "Sem fila",
+    );
+
+    if (topFila) {
+      const [nomeFila, valorFila] = topFila;
+      const filtrado = await motorIris({
+        filtros: { fila: nomeFila },
+        metrica: "tickets_abertos",
+      });
+
+      check(
+        `filtro fila "${nomeFila}" == linha do grupo`,
+        filtrado.total === valorFila,
+        `filtro=${filtrado.total} grupo=${valorFila}`,
+      );
+    }
   }
 
   console.log(`\nResultado: ${pass} ✅ · ${fail} ❌`);

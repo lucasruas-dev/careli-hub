@@ -149,7 +149,12 @@ export type IrisConversa = {
   cliente: string;
   perfil: string;
   statusTicket: string;
-  mensagens: { de: string; texto: string }[];
+  // Sinais pra CACÁ (modo admin) avaliar o humor/urgência do cliente: quem falou por último,
+  // há quanto tempo espera resposta nossa, quantas mensagens ele mandou seguidas.
+  quemFalouPorUltimo: "cliente" | "nós" | null;
+  minutosDesdeUltimaMensagem: number | null;
+  mensagensDoClienteSeguidas: number;
+  mensagens: { de: string; quando: string | null; texto: string }[];
 };
 
 // Lê a CONVERSA de um atendimento (pelo nome do cliente): as últimas mensagens + o perfil
@@ -204,19 +209,46 @@ export async function loadIrisConversa(
 
   const { data: msgs } = await client
     .from("caredesk_messages")
-    .select("direction, sender_type, body")
+    .select("direction, sender_type, body, created_at")
     .eq("ticket_id", ticket.id)
     .order("created_at", { ascending: true })
-    .limit(30);
+    .limit(40);
 
-  const mensagens = ((msgs ?? []) as {
+  const rawMensagens = (msgs ?? []) as {
     direction: string | null;
     sender_type: string | null;
     body: string | null;
-  }[]).map((m) => ({
+    created_at: string | null;
+  }[];
+
+  const mensagens = rawMensagens.map((m) => ({
     de: m.direction === "outbound" ? "CACÁ/operador" : "Cliente",
+    quando: m.created_at,
     texto: m.body?.trim() || "(sem texto)",
   }));
+
+  // Sinais de humor/urgência: quem falou por último, há quanto tempo, e quantas mensagens do
+  // cliente ficaram sem resposta nossa (rajada = impaciência).
+  const ultima = rawMensagens[rawMensagens.length - 1];
+  const quemFalouPorUltimo = ultima
+    ? ultima.direction === "outbound"
+      ? "nós"
+      : "cliente"
+    : null;
+  const minutosDesdeUltimaMensagem = ultima?.created_at
+    ? Math.max(
+        0,
+        Math.round((Date.now() - new Date(ultima.created_at).getTime()) / 60000),
+      )
+    : null;
+
+  let mensagensDoClienteSeguidas = 0;
+  for (let i = rawMensagens.length - 1; i >= 0; i -= 1) {
+    if (rawMensagens[i]!.direction === "outbound") {
+      break;
+    }
+    mensagensDoClienteSeguidas += 1;
+  }
 
   const perfilPartes = [
     contact.person_type === "company" ? "Pessoa jurídica" : "Pessoa física",
@@ -226,7 +258,10 @@ export async function loadIrisConversa(
   return {
     cliente: contact.display_name?.trim() || "Sem nome",
     mensagens,
+    mensagensDoClienteSeguidas,
+    minutosDesdeUltimaMensagem,
     perfil: perfilPartes.join(" · "),
+    quemFalouPorUltimo,
     statusTicket: ticket.status,
   };
 }

@@ -1,3 +1,4 @@
+import type { SupabaseClient } from "@supabase/supabase-js";
 import type { RowDataPacket } from "mysql2/promise";
 
 import { displayEnterprise } from "@/lib/guardian/c2x-analytics";
@@ -5,9 +6,18 @@ import { getHadesDbPool, sanitizeHadesDbError } from "@/lib/guardian/db";
 
 import {
   buildC2xAnalyticsQuery,
+  type C2xBuilderInput,
   isDistinctC2xMetrica,
 } from "./c2x-builder";
-import { validatePanteonInput } from "./registry";
+import { type IrisBuilderInput, runIrisAnalyticsQuery } from "./iris-builder";
+import {
+  type C2xAgruparPor,
+  type C2xMetrica,
+  type IrisAgruparPor,
+  type IrisMetrica,
+  type PanteonInputNormalizado,
+  validatePanteonInput,
+} from "./registry";
 
 // Dispatcher do SUPER MOTOR: valida o pedido contra o catálogo (registry), monta o SQL pelo
 // builder da fonte e executa READ-ONLY. Devolve um resultado estruturado + formatador de
@@ -60,15 +70,20 @@ function formatGrupoLabel(
   return raw;
 }
 
-export async function queryPanteon(raw: {
-  modulo?: unknown;
-  metrica?: unknown;
-  agrupar_por?: unknown;
-  filtros?: unknown;
-  periodo?: unknown;
-  data_inicio?: unknown;
-  data_fim?: unknown;
-}): Promise<PanteonQueryOutcome> {
+// O motor da Iris precisa do Supabase client (service role do contexto da CACÁ). O C2X usa o
+// pool MySQL do guardian e não depende do client.
+export async function queryPanteon(
+  raw: {
+    modulo?: unknown;
+    metrica?: unknown;
+    agrupar_por?: unknown;
+    filtros?: unknown;
+    periodo?: unknown;
+    data_inicio?: unknown;
+    data_fim?: unknown;
+  },
+  deps?: { supabase?: SupabaseClient | null },
+): Promise<PanteonQueryOutcome> {
   const validation = validatePanteonInput(raw);
 
   if (!validation.ok) {
@@ -76,76 +91,15 @@ export async function queryPanteon(raw: {
   }
 
   const input = validation.input;
-  const poolResult = getHadesDbPool();
-
-  if (!poolResult.ok) {
-    return {
-      erro: "Banco do C2X indisponível agora — não consegui consultar.",
-      ok: false,
-    };
-  }
-
-  const builderInput = {
-    agruparPor: input.agruparPor,
-    filtros: input.filtros,
-    metrica: input.metrica,
-    range: input.range,
-  };
 
   try {
-    const plan = buildC2xAnalyticsQuery(builderInput);
-    const [rows] = await poolResult.pool.query<ValorRow[]>(plan.sql, plan.params);
+    const parcial =
+      input.modulo === "iris"
+        ? await runIrisModule(input, deps?.supabase ?? null)
+        : await runC2xModule(input);
 
-    const observacoes = [...input.observacoes];
-    let grupos: { grupo: string; valor: number }[] | null = null;
-    let total = 0;
-
-    if (plan.groupMode === "none") {
-      total = toNumber(rows[0]?.valor);
-    } else if (plan.groupMode === "empreendimento") {
-      const byDisplay = new Map<string, number>();
-
-      for (const row of rows) {
-        const key = displayEnterprise(
-          row.grupo_code ?? null,
-          row.grupo_nome ?? null,
-        );
-
-        byDisplay.set(key, (byDisplay.get(key) ?? 0) + toNumber(row.valor));
-      }
-
-      grupos = Array.from(byDisplay.entries())
-        .map(([grupo, valor]) => ({ grupo, valor }))
-        .sort((first, second) => second.valor - first.valor);
-      total = grupos.reduce((sum, entry) => sum + entry.valor, 0);
-    } else {
-      grupos = rows.map((row) => ({
-        grupo: formatGrupoLabel(input.agruparPor, row.grupo),
-        valor: toNumber(row.valor),
-      }));
-      total = grupos.reduce((sum, entry) => sum + entry.valor, 0);
-
-      if (grupos.length >= 30 && input.agruparPor !== "dia") {
-        observacoes.push("Mostrando os 30 primeiros grupos.");
-      }
-    }
-
-    // Agregado DISTINCT agrupado: a soma dos grupos repete quem aparece em mais de um grupo.
-    // Busca o total exato numa segunda consulta sem agrupamento.
-    if (input.agruparPor && isDistinctC2xMetrica(input.metrica)) {
-      const totalPlan = buildC2xAnalyticsQuery({
-        ...builderInput,
-        agruparPor: null,
-      });
-      const [totalRows] = await poolResult.pool.query<ValorRow[]>(
-        totalPlan.sql,
-        totalPlan.params,
-      );
-
-      total = toNumber(totalRows[0]?.valor);
-      observacoes.push(
-        "O total é DISTINTO (sem repetição); a soma dos grupos pode ser maior porque o mesmo cliente/unidade pode aparecer em mais de um grupo.",
-      );
+    if (!parcial.ok) {
+      return parcial;
     }
 
     const filtrosLabel = Object.entries(input.filtros)
@@ -158,21 +112,135 @@ export async function queryPanteon(raw: {
         agruparPor: input.agruparPor,
         filtrosLabel: filtrosLabel || null,
         formato: input.spec.formato,
-        grupos,
-        observacoes,
+        grupos: parcial.grupos,
+        observacoes: parcial.observacoes,
         periodoLabel: input.range?.label ?? null,
         titulo: input.spec.titulo,
-        total,
+        total: parcial.total,
       },
     };
   } catch (error) {
     console.error("[panteon] queryPanteon failed", sanitizeHadesDbError(error));
 
     return {
-      erro: "Falha ao consultar o C2X agora. Tente novamente em instantes.",
+      erro: "Falha ao consultar agora. Tente novamente em instantes.",
       ok: false,
     };
   }
+}
+
+type ModuloParcial =
+  | {
+      ok: true;
+      grupos: { grupo: string; valor: number }[] | null;
+      total: number;
+      observacoes: string[];
+    }
+  | { ok: false; erro: string };
+
+async function runC2xModule(
+  input: PanteonInputNormalizado,
+): Promise<ModuloParcial> {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return {
+      erro: "Banco do C2X indisponível agora — não consegui consultar.",
+      ok: false,
+    };
+  }
+
+  const builderInput: C2xBuilderInput = {
+    agruparPor: input.agruparPor as C2xAgruparPor | null,
+    filtros: input.filtros,
+    metrica: input.metrica as C2xMetrica,
+    range: input.range,
+  };
+
+  const observacoes = [...input.observacoes];
+  const plan = buildC2xAnalyticsQuery(builderInput);
+  const [rows] = await poolResult.pool.query<ValorRow[]>(plan.sql, plan.params);
+
+  let grupos: { grupo: string; valor: number }[] | null = null;
+  let total = 0;
+
+  if (plan.groupMode === "none") {
+    total = toNumber(rows[0]?.valor);
+  } else if (plan.groupMode === "empreendimento") {
+    const byDisplay = new Map<string, number>();
+
+    for (const row of rows) {
+      const key = displayEnterprise(
+        row.grupo_code ?? null,
+        row.grupo_nome ?? null,
+      );
+
+      byDisplay.set(key, (byDisplay.get(key) ?? 0) + toNumber(row.valor));
+    }
+
+    grupos = Array.from(byDisplay.entries())
+      .map(([grupo, valor]) => ({ grupo, valor }))
+      .sort((first, second) => second.valor - first.valor);
+    total = grupos.reduce((sum, entry) => sum + entry.valor, 0);
+  } else {
+    grupos = rows.map((row) => ({
+      grupo: formatGrupoLabel(input.agruparPor, row.grupo),
+      valor: toNumber(row.valor),
+    }));
+    total = grupos.reduce((sum, entry) => sum + entry.valor, 0);
+
+    if (grupos.length >= 30 && input.agruparPor !== "dia") {
+      observacoes.push("Mostrando os 30 primeiros grupos.");
+    }
+  }
+
+  // Agregado DISTINCT agrupado: a soma dos grupos repete quem aparece em mais de um grupo.
+  // Busca o total exato numa segunda consulta sem agrupamento.
+  if (input.agruparPor && isDistinctC2xMetrica(input.metrica as C2xMetrica)) {
+    const totalPlan = buildC2xAnalyticsQuery({
+      ...builderInput,
+      agruparPor: null,
+    });
+    const [totalRows] = await poolResult.pool.query<ValorRow[]>(
+      totalPlan.sql,
+      totalPlan.params,
+    );
+
+    total = toNumber(totalRows[0]?.valor);
+    observacoes.push(
+      "O total é DISTINTO (sem repetição); a soma dos grupos pode ser maior porque o mesmo cliente/unidade pode aparecer em mais de um grupo.",
+    );
+  }
+
+  return { grupos, observacoes, ok: true, total };
+}
+
+async function runIrisModule(
+  input: PanteonInputNormalizado,
+  supabase: SupabaseClient | null,
+): Promise<ModuloParcial> {
+  if (!supabase) {
+    return {
+      erro: "Consulta da Iris indisponível neste contexto (sem conexão).",
+      ok: false,
+    };
+  }
+
+  const builderInput: IrisBuilderInput = {
+    agruparPor: input.agruparPor as IrisAgruparPor | null,
+    filtros: input.filtros,
+    metrica: input.metrica as IrisMetrica,
+    range: input.range,
+  };
+
+  const result = await runIrisAnalyticsQuery(supabase, builderInput);
+
+  return {
+    grupos: result.grupos,
+    observacoes: [...input.observacoes, ...result.observacoes],
+    ok: true,
+    total: result.total,
+  };
 }
 
 function formatValor(valor: number, formato: "int" | "brl"): string {

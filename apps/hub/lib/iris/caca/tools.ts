@@ -291,14 +291,14 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "consultar_panteon",
     description:
-      "SÓ no modo assistente/gestão (direção). O MOTOR DE ANÁLISE do Panteon: responde QUALQUER pergunta QUANTITATIVA de vendas do C2X combinando métrica + agrupamento + filtros + período, com as regras oficiais da Careli embutidas (exclui empreendimentos de teste, consolida etapas do mesmo produto, imobiliária = vínculo do cliente comprador). PREFIRA esta ferramenta sempre que a pergunta combinar recortes que as outras não cobrem. Exemplos: 'quantos clientes a imobiliária X vendeu essa semana' = {metrica: clientes_faturados, filtros: {imobiliaria: 'X'}, periodo: esta_semana}; 'faturamento por mês este ano' = {metrica: valor_faturado, agrupar_por: mes, periodo: este_ano}; 'propostas do Lavra do Ouro em junho' = {metrica: propostas, filtros: {empreendimento: 'Lavra do Ouro'}, data_inicio: '2026-06-01', data_fim: '2026-06-30'}; 'ranking de imobiliárias' = {metrica: unidades_faturadas, agrupar_por: imobiliaria}. Métricas de EVENTO (usam período): propostas, vendas (contrato gerado+em assinatura+faturado), faturamentos (vendas fechadas), cancelamentos, reservas, clientes_faturados (clientes distintos que compraram), valor_faturado (R$). Métricas de ESTADO ATUAL (ignoram período): unidades_vendidas (nº oficial do painel), unidades_disponiveis, unidades_total, unidades_faturadas (permite quebrar por imobiliária/cliente), valor_carteira_vendida (R$). Se a ferramenta devolver erro de combinação, ajuste os parâmetros conforme a mensagem e chame de novo.",
+      "SÓ no modo assistente/gestão (direção). O MOTOR DE ANÁLISE do Panteon: responde QUALQUER pergunta QUANTITATIVA combinando modulo + métrica + agrupamento + filtros + período, com as regras oficiais da Careli embutidas. PREFIRA esta ferramenta sempre que a pergunta combinar recortes que as outras não cobrem. DOIS módulos: 'c2x' (VENDAS) e 'iris' (ATENDIMENTO). C2X exemplos: 'quantos clientes a imobiliária X vendeu essa semana' = {modulo: c2x, metrica: clientes_faturados, filtros: {imobiliaria: 'X'}, periodo: esta_semana}; 'faturamento por mês este ano' = {modulo: c2x, metrica: valor_faturado, agrupar_por: mes, periodo: este_ano}; 'propostas do Lavra do Ouro em junho' = {modulo: c2x, metrica: propostas, filtros: {empreendimento: 'Lavra do Ouro'}, data_inicio: '2026-06-01', data_fim: '2026-06-30'}; 'ranking de imobiliárias' = {modulo: c2x, metrica: unidades_faturadas, agrupar_por: imobiliaria}. C2X métricas de EVENTO (usam período): propostas, vendas, faturamentos, cancelamentos, reservas, clientes_faturados, valor_faturado. C2X de ESTADO (ignoram período): unidades_vendidas (nº oficial do painel), unidades_disponiveis, unidades_total, unidades_faturadas, valor_carteira_vendida. IRIS exemplos: 'quantos atendimentos finalizamos essa semana' = {modulo: iris, metrica: tickets_finalizados, periodo: esta_semana}; 'atendimentos abertos por fila' = {modulo: iris, metrica: tickets_abertos, agrupar_por: fila}; 'tickets criados por dia esse mês' = {modulo: iris, metrica: tickets_criados, agrupar_por: dia, periodo: este_mes}. IRIS métricas de EVENTO: tickets_criados, tickets_finalizados. IRIS de ESTADO (agora): tickets_abertos, aguardando_operador (a nossa vez), aguardando_cliente. Se devolver erro de combinação, ajuste os parâmetros conforme a mensagem e chame de novo.",
     input_schema: {
       type: "object",
       properties: {
         modulo: {
           type: "string",
-          enum: ["c2x"],
-          description: "Fonte dos dados. Por enquanto: c2x (vendas).",
+          enum: ["c2x", "iris"],
+          description: "Fonte dos dados: c2x (vendas) ou iris (atendimento).",
         },
         metrica: {
           type: "string",
@@ -315,8 +315,14 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
             "unidades_total",
             "unidades_faturadas",
             "valor_carteira_vendida",
+            "tickets_abertos",
+            "aguardando_operador",
+            "aguardando_cliente",
+            "tickets_criados",
+            "tickets_finalizados",
           ],
-          description: "O QUE contar/somar (ver exemplos na descrição da ferramenta).",
+          description:
+            "O QUE contar/somar. As de vendas são do módulo c2x; tickets_* e aguardando_* são do módulo iris (ver exemplos).",
         },
         agrupar_por: {
           type: "string",
@@ -325,29 +331,46 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
             "imobiliaria",
             "cliente",
             "estagio",
+            "fila",
+            "colaborador",
+            "status",
             "dia",
             "semana",
             "mes",
           ],
           description:
-            "Opcional. Quebra o resultado por dimensão (ranking ou série temporal). estagio só para vendas/cancelamentos; dia/semana/mes só para métricas de evento.",
+            "Opcional. Quebra o resultado por dimensão (ranking ou série temporal). c2x: empreendimento/imobiliaria/cliente/estagio; iris: fila/colaborador/status; dia/semana/mes só para métricas de evento.",
         },
         filtros: {
           type: "object",
           description:
-            "Opcional. Restringe o recorte. Combine à vontade (ex.: imobiliária + período).",
+            "Opcional. Restringe o recorte. Combine à vontade (ex.: imobiliária + período; ou fila + período).",
           properties: {
             empreendimento: {
               type: "string",
-              description: "Nome ou sigla do empreendimento (ex.: 'Lavra do Ouro').",
+              description: "c2x: nome ou sigla do empreendimento (ex.: 'Lavra do Ouro').",
             },
             imobiliaria: {
               type: "string",
-              description: "Nome (ou parte) da imobiliária parceira.",
+              description: "c2x: nome (ou parte) da imobiliária parceira.",
             },
             cliente: {
               type: "string",
-              description: "Nome (ou parte) OU CPF/CNPJ do cliente.",
+              description: "c2x: nome (ou parte) OU CPF/CNPJ do cliente.",
+            },
+            fila: {
+              type: "string",
+              description:
+                "iris: nome da fila (ex.: 'Atendimento', 'Cobrança', 'Jurídico').",
+            },
+            colaborador: {
+              type: "string",
+              description: "iris: nome (ou parte) do operador responsável.",
+            },
+            status: {
+              type: "string",
+              description:
+                "iris: status do ticket (ex.: 'waiting_operator', 'waiting_customer', 'closed').",
             },
           },
         },
@@ -383,7 +406,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "ler_conversa_iris",
     description:
-      "SÓ no modo assistente/gestão (direção). Lê a CONVERSA de um atendimento da Iris pelo NOME do cliente: traz o perfil básico (pessoa física/jurídica, cidade) e as últimas mensagens trocadas. Use quando a direção perguntar 'o que esse cliente falou', 'me mostra a conversa do fulano', 'do que se trata esse atendimento'. Pro perfil completo (comprador/imobiliária/prospect), depois cruze com consultar_cliente_c2x. (Áudios do cliente aparecem como marcador, sem transcrição.)",
+      "SÓ no modo assistente/gestão (direção). Lê a CONVERSA de um atendimento da Iris pelo NOME do cliente e permite AVALIAR O HUMOR/PERFIL dele: traz o perfil básico (pessoa física/jurídica, cidade), as mensagens trocadas em ordem, quem falou por último, há quanto tempo o cliente espera e se ele mandou mensagens seguidas sem resposta. Use quando a direção perguntar 'o que esse cliente falou', 'me mostra a conversa do fulano', 'esse cliente está nervoso/impaciente?', 'como está o humor dele', 'do que se trata esse atendimento'. Depois de chamar, AVALIE o estado emocional (calmo/impaciente/irritado/ansioso/satisfeito/neutro) com evidência do texto, a urgência e uma recomendação de abordagem — só com base no que está escrito. Pro perfil completo (comprador/imobiliária/prospect), cruze com consultar_cliente_c2x. (Áudios do cliente aparecem como marcador, sem transcrição.)",
     input_schema: {
       type: "object",
       properties: {

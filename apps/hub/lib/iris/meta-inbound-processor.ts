@@ -29,7 +29,10 @@ import {
   signWhatsAppBody,
 } from "@/lib/iris/meta-whatsapp";
 import { synthesizeCacaVoiceNote } from "@/lib/iris/tts";
-import { uploadInboundMediaBuffer } from "@/lib/iris/meta-media-storage";
+import {
+  uploadInboundMediaBuffer,
+  uploadIrisMediaBuffer,
+} from "@/lib/iris/meta-media-storage";
 import { publishHubNotification } from "@/lib/notifications/publish";
 
 type Json =
@@ -2096,6 +2099,10 @@ async function maybeSendCacaAutoReply({
       : undefined;
 
     let result: MetaWhatsAppSendMessageResult | null = null;
+    // Mídia do áudio da CACÁ persistida no Storage → o cockpit consegue TOCAR a voz dela
+    // (o front lê provider_payload.media.url). Sem isso, a mensagem outbound só guardava o
+    // resultado do envio Meta e aparecia como "Audio WhatsApp 0:00" sem player.
+    let outboundAudioMedia: Record<string, unknown> | null = null;
 
     if (sendAsVoice) {
       try {
@@ -2109,6 +2116,33 @@ async function maybeSendCacaAutoReply({
           mimeType: voice.mimeType,
           to: destination,
         });
+
+        // Só persiste depois do envio dar certo (o áudio realmente foi pra o cliente).
+        // Best-effort: falha ao subir não pode derrubar a resposta.
+        try {
+          const persisted = await uploadIrisMediaBuffer({
+            buffer: Buffer.from(voice.audioBase64, "base64"),
+            client,
+            folder: "outbound",
+            mimeType: voice.mimeType,
+            name: queuedMessage.id,
+          });
+
+          if (persisted?.url) {
+            outboundAudioMedia = {
+              fileName: voice.fileName,
+              mimeType: persisted.mimeType,
+              type: "audio",
+              url: persisted.url,
+              voice: true,
+            };
+          }
+        } catch (persistError) {
+          console.error(
+            "[iris] falha ao persistir a voz da Cacá no storage",
+            errorMessage(persistError),
+          );
+        }
       } catch (voiceError) {
         // TTS/envio de áudio falhou: cai pra TEXTO pra o cliente nunca ficar sem resposta.
         console.error(
@@ -2144,6 +2178,7 @@ async function maybeSendCacaAutoReply({
       }),
       markCacaOutboundMessageSent({
         client,
+        media: outboundAudioMedia,
         messageId: queuedMessage.id,
         result,
         to: destination,
@@ -2334,28 +2369,38 @@ async function persistCacaOutboundReference({
 
 async function markCacaOutboundMessageSent({
   client,
+  media,
   messageId,
   result,
   to,
 }: {
   client: IrisMetaProcessorClient;
+  // Mídia (áudio da voz da CACÁ) persistida no Storage — vai pro provider_payload.media
+  // pra o cockpit tocar. null quando a resposta foi por texto.
+  media?: Record<string, unknown> | null;
   messageId: string;
   result: MetaWhatsAppSendMessageResult;
   to: string;
 }) {
+  const providerPayload: Record<string, unknown> = {
+    automation: "caca",
+    destination: to,
+    meta: normalizeJsonPayload(result.raw),
+    operatorLabel: CACA_OPERATOR_LABEL,
+    provider: META_PROVIDER,
+    source_module: "iris",
+  };
+
+  if (media) {
+    providerPayload.media = media;
+  }
+
   const { error } = await client
     .from("caredesk_messages")
     .update({
       delivery_status: "sent",
       external_message_id: result.messageId,
-      provider_payload: {
-        automation: "caca",
-        destination: to,
-        meta: normalizeJsonPayload(result.raw),
-        operatorLabel: CACA_OPERATOR_LABEL,
-        provider: META_PROVIDER,
-        source_module: "iris",
-      },
+      provider_payload: providerPayload,
       sent_at: new Date().toISOString(),
     })
     .eq("id", messageId);

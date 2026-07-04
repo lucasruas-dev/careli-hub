@@ -41087,3 +41087,19 @@ Typecheck+13 testes+lint verdes. Aguarda teste do time (roteiro no chat) e OK do
 **Validação contra o C2X real (regra: nenhuma combinação entra sem passar):** script permanente `apps/hub/scripts/validate-panteon-motor.ts` (`npx tsx --tsconfig apps/hub/tsconfig.json ...`) — **29/29 ✅**: movimentação idêntica à referência em 3 períodos; 1788 vendidas por empreendimento (número do painel) batido; ranking imobiliárias idêntico (J&F=136); soma dos grupos == total (mês/semana/empreendimento/estágio); filtro == linha do grupo (Lavra do Ouro, F M S MACIEL); mes_passado == janela custom junho; clientes_faturados=188 e valor_faturado=R$65.407.058,83 este ano vs referência independente.
 
 Typecheck verde. Melhoria INTERNA da CACÁ → não entra no painel de novidades. **SEM deploy** — aguarda OK do Lucas. Próximas etapas do motor: módulos iris/hermes/hades no mesmo catálogo.
+
+---
+
+## 2026-07-04 (tarde) — CACÁ: áudio no cockpit + motor etapa 2 (Iris) + humor do cliente (branch `feat/panteon-super-motor`)
+
+Três frentes pedidas pelo Lucas (print da conversa da Nívea AT-000207). Typecheck verde; melhorias INTERNAS da CACÁ → não entram no painel de novidades.
+
+**1) Áudio da CACÁ tocável no cockpit da Iris.** Diagnóstico confirmado: a mensagem outbound de voz tinha `message_type=audio` mas sem `provider_payload.media.url`, então o front (`<audio src={audioUrl}>`) caía no placeholder "Audio WhatsApp 0:00". Fix em `meta-inbound-processor.ts` (`maybeSendCacaAutoReply`): depois de enviar a voz, sobe o mp3 do TTS pro bucket `iris-media` (`uploadIrisMediaBuffer`, folder `outbound`, nome = id da mensagem) e grava `media:{type:'audio',url,mimeType,voice:true}` no `provider_payload` via `markCacaOutboundMessageSent` (que agora recebe `media` e preserva). Best-effort: falha ao subir não derruba a resposta. Inbound do cliente já tinha URL (o "0:00" é só o label; o player nativo mostra a duração real).
+
+**2) SUPER MOTOR etapa 2 — módulo Iris.** Registry generalizado pra multi-módulo (`CATALOGO[modulo]`, `modulo: 'c2x' | 'iris'`). Novo `lib/analytics/iris-builder.ts` = agregador sobre o Supabase (mesmo padrão validado do `iris-analytics`): métricas de estado (tickets_abertos = não-terminais, aguardando_operador, aguardando_cliente) e de evento (tickets_criados, tickets_finalizados) × agrupar por fila/colaborador/status/dia/semana/mês × filtros fila/colaborador/status (nomes resolvidos a id ANTES da query). Dispatcher `queryPanteon` agora roteia por módulo (c2x=MySQL pool; iris=Supabase client do contexto) e recebe `{ supabase }`. Tool `consultar_panteon` + persona atualizadas.
+
+**Validação Iris:** o `.env.local` local aponta pro Supabase de HOMOLOG (fora do ar — probe deu "fetch failed"/401), então o script PULA a seção Iris localmente (roda ao vivo no runtime de prod). Números validados direto em PROD via MCP, batendo com a construção das queries do motor: tickets_abertos=12 (Atendimento 11 + Cobrança 1, soma=total), aguardando_operador=4, aguardando_cliente=8, tickets_finalizados este_ano=154 em 9 dias. C2X segue **29/29 ✅** no script.
+
+**3) CACÁ lê a conversa e avalia o HUMOR/perfil do cliente.** `loadIrisConversa` enriquecido: quem falou por último, minutos desde a última mensagem, rajada de mensagens do cliente sem resposta, timestamps. `ler_conversa_iris` agora devolve esses sinais + instrução pra CACÁ avaliar o estado emocional (calmo/impaciente/irritado/ansioso/satisfeito/neutro) com evidência do texto, urgência e recomendação de abordagem — só com base no que está escrito. Persona reforçada.
+
+Estado: branch `feat/panteon-super-motor`, **SEM push na main** (aguarda OK do Lucas). Como o webhook da Iris só roda em prod, o teste real (áudio no cockpit, motor Iris, humor) é depois do go-live.

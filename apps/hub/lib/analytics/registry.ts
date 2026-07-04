@@ -6,12 +6,12 @@ import {
 // SUPER MOTOR do Panteon — CATÁLOGO (whitelist) do cubo de análise da CACÁ (modo admin).
 // Modelo: { modulo, metrica, agrupar_por?, filtros{}, periodo? }. O motor monta a consulta
 // SEGURA só a partir do que está declarado aqui — NUNCA SQL livre. As regras de negócio
-// validadas (exclusões, consolidação, imobiliária = vínculo do cliente) vivem nos builders.
-// Staged: começa pelo C2X; Iris/Hermes/Hades entram como novos módulos deste catálogo.
+// validadas vivem nos builders por fonte (c2x = MySQL, iris = Supabase).
 // Ver [[reference-panteon-super-motor]] e docs/operations/caca-super-motor-handoff-startup-2026-07-04.md.
 
-export type PanteonModulo = "c2x";
+export type PanteonModulo = "c2x" | "iris";
 
+// ---- C2X (vendas/movimentação) ----
 export type C2xMetrica =
   | "propostas"
   | "vendas"
@@ -37,12 +37,31 @@ export type C2xAgruparPor =
 
 export type C2xFiltroKey = "empreendimento" | "imobiliaria" | "cliente";
 
-export type PanteonFiltros = Partial<Record<C2xFiltroKey, string>>;
+// ---- Iris (atendimento/caredesk) ----
+export type IrisMetrica =
+  | "tickets_abertos"
+  | "aguardando_operador"
+  | "aguardando_cliente"
+  | "tickets_criados"
+  | "tickets_finalizados";
+
+export type IrisAgruparPor =
+  | "fila"
+  | "colaborador"
+  | "status"
+  | "dia"
+  | "semana"
+  | "mes";
+
+export type IrisFiltroKey = "fila" | "colaborador" | "status";
+
+// Genéricos (o dispatcher casta pro tipo forte de cada builder na fronteira).
+export type PanteonFiltros = Record<string, string>;
 
 export type PanteonQueryInput = {
   modulo: PanteonModulo;
-  metrica: C2xMetrica;
-  agrupar_por?: C2xAgruparPor | null;
+  metrica: string;
+  agrupar_por?: string | null;
   filtros?: PanteonFiltros | null;
   periodo?: C2xPeriodo | null;
   // Janela custom (sobrepõe `periodo`): dias no fuso de São Paulo, fim INCLUSIVO.
@@ -50,17 +69,16 @@ export type PanteonQueryInput = {
   data_fim?: string | null; // YYYY-MM-DD
 };
 
-export type C2xMetricaSpec = {
+export type MetricaSpec = {
   titulo: string;
-  // evento = transições de estágio no período (acquisition_request_historics);
-  // estado = fotografia atual (período não se aplica).
+  // evento = acontecimentos no período; estado = fotografia atual (período não se aplica).
   kind: "evento" | "estado";
   formato: "int" | "brl";
-  agrupaveis: readonly C2xAgruparPor[];
-  filtraveis: readonly C2xFiltroKey[];
+  agrupaveis: readonly string[];
+  filtraveis: readonly string[];
 };
 
-const DIMENSOES_EVENTO: readonly C2xAgruparPor[] = [
+const C2X_DIMS_EVENTO: readonly C2xAgruparPor[] = [
   "empreendimento",
   "imobiliaria",
   "cliente",
@@ -69,44 +87,44 @@ const DIMENSOES_EVENTO: readonly C2xAgruparPor[] = [
   "mes",
 ];
 
-const FILTROS_PADRAO: readonly C2xFiltroKey[] = [
+const C2X_FILTROS: readonly C2xFiltroKey[] = [
   "empreendimento",
   "imobiliaria",
   "cliente",
 ];
 
-export const C2X_METRICAS: Record<C2xMetrica, C2xMetricaSpec> = {
+export const C2X_METRICAS: Record<C2xMetrica, MetricaSpec> = {
   cancelamentos: {
-    agrupaveis: [...DIMENSOES_EVENTO, "estagio"],
-    filtraveis: FILTROS_PADRAO,
+    agrupaveis: [...C2X_DIMS_EVENTO, "estagio"],
+    filtraveis: C2X_FILTROS,
     formato: "int",
     kind: "evento",
     titulo: "Cancelamentos (cancelado + em distrato + distratado)",
   },
   clientes_faturados: {
     agrupaveis: ["empreendimento", "imobiliaria", "dia", "semana", "mes"],
-    filtraveis: FILTROS_PADRAO,
+    filtraveis: C2X_FILTROS,
     formato: "int",
     kind: "evento",
     titulo: "Clientes distintos com venda faturada",
   },
   faturamentos: {
-    agrupaveis: DIMENSOES_EVENTO,
-    filtraveis: FILTROS_PADRAO,
+    agrupaveis: C2X_DIMS_EVENTO,
+    filtraveis: C2X_FILTROS,
     formato: "int",
     kind: "evento",
     titulo: "Vendas fechadas (faturado)",
   },
   propostas: {
-    agrupaveis: DIMENSOES_EVENTO,
-    filtraveis: FILTROS_PADRAO,
+    agrupaveis: C2X_DIMS_EVENTO,
+    filtraveis: C2X_FILTROS,
     formato: "int",
     kind: "evento",
     titulo: "Propostas geradas",
   },
   reservas: {
-    agrupaveis: DIMENSOES_EVENTO,
-    filtraveis: FILTROS_PADRAO,
+    agrupaveis: C2X_DIMS_EVENTO,
+    filtraveis: C2X_FILTROS,
     formato: "int",
     kind: "evento",
     titulo: "Reservas feitas",
@@ -120,7 +138,7 @@ export const C2X_METRICAS: Record<C2xMetrica, C2xMetricaSpec> = {
   },
   unidades_faturadas: {
     agrupaveis: ["empreendimento", "imobiliaria", "cliente"],
-    filtraveis: FILTROS_PADRAO,
+    filtraveis: C2X_FILTROS,
     formato: "int",
     kind: "estado",
     titulo: "Unidades com venda faturada (estado atual)",
@@ -147,19 +165,77 @@ export const C2X_METRICAS: Record<C2xMetrica, C2xMetricaSpec> = {
     titulo: "Valor da carteira vendida (estado atual)",
   },
   valor_faturado: {
-    agrupaveis: DIMENSOES_EVENTO,
-    filtraveis: FILTROS_PADRAO,
+    agrupaveis: C2X_DIMS_EVENTO,
+    filtraveis: C2X_FILTROS,
     formato: "brl",
     kind: "evento",
     titulo: "Valor faturado (soma dos lotes)",
   },
   vendas: {
-    agrupaveis: [...DIMENSOES_EVENTO, "estagio"],
-    filtraveis: FILTROS_PADRAO,
+    agrupaveis: [...C2X_DIMS_EVENTO, "estagio"],
+    filtraveis: C2X_FILTROS,
     formato: "int",
     kind: "evento",
     titulo: "Vendas (contrato gerado + em assinatura + faturado)",
   },
+};
+
+const IRIS_DIMS_ESTADO: readonly IrisAgruparPor[] = [
+  "fila",
+  "colaborador",
+  "status",
+];
+const IRIS_DIMS_EVENTO: readonly IrisAgruparPor[] = [
+  "fila",
+  "colaborador",
+  "status",
+  "dia",
+  "semana",
+  "mes",
+];
+const IRIS_FILTROS: readonly IrisFiltroKey[] = ["fila", "colaborador", "status"];
+
+export const IRIS_METRICAS: Record<IrisMetrica, MetricaSpec> = {
+  aguardando_cliente: {
+    agrupaveis: IRIS_DIMS_ESTADO,
+    filtraveis: IRIS_FILTROS,
+    formato: "int",
+    kind: "estado",
+    titulo: "Atendimentos aguardando o cliente (agora)",
+  },
+  aguardando_operador: {
+    agrupaveis: IRIS_DIMS_ESTADO,
+    filtraveis: IRIS_FILTROS,
+    formato: "int",
+    kind: "estado",
+    titulo: "Atendimentos aguardando a nossa resposta (agora)",
+  },
+  tickets_abertos: {
+    agrupaveis: IRIS_DIMS_ESTADO,
+    filtraveis: IRIS_FILTROS,
+    formato: "int",
+    kind: "estado",
+    titulo: "Atendimentos em aberto (não finalizados, agora)",
+  },
+  tickets_criados: {
+    agrupaveis: IRIS_DIMS_EVENTO,
+    filtraveis: IRIS_FILTROS,
+    formato: "int",
+    kind: "evento",
+    titulo: "Atendimentos criados no período",
+  },
+  tickets_finalizados: {
+    agrupaveis: IRIS_DIMS_EVENTO,
+    filtraveis: IRIS_FILTROS,
+    formato: "int",
+    kind: "evento",
+    titulo: "Atendimentos finalizados no período",
+  },
+};
+
+export const CATALOGO: Record<PanteonModulo, Record<string, MetricaSpec>> = {
+  c2x: C2X_METRICAS,
+  iris: IRIS_METRICAS,
 };
 
 export const PANTEON_PERIODOS: readonly C2xPeriodo[] = [
@@ -177,10 +253,11 @@ export const PANTEON_PERIODOS: readonly C2xPeriodo[] = [
 export type PanteonRange = { from: Date; label: string; to: Date };
 
 export type PanteonInputNormalizado = {
-  metrica: C2xMetrica;
-  spec: C2xMetricaSpec;
-  agruparPor: C2xAgruparPor | null;
-  filtros: PanteonFiltros;
+  modulo: PanteonModulo;
+  metrica: string;
+  spec: MetricaSpec;
+  agruparPor: string | null;
+  filtros: Record<string, string>;
   // null = métrica de estado (período não se aplica)
   range: PanteonRange | null;
   observacoes: string[];
@@ -210,29 +287,32 @@ export function validatePanteonInput(raw: {
   data_inicio?: unknown;
   data_fim?: unknown;
 }): PanteonValidation {
-  if (raw.modulo !== "c2x") {
+  const modulo = String(raw.modulo ?? "") as PanteonModulo;
+  const catalogo = CATALOGO[modulo];
+
+  if (!catalogo) {
     return {
-      erro: `Módulo inválido: ${String(raw.modulo)}. Disponível por enquanto: c2x.`,
+      erro: `Módulo inválido: ${String(raw.modulo)}. Disponíveis: ${Object.keys(CATALOGO).join(", ")}.`,
       ok: false,
     };
   }
 
-  const metrica = String(raw.metrica ?? "") as C2xMetrica;
-  const spec = C2X_METRICAS[metrica];
+  const metrica = String(raw.metrica ?? "");
+  const spec = catalogo[metrica];
 
   if (!spec) {
     return {
-      erro: `Métrica inválida: ${String(raw.metrica)}. Disponíveis: ${Object.keys(C2X_METRICAS).join(", ")}.`,
+      erro: `Métrica inválida pro módulo ${modulo}: ${String(raw.metrica)}. Disponíveis: ${Object.keys(catalogo).join(", ")}.`,
       ok: false,
     };
   }
 
   const observacoes: string[] = [];
 
-  let agruparPor: C2xAgruparPor | null = null;
+  let agruparPor: string | null = null;
 
   if (raw.agrupar_por != null && raw.agrupar_por !== "") {
-    const candidate = String(raw.agrupar_por) as C2xAgruparPor;
+    const candidate = String(raw.agrupar_por);
 
     if (!spec.agrupaveis.includes(candidate)) {
       return {
@@ -244,7 +324,7 @@ export function validatePanteonInput(raw: {
     agruparPor = candidate;
   }
 
-  const filtros: PanteonFiltros = {};
+  const filtros: Record<string, string> = {};
 
   if (raw.filtros && typeof raw.filtros === "object") {
     for (const [key, value] of Object.entries(
@@ -256,14 +336,14 @@ export function validatePanteonInput(raw: {
         continue;
       }
 
-      if (!spec.filtraveis.includes(key as C2xFiltroKey)) {
+      if (!spec.filtraveis.includes(key)) {
         return {
           erro: `A métrica ${metrica} não aceita o filtro ${key}. Filtros válidos: ${spec.filtraveis.join(", ") || "nenhum"}.`,
           ok: false,
         };
       }
 
-      filtros[key as C2xFiltroKey] = term;
+      filtros[key] = term;
     }
   }
 
@@ -328,7 +408,7 @@ export function validatePanteonInput(raw: {
   }
 
   return {
-    input: { agruparPor, filtros, metrica, observacoes, range, spec },
+    input: { agruparPor, filtros, metrica, modulo, observacoes, range, spec },
     ok: true,
   };
 }
