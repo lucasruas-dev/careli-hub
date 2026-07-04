@@ -45,6 +45,55 @@ export function isCacaVoiceReplyEnabled(): boolean {
   );
 }
 
+// Reduz um telefone à chave nacional canônica (tira 55 e o 9º dígito de celular), pra casar
+// variantes (com/sem 55, com/sem 9). Ex.: 5531983013616 -> 3183013616.
+function canonicalPhoneKey(value: string | null | undefined): string {
+  let digits = String(value ?? "").replace(/\D/g, "");
+
+  if (digits.startsWith("55") && digits.length >= 12) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.length === 11 && digits[2] === "9") {
+    digits = digits.slice(0, 2) + digits.slice(3);
+  }
+
+  return digits;
+}
+
+function parseAdminPhoneKeys(env: string | undefined): Set<string> {
+  return new Set(
+    String(env ?? "")
+      .split(",")
+      .map((phone) => canonicalPhoneKey(phone))
+      .filter(Boolean),
+  );
+}
+
+// Modo ASSISTENTE: quem fala é um número admin VERIFICADO (allowlist CACA_ADMIN_PHONES; Nívea
+// em CACA_NIVEA_PHONES ganha tratamento de dona). Gate por número (nunca por alegação), pra
+// ninguém no WhatsApp impersonar. Ver [[project-caca-admin-assistant-mode]].
+function resolveCacaAdmin(contact: CacaAgentContact): {
+  isAdmin: boolean;
+  isOwner: boolean;
+} {
+  const admins = parseAdminPhoneKeys(process.env.CACA_ADMIN_PHONES);
+  const owners = parseAdminPhoneKeys(process.env.CACA_NIVEA_PHONES);
+
+  if (admins.size === 0 && owners.size === 0) {
+    return { isAdmin: false, isOwner: false };
+  }
+
+  const keys = [contact.whatsapp_phone, contact.phone]
+    .map((phone) => canonicalPhoneKey(phone))
+    .filter(Boolean);
+
+  const isOwner = keys.some((key) => owners.has(key));
+  const isAdmin = isOwner || keys.some((key) => admins.has(key));
+
+  return { isAdmin, isOwner };
+}
+
 export async function runCacaClaudeTurn({
   client,
   contact,
@@ -139,6 +188,7 @@ export async function runCacaClaudeTurn({
     validationSource,
   };
 
+  const admin = resolveCacaAdmin(contact);
   const clientNotes = readClientNotes(contact);
   const system = buildCacaSystemPrompt({
     businessHoursOpen: businessHours.open,
@@ -150,6 +200,8 @@ export async function runCacaClaudeTurn({
     imobiliariaName: toolContext.imobiliariaName,
     nextContactLabel: businessHours.nextContactLabel,
     voiceMode,
+    assistantMode: admin.isAdmin,
+    assistantIsOwner: admin.isOwner,
   });
   const messages = await buildConversation(client, ticket.id, messageDetail);
   const model = resolveClaudeModel("heavy");

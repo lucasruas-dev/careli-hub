@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-04-caca-assistente-interno",
+    deployedAt: "2026-07-04T02:10:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A CACÁ passou a contar com um modo de apoio interno para a direção da Careli (uma assistente/analista pessoal, com atendimento verificado por número). Não muda nada no atendimento aos clientes.",
+            ],
+            screen: "CACÁ",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 5db8a069",
+    technical: {
+      done: "Modo assistente/analista interno da CACÁ, gated por número verificado (env CACA_ADMIN_PHONES; Nívea/dona em CACA_NIVEA_PHONES). resolveCacaAdmin(contact) canonicaliza o telefone (tira 55 e 9º dígito) e casa contra a allowlist -> flags assistantMode/assistantIsOwner no runCacaClaudeTurn -> blocos novos na persona (caca/persona.ts): modo interno (pula validação de identidade, age como analista, não inventa dado, mantém trava de Asaas pago, 'atender normal' a pedido) + tratamento especial da Nívea ('Estimada', sol de manhã/lua à noite, vocabulário rico e elegante, PT-PT/vinho). Blocos condicionais: cliente normal não é afetado. FASE 1 (persona+gate); tools de analista (Iris/Hermes agregados) = fase 2. Ver [[project-caca-admin-assistant-mode]].",
+      motivation:
+        "Lucas pediu uma super-assistente pessoal de inteligência pra ele e pra Nívea (dona), com tratamento especial pra ela; segurança por número verificado, nunca por alegação.",
+    },
+    title: "CACÁ: modo assistente interno (direção)",
+    type: "melhoria",
+    version: "v1.23.5",
+  },
+  {
     buildTag: "2026-07-04-caca-voz",
     deployedAt: "2026-07-04T00:20:00-03:00",
     modules: [
