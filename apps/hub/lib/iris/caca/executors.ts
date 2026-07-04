@@ -12,8 +12,10 @@ import {
 import {
   type C2xMovimentacaoTipo,
   type C2xPeriodo,
+  loadC2xClienteResumo,
   loadC2xMovimentacaoDetalhe,
   loadC2xMovimentacaoResumo,
+  loadC2xUnidade,
   loadC2xVendasPorEmpreendimento,
 } from "@/lib/guardian/c2x-analytics";
 import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
@@ -155,10 +157,76 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
         definition: requireDefinition("consultar_saude_sistema"),
         run: async () => consultarSaudeSistema(),
       },
+      {
+        definition: requireDefinition("consultar_unidade_c2x"),
+        run: async (input) => consultarUnidadeC2x(input),
+      },
+      {
+        definition: requireDefinition("consultar_cliente_c2x"),
+        run: async (input) => consultarClienteC2x(input),
+      },
     );
   }
 
   return tools;
+}
+
+async function consultarUnidadeC2x(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+
+  const unidades = await loadC2xUnidade({
+    empreendimento: typeof record.empreendimento === "string" ? record.empreendimento : null,
+    lote: typeof record.lote === "string" ? record.lote : null,
+    quadra: typeof record.quadra === "string" ? record.quadra : null,
+  });
+
+  if (unidades.length === 0) {
+    return "Não encontrei essa unidade no C2X (confira o empreendimento, a quadra e o lote).";
+  }
+
+  return unidades
+    .map((u) => {
+      const partes = [
+        `${u.empreendimento} ${u.quadraLote}`,
+        `status: ${u.statusVenda}`,
+        u.area != null ? `${u.area} m²` : null,
+        `valor ${formatBrl(u.valor)}`,
+        u.comprador ? `comprador ${u.comprador}` : "sem comprador",
+        u.estagioAtual ? `(${u.estagioAtual})` : null,
+        u.corretor ? `corretor ${u.corretor}` : null,
+      ].filter(Boolean);
+
+      return partes.join(" · ");
+    })
+    .join("\n");
+}
+
+async function consultarClienteC2x(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const termo = typeof record.cliente === "string" ? record.cliente : "";
+
+  const resumo = await loadC2xClienteResumo(termo);
+
+  if (!resumo) {
+    return "Não encontrei esse cliente no C2X (confira o nome ou o CPF/CNPJ).";
+  }
+
+  const linhas = [`Cliente: ${resumo.nome}${resumo.documento ? ` (${resumo.documento})` : ""}`];
+
+  if (resumo.unidades.length === 0) {
+    linhas.push("Sem unidades vivas no C2X.");
+  } else {
+    linhas.push(`Unidades (${resumo.unidades.length}):`);
+    for (const u of resumo.unidades) {
+      linhas.push(
+        `- ${u.empreendimento} ${u.quadraLote} · ${u.estagio ?? "-"} · ${formatBrl(u.valor)}`,
+      );
+    }
+  }
+
+  return linhas.join("\n");
 }
 
 async function consultarAtendimentosIris(

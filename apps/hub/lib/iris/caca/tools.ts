@@ -224,4 +224,36 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
       properties: {},
     },
   },
+  {
+    name: "consultar_unidade_c2x",
+    description:
+      "SÓ no modo assistente/gestão (direção). Consulta PONTUAL de uma unidade/lote específico: informe o empreendimento e a quadra e o lote. Retorna o status de venda (disponível, reservado, em negociação, vendido), a metragem, o valor e — se houver — o comprador atual e em que estágio está (faturado, em assinatura, etc.). Use quando a direção perguntar sobre um lote específico (ex.: 'como está a quadra 3 lote 14 do Veredas do Ouro').",
+    input_schema: {
+      type: "object",
+      properties: {
+        empreendimento: {
+          type: "string",
+          description: "Nome ou sigla do empreendimento (ex.: 'Veredas do Ouro').",
+        },
+        quadra: { type: "string", description: "Quadra/bloco (ex.: '3' ou 'C3')." },
+        lote: { type: "string", description: "Lote (ex.: '14')." },
+      },
+      required: ["empreendimento", "lote"],
+    },
+  },
+  {
+    name: "consultar_cliente_c2x",
+    description:
+      "SÓ no modo assistente/gestão (direção). Consulta PONTUAL de um cliente por NOME ou CPF/CNPJ, sem restrição de vínculo. Retorna o nome, o documento e as UNIDADES vivas dele (empreendimento, quadra/lote, estágio e valor). Use quando a direção perguntar sobre um cliente específico ('o que o fulano tem', 'quantos lotes o cliente X comprou').",
+    input_schema: {
+      type: "object",
+      properties: {
+        cliente: {
+          type: "string",
+          description: "Nome completo OU CPF/CNPJ (só números) do cliente.",
+        },
+      },
+      required: ["cliente"],
+    },
+  },
 ];

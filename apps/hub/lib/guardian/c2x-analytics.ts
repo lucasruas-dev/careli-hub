@@ -311,6 +311,214 @@ export async function loadC2xMovimentacaoDetalhe(
   }
 }
 
+export type C2xUnidadeDetalhe = {
+  empreendimento: string;
+  quadraLote: string;
+  area: number | null;
+  valor: number | null;
+  statusVenda: string; // sale_status da unidade (Disponível/Reservado/Em negociação/Vendido/Bloqueado)
+  estagioAtual: string | null; // estágio da aquisição viva (Faturado/Em assinatura/...)
+  comprador: string | null;
+  corretor: string | null;
+};
+
+// Consulta PONTUAL de unidade(s) por empreendimento + quadra + lote. Traz status de venda,
+// área, valor e o comprador/estágio da aquisição viva (ignora canceladas/distratos). quadra/
+// lote aceitam com ou sem zero à esquerda e prefixo C. Ver [[reference-c2x-vendas-model]].
+export async function loadC2xUnidade(filters: {
+  empreendimento?: string | null;
+  quadra?: string | null;
+  lote?: string | null;
+}): Promise<C2xUnidadeDetalhe[]> {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return [];
+  }
+
+  const emp = String(filters.empreendimento ?? "").trim();
+  const quadra = String(filters.quadra ?? "").trim();
+  const lote = String(filters.lote ?? "").trim();
+
+  if (!emp || !lote) {
+    return [];
+  }
+
+  const where: string[] = [
+    `e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})`,
+    "(upper(e.code) = upper(?) or e.name like ? or e.divulgation_name like ?)",
+    "(eu.lot = ? or eu.lot = lpad(?, 2, '0'))",
+  ];
+  const params: unknown[] = [
+    ...EXCLUDED_ENTERPRISE_CODES,
+    emp,
+    `%${emp}%`,
+    `%${emp}%`,
+    lote,
+    lote,
+  ];
+
+  if (quadra) {
+    where.push(
+      "(eu.block = ? or eu.block = lpad(?, 2, '0') or upper(eu.block) = concat('C', lpad(?, 2, '0')) or upper(eu.block) = concat('C', upper(?)))",
+    );
+    params.push(quadra, quadra, quadra, quadra);
+  }
+
+  try {
+    const [rows] = await poolResult.pool.query<
+      (RowDataPacket & {
+        emp_code: string | null;
+        emp_name: string | null;
+        block: string | null;
+        lot: string | null;
+        area: number | string | null;
+        price: number | string | null;
+        sale_status: string | null;
+        estagio: string | null;
+        comprador: string | null;
+        corretor: string | null;
+      })[]
+    >(
+      `
+      select e.code as emp_code, e.name as emp_name, eu.block, eu.lot, eu.area, eu.price,
+             ss.name as sale_status, s.name as estagio, cli.name as comprador, cor.name as corretor
+      from enterprise_unities eu
+      join enterprises e on e.id = eu.enterprise_id
+      left join sale_statuses ss on ss.id = eu.sale_status_id
+      left join acquisition_requests ar on ar.id = (
+        select ar2.id from acquisition_requests ar2
+        where ar2.enterprise_unity_id = eu.id
+          and ar2.acquisition_request_stage_id not in (7, 8, 10, 11)
+        order by field(ar2.acquisition_request_stage_id, 4, 6, 5, 3, 9, 2, 1) desc, ar2.id desc
+        limit 1
+      )
+      left join acquisition_request_stages s on s.id = ar.acquisition_request_stage_id
+      left join users cli on cli.id = ar.client_id
+      left join users cor on cor.id = ar.corretor_id
+      where ${where.join(" and ")}
+      order by eu.block, eu.lot
+      limit 20
+      `,
+      params,
+    );
+
+    return rows.map((row) => ({
+      area: row.area == null ? null : Number(row.area),
+      comprador: row.comprador,
+      corretor: row.corretor,
+      empreendimento: displayEnterprise(row.emp_code, row.emp_name),
+      estagioAtual: row.estagio,
+      quadraLote: `Q${row.block ?? "?"} L${row.lot ?? "?"}`,
+      statusVenda: row.sale_status ?? "-",
+      valor: row.price == null ? null : Number(row.price),
+    }));
+  } catch (error) {
+    console.error("[guardian] loadC2xUnidade failed", sanitizeHadesDbError(error));
+
+    return [];
+  }
+}
+
+export type C2xClienteUnidade = {
+  empreendimento: string;
+  quadraLote: string;
+  estagio: string | null;
+  valor: number | null;
+};
+
+export type C2xClienteResumo = {
+  nome: string;
+  documento: string | null;
+  unidades: C2xClienteUnidade[];
+};
+
+// Consulta PONTUAL de um cliente por nome ou CPF/CNPJ (modo admin, sem restrição de vínculo).
+// Traz as unidades vivas dele (comprador principal) com empreendimento/quadra/lote/estágio/valor.
+export async function loadC2xClienteResumo(
+  termo: string,
+): Promise<C2xClienteResumo | null> {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return null;
+  }
+
+  const clean = String(termo ?? "").trim();
+  const digits = clean.replace(/\D/g, "");
+
+  if (!clean) {
+    return null;
+  }
+
+  try {
+    const [clientes] = await poolResult.pool.query<
+      (RowDataPacket & {
+        id: number;
+        name: string | null;
+        cpf: string | null;
+        cnpj: string | null;
+      })[]
+    >(
+      digits.length >= 11
+        ? `select id, name, cpf, cnpj from users
+             where replace(replace(replace(replace(coalesce(cpf,cnpj,''),'.',''),'-',''),'/',''),' ','') = ?
+             limit 1`
+        : `select id, name, cpf, cnpj from users where profile_id = 2 and name like ? order by name limit 1`,
+      digits.length >= 11 ? [digits] : [`%${clean}%`],
+    );
+
+    const cliente = clientes[0];
+    if (!cliente) {
+      return null;
+    }
+
+    const [unidades] = await poolResult.pool.query<
+      (RowDataPacket & {
+        emp_code: string | null;
+        emp_name: string | null;
+        block: string | null;
+        lot: string | null;
+        price: number | string | null;
+        estagio: string | null;
+      })[]
+    >(
+      `
+      select distinct e.code as emp_code, e.name as emp_name, eu.block, eu.lot, eu.price,
+             s.name as estagio
+      from acquisition_requests ar
+      join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+      join enterprises e on e.id = eu.enterprise_id
+      left join acquisition_request_stages s on s.id = ar.acquisition_request_stage_id
+      where ar.client_id = ?
+        and ar.acquisition_request_stage_id not in (7, 8, 10, 11)
+        and e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})
+      order by e.name, eu.block, eu.lot
+      limit 50
+      `,
+      [cliente.id, ...EXCLUDED_ENTERPRISE_CODES],
+    );
+
+    return {
+      documento: cliente.cpf ?? cliente.cnpj ?? null,
+      nome: cliente.name ?? "-",
+      unidades: unidades.map((row) => ({
+        empreendimento: displayEnterprise(row.emp_code, row.emp_name),
+        estagio: row.estagio,
+        quadraLote: `Q${row.block ?? "?"} L${row.lot ?? "?"}`,
+        valor: row.price == null ? null : Number(row.price),
+      })),
+    };
+  } catch (error) {
+    console.error(
+      "[guardian] loadC2xClienteResumo failed",
+      sanitizeHadesDbError(error),
+    );
+
+    return null;
+  }
+}
+
 export type C2xVendasEmpreendimento = {
   empreendimento: string;
   total: number;
