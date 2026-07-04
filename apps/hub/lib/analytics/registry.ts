@@ -11,7 +11,7 @@ import {
 
 export type PanteonModulo = "c2x" | "iris";
 
-// ---- C2X (vendas/movimentação) ----
+// ---- C2X (vendas/movimentação/inadimplência) ----
 export type C2xMetrica =
   | "propostas"
   | "vendas"
@@ -24,18 +24,33 @@ export type C2xMetrica =
   | "unidades_disponiveis"
   | "unidades_total"
   | "unidades_faturadas"
-  | "valor_carteira_vendida";
+  | "valor_carteira_vendida"
+  | "inadimplentes"
+  | "valor_vencido"
+  | "parcelas_vencidas";
 
 export type C2xAgruparPor =
   | "empreendimento"
   | "imobiliaria"
   | "cliente"
   | "estagio"
+  | "faixa_etaria"
+  | "sexo"
+  | "estado_civil"
+  | "faixa_renda"
+  | "escolaridade"
   | "dia"
   | "semana"
   | "mes";
 
-export type C2xFiltroKey = "empreendimento" | "imobiliaria" | "cliente";
+export type C2xFiltroKey =
+  | "empreendimento"
+  | "imobiliaria"
+  | "cliente"
+  | "sexo"
+  | "estado_civil"
+  | "faixa_renda"
+  | "escolaridade";
 
 // ---- Iris (atendimento/caredesk) ----
 export type IrisMetrica =
@@ -78,10 +93,26 @@ export type MetricaSpec = {
   filtraveis: readonly string[];
 };
 
+// Dimensões de PERFIL do comprador/inadimplente (tabela users + lookups). Fill rate validado.
+const DEMOG_DIMS: readonly C2xAgruparPor[] = [
+  "faixa_etaria",
+  "sexo",
+  "estado_civil",
+  "faixa_renda",
+  "escolaridade",
+];
+const DEMOG_FILTROS: readonly C2xFiltroKey[] = [
+  "sexo",
+  "estado_civil",
+  "faixa_renda",
+  "escolaridade",
+];
+
 const C2X_DIMS_EVENTO: readonly C2xAgruparPor[] = [
   "empreendimento",
   "imobiliaria",
   "cliente",
+  ...DEMOG_DIMS,
   "dia",
   "semana",
   "mes",
@@ -91,6 +122,7 @@ const C2X_FILTROS: readonly C2xFiltroKey[] = [
   "empreendimento",
   "imobiliaria",
   "cliente",
+  ...DEMOG_FILTROS,
 ];
 
 export const C2X_METRICAS: Record<C2xMetrica, MetricaSpec> = {
@@ -102,7 +134,14 @@ export const C2X_METRICAS: Record<C2xMetrica, MetricaSpec> = {
     titulo: "Cancelamentos (cancelado + em distrato + distratado)",
   },
   clientes_faturados: {
-    agrupaveis: ["empreendimento", "imobiliaria", "dia", "semana", "mes"],
+    agrupaveis: [
+      "empreendimento",
+      "imobiliaria",
+      ...DEMOG_DIMS,
+      "dia",
+      "semana",
+      "mes",
+    ],
     filtraveis: C2X_FILTROS,
     formato: "int",
     kind: "evento",
@@ -114,6 +153,20 @@ export const C2X_METRICAS: Record<C2xMetrica, MetricaSpec> = {
     formato: "int",
     kind: "evento",
     titulo: "Vendas fechadas (faturado)",
+  },
+  inadimplentes: {
+    agrupaveis: ["empreendimento", "imobiliaria", ...DEMOG_DIMS],
+    filtraveis: C2X_FILTROS,
+    formato: "int",
+    kind: "estado",
+    titulo: "Clientes inadimplentes (com parcela vencida agora)",
+  },
+  parcelas_vencidas: {
+    agrupaveis: ["empreendimento", "imobiliaria", ...DEMOG_DIMS],
+    filtraveis: C2X_FILTROS,
+    formato: "int",
+    kind: "estado",
+    titulo: "Parcelas vencidas (em aberto agora)",
   },
   propostas: {
     agrupaveis: C2X_DIMS_EVENTO,
@@ -137,7 +190,7 @@ export const C2X_METRICAS: Record<C2xMetrica, MetricaSpec> = {
     titulo: "Unidades disponíveis (estado atual)",
   },
   unidades_faturadas: {
-    agrupaveis: ["empreendimento", "imobiliaria", "cliente"],
+    agrupaveis: ["empreendimento", "imobiliaria", "cliente", ...DEMOG_DIMS],
     filtraveis: C2X_FILTROS,
     formato: "int",
     kind: "estado",
@@ -170,6 +223,13 @@ export const C2X_METRICAS: Record<C2xMetrica, MetricaSpec> = {
     formato: "brl",
     kind: "evento",
     titulo: "Valor faturado (soma dos lotes)",
+  },
+  valor_vencido: {
+    agrupaveis: ["empreendimento", "imobiliaria", ...DEMOG_DIMS],
+    filtraveis: C2X_FILTROS,
+    formato: "brl",
+    kind: "estado",
+    titulo: "Valor vencido em aberto (inadimplência)",
   },
   vendas: {
     agrupaveis: [...C2X_DIMS_EVENTO, "estagio"],

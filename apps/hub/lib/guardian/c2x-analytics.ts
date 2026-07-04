@@ -526,14 +526,32 @@ export type C2xClienteUnidade = {
   valor: number | null;
 };
 
+export type C2xClientePerfil = {
+  idade: number | null;
+  sexo: string | null;
+  estadoCivil: string | null;
+  escolaridade: string | null;
+  renda: string | null;
+  profissao: string | null;
+  cidadeUf: string | null;
+  email: string | null;
+  telefone: string | null;
+};
+
 export type C2xClienteResumo = {
   nome: string;
   documento: string | null;
+  // Imobiliária vinculada ao cliente/prospect (users.vinculed_by_id). TODO cliente/prospect
+  // tem imobiliária cadastrada — NÃO depende de ter venda/unidade. (Decisão do Lucas 4/jul.)
+  imobiliaria: string | null;
+  perfil: C2xClientePerfil;
   unidades: C2xClienteUnidade[];
 };
 
-// Consulta PONTUAL de um cliente por nome ou CPF/CNPJ (modo admin, sem restrição de vínculo).
-// Traz as unidades vivas dele (comprador principal) com empreendimento/quadra/lote/estágio/valor.
+// Consulta PONTUAL de um cliente/prospect por nome ou CPF/CNPJ (modo admin, sem restrição de
+// vínculo). Traz o CADASTRO completo da tabela users (idade, sexo, estado civil, escolaridade,
+// renda, profissão, cidade, contato), a IMOBILIÁRIA vinculada (independe de venda) e as
+// unidades vivas dele, se houver. Ver [[reference-c2x-vendas-model]].
 export async function loadC2xClienteResumo(
   termo: string,
 ): Promise<C2xClienteResumo | null> {
@@ -550,6 +568,30 @@ export async function loadC2xClienteResumo(
     return null;
   }
 
+  const cadastroSelect = `
+    select u.id, u.name, u.cpf, u.cnpj, u.email, u.cellphone, u.phone,
+           timestampdiff(year, u.birthday, curdate()) as idade,
+           sx.name as sexo, cv.name as estado_civil, sal.name as renda,
+           sch.name as escolaridade, prof.name as profissao,
+           coalesce(nullif(trim(imob.fantasy_name), ''), nullif(trim(imob.social_name), ''),
+                    nullif(trim(imob.name), '')) as imobiliaria,
+           city.name as cidade, st.acronym as uf
+    from users u
+    left join users imob on imob.id = u.vinculed_by_id
+    left join sexes sx on sx.id = u.sex_id
+    left join civil_states cv on cv.id = u.civil_state_id
+    left join salary_ranges sal on sal.id = u.salary_range_id
+    left join schoolings sch on sch.id = u.schooling_id
+    left join professions prof on prof.id = u.profession_id
+    left join addresses addr on addr.id = (
+      select a.id from addresses a
+      where a.ownertable_type = 'User' and a.ownertable_id = u.id
+      order by a.updated_at desc, a.id desc limit 1
+    )
+    left join cities city on city.id = addr.city_id
+    left join states st on st.id = coalesce(addr.state_id, city.state_id)
+  `;
+
   try {
     const [clientes] = await poolResult.pool.query<
       (RowDataPacket & {
@@ -557,13 +599,25 @@ export async function loadC2xClienteResumo(
         name: string | null;
         cpf: string | null;
         cnpj: string | null;
+        email: string | null;
+        cellphone: string | null;
+        phone: string | null;
+        idade: number | string | null;
+        sexo: string | null;
+        estado_civil: string | null;
+        renda: string | null;
+        escolaridade: string | null;
+        profissao: string | null;
+        imobiliaria: string | null;
+        cidade: string | null;
+        uf: string | null;
       })[]
     >(
       digits.length >= 11
-        ? `select id, name, cpf, cnpj from users
-             where replace(replace(replace(replace(coalesce(cpf,cnpj,''),'.',''),'-',''),'/',''),' ','') = ?
+        ? `${cadastroSelect}
+             where replace(replace(replace(replace(coalesce(u.cpf, u.cnpj, ''), '.', ''), '-', ''), '/', ''), ' ', '') = ?
              limit 1`
-        : `select id, name, cpf, cnpj from users where profile_id = 2 and name like ? order by name limit 1`,
+        : `${cadastroSelect} where u.profile_id = 2 and u.name like ? order by u.name limit 1`,
       digits.length >= 11 ? [digits] : [`%${clean}%`],
     );
 
@@ -598,9 +652,23 @@ export async function loadC2xClienteResumo(
       [cliente.id, ...EXCLUDED_ENTERPRISE_CODES],
     );
 
+    const cidadeUf = [cliente.cidade, cliente.uf].filter(Boolean).join("/") || null;
+
     return {
       documento: cliente.cpf ?? cliente.cnpj ?? null,
+      imobiliaria: cliente.imobiliaria ?? null,
       nome: cliente.name ?? "-",
+      perfil: {
+        cidadeUf,
+        email: cliente.email?.trim() || null,
+        escolaridade: cliente.escolaridade ?? null,
+        estadoCivil: cliente.estado_civil ?? null,
+        idade: cliente.idade == null ? null : Number(cliente.idade),
+        profissao: cliente.profissao ?? null,
+        renda: cliente.renda ?? null,
+        sexo: cliente.sexo ?? null,
+        telefone: cliente.cellphone?.trim() || cliente.phone?.trim() || null,
+      },
       unidades: unidades.map((row) => ({
         empreendimento: displayEnterprise(row.emp_code, row.emp_name),
         estagio: row.estagio,

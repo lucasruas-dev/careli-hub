@@ -35,6 +35,7 @@ import { queryPanteon } from "@/lib/analytics/query-panteon";
 import {
   displayEnterprise,
   EXCLUDED_ENTERPRISE_CODES,
+  loadC2xClienteResumo,
   resolvePeriodoRange,
   type C2xPeriodo,
 } from "@/lib/guardian/c2x-analytics";
@@ -604,6 +605,136 @@ async function main() {
         `filtro=${filtrado.total} grupo=${valorFila}`,
       );
     }
+  }
+
+  // ---------- 7. PERFIL (demografia) + INADIMPLÊNCIA (C2X) ----------
+  console.log("\n[7] Perfil demográfico + inadimplência (vs referência C2X)");
+
+  const overdueFrom = `
+    from payments p
+    join acquisition_requests ar on ar.id = p.acquisition_request_id
+    join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+    join enterprises e on e.id = eu.enterprise_id
+    join users cli on cli.id = ar.client_id
+    where p.payment_status_id = 7 and (p.payment_to_delete is null or p.payment_to_delete = 0)
+      and e.code not in (${EXCL_IN})`;
+
+  const [inadRef] = await ref<RowDataPacket & { n: unknown }>(
+    `select count(distinct cli.id) as n ${overdueFrom}`,
+    [...EXCL],
+  );
+  const inadMotor = await motorTotal({ metrica: "inadimplentes" });
+
+  check(
+    "inadimplentes total",
+    inadMotor === Number(inadRef?.n),
+    `motor=${inadMotor} ref=${Number(inadRef?.n)}`,
+  );
+
+  const [vencRef] = await ref<RowDataPacket & { v: unknown }>(
+    `select coalesce(sum(coalesce(nullif(p.paid_value,0),
+       coalesce(p.initial_value,0)+coalesce(p.interest_value,0)+coalesce(p.mulct_value,0),0)),0) as v
+     ${overdueFrom}`,
+    [...EXCL],
+  );
+  const vencMotor = await motorTotal({ metrica: "valor_vencido" });
+
+  check(
+    "valor_vencido total",
+    Math.abs(vencMotor - Number(vencRef?.v)) < 0.01,
+    `motor=${vencMotor.toFixed(2)} ref=${Number(vencRef?.v).toFixed(2)}`,
+  );
+
+  // Inadimplentes por faixa de renda: cada grupo bate com a referência.
+  const rendaRows = await ref<RowDataPacket & { faixa: string; n: unknown }>(
+    `select coalesce(sal.name,'(não informado)') as faixa, count(distinct cli.id) as n
+     from payments p
+     join acquisition_requests ar on ar.id = p.acquisition_request_id
+     join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+     join enterprises e on e.id = eu.enterprise_id
+     join users cli on cli.id = ar.client_id
+     left join salary_ranges sal on sal.id = cli.salary_range_id
+     where p.payment_status_id = 7 and (p.payment_to_delete is null or p.payment_to_delete = 0)
+       and e.code not in (${EXCL_IN})
+     group by 1`,
+    [...EXCL],
+  );
+  const inadRenda = await motorGrupos({
+    agrupar_por: "faixa_renda",
+    metrica: "inadimplentes",
+  });
+  let rendaOk = true;
+  for (const row of rendaRows) {
+    if ((inadRenda.grupos.get(row.faixa) ?? -1) !== Number(row.n)) {
+      rendaOk = false;
+      console.log(
+        `     divergência ${row.faixa}: motor=${inadRenda.grupos.get(row.faixa)} ref=${row.n}`,
+      );
+    }
+  }
+
+  check(
+    "inadimplentes por faixa_renda (grupos == referência)",
+    rendaOk && inadRenda.grupos.size === rendaRows.length,
+    `${inadRenda.grupos.size} faixas, total distinto=${inadRenda.total}`,
+  );
+
+  // Filtro por faixa de renda == linha do grupo.
+  const faixaTop = Array.from(inadRenda.grupos.entries()).find(
+    ([nome, valor]) => valor > 0 && nome !== "(não informado)",
+  );
+  if (faixaTop) {
+    const [nomeFaixa, valorFaixa] = faixaTop;
+    const filtrado = await motorTotal({
+      filtros: { faixa_renda: nomeFaixa },
+      metrica: "inadimplentes",
+    });
+
+    check(
+      `filtro faixa_renda "${nomeFaixa}" == linha do grupo`,
+      filtrado === valorFaixa,
+      `filtro=${filtrado} grupo=${valorFaixa}`,
+    );
+  }
+
+  // clientes_faturados por faixa_etaria: cada pessoa em UM bucket → soma == total distinto.
+  const cfIdade = await motorGrupos({
+    agrupar_por: "faixa_etaria",
+    metrica: "clientes_faturados",
+    periodo: "desde_o_inicio",
+  });
+  const somaIdade = Array.from(cfIdade.grupos.values()).reduce((a, b) => a + b, 0);
+
+  check(
+    "clientes_faturados por faixa_etaria: soma == total distinto",
+    somaIdade === cfIdade.total,
+    `soma=${somaIdade} total=${cfIdade.total}`,
+  );
+
+  // Cadastro/imobiliária de um PROSPECT (cliente sem unidade faturada, mas com vínculo).
+  const prospectRows = await ref<RowDataPacket & { name: string }>(
+    `select u.name
+     from users u
+     where u.profile_id = 2 and u.vinculed_by_id is not null
+       and trim(coalesce(u.name,'')) <> ''
+       and not exists (
+         select 1 from acquisition_requests ar
+         where ar.client_id = u.id and ar.acquisition_request_stage_id = 4
+       )
+     order by u.id desc limit 1`,
+    [],
+  );
+  const prospectName = prospectRows[0]?.name;
+  if (prospectName) {
+    const resumo = await loadC2xClienteResumo(prospectName);
+
+    check(
+      `cadastro de prospect "${prospectName}" traz imobiliária sem venda`,
+      Boolean(resumo && resumo.imobiliaria && resumo.unidades.length === 0),
+      `imob=${resumo?.imobiliaria ?? "null"} unidades=${resumo?.unidades.length ?? "?"}`,
+    );
+  } else {
+    check("prospect com vínculo existe", false, "nenhum prospect encontrado");
   }
 
   console.log(`\nResultado: ${pass} ✅ · ${fail} ❌`);

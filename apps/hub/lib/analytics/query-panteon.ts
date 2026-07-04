@@ -194,9 +194,12 @@ async function runC2xModule(
     }
   }
 
-  // Agregado DISTINCT agrupado: a soma dos grupos repete quem aparece em mais de um grupo.
-  // Busca o total exato numa segunda consulta sem agrupamento.
+  // Agregado DISTINCT agrupado: a soma dos grupos pode repetir quem aparece em mais de um
+  // grupo (ex.: cliente com unidades em 2 empreendimentos). Busca o total exato à parte; só
+  // avisa se a soma REALMENTE passar do total (por perfil/imobiliária não passa — 1 valor por
+  // pessoa).
   if (input.agruparPor && isDistinctC2xMetrica(input.metrica as C2xMetrica)) {
+    const somaDosGrupos = total;
     const totalPlan = buildC2xAnalyticsQuery({
       ...builderInput,
       agruparPor: null,
@@ -207,9 +210,12 @@ async function runC2xModule(
     );
 
     total = toNumber(totalRows[0]?.valor);
-    observacoes.push(
-      "O total é DISTINTO (sem repetição); a soma dos grupos pode ser maior porque o mesmo cliente/unidade pode aparecer em mais de um grupo.",
-    );
+
+    if (somaDosGrupos > total) {
+      observacoes.push(
+        "O total é de pessoas DISTINTAS (sem repetição); a soma dos grupos é maior porque o mesmo cliente aparece em mais de um grupo.",
+      );
+    }
   }
 
   return { grupos, observacoes, ok: true, total };

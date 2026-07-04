@@ -360,8 +360,40 @@ async function consultarClienteC2x(input: unknown): Promise<string> {
 
   const linhas = [`Cliente: ${resumo.nome}${resumo.documento ? ` (${resumo.documento})` : ""}`];
 
+  // Imobiliária vem do vínculo do cadastro (vinculed_by_id) — todo cliente/prospect tem,
+  // NÃO depende de venda. É o campo que a Cacá errou com a Nívea (prospect sem venda).
+  linhas.push(
+    `Imobiliária vinculada: ${resumo.imobiliaria ?? "não consta no cadastro"}`,
+  );
+
+  const p = resumo.perfil;
+  const perfilPartes = [
+    p.idade != null ? `${p.idade} anos` : null,
+    p.sexo,
+    p.estadoCivil,
+    p.escolaridade ? `escolaridade ${p.escolaridade}` : null,
+    p.renda ? `renda ${p.renda}` : null,
+    p.profissao ? `profissão ${p.profissao}` : null,
+    p.cidadeUf,
+  ].filter(Boolean);
+
+  if (perfilPartes.length) {
+    linhas.push(`Cadastro: ${perfilPartes.join(" · ")}`);
+  }
+
+  const contato = [
+    p.telefone ? `tel ${p.telefone}` : null,
+    p.email ? `e-mail ${p.email}` : null,
+  ].filter(Boolean);
+
+  if (contato.length) {
+    linhas.push(`Contato: ${contato.join(" · ")}`);
+  }
+
   if (resumo.unidades.length === 0) {
-    linhas.push("Sem unidades vivas no C2X.");
+    linhas.push(
+      "Unidades: nenhuma unidade viva no C2X (provável prospect / ainda sem compra — a imobiliária e o cadastro acima seguem válidos).",
+    );
   } else {
     linhas.push(`Unidades (${resumo.unidades.length}):`);
     for (const u of resumo.unidades) {

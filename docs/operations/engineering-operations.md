@@ -41107,3 +41107,21 @@ Estado: branch `feat/panteon-super-motor`, **SEM push na main** (aguarda OK do L
 **🚀 GO-LIVE (4/jul, OK explícito do Lucas "pode subir"):** push `70b6d982..853c65a9` → `origin/main` (fast-forward; o `main` local estava obsoleto, empurrei a branch direto pro remote). Deploy de produção **`dpl_AWjPDeuEaVVzugkANN4rXfdgBvkr`** (commit 853c65a9) READY, alias `c2x.app.br` apontando. **Rollback = `dpl_GahuvrqRKhuvHBFjqc6agPZzig14`** (commit 70b6d982). Etapas 1+2 do super motor + áudio no cockpit + humor do cliente NO AR. Interno da CACÁ → sem changelog/painel. Teste real agora é em prod (webhook da Iris).
 
 **🚀 GO-LIVE fix imobiliária no detalhe (4/jul, OK do Lucas):** gatilho = Lucas conferiu a resposta em áudio da CACÁ das 19:21 (movimentação 7 dias) — números 100% certos e o áudio JÁ salvou no storage (fix do cockpit confirmado em prod), mas a imobiliária por venda vinha nula. Causa: `loadC2xMovimentacaoDetalhe` roteava a imob por `corretor_id` (nulo no C2X). Fix = rota pelo `users.vinculed_by_id` do comprador (confirmado nos 6 compradores: Beltrão/J3M/LM/Casa Martins). Deploy **`dpl_92vCa43bhZpzKaDBqSQjpyhCpsk6`** (commit 82a77065) READY, `c2x.app.br`. **Rollback = `dpl_AWjPDeuEaVVzugkANN4rXfdgBvkr`** (853c65a9). Interno da CACÁ → sem changelog.
+
+---
+
+## 2026-07-04 (noite) — Motor: PERFIL do cliente (demografia) + INADIMPLÊNCIA + cadastro de prospect (branch `feat/panteon-super-motor`)
+
+Gatilho: áudio da CACÁ pra Nívea às 19:44 — ela disse que não achava a imobiliária do prospect "Eduardo" porque ele não tem venda (modelo mental ERRADO: o vínculo imobiliária é do cadastro, `users.vinculed_by_id`, todo prospect tem). Lucas pediu: (a) todo cliente/prospect tem imobiliária, sem depender de venda; (b) cadastro completo da tabela users (idade/sexo/estado civil/escolaridade/renda/profissão/endereço/cônjuge); (c) transformar o PERFIL em dimensão do motor pra entender que perfil compra / que perfil atrasa.
+
+**Mapeamento de dados (inspeção C2X):** fill rate entre compradores ~97% (nascimento/civil/renda/escolaridade), sexo ~60% (usável c/ "(não informado)"); inadimplentes ~98% (sexo 31%). Vocabulário limpo: renda 6 faixas, escolaridade 9 níveis, civil 6, sexo 3.
+
+**Implementado no motor (c2x-builder + registry):**
+- Dimensões de PERFIL (agrupar_por + filtro): `faixa_etaria` (bucket de `birthday`), `sexo`, `estado_civil`, `faixa_renda`, `escolaridade` — join client→lookups (sexes/civil_states/salary_ranges/schoolings). Valem pras métricas que têm cliente (vendas evento + clientes_faturados + unidades_faturadas + inadimplência).
+- Novas métricas de INADIMPLÊNCIA (estado): `inadimplentes` (clientes distintos c/ parcela vencida), `valor_vencido` (R$), `parcelas_vencidas` — base `payments.payment_status_id=7` ativa (mesma conta do Hades), join demografia.
+- Dispatcher: nota de "total distinto" só aparece quando a soma dos grupos REALMENTE passa do total (perfil não repete pessoa).
+- `consultar_cliente_c2x` agora traz IMOBILIÁRIA (vínculo, independe de venda) + cadastro completo pra QUALQUER pessoa (corrige o erro da Nívea). Persona reforçada com a regra do cadastro.
+
+**Validação (35/35 ✅, script validate-panteon-motor):** inadimplentes=201 e valor_vencido=R$1.021.704,77 vs referência; inadimplentes por faixa_renda com todos os grupos batendo (1 a 3 salários=67); filtro==linha do grupo; clientes_faturados por faixa_etaria soma==total distinto (1456); cadastro de prospect real ("LAUREN COSTA SILVA ARAUJO", imob "MAIS LOTES", 0 unidades) confirmado. Typecheck verde.
+
+Estado: branch `feat/panteon-super-motor`, SEM push na main (aguarda OK do Lucas). Interno da CACÁ → sem changelog.

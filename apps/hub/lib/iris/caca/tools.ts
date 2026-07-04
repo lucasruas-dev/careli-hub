@@ -258,7 +258,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "consultar_cliente_c2x",
     description:
-      "SÓ no modo assistente/gestão (direção). Consulta PONTUAL de um cliente por NOME ou CPF/CNPJ, sem restrição de vínculo. Retorna o nome, o documento e as UNIDADES vivas dele (empreendimento, quadra/lote, estágio e valor). Use quando a direção perguntar sobre um cliente específico ('o que o fulano tem', 'quantos lotes o cliente X comprou').",
+      "SÓ no modo assistente/gestão (direção). Consulta PONTUAL de um cliente OU PROSPECT por NOME ou CPF/CNPJ, sem restrição de vínculo. Retorna: nome e documento; a IMOBILIÁRIA vinculada (todo cliente/prospect tem, vem do cadastro e NÃO depende de ter compra); o CADASTRO completo (idade, sexo, estado civil, escolaridade, renda, profissão, cidade, telefone, e-mail); e as UNIDADES vivas dele, se houver. Use quando a direção perguntar sobre uma pessoa específica ('o que o fulano tem', 'qual a imobiliária do cliente X', 'me dá o cadastro do fulano', 'quantos lotes comprou'). Se a pessoa não tem unidade, é provável PROSPECT — a imobiliária e o cadastro continuam válidos, não diga que não há imobiliária por falta de venda.",
     input_schema: {
       type: "object",
       properties: {
@@ -291,7 +291,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "consultar_panteon",
     description:
-      "SÓ no modo assistente/gestão (direção). O MOTOR DE ANÁLISE do Panteon: responde QUALQUER pergunta QUANTITATIVA combinando modulo + métrica + agrupamento + filtros + período, com as regras oficiais da Careli embutidas. PREFIRA esta ferramenta sempre que a pergunta combinar recortes que as outras não cobrem. DOIS módulos: 'c2x' (VENDAS) e 'iris' (ATENDIMENTO). C2X exemplos: 'quantos clientes a imobiliária X vendeu essa semana' = {modulo: c2x, metrica: clientes_faturados, filtros: {imobiliaria: 'X'}, periodo: esta_semana}; 'faturamento por mês este ano' = {modulo: c2x, metrica: valor_faturado, agrupar_por: mes, periodo: este_ano}; 'propostas do Lavra do Ouro em junho' = {modulo: c2x, metrica: propostas, filtros: {empreendimento: 'Lavra do Ouro'}, data_inicio: '2026-06-01', data_fim: '2026-06-30'}; 'ranking de imobiliárias' = {modulo: c2x, metrica: unidades_faturadas, agrupar_por: imobiliaria}. C2X métricas de EVENTO (usam período): propostas, vendas, faturamentos, cancelamentos, reservas, clientes_faturados, valor_faturado. C2X de ESTADO (ignoram período): unidades_vendidas (nº oficial do painel), unidades_disponiveis, unidades_total, unidades_faturadas, valor_carteira_vendida. IRIS exemplos: 'quantos atendimentos finalizamos essa semana' = {modulo: iris, metrica: tickets_finalizados, periodo: esta_semana}; 'atendimentos abertos por fila' = {modulo: iris, metrica: tickets_abertos, agrupar_por: fila}; 'tickets criados por dia esse mês' = {modulo: iris, metrica: tickets_criados, agrupar_por: dia, periodo: este_mes}. IRIS métricas de EVENTO: tickets_criados, tickets_finalizados. IRIS de ESTADO (agora): tickets_abertos, aguardando_operador (a nossa vez), aguardando_cliente. Se devolver erro de combinação, ajuste os parâmetros conforme a mensagem e chame de novo.",
+      "SÓ no modo assistente/gestão (direção). O MOTOR DE ANÁLISE do Panteon: responde QUALQUER pergunta QUANTITATIVA combinando modulo + métrica + agrupamento + filtros + período, com as regras oficiais da Careli embutidas. PREFIRA esta ferramenta sempre que a pergunta combinar recortes que as outras não cobrem. DOIS módulos: 'c2x' (VENDAS + INADIMPLÊNCIA) e 'iris' (ATENDIMENTO). C2X exemplos: 'quantos clientes a imobiliária X vendeu essa semana' = {modulo: c2x, metrica: clientes_faturados, filtros: {imobiliaria: 'X'}, periodo: esta_semana}; 'faturamento por mês este ano' = {modulo: c2x, metrica: valor_faturado, agrupar_por: mes, periodo: este_ano}; 'ranking de imobiliárias' = {modulo: c2x, metrica: unidades_faturadas, agrupar_por: imobiliaria}. PERFIL (quem compra / quem atrasa): 'que perfil de renda mais atrasa' = {modulo: c2x, metrica: inadimplentes, agrupar_por: faixa_renda}; 'quem comprou no Lavra do Ouro por faixa etária' = {modulo: c2x, metrica: clientes_faturados, filtros: {empreendimento: 'Lavra do Ouro'}, agrupar_por: faixa_etaria}; 'valor vencido por escolaridade' = {modulo: c2x, metrica: valor_vencido, agrupar_por: escolaridade}. C2X métricas de EVENTO (usam período): propostas, vendas, faturamentos, cancelamentos, reservas, clientes_faturados, valor_faturado. C2X de ESTADO (ignoram período): unidades_vendidas (nº oficial do painel), unidades_disponiveis, unidades_total, unidades_faturadas, valor_carteira_vendida, inadimplentes (clientes com parcela vencida agora), parcelas_vencidas, valor_vencido (R$ em aberto). DIMENSÕES DE PERFIL do comprador/inadimplente (agrupar_por e filtros): faixa_etaria, sexo, estado_civil, faixa_renda (ex.: '1 a 3 salários'), escolaridade (ex.: 'Superior Completo') — parte dos clientes tem esses campos em branco, então pode aparecer '(não informado)'. IRIS exemplos: 'quantos atendimentos finalizamos essa semana' = {modulo: iris, metrica: tickets_finalizados, periodo: esta_semana}; 'atendimentos abertos por fila' = {modulo: iris, metrica: tickets_abertos, agrupar_por: fila}. IRIS de EVENTO: tickets_criados, tickets_finalizados. IRIS de ESTADO (agora): tickets_abertos, aguardando_operador (a nossa vez), aguardando_cliente. Se devolver erro de combinação, ajuste os parâmetros conforme a mensagem e chame de novo.",
     input_schema: {
       type: "object",
       properties: {
@@ -315,6 +315,9 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
             "unidades_total",
             "unidades_faturadas",
             "valor_carteira_vendida",
+            "inadimplentes",
+            "valor_vencido",
+            "parcelas_vencidas",
             "tickets_abertos",
             "aguardando_operador",
             "aguardando_cliente",
@@ -322,7 +325,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
             "tickets_finalizados",
           ],
           description:
-            "O QUE contar/somar. As de vendas são do módulo c2x; tickets_* e aguardando_* são do módulo iris (ver exemplos).",
+            "O QUE contar/somar. Vendas + inadimplência (inadimplentes/valor_vencido/parcelas_vencidas) são do módulo c2x; tickets_* e aguardando_* são do módulo iris (ver exemplos).",
         },
         agrupar_por: {
           type: "string",
@@ -331,6 +334,11 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
             "imobiliaria",
             "cliente",
             "estagio",
+            "faixa_etaria",
+            "sexo",
+            "estado_civil",
+            "faixa_renda",
+            "escolaridade",
             "fila",
             "colaborador",
             "status",
@@ -339,7 +347,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
             "mes",
           ],
           description:
-            "Opcional. Quebra o resultado por dimensão (ranking ou série temporal). c2x: empreendimento/imobiliaria/cliente/estagio; iris: fila/colaborador/status; dia/semana/mes só para métricas de evento.",
+            "Opcional. Quebra o resultado por dimensão (ranking, perfil ou série temporal). c2x: empreendimento/imobiliaria/cliente/estagio + PERFIL do cliente (faixa_etaria/sexo/estado_civil/faixa_renda/escolaridade); iris: fila/colaborador/status; dia/semana/mes só para métricas de evento.",
         },
         filtros: {
           type: "object",
@@ -357,6 +365,25 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
             cliente: {
               type: "string",
               description: "c2x: nome (ou parte) OU CPF/CNPJ do cliente.",
+            },
+            sexo: {
+              type: "string",
+              description: "c2x: perfil do cliente — 'Masculino', 'Feminino'.",
+            },
+            estado_civil: {
+              type: "string",
+              description:
+                "c2x: perfil — ex.: 'Casado', 'Solteiro', 'União Estável', 'Divorciado'.",
+            },
+            faixa_renda: {
+              type: "string",
+              description:
+                "c2x: perfil — faixa salarial: 'Abaixo de 1', '1 a 3 salários', '3 a 6 salários', '6 a 9 salários', '9 a 12 salários', 'Acima de 12 salários'.",
+            },
+            escolaridade: {
+              type: "string",
+              description:
+                "c2x: perfil — ex.: 'Médio Completo', 'Superior Completo', 'Fundamental Incompleto'.",
             },
             fila: {
               type: "string",
