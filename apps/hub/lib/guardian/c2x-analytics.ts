@@ -6,8 +6,9 @@ import { getHadesDbPool, sanitizeHadesDbError } from "./db";
 // Regras e vocabulário validados contra o C2X. Ver [[reference-c2x-vendas-model]] e
 // [[project-caca-admin-assistant-mode]].
 
-// Estágios da aquisição (acquisition_request_stages).
-const STAGE = {
+// Estágios da aquisição (acquisition_request_stages). Exportado pro motor de análise
+// (lib/analytics) usar a MESMA fonte de verdade.
+export const STAGE = {
   RESERVADO: 1,
   ANALISE: 2,
   CONTRATO_GERADO: 3,
@@ -23,16 +24,27 @@ const STAGE = {
 
 // Empreendimentos que NÃO entram nas análises da CACÁ (teste + masterplan/aditivo da Lagoa
 // Bonita) — decisão do Lucas. Por código (sigla).
-const EXCLUDED_ENTERPRISE_CODES = ["TSC", "SDT", "LAB", "LAG"];
+export const EXCLUDED_ENTERPRISE_CODES = ["TSC", "SDT", "LAB", "LAG"];
 
 // Consolidação de empreendimentos com o mesmo produto (regras do diário/Lucas): soma etapas.
-function displayEnterprise(code: string | null, name: string | null): string {
-  const c = String(code ?? "").toUpperCase();
+// Fonte única — o displayEnterprise e o filtro por empreendimento do motor derivam daqui.
+export const ENTERPRISE_GROUPS: { display: string; codes: string[] }[] = [
+  { codes: ["LOS", "LOU"], display: "Lavra do Ouro" },
+  { codes: ["RDP", "RPC", "RPS"], display: "Rio de Pedras" },
+  { codes: ["PDV", "PVS"], display: "Portal dos Vales" },
+  { codes: ["LBF", "LBR", "LBP"], display: "Lagoa Bonita" },
+];
 
-  if (c === "LOS" || c === "LOU") return "Lavra do Ouro";
-  if (c === "RDP" || c === "RPC" || c === "RPS") return "Rio de Pedras";
-  if (c === "PDV" || c === "PVS") return "Portal dos Vales";
-  if (c === "LBF" || c === "LBR" || c === "LBP") return "Lagoa Bonita";
+export function displayEnterprise(
+  code: string | null,
+  name: string | null,
+): string {
+  const c = String(code ?? "").toUpperCase();
+  const group = ENTERPRISE_GROUPS.find((entry) => entry.codes.includes(c));
+
+  if (group) {
+    return group.display;
+  }
 
   return (name ?? "Empreendimento").trim();
 }
@@ -42,8 +54,11 @@ export type C2xPeriodo =
   | "ontem"
   | "esta_semana"
   | "este_mes"
+  | "mes_passado"
+  | "este_ano"
   | "ultimos_7_dias"
-  | "ultimos_30_dias";
+  | "ultimos_30_dias"
+  | "desde_o_inicio";
 
 // São Paulo é UTC-3 fixo (Brasil sem horário de verão desde 2019). Meia-noite SP -> instante UTC.
 function spMidnightUtc(year: number, month: number, day: number): Date {
@@ -113,6 +128,24 @@ export function resolvePeriodoRange(periodo: C2xPeriodo): {
     }
     case "este_mes":
       return { from: spMidnightUtc(year, month, 1), label: "este mês", to: now };
+    case "mes_passado": {
+      const prevYear = month === 1 ? year - 1 : year;
+      const prevMonth = month === 1 ? 12 : month - 1;
+
+      return {
+        from: spMidnightUtc(prevYear, prevMonth, 1),
+        label: "mês passado",
+        to: spMidnightUtc(year, month, 1),
+      };
+    }
+    case "este_ano":
+      return { from: spMidnightUtc(year, 1, 1), label: "este ano", to: now };
+    case "desde_o_inicio":
+      return {
+        from: spMidnightUtc(2000, 1, 1),
+        label: "desde o início",
+        to: now,
+      };
     case "ultimos_7_dias":
       return {
         from: new Date(now.getTime() - 7 * DAY),

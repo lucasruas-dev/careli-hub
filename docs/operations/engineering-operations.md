@@ -41070,3 +41070,20 @@ Typecheck+13 testes+lint verdes. PENDENTE: validação visual do Lucas no previe
 Typecheck+13 testes+lint verdes. Aguarda teste do time (roteiro no chat) e OK do Lucas p/ main.
 
 **🚀 GO-LIVE Hermes notificações L1-L4 (2/jul ~23h, OK explícito):** main=`42a6b0e0` → prod **`dpl_A5F2CoqsrxttFFcuw1JjrwiYDszK`** (`k66npsqk9`), READY, c2x.app.br 200, sw.js novo confirmado no ar (postMessage/navegação SPA). **Rollback=`dpl_2aCFaU9PCMs1YMcS87SNe65ubRdY`** (`kqagkuvy6`, commit 2b19fb4f). ⚠️ Time precisa de 1 Ctrl+F5 pra atualizar o SW. Próximo: teste guiado com o time + ler telemetria [hermes:push] nos logs Vercel pra medir taxa de entrega.
+
+---
+
+## 2026-07-04 — SUPER MOTOR do Panteon (etapa 1: C2X) — branch `feat/panteon-super-motor`
+
+**Decisão do Lucas: parar de fazer "uma ferramenta por pergunta" e construir UM motor de análise unificado** pra CACÁ (modo admin) responder qualquer pergunta quantitativa. Handoff em `docs/operations/caca-super-motor-handoff-startup-2026-07-04.md`; blueprint na memória `reference-panteon-super-motor`.
+
+**Arquitetura (lib/analytics/):**
+- `registry.ts` — catálogo WHITELIST do cubo `{ modulo, metrica, agrupar_por, filtros, periodo }`: 12 métricas C2X (7 de evento via historics + 5 de estado), matriz métrica×agrupamento×filtro permitidos, validação legível (a CACÁ corrige o pedido sozinha no turno seguinte). NUNCA SQL livre.
+- `c2x-builder.ts` — builder SQL PURO (testável fora do Next): identificadores só da whitelist, valores sempre parametrizados; regras validadas embutidas (exclusão TSC/SDT/LAB/LAG, consolidação Lavra/Rio de Pedras/Portal/Lagoa, imobiliária = `users.vinculed_by_id` do cliente comprador, movimentação = transições em `acquisition_request_historics`, vendido oficial = `sale_status_id=4`).
+- `query-panteon.ts` — dispatcher: executa no pool guardian (read-only), consolida empreendimentos em JS, total DISTINTO em query separada quando agrupado, formatador de texto.
+- Tool **`consultar_panteon`** (tools.ts + executors.ts, gated `assistantMode`) + persona atualizada (motor = ferramenta principal de análise).
+- `c2x-analytics.ts`: exportados STAGE/EXCLUDED/ENTERPRISE_GROUPS/displayEnterprise (fonte única) + períodos novos `mes_passado`/`este_ano`/`desde_o_inicio`; motor aceita janela custom `data_inicio`/`data_fim` (dia SP, fim inclusivo).
+
+**Validação contra o C2X real (regra: nenhuma combinação entra sem passar):** script permanente `apps/hub/scripts/validate-panteon-motor.ts` (`npx tsx --tsconfig apps/hub/tsconfig.json ...`) — **29/29 ✅**: movimentação idêntica à referência em 3 períodos; 1788 vendidas por empreendimento (número do painel) batido; ranking imobiliárias idêntico (J&F=136); soma dos grupos == total (mês/semana/empreendimento/estágio); filtro == linha do grupo (Lavra do Ouro, F M S MACIEL); mes_passado == janela custom junho; clientes_faturados=188 e valor_faturado=R$65.407.058,83 este ano vs referência independente.
+
+Typecheck verde. Melhoria INTERNA da CACÁ → não entra no painel de novidades. **SEM deploy** — aguarda OK do Lucas. Próximas etapas do motor: módulos iris/hermes/hades no mesmo catálogo.

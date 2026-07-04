@@ -289,6 +289,98 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "consultar_panteon",
+    description:
+      "SÓ no modo assistente/gestão (direção). O MOTOR DE ANÁLISE do Panteon: responde QUALQUER pergunta QUANTITATIVA de vendas do C2X combinando métrica + agrupamento + filtros + período, com as regras oficiais da Careli embutidas (exclui empreendimentos de teste, consolida etapas do mesmo produto, imobiliária = vínculo do cliente comprador). PREFIRA esta ferramenta sempre que a pergunta combinar recortes que as outras não cobrem. Exemplos: 'quantos clientes a imobiliária X vendeu essa semana' = {metrica: clientes_faturados, filtros: {imobiliaria: 'X'}, periodo: esta_semana}; 'faturamento por mês este ano' = {metrica: valor_faturado, agrupar_por: mes, periodo: este_ano}; 'propostas do Lavra do Ouro em junho' = {metrica: propostas, filtros: {empreendimento: 'Lavra do Ouro'}, data_inicio: '2026-06-01', data_fim: '2026-06-30'}; 'ranking de imobiliárias' = {metrica: unidades_faturadas, agrupar_por: imobiliaria}. Métricas de EVENTO (usam período): propostas, vendas (contrato gerado+em assinatura+faturado), faturamentos (vendas fechadas), cancelamentos, reservas, clientes_faturados (clientes distintos que compraram), valor_faturado (R$). Métricas de ESTADO ATUAL (ignoram período): unidades_vendidas (nº oficial do painel), unidades_disponiveis, unidades_total, unidades_faturadas (permite quebrar por imobiliária/cliente), valor_carteira_vendida (R$). Se a ferramenta devolver erro de combinação, ajuste os parâmetros conforme a mensagem e chame de novo.",
+    input_schema: {
+      type: "object",
+      properties: {
+        modulo: {
+          type: "string",
+          enum: ["c2x"],
+          description: "Fonte dos dados. Por enquanto: c2x (vendas).",
+        },
+        metrica: {
+          type: "string",
+          enum: [
+            "propostas",
+            "vendas",
+            "faturamentos",
+            "cancelamentos",
+            "reservas",
+            "clientes_faturados",
+            "valor_faturado",
+            "unidades_vendidas",
+            "unidades_disponiveis",
+            "unidades_total",
+            "unidades_faturadas",
+            "valor_carteira_vendida",
+          ],
+          description: "O QUE contar/somar (ver exemplos na descrição da ferramenta).",
+        },
+        agrupar_por: {
+          type: "string",
+          enum: [
+            "empreendimento",
+            "imobiliaria",
+            "cliente",
+            "estagio",
+            "dia",
+            "semana",
+            "mes",
+          ],
+          description:
+            "Opcional. Quebra o resultado por dimensão (ranking ou série temporal). estagio só para vendas/cancelamentos; dia/semana/mes só para métricas de evento.",
+        },
+        filtros: {
+          type: "object",
+          description:
+            "Opcional. Restringe o recorte. Combine à vontade (ex.: imobiliária + período).",
+          properties: {
+            empreendimento: {
+              type: "string",
+              description: "Nome ou sigla do empreendimento (ex.: 'Lavra do Ouro').",
+            },
+            imobiliaria: {
+              type: "string",
+              description: "Nome (ou parte) da imobiliária parceira.",
+            },
+            cliente: {
+              type: "string",
+              description: "Nome (ou parte) OU CPF/CNPJ do cliente.",
+            },
+          },
+        },
+        periodo: {
+          type: "string",
+          enum: [
+            "hoje",
+            "ontem",
+            "esta_semana",
+            "este_mes",
+            "mes_passado",
+            "este_ano",
+            "ultimos_7_dias",
+            "ultimos_30_dias",
+            "desde_o_inicio",
+          ],
+          description:
+            "Janela de tempo (métricas de evento). Sem período = este mês. Pra janelas específicas ('em junho', 'de 1 a 15/05') use data_inicio/data_fim.",
+        },
+        data_inicio: {
+          type: "string",
+          description:
+            "Opcional, sobrepõe periodo. Início da janela custom, YYYY-MM-DD (dia de São Paulo).",
+        },
+        data_fim: {
+          type: "string",
+          description: "Opcional. Fim INCLUSIVO da janela custom, YYYY-MM-DD.",
+        },
+      },
+      required: ["modulo", "metrica"],
+    },
+  },
+  {
     name: "ler_conversa_iris",
     description:
       "SÓ no modo assistente/gestão (direção). Lê a CONVERSA de um atendimento da Iris pelo NOME do cliente: traz o perfil básico (pessoa física/jurídica, cidade) e as últimas mensagens trocadas. Use quando a direção perguntar 'o que esse cliente falou', 'me mostra a conversa do fulano', 'do que se trata esse atendimento'. Pro perfil completo (comprador/imobiliária/prospect), depois cruze com consultar_cliente_c2x. (Áudios do cliente aparecem como marcador, sem transcrição.)",

@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ClaudeAgentTool } from "@/lib/ai/claude-agent";
+import {
+  formatPanteonResultado,
+  queryPanteon,
+} from "@/lib/analytics/query-panteon";
 import { prepareBoletoResendAction } from "@/lib/guardian/asaas";
 import {
   type C2xImobiliariaClientMatch,
@@ -149,6 +153,10 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
   // Ferramentas de ANALISTA: só no modo assistente/gestão (proprietários).
   if (context.assistantMode) {
     tools.push(
+      {
+        definition: requireDefinition("consultar_panteon"),
+        run: async (input) => consultarPanteon(input),
+      },
       {
         definition: requireDefinition("consultar_movimentacao_c2x"),
         run: async (input) => consultarMovimentacaoC2x(input),
@@ -428,6 +436,22 @@ async function consultarSaudeSistema(): Promise<string> {
 }
 
 // ---- Ferramentas de analista (modo assistente) ----
+
+// SUPER MOTOR: consulta parametrizada (cubo métrica × agrupamento × filtros × período).
+// A validação/whitelist mora em lib/analytics; erro de combinação volta como texto pra
+// CACÁ se corrigir sozinha no próximo turno.
+async function consultarPanteon(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+
+  const outcome = await queryPanteon(record);
+
+  if (!outcome.ok) {
+    return `Não consegui montar essa consulta: ${outcome.erro}`;
+  }
+
+  return formatPanteonResultado(outcome.resultado);
+}
 
 function formatBrl(value: number | null): string {
   if (value == null) {
