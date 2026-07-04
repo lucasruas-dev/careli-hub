@@ -17,6 +17,16 @@ export const dynamic = "force-dynamic";
 const DEMO_PHRASE =
   "Oi! Aqui é a Cacá, da Careli. Recebi sua mensagem e já vou te ajudar com o seu boleto, tá bom? Um instante que eu confiro tudo pra você.";
 
+// Vozes candidatas pra comparar (IDs enviados pelo Lucas). Override via ?voices=a,b,c.
+const CANDIDATE_VOICES = [
+  "RVmX026jCrF5VqUvpCk0",
+  "GDzHdQOi6jjf8zaXhCYD",
+  "oi8rgjIfLgJRsQ6rbZh3",
+  "PZMcMFpToj1IIYF0QDwX",
+  "RGymW84CSmfVugnA5tvA",
+  "KHmfNHtEjHhLK9eER20w",
+];
+
 // Lê um número da query com clamp; usa o fallback quando ausente/inválido.
 function numParam(
   url: URL,
@@ -40,10 +50,11 @@ function numParam(
   return Math.min(hi, Math.max(lo, value));
 }
 
-function renderPage(demoKey: string): string {
+function renderPage(demoKey: string, voices: string[]): string {
   const keyJson = JSON.stringify(demoKey);
   const phraseJson = JSON.stringify(DEMO_PHRASE);
-  const voiceJson = JSON.stringify(CACA_DEFAULT_VOICE_ID);
+  const voiceJson = JSON.stringify(voices[0] ?? CACA_DEFAULT_VOICE_ID);
+  const voicesJson = JSON.stringify(voices);
 
   return `<!doctype html>
 <html lang="pt-BR">
@@ -62,6 +73,7 @@ function renderPage(demoKey: string): string {
   .presets { display: flex; flex-wrap: wrap; gap: 8px; margin: 14px 0; }
   .presets button { flex: 1 1 auto; padding: 10px 12px; border: 1px solid #cbd5e1; background: #f8fafc; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; }
   .presets button:hover { background: #eef2f7; }
+  .presets button.on { background: #ede9fe; border-color: #a78bfa; color: #5b21b6; }
   label { display: block; font-size: 13px; color: #334155; margin: 12px 0 4px; font-weight: 600; }
   label .val { color: #7c3aed; font-variant-numeric: tabular-nums; }
   label .hint { color: #94a3b8; font-weight: 400; }
@@ -76,7 +88,9 @@ function renderPage(demoKey: string): string {
 <body>
 <div class="card">
   <h1>🎙️ Voz da CACÁ (Geni)</h1>
-  <p class="sub">Digite a frase, escolha um preset ou ajuste os controles, e clique em Ouvir.</p>
+  <p class="sub">Escolha a voz, digite a frase, ajuste os controles e clique em Ouvir.</p>
+  <label>Vozes candidatas <span class="hint">(clica pra ouvir cada uma)</span></label>
+  <div class="presets" id="voices"></div>
   <textarea id="txt"></textarea>
   <div class="presets">
     <button data-s="0.4" data-st="0.45" data-sp="1">Natural</button>
@@ -105,9 +119,23 @@ function renderPage(demoKey: string): string {
   var KEY = ${keyJson};
   var PHRASE = ${phraseJson};
   var VOICE = ${voiceJson};
+  var VOICES = ${voicesJson};
   function $(id){ return document.getElementById(id); }
   $("txt").value = PHRASE;
   $("voice").value = VOICE;
+  VOICES.forEach(function(id, i){
+    var b = document.createElement("button");
+    b.textContent = "Voz " + (i + 1);
+    b.title = id;
+    b.setAttribute("data-voice", id);
+    b.addEventListener("click", function(){
+      $("voice").value = id;
+      Array.prototype.forEach.call($("voices").children, function(x){ x.classList.remove("on"); });
+      b.classList.add("on");
+      play();
+    });
+    $("voices").appendChild(b);
+  });
   function sync(){
     $("sv").textContent = (+$("stability").value).toFixed(2);
     $("stv").textContent = (+$("style").value).toFixed(2);
@@ -130,7 +158,7 @@ function renderPage(demoKey: string): string {
       var pl = $("player");
       pl.src = URL.createObjectURL(b);
       pl.play();
-      status.textContent = "tocando · stability " + $("stability").value + " · style " + $("style").value + " · speed " + $("speed").value;
+      status.textContent = "tocando · voz " + $("voice").value + " · stab " + $("stability").value + " · style " + $("style").value + " · speed " + $("speed").value;
     }).catch(function(e){ status.textContent = "erro: " + e.message; });
   }
   Array.prototype.forEach.call(document.querySelectorAll(".presets button"), function(b){
@@ -157,7 +185,15 @@ export async function GET(request: NextRequest) {
 
   // Sem ?audio=1 -> página de teste (botões + sliders).
   if (url.searchParams.get("audio") !== "1") {
-    return new Response(renderPage(providedKey), {
+    const voicesParam = url.searchParams.get("voices")?.trim();
+    const voices = voicesParam
+      ? voicesParam
+          .split(",")
+          .map((id) => id.trim())
+          .filter(Boolean)
+      : CANDIDATE_VOICES;
+
+    return new Response(renderPage(providedKey, voices), {
       status: 200,
       headers: {
         "content-type": "text/html; charset=utf-8",
