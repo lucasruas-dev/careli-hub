@@ -10,6 +10,23 @@ export const CACA_DEFAULT_VOICE_ID = "JPaHP82NTgRbDP91t8zP";
 // Melhor qualidade multilingue (cobre PT-BR). Trocar por turbo/flash se latencia pesar.
 export const CACA_DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
 
+export type CacaVoiceSettings = {
+  stability: number; // 0..1 — MAIS BAIXO = mais expressivo/natural (menos robotico)
+  similarity_boost: number; // 0..1 — fidelidade a voz original
+  style: number; // 0..1 — exagero de estilo/emocao (alto demais soa forcado)
+  use_speaker_boost: boolean;
+  speed?: number; // 0.7..1.2 — <1 fala mais calma
+};
+
+// Ajuste "natural" (ponto de partida): estabilidade mais baixa + um tanto de estilo. Refinar
+// por ouvido no demo (query params) antes de fixar. Ver [[project-caca-voice-tts]].
+export const CACA_NATURAL_VOICE_SETTINGS: CacaVoiceSettings = {
+  stability: 0.4,
+  similarity_boost: 0.8,
+  style: 0.45,
+  use_speaker_boost: true,
+};
+
 // mp3 = playback fácil no browser (demo). opus/ogg = nota de voz nativa do WhatsApp.
 export type ElevenLabsOutputFormat =
   | "mp3_44100_128"
@@ -33,6 +50,7 @@ export async function synthesizeCacaSpeech({
   voiceId = CACA_DEFAULT_VOICE_ID,
   modelId = CACA_DEFAULT_TTS_MODEL,
   outputFormat = "mp3_44100_128",
+  voiceSettings = CACA_NATURAL_VOICE_SETTINGS,
   apiKey = process.env.ELEVENLABS_API_KEY,
   signal,
 }: {
@@ -40,6 +58,7 @@ export async function synthesizeCacaSpeech({
   voiceId?: string;
   modelId?: string;
   outputFormat?: ElevenLabsOutputFormat;
+  voiceSettings?: CacaVoiceSettings;
   apiKey?: string;
   signal?: AbortSignal;
 }): Promise<CacaSpeechResult> {
@@ -65,13 +84,7 @@ export async function synthesizeCacaSpeech({
     body: JSON.stringify({
       text: clean,
       model_id: modelId,
-      // Ajuste inicial: estável mas com um pouco de expressão. Refinar depois de ouvir.
-      voice_settings: {
-        stability: 0.5,
-        similarity_boost: 0.75,
-        style: 0.3,
-        use_speaker_boost: true,
-      },
+      voice_settings: voiceSettings,
     }),
     signal,
   });
