@@ -304,7 +304,12 @@ export async function loadC2xMovimentacaoDetalhe(
       select h.created_at as data, s.name as estagio,
              e.code as emp_code, e.name as emp_name,
              eu.block, eu.lot, eu.area, eu.price,
-             cli.name as cliente, cor.name as corretor, imob.name as imobiliaria
+             cli.name as cliente, cor.name as corretor,
+             coalesce(
+               nullif(trim(imob.fantasy_name), ''),
+               nullif(trim(imob.social_name), ''),
+               nullif(trim(imob.name), '')
+             ) as imobiliaria
       from acquisition_request_historics h
       join acquisition_requests ar on ar.id = h.acquisition_request_id
       join acquisition_request_stages s on s.id = h.new_acquisition_request_stage_id
@@ -312,7 +317,9 @@ export async function loadC2xMovimentacaoDetalhe(
       join enterprises e on e.id = eu.enterprise_id
       left join users cli on cli.id = ar.client_id
       left join users cor on cor.id = ar.corretor_id
-      left join users imob on imob.id = cor.vinculed_by_id
+      -- Imobiliária pelo VÍNCULO do comprador (users.vinculed_by_id), não pelo corretor_id
+      -- (sempre NULO no C2X). Mesma fonte do ranking/motor. Ver [[reference-c2x-vendas-model]].
+      left join users imob on imob.id = cli.vinculed_by_id
       where h.created_at >= ? and h.created_at < ?
         and h.new_acquisition_request_stage_id in (${stages.map(() => "?").join(", ")})
         and e.code not in (${EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ")})

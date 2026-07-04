@@ -162,7 +162,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "consultar_movimentacao_c2x",
     description:
-      "SÓ no modo assistente/gestão (direção). Movimentação de vendas do C2X num período: quantas PROPOSTAS foram geradas, quantas VENDAS (contrato gerado + em assinatura + faturado), quantas FATURADAS (venda fechada) e quantos CANCELAMENTOS/distratos. Use quando a direção perguntar 'quantas propostas/vendas/cancelamentos tivemos [essa semana / hoje / esse mês]'. Se informar 'tipo_detalhe', também traz a LISTA dos casos com unidade (quadra/lote), empreendimento, valor do lote, metragem, cliente e corretor/imobiliária. Números conferidos contra o C2X (exclui empreendimentos de teste; consolida etapas do mesmo produto).",
+      "SÓ no modo assistente/gestão (direção). Movimentação de vendas do C2X num período: quantas PROPOSTAS foram geradas, quantas VENDAS (contrato gerado + em assinatura + faturado), quantas FATURADAS (venda fechada) e quantos CANCELAMENTOS/distratos. Use quando a direção perguntar 'quantas propostas/vendas/cancelamentos tivemos [essa semana / hoje / esse mês]'. Se informar 'tipo_detalhe', também traz a LISTA dos casos com unidade (quadra/lote), empreendimento, valor do lote, metragem, cliente e a IMOBILIÁRIA de cada venda (pelo vínculo do comprador). Números conferidos contra o C2X (exclui empreendimentos de teste; consolida etapas do mesmo produto).",
     input_schema: {
       type: "object",
       properties: {
