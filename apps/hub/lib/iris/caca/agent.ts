@@ -173,7 +173,9 @@ export async function runCacaClaudeTurn({
   }
 
   const businessHours = businessHoursForNow();
+  const admin = resolveCacaAdmin(contact);
   const toolContext: CacaToolContext = {
+    assistantMode: admin.isAdmin,
     businessHoursOpen: businessHours.open,
     c2xClientId,
     client,
@@ -188,7 +190,6 @@ export async function runCacaClaudeTurn({
     validationSource,
   };
 
-  const admin = resolveCacaAdmin(contact);
   const clientNotes = readClientNotes(contact);
   const system = buildCacaSystemPrompt({
     businessHoursOpen: businessHours.open,

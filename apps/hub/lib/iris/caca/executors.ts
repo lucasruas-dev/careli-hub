@@ -9,6 +9,13 @@ import {
   loadC2xUserCadastro,
   loadHadesAttendanceClient,
 } from "@/lib/guardian/attendance";
+import {
+  type C2xMovimentacaoTipo,
+  type C2xPeriodo,
+  loadC2xMovimentacaoDetalhe,
+  loadC2xMovimentacaoResumo,
+  loadC2xVendasPorEmpreendimento,
+} from "@/lib/guardian/c2x-analytics";
 import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
 
 import { appendClientNote } from "./client-memory";
@@ -36,6 +43,9 @@ export type CacaToolContext = {
   imobiliariaName: string | null;
   nextContactLabel: string;
   validationSource: "cpf" | "phone" | null;
+  // Modo assistente/gestão (número admin verificado: proprietários). Libera as ferramentas
+  // de ANALISTA do C2X (movimentação, vendas por empreendimento). Ver [[project-caca-admin-assistant-mode]].
+  assistantMode?: boolean;
 };
 
 // Traduz os perfis crus do Apolo (usuario/colaborador/imobiliaria/...) num rotulo curto e
@@ -70,7 +80,7 @@ const DEFINITION_BY_NAME = new Map(
 );
 
 export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
-  return [
+  const tools: ClaudeAgentTool[] = [
     {
       definition: requireDefinition("validar_identidade"),
       run: async (input) => validarIdentidade(context, input),
@@ -116,6 +126,104 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
       run: async (input) => transferirParaHumano(context, input),
     },
   ];
+
+  // Ferramentas de ANALISTA do C2X: só no modo assistente/gestão (proprietários).
+  if (context.assistantMode) {
+    tools.push(
+      {
+        definition: requireDefinition("consultar_movimentacao_c2x"),
+        run: async (input) => consultarMovimentacaoC2x(input),
+      },
+      {
+        definition: requireDefinition("consultar_vendas_por_empreendimento"),
+        run: async () => consultarVendasPorEmpreendimento(),
+      },
+    );
+  }
+
+  return tools;
+}
+
+// ---- Ferramentas de analista (modo assistente) ----
+
+function formatBrl(value: number | null): string {
+  if (value == null) {
+    return "-";
+  }
+
+  return value.toLocaleString("pt-BR", {
+    currency: "BRL",
+    style: "currency",
+  });
+}
+
+async function consultarMovimentacaoC2x(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const periodo = (String(record.periodo ?? "esta_semana") as C2xPeriodo);
+
+  const resumo = await loadC2xMovimentacaoResumo(periodo);
+
+  if (!resumo) {
+    return "Não consegui consultar a movimentação do C2X agora (banco indisponível).";
+  }
+
+  const linhas = [
+    `Movimentação do C2X (${resumo.periodoLabel}):`,
+    `- Propostas geradas: ${resumo.propostas}`,
+    `- Vendas (contrato gerado + em assinatura + faturado): ${resumo.vendas}`,
+    `  · Contrato gerado: ${resumo.contratoGerado} · Em assinatura: ${resumo.emAssinatura} · Faturado (venda fechada): ${resumo.faturado}`,
+    `- Cancelamentos: ${resumo.cancelados} · Distratos: ${resumo.distratos}`,
+    `- Reservas: ${resumo.reservas}`,
+  ];
+
+  const tipoDetalhe = record.tipo_detalhe;
+  if (typeof tipoDetalhe === "string") {
+    const itens = await loadC2xMovimentacaoDetalhe(
+      periodo,
+      tipoDetalhe as C2xMovimentacaoTipo,
+    );
+
+    linhas.push("", `Detalhe (${tipoDetalhe}):`);
+    if (itens.length === 0) {
+      linhas.push("- Nenhum caso no período.");
+    } else {
+      for (const item of itens) {
+        const partes = [
+          item.empreendimento,
+          item.quadraLote,
+          item.area != null ? `${item.area} m²` : null,
+          `lote ${formatBrl(item.valorLote)}`,
+          item.cliente ? `cliente ${item.cliente}` : null,
+          item.corretor ? `corretor ${item.corretor}` : null,
+          item.imobiliaria ? `imob. ${item.imobiliaria}` : null,
+          `(${item.estagio})`,
+        ].filter(Boolean);
+        linhas.push(`- ${partes.join(" · ")}`);
+      }
+    }
+  }
+
+  return linhas.join("\n");
+}
+
+async function consultarVendasPorEmpreendimento(): Promise<string> {
+  const rows = await loadC2xVendasPorEmpreendimento();
+
+  if (rows.length === 0) {
+    return "Não consegui consultar as vendas por empreendimento agora (banco indisponível).";
+  }
+
+  const totalVendidas = rows.reduce((sum, row) => sum + row.vendidas, 0);
+  const linhas = [
+    `Vendas por empreendimento (estado atual da carteira) — total vendidas: ${totalVendidas}:`,
+    ...rows.map(
+      (row) =>
+        `- ${row.empreendimento}: ${row.vendidas} vendidas · ${row.disponiveis} disponíveis · ${row.total} no total`,
+    ),
+  ];
+
+  return linhas.join("\n");
 }
 
 async function anotarSobreCliente(

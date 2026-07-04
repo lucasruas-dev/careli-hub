@@ -159,4 +159,42 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
       required: ["motivo"],
     },
   },
+  {
+    name: "consultar_movimentacao_c2x",
+    description:
+      "SÓ no modo assistente/gestão (direção). Movimentação de vendas do C2X num período: quantas PROPOSTAS foram geradas, quantas VENDAS (contrato gerado + em assinatura + faturado), quantas FATURADAS (venda fechada) e quantos CANCELAMENTOS/distratos. Use quando a direção perguntar 'quantas propostas/vendas/cancelamentos tivemos [essa semana / hoje / esse mês]'. Se informar 'tipo_detalhe', também traz a LISTA dos casos com unidade (quadra/lote), empreendimento, valor do lote, metragem, cliente e corretor/imobiliária. Números conferidos contra o C2X (exclui empreendimentos de teste; consolida etapas do mesmo produto).",
+    input_schema: {
+      type: "object",
+      properties: {
+        periodo: {
+          type: "string",
+          enum: [
+            "hoje",
+            "ontem",
+            "esta_semana",
+            "este_mes",
+            "ultimos_7_dias",
+            "ultimos_30_dias",
+          ],
+          description: "Janela de tempo da consulta.",
+        },
+        tipo_detalhe: {
+          type: "string",
+          enum: ["propostas", "vendas", "faturado", "cancelamentos"],
+          description:
+            "Opcional. Se informado, traz a lista detalhada desse tipo de movimentação no período (unidade, valor, metragem, cliente, corretor/imobiliária).",
+        },
+      },
+      required: ["periodo"],
+    },
+  },
+  {
+    name: "consultar_vendas_por_empreendimento",
+    description:
+      "SÓ no modo assistente/gestão (direção). Estado atual da carteira por empreendimento: total de unidades, vendidas e disponíveis, com as regras da Careli (soma etapas do mesmo produto — Lavra do Ouro, Rio de Pedras, Portal dos Vales; Lagoa Bonita consolidada; exclui teste/masterplan/aditivo). Use quando a direção pedir 'vendas por empreendimento' / panorama da carteira. 'Vendido' = unidade com status vendido no C2X.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
 ];
