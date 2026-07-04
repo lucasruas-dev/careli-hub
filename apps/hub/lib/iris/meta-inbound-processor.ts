@@ -2057,7 +2057,9 @@ async function maybeSendCacaAutoReply({
       reply = await runCacaClaudeTurn({
         client,
         contact,
+        destination,
         messageDetail,
+        outboundPhoneNumberId: event.phone_number_id ?? null,
         ticket,
         voiceMode: voiceReply,
       });

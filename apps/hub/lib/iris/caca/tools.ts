@@ -270,4 +270,13 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
       required: ["cliente"],
     },
   },
+  {
+    name: "gerar_relatorio_visual",
+    description:
+      "SÓ no modo assistente/gestão (direção). Gera um RELATÓRIO em IMAGEM (gráfico de barras) e ENVIA como foto no WhatsApp. Use quando a direção pedir pra ver algo 'num relatório', 'numa imagem', 'num gráfico', ou 'me manda visual'. Disponível: vendas por empreendimento. Depois de chamar, avise que enviou a imagem.",
+    input_schema: {
+      type: "object",
+      properties: {},
+    },
+  },
 ];

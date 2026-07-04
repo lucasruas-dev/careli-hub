@@ -22,6 +22,10 @@ import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
 import { loadHermesResumo } from "@/lib/iris/hermes-analytics";
 import { loadInfraSaude } from "@/lib/iris/infra-analytics";
 import {
+  getMetaWhatsAppOutboundConfig,
+  sendMetaWhatsAppMediaMessage,
+} from "@/lib/iris/meta-whatsapp";
+import {
   loadIrisAtendimentosResumo,
   loadIrisMovimentacaoPeriodo,
 } from "@/lib/iris/iris-analytics";
@@ -56,6 +60,9 @@ export type CacaToolContext = {
   assistantMode?: boolean;
   // hub_user_id do admin (mapa número→usuário) — pra consultar o Hermes DELE. null = sem conta.
   assistantHubUserId?: string | null;
+  // Destino (wa_id) e phone_number_id do atendimento — pra a tool ENVIAR imagem (relatório).
+  destination?: string | null;
+  outboundPhoneNumberId?: string | null;
 };
 
 // Traduz os perfis crus do Apolo (usuario/colaborador/imobiliaria/...) num rotulo curto e
@@ -168,10 +175,73 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
         definition: requireDefinition("consultar_cliente_c2x"),
         run: async (input) => consultarClienteC2x(input),
       },
+      {
+        definition: requireDefinition("gerar_relatorio_visual"),
+        run: async () => gerarRelatorioVisual(context),
+      },
     );
   }
 
   return tools;
+}
+
+// Gera o relatório em IMAGEM (chama a rota edge de render) e ENVIA como foto no WhatsApp.
+async function gerarRelatorioVisual(context: CacaToolContext): Promise<string> {
+  if (!context.destination) {
+    return "Não consegui identificar o destino pra enviar o relatório.";
+  }
+
+  const rows = await loadC2xVendasPorEmpreendimento();
+
+  if (rows.length === 0) {
+    return "Não há dados de vendas pra montar o relatório agora.";
+  }
+
+  const secret = process.env.IRIS_TTS_DEMO_KEY?.trim() ?? "";
+  const base = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "https://c2x.app.br";
+
+  try {
+    const render = await fetch(`${base}/api/iris/report-render`, {
+      body: JSON.stringify({
+        rows: rows.map((row) => ({
+          disponiveis: row.disponiveis,
+          empreendimento: row.empreendimento,
+          vendidas: row.vendidas,
+        })),
+        titulo: "Vendas por empreendimento",
+      }),
+      cache: "no-store",
+      headers: { "content-type": "application/json", "x-report-secret": secret },
+      method: "POST",
+    });
+
+    if (!render.ok) {
+      return "Não consegui gerar a imagem do relatório agora.";
+    }
+
+    const png = Buffer.from(await render.arrayBuffer());
+
+    await sendMetaWhatsAppMediaMessage({
+      caption: "Vendas por empreendimento · Careli",
+      config: context.outboundPhoneNumberId
+        ? {
+            ...getMetaWhatsAppOutboundConfig(),
+            phoneNumberId: context.outboundPhoneNumberId,
+          }
+        : undefined,
+      fileName: "vendas-por-empreendimento.png",
+      kind: "image",
+      mediaBase64: png.toString("base64"),
+      mimeType: "image/png",
+      to: context.destination,
+    });
+
+    return "Pronto, te enviei o relatório de vendas por empreendimento em imagem. 📊";
+  } catch {
+    return "Tive um problema pra gerar/enviar o relatório em imagem agora.";
+  }
 }
 
 async function consultarUnidadeC2x(input: unknown): Promise<string> {

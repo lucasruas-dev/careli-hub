@@ -119,13 +119,18 @@ function resolveCacaAdmin(contact: CacaAgentContact): {
 export async function runCacaClaudeTurn({
   client,
   contact,
+  destination,
   messageDetail,
+  outboundPhoneNumberId,
   ticket,
   voiceMode = false,
 }: {
   client?: SupabaseClient;
   contact: CacaAgentContact;
+  // Destino (wa_id) + phone_number_id do atendimento — pra tools que ENVIAM mídia (relatório).
+  destination?: string | null;
   messageDetail: CacaAgentMessageDetail;
+  outboundPhoneNumberId?: string | null;
   ticket: CacaAgentTicket;
   // Resposta vai virar nota de voz -> texto "falado" + pontuação reforçada.
   voiceMode?: boolean;
@@ -209,6 +214,8 @@ export async function runCacaClaudeTurn({
     assistantHubUserId: admin.hubUserId,
     assistantMode: admin.isAdmin,
     businessHoursOpen: businessHours.open,
+    destination: destination ?? null,
+    outboundPhoneNumberId: outboundPhoneNumberId ?? null,
     c2xClientId,
     client,
     contactId: contact.id ?? null,
