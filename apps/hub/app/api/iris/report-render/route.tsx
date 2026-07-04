@@ -33,7 +33,7 @@ function vendasReport(rows: VendasRow[], titulo: string) {
       >
         <div style={{ fontSize: 30, fontWeight: 700, color: INK }}>{titulo}</div>
         <div style={{ fontSize: 18, color: GOLD, marginTop: 4, marginBottom: 20 }}>
-          {total} unidades vendidas no total · Careli
+          {`${total} unidades vendidas no total · Careli`}
         </div>
         <div style={{ display: "flex", flexDirection: "column" }}>
           {rows.map((row) => (
@@ -64,10 +64,10 @@ function vendasReport(rows: VendasRow[], titulo: string) {
                 />
               </div>
               <div style={{ display: "flex", width: 90, fontSize: 18, color: INK, marginLeft: 14 }}>
-                {row.vendidas}
+                {String(row.vendidas)}
               </div>
               <div style={{ display: "flex", fontSize: 15, color: MUTED }}>
-                {row.disponiveis} disp.
+                {`${row.disponiveis} disp.`}
               </div>
             </div>
           ))}
