@@ -14,6 +14,7 @@ import {
 } from "@/lib/iris/caca-media-analysis";
 import {
   isCacaClaudeEngineEnabled,
+  isCacaVoiceReplyEnabled,
   runCacaClaudeTurn,
 } from "@/lib/iris/caca/agent";
 import {
@@ -22,10 +23,12 @@ import {
   getMetaWhatsAppOutboundConfig,
   type MetaWhatsAppDownloadedMedia,
   type MetaWhatsAppSendMessageResult,
+  sendMetaWhatsAppAudioMessage,
   sendMetaWhatsAppTemplateMessage,
   sendMetaWhatsAppTextMessage,
   signWhatsAppBody,
 } from "@/lib/iris/meta-whatsapp";
+import { synthesizeCacaVoiceNote } from "@/lib/iris/tts";
 import { uploadInboundMediaBuffer } from "@/lib/iris/meta-media-storage";
 import { publishHubNotification } from "@/lib/notifications/publish";
 
@@ -2040,11 +2043,24 @@ async function maybeSendCacaAutoReply({
   // Engine novo (Cacá super-agente Claude) atrás de flag, com fallback automático pra
   // Cacá determinística se a Claude não estiver configurada ou falhar — nenhum atendimento
   // fica sem resposta.
+  // Espelhar: se o cliente mandou ÁUDIO e o master switch está ligado, a CACÁ responde em VOZ.
+  // Só com o engine Claude (texto "falado" natural). Ver [[project-caca-voice-tts]].
+  const voiceReply =
+    isCacaVoiceReplyEnabled() &&
+    isCacaClaudeEngineEnabled() &&
+    messageDetail.messageType === "audio";
+
   let reply: CacaAutoReply;
 
   if (isCacaClaudeEngineEnabled()) {
     try {
-      reply = await runCacaClaudeTurn({ client, contact, messageDetail, ticket });
+      reply = await runCacaClaudeTurn({
+        client,
+        contact,
+        messageDetail,
+        ticket,
+        voiceMode: voiceReply,
+      });
     } catch (error) {
       console.error(
         "[iris] Cacá-Claude falhou; usando a Cacá deterministica",
@@ -2056,6 +2072,9 @@ async function maybeSendCacaAutoReply({
     reply = await runCacaAgentTurn({ client, contact, messageDetail, ticket });
   }
 
+  // Link precisa ser clicável -> se a resposta tiver URL, manda por texto mesmo (não vira voz).
+  const sendAsVoice = voiceReply && !/https?:\/\//i.test(reply.replyText);
+
   const queuedMessage = await insertCacaOutboundMessage({
     body: reply.replyText,
     channelId,
@@ -2063,21 +2082,49 @@ async function maybeSendCacaAutoReply({
     contactId: contact.id,
     event,
     ticketId: ticket.id,
+    voiceReply: sendAsVoice,
   });
 
   try {
-    // Assina pro cliente como "Cacá" (o corpo salvo localmente fica sem assinatura).
-    const result = await sendMetaWhatsAppTextMessage({
-      body: signWhatsAppBody(CACA_OPERATOR_LABEL, reply.replyText),
-      config: event.phone_number_id
-        ? {
-            ...getMetaWhatsAppOutboundConfig(),
-            phoneNumberId: event.phone_number_id,
-          }
-        : undefined,
-      contextMessageId: event.provider_message_id,
-      to: destination,
-    });
+    const outboundConfig = event.phone_number_id
+      ? {
+          ...getMetaWhatsAppOutboundConfig(),
+          phoneNumberId: event.phone_number_id,
+        }
+      : undefined;
+
+    let result: MetaWhatsAppSendMessageResult | null = null;
+
+    if (sendAsVoice) {
+      try {
+        const voice = await synthesizeCacaVoiceNote(reply.replyText);
+
+        result = await sendMetaWhatsAppAudioMessage({
+          audioBase64: voice.audioBase64,
+          config: outboundConfig,
+          contextMessageId: event.provider_message_id,
+          fileName: voice.fileName,
+          mimeType: voice.mimeType,
+          to: destination,
+        });
+      } catch (voiceError) {
+        // TTS/envio de áudio falhou: cai pra TEXTO pra o cliente nunca ficar sem resposta.
+        console.error(
+          "[iris] Cacá voz falhou; caindo pra texto",
+          errorMessage(voiceError),
+        );
+      }
+    }
+
+    if (!result) {
+      // Assina pro cliente como "Cacá" (o corpo salvo localmente fica sem assinatura).
+      result = await sendMetaWhatsAppTextMessage({
+        body: signWhatsAppBody(CACA_OPERATOR_LABEL, reply.replyText),
+        config: outboundConfig,
+        contextMessageId: event.provider_message_id,
+        to: destination,
+      });
+    }
     const ticketUpdate = await updateTicketAfterCacaReply({
       client,
       reply,
@@ -2196,6 +2243,7 @@ async function insertCacaOutboundMessage({
   contactId,
   event,
   ticketId,
+  voiceReply = false,
 }: {
   body: string;
   channelId: string | null;
@@ -2203,6 +2251,8 @@ async function insertCacaOutboundMessage({
   contactId: string;
   event: IrisMetaWebhookEventRow;
   ticketId: string;
+  // Foi enviada como nota de voz (áudio). O body guarda o texto falado (transcrição).
+  voiceReply?: boolean;
 }) {
   const { data, error } = await client
     .from("caredesk_messages")
@@ -2211,7 +2261,7 @@ async function insertCacaOutboundMessage({
       channel_id: channelId,
       delivery_status: "queued",
       direction: "outbound",
-      message_type: "text",
+      message_type: voiceReply ? "audio" : "text",
       provider_payload: {
         automation: "caca",
         operatorLabel: CACA_OPERATOR_LABEL,
@@ -2221,6 +2271,7 @@ async function insertCacaOutboundMessage({
           webhookEventId: event.id,
         },
         source_module: "iris",
+        voiceReply,
       },
       sender_contact_id: contactId,
       sender_type: "operator",

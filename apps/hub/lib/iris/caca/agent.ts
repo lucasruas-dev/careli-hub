@@ -34,16 +34,30 @@ export function isCacaClaudeEngineEnabled(): boolean {
   );
 }
 
+// Master switch da CACÁ com VOZ (responde nota de voz quando o cliente manda áudio). Só liga
+// com CACA_VOICE_ENABLED=1/true E a chave da ElevenLabs no ambiente. Ver [[project-caca-voice-tts]].
+export function isCacaVoiceReplyEnabled(): boolean {
+  const flag = process.env.CACA_VOICE_ENABLED?.trim().toLowerCase();
+
+  return (
+    (flag === "1" || flag === "true") &&
+    Boolean(process.env.ELEVENLABS_API_KEY?.trim())
+  );
+}
+
 export async function runCacaClaudeTurn({
   client,
   contact,
   messageDetail,
   ticket,
+  voiceMode = false,
 }: {
   client?: SupabaseClient;
   contact: CacaAgentContact;
   messageDetail: CacaAgentMessageDetail;
   ticket: CacaAgentTicket;
+  // Resposta vai virar nota de voz -> texto "falado" + pontuação reforçada.
+  voiceMode?: boolean;
 }): Promise<CacaAgentTurn> {
   const anthropic = getAnthropicClient();
 
@@ -135,6 +149,7 @@ export async function runCacaClaudeTurn({
     identityVerified,
     imobiliariaName: toolContext.imobiliariaName,
     nextContactLabel: businessHours.nextContactLabel,
+    voiceMode,
   });
   const messages = await buildConversation(client, ticket.id, messageDetail);
   const model = resolveClaudeModel("heavy");

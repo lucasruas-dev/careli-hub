@@ -5,10 +5,11 @@
 
 const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 
-// Voz escolhida pelo Lucas (biblioteca ElevenLabs). Anterior: Geni JPaHP82NTgRbDP91t8zP.
-export const CACA_DEFAULT_VOICE_ID = "RVmX026jCrF5VqUvpCk0";
-// Melhor qualidade multilingue (cobre PT-BR). Trocar por turbo/flash se latencia pesar.
-export const CACA_DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
+// Voz escolhida pelo Lucas (biblioteca ElevenLabs): sotaque carioca, "Voz 2" na comparação.
+export const CACA_DEFAULT_VOICE_ID = "GDzHdQOi6jjf8zaXhCYD";
+// eleven_v3: mais expressivo/natural (escolha do Lucas no teste). Latencia maior, mas ok pra
+// nota de voz assincrona no WhatsApp. multilingual_v2 = alternativa mais rapida/barata.
+export const CACA_DEFAULT_TTS_MODEL = "eleven_v3";
 
 export type CacaVoiceSettings = {
   stability: number; // 0..1 — MAIS BAIXO = mais expressivo/natural (menos robotico)
@@ -21,9 +22,9 @@ export type CacaVoiceSettings = {
 // Ajuste "natural" (ponto de partida): estabilidade mais baixa + um tanto de estilo. Refinar
 // por ouvido no demo (query params) antes de fixar. Ver [[project-caca-voice-tts]].
 export const CACA_NATURAL_VOICE_SETTINGS: CacaVoiceSettings = {
-  stability: 0.4,
+  stability: 0.22,
   similarity_boost: 0.8,
-  style: 0.45,
+  style: 0.6,
   use_speaker_boost: true,
 };
 
@@ -100,4 +101,26 @@ export async function synthesizeCacaSpeech({
   const audio = await response.arrayBuffer();
 
   return { audio, contentType: contentTypeForFormat(outputFormat), outputFormat };
+}
+
+// Gera a nota de voz da CACÁ pronta pro envio no WhatsApp (base64 + mime + nome). mp3 é o
+// formato mais seguro aceito pelo WhatsApp Cloud (audio/mpeg); toca como áudio. (PTT nativo
+// exigiria ogg/opus — melhoria futura.) Ver [[project-caca-voice-tts]].
+export async function synthesizeCacaVoiceNote(
+  text: string,
+  opts?: { voiceId?: string; modelId?: string; signal?: AbortSignal },
+): Promise<{ audioBase64: string; mimeType: string; fileName: string }> {
+  const { audio } = await synthesizeCacaSpeech({
+    text,
+    voiceId: opts?.voiceId,
+    modelId: opts?.modelId,
+    outputFormat: "mp3_44100_128",
+    signal: opts?.signal,
+  });
+
+  return {
+    audioBase64: Buffer.from(audio).toString("base64"),
+    mimeType: "audio/mpeg",
+    fileName: "caca.mp3",
+  };
 }
