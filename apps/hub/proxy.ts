@@ -44,7 +44,6 @@ const PUBLIC_API_PREFIXES = [
   "/api/hades/db/health", // liveness probe (re-export)
   "/api/pwa/manifest", // manifest publico da PWA
   "/api/version", // versao do build (so string, sem dado sensivel; watcher de atualizacao)
-  "/api/iris/tts/demo", // demo de voz da CACA (protegido por IRIS_TTS_DEMO_KEY proprio)
   "/api/pwa/manifest-mobile", // manifest publico da PWA mobile (/m)
 ];
 
