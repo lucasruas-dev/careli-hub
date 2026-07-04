@@ -21,7 +21,10 @@ import {
 import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
 import { loadHermesResumo } from "@/lib/iris/hermes-analytics";
 import { loadInfraSaude } from "@/lib/iris/infra-analytics";
-import { loadIrisAtendimentosResumo } from "@/lib/iris/iris-analytics";
+import {
+  loadIrisAtendimentosResumo,
+  loadIrisMovimentacaoPeriodo,
+} from "@/lib/iris/iris-analytics";
 
 import { appendClientNote } from "./client-memory";
 import { sortInstallmentsByDueDate } from "./installment-order";
@@ -147,7 +150,7 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
       },
       {
         definition: requireDefinition("consultar_atendimentos_iris"),
-        run: async () => consultarAtendimentosIris(context),
+        run: async (input) => consultarAtendimentosIris(context, input),
       },
       {
         definition: requireDefinition("consultar_hermes"),
@@ -231,6 +234,7 @@ async function consultarClienteC2x(input: unknown): Promise<string> {
 
 async function consultarAtendimentosIris(
   context: CacaToolContext,
+  input: unknown,
 ): Promise<string> {
   const resumo = await loadIrisAtendimentosResumo(context.client);
 
@@ -238,21 +242,39 @@ async function consultarAtendimentosIris(
     return "Não consegui consultar os atendimentos da Iris agora.";
   }
 
+  const linhas: string[] = [];
+
   if (resumo.abertosTotal === 0) {
-    return "Iris: nenhum atendimento aberto no momento. Fila zerada.";
+    linhas.push("Iris (agora): nenhum atendimento aberto. Fila zerada.");
+  } else {
+    linhas.push(
+      `Atendimentos da Iris (agora): ${resumo.abertosTotal} abertos — ${resumo.aguardandoOperador} aguardando a nossa resposta, ${resumo.aguardandoCliente} aguardando o cliente.`,
+      `Por fila: ${resumo.porFila.map((f) => `${f.fila} (${f.abertos})`).join(", ")}`,
+      `Por colaborador: ${resumo.porColaborador.map((c) => `${c.colaborador} (${c.abertos})`).join(", ")}`,
+    );
+
+    if (resumo.esperandoMais.length > 0) {
+      linhas.push("Esperando a nossa resposta há mais tempo:");
+      for (const espera of resumo.esperandoMais) {
+        linhas.push(
+          `- ${espera.fila} · ${espera.assunto} · ${espera.minutosEspera} min (operador: ${espera.operador})`,
+        );
+      }
+    }
   }
 
-  const linhas = [
-    `Atendimentos da Iris (agora): ${resumo.abertosTotal} abertos — ${resumo.aguardandoOperador} aguardando a nossa resposta, ${resumo.aguardandoCliente} aguardando o cliente.`,
-    `Por fila: ${resumo.porFila.map((f) => `${f.fila} (${f.abertos})`).join(", ")}`,
-    `Por colaborador: ${resumo.porColaborador.map((c) => `${c.colaborador} (${c.abertos})`).join(", ")}`,
-  ];
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  if (typeof record.periodo === "string") {
+    const mov = await loadIrisMovimentacaoPeriodo(
+      context.client,
+      record.periodo as C2xPeriodo,
+    );
 
-  if (resumo.esperandoMais.length > 0) {
-    linhas.push("Esperando a nossa resposta há mais tempo:");
-    for (const espera of resumo.esperandoMais) {
+    if (mov) {
       linhas.push(
-        `- ${espera.fila} · ${espera.assunto} · ${espera.minutosEspera} min (operador: ${espera.operador})`,
+        "",
+        `Histórico (${mov.periodoLabel}): ${mov.finalizados} atendimento(s) finalizado(s) e ${mov.criados} criado(s).`,
       );
     }
   }

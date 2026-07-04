@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { type C2xPeriodo, resolvePeriodoRange } from "@/lib/guardian/c2x-analytics";
+
 // Analytics da IRIS (caredesk) para o modo ASSISTENTE da CACÁ: chamadas/atendimentos abertos
 // por fila, por colaborador, por status, e quem está esperando resposta há mais tempo. Usa o
 // Supabase client do contexto (já disponível). Ver [[project-caca-admin-assistant-mode]].
@@ -118,4 +120,49 @@ export async function loadIrisAtendimentosResumo(
     }[],
     porFila: toSorted(porFila, "fila") as { fila: string; abertos: number }[],
   };
+}
+
+export type IrisMovimentacaoPeriodo = {
+  periodoLabel: string;
+  finalizados: number; // tickets encerrados no período (closed_at)
+  criados: number; // tickets abertos/criados no período
+};
+
+// Movimentação da Iris num período: quantos atendimentos foram FINALIZADOS (closed_at) e
+// quantos foram CRIADOS no intervalo. Responde "quantos tickets fechamos ontem/essa semana".
+export async function loadIrisMovimentacaoPeriodo(
+  client: SupabaseClient,
+  periodo: C2xPeriodo,
+): Promise<IrisMovimentacaoPeriodo | null> {
+  const { from, to, label } = resolvePeriodoRange(periodo);
+  const fromIso = from.toISOString();
+  const toIso = to.toISOString();
+
+  try {
+    const [finalizados, criados] = await Promise.all([
+      client
+        .from("caredesk_tickets")
+        .select("id", { count: "exact", head: true })
+        .gte("closed_at", fromIso)
+        .lt("closed_at", toIso),
+      client
+        .from("caredesk_tickets")
+        .select("id", { count: "exact", head: true })
+        .gte("created_at", fromIso)
+        .lt("created_at", toIso),
+    ]);
+
+    return {
+      criados: criados.count ?? 0,
+      finalizados: finalizados.count ?? 0,
+      periodoLabel: label,
+    };
+  } catch (error) {
+    console.error(
+      "[iris] loadIrisMovimentacaoPeriodo failed",
+      error instanceof Error ? error.message : error,
+    );
+
+    return null;
+  }
 }

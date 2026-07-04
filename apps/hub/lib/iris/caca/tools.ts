@@ -200,10 +200,24 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "consultar_atendimentos_iris",
     description:
-      "SÓ no modo assistente/gestão (direção). Panorama dos ATENDIMENTOS da Iris agora: quantas chamadas abertas, quantas aguardando a NOSSA resposta versus aguardando o cliente, por fila e por colaborador, e quem está esperando resposta há mais tempo (com os minutos). Use quando a direção perguntar 'como está a Iris', 'quantas chamadas temos', 'tem gente esperando muito', 'quem está com mais atendimentos'.",
+      "SÓ no modo assistente/gestão (direção). Panorama dos ATENDIMENTOS da Iris agora: quantas chamadas abertas, quantas aguardando a NOSSA resposta versus aguardando o cliente, por fila e por colaborador, e quem está esperando resposta há mais tempo (com os minutos). Use quando a direção perguntar 'como está a Iris', 'quantas chamadas temos', 'tem gente esperando muito', 'quem está com mais atendimentos'. Se informar 'periodo', também traz o HISTÓRICO daquele intervalo: quantos atendimentos foram FINALIZADOS e quantos foram CRIADOS (ex.: 'quantos tickets fechamos ontem/essa semana').",
     input_schema: {
       type: "object",
-      properties: {},
+      properties: {
+        periodo: {
+          type: "string",
+          enum: [
+            "hoje",
+            "ontem",
+            "esta_semana",
+            "este_mes",
+            "ultimos_7_dias",
+            "ultimos_30_dias",
+          ],
+          description:
+            "Opcional. Traz também o histórico (finalizados/criados) desse intervalo.",
+        },
+      },
     },
   },
   {
