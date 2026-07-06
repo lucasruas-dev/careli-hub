@@ -146,23 +146,41 @@ export async function POST(request: NextRequest) {
     return createPhoneMatchResponse(payload, cacheKey ? "miss" : null);
   }
 
-  const { data: identifiers, error: identifierError } = await authorization.client
-    .from("apolo_entity_identifiers")
-    .select("entity_id,value_hash,value_masked")
-    .eq("identifier_type", "phone")
-    .in("value_hash", lookupHashes)
-    .limit(100);
+  // Em LOTES: com a fila crescendo, a lista de hashes estourava o limite de URL
+  // do PostgREST (400) e a rota devolvia 500 SILENCIOSO em todo refresh da Iris
+  // (a fila ficava sem o enriquecimento do CRM). 50 hashes por consulta passa
+  // folgado e escala com o volume de atendimentos.
+  const identifierRows: ApoloIdentifierRow[] = [];
 
-  if (identifierError) {
-    return NextResponse.json(
-      {
-        error: "Nao foi possivel consultar o CRM 360 do Apolo.",
-      },
-      { status: 500 },
-    );
+  for (let index = 0; index < lookupHashes.length; index += 50) {
+    const chunk = lookupHashes.slice(index, index + 50);
+    const { data: identifiers, error: identifierError } =
+      await authorization.client
+        .from("apolo_entity_identifiers")
+        .select("entity_id,value_hash,value_masked")
+        .eq("identifier_type", "phone")
+        .in("value_hash", chunk)
+        .limit(100);
+
+    if (identifierError) {
+      // Loga o motivo REAL (antes o erro era engolido e o 500 saía sem pista).
+      console.error("[iris/phone-match] lookup falhou", {
+        chunkSize: chunk.length,
+        code: identifierError.code,
+        message: identifierError.message,
+        totalHashes: lookupHashes.length,
+      });
+
+      return NextResponse.json(
+        {
+          error: "Nao foi possivel consultar o CRM 360 do Apolo.",
+        },
+        { status: 500 },
+      );
+    }
+
+    identifierRows.push(...((identifiers ?? []) as ApoloIdentifierRow[]));
   }
-
-  const identifierRows = (identifiers ?? []) as ApoloIdentifierRow[];
   const entityIds = unique(identifierRows.map((row) => row.entity_id));
   const [
     entitiesResult,

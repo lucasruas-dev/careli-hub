@@ -2749,10 +2749,16 @@ async function upsertApoloRows(
     return;
   }
 
-  const { error } = await adminClient.from(table).upsert(rows, options);
+  // Em LOTES de 500: upsert de milhares de linhas de uma vez (dados360 é pesado)
+  // montava payloads gigantes e contribuía pros OOM kills do sync na Vercel.
+  for (let index = 0; index < rows.length; index += 500) {
+    const { error } = await adminClient
+      .from(table)
+      .upsert(rows.slice(index, index + 500), options);
 
-  if (error) {
-    throw error;
+    if (error) {
+      throw error;
+    }
   }
 }
 

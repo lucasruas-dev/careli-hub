@@ -19,8 +19,8 @@ type ChronosStorageClient = {
   from: (bucket: string) => {
     upload: (
       path: string,
-      file: Blob,
-      options?: { contentType?: string; upsert?: boolean },
+      file: Blob | ReadableStream<Uint8Array>,
+      options?: { contentType?: string; duplex?: string; upsert?: boolean },
     ) => Promise<ChronosStorageUploadResult>;
   };
 };
@@ -43,10 +43,10 @@ export type ChronosWherebyEgressResult = {
 };
 
 // Copia UMA gravacao do storage do Whereby para o nosso bucket (Supabase Storage) e,
-// opcionalmente, apaga do Whereby (retencao). Assim o video fica preservado, sob nosso
-// controle e com custo de storage muito menor. Streaming nao e usado ainda: o blob e
-// bufferizado em memoria, entao quem chamar deve rodar num contexto com maxDuration alto
-// e memoria suficiente (videos vao de ~70 a ~320MB). Ver memoria project_chronos_drive.
+// opcionalmente, apaga do Whereby (retencao). O corpo é repassado em STREAMING
+// (response.body -> upload) — bufferizar o vídeo inteiro (70-320MB) em memória
+// matava a função por OOM (208 kills entre 22/jun e 6/jul nas rotas de gravação).
+// Ver memoria project_chronos_drive.
 export async function egressChronosWherebyRecordingToStorage({
   storage,
   bucket = CHRONOS_DRIVE_STORAGE_BUCKET,
@@ -72,19 +72,31 @@ export async function egressChronosWherebyRecordingToStorage({
     );
   }
 
-  const fileBlob = await downloadResponse.blob();
   const storagePath = buildChronosDriveStoragePath({
     fileName,
     meetingId,
     wherebyRecordingId,
   });
-  const contentType =
-    mimeType ||
-    downloadResponse.headers.get("content-type") ||
-    "video/mp4";
+  // O Whereby entrega o arquivo como application/octet-stream — o bucket RECUSA
+  // esse MIME (33 falhas "mime type not supported" desde 2/jul, gravações presas).
+  // Saneia: extensão do arquivo > mime confiável > video/mp4; octet-stream nunca.
+  const contentType = resolveRecordingContentType({
+    fileName,
+    headerContentType: downloadResponse.headers.get("content-type"),
+    mimeType,
+  });
+  const contentLength = Number(
+    downloadResponse.headers.get("content-length") ?? "0",
+  );
+  const uploadBody: Blob | ReadableStream<Uint8Array> =
+    downloadResponse.body ?? (await downloadResponse.blob());
   const uploadResult = await storage
     .from(bucket)
-    .upload(storagePath, fileBlob, { contentType, upsert: true });
+    .upload(storagePath, uploadBody, {
+      contentType,
+      duplex: "half",
+      upsert: true,
+    });
 
   if (uploadResult.error) {
     throw new Error(
@@ -104,9 +116,51 @@ export async function egressChronosWherebyRecordingToStorage({
   return {
     bucket,
     deletedFromWhereby,
-    sizeBytes: fileBlob.size,
+    sizeBytes: Number.isFinite(contentLength) ? contentLength : 0,
     storagePath: finalPath,
   };
+}
+
+const RECORDING_EXTENSION_MIME: Record<string, string> = {
+  m4a: "audio/mp4",
+  mkv: "video/x-matroska",
+  mov: "video/quicktime",
+  mp3: "audio/mpeg",
+  mp4: "video/mp4",
+  wav: "audio/wav",
+  webm: "video/webm",
+};
+
+// Exportada para teste: nunca devolve application/octet-stream (o bucket recusa).
+export function resolveRecordingContentType({
+  fileName,
+  headerContentType,
+  mimeType,
+}: {
+  fileName?: string | null;
+  headerContentType?: string | null;
+  mimeType?: string | null;
+}): string {
+  const extension = (fileName ?? "").toLowerCase().split(".").pop() ?? "";
+  const fromExtension = RECORDING_EXTENSION_MIME[extension];
+
+  if (fromExtension) {
+    return fromExtension;
+  }
+
+  for (const candidate of [mimeType, headerContentType]) {
+    const clean = candidate?.trim().toLowerCase() ?? "";
+
+    if (
+      clean &&
+      clean !== "application/octet-stream" &&
+      (clean.startsWith("video/") || clean.startsWith("audio/"))
+    ) {
+      return clean;
+    }
+  }
+
+  return "video/mp4";
 }
 
 function buildChronosDriveStoragePath({
