@@ -41145,3 +41145,9 @@ Estado: branch `feat/panteon-super-motor`, SEM push na main (aguarda OK do Lucas
 **↩️ REVERSÃO do teste do "Dr." (6/jul, Lucas validou):** `CACA_DOCTOR_PHONES` voltou a ter SÓ o Fabricio (`5531991991442`) — número do Lucas removido após validação (tom/voz/cenário/CAD OK). Redeploy pra a env valer. Estado do "Dr." agora: só o Fabricio é tratado por "Dr."/você/tom de gestora→superior.
 
 **🚀 GO-LIVE formato numérico no texto (6/jul, OK do Lucas):** feedback = em texto a CACÁ escrevia número/valor por extenso (estilo de voz). Persona ganhou bloco pro modo NÃO-voz: numeral + R$ (125 unidades / R$ 489.790,00 / DD/MM); bloco de VOZ intacto (por extenso, certo pro áudio). Deploy `dpl_54UX97NSzVcwPipZSYXcr4UTjksK` (commit 52169232), rollback `dpl_ATAACsagSpJRq9hWYQADSghXY2Ln`. Interno da CACÁ → sem changelog.
+
+**Pacote de estabilidade 6/jul (diagnóstico custo+perf; branch, v1.23.5):**
+1. **phone-match 500 contínuo (Iris sem CRM na fila)**: IN de centenas de hashes numa URL → PostgREST 400 (confirmado nos logs Supabase) → 500 silencioso. Fix: lotes de 50 + log do erro real.
+2. **Gravações Chronos presas** ("mime application/octet-stream is not supported", 33×): resolveRecordingContentType saneia (extensão>mime confiável>video/mp4; octet-stream nunca) + 6 testes.
+3. **208 OOM kills** (chronos meetings/webhook/egress + apolo sync): upload em STREAMING (response.body direto, sem blob de 70-320MB em memória; duplex half) + upserts do Apolo em lotes de 500 (payloads gigantes de dados360).
+PÓS-DEPLOY: resetar tentativas das gravações presas (egressAttempts) p/ o cron reprocessar com o mime certo.
