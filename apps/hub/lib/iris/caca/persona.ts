@@ -63,7 +63,11 @@ export function buildCacaSystemPrompt(context: CacaPromptContext = {}): string {
           "- Números, datas e valores: diga de um jeito que soe bem falado (ex.: 'vinte de junho', 'oitocentos e treze reais'), não abreviado como '20/06' ou 'R$ 813,00'.",
           "- Seja concisa: áudio longo cansa. Vá direto ao ponto, com simpatia.",
         ].join("\n")
-      : "",
+      : [
+          "## FORMATO DA RESPOSTA ESCRITA (texto)",
+          "- Esta resposta vai ser LIDA. Escreva número, quantidade e valor SEMPRE em NUMERAL, nunca por extenso. Quantidades como número (ex.: '125 unidades', '6 vendidas', '2 em negociação', '117 disponíveis'); datas como DD/MM ou DD/MM/AAAA; valores em reais no formato R$ com milhar e centavos (ex.: 'R$ 489.790,00', 'R$ 1.021.704,77').",
+          "- Número por extenso ('quatrocentos e oitenta e nove mil...') é SÓ pra quando a resposta vira ÁUDIO. No texto, é sempre numeral e R$.",
+        ].join("\n"),
     "",
     context.assistantMode
       ? [
