@@ -1,6 +1,11 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ClaudeAgentTool } from "@/lib/ai/claude-agent";
+import { type CadAgruparPor, queryCad } from "@/lib/analytics/cad-source";
+import {
+  formatPanteonResultado,
+  queryPanteon,
+} from "@/lib/analytics/query-panteon";
 import { prepareBoletoResendAction } from "@/lib/guardian/asaas";
 import {
   type C2xImobiliariaClientMatch,
@@ -9,7 +14,28 @@ import {
   loadC2xUserCadastro,
   loadHadesAttendanceClient,
 } from "@/lib/guardian/attendance";
+import {
+  type C2xMovimentacaoTipo,
+  type C2xPeriodo,
+  loadC2xClienteResumo,
+  loadC2xMovimentacaoDetalhe,
+  loadC2xMovimentacaoResumo,
+  loadC2xUnidade,
+  loadC2xVendasPorEmpreendimento,
+  loadC2xVendasPorImobiliaria,
+} from "@/lib/guardian/c2x-analytics";
 import { lookupApoloByDocument } from "@/lib/iris/caca-agent";
+import { loadHermesResumo } from "@/lib/iris/hermes-analytics";
+import { loadInfraSaude } from "@/lib/iris/infra-analytics";
+import {
+  getMetaWhatsAppOutboundConfig,
+  sendMetaWhatsAppMediaMessage,
+} from "@/lib/iris/meta-whatsapp";
+import {
+  loadIrisAtendimentosResumo,
+  loadIrisConversa,
+  loadIrisMovimentacaoPeriodo,
+} from "@/lib/iris/iris-analytics";
 
 import { appendClientNote } from "./client-memory";
 import { sortInstallmentsByDueDate } from "./installment-order";
@@ -36,6 +62,14 @@ export type CacaToolContext = {
   imobiliariaName: string | null;
   nextContactLabel: string;
   validationSource: "cpf" | "phone" | null;
+  // Modo assistente/gestão (número admin verificado: proprietários). Libera as ferramentas
+  // de ANALISTA (C2X, Iris, Hermes, infra). Ver [[project-caca-admin-assistant-mode]].
+  assistantMode?: boolean;
+  // hub_user_id do admin (mapa número→usuário) — pra consultar o Hermes DELE. null = sem conta.
+  assistantHubUserId?: string | null;
+  // Destino (wa_id) e phone_number_id do atendimento — pra a tool ENVIAR imagem (relatório).
+  destination?: string | null;
+  outboundPhoneNumberId?: string | null;
 };
 
 // Traduz os perfis crus do Apolo (usuario/colaborador/imobiliaria/...) num rotulo curto e
@@ -70,7 +104,7 @@ const DEFINITION_BY_NAME = new Map(
 );
 
 export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
-  return [
+  const tools: ClaudeAgentTool[] = [
     {
       definition: requireDefinition("validar_identidade"),
       run: async (input) => validarIdentidade(context, input),
@@ -116,6 +150,615 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
       run: async (input) => transferirParaHumano(context, input),
     },
   ];
+
+  // Ferramentas de ANALISTA: só no modo assistente/gestão (proprietários).
+  if (context.assistantMode) {
+    tools.push(
+      {
+        definition: requireDefinition("consultar_panteon"),
+        run: async (input) => consultarPanteon(context, input),
+      },
+      {
+        definition: requireDefinition("cenario_comercial"),
+        run: async (input) => cenarioComercial(input),
+      },
+      {
+        definition: requireDefinition("consultar_cad"),
+        run: async (input) => consultarCad(input),
+      },
+      {
+        definition: requireDefinition("consultar_movimentacao_c2x"),
+        run: async (input) => consultarMovimentacaoC2x(input),
+      },
+      {
+        definition: requireDefinition("consultar_vendas_por_empreendimento"),
+        run: async () => consultarVendasPorEmpreendimento(),
+      },
+      {
+        definition: requireDefinition("consultar_atendimentos_iris"),
+        run: async (input) => consultarAtendimentosIris(context, input),
+      },
+      {
+        definition: requireDefinition("consultar_hermes"),
+        run: async () => consultarHermes(context),
+      },
+      {
+        definition: requireDefinition("consultar_saude_sistema"),
+        run: async () => consultarSaudeSistema(),
+      },
+      {
+        definition: requireDefinition("consultar_unidade_c2x"),
+        run: async (input) => consultarUnidadeC2x(input),
+      },
+      {
+        definition: requireDefinition("consultar_cliente_c2x"),
+        run: async (input) => consultarClienteC2x(input),
+      },
+      {
+        definition: requireDefinition("gerar_relatorio_visual"),
+        run: async () => gerarRelatorioVisual(context),
+      },
+      {
+        definition: requireDefinition("consultar_vendas_por_imobiliaria"),
+        run: async () => consultarVendasPorImobiliaria(),
+      },
+      {
+        definition: requireDefinition("ler_conversa_iris"),
+        run: async (input) => lerConversaIris(context, input),
+      },
+    );
+  }
+
+  return tools;
+}
+
+async function consultarVendasPorImobiliaria(): Promise<string> {
+  const rows = await loadC2xVendasPorImobiliaria();
+
+  if (rows.length === 0) {
+    return "Não consegui puxar o ranking de imobiliárias agora.";
+  }
+
+  return [
+    "Imobiliárias que mais venderam (unidades faturadas):",
+    ...rows.map((row, index) => `${index + 1}. ${row.imobiliaria}: ${row.unidades}`),
+  ].join("\n");
+}
+
+async function lerConversaIris(
+  context: CacaToolContext,
+  input: unknown,
+): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const termo = typeof record.cliente === "string" ? record.cliente : "";
+
+  const conversa = await loadIrisConversa(context.client, termo);
+
+  if (!conversa) {
+    return "Não encontrei um atendimento na Iris pra esse cliente (confira o nome).";
+  }
+
+  const espera =
+    conversa.quemFalouPorUltimo === "cliente" &&
+    conversa.minutosDesdeUltimaMensagem != null
+      ? `O CLIENTE falou por último há ${conversa.minutosDesdeUltimaMensagem} min (aguardando a nossa resposta).`
+      : conversa.quemFalouPorUltimo === "nós"
+        ? "NÓS falamos por último (a bola está com o cliente)."
+        : "";
+
+  const rajada =
+    conversa.mensagensDoClienteSeguidas >= 2
+      ? `O cliente mandou ${conversa.mensagensDoClienteSeguidas} mensagens seguidas sem resposta nossa (possível impaciência).`
+      : "";
+
+  const linhas = [
+    `Atendimento de ${conversa.cliente} — ${conversa.perfil} · status ${conversa.statusTicket}.`,
+    espera,
+    rajada,
+    "",
+    "Conversa (ordem cronológica):",
+    ...conversa.mensagens.map((m) => `- ${m.de}: ${m.texto}`),
+    "",
+    "AVALIE E RESPONDA À DIREÇÃO: (1) o ESTADO EMOCIONAL do cliente pelas mensagens (calmo, impaciente, irritado/agressivo, ansioso, satisfeito ou neutro) com uma evidência curta do texto; (2) a URGÊNCIA e o que ele quer; (3) uma recomendação objetiva de abordagem. Baseie-se SÓ no que está escrito — não invente. Se o tom for ambíguo, diga que está neutro.",
+  ].filter((linha) => linha !== "");
+
+  return linhas.join("\n");
+}
+
+// Gera o relatório em IMAGEM (chama a rota edge de render) e ENVIA como foto no WhatsApp.
+async function gerarRelatorioVisual(context: CacaToolContext): Promise<string> {
+  if (!context.destination) {
+    return "Não consegui identificar o destino pra enviar o relatório.";
+  }
+
+  const rows = await loadC2xVendasPorEmpreendimento();
+
+  if (rows.length === 0) {
+    return "Não há dados de vendas pra montar o relatório agora.";
+  }
+
+  const secret = process.env.IRIS_TTS_DEMO_KEY?.trim() ?? "";
+  const base = process.env.VERCEL_URL
+    ? `https://${process.env.VERCEL_URL}`
+    : "https://c2x.app.br";
+
+  try {
+    const render = await fetch(`${base}/api/iris/report-render`, {
+      body: JSON.stringify({
+        rows: rows.map((row) => ({
+          disponiveis: row.disponiveis,
+          empreendimento: row.empreendimento,
+          vendidas: row.vendidas,
+        })),
+        titulo: "Vendas por empreendimento",
+      }),
+      cache: "no-store",
+      headers: { "content-type": "application/json", "x-report-secret": secret },
+      method: "POST",
+    });
+
+    if (!render.ok) {
+      return "Não consegui gerar a imagem do relatório agora.";
+    }
+
+    const png = Buffer.from(await render.arrayBuffer());
+
+    await sendMetaWhatsAppMediaMessage({
+      caption: "Vendas por empreendimento · Careli",
+      config: context.outboundPhoneNumberId
+        ? {
+            ...getMetaWhatsAppOutboundConfig(),
+            phoneNumberId: context.outboundPhoneNumberId,
+          }
+        : undefined,
+      fileName: "vendas-por-empreendimento.png",
+      kind: "image",
+      mediaBase64: png.toString("base64"),
+      mimeType: "image/png",
+      to: context.destination,
+    });
+
+    return "Pronto, te enviei o relatório de vendas por empreendimento em imagem. 📊";
+  } catch {
+    return "Tive um problema pra gerar/enviar o relatório em imagem agora.";
+  }
+}
+
+async function consultarUnidadeC2x(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+
+  const unidades = await loadC2xUnidade({
+    empreendimento: typeof record.empreendimento === "string" ? record.empreendimento : null,
+    lote: typeof record.lote === "string" ? record.lote : null,
+    quadra: typeof record.quadra === "string" ? record.quadra : null,
+  });
+
+  if (unidades.length === 0) {
+    return "Não encontrei essa unidade no C2X (confira o empreendimento, a quadra e o lote).";
+  }
+
+  return unidades
+    .map((u) => {
+      const partes = [
+        `${u.empreendimento} ${u.quadraLote}`,
+        `status: ${u.statusVenda}`,
+        u.area != null ? `${u.area} m²` : null,
+        `valor ${formatBrl(u.valor)}`,
+        u.comprador ? `comprador ${u.comprador}` : "sem comprador",
+        u.estagioAtual ? `(${u.estagioAtual})` : null,
+        u.corretor ? `corretor ${u.corretor}` : null,
+      ].filter(Boolean);
+
+      return partes.join(" · ");
+    })
+    .join("\n");
+}
+
+async function consultarClienteC2x(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const termo = typeof record.cliente === "string" ? record.cliente : "";
+
+  const resumo = await loadC2xClienteResumo(termo);
+
+  if (!resumo) {
+    return "Não encontrei esse cliente no C2X (confira o nome ou o CPF/CNPJ).";
+  }
+
+  const linhas = [`Cliente: ${resumo.nome}${resumo.documento ? ` (${resumo.documento})` : ""}`];
+
+  // Imobiliária vem do vínculo do cadastro (vinculed_by_id) — todo cliente/prospect tem,
+  // NÃO depende de venda. É o campo que a Cacá errou com a Nívea (prospect sem venda).
+  linhas.push(
+    `Imobiliária vinculada: ${resumo.imobiliaria ?? "não consta no cadastro"}`,
+  );
+
+  const p = resumo.perfil;
+  const perfilPartes = [
+    p.idade != null ? `${p.idade} anos` : null,
+    p.sexo,
+    p.estadoCivil,
+    p.escolaridade ? `escolaridade ${p.escolaridade}` : null,
+    p.renda ? `renda ${p.renda}` : null,
+    p.profissao ? `profissão ${p.profissao}` : null,
+    p.cidadeUf,
+  ].filter(Boolean);
+
+  if (perfilPartes.length) {
+    linhas.push(`Cadastro: ${perfilPartes.join(" · ")}`);
+  }
+
+  const contato = [
+    p.telefone ? `tel ${p.telefone}` : null,
+    p.email ? `e-mail ${p.email}` : null,
+  ].filter(Boolean);
+
+  if (contato.length) {
+    linhas.push(`Contato: ${contato.join(" · ")}`);
+  }
+
+  if (resumo.unidades.length === 0) {
+    linhas.push(
+      "Unidades: nenhuma unidade viva no C2X (provável prospect / ainda sem compra — a imobiliária e o cadastro acima seguem válidos).",
+    );
+  } else {
+    linhas.push(`Unidades (${resumo.unidades.length}):`);
+    for (const u of resumo.unidades) {
+      linhas.push(
+        `- ${u.empreendimento} ${u.quadraLote} · ${u.estagio ?? "-"} · ${formatBrl(u.valor)}`,
+      );
+    }
+  }
+
+  return linhas.join("\n");
+}
+
+async function consultarAtendimentosIris(
+  context: CacaToolContext,
+  input: unknown,
+): Promise<string> {
+  const resumo = await loadIrisAtendimentosResumo(context.client);
+
+  if (!resumo) {
+    return "Não consegui consultar os atendimentos da Iris agora.";
+  }
+
+  const linhas: string[] = [];
+
+  if (resumo.abertosTotal === 0) {
+    linhas.push("Iris (agora): nenhum atendimento aberto. Fila zerada.");
+  } else {
+    linhas.push(
+      `Atendimentos da Iris (agora): ${resumo.abertosTotal} abertos — ${resumo.aguardandoOperador} aguardando a nossa resposta, ${resumo.aguardandoCliente} aguardando o cliente.`,
+      `Por fila: ${resumo.porFila.map((f) => `${f.fila} (${f.abertos})`).join(", ")}`,
+      `Por colaborador: ${resumo.porColaborador.map((c) => `${c.colaborador} (${c.abertos})`).join(", ")}`,
+    );
+
+    if (resumo.esperandoMais.length > 0) {
+      linhas.push("Esperando a nossa resposta há mais tempo:");
+      for (const espera of resumo.esperandoMais) {
+        linhas.push(
+          `- ${espera.cliente} · ${espera.fila} · ${espera.assunto} · ${espera.minutosEspera} min (operador: ${espera.operador})`,
+        );
+      }
+    }
+  }
+
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  if (typeof record.periodo === "string") {
+    const mov = await loadIrisMovimentacaoPeriodo(
+      context.client,
+      record.periodo as C2xPeriodo,
+    );
+
+    if (mov) {
+      linhas.push(
+        "",
+        `Histórico (${mov.periodoLabel}): ${mov.finalizados} atendimento(s) finalizado(s) e ${mov.criados} criado(s).`,
+      );
+    }
+  }
+
+  return linhas.join("\n");
+}
+
+async function consultarHermes(context: CacaToolContext): Promise<string> {
+  if (!context.assistantHubUserId) {
+    return "Essa pessoa não tem conta no Hermes (chat interno), então não há mensagens pra verificar.";
+  }
+
+  const resumo = await loadHermesResumo(context.client, context.assistantHubUserId);
+
+  if (!resumo) {
+    return "Não consegui consultar o Hermes agora.";
+  }
+
+  if (resumo.totalNaoLidas === 0) {
+    return "Hermes: você está em dia, nenhuma mensagem não lida.";
+  }
+
+  return [
+    `Hermes: você tem ${resumo.totalNaoLidas} mensagem(ns) não lida(s).`,
+    ...resumo.canais.map((c) => `- ${c.canal}: ${c.naoLidas}`),
+  ].join("\n");
+}
+
+async function consultarSaudeSistema(): Promise<string> {
+  const saude = await loadInfraSaude();
+
+  return [`Saúde do sistema:`, `- ${saude.vercel}`, `- ${saude.supabase}`].join(
+    "\n",
+  );
+}
+
+// ---- Ferramentas de analista (modo assistente) ----
+
+// SUPER MOTOR: consulta parametrizada (cubo métrica × agrupamento × filtros × período).
+// A validação/whitelist mora em lib/analytics; erro de combinação volta como texto pra
+// CACÁ se corrigir sozinha no próximo turno. O módulo iris usa o Supabase do contexto.
+async function consultarPanteon(
+  context: CacaToolContext,
+  input: unknown,
+): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+
+  const outcome = await queryPanteon(record, { supabase: context.client });
+
+  if (!outcome.ok) {
+    return `Não consegui montar essa consulta: ${outcome.erro}`;
+  }
+
+  return formatPanteonResultado(outcome.resultado);
+}
+
+// CENÁRIO COMERCIAL consolidado de UM empreendimento / imobiliária / cliente num período:
+// junta propostas + vendas + faturados + valor + cancelamentos (e, pra empreendimento, o
+// estado atual da carteira) numa resposta só. Reusa o motor (queryPanteon), então herda as
+// regras validadas. Responde direto — a CACÁ NÃO deve "prometer levantar depois".
+async function cenarioComercial(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const foco = typeof record.foco === "string" ? record.foco : "";
+  const valor = typeof record.valor === "string" ? record.valor.trim() : "";
+
+  if (!["empreendimento", "imobiliaria", "cliente"].includes(foco) || !valor) {
+    return "Pra montar o cenário comercial, me diga o foco (empreendimento, imobiliaria ou cliente) e o nome. Ex.: foco='empreendimento', valor='Veredas do Ouro'.";
+  }
+
+  const base = {
+    data_fim: typeof record.data_fim === "string" ? record.data_fim : undefined,
+    data_inicio:
+      typeof record.data_inicio === "string" ? record.data_inicio : undefined,
+    filtros: { [foco]: valor } as Record<string, string>,
+    modulo: "c2x",
+    periodo: typeof record.periodo === "string" ? record.periodo : undefined,
+  };
+
+  const num = async (metrica: string) => {
+    const outcome = await queryPanteon({ ...base, metrica });
+
+    return outcome.ok ? outcome.resultado : null;
+  };
+
+  const [propostas, vendas, faturados, cancelamentos, valorFat] =
+    await Promise.all([
+      num("propostas"),
+      num("vendas"),
+      num("faturamentos"),
+      num("cancelamentos"),
+      num("valor_faturado"),
+    ]);
+
+  if (!propostas) {
+    return `Não consegui montar o cenário do ${foco} "${valor}" agora (confira o nome ou tente de novo).`;
+  }
+
+  const focoLabel =
+    foco === "empreendimento"
+      ? "empreendimento"
+      : foco === "imobiliaria"
+        ? "imobiliária"
+        : "cliente";
+
+  const linhas = [
+    `Cenário comercial — ${focoLabel} "${valor}" (${propostas.periodoLabel ?? "período"}):`,
+    `- Propostas geradas: ${propostas.total}`,
+    `- Vendas em andamento (contrato gerado + em assinatura + faturado): ${vendas?.total ?? 0}`,
+    `- Vendas fechadas (faturado): ${faturados?.total ?? 0}`,
+    `- Valor faturado: ${formatBrl(valorFat?.total ?? 0)}`,
+    `- Cancelamentos/distratos: ${cancelamentos?.total ?? 0}`,
+  ];
+
+  // Fotografia atual da carteira só faz sentido por empreendimento (estado das unidades):
+  // breakdown por TODOS os status (Disponível/Reservado/Em negociação/Vendido/Bloqueado).
+  if (foco === "empreendimento") {
+    const carteira = await queryPanteon({
+      agrupar_por: "status_venda",
+      filtros: { empreendimento: valor },
+      metrica: "unidades_total",
+      modulo: "c2x",
+    });
+
+    if (carteira.ok && carteira.resultado.total > 0) {
+      const porStatus = (carteira.resultado.grupos ?? [])
+        .map((g) => `${g.grupo} ${g.valor}`)
+        .join(" · ");
+
+      linhas.push(
+        `Estado atual da carteira (${carteira.resultado.total} unidades): ${porStatus}.`,
+      );
+    }
+  }
+
+  linhas.push(
+    "Se quiser, eu detalho por imobiliária, por perfil de cliente, ou lote a lote.",
+  );
+
+  return linhas.join("\n");
+}
+
+// Central de CAD (Asana): cadastros de prospects enviados pelos corretores. Cada CAD tem
+// cliente (nome da task), empreendimento, imobiliária credenciada e etapa (seção).
+async function consultarCad(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const str = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : undefined;
+
+  const agruparPorRaw = str(record.agrupar_por);
+  const agruparPor: CadAgruparPor | null =
+    agruparPorRaw === "empreendimento" ||
+    agruparPorRaw === "imobiliaria" ||
+    agruparPorRaw === "etapa"
+      ? agruparPorRaw
+      : null;
+
+  const resultado = await queryCad({
+    agruparPor,
+    filtros: {
+      cliente: str(record.cliente),
+      empreendimento: str(record.empreendimento),
+      etapa: str(record.etapa),
+      imobiliaria: str(record.imobiliaria),
+    },
+    periodo: (str(record.periodo) as C2xPeriodo | undefined) ?? null,
+  });
+
+  if (!resultado) {
+    return "Não consegui ler a Central de CAD agora (Asana indisponível ou sem acesso).";
+  }
+
+  const cab = [
+    "Central de CAD",
+    resultado.periodoLabel ? `(${resultado.periodoLabel})` : null,
+    resultado.filtrosLabel ? `[${resultado.filtrosLabel}]` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  // Consulta de um cliente específico (ex.: "qual imobiliária está o cliente X").
+  if (str(record.cliente) && !agruparPor) {
+    if (resultado.registros.length === 0) {
+      return `${cab}: não encontrei nenhuma CAD com esse nome (confira a grafia).`;
+    }
+
+    const linhas = [`${cab}: ${resultado.total} CAD(s) encontrada(s).`];
+    for (const r of resultado.registros.slice(0, 10)) {
+      const partes = [
+        r.cliente,
+        r.empreendimento ? `empreendimento ${r.empreendimento}` : null,
+        r.imobiliaria ? `imobiliária ${r.imobiliaria}` : "sem imobiliária no cadastro",
+        r.etapa ? `etapa ${r.etapa}` : null,
+      ].filter(Boolean);
+      linhas.push(`- ${partes.join(" · ")}`);
+    }
+
+    return linhas.join("\n");
+  }
+
+  if (agruparPor && resultado.grupos) {
+    const linhas = [`${cab}: ${resultado.total} CAD(s) no total, por ${agruparPor}:`];
+    for (const grupo of resultado.grupos.slice(0, 30)) {
+      linhas.push(`- ${grupo.grupo}: ${grupo.valor}`);
+    }
+
+    return linhas.join("\n");
+  }
+
+  // Contagem simples + amostra de nomes.
+  const linhas = [`${cab}: ${resultado.total} CAD(s).`];
+  const nomes = resultado.registros.map((r) => r.cliente);
+  if (nomes.length) {
+    linhas.push(
+      `Clientes: ${nomes.slice(0, 25).join(", ")}${nomes.length > 25 ? `, e mais ${nomes.length - 25}…` : ""}.`,
+    );
+  }
+
+  return linhas.join("\n");
+}
+
+function formatBrl(value: number | null): string {
+  if (value == null) {
+    return "-";
+  }
+
+  return value.toLocaleString("pt-BR", {
+    currency: "BRL",
+    style: "currency",
+  });
+}
+
+async function consultarMovimentacaoC2x(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const periodo = (String(record.periodo ?? "esta_semana") as C2xPeriodo);
+
+  const resumo = await loadC2xMovimentacaoResumo(periodo);
+
+  if (!resumo) {
+    return "Não consegui consultar a movimentação do C2X agora (banco indisponível).";
+  }
+
+  const linhas = [
+    `Movimentação do C2X (${resumo.periodoLabel}):`,
+    `- Propostas geradas: ${resumo.propostas}`,
+    `- Vendas (contrato gerado + em assinatura + faturado): ${resumo.vendas}`,
+    `  · Contrato gerado: ${resumo.contratoGerado} · Em assinatura: ${resumo.emAssinatura} · Faturado (venda fechada): ${resumo.faturado}`,
+    `- Cancelamentos: ${resumo.cancelados} · Distratos: ${resumo.distratos}`,
+    `- Reservas: ${resumo.reservas}`,
+  ];
+
+  const tipoDetalhe = record.tipo_detalhe;
+  if (typeof tipoDetalhe === "string") {
+    const itens = await loadC2xMovimentacaoDetalhe(
+      periodo,
+      tipoDetalhe as C2xMovimentacaoTipo,
+    );
+
+    linhas.push("", `Detalhe (${tipoDetalhe}):`);
+    if (itens.length === 0) {
+      linhas.push("- Nenhum caso no período.");
+    } else {
+      for (const item of itens) {
+        const partes = [
+          item.empreendimento,
+          item.quadraLote,
+          item.area != null ? `${item.area} m²` : null,
+          `lote ${formatBrl(item.valorLote)}`,
+          item.cliente ? `cliente ${item.cliente}` : null,
+          item.corretor ? `corretor ${item.corretor}` : null,
+          item.imobiliaria ? `imob. ${item.imobiliaria}` : null,
+          `(${item.estagio})`,
+        ].filter(Boolean);
+        linhas.push(`- ${partes.join(" · ")}`);
+      }
+    }
+  }
+
+  return linhas.join("\n");
+}
+
+async function consultarVendasPorEmpreendimento(): Promise<string> {
+  const rows = await loadC2xVendasPorEmpreendimento();
+
+  if (rows.length === 0) {
+    return "Não consegui consultar as vendas por empreendimento agora (banco indisponível).";
+  }
+
+  const totalVendidas = rows.reduce((sum, row) => sum + row.vendidas, 0);
+  const linhas = [
+    `Vendas por empreendimento (estado atual da carteira) — total vendidas: ${totalVendidas}:`,
+    ...rows.map(
+      (row) =>
+        `- ${row.empreendimento}: ${row.vendidas} vendidas · ${row.disponiveis} disponíveis · ${row.total} no total`,
+    ),
+  ];
+
+  return linhas.join("\n");
 }
 
 async function anotarSobreCliente(

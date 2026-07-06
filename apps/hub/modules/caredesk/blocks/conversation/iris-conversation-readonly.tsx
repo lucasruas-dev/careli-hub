@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
-import { flagEmojiForE164 } from "@/lib/iris/phone-country";
+import { PhoneFlag } from "../../components/phone-flag";
 import {
   BoardProfileChip,
   type IrisBoardTicket,
@@ -426,9 +426,14 @@ export function IrisConversationContextSidebar({
         <ConversationContextItem
           label="Telefone"
           value={
-            ticket.contactPhone
-              ? `${flagEmojiForE164(ticket.contactPhone)} ${ticket.contactPhone}`
-              : "-"
+            ticket.contactPhone ? (
+              <span className="inline-flex items-center gap-1.5">
+                <PhoneFlag phone={ticket.contactPhone} />
+                {ticket.contactPhone}
+              </span>
+            ) : (
+              "-"
+            )
           }
         />
         <ConversationContextItem
@@ -488,7 +493,7 @@ function ConversationContextItem({
   value,
 }: {
   label: string;
-  value: string;
+  value: ReactNode;
 }) {
   return (
     <div className="rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">

@@ -34,16 +34,111 @@ export function isCacaClaudeEngineEnabled(): boolean {
   );
 }
 
+// Master switch da CACÁ com VOZ (responde nota de voz quando o cliente manda áudio). Só liga
+// com CACA_VOICE_ENABLED=1/true E a chave da ElevenLabs no ambiente. Ver [[project-caca-voice-tts]].
+export function isCacaVoiceReplyEnabled(): boolean {
+  const flag = process.env.CACA_VOICE_ENABLED?.trim().toLowerCase();
+
+  return (
+    (flag === "1" || flag === "true") &&
+    Boolean(process.env.ELEVENLABS_API_KEY?.trim())
+  );
+}
+
+// Reduz um telefone à chave nacional canônica (tira 55 e o 9º dígito de celular), pra casar
+// variantes (com/sem 55, com/sem 9). Ex.: 5531983013616 -> 3183013616.
+function canonicalPhoneKey(value: string | null | undefined): string {
+  let digits = String(value ?? "").replace(/\D/g, "");
+
+  if (digits.startsWith("55") && digits.length >= 12) {
+    digits = digits.slice(2);
+  }
+
+  if (digits.length === 11 && digits[2] === "9") {
+    digits = digits.slice(0, 2) + digits.slice(3);
+  }
+
+  return digits;
+}
+
+function parseAdminPhoneKeys(env: string | undefined): Set<string> {
+  return new Set(
+    String(env ?? "")
+      .split(",")
+      .map((phone) => canonicalPhoneKey(phone))
+      .filter(Boolean),
+  );
+}
+
+// Mapa número→hub_user_id (env CACA_HERMES_USER_MAP = "fone:uuid,fone:uuid"), pra consultar o
+// Hermes do admin. Chave = telefone canonicalizado.
+function parseHermesUserMap(env: string | undefined): Map<string, string> {
+  const map = new Map<string, string>();
+
+  for (const pair of String(env ?? "").split(",")) {
+    const [phone, userId] = pair.split(":").map((part) => part.trim());
+    const key = canonicalPhoneKey(phone);
+
+    if (key && userId) {
+      map.set(key, userId);
+    }
+  }
+
+  return map;
+}
+
+// Modo ASSISTENTE: quem fala é um número admin VERIFICADO (allowlist CACA_ADMIN_PHONES; Nívea
+// em CACA_NIVEA_PHONES ganha tratamento de dona). Gate por número (nunca por alegação), pra
+// ninguém no WhatsApp impersonar. Ver [[project-caca-admin-assistant-mode]].
+function resolveCacaAdmin(contact: CacaAgentContact): {
+  isAdmin: boolean;
+  isOwner: boolean;
+  isDoctor: boolean;
+  hubUserId: string | null;
+} {
+  const admins = parseAdminPhoneKeys(process.env.CACA_ADMIN_PHONES);
+  const owners = parseAdminPhoneKeys(process.env.CACA_NIVEA_PHONES);
+  // Números tratados por "Doutor" na saudação (ex.: Fabrício). Só cosmético; o gate de acesso
+  // segue sendo admin/owner. Ver [[project-caca-admin-assistant-mode]].
+  const doctors = parseAdminPhoneKeys(process.env.CACA_DOCTOR_PHONES);
+
+  if (admins.size === 0 && owners.size === 0) {
+    return { hubUserId: null, isAdmin: false, isDoctor: false, isOwner: false };
+  }
+
+  const keys = [contact.whatsapp_phone, contact.phone]
+    .map((phone) => canonicalPhoneKey(phone))
+    .filter(Boolean);
+
+  const isOwner = keys.some((key) => owners.has(key));
+  const isAdmin = isOwner || keys.some((key) => admins.has(key));
+  const isDoctor = keys.some((key) => doctors.has(key));
+
+  const hermesMap = parseHermesUserMap(process.env.CACA_HERMES_USER_MAP);
+  const hubUserId =
+    keys.map((key) => hermesMap.get(key)).find(Boolean) ?? null;
+
+  return { hubUserId, isAdmin, isDoctor, isOwner };
+}
+
 export async function runCacaClaudeTurn({
   client,
   contact,
+  destination,
   messageDetail,
+  outboundPhoneNumberId,
   ticket,
+  voiceMode = false,
 }: {
   client?: SupabaseClient;
   contact: CacaAgentContact;
+  // Destino (wa_id) + phone_number_id do atendimento — pra tools que ENVIAM mídia (relatório).
+  destination?: string | null;
   messageDetail: CacaAgentMessageDetail;
+  outboundPhoneNumberId?: string | null;
   ticket: CacaAgentTicket;
+  // Resposta vai virar nota de voz -> texto "falado" + pontuação reforçada.
+  voiceMode?: boolean;
 }): Promise<CacaAgentTurn> {
   const anthropic = getAnthropicClient();
 
@@ -110,8 +205,22 @@ export async function runCacaClaudeTurn({
   }
 
   const businessHours = businessHoursForNow();
+  const admin = resolveCacaAdmin(contact);
+
+  // Admin (direção) PREVALECE sobre qualquer escopo de imobiliária deixado no ticket: ele não
+  // é "parceiro da Beltrão", é dono — some com o enquadramento de imobiliária. Ver
+  // [[project-caca-admin-assistant-mode]].
+  if (admin.isAdmin) {
+    imobiliariaC2xClientId = null;
+    imobiliariaName = null;
+  }
+
   const toolContext: CacaToolContext = {
+    assistantHubUserId: admin.hubUserId,
+    assistantMode: admin.isAdmin,
     businessHoursOpen: businessHours.open,
+    destination: destination ?? null,
+    outboundPhoneNumberId: outboundPhoneNumberId ?? null,
     c2xClientId,
     client,
     contactId: contact.id ?? null,
@@ -135,6 +244,10 @@ export async function runCacaClaudeTurn({
     identityVerified,
     imobiliariaName: toolContext.imobiliariaName,
     nextContactLabel: businessHours.nextContactLabel,
+    voiceMode,
+    assistantMode: admin.isAdmin,
+    assistantIsOwner: admin.isOwner,
+    assistantIsDoctor: admin.isDoctor,
   });
   const messages = await buildConversation(client, ticket.id, messageDetail);
   const model = resolveClaudeModel("heavy");
@@ -146,6 +259,11 @@ export async function runCacaClaudeTurn({
     maxToolIterations: 6,
     messages,
     model,
+    // No modo admin (direção), libera a BUSCA WEB nativa do Claude — pra ela responder
+    // qualquer coisa (placar de jogo, cotação, notícia). Cliente normal NÃO tem web.
+    serverTools: admin.isAdmin
+      ? [{ max_uses: 4, name: "web_search", type: "web_search_20250305" }]
+      : [],
     system,
     thinking: true,
     tools: buildCacaTools(toolContext),

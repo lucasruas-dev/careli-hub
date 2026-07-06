@@ -120,7 +120,7 @@ export function IrisCobrancaContextSidebar({
   tickets,
 }: {
   apoloEntity?: IrisApoloContextEntity | null;
-  clienteFields: { label: string; value: string }[];
+  clienteFields: { label: string; value: ReactNode }[];
   clientId: string | null;
   collapsed: boolean;
   currentTicketId: string;
@@ -1005,7 +1005,7 @@ function ClienteTab({
 }: {
   atProtocol: string;
   client: QueueClient | null;
-  clienteFields: { label: string; value: string }[];
+  clienteFields: { label: string; value: ReactNode }[];
   clientId: string | null;
 }) {
   // Enriquece e-mail/CPF com o cadastro do Hades quando o ticket nao trouxe.

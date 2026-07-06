@@ -41075,3 +41075,73 @@ Typecheck+13 testes+lint verdes. Aguarda teste do time (roteiro no chat) e OK do
 
 ## 2026-07-06 — Falhas de envio da fila de cobrança (AT-000214/229/247) — CAUSA RAIZ + FIX
 3 envios de template `cobranca_parcelas_vencidas_empreendimento_v1` (5/jul) falharam com Meta 131026 Undeliverable. Diagnóstico via caredesk_whatsapp_message_refs→webhook_events + comparação destino×cadastro: (1) **AT-000229 Rafaela**: C2X guarda celular no formato ANTIGO sem 9º dígito e o montador não repunha; (2) **AT-000214 Veronica**: cliente do CANADÁ (+1 267 909-4978) — a correção por país NUNCA rodava porque `resolveC2xWhatsAppNumberFromApolo` consultava apolo_source_links com `entity_id` no formato Hades (`c2x-client-NNNN`), que só casa com UUID Apolo; (3) **AT-000247 Iago**: cadastro sujo na origem (DDD duplicado) — correção manual no C2X. FIX (branch, v1.22.1): resolver tenta `loadC2xUserWhatsAppNumber` DIRETO (aceita o formato Hades) + regra do 9º dígito no `buildC2xWhatsAppNumber` + `fixLegacyBrazilianMobileNumber` como rede final na rota + 9 testes vitest de regressão. Dados: contato caredesk da Veronica corrigido p/ 12679094978.
+---
+
+## 2026-07-04 — SUPER MOTOR do Panteon (etapa 1: C2X) — branch `feat/panteon-super-motor`
+
+**Decisão do Lucas: parar de fazer "uma ferramenta por pergunta" e construir UM motor de análise unificado** pra CACÁ (modo admin) responder qualquer pergunta quantitativa. Handoff em `docs/operations/caca-super-motor-handoff-startup-2026-07-04.md`; blueprint na memória `reference-panteon-super-motor`.
+
+**Arquitetura (lib/analytics/):**
+- `registry.ts` — catálogo WHITELIST do cubo `{ modulo, metrica, agrupar_por, filtros, periodo }`: 12 métricas C2X (7 de evento via historics + 5 de estado), matriz métrica×agrupamento×filtro permitidos, validação legível (a CACÁ corrige o pedido sozinha no turno seguinte). NUNCA SQL livre.
+- `c2x-builder.ts` — builder SQL PURO (testável fora do Next): identificadores só da whitelist, valores sempre parametrizados; regras validadas embutidas (exclusão TSC/SDT/LAB/LAG, consolidação Lavra/Rio de Pedras/Portal/Lagoa, imobiliária = `users.vinculed_by_id` do cliente comprador, movimentação = transições em `acquisition_request_historics`, vendido oficial = `sale_status_id=4`).
+- `query-panteon.ts` — dispatcher: executa no pool guardian (read-only), consolida empreendimentos em JS, total DISTINTO em query separada quando agrupado, formatador de texto.
+- Tool **`consultar_panteon`** (tools.ts + executors.ts, gated `assistantMode`) + persona atualizada (motor = ferramenta principal de análise).
+- `c2x-analytics.ts`: exportados STAGE/EXCLUDED/ENTERPRISE_GROUPS/displayEnterprise (fonte única) + períodos novos `mes_passado`/`este_ano`/`desde_o_inicio`; motor aceita janela custom `data_inicio`/`data_fim` (dia SP, fim inclusivo).
+
+**Validação contra o C2X real (regra: nenhuma combinação entra sem passar):** script permanente `apps/hub/scripts/validate-panteon-motor.ts` (`npx tsx --tsconfig apps/hub/tsconfig.json ...`) — **29/29 ✅**: movimentação idêntica à referência em 3 períodos; 1788 vendidas por empreendimento (número do painel) batido; ranking imobiliárias idêntico (J&F=136); soma dos grupos == total (mês/semana/empreendimento/estágio); filtro == linha do grupo (Lavra do Ouro, F M S MACIEL); mes_passado == janela custom junho; clientes_faturados=188 e valor_faturado=R$65.407.058,83 este ano vs referência independente.
+
+Typecheck verde. Melhoria INTERNA da CACÁ → não entra no painel de novidades. **SEM deploy** — aguarda OK do Lucas. Próximas etapas do motor: módulos iris/hermes/hades no mesmo catálogo.
+
+---
+
+## 2026-07-04 (tarde) — CACÁ: áudio no cockpit + motor etapa 2 (Iris) + humor do cliente (branch `feat/panteon-super-motor`)
+
+Três frentes pedidas pelo Lucas (print da conversa da Nívea AT-000207). Typecheck verde; melhorias INTERNAS da CACÁ → não entram no painel de novidades.
+
+**1) Áudio da CACÁ tocável no cockpit da Iris.** Diagnóstico confirmado: a mensagem outbound de voz tinha `message_type=audio` mas sem `provider_payload.media.url`, então o front (`<audio src={audioUrl}>`) caía no placeholder "Audio WhatsApp 0:00". Fix em `meta-inbound-processor.ts` (`maybeSendCacaAutoReply`): depois de enviar a voz, sobe o mp3 do TTS pro bucket `iris-media` (`uploadIrisMediaBuffer`, folder `outbound`, nome = id da mensagem) e grava `media:{type:'audio',url,mimeType,voice:true}` no `provider_payload` via `markCacaOutboundMessageSent` (que agora recebe `media` e preserva). Best-effort: falha ao subir não derruba a resposta. Inbound do cliente já tinha URL (o "0:00" é só o label; o player nativo mostra a duração real).
+
+**2) SUPER MOTOR etapa 2 — módulo Iris.** Registry generalizado pra multi-módulo (`CATALOGO[modulo]`, `modulo: 'c2x' | 'iris'`). Novo `lib/analytics/iris-builder.ts` = agregador sobre o Supabase (mesmo padrão validado do `iris-analytics`): métricas de estado (tickets_abertos = não-terminais, aguardando_operador, aguardando_cliente) e de evento (tickets_criados, tickets_finalizados) × agrupar por fila/colaborador/status/dia/semana/mês × filtros fila/colaborador/status (nomes resolvidos a id ANTES da query). Dispatcher `queryPanteon` agora roteia por módulo (c2x=MySQL pool; iris=Supabase client do contexto) e recebe `{ supabase }`. Tool `consultar_panteon` + persona atualizadas.
+
+**Validação Iris:** o `.env.local` local aponta pro Supabase de HOMOLOG (fora do ar — probe deu "fetch failed"/401), então o script PULA a seção Iris localmente (roda ao vivo no runtime de prod). Números validados direto em PROD via MCP, batendo com a construção das queries do motor: tickets_abertos=12 (Atendimento 11 + Cobrança 1, soma=total), aguardando_operador=4, aguardando_cliente=8, tickets_finalizados este_ano=154 em 9 dias. C2X segue **29/29 ✅** no script.
+
+**3) CACÁ lê a conversa e avalia o HUMOR/perfil do cliente.** `loadIrisConversa` enriquecido: quem falou por último, minutos desde a última mensagem, rajada de mensagens do cliente sem resposta, timestamps. `ler_conversa_iris` agora devolve esses sinais + instrução pra CACÁ avaliar o estado emocional (calmo/impaciente/irritado/ansioso/satisfeito/neutro) com evidência do texto, urgência e recomendação de abordagem — só com base no que está escrito. Persona reforçada.
+
+Estado: branch `feat/panteon-super-motor`, **SEM push na main** (aguarda OK do Lucas). Como o webhook da Iris só roda em prod, o teste real (áudio no cockpit, motor Iris, humor) é depois do go-live.
+
+**🚀 GO-LIVE (4/jul, OK explícito do Lucas "pode subir"):** push `70b6d982..853c65a9` → `origin/main` (fast-forward; o `main` local estava obsoleto, empurrei a branch direto pro remote). Deploy de produção **`dpl_AWjPDeuEaVVzugkANN4rXfdgBvkr`** (commit 853c65a9) READY, alias `c2x.app.br` apontando. **Rollback = `dpl_GahuvrqRKhuvHBFjqc6agPZzig14`** (commit 70b6d982). Etapas 1+2 do super motor + áudio no cockpit + humor do cliente NO AR. Interno da CACÁ → sem changelog/painel. Teste real agora é em prod (webhook da Iris).
+
+**🚀 GO-LIVE fix imobiliária no detalhe (4/jul, OK do Lucas):** gatilho = Lucas conferiu a resposta em áudio da CACÁ das 19:21 (movimentação 7 dias) — números 100% certos e o áudio JÁ salvou no storage (fix do cockpit confirmado em prod), mas a imobiliária por venda vinha nula. Causa: `loadC2xMovimentacaoDetalhe` roteava a imob por `corretor_id` (nulo no C2X). Fix = rota pelo `users.vinculed_by_id` do comprador (confirmado nos 6 compradores: Beltrão/J3M/LM/Casa Martins). Deploy **`dpl_92vCa43bhZpzKaDBqSQjpyhCpsk6`** (commit 82a77065) READY, `c2x.app.br`. **Rollback = `dpl_AWjPDeuEaVVzugkANN4rXfdgBvkr`** (853c65a9). Interno da CACÁ → sem changelog.
+
+---
+
+## 2026-07-04 (noite) — Motor: PERFIL do cliente (demografia) + INADIMPLÊNCIA + cadastro de prospect (branch `feat/panteon-super-motor`)
+
+Gatilho: áudio da CACÁ pra Nívea às 19:44 — ela disse que não achava a imobiliária do prospect "Eduardo" porque ele não tem venda (modelo mental ERRADO: o vínculo imobiliária é do cadastro, `users.vinculed_by_id`, todo prospect tem). Lucas pediu: (a) todo cliente/prospect tem imobiliária, sem depender de venda; (b) cadastro completo da tabela users (idade/sexo/estado civil/escolaridade/renda/profissão/endereço/cônjuge); (c) transformar o PERFIL em dimensão do motor pra entender que perfil compra / que perfil atrasa.
+
+**Mapeamento de dados (inspeção C2X):** fill rate entre compradores ~97% (nascimento/civil/renda/escolaridade), sexo ~60% (usável c/ "(não informado)"); inadimplentes ~98% (sexo 31%). Vocabulário limpo: renda 6 faixas, escolaridade 9 níveis, civil 6, sexo 3.
+
+**Implementado no motor (c2x-builder + registry):**
+- Dimensões de PERFIL (agrupar_por + filtro): `faixa_etaria` (bucket de `birthday`), `sexo`, `estado_civil`, `faixa_renda`, `escolaridade` — join client→lookups (sexes/civil_states/salary_ranges/schoolings). Valem pras métricas que têm cliente (vendas evento + clientes_faturados + unidades_faturadas + inadimplência).
+- Novas métricas de INADIMPLÊNCIA (estado): `inadimplentes` (clientes distintos c/ parcela vencida), `valor_vencido` (R$), `parcelas_vencidas` — base `payments.payment_status_id=7` ativa (mesma conta do Hades), join demografia.
+- Dispatcher: nota de "total distinto" só aparece quando a soma dos grupos REALMENTE passa do total (perfil não repete pessoa).
+- `consultar_cliente_c2x` agora traz IMOBILIÁRIA (vínculo, independe de venda) + cadastro completo pra QUALQUER pessoa (corrige o erro da Nívea). Persona reforçada com a regra do cadastro.
+
+**Validação (35/35 ✅, script validate-panteon-motor):** inadimplentes=201 e valor_vencido=R$1.021.704,77 vs referência; inadimplentes por faixa_renda com todos os grupos batendo (1 a 3 salários=67); filtro==linha do grupo; clientes_faturados por faixa_etaria soma==total distinto (1456); cadastro de prospect real ("LAUREN COSTA SILVA ARAUJO", imob "MAIS LOTES", 0 unidades) confirmado. Typecheck verde.
+
+Estado: branch `feat/panteon-super-motor`, SEM push na main (aguarda OK do Lucas). Interno da CACÁ → sem changelog.
+
+**🚀 GO-LIVE perfil+inadimplência+cadastro (4/jul, OK do Lucas):** deploy **`dpl_8qVQqaTAQ9Zv77zD2NLP9Gbv6bSJ`** (commit 00041604) READY, `c2x.app.br`. **Rollback = `dpl_92vCa43bhZpzKaDBqSQjpyhCpsk6`**. Motor agora cruza vendas/inadimplência com perfil (faixa_etaria/sexo/estado_civil/faixa_renda/escolaridade) + cadastro/imobiliária de qualquer prospect. Interno da CACÁ → sem changelog.
+
+**🚀 GO-LIVE nova voz da CACÁ (4/jul, OK do Lucas):** voz padrão trocada pra `RVmX026jCrF5VqUvpCk0` (era GDzHdQOi6jjf8zaXhCYD), eleven_v3, preset Natural (stability 0.40 / style 0.45 / speed 1.0 / similarity_boost 0.8 / speaker boost on) — idêntico ao que o Lucas afinou no demo. Deploy **`dpl_51Qqri9UjoPhPdfwNDhktbBuRdMH`** (commit e86808f3) READY, `c2x.app.br`. **Rollback = `dpl_8qVQqaTAQ9Zv77zD2NLP9Gbv6bSJ`**. Interno da CACÁ → sem changelog.
+
+**🚀 GO-LIVE modelo de voz multilingual v2 (4/jul, OK do Lucas):** modelo TTS da CACÁ trocado `eleven_v3` → `eleven_multilingual_v2` (voz RVmX026jCrF5VqUvpCk0 e preset Natural inalterados). Deploy **`dpl_y31E9v9F361WZsQPjeCRgjJkzYBg`** (commit 4bb9b52b) READY, `c2x.app.br`. **Rollback = `dpl_51Qqri9UjoPhPdfwNDhktbBuRdMH`**. Interno da CACÁ → sem changelog.
+
+**🚀 GO-LIVE tratamento "Dr." da CACÁ (6/jul, OK do Lucas):** número marcado em `CACA_DOCTOR_PHONES` é tratado por "Dr." (lê como "Doutor" na voz) + "o senhor" — bloco condicional na persona (`assistantMode && assistantIsDoctor`), gate por env (nunca no repo público). Deploys: `91b727aa` (tratamento por número, env Fabricio 5531991991442) → `e28bd539` ("Dr." em vez de "Doutor" por extenso). Deploy atual **`dpl_C9LRspXFoV1joJmnov1zDZK9nspN`**, rollback `dpl_HnqvX6RSAXdLxQG8SQErhJ7MJyVJ`. ⚠️ **TEMPORÁRIO:** `CACA_DOCTOR_PHONES=5531991991442,5531983013616` — o número do Lucas (553...3616) foi adicionado PRA ELE TESTAR no próprio celular; **REVERTER pra só o Fabricio (5531991991442) quando o Lucas validar** (`vercel env rm` + `add` + redeploy). Interno da CACÁ → sem changelog.
+
+**🚀 GO-LIVE cenário comercial + "responde no mesmo turno" (6/jul, OK do Lucas):** gatilho = interação 09:42 (Lucas pediu cenário do Veredas do Ouro 15d; CACÁ prometeu "já vou levantar" e NUNCA entregou). Deploy `dpl_5K9rjAU5M45J2YMJnicmCLKogZp2` (commit 21dd00b3), rollback `dpl_3ctn9jVeEsMX2UCYozoYuetFspdC`. (1) Nova tool `cenario_comercial` (foco empreendimento/imobiliária/cliente + período; consolida propostas/vendas/faturados/valor/cancelamentos + estado da carteira p/ empreendimento; via motor) + período `ultimos_15_dias`; validado (Veredas 15d = 12 prop/15 vendas/2 fat/R$465.868). (2) Persona: RESPONDE SEMPRE NO MESMO TURNO — proibido prometer retorno assíncrono. Interno da CACÁ → sem changelog. ⚠️ nº do Lucas ainda na CACA_DOCTOR_PHONES (reverter quando validar).
+
+**🚀 GO-LIVE glebas Lagoa Bonita + Central de CAD (6/jul, OK do Lucas):** deploy `dpl_5YQM7KyTvKxZsXJrbRqp9FCqYS42` (commits 81f700eb glebas + fd2fe5cb CAD), rollback `dpl_5K9rjAU5M45J2YMJnicmCLKogZp2`. (1) Glebas: filtro de empreendimento aceita Raposo/Paulo/Fernando (LBR/LBP/LBF) → gleba individual; "Lagoa Bonita" = conjunto; + dimensão status_venda (breakdown Disponível/Reservado/Em negociação/Vendido/Bloqueado) + período ultimos_15_dias. Validado 35/35. (2) Central de CAD (Asana): nova fonte `lib/analytics/cad-source.ts` (projeto 1209726796886414, reusa ASANA_ACCESS_TOKEN prod) + tool `consultar_cad` (cliente=nome da task; empreendimento/imobiliária dinâmicos; etapa=seção). ⚠️ CAD NÃO validado local (token prod-only) → validar na 1ª pergunta em prod. Interno da CACÁ → sem changelog. ⚠️ nº do Lucas ainda na CACA_DOCTOR_PHONES (reverter quando validar).
+
+**↩️ REVERSÃO do teste do "Dr." (6/jul, Lucas validou):** `CACA_DOCTOR_PHONES` voltou a ter SÓ o Fabricio (`5531991991442`) — número do Lucas removido após validação (tom/voz/cenário/CAD OK). Redeploy pra a env valer. Estado do "Dr." agora: só o Fabricio é tratado por "Dr."/você/tom de gestora→superior.
+
+**🚀 GO-LIVE formato numérico no texto (6/jul, OK do Lucas):** feedback = em texto a CACÁ escrevia número/valor por extenso (estilo de voz). Persona ganhou bloco pro modo NÃO-voz: numeral + R$ (125 unidades / R$ 489.790,00 / DD/MM); bloco de VOZ intacto (por extenso, certo pro áudio). Deploy `dpl_54UX97NSzVcwPipZSYXcr4UTjksK` (commit 52169232), rollback `dpl_ATAACsagSpJRq9hWYQADSghXY2Ln`. Interno da CACÁ → sem changelog.

@@ -45,6 +45,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/pwa/manifest", // manifest publico da PWA
   "/api/version", // versao do build (so string, sem dado sensivel; watcher de atualizacao)
   "/api/pwa/manifest-mobile", // manifest publico da PWA mobile (/m)
+  "/api/iris/report-render", // render de relatorio em imagem (edge, gated por chave/segredo)
 ];
 
 function isPublicApi(pathname: string) {

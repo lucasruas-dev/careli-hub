@@ -48,6 +48,7 @@ export async function runClaudeAgent({
   maxToolIterations = DEFAULT_MAX_TOOL_ITERATIONS,
   messages,
   model,
+  serverTools = [],
   system,
   thinking = true,
   tools = [],
@@ -58,11 +59,17 @@ export async function runClaudeAgent({
   maxToolIterations?: number;
   messages: Anthropic.MessageParam[];
   model: string;
+  // Ferramentas de SERVIDOR do Claude (ex.: web_search): o próprio Claude executa, sem
+  // executor no backend. Entram no request, mas não no toolByName (não têm run).
+  serverTools?: Anthropic.ToolUnion[];
   system?: string;
   thinking?: boolean;
   tools?: ClaudeAgentTool[];
 }): Promise<ClaudeAgentResult> {
-  const toolDefinitions = tools.map((tool) => tool.definition);
+  const toolDefinitions: Anthropic.ToolUnion[] = [
+    ...tools.map((tool) => tool.definition),
+    ...serverTools,
+  ];
   const toolByName = new Map(tools.map((tool) => [tool.definition.name, tool]));
   const conversation: Anthropic.MessageParam[] = [...messages];
   const trace: ClaudeAgentTraceStep[] = [];

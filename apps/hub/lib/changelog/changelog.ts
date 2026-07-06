@@ -32,43 +32,117 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
-    buildTag: "2026-07-02-custo-banco-hermes-presenca",
-    deployedAt: "2026-07-03T00:05:00-03:00",
+    buildTag: "2026-07-06-custo-banco-numeros-cobranca-estabilidade",
+    deployedAt: "2026-07-06T15:00:00-03:00",
     modules: [
-      {
-        module: "Hub",
-        screens: [
-          {
-            items: [
-              "Otimização interna: o sistema ficou mais leve no banco de dados (conversas diretas do Hermes e presença geravam milhões de gravações desnecessárias por semana).",
-              "Nada muda no uso — é economia de infraestrutura e mais folga de desempenho.",
-            ],
-            screen: "Infraestrutura",
-          },
-        ],
-      },
       {
         module: "Hades",
         screens: [
           {
             items: [
-              "Envio da cobrança não erra mais o número do cliente: celulares no formato antigo ganham o 9º dígito automaticamente e clientes no exterior são enviados com o código do país certo (antes viravam um DDD brasileiro inexistente e falhavam).",
+              "Envio da cobrança não erra mais o número do cliente: celulares no formato antigo ganham o 9º dígito automaticamente e clientes no exterior são enviados com o código do país certo (antes viravam um DDD inexistente e falhavam).",
               "Casos reais corrigidos: AT-000214, AT-000229 e AT-000247 (seção de envios com erro).",
             ],
             screen: "Fila de cobrança — disparo de template",
           },
         ],
       },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "As informações do CRM (perfil e situação do cliente) voltaram a carregar na fila — a consulta falhava silenciosamente quando o volume de atendimentos cresceu.",
+            ],
+            screen: "Fila — enriquecimento do CRM 360",
+          },
+        ],
+      },
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "Gravações das reuniões voltaram a ser arquivadas no Drive (o formato do arquivo era recusado no upload) e o processamento não morre mais por falta de memória em gravações grandes.",
+            ],
+            screen: "Drive — gravações",
+          },
+        ],
+      },
+      {
+        module: "Hub",
+        screens: [
+          {
+            items: [
+              "Otimização interna: fim de milhões de gravações desnecessárias no banco (conversas diretas do Hermes e presença) — economia de infraestrutura e mais folga de desempenho.",
+            ],
+            screen: "Infraestrutura",
+          },
+        ],
+      },
     ],
-    rollback: "deployment k66npsqk9 (dpl_A5F2CoqsrxttFFcuw1JjrwiYDszK)",
+    rollback: "anotar deployment anterior no go-live",
     technical: {
-      done: "FIX números da cobrança: resolveC2xWhatsAppNumberFromApolo tentava apolo_source_links com entity_id no formato Hades (c2x-client-NNNN) e nunca casava — agora resolve DIRETO via loadC2xUserWhatsAppNumber (que aceita o formato) e cai no lookup Apolo só para UUID; buildC2xWhatsAppNumber ganhou a regra do 9º dígito (55+DDD+8 dígitos iniciando 6-9 ganha o 9; fixo intacto) + fixLegacyBrazilianMobileNumber como rede final no phone da rota; 9 testes vitest em phone-country.test.ts (regressões AT-000229/214). Achados da análise de custos Supabase (fatura Large + pg_stat_statements): (1) ensureDirectChannelAccess fazia UPSERT de pulsex_channels + pulsex_channel_members em TODO GET/POST de mensagens de conversa direta (poll de 8s incluso) = ~1,37M INSERTs de cada acumulados; agora fast-path com 2 SELECTs indexados retorna sem escrita quando canal+2 membros ativos existem. (2) HUB_PRESENCE_HEARTBEAT_MS 30s->90s (1,57M UPDATEs em hub_presence; transições de status vêm de timers/eventos do cliente e nada infere offline por last_seen — corte ~2/3 sem efeito visível). Complementa o downsize do compute Large->Medium (~-US$50/mês) feito no dashboard nesta noite. v1.22.0 -> v1.22.1.",
+      done: "Pacote de estabilidade+custo (diagnóstico 6/jul): (1) phone-match consultava apolo_entity_identifiers com IN de centenas de hashes numa URL -> PostgREST 400 -> rota 500 SILENCIOSA (Iris sem CRM na fila); agora em lotes de 50 + log do erro real. (2) Upload de gravação Whereby->storage com contentType video/mp4 explícito (bucket recusava application/octet-stream; 33 falhas desde 2/jul) + upload em STREAMING (response.body direto, sem arrayBuffer) nas rotas webhook/egress — 208 OOM kills desde 22/jun em chronos/meetings, whereby/webhook, egress-cron, apolo/sync. (3) Números da cobrança: resolveC2xWhatsAppNumberFromApolo resolve direto o formato Hades c2x-client-NNNN + 9º dígito automático (fixLegacyBrazilianMobileNumber) + 9 testes vitest. (4) Custo banco: fast-path sem escrita no ensureDirectChannelAccess (~2,7M upserts/poll) + heartbeat presença 30s->90s (~1,57M updates). v1.23.4 -> v1.23.5.",
       motivation:
-        "Fatura Supabase projetando US$126/mês com compute Large superdimensionado; pg_stat_statements revelou os campeões de escrita inútil. Reduzir carga habilita o próximo degrau (Small).",
+        "Diagnóstico completo custo+performance de 6/jul: erro ativo na Iris (500 contínuo), perda de gravações do Chronos, 208 OOM kills e fixes de custo parados na branch desde 3/jul.",
     },
-    title: "Hub mais leve: fim das gravações desnecessárias no banco (Hermes/presença)",
+    title: "Estabilidade: CRM na fila da Iris, gravações do Chronos, números da cobrança e banco mais leve",
     type: "correcao",
-    version: "v1.22.1",
+    version: "v1.23.5",
+  },
+  {
+    buildTag: "2026-07-04-caca-voz",
+    deployedAt: "2026-07-04T00:20:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A CACÁ agora responde em ÁUDIO quando o cliente manda um áudio (e continua no texto quando o cliente escreve). A voz é natural, com sotaque carioca, pra o atendimento ficar mais humano e acolhedor.",
+              "Quando a resposta tiver um link de boleto, ela vai por texto (link precisa ser clicável). Se por algum motivo a voz falhar, a CACÁ responde por escrito na hora, então o cliente nunca fica sem resposta.",
+            ],
+            screen: "Atendimento — CACÁ",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 5b4fc79",
+    technical: {
+      done: "Ativada a resposta em voz da CACÁ (fase 2) via env CACA_VOICE_ENABLED=1 (Production). Espelhar: inbound audio -> resposta em voz (ElevenLabs TTS, voz GDzHdQOi6jjf8zaXhCYD/eleven_v3, stability 0.22/style 0.6) enviada por sendMetaWhatsAppAudioMessage (mp3); inbound texto -> texto. Só com o engine Claude. Modo-voz no prompt (persona voiceMode): estilo falado + pontuação reforçada, sem asterisco/emoji/link/número abreviado. Guarda de link (URL -> texto) e fallback pra texto se o TTS falhar. Vale todas as filas. Master switch permite desligar sem deploy (remover a env).",
+      motivation:
+        "Lucas: dar voz à CACÁ pra o atendimento soar mais humano; escolheu a voz carioca no comparador e autorizou o go-live em produção.",
+    },
+    title: "CACÁ responde em áudio (voz no atendimento)",
+    type: "novidade",
+    version: "v1.23.4",
+  },
+  {
+    buildTag: "2026-07-03-iris-bandeira-svg",
+    deployedAt: "2026-07-03T17:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A bandeira do país ao lado do telefone agora é uma imagem de verdade — aparece igual no Windows, no navegador e no celular. Antes o Windows mostrava só as duas letras do país (ex.: 'BR') num quadradinho, porque o emoji de bandeira não é desenhado no Windows.",
+            ],
+            screen: "Atendimento — painel do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 75f75e75",
+    technical: {
+      done: "A bandeira estava como emoji (regional indicator), que o Windows NÃO renderiza como bandeira (vira 'BR'/'US' em quadradinho — glifo ausente na Segoe UI Emoji). Trocado por SVG real: dep country-flag-icons (React SVG, self-hosted, sem CDN) + componente <PhoneFlag> (modules/caredesk/components/phone-flag.tsx) que deriva o ISO2 do E.164 via novo iso2ForE164 (lib/iris/phone-country.ts) e renderiza o SVG (globo lucide no país desconhecido). Aplicado nos campos Telefone do IrisCobrancaContextSidebar (IrisPage.tsx, modo cobrança e Apolo) e do iris-conversation-readonly (histórico); tipo dos campos passou de string p/ ReactNode. flagEmojiForE164 mantido (refatorado sobre iso2ForE164) p/ contextos de texto puro.",
+      motivation:
+        "Lucas no Windows via 'BR'/'US' em quadradinho em vez da bandeira. Limitação do SO (emoji de bandeira não desenha no Windows) — resolvido renderizando SVG.",
+    },
+    title: "Iris: bandeira do país como imagem (aparece no Windows)",
+    type: "correcao",
+    version: "v1.23.3",
   },
   {
     buildTag: "2026-07-03-iris-bandeira-painel",
