@@ -30,17 +30,31 @@ export function buildC2xWhatsAppNumber(
 
   if (isBrazil) {
     // Já tem 55 na frente e comprimento de E.164 BR (>=12)? mantém. Senão prefixa 55.
-    if (national.startsWith("55") && national.length >= 12) {
-      return national;
-    }
+    const withCountry =
+      national.startsWith("55") && national.length >= 12
+        ? national
+        : `55${national}`;
 
-    return `55${national}`;
+    // 9º dígito: o C2X ainda guarda celular no formato ANTIGO (DDD + 8 dígitos
+    // começando em 6-9, ex.: (37) 9938-4413) — sem esta regra o envio sai sem o
+    // 9 e a Meta devolve 131026 Message Undeliverable (caso real AT-000229).
+    return fixLegacyBrazilianMobileNumber(withCountry);
   }
 
   // Estrangeiro: E.164 = país + nacional. Tira um "0" de tronco inicial (comum fora do BR).
   const trimmed = national.startsWith("0") ? national.slice(1) : national;
 
   return trimmed.startsWith(code) ? trimmed : `${code}${trimmed}`;
+}
+
+// Celular BR no formato antigo (55 + DDD + 8 dígitos começando em 6-9) ganha o 9º
+// dígito. Fixo (assinante começando em 2-5) e qualquer outro formato passam intactos.
+// Pura e idempotente — usada no montador e como rede final no disparo ativo.
+export function fixLegacyBrazilianMobileNumber(value: string): string {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  const legacy = /^55([1-9][0-9])([6-9][0-9]{7})$/.exec(digits);
+
+  return legacy ? `55${legacy[1]}9${legacy[2]}` : value;
 }
 
 // Código de discagem (só dígitos) -> ISO 3166-1 alpha-2, para os países que aparecem na

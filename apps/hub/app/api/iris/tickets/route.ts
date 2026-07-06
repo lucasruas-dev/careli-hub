@@ -1,3 +1,4 @@
+import { fixLegacyBrazilianMobileNumber } from "@/lib/iris/phone-country";
 import { NextResponse, type NextRequest } from "next/server";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
@@ -252,6 +253,10 @@ export async function POST(request: NextRequest) {
         );
       }
     }
+
+    // Rede final: mesmo sem resolver o cliente no C2X, celular BR no formato
+    // antigo (sem o 9º dígito) é corrigido antes do envio.
+    phone = fixLegacyBrazilianMobileNumber(phone);
 
     const [channel, requestedQueue, profile, defaultQueue, operator] =
       await Promise.all([
@@ -1804,6 +1809,16 @@ async function resolveC2xWhatsAppNumberFromApolo(
   client: SupabaseClient,
   apoloEntityId: string,
 ): Promise<string | null> {
+  // Fluxo da COBRANÇA manda o formato Hades ("c2x-client-3757") — resolve direto
+  // no C2X. O lookup em apolo_source_links abaixo espera o UUID da entidade Apolo
+  // e NUNCA casa com esse formato (era por isso que a correção não rodava e o
+  // número saía mangulado: casos reais AT-000214/229/247 de 5/jul).
+  const directFromC2x = await loadC2xUserWhatsAppNumber(apoloEntityId);
+
+  if (directFromC2x) {
+    return directFromC2x;
+  }
+
   const { data } = await client
     .from("apolo_source_links")
     .select("source_id")
