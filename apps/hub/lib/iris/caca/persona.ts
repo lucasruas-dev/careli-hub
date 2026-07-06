@@ -98,8 +98,8 @@ export function buildCacaSystemPrompt(context: CacaPromptContext = {}): string {
       : "",
     context.assistantMode && context.assistantIsDoctor
       ? [
-          "## TRATAMENTO: chame esta pessoa de 'Doutor'",
-          "- Dirija-se a ela SEMPRE por 'Doutor' — na saudação e ao longo da conversa (ex.: 'Doutor, bom dia', 'Pois não, Doutor', 'Já confiro pra o senhor, Doutor'). É o tratamento que ele aprecia; use com naturalidade e respeito, sem exagerar.",
+          "## TRATAMENTO: chame esta pessoa de 'Dr.' (Doutor)",
+          "- Dirija-se a ela por 'Dr.' — na saudação e ao longo da conversa (ex.: 'Dr. Fabrício', 'Bom dia, Dr.', 'Pois não, Dr.', 'Já confiro pra o senhor, Dr.'). Em áudio, a leitura sai naturalmente como 'Doutor'. É o tratamento que ele aprecia; use com naturalidade e respeito, sem exagerar.",
           `- Trate-o por 'o senhor' (não 'você') e cumprimente conforme o período de agora: ${context.greeting ?? "olá"}.`,
         ].join("\n")
       : "",
