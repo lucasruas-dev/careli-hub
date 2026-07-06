@@ -4,7 +4,9 @@ import { useMemo, useState } from "react";
 
 // Dashboard PÚBLICO de CADs (cadastros de prospects, fonte Asana) de UM empreendimento.
 // Sem chrome do HUB, sem login — recebe os registros já filtrados do server component.
-// Cards clicáveis por etapa (com %), busca por nome + imobiliária, ranking em largura cheia,
+// As SEÇÕES cruas do Asana são normalizadas em 4 status (Válidas / Em cadastro / Reprovadas /
+// Duplicadas) — "Recepção de CAD" e "Em cadastro" contam como Em cadastro (pedido do Lucas).
+// Cards clicáveis por status (com %), busca por nome + imobiliária, ranking num POPUP, e
 // recepções em duas visões (lista/kanban). Tema claro, marca Careli. Ver mockup validado 6/jul.
 
 export type CadPublicItem = {
@@ -25,7 +27,15 @@ const C = {
   muted: "#9C988D",
 };
 
-type Tone = { bg: string; fg: string };
+type Status = { key: string; label: string; bg: string; fg: string; order: number };
+
+const STATUS_UNKNOWN = (label: string): Status => ({
+  bg: C.soft,
+  fg: "#5F5E5A",
+  key: "outros:" + label,
+  label,
+  order: 5,
+});
 
 function normalize(value: string): string {
   return value
@@ -35,28 +45,31 @@ function normalize(value: string): string {
     .trim();
 }
 
-function toneFor(etapa: string): Tone {
+// Seção crua do Asana -> status canônico. Válidas primeiro (cobre "cadastrado/aprovado" antes
+// de "cadastro"). "Recepção de CAD" e "Em cadastro" caem juntos em Em cadastro.
+function canonical(etapa: string): Status {
   const n = normalize(etapa);
 
-  if (n.includes("valid")) return { bg: "#E1F5EE", fg: "#0F6E56" };
-  if (n.includes("reprov") || n.includes("recus"))
-    return { bg: "#FCEBEB", fg: "#A32D2D" };
-  if (n.includes("duplic")) return { bg: "#FAEEDA", fg: "#854F0B" };
-  if (n.includes("cadastr") || n.includes("andamento") || n.includes("process"))
-    return { bg: "#E6F1FB", fg: "#185FA5" };
+  if (n.includes("valid") || n.includes("cadastrad") || n.includes("aprovad")) {
+    return { bg: "#E1F5EE", fg: "#0F6E56", key: "valida", label: "Válidas", order: 0 };
+  }
+  if (n.includes("reprov") || n.includes("recus") || n.includes("indefer")) {
+    return { bg: "#FCEBEB", fg: "#A32D2D", key: "reprovada", label: "Reprovadas", order: 2 };
+  }
+  if (n.includes("duplic")) {
+    return { bg: "#FAEEDA", fg: "#854F0B", key: "duplicada", label: "Duplicadas", order: 3 };
+  }
+  if (
+    n.includes("recep") ||
+    n.includes("cadastr") ||
+    n.includes("andamento") ||
+    n.includes("analise") ||
+    n.includes("process")
+  ) {
+    return { bg: "#E6F1FB", fg: "#185FA5", key: "em_cadastro", label: "Em cadastro", order: 1 };
+  }
 
-  return { bg: C.soft, fg: "#5F5E5A" };
-}
-
-function orderKey(etapa: string): number {
-  const n = normalize(etapa);
-
-  if (n.includes("valid")) return 0;
-  if (n.includes("cadastr") || n.includes("andamento")) return 1;
-  if (n.includes("reprov") || n.includes("recus")) return 2;
-  if (n.includes("duplic")) return 3;
-
-  return 4;
+  return STATUS_UNKNOWN(etapa);
 }
 
 function formatDate(iso: string | null): string {
@@ -68,6 +81,8 @@ function formatDate(iso: string | null): string {
     ? "—"
     : date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" });
 }
+
+type Item = CadPublicItem & { cs: Status };
 
 export function CadPublicDashboard({
   empreendimento,
@@ -82,17 +97,21 @@ export function CadPublicDashboard({
   const [imob, setImob] = useState<string>("all");
   const [q, setQ] = useState<string>("");
   const [view, setView] = useState<"lista" | "kanban">("lista");
+  const [rankOpen, setRankOpen] = useState<boolean>(false);
 
-  const etapas = useMemo(() => {
-    const seen = new Map<string, number>();
-    for (const record of records) {
-      seen.set(record.etapa, (seen.get(record.etapa) ?? 0) + 1);
+  const items: Item[] = useMemo(
+    () => records.map((record) => ({ ...record, cs: canonical(record.etapa) })),
+    [records],
+  );
+
+  const statuses = useMemo(() => {
+    const map = new Map<string, Status>();
+    for (const item of items) {
+      if (!map.has(item.cs.key)) map.set(item.cs.key, item.cs);
     }
 
-    return [...seen.keys()].sort(
-      (a, b) => orderKey(a) - orderKey(b) || (seen.get(b) ?? 0) - (seen.get(a) ?? 0),
-    );
-  }, [records]);
+    return [...map.values()].sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+  }, [items]);
 
   const imobs = useMemo(
     () => [...new Set(records.map((record) => record.imobiliaria))].sort(),
@@ -101,33 +120,29 @@ export function CadPublicDashboard({
 
   const base = useMemo(
     () =>
-      records.filter(
-        (record) =>
-          (imob === "all" || record.imobiliaria === imob) &&
-          (q === "" || normalize(record.cliente).includes(normalize(q))),
+      items.filter(
+        (item) =>
+          (imob === "all" || item.imobiliaria === imob) &&
+          (q === "" || normalize(item.cliente).includes(normalize(q))),
       ),
-    [records, imob, q],
+    [items, imob, q],
   );
 
   const counts = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const record of base) {
-      map[record.etapa] = (map[record.etapa] ?? 0) + 1;
-    }
+    for (const item of base) map[item.cs.key] = (map[item.cs.key] ?? 0) + 1;
 
     return map;
   }, [base]);
 
   const shown = useMemo(
-    () => base.filter((record) => status === "all" || record.etapa === status),
+    () => base.filter((item) => status === "all" || item.cs.key === status),
     [base, status],
   );
 
   const ranking = useMemo(() => {
     const map: Record<string, number> = {};
-    for (const record of shown) {
-      map[record.imobiliaria] = (map[record.imobiliaria] ?? 0) + 1;
-    }
+    for (const item of shown) map[item.imobiliaria] = (map[item.imobiliaria] ?? 0) + 1;
 
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   }, [shown]);
@@ -146,7 +161,7 @@ export function CadPublicDashboard({
           "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif",
       }}
     >
-      <div style={{ maxWidth: 1080, margin: "0 auto" }}>{children}</div>
+      <div style={{ maxWidth: 980, margin: "0 auto", width: "100%" }}>{children}</div>
     </main>
   );
 
@@ -222,7 +237,8 @@ export function CadPublicDashboard({
     label: string,
     value: number,
     sub: string,
-    tone: Tone | null,
+    dot: string,
+    fg: string,
   ) => {
     const active = status === key;
 
@@ -230,9 +246,7 @@ export function CadPublicDashboard({
       <button
         key={key}
         type="button"
-        onClick={() =>
-          setStatus(key === "all" || status === key ? "all" : key)
-        }
+        onClick={() => setStatus(key === "all" || status === key ? "all" : key)}
         style={{
           textAlign: "left",
           cursor: "pointer",
@@ -240,7 +254,6 @@ export function CadPublicDashboard({
           border: `1.5px solid ${active ? GOLD : C.border}`,
           borderRadius: 14,
           padding: "14px 16px",
-          transition: "border-color .12s",
           boxShadow: active ? `0 0 0 1px ${GOLD}` : "none",
         }}
       >
@@ -254,13 +267,7 @@ export function CadPublicDashboard({
           }}
         >
           <span
-            style={{
-              width: 9,
-              height: 9,
-              borderRadius: 3,
-              background: tone ? tone.fg : GOLD,
-              display: "inline-block",
-            }}
+            style={{ width: 9, height: 9, borderRadius: 3, background: dot, display: "inline-block" }}
           />
           {label}
         </div>
@@ -269,7 +276,7 @@ export function CadPublicDashboard({
             fontSize: 26,
             fontWeight: 600,
             marginTop: 6,
-            color: tone ? tone.fg : C.text,
+            color: fg,
             fontVariantNumeric: "tabular-nums",
           }}
         >
@@ -288,7 +295,45 @@ export function CadPublicDashboard({
     padding: "0 12px",
     fontSize: 13.5,
     color: C.text,
+    maxWidth: "100%",
   };
+
+  const rankingRows = (
+    <>
+      {ranking.length === 0 ? (
+        <p style={{ fontSize: 13.5, color: C.muted }}>Nenhum resultado.</p>
+      ) : (
+        ranking.map(([name, value]) => (
+          <div
+            key={name}
+            style={{
+              display: "grid",
+              gridTemplateColumns: "minmax(0, 220px) 1fr 34px",
+              alignItems: "center",
+              gap: 12,
+              margin: "10px 0",
+              fontSize: 13.5,
+            }}
+          >
+            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+              {name}
+            </span>
+            <div style={{ height: 20, background: C.soft, borderRadius: 6, overflow: "hidden" }}>
+              <div
+                style={{
+                  height: "100%",
+                  width: `${Math.round((value / rankMax) * 100)}%`,
+                  background: GOLD,
+                  borderRadius: 6,
+                }}
+              />
+            </div>
+            <span style={{ textAlign: "right", fontWeight: 600 }}>{value}</span>
+          </div>
+        ))
+      )}
+    </>
+  );
 
   return shell(
     <>
@@ -302,14 +347,15 @@ export function CadPublicDashboard({
           marginBottom: 20,
         }}
       >
-        {kpiCard("all", "Recebidas", base.length, "total", null)}
-        {etapas.map((etapa) =>
+        {kpiCard("all", "Recebidas", base.length, "total", GOLD, C.text)}
+        {statuses.map((cs) =>
           kpiCard(
-            etapa,
-            etapa,
-            counts[etapa] ?? 0,
-            `${base.length ? Math.round(((counts[etapa] ?? 0) / base.length) * 100) : 0}% do total`,
-            toneFor(etapa),
+            cs.key,
+            cs.label,
+            counts[cs.key] ?? 0,
+            `${base.length ? Math.round(((counts[cs.key] ?? 0) / base.length) * 100) : 0}% do total`,
+            cs.fg,
+            cs.fg,
           ),
         )}
       </div>
@@ -320,7 +366,7 @@ export function CadPublicDashboard({
           gap: 10,
           flexWrap: "wrap",
           alignItems: "center",
-          marginBottom: 28,
+          marginBottom: 22,
         }}
       >
         <input
@@ -328,13 +374,13 @@ export function CadPublicDashboard({
           onChange={(event) => setQ(event.target.value)}
           placeholder="Buscar cliente pelo nome"
           aria-label="Buscar cliente pelo nome"
-          style={{ ...inputStyle, flex: 1, minWidth: 200 }}
+          style={{ ...inputStyle, flex: 1, minWidth: 180 }}
         />
         <select
           value={imob}
           onChange={(event) => setImob(event.target.value)}
           aria-label="Filtrar por imobiliária"
-          style={inputStyle}
+          style={{ ...inputStyle, maxWidth: 240 }}
         >
           <option value="all">Todas as imobiliárias</option>
           {imobs.map((name) => (
@@ -343,6 +389,24 @@ export function CadPublicDashboard({
             </option>
           ))}
         </select>
+        <button
+          type="button"
+          onClick={() => setRankOpen(true)}
+          style={{
+            height: 38,
+            borderRadius: 10,
+            border: `1px solid ${C.border}`,
+            background: C.card,
+            padding: "0 14px",
+            fontSize: 13,
+            color: C.text,
+            cursor: "pointer",
+            fontWeight: 500,
+            whiteSpace: "nowrap",
+          }}
+        >
+          Ranking de imobiliárias ›
+        </button>
         {filtersActive && (
           <button
             type="button"
@@ -364,68 +428,6 @@ export function CadPublicDashboard({
           >
             Limpar filtros
           </button>
-        )}
-      </div>
-
-      <h2
-        style={{
-          fontSize: 16,
-          fontWeight: 600,
-          margin: "0 0 14px",
-          display: "flex",
-          alignItems: "center",
-          gap: 7,
-        }}
-      >
-        <span style={{ color: GOLD }}>Ranking de imobiliárias</span>
-      </h2>
-      <div style={{ marginBottom: 32 }}>
-        {ranking.length === 0 ? (
-          <p style={{ fontSize: 13.5, color: C.muted }}>Nenhum resultado.</p>
-        ) : (
-          ranking.map(([name, value]) => (
-            <div
-              key={name}
-              style={{
-                display: "grid",
-                gridTemplateColumns: "minmax(120px, 200px) 1fr 34px",
-                alignItems: "center",
-                gap: 12,
-                margin: "10px 0",
-                fontSize: 13.5,
-              }}
-            >
-              <span
-                style={{
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                }}
-              >
-                {name}
-              </span>
-              <div
-                style={{
-                  height: 22,
-                  background: C.soft,
-                  borderRadius: 6,
-                  overflow: "hidden",
-                }}
-              >
-                <div
-                  style={{
-                    height: "100%",
-                    width: `${Math.round((value / rankMax) * 100)}%`,
-                    background: GOLD,
-                    borderRadius: 6,
-                  }}
-                />
-              </div>
-              <span style={{ textAlign: "right", fontWeight: 600 }}>
-                {value}
-              </span>
-            </div>
-          ))
         )}
       </div>
 
@@ -485,18 +487,12 @@ export function CadPublicDashboard({
             overflow: "hidden",
           }}
         >
-          <table
-            style={{
-              width: "100%",
-              borderCollapse: "collapse",
-              tableLayout: "fixed",
-            }}
-          >
+          <table style={{ width: "100%", borderCollapse: "collapse", tableLayout: "fixed" }}>
             <colgroup>
-              <col style={{ width: 74 }} />
+              <col style={{ width: 68 }} />
+              <col style={{ width: "34%" }} />
               <col />
-              <col style={{ width: "32%" }} />
-              <col style={{ width: 118 }} />
+              <col style={{ width: 130 }} />
             </colgroup>
             <thead>
               <tr>
@@ -522,101 +518,73 @@ export function CadPublicDashboard({
                 <tr>
                   <td
                     colSpan={4}
-                    style={{
-                      padding: "22px",
-                      textAlign: "center",
-                      color: C.muted,
-                      fontSize: 13.5,
-                    }}
+                    style={{ padding: "22px", textAlign: "center", color: C.muted, fontSize: 13.5 }}
                   >
                     Nenhuma recepção com esses filtros.
                   </td>
                 </tr>
               ) : (
-                shown.map((record, index) => {
-                  const tone = toneFor(record.etapa);
-
-                  return (
-                    <tr key={`${record.cliente}-${index}`}>
-                      <td style={cellStyle(C.sub)}>{formatDate(record.criadoEm)}</td>
-                      <td style={cellStyle(C.text)}>{record.cliente}</td>
-                      <td style={cellStyle(C.sub)}>{record.imobiliaria}</td>
-                      <td style={{ ...cellStyle(C.text), overflow: "visible" }}>
-                        <span
-                          style={{
-                            background: tone.bg,
-                            color: tone.fg,
-                            fontSize: 12,
-                            padding: "3px 9px",
-                            borderRadius: 999,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {record.etapa}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })
+                shown.map((item, index) => (
+                  <tr key={`${item.cliente}-${index}`}>
+                    <td style={cellStyle(C.sub)}>{formatDate(item.criadoEm)}</td>
+                    <td style={cellStyle(C.text)}>{item.cliente}</td>
+                    <td style={cellStyle(C.sub)}>{item.imobiliaria}</td>
+                    <td style={{ ...cellStyle(C.text), overflow: "visible" }}>
+                      <span
+                        style={{
+                          background: item.cs.bg,
+                          color: item.cs.fg,
+                          fontSize: 12,
+                          padding: "3px 9px",
+                          borderRadius: 999,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {item.cs.label}
+                      </span>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
       ) : (
-        <div
-          style={{
-            display: "flex",
-            gap: 12,
-            overflowX: "auto",
-            paddingBottom: 4,
-          }}
-        >
-          {etapas.map((etapa) => {
-            const tone = toneFor(etapa);
-            const column = shown.filter((record) => record.etapa === etapa);
+        <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingBottom: 4 }}>
+          {statuses.map((cs) => {
+            const column = shown.filter((item) => item.cs.key === cs.key);
 
             return (
               <div
-                key={etapa}
+                key={cs.key}
                 style={{
                   flex: 1,
-                  minWidth: 165,
+                  minWidth: 175,
                   background: C.soft,
                   borderRadius: 12,
                   padding: 11,
                 }}
               >
-                <div
-                  style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 6,
-                    marginBottom: 10,
-                  }}
-                >
+                <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 10 }}>
                   <span
                     style={{
-                      background: tone.bg,
-                      color: tone.fg,
+                      background: cs.bg,
+                      color: cs.fg,
                       fontSize: 12,
                       padding: "3px 9px",
                       borderRadius: 999,
                     }}
                   >
-                    {etapa}
+                    {cs.label}
                   </span>
-                  <span style={{ color: C.muted, fontSize: 12 }}>
-                    {column.length}
-                  </span>
+                  <span style={{ color: C.muted, fontSize: 12 }}>{column.length}</span>
                 </div>
                 {column.length === 0 ? (
-                  <div style={{ fontSize: 12, color: C.muted, padding: "6px 2px" }}>
-                    —
-                  </div>
+                  <div style={{ fontSize: 12, color: C.muted, padding: "6px 2px" }}>—</div>
                 ) : (
-                  column.map((record, index) => (
+                  column.map((item, index) => (
                     <div
-                      key={`${record.cliente}-${index}`}
+                      key={`${item.cliente}-${index}`}
                       style={{
                         background: C.card,
                         border: `1px solid ${C.border}`,
@@ -634,7 +602,7 @@ export function CadPublicDashboard({
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {record.cliente}
+                        {item.cliente}
                       </div>
                       <div
                         style={{
@@ -646,10 +614,10 @@ export function CadPublicDashboard({
                           whiteSpace: "nowrap",
                         }}
                       >
-                        {record.imobiliaria}
+                        {item.imobiliaria}
                       </div>
                       <div style={{ fontSize: 11.5, color: C.muted, marginTop: 5 }}>
-                        {formatDate(record.criadoEm)}
+                        {formatDate(item.criadoEm)}
                       </div>
                     </div>
                   ))
@@ -663,6 +631,70 @@ export function CadPublicDashboard({
       <p style={{ fontSize: 12, color: C.muted, marginTop: 28, textAlign: "center" }}>
         Careli · dados da Central de CADs · atualiza automaticamente
       </p>
+
+      {rankOpen && (
+        <div
+          onClick={() => setRankOpen(false)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(20,18,14,0.45)",
+            zIndex: 50,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 20,
+          }}
+        >
+          <div
+            onClick={(event) => event.stopPropagation()}
+            style={{
+              background: C.card,
+              borderRadius: 16,
+              border: `1px solid ${C.border}`,
+              maxWidth: 540,
+              width: "100%",
+              maxHeight: "82vh",
+              overflow: "auto",
+              padding: "22px 24px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                marginBottom: 4,
+              }}
+            >
+              <h2 style={{ margin: 0, fontSize: 17, fontWeight: 600 }}>
+                Ranking de imobiliárias
+              </h2>
+              <button
+                type="button"
+                onClick={() => setRankOpen(false)}
+                aria-label="Fechar"
+                style={{
+                  border: "none",
+                  background: "transparent",
+                  fontSize: 22,
+                  lineHeight: 1,
+                  color: C.muted,
+                  cursor: "pointer",
+                  padding: 0,
+                }}
+              >
+                ×
+              </button>
+            </div>
+            <p style={{ margin: "0 0 14px", fontSize: 12.5, color: C.muted }}>
+              {ranking.length} imobiliárias · {shown.length} CADs
+              {filtersActive ? " (com os filtros aplicados)" : ""}
+            </p>
+            {rankingRows}
+          </div>
+        </div>
+      )}
     </>,
   );
 }
