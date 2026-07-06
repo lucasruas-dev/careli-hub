@@ -34,6 +34,7 @@ export type C2xAgruparPor =
   | "imobiliaria"
   | "cliente"
   | "estagio"
+  | "status_venda"
   | "faixa_etaria"
   | "sexo"
   | "estado_civil"
@@ -197,7 +198,7 @@ export const C2X_METRICAS: Record<C2xMetrica, MetricaSpec> = {
     titulo: "Unidades com venda faturada (estado atual)",
   },
   unidades_total: {
-    agrupaveis: ["empreendimento"],
+    agrupaveis: ["empreendimento", "status_venda"],
     filtraveis: ["empreendimento"],
     formato: "int",
     kind: "estado",

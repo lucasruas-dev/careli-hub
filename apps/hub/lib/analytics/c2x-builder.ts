@@ -136,6 +136,8 @@ type Needs = {
   civil: boolean;
   salary: boolean;
   school: boolean;
+  // status de venda da UNIDADE (sale_statuses via eu.sale_status_id) — só base estado_unidade
+  saleStatus: boolean;
 };
 
 type GrupoSql = {
@@ -171,6 +173,12 @@ function grupoSql(agruparPor: C2xAgruparPor): GrupoSql {
       );
     case "estagio":
       return grupo("s.name as grupo", "grupo", { needs: { estagio: true } });
+    case "status_venda":
+      return grupo(
+        "coalesce(ss.name, '(sem status)') as grupo",
+        "grupo",
+        { needs: { saleStatus: true } },
+      );
     case "faixa_etaria":
       return grupo(`${AGE_BUCKET_SQL} as grupo`, "grupo", {
         needs: { cli: true },
@@ -332,6 +340,7 @@ function mergeNeeds(grupo: GrupoSql | null, filtros: FiltroSql[]): Needs {
     estagio: has("estagio"),
     imob: has("imob"),
     salary: has("salary"),
+    saleStatus: has("saleStatus"),
     school: has("school"),
     sex: has("sex"),
   };
@@ -463,11 +472,14 @@ export function buildC2xAnalyticsQuery(input: C2xBuilderInput): C2xQueryPlan {
     const statusClause =
       spec.saleStatusId != null ? "and eu.sale_status_id = ?" : "";
     const statusParams = spec.saleStatusId != null ? [spec.saleStatusId] : [];
+    const statusJoin = needs.saleStatus
+      ? "\n      left join sale_statuses ss on ss.id = eu.sale_status_id"
+      : "";
 
     const sql = `
       select ${selectGrupo}${spec.agg} as valor
       from enterprise_unities eu
-      join enterprises e on e.id = eu.enterprise_id
+      join enterprises e on e.id = eu.enterprise_id${statusJoin}
       where ${where.join("\n        and ")}
         ${statusClause}
       ${groupByClause}

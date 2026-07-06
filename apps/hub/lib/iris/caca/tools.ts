@@ -334,6 +334,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
             "imobiliaria",
             "cliente",
             "estagio",
+            "status_venda",
             "faixa_etaria",
             "sexo",
             "estado_civil",
@@ -347,7 +348,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
             "mes",
           ],
           description:
-            "Opcional. Quebra o resultado por dimensão (ranking, perfil ou série temporal). c2x: empreendimento/imobiliaria/cliente/estagio + PERFIL do cliente (faixa_etaria/sexo/estado_civil/faixa_renda/escolaridade); iris: fila/colaborador/status; dia/semana/mes só para métricas de evento.",
+            "Opcional. Quebra o resultado por dimensão (ranking, perfil ou série temporal). c2x: empreendimento/imobiliaria/cliente/estagio (movimentação) · status_venda (só em unidades_total: Disponível/Reservado/Em negociação/Vendido/Bloqueado) · PERFIL do cliente (faixa_etaria/sexo/estado_civil/faixa_renda/escolaridade); iris: fila/colaborador/status; dia/semana/mes só para métricas de evento.",
         },
         filtros: {
           type: "object",

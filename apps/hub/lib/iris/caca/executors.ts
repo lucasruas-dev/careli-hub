@@ -568,17 +568,23 @@ async function cenarioComercial(input: unknown): Promise<string> {
     `- Cancelamentos/distratos: ${cancelamentos?.total ?? 0}`,
   ];
 
-  // Fotografia atual da carteira só faz sentido por empreendimento (estado das unidades).
+  // Fotografia atual da carteira só faz sentido por empreendimento (estado das unidades):
+  // breakdown por TODOS os status (Disponível/Reservado/Em negociação/Vendido/Bloqueado).
   if (foco === "empreendimento") {
-    const [vendidas, disponiveis, total] = await Promise.all([
-      num("unidades_vendidas"),
-      num("unidades_disponiveis"),
-      num("unidades_total"),
-    ]);
+    const carteira = await queryPanteon({
+      agrupar_por: "status_venda",
+      filtros: { empreendimento: valor },
+      metrica: "unidades_total",
+      modulo: "c2x",
+    });
 
-    if (total && total.total > 0) {
+    if (carteira.ok && carteira.resultado.total > 0) {
+      const porStatus = (carteira.resultado.grupos ?? [])
+        .map((g) => `${g.grupo} ${g.valor}`)
+        .join(" · ");
+
       linhas.push(
-        `Estado atual da carteira: ${vendidas?.total ?? 0} vendidas · ${disponiveis?.total ?? 0} disponíveis · ${total.total} no total.`,
+        `Estado atual da carteira (${carteira.resultado.total} unidades): ${porStatus}.`,
       );
     }
   }
