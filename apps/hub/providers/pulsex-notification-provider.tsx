@@ -569,9 +569,17 @@ export function HermesNotificationProvider({
       const isVisible =
         typeof document === "undefined" ||
         document.visibilityState === "visible";
+      // "Está vendo o canal" exige FOCO REAL da janela — não só visibilidade.
+      // document.visibilityState é "visible" mesmo com o Hermes aberto ATRÁS de
+      // outro programa ou num 2o monitor; nesse caso o código marcava a mensagem
+      // como lida e ela ia DIRETO pro histórico, sem badge/som/toast ("não
+      // recebo / vai pro histórico" + "tem hora funciona tem hora não"). É o
+      // mesmo conceito do fix do service worker (suprimia push com visible-sem-foco).
+      const windowHasFocus =
+        typeof document === "undefined" || document.hasFocus();
       // Conversa que o usuario esta olhando agora (popup flutuante OU workspace /hermes).
       const isViewingChannel =
-        isVisible &&
+        windowHasFocus &&
         (activeHermesChannelIdRef.current === channel.id ||
           activeWorkspaceChannelIdRef.current === channel.id);
 
@@ -634,14 +642,17 @@ export function HermesNotificationProvider({
       // quem alerta e o Web Push (SW) — com avatar e sem duplicar. A notificacao de
       // SO saiu daqui de proposito: era generica (o payload do realtime nao traz o
       // avatar), entao deixamos o Web Push como unica notificacao do sistema.
+      // Toast visual: se a aba está visível (pode estar num 2o monitor). Som: só
+      // com FOCO real — sem foco quem alerta é o Web Push do Windows (o SW dispara
+      // quando a janela não tem foco), então tocar aqui também duplicaria o som.
       if (isVisible) {
         pushFloatingNotification(notification);
-        if (!shouldSuppressInAppAlerts()) {
-          playHermesIncomingMessageSound({
-            mentioned,
-            messageId: message.id,
-          });
-        }
+      }
+      if (windowHasFocus && !shouldSuppressInAppAlerts()) {
+        playHermesIncomingMessageSound({
+          mentioned,
+          messageId: message.id,
+        });
       }
     },
     [currentUserId, markChannelNotificationsRead, pushFloatingNotification],
@@ -1050,12 +1061,19 @@ export function HermesNotificationProvider({
           const isVisible =
             typeof document === "undefined" ||
             document.visibilityState === "visible";
+          // Som só com FOCO real (sem foco quem alerta é o Web Push do módulo —
+          // Iris/Hades/Chronos mandam push server-side; tocar aqui duplicaria).
+          // Toast visual segue com a aba visível.
+          const windowHasFocus =
+            typeof document === "undefined" || document.hasFocus();
 
-          if (!item.read && isVisible) {
-            if (!shouldSuppressInAppAlerts()) {
+          if (!item.read) {
+            if (windowHasFocus && !shouldSuppressInAppAlerts()) {
               playPanteonModuleSound(item.moduleId, { notificationId: item.id });
             }
-            pushFloatingNotification(item);
+            if (isVisible) {
+              pushFloatingNotification(item);
+            }
           }
         },
       )

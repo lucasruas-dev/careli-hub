@@ -32,6 +32,45 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-06-notificacao-foco-janela",
+    deployedAt: "2026-07-06T20:00:00-03:00",
+    modules: [
+      {
+        module: "Hermes",
+        screens: [
+          {
+            items: [
+              "Corrigido o motivo de 'a mensagem não chega / vai direto pro histórico': se você deixava o Hermes aberto num canal e ia trabalhar em OUTRA janela (ou 2º monitor), as mensagens daquele canal eram marcadas como lidas sozinhas e não avisavam.",
+              "Agora só conta como 'você está vendo' quando a janela do Hermes está realmente em foco. Deixou aberto atrás? A mensagem vira notificação normal (bolinha + som + aviso).",
+              "⚠️ Dê um Ctrl+F5 para pegar a correção.",
+            ],
+            screen: "Central de notificações e canais",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Mesma correção aplicada nas notificações do atendimento (evita som duplicado e avisos perdidos quando o hub está aberto atrás de outra janela).",
+            ],
+            screen: "Central de notificações",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 9103ef8c (v1.23.6)",
+    technical: {
+      done: "Causa raiz da intermitência 'não recebo / vai pro histórico' das notificações: handleHermesMessage decidia isViewingChannel por document.visibilityState === 'visible', que é TRUE mesmo com a janela atrás de outro app ou em 2º monitor — marcava lido (markChannelNotificationsRead + markHermesChannelRead no servidor) e a msg caía no log-histórico (read:true) sem gerar a notificação-por-canal pendente. Trocado por document.hasFocus() (windowHasFocus). Som in-app agora exige foco (evita duplicar com o Web Push que dispara justamente sem foco); toast visual segue com visibilidade. Mesmo tratamento no realtime da central hub_notifications (Iris/Hades/Chronos). É a ponta que faltava do mesmo conceito já corrigido no sw.js (RC2). v1.23.6 -> v1.23.7.",
+      motivation:
+        "Time reclamando muito das notificações (Hermes e Iris). Sintoma do Lucas: Central mandando Hermes direto pro histórico + 'tem hora funciona tem hora não'. Padrão de uso: hub aberto o dia todo enquanto trabalha em outras janelas — exatamente o cenário que o bug atingia.",
+    },
+    title: "Notificações: fim do 'vai direto pro histórico' quando o hub está aberto atrás de outra janela",
+    type: "correcao",
+    version: "v1.23.7",
+  },
+  {
     buildTag: "2026-07-06-retencao-fila-n1-caca-prefill",
     deployedAt: "2026-07-06T18:30:00-03:00",
     modules: [
