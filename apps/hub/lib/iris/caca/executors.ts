@@ -1,6 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import type { ClaudeAgentTool } from "@/lib/ai/claude-agent";
+import { type CadAgruparPor, queryCad } from "@/lib/analytics/cad-source";
 import {
   formatPanteonResultado,
   queryPanteon,
@@ -160,6 +161,10 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
       {
         definition: requireDefinition("cenario_comercial"),
         run: async (input) => cenarioComercial(input),
+      },
+      {
+        definition: requireDefinition("consultar_cad"),
+        run: async (input) => consultarCad(input),
       },
       {
         definition: requireDefinition("consultar_movimentacao_c2x"),
@@ -592,6 +597,86 @@ async function cenarioComercial(input: unknown): Promise<string> {
   linhas.push(
     "Se quiser, eu detalho por imobiliária, por perfil de cliente, ou lote a lote.",
   );
+
+  return linhas.join("\n");
+}
+
+// Central de CAD (Asana): cadastros de prospects enviados pelos corretores. Cada CAD tem
+// cliente (nome da task), empreendimento, imobiliária credenciada e etapa (seção).
+async function consultarCad(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const str = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : undefined;
+
+  const agruparPorRaw = str(record.agrupar_por);
+  const agruparPor: CadAgruparPor | null =
+    agruparPorRaw === "empreendimento" ||
+    agruparPorRaw === "imobiliaria" ||
+    agruparPorRaw === "etapa"
+      ? agruparPorRaw
+      : null;
+
+  const resultado = await queryCad({
+    agruparPor,
+    filtros: {
+      cliente: str(record.cliente),
+      empreendimento: str(record.empreendimento),
+      etapa: str(record.etapa),
+      imobiliaria: str(record.imobiliaria),
+    },
+    periodo: (str(record.periodo) as C2xPeriodo | undefined) ?? null,
+  });
+
+  if (!resultado) {
+    return "Não consegui ler a Central de CAD agora (Asana indisponível ou sem acesso).";
+  }
+
+  const cab = [
+    "Central de CAD",
+    resultado.periodoLabel ? `(${resultado.periodoLabel})` : null,
+    resultado.filtrosLabel ? `[${resultado.filtrosLabel}]` : null,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  // Consulta de um cliente específico (ex.: "qual imobiliária está o cliente X").
+  if (str(record.cliente) && !agruparPor) {
+    if (resultado.registros.length === 0) {
+      return `${cab}: não encontrei nenhuma CAD com esse nome (confira a grafia).`;
+    }
+
+    const linhas = [`${cab}: ${resultado.total} CAD(s) encontrada(s).`];
+    for (const r of resultado.registros.slice(0, 10)) {
+      const partes = [
+        r.cliente,
+        r.empreendimento ? `empreendimento ${r.empreendimento}` : null,
+        r.imobiliaria ? `imobiliária ${r.imobiliaria}` : "sem imobiliária no cadastro",
+        r.etapa ? `etapa ${r.etapa}` : null,
+      ].filter(Boolean);
+      linhas.push(`- ${partes.join(" · ")}`);
+    }
+
+    return linhas.join("\n");
+  }
+
+  if (agruparPor && resultado.grupos) {
+    const linhas = [`${cab}: ${resultado.total} CAD(s) no total, por ${agruparPor}:`];
+    for (const grupo of resultado.grupos.slice(0, 30)) {
+      linhas.push(`- ${grupo.grupo}: ${grupo.valor}`);
+    }
+
+    return linhas.join("\n");
+  }
+
+  // Contagem simples + amostra de nomes.
+  const linhas = [`${cab}: ${resultado.total} CAD(s).`];
+  const nomes = resultado.registros.map((r) => r.cliente);
+  if (nomes.length) {
+    linhas.push(
+      `Clientes: ${nomes.slice(0, 25).join(", ")}${nomes.length > 25 ? `, e mais ${nomes.length - 25}…` : ""}.`,
+    );
+  }
 
   return linhas.join("\n");
 }

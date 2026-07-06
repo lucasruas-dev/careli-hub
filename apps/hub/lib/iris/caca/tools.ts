@@ -494,4 +494,54 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
       required: ["foco", "valor"],
     },
   },
+  {
+    name: "consultar_cad",
+    description:
+      "SÓ no modo assistente/gestão (direção). Lê a CENTRAL DE CAD (nosso projeto no Asana onde os corretores enviam os cadastros de PROSPECTS que querem comprar, antes de o time cadastrar no C2X). Cada CAD tem: o CLIENTE (nome), o EMPREENDIMENTO indicado, a IMOBILIÁRIA credenciada e a ETAPA (seção do processo). Use quando a direção perguntar sobre as CADs/cadastros recebidos: 'quantas CADs temos pra imobiliária X', 'quais/quantas CADs do Vale do Ouro', 'em qual imobiliária está o cliente Fulano', 'quantas CADs entraram esse mês', 'CADs por etapa'. Passe os filtros que quiser (empreendimento, imobiliaria, cliente, etapa, período) e, se for uma contagem quebrada, use agrupar_por. Pra achar a imobiliária de um cliente, informe o nome dele em 'cliente'. Responde no MESMO turno.",
+    input_schema: {
+      type: "object",
+      properties: {
+        empreendimento: {
+          type: "string",
+          description: "Filtra pelas CADs de um empreendimento (ex.: 'Vale do Ouro').",
+        },
+        imobiliaria: {
+          type: "string",
+          description: "Filtra pelas CADs de uma imobiliária (nome ou parte).",
+        },
+        cliente: {
+          type: "string",
+          description:
+            "Nome (ou parte) do cliente — o nome da CAD. Use pra achar em que imobiliária/empreendimento/etapa ele está.",
+        },
+        etapa: {
+          type: "string",
+          description: "Filtra por etapa/seção do processo (nome da seção).",
+        },
+        agrupar_por: {
+          type: "string",
+          enum: ["empreendimento", "imobiliaria", "etapa"],
+          description:
+            "Opcional. Quebra a contagem por empreendimento, imobiliária ou etapa.",
+        },
+        periodo: {
+          type: "string",
+          enum: [
+            "hoje",
+            "ontem",
+            "esta_semana",
+            "este_mes",
+            "mes_passado",
+            "este_ano",
+            "ultimos_7_dias",
+            "ultimos_15_dias",
+            "ultimos_30_dias",
+            "desde_o_inicio",
+          ],
+          description:
+            "Opcional. Recorta pelas CADs recebidas no período (pela data de entrada da CAD).",
+        },
+      },
+    },
+  },
 ];
