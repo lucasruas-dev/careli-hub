@@ -331,6 +331,31 @@ async function persistAttendanceQueue(
 
   await insertRows(adminClient, "c2x_guardian_attendance_queue", queueRows);
 
+  // Retenção: cada sync (15min) insere um snapshot COMPLETO da fila e só marcava
+  // os antigos como is_current=false — nunca apagava. Resultado: ~96 gerações/dia
+  // acumulando (157 mil linhas / 394MB em 6/jul, 63% do banco junto com a timeline
+  // do Chronos). Mantém 24h de gerações pra depuração e apaga o resto. Best-effort:
+  // falha aqui não pode derrubar o sync (o próximo run tenta de novo).
+  try {
+    const retentionCutoff = new Date(
+      Date.now() - 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const { error: pruneError } = await adminClient
+      .from("c2x_guardian_attendance_queue")
+      .delete()
+      .eq("is_current", false)
+      .lt("synced_at", retentionCutoff);
+
+    if (pruneError) {
+      console.error("[guardian/sync] prune da fila falhou", pruneError.message);
+    }
+  } catch (error) {
+    console.error(
+      "[guardian/sync] prune da fila falhou",
+      error instanceof Error ? error.message : error,
+    );
+  }
+
   return users.length + queueRows.length;
 }
 

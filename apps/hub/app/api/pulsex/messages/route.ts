@@ -271,19 +271,11 @@ export async function GET(request: NextRequest) {
   }
 
   if (channelIds.length > 0) {
-    const accessibleChannelIds: string[] = [];
-
-    for (const requestedChannelId of channelIds) {
-      const access = await ensureChannelAccess(
-        context.adminClient,
-        context.user,
-        requestedChannelId,
-      );
-
-      if (access.ok) {
-        accessibleChannelIds.push(requestedChannelId);
-      }
-    }
+    const accessibleChannelIds = await filterAccessibleChannelIds(
+      context.adminClient,
+      context.user,
+      channelIds,
+    );
 
     if (accessibleChannelIds.length === 0) {
       return NextResponse.json({
@@ -951,6 +943,114 @@ async function ensureChannelAccess(
       { status: 403 },
     ),
   };
+}
+
+// Versão em LOTE do ensureChannelAccess para o snapshot multi-canal: o laço
+// antigo fazia 2 consultas POR canal (~40 idas ao banco por carga de mensagens,
+// visível nos logs da API do Supabase). Mesmas regras, em 2-3 consultas.
+async function filterAccessibleChannelIds(
+  adminClient: SupabaseAdminClient,
+  user: HubUserAccessRow,
+  channelIds: readonly string[],
+): Promise<string[]> {
+  const directIds = channelIds.filter((id) => id.startsWith("direct-"));
+  const regularIds = channelIds.filter((id) => !id.startsWith("direct-"));
+  const accessible = new Set<string>();
+
+  // Diretas: raras no snapshot e já com fast-path barato — mantém por canal.
+  for (const channelId of directIds) {
+    const access = await ensureDirectChannelAccess(adminClient, user, channelId);
+
+    if (access.ok) {
+      accessible.add(channelId);
+    }
+  }
+
+  if (regularIds.length === 0) {
+    return channelIds.filter((id) => accessible.has(id));
+  }
+
+  const [channelsResult, membershipsResult] = await Promise.all([
+    adminClient
+      .from("pulsex_channels")
+      .select("id,kind,department_id,status")
+      .in("id", regularIds)
+      .eq("status", "active"),
+    adminClient
+      .from("pulsex_channel_members")
+      .select("channel_id")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .in("channel_id", regularIds),
+  ]);
+
+  const activeChannels = (channelsResult.data ?? []) as HermesChannelAccessRow[];
+  const memberChannelIds = new Set(
+    ((membershipsResult.data ?? []) as { channel_id: string }[]).map(
+      (row) => row.channel_id,
+    ),
+  );
+
+  // Fallback de departamento (mesma regra do caminho unitário): canal kind
+  // "department" é acessível se o usuário é membro ativo de QUALQUER canal
+  // não-department ativo do mesmo departamento.
+  const departmentIdsToCheck = Array.from(
+    new Set(
+      activeChannels
+        .filter(
+          (channel) =>
+            !memberChannelIds.has(channel.id) &&
+            channel.kind === "department" &&
+            channel.department_id,
+        )
+        .map((channel) => String(channel.department_id)),
+    ),
+  );
+
+  const coveredDepartmentIds = new Set<string>();
+
+  if (departmentIdsToCheck.length > 0) {
+    const { data: departmentMemberships } = await adminClient
+      .from("pulsex_channel_members")
+      .select("channel_id,pulsex_channels!inner(department_id,kind,status)")
+      .eq("user_id", user.id)
+      .eq("status", "active")
+      .in("pulsex_channels.department_id", departmentIdsToCheck)
+      .eq("pulsex_channels.status", "active")
+      .neq("pulsex_channels.kind", "department");
+
+    for (const row of (departmentMemberships ?? []) as {
+      pulsex_channels: { department_id: string | null } | { department_id: string | null }[];
+    }[]) {
+      const related = Array.isArray(row.pulsex_channels)
+        ? row.pulsex_channels
+        : [row.pulsex_channels];
+
+      for (const channel of related) {
+        if (channel?.department_id) {
+          coveredDepartmentIds.add(String(channel.department_id));
+        }
+      }
+    }
+  }
+
+  for (const channel of activeChannels) {
+    if (memberChannelIds.has(channel.id)) {
+      accessible.add(channel.id);
+      continue;
+    }
+
+    if (
+      channel.kind === "department" &&
+      channel.department_id &&
+      coveredDepartmentIds.has(String(channel.department_id))
+    ) {
+      accessible.add(channel.id);
+    }
+  }
+
+  // Preserva a ordem pedida pelo client.
+  return channelIds.filter((id) => accessible.has(id));
 }
 
 async function ensureDirectChannelAccess(

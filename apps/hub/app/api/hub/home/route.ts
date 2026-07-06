@@ -661,30 +661,41 @@ async function loadAvailabilityHistoryEvents({
     return [];
   }
 
-  const results = await Promise.all(
-    activeUsers.map((user) =>
-      adminClient
-        .from("hub_presence_events")
-        .select(
-          "id,user_id,previous_status,next_status,reason,source,metadata,started_at,ended_at,created_at",
-        )
-        .eq("user_id", user.id)
-        .is("module_id", null)
-        .is("workspace_id", null)
-        .gte("started_at", historyStart)
-        .order("started_at", { ascending: false })
-        .limit(availabilityHistoryLimitPerUser),
-    ),
-  );
-
-  return results
-    .flatMap((result) =>
-      result.error ? [] : ((result.data ?? []) as HubPresenceEventRow[]),
+  // UMA consulta pra todos (era 1 por usuário = 8 idas ao banco em toda carga da
+  // Home, visível nos logs da API). O teto por usuário é reaplicado em memória.
+  const { data, error } = await adminClient
+    .from("hub_presence_events")
+    .select(
+      "id,user_id,previous_status,next_status,reason,source,metadata,started_at,ended_at,created_at",
     )
-    .sort(
-      (firstEvent, secondEvent) =>
-        Date.parse(secondEvent.started_at) - Date.parse(firstEvent.started_at),
-    );
+    .in(
+      "user_id",
+      activeUsers.map((user) => user.id),
+    )
+    .is("module_id", null)
+    .is("workspace_id", null)
+    .gte("started_at", historyStart)
+    .order("started_at", { ascending: false })
+    .limit(activeUsers.length * availabilityHistoryLimitPerUser);
+
+  if (error) {
+    return [];
+  }
+
+  const eventCountByUserId = new Map<string, number>();
+
+  // Já vem ordenado do mais novo pro mais antigo — o corte por usuário preserva
+  // exatamente o que o caminho antigo devolvia.
+  return ((data ?? []) as HubPresenceEventRow[]).filter((event) => {
+    const count = eventCountByUserId.get(event.user_id) ?? 0;
+
+    if (count >= availabilityHistoryLimitPerUser) {
+      return false;
+    }
+
+    eventCountByUserId.set(event.user_id, count + 1);
+    return true;
+  });
 }
 
 async function loadCurrentChronosMeetingsByUserId(

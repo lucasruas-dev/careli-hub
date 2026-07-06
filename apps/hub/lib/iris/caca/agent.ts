@@ -375,6 +375,20 @@ async function buildConversation(
     });
   }
 
+  // A API também exige TERMINAR com 'user' — modelos novos rejeitam prefill de
+  // assistant ("This model does not support assistant message prefill", 400 real
+  // visto 3× nos logs de 2-3/jul, derrubando a Cacá pro fallback determinístico).
+  // Acontece quando uma mensagem NOSSA (operador/template) entrou no histórico
+  // depois do inbound que disparou este turno. Reancora no texto do inbound.
+  if (messages[messages.length - 1]?.role === "assistant") {
+    messages.push({
+      content:
+        (messageDetail.body ?? "").trim() ||
+        "(cliente aguarda retorno — continue o atendimento)",
+      role: "user",
+    });
+  }
+
   return messages;
 }
 

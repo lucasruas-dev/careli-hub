@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-06-retencao-fila-n1-caca-prefill",
+    deployedAt: "2026-07-06T18:30:00-03:00",
+    modules: [
+      {
+        module: "Hub",
+        screens: [
+          {
+            items: [
+              "Banco de dados em dieta: a fila de cobrança acumulava um retrato completo a cada 15 minutos desde o início (157 mil registros!) — agora guarda só as últimas 24h e limpa o resto sozinha.",
+              "Hermes e Home mais rápidos: consultas que iam ao banco dezenas de vezes por carregamento agora vão 2-3 vezes.",
+              "Cacá mais estável: corrigido um caso raro em que ela caía no modo simplificado no meio da conversa.",
+            ],
+            screen: "Infraestrutura e desempenho",
+          },
+        ],
+      },
+    ],
+    rollback: "commit a6f9c8a9 (v1.23.5)",
+    technical: {
+      done: "Itens 5-7 do plano do diagnóstico de 6/jul: (1) RETENÇÃO da c2x_guardian_attendance_queue — persistQueueSnapshot apaga gerações is_current=false com synced_at >24h (era insert-only: ~96 snapshots/dia acumulando 157k linhas/394MB; primeiro run pós-deploy limpa o estoque). (2) N+1s: filterAccessibleChannelIds em LOTE no GET multi-canal do Hermes (2-3 consultas no lugar de ~40; mesma semântica incl. fallback de departamento) + loadAvailabilityHistoryEvents da Home em 1 consulta com teto por usuário reaplicado em memória (era 8). (3) Cacá: buildConversation garante fim com turno user (modelos novos rejeitam prefill de assistant — 400 'assistant message prefill' 3× nos logs; reancora no inbound). report-render já estava consertado pela outra frente (zero ocorrências desde 4/jul). chronos_timeline_events (660k) fica pra decisão de produto (retention de histórico). v1.23.5 -> v1.23.6.",
+      motivation:
+        "Fila do diagnóstico custo+performance de 6/jul: tabela gigante bloqueava o degrau Small do compute (~-US$45/mês); N+1s inflavam latência e invocações; prefill derrubava a Cacá pro fallback determinístico.",
+    },
+    title: "Banco em dieta: retenção da fila de cobrança + consultas em lote + Cacá estável",
+    type: "melhoria",
+    version: "v1.23.6",
+  },
+  {
     buildTag: "2026-07-06-custo-banco-numeros-cobranca-estabilidade",
     deployedAt: "2026-07-06T15:00:00-03:00",
     modules: [
