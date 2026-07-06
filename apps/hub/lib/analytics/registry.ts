@@ -306,6 +306,7 @@ export const PANTEON_PERIODOS: readonly C2xPeriodo[] = [
   "mes_passado",
   "este_ano",
   "ultimos_7_dias",
+  "ultimos_15_dias",
   "ultimos_30_dias",
   "desde_o_inicio",
 ];

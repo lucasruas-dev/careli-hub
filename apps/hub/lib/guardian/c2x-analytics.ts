@@ -57,6 +57,7 @@ export type C2xPeriodo =
   | "mes_passado"
   | "este_ano"
   | "ultimos_7_dias"
+  | "ultimos_15_dias"
   | "ultimos_30_dias"
   | "desde_o_inicio";
 
@@ -150,6 +151,12 @@ export function resolvePeriodoRange(periodo: C2xPeriodo): {
       return {
         from: new Date(now.getTime() - 7 * DAY),
         label: "últimos 7 dias",
+        to: now,
+      };
+    case "ultimos_15_dias":
+      return {
+        from: new Date(now.getTime() - 15 * DAY),
+        label: "últimos 15 dias",
         to: now,
       };
     case "ultimos_30_dias":

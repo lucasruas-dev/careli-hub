@@ -158,6 +158,10 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
         run: async (input) => consultarPanteon(context, input),
       },
       {
+        definition: requireDefinition("cenario_comercial"),
+        run: async (input) => cenarioComercial(input),
+      },
+      {
         definition: requireDefinition("consultar_movimentacao_c2x"),
         run: async (input) => consultarMovimentacaoC2x(input),
       },
@@ -504,6 +508,86 @@ async function consultarPanteon(
   }
 
   return formatPanteonResultado(outcome.resultado);
+}
+
+// CENÁRIO COMERCIAL consolidado de UM empreendimento / imobiliária / cliente num período:
+// junta propostas + vendas + faturados + valor + cancelamentos (e, pra empreendimento, o
+// estado atual da carteira) numa resposta só. Reusa o motor (queryPanteon), então herda as
+// regras validadas. Responde direto — a CACÁ NÃO deve "prometer levantar depois".
+async function cenarioComercial(input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const foco = typeof record.foco === "string" ? record.foco : "";
+  const valor = typeof record.valor === "string" ? record.valor.trim() : "";
+
+  if (!["empreendimento", "imobiliaria", "cliente"].includes(foco) || !valor) {
+    return "Pra montar o cenário comercial, me diga o foco (empreendimento, imobiliaria ou cliente) e o nome. Ex.: foco='empreendimento', valor='Veredas do Ouro'.";
+  }
+
+  const base = {
+    data_fim: typeof record.data_fim === "string" ? record.data_fim : undefined,
+    data_inicio:
+      typeof record.data_inicio === "string" ? record.data_inicio : undefined,
+    filtros: { [foco]: valor } as Record<string, string>,
+    modulo: "c2x",
+    periodo: typeof record.periodo === "string" ? record.periodo : undefined,
+  };
+
+  const num = async (metrica: string) => {
+    const outcome = await queryPanteon({ ...base, metrica });
+
+    return outcome.ok ? outcome.resultado : null;
+  };
+
+  const [propostas, vendas, faturados, cancelamentos, valorFat] =
+    await Promise.all([
+      num("propostas"),
+      num("vendas"),
+      num("faturamentos"),
+      num("cancelamentos"),
+      num("valor_faturado"),
+    ]);
+
+  if (!propostas) {
+    return `Não consegui montar o cenário do ${foco} "${valor}" agora (confira o nome ou tente de novo).`;
+  }
+
+  const focoLabel =
+    foco === "empreendimento"
+      ? "empreendimento"
+      : foco === "imobiliaria"
+        ? "imobiliária"
+        : "cliente";
+
+  const linhas = [
+    `Cenário comercial — ${focoLabel} "${valor}" (${propostas.periodoLabel ?? "período"}):`,
+    `- Propostas geradas: ${propostas.total}`,
+    `- Vendas em andamento (contrato gerado + em assinatura + faturado): ${vendas?.total ?? 0}`,
+    `- Vendas fechadas (faturado): ${faturados?.total ?? 0}`,
+    `- Valor faturado: ${formatBrl(valorFat?.total ?? 0)}`,
+    `- Cancelamentos/distratos: ${cancelamentos?.total ?? 0}`,
+  ];
+
+  // Fotografia atual da carteira só faz sentido por empreendimento (estado das unidades).
+  if (foco === "empreendimento") {
+    const [vendidas, disponiveis, total] = await Promise.all([
+      num("unidades_vendidas"),
+      num("unidades_disponiveis"),
+      num("unidades_total"),
+    ]);
+
+    if (total && total.total > 0) {
+      linhas.push(
+        `Estado atual da carteira: ${vendidas?.total ?? 0} vendidas · ${disponiveis?.total ?? 0} disponíveis · ${total.total} no total.`,
+      );
+    }
+  }
+
+  linhas.push(
+    "Se quiser, eu detalho por imobiliária, por perfil de cliente, ou lote a lote.",
+  );
+
+  return linhas.join("\n");
 }
 
 function formatBrl(value: number | null): string {

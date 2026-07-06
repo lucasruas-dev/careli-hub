@@ -411,6 +411,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
             "mes_passado",
             "este_ano",
             "ultimos_7_dias",
+            "ultimos_15_dias",
             "ultimos_30_dias",
             "desde_o_inicio",
           ],
@@ -443,6 +444,53 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
         },
       },
       required: ["cliente"],
+    },
+  },
+  {
+    name: "cenario_comercial",
+    description:
+      "SÓ no modo assistente/gestão (direção). Entrega o CENÁRIO COMERCIAL consolidado de UM empreendimento, imobiliária OU cliente num período, numa resposta só: propostas geradas, vendas em andamento, vendas fechadas (faturado), valor faturado e cancelamentos — e, quando o foco é um EMPREENDIMENTO, também o estado atual da carteira (vendidas / disponíveis / total). Use SEMPRE que a direção pedir 'o cenário' / 'o comercial' / 'como está' de um empreendimento, imobiliária ou cliente específico num período (ex.: 'me traz o cenário comercial do Veredas do Ouro nos últimos 15 dias', 'como foi o comercial da imobiliária X esse mês'). Chame ESTA ferramenta e responda com o resultado no MESMO turno — nunca diga que vai levantar e voltar depois.",
+    input_schema: {
+      type: "object",
+      properties: {
+        foco: {
+          type: "string",
+          enum: ["empreendimento", "imobiliaria", "cliente"],
+          description:
+            "Sobre O QUE é o cenário: um empreendimento, uma imobiliária ou um cliente.",
+        },
+        valor: {
+          type: "string",
+          description:
+            "Nome (ou parte) do empreendimento/imobiliária/cliente (ex.: 'Veredas do Ouro').",
+        },
+        periodo: {
+          type: "string",
+          enum: [
+            "hoje",
+            "ontem",
+            "esta_semana",
+            "este_mes",
+            "mes_passado",
+            "este_ano",
+            "ultimos_7_dias",
+            "ultimos_15_dias",
+            "ultimos_30_dias",
+            "desde_o_inicio",
+          ],
+          description: "Janela de tempo. Sem período = este mês.",
+        },
+        data_inicio: {
+          type: "string",
+          description:
+            "Opcional, sobrepõe periodo. Início da janela custom, YYYY-MM-DD.",
+        },
+        data_fim: {
+          type: "string",
+          description: "Opcional. Fim INCLUSIVO da janela custom, YYYY-MM-DD.",
+        },
+      },
+      required: ["foco", "valor"],
     },
   },
 ];
