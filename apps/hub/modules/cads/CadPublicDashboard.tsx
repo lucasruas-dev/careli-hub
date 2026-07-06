@@ -17,12 +17,13 @@ export type CadPublicItem = {
 };
 
 const GOLD = "#A97C50";
-// Fundo premium (cinza-quente à la Claude): página cinza, cards brancos pra "flutuar".
+// Fundo premium branco-quente (à la Claude): página quase branca com leve calor; borda um
+// pouco mais forte pra os cards seguirem definidos.
 const C = {
-  page: "#EDEBE4",
+  page: "#FBFAF5",
   card: "#FFFFFF",
-  soft: "#E6E3DB",
-  border: "#E0DDD3",
+  soft: "#F0EEE7",
+  border: "#E9E6DD",
   text: "#1B1A16",
   sub: "#6C6A62",
   muted: "#9C988D",
