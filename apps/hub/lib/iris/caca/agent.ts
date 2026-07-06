@@ -93,13 +93,17 @@ function parseHermesUserMap(env: string | undefined): Map<string, string> {
 function resolveCacaAdmin(contact: CacaAgentContact): {
   isAdmin: boolean;
   isOwner: boolean;
+  isDoctor: boolean;
   hubUserId: string | null;
 } {
   const admins = parseAdminPhoneKeys(process.env.CACA_ADMIN_PHONES);
   const owners = parseAdminPhoneKeys(process.env.CACA_NIVEA_PHONES);
+  // Números tratados por "Doutor" na saudação (ex.: Fabrício). Só cosmético; o gate de acesso
+  // segue sendo admin/owner. Ver [[project-caca-admin-assistant-mode]].
+  const doctors = parseAdminPhoneKeys(process.env.CACA_DOCTOR_PHONES);
 
   if (admins.size === 0 && owners.size === 0) {
-    return { hubUserId: null, isAdmin: false, isOwner: false };
+    return { hubUserId: null, isAdmin: false, isDoctor: false, isOwner: false };
   }
 
   const keys = [contact.whatsapp_phone, contact.phone]
@@ -108,12 +112,13 @@ function resolveCacaAdmin(contact: CacaAgentContact): {
 
   const isOwner = keys.some((key) => owners.has(key));
   const isAdmin = isOwner || keys.some((key) => admins.has(key));
+  const isDoctor = keys.some((key) => doctors.has(key));
 
   const hermesMap = parseHermesUserMap(process.env.CACA_HERMES_USER_MAP);
   const hubUserId =
     keys.map((key) => hermesMap.get(key)).find(Boolean) ?? null;
 
-  return { hubUserId, isAdmin, isOwner };
+  return { hubUserId, isAdmin, isDoctor, isOwner };
 }
 
 export async function runCacaClaudeTurn({
@@ -242,6 +247,7 @@ export async function runCacaClaudeTurn({
     voiceMode,
     assistantMode: admin.isAdmin,
     assistantIsOwner: admin.isOwner,
+    assistantIsDoctor: admin.isDoctor,
   });
   const messages = await buildConversation(client, ticket.id, messageDetail);
   const model = resolveClaudeModel("heavy");

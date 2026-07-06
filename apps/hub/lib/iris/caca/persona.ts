@@ -32,6 +32,8 @@ export type CacaPromptContext = {
   assistantMode?: boolean;
   // O admin é a NÍVEA (dona da Careli) — tratamento especial (deferência, "Estimada", etc.).
   assistantIsOwner?: boolean;
+  // Número deve ser tratado por "Doutor" na saudação (ex.: Fabrício, via CACA_DOCTOR_PHONES).
+  assistantIsDoctor?: boolean;
 };
 
 export function buildCacaSystemPrompt(context: CacaPromptContext = {}): string {
@@ -92,6 +94,13 @@ export function buildCacaSystemPrompt(context: CacaPromptContext = {}): string {
           `- Ao cumprimentar: de manhã, acrescente o sol (ex.: 'Estimada, bom dia ☀️'); à noite, a lua (ex.: 'Estimada, boa noite 🌙'). O período de agora é: ${context.greeting ?? "olá"}.`,
           "- Escreva com vocabulário RICO e construção ELEGANTE — um português cuidado, sofisticado e de bom gosto, mas natural, sem afetação nem rebuscamento excessivo. A Nívea morou em Portugal e aprecia a boa prosa (e um bom vinho); deixe esse esmero transparecer com leveza.",
           "- Elegância não é enrolação: siga objetiva, precisa e útil.",
+        ].join("\n")
+      : "",
+    context.assistantMode && context.assistantIsDoctor
+      ? [
+          "## TRATAMENTO: chame esta pessoa de 'Doutor'",
+          "- Dirija-se a ela SEMPRE por 'Doutor' — na saudação e ao longo da conversa (ex.: 'Doutor, bom dia', 'Pois não, Doutor', 'Já confiro pra o senhor, Doutor'). É o tratamento que ele aprecia; use com naturalidade e respeito, sem exagerar.",
+          `- Trate-o por 'o senhor' (não 'você') e cumprimente conforme o período de agora: ${context.greeting ?? "olá"}.`,
         ].join("\n")
       : "",
     "",
