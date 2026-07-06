@@ -8,9 +8,9 @@ const ELEVENLABS_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 // Voz escolhida pelo Lucas (biblioteca ElevenLabs) — "Voz 1" do comparador, afinada no demo
 // (preset Natural). Trocada em 4/jul (era GDzHdQOi6jjf8zaXhCYD).
 export const CACA_DEFAULT_VOICE_ID = "RVmX026jCrF5VqUvpCk0";
-// eleven_v3: mais expressivo/natural (escolha do Lucas no teste). Latencia maior, mas ok pra
-// nota de voz assincrona no WhatsApp. multilingual_v2 = alternativa mais rapida/barata.
-export const CACA_DEFAULT_TTS_MODEL = "eleven_v3";
+// multilingual_v2: modelo escolhido pelo Lucas no demo (4/jul; era eleven_v3) — mais rápido/
+// estável pra nota de voz assíncrona no WhatsApp. eleven_v3 = alternativa mais expressiva.
+export const CACA_DEFAULT_TTS_MODEL = "eleven_multilingual_v2";
 
 export type CacaVoiceSettings = {
   stability: number; // 0..1 — MAIS BAIXO = mais expressivo/natural (menos robotico)
