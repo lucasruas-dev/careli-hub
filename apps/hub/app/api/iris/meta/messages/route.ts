@@ -755,6 +755,48 @@ async function resolveTicketMetaPhoneNumberId({
     return null;
   }
 
+  // PREFERÊNCIA MÁXIMA: responder pelo MESMO número (phone_number_id) em que o cliente FALOU —
+  // o do último INBOUND deste ticket. O Meta conta a janela de 24h por par (nosso número ↔
+  // cliente); mandar por outro número devolve 131047 "Re-engagement" mesmo com a janela aberta.
+  // É robusto a migração de WABA / troca de phone_number_id e a source_context sem o número.
+  // Best-effort: qualquer falha cai pros fallbacks de metadata/source_context abaixo.
+  try {
+    const { data: inboundMessages } = await client
+      .from("caredesk_messages")
+      .select("id")
+      .eq("ticket_id", ticketId)
+      .eq("direction", "inbound")
+      .order("created_at", { ascending: false })
+      .limit(10);
+
+    const inboundIds = (inboundMessages ?? [])
+      .map((row) => (row as { id?: string }).id)
+      .filter((id): id is string => Boolean(id));
+
+    if (inboundIds.length > 0) {
+      const { data: refs } = await client
+        .from("caredesk_whatsapp_message_refs")
+        .select("phone_number_id, created_at")
+        .in("message_id", inboundIds)
+        .not("phone_number_id", "is", null)
+        .order("created_at", { ascending: false })
+        .limit(1);
+
+      const inboundPhoneNumberId = (
+        refs?.[0] as { phone_number_id?: string } | undefined
+      )?.phone_number_id;
+
+      if (
+        typeof inboundPhoneNumberId === "string" &&
+        inboundPhoneNumberId.trim()
+      ) {
+        return inboundPhoneNumberId.trim();
+      }
+    }
+  } catch {
+    // segue pros fallbacks
+  }
+
   const { data, error } = await client
     .from("caredesk_tickets")
     .select("metadata,source_context")
