@@ -153,6 +153,9 @@ export async function runIrisAnalyticsQuery(
       )
     : null;
 
+  // Builder do PostgREST é genérico demais pra tipar aqui sem fricção — o retorno
+  // é sempre re-encadeado nos mesmos métodos (.in/.eq/.gte), então unknown+cast local.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const applyFilters = (query: any) => {
     let q = query;
 
