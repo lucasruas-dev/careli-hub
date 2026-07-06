@@ -109,7 +109,11 @@ export function AuthProvider({
   const isMobileLoginRoute = pathname === "/m/login";
   const isLoginRoute = pathname === "/login" || isMobileLoginRoute;
   const isPublicChronosRoute = isChronosPublicRoute(pathname);
-  const isAuthBypassRoute = isLoginRoute || isPublicChronosRoute;
+  // Rotas públicas por design (sem login): /publico/* (ex.: dashboard de CADs por
+  // empreendimento). Não expõem dado do HUB — leem fonte própria server-side.
+  const isPublicPageRoute = pathname?.startsWith("/publico/") ?? false;
+  const isAuthBypassRoute =
+    isLoginRoute || isPublicChronosRoute || isPublicPageRoute;
   const hubUser = useMemo(
     () =>
       authState.user ? mapAuthUserToHubUserContext(authState.user) : null,
