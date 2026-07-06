@@ -1,5 +1,6 @@
 import {
   ENTERPRISE_GROUPS,
+  ENTERPRISE_SUB_ALIASES,
   EXCLUDED_ENTERPRISE_CODES,
   STAGE,
 } from "@/lib/guardian/c2x-analytics";
@@ -247,6 +248,14 @@ type FiltroSql = {
 // = LOS+LOU, pra fechar com o número do painel); senão, sigla exata ou nome LIKE.
 function filtroEmpreendimento(term: string): FiltroSql {
   const norm = normalizeTerm(term);
+
+  // Gleba individual da Lagoa Bonita (Raposo/Paulo/Fernando ou LBR/LBP/LBF) → código exato.
+  const sub = ENTERPRISE_SUB_ALIASES.find((entry) => entry.alias === norm);
+
+  if (sub) {
+    return { clause: "e.code = ?", needs: {}, params: [sub.code] };
+  }
+
   const group = ENTERPRISE_GROUPS.find((entry) => {
     const display = normalizeTerm(entry.display);
 

@@ -35,6 +35,19 @@ export const ENTERPRISE_GROUPS: { display: string; codes: string[] }[] = [
   { codes: ["LBF", "LBR", "LBP"], display: "Lagoa Bonita" },
 ];
 
+// Sub-empreendimentos (GLEBAS) da Lagoa Bonita: cada código é a gleba de um responsável.
+// "Lagoa Bonita" (consolidado) = os 3 juntos; pra ver uma gleba individual, o filtro aceita
+// o apelido (Raposo/Paulo/Fernando) ou o código (LBR/LBP/LBF) e resolve pro código exato.
+export const ENTERPRISE_SUB_ALIASES: { alias: string; code: string; label: string }[] =
+  [
+    { alias: "raposo", code: "LBR", label: "Lagoa Bonita (Raposo)" },
+    { alias: "lbr", code: "LBR", label: "Lagoa Bonita (Raposo)" },
+    { alias: "paulo", code: "LBP", label: "Lagoa Bonita (Paulo)" },
+    { alias: "lbp", code: "LBP", label: "Lagoa Bonita (Paulo)" },
+    { alias: "fernando", code: "LBF", label: "Lagoa Bonita (Fernando)" },
+    { alias: "lbf", code: "LBF", label: "Lagoa Bonita (Fernando)" },
+  ];
+
 export function displayEnterprise(
   code: string | null,
   name: string | null,

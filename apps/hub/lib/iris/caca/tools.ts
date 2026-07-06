@@ -463,7 +463,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
         valor: {
           type: "string",
           description:
-            "Nome (ou parte) do empreendimento/imobiliária/cliente (ex.: 'Veredas do Ouro').",
+            "Nome (ou parte) do empreendimento/imobiliária/cliente (ex.: 'Veredas do Ouro'). LAGOA BONITA são 3 glebas: use 'Lagoa Bonita' pro conjunto, ou 'Raposo'/'Paulo'/'Fernando' (ou LBR/LBP/LBF) pra uma gleba individual.",
         },
         periodo: {
           type: "string",
