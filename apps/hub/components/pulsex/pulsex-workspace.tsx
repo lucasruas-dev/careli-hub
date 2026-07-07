@@ -208,6 +208,8 @@ export function HermesWorkspace() {
     new Map(),
   );
   const messageScrollContainerRef = useRef<HTMLDivElement>(null);
+  // Area da conversa (header+mensagens+composer): interacao AQUI marca lido.
+  const conversationAreaRef = useRef<HTMLElement | null>(null);
   const pendingOlderScrollRestoreRef = useRef<{
     prevScrollHeight: number;
     prevScrollTop: number;
@@ -1541,8 +1543,19 @@ export function HermesWorkspace() {
     setMessageSearchQuery("");
   }, [activeChannel.id]);
 
+  const hasHandledInitialActiveChannelRef = useRef(false);
+
   useEffect(() => {
     if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
+      return;
+    }
+
+    // 1a execucao = restauracao do canal PERSISTIDO na montagem do modulo —
+    // nao e um clique do usuario; nao marca lido (bolinha/central/aba ficam
+    // ate interacao real com a conversa). Trocas de canal seguintes = clique
+    // do usuario = marca lido normalmente.
+    if (!hasHandledInitialActiveChannelRef.current) {
+      hasHandledInitialActiveChannelRef.current = true;
       return;
     }
 
@@ -1608,20 +1621,34 @@ export function HermesWorkspace() {
     }
 
     const channelId = activeChannel.id;
-    // Gatilho = primeira INTERACAO (clique/tecla/scroll) apos o foco, nao o
-    // foco em si (ajuste Lucas 7/jul): restaurar a janela minimizada NAO
-    // apaga mais o rastro — a bolinha/central ficam ate o usuario de fato
-    // mexer no app com a conversa aberta na tela.
-    let armed = false;
-    const armOnFocus = () => {
-      armed = true;
-    };
-    const handleWindowFocusRead = () => {
-      if (!document.hasFocus() || !armed) {
+    // Marca lido SO com interacao DENTRO da area da conversa (mensagens,
+    // header, composer) — clique no sino/abas/outros paineis NAO conta
+    // (ajuste Lucas 7/jul: abrir o Panteon apagava as notificacoes do hub).
+    const handleConversationInteraction = (event: Event) => {
+      if (!document.hasFocus()) {
         return;
       }
 
-      armed = false;
+      const area = conversationAreaRef.current;
+
+      if (
+        !area ||
+        !(event.target instanceof Node) ||
+        !area.contains(event.target)
+      ) {
+        return;
+      }
+
+      // So escreve no servidor quando ha algo nao lido (sem spam por clique).
+      const activeInfo = channels.find((channel) => channel.id === channelId);
+
+      if (
+        (activeInfo?.unreadCount ?? 0) === 0 &&
+        (activeInfo?.unreadMentionCount ?? 0) === 0
+      ) {
+        return;
+      }
+
       markHermesChannelRead({ channelId })
         .then((receipt) => {
           if (!receipt) {
@@ -1651,18 +1678,18 @@ export function HermesWorkspace() {
         });
     };
 
-    window.addEventListener("focus", armOnFocus);
-    window.addEventListener("pointerdown", handleWindowFocusRead);
-    window.addEventListener("keydown", handleWindowFocusRead);
-    window.addEventListener("wheel", handleWindowFocusRead, { passive: true });
+    window.addEventListener("pointerdown", handleConversationInteraction);
+    window.addEventListener("keydown", handleConversationInteraction);
+    window.addEventListener("wheel", handleConversationInteraction, {
+      passive: true,
+    });
 
     return () => {
-      window.removeEventListener("focus", armOnFocus);
-      window.removeEventListener("pointerdown", handleWindowFocusRead);
-      window.removeEventListener("keydown", handleWindowFocusRead);
-      window.removeEventListener("wheel", handleWindowFocusRead);
+      window.removeEventListener("pointerdown", handleConversationInteraction);
+      window.removeEventListener("keydown", handleConversationInteraction);
+      window.removeEventListener("wheel", handleConversationInteraction);
     };
-  }, [activeChannel.id]);
+  }, [activeChannel.id, channels]);
 
   useEffect(() => {
     if (!activeThreadMessageId) {
@@ -2478,7 +2505,10 @@ export function HermesWorkspace() {
         }}
       />
       <div className="min-h-0 min-w-0 p-3 pl-0">
-        <main className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.35rem] border border-[#d9e0ea] bg-[#f3f6fa] shadow-[0_14px_36px_rgba(16,24,32,0.08)]">
+        <main
+          className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.35rem] border border-[#d9e0ea] bg-[#f3f6fa] shadow-[0_14px_36px_rgba(16,24,32,0.08)]"
+          ref={conversationAreaRef}
+        >
           <ConversationHeader
             callHistory={callHistory}
             channel={activeChannel}
