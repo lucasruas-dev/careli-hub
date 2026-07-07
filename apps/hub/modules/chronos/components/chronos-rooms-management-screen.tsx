@@ -439,6 +439,15 @@ export function ChronosRoomsManagementScreen({
                       {roomDraft.backgroundName || "fundo selecionado"}
                     </Badge>
                   </div>
+                ) : roomDraft.backgroundName ? (
+                  // Fundo salvo no banco: os bytes nao viajam mais no snapshot
+                  // (fix 7/jul), entao mostramos o NOME do fundo definido em vez
+                  // de mentir "sem fundo". Escolher novo arquivo substitui.
+                  <div className="rounded-md border border-[#d9e0e7] bg-[#f7f3eb] p-3 text-xs font-semibold text-[#7b5f2d]">
+                    Fundo personalizado definido: {roomDraft.backgroundName}. Ele
+                    e aplicado na sala de video; escolha um arquivo para
+                    substituir.
+                  </div>
                 ) : (
                   <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-3 text-xs font-semibold text-[#667085]">
                     Sem fundo enviado. A sala usa o padrao institucional Chronos.

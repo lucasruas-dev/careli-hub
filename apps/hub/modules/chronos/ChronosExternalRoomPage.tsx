@@ -74,6 +74,8 @@ import {
   Video,
   VideoOff,
   X,
+  ZoomIn,
+  ZoomOut,
 } from "lucide-react";
 import {
   createElement,
@@ -89,6 +91,7 @@ import {
   type RefObject,
   type ReactNode,
   type SetStateAction,
+  type PointerEvent as ReactPointerEvent,
 } from "react";
 
 const chronosWherebyClientSyncCooldownMs = 2 * 60 * 1000;
@@ -508,6 +511,71 @@ export function ChronosExternalRoomPage({
   const liveKitAudioEgressRecordingIdRef = useRef("");
   const wherebyPreparationKeyRef = useRef("");
   const wherebyEmbedRef = useRef<ChronosWherebyEmbedElement | null>(null);
+  // LUPA da apresentacao (pedido Lucas 7/jul): cada participante amplia a
+  // PROPRIA visao do player (1x/1.5x/2x/3x) e arrasta para navegar — sem
+  // afetar quem apresenta. Dica de uso: duplo clique na apresentacao dentro
+  // do Whereby a maximiza; com a lupa em cima disso, o zoom e efetivamente
+  // so na tela apresentada.
+  const [wherebyZoom, setWherebyZoom] = useState(1);
+  const wherebyZoomScrollerRef = useRef<HTMLDivElement | null>(null);
+  const wherebyPanStateRef = useRef<{
+    scrollLeft: number;
+    scrollTop: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+
+  const changeWherebyZoom = useCallback((direction: 1 | -1) => {
+    const levels = [1, 1.5, 2, 3];
+
+    setWherebyZoom((current) => {
+      const index = levels.indexOf(current);
+      const nextIndex = Math.min(
+        levels.length - 1,
+        Math.max(0, (index === -1 ? 0 : index) + direction),
+      );
+
+      return levels[nextIndex] ?? 1;
+    });
+  }, []);
+
+  const handleWherebyPanStart = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const scroller = wherebyZoomScrollerRef.current;
+
+      if (!scroller) {
+        return;
+      }
+
+      event.currentTarget.setPointerCapture(event.pointerId);
+      wherebyPanStateRef.current = {
+        scrollLeft: scroller.scrollLeft,
+        scrollTop: scroller.scrollTop,
+        startX: event.clientX,
+        startY: event.clientY,
+      };
+    },
+    [],
+  );
+
+  const handleWherebyPanMove = useCallback(
+    (event: ReactPointerEvent<HTMLDivElement>) => {
+      const scroller = wherebyZoomScrollerRef.current;
+      const panState = wherebyPanStateRef.current;
+
+      if (!scroller || !panState) {
+        return;
+      }
+
+      scroller.scrollLeft = panState.scrollLeft - (event.clientX - panState.startX);
+      scroller.scrollTop = panState.scrollTop - (event.clientY - panState.startY);
+    },
+    [],
+  );
+
+  const handleWherebyPanEnd = useCallback(() => {
+    wherebyPanStateRef.current = null;
+  }, []);
   const lastWherebyArtifactSyncAtRef = useRef(0);
   const liveKitParticipantAudioEgressesRef = useRef<
     ChronosLiveKitParticipantAudioEgress[]
@@ -3831,27 +3899,104 @@ export function ChronosExternalRoomPage({
                     </div>
                   </form>
                 ) : (
-                  createElement("whereby-embed", {
-                    background: "off",
-                    displayName: wherebyDisplayName || undefined,
-                    externalId: wherebyExternalId || undefined,
-                    lang: "pt",
-                    logo: "off",
-                    metadata: wherebyMetadata,
-                    ref: (element: Element | null) => {
-                      wherebyEmbedRef.current =
-                        element as ChronosWherebyEmbedElement | null;
-                    },
-                    room: wherebyRoomUrl,
-                    style: {
-                      border: 0,
-                      display: "block",
-                      height: "100%",
-                      width: "100%",
-                    },
-                    subgridLabels: "on",
-                    toolbarText: "off",
-                  } satisfies ChronosWherebyEmbedProps)
+                  <>
+                    {/* LUPA: scroller com conteudo ampliado por transform; o iframe
+                        mantem o tamanho logico da tela (100/z) e escala por z —
+                        rolagem natural cobre a area ampliada. */}
+                    <div
+                      className="absolute inset-0 overflow-auto"
+                      ref={wherebyZoomScrollerRef}
+                    >
+                      <div
+                        style={{
+                          height: `${wherebyZoom * 100}%`,
+                          width: `${wherebyZoom * 100}%`,
+                        }}
+                      >
+                        <div
+                          style={{
+                            height: `${100 / wherebyZoom}%`,
+                            transform: `scale(${wherebyZoom})`,
+                            transformOrigin: "0 0",
+                            width: `${100 / wherebyZoom}%`,
+                          }}
+                        >
+                          {createElement("whereby-embed", {
+                            background: "off",
+                            displayName: wherebyDisplayName || undefined,
+                            externalId: wherebyExternalId || undefined,
+                            lang: "pt",
+                            logo: "off",
+                            metadata: wherebyMetadata,
+                            ref: (element: Element | null) => {
+                              wherebyEmbedRef.current =
+                                element as ChronosWherebyEmbedElement | null;
+                            },
+                            room: wherebyRoomUrl,
+                            style: {
+                              border: 0,
+                              display: "block",
+                              height: "100%",
+                              width: "100%",
+                            },
+                            subgridLabels: "on",
+                            toolbarText: "off",
+                          } satisfies ChronosWherebyEmbedProps)}
+                        </div>
+                      </div>
+                      {wherebyZoom > 1 ? (
+                        // Com a lupa ativa, arrastar NAVEGA pela area ampliada
+                        // (bloqueia cliques no player; volte a 1x para interagir).
+                        <div
+                          className="absolute inset-0 z-10 cursor-grab touch-none active:cursor-grabbing"
+                          onPointerCancel={handleWherebyPanEnd}
+                          onPointerDown={handleWherebyPanStart}
+                          onPointerMove={handleWherebyPanMove}
+                          onPointerUp={handleWherebyPanEnd}
+                          style={{
+                            height: `${wherebyZoom * 100}%`,
+                            left: 0,
+                            position: "absolute",
+                            top: 0,
+                            width: `${wherebyZoom * 100}%`,
+                          }}
+                        />
+                      ) : null}
+                    </div>
+                    <div className="absolute right-3 top-1/2 z-20 grid -translate-y-1/2 gap-1.5">
+                      <button
+                        aria-label="Aproximar (lupa)"
+                        className="grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-black/55 text-white shadow-xl backdrop-blur transition hover:bg-black/75 disabled:cursor-not-allowed disabled:opacity-45"
+                        disabled={wherebyZoom >= 3}
+                        onClick={() => changeWherebyZoom(1)}
+                        title="Aproximar (amplia so a SUA visao). Dica: de duplo clique na apresentacao antes."
+                        type="button"
+                      >
+                        <ZoomIn aria-hidden="true" size={17} />
+                      </button>
+                      <button
+                        aria-label="Afastar (lupa)"
+                        className="grid h-10 w-10 place-items-center rounded-full border border-white/20 bg-black/55 text-white shadow-xl backdrop-blur transition hover:bg-black/75 disabled:cursor-not-allowed disabled:opacity-45"
+                        disabled={wherebyZoom <= 1}
+                        onClick={() => changeWherebyZoom(-1)}
+                        title="Afastar"
+                        type="button"
+                      >
+                        <ZoomOut aria-hidden="true" size={17} />
+                      </button>
+                      {wherebyZoom > 1 ? (
+                        <button
+                          aria-label="Voltar ao tamanho normal"
+                          className="grid h-10 w-10 place-items-center rounded-full border border-[#D5B46F]/60 bg-[#A07C3B]/85 text-[0.68rem] font-bold text-white shadow-xl backdrop-blur transition hover:bg-[#A07C3B]"
+                          onClick={() => setWherebyZoom(1)}
+                          title="Voltar a 1x (necessario para clicar nos controles da chamada)"
+                          type="button"
+                        >
+                          {wherebyZoom}x
+                        </button>
+                      ) : null}
+                    </div>
+                  </>
                 )
               ) : (
                 <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] p-6 text-center text-sm font-semibold text-white/72">

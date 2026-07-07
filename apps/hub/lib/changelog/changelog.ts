@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-chronos-lupa-apresentacao",
+    deployedAt: "2026-07-07T19:10:00-03:00",
+    modules: [
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "Nova LUPA na videochamada: botões flutuantes de zoom (até 3x) para ampliar a SUA visão da tela apresentada e arrastar para navegar — sem afetar quem está apresentando.",
+              "Dica de uso: dê duplo clique na apresentação (o Whereby a maximiza) e use a lupa em cima.",
+              "Tela de configurar sala agora mostra qual fundo personalizado está definido (antes dizia 'sem fundo' mesmo com fundo salvo).",
+            ],
+            screen: "Sala de vídeo e configuração de salas",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 0cd6b3fc (v1.27.4)",
+    technical: {
+      done: "ChronosExternalRoomPage: whereby-embed envolvido em scroller de zoom (conteudo z*100% + iframe 100/z% com transform scale(z) origin 0 0 — rolagem natural cobre a area ampliada); overlay de pan por pointer capture quando z>1 (bloqueia cliques no player; botao Nx volta a 1x); controles flutuantes ZoomIn/ZoomOut/reset (niveis 1/1.5/2/3). Nao ha como mirar so no tile da apresentacao (iframe cross-origin do Whereby); o combo duplo-clique-maximiza + lupa entrega o efeito. rooms-management-screen: dialogo mostra 'Fundo personalizado definido: nome' quando ha fundo salvo sem os bytes (strip de 7/jul). v1.27.4 -> v1.27.5.",
+      motivation:
+        "Lucas (ao vivo numa apresentacao, 18h40): 'teria como colocar uma lupa para quem esta vendo o video dar zoom sem eu, que estou apresentando, dar zoom na minha tela?' + dialogo de sala mentindo 'sem fundo enviado' apos o strip dos bytes.",
+    },
+    title: "Chronos: lupa na videochamada (zoom individual na apresentação)",
+    type: "novidade",
+    version: "1.27.5",
+  },
+  {
     buildTag: "2026-07-07-hermes-threads-no-canal",
     deployedAt: "2026-07-07T17:55:00-03:00",
     modules: [
