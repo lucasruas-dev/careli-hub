@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-promessa-multi-parcela",
+    deployedAt: "2026-07-07T00:55:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "Na Nova promessa, o operador agora pode marcar MAIS DE UMA parcela (antes travava em uma só).",
+              "Novo botão 'Incluir todas' pra selecionar todas as parcelas em negociação de uma vez (e 'Limpar seleção' pra desmarcar).",
+            ],
+            screen: "Cobrança — Nova promessa",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 2f105460",
+    technical: {
+      done: "PropostasPanel: a função toggle tinha um ramo `if (kind === 'promessa')` que limpava a seleção e deixava só a parcela clicada (single-select). Removido — promessa e acordo agora multi-selecionam via o Set `selected`. O submit já guardava c2x_parcelas como array e amount = soma das selecionadas, então nada mais precisou mudar no backend. Adicionado toggleAll + botão 'Incluir todas'/'Limpar seleção'. v1.24.4 -> v1.24.5.",
+      motivation:
+        "Print/gravação do Lucas: no formulário de Nova promessa do Hades o operador não conseguia incluir mais de uma parcela na mensagem do template; pediu multi-seleção + incluir todas.",
+    },
+    title: "Hades: Nova promessa aceita várias parcelas + 'Incluir todas'",
+    type: "melhoria",
+    version: "1.24.5",
+  },
+  {
     buildTag: "2026-07-07-iris-header-nome-apolo",
     deployedAt: "2026-07-07T00:45:00-03:00",
     modules: [

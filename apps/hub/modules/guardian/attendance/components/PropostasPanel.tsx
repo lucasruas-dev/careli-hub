@@ -504,13 +504,8 @@ export function ProposalModal({
   function toggle(id: string) {
     setSelected((current) => {
       const next = new Set(current);
-      if (kind === "promessa") {
-        next.clear();
-        if (!current.has(id)) {
-          next.add(id);
-        }
-        return next;
-      }
+      // Promessa e acordo permitem MÚLTIPLAS parcelas (o operador junta as que quer
+      // cobrar na mesma mensagem/template). Antes a promessa travava em uma só.
       if (next.has(id)) {
         next.delete(id);
       } else {
@@ -518,6 +513,15 @@ export function ProposalModal({
       }
       return next;
     });
+  }
+
+  const allSelected =
+    overdue.length > 0 && overdue.every((item) => selected.has(item.id));
+
+  function toggleAll() {
+    setSelected(() =>
+      allSelected ? new Set<string>() : new Set(overdue.map((item) => item.id)),
+    );
   }
 
   async function submit() {
@@ -683,9 +687,20 @@ export function ProposalModal({
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <section>
-            <p className="mb-2 text-xs font-semibold text-slate-500">
-              {isAcordo ? "1 · Parcelas em negociação" : "Parcela em negociação"}
-            </p>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <p className="text-xs font-semibold text-slate-500">
+                {isAcordo ? "1 · Parcelas em negociação" : "Parcelas em negociação"}
+              </p>
+              {overdue.length > 1 ? (
+                <button
+                  type="button"
+                  onClick={toggleAll}
+                  className="text-[11px] font-semibold text-[#A07C3B] transition-colors hover:text-[#7A5E2C]"
+                >
+                  {allSelected ? "Limpar seleção" : "Incluir todas"}
+                </button>
+              ) : null}
+            </div>
             <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
               {overdue.length === 0 ? (
                 <p className="px-3 py-4 text-xs text-slate-400">
