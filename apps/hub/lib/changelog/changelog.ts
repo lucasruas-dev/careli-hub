@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-chronos-hotfix-snapshot",
+    deployedAt: "2026-07-07T09:20:00-03:00",
+    modules: [
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "Correção rápida: a Agenda e o Drive não carregavam para administradores logo após a v1.25.0 (erro de memória no servidor). Já normalizou.",
+            ],
+            screen: "Agenda e Drive",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 5776cbb2",
+    technical: {
+      done: "isChronosMeetingVisibleInSnapshot: participatedMeetingIds carregado p/ todos (admin inclusive) e import do Google visivel APENAS por host/participacao — sem bypass de admin nesse ramo (admin mantem bypass so nos ARTEFATOS). v1.25.0 abriu ~4k imports p/ admin e o snapshot carrega participantes/timeline/transcricao por reuniao -> OOM ('instance was killed because it ran out of available memory') no GET /api/chronos/meetings. v1.25.0 -> v1.25.1.",
+      motivation:
+        "Print do Lucas ~08:59: 'Nao foi possivel carregar o Chronos' na Agenda e Drive vazios em prod, minutos apos o go-live da v1.25.0.",
+    },
+    title: "Chronos: hotfix — Agenda/Drive carregando de novo para admins",
+    type: "correcao",
+    version: "1.25.1",
+  },
+  {
     buildTag: "2026-07-07-chronos-agenda-confiavel",
     deployedAt: "2026-07-07T08:00:00-03:00",
     modules: [
