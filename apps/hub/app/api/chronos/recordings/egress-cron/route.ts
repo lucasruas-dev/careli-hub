@@ -65,12 +65,15 @@ export async function GET(request: NextRequest) {
   // MAIS NOVAS primeiro: as gravacoes recentes (que o time quer ver no Drive) migram
   // antes; as antigas que o Whereby ja apagou ficam no fim e nao bloqueiam a fila. Busca
   // um lote maior e filtra em JS quem ja falhou 3x (evita travar eternamente nas mortas).
+  // Janela LARGA de proposito: com COPY_BATCH*5 as gravacoes antigas ficavam alem da
+  // janela enquanto novas chegavam todo dia — backlog de junho nunca era tentado
+  // (incidente 7/jul: 29 gravacoes invisiveis no Drive sem nenhuma tentativa).
   const { data: copyCandidates } = await admin
     .from("chronos_recordings")
     .select("file_name,id,meeting_id,metadata,mime_type,storage_bucket")
     .eq("storage_bucket", "whereby")
     .order("created_at", { ascending: false })
-    .limit(COPY_BATCH * 5)
+    .limit(COPY_BATCH * 40)
     .returns<ChronosRecordingRow[]>();
 
   const pendingCopy = (copyCandidates ?? [])

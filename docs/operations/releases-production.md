@@ -4709,3 +4709,23 @@ Conclusao:
 
 Conclusao:
 - `c2x.app.br/apresentacao` no ar servindo a apresentacao institucional; hub sem mudanca funcional.
+
+## 2026-07-07 - Chronos: agenda confiavel + sync automatico + Drive repaginado (v1.25.0) - EM PRODUCAO
+
+- Modulo: Chronos (agenda + Google sync + Drive). Status: `EM PRODUCAO`. Autorizacao: Lucas ("otimo pode seguir"), 2026-07-07.
+- Branch: `feat/chronos-agenda-confiavel` -> `main` (ff); commits `6d2dba60` (pacote) + `9a817dae` (changelog) + hardening egress.
+- Versao v1.25.0, build `2026-07-07-chronos-agenda-confiavel`.
+- Rollback: commit `5776cbb2` (dpl_DBNafvipGadnivwzmAGqCYKEfaKD).
+- Escopo (diagnostico completo com 6 causas raizes; ver memoria project_chronos_diagnostico_completo):
+  - listChronosSnapshot: janela -45/+120d asc limit 5000 (antes limit 1500 starts_at DESC cortava a semana atual).
+  - Visibilidade: import Google visivel p/ admin+participantes (antes so host); "Meu dia" e calendario passam a bater.
+  - Filtro de import company-only (titulo Careli:* OU convidado @careli.adm.br; excecao "deslocamento"); envs CHRONOS_GOOGLE_IMPORT_*.
+  - Lookup de vinculo deterministico (created_at asc); etag early-exit + nota de timeline so com mudanca real; host_user_id nao e mais sobrescrito pelo sync.
+  - Cron novo /api/chronos/google-calendar/sync-cron (*/15min) — sync nao depende de aba aberta.
+  - Drive: card repaginado (chips video/transcricao/ata, pessoas via speakers da transcricao, objetivo generico oculto); "Sala pendente" -> endereco Google/"Google Agenda".
+  - Egress: janela de candidatos COPY_BATCH*5 -> *40 (backlog antigo nunca era tentado — starvation).
+- Banco (executado 7/jul, autorizado): 354 reunioes duplicadas DELETADAS (canonica preservada); 620.923 notas de spam de timeline DELETADAS; 1.404 imports pessoais SOFT-cancelados (Deslocamento preservado); Global file size limit 50MB->2GB + bucket chronos-drive 2GB (madrugada); 15 gravacoes recuperadas + 29 orfaos re-enfileirados.
+- DIRETRIZ NOVA (Lucas): reunioes agendadas = ativo do CRM; NUNCA excluir (limpeza = soft-cancel). Retencao por idade CANCELADA.
+- Validacoes: turbo check-types PASS; lint 0 warnings (8 exhaustive-deps pre-existentes zerados); 25 testes PASS.
+- Pos-deploy: resetar sync_token PAGE da conexao Nivea; conferir 1a execucao do sync-cron; validacao visual do Lucas em prod.
+- Follow-ups: RLS policies chronos_google_* (migration-registro 0045); faxina Whereby 49,7GB (gravacoes mar-jun pre-Drive); fetch por range do calendario; bloco "Reunioes do cliente" no Apolo (backlog estrategico).
