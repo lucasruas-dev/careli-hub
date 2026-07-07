@@ -28,6 +28,13 @@ export const emptyIrisData: IrisData = {
 export const IRIS_QUEUE_LOAD_TIMEOUT_MS = 15_000;
 const IRIS_CRM360_ENRICH_TIMEOUT_MS = 4_000;
 
+// Cache do último CRM 360 casado com sucesso, por telefone. O overlay (nome do
+// cadastro + painel do Apolo) é re-buscado a cada refresh (90s + realtime + foco);
+// se a chamada estoura o timeout ou volta "missing" transitório, NÃO derrubamos o
+// cadastro já conhecido — senão, no meio do atendimento, o nome do comprador vira o
+// handle do WhatsApp e o painel da direita esvazia. Reseta no reload (robustez em memória).
+const irisCrm360RegistrationCache = new Map<string, IrisCrm360Registration>();
+
 export async function loadIrisData({
   operatorUserId,
   queueSlugFilter,
@@ -276,6 +283,38 @@ export async function enrichTicketsWithCrm360(
     return data;
   }
 
+  // Aplica o melhor cadastro por ticket: um resultado fresco REGISTRADO ganha e vai
+  // pro cache; senão mantém o último cadastro conhecido (cache); senão o que já tinha
+  // no ticket; senão "missing". Assim uma falha/timeout ou um "missing" transitório
+  // NÃO derruba o nome/painel de quem já resolveu como comprador do Apolo.
+  const applyRegistrations = (
+    results: Record<string, IrisCrm360Registration>,
+  ): IrisData => ({
+    ...data,
+    tickets: data.tickets.map((ticket) => {
+      const phone = ticket.contactPhone;
+
+      if (!phone) {
+        return { ...ticket, crm360Registration: ticket.crm360Registration ?? null };
+      }
+
+      const fresh = results[phone];
+
+      if (fresh && fresh.status === "registered") {
+        irisCrm360RegistrationCache.set(phone, fresh);
+        return { ...ticket, crm360Registration: fresh };
+      }
+
+      const cached = irisCrm360RegistrationCache.get(phone);
+
+      return {
+        ...ticket,
+        crm360Registration:
+          cached ?? fresh ?? ticket.crm360Registration ?? { status: "missing" },
+      };
+    }),
+  });
+
   try {
     const accessToken = await getAccessToken();
     const controller = new AbortController();
@@ -296,23 +335,15 @@ export async function enrichTicketsWithCrm360(
     window.clearTimeout(timeoutId);
 
     if (!response.ok) {
-      return data;
+      // Endpoint falhou: preserva o último cadastro conhecido em vez de derrubar.
+      return applyRegistrations({});
     }
 
     const payload = (await response.json().catch(() => null)) as {
       results?: Record<string, IrisCrm360Registration>;
     } | null;
-    const results = payload?.results ?? {};
 
-    return {
-      ...data,
-      tickets: data.tickets.map((ticket) => ({
-        ...ticket,
-        crm360Registration: ticket.contactPhone
-          ? (results[ticket.contactPhone] ?? { status: "missing" })
-          : null,
-      })),
-    };
+    return applyRegistrations(payload?.results ?? {});
   } catch (error) {
     const isAbort =
       error instanceof DOMException && error.name === "AbortError";
@@ -323,7 +354,8 @@ export async function enrichTicketsWithCrm360(
       console.error("[iris] nao foi possivel consultar o CRM 360", error);
     }
 
-    return data;
+    // Timeout/erro: preserva o último cadastro conhecido (não pisca nome/painel).
+    return applyRegistrations({});
   }
 }
 
