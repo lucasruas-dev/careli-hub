@@ -36,7 +36,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "listar_boletos",
     description:
-      "Lista as parcelas elegíveis (vencidas e a vencer) do cliente validado, indicando para cada uma se há link de boleto disponível. Chame quando o cliente pedir boleto / segunda via, para então decidir qual enviar. Separa a INFORMAÇÃO da parcela da disponibilidade do LINK.",
+      "Lista as parcelas elegíveis (vencidas e a vencer) do cliente validado, AGRUPADAS POR LOTE/UNIDADE (o cliente pode ter vários lotes — cada um é um contrato), indicando para cada parcela se há link de boleto disponível. Chame quando o cliente pedir boleto / segunda via ou perguntar dos lotes dele. Se houver mais de um lote, aborde TODOS na resposta — nunca diga que existe só um boleto sem conferir os outros lotes. Separa a INFORMAÇÃO da parcela da disponibilidade do LINK.",
     input_schema: {
       type: "object",
       properties: {},

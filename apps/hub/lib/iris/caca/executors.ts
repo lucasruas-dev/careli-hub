@@ -1333,6 +1333,10 @@ async function listarBoletos(context: CacaToolContext) {
     return guard;
   }
 
+  // Um cliente pode ter VÁRIOS lotes (cada acquisition_request é um contrato/lote).
+  // O registro já traz as parcelas de TODOS os lotes juntas (c2xInstallments), e cada
+  // parcela carrega unitId/unitLabel. Aqui a gente AGRUPA por lote pra Caca conseguir
+  // abordar todos e não achar que existe um boleto só quando há mais de um lote.
   const items = (await loadInstallments(context.c2xClientId)).filter(
     (item) => item.status === "Vencida" || item.status === "A vencer",
   );
@@ -1341,16 +1345,57 @@ async function listarBoletos(context: CacaToolContext) {
     return "Não há parcelas vencidas ou a vencer registradas para este cliente.";
   }
 
-  const linhas = items.slice(0, 10).map((item) => {
-    const link = hasBoletoLink(item) ? "link disponível" : "sem link disponível";
+  // Agrupa as parcelas elegíveis por lote (unitId), preservando a ordem de chegada.
+  const groups = new Map<string, { items: CacaInstallment[]; label: string }>();
 
-    return `- Parcela ${readString(item.number) || "?"} (${describeInstallment(item)}) | ${link}`;
-  });
+  for (const item of items) {
+    const record = item as Record<string, unknown>;
+    const key =
+      readString(record.unitId) ||
+      readString(record.acquisitionRequestId) ||
+      "lote";
+    const label =
+      readString(record.unitLabel) ||
+      readString(record.unitCode) ||
+      "Lote não identificado";
+    const group = groups.get(key) ?? { items: [], label };
+    group.items.push(item);
+    groups.set(key, group);
+  }
 
-  return [
-    "PARCELAS ELEGÍVEIS (informe ao cliente; o link só sai com gerar_link_boleto):",
-    ...linhas,
-  ].join("\n");
+  const multi = groups.size > 1;
+  const linhas: string[] = [];
+
+  linhas.push(
+    multi
+      ? `Este cliente tem ${groups.size} lotes/unidades com parcela em aberto. Aborde TODOS. Parcelas elegíveis AGRUPADAS POR LOTE (o link só sai com gerar_link_boleto):`
+      : "PARCELAS ELEGÍVEIS (informe ao cliente; o link só sai com gerar_link_boleto):",
+  );
+
+  for (const group of groups.values()) {
+    if (multi) {
+      linhas.push("", `LOTE ${group.label}:`);
+    }
+
+    for (const item of group.items.slice(0, 6)) {
+      const link = hasBoletoLink(item)
+        ? "link disponível"
+        : "sem link disponível";
+
+      linhas.push(
+        `- Parcela ${readString(item.number) || "?"} (${describeInstallment(item)}) | ${link}`,
+      );
+    }
+  }
+
+  if (multi) {
+    linhas.push(
+      "",
+      "IMPORTANTE: o cliente tem mais de um lote. Responda cobrindo CADA lote — diga a próxima parcela em aberto de cada um. NUNCA afirme que existe só um boleto se houver parcela em aberto em outro lote.",
+    );
+  }
+
+  return linhas.join("\n");
 }
 
 async function gerarLinkBoleto(
