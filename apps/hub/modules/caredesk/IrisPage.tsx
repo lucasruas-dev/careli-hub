@@ -3562,7 +3562,11 @@ function IrisConversationPanel({
               <ContactAvatar ticket={ticket} size="md" />
               <div className="min-w-0">
                 <h2 className="truncate text-base font-semibold text-slate-950">
-                  {ticketContactLabel(ticket)}
+                  {/* Prefere o nome COMPLETO do Apolo (mesma fonte do painel Cliente,
+                      apoloContextEntity) — o phone-match leve às vezes não casa e o
+                      header caía pro display_name do WhatsApp (ex.: só "Aguiar"). */}
+                  {capitalizeName(apoloContextEntity?.displayName) ||
+                    ticketContactLabel(ticket)}
                 </h2>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
                   <span>{ticket.protocol}</span>

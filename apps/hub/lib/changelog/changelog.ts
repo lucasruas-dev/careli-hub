@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-iris-header-nome-apolo",
+    deployedAt: "2026-07-07T00:45:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Corrigido o nome no topo do atendimento: quando o cliente é comprador reconhecido no Apolo, o título agora mostra o nome COMPLETO do cadastro (ex.: 'Henrique Cirilo Aguiar') em vez do nome do WhatsApp (ex.: só 'Aguiar').",
+            ],
+            screen: "Atendimento (cabeçalho da conversa)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 2f105460",
+    technical: {
+      done: "O cabeçalho da conversa (IrisPage) usava ticketContactLabel, que depende do crm360Registration (overlay leve do /api/iris/apolo/phone-match). Quando o phone-match não casa, caía pro display_name do WhatsApp. O painel 'Cliente' já usava a fonte rica (apoloContextEntity.displayName, carregada por ticket). Agora o header prefere apoloContextEntity?.displayName e cai pro ticketContactLabel. Header e painel passam a bater. v1.24.3 -> v1.24.4.",
+      motivation:
+        "Print do Lucas (AT-000040 Aguiar): comprador com nome completo no painel da direita, mas o topo mostrava só 'Aguiar'.",
+    },
+    title: "Iris: nome completo do comprador no topo do atendimento",
+    type: "correcao",
+    version: "1.24.4",
+  },
+  {
     buildTag: "2026-07-06-hades-persistencia",
     deployedAt: "2026-07-07T00:20:00-03:00",
     modules: [
