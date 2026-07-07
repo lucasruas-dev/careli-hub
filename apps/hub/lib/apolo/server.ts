@@ -266,6 +266,7 @@ type C2xPortfolioInstallmentRow = RowDataPacket & {
   current_total_parcel: number | string | null;
   due_date: Date | string | null;
   due_date_value: string | null;
+  reference_date_value: string | null;
   id: number | string;
   initial_value: number | string | null;
   interest_value: number | string | null;
@@ -1320,6 +1321,7 @@ async function fetchC2xPortfolioByEntity(
             p.payment_status_id,
             p.due_date,
             date_format(p.due_date, '%Y-%m-%d') as due_date_value,
+            date_format(p.reference_date, '%Y-%m-%d') as reference_date_value,
             date_format(p.payment_date, '%Y-%m-%d') as payment_date_value,
             p.paid_value,
             p.initial_value,
@@ -1422,6 +1424,10 @@ function mapC2xPortfolioInstallment(
   row: C2xPortfolioInstallmentRow,
 ): ApoloInstallment {
   const dueDateInput = normalizeDateOnly(row.due_date_value) || dateOnlyFromValue(row.due_date);
+  // Competência (referência) vem DIRETO do C2X (coluna reference_date); só cai pro
+  // vencimento se a coluna vier vazia. Sem isto, parcela renegociada (vencimento
+  // movido) mostrava a competência errada no Iris — divergindo do Hades/C2X.
+  const referenceInput = normalizeDateOnly(row.reference_date_value) || dueDateInput;
   const paidDateInput = normalizeDateOnly(row.payment_date_value);
   const status = portfolioInstallmentStatus(row.payment_status_id);
 
@@ -1438,7 +1444,7 @@ function mapC2xPortfolioInstallment(
         : 0,
     paidAt: paidDateInput ? formatDateOnlyLabel(paidDateInput) : undefined,
     paymentUrl: firstFilled(row.payment_url) ?? undefined,
-    reference: formatReferenceFromDateOnly(dueDateInput),
+    reference: formatReferenceFromDateOnly(referenceInput),
     status,
     value: formatCurrency(portfolioInstallmentAmount(row)),
     valueNumber: portfolioInstallmentAmount(row),
