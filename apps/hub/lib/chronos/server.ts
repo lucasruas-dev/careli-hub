@@ -701,14 +701,16 @@ export async function listChronosSnapshot(
       throw artifactMeetingsResult.error;
     }
 
-    const chronosParticipatedMeetingIds =
-      authorization.user.role === "admin"
-        ? null
-        : await loadChronosParticipatedMeetingIds(
-            client,
-            authorization.user.id,
-            authorization.user.email,
-          );
+    // Carrega o conjunto de participacao para TODOS (admin inclusive): a
+    // visibilidade dos imports do Google e por participacao, e liberar tudo
+    // para admin explodiu a memoria da funcao (OOM 7/jul: ~4k reunioes x
+    // participantes/timeline/transcricao carregados por reuniao).
+    const chronosParticipatedMeetingIds = await loadChronosParticipatedMeetingIds(
+      client,
+      authorization.user.id,
+      authorization.user.email,
+    );
+    const isChronosAdmin = authorization.user.role === "admin";
     const meetings = mergeChronosMeetingRowsById([
       ...(ownedMeetingsResult.data ?? []),
       ...(artifactMeetingsResult.data ?? []),
@@ -719,6 +721,7 @@ export async function listChronosSnapshot(
           meeting,
           authorization.user.id,
           chronosParticipatedMeetingIds,
+          isChronosAdmin,
         ),
       )
       .sort(compareChronosMeetingRowsByStartDate);
@@ -3406,6 +3409,7 @@ async function logChronosWherebyPublicDriveDiagnostic({
             meeting,
             "00000000-0000-0000-0000-000000000000",
             new Set<string>(),
+            false,
           )
         : null,
       wherebyMetadata: {
@@ -8945,9 +8949,13 @@ async function loadChronosParticipatedMeetingIds(
 function isChronosMeetingVisibleInSnapshot(
   meeting: ChronosMeetingRow,
   userId: string,
-  // null = admin (acesso total aos artefatos). Senao, meeting_ids em que o usuario
-  // participou — restringe video/transcricao/ata a quem participou.
-  participatedMeetingIds: Set<string> | null,
+  // meeting_ids em que o usuario participou (carregado para todos, admin
+  // inclusive — a visibilidade dos imports do Google e sempre por participacao).
+  participatedMeetingIds: Set<string>,
+  // Admin ve todos os ARTEFATOS (video/transcricao/ata); nao ve a agenda
+  // importada dos outros (alem de nao ser produto, carregava ~4k reunioes e
+  // derrubava a funcao por memoria — OOM 7/jul).
+  isAdmin: boolean,
 ) {
   if (meeting.host_user_id === userId) {
     return true;
@@ -8968,10 +8976,7 @@ function isChronosMeetingVisibleInSnapshot(
 
   if (hasDriveArtifacts) {
     // Gravacao/transcricao/ata: admin ve tudo; os demais so se participaram.
-    return (
-      participatedMeetingIds === null ||
-      participatedMeetingIds.has(meeting.id)
-    );
+    return isAdmin || participatedMeetingIds.has(meeting.id);
   }
 
   if (
@@ -8979,13 +8984,12 @@ function isChronosMeetingVisibleInSnapshot(
     metadata.source === "google-calendar" ||
     readRecordMetadata(metadata.googleCalendar).source === "google"
   ) {
-    // Import do Google: visivel para admin e para quem PARTICIPA da reuniao.
-    // Antes so o host via — reunioes da empresa importadas pela conexao de um
-    // colega ficavam invisiveis para os demais convidados no calendario
-    // (enquanto o "Meu dia" as mostrava), e as telas discordavam.
-    return (
-      participatedMeetingIds === null || participatedMeetingIds.has(meeting.id)
-    );
+    // Import do Google: visivel para quem PARTICIPA da reuniao (host ja saiu
+    // acima). Antes so o host via — reunioes da empresa importadas pela
+    // conexao de um colega ficavam invisiveis para os demais convidados no
+    // calendario (enquanto o "Meu dia" as mostrava), e as telas discordavam.
+    // SEM bypass de admin aqui: agenda importada dos outros nao e do admin.
+    return participatedMeetingIds.has(meeting.id);
   }
 
   return true;
