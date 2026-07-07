@@ -153,6 +153,8 @@ export function HermesWorkspace() {
     false,
     { backend: "local" },
   );
+  // Busca de texto DENTRO do canal ativo (a lupa do header). Reseta ao trocar de canal.
+  const [messageSearchQuery, setMessageSearchQuery] = useState("");
   const [athenaFocusedMessageId, setAthenaFocusedMessageId] = useState<
     HermesMessage["id"] | null
   >(null);
@@ -307,6 +309,14 @@ export function HermesWorkspace() {
         : channelMessages.filter((message) =>
             message.tags?.includes(activeMessageFilter),
           );
+  // Busca de texto do header (lupa): mostra só as mensagens do canal que contêm o
+  // termo. Vazio = lista normal.
+  const messageSearchTerm = messageSearchQuery.trim().toLowerCase();
+  const searchedChannelMessages = messageSearchTerm
+    ? filteredChannelMessages.filter((message) =>
+        (message.body ?? "").toLowerCase().includes(messageSearchTerm),
+      )
+    : filteredChannelMessages;
   const isActiveChannelMessageLoading =
     loadingMessageChannelIds.includes(activeChannel.id) ||
     (hasHubSupabaseConfig() &&
@@ -1470,6 +1480,11 @@ export function HermesWorkspace() {
     loadThreadReplies,
   ]);
 
+  // Ao trocar de canal, limpa a busca de texto (senão o termo filtraria o canal novo).
+  useEffect(() => {
+    setMessageSearchQuery("");
+  }, [activeChannel.id]);
+
   useEffect(() => {
     if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
       return;
@@ -2399,9 +2414,12 @@ export function HermesWorkspace() {
             isFavorite={favoriteChannelIdsSet.has(activeChannel.id)}
             onMarkCallHistoryRead={markCallHistoryRead}
             onReturnCall={handleReturnCallFromHistory}
+            onSearchChange={setMessageSearchQuery}
             onStartCall={handleStartCall}
             onToggleFavorite={handleToggleFavoriteChannel}
             presenceUsers={channelPresenceUsers}
+            searchQuery={messageSearchQuery}
+            searchResultCount={searchedChannelMessages.length}
             unreadCallCount={unreadCallCount}
           />
           <div
@@ -2415,7 +2433,7 @@ export function HermesWorkspace() {
               currentUserId={currentUserId}
               filter={activeMessageFilter}
               isLoading={isActiveChannelMessageLoading}
-              messages={filteredChannelMessages}
+              messages={searchedChannelMessages}
               onAskAiReply={handleOpenAthenaAgentForMessage}
               onEditMessage={handleEditMessage}
               onOpenThread={handleOpenThread}
