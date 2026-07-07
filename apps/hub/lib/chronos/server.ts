@@ -645,48 +645,61 @@ export async function listChronosSnapshot(
       throw roomsResult.error;
     }
 
-    // Janela da agenda: -45/+120 dias. O modelo antigo (limit 1500 ordenado da
-    // data mais DISTANTE) cortava a semana ATUAL quando o banco passava de
-    // 1500 reunioes futuras — o calendario mostrava um recorte aleatorio.
-    // TODO(refactor): buscar por range visivel do calendario em vez de janela
-    // fixa; quando o volume de reunioes da empresa crescer, este teto volta a
-    // apertar.
+    // Janela da agenda: -30/+90 dias, buscada em PAGINAS de 1000. Motivo: o
+    // PostgREST/Supabase tem um teto de linhas POR REQUEST (db-max-rows=1000)
+    // que IGNORA o .limit() do codigo silenciosamente — a query "limit 5000"
+    // devolvia as 1000 linhas mais ANTIGAS da janela e morria dias antes de
+    // HOJE (incidente 7/jul: linha 1000 caia em 03/07 e a semana atual sumia,
+    // exceto reunioes com host=usuario, que vinham pela query "owned").
     const agendaWindowStartIso = new Date(
-      Date.now() - 45 * 24 * 60 * 60 * 1000,
+      Date.now() - 30 * 24 * 60 * 60 * 1000,
     ).toISOString();
     const agendaWindowEndIso = new Date(
-      Date.now() + 120 * 24 * 60 * 60 * 1000,
+      Date.now() + 90 * 24 * 60 * 60 * 1000,
     ).toISOString();
 
     const [meetingsResult, ownedMeetingsResult, artifactMeetingsResult] =
       await Promise.all([
-        client
-          .from("chronos_meetings")
-          .select("*")
-          .neq("status", "cancelled")
-          .gte("starts_at", agendaWindowStartIso)
-          .lte("starts_at", agendaWindowEndIso)
-          .order("starts_at", { ascending: true, nullsFirst: false })
-          .limit(5000),
-        client
-          .from("chronos_meetings")
-          .select("*")
-          .eq("host_user_id", authorization.user.id)
-          .neq("status", "cancelled")
-          .gte("starts_at", agendaWindowStartIso)
-          .lte("starts_at", agendaWindowEndIso)
-          .order("updated_at", { ascending: false })
-          .limit(1500),
-        client
-          .from("chronos_meetings")
-          .select("*")
-          // NAO filtra cancelled aqui: reunioes com gravacao/transcricao/ata (mesmo
-          // canceladas, ex.: containers de sessao Whereby) devem aparecer no Drive.
-          .or(
-            "recording_status.eq.available,transcription_status.eq.available,external_reference.like.whereby-room:%",
-          )
-          .order("updated_at", { ascending: false })
-          .limit(1500),
+        listChronosPagedRows<ChronosMeetingRow>((from, to) =>
+          client
+            .from("chronos_meetings")
+            .select("*")
+            .neq("status", "cancelled")
+            .gte("starts_at", agendaWindowStartIso)
+            .lte("starts_at", agendaWindowEndIso)
+            .order("starts_at", { ascending: true, nullsFirst: false })
+            .order("id", { ascending: true })
+            .range(from, to),
+        ),
+        listChronosPagedRows<ChronosMeetingRow>(
+          (from, to) =>
+            client
+              .from("chronos_meetings")
+              .select("*")
+              .eq("host_user_id", authorization.user.id)
+              .neq("status", "cancelled")
+              .gte("starts_at", agendaWindowStartIso)
+              .lte("starts_at", agendaWindowEndIso)
+              .order("updated_at", { ascending: false })
+              .order("id", { ascending: true })
+              .range(from, to),
+          { maxPages: 3 },
+        ),
+        listChronosPagedRows<ChronosMeetingRow>(
+          (from, to) =>
+            client
+              .from("chronos_meetings")
+              .select("*")
+              // NAO filtra cancelled aqui: reunioes com gravacao/transcricao/ata (mesmo
+              // canceladas, ex.: containers de sessao Whereby) devem aparecer no Drive.
+              .or(
+                "recording_status.eq.available,transcription_status.eq.available,external_reference.like.whereby-room:%",
+              )
+              .order("updated_at", { ascending: false })
+              .order("id", { ascending: true })
+              .range(from, to),
+          { maxPages: 3 },
+        ),
       ]);
 
     if (meetingsResult.error) {
@@ -748,49 +761,59 @@ export async function listChronosSnapshot(
         ? await Promise.all([
             listChronosMeetingRelatedRows<ChronosParticipantRow>(
               meetingIds,
-              async (chunk) =>
+              async (chunk, from, to) =>
                 client
                   .from("chronos_participants")
                   .select("*")
-                  .in("meeting_id", chunk),
+                  .in("meeting_id", chunk)
+                  .order("id", { ascending: true })
+                  .range(from, to),
             ),
             listChronosMeetingRelatedRows<{
               meeting_id: string;
               speaker_label: string | null;
             }>(
               meetingIds,
-              async (chunk) =>
+              async (chunk, from, to) =>
                 client
                   .from("chronos_transcript_segments")
-                  .select("meeting_id,speaker_label")
-                  .in("meeting_id", chunk),
+                  .select("meeting_id,speaker_label,id")
+                  .in("meeting_id", chunk)
+                  .order("id", { ascending: true })
+                  .range(from, to),
             ),
             listChronosMeetingRelatedRows<ChronosMinutesRow>(
               meetingIds,
-              async (chunk) =>
+              async (chunk, from, to) =>
                 client
                   .from("chronos_minutes")
                   .select("*")
                   .in("meeting_id", chunk)
-                  .order("created_at", { ascending: false }),
+                  .order("created_at", { ascending: false })
+                  .order("id", { ascending: true })
+                  .range(from, to),
             ),
             listChronosMeetingRelatedRows<ChronosFollowUpRow>(
               meetingIds,
-              async (chunk) =>
+              async (chunk, from, to) =>
                 client
                   .from("chronos_followups")
                   .select("*")
                   .in("meeting_id", chunk)
-                  .order("created_at", { ascending: false }),
+                  .order("created_at", { ascending: false })
+                  .order("id", { ascending: true })
+                  .range(from, to),
             ),
             listChronosMeetingRelatedRows<ChronosRecordingRow>(
               meetingIds,
-              async (chunk) =>
+              async (chunk, from, to) =>
                 client
                   .from("chronos_recordings")
                   .select("*")
                   .in("meeting_id", chunk)
-                  .order("created_at", { ascending: false }),
+                  .order("created_at", { ascending: false })
+                  .order("id", { ascending: true })
+                  .range(from, to),
             ),
           ])
         : [
@@ -845,12 +868,14 @@ export async function listChronosSnapshot(
       const chatMessagesResult =
         await listChronosMeetingRelatedRows<ChronosChatMessageRow>(
           meetingIds,
-          async (chunk) =>
+          async (chunk, from, to) =>
             client
               .from("chronos_chat_messages")
               .select("*")
               .in("meeting_id", chunk)
-              .order("created_at", { ascending: true }),
+              .order("created_at", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to),
         );
 
       if (chatMessagesResult.error) {
@@ -9724,10 +9749,43 @@ function groupRows<Row extends { meeting_id: string }>(
   return rows.filter((row) => row.meeting_id === meetingId);
 }
 
+// Paginacao contra o teto de linhas do PostgREST (db-max-rows=1000): o teto
+// IGNORA o .limit() do codigo e corta a resposta em silencio. Toda query que
+// pode passar de 1000 linhas PRECISA iterar em paginas via .range().
+async function listChronosPagedRows<Row>(
+  buildPage: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: Row[] | null; error: unknown }>,
+  { maxPages = 6, pageSize = 1000 }: { maxPages?: number; pageSize?: number } = {},
+): Promise<{ data: Row[]; error: unknown }> {
+  const rows: Row[] = [];
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const result = await buildPage(page * pageSize, (page + 1) * pageSize - 1);
+
+    if (result.error) {
+      return { data: rows, error: result.error };
+    }
+
+    const batch = result.data ?? [];
+
+    rows.push(...batch);
+
+    if (batch.length < pageSize) {
+      break;
+    }
+  }
+
+  return { data: rows, error: null };
+}
+
 async function listChronosMeetingRelatedRows<Row>(
   meetingIds: string[],
   loadChunk: (
     meetingIds: string[],
+    from: number,
+    to: number,
   ) => Promise<{ data: Row[] | null; error: unknown }>,
 ) {
   const rows: Row[] = [];
@@ -9741,7 +9799,12 @@ async function listChronosMeetingRelatedRows<Row>(
       index,
       index + chronosSnapshotRelatedDataChunkSize,
     );
-    const result = await loadChunk(chunk);
+    // Pagina DENTRO do chunk: 100 reunioes podem ter >1000 linhas relacionadas
+    // (participantes/segmentos) e o teto do PostgREST cortaria em silencio.
+    const result = await listChronosPagedRows<Row>(
+      (from, to) => loadChunk(chunk, from, to),
+      { maxPages: 5 },
+    );
 
     if (result.error) {
       return {

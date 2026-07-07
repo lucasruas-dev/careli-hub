@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-chronos-teto-1000-servidor",
+    deployedAt: "2026-07-07T10:55:00-03:00",
+    modules: [
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "Achada e corrigida a causa das reuniões que faltavam no calendário: o banco corta silenciosamente qualquer consulta em 1000 linhas, e a busca da agenda parava dias ANTES de hoje (a linha 1000 caía em 03/07). Só apareciam as reuniões em que você era o organizador.",
+              "Agora a agenda busca em páginas e cobre a janela inteira (30 dias pra trás, 90 pra frente). A semana deve finalmente bater com o Google.",
+            ],
+            screen: "Agenda",
+          },
+        ],
+      },
+    ],
+    rollback: "commit b4e4eff4",
+    technical: {
+      done: "PostgREST db-max-rows=1000 IGNORA o .limit() do codigo: a query geral (janela asc, limit 5000) devolvia as 1000 linhas mais antigas e morria em 03/07 (SQL: row_number 1000 = 03/07 20:00; semana atual so via query owned). Fix: helper listChronosPagedRows (.range em paginas de 1000, teto configuravel) aplicado nas 3 queries de reunioes do snapshot (geral -30/+90d 6pg, owned 3pg, artefatos 3pg) + listChronosMeetingRelatedRows pagina DENTRO de cada chunk de 100 ids (participantes/segmentos de 100 reunioes podem passar de 1000 linhas) + ordenacao secundaria por id p/ paginacao estavel. 3o incidente do teto-1000 (Iris v1.20.1, participacoes v1.25.2) — auditoria global de queries sem paginacao ja aberta como task. v1.26.0 -> v1.26.1.",
+      motivation:
+        "Lucas 10:28: 'reunioes nao apareceram, mesmo erro' — v1.26.0 carregava sem erro mas a semana continuava so com reunioes host=Lucas; simulacao SQL do pipeline provou payload deveria ter 6 reunioes na terca e o servidor devolvia so 1.",
+    },
+    title: "Chronos: semana completa no calendário (teto de 1000 no servidor)",
+    type: "correcao",
+    version: "1.26.1",
+  },
+  {
     buildTag: "2026-07-07-chronos-snapshot-leve",
     deployedAt: "2026-07-07T10:40:00-03:00",
     modules: [
