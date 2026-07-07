@@ -645,19 +645,36 @@ export async function listChronosSnapshot(
       throw roomsResult.error;
     }
 
+    // Janela da agenda: -45/+120 dias. O modelo antigo (limit 1500 ordenado da
+    // data mais DISTANTE) cortava a semana ATUAL quando o banco passava de
+    // 1500 reunioes futuras — o calendario mostrava um recorte aleatorio.
+    // TODO(refactor): buscar por range visivel do calendario em vez de janela
+    // fixa; quando o volume de reunioes da empresa crescer, este teto volta a
+    // apertar.
+    const agendaWindowStartIso = new Date(
+      Date.now() - 45 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+    const agendaWindowEndIso = new Date(
+      Date.now() + 120 * 24 * 60 * 60 * 1000,
+    ).toISOString();
+
     const [meetingsResult, ownedMeetingsResult, artifactMeetingsResult] =
       await Promise.all([
         client
           .from("chronos_meetings")
           .select("*")
           .neq("status", "cancelled")
-          .order("starts_at", { ascending: false, nullsFirst: false })
-          .limit(1500),
+          .gte("starts_at", agendaWindowStartIso)
+          .lte("starts_at", agendaWindowEndIso)
+          .order("starts_at", { ascending: true, nullsFirst: false })
+          .limit(5000),
         client
           .from("chronos_meetings")
           .select("*")
           .eq("host_user_id", authorization.user.id)
           .neq("status", "cancelled")
+          .gte("starts_at", agendaWindowStartIso)
+          .lte("starts_at", agendaWindowEndIso)
           .order("updated_at", { ascending: false })
           .limit(1500),
         client
@@ -8962,7 +8979,13 @@ function isChronosMeetingVisibleInSnapshot(
     metadata.source === "google-calendar" ||
     readRecordMetadata(metadata.googleCalendar).source === "google"
   ) {
-    return false;
+    // Import do Google: visivel para admin e para quem PARTICIPA da reuniao.
+    // Antes so o host via — reunioes da empresa importadas pela conexao de um
+    // colega ficavam invisiveis para os demais convidados no calendario
+    // (enquanto o "Meu dia" as mostrava), e as telas discordavam.
+    return (
+      participatedMeetingIds === null || participatedMeetingIds.has(meeting.id)
+    );
   }
 
   return true;

@@ -1342,6 +1342,58 @@ async function googleCalendarFetch<T>(
   return payload as T;
 }
 
+const defaultChronosCompanyTitlePrefixes = ["careli:"];
+const defaultChronosCompanyAttendeeDomains = ["careli.adm.br"];
+// Excecoes por palavra no titulo (decisao Lucas 7/jul): "deslocamento" entra
+// mesmo sem prefixo/convidado — o time quer ver quando alguem esta em transito.
+const defaultChronosCompanyTitleKeywords = ["deslocamento"];
+
+function readChronosImportFilterList(
+  envValue: string | undefined,
+  fallback: string[],
+) {
+  const parsed = (envValue ?? "")
+    .split(",")
+    .map((item) => item.trim().toLowerCase())
+    .filter(Boolean);
+
+  return parsed.length > 0 ? parsed : fallback;
+}
+
+// Filtro de import do pull: um evento do Google so vira reuniao no Chronos se
+// for da EMPRESA — titulo com prefixo corporativo ou convidado do dominio.
+// Sem isso, a rotina pessoal inteira de cada agenda conectada entra no hub
+// (incidente 7/jul: 3.069 itens pessoais = 46% do banco de reunioes).
+function isChronosCompanyGoogleEvent(event: GoogleCalendarEvent): boolean {
+  const titlePrefixes = readChronosImportFilterList(
+    process.env.CHRONOS_GOOGLE_IMPORT_TITLE_PREFIXES,
+    defaultChronosCompanyTitlePrefixes,
+  );
+  const attendeeDomains = readChronosImportFilterList(
+    process.env.CHRONOS_GOOGLE_IMPORT_ATTENDEE_DOMAINS,
+    defaultChronosCompanyAttendeeDomains,
+  );
+  const titleKeywords = readChronosImportFilterList(
+    process.env.CHRONOS_GOOGLE_IMPORT_TITLE_KEYWORDS,
+    defaultChronosCompanyTitleKeywords,
+  );
+  const title = event.summary?.trim().toLowerCase() ?? "";
+
+  if (titlePrefixes.some((prefix) => title.startsWith(prefix))) {
+    return true;
+  }
+
+  if (titleKeywords.some((keyword) => title.includes(keyword))) {
+    return true;
+  }
+
+  return (event.attendees ?? []).some((attendee) => {
+    const email = attendee.email?.trim().toLowerCase() ?? "";
+
+    return attendeeDomains.some((domain) => email.endsWith(`@${domain}`));
+  });
+}
+
 async function findGoogleCalendarEventLink(
   client: ChronosGoogleCalendarClient,
   input: { calendarId: string; meetingId: string },
@@ -1369,6 +1421,9 @@ async function findGoogleCalendarEventLinkByEventId(
     .select("*")
     .eq("calendar_id", input.calendarId)
     .eq("google_event_id", input.eventId)
+    // O vinculo mais ANTIGO e o canonico: sem ordenacao, cada sync podia
+    // enxergar um vinculo diferente e espalhar updates entre copias.
+    .order("created_at", { ascending: true })
     .limit(1)
     .returns<ChronosGoogleCalendarEventLinkRow[]>();
 
@@ -1697,6 +1752,15 @@ async function pullChronosEventsFromGoogleCalendar(
         continue;
       }
 
+      if (!isChronosCompanyGoogleEvent(event)) {
+        // Filtro de import (decisao Lucas 7/jul): so entram no hub reunioes da
+        // empresa (titulo "Careli:*" ou convidado do dominio corporativo).
+        // Rotina pessoal do Google de cada usuario fica fora do Chronos.
+        skipped += 1;
+        countDiagnostic("filtered_non_company_event");
+        continue;
+      }
+
       const importedMeetingId = await importGoogleEventAsChronosMeeting(client, {
         calendarId: connectionLookup.connection.calendar_id,
         connectionId: connectionLookup.connection.id,
@@ -1874,13 +1938,29 @@ async function applyGoogleEventToChronosMeeting(
     userId: string | null;
   },
 ) {
+  // Nada mudou no Google desde a ultima passada (mesmo etag): nao ha o que
+  // aplicar. Sem este atalho, TODO full sync reescrevia TODAS as reunioes e
+  // gravava uma nota de timeline por evento por passada (620k notas ate 7/jul).
+  if (
+    input.event.etag &&
+    input.link.google_etag &&
+    input.link.google_etag === input.event.etag
+  ) {
+    return;
+  }
+
   const startsAt = normalizeGoogleEventDate(input.event.start);
   const endsAt = normalizeGoogleEventDate(input.event.end);
   const existingMeeting = await client
     .from("chronos_meetings")
-    .select("metadata")
+    .select("metadata,title,starts_at,ends_at")
     .eq("id", input.link.meeting_id)
-    .maybeSingle<{ metadata: Record<string, unknown> }>();
+    .maybeSingle<{
+      metadata: Record<string, unknown>;
+      title: string | null;
+      starts_at: string | null;
+      ends_at: string | null;
+    }>();
   const updatePayload: Partial<ChronosMeetingRow> = {
     metadata: {
       ...(existingMeeting.data?.metadata ?? {}),
@@ -1890,6 +1970,7 @@ async function applyGoogleEventToChronosMeeting(
         eventId: input.event.id,
         htmlLink: input.event.htmlLink,
         inboundSyncedAt: new Date().toISOString(),
+        location: input.event.location?.trim() || null,
         provider: googleCalendarProvider,
         source: "google",
         status: "synced",
@@ -1921,12 +2002,41 @@ async function applyGoogleEventToChronosMeeting(
     origin: input.link.origin,
     status: "synced",
   });
-  await insertGoogleCalendarTimelineEvent(client, {
-    eventId: input.event.id,
-    meetingId: input.link.meeting_id,
-    title: "Chronos atualizado pelo Google Agenda",
-    userId: input.userId,
-  });
+
+  // Nota de timeline apenas quando titulo/horario mudou de fato — mudancas
+  // invisiveis (etag por convidado, cor, lembrete) nao poluem o historico.
+  const meaningfulChange =
+    (updatePayload.title !== undefined &&
+      updatePayload.title !== (existingMeeting.data?.title ?? undefined)) ||
+    (updatePayload.starts_at !== undefined &&
+      !areChronosDatesEqual(updatePayload.starts_at, existingMeeting.data?.starts_at)) ||
+    (updatePayload.ends_at !== undefined &&
+      !areChronosDatesEqual(updatePayload.ends_at, existingMeeting.data?.ends_at));
+
+  if (meaningfulChange) {
+    await insertGoogleCalendarTimelineEvent(client, {
+      eventId: input.event.id,
+      meetingId: input.link.meeting_id,
+      title: "Chronos atualizado pelo Google Agenda",
+      userId: input.userId,
+    });
+  }
+}
+
+function areChronosDatesEqual(
+  left: string | null | undefined,
+  right: string | null | undefined,
+) {
+  if (!left || !right) {
+    return left === right;
+  }
+
+  const leftTime = new Date(left).getTime();
+  const rightTime = new Date(right).getTime();
+
+  return Number.isFinite(leftTime) && Number.isFinite(rightTime)
+    ? leftTime === rightTime
+    : left === right;
 }
 
 async function importGoogleEventAsChronosMeeting(
@@ -1974,6 +2084,7 @@ async function importGoogleEventAsChronosMeeting(
           eventId,
           htmlLink: input.event.htmlLink,
           inboundSyncedAt: new Date().toISOString(),
+          location: input.event.location?.trim() || null,
           provider: googleCalendarProvider,
           recurringEventId: input.event.recurringEventId ?? null,
           source: "google",
@@ -2067,6 +2178,7 @@ async function applyGoogleEventToExistingChronosMeeting(
       eventId: input.event.id,
       htmlLink: input.event.htmlLink,
       inboundSyncedAt: new Date().toISOString(),
+      location: input.event.location?.trim() || null,
       provider: googleCalendarProvider,
       source: "google",
       status: "synced",
@@ -2077,7 +2189,10 @@ async function applyGoogleEventToExistingChronosMeeting(
     status: input.meeting.status === "cancelled" ? "scheduled" : input.meeting.status,
   };
 
-  if (input.userId) {
+  // So assume o host quando a reuniao ainda nao tem um: antes, cada conexao
+  // que sincronizava ROUBAVA o host_user_id da reuniao (e com ele a
+  // visibilidade no calendario do dono anterior).
+  if (input.userId && !input.meeting.host_user_id) {
     updatePayload.host_user_id = input.userId;
   }
 

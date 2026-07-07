@@ -8,6 +8,10 @@
       "schedule": "*/30 * * * *"
     },
     {
+      "path": "/api/chronos/google-calendar/sync-cron",
+      "schedule": "*/15 * * * *"
+    },
+    {
       "path": "/api/guardian/sync/c2x",
       "schedule": "*/15 * * * *"
     },

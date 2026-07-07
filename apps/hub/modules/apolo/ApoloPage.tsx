@@ -113,7 +113,7 @@ export function ApoloPage() {
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [profileFilter, query]);
+  }, [profileFilter, query, setSelectedEntityId]);
 
   const entities = useMemo(() => dashboard?.entities ?? [], [dashboard]);
   const filteredEntities = useMemo(
@@ -136,13 +136,13 @@ export function ApoloPage() {
     if (!filteredEntities.some((entity) => entity.id === selectedEntityId)) {
       setSelectedEntityId(filteredEntities[0]?.id ?? "");
     }
-  }, [filteredEntities, selectedEntityId]);
+  }, [filteredEntities, selectedEntityId, setSelectedEntityId]);
 
   useEffect(() => {
     if (selectedEntity && isApoloTabUnavailableForEntity(activeTab, selectedEntity)) {
       setActiveTab("resumo");
     }
-  }, [activeTab, selectedEntity]);
+  }, [activeTab, selectedEntity, setActiveTab]);
 
   function openCommercialRelationship(label: string) {
     const normalizedLabel = label.trim();

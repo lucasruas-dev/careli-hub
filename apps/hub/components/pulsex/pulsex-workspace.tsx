@@ -501,7 +501,7 @@ export function HermesWorkspace() {
     return () => {
       isMounted = false;
     };
-  }, [currentUserId, hubUser?.role, profileStatus]);
+  }, [currentUserId, hubUser?.role, profileStatus, setActiveChannelId]);
 
   useEffect(() => loadOperationalData(), [loadOperationalData]);
 
@@ -612,7 +612,7 @@ export function HermesWorkspace() {
     if (threadParentMessageId) {
       setActiveThreadMessageId(threadParentMessageId);
     }
-  }, [channels]);
+  }, [channels, setActiveChannelId]);
 
   // Deep-link com o app JA aberto (clique na notificacao do SO -> router.push SPA):
   // o efeito acima so roda uma vez — este listener troca canal/thread na hora.
@@ -638,7 +638,7 @@ export function HermesWorkspace() {
     window.addEventListener("panteon:deeplink", handleDeepLink);
 
     return () => window.removeEventListener("panteon:deeplink", handleDeepLink);
-  }, [channels]);
+  }, [channels, setActiveChannelId]);
 
   useLayoutEffect(() => {
     if (

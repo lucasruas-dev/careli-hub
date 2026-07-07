@@ -563,7 +563,26 @@ export function getChronosMeetingLocationLabel(meeting: ChronosMeeting) {
     }
   }
 
-  return meeting.room?.name ?? "Sala pendente";
+  if (meeting.room?.name) {
+    return meeting.room.name;
+  }
+
+  // Import do Google sem sala do Chronos: mostrar o endereco do evento (se o
+  // Google tiver um) ou a origem — "Sala pendente" sugeria acao pendente onde
+  // nao ha nenhuma.
+  const googleCalendar = meeting.metadata.googleCalendar;
+
+  if (googleCalendar && typeof googleCalendar === "object" && !Array.isArray(googleCalendar)) {
+    const googleLocation = (googleCalendar as { location?: unknown }).location;
+
+    if (typeof googleLocation === "string" && googleLocation.trim()) {
+      return googleLocation.trim();
+    }
+
+    return "Google Agenda";
+  }
+
+  return "Sala pendente";
 }
 
 export function getChronosMeetingRoomPath(meeting: ChronosMeeting) {

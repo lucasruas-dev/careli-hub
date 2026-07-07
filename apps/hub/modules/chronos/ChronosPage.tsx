@@ -103,7 +103,7 @@ export function ChronosPage() {
       ),
     }));
     setSelectedMeetingId(meeting.id);
-  }, []);
+  }, [setSelectedMeetingId]);
 
   const reloadChronos = useCallback(async () => {
     setLoading(true);
@@ -142,7 +142,7 @@ export function ChronosPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [setSelectedMeetingId]);
 
   useEffect(() => {
     void reloadChronos();

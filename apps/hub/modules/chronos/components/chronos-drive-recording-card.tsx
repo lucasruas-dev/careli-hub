@@ -12,10 +12,17 @@ import {
 import { getChronosCheckedInParticipants } from "@/lib/chronos/minutes";
 import { normalizeChronosMeetingRuntime } from "@/lib/chronos/runtime-meeting";
 import { formatChronosDuration } from "@/lib/chronos/recording";
-import { chronosCaptureStatusLabels } from "@/lib/chronos/types";
-import { Badge } from "@repo/uix";
-import { Download, FileText, PlayCircle, Video, X } from "lucide-react";
-import { useState } from "react";
+import type { ChronosMeeting } from "@/lib/chronos/types";
+import {
+  Download,
+  FileText,
+  Mic,
+  PlayCircle,
+  Users,
+  Video,
+  X,
+} from "lucide-react";
+import { useState, type ReactNode } from "react";
 
 type ChronosDriveViewMode = "grid" | "list";
 
@@ -24,6 +31,14 @@ type ChronosDriveMeetingRecordingCardProps = {
   recordingMeeting: ChronosDriveRecordingMeeting;
   viewMode: ChronosDriveViewMode;
 };
+
+// Objetivo padrao gravado pelas salas avulsas — nao e assunto real, e ruido.
+const genericChronosObjectives = new Set([
+  "sala publica whereby aberta pelo chronos.",
+  "sala publica whereby aberta pelo chronos",
+]);
+
+type ChronosDriveArtifactState = "failed" | "none" | "ok" | "processing";
 
 export function ChronosDriveMeetingRecordingCard({
   onOpenMeetingMinutes,
@@ -46,55 +61,58 @@ export function ChronosDriveMeetingRecordingCard({
     meeting,
     recordingMeeting.roomLabel,
   );
-  const status =
-    recordingMeeting.availableRecordings > 0
-      ? "available"
-      : (primaryRecording?.status ?? meeting.recordingStatus);
-  const statusLabel = getChronosDriveRecordingStatusLabel(
-    recordingMeeting,
-    status,
-  );
-  const videoStatusLabel = getChronosDriveVideoStatusLabel(recordingMeeting);
-  const audioStatusLabel = getChronosDriveAudioStatusLabel(recordingMeeting);
-  const missingVideoLabel =
-    recordingMeeting.failedVideoRecordings > 0
-      ? "Video falhou; audio pode gerar ata"
-      : recordingMeeting.availableAudioRecordings > 0
-        ? "Video indisponivel; audio salvo"
-        : "Video em processamento";
-  const checkedInParticipants = getChronosCheckedInParticipants(meeting);
+  const people = getChronosDrivePeople(recordingMeeting, meeting);
+  const objective = getChronosDriveMeaningfulObjective(meeting);
+  const whenLine = formatChronosDriveWhenLine(startedAt, endedAt);
+  const detailLine = [
+    recordingMeeting.totalDurationSeconds
+      ? formatChronosDuration(recordingMeeting.totalDurationSeconds)
+      : null,
+    primaryRecording?.sizeBytes
+      ? formatChronosFileSize(primaryRecording.sizeBytes)
+      : null,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
   if (viewMode === "list") {
     return (
-      <article className="grid gap-3 border-b border-[#edf0f4] bg-white px-3 py-3 text-sm text-[#101820] transition hover:bg-[#fafbfc] xl:grid-cols-[minmax(14rem,1.4fr)_minmax(10rem,0.8fr)_minmax(14rem,1fr)_auto] xl:items-center">
+      <article className="grid gap-3 border-b border-[#edf0f4] bg-white px-3 py-3 text-sm text-[#101820] transition hover:bg-[#fafbfc] xl:grid-cols-[minmax(15rem,1.3fr)_minmax(11rem,0.9fr)_minmax(13rem,1fr)_auto] xl:items-center">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <p className="m-0 truncate text-sm font-semibold text-[#101820]">
-              {displayTitle}
-            </p>
-            <Badge variant={status === "available" ? "success" : "neutral"}>
-              {statusLabel}
-            </Badge>
-          </div>
+          <p className="m-0 truncate text-sm font-semibold text-[#101820]">
+            {displayTitle}
+          </p>
           <p className="m-0 mt-1 truncate text-xs text-[#667085]">
             {meeting.protocol}
+            {recordingMeeting.roomLabel ? ` · ${recordingMeeting.roomLabel}` : ""}
           </p>
+          {objective ? (
+            <p
+              className="m-0 mt-1 truncate text-xs text-[#667085]"
+              title={objective}
+            >
+              {objective}
+            </p>
+          ) : null}
         </div>
         <div className="grid gap-1 text-xs text-[#667085]">
-          <span>Inicio: {formatChronosDateTime(startedAt)}</span>
-          <span>Fim: {formatChronosDateTime(endedAt)}</span>
+          <span>{whenLine}</span>
+          {detailLine ? <span>{detailLine}</span> : null}
+          {people.length > 0 ? (
+            <span
+              className="inline-flex min-w-0 items-center gap-1"
+              title={people.join(", ")}
+            >
+              <Users aria-hidden="true" className="shrink-0" size={12} />
+              <span className="truncate">{formatChronosDrivePeople(people)}</span>
+            </span>
+          ) : null}
         </div>
-        <div className="grid gap-1 text-xs text-[#667085]">
-          <span>Participantes: {checkedInParticipants.length}</span>
-          <span className="truncate">
-            Pessoas: {recordingMeeting.participantText || "-"}
-          </span>
-          <span className="truncate">
-            Assunto: {meeting.objective || meeting.title}
-          </span>
-          <span>
-            Video: {videoStatusLabel} / Audio e ata: {audioStatusLabel}
-          </span>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ChronosDriveArtifactChips
+            meeting={meeting}
+            recordingMeeting={safeRecordingMeeting}
+          />
         </div>
         <ChronosDriveRecordingActions
           canOpenVideo={canOpenVideo}
@@ -121,50 +139,46 @@ export function ChronosDriveMeetingRecordingCard({
           <div className="grid justify-items-center gap-2">
             <Video aria-hidden="true" size={24} />
             <span className="text-xs font-semibold text-[#d7dee8]">
-              {recordingMeeting.recordings.length > 0
-                ? missingVideoLabel
-                : "Gravacao ainda nao disponivel"}
+              {recordingMeeting.failedVideoRecordings > 0
+                ? "Video falhou; audio pode gerar ata"
+                : "Video em processamento"}
             </span>
           </div>
         </div>
       )}
       <div className="grid gap-3 p-3">
-        <div className="flex items-start justify-between gap-2">
-          <div className="min-w-0">
-            <p className="m-0 truncate text-sm font-semibold text-[#101820]">
-              {displayTitle}
-            </p>
-            <p className="m-0 mt-1 truncate text-xs text-[#667085]">
-              {meeting.protocol}
-            </p>
-          </div>
-          <Badge variant={status === "available" ? "success" : "neutral"}>
-            {statusLabel}
-          </Badge>
+        <div className="min-w-0">
+          <p className="m-0 truncate text-sm font-semibold text-[#101820]">
+            {displayTitle}
+          </p>
+          <p className="m-0 mt-1 truncate text-xs text-[#667085]">
+            {meeting.protocol}
+            {recordingMeeting.roomLabel ? ` · ${recordingMeeting.roomLabel}` : ""}
+          </p>
         </div>
         <div className="grid gap-1 text-xs text-[#667085]">
-          <span>Inicio: {formatChronosDateTime(startedAt)}</span>
-          <span>Fim: {formatChronosDateTime(endedAt)}</span>
-          <span>Participantes: {checkedInParticipants.length}</span>
-          <span className="truncate">
-            Pessoas: {recordingMeeting.participantText || "-"}
-          </span>
-          <span className="truncate">
-            Assunto: {meeting.objective || meeting.title}
-          </span>
-          <span>
-            Duracao: {formatChronosDuration(recordingMeeting.totalDurationSeconds)}
-            {primaryRecording?.sizeBytes
-              ? ` / ${formatChronosFileSize(primaryRecording.sizeBytes)}`
-              : ""}
-          </span>
-          <span>
-            Arquivos: {recordingMeeting.recordings.length} / disponiveis:{" "}
-            {recordingMeeting.availableRecordings}
-          </span>
-          <span>
-            Video: {videoStatusLabel} / Audio e ata: {audioStatusLabel}
-          </span>
+          <span>{whenLine}</span>
+          {detailLine ? <span>{detailLine}</span> : null}
+          {people.length > 0 ? (
+            <span
+              className="inline-flex min-w-0 items-center gap-1"
+              title={people.join(", ")}
+            >
+              <Users aria-hidden="true" className="shrink-0" size={12} />
+              <span className="truncate">{formatChronosDrivePeople(people)}</span>
+            </span>
+          ) : null}
+          {objective ? (
+            <span className="truncate" title={objective}>
+              {objective}
+            </span>
+          ) : null}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ChronosDriveArtifactChips
+            meeting={meeting}
+            recordingMeeting={safeRecordingMeeting}
+          />
         </div>
         <ChronosDriveRecordingActions
           canOpenVideo={canOpenVideo}
@@ -178,67 +192,166 @@ export function ChronosDriveMeetingRecordingCard({
   );
 }
 
-function getChronosDriveRecordingStatusLabel(
+// Quem estava na reuniao: participantes com check-in; sem check-in (salas
+// avulsas), cai para quem a transcricao registrou falando.
+function getChronosDrivePeople(
   recordingMeeting: ChronosDriveRecordingMeeting,
-  status: keyof typeof chronosCaptureStatusLabels,
+  meeting: ChronosMeeting,
 ) {
-  if (
-    recordingMeeting.failedVideoRecordings > 0 &&
-    recordingMeeting.availableAudioRecordings > 0
-  ) {
-    return "Audio disponivel";
+  const checkedIn = getChronosCheckedInParticipants(meeting)
+    .map((participant) => participant.displayName?.trim())
+    .filter((name): name is string => Boolean(name));
+
+  if (checkedIn.length > 0) {
+    return Array.from(new Set(checkedIn));
   }
 
-  if (
-    recordingMeeting.failedRecordings > 0 &&
-    recordingMeeting.availableRecordings > 0
-  ) {
-    return "Parcial";
-  }
+  const speakers = meeting.transcript
+    .map((segment) => segment.speakerLabel?.trim())
+    .filter((name): name is string => Boolean(name));
 
-  return chronosCaptureStatusLabels[status];
+  return Array.from(new Set(speakers));
 }
 
-function getChronosDriveVideoStatusLabel(
-  recordingMeeting: ChronosDriveRecordingMeeting,
-) {
-  if (recordingMeeting.availableVideoRecordings > 0) {
-    return "Disponivel";
-  }
+function formatChronosDrivePeople(people: string[]) {
+  const shown = people.slice(0, 3);
+  const remaining = people.length - shown.length;
 
-  if (recordingMeeting.failedVideoRecordings > 0) {
-    return "Falhou";
-  }
-
-  return "Pendente";
+  return remaining > 0 ? `${shown.join(", ")} +${remaining}` : shown.join(", ");
 }
 
-function getChronosDriveAudioStatusLabel(
-  recordingMeeting: ChronosDriveRecordingMeeting,
+function getChronosDriveMeaningfulObjective(meeting: ChronosMeeting) {
+  const objective = meeting.objective?.trim();
+
+  if (!objective) {
+    return null;
+  }
+
+  if (genericChronosObjectives.has(objective.toLowerCase())) {
+    return null;
+  }
+
+  return objective;
+}
+
+function formatChronosDriveWhenLine(
+  startedAt: string | null | undefined,
+  endedAt: string | null | undefined,
 ) {
-  const meeting = normalizeChronosMeetingRuntime(recordingMeeting.meeting);
+  const start = formatChronosDateTime(startedAt);
 
-  if (meeting.transcript.length > 0) {
-    return "Transcricao disponivel";
+  if (!endedAt) {
+    return start;
   }
 
-  if (meeting.transcriptionStatus === "available") {
-    return "Transcricao em sincronizacao";
-  }
+  const end = formatChronosDateTime(endedAt);
+  const endTime = end.includes(" ") ? end.slice(end.indexOf(" ") + 1) : end;
+  const sameDay =
+    start.includes(" ") &&
+    end.includes(" ") &&
+    start.slice(0, start.indexOf(" ")) === end.slice(0, end.indexOf(" "));
 
-  if (meeting.transcriptionStatus === "processing") {
-    return "Transcricao em processamento";
-  }
+  return sameDay ? `${start} ate ${endTime}` : `${start} ate ${end}`;
+}
 
-  if (recordingMeeting.availableAudioRecordings > 0) {
-    return "Disponivel para transcricao";
-  }
+function ChronosDriveArtifactChips({
+  meeting,
+  recordingMeeting,
+}: {
+  meeting: ChronosMeeting;
+  recordingMeeting: ChronosDriveRecordingMeeting;
+}) {
+  const videoState: ChronosDriveArtifactState =
+    recordingMeeting.availableVideoRecordings > 0
+      ? "ok"
+      : recordingMeeting.failedVideoRecordings > 0
+        ? "failed"
+        : "processing";
+  const videoTitle =
+    videoState === "ok"
+      ? "Video disponivel"
+      : videoState === "failed"
+        ? "Video falhou; audio pode gerar ata"
+        : "Video em processamento";
 
-  if (recordingMeeting.recordings.some(isChronosAudioRecording)) {
-    return "Processando";
-  }
+  const transcriptState: ChronosDriveArtifactState =
+    meeting.transcript.length > 0
+      ? "ok"
+      : meeting.transcriptionStatus === "processing" ||
+          meeting.transcriptionStatus === "available" ||
+          recordingMeeting.availableAudioRecordings > 0
+        ? "processing"
+        : "none";
+  const transcriptTitle =
+    transcriptState === "ok"
+      ? "Transcricao disponivel"
+      : transcriptState === "processing"
+        ? "Transcricao em processamento"
+        : "Sem transcricao";
 
-  return "Pendente";
+  const minutesState: ChronosDriveArtifactState =
+    meeting.minutes.length > 0
+      ? "ok"
+      : meeting.transcript.length > 0
+        ? "processing"
+        : "none";
+  const minutesTitle =
+    minutesState === "ok"
+      ? "Ata gerada"
+      : minutesState === "processing"
+        ? "Ata pode ser gerada (transcricao pronta)"
+        : "Sem ata";
+
+  return (
+    <>
+      <ChronosDriveArtifactChip icon={<Video size={12} />} state={videoState} title={videoTitle}>
+        Video
+      </ChronosDriveArtifactChip>
+      <ChronosDriveArtifactChip
+        icon={<Mic size={12} />}
+        state={transcriptState}
+        title={transcriptTitle}
+      >
+        Transcricao
+      </ChronosDriveArtifactChip>
+      <ChronosDriveArtifactChip
+        icon={<FileText size={12} />}
+        state={minutesState}
+        title={minutesTitle}
+      >
+        Ata
+      </ChronosDriveArtifactChip>
+    </>
+  );
+}
+
+const chronosDriveChipStateClasses: Record<ChronosDriveArtifactState, string> = {
+  failed: "border-[#f4c7c3] bg-[#fdecea] text-[#a50e0e]",
+  none: "border-[#e4e8ee] bg-[#f6f8fa] text-[#8a95a6]",
+  ok: "border-[#c9e7d4] bg-[#e6f4ea] text-[#188038]",
+  processing: "border-[#f0e0bb] bg-[#fdf7e7] text-[#8a6d1d]",
+};
+
+function ChronosDriveArtifactChip({
+  children,
+  icon,
+  state,
+  title,
+}: {
+  children: ReactNode;
+  icon: ReactNode;
+  state: ChronosDriveArtifactState;
+  title: string;
+}) {
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-semibold ${chronosDriveChipStateClasses[state]}`}
+      title={title}
+    >
+      {icon}
+      {children}
+    </span>
+  );
 }
 
 function ChronosDriveRecordingActions({
@@ -261,7 +374,7 @@ function ChronosDriveRecordingActions({
   const [playerOpen, setPlayerOpen] = useState(false);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2">
+    <div className="flex flex-wrap items-center justify-end gap-2">
       <button
         className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
         onClick={() => onOpenMeetingMinutes(recordingMeetingRuntime.meeting.id)}
@@ -270,37 +383,36 @@ function ChronosDriveRecordingActions({
         <FileText aria-hidden="true" size={13} />
         Ata
       </button>
-      <div className="flex min-w-0 flex-wrap gap-2">
-        {canOpenVideo && primaryRecording ? (
-          <button
-            className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
-            onClick={() => setPlayerOpen(true)}
-            type="button"
-          >
-            <PlayCircle aria-hidden="true" size={13} />
-            Assistir
-          </button>
-        ) : (
-          <button
-            className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#8a95a6] disabled:cursor-not-allowed disabled:opacity-70"
-            disabled
-            type="button"
-          >
-            <PlayCircle aria-hidden="true" size={13} />
-            Video em processamento
-          </button>
-        )}
-        {downloadUrl && downloadUrl !== "#" && primaryRecording ? (
-          <a
-            className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#101820] bg-[#101820] px-2.5 text-xs font-semibold text-white transition hover:bg-black"
-            download={primaryRecording.name}
-            href={downloadUrl}
-          >
-            <Download aria-hidden="true" size={13} />
-            Baixar
-          </a>
-        ) : null}
-      </div>
+      {canOpenVideo && primaryRecording ? (
+        <button
+          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
+          onClick={() => setPlayerOpen(true)}
+          type="button"
+        >
+          <PlayCircle aria-hidden="true" size={13} />
+          Assistir
+        </button>
+      ) : (
+        <button
+          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#8a95a6] disabled:cursor-not-allowed disabled:opacity-70"
+          disabled
+          title="O video ainda esta sendo copiado para o Drive"
+          type="button"
+        >
+          <PlayCircle aria-hidden="true" size={13} />
+          Processando
+        </button>
+      )}
+      {downloadUrl && downloadUrl !== "#" && primaryRecording ? (
+        <a
+          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#101820] bg-[#101820] px-2.5 text-xs font-semibold text-white transition hover:bg-black"
+          download={primaryRecording.name}
+          href={downloadUrl}
+        >
+          <Download aria-hidden="true" size={13} />
+          Baixar
+        </a>
+      ) : null}
       {playerOpen && primaryRecording?.url ? (
         <div
           aria-modal="true"
