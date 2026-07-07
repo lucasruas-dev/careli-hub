@@ -51,13 +51,13 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     ],
     rollback: "commit b6a75b06 (v1.27.2)",
     technical: {
-      done: "pulsex-workspace: threadUnreadByChannelId (useMemo sobre messages x threadUnreadCountByMessageId x threadMentionParents) somado aos contadores do canal via channelsForSidebar (canal aumentado antes da ConversationSidebar — bolinha/contador/vermelho ganham threads sem tocar nos componentes). Morre ao abrir a thread (threadReadState), independente da leitura do canal. panteon-notification-button: barrinha da central por MODULE_ACCENTS[moduleId] em vez de severidade (mencao segue clara no titulo). v1.27.2 -> v1.27.3.",
+      done: "pulsex-workspace: threadUnreadByChannelId (useMemo sobre messages x threadUnreadCountByMessageId x threadMentionParents) somado aos contadores do canal via channelsForSidebar (canal aumentado antes da ConversationSidebar — bolinha/contador/vermelho ganham threads sem tocar nos componentes). Morre ao abrir a thread (threadReadState), independente da leitura do canal. panteon-notification-button: barrinha da central por MODULE_ACCENTS[moduleId] em vez de severidade (mencao segue clara no titulo). v1.27.3 -> v1.27.4 (colisao de versao com a entrada Iris motivo-encerramento, publicada em paralelo).",
       motivation:
         "Print do Lucas 17:42: central com '2 mensagens em Atendimento' pendentes (respostas de thread) e canal SEM bolinha; e itens do Hermes com duas cores na central (severidade) parecendo modulos distintos.",
     },
     title: "Hermes: respostas de thread acendem o canal + cor única por módulo na central",
     type: "correcao",
-    version: "1.27.3",
+    version: "1.27.4",
   },
   {
     buildTag: "2026-07-07-iris-motivo-encerramento",

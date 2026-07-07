@@ -617,7 +617,11 @@ export function HermesNotificationProvider({
         return;
       }
 
-      // Central: 1 notificacao por canal (badge "novas").
+      // Central: 1 notificacao por canal (badge "novas"). O selo de mencao
+      // considera TAMBEM as mencoes pendentes do canal — mensagem comum
+      // chegando depois da mencao nao rebaixa o card (pedido Lucas 7/jul).
+      const hasPendingMention =
+        mentioned || (channel.unreadMentionCount ?? 0) > 0;
       const notification = normalizePanteonNotification({
         actionLabel: "Abrir conversa",
         context: {
@@ -633,7 +637,7 @@ export function HermesNotificationProvider({
         kind: "mensagem",
         moduleId: HERMES_MODULE_ID,
         moduleLabel: HERMES_MODULE_LABEL,
-        severity: mentioned ? "warning" : "info",
+        severity: hasPendingMention ? "warning" : "info",
         title: mentioned
           ? `Voce foi mencionado em ${channel.name}`
           : `Nova mensagem em ${channel.name}`,

@@ -312,6 +312,17 @@ function NotificationCenterRow({
           <span className="truncate text-[0.7rem] font-semibold uppercase tracking-[0.08em] text-[#7a8798]">
             {getNotificationKindLabel(item.kind)}
           </span>
+          {/* Selo de MENCAO no card (pedido Lucas 7/jul): se ha mencao entre as
+              nao-lidas do canal, o card mostra o @ vermelho — a cor da barrinha
+              e do modulo e nao muda mais por severidade. */}
+          {item.kind === "mensagem" && item.severity === "warning" ? (
+            <span
+              aria-label="Ha mencao a voce"
+              className="grid h-4 min-w-4 shrink-0 place-items-center rounded-full bg-rose-500 px-1 text-[0.62rem] font-bold leading-none text-white"
+            >
+              @
+            </span>
+          ) : null}
         </span>
         <span className="block truncate text-sm font-semibold text-[#101820]">
           {item.title}
