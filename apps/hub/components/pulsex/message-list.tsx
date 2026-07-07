@@ -36,6 +36,7 @@ type MessageListProps = {
     attachment: NonNullable<HermesMessage["attachment"]>,
   ) => void;
   getThreadUnreadCount?: (messageId: HermesMessage["id"]) => number;
+  getThreadHasMention?: (messageId: HermesMessage["id"]) => boolean;
   reactionOptions?: readonly HermesReactionEmoji[];
   users: readonly HermesPresenceUser[];
 };
@@ -55,6 +56,7 @@ export function MessageList({
   onToggleReaction,
   onToggleTag,
   getThreadUnreadCount,
+  getThreadHasMention,
   reactionOptions,
   users,
 }: MessageListProps) {
@@ -130,6 +132,7 @@ export function MessageList({
             onToggleTag={onToggleTag}
             reactionOptions={reactionOptions}
             threadUnreadCount={getThreadUnreadCount?.(item.message.id) ?? 0}
+            threadHasMention={getThreadHasMention?.(item.message.id) ?? false}
             users={users}
           />
         ) : item.kind === "date-separator" ? (

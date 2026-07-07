@@ -63,6 +63,7 @@ type MessageItemProps = {
   ) => void;
   reactionOptions?: readonly HermesReactionEmoji[];
   threadUnreadCount?: number;
+  threadHasMention?: boolean;
   users?: readonly HermesPresenceUser[];
 };
 
@@ -78,6 +79,7 @@ export function MessageItem({
   onToggleTag,
   reactionOptions = defaultReactionOptions,
   threadUnreadCount = 0,
+  threadHasMention = false,
   users = [],
 }: MessageItemProps) {
   const [isInfoOpen, setIsInfoOpen] = useState(false);
@@ -405,14 +407,18 @@ export function MessageItem({
           {onOpenThread ? (
             <button
               aria-label={
-                hasUnreadThreadReplies
+                threadHasMention
+                  ? "Voce foi mencionado nas respostas"
+                  : hasUnreadThreadReplies
                   ? `${threadUnreadCount} respostas novas`
                   : message.threadCount
                   ? `${message.threadCount} respostas`
                   : "Responder"
               }
               className={`relative inline-flex min-w-6 items-center justify-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
-                hasUnreadThreadReplies
+                threadHasMention
+                  ? "border border-rose-500 bg-rose-500 text-white opacity-100 shadow-sm shadow-rose-500/30 hover:brightness-110"
+                  : hasUnreadThreadReplies
                   ? "border border-[#0f766e] bg-[#0f766e] text-white opacity-100 shadow-sm shadow-[#0f766e]/25 hover:brightness-110"
                   : message.threadCount
                   ? "border border-[#A07C3B] bg-[#A07C3B] text-white opacity-100 shadow-sm shadow-[#A07C3B]/25 hover:brightness-110"

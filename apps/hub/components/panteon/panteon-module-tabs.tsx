@@ -136,12 +136,14 @@ function ModuleTab({
         <span className="max-w-[9rem] truncate text-[0.84rem] font-medium">
           {tab.label}
         </span>
+        {/* Convencao visual do hub (Lucas 7/jul): DOURADO = novidade comum;
+            VERMELHO = voce foi mencionado. Igual a lista de canais. */}
         {(tab.mentionUnread ?? 0) > 0 ? (
-          <span className="grid min-h-4 min-w-4 place-items-center rounded-full bg-amber-400 px-1 text-[0.625rem] font-bold leading-none text-[#1d1e24]">
+          <span className="grid min-h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[0.625rem] font-bold leading-none text-white">
             @{(tab.mentionUnread ?? 0) > 99 ? "99+" : tab.mentionUnread}
           </span>
         ) : tab.unread > 0 ? (
-          <span className="grid min-h-4 min-w-4 place-items-center rounded-full bg-red-600 px-1 text-[0.625rem] font-bold leading-none text-white">
+          <span className="grid min-h-4 min-w-4 place-items-center rounded-full bg-[#A07C3B] px-1 text-[0.625rem] font-bold leading-none text-white">
             {tab.unread > 99 ? "99+" : tab.unread}
           </span>
         ) : null}

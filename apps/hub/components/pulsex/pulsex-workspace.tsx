@@ -46,6 +46,12 @@ import {
   normalizeHermesThreadReadState,
   type HermesThreadReadReceipt,
 } from "@/lib/pulsex/thread-notifications";
+import { readRecentHermesMessages } from "@/lib/pulsex/recent-messages-cache";
+import {
+  clearHermesThreadMentionParent,
+  HERMES_THREAD_MENTIONS_EVENT,
+  readHermesThreadMentionParents,
+} from "@/lib/pulsex/thread-mentions";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 import { Tooltip } from "@repo/uix";
@@ -358,8 +364,27 @@ export function HermesWorkspace() {
 
     return unreadCountByMessageId;
   }, [messages, threadReadState]);
+
+  // Threads com resposta que MENCIONA o usuario (bolinha/chip VERMELHO no
+  // canal). O provider grava via realtime; aqui lemos e limpamos ao abrir.
+  const [threadMentionParents, setThreadMentionParents] = useState<Set<string>>(
+    () => readHermesThreadMentionParents(currentUserId),
+  );
+
+  useEffect(() => {
+    const refresh = () =>
+      setThreadMentionParents(readHermesThreadMentionParents(currentUserId));
+
+    refresh();
+    window.addEventListener(HERMES_THREAD_MENTIONS_EVENT, refresh);
+
+    return () =>
+      window.removeEventListener(HERMES_THREAD_MENTIONS_EVENT, refresh);
+  }, [currentUserId]);
   const markThreadRepliesRead = useCallback(
     (message: HermesMessage, replyCountOverride?: number) => {
+      clearHermesThreadMentionParent(currentUserId, message.id);
+
       if (!isThreadReadStorageReady) {
         return;
       }
@@ -391,7 +416,7 @@ export function HermesWorkspace() {
         };
       });
     },
-    [isThreadReadStorageReady],
+    [currentUserId, isThreadReadStorageReady],
   );
 
   function handleCloseAthenaAgent() {
@@ -910,6 +935,37 @@ export function HermesWorkspace() {
 
       if (messageLoadInFlightByChannelIdRef.current.has(channelId)) {
         return;
+      }
+
+      // SEM DELAY (decisao Lucas 7/jul): na 1a carga do canal, SEMEIA a
+      // conversa com as mensagens que o realtime global ja entregou (cache do
+      // provider) — quem clicou na notificacao VE a mensagem na hora; o fetch
+      // da API reconcilia logo atras (replaceChannel garante a verdade final).
+      if (!loadedChannelIdsRef.current.has(channelId)) {
+        const cachedMessages = withMessageDeliveryData(
+          readRecentHermesMessages(channelId).filter(
+            (message) => !knownMessageIdsRef.current.has(message.id),
+          ),
+          channels,
+        );
+
+        if (cachedMessages.length > 0) {
+          cachedMessages.forEach((message) =>
+            knownMessageIdsRef.current.add(message.id),
+          );
+          setMessages((currentMessages) =>
+            preserveHermesArrayReference(
+              currentMessages,
+              mergeHermesChannelMessages({
+                channelId,
+                currentMessages,
+                nextMessages: cachedMessages,
+                replaceChannel: false,
+              }),
+              getHermesMessageRenderSignature,
+            ),
+          );
+        }
       }
 
       messageLoadInFlightByChannelIdRef.current.add(channelId);
@@ -2425,6 +2481,9 @@ export function HermesWorkspace() {
               onToggleTag={handleToggleMessageTag}
               getThreadUnreadCount={(messageId) =>
                 threadUnreadCountByMessageId.get(messageId) ?? 0
+              }
+              getThreadHasMention={(messageId) =>
+                threadMentionParents.has(messageId)
               }
               reactionOptions={hermesReactionOptions}
               users={presenceUsers}

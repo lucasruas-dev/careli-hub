@@ -32,6 +32,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-hermes-notificacoes-v2",
+    deployedAt: "2026-07-07T13:30:00-03:00",
+    modules: [
+      {
+        module: "Hermes",
+        screens: [
+          {
+            items: [
+              "Fim do delay: ao clicar na notificação, a mensagem já aparece na conversa na hora (antes demorava alguns segundos).",
+              "Clicar numa notificação da central abre DIRETO no canal (o popup flutuante não abre mais).",
+              "O aviso escrito dentro do app saiu: agora é só o som + marcações visuais (aba, central e bolinha na frente do canal).",
+              "Nova convenção de cores: DOURADO = mensagem nova · VERMELHO = você foi mencionado (bolinha do canal, badge e aba).",
+              "O marcador de respostas na mensagem fica VERMELHO quando alguém te menciona dentro da thread.",
+            ],
+            screen: "Canais, central e notificações",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 6d46b581",
+    technical: {
+      done: "(1) Toast in-app removido do handleHermesMessage (som mantido, gate por foco). (2) openHermesChannel fora do /hermes: router.push(getHermesChannelPath) em vez de popup (workspace ja le ?channel/?thread no mount). (3) Convencao dourado/vermelho: conversation-item (bolinha leading + badges) e panteon-module-tabs (mention rose-500, unread dourado — estava invertido). (4) lib/pulsex/thread-mentions.ts (localStorage por usuario + evento): provider grava quando reply menciona; workspace pinta o chip de respostas (message-item threadHasMention, prioridade sobre unread) e limpa em markThreadRepliesRead. (5) lib/pulsex/recent-messages-cache.ts (Map em escopo de modulo, 30/canal): provider alimenta no realtime; loadActiveChannelMessages SEMEIA a 1a carga do canal com o cache (mergeHermesChannelMessages replaceChannel:false) antes do fetch reconciliar — mata o delay notificacao->mensagem. v1.26.2 -> v1.27.0.",
+      motivation:
+        "Pedido do Lucas 7/jul ~13h: tirar o aviso escrito in-app, cor distinta quando mencionado (canal e thread), central abrindo direto no canal, e 'o principal: a notificacao chega primeiro que a mensagem' — fechar a dor de cabeca do Hermes de vez.",
+    },
+    title: "Hermes: mensagens instantâneas, cores de menção e central direto no canal",
+    type: "melhoria",
+    version: "1.27.0",
+  },
+  {
     buildTag: "2026-07-07-hermes-notificacoes-persistentes",
     deployedAt: "2026-07-07T11:20:00-03:00",
     modules: [

@@ -74,7 +74,7 @@ export function ConversationItem({
             {channel.unreadMentionCount ? (
               <span
                 aria-hidden="true"
-                className="h-2 w-2 shrink-0 rounded-full bg-amber-400"
+                className="h-2 w-2 shrink-0 rounded-full bg-rose-500"
               />
             ) : channel.unreadCount ? (
               <span
@@ -95,7 +95,7 @@ export function ConversationItem({
           {channel.unreadMentionCount ? (
             <span
               aria-label={`${channel.unreadMentionCount} mencoes novas`}
-              className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-amber-400 px-1.5 text-[0.68rem] font-bold text-[#1d1e24]"
+              className="grid h-5 min-w-5 shrink-0 place-items-center rounded-full bg-rose-500 px-1.5 text-[0.68rem] font-bold text-white"
             >
               @{formatUnreadCount(channel.unreadMentionCount)}
             </span>
@@ -184,7 +184,7 @@ function ChannelAvatar({
       {showUnread && channel.unreadMentionCount ? (
         <span
           aria-label={`${channel.unreadMentionCount} mencoes novas`}
-          className="absolute -right-1 -top-1 z-20 grid h-4 min-w-4 place-items-center rounded-full bg-amber-400 px-1 text-[0.58rem] font-bold text-[#1d1e24]"
+          className="absolute -right-1 -top-1 z-20 grid h-4 min-w-4 place-items-center rounded-full bg-rose-500 px-1 text-[0.58rem] font-bold text-white"
         >
           @
         </span>

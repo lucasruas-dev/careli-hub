@@ -56,6 +56,8 @@ import {
   mapHermesRealtimeMessageRow,
 } from "@/lib/pulsex/supabase-data";
 import { registerHermesPushSubscription } from "@/lib/pulsex/push-client";
+import { rememberRecentHermesMessage } from "@/lib/pulsex/recent-messages-cache";
+import { addHermesThreadMentionParent } from "@/lib/pulsex/thread-mentions";
 import { withChannelUnreadCounts } from "@/lib/pulsex/workspace-messages";
 import {
   PANTEON_ACTIVITY_NOTIFICATION_PREFIX,
@@ -294,7 +296,10 @@ export function HermesNotificationProvider({
         return;
       }
 
-      setActiveHermesChannelId(channelId);
+      // Fora do /hermes: NAVEGA direto pro canal (decisao Lucas 7/jul) — o
+      // popup flutuante nao abre mais a partir da central; com as abas do hub
+      // e facil voltar, e o canal abre completo (thread inclusa via query).
+      router.push(getHermesChannelPath(channelId, threadParentMessageId));
       markChannelNotificationsRead(channelId);
 
       markHermesChannelRead({ channelId }).catch((error: unknown) => {
@@ -304,7 +309,7 @@ export function HermesNotificationProvider({
         });
       });
     },
-    [markChannelNotificationsRead],
+    [markChannelNotificationsRead, router],
   );
 
   const pushFloatingNotification = useCallback(
@@ -560,7 +565,20 @@ export function HermesNotificationProvider({
         );
       }
 
+      // Cache de mensagens recentes por canal: o workspace semeia a conversa
+      // com isto ao abrir o canal (mata o delay notificacao->mensagem).
+      rememberRecentHermesMessage(message);
+
       const mentioned = message.mentionUserIds?.includes(currentUserId) ?? false;
+
+      // Resposta de THREAD que menciona o usuario: registra a mensagem-pai
+      // para o chip de respostas ficar VERMELHO no canal (limpa ao abrir).
+      if (mentioned && message.threadParentMessageId) {
+        addHermesThreadMentionParent(
+          currentUserId,
+          message.threadParentMessageId,
+        );
+      }
 
       // #2: log diario por mensagem (entra como LIDA = historico). Registrado SEMPRE,
       // inclusive para o canal que o usuario esta vendo, para o historico ficar completo.
@@ -571,9 +589,6 @@ export function HermesNotificationProvider({
         ).slice(0, MAX_PANTEON_NOTIFICATION_ITEMS),
       );
 
-      const isVisible =
-        typeof document === "undefined" ||
-        document.visibilityState === "visible";
       // "Está vendo o canal" exige FOCO REAL da janela — não só visibilidade.
       // document.visibilityState é "visible" mesmo com o Hermes aberto ATRÁS de
       // outro programa ou num 2o monitor; nesse caso o código marcava a mensagem
@@ -643,16 +658,10 @@ export function HermesNotificationProvider({
         ),
       );
 
-      // Alerta IN-APP (som + toast) so com a aba VISIVEL. Em segundo plano/fechado
-      // quem alerta e o Web Push (SW) — com avatar e sem duplicar. A notificacao de
-      // SO saiu daqui de proposito: era generica (o payload do realtime nao traz o
-      // avatar), entao deixamos o Web Push como unica notificacao do sistema.
-      // Toast visual: se a aba está visível (pode estar num 2o monitor). Som: só
-      // com FOCO real — sem foco quem alerta é o Web Push do Windows (o SW dispara
-      // quando a janela não tem foco), então tocar aqui também duplicaria o som.
-      if (isVisible) {
-        pushFloatingNotification(notification);
-      }
+      // Alerta IN-APP: SO SOM (decisao Lucas 7/jul) — o toast escrito saiu; a
+      // sinalizacao visual fica por conta do @ na aba, da central e da bolinha
+      // na frente do canal. Som so com FOCO real — sem foco quem alerta e o
+      // Web Push do Windows (o SW dispara quando a janela nao tem foco).
       if (windowHasFocus && !shouldSuppressInAppAlerts()) {
         playHermesIncomingMessageSound({
           mentioned,
@@ -660,7 +669,7 @@ export function HermesNotificationProvider({
         });
       }
     },
-    [currentUserId, markChannelNotificationsRead, pushFloatingNotification],
+    [currentUserId, markChannelNotificationsRead],
   );
 
   const broadcastHermesMessageEvent = useCallback((message: HermesMessage) => {
