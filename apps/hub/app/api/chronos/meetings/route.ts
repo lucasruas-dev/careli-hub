@@ -10,6 +10,7 @@ import {
   updateChronosMeeting,
 } from "@/lib/chronos/server";
 import { syncChronosMeetingToGoogleCalendar } from "@/lib/chronos/google-calendar";
+import { logMemory } from "@/lib/observability/memory";
 import { type ChronosSnapshot } from "@/lib/chronos/types";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +24,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    logMemory("chronos-snapshot:inicio");
+
     const snapshot = await listChronosSnapshot(authorization);
 
+    logMemory("chronos-snapshot:fim", {
+      meetingCount: snapshot.meetings.length,
+    });
     logChronosDriveSnapshotDiagnostic(snapshot);
 
     return Response.json(snapshot, {

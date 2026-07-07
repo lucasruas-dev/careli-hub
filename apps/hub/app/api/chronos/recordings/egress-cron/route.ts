@@ -1,6 +1,7 @@
 import { egressChronosWherebyRecordingToStorage } from "@/lib/chronos/recording-egress";
 import { deleteChronosWherebyRecording } from "@/lib/chronos/whereby";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
+import { logMemory } from "@/lib/observability/memory";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
 
@@ -92,6 +93,8 @@ export async function GET(request: NextRequest) {
     }
 
     try {
+      logMemory("egress:antes-copia", { recordingId: recording.id });
+
       const egress = await egressChronosWherebyRecordingToStorage({
         deleteFromWherebyAfterCopy: false,
         fileName: recording.file_name,
@@ -125,6 +128,10 @@ export async function GET(request: NextRequest) {
         throw new Error(updateError.message);
       }
 
+      logMemory("egress:depois-copia", {
+        recordingId: recording.id,
+        sizeMB: Math.round(egress.sizeBytes / 1024 / 1024),
+      });
       copied.push(recording.id);
     } catch (error: unknown) {
       const message =

@@ -1,5 +1,6 @@
 import { syncChronosGoogleCalendar } from "@/lib/chronos/google-calendar";
 import { runChronosWherebyArtifactSweep } from "@/lib/chronos/server";
+import { logMemory } from "@/lib/observability/memory";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
@@ -97,6 +98,8 @@ export async function GET(request: NextRequest) {
 
   const failures = outcomes.filter((outcome) => outcome.status === "failed");
 
+  logMemory("sync-cron:depois-conexoes", { connections: outcomes.length });
+
   // Varredura de artefatos do Whereby (gravacao/transcricao/participantes):
   // saiu do snapshot da pagina (rodava em todo F5 e derrubava a funcao por
   // memoria) e passou a viver aqui, a cada 15min.
@@ -113,6 +116,7 @@ export async function GET(request: NextRequest) {
     };
   }
 
+  logMemory("sync-cron:depois-sweep");
   console.info("[chronos/google-sync-cron] finished", {
     artifactSweep,
     connections: outcomes.length,
