@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-06-competencia-c2x",
+    deployedAt: "2026-07-07T00:10:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Corrigida a competência (mês de referência) das parcelas na ficha do cliente: agora vem sempre do C2X, igual ao Hades.",
+              "Antes, parcela com vencimento renegociado mostrava a competência pelo mês do vencimento (ex.: uma parcela de 11/2025 aparecia como 07/2026). Agora bate com o C2X.",
+            ],
+            screen: "Atendimento (carteira / parcelas do cliente)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 69768b3d",
+    technical: {
+      done: "mapC2xPortfolioInstallment (lib/apolo/server.ts) montava reference (competência) a partir do vencimento (dueDateInput). O Iris lê a carteira do Apolo, então divergia do Hades (attendance.ts), que usa a coluna reference_date do C2X. Fix: SELECT de date_format(p.reference_date) e reference passa a usar reference_date (cai pro vencimento só se vazio). v1.24.1 -> v1.24.2.",
+      motivation:
+        "Print do Lucas (Henrique Cirilo Aguiar): parcelas 21/22 pagas com vencimento renegociado apareciam como 07/2026 no Iris vs 11/2025 e 12/2025 no Hades/C2X. Regra: competência tem que vir do C2X.",
+    },
+    title: "Iris: competência da parcela vem do C2X (bate com o Hades)",
+    type: "correcao",
+    version: "1.24.2",
+  },
+  {
     buildTag: "2026-07-06-iris-crm360-resiliente",
     deployedAt: "2026-07-06T23:55:00-03:00",
     modules: [
