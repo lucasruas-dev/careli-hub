@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-hermes-threads-no-canal",
+    deployedAt: "2026-07-07T17:55:00-03:00",
+    modules: [
+      {
+        module: "Hermes",
+        screens: [
+          {
+            items: [
+              "Respostas de thread não lidas agora acendem a bolinha e o contador na frente do canal (antes só mensagens diretas contavam).",
+              "A bolinha fica vermelha quando a resposta te menciona — e só apaga quando você abre a thread.",
+              "Central de notificações: uma cor única por módulo na barrinha lateral (Hermes dourado, Chronos azul, Iris violeta, Hades verde).",
+            ],
+            screen: "Canais e Central de notificações",
+          },
+        ],
+      },
+    ],
+    rollback: "commit b6a75b06 (v1.27.2)",
+    technical: {
+      done: "pulsex-workspace: threadUnreadByChannelId (useMemo sobre messages x threadUnreadCountByMessageId x threadMentionParents) somado aos contadores do canal via channelsForSidebar (canal aumentado antes da ConversationSidebar — bolinha/contador/vermelho ganham threads sem tocar nos componentes). Morre ao abrir a thread (threadReadState), independente da leitura do canal. panteon-notification-button: barrinha da central por MODULE_ACCENTS[moduleId] em vez de severidade (mencao segue clara no titulo). v1.27.2 -> v1.27.3.",
+      motivation:
+        "Print do Lucas 17:42: central com '2 mensagens em Atendimento' pendentes (respostas de thread) e canal SEM bolinha; e itens do Hermes com duas cores na central (severidade) parecendo modulos distintos.",
+    },
+    title: "Hermes: respostas de thread acendem o canal + cor única por módulo na central",
+    type: "correcao",
+    version: "1.27.3",
+  },
+  {
     buildTag: "2026-07-07-iris-motivo-encerramento",
     deployedAt: "2026-07-07T15:30:00-03:00",
     modules: [

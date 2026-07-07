@@ -291,6 +291,9 @@ function NotificationCenterRow({
   onOpen: () => void;
 }) {
   const tone = getNotificationTone(item.severity);
+  // Barrinha por MODULO (pedido Lucas 7/jul): uma cor so por modulo — a
+  // severidade nao muda mais a cor (mencao continua clara pelo titulo).
+  const moduleAccent = getModuleAccent(item.moduleId);
 
   return (
     <button
@@ -298,7 +301,7 @@ function NotificationCenterRow({
       onClick={onOpen}
       type="button"
     >
-      <span className={`mt-1 h-8 rounded-full ${tone.accent}`} />
+      <span className={`mt-1 h-8 rounded-full ${moduleAccent}`} />
       <span className="min-w-0">
         <span className="mb-1 flex items-center gap-2">
           <span
@@ -356,6 +359,18 @@ function getNotificationKindLabel(kind: PanteonNotificationItem["kind"]) {
   } as const satisfies Record<PanteonNotificationItem["kind"], string>;
 
   return labels[kind];
+}
+
+const MODULE_ACCENTS: Record<string, string> = {
+  chronos: "bg-sky-500",
+  hades: "bg-emerald-600",
+  hermes: "bg-[#A07C3B]",
+  iris: "bg-violet-500",
+  zeus: "bg-slate-500",
+};
+
+function getModuleAccent(moduleId: string) {
+  return MODULE_ACCENTS[moduleId] ?? "bg-slate-400";
 }
 
 function getNotificationTone(severity: PanteonNotificationItem["severity"]) {

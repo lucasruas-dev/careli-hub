@@ -393,6 +393,59 @@ export function HermesWorkspace() {
     return () =>
       window.removeEventListener(HERMES_THREAD_MENTIONS_EVENT, refresh);
   }, [currentUserId]);
+
+  // Respostas de THREAD nao lidas somadas POR CANAL: acendem a bolinha, o
+  // contador e o vermelho-de-mencao na lista de canais (pedido Lucas 7/jul —
+  // "tem que incluir as respostas"). Morrem quando a thread e aberta
+  // (threadReadState), independente da leitura do canal.
+  const threadUnreadByChannelId = useMemo(() => {
+    const totals = new Map<
+      HermesChannel["id"],
+      { mentions: number; replies: number }
+    >();
+
+    for (const message of messages) {
+      const unreadReplies = threadUnreadCountByMessageId.get(message.id) ?? 0;
+
+      if (unreadReplies === 0) {
+        continue;
+      }
+
+      const current = totals.get(message.channelId) ?? {
+        mentions: 0,
+        replies: 0,
+      };
+
+      current.replies += unreadReplies;
+
+      if (threadMentionParents.has(message.id)) {
+        current.mentions += 1;
+      }
+
+      totals.set(message.channelId, current);
+    }
+
+    return totals;
+  }, [messages, threadMentionParents, threadUnreadCountByMessageId]);
+
+  const channelsForSidebar = useMemo(
+    () =>
+      channels.map((channel) => {
+        const threadUnread = threadUnreadByChannelId.get(channel.id);
+
+        if (!threadUnread) {
+          return channel;
+        }
+
+        return {
+          ...channel,
+          unreadCount: (channel.unreadCount ?? 0) + threadUnread.replies,
+          unreadMentionCount:
+            (channel.unreadMentionCount ?? 0) + threadUnread.mentions,
+        };
+      }),
+    [channels, threadUnreadByChannelId],
+  );
   const markThreadRepliesRead = useCallback(
     (message: HermesMessage, replyCountOverride?: number) => {
       clearHermesThreadMentionParent(currentUserId, message.id);
@@ -2486,7 +2539,7 @@ export function HermesWorkspace() {
         activeChannelId={activeChannel.id}
         activeMessageFilter={activeMessageFilter}
         activeShortcutFilter={activeShortcutFilter}
-        channels={channels}
+        channels={channelsForSidebar}
         currentUserId={currentUserId}
         dataStatus={dataStatus}
         departments={departments}
