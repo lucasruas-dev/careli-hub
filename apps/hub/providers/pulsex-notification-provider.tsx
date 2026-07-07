@@ -349,8 +349,13 @@ export function HermesNotificationProvider({
       userRole: hubUser?.role,
     });
 
+    // SEM cursor "after": busca as 200 mensagens mais RECENTES. O modelo
+    // antigo usava o cursor do canal mais ANTIGO (getOldestHermesReadCursor) e
+    // a API devolve ASC a partir dele — com um canal parado ha semanas, as 200
+    // buscadas eram VELHAS, a mensagem nova ficava fora da janela, a recontagem
+    // zerava e o catch-up APAGAVA badge/central segundos apos restaurar a
+    // janela (incidente 7/jul: "com o hub minimizado chega; ao abrir some").
     const messages = await listRecentChannelMessages({
-      after: getOldestHermesReadCursor(channels, currentUserId),
       channelIds: channels.map((channel) => channel.id),
       limit: 200,
     }).catch((error: unknown) => {
@@ -1690,27 +1695,6 @@ function groupHermesMessagesByChannel(messages: readonly HermesMessage[]) {
   }
 
   return messagesByChannel;
-}
-
-function getOldestHermesReadCursor(
-  channels: readonly HermesChannel[],
-  currentUserId: string,
-) {
-  let oldestReadAt: string | undefined;
-
-  for (const channel of channels) {
-    const readAt = channel.memberReadAtByUserId?.[currentUserId];
-
-    if (!readAt) {
-      return undefined;
-    }
-
-    if (!oldestReadAt || Date.parse(readAt) < Date.parse(oldestReadAt)) {
-      oldestReadAt = readAt;
-    }
-  }
-
-  return oldestReadAt;
 }
 
 function createHermesChannelNotification({

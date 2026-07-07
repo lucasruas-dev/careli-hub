@@ -1527,6 +1527,57 @@ export function HermesWorkspace() {
     };
   }, [activeChannel.id, activeChannel.kind]);
 
+  // Leitura LEGITIMA ao restaurar a janela olhando a conversa: mensagens que
+  // chegaram com o hub minimizado ficam marcadas nao lidas (badge/central); ao
+  // voltar o FOCO com este canal aberto na tela, o usuario esta de fato vendo
+  // — marca lida e o badge some com honestidade (nao "do nada").
+  useEffect(() => {
+    if (!hasHubSupabaseConfig() || activeChannel.id === emptyHermesChannel.id) {
+      return;
+    }
+
+    const channelId = activeChannel.id;
+    const handleWindowFocusRead = () => {
+      if (!document.hasFocus()) {
+        return;
+      }
+
+      markHermesChannelRead({ channelId })
+        .then((receipt) => {
+          if (!receipt) {
+            return;
+          }
+
+          setChannels((currentChannels) =>
+            currentChannels.map((channel) =>
+              channel.id === receipt.channelId
+                ? {
+                    ...channel,
+                    memberReadAtByUserId: {
+                      ...(channel.memberReadAtByUserId ?? {}),
+                      [receipt.userId]: receipt.lastReadAt,
+                    },
+                    unreadCount: 0,
+                    unreadMentionCount: 0,
+                  }
+                : channel,
+            ),
+          );
+        })
+        .catch((error: unknown) => {
+          if (isLocalDevelopmentRuntime()) {
+            console.warn("[pulsex] focus mark read error", error);
+          }
+        });
+    };
+
+    window.addEventListener("focus", handleWindowFocusRead);
+
+    return () => {
+      window.removeEventListener("focus", handleWindowFocusRead);
+    };
+  }, [activeChannel.id]);
+
   useEffect(() => {
     if (!activeThreadMessageId) {
       return;

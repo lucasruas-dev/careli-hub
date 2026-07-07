@@ -67,8 +67,30 @@ export function ConversationItem({
       />
       <span className="min-w-0 py-1.5">
         <span className="flex items-center justify-between gap-3">
-          <span className="truncate text-sm font-semibold text-[#f7f8fa]">
-            {channel.name}
+          <span className="flex min-w-0 items-center gap-1.5">
+            {/* Marcacao NA FRENTE do canal (pedido Lucas 7/jul): bolinha fixa
+                enquanto houver mensagem nao lida — ambar p/ mencao, dourada
+                p/ mensagem comum. So some quando o canal e aberto de fato. */}
+            {channel.unreadMentionCount ? (
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 shrink-0 rounded-full bg-amber-400"
+              />
+            ) : channel.unreadCount ? (
+              <span
+                aria-hidden="true"
+                className="h-2 w-2 shrink-0 rounded-full bg-[#D5B46F]"
+              />
+            ) : null}
+            <span
+              className={`truncate text-sm ${
+                channel.unreadCount || channel.unreadMentionCount
+                  ? "font-bold text-white"
+                  : "font-semibold text-[#f7f8fa]"
+              }`}
+            >
+              {channel.name}
+            </span>
           </span>
           {channel.unreadMentionCount ? (
             <span

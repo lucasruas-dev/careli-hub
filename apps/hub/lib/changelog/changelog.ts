@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-hermes-notificacoes-persistentes",
+    deployedAt: "2026-07-07T11:20:00-03:00",
+    modules: [
+      {
+        module: "Hermes",
+        screens: [
+          {
+            items: [
+              "Notificações não somem mais sozinhas ao restaurar o hub minimizado: a reconciliação buscava mensagens ANTIGAS do banco e zerava os contadores por engano. Agora busca as mais recentes.",
+              "Nova marcação NA FRENTE do canal: bolinha dourada quando há mensagem não lida (âmbar quando há menção) + nome em negrito. Só some quando você abre o canal de verdade.",
+              "Ao restaurar a janela com a conversa aberta na tela, a mensagem é marcada como lida com honestidade (você está vendo ela).",
+            ],
+            screen: "Canais e Central de notificações",
+          },
+        ],
+      },
+    ],
+    rollback: "commit f9ae51ef",
+    technical: {
+      done: "refreshHermesSnapshot buscava listRecentChannelMessages com after=getOldestHermesReadCursor (cursor do canal mais ANTIGO) e a API/fallback ordenam ASC com after — canal parado ha semanas => janela de 200 mensagens toda VELHA => withChannelUnreadCounts zerava => catch-up de foco apagava badge/aba/central segundos apos restaurar a janela ('minimizado chega; ao abrir some'). Fix: fetch sem after (modo sem cursor ja devolve as 200 mais recentes em ordem cronologica); getOldestHermesReadCursor removido. + conversation-item: bolinha leading (dourada unread/ambar mencao) + nome bold. + pulsex-workspace: listener de window focus marca lida a conversa ABERTA na tela ao restaurar (leitura legitima; receipt zera contadores locais). v1.26.1 -> v1.26.2.",
+      motivation:
+        "Lucas 10:35/11:05: 'notificacoes sumindo no hermes... mega revisao' + detalhe decisivo 'no panteon nao somem; com hub minimizado, ao abrir some' + pedido explicito de marcacao na frente do canal.",
+    },
+    title: "Hermes: notificações persistentes + marcação na frente do canal",
+    type: "correcao",
+    version: "1.26.2",
+  },
+  {
     buildTag: "2026-07-07-chronos-teto-1000-servidor",
     deployedAt: "2026-07-07T10:55:00-03:00",
     modules: [
