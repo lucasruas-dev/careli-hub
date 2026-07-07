@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-hermes-thread-nao-lida",
+    deployedAt: "2026-07-07T10:00:00-03:00",
+    modules: [
+      {
+        module: "Hermes",
+        screens: [
+          {
+            items: [
+              "Resposta em thread agora conta como mensagem não lida: o badge do canal, o @ na aba do Hermes e o item na central não somem mais sozinhos.",
+              "A central passa a mostrar o filtro do Hermes quando há novidades do chat.",
+            ],
+            screen: "Canais e Central de notificações",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 21fc381a",
+    technical: {
+      done: "withChannelUnreadCounts (lib/pulsex/workspace-messages.ts) excluia mensagens com threadParentMessageId da contagem de nao-lidas. O realtime marcava badge canal/aba/central corretamente, mas o catch-up de foco (refreshHermesSnapshot, throttle 5s) recalculava por essa funcao -> unread=0 -> setHermesChannels substituia o estado e o retain filter derrubava o item da central (id fora de hermesNotificationIds). Fix: thread reply conta como nao-lida (so deletadas ficam fora); consistente com a decisao de 1/jul (thread entra na central) e com o push 'respondeu voce'. v1.25.2 -> v1.25.3.",
+      motivation:
+        "Teste do Lucas 09:35: push 'Nivea respondeu voce em Tecnologia' chegou, @ ambar apareceu na aba do Hermes e SUMIU sozinho; canal sem indicacao de nova mensagem e central sem o item (nem chip Hermes).",
+    },
+    title: "Hermes: resposta em thread não some mais das notificações",
+    type: "correcao",
+    version: "1.25.3",
+  },
+  {
     buildTag: "2026-07-07-chronos-hotfix-participacao",
     deployedAt: "2026-07-07T09:45:00-03:00",
     modules: [

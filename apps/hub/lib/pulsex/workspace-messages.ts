@@ -135,7 +135,11 @@ export function withChannelUnreadCounts({
   const messagesByChannelId = new Map<HermesChannel["id"], HermesMessage[]>();
 
   for (const message of messages) {
-    if (message.deletedAt || message.threadParentMessageId) {
+    // Respostas de THREAD contam como nao-lidas do canal: sem isso, o realtime
+    // marcava badge/central e o catch-up de foco (que recalcula daqui) apagava
+    // tudo em seguida — a resposta "sumia" da aba, do canal e da central
+    // (incidente 7/jul; decisao do Lucas 1/jul: thread entra na central).
+    if (message.deletedAt) {
       continue;
     }
 
