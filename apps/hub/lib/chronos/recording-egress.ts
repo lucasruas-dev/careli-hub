@@ -109,6 +109,10 @@ export async function egressChronosWherebyRecordingToStorage({
         // @ts-expect-error duplex e exigido pelo undici para body em stream.
         duplex: "half",
         headers: {
+          // apikey + Authorization: o projeto usa o formato novo de chave do
+          // Supabase (nao-JWT) — sem o header apikey o Storage tenta parsear o
+          // Bearer como JWS e responde "Invalid Compact JWS" (400/403).
+          apikey: rest.serviceRoleKey,
           Authorization: `Bearer ${rest.serviceRoleKey}`,
           "Content-Length": String(contentLength),
           "Content-Type": contentType,
