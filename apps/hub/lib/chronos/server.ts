@@ -8917,28 +8917,51 @@ async function loadChronosParticipatedMeetingIds(
 ): Promise<Set<string>> {
   const participatedMeetingIds = new Set<string>();
 
-  const byUserId = await client
-    .from("chronos_participants")
-    .select("meeting_id")
-    .eq("user_id", userId);
+  // PAGINADO: o PostgREST devolve no maximo 1000 linhas por request. Sem o
+  // range, usuarios com muitas participacoes (Lucas: ~4.5k linhas por email)
+  // recebiam um recorte ARBITRARIO do conjunto e reunioes sumiam do
+  // calendario de forma aleatoria (incidente 7/jul).
+  const pageSize = 1000;
+  const maxPages = 20;
 
-  for (const row of byUserId.data ?? []) {
-    if (row.meeting_id) {
-      participatedMeetingIds.add(row.meeting_id);
+  for (let page = 0; page < maxPages; page += 1) {
+    const byUserId = await client
+      .from("chronos_participants")
+      .select("meeting_id")
+      .eq("user_id", userId)
+      .order("meeting_id", { ascending: true })
+      .range(page * pageSize, (page + 1) * pageSize - 1);
+
+    for (const row of byUserId.data ?? []) {
+      if (row.meeting_id) {
+        participatedMeetingIds.add(row.meeting_id);
+      }
+    }
+
+    if ((byUserId.data ?? []).length < pageSize) {
+      break;
     }
   }
 
   const normalizedEmail = email?.trim();
 
   if (normalizedEmail) {
-    const byEmail = await client
-      .from("chronos_participants")
-      .select("meeting_id")
-      .ilike("email", normalizedEmail);
+    for (let page = 0; page < maxPages; page += 1) {
+      const byEmail = await client
+        .from("chronos_participants")
+        .select("meeting_id")
+        .ilike("email", normalizedEmail)
+        .order("meeting_id", { ascending: true })
+        .range(page * pageSize, (page + 1) * pageSize - 1);
 
-    for (const row of byEmail.data ?? []) {
-      if (row.meeting_id) {
-        participatedMeetingIds.add(row.meeting_id);
+      for (const row of byEmail.data ?? []) {
+        if (row.meeting_id) {
+          participatedMeetingIds.add(row.meeting_id);
+        }
+      }
+
+      if ((byEmail.data ?? []).length < pageSize) {
+        break;
       }
     }
   }

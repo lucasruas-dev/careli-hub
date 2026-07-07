@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-chronos-hotfix-participacao",
+    deployedAt: "2026-07-07T09:45:00-03:00",
+    modules: [
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "Correção: algumas reuniões em que você é convidado ainda não apareciam no calendário (a lista de participações vinha incompleta do banco). Agora a agenda bate com o Google.",
+            ],
+            screen: "Agenda",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 5776cbb2",
+    technical: {
+      done: "loadChronosParticipatedMeetingIds paginado (.range em blocos de 1000, teto 20 paginas): o PostgREST cap de 1000 linhas devolvia um recorte arbitrario das participacoes (Lucas: 4.566 linhas por email) -> Set incompleto -> reunioes de convidado sumiam aleatoriamente do calendario. Mesmo padrao do teto-1000 da Iris (v1.20.1). v1.25.1 -> v1.25.2.",
+      motivation:
+        "Print do Lucas 09:22: agenda do Chronos com 3 eventos na semana vs Google com ~15; participacoes conferidas no banco estavam corretas — o loader e que cortava em 1000.",
+    },
+    title: "Chronos: reuniões de convidado voltaram a aparecer (teto de 1000)",
+    type: "correcao",
+    version: "1.25.2",
+  },
+  {
     buildTag: "2026-07-07-chronos-hotfix-snapshot",
     deployedAt: "2026-07-07T09:20:00-03:00",
     modules: [
