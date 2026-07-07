@@ -70,6 +70,8 @@ import {
 } from "react";
 import { Tooltip } from "@repo/uix";
 
+import { usePersistedState } from "@/hooks/use-persisted-state";
+
 type AtlasLoadState = "idle" | "loading" | "ready" | "error";
 type AtlasMutationState = "idle" | "saving";
 type AtlasSection = "colaboradores" | "desempenho" | "fpe";
@@ -191,9 +193,12 @@ export function AtlasPage() {
   const [mutationStatus, setMutationStatus] =
     useState<AtlasMutationState>("idle");
   const [mutationError, setMutationError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<AtlasFilterState>(initialFilters);
+  const [filters, setFilters] = usePersistedState<AtlasFilterState>(
+    "atlas.filters",
+    initialFilters,
+  );
   const [isAtlasSidebarCollapsed, setIsAtlasSidebarCollapsed] =
-    useState(false);
+    usePersistedState("atlas.sidebarCollapsed", false, { backend: "local" });
   const accessToken = authState.session?.accessToken ?? null;
   const isAdmin = hubUser?.role === "admin";
   const canOpenOccurrences = Boolean(snapshot && hubUser);

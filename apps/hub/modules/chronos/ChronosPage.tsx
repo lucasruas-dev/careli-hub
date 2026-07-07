@@ -41,6 +41,8 @@ import {
 import { RefreshCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import { usePersistedState } from "@/hooks/use-persisted-state";
+
 const emptySnapshot: ChronosSnapshot = {
   meetings: [],
   profiles: [...defaultChronosMeetingProfiles],
@@ -55,10 +57,25 @@ export function ChronosPage() {
   );
   const canDeleteChronosMinutes = hubUser?.role === "admin";
   const [snapshot, setSnapshot] = useState<ChronosSnapshot>(emptySnapshot);
-  const [selectedMeetingId, setSelectedMeetingId] = useState("");
-  const [activeView, setActiveView] = useState<ChronosView>("agenda");
-  const [driveView, setDriveView] = useState<ChronosDriveView>("recordings");
-  const [chronosSidebarCollapsed, setChronosSidebarCollapsed] = useState(false);
+  // Persistidos: reunião aberta, tela ativa (agenda/salas/drive), sub-visão do
+  // Drive e sidebar "continuam de onde estavam". Ver [[use-persisted-state]].
+  const [selectedMeetingId, setSelectedMeetingId] = usePersistedState(
+    "chronos.selectedMeetingId",
+    "",
+  );
+  const [activeView, setActiveView] = usePersistedState<ChronosView>(
+    "chronos.activeView",
+    "agenda",
+  );
+  const [driveView, setDriveView] = usePersistedState<ChronosDriveView>(
+    "chronos.driveView",
+    "recordings",
+  );
+  const [chronosSidebarCollapsed, setChronosSidebarCollapsed] = usePersistedState(
+    "chronos.sidebarCollapsed",
+    false,
+    { backend: "local" },
+  );
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

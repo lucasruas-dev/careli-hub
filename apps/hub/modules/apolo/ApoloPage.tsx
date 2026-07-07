@@ -13,6 +13,8 @@ import type { ApoloProfileFilter, ApoloTab } from "./types/apolo-local";
 import type { ApoloDashboardData } from "@/lib/apolo/types";
 import { useEffect, useMemo, useState } from "react";
 
+import { usePersistedState } from "@/hooks/use-persisted-state";
+
 // Tipos locais (ApoloTab, ApoloProfileFilter, ApoloTabItem, ApoloUnitSubtab,
 // ApoloFinancialSubtab, ApoloPortfolioUnit, ApoloFinancialRecord*) movidos para
 // ./types/apolo-local.
@@ -22,14 +24,26 @@ import { useEffect, useMemo, useState } from "react";
 // (tipo em ./types/apolo-local).
 
 export function ApoloPage() {
-  const [activeScreen, setActiveScreen] = useState<ApoloScreen>("crm");
-  const [activeTab, setActiveTab] = useState<ApoloTab>("resumo");
+  // Persistidos: a tela/aba/filtro/busca e o registro aberto do Apolo "continuam
+  // de onde estavam" ao navegar e voltar. Ver [[use-persisted-state]].
+  const [activeScreen, setActiveScreen] = usePersistedState<ApoloScreen>(
+    "apolo.activeScreen",
+    "crm",
+  );
+  const [activeTab, setActiveTab] = usePersistedState<ApoloTab>(
+    "apolo.activeTab",
+    "resumo",
+  );
   const [dashboard, setDashboard] = useState<ApoloDashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-  const [query, setQuery] = useState("");
-  const [profileFilter, setProfileFilter] = useState<ApoloProfileFilter>("all");
-  const [selectedEntityId, setSelectedEntityId] = useState("");
+  const [query, setQuery] = usePersistedState("apolo.query", "");
+  const [profileFilter, setProfileFilter] =
+    usePersistedState<ApoloProfileFilter>("apolo.profileFilter", "all");
+  const [selectedEntityId, setSelectedEntityId] = usePersistedState(
+    "apolo.selectedEntityId",
+    "",
+  );
 
   useEffect(() => {
     let active = true;

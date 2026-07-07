@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+import { usePersistedState } from "@/hooks/use-persisted-state";
+
 // Dashboard PÚBLICO de CADs (cadastros de prospects, fonte Asana) de UM empreendimento.
 // Sem chrome do HUB, sem login — recebe os registros já filtrados do server component.
 // As SEÇÕES cruas do Asana são normalizadas em 4 status (Válidas / Em cadastro / Reprovadas /
@@ -95,10 +97,21 @@ export function CadPublicDashboard({
   records: CadPublicItem[];
   disponivel: boolean;
 }) {
-  const [status, setStatus] = useState<string>("all");
-  const [imob, setImob] = useState<string>("all");
-  const [q, setQ] = useState<string>("");
-  const [view, setView] = useState<"lista" | "kanban">("lista");
+  // Filtros/visão persistidos por empreendimento: reload/volta mantém o recorte.
+  const cadScope = empreendimento.toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  const [status, setStatus] = usePersistedState<string>(
+    `cads.${cadScope}.status`,
+    "all",
+  );
+  const [imob, setImob] = usePersistedState<string>(
+    `cads.${cadScope}.imob`,
+    "all",
+  );
+  const [q, setQ] = usePersistedState<string>(`cads.${cadScope}.q`, "");
+  const [view, setView] = usePersistedState<"lista" | "kanban">(
+    `cads.${cadScope}.view`,
+    "lista",
+  );
   const [rankOpen, setRankOpen] = useState<boolean>(false);
 
   const items: Item[] = useMemo(

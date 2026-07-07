@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Bot,
   Inbox,
@@ -25,6 +25,7 @@ import {
   readBoardTicketCrm,
 } from "./iris-ticket-queue";
 import { EmptyState, FilterSelect } from "../shared/iris-ui";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 
 const SORT_OPTIONS = [
   "Mais recentes",
@@ -87,10 +88,21 @@ export function IrisBoardKanban({
   renderers: IrisTicketQueueRenderers;
   tickets: IrisBoardTicket[];
 }) {
-  const [groupMode, setGroupMode] = useState<GroupMode>("status");
-  const [sortMode, setSortMode] = useState<SortMode>("Mais recentes");
-  const [search, setSearch] = useState("");
-  const [viewMode, setViewMode] = useState<"kanban" | "lista">("kanban");
+  // Persistidos: a organização/ordenação/visão do board "continua de onde estava"
+  // ao abrir um card e voltar, ou ao trocar de módulo e retornar. Ver [[use-persisted-state]].
+  const [groupMode, setGroupMode] = usePersistedState<GroupMode>(
+    "iris.board.groupMode",
+    "status",
+  );
+  const [sortMode, setSortMode] = usePersistedState<SortMode>(
+    "iris.board.sortMode",
+    "Mais recentes",
+  );
+  const [search, setSearch] = usePersistedState("iris.board.search", "");
+  const [viewMode, setViewMode] = usePersistedState<"kanban" | "lista">(
+    "iris.board.viewMode",
+    "kanban",
+  );
 
   const indicators = useMemo<
     { label: string; title?: string; tone?: "danger" | "gold"; value: string }[]

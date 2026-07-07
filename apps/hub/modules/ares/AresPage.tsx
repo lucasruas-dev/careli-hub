@@ -54,6 +54,8 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 
+import { usePersistedState } from "@/hooks/use-persisted-state";
+
 type AresLoadState = "idle" | "loading" | "ready" | "error";
 type AresSection =
   | "conciliacao"
@@ -238,15 +240,27 @@ const settledStatuses = new Set([
 
 export function AresPage() {
   const { authState, hubUser, profileStatus } = useAuth();
-  const [activeSection, setActiveSection] =
-    useState<AresSection>("operacao");
-  const [filters, setFilters] = useState<AresFilters>(initialFilters);
+  const [activeSection, setActiveSection] = usePersistedState<AresSection>(
+    "ares.activeSection",
+    "operacao",
+  );
+  const [filters, setFilters] = usePersistedState<AresFilters>(
+    "ares.filters",
+    initialFilters,
+  );
   const [snapshot, setSnapshot] = useState<AresSnapshot | null>(null);
   const [status, setStatus] = useState<AresLoadState>("idle");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [isAresSidebarCollapsed, setIsAresSidebarCollapsed] = useState(false);
+  const [isAresSidebarCollapsed, setIsAresSidebarCollapsed] = usePersistedState(
+    "ares.sidebarCollapsed",
+    false,
+    { backend: "local" },
+  );
   const [isLaunchFormOpen, setIsLaunchFormOpen] = useState(false);
-  const [workView, setWorkView] = useState<AresWorkView>("kanban");
+  const [workView, setWorkView] = usePersistedState<AresWorkView>(
+    "ares.workView",
+    "kanban",
+  );
   const [activeFinancialBaseId, setActiveFinancialBaseId] = useState<
     string | null
   >(null);

@@ -47,6 +47,7 @@ import {
   type HermesThreadReadReceipt,
 } from "@/lib/pulsex/thread-notifications";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { Tooltip } from "@repo/uix";
 import {
   getHubSupabaseClient,
@@ -124,9 +125,12 @@ export function HermesWorkspace() {
   const { callHistory, markCallHistoryRead, startCall, unreadCallCount } =
     useHermesCall();
   const currentUserId = hubUser?.id ?? "ana";
-  const [activeChannelId, setActiveChannelId] = useState<HermesChannel["id"]>(
-    emptyHermesChannel.id,
-  );
+  // Canal ativo persistido: ao sair do Hermes (outro módulo/tela) e voltar, a
+  // conversa que você estava lendo continua aberta. Se o canal deixou de existir,
+  // o efeito de carga cai no primeiro (linha ~471). Ver [[use-persisted-state]].
+  const [activeChannelId, setActiveChannelId] = usePersistedState<
+    HermesChannel["id"]
+  >("hermes.activeChannelId", emptyHermesChannel.id);
   const [channels, setChannels] = useState<HermesChannel[]>([]);
   const [departments, setDepartments] = useState<HermesDepartment[]>([]);
   const [messages, setMessages] = useState<HermesMessage[]>([]);
@@ -144,14 +148,21 @@ export function HermesWorkspace() {
     isAthenaTicketRecordingMinimized,
     setIsAthenaTicketRecordingMinimized,
   ] = useState(false);
-  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = usePersistedState(
+    "hermes.sidebarCollapsed",
+    false,
+    { backend: "local" },
+  );
   const [athenaFocusedMessageId, setAthenaFocusedMessageId] = useState<
     HermesMessage["id"] | null
   >(null);
   const [activeMessageFilter, setActiveMessageFilter] =
-    useState<HermesMessageFilter>("all");
+    usePersistedState<HermesMessageFilter>("hermes.messageFilter", "all");
   const [activeShortcutFilter, setActiveShortcutFilter] =
-    useState<HermesShortcutFilter | null>(null);
+    usePersistedState<HermesShortcutFilter | null>(
+      "hermes.shortcutFilter",
+      null,
+    );
   const [composerValue, setComposerValue] = useState("");
   const [composerMentions, setComposerMentions] = useState<
     readonly HermesMessageMention[]

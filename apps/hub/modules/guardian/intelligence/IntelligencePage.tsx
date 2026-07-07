@@ -3,6 +3,8 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
@@ -280,8 +282,14 @@ const heatmapRows = [
 ];
 
 export function IntelligencePage() {
-  const [trendView, setTrendView] = useState<TrendView>("behavior");
-  const [selectedKpi, setSelectedKpi] = useState<KpiId | null>(null);
+  const [trendView, setTrendView] = usePersistedState<TrendView>(
+    "hades.intel.trendView",
+    "behavior",
+  );
+  const [selectedKpi, setSelectedKpi] = usePersistedState<KpiId | null>(
+    "hades.intel.selectedKpi",
+    null,
+  );
   const currentTrendSource = trendViews[trendView];
   const currentTrend = {
     ...currentTrendSource,

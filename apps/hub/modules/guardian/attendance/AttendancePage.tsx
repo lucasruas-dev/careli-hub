@@ -3,6 +3,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
@@ -101,14 +103,35 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const [queueLoading, setQueueLoading] = useState(loadFromC2x && initialClients.length === 0);
   const [queueError, setQueueError] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState(sourceClients[0]?.id ?? "");
-  const [search, setSearch] = useState("");
-  const [enterprise, setEnterprise] = useState("Todos");
-  const [priority, setPriority] = useState<AttendancePriority | "Todos">("Todos");
-  const [stage, setStage] = useState<WorkflowStage | "Todas">("Todas");
-  const [queueMode, setQueueMode] = useState<QueueMode>("daily");
-  const [overdueRange, setOverdueRange] = useState<OverdueRangeFilter>("all");
-  const [queueCollapsed, setQueueCollapsed] = useState(false);
-  const [activeSection, setActiveSection] = useState<AttendanceSection>("queue");
+  // Persistidos: busca, filtros (empreendimento/prioridade/etapa/fila/atraso) e
+  // seção ativa do desk do Hades "continuam de onde estavam". [[use-persisted-state]]
+  const [search, setSearch] = usePersistedState("hades.desk.search", "");
+  const [enterprise, setEnterprise] = usePersistedState(
+    "hades.desk.enterprise",
+    "Todos",
+  );
+  const [priority, setPriority] = usePersistedState<
+    AttendancePriority | "Todos"
+  >("hades.desk.priority", "Todos");
+  const [stage, setStage] = usePersistedState<WorkflowStage | "Todas">(
+    "hades.desk.stage",
+    "Todas",
+  );
+  const [queueMode, setQueueMode] = usePersistedState<QueueMode>(
+    "hades.desk.queueMode",
+    "daily",
+  );
+  const [overdueRange, setOverdueRange] = usePersistedState<OverdueRangeFilter>(
+    "hades.desk.overdueRange",
+    "all",
+  );
+  const [queueCollapsed, setQueueCollapsed] = usePersistedState(
+    "hades.desk.queueCollapsed",
+    false,
+    { backend: "local" },
+  );
+  const [activeSection, setActiveSection] =
+    usePersistedState<AttendanceSection>("hades.desk.activeSection", "queue");
   const [whatsAppClientId, setWhatsAppClientId] = useState<string | null>(null);
   const [whatsAppAttendanceProtocol, setWhatsAppAttendanceProtocol] = useState<string | null>(null);
   // Form de abertura de atendimento (Hades) — aberto a partir do card da fila.

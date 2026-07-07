@@ -127,6 +127,7 @@ import {
   withIrisTimeout,
 } from "./data/iris-data-client";
 import { useOutsideDismiss } from "@/hooks/use-outside-dismiss";
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import {
   playIrisInboundSound,
@@ -576,15 +577,31 @@ export function IrisPage({
     ...emptyIrisData,
     tickets: initialTickets,
   });
-  const [selectedTicketId, setSelectedTicketId] = useState<string>(
+  // Escopo de persistência da UI: separa a Iris standalone do cockpit embarcado
+  // do Hades (cobrança), pra o "continuar de onde estava" de cada um não colidir.
+  const persistScope = cobrancaMode
+    ? "hades-cockpit"
+    : embedded
+      ? "iris-embed"
+      : "iris";
+  const [selectedTicketId, setSelectedTicketId] = usePersistedState<string>(
+    `${persistScope}.selectedTicketId`,
     initialTickets[0]?.id ?? "",
   );
-  const [activeView, setActiveView] = useState<IrisView>("gestao");
+  const [activeView, setActiveView] = usePersistedState<IrisView>(
+    `${persistScope}.activeView`,
+    "gestao",
+  );
   const attendanceProtocolHandledRef = useRef<string | null>(null);
   const [historyFocus, setHistoryFocus] = useState<IrisHistoryFocus | null>(
     null,
   );
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  // Sidebar recolhida = preferência pura → durável (localStorage), sobrevive à sessão.
+  const [sidebarCollapsed, setSidebarCollapsed] = usePersistedState(
+    `${persistScope}.sidebarCollapsed`,
+    false,
+    { backend: "local" },
+  );
   const [loading, setLoading] = useState(loadFromSupabase);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [inboundNotice, setInboundNotice] = useState<IrisInboundNotice | null>(

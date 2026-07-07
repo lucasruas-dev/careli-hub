@@ -138,6 +138,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { usePersistedState } from "@/hooks/use-persisted-state";
+
 type OperationsFilters = {
   keyword: string;
   module: string;
@@ -841,7 +843,10 @@ export function ZeusPage({
     string | null
   >(null);
   const [error, setError] = useState<string | null>(null);
-  const [filters, setFilters] = useState<OperationsFilters>(initialFilters);
+  const [filters, setFilters] = usePersistedState<OperationsFilters>(
+    "zeus.filters",
+    initialFilters,
+  );
   const [selectedRecord, setSelectedRecord] =
     useState<EngineeringOperationRecord | null>(null);
   const [selectedRoutine, setSelectedRoutine] =
@@ -862,7 +867,10 @@ export function ZeusPage({
   const [selectedPromptTemplateId, setSelectedPromptTemplateId] = useState(
     promptTemplates[0]!.id,
   );
-  const [activeView, setActiveView] = useState<ZeusView>("itTickets");
+  const [activeView, setActiveView] = usePersistedState<ZeusView>(
+    "zeus.activeView",
+    "itTickets",
+  );
   const [monitoringSnapshot, setMonitoringSnapshot] =
     useState<OperationsMonitoringSnapshot | null>(null);
   const [monitoringHistory, setMonitoringHistory] = useState<
