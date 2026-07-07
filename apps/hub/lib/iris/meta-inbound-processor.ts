@@ -182,6 +182,30 @@ export async function processMetaWhatsAppWebhookEvents({
   return result;
 }
 
+// Consulta a blocklist casando por TODAS as variantes do número (com/sem 9º dígito,
+// com/sem 55). Fail-open: se a checagem falhar, NÃO derruba o webhook (não vale
+// perder cliente legítimo por erro transitório) — só loga e segue.
+async function isWhatsAppNumberBlocked(
+  client: IrisMetaProcessorClient,
+  waId: string,
+): Promise<boolean> {
+  const variants = buildBrazilianPhoneVariants(waId);
+  const candidates = variants.length ? variants : [waId];
+
+  const { data, error } = await client
+    .from("caredesk_blocked_numbers")
+    .select("phone")
+    .in("phone", candidates)
+    .limit(1);
+
+  if (error) {
+    console.error("[iris/meta] checagem de bloqueio falhou", error);
+    return false;
+  }
+
+  return Boolean(data && data.length > 0);
+}
+
 async function processInboundMessage({
   client,
   event,
@@ -216,6 +240,26 @@ async function processInboundMessage({
       "ignored",
       "Mensagem Meta ja processada anteriormente.",
     );
+    return {
+      autoReplySent: false,
+      ignored: true,
+      messageCreated: false,
+      ticketCreated: false,
+    };
+  }
+
+  // Bloqueio de números abusivos (spam/pornografia): descarta o inbound ANTES de
+  // criar contato/ticket/mensagem ou responder. Fonte: caredesk_blocked_numbers.
+  const inboundWaId = normalizeWhatsAppId(event.contact_wa_id);
+
+  if (inboundWaId && (await isWhatsAppNumberBlocked(client, inboundWaId))) {
+    await markWebhookEvent(
+      client,
+      event.id,
+      "ignored",
+      "Numero bloqueado (abuso/spam).",
+    );
+
     return {
       autoReplySent: false,
       ignored: true,
