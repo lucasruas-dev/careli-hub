@@ -43,6 +43,12 @@ import { RefreshCcw } from "lucide-react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { usePersistedState } from "@/hooks/use-persisted-state";
+import {
+  isChronosSnapshotCacheFresh,
+  mirrorChronosSnapshotCache,
+  readChronosSnapshotCache,
+  writeChronosSnapshotCache,
+} from "@/lib/chronos/snapshot-cache";
 
 const emptySnapshot: ChronosSnapshot = {
   meetings: [],
@@ -57,7 +63,12 @@ export function ChronosPage() {
     hubUser?.permissions.includes("chronos:manage"),
   );
   const canDeleteChronosMinutes = hubUser?.role === "admin";
-  const [snapshot, setSnapshot] = useState<ChronosSnapshot>(emptySnapshot);
+  // Aba INSTANTANEA (pedido Lucas 7/jul): nasce com o snapshot da ultima
+  // visita (cache em memoria) e atualiza em silencio por tras — sem esqueleto
+  // de loading a cada clique na aba.
+  const [snapshot, setSnapshot] = useState<ChronosSnapshot>(
+    () => readChronosSnapshotCache() ?? emptySnapshot,
+  );
   // Persistidos: reunião aberta, tela ativa (agenda/salas/drive), sub-visão do
   // Drive e sidebar "continuam de onde estavam". Ver [[use-persisted-state]].
   const [selectedMeetingId, setSelectedMeetingId] = usePersistedState(
@@ -77,7 +88,7 @@ export function ChronosPage() {
     false,
     { backend: "local" },
   );
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(() => readChronosSnapshotCache() === null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const localRecordings = useMemo<LocalRecording[]>(() => [], []);
@@ -90,6 +101,14 @@ export function ChronosPage() {
   );
   const showInitialLoading =
     loading && snapshot.meetings.length === 0 && snapshot.rooms.length === 0;
+
+  // Espelha o estado local no cache: a proxima montagem nasce com o que voce
+  // estava vendo (mutacoes e hidratacoes inclusas).
+  useEffect(() => {
+    if (snapshot.meetings.length > 0 || snapshot.rooms.length > 0) {
+      mirrorChronosSnapshotCache(snapshot);
+    }
+  }, [snapshot]);
 
   // SNAPSHOT LEVE: timeline/transcricao/chat nao vem mais no snapshot geral
   // (peso derrubava a funcao). Hidrata sob demanda quando a reuniao abre.
@@ -162,13 +181,26 @@ export function ChronosPage() {
     setSelectedMeetingId(meeting.id);
   }, [setSelectedMeetingId]);
 
-  const reloadChronos = useCallback(async () => {
-    setLoading(true);
+  const reloadChronos = useCallback(async (
+    { skipIfFresh = false }: { skipIfFresh?: boolean } = {},
+  ) => {
+    // Remontagem logo apos uma carga (ping-pong de abas): o cache fresco
+    // segura a tela e NAO vai a rede — instantaneo e sem custo.
+    if (skipIfFresh && isChronosSnapshotCacheFresh()) {
+      setLoading(false);
+      return;
+    }
+
+    // Com cache na tela, o refresh e SILENCIOSO (sem esqueleto por cima).
+    if (readChronosSnapshotCache() === null) {
+      setLoading(true);
+    }
     setError(null);
 
     try {
       const nextSnapshot = await loadChronosSnapshot();
 
+      writeChronosSnapshotCache(nextSnapshot);
       setSnapshot(nextSnapshot);
       setSelectedMeetingId((currentId) => {
         if (nextSnapshot.meetings.some((meeting) => meeting.id === currentId)) {
@@ -202,7 +234,7 @@ export function ChronosPage() {
   }, [setSelectedMeetingId]);
 
   useEffect(() => {
-    void reloadChronos();
+    void reloadChronos({ skipIfFresh: true });
   }, [reloadChronos]);
 
   async function handleCreateMeeting(input: ChronosCreateMeetingInput) {
