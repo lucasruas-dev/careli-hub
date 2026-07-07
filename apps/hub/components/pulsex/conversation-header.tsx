@@ -18,10 +18,11 @@ import {
   Star,
   Users,
   Video,
+  X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import type { ReactNode } from "react";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 
 type ConversationHeaderProps = {
@@ -30,9 +31,12 @@ type ConversationHeaderProps = {
   isFavorite?: boolean;
   onMarkCallHistoryRead: (channelId?: string) => void;
   onReturnCall: (entry: HermesCallHistoryEntry) => void;
+  onSearchChange: (query: string) => void;
   onStartCall: (type: HermesCallType) => void;
   onToggleFavorite?: () => void;
   presenceUsers: readonly HermesPresenceUser[];
+  searchQuery: string;
+  searchResultCount?: number;
   unreadCallCount: number;
 };
 
@@ -42,12 +46,16 @@ export function ConversationHeader({
   isFavorite = false,
   onMarkCallHistoryRead,
   onReturnCall,
+  onSearchChange,
   onStartCall,
   onToggleFavorite,
   presenceUsers,
+  searchQuery,
+  searchResultCount = 0,
   unreadCallCount,
 }: ConversationHeaderProps) {
   const [isCallHistoryOpen, setIsCallHistoryOpen] = useState(false);
+  const [isSearchOpen, setIsSearchOpen] = useState(false);
   const callHistoryMenuRef = useRef<HTMLDivElement>(null);
   const onlineCount = presenceUsers.filter(
     (user) => user.status === "online",
@@ -69,6 +77,53 @@ export function ConversationHeader({
     onDismiss: () => setIsCallHistoryOpen(false),
     ref: callHistoryMenuRef,
   });
+
+  // Fecha a busca ao trocar de canal (o workspace tambem limpa o termo).
+  useEffect(() => {
+    setIsSearchOpen(false);
+  }, [channel.id]);
+
+  const closeSearch = () => {
+    onSearchChange("");
+    setIsSearchOpen(false);
+  };
+
+  // Busca de texto DENTRO do canal: a lupa abre este input; o workspace filtra as
+  // mensagens do canal pelo termo e mostra so as que casam (com contador).
+  if (isSearchOpen) {
+    return (
+      <header className="flex h-16 items-center gap-3 border-b border-[#d9e0ea] bg-white px-4">
+        <Search
+          aria-hidden="true"
+          className="shrink-0 text-[var(--uix-text-muted)]"
+          size={18}
+        />
+        <input
+          aria-label={`Buscar mensagens em ${channel.name}`}
+          autoFocus
+          className="h-9 min-w-0 flex-1 rounded-md border border-[#d9e0ea] bg-white px-3 text-sm text-[var(--uix-text-primary)] outline-none transition placeholder:text-[#9aa6b5] focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+          onChange={(event) => onSearchChange(event.target.value)}
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              closeSearch();
+            }
+          }}
+          placeholder={`Buscar em ${channel.name}...`}
+          value={searchQuery}
+        />
+        {searchQuery.trim() ? (
+          <span className="shrink-0 whitespace-nowrap text-xs font-medium text-[var(--uix-text-muted)]">
+            {searchResultCount} resultado{searchResultCount === 1 ? "" : "s"}
+          </span>
+        ) : null}
+        <HeaderAction
+          ariaLabel="Fechar busca"
+          icon={<X aria-hidden="true" size={17} />}
+          onClick={closeSearch}
+        />
+      </header>
+    );
+  }
 
   return (
     <header className="grid h-16 grid-cols-[minmax(12rem,1fr)_auto_auto] items-center gap-4 border-b border-[#d9e0ea] bg-white px-4">
@@ -117,7 +172,11 @@ export function ConversationHeader({
           }
           onClick={onToggleFavorite}
         />
-        <HeaderAction ariaLabel="Buscar" icon={<Search size={17} />} />
+        <HeaderAction
+          ariaLabel="Buscar mensagens no canal"
+          icon={<Search size={17} />}
+          onClick={() => setIsSearchOpen(true)}
+        />
         <div className="relative" ref={callHistoryMenuRef}>
           <HeaderAction
             active={isCallHistoryOpen}

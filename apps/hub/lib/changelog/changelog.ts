@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-hermes-busca-canal",
+    deployedAt: "2026-07-07T13:45:00-03:00",
+    modules: [
+      {
+        module: "Hermes",
+        screens: [
+          {
+            items: [
+              "A lupa no topo da conversa agora funciona: clique nela e busque um texto DENTRO do canal aberto.",
+              "A conversa passa a mostrar só as mensagens que contêm o termo, com o número de resultados. Esc ou o X fecham a busca.",
+            ],
+            screen: "Conversa (canal)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit e8ac3cbf (v1.27.0)",
+    technical: {
+      done: "A lupa do ConversationHeader era um botão sem ação. Agora abre um input inline; o termo é elevado ao pulsex-workspace (messageSearchQuery, reset ao trocar de canal) e filtra as mensagens do canal ativo por body (case-insensitive), passando a lista filtrada pra MessageList + contador de resultados no header. Zero rede — filtro client-side sobre as mensagens já carregadas. v1.27.0 -> v1.27.1.",
+      motivation:
+        "Lucas: habilitar a lupa no Hermes para o time procurar texto dentro do canal.",
+    },
+    title: "Hermes: busca de texto dentro do canal (lupa)",
+    type: "novidade",
+    version: "1.27.1",
+  },
+  {
     buildTag: "2026-07-07-hermes-notificacoes-v2",
     deployedAt: "2026-07-07T13:30:00-03:00",
     modules: [
