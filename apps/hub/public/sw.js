@@ -43,6 +43,9 @@ self.addEventListener("push", (event) => {
       await self.registration.showNotification(title, {
         badge: "/panteon-mark.png",
         body: payload.body || "",
+        // Fica na tela ate o usuario interagir (clique/X) — sem sumir sozinha
+        // em segundos. O SO ainda pode dispensa-la ao abrir o app (plataforma).
+        requireInteraction: true,
         // Mesma tag da notificacao in-app: o navegador colapsa duplicatas.
         tag: payload.tag || "pulsex-message",
         data: { url: payload.url || "/hermes" },

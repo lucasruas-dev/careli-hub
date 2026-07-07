@@ -1593,11 +1593,20 @@ export function HermesWorkspace() {
     }
 
     const channelId = activeChannel.id;
+    // Gatilho = primeira INTERACAO (clique/tecla/scroll) apos o foco, nao o
+    // foco em si (ajuste Lucas 7/jul): restaurar a janela minimizada NAO
+    // apaga mais o rastro — a bolinha/central ficam ate o usuario de fato
+    // mexer no app com a conversa aberta na tela.
+    let armed = false;
+    const armOnFocus = () => {
+      armed = true;
+    };
     const handleWindowFocusRead = () => {
-      if (!document.hasFocus()) {
+      if (!document.hasFocus() || !armed) {
         return;
       }
 
+      armed = false;
       markHermesChannelRead({ channelId })
         .then((receipt) => {
           if (!receipt) {
@@ -1627,10 +1636,16 @@ export function HermesWorkspace() {
         });
     };
 
-    window.addEventListener("focus", handleWindowFocusRead);
+    window.addEventListener("focus", armOnFocus);
+    window.addEventListener("pointerdown", handleWindowFocusRead);
+    window.addEventListener("keydown", handleWindowFocusRead);
+    window.addEventListener("wheel", handleWindowFocusRead, { passive: true });
 
     return () => {
-      window.removeEventListener("focus", handleWindowFocusRead);
+      window.removeEventListener("focus", armOnFocus);
+      window.removeEventListener("pointerdown", handleWindowFocusRead);
+      window.removeEventListener("keydown", handleWindowFocusRead);
+      window.removeEventListener("wheel", handleWindowFocusRead);
     };
   }, [activeChannel.id]);
 
