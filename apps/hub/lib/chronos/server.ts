@@ -857,7 +857,9 @@ export async function listChronosSnapshot(
       recordingsResult.error,
     ].filter(Boolean);
 
-    const rooms = (roomsResult.data ?? []).map(mapRoomRow);
+    const rooms = (roomsResult.data ?? [])
+      .map(mapRoomRow)
+      .map(stripChronosRoomBackgroundBytes);
     const profiles = await readChronosProfilesFromSupabase(client);
     const roomsById = new Map(rooms.map((room) => [room.id, room]));
     let driveSchemaPending = false;
@@ -1005,7 +1007,7 @@ export async function listChronosRooms(
     throw roomsResult.error;
   }
 
-  return (roomsResult.data ?? []).map(mapRoomRow);
+  return (roomsResult.data ?? []).map(mapRoomRow).map(stripChronosRoomBackgroundBytes);
 }
 
 export async function listChronosProfiles(
@@ -8985,6 +8987,32 @@ function mapRoomRow(row: ChronosRoomRow): ChronosRoom {
     slug: row.slug,
     status: row.status,
     transcriptionRequired: row.transcription_required,
+  };
+}
+
+// Sala LEVE para o snapshot: o fundo custom da sala e um data-URL de ~3MB no
+// metadata — como CADA reuniao embute o objeto da sua sala, ~350 reunioes
+// multiplicavam isso em ~900MB de JSON por carregamento ("Invalid string
+// length" + os OOMs de 7/jul). O nome do arquivo fica (a tela de configuracao
+// mostra qual fundo esta definido); os BYTES nunca viajam no snapshot.
+function stripChronosRoomBackgroundBytes(room: ChronosRoom): ChronosRoom {
+  const background =
+    room.metadata && typeof room.metadata.background === "object" && room.metadata.background !== null
+      ? (room.metadata.background as Record<string, unknown>)
+      : null;
+
+  if (!background || typeof background.dataUrl !== "string") {
+    return room;
+  }
+
+  const { dataUrl: _dataUrl, ...lightBackground } = background;
+
+  return {
+    ...room,
+    metadata: {
+      ...room.metadata,
+      background: { ...lightBackground, hasCustomBackground: true },
+    },
   };
 }
 
