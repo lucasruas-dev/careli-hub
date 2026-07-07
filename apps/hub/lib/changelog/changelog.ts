@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-06-iris-crm360-resiliente",
+    deployedAt: "2026-07-06T23:55:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Corrigido: em atendimento de cliente comprador, o nome do cadastro (Apolo) e os dados do cliente no lado direito às vezes sumiam no meio da conversa e o nome virava o do WhatsApp.",
+              "Agora, uma vez que o cliente é reconhecido no Apolo, o nome e o painel continuam firmes mesmo se uma atualização em segundo plano falhar ou demorar. Não pisca mais.",
+            ],
+            screen: "Atendimento (ficha do cliente)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 27a5c04a",
+    technical: {
+      done: "O nome/painel exibidos são um overlay do CRM 360 (ticketContactLabel usa crm360Registration). enrichTicketsWithCrm360 re-busca /api/iris/apolo/phone-match a cada refresh (interval 90s + realtime + foco) com timeout de 4s; em timeout/falha fazia `return data` SEM registration → todos os tickets perdiam o cadastro de uma vez (nome caía pro display_name salvo do contato, ex.: handle do WhatsApp, e o painel esvaziava). Fix: cache em memória por telefone do último cadastro REGISTRADO; falha/timeout ou 'missing' transitório mantém o último conhecido. Client-side, reseta no reload. v1.24.0 -> v1.24.1.",
+      motivation:
+        "Relato de atendente (prints do Lucas): comprador com nome certo no início do atendimento e, após um tempo, nome virava o do WhatsApp e os dados do Apolo sumiam do lado direito.",
+    },
+    title: "Iris: nome e ficha do comprador não somem mais no meio do atendimento",
+    type: "correcao",
+    version: "1.24.1",
+  },
+  {
     buildTag: "2026-07-06-persistencia-navegacao",
     deployedAt: "2026-07-06T23:00:00-03:00",
     modules: [
