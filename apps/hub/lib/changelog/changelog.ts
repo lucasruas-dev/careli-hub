@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-06-persistencia-navegacao",
+    deployedAt: "2026-07-06T23:00:00-03:00",
+    modules: [
+      {
+        module: "Hub (todos os módulos)",
+        screens: [
+          {
+            items: [
+              "Agora o Hub lembra onde você estava: ao clicar num card e voltar, ou ao trocar de módulo/tela e retornar, os filtros, a organização, a aba e a seleção continuam do mesmo jeito, não voltam mais ao início.",
+              "Exemplos: organizou a Iris por colaborador e abriu um atendimento? Ao voltar, segue por colaborador. Estava num canal do Hermes e foi pra outra tela? O canal continua aberto na volta.",
+              "Vale pra Iris, Hermes, Apolo, Chronos, Hades, Zeus, Atlas e Ares. O estado dura enquanto a aba estiver aberta e sobrevive ao Ctrl+F5.",
+            ],
+            screen: "Navegação (filtros, abas, organização e seleção)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 6e10537f (deploy dpl_o65nfGtk232ny6kWjKbrBRxrgMQr)",
+    technical: {
+      done: "Nova primitiva usePersistedState (apps/hub/hooks/use-persisted-state.ts): drop-in do useState com cache em memória (volta instantânea na navegação client-side, sem flash) + sessionStorage (sobrevive a reload) ou localStorage p/ preferência. Zero rede/polling, seguro em SSR. Causa raiz da regressão: o Next.js desmonta a página ao navegar, então todo useState local voltava ao inicial. Aplicada na navegação/filtros/seleção primários de Iris (board organizar/ordenar/visão/busca + view/ticket/sidebar), Hermes (canal ativo + filtros + sidebar), Apolo, Chronos (tela/drive/reunião/sidebar), Zeus (view+filtros), Atlas (filtros+sidebar), Ares (seção/filtros/visão+sidebar), Hades desk (busca/filtros/seção/fila) e inteligência (trend/KPI), + dashboard público de CADs (por empreendimento). v1.23.7 -> v1.24.0.",
+      motivation:
+        "Time reclamando muito das regressões de 'a tela volta pro estado inicial' ao navegar e voltar. Pedido do Lucas: tudo tem que continuar de onde estávamos, em todos os módulos.",
+    },
+    title: "As telas continuam de onde você estava (filtros, abas, organização e seleção)",
+    type: "melhoria",
+    version: "1.24.0",
+  },
+  {
     buildTag: "2026-07-06-notificacao-foco-janela",
     deployedAt: "2026-07-06T20:00:00-03:00",
     modules: [
