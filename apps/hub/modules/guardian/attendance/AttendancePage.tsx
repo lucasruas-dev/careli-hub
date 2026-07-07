@@ -102,7 +102,12 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   const [queueTotalCount, setQueueTotalCount] = useState(initialClients.length);
   const [queueLoading, setQueueLoading] = useState(loadFromC2x && initialClients.length === 0);
   const [queueError, setQueueError] = useState<string | null>(null);
-  const [selectedId, setSelectedId] = useState(sourceClients[0]?.id ?? "");
+  // Cliente aberto no cockpit persistido: ao sair do Hades e voltar, o atendimento
+  // que você estava operando continua aberto (não volta pra fila zerada).
+  const [selectedId, setSelectedId] = usePersistedState(
+    "hades.desk.selectedId",
+    sourceClients[0]?.id ?? "",
+  );
   // Persistidos: busca, filtros (empreendimento/prioridade/etapa/fila/atraso) e
   // seção ativa do desk do Hades "continuam de onde estavam". [[use-persisted-state]]
   const [search, setSearch] = usePersistedState("hades.desk.search", "");

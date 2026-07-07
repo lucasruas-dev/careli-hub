@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
+import { usePersistedState } from "@/hooks/use-persisted-state";
 import { KpiCard } from "@/components/guardian/dashboard/KpiCard";
 import { MainLayout } from "@/components/guardian/layout/MainLayout";
 import {
@@ -113,7 +114,12 @@ function buildEnterpriseScopedKpis(
 }
 
 export default function HadesPage() {
-  const [enterprise, setEnterprise] = useState("Todos");
+  // Persistido: o empreendimento em foco continua ao navegar e voltar. O drawer de
+  // KPI (selectedKpi) fica efêmero de propósito — não reabre sozinho. [[use-persisted-state]]
+  const [enterprise, setEnterprise] = usePersistedState(
+    "hades.dashboard.enterprise",
+    "Todos",
+  );
   const [selectedKpi, setSelectedKpi] = useState<DashboardKpiId | null>(null);
   const [realKpis, setRealKpis] = useState<RealHadesKpis | null>(null);
   const [enterpriseDistributions, setEnterpriseDistributions] = useState<
@@ -124,13 +130,19 @@ export default function HadesPage() {
   const [enterpriseDistributionError, setEnterpriseDistributionError] =
     useState<string | null>(null);
   const [realKpisError, setRealKpisError] = useState<string | null>(null);
-  const [expandedPanels, setExpandedPanels] = useState<Record<DashboardPanelId, boolean>>({
-    financial: true,
-    desk: true,
-    workflow: false,
-    ai: true,
-    operators: false,
-  });
+  const [expandedPanels, setExpandedPanels] = usePersistedState<
+    Record<DashboardPanelId, boolean>
+  >(
+    "hades.dashboard.expandedPanels",
+    {
+      financial: true,
+      desk: true,
+      workflow: false,
+      ai: true,
+      operators: false,
+    },
+    { backend: "local" },
+  );
   const [opsIntel, setOpsIntel] = useState<HadesOperationalIntelligence | null>(
     null,
   );

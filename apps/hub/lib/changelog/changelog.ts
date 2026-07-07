@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-06-hades-persistencia",
+    deployedAt: "2026-07-07T00:20:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "Agora o Hades também continua de onde você estava: o cliente aberto no cockpit não volta mais pra fila zerada ao trocar de tela e voltar.",
+              "No painel geral, o empreendimento em foco e os painéis expandidos/recolhidos também ficam do jeito que você deixou.",
+            ],
+            screen: "Cobrança (cockpit) e painel geral",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 4f6d8ad1",
+    technical: {
+      done: "A persistência de navegação (v1.24.0) cobriu os filtros do desk do Hades, mas faltou o cliente selecionado no cockpit (AttendancePage.selectedId) e TODO o dashboard (app/guardian/page.tsx, que não passou pelo sweep). Agora: selectedId persistido (session), e no dashboard enterprise (session) + expandedPanels (local). selectedKpi fica efêmero de propósito (não reabre o drawer sozinho). v1.24.2 -> v1.24.3.",
+      motivation:
+        "Lucas: o Hades não estava com a continuação de tela que fizemos antes, toda hora voltava pro estado inicial.",
+    },
+    title: "Hades: continua de onde você estava (cliente do cockpit + filtro do painel)",
+    type: "melhoria",
+    version: "1.24.3",
+  },
+  {
     buildTag: "2026-07-06-competencia-c2x",
     deployedAt: "2026-07-07T00:10:00-03:00",
     modules: [
