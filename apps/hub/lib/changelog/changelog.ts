@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-iris-mensagens-instantaneas",
+    deployedAt: "2026-07-07T15:40:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Mensagem nova do atendimento aberto aparece NA HORA na conversa (antes demorava alguns segundos e às vezes só com F5).",
+              "A conexão em tempo real agora se reconecta sozinha quando cai — sem precisar dar F5 pra 'acordar' a fila.",
+            ],
+            screen: "Atendimento (conversa e fila)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit b5bcb8fd",
+    technical: {
+      done: "IrisPage realtime: (1) INSERT/UPDATE de caredesk_messages agora aplica payload.new DIRETO na conversa aberta (mapMessageRow + upsert ordenado no activeThread, guard por selectedTicketIdRef) — antes todo evento so agendava refresh debounced de 2,5s que recarregava a fila inteira; (2) assinatura resiliente: .subscribe(status) com rejoin + backoff (2s->30s) em CHANNEL_ERROR/TIMED_OUT/CLOSED e refresh de recuperacao ao reconectar — o canal morria em silencio e so o polling de 90s ou o F5 salvavam. Mesmo playbook do Hermes v1.27.0. v1.27.1 -> v1.27.2.",
+      motivation:
+        "Time (via Lucas 7/jul ~15h30): mensagens na Iris demorando a aparecer; notificacao chega e a mensagem nao; as vezes so com F5.",
+    },
+    title: "Iris: mensagens aparecem na hora (e a conexão se recupera sozinha)",
+    type: "correcao",
+    version: "1.27.2",
+  },
+  {
     buildTag: "2026-07-07-hermes-busca-canal",
     deployedAt: "2026-07-07T13:45:00-03:00",
     modules: [

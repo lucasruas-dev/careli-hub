@@ -830,44 +830,129 @@ export function IrisPage({
       }, IRIS_REALTIME_REFRESH_DEBOUNCE_MS);
     };
 
-    const channel = client
-      .channel("iris-caredesk-live")
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "caredesk_messages" },
-        () => {
-          scheduleRealtimeRefresh(true);
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "caredesk_messages" },
-        () => {
-          scheduleRealtimeRefresh(false);
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "INSERT", schema: "public", table: "caredesk_tickets" },
-        () => {
-          scheduleRealtimeRefresh(true);
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "caredesk_tickets" },
-        () => {
-          scheduleRealtimeRefresh(false);
-        },
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "caredesk_contacts" },
-        () => {
-          scheduleRealtimeRefresh(false);
-        },
-      )
-      .subscribe();
+    // Mensagem do TICKET ABERTO aparece NA HORA: o evento do realtime ja traz a
+    // linha inteira — mapeia e insere direto na conversa, sem esperar o refresh
+    // debounced da fila (que segue rodando para lista/previews). Era o "recebo
+    // a notificacao mas a mensagem nao aparece" relatado pelo time (7/jul).
+    const applyRealtimeMessageRow = (row: Record<string, unknown> | undefined) => {
+      const ticketId = typeof row?.ticket_id === "string" ? row.ticket_id : null;
+
+      if (!row || !ticketId || ticketId !== selectedTicketIdRef.current) {
+        return;
+      }
+
+      const message = mapMessageRow(row);
+
+      knownMessageIdsRef.current.add(message.id);
+      setActiveThread((current) => {
+        if (!current || current.ticketId !== ticketId) {
+          return current;
+        }
+
+        const withoutDuplicate = current.messages.filter(
+          (item) => item.id !== message.id,
+        );
+
+        return {
+          ...current,
+          messages: [...withoutDuplicate, message].sort(
+            (first, second) =>
+              dateValue(first.createdAt) - dateValue(second.createdAt),
+          ),
+        };
+      });
+    };
+
+    // Assinatura RESILIENTE: o canal do Supabase pode cair em silencio
+    // (CHANNEL_ERROR/TIMED_OUT/CLOSED) — sem rejoin, so o polling de 90s ou o
+    // F5 traziam vida de volta ("tem que dar F5"). Aqui: rejoin com backoff e
+    // refresh de recuperacao ao reconectar (cobre o que passou offline).
+    let cancelled = false;
+    let activeChannel: ReturnType<typeof client.channel> | null = null;
+    let resubscribeTimeoutId: number | null = null;
+    let resubscribeDelayMs = 2_000;
+
+    const subscribeIrisRealtime = () => {
+      if (cancelled) {
+        return;
+      }
+
+      const channel = client
+        .channel(`iris-caredesk-live-${Date.now()}`)
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "caredesk_messages" },
+          (payload: { new?: Record<string, unknown> }) => {
+            applyRealtimeMessageRow(payload.new);
+            scheduleRealtimeRefresh(true);
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "caredesk_messages" },
+          (payload: { new?: Record<string, unknown> }) => {
+            applyRealtimeMessageRow(payload.new);
+            scheduleRealtimeRefresh(false);
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "INSERT", schema: "public", table: "caredesk_tickets" },
+          () => {
+            scheduleRealtimeRefresh(true);
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "caredesk_tickets" },
+          () => {
+            scheduleRealtimeRefresh(false);
+          },
+        )
+        .on(
+          "postgres_changes",
+          { event: "UPDATE", schema: "public", table: "caredesk_contacts" },
+          () => {
+            scheduleRealtimeRefresh(false);
+          },
+        )
+        .subscribe((status) => {
+          if (cancelled) {
+            return;
+          }
+
+          if (status === "SUBSCRIBED") {
+            resubscribeDelayMs = 2_000;
+            // Recupera o que aconteceu enquanto o canal esteve fora.
+            scheduleRealtimeRefresh(false);
+            return;
+          }
+
+          if (
+            status === "CHANNEL_ERROR" ||
+            status === "TIMED_OUT" ||
+            status === "CLOSED"
+          ) {
+            void client.removeChannel(channel);
+
+            if (activeChannel === channel) {
+              activeChannel = null;
+            }
+
+            if (resubscribeTimeoutId === null) {
+              resubscribeTimeoutId = window.setTimeout(() => {
+                resubscribeTimeoutId = null;
+                subscribeIrisRealtime();
+              }, resubscribeDelayMs);
+              resubscribeDelayMs = Math.min(resubscribeDelayMs * 2, 30_000);
+            }
+          }
+        });
+
+      activeChannel = channel;
+    };
+
+    subscribeIrisRealtime();
 
     const refreshInterval = window.setInterval(() => {
       void refreshIrisData({ notifyNewInbound: true });
@@ -881,12 +966,18 @@ export function IrisPage({
     window.addEventListener("focus", handleWindowFocus);
 
     return () => {
+      cancelled = true;
       window.clearInterval(refreshInterval);
       window.removeEventListener("focus", handleWindowFocus);
       if (realtimeDebounceId !== null) {
         window.clearTimeout(realtimeDebounceId);
       }
-      void client.removeChannel(channel);
+      if (resubscribeTimeoutId !== null) {
+        window.clearTimeout(resubscribeTimeoutId);
+      }
+      if (activeChannel) {
+        void client.removeChannel(activeChannel);
+      }
     };
   }, [loadFromSupabase, refreshIrisData]);
 
@@ -930,6 +1021,13 @@ export function IrisPage({
       window.clearInterval(interval);
     };
   }, [loadFromSupabase]);
+
+  // Ref espelho do ticket aberto: o handler do realtime le sem re-assinar o canal.
+  const selectedTicketIdRef = useRef(selectedTicketId);
+
+  useEffect(() => {
+    selectedTicketIdRef.current = selectedTicketId;
+  }, [selectedTicketId]);
 
   const selectedTicket = useMemo(() => {
     return (
