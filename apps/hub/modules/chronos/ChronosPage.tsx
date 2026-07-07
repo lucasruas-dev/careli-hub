@@ -6,6 +6,7 @@ import {
   deleteChronosMeeting,
   deleteChronosRoom,
   draftChronosMinutes,
+  loadChronosMeetingArtifacts,
   loadChronosProfiles,
   loadChronosRooms,
   loadChronosSnapshot,
@@ -89,6 +90,62 @@ export function ChronosPage() {
   );
   const showInitialLoading =
     loading && snapshot.meetings.length === 0 && snapshot.rooms.length === 0;
+
+  // SNAPSHOT LEVE: timeline/transcricao/chat nao vem mais no snapshot geral
+  // (peso derrubava a funcao). Hidrata sob demanda quando a reuniao abre.
+  const [hydratedMeetingIds] = useState(() => new Set<string>());
+
+  useEffect(() => {
+    const meeting = snapshot.meetings.find(
+      (currentMeeting) => currentMeeting.id === selectedMeetingId,
+    );
+
+    if (!meeting || hydratedMeetingIds.has(meeting.id)) {
+      return;
+    }
+
+    const needsArtifacts =
+      (meeting.transcriptSegmentCount ?? 0) > 0 ||
+      meeting.transcriptionStatus === "available" ||
+      meeting.recordingStatus === "available" ||
+      meeting.minutes.length > 0;
+
+    if (!needsArtifacts) {
+      return;
+    }
+
+    hydratedMeetingIds.add(meeting.id);
+    let active = true;
+
+    void loadChronosMeetingArtifacts(meeting.id)
+      .then((artifacts) => {
+        if (!active) {
+          return;
+        }
+
+        setSnapshot((currentSnapshot) => ({
+          ...currentSnapshot,
+          meetings: currentSnapshot.meetings.map((currentMeeting) =>
+            currentMeeting.id === meeting.id
+              ? {
+                  ...currentMeeting,
+                  chatMessages: artifacts.chatMessages,
+                  timeline: artifacts.timeline,
+                  transcript: artifacts.transcript,
+                }
+              : currentMeeting,
+          ),
+        }));
+      })
+      .catch(() => {
+        // Permite nova tentativa ao reabrir a reuniao.
+        hydratedMeetingIds.delete(meeting.id);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [hydratedMeetingIds, selectedMeetingId, snapshot.meetings]);
 
   const replaceMeeting = useCallback((meeting: ChronosMeeting) => {
     setSnapshot((currentSnapshot) => ({

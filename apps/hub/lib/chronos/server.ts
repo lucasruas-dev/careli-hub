@@ -725,18 +725,21 @@ export async function listChronosSnapshot(
         ),
       )
       .sort(compareChronosMeetingRowsByStartDate);
-    await syncPendingChronosWherebyArtifactsForSnapshot({
-      actorUserId: authorization.user.id,
-      client,
-      meetings,
-      rooms: roomsResult.data ?? [],
-    });
+    // A sincronizacao de artefatos do Whereby SAIU do carregamento da pagina
+    // (rodava chamadas de API externas + ingestao de transcript em TODO F5 de
+    // TODO usuario). Agora roda no cron de sync (*/15min) via
+    // runChronosWherebyArtifactSweep — o snapshot e leitura pura.
     const meetingIds = meetings.map((meeting) => meeting.id);
 
+    // SNAPSHOT LEVE (7/jul): timeline e transcricao COMPLETAS ficaram FORA do
+    // snapshot — eram ~13MB por carregamento por usuario e derrubavam a funcao
+    // por memoria (OOM) nas manhas de uso simultaneo. O front hidrata esses
+    // dados SOB DEMANDA ao abrir a reuniao (GET /api/chronos/meetings/[id]/artifacts).
+    // Para o Drive mostrar "quem participou" sem os conteudos, carregamos so os
+    // speaker_labels (colunas leves).
     const [
       participantsResult,
-      timelineResult,
-      transcriptResult,
+      transcriptSpeakersResult,
       minutesResult,
       followUpsResult,
       recordingsResult,
@@ -751,23 +754,16 @@ export async function listChronosSnapshot(
                   .select("*")
                   .in("meeting_id", chunk),
             ),
-            listChronosMeetingRelatedRows<ChronosTimelineEventRow>(
-              meetingIds,
-              async (chunk) =>
-                client
-                  .from("chronos_timeline_events")
-                  .select("*")
-                  .in("meeting_id", chunk)
-                  .order("event_at", { ascending: false }),
-            ),
-            listChronosMeetingRelatedRows<ChronosTranscriptSegmentRow>(
+            listChronosMeetingRelatedRows<{
+              meeting_id: string;
+              speaker_label: string | null;
+            }>(
               meetingIds,
               async (chunk) =>
                 client
                   .from("chronos_transcript_segments")
-                  .select("*")
-                  .in("meeting_id", chunk)
-                  .order("created_at", { ascending: true }),
+                  .select("meeting_id,speaker_label")
+                  .in("meeting_id", chunk),
             ),
             listChronosMeetingRelatedRows<ChronosMinutesRow>(
               meetingIds,
@@ -799,17 +795,40 @@ export async function listChronosSnapshot(
           ])
         : [
             emptySupabaseList<ChronosParticipantRow>(),
-            emptySupabaseList<ChronosTimelineEventRow>(),
-            emptySupabaseList<ChronosTranscriptSegmentRow>(),
+            emptySupabaseList<{
+              meeting_id: string;
+              speaker_label: string | null;
+            }>(),
             emptySupabaseList<ChronosMinutesRow>(),
             emptySupabaseList<ChronosFollowUpRow>(),
             emptySupabaseList<ChronosRecordingRow>(),
           ];
 
+    const transcriptSummaryByMeetingId = new Map<
+      string,
+      { segmentCount: number; speakerLabels: Set<string> }
+    >();
+
+    for (const row of transcriptSpeakersResult.data ?? []) {
+      const summary = transcriptSummaryByMeetingId.get(row.meeting_id) ?? {
+        segmentCount: 0,
+        speakerLabels: new Set<string>(),
+      };
+
+      summary.segmentCount += 1;
+
+      const speakerLabel = row.speaker_label?.trim();
+
+      if (speakerLabel) {
+        summary.speakerLabels.add(speakerLabel);
+      }
+
+      transcriptSummaryByMeetingId.set(row.meeting_id, summary);
+    }
+
     const relatedDataErrors = [
       participantsResult.error,
-      timelineResult.error,
-      transcriptResult.error,
+      transcriptSpeakersResult.error,
       minutesResult.error,
       followUpsResult.error,
       recordingsResult.error,
@@ -884,30 +903,36 @@ export async function listChronosSnapshot(
             ? { ...meeting, recording_status: "available" as const }
             : meeting;
 
-        return mapMeetingRow({
-          chatMessages: groupRows(chatMessages, meeting.id).map(
-            mapChatMessageRow,
+        const transcriptSummary = transcriptSummaryByMeetingId.get(meeting.id);
+
+        return {
+          ...mapMeetingRow({
+            chatMessages: groupRows(chatMessages, meeting.id).map(
+              mapChatMessageRow,
+            ),
+            followUps: groupRows(followUpsResult.data ?? [], meeting.id).map(
+              mapFollowUpRow,
+            ),
+            meeting: normalizedMeeting,
+            minutes: groupRows(minutesResult.data ?? [], meeting.id).map(
+              mapMinutesRow,
+            ),
+            participants: groupRows(
+              participantsResult.data ?? [],
+              meeting.id,
+            ).map(mapParticipantRow),
+            recordings,
+            room: meeting.room_id ? roomsById.get(meeting.room_id) ?? null : null,
+            // Timeline/transcricao completas: hidratadas sob demanda pelo front
+            // (snapshot leve). Os resumos abaixo mantem Drive/paineis informativos.
+            timeline: [],
+            transcript: [],
+          }),
+          transcriptSegmentCount: transcriptSummary?.segmentCount ?? 0,
+          transcriptSpeakerLabels: Array.from(
+            transcriptSummary?.speakerLabels ?? [],
           ),
-          followUps: groupRows(followUpsResult.data ?? [], meeting.id).map(
-            mapFollowUpRow,
-          ),
-          meeting: normalizedMeeting,
-          minutes: groupRows(minutesResult.data ?? [], meeting.id).map(
-            mapMinutesRow,
-          ),
-          participants: groupRows(
-            participantsResult.data ?? [],
-            meeting.id,
-          ).map(mapParticipantRow),
-          recordings,
-          room: meeting.room_id ? roomsById.get(meeting.room_id) ?? null : null,
-          timeline: groupRows(timelineResult.data ?? [], meeting.id).map(
-            mapTimelineRow,
-          ),
-          transcript: groupRows(transcriptResult.data ?? [], meeting.id).map(
-            mapTranscriptRow,
-          ),
-        });
+        };
       }),
       profiles,
       rooms,
@@ -3432,48 +3457,143 @@ async function logChronosWherebyPublicDriveDiagnostic({
   }
 }
 
-async function syncPendingChronosWherebyArtifactsForSnapshot({
-  actorUserId,
-  client,
-  meetings,
-  rooms,
-}: {
-  actorUserId: string;
-  client: ChronosClient;
-  meetings: ChronosMeetingRow[];
-  rooms: ChronosRoomRow[];
-}) {
-  const roomsById = new Map(rooms.map((room) => [room.id, room]));
-  const candidates = meetings
-    .filter(shouldSyncChronosWherebyArtifactsInSnapshot)
-    .sort(compareChronosWherebyArtifactSyncCandidates)
-    .slice(0, chronosWherebySnapshotSyncLimit);
+// Varredura de artefatos do Whereby (gravacao/transcricao/participantes) que
+// RODAVA dentro do snapshot da pagina — cada F5 disparava chamadas a API do
+// Whereby + ingestao de transcript, derrubando a funcao nas manhas de uso
+// simultaneo. Agora e chamada pelo cron de sync do Google (*/15min).
+export async function runChronosWherebyArtifactSweep(
+  { limit = chronosWherebySnapshotSyncLimit }: { limit?: number } = {},
+) {
+  const client = createChronosClient();
 
-  if (candidates.length === 0) {
-    return;
+  if (!client) {
+    return { skipped: true as const, synced: 0 };
   }
 
+  const [meetingsResult, roomsResult] = await Promise.all([
+    client
+      .from("chronos_meetings")
+      .select("*")
+      .or(
+        "external_reference.like.whereby-room:%,recording_status.eq.available,transcription_status.eq.available",
+      )
+      .gte(
+        "updated_at",
+        new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+      )
+      .order("updated_at", { ascending: false })
+      .limit(80),
+    client.from("chronos_rooms").select("*").eq("status", "active"),
+  ]);
+
+  const roomsById = new Map(
+    (roomsResult.data ?? []).map((room) => [room.id, room]),
+  );
+  const candidates = (meetingsResult.data ?? [])
+    .filter(shouldSyncChronosWherebyArtifactsInSnapshot)
+    .sort(compareChronosWherebyArtifactSyncCandidates)
+    .slice(0, limit);
+  let synced = 0;
+
   for (const meeting of candidates) {
+    const room = meeting.room_id ? roomsById.get(meeting.room_id) : null;
+
+    if (!room) {
+      continue;
+    }
+
     try {
-      const room = meeting.room_id ? roomsById.get(meeting.room_id) : null;
-
-      if (!room) {
-        continue;
-      }
-
       await syncChronosWherebyMeetingArtifacts({
-        actorUserId,
+        actorUserId: meeting.host_user_id ?? room.created_by_user_id ?? null,
         client,
         meeting,
         room,
       });
+      synced += 1;
     } catch (error) {
       console.warn(
-        "[chronos] Whereby snapshot reconciliation failed",
+        "[chronos] Whereby artifact sweep failed",
         error instanceof Error ? error.message : "unknown error",
       );
     }
   }
+
+  return { skipped: false as const, synced };
+}
+
+// Artefatos pesados de UMA reuniao (timeline + transcricao + chat), carregados
+// sob demanda quando o usuario abre a reuniao — sairam do snapshot geral por
+// peso (ver comentario no listChronosSnapshot).
+export async function getChronosMeetingArtifacts(
+  authorization: Extract<ChronosAuthorization, { ok: true }>,
+  meetingId: string,
+) {
+  const client = authorization.client;
+
+  if (!client) {
+    return null;
+  }
+
+  const meetingResult = await client
+    .from("chronos_meetings")
+    .select("id,host_user_id")
+    .eq("id", meetingId)
+    .maybeSingle<{ host_user_id: string | null; id: string }>();
+
+  if (meetingResult.error || !meetingResult.data) {
+    return null;
+  }
+
+  const isHost = meetingResult.data.host_user_id === authorization.user.id;
+  const isAdmin = authorization.user.role === "admin";
+
+  if (!isHost && !isAdmin) {
+    const email = authorization.user.email?.trim();
+    let participantQuery = client
+      .from("chronos_participants")
+      .select("id")
+      .eq("meeting_id", meetingId);
+
+    participantQuery = email
+      ? participantQuery.or(
+          `user_id.eq.${authorization.user.id},email.ilike.${email}`,
+        )
+      : participantQuery.eq("user_id", authorization.user.id);
+
+    const participantResult = await participantQuery.limit(1);
+
+    if (participantResult.error || (participantResult.data ?? []).length === 0) {
+      return null;
+    }
+  }
+
+  const [timelineResult, transcriptResult, chatResult] = await Promise.all([
+    client
+      .from("chronos_timeline_events")
+      .select("*")
+      .eq("meeting_id", meetingId)
+      .order("event_at", { ascending: false })
+      .limit(500),
+    client
+      .from("chronos_transcript_segments")
+      .select("*")
+      .eq("meeting_id", meetingId)
+      .order("created_at", { ascending: true })
+      .limit(3000),
+    client
+      .from("chronos_chat_messages")
+      .select("*")
+      .eq("meeting_id", meetingId)
+      .order("created_at", { ascending: true })
+      .limit(500),
+  ]);
+
+  return {
+    chatMessages: (chatResult.data ?? []).map(mapChatMessageRow),
+    meetingId,
+    timeline: (timelineResult.data ?? []).map(mapTimelineRow),
+    transcript: (transcriptResult.data ?? []).map(mapTranscriptRow),
+  };
 }
 
 function shouldSyncChronosWherebyArtifactsInSnapshot(

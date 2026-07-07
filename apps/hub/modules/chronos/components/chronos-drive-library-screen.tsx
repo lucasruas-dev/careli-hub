@@ -470,7 +470,9 @@ function hasChronosMeetingMinutesWorkspace(meeting: ChronosMeeting) {
 
   return (
     hasChronosMeetingAvailableRecording(safeMeeting) ||
-    safeMeeting.transcript.length > 0 ||
+    // Snapshot leve: os segmentos completos chegam sob demanda; o resumo
+    // (transcriptSegmentCount) diz se ha transcricao.
+    (safeMeeting.transcriptSegmentCount ?? safeMeeting.transcript.length) > 0 ||
     safeMeeting.minutes.length > 0 ||
     safeMeeting.minutesStatus !== "not_started"
   );

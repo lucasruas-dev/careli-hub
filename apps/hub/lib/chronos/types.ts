@@ -337,6 +337,10 @@ export type ChronosMeeting = {
   title: string;
   transcriptionStatus: ChronosCaptureStatus;
   transcript: ChronosTranscriptSegment[];
+  // Resumo leve da transcricao (snapshot nao carrega os segmentos completos;
+  // eles chegam sob demanda via /api/chronos/meetings/[id]/artifacts).
+  transcriptSegmentCount?: number;
+  transcriptSpeakerLabels?: string[];
   updatedAt: string;
 };
 

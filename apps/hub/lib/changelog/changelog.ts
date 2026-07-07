@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-chronos-snapshot-leve",
+    deployedAt: "2026-07-07T10:40:00-03:00",
+    modules: [
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "Correção definitiva do 'Não foi possível carregar o Chronos': o módulo carregava TODOS os dados de TODAS as reuniões (transcrições completas, histórico, sincronização com o Whereby) em cada acesso e o servidor caía por memória nos horários de pico.",
+              "Agora a agenda abre leve: transcrição, timeline e chat carregam só quando você abre a reunião.",
+              "A sincronização de gravações/transcrições do Whereby passou a rodar em segundo plano (a cada 15 min), não mais durante o carregamento da página.",
+            ],
+            screen: "Agenda e Drive",
+          },
+        ],
+      },
+    ],
+    rollback: "commit eb792774",
+    technical: {
+      done: "SNAPSHOT LEVE: listChronosSnapshot nao carrega mais timeline (4MB) + transcript segments (9MB) de todas as reunioes — só resumo leve (transcriptSegmentCount + transcriptSpeakerLabels via select meeting_id,speaker_label). Nova rota GET /api/chronos/meetings/[id]/artifacts (timeline+transcript+chat de UMA reuniao, com check host/participante/admin) + hidratacao sob demanda no ChronosPage (useEffect na selecao, Set de hidratadas). syncPendingChronosWherebyArtifactsForSnapshot REMOVIDO do GET -> export runChronosWherebyArtifactSweep chamado pelo sync-cron (*/15min, teto por rodada, actor = host da reuniao). drive_snapshot_diagnostic reduzido a contagens. Drive card/library usam o resumo leve. Causa raiz dos OOMs 'instance was killed' no /api/chronos/meetings (7 kills/4h, medicao: transcricoes 9MB + timeline 4MB + participantes 2.7MB por load por usuario + Whereby API inline). v1.25.3 -> v1.26.0.",
+      motivation:
+        "Lucas 09:59: 'teria como resolver de vez esse problema? estamos desde manha' — Chronos com 'Nao foi possivel carregar' recorrente mesmo apos v1.25.1/1.25.2; logs mostraram OOM persistente com apenas 284 reunioes visiveis.",
+    },
+    title: "Chronos: carregamento leve e estável (fim do 'não foi possível carregar')",
+    type: "correcao",
+    version: "1.26.0",
+  },
+  {
     buildTag: "2026-07-07-hermes-thread-nao-lida",
     deployedAt: "2026-07-07T10:00:00-03:00",
     modules: [

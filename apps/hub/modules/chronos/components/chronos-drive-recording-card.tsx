@@ -206,9 +206,15 @@ function getChronosDrivePeople(
     return Array.from(new Set(checkedIn));
   }
 
-  const speakers = meeting.transcript
-    .map((segment) => segment.speakerLabel?.trim())
-    .filter((name): name is string => Boolean(name));
+  // Snapshot leve: os segmentos completos nao vem na listagem — o resumo de
+  // quem falou chega em transcriptSpeakerLabels; o transcript so existe se a
+  // reuniao ja foi hidratada sob demanda.
+  const speakers =
+    meeting.transcriptSpeakerLabels && meeting.transcriptSpeakerLabels.length > 0
+      ? meeting.transcriptSpeakerLabels
+      : meeting.transcript
+          .map((segment) => segment.speakerLabel?.trim())
+          .filter((name): name is string => Boolean(name));
 
   return Array.from(new Set(speakers));
 }
@@ -274,8 +280,10 @@ function ChronosDriveArtifactChips({
         ? "Video falhou; audio pode gerar ata"
         : "Video em processamento";
 
+  const transcriptSegmentCount =
+    meeting.transcriptSegmentCount ?? meeting.transcript.length;
   const transcriptState: ChronosDriveArtifactState =
-    meeting.transcript.length > 0
+    transcriptSegmentCount > 0
       ? "ok"
       : meeting.transcriptionStatus === "processing" ||
           meeting.transcriptionStatus === "available" ||
@@ -292,7 +300,7 @@ function ChronosDriveArtifactChips({
   const minutesState: ChronosDriveArtifactState =
     meeting.minutes.length > 0
       ? "ok"
-      : meeting.transcript.length > 0
+      : transcriptSegmentCount > 0
         ? "processing"
         : "none";
   const minutesTitle =

@@ -117,6 +117,35 @@ export async function loadChronosSnapshot(accessToken?: string | null) {
   } satisfies ChronosSnapshot;
 }
 
+// Artefatos pesados de uma reuniao (timeline + transcricao + chat) — o
+// snapshot geral nao os carrega mais; hidratamos ao abrir a reuniao.
+export async function loadChronosMeetingArtifacts(
+  meetingId: string,
+  accessToken?: string | null,
+) {
+  const { payload, response } = await fetchChronosApi<{
+    chatMessages?: ChronosMeeting["chatMessages"];
+    error?: string;
+    timeline?: ChronosMeeting["timeline"];
+    transcript?: ChronosMeeting["transcript"];
+  }>({
+    accessToken,
+    url: `/api/chronos/meetings/${meetingId}/artifacts`,
+  });
+
+  if (!response.ok || !payload) {
+    throw new Error(
+      payload?.error ?? "Nao foi possivel carregar os detalhes da reuniao.",
+    );
+  }
+
+  return {
+    chatMessages: payload.chatMessages ?? [],
+    timeline: payload.timeline ?? [],
+    transcript: payload.transcript ?? [],
+  };
+}
+
 export async function loadChronosRooms(accessToken?: string | null) {
   const { payload, response } = await fetchChronosApi<ChronosApiResponse>({
     accessToken,
