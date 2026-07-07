@@ -32,6 +32,44 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-chronos-agenda-confiavel",
+    deployedAt: "2026-07-07T08:00:00-03:00",
+    modules: [
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "O calendário agora mostra TODAS as reuniões da equipe (antes algumas sumiam e cada tela mostrava uma coisa).",
+              "Reuniões importadas do Google aparecem para todos os convidados, não só para quem criou.",
+              "A agenda sincroniza com o Google sozinha, de 15 em 15 minutos, mesmo com o hub fechado.",
+              "Só entram no Chronos reuniões da empresa: a rotina pessoal do Google de cada um fica fora.",
+              "Reuniões duplicadas (a mesma reunião aparecendo 2 ou 3 vezes) foram unificadas.",
+            ],
+            screen: "Agenda",
+          },
+          {
+            items: [
+              "Visual novo dos cards: status de Vídeo, Transcrição e Ata em etiquetas coloridas com detalhe ao passar o mouse.",
+              "Quem participou agora aparece mesmo em salas abertas sem convite (nomes vêm da transcrição).",
+              "Vídeos que estavam presos como 'Pendente' voltaram a ficar disponíveis (limite de upload corrigido).",
+            ],
+            screen: "Drive",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 5776cbb2",
+    technical: {
+      done: "listChronosSnapshot: janela -45/+120d asc limit 5000 (antes limit 1500 starts_at DESC cortava a semana atual com >1500 futuras); visibilidade de imports Google p/ admin+participantes; filtro de import company-only (Careli:*/@careli.adm.br/deslocamento; envs CHRONOS_GOOGLE_IMPORT_*); lookup de vinculo deterministico (created_at asc); etag early-exit + nota de timeline so com mudanca real (620k notas de spam apagadas); host_user_id nao e mais roubado pelo sync; cron novo /api/chronos/google-calendar/sync-cron (*/15min); Drive card redesenhado (chips artefato, pessoas via transcript speakers, objetivo generico oculto); 'Sala pendente' -> endereco Google/'Google Agenda'. Banco: 354 duplicatas removidas (canonica preservada), 1.404 itens pessoais soft-cancelados, Global file size limit 50MB->2GB + bucket 2GB (madrugada), 29 orfaos re-enfileirados no egress. v1.24.5 -> v1.25.0.",
+      motivation:
+        "Prints do Lucas 7/jul: Google Calendar x agenda Chronos x Meu dia com 3 respostas diferentes, videos sem aparecer, atas travadas, Drive baguncado. Diagnostico completo achou 6 causas raizes (ver memoria project_chronos_diagnostico_completo).",
+    },
+    title: "Chronos: agenda confiável, sync automático e Drive repaginado",
+    type: "melhoria",
+    version: "1.25.0",
+  },
+  {
     buildTag: "2026-07-07-promessa-multi-parcela",
     deployedAt: "2026-07-07T00:55:00-03:00",
     modules: [
