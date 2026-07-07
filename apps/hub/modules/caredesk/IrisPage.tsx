@@ -2452,7 +2452,11 @@ function IrisConversationPanel({
     }
   }
 
-  async function performClose(options: { closeReason?: string; subject?: string }) {
+  async function performClose(options: {
+    closeReason?: string;
+    motivo?: string;
+    subject?: string;
+  }) {
     if (ticketClosed || closingTicket) {
       return;
     }
@@ -2467,6 +2471,7 @@ function IrisConversationPanel({
           action: "close",
           closeReason:
             options.closeReason ?? "Encerrado manualmente no atendimento Iris.",
+          ...(options.motivo ? { closeMotivo: options.motivo } : {}),
           ...(options.subject ? { subject: options.subject } : {}),
           ticketId: ticket.id,
         }),
@@ -2524,9 +2529,9 @@ function IrisConversationPanel({
       setCloseModalOpen(false);
       await logCobrancaTimeline(
         "Atendimento encerrado",
-        `Protocolo ${ticket.protocol}${options.subject ? ` · ${options.subject}` : ""}${
-          options.closeReason ? ` · ${options.closeReason}` : ""
-        }`,
+        `Protocolo ${ticket.protocol}${options.motivo ? ` · ${options.motivo}` : ""}${
+          options.subject ? ` · ${options.subject}` : ""
+        }${options.closeReason ? ` · ${options.closeReason}` : ""}`,
       );
       setFeedback(
         payload?.alreadyClosed
@@ -4069,9 +4074,10 @@ function IrisConversationPanel({
           protocol={ticket.protocol}
           submitting={closingTicket}
           onCancel={() => setCloseModalOpen(false)}
-          onConfirm={({ note, subject }) =>
+          onConfirm={({ note, reason, subject }) =>
             void performClose({
               closeReason: note || undefined,
+              motivo: reason || undefined,
               subject: subject || undefined,
             })
           }

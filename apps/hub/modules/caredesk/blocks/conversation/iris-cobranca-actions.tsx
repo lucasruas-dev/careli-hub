@@ -16,6 +16,13 @@ type IrisOperatorOption = {
   role?: string | null;
 };
 
+// Motivo do encerramento (obrigatório): o operador aponta por que está fechando.
+const IRIS_CLOSE_REASON_OPTIONS = [
+  "Finalizado",
+  "Sem Interação",
+  "Sem Continuidade",
+] as const;
+
 export function IrisCobrancaCloseModal({
   currentSubject,
   onCancel,
@@ -25,12 +32,13 @@ export function IrisCobrancaCloseModal({
 }: {
   currentSubject: string;
   onCancel: () => void;
-  onConfirm: (input: { note: string; subject: string }) => void;
+  onConfirm: (input: { note: string; reason: string; subject: string }) => void;
   protocol: string;
   submitting: boolean;
 }) {
   const [note, setNote] = useState("");
   const [subject, setSubject] = useState(currentSubject);
+  const [reason, setReason] = useState("");
   const [subjects, setSubjects] = useState<string[]>([]);
 
   useEffect(() => {
@@ -96,6 +104,24 @@ export function IrisCobrancaCloseModal({
       </label>
       <label className="block">
         <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+          Motivo do encerramento{" "}
+          <span className="font-normal text-rose-500">(obrigatório)</span>
+        </span>
+        <select
+          value={reason}
+          onChange={(event) => setReason(event.target.value)}
+          className="h-9 w-full rounded-lg border border-slate-200/70 bg-white px-2 text-sm text-slate-800 outline-none focus:border-[#A07C3B]/40"
+        >
+          <option value="">Selecione o motivo…</option>
+          {IRIS_CLOSE_REASON_OPTIONS.map((option) => (
+            <option key={option} value={option}>
+              {option}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className="block">
+        <span className="mb-1 block text-[11px] font-semibold text-slate-500">
           Observação do encerramento{" "}
           <span className="font-normal text-slate-400">(opcional)</span>
         </span>
@@ -109,9 +135,11 @@ export function IrisCobrancaCloseModal({
       </label>
       <ModalFooter
         confirmLabel="Encerrar"
-        disabled={!subject.trim()}
+        disabled={!subject.trim() || !reason}
         onCancel={onCancel}
-        onConfirm={() => onConfirm({ note: note.trim(), subject: subject.trim() })}
+        onConfirm={() =>
+          onConfirm({ note: note.trim(), reason, subject: subject.trim() })
+        }
         submitting={submitting}
         tone="danger"
       />

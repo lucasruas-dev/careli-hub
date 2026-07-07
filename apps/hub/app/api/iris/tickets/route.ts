@@ -773,6 +773,10 @@ export async function PATCH(request: NextRequest) {
   const closeReason =
     normalizeText(input?.closeReason) ??
     "Encerrado pelo operador no modulo Iris.";
+  // Motivo ESTRUTURADO do encerramento (Finalizado / Sem Interação / Sem
+  // Continuidade). Diferente do closeReason (observação livre). Enforçado na UI;
+  // aqui só persiste quando enviado (fechamentos automáticos da Caca podem não ter).
+  const closeMotivo = normalizeText(input?.closeMotivo);
   const updatedSubject = normalizeText(input?.subject);
   const transferReason =
     normalizeText(input?.transferReason) ??
@@ -1149,6 +1153,7 @@ export async function PATCH(request: NextRequest) {
       ...existingMetadata,
       closedAt: effectiveClosedAt,
       closedByUserId: authorization.user.id,
+      closedMotivo: closeMotivo ?? existingMetadata.closedMotivo ?? null,
       closedReason: closeReason,
       closedSource: "iris_operator",
       closedTicketProtocol: existing.protocol ?? null,

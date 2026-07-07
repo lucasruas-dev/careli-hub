@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-07-iris-motivo-encerramento",
+    deployedAt: "2026-07-07T15:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Para encerrar um atendimento agora é obrigatório informar o ASSUNTO e o MOTIVO do encerramento.",
+              "O motivo tem 3 opções: Finalizado · Sem Interação · Sem Continuidade. O botão Encerrar só libera depois de escolher os dois.",
+              "O motivo fica registrado no ticket (e na timeline) — dá pra saber por que cada atendimento foi fechado.",
+            ],
+            screen: "Atendimento — Encerrar",
+          },
+        ],
+      },
+    ],
+    rollback: "commit anterior na main",
+    technical: {
+      done: "IrisCobrancaCloseModal: novo select 'Motivo do encerramento' (IRIS_CLOSE_REASON_OPTIONS: Finalizado/Sem Interação/Sem Continuidade), obrigatório; onConfirm passa { note, reason, subject } e o Encerrar fica disabled sem subject+reason. IrisPage.performClose envia closeMotivo pra PATCH /api/iris/tickets action=close + inclui no log da timeline. API: parse closeMotivo (normalizeText) e persiste metadata.closedMotivo (enforçado na UI; fechamentos automáticos da Caca seguem sem motivo). v1.27.2 -> v1.27.3.",
+      motivation:
+        "Pedido do Lucas: no encerramento da Iris exigir assunto + motivo (3 opções) e apontar por que o ticket está sendo fechado.",
+    },
+    title: "Iris: motivo do encerramento obrigatório (Finalizado/Sem Interação/Sem Continuidade)",
+    type: "melhoria",
+    version: "1.27.3",
+  },
+  {
     buildTag: "2026-07-07-iris-mensagens-instantaneas",
     deployedAt: "2026-07-07T15:40:00-03:00",
     modules: [
