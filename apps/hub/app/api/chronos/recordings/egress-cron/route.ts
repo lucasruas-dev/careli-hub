@@ -97,6 +97,9 @@ export async function GET(request: NextRequest) {
         fileName: recording.file_name,
         meetingId: recording.meeting_id,
         mimeType: recording.mime_type,
+        // REST streaming: video grande bufferizado pelo storage-js matava a
+        // instancia compartilhada (OOMs no /api/chronos/meetings, 7/jul).
+        rest: { serviceRoleKey, url: supabaseUrl },
         storage: admin.storage,
         wherebyRecordingId,
       });

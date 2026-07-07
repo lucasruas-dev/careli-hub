@@ -33,6 +33,12 @@ export type ChronosWherebyEgressInput = {
   fileName?: string | null;
   mimeType?: string | null;
   deleteFromWherebyAfterCopy?: boolean;
+  // Upload STREAMING via REST do Storage (Content-Length explicito): o caminho
+  // storage-js bufferizava o video inteiro em memoria com arquivos grandes
+  // (200-900MB pos-limite-2GB) e derrubava a INSTANCIA compartilhada — os OOMs
+  // do /api/chronos/meetings de 7/jul correlacionam 1:1 com os horarios das
+  // copias grandes (12:30, 13:30, 14:00 UTC). Quando presente, usa fetch cru.
+  rest?: { serviceRoleKey: string; url: string };
 };
 
 export type ChronosWherebyEgressResult = {
@@ -55,6 +61,7 @@ export async function egressChronosWherebyRecordingToStorage({
   fileName,
   mimeType,
   deleteFromWherebyAfterCopy = false,
+  rest,
 }: ChronosWherebyEgressInput): Promise<ChronosWherebyEgressResult> {
   const { accessLink } = await getChronosWherebyRecordingAccessLink(
     wherebyRecordingId,
@@ -90,21 +97,51 @@ export async function egressChronosWherebyRecordingToStorage({
   );
   const uploadBody: Blob | ReadableStream<Uint8Array> =
     downloadResponse.body ?? (await downloadResponse.blob());
-  const uploadResult = await storage
-    .from(bucket)
-    .upload(storagePath, uploadBody, {
-      contentType,
-      duplex: "half",
-      upsert: true,
-    });
+  let finalPath = storagePath;
 
-  if (uploadResult.error) {
-    throw new Error(
-      `Upload da gravacao para o storage falhou: ${uploadResult.error.message}`,
+  if (rest && downloadResponse.body && contentLength > 0) {
+    // Streaming REAL: fetch cru para o endpoint do Storage com Content-Length
+    // explicito — o corpo passa em chunks, memoria fica em KBs por copia.
+    const uploadResponse = await fetch(
+      `${rest.url.replace(/\/+$/, "")}/storage/v1/object/${bucket}/${storagePath}`,
+      {
+        body: downloadResponse.body,
+        // @ts-expect-error duplex e exigido pelo undici para body em stream.
+        duplex: "half",
+        headers: {
+          Authorization: `Bearer ${rest.serviceRoleKey}`,
+          "Content-Length": String(contentLength),
+          "Content-Type": contentType,
+          "x-upsert": "true",
+        },
+        method: "POST",
+      },
     );
-  }
 
-  const finalPath = uploadResult.data?.path ?? storagePath;
+    if (!uploadResponse.ok) {
+      const errorBody = await uploadResponse.text().catch(() => "");
+
+      throw new Error(
+        `Upload da gravacao para o storage falhou: HTTP ${uploadResponse.status} ${errorBody.slice(0, 200)}`,
+      );
+    }
+  } else {
+    const uploadResult = await storage
+      .from(bucket)
+      .upload(storagePath, uploadBody, {
+        contentType,
+        duplex: "half",
+        upsert: true,
+      });
+
+    if (uploadResult.error) {
+      throw new Error(
+        `Upload da gravacao para o storage falhou: ${uploadResult.error.message}`,
+      );
+    }
+
+    finalPath = uploadResult.data?.path ?? storagePath;
+  }
   let deletedFromWhereby = false;
 
   // So apaga do Whereby DEPOIS do upload ter dado certo — evita perder a gravacao.
