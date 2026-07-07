@@ -99,7 +99,21 @@ export async function egressChronosWherebyRecordingToStorage({
     downloadResponse.body ?? (await downloadResponse.blob());
   let finalPath = storagePath;
 
-  if (rest && downloadResponse.body && contentLength > 0) {
+  if (rest && downloadResponse.body && contentLength > TUS_THRESHOLD_BYTES) {
+    // Video GRANDE: upload resumable (TUS) em pedacos de 6MB — memoria
+    // CONSTANTE por copia. Medicao 7/jul ([panteon:mem]): o fetch single-shot,
+    // mesmo com body em stream + Content-Length, acumulava o arquivo INTEIRO
+    // em arrayBuffers (63MB de video = 67MB de buffers) — com videos de
+    // 300-900MB era o pico que derrubava a instancia compartilhada (OOMs).
+    await uploadRecordingViaTusChunks({
+      body: downloadResponse.body,
+      bucket,
+      contentLength,
+      contentType,
+      rest,
+      storagePath,
+    });
+  } else if (rest && downloadResponse.body && contentLength > 0) {
     // Streaming REAL: fetch cru para o endpoint do Storage com Content-Length
     // explicito — o corpo passa em chunks, memoria fica em KBs por copia.
     const uploadResponse = await fetch(
@@ -160,6 +174,133 @@ export async function egressChronosWherebyRecordingToStorage({
     sizeBytes: Number.isFinite(contentLength) ? contentLength : 0,
     storagePath: finalPath,
   };
+}
+
+// Supabase exige pedacos de EXATAMENTE 6MB no upload resumable (exceto o ultimo).
+const TUS_CHUNK_SIZE = 6 * 1024 * 1024;
+// Acima disso, TUS em pedacos; abaixo, single-shot (buffer pequeno e inofensivo).
+const TUS_THRESHOLD_BYTES = 32 * 1024 * 1024;
+
+function encodeTusMetadataValue(value: string) {
+  return Buffer.from(value, "utf-8").toString("base64");
+}
+
+// Upload resumable (protocolo TUS) do Supabase Storage: cria a sessao, depois
+// envia o stream em PATCHes sequenciais de 6MB. Memoria por copia = ~1 chunk.
+async function uploadRecordingViaTusChunks({
+  body,
+  bucket,
+  contentLength,
+  contentType,
+  rest,
+  storagePath,
+}: {
+  body: ReadableStream<Uint8Array>;
+  bucket: string;
+  contentLength: number;
+  contentType: string;
+  rest: { serviceRoleKey: string; url: string };
+  storagePath: string;
+}) {
+  const baseUrl = rest.url.replace(/\/+$/, "");
+  const authHeaders = {
+    apikey: rest.serviceRoleKey,
+    Authorization: `Bearer ${rest.serviceRoleKey}`,
+    "Tus-Resumable": "1.0.0",
+  } as const;
+
+  const createResponse = await fetch(`${baseUrl}/storage/v1/upload/resumable`, {
+    headers: {
+      ...authHeaders,
+      "Upload-Length": String(contentLength),
+      "Upload-Metadata": [
+        `bucketName ${encodeTusMetadataValue(bucket)}`,
+        `objectName ${encodeTusMetadataValue(storagePath)}`,
+        `contentType ${encodeTusMetadataValue(contentType)}`,
+        `cacheControl ${encodeTusMetadataValue("3600")}`,
+      ].join(","),
+      "x-upsert": "true",
+    },
+    method: "POST",
+  });
+
+  if (createResponse.status !== 201) {
+    const errorBody = await createResponse.text().catch(() => "");
+
+    throw new Error(
+      `Upload da gravacao para o storage falhou (TUS create): HTTP ${createResponse.status} ${errorBody.slice(0, 200)}`,
+    );
+  }
+
+  const location = createResponse.headers.get("location");
+
+  if (!location) {
+    throw new Error(
+      "Upload da gravacao para o storage falhou (TUS create): sem Location.",
+    );
+  }
+
+  const uploadUrl = location.startsWith("http")
+    ? location
+    : `${baseUrl}${location.startsWith("/") ? "" : "/"}${location}`;
+
+  const reader = body.getReader();
+  let pending = new Uint8Array(0);
+  let offset = 0;
+  let finished = false;
+
+  const sendChunk = async (chunk: Uint8Array) => {
+    const patchResponse = await fetch(uploadUrl, {
+      body: chunk,
+      headers: {
+        ...authHeaders,
+        "Content-Type": "application/offset+octet-stream",
+        "Upload-Offset": String(offset),
+      },
+      method: "PATCH",
+    });
+
+    if (patchResponse.status !== 204) {
+      const errorBody = await patchResponse.text().catch(() => "");
+
+      throw new Error(
+        `Upload da gravacao para o storage falhou (TUS chunk offset ${offset}): HTTP ${patchResponse.status} ${errorBody.slice(0, 200)}`,
+      );
+    }
+
+    offset += chunk.byteLength;
+  };
+
+  while (!finished) {
+    const { done, value } = await reader.read();
+
+    if (value && value.byteLength > 0) {
+      const merged = new Uint8Array(pending.byteLength + value.byteLength);
+
+      merged.set(pending, 0);
+      merged.set(value, pending.byteLength);
+      pending = merged;
+    }
+
+    finished = done;
+
+    // Envia pedacos EXATOS de 6MB enquanto houver sobra; o resto espera mais
+    // dados (ou vira o ultimo pedaco quando o stream termina).
+    while (pending.byteLength >= TUS_CHUNK_SIZE) {
+      await sendChunk(pending.slice(0, TUS_CHUNK_SIZE));
+      pending = pending.slice(TUS_CHUNK_SIZE);
+    }
+  }
+
+  if (pending.byteLength > 0 || offset === 0) {
+    await sendChunk(pending);
+  }
+
+  if (offset !== contentLength) {
+    throw new Error(
+      `Upload da gravacao para o storage falhou (TUS): enviados ${offset} de ${contentLength} bytes.`,
+    );
+  }
 }
 
 const RECORDING_EXTENSION_MIME: Record<string, string> = {
