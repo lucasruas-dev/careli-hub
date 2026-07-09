@@ -32,6 +32,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-09-apolo-cadastro-cad",
+    deployedAt: "2026-07-09T00:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Novo botão + no topo do Apolo abre o cadastro de CAD: você escolhe o tipo (Prospect já disponível; Imobiliária, Colaborador, Fornecedor e Parceiro chegam em breve).",
+              "Cadastro de Prospect por documento: suba o RG ou a CNH e o sistema lê os dados e completa o resto pela consulta ao CPF (nome da mãe, telefone, faixa de renda, sexo). O endereço vem do comprovante.",
+              "Casado ou união estável abre a ficha completa do cônjuge (também lida e enriquecida) e pede a certidão correspondente ao estado civil, com a autenticidade verificada.",
+              "Telefone com país (bandeira e formato de cada país) e edição livre, e-mail com validação. No fim, o CAD sai como um documento em PDF pronto para imprimir.",
+            ],
+            screen: "Cadastro de CAD",
+          },
+        ],
+      },
+    ],
+    rollback: "commit b55f4f2d (v1.27.5)",
+    technical: {
+      done: "Novo fluxo /apolo/cadastro (CadastroFlow): wizard Identificacao -> Endereco -> (Certidao se casado/div/sep/uniao) -> Revisao. Leitura de documento via MOST (route /api/apolo/mostqi: authenticate/extract/enrich; lib/apolo/mostqi.ts) + enriquecimento por CPF. Campos do C2X em lib/apolo/c2x-fields.ts (sexo/estado civil/escolaridade/faixa renda com ids FK) + c2x-professions.ts (234). Conjuge: ficha espelho do titular, lida + enriquecida (sexo/telefone/renda/patrimonio), escolaridade/profissao manuais, email != titular. PhoneField internacional (PHONE_COUNTRIES + mascara por pais). Gera CAD como documento HTML proprio em janela nova (window.print), titulo Cadastro de CAD, subtitulo Prospect, vinculo/imobiliaria no topo. Botao + no ApoloHeader (apolo-shell) abre seletor de tipos (lib/apolo/cadastro-tipos.ts; so Prospect disponivel). ATENCAO: MOST em prod exige IP na whitelist; a Vercel nao tem IP fixo, entao a leitura de documento pode falhar ate colocarmos um proxy de IP fixo (LOCAL_MOCK cobre so o localhost). v1.27.5 -> v1.28.0.",
+      motivation:
+        "Lucas: montar o cadastro de CAD do Apolo (foco Prospect) por documento, com leitura e enriquecimento automaticos e CAD final impressao-ready, ligado ao botao + do Apolo com seletor de tipo.",
+    },
+    title: "Apolo: cadastro de CAD por documento (Prospect) com leitura + enriquecimento MOST",
+    type: "novidade",
+    version: "1.28.0",
+  },
+  {
     buildTag: "2026-07-07-chronos-lupa-apresentacao",
     deployedAt: "2026-07-07T19:10:00-03:00",
     modules: [

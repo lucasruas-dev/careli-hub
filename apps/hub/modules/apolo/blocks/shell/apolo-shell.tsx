@@ -1,3 +1,8 @@
+"use client";
+
+import { useState } from "react";
+
+import { CADASTRO_TIPOS } from "@/lib/apolo/cadastro-tipos";
 import { apoloScreens, type ApoloScreen } from "@/lib/apolo/catalog";
 import type { ApoloDashboardData } from "@/lib/apolo/types";
 import { Tooltip } from "@repo/uix";
@@ -53,19 +58,79 @@ export function ApoloHeader({
         <HeaderAction icon={MessageCircle} label="Atendimento" tone="emerald" />
         <HeaderAction icon={FileText} label="Documentos" tone="slate" />
         <HeaderAction icon={Sparkles} label="Preenchimento assistido" tone="amber" />
-        <Tooltip content="Criacao de relacionamento sera liberada no fluxo de cadastro assistido.">
-          <button
-            aria-label="Novo relacionamento"
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-500 opacity-70"
-            disabled
-            type="button"
-          >
-            <Plus className="size-4" aria-hidden="true" />
-            Novo
-          </button>
-        </Tooltip>
+        <NovoCadastroMenu />
       </div>
     </header>
+  );
+}
+
+// Botão "+" que abre o seletor de tipo de cadastro (CAD). Só Prospect está
+// liberado; os demais aparecem como "em breve".
+function NovoCadastroMenu() {
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="relative">
+      <Tooltip content="Novo cadastro de CAD">
+        <button
+          aria-expanded={open}
+          aria-haspopup="menu"
+          aria-label="Novo cadastro de CAD"
+          className="inline-flex size-9 items-center justify-center rounded-lg bg-[#0d141c] text-white transition-colors hover:bg-[#0d141c]/90"
+          onClick={() => setOpen((v) => !v)}
+          type="button"
+        >
+          <Plus className="size-4" aria-hidden="true" />
+        </button>
+      </Tooltip>
+      {open ? (
+        <>
+          <button
+            aria-label="Fechar"
+            className="fixed inset-0 z-10 cursor-default"
+            onClick={() => setOpen(false)}
+            type="button"
+          />
+          <div
+            className="absolute right-0 top-full z-20 mt-1.5 w-64 rounded-xl border border-slate-200 bg-white p-1 shadow-lg"
+            role="menu"
+          >
+            <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              Tipo de cadastro
+            </p>
+            {CADASTRO_TIPOS.map((tipo) =>
+              tipo.disponivel ? (
+                <a
+                  className="flex items-center justify-between gap-2 rounded-lg px-3 py-2 hover:bg-slate-50"
+                  href={`/apolo/cadastro?tipo=${tipo.slug}`}
+                  key={tipo.slug}
+                  role="menuitem"
+                >
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium text-slate-800">{tipo.label}</span>
+                    <span className="text-[11px] text-slate-400">{tipo.descricao}</span>
+                  </span>
+                </a>
+              ) : (
+                <div
+                  aria-disabled="true"
+                  className="flex cursor-default items-center justify-between gap-2 rounded-lg px-3 py-2 opacity-60"
+                  key={tipo.slug}
+                >
+                  <span className="flex flex-col">
+                    <span className="text-sm font-medium text-slate-500">{tipo.label}</span>
+                    <span className="text-[11px] text-slate-400">{tipo.descricao}</span>
+                  </span>
+                  <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-400">
+                    em breve
+                  </span>
+                </div>
+              ),
+            )}
+          </div>
+        </>
+      ) : null}
+    </div>
   );
 }
 
