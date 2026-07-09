@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useRef, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -40,9 +40,13 @@ import { getHubSupabaseClient } from "@/lib/supabase/client";
 // (Cônjuge se casado) -> Revisão. Campos read-only vêm do documento/MOST;
 // perfil (sexo/estado civil/escolaridade/renda) usa seletores do C2X.
 
-// Imobiliárias: placeholder até puxarmos a lista real do C2X (users perfil
-// imobiliaria). Vínculo é obrigatório no CAD.
-const IMOBILIARIAS: C2xOption[] = [
+// Opção de seletor que aceita id numérico (lookups do C2X) ou string (entidades
+// do Apolo, como as imobiliárias vindas do read-model).
+type SelectOption = { id: number | string; label: string };
+
+// Fallback só do localhost (o endpoint real /api/apolo/imobiliarias usa a chave
+// de serviço, que não valida local). Em produção vem a lista real do Apolo.
+const IMOBILIARIAS_FALLBACK: SelectOption[] = [
   { id: 1, label: "Careli Imóveis" },
   { id: 2, label: "Vale do Ouro Imóveis" },
   { id: 3, label: "Lagoa Bonita Imóveis" },
@@ -128,6 +132,38 @@ const CONJUGE_VAZIO: Conjuge = {
   rendaId: "", rg: "", sexoId: "", telefone: "",
 };
 
+// Persona do cadastro, definida pelo documento: RG/CNH -> pessoa física (pf);
+// cartão CNPJ -> pessoa jurídica (pj).
+type Persona = "pf" | "pj";
+
+type Socio = { nome: string; qualificacao: string };
+// Pessoa jurídica: dados da empresa (cartão CNPJ + enriquecimento por CNPJ) +
+// contato + vínculo. Sem sexo/estado civil/escolaridade (isso é PF).
+type Empresa = {
+  atividade: string;
+  capitalSocial: string;
+  cnae: string;
+  cnpj: string;
+  dataAbertura: string;
+  documentoLido: boolean;
+  email: string;
+  naturezaJuridica: string;
+  nomeFantasia: string;
+  porte: string;
+  razaoSocial: string;
+  situacaoCadastral: string;
+  socios: Socio[];
+  telefone: string;
+  tipoDocumento: string;
+};
+
+const EMPRESA_VAZIA: Empresa = {
+  atividade: "", capitalSocial: "", cnae: "", cnpj: "", dataAbertura: "",
+  documentoLido: false, email: "", naturezaJuridica: "",
+  nomeFantasia: "", porte: "", razaoSocial: "", situacaoCadastral: "",
+  socios: [], telefone: "", tipoDocumento: "",
+};
+
 async function accessToken() {
   const supabase = getHubSupabaseClient();
   const session = await supabase?.auth.getSession();
@@ -200,6 +236,47 @@ function mockConjugeEnrichment(): Enrichment {
     patrimonio: "R$ 250 mil a R$ 500 mil", profissao: "", raw: undefined,
     renda: "3 a 6 salários mínimos", sexo: "M", source: "mock",
     telefones: ["(31) 99123-4567"], warnings: [],
+  };
+}
+
+// MOST classifica o documento. Cartão CNPJ / comprovante de inscrição -> PJ.
+function isCnpjDoc(type: string): boolean {
+  return /cnpj|cartao.?cnpj|comprovante.*inscri|pessoa.?jur|company|business/i.test(
+    String(type ?? ""),
+  );
+}
+
+function mockPjExtraction(): Extraction {
+  return {
+    cadastro: {
+      bairro: "SAVASSI", cep: "30112-000", cidade: "BELO HORIZONTE",
+      cnpj: "12.345.678/0001-90", dataAbertura: "2015-03-12",
+      logradouro: "AVENIDA DO CONTORNO", naturezaJuridica: "206-2 - Sociedade Empresária Limitada",
+      nomeFantasia: "ORION INCORPORADORA", numero: "8000",
+      razaoSocial: "ORION EMPREENDIMENTOS IMOBILIARIOS LTDA",
+      situacaoCadastral: "ATIVA", uf: "MG",
+    },
+    documentType: "cartao-cnpj",
+    fields: [],
+    overallConfidence: 0.97,
+  };
+}
+
+// Enriquecimento por CNPJ (mock local): sócios, porte, CNAE, capital, contato.
+function mockPjEnrichment(): Partial<Empresa> {
+  return {
+    atividade: "Incorporação de empreendimentos imobiliários",
+    capitalSocial: "R$ 500.000,00",
+    cnae: "41.10-7-00",
+    email: "contato@orionincorporadora.com.br",
+    naturezaJuridica: "206-2 - Sociedade Empresária Limitada",
+    porte: "Empresa de Pequeno Porte (EPP)",
+    situacaoCadastral: "ATIVA",
+    socios: [
+      { nome: "Roberto Andrade Lima", qualificacao: "Sócio-Administrador" },
+      { nome: "Fernanda Costa Andrade", qualificacao: "Sócia" },
+    ],
+    telefone: "(31) 3333-8000",
   };
 }
 
@@ -333,6 +410,18 @@ async function apiPost<T>(body: Record<string, unknown>): Promise<T> {
   return json.data;
 }
 
+async function apiGetImobiliarias(): Promise<SelectOption[]> {
+  const token = await accessToken();
+  const response = await fetch("/api/apolo/imobiliarias", {
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  const json = (await response.json().catch(() => null)) as
+    | { data?: { imobiliarias?: SelectOption[] } }
+    | null;
+  return json?.data?.imobiliarias ?? [];
+}
+
 // ---------- geração do documento CAD (PDF impresso) ----------
 
 type Registro = { completo: string; data: string; hora: string };
@@ -444,12 +533,36 @@ export function CadastroFlow() {
   const [enrich, setEnrich] = useState<Enrichment | null>(null);
   const [endereco, setEndereco] = useState<Endereco | null>(null);
   const [conjuge, setConjuge] = useState<Conjuge>(CONJUGE_VAZIO);
+  // Persona definida pelo documento (RG/CNH -> pf, cartão CNPJ -> pj).
+  const [persona, setPersona] = useState<Persona>("pf");
+  const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_VAZIA);
+  const [imobiliarias, setImobiliarias] = useState<SelectOption[]>(
+    LOCAL_MOCK ? IMOBILIARIAS_FALLBACK : [],
+  );
 
-  // Casado(2), Divorciado(3), Separado judicialmente(4) e União Estável(6)
-  // exigem certidão (o MOST valida a autenticidade).
-  const needsCertidao = ["2", "3", "4", "6"].includes(perfil.estadoCivilId);
-  // Cônjuge presente: casado ou união estável.
-  const temConjuge = ["2", "6"].includes(perfil.estadoCivilId);
+  // Imobiliárias reais do Apolo (read-model). No localhost usa o fallback.
+  useEffect(() => {
+    if (LOCAL_MOCK) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const list = await apiGetImobiliarias();
+        if (alive && list.length) setImobiliarias(list);
+      } catch {
+        // sem lista: seletor fica vazio (sem placeholder em produção)
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  // PJ não tem certidão/cônjuge. PF: Casado(2), Divorciado(3), Separado(4) e
+  // União Estável(6) exigem certidão (o MOST valida a autenticidade).
+  const isPj = persona === "pj";
+  const needsCertidao = !isPj && ["2", "3", "4", "6"].includes(perfil.estadoCivilId);
+  // Cônjuge presente: casado ou união estável (só PF).
+  const temConjuge = !isPj && ["2", "6"].includes(perfil.estadoCivilId);
   const steps = needsCertidao
     ? ["Identificação", "Endereço", "Certidão", "Revisão"]
     : ["Identificação", "Endereço", "Revisão"];
@@ -490,10 +603,38 @@ export function CadastroFlow() {
         {current === "Identificação" ? (
           <StepIdentificacao
             conjuge={conjuge}
+            empresa={empresa}
             enrich={enrich}
             identidade={identidade}
+            imobiliarias={imobiliarias}
             perfil={perfil}
+            persona={persona}
             onConjugeChange={(patch) => setConjuge((c) => ({ ...c, ...patch }))}
+            onEmpresaChange={(patch) => setEmpresa((e) => ({ ...e, ...patch }))}
+            onEmpresaExtract={(ext, emp) => {
+              const c = ext.cadastro;
+              setEmpresa((prev) => ({
+                ...prev,
+                ...emp,
+                cnpj: c.cnpj ?? "",
+                dataAbertura: c.dataAbertura ?? "",
+                documentoLido: true,
+                naturezaJuridica: c.naturezaJuridica || emp.naturezaJuridica || "",
+                nomeFantasia: c.nomeFantasia ?? "",
+                razaoSocial: c.razaoSocial ?? "",
+                situacaoCadastral: c.situacaoCadastral || emp.situacaoCadastral || "",
+                tipoDocumento: ext.documentType,
+              }));
+              // O endereço da empresa vem no próprio cartão CNPJ.
+              if (c.logradouro || c.cidade) {
+                setEndereco({
+                  bairro: c.bairro ?? "", cep: c.cep ?? "", cidade: c.cidade ?? "",
+                  complemento: "", logradouro: c.logradouro ?? "",
+                  numero: c.numero ?? "", uf: c.uf ?? "",
+                });
+              }
+            }}
+            onPersona={setPersona}
             onExtract={(ext, enr) => {
               const c = ext.cadastro;
               setIdentidade({
@@ -548,9 +689,12 @@ export function CadastroFlow() {
         {current === "Revisão" ? (
           <StepRevisao
             conjuge={temConjuge ? conjuge : null}
+            empresa={empresa}
             endereco={endereco}
             identidade={identidade}
+            imobiliarias={imobiliarias}
             perfil={perfil}
+            persona={persona}
             onBack={() => setStep(step - 1)}
           />
         ) : null}
@@ -623,7 +767,7 @@ function DocUploader({
   busy?: boolean;
   hint: string;
   label: string;
-  mockData?: () => Extraction;
+  mockData?: (file: File) => Extraction;
   onExtracted: (ext: Extraction) => void | Promise<void>;
 }) {
   const [fileName, setFileName] = useState<string | null>(null);
@@ -643,7 +787,7 @@ function DocUploader({
       let ext: Extraction;
       if (LOCAL_MOCK && mockData) {
         await delay(1600); // finge a leitura pra mostrar a barra
-        ext = mockData();
+        ext = mockData(file);
       } else {
         ext = await apiPost<Extraction>({
           action: "extract",
@@ -793,25 +937,38 @@ function NavButtons({
 
 function StepIdentificacao({
   conjuge,
+  empresa,
   enrich,
   identidade,
+  imobiliarias,
   onConjugeChange,
+  onEmpresaChange,
+  onEmpresaExtract,
   onExtract,
   onNext,
   onPerfilChange,
+  onPersona,
   perfil,
+  persona,
 }: {
   conjuge: Conjuge;
+  empresa: Empresa;
   enrich: Enrichment | null;
   identidade: Identidade | null;
+  imobiliarias: SelectOption[];
   onConjugeChange: (patch: Partial<Conjuge>) => void;
+  onEmpresaChange: (patch: Partial<Empresa>) => void;
+  onEmpresaExtract: (ext: Extraction, emp: Partial<Empresa>) => void;
   onExtract: (ext: Extraction, enr: Enrichment) => void;
   onNext: () => void;
   onPerfilChange: (patch: Partial<Perfil>) => void;
+  onPersona: (persona: Persona) => void;
   perfil: Perfil;
+  persona: Persona;
 }) {
   const [enriching, setEnriching] = useState(false);
   const [enrichingConjuge, setEnrichingConjuge] = useState(false);
+  const isPj = persona === "pj";
 
   const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const emailValido = emailRegex.test(perfil.email);
@@ -869,7 +1026,24 @@ function StepIdentificacao({
     });
   }
 
-  const podeAvancar = Boolean(
+  // Lê o cartão CNPJ e enriquece por CNPJ (sócios, porte, CNAE, contato).
+  async function lerEmpresa(ext: Extraction) {
+    let emp: Partial<Empresa> = {};
+    setEnriching(true);
+    try {
+      if (LOCAL_MOCK) {
+        await delay(1400);
+        emp = mockPjEnrichment();
+      }
+      // Em produção o enriquecimento PJ (query MOST por CNPJ) ainda não está
+      // provisionado; segue com o que o cartão CNPJ trouxe.
+    } finally {
+      setEnriching(false);
+    }
+    onEmpresaExtract(ext, emp);
+  }
+
+  const podeAvancarPf = Boolean(
     identidade &&
       perfil.sexoId &&
       perfil.estadoCivilId &&
@@ -880,6 +1054,10 @@ function StepIdentificacao({
       emailValido &&
       conjugeOk,
   );
+  const podeAvancarPj = Boolean(
+    empresa.documentoLido && perfil.imobiliariaId && emailRegex.test(empresa.email),
+  );
+  const podeAvancar = isPj ? podeAvancarPj : podeAvancarPf;
 
   return (
     <StepCard title="1. Identificação">
@@ -887,7 +1065,7 @@ function StepIdentificacao({
         <SearchableSelect
           label="Imobiliária / corretor"
           value={perfil.imobiliariaId}
-          options={IMOBILIARIAS}
+          options={imobiliarias}
           placeholder="Buscar imobiliária ou corretor…"
           onChange={(v) => onPerfilChange({ imobiliariaId: v })}
         />
@@ -896,10 +1074,18 @@ function StepIdentificacao({
       <div className="print:hidden">
         <DocUploader
           busy={enriching}
-          label="Adicionar documento de identificação"
-          hint="RG ou CNH · imagem ou PDF"
-          mockData={mockIdentidadeExtraction}
+          label="Adicionar documento do cliente"
+          hint="RG / CNH (pessoa física) ou cartão CNPJ (empresa) · imagem ou PDF"
+          mockData={(file) =>
+            /cnpj/i.test(file.name) ? mockPjExtraction() : mockIdentidadeExtraction()
+          }
           onExtracted={async (ext) => {
+            if (isCnpjDoc(ext.documentType)) {
+              onPersona("pj");
+              await lerEmpresa(ext);
+              return;
+            }
+            onPersona("pf");
             setEnriching(true);
             let enr: Enrichment = {
               available: false, conjuge: "", emails: [], estadoCivil: "",
@@ -926,7 +1112,56 @@ function StepIdentificacao({
         />
       </div>
 
-      {identidade ? (
+      {isPj ? (
+        empresa.documentoLido ? (
+          <>
+            <Secao title="Dados da empresa">
+              <ReadField label="Tipo" value="Cartão CNPJ" />
+              <ReadField label="Razão social" value={titleCase(empresa.razaoSocial)} span2 />
+              <ReadField label="Nome fantasia" value={titleCase(empresa.nomeFantasia)} />
+              <ReadField label="CNPJ" value={empresa.cnpj} />
+              <ReadField label="Abertura" value={formatDateBR(empresa.dataAbertura)} />
+              <ReadField label="Situação cadastral" value={empresa.situacaoCadastral} />
+              <ReadField label="Natureza jurídica" value={empresa.naturezaJuridica} span2 />
+              <ReadField label="Porte" value={empresa.porte} />
+              <ReadField label="CNAE" value={empresa.cnae} />
+              <ReadField label="Atividade principal" value={empresa.atividade} span2 />
+              <ReadField label="Capital social" value={empresa.capitalSocial} />
+            </Secao>
+
+            {empresa.socios.length ? (
+              <Secao title="Quadro societário (QSA)">
+                {empresa.socios.map((socio, index) => (
+                  <ReadField
+                    key={`${socio.nome}-${index}`}
+                    label={socio.qualificacao || "Sócio"}
+                    value={titleCase(socio.nome)}
+                    span2
+                  />
+                ))}
+              </Secao>
+            ) : null}
+
+            <Secao title="Contato">
+              <PhoneField
+                value={empresa.telefone}
+                sugestoes={[]}
+                onChange={(v) => onEmpresaChange({ telefone: v })}
+              />
+              <div className="sm:col-span-2">
+                <EmailField
+                  value={empresa.email}
+                  onChange={(v) => onEmpresaChange({ email: v })}
+                />
+              </div>
+            </Secao>
+          </>
+        ) : (
+          <p className="text-xs text-slate-400">
+            Envie o cartão CNPJ para ler os dados da empresa.
+          </p>
+        )
+      ) : identidade ? (
         <>
           <Secao title="Dados do documento">
             <ReadField label="Tipo" value={mapDocType(identidade.tipoDocumento, "")} />
@@ -1183,87 +1418,139 @@ function StepCertidao({
 
 function StepRevisao({
   conjuge,
+  empresa,
   endereco,
   identidade,
+  imobiliarias,
   onBack,
   perfil,
+  persona,
 }: {
   conjuge: Conjuge | null;
+  empresa: Empresa;
   endereco: Endereco | null;
   identidade: Identidade | null;
+  imobiliarias: SelectOption[];
   onBack: () => void;
   perfil: Perfil;
+  persona: Persona;
 }) {
-  const label = (options: C2xOption[], id: string) =>
+  const label = (options: SelectOption[], id: string) =>
     options.find((o) => o.id.toString() === id)?.label ?? "";
 
-  const nomeCliente = titleCase(identidade?.nome ?? "Cliente");
+  const isPj = persona === "pj";
+  const nomeCliente = isPj
+    ? titleCase(empresa.razaoSocial || "Empresa")
+    : titleCase(identidade?.nome ?? "Cliente");
   const registro = formatRegistro(new Date());
   const cadTitulo = `CAD - ${nomeCliente} - ${registro.completo}`;
 
   function gerarCad() {
     const secoes: string[] = [];
-    secoes.push(
-      cadSection("Identificação", [
-        cadField("Nome", nomeCliente, true),
-        cadField("CPF", identidade?.cpf ?? ""),
-        cadField("RG", identidade?.rg ?? ""),
-        cadField("Nascimento", formatDateBR(identidade?.dataNascimento ?? "")),
-        cadField("Idade", calcIdade(identidade?.dataNascimento ?? "")),
-        cadField("Nome da mãe", titleCase(identidade?.nomeMae ?? ""), true),
-        cadField("Sexo", label(C2X_SEXO, perfil.sexoId)),
-        cadField("Estado civil", label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)),
-      ]),
-    );
-    secoes.push(
-      cadSection("Perfil", [
-        cadField("Escolaridade", label(C2X_ESCOLARIDADE, perfil.escolaridadeId)),
-        cadField("Faixa de renda", label(C2X_FAIXA_RENDA, perfil.rendaId)),
-        cadField("Patrimônio", perfil.patrimonio),
-        cadField("Profissão", titleCase(label(C2X_PROFISSOES, perfil.profissaoId))),
-      ]),
-    );
-    secoes.push(
-      cadSection("Endereço", [
-        cadField("Logradouro", titleCase(endereco?.logradouro ?? ""), true),
-        cadField("Número", endereco?.numero ?? ""),
-        cadField("Complemento", titleCase(endereco?.complemento ?? "")),
-        cadField("Bairro", titleCase(endereco?.bairro ?? "")),
-        cadField("CEP", endereco?.cep ?? ""),
-        cadField("Cidade", titleCase(endereco?.cidade ?? "")),
-        cadField("UF", endereco?.uf ?? ""),
-      ]),
-    );
-    secoes.push(
-      cadSection("Contato", [
-        cadField("Telefone", perfil.telefone),
-        cadField("E-mail", perfil.email),
-      ]),
-    );
-    if (conjuge) {
+    if (isPj) {
       secoes.push(
-        cadSection("Cônjuge", [
-          cadField("Nome", titleCase(conjuge.nome), true),
-          cadField("CPF", conjuge.cpf),
-          cadField("RG", conjuge.rg),
-          cadField("Nascimento", formatDateBR(conjuge.dataNascimento)),
-          cadField("Nome da mãe", titleCase(conjuge.nomeMae), true),
-          cadField("Sexo", label(C2X_SEXO, conjuge.sexoId)),
-          cadField("Estado civil", label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)),
-          cadField("Escolaridade", label(C2X_ESCOLARIDADE, conjuge.escolaridadeId)),
-          cadField("Faixa de renda", label(C2X_FAIXA_RENDA, conjuge.rendaId)),
-          cadField("Patrimônio", conjuge.patrimonio),
-          cadField("Profissão", titleCase(label(C2X_PROFISSOES, conjuge.profissaoId))),
-          cadField("Telefone", conjuge.telefone),
-          cadField("E-mail", conjuge.email, true),
+        cadSection("Dados da empresa", [
+          cadField("Razão social", nomeCliente, true),
+          cadField("Nome fantasia", titleCase(empresa.nomeFantasia)),
+          cadField("CNPJ", empresa.cnpj),
+          cadField("Abertura", formatDateBR(empresa.dataAbertura)),
+          cadField("Situação cadastral", empresa.situacaoCadastral),
+          cadField("Natureza jurídica", empresa.naturezaJuridica, true),
+          cadField("Porte", empresa.porte),
+          cadField("CNAE", empresa.cnae),
+          cadField("Atividade principal", empresa.atividade, true),
+          cadField("Capital social", empresa.capitalSocial),
         ]),
       );
+      if (empresa.socios.length) {
+        secoes.push(
+          cadSection(
+            "Quadro societário (QSA)",
+            empresa.socios.map((socio) =>
+              cadField(socio.qualificacao || "Sócio", titleCase(socio.nome), true),
+            ),
+          ),
+        );
+      }
+      secoes.push(
+        cadSection("Endereço", [
+          cadField("Logradouro", titleCase(endereco?.logradouro ?? ""), true),
+          cadField("Número", endereco?.numero ?? ""),
+          cadField("Bairro", titleCase(endereco?.bairro ?? "")),
+          cadField("CEP", endereco?.cep ?? ""),
+          cadField("Cidade", titleCase(endereco?.cidade ?? "")),
+          cadField("UF", endereco?.uf ?? ""),
+        ]),
+      );
+      secoes.push(
+        cadSection("Contato", [
+          cadField("Telefone", empresa.telefone),
+          cadField("E-mail", empresa.email),
+        ]),
+      );
+    } else {
+      secoes.push(
+        cadSection("Identificação", [
+          cadField("Nome", nomeCliente, true),
+          cadField("CPF", identidade?.cpf ?? ""),
+          cadField("RG", identidade?.rg ?? ""),
+          cadField("Nascimento", formatDateBR(identidade?.dataNascimento ?? "")),
+          cadField("Idade", calcIdade(identidade?.dataNascimento ?? "")),
+          cadField("Nome da mãe", titleCase(identidade?.nomeMae ?? ""), true),
+          cadField("Sexo", label(C2X_SEXO, perfil.sexoId)),
+          cadField("Estado civil", label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)),
+        ]),
+      );
+      secoes.push(
+        cadSection("Perfil", [
+          cadField("Escolaridade", label(C2X_ESCOLARIDADE, perfil.escolaridadeId)),
+          cadField("Faixa de renda", label(C2X_FAIXA_RENDA, perfil.rendaId)),
+          cadField("Patrimônio", perfil.patrimonio),
+          cadField("Profissão", titleCase(label(C2X_PROFISSOES, perfil.profissaoId))),
+        ]),
+      );
+      secoes.push(
+        cadSection("Endereço", [
+          cadField("Logradouro", titleCase(endereco?.logradouro ?? ""), true),
+          cadField("Número", endereco?.numero ?? ""),
+          cadField("Complemento", titleCase(endereco?.complemento ?? "")),
+          cadField("Bairro", titleCase(endereco?.bairro ?? "")),
+          cadField("CEP", endereco?.cep ?? ""),
+          cadField("Cidade", titleCase(endereco?.cidade ?? "")),
+          cadField("UF", endereco?.uf ?? ""),
+        ]),
+      );
+      secoes.push(
+        cadSection("Contato", [
+          cadField("Telefone", perfil.telefone),
+          cadField("E-mail", perfil.email),
+        ]),
+      );
+      if (conjuge) {
+        secoes.push(
+          cadSection("Cônjuge", [
+            cadField("Nome", titleCase(conjuge.nome), true),
+            cadField("CPF", conjuge.cpf),
+            cadField("RG", conjuge.rg),
+            cadField("Nascimento", formatDateBR(conjuge.dataNascimento)),
+            cadField("Nome da mãe", titleCase(conjuge.nomeMae), true),
+            cadField("Sexo", label(C2X_SEXO, conjuge.sexoId)),
+            cadField("Estado civil", label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)),
+            cadField("Escolaridade", label(C2X_ESCOLARIDADE, conjuge.escolaridadeId)),
+            cadField("Faixa de renda", label(C2X_FAIXA_RENDA, conjuge.rendaId)),
+            cadField("Patrimônio", conjuge.patrimonio),
+            cadField("Profissão", titleCase(label(C2X_PROFISSOES, conjuge.profissaoId))),
+            cadField("Telefone", conjuge.telefone),
+            cadField("E-mail", conjuge.email, true),
+          ]),
+        );
+      }
     }
     imprimirCad(
       cadTitulo,
       nomeCliente,
       registro,
-      label(IMOBILIARIAS, perfil.imobiliariaId),
+      label(imobiliarias, perfil.imobiliariaId),
       secoes.join(""),
     );
   }
@@ -1292,54 +1579,101 @@ function StepRevisao({
         </button>
       </div>
 
-      <Secao title="Identificação">
-        <ReadField label="Nome" value={nomeCliente} span2 />
-        <ReadField label="CPF" value={identidade?.cpf ?? ""} />
-        <ReadField label="Nascimento" value={formatDateBR(identidade?.dataNascimento ?? "")} />
-        <ReadField label="Idade" value={calcIdade(identidade?.dataNascimento ?? "")} />
-        <ReadField label="RG" value={identidade?.rg ?? ""} />
-        <ReadField label="Nome da mãe" value={titleCase(identidade?.nomeMae ?? "")} span2 />
-        <ReadField label="Sexo" value={label(C2X_SEXO, perfil.sexoId)} />
-        <ReadField label="Estado civil" value={label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)} />
-      </Secao>
+      {isPj ? (
+        <>
+          <Secao title="Dados da empresa">
+            <ReadField label="Razão social" value={nomeCliente} span2 />
+            <ReadField label="Nome fantasia" value={titleCase(empresa.nomeFantasia)} />
+            <ReadField label="CNPJ" value={empresa.cnpj} />
+            <ReadField label="Abertura" value={formatDateBR(empresa.dataAbertura)} />
+            <ReadField label="Situação cadastral" value={empresa.situacaoCadastral} />
+            <ReadField label="Natureza jurídica" value={empresa.naturezaJuridica} span2 />
+            <ReadField label="Porte" value={empresa.porte} />
+            <ReadField label="CNAE" value={empresa.cnae} />
+            <ReadField label="Atividade principal" value={empresa.atividade} span2 />
+            <ReadField label="Capital social" value={empresa.capitalSocial} />
+          </Secao>
 
-      <Secao title="Perfil">
-        <ReadField label="Escolaridade" value={label(C2X_ESCOLARIDADE, perfil.escolaridadeId)} />
-        <ReadField label="Faixa de renda" value={label(C2X_FAIXA_RENDA, perfil.rendaId)} />
-        <ReadField label="Patrimônio" value={perfil.patrimonio} />
-        <ReadField label="Profissão" value={titleCase(label(C2X_PROFISSOES, perfil.profissaoId))} span2 />
-      </Secao>
+          {empresa.socios.length ? (
+            <Secao title="Quadro societário (QSA)">
+              {empresa.socios.map((socio, index) => (
+                <ReadField
+                  key={`${socio.nome}-${index}`}
+                  label={socio.qualificacao || "Sócio"}
+                  value={titleCase(socio.nome)}
+                  span2
+                />
+              ))}
+            </Secao>
+          ) : null}
 
-      <Secao title="Endereço">
-        <ReadField label="Logradouro" value={titleCase(endereco?.logradouro ?? "")} span2 />
-        <ReadField label="Número" value={endereco?.numero ?? ""} />
-        <ReadField label="Bairro" value={titleCase(endereco?.bairro ?? "")} />
-        <ReadField label="CEP" value={endereco?.cep ?? ""} />
-        <ReadField label="Cidade" value={titleCase(endereco?.cidade ?? "")} />
-        <ReadField label="UF" value={endereco?.uf ?? ""} />
-      </Secao>
+          <Secao title="Endereço">
+            <ReadField label="Logradouro" value={titleCase(endereco?.logradouro ?? "")} span2 />
+            <ReadField label="Número" value={endereco?.numero ?? ""} />
+            <ReadField label="Bairro" value={titleCase(endereco?.bairro ?? "")} />
+            <ReadField label="CEP" value={endereco?.cep ?? ""} />
+            <ReadField label="Cidade" value={titleCase(endereco?.cidade ?? "")} />
+            <ReadField label="UF" value={endereco?.uf ?? ""} />
+          </Secao>
 
-      <Secao title="Contato e vínculo">
-        <ReadField label="Telefone" value={perfil.telefone} />
-        <ReadField label="E-mail" value={perfil.email} span2 />
-        <ReadField label="Imobiliária" value={label(IMOBILIARIAS, perfil.imobiliariaId)} />
-      </Secao>
+          <Secao title="Contato e vínculo">
+            <ReadField label="Telefone" value={empresa.telefone} />
+            <ReadField label="E-mail" value={empresa.email} span2 />
+            <ReadField label="Imobiliária" value={label(imobiliarias, perfil.imobiliariaId)} />
+          </Secao>
+        </>
+      ) : (
+        <>
+          <Secao title="Identificação">
+            <ReadField label="Nome" value={nomeCliente} span2 />
+            <ReadField label="CPF" value={identidade?.cpf ?? ""} />
+            <ReadField label="Nascimento" value={formatDateBR(identidade?.dataNascimento ?? "")} />
+            <ReadField label="Idade" value={calcIdade(identidade?.dataNascimento ?? "")} />
+            <ReadField label="RG" value={identidade?.rg ?? ""} />
+            <ReadField label="Nome da mãe" value={titleCase(identidade?.nomeMae ?? "")} span2 />
+            <ReadField label="Sexo" value={label(C2X_SEXO, perfil.sexoId)} />
+            <ReadField label="Estado civil" value={label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)} />
+          </Secao>
 
-      {conjuge ? (
-        <Secao title="Cônjuge">
-          <ReadField label="Nome" value={titleCase(conjuge.nome)} span2 />
-          <ReadField label="CPF" value={conjuge.cpf} />
-          <ReadField label="RG" value={conjuge.rg} />
-          <ReadField label="Nascimento" value={formatDateBR(conjuge.dataNascimento)} />
-          <ReadField label="Sexo" value={label(C2X_SEXO, conjuge.sexoId)} />
-          <ReadField label="Escolaridade" value={label(C2X_ESCOLARIDADE, conjuge.escolaridadeId)} />
-          <ReadField label="Faixa de renda" value={label(C2X_FAIXA_RENDA, conjuge.rendaId)} />
-          <ReadField label="Patrimônio" value={conjuge.patrimonio} />
-          <ReadField label="Profissão" value={titleCase(label(C2X_PROFISSOES, conjuge.profissaoId))} />
-          <ReadField label="Telefone" value={conjuge.telefone} />
-          <ReadField label="E-mail" value={conjuge.email} span2 />
-        </Secao>
-      ) : null}
+          <Secao title="Perfil">
+            <ReadField label="Escolaridade" value={label(C2X_ESCOLARIDADE, perfil.escolaridadeId)} />
+            <ReadField label="Faixa de renda" value={label(C2X_FAIXA_RENDA, perfil.rendaId)} />
+            <ReadField label="Patrimônio" value={perfil.patrimonio} />
+            <ReadField label="Profissão" value={titleCase(label(C2X_PROFISSOES, perfil.profissaoId))} span2 />
+          </Secao>
+
+          <Secao title="Endereço">
+            <ReadField label="Logradouro" value={titleCase(endereco?.logradouro ?? "")} span2 />
+            <ReadField label="Número" value={endereco?.numero ?? ""} />
+            <ReadField label="Bairro" value={titleCase(endereco?.bairro ?? "")} />
+            <ReadField label="CEP" value={endereco?.cep ?? ""} />
+            <ReadField label="Cidade" value={titleCase(endereco?.cidade ?? "")} />
+            <ReadField label="UF" value={endereco?.uf ?? ""} />
+          </Secao>
+
+          <Secao title="Contato e vínculo">
+            <ReadField label="Telefone" value={perfil.telefone} />
+            <ReadField label="E-mail" value={perfil.email} span2 />
+            <ReadField label="Imobiliária" value={label(imobiliarias, perfil.imobiliariaId)} />
+          </Secao>
+
+          {conjuge ? (
+            <Secao title="Cônjuge">
+              <ReadField label="Nome" value={titleCase(conjuge.nome)} span2 />
+              <ReadField label="CPF" value={conjuge.cpf} />
+              <ReadField label="RG" value={conjuge.rg} />
+              <ReadField label="Nascimento" value={formatDateBR(conjuge.dataNascimento)} />
+              <ReadField label="Sexo" value={label(C2X_SEXO, conjuge.sexoId)} />
+              <ReadField label="Escolaridade" value={label(C2X_ESCOLARIDADE, conjuge.escolaridadeId)} />
+              <ReadField label="Faixa de renda" value={label(C2X_FAIXA_RENDA, conjuge.rendaId)} />
+              <ReadField label="Patrimônio" value={conjuge.patrimonio} />
+              <ReadField label="Profissão" value={titleCase(label(C2X_PROFISSOES, conjuge.profissaoId))} />
+              <ReadField label="Telefone" value={conjuge.telefone} />
+              <ReadField label="E-mail" value={conjuge.email} span2 />
+            </Secao>
+          ) : null}
+        </>
+      )}
 
       <div className="mt-6 flex items-center justify-start">
         <button
@@ -1455,7 +1789,7 @@ function SearchableSelect({
 }: {
   label: string;
   onChange: (value: string) => void;
-  options: C2xOption[];
+  options: SelectOption[];
   placeholder?: string;
   value: string;
 }) {

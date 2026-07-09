@@ -11,6 +11,7 @@ import type {
 export type ApoloTab =
   | "resumo"
   | "cadastro"
+  | "relacionamentos"
   | "carteira"
   | "financeiro"
   | "documentos"

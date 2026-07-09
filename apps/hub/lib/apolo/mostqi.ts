@@ -16,9 +16,11 @@ const DEFAULT_EXTRACTION_PATH = "/process-image/content-extraction";
 // Enrichment (BigDataCorp por baixo). Sincrono sob /big-data/enrichment/*.
 // Path configuravel por env caso a conta use outra rota.
 const DEFAULT_ENRICHMENT_PATH = "/big-data/enrichment";
-// O MOST consulta por QUERY nomeada (ex.: MOST_PROD_PF_01 p/ pessoa fisica),
-// que ja empacota os datasets contratados. Configuravel por env.
-const DEFAULT_ENRICHMENT_QUERY = "MOST_PROD_PF_01";
+// O MOST consulta por QUERY nomeada (CARELI_PF_01 = dados cadastrais rapidos de
+// pessoa fisica), que ja empacota os datasets contratados. Configuravel por env.
+// CARELI_PF_02/03 (certidoes/GOLD) e CARELI_PJ_01 (empresa) sao para etapas
+// futuras.
+const DEFAULT_ENRICHMENT_QUERY = "CARELI_PF_01";
 // A doc do MOST (user/authenticate) manda a client key no campo "token";
 // a resposta tambem volta em "token".
 const DEFAULT_AUTH_KEY_FIELD = "token";
@@ -44,6 +46,14 @@ export function isMostqiConfigured(): boolean {
   return Boolean(config().clientKey);
 }
 
+// Em producao o app chama o MOST atraves do proxy de IP fixo (VPS), que exige
+// uma senha no cabecalho X-Proxy-Secret. Fora do proxy (POC direto), a env fica
+// vazia e o header nao e enviado. O valor nunca e logado.
+function proxyHeaders(): Record<string, string> {
+  const secret = env("MOSTQI_PROXY_SECRET");
+  return secret ? { "X-Proxy-Secret": secret } : {};
+}
+
 export type MostqiStatus = {
   authPath: string;
   baseUrl: string;
@@ -62,7 +72,10 @@ export function getMostqiStatus(): MostqiStatus {
     authPath: cfg.authPath,
     baseUrl: cfg.baseUrl,
     clientKeyPresent: configured,
-    environment: cfg.baseUrl.includes("production") ? "producao" : "homologacao",
+    environment:
+      cfg.baseUrl.includes("mostqiapi.com") && !cfg.baseUrl.includes("production")
+        ? "homologacao"
+        : "producao",
     extractionPath: cfg.extractionPath,
     mode: configured ? "live" : "mock",
   };
@@ -152,7 +165,7 @@ export async function authenticateMostqi(): Promise<string> {
       response = await fetch(`${cfg.baseUrl}${cfg.authPath}`, {
         body: JSON.stringify(body),
         cache: "no-store",
-        headers: { "Content-Type": "application/json" },
+        headers: { "Content-Type": "application/json", ...proxyHeaders() },
         method: "POST",
       });
     } catch (error) {
@@ -429,6 +442,7 @@ async function callExtraction(
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      ...proxyHeaders(),
     },
     method: "POST",
   });
@@ -769,6 +783,7 @@ async function callEnrichment(
     headers: {
       Authorization: `Bearer ${token}`,
       "Content-Type": "application/json",
+      ...proxyHeaders(),
     },
     method: "POST",
   });

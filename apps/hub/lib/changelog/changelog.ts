@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-09-apolo-pj-imobiliarias-most",
+    deployedAt: "2026-07-09T16:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cadastro de CAD agora reconhece também EMPRESA: se você sobe um cartão CNPJ, ele abre a ficha de pessoa jurídica (razão social, sócios/QSA, situação, CNAE); RG ou CNH seguem abrindo pessoa física.",
+              "O seletor de imobiliária/corretor no cadastro passou a trazer a base real do Apolo (não mais uma lista de exemplo).",
+              "Ficha do cliente: agora aparecem TODOS os papéis da pessoa em etiquetas (ex.: Corretor + Comprador ao mesmo tempo) e uma nova aba Relacionamentos, separando vínculos de trabalho e de contato.",
+            ],
+            screen: "Cadastro de CAD e ficha do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "commit ec26bf83 (v1.28.0)",
+    technical: {
+      done: "Cadastro: persona por documento (isCnpjDoc -> PJ; senão PF) com ficha/enriquecimento/CAD de empresa (cadastro-flow.tsx). Imobiliárias reais via GET /api/apolo/imobiliarias -> loadApoloImobiliarias() (leitura leve do read-model, perfil imobiliaria). MOST agora sai por PROXY de IP fixo: app (Vercel) -> Caddy na VPS Lightsail 54.21.0.240 (https://54-21-0-240.sslip.io, header X-Proxy-Secret) -> production-mostqiapi.com (whitelist); query default CARELI_PF_01 (mostqi.ts + envs MOSTQI_BASE_URL/PROXY_SECRET/ENRICHMENT_QUERY). Apolo record-workspace: chips de todos os papeis + nova aba Relacionamentos (relationships-panel, trabalho/contato) + rota interna /apolo/mock para iterar a ficha. v1.28.0 -> v1.29.0.",
+      motivation:
+        "Lucas: cadastrar empresa (PJ) além de PF, usar a base real de imobiliárias, ligar o MOST em produção pela porta oficial (IP fixo na whitelist) e começar a reestruturação do Apolo como CRM de grafo (papéis + relacionamentos).",
+    },
+    title: "Apolo: cadastro PJ + imobiliárias reais + MOST por IP fixo + papéis/relacionamentos na ficha",
+    type: "novidade",
+    version: "1.29.0",
+  },
+  {
     buildTag: "2026-07-09-apolo-cadastro-cad",
     deployedAt: "2026-07-09T00:45:00-03:00",
     modules: [

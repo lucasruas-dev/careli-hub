@@ -361,6 +361,35 @@ export async function loadApoloDashboard(
   );
 }
 
+// Lista leve de imobiliárias (id + nome) do read-model, para o seletor de
+// vínculo do cadastro. Não roda o enriquecimento pesado do dashboard.
+export async function loadApoloImobiliarias(
+  client?: ApoloSupabaseClient,
+): Promise<Array<{ id: string; label: string }>> {
+  const adminClient = client ?? createApoloAdminClient();
+
+  if (!adminClient) {
+    return [];
+  }
+
+  const profileResult = await fetchProfileEntityIds(adminClient, "imobiliaria");
+
+  if (profileResult.error || !profileResult.ids.length) {
+    return [];
+  }
+
+  const entityResult = await fetchEntityRowsByIds(adminClient, profileResult.ids);
+
+  if (!entityResult.ok) {
+    return [];
+  }
+
+  return sortEntityRows(entityResult.rows).map((row) => ({
+    id: row.id,
+    label: row.display_name?.trim() || `Cadastro ${row.id}`,
+  }));
+}
+
 function shouldAllowLiveC2xFallback() {
   return process.env.NODE_ENV === "development";
 }

@@ -50,6 +50,7 @@ import {
   SummaryPanel,
   TimelinePanel,
 } from "./panels";
+import { RelationshipsPanel } from "./relationships-panel";
 import { HeaderAction } from "../shell/apolo-shell";
 
 function RecordWorkspace({
@@ -408,6 +409,8 @@ function RecordHeader({ entity }: { entity: ApoloEntity }) {
   const primaryProfile = primaryBusinessProfile(entity);
   const registrationLabel = activeRegistrationLabel(entity);
   const headerName = displayHeaderName(entity);
+  // Uma entidade, vários papéis: mostra todos os chips (primário primeiro).
+  const roleChips = Array.from(new Set([primaryProfile, ...entity.profiles]));
 
   return (
     <header className="shrink-0 border-b border-slate-100 px-4 py-3">
@@ -429,9 +432,18 @@ function RecordHeader({ entity }: { entity: ApoloEntity }) {
                 <span className="truncate text-slate-500">
                   {entity.locationLabel}
                 </span>
-                <span className="inline-flex shrink-0 rounded-full bg-[#A07C3B]/8 px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
-                  {apoloProfileLabels[primaryProfile]}
-                </span>
+                {roleChips.map((role, index) => (
+                  <span
+                    key={role}
+                    className={`inline-flex shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ${
+                      index === 0
+                        ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15"
+                        : "bg-slate-50 text-slate-600 ring-slate-200/70"
+                    }`}
+                  >
+                    {apoloProfileLabels[role] ?? role}
+                  </span>
+                ))}
                 <span className="inline-flex shrink-0 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70">
                   {registrationLabel}
                 </span>
@@ -530,6 +542,10 @@ function TabPanel({
 }) {
   if (activeTab === "cadastro") {
     return <RegistrationPanel entity={entity} />;
+  }
+
+  if (activeTab === "relacionamentos") {
+    return <RelationshipsPanel entity={entity} />;
   }
 
   if (activeTab === "carteira") {

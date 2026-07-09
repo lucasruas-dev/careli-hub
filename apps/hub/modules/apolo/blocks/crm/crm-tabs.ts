@@ -6,6 +6,7 @@ import {
   HandCoins,
   LayoutDashboard,
   MapPinned,
+  Network,
   ReceiptText,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -21,6 +22,7 @@ import type {
 export const apoloTabs = [
   { icon: LayoutDashboard, id: "resumo", label: "Resumo" },
   { icon: ContactRound, id: "cadastro", label: "Cadastro" },
+  { icon: Network, id: "relacionamentos", label: "Relacionamentos" },
   { icon: MapPinned, id: "carteira", label: "Carteira" },
   { icon: CircleDollarSign, id: "financeiro", label: "Financeiro" },
   { icon: Clock3, id: "timeline", label: "Timeline" },
