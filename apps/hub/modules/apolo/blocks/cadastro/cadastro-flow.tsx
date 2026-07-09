@@ -12,6 +12,7 @@ import {
   Mail,
   Pencil,
   Printer,
+  Send,
   ShieldCheck,
   UploadCloud,
   UserRound,
@@ -1345,10 +1346,10 @@ function StepEndereco({
       </div>
       {endereco ? (
         <Secao title="Endereço">
-          <ReadField label="Logradouro" value={endereco.logradouro} span2 />
+          <ReadField label="Logradouro" value={titleCase(endereco.logradouro)} span2 />
           <ReadField label="Número" value={endereco.numero} />
-          <ReadField label="Bairro" value={endereco.bairro} />
-          <ReadField label="Cidade" value={endereco.cidade} />
+          <ReadField label="Bairro" value={titleCase(endereco.bairro)} />
+          <ReadField label="Cidade" value={titleCase(endereco.cidade)} />
           <ReadField label="UF" value={endereco.uf} />
           <ReadField label="CEP" value={endereco.cep} />
         </Secao>
@@ -1444,6 +1445,7 @@ function StepRevisao({
     : titleCase(identidade?.nome ?? "Cliente");
   const registro = formatRegistro(new Date());
   const cadTitulo = `CAD - ${nomeCliente} - ${registro.completo}`;
+  const [enviado, setEnviado] = useState(false);
 
   function gerarCad() {
     const secoes: string[] = [];
@@ -1675,7 +1677,7 @@ function StepRevisao({
         </>
       )}
 
-      <div className="mt-6 flex items-center justify-start">
+      <div className="mt-6 flex items-center justify-between gap-2">
         <button
           type="button"
           onClick={onBack}
@@ -1683,6 +1685,21 @@ function StepRevisao({
         >
           Voltar
         </button>
+        {enviado ? (
+          <span className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200">
+            <Check className="size-4" aria-hidden="true" />
+            Cadastro enviado
+          </span>
+        ) : (
+          <button
+            type="button"
+            onClick={() => setEnviado(true)}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#0d141c] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0d141c]/90"
+          >
+            <Send className="size-4" aria-hidden="true" />
+            Enviar
+          </button>
+        )}
       </div>
     </div>
   );

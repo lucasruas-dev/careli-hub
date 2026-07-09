@@ -548,9 +548,11 @@ export type EnrichmentResult = {
   nomeMae: string;
   nomePai: string;
   obito: boolean;
+  patrimonio: string;
   profissao: string;
   raw?: unknown;
   renda: string;
+  sexo: string;
   source: "mock" | "mostqi" | "unavailable";
   telefones: string[];
   warnings: string[];
@@ -570,8 +572,10 @@ function emptyEnrichment(
     nomeMae: "",
     nomePai: "",
     obito: false,
+    patrimonio: "",
     profissao: "",
     renda: "",
+    sexo: "",
     source,
     telefones: [],
     warnings,
@@ -664,12 +668,14 @@ function normalizeEnrichment(payload: unknown, includeRaw: boolean): EnrichmentR
     ? (resultObj?.datasets as unknown[])
     : [];
 
-  // Dados cadastrais basicos: nome mae/pai, estado civil, obito.
+  // Dados cadastrais basicos: nome mae/pai, estado civil, sexo, obito.
   const basic = asRecord(datasetPayload(datasets, "basic_data")?.basicData);
   if (basic) {
     result.nomeMae = str(basic.motherName);
     result.nomePai = str(basic.fatherName);
     result.estadoCivil = str(asRecord(basic.maritalStatusData)?.maritalStatus);
+    // Sexo/genero: BigDataCorp costuma usar "gender" (M/F); tentamos variantes.
+    result.sexo = str(basic.gender) || str(basic.sex) || str(basic.genero);
     result.obito = basic.hasObitIndication === true;
   }
 
@@ -715,12 +721,8 @@ function normalizeEnrichment(payload: unknown, includeRaw: boolean): EnrichmentR
     str(income?.mte) ||
     str(income?.ibge);
   const patrimonio = str(fin?.totalAssets);
-  result.renda = [
-    faixaRenda && faixaRenda !== "SEM INFORMACAO" ? `Renda ${faixaRenda}` : "",
-    patrimonio && patrimonio !== "SEM INFORMACAO" ? `Patrimonio ${patrimonio}` : "",
-  ]
-    .filter(Boolean)
-    .join(" · ");
+  result.renda = faixaRenda && faixaRenda !== "SEM INFORMACAO" ? faixaRenda : "";
+  result.patrimonio = patrimonio && patrimonio !== "SEM INFORMACAO" ? patrimonio : "";
 
   // Profissao/setor: melhor esforco a partir do vinculo ativo (occupation_data).
   const occ = asRecord(datasetPayload(datasets, "occupation_data")?.professionData);

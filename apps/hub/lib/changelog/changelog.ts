@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-09-cadastro-pf-fixes",
+    deployedAt: "2026-07-09T17:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cadastro de CAD: sexo e patrimônio agora vêm preenchidos do enriquecimento (antes ficavam em branco).",
+              "Endereço passa a aparecer com a primeira letra maiúscula, no mesmo padrão dos outros campos.",
+              "Novo botão Enviar na tela de revisão, separado do Gerar CAD (que continua gerando o PDF).",
+            ],
+            screen: "Cadastro de CAD",
+          },
+        ],
+      },
+    ],
+    rollback: "commit e1fac848 (v1.29.0)",
+    technical: {
+      done: "mostqi.ts normalizeEnrichment: sexo (basic_data.gender/sex) e patrimonio (financial_data.totalAssets) viram campos proprios (renda limpa, so a faixa); EnrichmentResult ganhou sexo+patrimonio. cadastro-flow: titleCase no StepEndereco; botao Enviar (estado enviado; placeholder ate o wiring de e-mail de confirmacao + outbox). v1.29.0 -> v1.29.1.",
+      motivation:
+        "Lucas testou o cadastro real em prod (Vercel->proxy->MOST): patrimonio e sexo nao vinham (bug de mapeamento do enriquecimento), enderecos em caixa alta, e faltava um botao Enviar distinto do Gerar CAD.",
+    },
+    title: "Cadastro: sexo/patrimônio do enriquecimento + endereço em title case + botão Enviar",
+    type: "correcao",
+    version: "1.29.1",
+  },
+  {
     buildTag: "2026-07-09-apolo-pj-imobiliarias-most",
     deployedAt: "2026-07-09T16:40:00-03:00",
     modules: [
