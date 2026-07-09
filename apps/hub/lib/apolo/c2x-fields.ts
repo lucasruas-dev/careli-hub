@@ -107,6 +107,25 @@ export function formatDateBR(value: string): string {
   return m ? `${m[3]}/${m[2]}/${m[1]}` : value;
 }
 
+// Meses (aproximados) entre a data informada e hoje. Aceita dd/mm/aaaa, mm/aaaa
+// ou ISO. Retorna null se não parsear. Usado pra saber se o comprovante está
+// atual (últimos 3 meses).
+export function mesesDesde(value: string): number | null {
+  const s = String(value ?? "").trim();
+  let y = 0;
+  let mo = 0;
+  const iso = s.match(/(\d{4})-(\d{2})-(\d{2})/);
+  const br = s.match(/(\d{2})\/(\d{2})\/(\d{4})/);
+  const brMes = s.match(/^(\d{2})\/(\d{4})$/);
+  if (iso) [y, mo] = [Number(iso[1]), Number(iso[2])];
+  else if (br) [mo, y] = [Number(br[2]), Number(br[3])];
+  else if (brMes) [mo, y] = [Number(brMes[1]), Number(brMes[2])];
+  else return null;
+  if (!y || !mo || mo < 1 || mo > 12) return null;
+  const now = new Date();
+  return (now.getFullYear() - y) * 12 + (now.getMonth() + 1 - mo);
+}
+
 // Idade a partir da data de nascimento (aceita ISO ou dd/mm/aaaa).
 export function calcIdade(value: string): string {
   let y = 0;
@@ -124,12 +143,23 @@ export function calcIdade(value: string): string {
   return age > 0 && age < 130 ? `${age} anos` : "";
 }
 
-// Tipo oficial do documento (CNH / RG / Passaporte) a partir da classificacao
-// do MOST.
-export function mapDocType(type: string, stdType: string): string {
+// Tipo do documento a partir da classificacao do MOST (identidade OU
+// comprovante de endereco). Se nao reconhecer, mostra o que o MOST classificou
+// (em vez de um generico), pra facilitar o mapeamento.
+export function mapDocType(type: string, stdType = ""): string {
   const v = normalize(`${type} ${stdType}`);
-  if (v.includes("CNH") || v.includes("HABILITACAO") || v.includes("DRIVER")) return "CNH";
-  if (v.includes("PASSAPORT") || v.includes("PASSPORT")) return "Passaporte";
-  if (v.includes("RG") || v.includes("IDENTIDADE") || v.includes("IDENTITY")) return "RG";
-  return "Documento de identificação";
+  // Identificacao.
+  if (/\bCNH\b|HABILITACAO|DRIVER|MOTORISTA/.test(v)) return "CNH";
+  if (/PASSAPORT|PASSPORT/.test(v)) return "Passaporte";
+  if (/\bRG\b|IDENTIDADE|IDENTITY|CARTEIRA DE IDENT/.test(v)) return "RG";
+  // Comprovantes de endereco.
+  if (/LUZ|ENERGIA|ELETRIC|CEMIG|ENEL|LIGHT|COPEL/.test(v)) return "Conta de luz";
+  if (/\bAGUA\b|WATER|SANEAMENTO|COPASA|SABESP|SANEPAR/.test(v)) return "Conta de água";
+  if (/TELEFON|CELULAR|TELECOM|VIVO|CLARO|TIM|OI\b/.test(v)) return "Conta de telefone";
+  if (/\bGAS\b/.test(v)) return "Conta de gás";
+  if (/BANC|EXTRATO|FATURA.*CARTAO|CARTAO.*FATURA|CORRESPONDENCIA/.test(v))
+    return "Correspondência bancária";
+  if (/COMPROVANTE|RESIDENCIA|ENDERECO/.test(v)) return "Comprovante de endereço";
+  const raw = String(type || stdType || "").trim();
+  return raw && !/desconhec|unknown/i.test(raw) ? titleCase(raw) : "Documento";
 }

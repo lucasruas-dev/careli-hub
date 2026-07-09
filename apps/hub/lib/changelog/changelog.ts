@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-09-cadastro-doc-e-comprovante",
+    deployedAt: "2026-07-09T18:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cadastro de CAD: o Tipo do documento agora mostra qual é (CNH, RG, Passaporte; e nos comprovantes: conta de luz, água, telefone, correspondência bancária).",
+              "Comprovante de endereço ganhou um selo de validade: Atual (emitido nos últimos 3 meses) ou Desatualizado, com a data.",
+              "Botão X para sair da tela de cadastro.",
+            ],
+            screen: "Cadastro de CAD",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 9c7a081b (v1.29.1)",
+    technical: {
+      done: "mapDocType (c2x-fields) reconhece CNH/RG/Passaporte + comprovantes (luz/agua/telefone/gas/bancario/comprovante) e, quando nao reconhece, mostra a classificacao crua do MOST (titleCase) em vez de generico. cadastro-flow: Endereco ganhou tipoDocumento + dataDocumento (acharDataComprovante varre ext.fields por data); campo Tipo + selo ComprovanteRecencia (mesesDesde <= 3 = atual); botao X (link /apolo) no header. v1.29.1 -> v1.29.2.",
+      motivation:
+        "Lucas validou o PF real: faltava saber qual documento foi lido, saber se o comprovante esta atual (3 meses) e ter como sair da tela.",
+    },
+    title: "Cadastro: tipo de documento específico + validade do comprovante + sair",
+    type: "melhoria",
+    version: "1.29.2",
+  },
+  {
     buildTag: "2026-07-09-cadastro-pf-fixes",
     deployedAt: "2026-07-09T17:20:00-03:00",
     modules: [

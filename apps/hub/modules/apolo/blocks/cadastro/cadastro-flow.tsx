@@ -31,6 +31,7 @@ import {
   matchEstadoCivilId,
   matchFaixaRendaId,
   matchSexoId,
+  mesesDesde,
   normalizeSearch,
   titleCase,
 } from "@/lib/apolo/c2x-fields";
@@ -92,8 +93,10 @@ type Endereco = {
   cep: string;
   cidade: string;
   complemento: string;
+  dataDocumento: string;
   logradouro: string;
   numero: string;
+  tipoDocumento: string;
   uf: string;
 };
 type Perfil = {
@@ -191,6 +194,25 @@ function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+// Acha a data de emissão/referência/vencimento do comprovante nos campos lidos
+// pelo MOST (pra saber se está atual). Prefere um campo com rótulo de data;
+// senão pega a primeira data encontrada.
+function acharDataComprovante(fields: Extraction["fields"]): string {
+  const dateRe = /\d{2}\/\d{2}\/\d{4}|\d{2}\/\d{4}|\d{4}-\d{2}-\d{2}/;
+  const prefer = /emiss|referenc|venc|competenc|data/i;
+  for (const field of fields) {
+    if (prefer.test(`${field.label} ${field.key}`)) {
+      const match = field.value.match(dateRe);
+      if (match) return match[0];
+    }
+  }
+  for (const field of fields) {
+    const match = field.value.match(dateRe);
+    if (match) return match[0];
+  }
+  return "";
+}
+
 function mockIdentidadeExtraction(): Extraction {
   return {
     cadastro: {
@@ -211,8 +233,10 @@ function mockEnderecoExtraction(): Extraction {
       bairro: "PORTAL DO SOL", cep: "32183-788", cidade: "CONTAGEM",
       logradouro: "RUA ERIDANO", numero: "56", uf: "MG",
     },
-    documentType: "comprovante-endereco",
-    fields: [],
+    documentType: "conta-de-luz-cemig",
+    fields: [
+      { confidence: 0.9, key: "data-emissao", label: "Data de emissão", value: "10/06/2026" },
+    ],
     overallConfidence: 0.94,
   };
 }
@@ -584,10 +608,20 @@ export function CadastroFlow() {
             <h1 className="text-lg font-semibold tracking-tight text-slate-800">
               Cadastro de CAD
             </h1>
-            <span className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 sm:inline-flex">
-              <ShieldCheck className="size-3.5 text-emerald-500" aria-hidden="true" />
-              Ambiente seguro
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 sm:inline-flex">
+                <ShieldCheck className="size-3.5 text-emerald-500" aria-hidden="true" />
+                Ambiente seguro
+              </span>
+              <a
+                href="/apolo"
+                aria-label="Sair do cadastro"
+                title="Sair do cadastro"
+                className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </a>
+            </div>
           </div>
           <span className="mt-5 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
             Etapa {activeIndex + 1} de {steps.length}
@@ -630,8 +664,8 @@ export function CadastroFlow() {
               if (c.logradouro || c.cidade) {
                 setEndereco({
                   bairro: c.bairro ?? "", cep: c.cep ?? "", cidade: c.cidade ?? "",
-                  complemento: "", logradouro: c.logradouro ?? "",
-                  numero: c.numero ?? "", uf: c.uf ?? "",
+                  complemento: "", dataDocumento: "", logradouro: c.logradouro ?? "",
+                  numero: c.numero ?? "", tipoDocumento: ext.documentType, uf: c.uf ?? "",
                 });
               }
             }}
@@ -670,8 +704,9 @@ export function CadastroFlow() {
               const c = ext.cadastro;
               setEndereco({
                 bairro: c.bairro ?? "", cep: c.cep ?? "", cidade: c.cidade ?? "",
-                complemento: "", logradouro: c.logradouro ?? "", numero: c.numero ?? "",
-                uf: c.uf ?? "",
+                complemento: "", dataDocumento: acharDataComprovante(ext.fields),
+                logradouro: c.logradouro ?? "", numero: c.numero ?? "",
+                tipoDocumento: ext.documentType, uf: c.uf ?? "",
               });
             }}
             onBack={() => setStep(step - 1)}
@@ -1323,6 +1358,32 @@ function StepIdentificacao({
   );
 }
 
+// Selo de comprovante atual (últimos 3 meses) ou desatualizado.
+function ComprovanteRecencia({ data }: { data: string }) {
+  const meses = mesesDesde(data);
+  if (meses === null) {
+    return null;
+  }
+  const atual = meses <= 3;
+  const quando = meses <= 0 ? "recente" : `há ${meses} ${meses === 1 ? "mês" : "meses"}`;
+  return (
+    <div
+      className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${
+        atual
+          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+          : "border-amber-200 bg-amber-50 text-amber-700"
+      }`}
+    >
+      {atual ? (
+        <CheckCircle2 className="size-4" aria-hidden="true" />
+      ) : (
+        <AlertTriangle className="size-4" aria-hidden="true" />
+      )}
+      Comprovante {atual ? "atual" : "desatualizado"} · emitido em {formatDateBR(data)} ({quando}).
+    </div>
+  );
+}
+
 function StepEndereco({
   endereco,
   onBack,
@@ -1345,14 +1406,20 @@ function StepEndereco({
         />
       </div>
       {endereco ? (
-        <Secao title="Endereço">
-          <ReadField label="Logradouro" value={titleCase(endereco.logradouro)} span2 />
-          <ReadField label="Número" value={endereco.numero} />
-          <ReadField label="Bairro" value={titleCase(endereco.bairro)} />
-          <ReadField label="Cidade" value={titleCase(endereco.cidade)} />
-          <ReadField label="UF" value={endereco.uf} />
-          <ReadField label="CEP" value={endereco.cep} />
-        </Secao>
+        <>
+          <Secao title="Endereço">
+            <ReadField label="Tipo" value={mapDocType(endereco.tipoDocumento)} />
+            <ReadField label="Logradouro" value={titleCase(endereco.logradouro)} span2 />
+            <ReadField label="Número" value={endereco.numero} />
+            <ReadField label="Bairro" value={titleCase(endereco.bairro)} />
+            <ReadField label="Cidade" value={titleCase(endereco.cidade)} />
+            <ReadField label="UF" value={endereco.uf} />
+            <ReadField label="CEP" value={endereco.cep} />
+          </Secao>
+          {endereco.dataDocumento ? (
+            <ComprovanteRecencia data={endereco.dataDocumento} />
+          ) : null}
+        </>
       ) : null}
       <NavButtons canNext={Boolean(endereco)} onBack={onBack} onNext={onNext} />
     </StepCard>
