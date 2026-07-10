@@ -22,19 +22,25 @@ import {
   type Custo,
   type Persona,
   type Politica,
-  PLANO_UNIDADES_PADRAO,
+  IMAGENS_POR_CADASTRO_PADRAO,
   QUERIES,
   calcularCusto,
   formatarCampo,
   pickValue,
   temValor,
 } from "@/lib/apolo/enrichment-spec";
+import {
+  PRECO_CARO,
+  RATE_LIMIT_OCR_MENSAL,
+  precoDataset,
+  reais,
+} from "@/lib/apolo/most-precos";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
 // Laboratorio de enriquecimento: roda as queries do MOST sob demanda, mostra o
 // dado real campo a campo e deixa o Lucas decidir o que entra automatico no CAD,
-// o que fica sob demanda do operador e o que sai. O custo do plano acompanha a
-// decisao em tempo real (1 unidade = 1 dataset consultado).
+// o que fica sob demanda do operador e o que sai. O custo acompanha a decisao em
+// tempo real, EM REAIS: o MOST cobra por dataset e nao ha faturamento minimo.
 
 type ProbeDataset = { data: unknown; name: string; status: string };
 
@@ -71,11 +77,40 @@ function soDigitos(value: string) {
   return value.replace(/\D/g, "");
 }
 
+type CampoResolvido = {
+  // Dataset que de fato entregou o valor (pode diferir do declarado na spec:
+  // a CARELI_PF_03, por exemplo, empacota tudo num unico "pf_gold").
+  nome?: string;
+  valor: unknown;
+};
+
+// Procura o valor no dataset declarado. Se ele nao veio, varre os datasets
+// recebidos: assim o campo aparece mesmo quando o MOST usa outro nome, e o selo
+// "veio de X" revela qual e o nome real.
+function resolverCampo(
+  campo: CampoSpec,
+  dados: Record<string, ProbeDataset>,
+): CampoResolvido {
+  const declarado = dados[campo.dataset];
+  if (declarado) {
+    const valor = pickValue(declarado.data, campo.keys);
+    if (temValor(valor)) return { nome: campo.dataset, valor };
+    return { nome: campo.dataset, valor: undefined };
+  }
+
+  for (const dataset of Object.values(dados)) {
+    const valor = pickValue(dataset.data, campo.keys);
+    if (temValor(valor)) return { nome: dataset.name, valor };
+  }
+
+  return { valor: undefined };
+}
+
 export function EnrichmentLab() {
   const [persona, setPersona] = useState<Persona>("pf");
   const [documento, setDocumento] = useState("");
   const [aba, setAba] = useState<AbaId>("identificacao");
-  const [plano, setPlano] = useState(PLANO_UNIDADES_PADRAO);
+  const [imagens, setImagens] = useState(IMAGENS_POR_CADASTRO_PADRAO);
 
   const [dados, setDados] = useState<Record<string, ProbeDataset>>({});
   const [queries, setQueries] = useState<Record<string, QueryState>>({});
@@ -96,8 +131,8 @@ export function EnrichmentLab() {
     [persona],
   );
   const custo: Custo = useMemo(
-    () => calcularCusto(camposPersona, politicas, plano),
-    [camposPersona, politicas, plano],
+    () => calcularCusto(camposPersona, politicas, persona, imagens),
+    [camposPersona, imagens, persona, politicas],
   );
 
   const politicaDe = useCallback(
@@ -169,7 +204,8 @@ export function EnrichmentLab() {
   const copiarDecisoes = useCallback(async () => {
     const linhas: string[] = [
       `DECISÃO DE ENRIQUECIMENTO · ${persona === "pf" ? "PESSOA FÍSICA" : "PESSOA JURÍDICA"}`,
-      `Plano: ${plano.toLocaleString("pt-BR")} unidades · ${custo.unidadesPorCadastro} datasets por cadastro · ${custo.cadastros.toLocaleString("pt-BR")} cadastros`,
+      `Custo por cadastro: ${reais(custo.custoAuto + custo.custoOcr)} (enriquecimento ${reais(custo.custoAuto)} + leitura de ${imagens} imagens ${reais(custo.custoOcr)})`,
+      `Se o operador acionar tudo sob demanda: + ${reais(custo.custoOperador)}`,
       "",
     ];
     for (const politica of POLITICAS) {
@@ -177,8 +213,9 @@ export function EnrichmentLab() {
       if (!hits.length) continue;
       linhas.push(`${politica.label.toUpperCase()} (${hits.length})`);
       for (const campo of hits) {
+        const preco = precoDataset(persona, campo.dataset);
         linhas.push(
-          `  - ${campo.label} [${campo.dataset}]${campo.novo ? " (NOVO, pedir ao MOST)" : ""}`,
+          `  - ${campo.label} [${campo.dataset}${preco ? ` · ${preco.codigo} · ${reais(preco.preco)}` : " · sem preço na proposta"}]${campo.novo ? " (NOVO, pedir ao MOST)" : ""}`,
         );
       }
       linhas.push("");
@@ -193,7 +230,7 @@ export function EnrichmentLab() {
     } catch {
       setErro("Não consegui copiar. Copie manualmente.");
     }
-  }, [camposPersona, custo, persona, plano, politicaDe]);
+  }, [camposPersona, custo, imagens, persona, politicaDe]);
 
   const camposDaAba = camposPersona.filter((campo) => campo.aba === aba);
   const algumaConsulta = Object.keys(queries).length > 0;
@@ -211,7 +248,7 @@ export function EnrichmentLab() {
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
             Rode a consulta, olhe o dado real e decida campo a campo: entra
             automático no cadastro, fica sob demanda pro operador, ou sai. O custo
-            do plano acompanha a decisão. Nada é gravado.
+            acompanha a decisão, em reais. Nada é gravado.
           </p>
         </div>
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
@@ -243,7 +280,7 @@ export function EnrichmentLab() {
           Consulta
         </div>
         <p className="mt-1 text-xs text-slate-500">
-          Cada botão dispara uma query e gasta unidades do plano. Rode só o que
+          Cada botão dispara uma query e é cobrado por dataset. Rode só o que
           precisa: a tela acumula os resultados.
         </p>
 
@@ -301,6 +338,25 @@ export function EnrichmentLab() {
             <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
             {erro}
           </p>
+        ) : null}
+
+        {Object.keys(dados).length ? (
+          <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              Datasets recebidos ({Object.keys(dados).length})
+            </div>
+            <div className="mt-1.5 flex flex-wrap gap-1">
+              {Object.values(dados).map((dataset) => (
+                <span
+                  className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-600"
+                  key={dataset.name}
+                  title={`status ${dataset.status}`}
+                >
+                  {dataset.name}
+                </span>
+              ))}
+            </div>
+          </div>
         ) : null}
 
         {algumaConsulta ? (
@@ -383,7 +439,6 @@ export function EnrichmentLab() {
               <CampoRow
                 campo={campo}
                 cepComprovante={soDigitos(cepComprovante)}
-                dataset={dados[campo.dataset]}
                 emailOk={emailOk}
                 key={campo.id}
                 onEmailOk={setEmailOk}
@@ -391,6 +446,8 @@ export function EnrichmentLab() {
                   setPoliticas((anterior) => ({ ...anterior, [campo.id]: value }))
                 }
                 politica={politicaDe(campo)}
+                queryRodada={Boolean(queries[campo.query])}
+                resolvido={resolverCampo(campo, dados)}
               />
             ))}
           </div>
@@ -401,37 +458,77 @@ export function EnrichmentLab() {
           <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
               <Coins className="size-4 text-[#A07C3B]" aria-hidden="true" />
-              Custo do plano
+              Custo por cadastro
             </div>
+            <p className="mt-1 text-[11px] text-slate-500">
+              Sem faturamento mínimo: paga-se por dataset consultado.
+            </p>
 
             <label className="mt-4 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Unidades contratadas
+              Imagens lidas (RG frente e verso + comprovante)
             </label>
             <input
               className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 font-mono text-sm outline-none focus:border-[#A07C3B]/40"
               inputMode="numeric"
-              onChange={(event) => setPlano(Number(soDigitos(event.target.value)) || 0)}
-              value={plano}
+              onChange={(event) => setImagens(Number(soDigitos(event.target.value)) || 0)}
+              value={imagens}
             />
 
             <div className="mt-4 grid gap-3">
               <Metrica
-                label="Datasets por cadastro"
-                sub="Cada dataset automático custa 1 unidade"
-                valor={String(custo.unidadesPorCadastro)}
-              />
-              <Metrica
                 destaque
-                label="Cadastros com o plano"
-                sub={`${plano.toLocaleString("pt-BR")} ÷ ${custo.unidadesPorCadastro || 1}`}
-                valor={custo.cadastros.toLocaleString("pt-BR")}
+                label="Cada cadastro custa"
+                sub={`${reais(custo.custoAuto)} de dados + ${reais(custo.custoOcr)} de leitura`}
+                valor={reais(custo.custoAuto + custo.custoOcr)}
               />
               <Metrica
-                label="Datasets sob demanda"
-                sub="Só custam quando o operador pedir"
-                valor={String(custo.datasetsOperador.length)}
+                label="A cada 100 cadastros"
+                sub="O que entra na fatura do mês"
+                valor={reais((custo.custoAuto + custo.custoOcr) * 100)}
+              />
+              <Metrica
+                label="Sob demanda, se pedir tudo"
+                sub={`${custo.datasetsOperador.length} datasets, só quando o operador clicar`}
+                valor={reais(custo.custoOperador)}
               />
             </div>
+
+            {custo.datasetsAuto.length ? (
+              <div className="mt-4">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Onde o dinheiro vai
+                </div>
+                <div className="mt-1.5 flex flex-col gap-1">
+                  {custo.datasetsAuto.slice(0, 5).map((linha) => (
+                    <div
+                      className="flex items-center justify-between gap-2 text-[11px]"
+                      key={linha.dataset}
+                    >
+                      <span className="truncate font-mono text-slate-500" title={linha.codigo}>
+                        {linha.dataset}
+                      </span>
+                      <span
+                        className={[
+                          "shrink-0 tabular-nums",
+                          linha.preco >= PRECO_CARO
+                            ? "font-semibold text-rose-600"
+                            : "text-slate-500",
+                        ].join(" ")}
+                      >
+                        {reais(linha.preco)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {custo.semPreco.length ? (
+              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] text-amber-700">
+                Sem preço na proposta: {custo.semPreco.join(", ")}. Pedir cotação
+                antes de ligar.
+              </p>
+            ) : null}
 
             {custo.novosPendentes.length ? (
               <div className="mt-4 rounded-lg border border-[#A07C3B]/30 bg-[#A07C3B]/[0.05] p-3">
@@ -451,8 +548,14 @@ export function EnrichmentLab() {
               </div>
             ) : null}
 
+            <p className="mt-3 text-[10px] leading-relaxed text-slate-400">
+              O limite de {RATE_LIMIT_OCR_MENSAL.toLocaleString("pt-BR")} do
+              contrato é um teto mensal de páginas lidas pelo OCR, ajustável por
+              e-mail. Não se aplica ao enriquecimento.
+            </p>
+
             <button
-              className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35]"
+              className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35]"
               onClick={() => void copiarDecisoes()}
               type="button"
             >
@@ -502,23 +605,27 @@ function Metrica({
 function CampoRow({
   campo,
   cepComprovante,
-  dataset,
   emailOk,
   onEmailOk,
   onPolitica,
   politica,
+  queryRodada,
+  resolvido,
 }: {
   campo: CampoSpec;
   cepComprovante: string;
-  dataset?: ProbeDataset;
   emailOk: boolean | null;
   onEmailOk: (value: boolean) => void;
   onPolitica: (value: Politica) => void;
   politica: Politica;
+  queryRodada: boolean;
+  resolvido: CampoResolvido;
 }) {
-  const bruto = dataset ? pickValue(dataset.data, campo.keys) : undefined;
+  const bruto = resolvido.valor;
   const linhas = formatarCampo(campo, bruto);
   const veio = temValor(bruto);
+  const outroDataset = resolvido.nome && resolvido.nome !== campo.dataset;
+  const preco = precoDataset(campo.persona, campo.dataset);
 
   return (
     <div
@@ -542,9 +649,31 @@ function CampoRow({
               {campo.query.replace("CARELI_", "")}
             </span>
           )}
+          {preco ? (
+            <span
+              className={[
+                "rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums",
+                preco.preco >= PRECO_CARO
+                  ? "bg-rose-50 text-rose-700"
+                  : "bg-slate-100 text-slate-500",
+              ].join(" ")}
+              title={preco.codigo}
+            >
+              {reais(preco.preco)}
+            </span>
+          ) : (
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              sem preço
+            </span>
+          )}
           {campo.origem === "bestinfo" ? (
             <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
               best info
+            </span>
+          ) : null}
+          {outroDataset ? (
+            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+              veio de {resolvido.nome}
             </span>
           ) : null}
         </div>
@@ -554,7 +683,7 @@ function CampoRow({
         ) : null}
 
         <div className="mt-2">
-          {!dataset ? (
+          {!queryRodada && !veio ? (
             <p className="text-xs text-slate-400">
               Ainda não consultado. Rode a query{" "}
               <span className="font-mono">{campo.query}</span>.

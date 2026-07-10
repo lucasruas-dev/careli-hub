@@ -1097,10 +1097,18 @@ const MOCK_PF: Record<string, ProbeDataset[]> = {
     ds("ondemand_rf_status", certificado("REGULAR", "Situacao cadastral do CPF: REGULAR.")),
     ds("ondemand_administrative_sanctions", certificado("NAO CONSTA", "Nao constam sancoes administrativas do BACEN.")),
   ],
+  // Em producao a CARELI_PF_03 devolve UM dataset "pf_gold" com tudo dentro
+  // (Score, BestInfo, Negative, Inquiries, Protests). Confirmado em 10/jul.
   CARELI_PF_03: [
-    ds("pf_gold_score", { CPStatus: "ATIVO", Score: { PaymentCommitmentScore: 78, ProfileScore: 71, Score: 742, Segment: "VAREJO" } }),
-    ds("pf_gold_negative_flag", { HasInquiryData: true, HasNegativeData: true }),
-    ds("pf_gold_negative_info", {
+    ds("pf_gold", {
+      BestInfo: {
+        Address: "RUA DAS FLORES, 100, APT 302, CENTRO, BELO HORIZONTE/MG, 30110-001",
+        Email: "maria.silva@gmail.com",
+        Phone: "(31) 99123-4567",
+      },
+      CPStatus: "ATIVO",
+      HasInquiryData: true,
+      HasNegativeData: true,
       Negative: {
         Apontamentos: [
           { Amount: 1240.55, CompanyName: "BANCO XPTO S.A.", DateOccurred: "2024-11-03", Nature: "CARTAO DE CREDITO" },
@@ -1112,13 +1120,7 @@ const MOCK_PF: Record<string, ProbeDataset[]> = {
         PendenciesControlCred: 1630.45,
       },
       Protests: { TotalProtests: 0 },
-    }),
-    ds("pf_gold_bestinfo", {
-      BestInfo: {
-        Address: "RUA DAS FLORES, 100, APT 302, CENTRO, BELO HORIZONTE/MG, 30110-001",
-        Email: "maria.silva@gmail.com",
-        Phone: "(31) 99123-4567",
-      },
+      Score: { PaymentCommitmentScore: 78, ProfileScore: 71, Score: 742, Segment: "VAREJO" },
     }),
   ],
   // Proposta: os datasets novos que ainda nao estao em nenhuma query CARELI.

@@ -32,6 +32,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-enriquecimento-custo-real",
+    deployedAt: "2026-07-10T11:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O painel de custo agora mostra reais, não unidades: cada campo exibe quanto custa o dataset que o entrega, e o total por cadastro soma o enriquecimento mais a leitura dos documentos.",
+              "Os campos do GOLD (score, negativações e melhor contato) foram reunidos no dataset que a consulta realmente devolve, então a aba Financeiro passa a preencher.",
+              "A certidão da Receita saiu do automático: o cadastro básico já traz a situação do CPF em dois segundos, enquanto a certidão leva mais de três minutos.",
+              "Sexo aparece por extenso e a tela lista os datasets recebidos em cada consulta.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 9df49c18 (v1.30.0)",
+    technical: {
+      done: "lib/apolo/most-precos.ts: tabela de precos da proposta MOST SEM FM (codigo + R$ por dataset, PF e PJ) + CUSTO_OCR_IMAGEM 0,506 + RATE_LIMIT_OCR_MENSAL. calcularCusto passou a devolver reais (custoAuto, custoOperador, custoOcr, datasetsAuto ordenados por preco, semPreco) em vez de unidades; PLANO_UNIDADES_PADRAO virou IMAGENS_POR_CADASTRO_PADRAO. CORRECAO DO MODELO: o contrato MST-0031/26 tem Faturamento Minimo Mensal = R$ 0,00 e os 10.000 da clausula 3.3.5 sao rate limiter de paginas de OCR, nao um plano de datasets. CARELI_PF_03 devolve UM dataset pf_gold (Q-DB-118-F, R$ 11,628) com Score/BestInfo/Negative/Protests dentro: os campos que apontavam para pf_gold_score/_bestinfo/_negative_flag/_negative_info foram remapeados. ondemand_rf_status virou politica operador (a PF_02 inteira leva ~188s e basic_data.taxIdStatus responde em 2,6s). resolverCampo faz fallback varrendo os datasets recebidos e mostra o selo 'veio de X'. mockProbe alinhado ao retorno real.",
+      motivation:
+        "A proposta e o contrato da MOST chegaram: o custo nao e por unidade, e por dataset em reais, variando de R$ 0,177 a R$ 14,62. A configuracao sugerida custava R$ 17,99 por cadastro, com 89% concentrados no GOLD completo e no AuthScore. Sem ver o preco ao lado do campo, a decisao do que enriquecer era chute.",
+    },
+    title: "Enriquecimento: custo real em reais (a MOST cobra por dataset)",
+    type: "melhoria",
+    version: "1.30.1",
+  },
+  {
     buildTag: "2026-07-10-apolo-laboratorio-enriquecimento",
     deployedAt: "2026-07-10T00:00:00-03:00",
     modules: [
