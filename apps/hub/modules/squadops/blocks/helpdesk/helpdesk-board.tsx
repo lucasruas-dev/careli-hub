@@ -18,6 +18,8 @@ import {
   type HubItTicket,
   type HubItTicketAttachmentInput,
   type HubItTicketBacklogInput,
+  type HubItTicketCategory,
+  type HubItTicketPriority,
   type HubItTicketRoadmapType,
   type HubItTicketStatus,
 } from "@/lib/hub-it-tickets/types";
@@ -92,8 +94,10 @@ type HubItTicketsBoardProps = {
 type TicketDraft = {
   adminResponse: string;
   approvedDeliveryDate: string;
+  category: HubItTicketCategory;
   deliveryDecision: "manter" | "approve_requested" | "reject_with_new_date";
   deliveryDecisionNote: string;
+  priority: HubItTicketPriority;
   resolutionSummary: string;
   status: HubItTicketStatus;
 };
@@ -101,8 +105,10 @@ type TicketDraft = {
 const emptyDraft: TicketDraft = {
   adminResponse: "",
   approvedDeliveryDate: "",
+  category: "erro",
   deliveryDecision: "manter",
   deliveryDecisionNote: "",
+  priority: "media",
   resolutionSummary: "",
   status: "em_tratativa",
 };
@@ -489,6 +495,8 @@ export function HubItTicketsBoard({
   const selectedTicketDraftRequestedDeliveryDate =
     selectedTicket?.requestedDeliveryDate ?? null;
   const selectedTicketDraftIsBacklog = selectedTicket?.roadmap?.active === true;
+  const selectedTicketDraftCategory = selectedTicket?.category ?? null;
+  const selectedTicketDraftPriority = selectedTicket?.priority ?? null;
 
   const refreshTickets = useCallback(async () => {
     setIsLoading(true);
@@ -654,20 +662,25 @@ export function HubItTicketsBoard({
 
     const persistedDraft = readStoredTicketDraft(selectedTicketDraftProtocol);
 
+    const defaultDraft = createDefaultTicketDraft({
+      approvedDeliveryDate: selectedTicketDraftApprovedDeliveryDate,
+      category: selectedTicketDraftCategory,
+      isBacklog: selectedTicketDraftIsBacklog,
+      priority: selectedTicketDraftPriority,
+      requestedDeliveryDate: selectedTicketDraftRequestedDeliveryDate,
+      status: selectedTicketDraftStatus,
+    });
+
     isHydratingDraftRef.current = true;
     setReplyAttachments([]);
-    setDraft(
-      persistedDraft ??
-        createDefaultTicketDraft({
-          approvedDeliveryDate: selectedTicketDraftApprovedDeliveryDate,
-          isBacklog: selectedTicketDraftIsBacklog,
-          requestedDeliveryDate: selectedTicketDraftRequestedDeliveryDate,
-          status: selectedTicketDraftStatus,
-        }),
-    );
+    // Rascunho salvo pode ser de antes do tipo/impacto existirem no draft;
+    // o default do ticket preenche o que faltar.
+    setDraft(persistedDraft ? { ...defaultDraft, ...persistedDraft } : defaultDraft);
   }, [
     selectedTicketDraftApprovedDeliveryDate,
+    selectedTicketDraftCategory,
     selectedTicketDraftIsBacklog,
+    selectedTicketDraftPriority,
     selectedTicketDraftProtocol,
     selectedTicketDraftRequestedDeliveryDate,
     selectedTicketDraftStatus,
@@ -685,7 +698,9 @@ export function HubItTicketsBoard({
 
     const defaultDraft = createDefaultTicketDraft({
       approvedDeliveryDate: selectedTicket.approvedDeliveryDate ?? null,
+      category: selectedTicket.category ?? null,
       isBacklog: selectedTicket.roadmap?.active === true,
+      priority: selectedTicket.priority ?? null,
       requestedDeliveryDate: selectedTicket.requestedDeliveryDate ?? null,
       status: selectedTicket.status,
     });
@@ -768,6 +783,9 @@ export function HubItTicketsBoard({
     }
 
     const hasDeliveryDecision = draft.deliveryDecision !== "manter";
+    const hasReclassification =
+      draft.category !== selectedTicket.category ||
+      draft.priority !== selectedTicket.priority;
 
     if (
       draft.deliveryDecision === "reject_with_new_date" &&
@@ -781,9 +799,10 @@ export function HubItTicketsBoard({
       !draft.adminResponse.trim() &&
       !draft.resolutionSummary.trim() &&
       !hasDeliveryDecision &&
+      !hasReclassification &&
       replyAttachments.length === 0
     ) {
-      setError("Escreva uma devolutiva, resumo, decisao de data ou anexe uma evidencia.");
+      setError("Escreva uma devolutiva, resumo, decisao de data, reclassifique ou anexe uma evidencia.");
       return;
     }
 
@@ -816,6 +835,11 @@ export function HubItTicketsBoard({
             hasDeliveryDecision && draft.approvedDeliveryDate
               ? draft.approvedDeliveryDate
               : undefined,
+          // So manda se o Zeus mudou a classificacao (poupa update a toa).
+          category:
+            draft.category !== selectedTicket.category
+              ? draft.category
+              : undefined,
           deliveryDecision:
             draft.deliveryDecision === "manter"
               ? undefined
@@ -823,6 +847,10 @@ export function HubItTicketsBoard({
           deliveryDecisionNote: hasDeliveryDecision
             ? draft.deliveryDecisionNote
             : undefined,
+          priority:
+            draft.priority !== selectedTicket.priority
+              ? draft.priority
+              : undefined,
           protocol: selectedTicket.protocol,
           resolutionSummary: draft.resolutionSummary,
           status: nextStatus,
@@ -848,6 +876,8 @@ export function HubItTicketsBoard({
           updatedTicket.approvedDeliveryDate ??
           updatedTicket.requestedDeliveryDate ??
           "",
+        category: updatedTicket.category,
+        priority: updatedTicket.priority,
         status: updatedTicket.roadmap?.active
           ? "em_analise"
           : updatedTicket.status === "novo"
@@ -3878,10 +3908,16 @@ function TicketWorkspace({
               {ticket.title}
             </h2>
             <p className="m-0 mt-2 text-sm text-slate-500">
-              {ticket.module} / {hubItTicketCategoryLabels[ticket.category]} /
-              aberto em {formatDateTime(ticket.createdAt)}
+              {ticket.module} / aberto em {formatDateTime(ticket.createdAt)}
             </p>
           </div>
+          <ClassificationEditor
+            draft={draft}
+            isSaving={isSaving}
+            onDraftChange={onDraftChange}
+            onSave={onSave}
+            ticket={ticket}
+          />
         </div>
         <WorkflowStepper ticket={ticket} />
         <CollapsiblePanel
@@ -3981,6 +4017,93 @@ function TicketWorkspace({
         </aside>
       </div>
     </div>
+  );
+}
+
+// Reclassificacao pelo Zeus, no cabecalho do detalhe. O tipo/impacto agora
+// respeitam a escolha (o form parou de sobrescrever), mas quando a inferencia
+// erra e o ticket ja esta aberto, o operador corrige aqui e salva na hora.
+function ClassificationEditor({
+  draft,
+  isSaving,
+  onDraftChange,
+  onSave,
+  ticket,
+}: {
+  draft: TicketDraft;
+  isSaving: boolean;
+  onDraftChange: (draft: TicketDraft) => void;
+  onSave: (nextStatus: HubItTicketStatus) => void;
+  ticket: HubItTicket;
+}) {
+  const changed =
+    draft.category !== ticket.category || draft.priority !== ticket.priority;
+
+  return (
+    <div className="grid w-full gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:w-auto sm:min-w-[15rem]">
+      <div className="flex items-center gap-1.5 text-[0.68rem] font-semibold uppercase text-slate-500">
+        <Sparkles className="size-3.5 text-[#A07C3B]" />
+        Classificacao
+      </div>
+      <div className="flex flex-wrap items-end gap-2">
+        <ClassificationSelect
+          label="Tipo"
+          onChange={(value) =>
+            onDraftChange({ ...draft, category: value as HubItTicketCategory })
+          }
+          options={hubItTicketCategoryLabels}
+          value={draft.category}
+        />
+        <ClassificationSelect
+          label="Impacto"
+          onChange={(value) =>
+            onDraftChange({ ...draft, priority: value as HubItTicketPriority })
+          }
+          options={hubItTicketPriorityLabels}
+          value={draft.priority}
+        />
+      </div>
+      {changed ? (
+        <button
+          className="inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border border-[#A07C3B] bg-[#A07C3B] px-3 text-xs font-semibold text-white transition hover:bg-[#8f6f35] disabled:cursor-not-allowed disabled:opacity-55"
+          disabled={isSaving}
+          onClick={() => onSave(draft.status)}
+          type="button"
+        >
+          <CheckCircle2 className="size-3.5" />
+          Salvar classificacao
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
+function ClassificationSelect({
+  label,
+  onChange,
+  options,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  options: Record<string, string>;
+  value: string;
+}) {
+  return (
+    <label className="grid gap-1 text-[0.68rem] font-semibold uppercase text-slate-500">
+      {label}
+      <select
+        className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold normal-case text-slate-800 outline-none transition focus:border-[#A07C3B]/50"
+        onChange={(event) => onChange(event.target.value)}
+        value={value}
+      >
+        {Object.entries(options).map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>
+            {optionLabel}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 
@@ -6676,20 +6799,26 @@ function countHighPriorityTickets(tickets: HubItTicket[]) {
 
 function createDefaultTicketDraft({
   approvedDeliveryDate,
+  category,
   isBacklog,
+  priority,
   requestedDeliveryDate,
   status,
 }: {
   approvedDeliveryDate: string | null;
+  category: HubItTicketCategory | null;
   isBacklog: boolean;
+  priority: HubItTicketPriority | null;
   requestedDeliveryDate: string | null;
   status: HubItTicketStatus;
 }): TicketDraft {
   return {
     adminResponse: "",
     approvedDeliveryDate: approvedDeliveryDate ?? requestedDeliveryDate ?? "",
+    category: category ?? "erro",
     deliveryDecision: "manter",
     deliveryDecisionNote: "",
+    priority: priority ?? "media",
     resolutionSummary: "",
     status: isBacklog ? "em_analise" : status === "novo" ? "em_tratativa" : status,
   };
@@ -6903,6 +7032,16 @@ function parseStoredTicketDraft(value: unknown): TicketDraft | null {
       typeof draft.deliveryDecisionNote === "string"
         ? draft.deliveryDecisionNote
         : "",
+    category:
+      typeof draft.category === "string" &&
+      draft.category in hubItTicketCategoryLabels
+        ? (draft.category as HubItTicketCategory)
+        : "erro",
+    priority:
+      typeof draft.priority === "string" &&
+      draft.priority in hubItTicketPriorityLabels
+        ? (draft.priority as HubItTicketPriority)
+        : "media",
     resolutionSummary:
       typeof draft.resolutionSummary === "string"
         ? draft.resolutionSummary
@@ -6918,6 +7057,8 @@ function hasMeaningfulTicketDraft(draft: TicketDraft, defaultDraft: TicketDraft)
     draft.deliveryDecisionNote.trim().length > 0 ||
     draft.deliveryDecision !== defaultDraft.deliveryDecision ||
     draft.approvedDeliveryDate !== defaultDraft.approvedDeliveryDate ||
+    draft.category !== defaultDraft.category ||
+    draft.priority !== defaultDraft.priority ||
     draft.status !== defaultDraft.status
   );
 }

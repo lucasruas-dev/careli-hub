@@ -237,11 +237,14 @@ export type HubItTicketUpdateInput = {
     | "customer_review";
   adminResponse?: string;
   attachments?: HubItTicketAttachmentInput[];
+  // Reclassificacao pelo Zeus: corrige o tipo/impacto que a inferencia errou.
+  category?: HubItTicketCategory;
   customerResponse?: string;
   approvedDeliveryDate?: string;
   backlog?: HubItTicketBacklogInput;
   deliveryDecision?: HubItTicketDeliveryDecisionAction;
   deliveryDecisionNote?: string;
+  priority?: HubItTicketPriority;
   protocol: string;
   resolutionSummary?: string;
   status?: HubItTicketStatus;
