@@ -787,6 +787,21 @@ export function HubItTicketsBoard({
       return;
     }
 
+    // Sem o resumo da resolucao o HelpDesk nao acumula conhecimento: o servidor
+    // recusa, entao avisamos antes de mandar.
+    const nextStage = getTicketWorkflowStageFromStatus(nextStatus);
+
+    if (
+      (nextStage === "validacao" || nextStage === "finalizado") &&
+      !draft.resolutionSummary.trim() &&
+      !selectedTicket.resolutionSummary?.trim()
+    ) {
+      setError(
+        "Descreva a resolucao antes de enviar o ticket para validacao ou fecha-lo.",
+      );
+      return;
+    }
+
     setIsSaving(true);
     setError(null);
 

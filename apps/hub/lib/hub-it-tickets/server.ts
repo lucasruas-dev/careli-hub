@@ -707,6 +707,26 @@ export async function updateHubItTicket({
       now,
       user,
     });
+    // O `resolution_summary` estava sendo ZERADO a cada resposta do admin
+    // (`?? null`), e por isso vivia vazio em 100% dos tickets. Ele so muda
+    // quando um texto novo chega; caso contrario o que ja existe sobrevive.
+    const resolutionSummary =
+      normalizedInput.resolutionSummary?.trim() ||
+      currentTicket.resolution_summary?.trim() ||
+      "";
+
+    // Sem descricao da resolucao, o HelpDesk nao acumula conhecimento nenhum:
+    // ninguem consegue responder "o que foi feito" depois. Entao mandar pra
+    // validacao (ou fechar) exige o resumo.
+    if (
+      (validationTicketStatuses.has(nextStatus) || nextStatus === "fechado") &&
+      !resolutionSummary
+    ) {
+      throw new Error(
+        "Descreva a resolucao antes de enviar o ticket para validacao ou fecha-lo.",
+      );
+    }
+
     const updatePayload: HubItTicketUpdate = {
       admin_response: normalizedInput.adminResponse ?? null,
       assigned_to_avatar_url: user.avatarUrl ?? null,
@@ -717,7 +737,7 @@ export async function updateHubItTicket({
       last_response_by_email: user.email,
       last_response_by_name: user.name,
       last_response_by_user_id: user.id,
-      resolution_summary: normalizedInput.resolutionSummary ?? null,
+      resolution_summary: resolutionSummary || null,
       resolved_at: nextStatus === "fechado" ? now : null,
       status: nextStatus,
     };
