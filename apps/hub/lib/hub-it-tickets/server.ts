@@ -120,8 +120,10 @@ type HubItTicketUpdate = Partial<
     | "last_response_by_avatar_url"
     | "last_response_by_email"
     | "last_response_by_name"
+    | "category"
     | "last_response_by_user_id"
     | "metadata"
+    | "priority"
     | "resolution_summary"
     | "resolved_at"
     | "status"
@@ -742,6 +744,15 @@ export async function updateHubItTicket({
       status: nextStatus,
     };
 
+    // Reclassificacao: o Zeus corrige tipo/impacto sem esperar texto novo.
+    if (normalizedInput.category) {
+      updatePayload.category = normalizedInput.category;
+    }
+
+    if (normalizedInput.priority) {
+      updatePayload.priority = normalizedInput.priority;
+    }
+
     if (deliveryDecision.changed || roadmapBacklog.changed) {
       updatePayload.metadata = roadmapBacklog.metadata;
     }
@@ -1117,6 +1128,12 @@ function normalizeUpdateInput(input: unknown): HubItTicketUpdateInput {
   const adminResponse = sanitizeOptionalText(payload.adminResponse);
   const customerResponse = sanitizeOptionalText(payload.customerResponse);
   const resolutionSummary = sanitizeOptionalText(payload.resolutionSummary);
+  const category = isTicketCategory(payload.category)
+    ? payload.category
+    : undefined;
+  const priority = isTicketPriority(payload.priority)
+    ? payload.priority
+    : undefined;
   const status = isTicketStatus(payload.status) ? payload.status : undefined;
   const deliveryDecision = isDeliveryDecision(payload.deliveryDecision)
     ? payload.deliveryDecision
@@ -1140,9 +1157,11 @@ function normalizeUpdateInput(input: unknown): HubItTicketUpdateInput {
     approvedDeliveryDate,
     attachments: normalizeAttachments(payload.attachments),
     backlog,
+    category,
     customerResponse,
     deliveryDecision,
     deliveryDecisionNote,
+    priority,
     protocol,
     resolutionSummary,
     status,
