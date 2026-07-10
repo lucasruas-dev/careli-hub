@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -32,6 +32,11 @@ import {
 } from "./types";
 
 const ZEUS_VALIDATION_TIMEOUT_MESSAGE = "Ticket encerrado";
+
+// Bucket PRIVADO: os anexos sao prints e gravacoes internas do sistema. A leitura
+// e sempre por URL assinada de curta duracao (mesmo padrao do `chronos-drive`).
+export const HUB_IT_TICKET_ATTACHMENT_BUCKET = "hub-it-ticket-attachments";
+const HUB_IT_TICKET_ATTACHMENT_URL_TTL_SECONDS = 60 * 60;
 
 type HubItTicketUserRow = {
   avatar_url?: string | null;
@@ -145,6 +150,7 @@ type HubItTicketAttachmentRow = {
   metadata: Record<string, unknown>;
   mime_type: string;
   size_bytes: number;
+  storage_path: string | null;
   ticket_id: string;
   type: HubItTicketAttachment["type"];
 };
@@ -897,10 +903,10 @@ async function hydrateTicketRows(
         .filter((userId): userId is string => Boolean(userId)),
     ),
   ];
-  const eventActorsById = await loadHubItTicketEventActors(
-    adminClient,
-    actorIds,
-  );
+  const [eventActorsById, signedUrlByPath] = await Promise.all([
+    loadHubItTicketEventActors(adminClient, actorIds),
+    signHubItTicketAttachmentUrls(adminClient, attachmentRows),
+  ]);
   const eventsByTicketId = groupByTicketId(eventRows);
   const attachmentsByTicketId = groupByTicketId(attachmentRows);
 
@@ -910,7 +916,11 @@ async function hydrateTicketRows(
       eventsByTicketId
         .get(row.id)
         ?.map((event) => mapEventRow(event, eventActorsById)) ?? [],
-      attachmentsByTicketId.get(row.id)?.map(mapAttachmentRow) ?? [],
+      attachmentsByTicketId
+        .get(row.id)
+        ?.map((attachmentRow) =>
+          mapAttachmentRow(attachmentRow, signedUrlByPath),
+        ) ?? [],
     ),
   );
 }
@@ -1006,12 +1016,17 @@ async function insertTicketAttachments(
   const { error } = await adminClient.from("hub_it_ticket_attachments").insert(
     input.attachments.map((attachment) => ({
       captured_at: attachment.capturedAt,
-      content_data_url: attachment.dataUrl ?? null,
+      // Anexo novo vive no Storage. O base64 so e gravado se, por algum motivo,
+      // o upload direto nao aconteceu (fallback de compatibilidade).
+      content_data_url: attachment.storagePath
+        ? null
+        : (attachment.dataUrl ?? null),
       created_by_user_id: input.userId,
       file_name: attachment.fileName,
       metadata: { source: "hub-athena-ticket-ti" },
       mime_type: attachment.mimeType,
       size_bytes: attachment.sizeBytes,
+      storage_path: attachment.storagePath ?? null,
       ticket_id: input.ticketId,
       type: attachment.type,
     })),
@@ -1273,16 +1288,89 @@ function mapEventRow(
 
 function mapAttachmentRow(
   row: HubItTicketAttachmentRow,
+  signedUrlByPath: Map<string, string>,
 ): HubItTicketAttachment {
   return {
     capturedAt: row.captured_at,
-    dataUrl: row.content_data_url,
+    // Leitura dupla: anexo migrado usa a URL assinada; o legado ainda entrega o
+    // base64 inline ate o backfill terminar.
+    dataUrl: row.storage_path ? null : row.content_data_url,
     fileName: row.file_name,
     id: row.id,
     mimeType: row.mime_type,
     sizeBytes: row.size_bytes,
+    storagePath: row.storage_path,
     type: row.type,
+    url: row.storage_path
+      ? (signedUrlByPath.get(row.storage_path) ?? null)
+      : null,
   };
+}
+
+export async function createHubItTicketAttachmentUploadUrl({
+  fileName,
+  userId,
+}: {
+  fileName: string;
+  userId: string;
+}) {
+  const adminClient = createHubItTicketClient();
+
+  if (!adminClient) {
+    throw new Error("Configure a chave server-side para enviar anexos.");
+  }
+
+  const storagePath = `${userId}/${randomUUID()}${getFileExtension(fileName)}`;
+  const signed = await adminClient.storage
+    .from(HUB_IT_TICKET_ATTACHMENT_BUCKET)
+    .createSignedUploadUrl(storagePath);
+
+  if (signed.error || !signed.data) {
+    throw new Error("Nao foi possivel preparar o envio do anexo.");
+  }
+
+  return {
+    bucket: HUB_IT_TICKET_ATTACHMENT_BUCKET,
+    path: signed.data.path,
+    token: signed.data.token,
+  };
+}
+
+function getFileExtension(fileName: string) {
+  const extension = /\.([a-z0-9]{1,8})$/i.exec(fileName)?.[1];
+
+  return extension ? `.${extension.toLowerCase()}` : "";
+}
+
+// Uma chamada so pra todos os anexos da pagina, em vez de uma por linha.
+async function signHubItTicketAttachmentUrls(
+  adminClient: HubItTicketsClient,
+  rows: HubItTicketAttachmentRow[],
+) {
+  const paths = [
+    ...new Set(
+      rows
+        .map((row) => row.storage_path)
+        .filter((path): path is string => Boolean(path)),
+    ),
+  ];
+  const signedUrlByPath = new Map<string, string>();
+
+  if (paths.length === 0) {
+    return signedUrlByPath;
+  }
+
+  const { data } = await adminClient.storage
+    .from(HUB_IT_TICKET_ATTACHMENT_BUCKET)
+    .createSignedUrls(paths, HUB_IT_TICKET_ATTACHMENT_URL_TTL_SECONDS);
+
+  for (const entry of data ?? []) {
+    if (entry.path && entry.signedUrl) {
+      signedUrlByPath.set(entry.path, entry.signedUrl);
+    }
+  }
+
+  return signedUrlByPath;
 }
 
 type DeliveryAgreementMetadata = {

@@ -116,15 +116,24 @@ export type HubItTicketRoadmap = {
 
 export type HubItTicketAttachment = {
   capturedAt: string;
+  // LEGADO: base64 inline. Só sobrevive nos anexos anteriores ao Storage.
   dataUrl?: string | null;
   fileName: string;
   id: string;
   mimeType: string;
   sizeBytes: number;
+  // Caminho no bucket privado. Tem precedência sobre `dataUrl`.
+  storagePath?: string | null;
   type: "audio" | "image" | "video" | "file";
+  // URL assinada, gerada na leitura. Nunca persistida.
+  url?: string | null;
 };
 
-export type HubItTicketAttachmentInput = Omit<HubItTicketAttachment, "id"> & {
+export type HubItTicketAttachmentInput = Omit<
+  HubItTicketAttachment,
+  "id" | "url"
+> & {
+  // Amostras reduzidas SÓ para a IA analisar. Não são armazenadas.
   analysisDataUrls?: string[];
 };
 
