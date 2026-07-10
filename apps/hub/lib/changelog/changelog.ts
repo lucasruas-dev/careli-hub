@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-estadocivil-escolaridade-declarados",
+    deployedAt: "2026-07-10T18:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Decisão do cadastro: estado civil e escolaridade saem do enriquecimento e passam a ser declarados no formulário. Os dois vinham vazios ou eram só estimativa, e o estado civil ainda dispara a etapa do cônjuge, então precisa ser confiável.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 8b4fe87b (v1.31.8)",
+    technical: {
+      done: "Decisao do Lucas na avaliacao do enriquecimento: estadoCivil (basic_data) e escolaridade (demographic_data) passam de politica 'auto' para 'fora' por padrao — sao declarados no formulario, nao enriquecidos. Motivo: estado civil vem vazio com frequencia na base e dispara a etapa de conjuge/certidao (nao pode depender do enriquecimento); escolaridade e apenas uma estimativa. Notas dos dois campos atualizadas. Principio geral: campo que aciona passo legal ou que retorna vazio com frequencia = declarado no form, enriquecimento so como sugestao.",
+      motivation:
+        "Regra que o laboratorio existe pra fechar: o que e confiavel o bastante pra vir automatico vs. o que precisa ser declarado. Estado civil e escolaridade caem no segundo grupo.",
+    },
+    title: "Cadastro: estado civil e escolaridade declarados (fora do enriquecimento)",
+    type: "melhoria",
+    version: "1.31.9",
+  },
+  {
     buildTag: "2026-07-10-authscore-telefone-pais",
     deployedAt: "2026-07-10T18:00:00-03:00",
     modules: [
