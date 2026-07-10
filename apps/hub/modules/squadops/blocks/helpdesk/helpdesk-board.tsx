@@ -4330,10 +4330,17 @@ function DetailBlock({
   label: string;
   value: string;
 }) {
+  // A leitura do Zeus e a analise da IA: ganha a identidade dourada em vez de
+  // se perder como mais um card cinza igual aos demais.
   return (
-    <Surface bordered className="border-slate-200/70 bg-white p-4">
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-500">
-        <span className="text-[#A07C3B]">{icon}</span>
+    <Surface
+      bordered
+      className="border-[#A07C3B]/25 bg-gradient-to-br from-[#fffaf0] to-white p-4"
+    >
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase text-[#7A5E2C]">
+        <span className="grid size-6 place-items-center rounded-full bg-[#A07C3B]/12 text-[#A07C3B]">
+          {icon}
+        </span>
         {label}
       </div>
       <p className="m-0 mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
