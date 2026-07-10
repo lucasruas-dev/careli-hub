@@ -32,6 +32,39 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-helpdesk-tipo-reclassificacao",
+    deployedAt: "2026-07-10T22:40:00-03:00",
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "O Tipo e o Impacto que você escolhe ao abrir o chamado agora são respeitados. Antes o sistema adivinhava pelo texto e apagava a sua escolha (era o TI-000061: coloco melhoria e vira erro).",
+            ],
+            screen: "Abrir chamado",
+          },
+          {
+            items: [
+              "Novo bloco Classificação no topo do chamado: dá para corrigir o Tipo e o Impacto ali mesmo e salvar na hora.",
+              "A leitura técnica do Zeus ganhou destaque visual, para se distinguir do resto do chamado.",
+            ],
+            screen: "HelpDesk — detalhe do chamado",
+          },
+        ],
+      },
+    ],
+    rollback: "commit d2d3aad1 (v1.31.4)",
+    technical: {
+      done: "(A) hub-ticket-open-form: o useEffect que rodava inferCategory/inferPriority sobrescrevia a escolha do usuario a cada tecla na descricao. Agora categoryTouchedRef/priorityTouchedRef travam a inferencia depois que a pessoa mexe no seletor (inferencia so pre-preenche). (B) Reclassificacao pelo Zeus no detalhe: HubItTicketUpdateInput + normalizeUpdateInput aceitam category/priority (guards ja existiam); update do admin grava so quando difere. TicketDraft ganha category/priority (init do ticket, parse do localStorage tolerante, save so envia se mudou; guard do save aceita reclassificacao pura). ClassificationEditor no header (selects Tipo/Impacto + botao Salvar classificacao). (C) DetailBlock da leitura do Zeus com gradiente/borda dourada e icone em circulo. v1.31.4 -> v1.31.5.",
+      motivation:
+        "O TI-000061 e uma queixa sobre o proprio tipo (melhoria vira erro), que bate com o achado do diagnostico de que todo ticket cai em erro/media: a classificacao nunca era do usuario, era adivinhada do texto. Corrigido na origem (form) e no detalhe (reclassificacao pelo Zeus).",
+    },
+    title: "HelpDesk: tipo do chamado respeita a escolha + reclassificação pelo Zeus",
+    type: "correcao",
+    version: "1.31.5",
+  },
+  {
     buildTag: "2026-07-10-authscore-pf05-turnover",
     deployedAt: "2026-07-10T16:00:00-03:00",
     modules: [
