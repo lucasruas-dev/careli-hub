@@ -251,3 +251,19 @@ export type HubItTicketUpdateInput = {
 };
 
 export type HubItTicketListScope = "all" | "mine";
+
+// Resultado da triagem do agente (Nivel 1). O agente le, dedupe, confere o
+// changelog, sugere classificacao e escreve a devolutiva; nunca fecha o ticket.
+export type HubItTicketTriageResult = {
+  autonomy: "rascunho" | "responder";
+  confidence: "alta" | "baixa" | "media";
+  duplicateProtocol: string | null;
+  escalate: boolean;
+  internalNote: string;
+  resolutionSummary: string;
+  resolvedByVersion: string | null;
+  responseText: string;
+  source: "claude" | "unavailable";
+  suggestedCategory: HubItTicketCategory;
+  suggestedPriority: HubItTicketPriority;
+};
