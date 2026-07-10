@@ -382,9 +382,16 @@ export function normalizeExtraction(
       ? [root.result]
       : [];
   const first = asRecord(resultArray[0]);
-  const documentType =
-    (typeof first?.type === "string" && first.type) || "desconhecido";
   const stdType = (typeof first?.stdType === "string" && first.stdType) || "";
+  const rawType = (typeof first?.type === "string" && first.type) || "";
+  const tags = Array.isArray(first?.tags)
+    ? (first.tags as unknown[]).map((tag) => String(tag)).join(" ")
+    : "";
+  // O tipo especifico (CNH/RG/passaporte) costuma vir no stdType ou nas tags
+  // (ex.: "id=bra-cnh"), nao no type generico ("documento-pessoal"). Junta os
+  // tres para o mapeamento a jusante reconhecer o documento.
+  const documentType =
+    [rawType, stdType, tags].filter(Boolean).join(" ").trim() || "desconhecido";
 
   const scores = fields
     .map((field) => field.confidence)
@@ -770,15 +777,16 @@ function isInvalidRoute(status: number, body: string): boolean {
 async function callEnrichment(
   token: string,
   path: string,
-  cpf: string,
+  parameters: JsonRecord,
   query: string,
   datasets?: string[],
 ): Promise<Response> {
   const cfg = config();
   // MOST consulta por query nomeada + parametros num objeto "parameters".
   // A query pode variar por etapa: CARELI_PF_01 (cadastro), _02 (certidoes),
-  // _03 (GOLD/financeiro). Se datasets vier, tenta subsetar pelo nosso lado.
-  const body: JsonRecord = { parameters: { cpf }, query };
+  // _03 (GOLD/financeiro). PF usa {cpf}, PJ usa {cnpj}. Se datasets vier,
+  // tenta subsetar pelo nosso lado.
+  const body: JsonRecord = { parameters, query };
   if (datasets && datasets.length) body.datasets = datasets;
   return fetch(`${cfg.baseUrl}${path}`, {
     body: JSON.stringify(body),
@@ -806,14 +814,15 @@ export async function enrichPerson(
 
   const cfg = config();
   const query = (opts.query || "").trim() || cfg.enrichmentQuery;
+  const params: JsonRecord = { cpf: digits };
   let lastMsg = "";
   try {
     for (const path of enrichmentPathCandidates(cfg.enrichmentPath)) {
       let token = await authenticateMostqi();
-      let response = await callEnrichment(token, path, digits, query, opts.datasets);
+      let response = await callEnrichment(token, path, params, query, opts.datasets);
       if (response.status === 401) {
         token = await authenticateMostqi();
-        response = await callEnrichment(token, path, digits, query, opts.datasets);
+        response = await callEnrichment(token, path, params, query, opts.datasets);
       }
       const text = await response.text().catch(() => "");
 
@@ -845,6 +854,443 @@ export async function enrichPerson(
       `Enrichment falhou: ${(error as Error).message}`,
     ]);
   }
+}
+
+// ---------- probe: a resposta crua, organizada por dataset ----------
+//
+// O laboratorio de enriquecimento (/apolo/enriquecimento) precisa ver TUDO que
+// cada query devolve, dataset a dataset, para decidirmos o que entra no CAD
+// automaticamente e o que fica sob demanda. Diferente do enrichPerson (que ja
+// normaliza para o cadastro), aqui devolvemos o payload de cada dataset cru.
+
+export type ProbeDataset = {
+  data: unknown;
+  name: string;
+  status: string;
+};
+
+export type EnrichmentProbeResult = {
+  datasets: ProbeDataset[];
+  documento: string;
+  elapsedMs: number;
+  query: string;
+  raw?: unknown;
+  source: "mock" | "mostqi" | "unavailable";
+  warnings: string[];
+};
+
+function readDatasets(payload: unknown): ProbeDataset[] {
+  const root = asRecord(payload);
+  const resultObj = asRecord(root?.result);
+  const list = Array.isArray(resultObj?.datasets)
+    ? (resultObj?.datasets as unknown[])
+    : [];
+  return list
+    .map((entry) => {
+      const record = asRecord(entry) ?? {};
+      const data = Array.isArray(record.data) ? record.data[0] : record.data;
+      return {
+        data: data ?? null,
+        name: str(record.name),
+        status: str(record.status) || "DONE",
+      };
+    })
+    .filter((dataset) => dataset.name);
+}
+
+function probeUnavailable(
+  documento: string,
+  query: string,
+  warnings: string[],
+  elapsedMs = 0,
+  raw?: unknown,
+): EnrichmentProbeResult {
+  return { datasets: [], documento, elapsedMs, query, raw, source: "unavailable", warnings };
+}
+
+// Consulta uma query nomeada (CARELI_PF_01 ... CARELI_PJ_03) e devolve os
+// datasets crus. Aceita CPF (11) ou CNPJ (14).
+export async function probeEnrichment(
+  documento: string,
+  opts: { datasets?: string[]; includeRaw?: boolean; query?: string } = {},
+): Promise<EnrichmentProbeResult> {
+  const digits = (documento || "").replace(/\D/g, "");
+  const cfg = config();
+  const query = (opts.query || "").trim() || cfg.enrichmentQuery;
+
+  if (!isMostqiConfigured()) return mockProbe(digits, query, opts.includeRaw);
+
+  if (digits.length !== 11 && digits.length !== 14) {
+    return probeUnavailable(digits, query, [
+      "Informe um CPF (11 digitos) ou CNPJ (14 digitos).",
+    ]);
+  }
+
+  const parameters: JsonRecord = digits.length === 14 ? { cnpj: digits } : { cpf: digits };
+  const started = Date.now();
+  let lastMsg = "";
+
+  try {
+    for (const path of enrichmentPathCandidates(cfg.enrichmentPath)) {
+      let token = await authenticateMostqi();
+      let response = await callEnrichment(token, path, parameters, query, opts.datasets);
+      if (response.status === 401) {
+        token = await authenticateMostqi();
+        response = await callEnrichment(token, path, parameters, query, opts.datasets);
+      }
+
+      const text = await response.text().catch(() => "");
+      if (isInvalidRoute(response.status, text)) {
+        lastMsg = `${path} -> HTTP ${response.status}`;
+        continue;
+      }
+
+      cachedEnrichmentPath = path;
+      let payload: unknown = text;
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        payload = text;
+      }
+
+      if (!response.ok) {
+        const snippet = safeSnippet(text, cfg.clientKey);
+        return probeUnavailable(
+          digits,
+          query,
+          [`${query} recusada (HTTP ${response.status})${snippet ? `: ${snippet}` : ""}.`],
+          Date.now() - started,
+          opts.includeRaw ? payload : undefined,
+        );
+      }
+
+      const datasets = readDatasets(payload);
+      return {
+        datasets,
+        documento: digits,
+        elapsedMs: Date.now() - started,
+        query,
+        raw: opts.includeRaw ? payload : undefined,
+        source: "mostqi",
+        warnings: datasets.length
+          ? []
+          : [`A query ${query} respondeu sem nenhum dataset.`],
+      };
+    }
+
+    return probeUnavailable(
+      digits,
+      query,
+      [`Rota de enrichment nao encontrada (ultima tentativa: ${lastMsg}).`],
+      Date.now() - started,
+    );
+  } catch (error) {
+    return probeUnavailable(
+      digits,
+      query,
+      [`Consulta falhou: ${(error as Error).message}`],
+      Date.now() - started,
+    );
+  }
+}
+
+// ---------- simulado do probe ----------
+//
+// Estrutura fiel ao BigDataCorp (datasets[] -> data[0] -> objeto embrulhado),
+// para desenhar e validar a tela SEM gastar consulta do plano.
+
+function ds(name: string, data: unknown): ProbeDataset {
+  return { data, name, status: "DONE" };
+}
+
+function certificado(status: string, texto: string) {
+  return {
+    onlineCertificates: [
+      {
+        additionalOutputData: {
+          certificateText: texto,
+          emissionDate: "09/07/2026",
+          rawResultFile: "",
+          status,
+          validUntil: "07/10/2026",
+        },
+        baseStatus: status,
+      },
+    ],
+  };
+}
+
+const MOCK_PF: Record<string, ProbeDataset[]> = {
+  CARELI_PF_01: [
+    ds("basic_data", {
+      basicData: {
+        age: 41,
+        alternativeIdNumbers: {
+          cnh: "04512378900",
+          "rg-mg-1": "MG-12.345.678",
+          socialSecurityNumber: "123.45678.90-1",
+          voterId: "1234 5678 9012",
+        },
+        birthDate: "1985-03-12T00:00:00Z",
+        fatherName: "JOSE CARLOS DA SILVA",
+        gender: "F",
+        hasObitIndication: false,
+        maritalStatusData: { maritalStatus: "CASADO", maritalStatusSource: "RECEITA FEDERAL" },
+        motherName: "JOANA MARIA DA SILVA",
+        name: "MARIA APARECIDA DA SILVA",
+        taxIdStatus: "REGULAR",
+        taxIdStatusDate: "2026-01-18T00:00:00Z",
+      },
+    }),
+    ds("phones_extended", {
+      extendedPhones: {
+        phones: [
+          { areaCode: "31", number: "991234567", phoneEntityBadPassages: 0, phoneEntityTotalPassages: 42, type: "MOBILE" },
+          { areaCode: "31", number: "33334455", phoneEntityBadPassages: 3, phoneEntityTotalPassages: 7, type: "LANDLINE" },
+          { areaCode: "31", number: "988776655", phoneEntityBadPassages: 9, phoneEntityTotalPassages: 11, type: "MOBILE" },
+        ],
+        totalPhones: 3,
+      },
+    }),
+    ds("emails_extended", {
+      extendedEmails: {
+        emails: [
+          { domain: "gmail.com", emailAddress: "maria.silva@gmail.com", emailEntityBadPassages: 0, emailEntityTotalPassages: 28, type: "PERSONAL" },
+          { domain: "construtoraalfa.com.br", emailAddress: "maria@construtoraalfa.com.br", emailEntityBadPassages: 0, emailEntityTotalPassages: 6, type: "WORK" },
+        ],
+        totalEmails: 2,
+      },
+    }),
+    ds("addresses_extended", {
+      extendedAddresses: {
+        addresses: [
+          { addressMain: "RUA DAS FLORES", city: "BELO HORIZONTE", complement: "APT 302", neighborhood: "CENTRO", number: "100", state: "MG", zipCode: "30110001" },
+          { addressMain: "AVENIDA AFONSO PENA", city: "BELO HORIZONTE", neighborhood: "FUNCIONARIOS", number: "2300", state: "MG", zipCode: "30130009" },
+        ],
+        totalAddresses: 2,
+      },
+    }),
+    ds("occupation_data", {
+      professionData: {
+        isEmployed: true,
+        professions: [
+          { companyIdNumber: "12345678000190", companyName: "CONSTRUTORA ALFA LTDA", income: 9200, level: "COORDENADORA", sector: "PRIVATE - 4120400 - CONSTRUCAO DE EDIFICIOS", startDate: "2019-04-01T00:00:00Z", status: "ACTIVE" },
+          { companyIdNumber: "98765432000110", companyName: "IMOBILIARIA BETA LTDA", income: 4100, level: "ANALISTA", sector: "PRIVATE - 6821801 - CORRETAGEM", startDate: "2014-02-10T00:00:00Z", status: "INACTIVE" },
+        ],
+        totalActiveProfessions: 1,
+        totalIncome: 9200,
+        totalProfessions: 2,
+      },
+    }),
+    ds("financial_data", {
+      finantialData: {
+        incomeEstimates: { bigdatA_V2: "DE 9 A 12 SALARIOS MINIMOS", ibge: "SEM INFORMACAO", mte: "DE 6 A 9 SALARIOS MINIMOS" },
+        taxReturns: [{ bank: "BANCO DO BRASIL", isVipBranch: false, status: "RESTITUIDO", year: 2025 }],
+        totalAssets: "100K A 250K",
+      },
+    }),
+  ],
+  CARELI_PF_02: [
+    ds("ondemand_pf_antecedente", certificado("NADA CONSTA", "A Policia Federal CERTIFICA que NAO CONSTA condenacao criminal.")),
+    ds("ondemand_cert_labor_debt_absence", certificado("NAO CONSTA", "NAO CONSTA como inadimplente no BNDT.")),
+    ds("ondemand_nada_consta", certificado("NADA CONSTA", "Certidao negativa criminal - TRF6.")),
+    ds("ondemand_rf_status", certificado("REGULAR", "Situacao cadastral do CPF: REGULAR.")),
+    ds("ondemand_administrative_sanctions", certificado("NAO CONSTA", "Nao constam sancoes administrativas do BACEN.")),
+  ],
+  CARELI_PF_03: [
+    ds("pf_gold_score", { CPStatus: "ATIVO", Score: { PaymentCommitmentScore: 78, ProfileScore: 71, Score: 742, Segment: "VAREJO" } }),
+    ds("pf_gold_negative_flag", { HasInquiryData: true, HasNegativeData: true }),
+    ds("pf_gold_negative_info", {
+      Negative: {
+        Apontamentos: [
+          { Amount: 1240.55, CompanyName: "BANCO XPTO S.A.", DateOccurred: "2024-11-03", Nature: "CARTAO DE CREDITO" },
+          { Amount: 389.9, CompanyName: "LOJAS OMEGA", DateOccurred: "2025-02-17", Nature: "CREDIARIO" },
+        ],
+        CcfApontamentos: [],
+        DateLastApontamento: "2025-02-17",
+        LawSuitApontamentos: [],
+        PendenciesControlCred: 1630.45,
+      },
+      Protests: { TotalProtests: 0 },
+    }),
+    ds("pf_gold_bestinfo", {
+      BestInfo: {
+        Address: "RUA DAS FLORES, 100, APT 302, CENTRO, BELO HORIZONTE/MG, 30110-001",
+        Email: "maria.silva@gmail.com",
+        Phone: "(31) 99123-4567",
+      },
+    }),
+  ],
+  // Proposta: os datasets novos que ainda nao estao em nenhuma query CARELI.
+  CARELI_PF_04: [
+    ds("demographic_data", {
+      demographicData: {
+        estimatedIncomeRange: "DE 9 A 12 SALARIOS MINIMOS",
+        estimatedInstructionLevel: "SUPERIOR COMPLETO",
+        socialClass: "B2",
+      },
+    }),
+    ds("class_organization", {
+      classOrganizationData: {
+        memberships: [
+          { entity: "CRECI-MG", registrationNumber: "45678", status: "ATIVO" },
+        ],
+        totalActiveMemberships: 1,
+        totalMemberships: 1,
+      },
+    }),
+    ds("auth_score_gold", {
+      AddressConfirmationStatus: "CONFIRMADO",
+      EmailMost: "maria.silva@gmail.com",
+      IsConfirmedEmail: true,
+      IsConfirmedPhone: true,
+      IsDeceased: false,
+      IsMinor: false,
+      IsPeP: false,
+      IsVip: false,
+      PhoneMost: "(31) 99123-4567",
+      Score: 88,
+    }),
+    ds("kyc", {
+      kycData: {
+        isCurrentlyPep: false,
+        isCurrentlySanctioned: false,
+        last365DaysSanctions: 0,
+        pepHistory: [],
+        sanctionsHistory: [],
+      },
+    }),
+    ds("related_people", {
+      relatedPeople: {
+        personalRelationships: [
+          { relatedEntityName: "CARLOS EDUARDO PACHECO", relationshipType: "SPOUSE" },
+          { relatedEntityName: "JOANA MARIA DA SILVA", relationshipType: "MOTHER" },
+          { relatedEntityName: "PEDRO DA SILVA PACHECO", relationshipType: "SON" },
+        ],
+        totalRelationships: 7,
+        totalRelatives: 4,
+        totalSpouses: 1,
+      },
+    }),
+    ds("business_relationships", {
+      businessRelationships: [
+        { relatedEntityName: "MS CONSULTORIA IMOBILIARIA LTDA", relatedEntityTaxIdNumber: "22333444000155", relationshipType: "OWNER" },
+      ],
+      totalOwnerships: 1,
+      totalRelationships: 2,
+    }),
+    ds("social_assistance", {
+      socialAssistanceData: {
+        isReceivingAssistance: false,
+        totalActiveAssistances: 0,
+        totalAmountReceived: 0,
+        totalAssistances: 0,
+      },
+    }),
+    ds("professional_turnover", {
+      professionalTurnover: {
+        ageOfFirstJob: 19,
+        avgYearsBetweenProfessionalTurnover: 4.2,
+        hasWorkedInPublicSector: false,
+        isCurrentlyEmployed: true,
+        isEntrepeneur: true,
+      },
+    }),
+    ds("online_presence", {
+      onlinePresence: { eSeller_v3: "F", eShopper_v3: "B", internetUsageLevel_v3: "A", totalWebPassages: 137 },
+    }),
+    ds("interests_and_behaviors", {
+      behaviors: { creditCardScore: "ALTO", milesProgram: true, onlineInvestor: true, productReseller: false },
+      categoriesOfInterest: ["IMOVEIS", "VIAGENS", "EDUCACAO"],
+    }),
+    ds("related_people_phones", {
+      relatedPeoplePhones: [
+        { areaCode: "31", number: "997654321", relatedEntityName: "CARLOS EDUARDO PACHECO", relationshipType: "SPOUSE" },
+      ],
+    }),
+  ],
+};
+
+const MOCK_PJ: Record<string, ProbeDataset[]> = {
+  CARELI_PJ_01: [
+    ds("basic_data", {
+      basicData: {
+        age: 12,
+        foundedDate: "2014-06-02T00:00:00Z",
+        officialName: "IMOBILIARIA BETA LTDA",
+        taxIdNumber: "98765432000110",
+        taxIdStatus: "ATIVA",
+        tradeName: "BETA IMOVEIS",
+      },
+    }),
+    ds("activity_indicators", {
+      activityIndicators: {
+        activityLevel: "HIGH",
+        employeesRange: "10 A 49",
+        hasActiveDomain: true,
+        hasActivity: true,
+        hasCorporateEmail: true,
+        incomeRange: "DE 1MM A 4,8MM",
+        numberOfBranches: 2,
+      },
+    }),
+    ds("relationships", {
+      relationships: [
+        { relatedEntityName: "CARLOS EDUARDO PACHECO", relatedEntityTaxIdNumber: "12345678909", relationshipType: "OWNER" },
+        { relatedEntityName: "ANA PAULA REIS", relatedEntityTaxIdNumber: "98765432100", relationshipType: "OWNER" },
+      ],
+      totalOwners: 2,
+      totalRelationships: 14,
+    }),
+    ds("kyc", { kycData: { isCurrentlySanctioned: false, last365DaysSanctions: 0, sanctionsHistory: [] } }),
+    ds("phones_extended", { extendedPhones: { phones: [{ areaCode: "31", number: "32112233", type: "LANDLINE" }], totalPhones: 1 } }),
+    ds("addresses_extended", {
+      extendedAddresses: {
+        addresses: [{ addressMain: "AVENIDA DO CONTORNO", city: "BELO HORIZONTE", neighborhood: "SAVASSI", number: "6000", state: "MG", zipCode: "30110028" }],
+        totalAddresses: 1,
+      },
+    }),
+    ds("emails_extended", { extendedEmails: { emails: [{ emailAddress: "contato@betaimoveis.com.br", type: "WORK" }], totalEmails: 1 } }),
+    ds("processes", { totalLawsuits: 3, totalLawsuitsAsAuthor: 1, totalLawsuitsAsDefendant: 2 }),
+    ds("owners_kyc", { ownersKyc: { totalSanctionedOwners: 0, totalPepOwners: 0 } }),
+    ds("owners_lawsuits", { totalLawsuits: 1 }),
+  ],
+  CARELI_PJ_02: [
+    ds("ondemand_rf_status", certificado("ATIVA", "Situacao cadastral do CNPJ: ATIVA.")),
+    ds("ondemand_pgfn", certificado("NEGATIVA", "Certidao negativa de debitos da Uniao.")),
+    ds("ondemand_fgts", certificado("REGULAR", "Certificado de regularidade do FGTS.")),
+    ds("ondemand_cert_labor_debt_absence", certificado("NAO CONSTA", "CNDT negativa.")),
+    ds("ondemand_rf_qsa", { qsa: [{ name: "CARLOS EDUARDO PACHECO", qualification: "SOCIO-ADMINISTRADOR" }, { name: "ANA PAULA REIS", qualification: "SOCIA" }] }),
+    ds("ondemand_legal_representative", { legalRepresentative: { name: "CARLOS EDUARDO PACHECO", taxIdNumber: "12345678909" } }),
+  ],
+  CARELI_PJ_03: [
+    ds("pj_gold_score", { Score: { Score: 688 } }),
+    ds("pj_gold_negative_flag", { HasInquiryData: false, HasNegativeData: false }),
+    ds("pj_gold_negative_info", { Negative: { Apontamentos: [], PendenciesControlCred: 0 } }),
+  ],
+};
+
+export function mockProbe(
+  documento: string,
+  query: string,
+  includeRaw = false,
+): EnrichmentProbeResult {
+  const isPj = documento.replace(/\D/g, "").length === 14 || query.includes("_PJ_");
+  const table = isPj ? MOCK_PJ : MOCK_PF;
+  const datasets = table[query] ?? [];
+  const raw = { elapsedMilliseconds: 900, result: { datasets }, status: { code: "200" } };
+
+  return {
+    datasets,
+    documento,
+    elapsedMs: 900,
+    query,
+    raw: includeRaw ? raw : undefined,
+    source: "mock",
+    warnings: datasets.length
+      ? ["Consulta simulada (sem MOSTQI_CLIENT_KEY). Nenhuma unidade do plano foi gasta."]
+      : [`Sem simulado para a query ${query}.`],
+  };
 }
 
 export function mockEnrichment(includeRaw = false): EnrichmentResult {

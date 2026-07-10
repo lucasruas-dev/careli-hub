@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-apolo-laboratorio-enriquecimento",
+    deployedAt: "2026-07-10T00:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Nova tela para avaliar o enriquecimento antes de ligá-lo no cadastro: consulta um CPF ou CNPJ e mostra o dado real que o MOST devolve, organizado nas abas Identificação, Contato, Endereço, Profissional, Financeiro, Risco, Rede e Digital.",
+              "Cada campo tem o seletor Automático, Sob demanda ou Fora, e o painel lateral calcula quantos cadastros o plano contratado aguenta com a escolha feita.",
+              "As consultas são acumulativas: você dispara só a query que precisa e os resultados se somam na tela.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit f55b4fb3 (v1.29.3)",
+    technical: {
+      done: "mostqi.probeEnrichment(documento, {query}) devolve os datasets crus (name/status/data) por query nomeada, aceitando CPF (11) e CNPJ (14) via parameters {cpf}|{cnpj}; callEnrichment passou a receber parameters em vez de cpf. mockProbe cobre CARELI_PF_01/02/03/04 e PJ_01/02/03 com payload fiel ao BigDataCorp (localhost = simulado, custo zero). Nova action probe na rota /api/apolo/mostqi. lib/apolo/enrichment-spec.ts: 8 abas, ~80 campos (PF+PJ) com dataset de origem, chaves de leitura tolerante (deepFind case-insensitive + caminho pontuado), politica sugerida (auto|operador|fora) e query CARELI que entrega o dado; calcularCusto conta datasets distintos marcados auto (1 dataset = 1 unidade; plano padrao 10.000). Tela modules/apolo/blocks/enriquecimento/enrichment-lab.tsx. CARELI_PF_04 e a query PROPOSTA com os datasets novos (demographic_data, class_organization, auth_score_gold, kyc, related_people, business_relationships, social_assistance, professional_turnover, interests_and_behaviors, related_people_phones): so responde em prod depois que o MOST cria-la.",
+      motivation:
+        "Lucas paga por dataset consultado. Antes de levar o enriquecimento pro Apolo, ele precisa ver o dado real com o olho e decidir campo a campo o que entra automatico no CAD, o que fica sob demanda do operador e o que sai — com o custo do plano visivel na decisao.",
+    },
+    title: "Apolo: laboratório de enriquecimento (decidir o que entra no CAD)",
+    type: "novidade",
+    version: "1.30.0",
+  },
+  {
     buildTag: "2026-07-09-cadastro-certidoes-financeiro",
     deployedAt: "2026-07-09T18:55:00-03:00",
     modules: [

@@ -1,0 +1,669 @@
+"use client";
+
+import { useCallback, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  ClipboardCheck,
+  Coins,
+  Copy,
+  Loader2,
+  MailCheck,
+  Search,
+  Sparkles,
+} from "lucide-react";
+
+import {
+  ABAS,
+  CAMPOS,
+  type AbaId,
+  type CampoSpec,
+  type Custo,
+  type Persona,
+  type Politica,
+  PLANO_UNIDADES_PADRAO,
+  QUERIES,
+  calcularCusto,
+  formatarCampo,
+  pickValue,
+  temValor,
+} from "@/lib/apolo/enrichment-spec";
+import { getHubSupabaseClient } from "@/lib/supabase/client";
+
+// Laboratorio de enriquecimento: roda as queries do MOST sob demanda, mostra o
+// dado real campo a campo e deixa o Lucas decidir o que entra automatico no CAD,
+// o que fica sob demanda do operador e o que sai. O custo do plano acompanha a
+// decisao em tempo real (1 unidade = 1 dataset consultado).
+
+type ProbeDataset = { data: unknown; name: string; status: string };
+
+type ProbeResult = {
+  datasets: ProbeDataset[];
+  documento: string;
+  elapsedMs: number;
+  query: string;
+  raw?: unknown;
+  source: "mock" | "mostqi" | "unavailable";
+  warnings: string[];
+};
+
+type QueryState = {
+  datasets: number;
+  elapsedMs: number;
+  erro?: string;
+  simulado: boolean;
+};
+
+const POLITICAS: Array<{ label: string; value: Politica }> = [
+  { label: "Automático", value: "auto" },
+  { label: "Sob demanda", value: "operador" },
+  { label: "Fora", value: "fora" },
+];
+
+async function accessToken() {
+  const supabase = getHubSupabaseClient();
+  const session = await supabase?.auth.getSession();
+  return session?.data.session?.access_token ?? "";
+}
+
+function soDigitos(value: string) {
+  return value.replace(/\D/g, "");
+}
+
+export function EnrichmentLab() {
+  const [persona, setPersona] = useState<Persona>("pf");
+  const [documento, setDocumento] = useState("");
+  const [aba, setAba] = useState<AbaId>("identificacao");
+  const [plano, setPlano] = useState(PLANO_UNIDADES_PADRAO);
+
+  const [dados, setDados] = useState<Record<string, ProbeDataset>>({});
+  const [queries, setQueries] = useState<Record<string, QueryState>>({});
+  const [rodando, setRodando] = useState<string | null>(null);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const [politicas, setPoliticas] = useState<Record<string, Politica>>({});
+  const [emailOk, setEmailOk] = useState<boolean | null>(null);
+  const [cepComprovante, setCepComprovante] = useState("");
+  const [copiado, setCopiado] = useState(false);
+
+  const camposPersona = useMemo(
+    () => CAMPOS.filter((campo) => campo.persona === persona),
+    [persona],
+  );
+  const queriesPersona = useMemo(
+    () => QUERIES.filter((item) => item.persona === persona),
+    [persona],
+  );
+  const custo: Custo = useMemo(
+    () => calcularCusto(camposPersona, politicas, plano),
+    [camposPersona, politicas, plano],
+  );
+
+  const politicaDe = useCallback(
+    (campo: CampoSpec) => politicas[campo.id] ?? campo.politica,
+    [politicas],
+  );
+
+  const consultar = useCallback(
+    async (query: string) => {
+      const digits = soDigitos(documento);
+      const esperado = persona === "pf" ? 11 : 14;
+      if (digits.length !== esperado) {
+        setErro(
+          persona === "pf"
+            ? "Digite um CPF com 11 dígitos."
+            : "Digite um CNPJ com 14 dígitos.",
+        );
+        return;
+      }
+      setErro(null);
+      setRodando(query);
+      try {
+        const token = await accessToken();
+        const response = await fetch("/api/apolo/mostqi", {
+          body: JSON.stringify({ action: "probe", documento: digits, query }),
+          cache: "no-store",
+          headers: {
+            "Content-Type": "application/json",
+            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          },
+          method: "POST",
+        });
+        const json = (await response.json().catch(() => null)) as {
+          data?: ProbeResult;
+          error?: string;
+        } | null;
+        if (!response.ok || !json?.data) {
+          throw new Error(json?.error ?? `HTTP ${response.status}`);
+        }
+        const probe = json.data;
+
+        setDados((anterior) => {
+          const proximo = { ...anterior };
+          for (const dataset of probe.datasets) proximo[dataset.name] = dataset;
+          return proximo;
+        });
+        setQueries((anterior) => ({
+          ...anterior,
+          [query]: {
+            datasets: probe.datasets.length,
+            elapsedMs: probe.elapsedMs,
+            erro: probe.source === "unavailable" ? probe.warnings.join(" · ") : undefined,
+            simulado: probe.source === "mock",
+          },
+        }));
+      } catch (error) {
+        setQueries((anterior) => ({
+          ...anterior,
+          [query]: { datasets: 0, elapsedMs: 0, erro: (error as Error).message, simulado: false },
+        }));
+        setErro((error as Error).message);
+      } finally {
+        setRodando(null);
+      }
+    },
+    [documento, persona],
+  );
+
+  const copiarDecisoes = useCallback(async () => {
+    const linhas: string[] = [
+      `DECISÃO DE ENRIQUECIMENTO · ${persona === "pf" ? "PESSOA FÍSICA" : "PESSOA JURÍDICA"}`,
+      `Plano: ${plano.toLocaleString("pt-BR")} unidades · ${custo.unidadesPorCadastro} datasets por cadastro · ${custo.cadastros.toLocaleString("pt-BR")} cadastros`,
+      "",
+    ];
+    for (const politica of POLITICAS) {
+      const hits = camposPersona.filter((campo) => politicaDe(campo) === politica.value);
+      if (!hits.length) continue;
+      linhas.push(`${politica.label.toUpperCase()} (${hits.length})`);
+      for (const campo of hits) {
+        linhas.push(
+          `  - ${campo.label} [${campo.dataset}]${campo.novo ? " (NOVO, pedir ao MOST)" : ""}`,
+        );
+      }
+      linhas.push("");
+    }
+    if (custo.novosPendentes.length) {
+      linhas.push(`DATASETS A PEDIR AO MOST: ${custo.novosPendentes.join(", ")}`);
+    }
+    try {
+      await navigator.clipboard.writeText(linhas.join("\n").trim());
+      setCopiado(true);
+      window.setTimeout(() => setCopiado(false), 2000);
+    } catch {
+      setErro("Não consegui copiar. Copie manualmente.");
+    }
+  }, [camposPersona, custo, persona, plano, politicaDe]);
+
+  const camposDaAba = camposPersona.filter((campo) => campo.aba === aba);
+  const algumaConsulta = Object.keys(queries).length > 0;
+
+  return (
+    <section className="mx-auto flex h-full min-h-0 w-full max-w-6xl flex-col gap-4 overflow-y-auto pb-16">
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A07C3B]">
+            Apolo · Laboratório
+          </p>
+          <h1 className="mt-1 text-2xl font-semibold text-slate-950">
+            Enriquecimento · o que vale a pena trazer
+          </h1>
+          <p className="mt-1 max-w-3xl text-sm text-slate-500">
+            Rode a consulta, olhe o dado real e decida campo a campo: entra
+            automático no cadastro, fica sob demanda pro operador, ou sai. O custo
+            do plano acompanha a decisão. Nada é gravado.
+          </p>
+        </div>
+        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+          {(["pf", "pj"] as Persona[]).map((item) => (
+            <button
+              className={[
+                "rounded-md px-4 py-1.5 text-sm font-semibold transition-colors",
+                persona === item
+                  ? "bg-slate-900 text-white"
+                  : "text-slate-500 hover:text-slate-800",
+              ].join(" ")}
+              key={item}
+              onClick={() => {
+                setPersona(item);
+                setAba("identificacao");
+              }}
+              type="button"
+            >
+              {item === "pf" ? "Pessoa física" : "Pessoa jurídica"}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      {/* Consulta */}
+      <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <Search className="size-4 text-[#A07C3B]" aria-hidden="true" />
+          Consulta
+        </div>
+        <p className="mt-1 text-xs text-slate-500">
+          Cada botão dispara uma query e gasta unidades do plano. Rode só o que
+          precisa: a tela acumula os resultados.
+        </p>
+
+        <div className="mt-4 flex flex-wrap items-center gap-2">
+          <input
+            className="h-9 w-52 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#A07C3B]/40"
+            inputMode="numeric"
+            onChange={(event) => setDocumento(event.target.value)}
+            placeholder={persona === "pf" ? "CPF (só números)" : "CNPJ (só números)"}
+            value={documento}
+          />
+          {queriesPersona.map((item) => {
+            const estado = queries[item.query];
+            return (
+              <button
+                className={[
+                  "inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-50",
+                  item.proposta
+                    ? "border border-dashed border-[#A07C3B] text-[#A07C3B] hover:bg-[#A07C3B]/5"
+                    : "bg-slate-900 text-white hover:bg-slate-800",
+                ].join(" ")}
+                disabled={rodando !== null}
+                key={item.query}
+                onClick={() => void consultar(item.query)}
+                title={item.descricao}
+                type="button"
+              >
+                {rodando === item.query ? (
+                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                ) : estado && !estado.erro ? (
+                  <CheckCircle2 className="size-4" aria-hidden="true" />
+                ) : null}
+                {item.label}
+                {estado && !estado.erro ? (
+                  <span className="font-mono text-[11px] opacity-70">
+                    {estado.datasets}
+                  </span>
+                ) : null}
+              </button>
+            );
+          })}
+        </div>
+
+        {queriesPersona.some((item) => item.proposta) ? (
+          <p className="mt-3 flex items-start gap-1.5 text-[11px] text-slate-500">
+            <Sparkles className="mt-0.5 size-3.5 shrink-0 text-[#A07C3B]" aria-hidden="true" />
+            A query pontilhada reúne os datasets que ainda não temos. Em produção
+            ela só responde depois que o MOST criá-la; no simulado ela já mostra
+            como o dado ficaria.
+          </p>
+        ) : null}
+
+        {erro ? (
+          <p className="mt-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+            <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
+            {erro}
+          </p>
+        ) : null}
+
+        {algumaConsulta ? (
+          <div className="mt-3 flex flex-wrap gap-2">
+            {Object.entries(queries).map(([query, estado]) => (
+              <span
+                className={[
+                  "inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium",
+                  estado.erro
+                    ? "bg-rose-50 text-rose-700"
+                    : estado.simulado
+                      ? "bg-amber-50 text-amber-700"
+                      : "bg-emerald-50 text-emerald-700",
+                ].join(" ")}
+                key={query}
+              >
+                <span className="font-mono">{query}</span>
+                {estado.erro ? (
+                  estado.erro.slice(0, 70)
+                ) : (
+                  <>
+                    {estado.datasets} datasets · {(estado.elapsedMs / 1000).toFixed(1)}s
+                    {estado.simulado ? " · simulado" : ""}
+                  </>
+                )}
+              </span>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
+        {/* Abas + campos */}
+        <div className="min-w-0">
+          <nav className="flex flex-wrap gap-1 border-b border-slate-200 pb-2">
+            {ABAS.filter((item) =>
+              camposPersona.some((campo) => campo.aba === item.id),
+            ).map((item) => {
+              const total = camposPersona.filter((campo) => campo.aba === item.id).length;
+              return (
+                <button
+                  className={[
+                    "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
+                    aba === item.id
+                      ? "bg-slate-900 text-white"
+                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-800",
+                  ].join(" ")}
+                  key={item.id}
+                  onClick={() => setAba(item.id)}
+                  type="button"
+                >
+                  {item.label}
+                  <span className="ml-1.5 font-mono text-[10px] opacity-60">{total}</span>
+                </button>
+              );
+            })}
+          </nav>
+
+          {aba === "endereco" ? (
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2">
+              <span className="text-xs font-semibold text-slate-600">
+                CEP do comprovante
+              </span>
+              <input
+                className="h-8 w-36 rounded-md border border-slate-200 px-2 font-mono text-xs outline-none focus:border-[#A07C3B]/40"
+                inputMode="numeric"
+                onChange={(event) => setCepComprovante(event.target.value)}
+                placeholder="30110001"
+                value={cepComprovante}
+              />
+              <span className="text-[11px] text-slate-500">
+                Comparamos com a base. Se divergir, seguimos com o comprovante e
+                só registramos a divergência.
+              </span>
+            </div>
+          ) : null}
+
+          <div className="mt-3 flex flex-col gap-2">
+            {camposDaAba.map((campo) => (
+              <CampoRow
+                campo={campo}
+                cepComprovante={soDigitos(cepComprovante)}
+                dataset={dados[campo.dataset]}
+                emailOk={emailOk}
+                key={campo.id}
+                onEmailOk={setEmailOk}
+                onPolitica={(value) =>
+                  setPoliticas((anterior) => ({ ...anterior, [campo.id]: value }))
+                }
+                politica={politicaDe(campo)}
+              />
+            ))}
+          </div>
+        </div>
+
+        {/* Custo */}
+        <aside className="lg:sticky lg:top-2 lg:self-start">
+          <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+              <Coins className="size-4 text-[#A07C3B]" aria-hidden="true" />
+              Custo do plano
+            </div>
+
+            <label className="mt-4 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              Unidades contratadas
+            </label>
+            <input
+              className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 font-mono text-sm outline-none focus:border-[#A07C3B]/40"
+              inputMode="numeric"
+              onChange={(event) => setPlano(Number(soDigitos(event.target.value)) || 0)}
+              value={plano}
+            />
+
+            <div className="mt-4 grid gap-3">
+              <Metrica
+                label="Datasets por cadastro"
+                sub="Cada dataset automático custa 1 unidade"
+                valor={String(custo.unidadesPorCadastro)}
+              />
+              <Metrica
+                destaque
+                label="Cadastros com o plano"
+                sub={`${plano.toLocaleString("pt-BR")} ÷ ${custo.unidadesPorCadastro || 1}`}
+                valor={custo.cadastros.toLocaleString("pt-BR")}
+              />
+              <Metrica
+                label="Datasets sob demanda"
+                sub="Só custam quando o operador pedir"
+                valor={String(custo.datasetsOperador.length)}
+              />
+            </div>
+
+            {custo.novosPendentes.length ? (
+              <div className="mt-4 rounded-lg border border-[#A07C3B]/30 bg-[#A07C3B]/[0.05] p-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-[#A07C3B]">
+                  Pedir ao MOST ({custo.novosPendentes.length})
+                </div>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {custo.novosPendentes.map((dataset) => (
+                    <span
+                      className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-600"
+                      key={dataset}
+                    >
+                      {dataset}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <button
+              className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35]"
+              onClick={() => void copiarDecisoes()}
+              type="button"
+            >
+              {copiado ? (
+                <ClipboardCheck className="size-4" aria-hidden="true" />
+              ) : (
+                <Copy className="size-4" aria-hidden="true" />
+              )}
+              {copiado ? "Copiado" : "Copiar decisões"}
+            </button>
+          </div>
+        </aside>
+      </div>
+    </section>
+  );
+}
+
+function Metrica({
+  destaque = false,
+  label,
+  sub,
+  valor,
+}: {
+  destaque?: boolean;
+  label: string;
+  sub: string;
+  valor: string;
+}) {
+  return (
+    <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        {label}
+      </div>
+      <div
+        className={[
+          "mt-0.5 font-semibold tabular-nums",
+          destaque ? "text-2xl text-[#A07C3B]" : "text-lg text-slate-800",
+        ].join(" ")}
+      >
+        {valor}
+      </div>
+      <div className="text-[10px] text-slate-400">{sub}</div>
+    </div>
+  );
+}
+
+function CampoRow({
+  campo,
+  cepComprovante,
+  dataset,
+  emailOk,
+  onEmailOk,
+  onPolitica,
+  politica,
+}: {
+  campo: CampoSpec;
+  cepComprovante: string;
+  dataset?: ProbeDataset;
+  emailOk: boolean | null;
+  onEmailOk: (value: boolean) => void;
+  onPolitica: (value: Politica) => void;
+  politica: Politica;
+}) {
+  const bruto = dataset ? pickValue(dataset.data, campo.keys) : undefined;
+  const linhas = formatarCampo(campo, bruto);
+  const veio = temValor(bruto);
+
+  return (
+    <div
+      className={[
+        "grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] sm:grid-cols-[minmax(0,1fr)_auto]",
+        politica === "fora" ? "border-slate-100 opacity-55" : "border-slate-200/70",
+      ].join(" ")}
+    >
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm font-semibold text-slate-800">{campo.label}</span>
+          <code className="rounded border border-slate-100 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
+            {campo.dataset}
+          </code>
+          {campo.novo ? (
+            <span className="rounded-full bg-[#A07C3B]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#A07C3B]">
+              novo
+            </span>
+          ) : (
+            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+              {campo.query.replace("CARELI_", "")}
+            </span>
+          )}
+          {campo.origem === "bestinfo" ? (
+            <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+              best info
+            </span>
+          ) : null}
+        </div>
+
+        {campo.nota ? (
+          <p className="mt-1 text-[11px] text-slate-500">{campo.nota}</p>
+        ) : null}
+
+        <div className="mt-2">
+          {!dataset ? (
+            <p className="text-xs text-slate-400">
+              Ainda não consultado. Rode a query{" "}
+              <span className="font-mono">{campo.query}</span>.
+            </p>
+          ) : !veio ? (
+            <p className="text-xs text-amber-600">
+              A consulta rodou, mas este campo voltou vazio.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-0.5">
+              {linhas.map((linha, index) => (
+                <li
+                  className="break-words text-sm text-slate-800"
+                  key={`${campo.id}-${index}`}
+                >
+                  {campo.id === "enderecos" || campo.id === "pjEnderecos" ? (
+                    <EnderecoLinha cep={cepComprovante} linha={linha} />
+                  ) : (
+                    linha
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        {campo.id === "emailSugerido" && veio ? (
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              className={[
+                "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                emailOk === true
+                  ? "border-emerald-300 bg-emerald-50 text-emerald-700"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50",
+              ].join(" ")}
+              onClick={() => onEmailOk(true)}
+              type="button"
+            >
+              <MailCheck className="size-3.5" aria-hidden="true" />
+              E-mail correto
+            </button>
+            <button
+              className={[
+                "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors",
+                emailOk === false
+                  ? "border-amber-300 bg-amber-50 text-amber-700"
+                  : "border-slate-200 text-slate-600 hover:bg-slate-50",
+              ].join(" ")}
+              onClick={() => onEmailOk(false)}
+              type="button"
+            >
+              Corrigir no cadastro
+            </button>
+            {emailOk !== null ? (
+              <span className="text-[11px] text-slate-500">
+                {emailOk
+                  ? "Vai pro CAD com a tag confirmado."
+                  : "O operador digita o e-mail certo; o sugerido fica como alternativa."}
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+
+      <div className="flex h-fit shrink-0 overflow-hidden rounded-lg border border-slate-200">
+        {POLITICAS.map((item) => (
+          <button
+            className={[
+              "border-r border-slate-200 px-3 py-1.5 text-[11px] font-semibold transition-colors last:border-r-0",
+              politica === item.value
+                ? item.value === "auto"
+                  ? "bg-emerald-50 text-emerald-700"
+                  : item.value === "operador"
+                    ? "bg-amber-50 text-amber-700"
+                    : "bg-slate-100 text-slate-500"
+                : "text-slate-400 hover:bg-slate-50",
+            ].join(" ")}
+            key={item.value}
+            onClick={() => onPolitica(item.value)}
+            type="button"
+          >
+            {politica === item.value && item.value !== "fora" ? (
+              <Check className="mr-1 inline size-3" aria-hidden="true" />
+            ) : null}
+            {item.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Marca se o endereco da base bate com o CEP do comprovante. O comprovante e a
+// verdade: a divergencia so e registrada.
+function EnderecoLinha({ cep, linha }: { cep: string; linha: string }) {
+  if (!cep) return <>{linha}</>;
+  const cepsNaLinha = linha.replace(/\D/g, "");
+  const confere = cepsNaLinha.includes(cep);
+  return (
+    <span className="flex flex-wrap items-center gap-2">
+      {linha}
+      <span
+        className={[
+          "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+          confere ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
+        ].join(" ")}
+      >
+        {confere ? "confere" : "diverge"}
+      </span>
+    </span>
+  );
+}

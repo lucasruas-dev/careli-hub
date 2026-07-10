@@ -560,36 +560,39 @@ type ProbeDataset = { name: string; status: string };
 type ProbeResult = {
   clientMs: number;
   datasets: ProbeDataset[];
-  mode: "completa" | "subset";
+  mode: string;
   mostMs: number;
   raw: unknown;
 };
 
+// Queries disponíveis por perfil PF (criadas pelo MOST).
+const PF_QUERIES: Array<{ label: string; query: string }> = [
+  { label: "Cadastro (PF_01)", query: "CARELI_PF_01" },
+  { label: "Certidões (PF_02)", query: "CARELI_PF_02" },
+  { label: "GOLD (PF_03)", query: "CARELI_PF_03" },
+];
+
 function EnrichmentProbe() {
   const [cpf, setCpf] = useState("");
-  const [loading, setLoading] = useState<null | "completa" | "subset">(null);
+  const [loading, setLoading] = useState<string | null>(null);
   const [result, setResult] = useState<ProbeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [showRaw, setShowRaw] = useState(false);
 
-  async function run(mode: "completa" | "subset") {
+  async function run(label: string, extra: Record<string, unknown>) {
     const digits = cpf.replace(/\D/g, "");
     if (digits.length !== 11) {
       setError("Digite um CPF válido (11 dígitos).");
       return;
     }
-    setLoading(mode);
+    setLoading(label);
     setError(null);
     setResult(null);
     const started = performance.now();
     try {
       const token = await accessToken();
       const response = await fetch("/api/apolo/mostqi", {
-        body: JSON.stringify({
-          action: "enrich",
-          cpf: digits,
-          ...(mode === "subset" ? { datasets: FAST_DATASETS } : {}),
-        }),
+        body: JSON.stringify({ action: "enrich", cpf: digits, ...extra }),
         cache: "no-store",
         headers: {
           "Content-Type": "application/json",
@@ -621,7 +624,7 @@ function EnrichmentProbe() {
       setResult({
         clientMs,
         datasets,
-        mode,
+        mode: label,
         mostMs: Number(rawObj?.elapsedMilliseconds ?? 0),
         raw,
       });
@@ -639,11 +642,12 @@ function EnrichmentProbe() {
     <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
         <ShieldCheck className="size-4 text-[#A07C3B]" aria-hidden="true" />
-        Probe do enriquecimento (teste de subset + tempo)
+        Probe do enriquecimento (PF_01 / PF_02 / PF_03 GOLD)
       </div>
       <p className="mt-1 text-xs text-slate-500">
-        Testa se dá pra escolher os datasets pelo nosso lado. Rode nos dois modos
-        e compare o tempo e quais datasets voltaram.
+        Digite um CPF e rode cada query pra ver quais datasets voltam, o status de
+        cada um, o tempo e a resposta crua completa (inclui o GOLD). É a tela pra
+        avaliarmos tudo que o MOST devolve e mapear os campos.
       </p>
       <div className="mt-4 flex flex-wrap items-center gap-2">
         <input
@@ -653,27 +657,30 @@ function EnrichmentProbe() {
           inputMode="numeric"
           className="h-9 w-48 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#A07C3B]/40"
         />
+        {PF_QUERIES.map((item) => (
+          <button
+            key={item.query}
+            type="button"
+            onClick={() => run(item.label, { query: item.query })}
+            disabled={loading !== null}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+          >
+            {loading === item.label ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : null}
+            {item.label}
+          </button>
+        ))}
         <button
           type="button"
-          onClick={() => run("completa")}
-          disabled={loading !== null}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-        >
-          {loading === "completa" ? (
-            <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-          ) : null}
-          Consulta completa
-        </button>
-        <button
-          type="button"
-          onClick={() => run("subset")}
+          onClick={() => run("Subset rápido", { datasets: FAST_DATASETS })}
           disabled={loading !== null}
           className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#A07C3B] px-3 text-sm font-semibold text-white hover:bg-[#8E6F35] disabled:opacity-50"
         >
-          {loading === "subset" ? (
+          {loading === "Subset rápido" ? (
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           ) : null}
-          Só cadastro (subset)
+          Subset rápido
         </button>
       </div>
 
@@ -693,8 +700,7 @@ function EnrichmentProbe() {
         <div className="mt-4 grid gap-3">
           <div className="flex flex-wrap gap-4 text-sm">
             <span>
-              Modo:{" "}
-              <b>{result.mode === "subset" ? "Só cadastro (subset)" : "Completa"}</b>
+              Consulta: <b>{result.mode}</b>
             </span>
             <span>
               Tempo MOST:{" "}

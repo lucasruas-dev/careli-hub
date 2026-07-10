@@ -8,6 +8,7 @@ import {
   extractDocument,
   getMostqiStatus,
   isMostqiConfigured,
+  probeEnrichment,
 } from "@/lib/apolo/mostqi";
 
 export const dynamic = "force-dynamic";
@@ -38,6 +39,7 @@ export async function POST(request: Request) {
     action?: string;
     cpf?: string;
     datasets?: string[];
+    documento?: string;
     fileBase64?: string;
     fileName?: string;
     query?: string;
@@ -109,6 +111,22 @@ export async function POST(request: Request) {
         tags: body.tags,
       });
       return NextResponse.json({ data: extraction }, { headers: noStore });
+    } catch (error) {
+      return respondMostqiError(error);
+    }
+  }
+
+  // Laboratorio de enriquecimento: devolve os datasets crus de UMA query
+  // nomeada, para o operador ver o dado antes de decidir o que entra no CAD.
+  // Uma chamada = uma consulta cobrada no plano do MOST.
+  if (body.action === "probe") {
+    try {
+      const probe = await probeEnrichment(String(body.documento ?? body.cpf ?? ""), {
+        datasets: Array.isArray(body.datasets) ? body.datasets : undefined,
+        includeRaw: true,
+        query: typeof body.query === "string" ? body.query : undefined,
+      });
+      return NextResponse.json({ data: probe }, { headers: noStore });
     } catch (error) {
       return respondMostqiError(error);
     }
