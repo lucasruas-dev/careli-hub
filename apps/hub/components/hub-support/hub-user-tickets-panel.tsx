@@ -6,6 +6,10 @@ import {
   updateHubItTicket,
 } from "@/lib/hub-it-tickets/client";
 import {
+  mergeTicketListWithExistingDetails,
+  upsertTicketWithDetails,
+} from "@/lib/hub-it-tickets/merge";
+import {
   hubItTicketCategoryLabels,
   hubItTicketPriorityLabels,
   type HubItTicket,
@@ -76,6 +80,10 @@ export function HubUserTicketsPanel({
   const [selectedProtocol, setSelectedProtocol] = useState<string | null>(null);
   const [statusFilter, setStatusFilter] = useState<TicketFilter>("todos");
   const [isLoading, setIsLoading] = useState(false);
+  const [isDetailLoading, setIsDetailLoading] = useState(false);
+  const [loadedDetailProtocols, setLoadedDetailProtocols] = useState<string[]>(
+    [],
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -106,11 +114,16 @@ export function HubUserTicketsPanel({
     setError(null);
 
     try {
+      // Lista LEVE: sem eventos e sem anexos. Os anexos sao data-URLs base64 e
+      // um historico grande chegava a dezenas de MB por abertura do painel.
       const nextTickets = await loadHubItTickets({
         accessToken,
+        details: "list",
         scope: "mine",
       });
-      setTickets(nextTickets);
+      setTickets((currentTickets) =>
+        mergeTicketListWithExistingDetails(nextTickets, currentTickets),
+      );
       setSelectedProtocol((currentProtocol) =>
         currentProtocol &&
         nextTickets.some((ticket) => ticket.protocol === currentProtocol)
@@ -131,6 +144,66 @@ export function HubUserTicketsPanel({
   useEffect(() => {
     void loadTickets();
   }, [loadTickets]);
+
+  // Detalhe (eventos + anexos) so quando o ticket e aberto, e uma vez so.
+  useEffect(() => {
+    if (
+      !accessToken ||
+      !selectedProtocol ||
+      loadedDetailProtocols.includes(selectedProtocol)
+    ) {
+      return undefined;
+    }
+
+    let isActiveRequest = true;
+    const detailProtocol = selectedProtocol;
+
+    async function loadSelectedTicketDetail() {
+      setIsDetailLoading(true);
+
+      try {
+        const [ticketDetail] = await loadHubItTickets({
+          accessToken,
+          details: "full",
+          protocol: detailProtocol,
+          scope: "mine",
+        });
+
+        if (!isActiveRequest || !ticketDetail) {
+          return;
+        }
+
+        setTickets((currentTickets) =>
+          upsertTicketWithDetails(currentTickets, ticketDetail),
+        );
+        setLoadedDetailProtocols((currentProtocols) =>
+          currentProtocols.includes(detailProtocol)
+            ? currentProtocols
+            : [...currentProtocols, detailProtocol],
+        );
+      } catch (loadError) {
+        if (!isActiveRequest) {
+          return;
+        }
+
+        setError(
+          loadError instanceof Error
+            ? loadError.message
+            : "Nao foi possivel carregar os detalhes do ticket.",
+        );
+      } finally {
+        if (isActiveRequest) {
+          setIsDetailLoading(false);
+        }
+      }
+    }
+
+    void loadSelectedTicketDetail();
+
+    return () => {
+      isActiveRequest = false;
+    };
+  }, [accessToken, loadedDetailProtocols, selectedProtocol]);
 
   useEffect(() => {
     if (
@@ -290,6 +363,7 @@ export function HubUserTicketsPanel({
           title={selectedTicket.protocol}
         >
           <TicketDetail
+            isDetailLoading={isDetailLoading}
             isSaving={isSaving}
             onClose={() => sendCustomerAction("customer_close")}
             onComment={(payload) =>
@@ -393,12 +467,14 @@ function TicketHistoryItem({
 }
 
 function TicketDetail({
+  isDetailLoading = false,
   isSaving,
   onClose,
   onComment,
   onReview,
   ticket,
 }: {
+  isDetailLoading?: boolean;
   isSaving: boolean;
   onClose: () => Promise<boolean>;
   onComment: (payload: {
@@ -745,7 +821,17 @@ function TicketDetail({
         />
       </div>
 
-      <AttachmentsPreview attachments={ticket.attachments} />
+      {isDetailLoading ? (
+        <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/80 px-3 py-2 text-xs font-semibold text-slate-500">
+          <RefreshCw
+            aria-hidden="true"
+            className="size-4 animate-spin text-[#A07C3B]"
+          />
+          Carregando anexos e historico do ticket...
+        </div>
+      ) : (
+        <AttachmentsPreview attachments={ticket.attachments} />
+      )}
 
       {ticket.adminResponse || ticket.resolutionSummary ? (
         <div className="grid gap-3 rounded-lg border border-[#A07C3B]/20 bg-[#fffaf0] p-3">

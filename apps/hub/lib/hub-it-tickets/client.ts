@@ -40,7 +40,7 @@ export async function getHubItTicketAccessToken(fallback?: string | null) {
 
 export async function loadHubItTickets({
   accessToken,
-  details = "full",
+  details = "list",
   protocol,
   scope = "mine",
 }: {

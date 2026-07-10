@@ -167,10 +167,13 @@ function getScope(request: NextRequest): HubItTicketListScope {
   return scope === "all" ? "all" : "mine";
 }
 
+// `full` hidrata eventos + anexos, e os anexos sao data-URLs base64 (megabytes
+// por ticket). Por isso o detalhe e OPT-IN: quem quiser paga, e de preferencia
+// pedindo um `protocol` so. O default e a lista leve.
 function getDetailsMode(request: NextRequest) {
   const details = new URL(request.url).searchParams.get("details");
 
-  return details === "list" ? "list" : "full";
+  return details === "full" ? "full" : "list";
 }
 
 function getProtocol(request: NextRequest) {

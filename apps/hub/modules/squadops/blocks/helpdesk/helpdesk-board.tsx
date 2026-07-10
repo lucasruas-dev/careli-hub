@@ -6,6 +6,10 @@ import {
   updateHubItTicket,
 } from "@/lib/hub-it-tickets/client";
 import {
+  mergeTicketListWithExistingDetails,
+  upsertTicketWithDetails,
+} from "@/lib/hub-it-tickets/merge";
+import {
   hubItTicketCategoryLabels,
   hubItTicketPriorityLabels,
   hubItTicketRoadmapTypeLabels,
@@ -7135,48 +7139,6 @@ function compareOptionalDate(
 
   return new Date(firstDate).getTime() - new Date(secondDate).getTime();
 }
-
-function mergeTicketListWithExistingDetails(
-  nextTickets: HubItTicket[],
-  currentTickets: HubItTicket[],
-) {
-  const currentByProtocol = new Map(
-    currentTickets.map((ticket) => [ticket.protocol, ticket]),
-  );
-
-  return nextTickets.map((ticket) => {
-    const currentTicket = currentByProtocol.get(ticket.protocol);
-
-    if (
-      currentTicket &&
-      (currentTicket.attachments.length > 0 || currentTicket.events.length > 0)
-    ) {
-      return {
-        ...ticket,
-        attachments: currentTicket.attachments,
-        events: currentTicket.events,
-      };
-    }
-
-    return ticket;
-  });
-}
-
-function upsertTicketWithDetails(
-  currentTickets: HubItTicket[],
-  ticketDetail: HubItTicket,
-) {
-  if (
-    !currentTickets.some((ticket) => ticket.protocol === ticketDetail.protocol)
-  ) {
-    return [ticketDetail, ...currentTickets];
-  }
-
-  return currentTickets.map((ticket) =>
-    ticket.protocol === ticketDetail.protocol ? ticketDetail : ticket,
-  );
-}
-
 
 function isTicketInHistory(ticket: HubItTicket) {
   return !isTicketInActiveQueue(ticket);

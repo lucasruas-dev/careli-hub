@@ -351,31 +351,28 @@ export async function listHubItTickets({
   }
 
   try {
-    let query = adminClient
-      .from("hub_it_tickets")
-      .select("*")
-      .order("updated_at", { ascending: false })
-      .limit(protocol ? 1 : 120);
+    // Antes havia um `.limit(120)` fixo: passando de 120 tickets o board parava
+    // de mostrar os mais antigos sem avisar ninguem. Agora pagina de verdade.
+    const data = await fetchAllPagedRows<HubItTicketRow>((from, to) => {
+      let query = adminClient
+        .from("hub_it_tickets")
+        .select("*")
+        .order("updated_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to);
 
-    if (!canSeeAll) {
-      query = query.eq("requested_by_user_id", user.id);
-    }
-
-    if (protocol) {
-      query = query.eq("protocol", protocol);
-    }
-
-    const { data, error } = await query;
-
-    if (error) {
-      if (shouldUseLocalFallback(error)) {
-        return listLocalHubItTickets({ canSeeAll, protocol, userId: user.id });
+      if (!canSeeAll) {
+        query = query.eq("requested_by_user_id", user.id);
       }
 
-      throw new Error(error.message);
-    }
+      if (protocol) {
+        query = query.eq("protocol", protocol);
+      }
 
-    const rows = await autoFinalizeStaleValidationRows(adminClient, data ?? []);
+      return query;
+    });
+
+    const rows = await autoFinalizeStaleValidationRows(adminClient, data);
 
     if (!includeDetails) {
       return rows.map((row) => mapTicketRow(row, [], []));
@@ -825,6 +822,44 @@ function createHubItTicketClient() {
   });
 }
 
+// O PostgREST corta TODA resposta em `db-max-rows` (1000) e IGNORA o .limit()
+// silenciosamente. Sem paginar, eventos e anexos somem sem erro nenhum: foi o
+// que ja aconteceu no Iris, nas participacoes e nas reunioes do Chronos.
+// A ordenacao leva o `id` como desempate pra a janela ser estavel entre paginas.
+const HUB_IT_TICKET_PAGE_SIZE = 1000;
+const HUB_IT_TICKET_MAX_PAGES = 50;
+
+async function fetchAllPagedRows<T>(
+  fetchPage: (
+    from: number,
+    to: number,
+  ) => PromiseLike<{ data: T[] | null; error: { message: string } | null }>,
+): Promise<T[]> {
+  const rows: T[] = [];
+
+  for (let page = 0; page < HUB_IT_TICKET_MAX_PAGES; page += 1) {
+    const from = page * HUB_IT_TICKET_PAGE_SIZE;
+    const { data, error } = await fetchPage(
+      from,
+      from + HUB_IT_TICKET_PAGE_SIZE - 1,
+    );
+
+    if (error) {
+      throw new Error(error.message);
+    }
+
+    const pageRows = data ?? [];
+
+    rows.push(...pageRows);
+
+    if (pageRows.length < HUB_IT_TICKET_PAGE_SIZE) {
+      break;
+    }
+  }
+
+  return rows;
+}
+
 async function hydrateTicketRows(
   adminClient: HubItTicketsClient,
   rows: HubItTicketRow[],
@@ -834,20 +869,27 @@ async function hydrateTicketRows(
   }
 
   const ticketIds = rows.map((row) => row.id);
-  const [{ data: events }, { data: attachments }] = await Promise.all([
-    adminClient
-      .from("hub_it_ticket_events")
-      .select("*")
-      .in("ticket_id", ticketIds)
-      .order("created_at", { ascending: false }),
-    adminClient
-      .from("hub_it_ticket_attachments")
-      .select("*")
-      .in("ticket_id", ticketIds)
-      .order("created_at", { ascending: false }),
+  const [eventRows, attachmentRows] = await Promise.all([
+    fetchAllPagedRows<HubItTicketEventRow>((from, to) =>
+      adminClient
+        .from("hub_it_ticket_events")
+        .select("*")
+        .in("ticket_id", ticketIds)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    ),
+    fetchAllPagedRows<HubItTicketAttachmentRow>((from, to) =>
+      adminClient
+        .from("hub_it_ticket_attachments")
+        .select("*")
+        .in("ticket_id", ticketIds)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to),
+    ),
   ]);
 
-  const eventRows = events ?? [];
   const actorIds = [
     ...new Set(
       eventRows
@@ -860,7 +902,7 @@ async function hydrateTicketRows(
     actorIds,
   );
   const eventsByTicketId = groupByTicketId(eventRows);
-  const attachmentsByTicketId = groupByTicketId(attachments ?? []);
+  const attachmentsByTicketId = groupByTicketId(attachmentRows);
 
   return rows.map((row) =>
     mapTicketRow(
