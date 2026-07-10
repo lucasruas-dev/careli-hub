@@ -141,6 +141,10 @@ const TABELA: Record<string, [number, number, number]> = {
   "Q-DB-126-J": [7.568, 6.88, 6.254],
   "Q-DB-127-J": [9.69, 8.809, 8.008],
   "Q-DB-128-F": [3.069, 2.79, 2.537],
+  // Informado por e-mail (Suporte MOST, 10/jul): R$ 0,18 sem faturamento
+  // minimo. Nao consta em nenhuma das 3 tabelas. Os valores dos planos com FM
+  // sao ESTIMADOS pela mesma proporcao dos outros datasets (-9% e -17,5%).
+  "PROF-TURNOVER-F": [0.18, 0.164, 0.149],
   "RPA-001": [206.12, 140.0, 140.0],
   "RPA-002": [0.022, 0.015, 0.015],
   "S-RT-089-F": [3.71, 2.52, 2.47],
@@ -183,6 +187,7 @@ const CODIGO_PF: Record<string, string> = {
   phones_extended: "B-DB-006-F",
   processes: "B-DB-019-F",
   profession_data: "B-DB-013-F",
+  professional_turnover: "PROF-TURNOVER-F",
   related_people: "B-DB-002-F",
   related_people_addresses: "B-DB-005-F",
   related_people_emails: "B-DB-009-F",

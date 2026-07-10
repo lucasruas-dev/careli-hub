@@ -1123,7 +1123,8 @@ const MOCK_PF: Record<string, ProbeDataset[]> = {
       Score: { PaymentCommitmentScore: 78, ProfileScore: 71, Score: 742, Segment: "VAREJO" },
     }),
   ],
-  // Proposta: os datasets novos que ainda nao estao em nenhuma query CARELI.
+  // Criada pela MOST em 10/jul. NAO inclui professional_turnover (existe, a
+  // R$ 0,18, mas ficou de fora do pedido).
   CARELI_PF_04: [
     ds("demographic_data", {
       demographicData: {
@@ -1187,15 +1188,6 @@ const MOCK_PF: Record<string, ProbeDataset[]> = {
         totalActiveAssistances: 0,
         totalAmountReceived: 0,
         totalAssistances: 0,
-      },
-    }),
-    ds("professional_turnover", {
-      professionalTurnover: {
-        ageOfFirstJob: 19,
-        avgYearsBetweenProfessionalTurnover: 4.2,
-        hasWorkedInPublicSector: false,
-        isCurrentlyEmployed: true,
-        isEntrepeneur: true,
       },
     }),
     ds("online_presence", {

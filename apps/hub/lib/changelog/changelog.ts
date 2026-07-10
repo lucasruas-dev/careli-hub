@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-perfil-ampliado-pf04",
+    deployedAt: "2026-07-10T14:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A MOST criou a consulta de perfil ampliado: escolaridade estimada, conselho de classe (o CRECI do corretor), conferência do telefone e do e-mail declarados, compliance, rede de relacionamentos, benefícios sociais e comportamento.",
+              "O botão Perfil ampliado agora responde de verdade e passa a preencher as abas Rede, Digital e Risco.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 6ddc215a (v1.31.1)",
+    technical: {
+      done: "A MOST confirmou por e-mail (10/jul) a criacao da CARELI_PF_04 com os 9 datasets pedidos: demographic_data, class_organization, auth_score_gold, kyc, related_people, business_relationships, social_assistance, related_people_phones, interests_and_behaviors. A query deixou de ser 'proposta' na spec (label 'Perfil ampliado'). professional_turnover NAO entrou: a MOST informou que existe a R$ 0,18 sem faturamento minimo, valor ausente das 3 tabelas; entrou em most-precos.ts como PROF-TURNOVER-F [0.18, 0.164, 0.149] (os dois ultimos ESTIMADOS pela proporcao dos demais datasets) e os 3 campos que dependem dele ganharam nota. mockProbe alinhado. Custo da PF_04: 8 datasets a R$ 0,177 + auth_score_gold R$ 3,069 = R$ 4,49 por consulta.",
+      motivation:
+        "Sem a query, os datasets novos so existiam no simulado, e o Lucas nao conseguia julgar a qualidade do dado real para decidir o que entra no cadastro.",
+    },
+    title: "Enriquecimento: perfil ampliado (CARELI_PF_04) no ar",
+    type: "novidade",
+    version: "1.31.2",
+  },
+  {
     buildTag: "2026-07-10-enriquecimento-tres-planos",
     deployedAt: "2026-07-10T12:40:00-03:00",
     modules: [

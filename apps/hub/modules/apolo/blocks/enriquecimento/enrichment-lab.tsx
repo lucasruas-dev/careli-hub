@@ -352,9 +352,7 @@ export function EnrichmentLab() {
         {queriesPersona.some((item) => item.proposta) ? (
           <p className="mt-3 flex items-start gap-1.5 text-[11px] text-slate-500">
             <Sparkles className="mt-0.5 size-3.5 shrink-0 text-[#A07C3B]" aria-hidden="true" />
-            A query pontilhada reúne os datasets que ainda não temos. Em produção
-            ela só responde depois que o MOST criá-la; no simulado ela já mostra
-            como o dado ficaria.
+            A query pontilhada reúne datasets que ainda não temos contratados.
           </p>
         ) : null}
 

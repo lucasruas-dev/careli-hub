@@ -95,10 +95,9 @@ export const QUERIES: QuerySpec[] = [
   },
   {
     descricao:
-      "Datasets que ainda NÃO temos: escolaridade, CRECI, validação de contato, KYC, rede e comportamento. Precisa pedir a query ao MOST.",
-    label: "Proposta (novos)",
+      "Criada pela MOST em 10/jul: escolaridade, CRECI, validação de contato, KYC, rede, benefícios e comportamento. Nove datasets.",
+    label: "Perfil ampliado",
     persona: "pf",
-    proposta: true,
     query: "CARELI_PF_04",
   },
   {
@@ -160,9 +159,9 @@ export const CAMPOS: CampoSpec[] = [
   { aba: "profissional", dataset: "occupation_data", id: "vinculos", keys: ["professions"], label: "Vínculos de trabalho", nota: "Empresa, CNPJ, cargo, renda do vínculo, admissão.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_01", render: "itens", sub: ["companyName", "level", "status", "income"] },
   { aba: "profissional", dataset: "occupation_data", id: "rendaTrabalho", keys: ["totalIncome"], label: "Renda do trabalho", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_01", render: "dinheiro" },
   { aba: "profissional", dataset: "occupation_data", id: "totalVinculos", keys: ["totalProfessions"], label: "Total de vínculos", origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_01", render: "texto" },
-  { aba: "profissional", dataset: "professional_turnover", id: "empreendedor", keys: ["isEntrepeneur"], label: "É empreendedor?", novo: true, origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_04", render: "bool" },
-  { aba: "profissional", dataset: "professional_turnover", id: "rotatividade", keys: ["avgYearsBetweenProfessionalTurnover"], label: "Rotatividade média (anos)", novo: true, origem: "enriquecimento", persona: "pf", politica: "fora", query: "CARELI_PF_04", render: "texto" },
-  { aba: "profissional", dataset: "professional_turnover", id: "primeiroEmprego", keys: ["ageOfFirstJob"], label: "Idade no 1º emprego", novo: true, origem: "enriquecimento", persona: "pf", politica: "fora", query: "CARELI_PF_04", render: "texto" },
+  { aba: "profissional", dataset: "professional_turnover", id: "empreendedor", keys: ["isEntrepeneur"], label: "É empreendedor?", nota: "Não entrou na CARELI_PF_04. A MOST confirmou por e-mail que existe, a R$ 0,18. Pedir se decidirmos usar.", novo: true, origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_04", render: "bool" },
+  { aba: "profissional", dataset: "professional_turnover", id: "rotatividade", keys: ["avgYearsBetweenProfessionalTurnover"], label: "Rotatividade média (anos)", nota: "Não entrou na CARELI_PF_04. A MOST confirmou por e-mail que existe, a R$ 0,18. Pedir se decidirmos usar.", novo: true, origem: "enriquecimento", persona: "pf", politica: "fora", query: "CARELI_PF_04", render: "texto" },
+  { aba: "profissional", dataset: "professional_turnover", id: "primeiroEmprego", keys: ["ageOfFirstJob"], label: "Idade no 1º emprego", nota: "Não entrou na CARELI_PF_04. A MOST confirmou por e-mail que existe, a R$ 0,18. Pedir se decidirmos usar.", novo: true, origem: "enriquecimento", persona: "pf", politica: "fora", query: "CARELI_PF_04", render: "texto" },
 
   // ---------------- PF · Financeiro ----------------
   { aba: "financeiro", dataset: "financial_data", id: "faixaRenda", keys: ["bigdatA_V2", "bigdata"], label: "Faixa de renda estimada", nota: "Pré-preenche o seletor de renda do C2X.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_01", render: "texto" },
