@@ -1113,10 +1113,11 @@ const MOCK_PF: Record<string, ProbeDataset[]> = {
   // (Score, BestInfo, Negative, Inquiries, Protests). Confirmado em 10/jul.
   CARELI_PF_03: [
     ds("pf_gold", {
+      // O BestInfo real do GOLD embrulha cada contato num objeto (nao string).
       BestInfo: {
-        Address: "RUA DAS FLORES, 100, APT 302, CENTRO, BELO HORIZONTE/MG, 30110-001",
-        Email: "maria.silva@gmail.com",
-        Phone: "(31) 99123-4567",
+        Address: { AddressMain: "RUA DAS FLORES, 100, APT 302, CENTRO, BELO HORIZONTE/MG, 30110-001" },
+        Email: { EmailAddress: "maria.silva@gmail.com" },
+        Phone: { AreaCode: "31", Number: "991234567" },
       },
       CPStatus: "ATIVO",
       HasInquiryData: true,

@@ -975,8 +975,14 @@ function CampoRow({
         <div className="mt-2">
           {!queryRodada && !veio ? (
             <p className="text-xs text-slate-400">
-              Ainda não consultado. Rode a query{" "}
-              <span className="font-mono">{campo.query}</span>.
+              {campo.query === "CARELI_PF_05" ? (
+                "Ainda não validado. Preencha e rode a Validação de contato."
+              ) : (
+                <>
+                  Ainda não consultado. Rode a query{" "}
+                  <span className="font-mono">{campo.query}</span>.
+                </>
+              )}
             </p>
           ) : !veio ? (
             <p className="text-xs text-amber-600">

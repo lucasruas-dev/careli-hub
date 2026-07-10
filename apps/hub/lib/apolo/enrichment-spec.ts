@@ -316,6 +316,52 @@ function textoDe(value: unknown): string {
   return typeof value === "string" ? value : String(value);
 }
 
+// Subchaves que costumam guardar o valor "de verdade" quando o dado vem
+// embrulhado num objeto (o BestInfo do GOLD, por exemplo, devolve
+// {EmailAddress:...} ou {Number:..., AreaCode:...} em vez de uma string).
+const CHAVES_VALOR = [
+  "value",
+  "emailaddress",
+  "email",
+  "phonenumber",
+  "number",
+  "phone",
+  "fullnumber",
+  "address",
+  "addressmain",
+  "description",
+  "text",
+  "name",
+];
+
+// Extrai um texto legivel de um valor que pode ser primitivo, objeto ou lista,
+// evitando "[object Object]". Para objetos, procura as chaves usuais de valor;
+// nao achando, junta os primeiros primitivos encontrados.
+function primitivoDe(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value !== "object") return textoDe(value);
+
+  if (Array.isArray(value)) {
+    const partes = value.map(primitivoDe).filter(Boolean);
+    return partes.slice(0, 3).join(", ");
+  }
+
+  const record = value as Record<string, unknown>;
+  for (const chave of CHAVES_VALOR) {
+    for (const [name, item] of Object.entries(record)) {
+      if (name.toLowerCase() === chave && (typeof item !== "object" || item === null)) {
+        if (temValor(item)) return textoDe(item);
+      }
+    }
+  }
+  // Nenhuma chave conhecida: junta os primitivos do objeto (area + numero etc).
+  const primitivos = Object.values(record)
+    .filter((item) => item !== null && typeof item !== "object" && temValor(item))
+    .map(textoDe);
+  if (primitivos.length) return primitivos.slice(0, 3).join(" ");
+  return JSON.stringify(record).slice(0, 80);
+}
+
 function dataBr(value: unknown): string {
   const bruto = textoDe(value);
   const match = bruto.match(/^(\d{4})-(\d{2})-(\d{2})/);
@@ -356,17 +402,17 @@ export function formatarCampo(campo: CampoSpec, value: unknown): string[] {
     }
     case "lista": {
       const lista = Array.isArray(value) ? value : [value];
-      return [lista.map(textoDe).join(", ")];
+      return [lista.map(primitivoDe).filter(Boolean).join(", ")];
     }
     case "objeto": {
       if (!value || typeof value !== "object") return [textoDe(value)];
       return Object.entries(value as Record<string, unknown>)
         .filter(([, item]) => temValor(item))
         .slice(0, 8)
-        .map(([name, item]) => `${name}: ${textoDe(item)}`);
+        .map(([name, item]) => `${name}: ${primitivoDe(item)}`);
     }
     default: {
-      const texto = textoDe(value);
+      const texto = primitivoDe(value);
       return [campo.mapa?.[texto] ?? texto];
     }
   }

@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-bestinfo-objeto",
+    deployedAt: "2026-07-10T16:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O e-mail e o telefone sugeridos deixaram de aparecer como \"[object Object]\": a tela agora lê o valor certo mesmo quando o dado vem aninhado.",
+              "Os campos que dependem da Validação de contato passam a explicar isso, em vez de mandar rodar uma consulta que não existe como botão.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 2dfa6d83 (v1.31.5)",
+    technical: {
+      done: "O BestInfo do GOLD real embrulha cada contato num objeto (Email={EmailAddress}, Phone={AreaCode,Number}), entao o render 'texto' mostrava [object Object]. Novo primitivoDe(value) extrai um texto legivel de valor primitivo, objeto (por chaves usuais: value/emailaddress/phonenumber/number/addressmain/... senao junta primitivos) ou lista; aplicado nos renders texto/lista/objeto. mockProbe do pf_gold ajustado pra estrutura aninhada. Empty-state dos campos de query 'contato' (CARELI_PF_05) diz 'Preencha e rode a Validacao de contato' em vez de 'Rode a query CARELI_PF_05' (nao ha botao).",
+      motivation:
+        "O telefone e o e-mail sugeridos sao dois dos campos que o Lucas mais precisa avaliar, e vinham ilegiveis. A estrutura real do BestInfo so apareceu com a consulta em producao.",
+    },
+    title: "Enriquecimento: e-mail/telefone sugeridos legíveis (fim do [object Object])",
+    type: "correcao",
+    version: "1.31.6",
+  },
+  {
     buildTag: "2026-07-10-helpdesk-tipo-reclassificacao",
     deployedAt: "2026-07-10T22:40:00-03:00",
     modules: [
