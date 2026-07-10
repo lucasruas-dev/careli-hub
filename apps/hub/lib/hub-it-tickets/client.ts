@@ -7,6 +7,7 @@ import type {
   HubItTicketEvidenceAnalysis,
   HubItTicketEvidenceAnalysisInput,
   HubItTicketListScope,
+  HubItTicketTriageResult,
   HubItTicketUpdateInput,
 } from "./types";
 
@@ -199,6 +200,39 @@ export async function updateHubItTicket({
   }
 
   return payload.ticket;
+}
+
+export async function runHubItTicketTriage({
+  accessToken,
+  protocol,
+}: {
+  accessToken?: string | null;
+  protocol: string;
+}) {
+  const token = await getHubItTicketAccessToken(accessToken);
+
+  if (!token) {
+    throw new Error("Sessao ausente para rodar a triagem.");
+  }
+
+  const response = await fetch("/api/hub/it-tickets/triage", {
+    body: JSON.stringify({ protocol }),
+    cache: "no-store",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "Content-Type": "application/json",
+    },
+    method: "POST",
+  });
+  const payload = (await response.json().catch(() => null)) as
+    | (HubItTicketTriageResult & { error?: string })
+    | null;
+
+  if (!response.ok || !payload || payload.error) {
+    throw new Error(payload?.error ?? "Nao foi possivel rodar a triagem.");
+  }
+
+  return payload;
 }
 
 export function isHubItTicketsMigrationPendingMessage(
