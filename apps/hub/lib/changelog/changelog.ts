@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-helpdesk-agente-triagem",
+    deployedAt: "2026-07-10T23:55:00-03:00",
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "Novo botão Rodar triagem no detalhe do chamado: o agente lê o relato, procura chamado duplicado, confere se já foi corrigido em alguma versão do painel de novidades, sugere o tipo/impacto e escreve a devolutiva.",
+              "Casos claros (duplicata ou já corrigido) o agente responde direto e move o chamado para validação; os demais viram um rascunho pronto para você revisar e enviar.",
+              "O agente nunca fecha o chamado e nunca diz que consertou: é triagem e resposta. Quando é bug de verdade, ele sinaliza para escalar.",
+            ],
+            screen: "HelpDesk — detalhe do chamado",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 43384e57 (v1.31.9)",
+    technical: {
+      done: "Agente de triagem Nivel 1 do HelpDesk. lib/triage.ts: runHubItTicketTriage via completeWithClaudeStructured (tool-use forcado, modelo default) — contexto = chamado + candidatos a duplicata (lista leve, ate 50) + changelog recente (25). Trava 'misto por confianca' no SERVIDOR (normalizeTriageResult): so autonomy=responder com confianca alta E duplicata/versao real E sem escalar; fallback seguro se a IA cair. Rota POST /api/hub/it-tickets/triage (admin-only, maxDuration 60) so LE. Board: runTriage — responder=updateHubItTicket direto (adminResponse+resolutionSummary+classificacao, status aguardando_cliente) e nunca fecha; rascunho=pre-preenche o draft. TriageBar no header do detalhe (botao + painel: respondido/rascunho, confianca, duplicata, versao, escalar, nota). v1.31.9 -> v1.31.10.",
+      motivation:
+        "Fase seguinte ao diagnostico do HelpDesk: com a Fase 0 (anexos no Storage, resolution_summary) pronta, o agente ataca os 14 chamados sem resposta e os 12 parados em 'novo'. Nivel 1 = triagem + resposta; jamais fecha ticket sozinho (ja ha um robo fechando 90% por timeout).",
+    },
+    title: "HelpDesk: agente de triagem (lê, acha duplicata, confere changelog e responde)",
+    type: "novidade",
+    version: "1.31.10",
+  },
+  {
     buildTag: "2026-07-10-estadocivil-escolaridade-declarados",
     deployedAt: "2026-07-10T18:20:00-03:00",
     modules: [
