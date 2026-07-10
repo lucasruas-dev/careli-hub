@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-09-cadastro-certidoes-financeiro",
+    deployedAt: "2026-07-09T18:55:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cadastro de CAD: ao clicar em Enviar, as certidões do cliente (antecedentes, trabalhista, Receita, processos, sanções) são consultadas em segundo plano e aparecem com o status de cada uma.",
+              "Novo botão Rodar análise financeira, que faz a consulta profunda (renda, patrimônio e mais) sob demanda.",
+            ],
+            screen: "Cadastro de CAD — Revisão",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 8025d70f (v1.29.2)",
+    technical: {
+      done: "mostqi.enrichPerson aceita opts.query; callEnrichment usa a query passada (CARELI_PF_02 certidoes / _03 GOLD) alem da default _01. route: repassa body.query. cadastro-flow StepRevisao: Enviar dispara PF_02 (certidoes, background) e mostra CertidaoCard (status por tone + link PDF); botao Rodar analise financeira dispara PF_03 (renda/patrimonio + certidoes). LOCAL_MOCK usa mockCertidoes. ATENCAO: parser de PF_02 (extractCertidoes) e o mapeamento do GOLD sao best-effort, a validar com resposta real em prod. v1.29.2 -> v1.29.3.",
+      motivation:
+        "Lucas: ligar as consultas pesadas do MOST em duas etapas — certidoes automaticas no envio (PF_02) e financeiro profundo manual (PF_03) — validando tela a tela antes de levar pro Apolo.",
+    },
+    title: "Cadastro: certidões no envio (PF_02) + análise financeira manual (PF_03)",
+    type: "novidade",
+    version: "1.29.3",
+  },
+  {
     buildTag: "2026-07-09-cadastro-doc-e-comprovante",
     deployedAt: "2026-07-09T18:10:00-03:00",
     modules: [

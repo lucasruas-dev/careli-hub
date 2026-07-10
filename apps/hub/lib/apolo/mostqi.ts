@@ -771,13 +771,14 @@ async function callEnrichment(
   token: string,
   path: string,
   cpf: string,
+  query: string,
   datasets?: string[],
 ): Promise<Response> {
   const cfg = config();
   // MOST consulta por query nomeada + parametros num objeto "parameters".
-  // Se datasets vier, tentamos subsetar a consulta pelo nosso lado (experimento
-  // p/ ver se da p/ escolher os datasets sem criar query nova no MOST).
-  const body: JsonRecord = { parameters: { cpf }, query: cfg.enrichmentQuery };
+  // A query pode variar por etapa: CARELI_PF_01 (cadastro), _02 (certidoes),
+  // _03 (GOLD/financeiro). Se datasets vier, tenta subsetar pelo nosso lado.
+  const body: JsonRecord = { parameters: { cpf }, query };
   if (datasets && datasets.length) body.datasets = datasets;
   return fetch(`${cfg.baseUrl}${path}`, {
     body: JSON.stringify(body),
@@ -795,7 +796,7 @@ async function callEnrichment(
 // contratado, NAO quebra o cadastro — devolve available:false + o motivo real.
 export async function enrichPerson(
   cpf: string,
-  opts: { datasets?: string[]; includeRaw?: boolean } = {},
+  opts: { datasets?: string[]; includeRaw?: boolean; query?: string } = {},
 ): Promise<EnrichmentResult> {
   const digits = (cpf || "").replace(/\D/g, "");
   if (!isMostqiConfigured()) return mockEnrichment(opts.includeRaw);
@@ -804,14 +805,15 @@ export async function enrichPerson(
   }
 
   const cfg = config();
+  const query = (opts.query || "").trim() || cfg.enrichmentQuery;
   let lastMsg = "";
   try {
     for (const path of enrichmentPathCandidates(cfg.enrichmentPath)) {
       let token = await authenticateMostqi();
-      let response = await callEnrichment(token, path, digits, opts.datasets);
+      let response = await callEnrichment(token, path, digits, query, opts.datasets);
       if (response.status === 401) {
         token = await authenticateMostqi();
-        response = await callEnrichment(token, path, digits, opts.datasets);
+        response = await callEnrichment(token, path, digits, query, opts.datasets);
       }
       const text = await response.text().catch(() => "");
 

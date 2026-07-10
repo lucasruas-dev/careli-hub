@@ -40,6 +40,7 @@ export async function POST(request: Request) {
     datasets?: string[];
     fileBase64?: string;
     fileName?: string;
+    query?: string;
     tags?: string[];
   } | null;
 
@@ -118,6 +119,7 @@ export async function POST(request: Request) {
       const enr = await enrichPerson(String(body.cpf ?? ""), {
         datasets: Array.isArray(body.datasets) ? body.datasets : undefined,
         includeRaw: true,
+        query: typeof body.query === "string" ? body.query : undefined,
       });
       return NextResponse.json({ data: enr }, { headers: noStore });
     } catch (error) {
