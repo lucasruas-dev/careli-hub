@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-pf04-sem-authscore",
+    deployedAt: "2026-07-10T15:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O Perfil ampliado passou a responder de verdade: a MOST tirou dele a validação de contato (AuthScore), que exigia dados que a consulta por CPF não tem, e os outros oito dados agora chegam normalmente.",
+              "A validação de telefone, e-mail e endereço vira uma etapa própria, feita no fim do cadastro quando esses dados já foram preenchidos.",
+              "O painel deixou de listar como pendente o que a MOST já entregou.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 59d2504e (v1.31.2)",
+    technical: {
+      done: "A CARELI_PF_04 dava HTTP 400 porque incluia o dataset auth_score_gold (AUTHSCORE GOLD / Q-DB-128-F), que exige parametros alem do cpf (modelCode='scorealgorithmimpl', phone, cep, addressLine1/2, neighborhood, city, state, email). A MOST removeu o AuthScore da query; os outros 8 datasets respondem. No codigo: os 9 datasets da PF_04 deixaram de ser 'novo' (a query existe), so professional_turnover continua pendente; os 4 campos do auth_score_gold (telefoneConfirmado/emailConfirmado/enderecoConfirmado/falecido) voltaram a 'novo' com nota explicando que AuthScore e uma validacao com entrada declarada, a rodar no fim do cadastro; auth_score_gold saiu do mockProbe da PF_04. Custo da PF_04 sem AuthScore: 8 x R$ 0,177 = R$ 1,42 por consulta.",
+      motivation:
+        "Sem o AuthScore fora, a PF_04 inteira falhava e o Lucas nao via nenhum dos datasets novos. E o AuthScore, por precisar do contato declarado como entrada, e uma etapa de validacao, nao um enriquecimento por CPF.",
+    },
+    title: "Enriquecimento: Perfil ampliado responde (AuthScore vira etapa à parte)",
+    type: "correcao",
+    version: "1.31.3",
+  },
+  {
     buildTag: "2026-07-10-perfil-ampliado-pf04",
     deployedAt: "2026-07-10T14:20:00-03:00",
     modules: [

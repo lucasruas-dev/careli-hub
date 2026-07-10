@@ -1142,18 +1142,6 @@ const MOCK_PF: Record<string, ProbeDataset[]> = {
         totalMemberships: 1,
       },
     }),
-    ds("auth_score_gold", {
-      AddressConfirmationStatus: "CONFIRMADO",
-      EmailMost: "maria.silva@gmail.com",
-      IsConfirmedEmail: true,
-      IsConfirmedPhone: true,
-      IsDeceased: false,
-      IsMinor: false,
-      IsPeP: false,
-      IsVip: false,
-      PhoneMost: "(31) 99123-4567",
-      Score: 88,
-    }),
     ds("kyc", {
       kycData: {
         isCurrentlyPep: false,
