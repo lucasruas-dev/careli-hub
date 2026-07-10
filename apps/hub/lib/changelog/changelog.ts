@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-enriquecimento-tres-planos",
+    deployedAt: "2026-07-10T12:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A seção de custo agora compara os três planos da MOST lado a lado: você informa quantos cadastros faz por mês e a tela mostra a fatura em cada um, destacando o mais barato.",
+              "Quando o consumo fica abaixo do faturamento mínimo do plano, a tela avisa que você paga o mínimo mesmo assim.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit c044cd9b (v1.31.0)",
+    technical: {
+      done: "most-precos.ts regenerado a partir dos 3 PDFs de proposta (SEM FM / FM R$1.500 / FM R$5.000): TABELA codigo -> [preco_semfm, preco_fm1500, preco_fm5000] com 107 codigos, mapas dataset->codigo por persona, precoDataset(persona, dataset, plano), custoOcrImagem(plano), faturaMensal(consumo, plano) aplicando o piso do FM. calcularCusto ganhou o parametro plano. Tela: seletor de plano + cadastros/mes + comparacao das 3 faturas com destaque do vencedor e aviso de piso. Descontos NAO uniformes: enriquecimento -9% (FM 1.500) e -17,5% (FM 5.000); iOCR e IA generativa de -32% a -68%; OCR-104 (facematch 1:N) FICA MAIS CARO nos planos com FM. Viradas (cesta com GOLD+AuthScore, 3 imagens): ate 83 cad/mes SEM FM, 84 a 312 FM 1.500, 313+ FM 5.000. Cesta enxuta: SEM FM ate 456.",
+      motivation:
+        "A MOST mandou as tres propostas. O preco e por consulta em todas; o que muda e o unitario e o faturamento minimo. Sem simular a fatura do mes com a decisao de campos em cima, escolher plano seria chute.",
+    },
+    title: "Enriquecimento: comparação dos três planos da MOST",
+    type: "melhoria",
+    version: "1.31.1",
+  },
+  {
     buildTag: "2026-07-10-helpdesk-storage-narracao",
     deployedAt: "2026-07-10T21:30:00-03:00",
     modules: [

@@ -6,12 +6,17 @@
 //   operador = so consulta quando o operador pedir (custa sob demanda)
 //   fora     = nao usamos
 //
-// A conta: o MOST cobra POR DATASET consultado, EM REAIS (ver most-precos.ts).
-// Nao ha plano nem franquia (Faturamento Minimo Mensal = R$ 0,00). Uma query
+// A conta: o MOST cobra POR CONSULTA, EM REAIS (ver most-precos.ts). Uma query
 // nomeada (CARELI_PF_01 etc) dispara varios datasets, entao o custo de um
 // cadastro e a soma dos precos dos datasets distintos marcados como "auto".
+// O plano contratado muda o preco unitario e impoe um faturamento minimo.
 
-import { CUSTO_OCR_IMAGEM, precoDataset } from "@/lib/apolo/most-precos";
+import {
+  type PlanoId,
+  PLANO_ATUAL,
+  custoOcrImagem,
+  precoDataset,
+} from "@/lib/apolo/most-precos";
 
 export type Politica = "auto" | "fora" | "operador";
 
@@ -83,7 +88,7 @@ export const QUERIES: QuerySpec[] = [
   },
   {
     descricao:
-      "Um único dataset (pf_gold) com score, melhor contato, negativações, consultas e protestos. R$ 11,63 por consulta: é o item mais caro.",
+      "Um único dataset (pf_gold) com score, melhor contato, negativações, consultas e protestos. É a consulta mais cara da tabela.",
     label: "GOLD",
     persona: "pf",
     query: "CARELI_PF_03",
@@ -137,7 +142,7 @@ export const CAMPOS: CampoSpec[] = [
   { aba: "identificacao", dataset: "class_organization", id: "conselho", keys: ["memberships"], label: "Conselho de classe (CRECI)", nota: "Valida o corretor sem pedir carteirinha.", novo: true, origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_04", render: "itens", sub: ["entity", "registrationNumber", "status"] },
 
   // ---------------- PF · Contato ----------------
-  { aba: "contato", dataset: "pf_gold", id: "telefoneSugerido", keys: ["BestInfo.Phone"], label: "Telefone sugerido", nota: "O melhor telefone já consolidado. Sozinho (GOLD BEST INFO) custa R$ 1,51, sem o score.", origem: "bestinfo", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "texto" },
+  { aba: "contato", dataset: "pf_gold", id: "telefoneSugerido", keys: ["BestInfo.Phone"], label: "Telefone sugerido", nota: "O melhor telefone já consolidado. O GOLD BEST INFO sozinho é bem mais barato, mas não traz o score.", origem: "bestinfo", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "texto" },
   { aba: "contato", dataset: "pf_gold", id: "emailSugerido", keys: ["BestInfo.Email"], label: "E-mail sugerido", nota: "Sugestão para o operador confirmar com o cliente.", origem: "bestinfo", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "texto" },
   { aba: "contato", dataset: "auth_score_gold", id: "telefoneConfirmado", keys: ["IsConfirmedPhone"], label: "Telefone confere?", novo: true, origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_04", render: "bool" },
   { aba: "contato", dataset: "auth_score_gold", id: "emailConfirmado", keys: ["IsConfirmedEmail"], label: "E-mail confere?", novo: true, origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_04", render: "bool" },
@@ -163,10 +168,10 @@ export const CAMPOS: CampoSpec[] = [
   { aba: "financeiro", dataset: "financial_data", id: "faixaRenda", keys: ["bigdatA_V2", "bigdata"], label: "Faixa de renda estimada", nota: "Pré-preenche o seletor de renda do C2X.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_01", render: "texto" },
   { aba: "financeiro", dataset: "financial_data", id: "patrimonio", keys: ["totalAssets"], label: "Patrimônio estimado", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_01", render: "texto" },
   { aba: "financeiro", dataset: "financial_data", id: "restituicao", keys: ["taxReturns"], label: "Restituição do IR", nota: "Ano, status e banco. Sinal de renda declarada.", origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_01", render: "itens", sub: ["year", "status", "bank"] },
-  { aba: "financeiro", dataset: "pf_gold", id: "scoreCredito", keys: ["Score.Score"], label: "Score de crédito", nota: "Você pediu no CAD. Vem dentro do GOLD completo (R$ 11,63), que é o item mais caro do cadastro.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "texto" },
+  { aba: "financeiro", dataset: "pf_gold", id: "scoreCredito", keys: ["Score.Score"], label: "Score de crédito", nota: "Você pediu no CAD. Vem dentro do GOLD completo, que é o item mais caro do cadastro.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "texto" },
   { aba: "financeiro", dataset: "pf_gold", id: "scoreCompromisso", keys: ["Score.PaymentCommitmentScore"], label: "Score de compromisso de pagamento", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "texto" },
   { aba: "financeiro", dataset: "pf_gold", id: "scoreCapacidade", keys: ["Score.ProfileScore"], label: "Score de capacidade de pagamento", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "texto" },
-  { aba: "financeiro", dataset: "pf_gold", id: "temNegativacao", keys: ["HasNegativeData"], label: "Tem negativação?", nota: "O GOLD completo (R$ 11,63) já traz isto. Comprar só o indicador custa R$ 3,48, e só o score, R$ 7,05: separar não compensa.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "bool" },
+  { aba: "financeiro", dataset: "pf_gold", id: "temNegativacao", keys: ["HasNegativeData"], label: "Tem negativação?", nota: "O GOLD completo já traz isto. Comprar o indicador e o score separados custa mais caro que o pacote.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "bool" },
   { aba: "financeiro", dataset: "pf_gold", id: "temConsultas", keys: ["HasInquiryData"], label: "Consultado por terceiros?", origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_03", render: "bool" },
   { aba: "financeiro", dataset: "pf_gold", id: "valorNegativado", keys: ["PendenciesControlCred"], label: "Valor total negativado", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "dinheiro" },
   { aba: "financeiro", dataset: "pf_gold", id: "negativacoes", keys: ["Apontamentos"], label: "Negativações", origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_03", render: "itens", sub: ["CompanyName", "Nature", "Amount", "DateOccurred"] },
@@ -383,6 +388,7 @@ export function calcularCusto(
   politicas: Record<string, Politica>,
   persona: Persona,
   imagensPorCadastro: number,
+  plano: PlanoId = PLANO_ATUAL,
 ): Custo {
   const auto = new Set<string>();
   const operador = new Set<string>();
@@ -406,7 +412,7 @@ export function calcularCusto(
   const linhas = (nomes: Set<string>): LinhaCusto[] =>
     [...nomes]
       .map((dataset) => {
-        const preco = precoDataset(persona, dataset);
+        const preco = precoDataset(persona, dataset, plano);
         if (!preco) {
           semPreco.push(dataset);
           return null;
@@ -423,7 +429,7 @@ export function calcularCusto(
 
   return {
     custoAuto: somar(datasetsAuto),
-    custoOcr: Math.max(0, imagensPorCadastro) * CUSTO_OCR_IMAGEM,
+    custoOcr: Math.max(0, imagensPorCadastro) * custoOcrImagem(plano),
     custoOperador: somar(datasetsOperador),
     datasetsAuto,
     datasetsOperador,

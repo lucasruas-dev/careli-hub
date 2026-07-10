@@ -32,8 +32,12 @@ import {
   temValor,
 } from "@/lib/apolo/enrichment-spec";
 import {
+  type PlanoId,
+  PLANOS,
+  PLANO_ATUAL,
   PRECO_CARO,
   RATE_LIMIT_OCR_MENSAL,
+  faturaMensal,
   precoDataset,
   reais,
 } from "@/lib/apolo/most-precos";
@@ -41,8 +45,8 @@ import { getHubSupabaseClient } from "@/lib/supabase/client";
 
 // Laboratorio de enriquecimento: roda as queries do MOST sob demanda, mostra o
 // dado real campo a campo e deixa o Lucas decidir o que entra automatico no CAD,
-// o que fica sob demanda do operador e o que sai. O custo acompanha a decisao em
-// tempo real, EM REAIS: o MOST cobra por dataset e nao ha faturamento minimo.
+// o que fica sob demanda do operador e o que sai. O custo (recolhido) acompanha
+// a decisao em reais e compara a fatura do mes nos tres planos da MOST.
 
 type ProbeDataset = { data: unknown; name: string; status: string };
 
@@ -126,6 +130,8 @@ export function EnrichmentLab() {
   // Custo e referencia por enquanto: o plano mensal do Lucas esta em revisao
   // com a MOST, entao a decisao aqui e de VALOR OPERACIONAL do campo.
   const [mostrarCusto, setMostrarCusto] = useState(false);
+  const [plano, setPlano] = useState<PlanoId>(PLANO_ATUAL);
+  const [cadastrosMes, setCadastrosMes] = useState(100);
 
   const camposPersona = useMemo(
     () => CAMPOS.filter((campo) => campo.persona === persona),
@@ -136,9 +142,22 @@ export function EnrichmentLab() {
     [persona],
   );
   const custo: Custo = useMemo(
-    () => calcularCusto(camposPersona, politicas, persona, imagens),
-    [camposPersona, imagens, persona, politicas],
+    () => calcularCusto(camposPersona, politicas, persona, imagens, plano),
+    [camposPersona, imagens, persona, plano, politicas],
   );
+
+  // Compara a fatura do mes nos tres planos, com a mesma decisao e o mesmo
+  // volume. O faturamento minimo entra aqui: abaixo dele, paga-se o minimo.
+  const comparacao = useMemo(
+    () =>
+      PLANOS.map((item) => {
+        const c = calcularCusto(camposPersona, politicas, persona, imagens, item.id);
+        const consumo = (c.custoAuto + c.custoOcr) * cadastrosMes;
+        return { fatura: faturaMensal(consumo, item.id), consumo, plano: item };
+      }),
+    [cadastrosMes, camposPersona, imagens, persona, politicas],
+  );
+  const melhorFatura = Math.min(...comparacao.map((item) => item.fatura));
 
   const politicaDe = useCallback(
     (campo: CampoSpec) => politicas[campo.id] ?? campo.politica,
@@ -209,6 +228,7 @@ export function EnrichmentLab() {
   const copiarDecisoes = useCallback(async () => {
     const linhas: string[] = [
       `DECISÃO DE ENRIQUECIMENTO · ${persona === "pf" ? "PESSOA FÍSICA" : "PESSOA JURÍDICA"}`,
+      `Plano: ${PLANOS.find((item) => item.id === plano)?.label ?? plano}`,
       `Custo por cadastro: ${reais(custo.custoAuto + custo.custoOcr)} (enriquecimento ${reais(custo.custoAuto)} + leitura de ${imagens} imagens ${reais(custo.custoOcr)})`,
       `Se o operador acionar tudo sob demanda: + ${reais(custo.custoOperador)}`,
       "",
@@ -218,7 +238,7 @@ export function EnrichmentLab() {
       if (!hits.length) continue;
       linhas.push(`${politica.label.toUpperCase()} (${hits.length})`);
       for (const campo of hits) {
-        const preco = precoDataset(persona, campo.dataset);
+        const preco = precoDataset(persona, campo.dataset, plano);
         linhas.push(
           `  - ${campo.label} [${campo.dataset}${preco ? ` · ${preco.codigo} · ${reais(preco.preco)}` : " · sem preço na proposta"}]${campo.novo ? " (NOVO, pedir ao MOST)" : ""}`,
         );
@@ -235,7 +255,7 @@ export function EnrichmentLab() {
     } catch {
       setErro("Não consegui copiar. Copie manualmente.");
     }
-  }, [camposPersona, custo, imagens, persona, politicaDe]);
+  }, [camposPersona, custo, imagens, persona, plano, politicaDe]);
 
   const camposDaAba = camposPersona.filter((campo) => campo.aba === aba);
   const algumaConsulta = Object.keys(queries).length > 0;
@@ -448,6 +468,7 @@ export function EnrichmentLab() {
                 key={campo.id}
                 mostrarCusto={mostrarCusto}
                 onEmailOk={setEmailOk}
+                plano={plano}
                 onPolitica={(value) =>
                   setPoliticas((anterior) => ({ ...anterior, [campo.id]: value }))
                 }
@@ -563,20 +584,46 @@ export function EnrichmentLab() {
             ) : null}
 
             <div className={mostrarCusto ? "" : "hidden"}>
-            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] leading-relaxed text-amber-700">
-              Preços da proposta sem faturamento mínimo. Seu plano mensal está em
-              revisão com a MOST, então trate como referência, não como a conta.
-            </p>
-
-            <label className="mt-4 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-              Imagens lidas (RG frente e verso + comprovante)
+            <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              Plano contratado
             </label>
-            <input
-              className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-3 font-mono text-sm outline-none focus:border-[#A07C3B]/40"
-              inputMode="numeric"
-              onChange={(event) => setImagens(Number(soDigitos(event.target.value)) || 0)}
-              value={imagens}
-            />
+            <select
+              className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm outline-none focus:border-[#A07C3B]/40"
+              onChange={(event) => setPlano(event.target.value as PlanoId)}
+              value={plano}
+            >
+              {PLANOS.map((item) => (
+                <option key={item.id} value={item.id}>
+                  {item.label}
+                  {item.id === PLANO_ATUAL ? " (atual)" : ""}
+                </option>
+              ))}
+            </select>
+
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <div>
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Imagens lidas
+                </label>
+                <input
+                  className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-sm outline-none focus:border-[#A07C3B]/40"
+                  inputMode="numeric"
+                  onChange={(event) => setImagens(Number(soDigitos(event.target.value)) || 0)}
+                  value={imagens}
+                />
+              </div>
+              <div>
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  Cadastros por mês
+                </label>
+                <input
+                  className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-sm outline-none focus:border-[#A07C3B]/40"
+                  inputMode="numeric"
+                  onChange={(event) => setCadastrosMes(Number(soDigitos(event.target.value)) || 0)}
+                  value={cadastrosMes}
+                />
+              </div>
+            </div>
 
             <div className="mt-4 grid gap-3">
               <Metrica
@@ -586,15 +633,57 @@ export function EnrichmentLab() {
                 valor={reais(custo.custoAuto + custo.custoOcr)}
               />
               <Metrica
-                label="A cada 100 cadastros"
-                sub="O que entra na fatura do mês"
-                valor={reais((custo.custoAuto + custo.custoOcr) * 100)}
-              />
-              <Metrica
                 label="Sob demanda, se pedir tudo"
                 sub={`${custo.datasetsOperador.length} datasets, só quando o operador clicar`}
                 valor={reais(custo.custoOperador)}
               />
+            </div>
+
+            <div className="mt-4">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                A fatura do mês, em cada plano
+              </div>
+              <div className="mt-1.5 flex flex-col gap-1">
+                {comparacao.map((item) => {
+                  const vencedor = item.fatura === melhorFatura;
+                  const noPiso = item.fatura > item.consumo;
+                  return (
+                    <div
+                      className={[
+                        "flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5",
+                        vencedor
+                          ? "border-emerald-200 bg-emerald-50"
+                          : "border-slate-100 bg-slate-50/70",
+                      ].join(" ")}
+                      key={item.plano.id}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate text-[11px] font-medium text-slate-700">
+                          {item.plano.label}
+                        </span>
+                        {noPiso ? (
+                          <span className="block text-[9px] text-amber-600">
+                            consumo {reais(item.consumo)}, paga o mínimo
+                          </span>
+                        ) : null}
+                      </span>
+                      <span
+                        className={[
+                          "shrink-0 text-sm font-semibold tabular-nums",
+                          vencedor ? "text-emerald-700" : "text-slate-500",
+                        ].join(" ")}
+                      >
+                        {reais(item.fatura)}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">
+                O que sobra abaixo do faturamento mínimo não acumula pro mês
+                seguinte. O desconto do enriquecimento é pequeno (9% e 17%), mas
+                a leitura de documentos e a IA generativa caem de 32% a 68%.
+              </p>
             </div>
 
             {custo.datasetsAuto.length ? (
@@ -683,6 +772,7 @@ function CampoRow({
   mostrarCusto,
   onEmailOk,
   onPolitica,
+  plano,
   politica,
   queryRodada,
   resolvido,
@@ -693,6 +783,7 @@ function CampoRow({
   mostrarCusto: boolean;
   onEmailOk: (value: boolean) => void;
   onPolitica: (value: Politica) => void;
+  plano: PlanoId;
   politica: Politica;
   queryRodada: boolean;
   resolvido: CampoResolvido;
@@ -701,7 +792,7 @@ function CampoRow({
   const linhas = formatarCampo(campo, bruto);
   const veio = temValor(bruto);
   const outroDataset = resolvido.nome && resolvido.nome !== campo.dataset;
-  const preco = precoDataset(campo.persona, campo.dataset);
+  const preco = precoDataset(campo.persona, campo.dataset, plano);
 
   return (
     <div
