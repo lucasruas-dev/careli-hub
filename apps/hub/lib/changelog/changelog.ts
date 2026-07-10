@@ -32,6 +32,48 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-helpdesk-storage-narracao",
+    deployedAt: "2026-07-10T21:30:00-03:00",
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "Gravação de tela agora grava com o seu microfone: dá para narrar o erro enquanto mostra a tela, tudo num arquivo só.",
+              "Qualidade do vídeo muito melhor (o texto da tela ficou legível) e a gravação passou de 1 para 5 minutos.",
+              "Print agora sai em PNG, sem borrar texto e bordas.",
+              "Anexos podem ser bem maiores: eles saíram do banco e foram para o armazenamento de arquivos.",
+            ],
+            screen: "Abrir chamado",
+          },
+          {
+            items: [
+              "A tela abre muito mais rápido: os anexos só são baixados quando você abre o chamado.",
+            ],
+            screen: "Meus chamados",
+          },
+          {
+            items: [
+              "Para mandar um chamado para validação ou fechá-lo, agora é obrigatório descrever a resolução. Antes esse resumo era apagado sozinho a cada resposta.",
+              "O board deixa de esconder chamados antigos depois do 120º.",
+            ],
+            screen: "HelpDesk",
+          },
+        ],
+      },
+    ],
+    rollback: "commit bfef668c (v1.30.1)",
+    technical: {
+      done: "Fase 0 do diagnostico do HelpDesk. (1) Anexos saem do Postgres: migration 0045 adiciona storage_path, bucket privado hub-it-ticket-attachments (150MB), rota attachment-upload devolve signed upload URL e o cliente sobe direto pro Storage (contorna o body de ~4.5MB da Vercel); leitura por createSignedUrls em lote; content_data_url fica como leitura dupla ate o backfill. Rota admin attachments-backfill + card no board migram os 88 anexos legados (53MB) em lotes e depois liberam o espaco. (2) Qualidade: getDisplayMedia + getUserMedia combinados num MediaStream (narracao), video 450kbps -> 2.5Mbps VP9+Opus 30fps, print JPEG 0.82 -> PNG, 60s -> 5min; a IA recebe amostra reduzida (analysisDataUrls) em vez do arquivo. (3) Payload: hub-user-tickets-panel usava details=full (a Nivea baixava 35MB por abertura) -> details=list + hidratacao sob demanda; default de details invertido pra list (full virou opt-in); fetchAllPagedRows pagina eventos/anexos/tickets (teto 1000 do PostgREST + .limit(120) fixo). (4) resolution_summary era zerado a cada admin update (?? null) e agora sobrevive, e virou obrigatorio pra validacao/fechamento. v1.30.1 -> v1.31.0.",
+      motivation:
+        "Diagnostico completo da aba HelpDesk: 90% dos fechamentos eram o timeout de 3 dias, resolution_summary vazio em 71/71 tickets e 53MB de anexos em base64 dentro do Postgres. A ma qualidade do video e do print e a falta de narracao tinham a MESMA causa: tudo precisava caber no base64 do banco.",
+    },
+    title: "HelpDesk: gravação com narração, qualidade real e anexos fora do banco",
+    type: "melhoria",
+    version: "1.31.0",
+  },
+  {
     buildTag: "2026-07-10-enriquecimento-custo-real",
     deployedAt: "2026-07-10T11:30:00-03:00",
     modules: [
