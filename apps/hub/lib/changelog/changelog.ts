@@ -40,10 +40,11 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         screens: [
           {
             items: [
-              "O painel de custo agora mostra reais, não unidades: cada campo exibe quanto custa o dataset que o entrega, e o total por cadastro soma o enriquecimento mais a leitura dos documentos.",
+              "A tela agora é sobre a decisão: o painel mostra quantos campos são automáticos, quantos ficam sob demanda e quantos ficam de fora, com a lista do que precisa ser pedido à MOST.",
               "Os campos do GOLD (score, negativações e melhor contato) foram reunidos no dataset que a consulta realmente devolve, então a aba Financeiro passa a preencher.",
               "A certidão da Receita saiu do automático: o cadastro básico já traz a situação do CPF em dois segundos, enquanto a certidão leva mais de três minutos.",
               "Sexo aparece por extenso e a tela lista os datasets recebidos em cada consulta.",
+              "O custo virou uma seção recolhida de referência, porque o plano ainda está sendo revisto com a MOST.",
             ],
             screen: "Enriquecimento (laboratório)",
           },

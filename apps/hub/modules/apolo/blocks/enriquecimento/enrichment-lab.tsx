@@ -5,9 +5,11 @@ import {
   AlertTriangle,
   Check,
   CheckCircle2,
+  ChevronDown,
   ClipboardCheck,
   Coins,
   Copy,
+  ListChecks,
   Loader2,
   MailCheck,
   Search,
@@ -121,6 +123,9 @@ export function EnrichmentLab() {
   const [emailOk, setEmailOk] = useState<boolean | null>(null);
   const [cepComprovante, setCepComprovante] = useState("");
   const [copiado, setCopiado] = useState(false);
+  // Custo e referencia por enquanto: o plano mensal do Lucas esta em revisao
+  // com a MOST, entao a decisao aqui e de VALOR OPERACIONAL do campo.
+  const [mostrarCusto, setMostrarCusto] = useState(false);
 
   const camposPersona = useMemo(
     () => CAMPOS.filter((campo) => campo.persona === persona),
@@ -246,9 +251,9 @@ export function EnrichmentLab() {
             Enriquecimento · o que vale a pena trazer
           </h1>
           <p className="mt-1 max-w-3xl text-sm text-slate-500">
-            Rode a consulta, olhe o dado real e decida campo a campo: entra
-            automático no cadastro, fica sob demanda pro operador, ou sai. O custo
-            acompanha a decisão, em reais. Nada é gravado.
+            Rode a consulta, olhe o dado real e decida campo a campo o que serve
+            pra operação: entra automático no cadastro, fica sob demanda pro
+            operador, ou sai. Nada é gravado.
           </p>
         </div>
         <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
@@ -441,6 +446,7 @@ export function EnrichmentLab() {
                 cepComprovante={soDigitos(cepComprovante)}
                 emailOk={emailOk}
                 key={campo.id}
+                mostrarCusto={mostrarCusto}
                 onEmailOk={setEmailOk}
                 onPolitica={(value) =>
                   setPoliticas((anterior) => ({ ...anterior, [campo.id]: value }))
@@ -453,15 +459,113 @@ export function EnrichmentLab() {
           </div>
         </div>
 
-        {/* Custo */}
-        <aside className="lg:sticky lg:top-2 lg:self-start">
+        {/* Decisao + custo (referencia) */}
+        <aside className="flex flex-col gap-4 lg:sticky lg:top-2 lg:self-start">
           <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
-              <Coins className="size-4 text-[#A07C3B]" aria-hidden="true" />
-              Custo por cadastro
+              <ListChecks className="size-4 text-[#A07C3B]" aria-hidden="true" />
+              O mundo ideal
             </div>
             <p className="mt-1 text-[11px] text-slate-500">
-              Sem faturamento mínimo: paga-se por dataset consultado.
+              O que a operação precisa, sem pensar em preço ainda.
+            </p>
+
+            <div className="mt-4 grid gap-2">
+              {POLITICAS.map((item) => {
+                const total = camposPersona.filter(
+                  (campo) => politicaDe(campo) === item.value,
+                ).length;
+                return (
+                  <div
+                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2"
+                    key={item.value}
+                  >
+                    <span className="text-xs font-medium text-slate-600">
+                      {item.value === "auto"
+                        ? "Automático no cadastro"
+                        : item.value === "operador"
+                          ? "Sob demanda do operador"
+                          : "Não serve"}
+                    </span>
+                    <span
+                      className={[
+                        "text-lg font-semibold tabular-nums",
+                        item.value === "auto"
+                          ? "text-emerald-700"
+                          : item.value === "operador"
+                            ? "text-amber-700"
+                            : "text-slate-400",
+                      ].join(" ")}
+                    >
+                      {total}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {custo.novosPendentes.length ? (
+              <div className="mt-4 rounded-lg border border-[#A07C3B]/30 bg-[#A07C3B]/[0.05] p-3">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-[#A07C3B]">
+                  Pedir ao MOST ({custo.novosPendentes.length})
+                </div>
+                <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                  Datasets que você marcou mas que nenhuma query CARELI entrega
+                  hoje. Sem eles em produção, o dado não aparece.
+                </p>
+                <div className="mt-1.5 flex flex-wrap gap-1">
+                  {custo.novosPendentes.map((dataset) => (
+                    <span
+                      className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-600"
+                      key={dataset}
+                    >
+                      {dataset}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            <button
+              className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35]"
+              onClick={() => void copiarDecisoes()}
+              type="button"
+            >
+              {copiado ? (
+                <ClipboardCheck className="size-4" aria-hidden="true" />
+              ) : (
+                <Copy className="size-4" aria-hidden="true" />
+              )}
+              {copiado ? "Copiado" : "Copiar decisões"}
+            </button>
+          </div>
+
+          <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <button
+              className="flex w-full items-center justify-between gap-2 text-sm font-semibold text-slate-800"
+              onClick={() => setMostrarCusto((valor) => !valor)}
+              type="button"
+            >
+              <span className="flex items-center gap-2">
+                <Coins className="size-4 text-[#A07C3B]" aria-hidden="true" />
+                Custo (referência)
+              </span>
+              <ChevronDown
+                aria-hidden="true"
+                className={`size-4 text-slate-400 transition-transform ${mostrarCusto ? "rotate-180" : ""}`}
+              />
+            </button>
+
+            {!mostrarCusto ? (
+              <p className="mt-1 text-[11px] text-slate-500">
+                Deixado de lado por enquanto. Desenhe o ideal primeiro.
+              </p>
+            ) : null}
+
+            <div className={mostrarCusto ? "" : "hidden"}>
+            <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] leading-relaxed text-amber-700">
+              Preços da proposta sem faturamento mínimo. Seu plano mensal está em
+              revisão com a MOST, então trate como referência, não como a conta.
             </p>
 
             <label className="mt-4 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
@@ -530,42 +634,12 @@ export function EnrichmentLab() {
               </p>
             ) : null}
 
-            {custo.novosPendentes.length ? (
-              <div className="mt-4 rounded-lg border border-[#A07C3B]/30 bg-[#A07C3B]/[0.05] p-3">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-[#A07C3B]">
-                  Pedir ao MOST ({custo.novosPendentes.length})
-                </div>
-                <div className="mt-1.5 flex flex-wrap gap-1">
-                  {custo.novosPendentes.map((dataset) => (
-                    <span
-                      className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-600"
-                      key={dataset}
-                    >
-                      {dataset}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-
             <p className="mt-3 text-[10px] leading-relaxed text-slate-400">
               O limite de {RATE_LIMIT_OCR_MENSAL.toLocaleString("pt-BR")} do
               contrato é um teto mensal de páginas lidas pelo OCR, ajustável por
               e-mail. Não se aplica ao enriquecimento.
             </p>
-
-            <button
-              className="mt-3 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35]"
-              onClick={() => void copiarDecisoes()}
-              type="button"
-            >
-              {copiado ? (
-                <ClipboardCheck className="size-4" aria-hidden="true" />
-              ) : (
-                <Copy className="size-4" aria-hidden="true" />
-              )}
-              {copiado ? "Copiado" : "Copiar decisões"}
-            </button>
+            </div>
           </div>
         </aside>
       </div>
@@ -606,6 +680,7 @@ function CampoRow({
   campo,
   cepComprovante,
   emailOk,
+  mostrarCusto,
   onEmailOk,
   onPolitica,
   politica,
@@ -615,6 +690,7 @@ function CampoRow({
   campo: CampoSpec;
   cepComprovante: string;
   emailOk: boolean | null;
+  mostrarCusto: boolean;
   onEmailOk: (value: boolean) => void;
   onPolitica: (value: Politica) => void;
   politica: Politica;
@@ -649,7 +725,7 @@ function CampoRow({
               {campo.query.replace("CARELI_", "")}
             </span>
           )}
-          {preco ? (
+          {mostrarCusto && preco ? (
             <span
               className={[
                 "rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums",
@@ -661,11 +737,7 @@ function CampoRow({
             >
               {reais(preco.preco)}
             </span>
-          ) : (
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
-              sem preço
-            </span>
-          )}
+          ) : null}
           {campo.origem === "bestinfo" ? (
             <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
               best info
