@@ -8,14 +8,18 @@ import {
 import { useAthenaTicketRecording } from "@/components/hub-support/athena-ticket-recording-provider";
 import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import {
-  dataUrlToBytes,
+  buildImageAnalysisSample,
   extractVideoFrameDataUrls,
   formatAttachmentStamp,
   formatBytes,
   getAttachmentLabel,
   getAttachmentTypeFromMime,
   readBlobAsDataUrl,
+  toAnalysisAttachments,
+  toCreateAttachments,
+  type HubItTicketAttachmentDraft,
 } from "@/components/hub-support/hub-ticket-evidence-utils";
+import { uploadHubItTicketAttachment } from "@/lib/hub-it-tickets/attachment-upload";
 import {
   hubItTicketCategoryLabels,
   hubItTicketPriorityLabels,
@@ -62,7 +66,12 @@ type HubTicketOpenFormProps = {
   sourcePath?: string;
 };
 
-const maxAttachmentBytes = 6_000_000;
+// O antigo teto de 6MB vinha do base64 no Postgres. Agora o arquivo sobe direto
+// pro bucket privado, entao quem manda e o limite do bucket.
+const maxAttachmentBytes = 120 * 1024 * 1024;
+// Se o upload direto falhar, so um arquivo pequeno volta pro base64 legado
+// (o body da function da Vercel morre em ~4.5MB).
+const maxLegacyInlineBytes = 3_000_000;
 const maxAttachmentCount = 4;
 
 export function HubTicketOpenForm({
@@ -105,7 +114,7 @@ export function HubTicketOpenForm({
     shouldRestoreAfterCompactRecordingStop,
     setShouldRestoreAfterCompactRecordingStop,
   ] = useState(false);
-  const [attachments, setAttachments] = useState<HubItTicketAttachmentInput[]>(
+  const [attachments, setAttachments] = useState<HubItTicketAttachmentDraft[]>(
     [],
   );
   const [requestedDeliveryDate, setRequestedDeliveryDate] = useState("");
@@ -186,7 +195,7 @@ export function HubTicketOpenForm({
       void analyzeHubItTicketEvidence({
         accessToken,
         input: {
-          attachments,
+          attachments: toAnalysisAttachments(attachments),
           category,
           module: moduleName,
           pathname: currentPath,
@@ -307,7 +316,7 @@ export function HubTicketOpenForm({
         accessToken,
         input: {
           actualResult,
-          attachments,
+          attachments: toCreateAttachments(attachments),
           category,
           expectedResult,
           module: moduleName,
@@ -380,25 +389,28 @@ export function HubTicketOpenForm({
       context?.drawImage(video, 0, 0, canvas.width, canvas.height);
       stream.getTracks().forEach((track) => track.stop());
 
-      const dataUrl = canvas.toDataURL("image/jpeg", 0.82);
-      const sizeBytes = dataUrlToBytes(dataUrl);
+      // PNG, sem perdas. JPEG borrava texto e bordas da interface, e era assim
+      // so pra caber no base64 do banco, restricao que nao existe mais.
+      const blob = await canvasToPngBlob(canvas);
 
-      if (sizeBytes > maxAttachmentBytes) {
-        setError("Print acima de 6 MB. Anexe uma imagem menor.");
+      if (!blob) {
+        setError("Nao foi possivel gerar o print.");
         return;
       }
 
-      addAttachment({
-        capturedAt: new Date().toISOString(),
-        dataUrl,
-        fileName: `print-${formatAttachmentStamp()}.jpg`,
-        mimeType: "image/jpeg",
-        sizeBytes,
+      await addBlobAttachment(blob, {
+        fileName: `print-${formatAttachmentStamp()}.png`,
         type: "image",
       });
     } catch {
       setError("Captura cancelada ou nao autorizada.");
     }
+  }
+
+  function canvasToPngBlob(canvas: HTMLCanvasElement) {
+    return new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((blob) => resolve(blob), "image/png");
+    });
   }
 
   async function toggleScreenRecording() {
@@ -478,26 +490,49 @@ export function HubTicketOpenForm({
     }
 
     if (blob.size > maxAttachmentBytes) {
-      setError("Anexo acima de 6 MB. Envie uma evidencia menor.");
+      setError(
+        `Anexo acima de ${formatBytes(maxAttachmentBytes)}. Envie uma evidencia menor.`,
+      );
       return;
     }
 
-    const dataUrl = await readBlobAsDataUrl(blob);
+    // Os bytes vao direto pro Storage; pela API viaja so o caminho.
+    const storagePath = await uploadHubItTicketAttachment({
+      accessToken,
+      blob,
+      fileName: options.fileName,
+    });
+
+    if (!storagePath && blob.size > maxLegacyInlineBytes) {
+      setError("Nao foi possivel enviar o anexo. Tente de novo.");
+      return;
+    }
+
+    // Amostra reduzida SO pra IA ler (a rota de analise exige bytes). O arquivo
+    // original continua intacto no Storage.
     const analysisDataUrls =
-      options.type === "video" ? await extractVideoFrameDataUrls(blob) : [];
+      options.type === "video"
+        ? await extractVideoFrameDataUrls(blob)
+        : options.type === "image"
+          ? [await buildImageAnalysisSample(blob)].filter(Boolean)
+          : [];
+    // Audio precisa dos bytes pra transcricao; e o fallback legado usa base64.
+    const needsInlineBytes = options.type === "audio" || !storagePath;
 
     addAttachment({
       analysisDataUrls,
       capturedAt: new Date().toISOString(),
-      dataUrl,
       fileName: options.fileName,
       mimeType: blob.type || "application/octet-stream",
+      previewUrl: URL.createObjectURL(blob),
       sizeBytes: blob.size,
       type: options.type,
+      ...(storagePath ? { storagePath } : {}),
+      ...(needsInlineBytes ? { dataUrl: await readBlobAsDataUrl(blob) } : {}),
     });
   }
 
-  function addAttachment(attachment: HubItTicketAttachmentInput) {
+  function addAttachment(attachment: HubItTicketAttachmentDraft) {
     setError(null);
     setAttachments((currentAttachments) =>
       [attachment, ...currentAttachments].slice(0, maxAttachmentCount),
@@ -926,34 +961,38 @@ function AttachmentPreviewCard({
   attachment,
   onRemove,
 }: {
-  attachment: HubItTicketAttachmentInput;
+  attachment: HubItTicketAttachmentDraft;
   onRemove: () => void;
 }) {
+  // O arquivo ja subiu pro Storage, entao a miniatura usa o object URL local.
+  // O `dataUrl` so aparece em audio e no fallback legado.
+  const previewSource = attachment.previewUrl || attachment.dataUrl || "";
+
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      {attachment.type === "image" && attachment.dataUrl ? (
+      {attachment.type === "image" && previewSource ? (
         <Image
           alt={attachment.fileName}
           className="h-32 w-full object-cover"
           height={128}
-          src={attachment.dataUrl}
+          src={previewSource}
           unoptimized
           width={480}
         />
       ) : null}
-      {attachment.type === "video" && attachment.dataUrl ? (
+      {attachment.type === "video" && previewSource ? (
         <video
           className="h-32 w-full bg-slate-950 object-contain"
           controls
-          src={attachment.dataUrl}
+          src={previewSource}
         />
       ) : null}
-      {attachment.type === "audio" && attachment.dataUrl ? (
+      {attachment.type === "audio" && previewSource ? (
         <div className="grid min-h-24 place-items-center bg-slate-100 p-3">
-          <audio className="w-full" controls src={attachment.dataUrl} />
+          <audio className="w-full" controls src={previewSource} />
         </div>
       ) : null}
-      {!attachment.dataUrl || attachment.type === "file" ? (
+      {!previewSource || attachment.type === "file" ? (
         <div className="grid h-24 place-items-center bg-slate-100 text-slate-400">
           {attachment.type === "image" ? (
             <ImageIcon className="size-6" />
