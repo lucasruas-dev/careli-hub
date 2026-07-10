@@ -9,6 +9,7 @@ import {
   mergeTicketListWithExistingDetails,
   upsertTicketWithDetails,
 } from "@/lib/hub-it-tickets/merge";
+import { HelpDeskAttachmentMigrationCard } from "@/modules/squadops/blocks/helpdesk/helpdesk-attachment-migration-card";
 import {
   hubItTicketCategoryLabels,
   hubItTicketPriorityLabels,
@@ -950,6 +951,8 @@ export function HubItTicketsBoard({
         />
 
         {error ? <OperationalErrorBanner message={error} /> : null}
+
+        <HelpDeskAttachmentMigrationCard accessToken={accessToken} />
 
         {queueView === "gestao" ? (
           <HelpDeskManagementPanel
