@@ -104,6 +104,11 @@ export function HubTicketOpenForm({
   const [description, setDescription] = useState("");
   const [category, setCategory] = useState<HubItTicketCategory>("erro");
   const [priority, setPriority] = useState<HubItTicketPriority>("media");
+  // A inferencia por palavra-chave PRE-PREENCHE tipo e impacto, mas assim que a
+  // pessoa escolhe no seletor a decisao dela manda. Sem isso, cada tecla na
+  // descricao sobrescrevia a escolha (era o bug do TI-000061).
+  const categoryTouchedRef = useRef(false);
+  const priorityTouchedRef = useRef(false);
   const [moduleName, setModuleName] = useState(
     () => defaultModule ?? getModuleFromPath(currentPath),
   );
@@ -161,11 +166,21 @@ export function HubTicketOpenForm({
       return;
     }
 
-    const nextCategory = inferCategory(ticketDescription);
-    const nextPriority = inferPriority(ticketDescription);
+    const nextCategory = categoryTouchedRef.current
+      ? category
+      : inferCategory(ticketDescription);
+    const nextPriority = priorityTouchedRef.current
+      ? priority
+      : inferPriority(ticketDescription);
 
-    setCategory(nextCategory);
-    setPriority(nextPriority);
+    if (!categoryTouchedRef.current) {
+      setCategory(nextCategory);
+    }
+
+    if (!priorityTouchedRef.current) {
+      setPriority(nextPriority);
+    }
+
     setTechnicalSummary(
       buildTechnicalSummary({
         attachments,
@@ -179,7 +194,15 @@ export function HubTicketOpenForm({
     );
     setExpectedResult(inferExpectedResult(ticketDescription));
     setActualResult(inferActualResult(ticketDescription));
-  }, [attachments, currentPath, description, moduleName, requestedDeliveryDate]);
+  }, [
+    attachments,
+    category,
+    currentPath,
+    description,
+    moduleName,
+    priority,
+    requestedDeliveryDate,
+  ]);
 
   useEffect(() => {
     if (!canSubmit) {
@@ -732,7 +755,10 @@ export function HubTicketOpenForm({
         />
         <SelectField
           label="Tipo"
-          onChange={(value) => setCategory(value as HubItTicketCategory)}
+          onChange={(value) => {
+            categoryTouchedRef.current = true;
+            setCategory(value as HubItTicketCategory);
+          }}
           options={Object.entries(hubItTicketCategoryLabels).map(
             ([value, label]) => ({ label, value }),
           )}
@@ -740,7 +766,10 @@ export function HubTicketOpenForm({
         />
         <SelectField
           label="Impacto"
-          onChange={(value) => setPriority(value as HubItTicketPriority)}
+          onChange={(value) => {
+            priorityTouchedRef.current = true;
+            setPriority(value as HubItTicketPriority);
+          }}
           options={Object.entries(hubItTicketPriorityLabels).map(
             ([value, label]) => ({ label, value }),
           )}
