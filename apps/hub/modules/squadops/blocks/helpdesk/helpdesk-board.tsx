@@ -3,6 +3,7 @@
 import {
   isHubItTicketsMigrationPendingMessage,
   loadHubItTickets,
+  runHubItTicketTriage,
   updateHubItTicket,
 } from "@/lib/hub-it-tickets/client";
 import {
@@ -22,6 +23,7 @@ import {
   type HubItTicketPriority,
   type HubItTicketRoadmapType,
   type HubItTicketStatus,
+  type HubItTicketTriageResult,
 } from "@/lib/hub-it-tickets/types";
 import {
   countTicketsByWorkflowStage,
@@ -377,6 +379,10 @@ export function HubItTicketsBoard({
     HubItTicketAttachmentInput[]
   >([]);
   const [attentionToast, setAttentionToast] = useState<string | null>(null);
+  const [isTriaging, setIsTriaging] = useState(false);
+  const [triageResult, setTriageResult] =
+    useState<HubItTicketTriageResult | null>(null);
+  const [triageProtocol, setTriageProtocol] = useState<string | null>(null);
   const [setupUsers, setSetupUsers] = useState<MentionUser[]>([]);
   const [setupUsersStatus, setSetupUsersStatus] =
     useState<SetupUsersStatus>("idle");
@@ -895,6 +901,80 @@ export function HubItTicketsBoard({
     }
   }
 
+  // Agente de triagem (Nivel 1). O operador dispara; o agente le, dedupe,
+  // confere o changelog, sugere classificacao e escreve a devolutiva. "Misto
+  // por confianca": casos claros (o servidor ja travou) respondem direto; o
+  // resto pre-preenche o rascunho pro operador revisar. Nunca fecha o ticket.
+  async function runTriage() {
+    if (!selectedTicket || isTriaging) {
+      return;
+    }
+
+    const protocol = selectedTicket.protocol;
+
+    setIsTriaging(true);
+    setError(null);
+    setTriageResult(null);
+    setTriageProtocol(protocol);
+
+    try {
+      const result = await runHubItTicketTriage({ accessToken, protocol });
+
+      setTriageResult(result);
+
+      const canRespondDirect =
+        result.autonomy === "responder" &&
+        result.responseText.trim().length > 0 &&
+        result.resolutionSummary.trim().length > 0;
+
+      if (canRespondDirect) {
+        const updatedTicket = await updateHubItTicket({
+          accessToken,
+          input: {
+            adminResponse: result.responseText,
+            category:
+              result.suggestedCategory !== selectedTicket.category
+                ? result.suggestedCategory
+                : undefined,
+            priority:
+              result.suggestedPriority !== selectedTicket.priority
+                ? result.suggestedPriority
+                : undefined,
+            protocol,
+            resolutionSummary: result.resolutionSummary,
+            status: "aguardando_cliente",
+          },
+        });
+
+        setTickets((currentTickets) =>
+          currentTickets.map((ticket) =>
+            ticket.id === updatedTicket.id ? updatedTicket : ticket,
+          ),
+        );
+        clearStoredTicketDraft(protocol);
+        return;
+      }
+
+      // Rascunho: entrega a devolutiva e a classificacao sugeridas pro operador.
+      setDraft((current) => ({
+        ...current,
+        adminResponse: result.responseText || current.adminResponse,
+        category: result.suggestedCategory,
+        priority: result.suggestedPriority,
+        resolutionSummary:
+          result.resolutionSummary || current.resolutionSummary,
+      }));
+    } catch (triageError) {
+      setError(
+        triageError instanceof Error
+          ? triageError.message
+          : "Nao foi possivel rodar a triagem.",
+      );
+    } finally {
+      setIsTriaging(false);
+    }
+  }
+
   function openHistoryTicket(protocol: string) {
     setSelectedProtocol(protocol);
     setDetailModalProtocol(protocol);
@@ -1029,13 +1109,18 @@ export function HubItTicketsBoard({
           draft={draft}
           isDetailLoading={isDetailLoading}
           isSaving={isSaving}
+          isTriaging={isTriaging}
           onClose={() => setDetailModalProtocol(null)}
           onDraftChange={setDraft}
           onOpenBacklogForm={openBacklogForm}
           onReplyAttachmentsChange={setReplyAttachments}
           onSave={(nextStatus) => void saveReply(nextStatus)}
+          onTriage={() => void runTriage()}
           replyAttachments={replyAttachments}
           ticket={detailModalTicket}
+          triageResult={
+            triageProtocol === detailModalTicket.protocol ? triageResult : null
+          }
         />
       ) : null}
       {insightModal ? (
@@ -1092,18 +1177,22 @@ function TicketDetailModal({
   draft,
   isDetailLoading,
   isSaving,
+  isTriaging,
   onClose,
   onDraftChange,
   onOpenBacklogForm,
   onReplyAttachmentsChange,
   onSave,
+  onTriage,
   replyAttachments,
   ticket,
+  triageResult,
 }: {
   accessToken: string | null;
   draft: TicketDraft;
   isDetailLoading: boolean;
   isSaving: boolean;
+  isTriaging: boolean;
   onClose: () => void;
   onDraftChange: (draft: TicketDraft) => void;
   onOpenBacklogForm: (protocol: string) => void;
@@ -1111,8 +1200,10 @@ function TicketDetailModal({
     SetStateAction<HubItTicketAttachmentInput[]>
   >;
   onSave: (nextStatus: HubItTicketStatus) => void;
+  onTriage: () => void;
   replyAttachments: HubItTicketAttachmentInput[];
   ticket: HubItTicket;
+  triageResult: HubItTicketTriageResult | null;
 }) {
   return (
     <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#101820]/45 p-4">
@@ -1153,12 +1244,15 @@ function TicketDetailModal({
             draft={draft}
             isDetailLoading={isDetailLoading}
             isSaving={isSaving}
+            isTriaging={isTriaging}
             onDraftChange={onDraftChange}
             onOpenBacklogForm={onOpenBacklogForm}
             onReplyAttachmentsChange={onReplyAttachmentsChange}
             onSave={onSave}
+            onTriage={onTriage}
             replyAttachments={replyAttachments}
             ticket={ticket}
+            triageResult={triageResult}
           />
         </div>
       </div>
@@ -3832,25 +3926,31 @@ function TicketWorkspace({
   draft,
   isDetailLoading,
   isSaving,
+  isTriaging,
   onDraftChange,
   onOpenBacklogForm,
   onReplyAttachmentsChange,
   onSave,
+  onTriage,
   replyAttachments,
   ticket,
+  triageResult,
 }: {
   accessToken: string | null;
   draft: TicketDraft;
   isDetailLoading: boolean;
   isSaving: boolean;
+  isTriaging: boolean;
   onDraftChange: (draft: TicketDraft) => void;
   onOpenBacklogForm: (protocol: string) => void;
   onReplyAttachmentsChange: Dispatch<
     SetStateAction<HubItTicketAttachmentInput[]>
   >;
   onSave: (nextStatus: HubItTicketStatus) => void;
+  onTriage: () => void;
   replyAttachments: HubItTicketAttachmentInput[];
   ticket: HubItTicket;
+  triageResult: HubItTicketTriageResult | null;
 }) {
   const [expandedSections, setExpandedSections] = useState<
     ReadonlySet<TicketWorkspaceSection>
@@ -3920,6 +4020,11 @@ function TicketWorkspace({
           />
         </div>
         <WorkflowStepper ticket={ticket} />
+        <TriageBar
+          isTriaging={isTriaging}
+          onTriage={onTriage}
+          triageResult={triageResult}
+        />
         <CollapsiblePanel
           icon={<UserRound className="size-4" />}
           isExpanded={isSectionExpanded("context")}
@@ -4017,6 +4122,129 @@ function TicketWorkspace({
         </aside>
       </div>
     </div>
+  );
+}
+
+// Agente de triagem (Nivel 1) no detalhe do chamado. O operador dispara; o
+// agente le, procura duplicata, confere o changelog, sugere classificacao e
+// escreve a devolutiva. Casos claros respondem direto (server ja travou), o
+// resto pre-preenche o rascunho abaixo. Nunca fecha o ticket.
+function TriageBar({
+  isTriaging,
+  onTriage,
+  triageResult,
+}: {
+  isTriaging: boolean;
+  onTriage: () => void;
+  triageResult: HubItTicketTriageResult | null;
+}) {
+  const responded = triageResult?.autonomy === "responder";
+  const unavailable = triageResult?.source === "unavailable";
+
+  return (
+    <div className="grid gap-3 rounded-xl border border-[#A07C3B]/25 bg-gradient-to-br from-[#fffaf0] to-white p-3">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase text-[#7A5E2C]">
+          <span className="grid size-6 place-items-center rounded-full bg-[#A07C3B]/12 text-[#A07C3B]">
+            <Sparkles className="size-3.5" />
+          </span>
+          Triagem do Zeus
+        </div>
+        <button
+          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#A07C3B] bg-[#A07C3B] px-3 text-sm font-semibold text-white transition hover:bg-[#8f6f35] disabled:cursor-not-allowed disabled:opacity-55"
+          disabled={isTriaging}
+          onClick={onTriage}
+          type="button"
+        >
+          {isTriaging ? (
+            <Loader2 className="size-4 animate-spin" />
+          ) : (
+            <Sparkles className="size-4" />
+          )}
+          {isTriaging
+            ? "Analisando..."
+            : triageResult
+              ? "Rodar de novo"
+              : "Rodar triagem"}
+        </button>
+      </div>
+
+      {!triageResult ? (
+        <p className="m-0 text-xs text-slate-500">
+          O agente le o chamado, procura duplicata, confere o changelog, sugere
+          a classificacao e prepara a devolutiva. Nunca fecha o ticket.
+        </p>
+      ) : unavailable ? (
+        <p className="m-0 flex items-center gap-2 text-xs font-semibold text-amber-800">
+          <AlertTriangle className="size-4" /> {triageResult.internalNote}
+        </p>
+      ) : (
+        <div className="grid gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <span
+              className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold ${
+                responded
+                  ? "bg-emerald-50 text-emerald-700"
+                  : "bg-sky-50 text-sky-700"
+              }`}
+            >
+              {responded ? (
+                <CheckCircle2 className="size-3.5" />
+              ) : (
+                <MessageSquareReply className="size-3.5" />
+              )}
+              {responded ? "Respondido pelo agente" : "Rascunho preparado"}
+            </span>
+            <TriageConfidenceBadge confidence={triageResult.confidence} />
+            {triageResult.duplicateProtocol ? (
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[0.68rem] font-semibold text-slate-600">
+                Duplica {triageResult.duplicateProtocol}
+              </span>
+            ) : null}
+            {triageResult.resolvedByVersion ? (
+              <span className="inline-flex items-center rounded-full bg-[#A07C3B]/12 px-2 py-0.5 text-[0.68rem] font-semibold text-[#7A5E2C]">
+                Corrigido na {triageResult.resolvedByVersion}
+              </span>
+            ) : null}
+            {triageResult.escalate ? (
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[0.68rem] font-semibold text-rose-700">
+                <AlertTriangle className="size-3.5" /> Escalar p/ engenharia
+              </span>
+            ) : null}
+          </div>
+          {triageResult.internalNote ? (
+            <p className="m-0 text-xs leading-5 text-slate-600">
+              {triageResult.internalNote}
+            </p>
+          ) : null}
+          <p className="m-0 text-[0.68rem] text-slate-400">
+            {responded
+              ? "A devolutiva foi enviada ao solicitante e o chamado foi para validacao. Nada foi fechado."
+              : "A devolutiva e a classificacao sugeridas ja estao no rascunho abaixo. Revise e envie."}
+          </p>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TriageConfidenceBadge({
+  confidence,
+}: {
+  confidence: HubItTicketTriageResult["confidence"];
+}) {
+  const tone = {
+    alta: "bg-emerald-50 text-emerald-700",
+    baixa: "bg-slate-100 text-slate-500",
+    media: "bg-amber-50 text-amber-700",
+  } as const;
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-[0.68rem] font-semibold ${tone[confidence]}`}
+    >
+      Confianca {confidence}
+    </span>
   );
 }
 
