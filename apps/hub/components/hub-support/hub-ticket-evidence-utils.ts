@@ -1,5 +1,105 @@
 import type { HubItTicketAttachmentInput } from "@/lib/hub-it-tickets/types";
 
+// O arquivo cheio (alta qualidade) vive no Storage; pela API viaja so metadado.
+// Mas a rota de analise da IA EXIGE um `dataUrl`, entao guardamos uma AMOSTRA
+// reduzida (`analysisDataUrls`) so pra ela ler. A amostra nunca e salva.
+// `previewUrl` e um object URL local, so pra desenhar a miniatura no formulario.
+export type HubItTicketAttachmentDraft = HubItTicketAttachmentInput & {
+  previewUrl?: string;
+};
+
+const ANALYSIS_SAMPLE_MAX_EDGE = 1600;
+const ANALYSIS_SAMPLE_QUALITY = 0.72;
+
+// Reduz a imagem so pra IA olhar. O print original continua PNG, sem perdas.
+export async function buildImageAnalysisSample(blob: Blob) {
+  if (typeof document === "undefined") {
+    return "";
+  }
+
+  const objectUrl = URL.createObjectURL(blob);
+
+  try {
+    const image = await loadImageElement(objectUrl);
+    const scale = Math.min(
+      1,
+      ANALYSIS_SAMPLE_MAX_EDGE / Math.max(image.width, image.height, 1),
+    );
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      return "";
+    }
+
+    canvas.width = Math.max(1, Math.round(image.width * scale));
+    canvas.height = Math.max(1, Math.round(image.height * scale));
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+
+    return canvas.toDataURL("image/jpeg", ANALYSIS_SAMPLE_QUALITY);
+  } catch {
+    return "";
+  } finally {
+    URL.revokeObjectURL(objectUrl);
+  }
+}
+
+function loadImageElement(src: string) {
+  return new Promise<HTMLImageElement>((resolve, reject) => {
+    const image = new Image();
+
+    image.addEventListener("load", () => resolve(image), { once: true });
+    image.addEventListener("error", () => reject(new Error("image")), {
+      once: true,
+    });
+    image.src = src;
+  });
+}
+
+// Payload da ANALISE: a IA precisa de bytes, entao mandamos a amostra no lugar
+// do arquivo. Anexo sem amostra nenhuma e descartado (a rota exigiria dataUrl).
+export function toAnalysisAttachments(
+  drafts: HubItTicketAttachmentDraft[],
+): HubItTicketAttachmentInput[] {
+  return drafts.flatMap((draft) => {
+    const sample = draft.analysisDataUrls?.[0] ?? draft.dataUrl ?? "";
+
+    if (!sample) {
+      return [];
+    }
+
+    return [
+      {
+        analysisDataUrls: draft.analysisDataUrls,
+        capturedAt: draft.capturedAt,
+        dataUrl: sample,
+        fileName: draft.fileName,
+        mimeType: draft.mimeType,
+        sizeBytes: draft.sizeBytes,
+        type: draft.type,
+      },
+    ];
+  });
+}
+
+// Payload da CRIACAO: so metadado + caminho no Storage. Nada de base64 aqui:
+// era exatamente isso que enchia o Postgres e estourava o body da Vercel.
+export function toCreateAttachments(
+  drafts: HubItTicketAttachmentDraft[],
+): HubItTicketAttachmentInput[] {
+  return drafts.map((draft) => ({
+    capturedAt: draft.capturedAt,
+    // Sem storagePath o upload falhou: cai no base64 legado (arquivos pequenos).
+    ...(draft.storagePath
+      ? { storagePath: draft.storagePath }
+      : { dataUrl: draft.dataUrl }),
+    fileName: draft.fileName,
+    mimeType: draft.mimeType,
+    sizeBytes: draft.sizeBytes,
+    type: draft.type,
+  }));
+}
+
 export async function extractVideoFrameDataUrls(blob: Blob) {
   if (typeof document === "undefined") {
     return [];

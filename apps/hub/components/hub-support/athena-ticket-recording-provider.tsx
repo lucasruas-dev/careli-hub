@@ -9,18 +9,20 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { uploadHubItTicketAttachment } from "@/lib/hub-it-tickets/attachment-upload";
 import type { HubItTicketAttachmentInput } from "@/lib/hub-it-tickets/types";
 import {
   extractVideoFrameDataUrls,
   formatAttachmentStamp,
   readBlobAsDataUrl,
+  type HubItTicketAttachmentDraft,
 } from "@/components/hub-support/hub-ticket-evidence-utils";
 
 export type AthenaTicketRecordingKind = "audio" | "screen";
 
 type AthenaTicketRecordingContextValue = {
   clearRecordingError: () => void;
-  consumePendingAttachments: () => HubItTicketAttachmentInput[];
+  consumePendingAttachments: () => HubItTicketAttachmentDraft[];
   error: string | null;
   isProcessingRecording: boolean;
   isRecordingProtected: boolean;
@@ -38,7 +40,18 @@ type AthenaTicketRecordingContextValue = {
 const AthenaTicketRecordingContext =
   createContext<AthenaTicketRecordingContextValue | null>(null);
 
-const maxRecordingAttachmentBytes = 6_000_000;
+// O teto de 6MB era o do base64 no Postgres. Agora o arquivo vai pro bucket
+// privado (150MB), entao a gravacao pode durar e ter qualidade de leitura.
+// 5 min a ~2.6 Mbps dao ~98MB, dentro do bucket.
+const maxRecordingAttachmentBytes = 120 * 1024 * 1024;
+// Se o upload direto falhar, so um arquivo pequeno volta pro base64 legado
+// (o body da function da Vercel morre em ~4.5MB).
+const maxLegacyInlineBytes = 3_000_000;
+const SCREEN_RECORDING_TIMEOUT_MS = 5 * 60_000;
+// O audio avulso e transcrito pelo Whisper via function da Vercel, entao segue
+// curto de proposito: 3 min a 96 kbps dao ~2.2MB, abaixo do limite de body.
+const VOICE_NOTE_TIMEOUT_MS = 3 * 60_000;
+const maxVoiceNoteAttachmentBytes = 3_500_000;
 
 export function AthenaTicketRecordingProvider({
   children,
@@ -46,7 +59,7 @@ export function AthenaTicketRecordingProvider({
   children: ReactNode;
 }) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const pendingAttachmentsRef = useRef<HubItTicketAttachmentInput[]>([]);
+  const pendingAttachmentsRef = useRef<HubItTicketAttachmentDraft[]>([]);
   const recordingAttachmentTypeRef =
     useRef<HubItTicketAttachmentInput["type"]>("video");
   const recordingChunksRef = useRef<BlobPart[]>([]);
@@ -123,22 +136,48 @@ export function AthenaTicketRecordingProvider({
     }
 
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
+      const displayStream = await navigator.mediaDevices.getDisplayMedia({
         audio: false,
-        video: true,
+        video: { frameRate: { ideal: 30, max: 30 } },
       });
+      // A narracao e o ponto: a pessoa fala explicando enquanto mostra a tela.
+      // Se negar o microfone, a gravacao segue muda em vez de falhar.
+      const microphoneStream = await requestMicrophoneStream();
+      const stream = new MediaStream([
+        ...displayStream.getVideoTracks(),
+        ...(microphoneStream?.getAudioTracks() ?? []),
+      ]);
+
+      if (!microphoneStream) {
+        setError("Microfone indisponivel: a tela sera gravada sem narracao.");
+      }
 
       setLastRecordingFileName(null);
       startRecording(stream, {
         attachmentType: "video",
         filePrefix: "gravacao",
         kind: "screen",
-        timeoutMs: 60_000,
+        timeoutMs: SCREEN_RECORDING_TIMEOUT_MS,
       });
     } catch {
       stopRecordingStream();
       setRecordingKind(null);
       setError("Gravacao cancelada ou nao autorizada.");
+    }
+  }
+
+  async function requestMicrophoneStream() {
+    if (!navigator.mediaDevices?.getUserMedia) {
+      return null;
+    }
+
+    try {
+      return await navigator.mediaDevices.getUserMedia({
+        audio: { echoCancellation: true, noiseSuppression: true },
+        video: false,
+      });
+    } catch {
+      return null;
     }
   }
 
@@ -174,7 +213,7 @@ export function AthenaTicketRecordingProvider({
         attachmentType: "audio",
         filePrefix: "audio",
         kind: "audio",
-        timeoutMs: 45_000,
+        timeoutMs: VOICE_NOTE_TIMEOUT_MS,
       });
     } catch {
       stopRecordingStream();
@@ -279,22 +318,46 @@ export function AthenaTicketRecordingProvider({
       type: HubItTicketAttachmentInput["type"];
     },
   ) {
-    if (blob.size > maxRecordingAttachmentBytes) {
-      setError("Anexo acima de 6 MB. Envie uma evidencia menor.");
+    const isVoiceNote = options.type === "audio";
+    const sizeLimit = isVoiceNote
+      ? maxVoiceNoteAttachmentBytes
+      : maxRecordingAttachmentBytes;
+
+    if (blob.size > sizeLimit) {
+      setError(
+        isVoiceNote
+          ? "Audio muito longo. Grave um recado mais curto."
+          : "Gravacao muito grande. Grave um trecho mais curto.",
+      );
       return false;
     }
 
-    const dataUrl = await readBlobAsDataUrl(blob);
-    const analysisDataUrls =
-      options.type === "video" ? await extractVideoFrameDataUrls(blob) : [];
-    const attachment: HubItTicketAttachmentInput = {
+    // O arquivo cheio vai pro Storage. O audio avulso tambem carrega o base64,
+    // porque a transcricao do Whisper precisa dos bytes.
+    const storagePath = await uploadHubItTicketAttachment({
+      blob,
+      fileName: options.fileName,
+    });
+
+    if (!storagePath && blob.size > maxLegacyInlineBytes) {
+      setError("Nao foi possivel enviar a gravacao. Tente de novo.");
+      return false;
+    }
+
+    const analysisDataUrls = isVoiceNote
+      ? []
+      : await extractVideoFrameDataUrls(blob);
+    const needsInlineBytes = isVoiceNote || !storagePath;
+    const attachment: HubItTicketAttachmentDraft = {
       analysisDataUrls,
       capturedAt: new Date().toISOString(),
-      dataUrl,
       fileName: options.fileName,
       mimeType: blob.type || "application/octet-stream",
+      previewUrl: URL.createObjectURL(blob),
       sizeBytes: blob.size,
       type: options.type,
+      ...(storagePath ? { storagePath } : {}),
+      ...(needsInlineBytes ? { dataUrl: await readBlobAsDataUrl(blob) } : {}),
     };
 
     pendingAttachmentsRef.current = [
@@ -347,14 +410,41 @@ export function useAthenaTicketRecording() {
   return context;
 }
 
+// Antes: video a 450 kbps, escolhido pra caber nos 6MB de base64 do Postgres.
+// Texto de interface fica ilegivel nesse bitrate. Agora o arquivo vai pro
+// Storage, entao gravamos em qualidade de leitura: ~2.5 Mbps de video e 128 kbps
+// de audio (a narracao). VP9 preserva texto melhor que VP8.
+const SCREEN_VIDEO_BITS_PER_SECOND = 2_500_000;
+const NARRATION_AUDIO_BITS_PER_SECOND = 128_000;
+const VOICE_NOTE_AUDIO_BITS_PER_SECOND = 96_000;
+
 function createMediaRecorder(
   stream: MediaStream,
   attachmentType: HubItTicketAttachmentInput["type"],
 ) {
-  const recorderOptions: MediaRecorderOptions =
-    attachmentType === "audio"
-      ? { audioBitsPerSecond: 64_000 }
-      : { videoBitsPerSecond: 450_000 };
+  const isAudioOnly = attachmentType === "audio";
+  const recorderOptions: MediaRecorderOptions = isAudioOnly
+    ? { audioBitsPerSecond: VOICE_NOTE_AUDIO_BITS_PER_SECOND }
+    : {
+        audioBitsPerSecond: NARRATION_AUDIO_BITS_PER_SECOND,
+        videoBitsPerSecond: SCREEN_VIDEO_BITS_PER_SECOND,
+      };
+  const preferredMimeTypes = isAudioOnly
+    ? ["audio/webm;codecs=opus", "audio/webm"]
+    : ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm"];
+
+  for (const mimeType of preferredMimeTypes) {
+    if (
+      typeof MediaRecorder.isTypeSupported === "function" &&
+      MediaRecorder.isTypeSupported(mimeType)
+    ) {
+      try {
+        return new MediaRecorder(stream, { ...recorderOptions, mimeType });
+      } catch {
+        // Segue pro proximo candidato.
+      }
+    }
+  }
 
   try {
     return new MediaRecorder(stream, recorderOptions);
