@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-rodar-tudo-cronometro",
+    deployedAt: "2026-07-10T17:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Botão Rodar tudo: dispara todas as consultas de uma vez, em paralelo, e a validação de contato junto se você tiver preenchido o telefone, o e-mail ou o CEP.",
+              "Cronômetro ao lado mostra o tempo correndo enquanto roda e trava no total ao terminar.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 6cfcf139 (v1.31.6)",
+    technical: {
+      done: "Extraido rodarQuery(digits, query, params) que faz o fetch sem tocar em 'rodando', permitindo paralelismo. consultar() envolve com validacao + estado rodando; novo rodarTudo() valida o documento, cronometra (performance.now + setInterval 100ms em tempoTotal) e dispara Promise.allSettled de todas as queries nao-contato + PF_05 se houver contato declarado. Botao 'Rodar tudo' (Zap) + chip cronometro (Timer) que fica dourado enquanto roda e verde com o total no fim. Botoes individuais e Validar desabilitam durante rodandoTudo. Paralelo importa: as certidoes (PF_02) levam ~190s, sequencial somaria os tempos.",
+      motivation:
+        "Lucas quer testar tudo de uma vez e saber quanto tempo o conjunto leva, em vez de clicar query por query.",
+    },
+    title: "Enriquecimento: botão Rodar tudo + cronômetro",
+    type: "melhoria",
+    version: "1.31.7",
+  },
+  {
     buildTag: "2026-07-10-bestinfo-objeto",
     deployedAt: "2026-07-10T16:40:00-03:00",
     modules: [

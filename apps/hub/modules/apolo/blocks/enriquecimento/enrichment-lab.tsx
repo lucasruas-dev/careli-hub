@@ -14,6 +14,8 @@ import {
   MailCheck,
   Search,
   ShieldCheck,
+  Timer,
+  Zap,
 } from "lucide-react";
 
 import {
@@ -121,6 +123,8 @@ export function EnrichmentLab() {
   const [dados, setDados] = useState<Record<string, ProbeDataset>>({});
   const [queries, setQueries] = useState<Record<string, QueryState>>({});
   const [rodando, setRodando] = useState<string | null>(null);
+  const [rodandoTudo, setRodandoTudo] = useState(false);
+  const [tempoTotal, setTempoTotal] = useState<number | null>(null);
   const [erro, setErro] = useState<string | null>(null);
 
   const [politicas, setPoliticas] = useState<Record<string, Politica>>({});
@@ -175,20 +179,24 @@ export function EnrichmentLab() {
     [politicas],
   );
 
-  const consultar = useCallback(
-    async (query: string, params?: Record<string, unknown>) => {
-      const digits = soDigitos(documento);
-      const esperado = persona === "pf" ? 11 : 14;
-      if (digits.length !== esperado) {
-        setErro(
-          persona === "pf"
-            ? "Digite um CPF com 11 dígitos."
-            : "Digite um CNPJ com 14 dígitos.",
-        );
-        return;
-      }
-      setErro(null);
-      setRodando(query);
+  const documentoValido = useCallback(() => {
+    const digits = soDigitos(documento);
+    const esperado = persona === "pf" ? 11 : 14;
+    if (digits.length !== esperado) {
+      setErro(
+        persona === "pf"
+          ? "Digite um CPF com 11 dígitos."
+          : "Digite um CNPJ com 14 dígitos.",
+      );
+      return "";
+    }
+    return digits;
+  }, [documento, persona]);
+
+  // Faz o fetch cru de UMA query e atualiza dados/queries. Nao mexe no estado de
+  // "rodando" (quem chama controla), pra permitir rodar varias em paralelo.
+  const rodarQuery = useCallback(
+    async (digits: string, query: string, params?: Record<string, unknown>) => {
       try {
         const token = await accessToken();
         const response = await fetch("/api/apolo/mostqi", {
@@ -228,13 +236,74 @@ export function EnrichmentLab() {
           ...anterior,
           [query]: { datasets: 0, elapsedMs: 0, erro: (error as Error).message, simulado: false },
         }));
+        throw error;
+      }
+    },
+    [],
+  );
+
+  const consultar = useCallback(
+    async (query: string, params?: Record<string, unknown>) => {
+      const digits = documentoValido();
+      if (!digits) return;
+      setErro(null);
+      setRodando(query);
+      try {
+        await rodarQuery(digits, query, params);
+      } catch (error) {
         setErro((error as Error).message);
       } finally {
         setRodando(null);
       }
     },
-    [documento, persona],
+    [documentoValido, rodarQuery],
   );
+
+  // Roda tudo de uma vez, em paralelo (as certidoes sozinhas levam ~190s;
+  // sequencial somaria). Cronometra o tempo total de parede.
+  const rodarTudo = useCallback(async () => {
+    const digits = documentoValido();
+    if (!digits) return;
+    setErro(null);
+    setTempoTotal(null);
+    setRodandoTudo(true);
+    const inicio = performance.now();
+    const tick = window.setInterval(
+      () => setTempoTotal(performance.now() - inicio),
+      100,
+    );
+
+    // Queries normais (por CPF) + a validacao de contato SE houver dado declarado.
+    const alvos = queriesPersona
+      .filter((item) => !item.contato)
+      .map((item) => ({ params: undefined as Record<string, unknown> | undefined, query: item.query }));
+    if (contato.phone || contato.email || contato.cep) {
+      alvos.push({
+        params: {
+          addressLine1: contato.addressLine1,
+          addressLine2: contato.addressLine2,
+          cep: soDigitos(contato.cep),
+          city: contato.city,
+          email: contato.email,
+          modelCode: "scorealgorithmimpl",
+          neighborhood: contato.neighborhood,
+          phone: soDigitos(contato.phone),
+          state: contato.state,
+        },
+        query: "CARELI_PF_05",
+      });
+    }
+
+    try {
+      await Promise.allSettled(
+        alvos.map((alvo) => rodarQuery(digits, alvo.query, alvo.params)),
+      );
+    } finally {
+      window.clearInterval(tick);
+      setTempoTotal(performance.now() - inicio);
+      setRodandoTudo(false);
+    }
+  }, [contato, documentoValido, queriesPersona, rodarQuery]);
 
   // AuthScore (CARELI_PF_05): valida o contato declarado. modelCode e fixo.
   const validarContato = useCallback(() => {
@@ -351,21 +420,17 @@ export function EnrichmentLab() {
             .filter((item) => !item.contato)
             .map((item) => {
             const estado = queries[item.query];
+            const rodandoEsta = rodando === item.query || rodandoTudo;
             return (
               <button
-                className={[
-                  "inline-flex h-9 items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors disabled:opacity-50",
-                  item.proposta
-                    ? "border border-dashed border-[#A07C3B] text-[#A07C3B] hover:bg-[#A07C3B]/5"
-                    : "bg-slate-900 text-white hover:bg-slate-800",
-                ].join(" ")}
-                disabled={rodando !== null}
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
+                disabled={rodando !== null || rodandoTudo}
                 key={item.query}
                 onClick={() => void consultar(item.query)}
                 title={item.descricao}
                 type="button"
               >
-                {rodando === item.query ? (
+                {rodandoEsta && !estado ? (
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                 ) : estado && !estado.erro ? (
                   <CheckCircle2 className="size-4" aria-hidden="true" />
@@ -379,6 +444,36 @@ export function EnrichmentLab() {
               </button>
             );
           })}
+
+          <button
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:opacity-50"
+            disabled={rodando !== null || rodandoTudo}
+            onClick={() => void rodarTudo()}
+            title="Dispara todas as consultas em paralelo e cronometra o total"
+            type="button"
+          >
+            {rodandoTudo ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Zap className="size-4" aria-hidden="true" />
+            )}
+            Rodar tudo
+          </button>
+
+          {tempoTotal !== null ? (
+            <span
+              className={[
+                "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold tabular-nums",
+                rodandoTudo
+                  ? "border-[#A07C3B]/40 bg-[#A07C3B]/5 text-[#A07C3B]"
+                  : "border-emerald-200 bg-emerald-50 text-emerald-700",
+              ].join(" ")}
+            >
+              <Timer className="size-4" aria-hidden="true" />
+              {(tempoTotal / 1000).toFixed(1)}s
+              {rodandoTudo ? "" : " · total"}
+            </span>
+          ) : null}
         </div>
 
         {erro ? (
@@ -500,7 +595,7 @@ export function EnrichmentLab() {
           </div>
           <button
             className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
-            disabled={rodando !== null}
+            disabled={rodando !== null || rodandoTudo}
             onClick={validarContato}
             type="button"
           >
