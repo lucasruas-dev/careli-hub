@@ -85,6 +85,13 @@ function soDigitos(value: string) {
   return value.replace(/\D/g, "");
 }
 
+// O AuthScore quer DDD + numero (10 a 11 digitos). Se o telefone veio com o
+// codigo do pais (+55), tira o 55 pra nao mandar 13 digitos e ser recusado.
+function telefoneAuthScore(raw: string) {
+  const d = soDigitos(raw);
+  return d.length > 11 && d.startsWith("55") ? d.slice(2) : d;
+}
+
 type CampoResolvido = {
   // Dataset que de fato entregou o valor (pode diferir do declarado na spec:
   // a CARELI_PF_03, por exemplo, empacota tudo num unico "pf_gold").
@@ -287,7 +294,7 @@ export function EnrichmentLab() {
           email: contato.email,
           modelCode: "scorealgorithmimpl",
           neighborhood: contato.neighborhood,
-          phone: soDigitos(contato.phone),
+          phone: telefoneAuthScore(contato.phone),
           state: contato.state,
         },
         query: "CARELI_PF_05",
@@ -319,7 +326,7 @@ export function EnrichmentLab() {
       email: contato.email,
       modelCode: "scorealgorithmimpl",
       neighborhood: contato.neighborhood,
-      phone: soDigitos(contato.phone),
+      phone: telefoneAuthScore(contato.phone),
       state: contato.state,
     });
   }, [consultar, contato]);

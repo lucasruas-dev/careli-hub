@@ -32,6 +32,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-authscore-telefone-pais",
+    deployedAt: "2026-07-10T18:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A Validação de contato deixava o código do país no telefone (+55), mandando 13 dígitos quando o AuthScore aceita só 10 ou 11. Agora o +55 é removido sozinho, e a validação passa a responder.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit a1f69eb9 (v1.31.7)",
+    technical: {
+      done: "A CARELI_PF_05 (AuthScore) recusava com HTTP 400 (result:null) porque o telefone ia com o codigo do pais: soDigitos('+5531983013616') = 13 digitos, e o AuthScore exige DDD+numero (10-11). Novo telefoneAuthScore(raw) tira o prefixo 55 quando o resultado passa de 11 digitos e comeca com 55; usado no validarContato e no rodarTudo (params da PF_05). CEP/demais campos ja iam certos.",
+      motivation:
+        "Sem o telefone no formato certo, a unica etapa que valida o contato declarado (a checagem do fim do cadastro) nao rodava.",
+    },
+    title: "Enriquecimento: telefone do AuthScore sem o código do país",
+    type: "correcao",
+    version: "1.31.8",
+  },
+  {
     buildTag: "2026-07-10-rodar-tudo-cronometro",
     deployedAt: "2026-07-10T17:20:00-03:00",
     modules: [
