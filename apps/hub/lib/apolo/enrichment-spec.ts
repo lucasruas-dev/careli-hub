@@ -66,6 +66,9 @@ export const ABAS: Array<{ id: AbaId; label: string }> = [
 ];
 
 export type QuerySpec = {
+  // Precisa de dados declarados (telefone/CEP/endereco/email) como entrada, alem
+  // do CPF: nao vira botao comum, roda no painel de Validacao de contato.
+  contato?: boolean;
   descricao: string;
   label: string;
   persona: Persona;
@@ -95,10 +98,18 @@ export const QUERIES: QuerySpec[] = [
   },
   {
     descricao:
-      "Criada pela MOST em 10/jul: escolaridade, CRECI, validação de contato, KYC, rede, benefícios e comportamento. Nove datasets.",
+      "Escolaridade, CRECI, KYC, rede, benefícios, comportamento e rotatividade profissional. Nove datasets.",
     label: "Perfil ampliado",
     persona: "pf",
     query: "CARELI_PF_04",
+  },
+  {
+    contato: true,
+    descricao:
+      "AuthScore: confere se o telefone, e-mail e endereço declarados batem com a base. Precisa desses dados como entrada.",
+    label: "Validação de contato",
+    persona: "pf",
+    query: "CARELI_PF_05",
   },
   {
     descricao: "Cadastro da empresa, sócios, KYC, processos e contato.",
@@ -143,15 +154,15 @@ export const CAMPOS: CampoSpec[] = [
   // ---------------- PF · Contato ----------------
   { aba: "contato", dataset: "pf_gold", id: "telefoneSugerido", keys: ["BestInfo.Phone"], label: "Telefone sugerido", nota: "O melhor telefone já consolidado. O GOLD BEST INFO sozinho é bem mais barato, mas não traz o score.", origem: "bestinfo", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "texto" },
   { aba: "contato", dataset: "pf_gold", id: "emailSugerido", keys: ["BestInfo.Email"], label: "E-mail sugerido", nota: "Sugestão para o operador confirmar com o cliente.", origem: "bestinfo", persona: "pf", politica: "auto", query: "CARELI_PF_03", render: "texto" },
-  { aba: "contato", dataset: "auth_score_gold", id: "telefoneConfirmado", keys: ["IsConfirmedPhone"], label: "Telefone confere?", nota: "AUTHSCORE GOLD saiu da CARELI_PF_04: precisa do telefone, CEP, endereço e e-mail declarados como entrada. Roda como validação no fim do cadastro, não na consulta por CPF.", novo: true, origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_04", render: "bool" },
-  { aba: "contato", dataset: "auth_score_gold", id: "emailConfirmado", keys: ["IsConfirmedEmail"], label: "E-mail confere?", nota: "AUTHSCORE GOLD saiu da CARELI_PF_04: precisa do telefone, CEP, endereço e e-mail declarados como entrada. Roda como validação no fim do cadastro, não na consulta por CPF.", novo: true, origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_04", render: "bool" },
+  { aba: "contato", dataset: "auth_score_gold", id: "telefoneConfirmado", keys: ["IsConfirmedPhone"], label: "Telefone confere?", nota: "Vem da CARELI_PF_05 (AuthScore isolado): valida o contato declarado. Preencha os dados na Validação de contato.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_05", render: "bool" },
+  { aba: "contato", dataset: "auth_score_gold", id: "emailConfirmado", keys: ["IsConfirmedEmail"], label: "E-mail confere?", nota: "Vem da CARELI_PF_05 (AuthScore isolado): valida o contato declarado. Preencha os dados na Validação de contato.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_05", render: "bool" },
   { aba: "contato", dataset: "phones_extended", id: "telefones", keys: ["phones"], label: "Todos os telefones", nota: "Passagens altas e zero suspeitas = telefone bom.", origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_01", render: "itens", sub: ["areaCode", "number", "type", "phoneEntityTotalPassages"] },
   { aba: "contato", dataset: "emails_extended", id: "emails", keys: ["emails"], label: "Todos os e-mails", origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_01", render: "itens", sub: ["emailAddress", "type"] },
   { aba: "contato", dataset: "related_people_phones", id: "telefonesParentes", keys: ["relatedPeoplePhones"], label: "Telefones de parentes", nota: "Munição de localização pra cobrança.", origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_04", render: "itens", sub: ["relatedEntityName", "areaCode", "number"] },
 
   // ---------------- PF · Endereço ----------------
   { aba: "endereco", dataset: "addresses_extended", id: "enderecos", keys: ["addresses"], label: "Endereços na base", nota: "Comparamos com o comprovante. Se divergir, vale o comprovante.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_01", render: "itens", sub: ["addressMain", "number", "neighborhood", "city", "state", "zipCode"] },
-  { aba: "endereco", dataset: "auth_score_gold", id: "enderecoConfirmado", keys: ["AddressConfirmationStatus"], label: "Endereço confere?", nota: "AUTHSCORE GOLD saiu da CARELI_PF_04: precisa do telefone, CEP, endereço e e-mail declarados como entrada. Roda como validação no fim do cadastro, não na consulta por CPF.", novo: true, origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_04", render: "texto" },
+  { aba: "endereco", dataset: "auth_score_gold", id: "enderecoConfirmado", keys: ["AddressConfirmationStatus"], label: "Endereço confere?", nota: "Vem da CARELI_PF_05 (AuthScore isolado): valida o contato declarado. Preencha os dados na Validação de contato.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_05", render: "texto" },
   { aba: "endereco", dataset: "pf_gold", id: "enderecoBest", keys: ["BestInfo.Address"], label: "Endereço sugerido", origem: "bestinfo", persona: "pf", politica: "operador", query: "CARELI_PF_03", render: "texto" },
 
   // ---------------- PF · Profissional ----------------
@@ -159,9 +170,9 @@ export const CAMPOS: CampoSpec[] = [
   { aba: "profissional", dataset: "occupation_data", id: "vinculos", keys: ["professions"], label: "Vínculos de trabalho", nota: "Empresa, CNPJ, cargo, renda do vínculo, admissão.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_01", render: "itens", sub: ["companyName", "level", "status", "income"] },
   { aba: "profissional", dataset: "occupation_data", id: "rendaTrabalho", keys: ["totalIncome"], label: "Renda do trabalho", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_01", render: "dinheiro" },
   { aba: "profissional", dataset: "occupation_data", id: "totalVinculos", keys: ["totalProfessions"], label: "Total de vínculos", origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_01", render: "texto" },
-  { aba: "profissional", dataset: "professional_turnover", id: "empreendedor", keys: ["isEntrepeneur"], label: "É empreendedor?", nota: "Não entrou na CARELI_PF_04. A MOST confirmou por e-mail que existe, a R$ 0,18. Pedir se decidirmos usar.", novo: true, origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_04", render: "bool" },
-  { aba: "profissional", dataset: "professional_turnover", id: "rotatividade", keys: ["avgYearsBetweenProfessionalTurnover"], label: "Rotatividade média (anos)", nota: "Não entrou na CARELI_PF_04. A MOST confirmou por e-mail que existe, a R$ 0,18. Pedir se decidirmos usar.", novo: true, origem: "enriquecimento", persona: "pf", politica: "fora", query: "CARELI_PF_04", render: "texto" },
-  { aba: "profissional", dataset: "professional_turnover", id: "primeiroEmprego", keys: ["ageOfFirstJob"], label: "Idade no 1º emprego", nota: "Não entrou na CARELI_PF_04. A MOST confirmou por e-mail que existe, a R$ 0,18. Pedir se decidirmos usar.", novo: true, origem: "enriquecimento", persona: "pf", politica: "fora", query: "CARELI_PF_04", render: "texto" },
+  { aba: "profissional", dataset: "professional_turnover", id: "empreendedor", keys: ["isEntrepeneur"], label: "É empreendedor?", origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_04", render: "bool" },
+  { aba: "profissional", dataset: "professional_turnover", id: "rotatividade", keys: ["avgYearsBetweenProfessionalTurnover"], label: "Rotatividade média (anos)", origem: "enriquecimento", persona: "pf", politica: "fora", query: "CARELI_PF_04", render: "texto" },
+  { aba: "profissional", dataset: "professional_turnover", id: "primeiroEmprego", keys: ["ageOfFirstJob"], label: "Idade no 1º emprego", origem: "enriquecimento", persona: "pf", politica: "fora", query: "CARELI_PF_04", render: "texto" },
 
   // ---------------- PF · Financeiro ----------------
   { aba: "financeiro", dataset: "financial_data", id: "faixaRenda", keys: ["bigdatA_V2", "bigdata"], label: "Faixa de renda estimada", nota: "Pré-preenche o seletor de renda do C2X.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_01", render: "texto" },
@@ -179,7 +190,7 @@ export const CAMPOS: CampoSpec[] = [
   { aba: "financeiro", dataset: "social_assistance", id: "beneficio", keys: ["isReceivingAssistance"], label: "Recebe benefício social?", nota: "Sinal forte de renda real.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_04", render: "bool" },
 
   // ---------------- PF · Risco ----------------
-  { aba: "risco", dataset: "auth_score_gold", id: "falecido", keys: ["IsDeceased"], label: "Falecido?", nota: "AUTHSCORE GOLD saiu da CARELI_PF_04: precisa do telefone, CEP, endereço e e-mail declarados como entrada. Roda como validação no fim do cadastro, não na consulta por CPF.", novo: true, origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_04", render: "bool" },
+  { aba: "risco", dataset: "auth_score_gold", id: "falecido", keys: ["IsDeceased"], label: "Falecido?", nota: "Vem da CARELI_PF_05 (AuthScore isolado): valida o contato declarado. Preencha os dados na Validação de contato.", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_05", render: "bool" },
   { aba: "risco", dataset: "kyc", id: "pep", keys: ["isCurrentlyPep"], label: "É PEP hoje?", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_04", render: "bool" },
   { aba: "risco", dataset: "kyc", id: "sancionado", keys: ["isCurrentlySanctioned"], label: "Está sancionado?", origem: "enriquecimento", persona: "pf", politica: "auto", query: "CARELI_PF_04", render: "bool" },
   { aba: "risco", dataset: "kyc", id: "sancoes365", keys: ["last365DaysSanctions"], label: "Sanções nos últimos 365 dias", origem: "enriquecimento", persona: "pf", politica: "operador", query: "CARELI_PF_04", render: "texto" },

@@ -13,7 +13,7 @@ import {
   Loader2,
   MailCheck,
   Search,
-  Sparkles,
+  ShieldCheck,
 } from "lucide-react";
 
 import {
@@ -132,6 +132,17 @@ export function EnrichmentLab() {
   const [mostrarCusto, setMostrarCusto] = useState(false);
   const [plano, setPlano] = useState<PlanoId>(PLANO_ATUAL);
   const [cadastrosMes, setCadastrosMes] = useState(100);
+  // Validacao de contato (AuthScore / CARELI_PF_05): precisa do contato declarado.
+  const [contato, setContato] = useState({
+    addressLine1: "",
+    addressLine2: "",
+    cep: "",
+    city: "",
+    email: "",
+    neighborhood: "",
+    phone: "",
+    state: "",
+  });
 
   const camposPersona = useMemo(
     () => CAMPOS.filter((campo) => campo.persona === persona),
@@ -165,7 +176,7 @@ export function EnrichmentLab() {
   );
 
   const consultar = useCallback(
-    async (query: string) => {
+    async (query: string, params?: Record<string, unknown>) => {
       const digits = soDigitos(documento);
       const esperado = persona === "pf" ? 11 : 14;
       if (digits.length !== esperado) {
@@ -181,7 +192,7 @@ export function EnrichmentLab() {
       try {
         const token = await accessToken();
         const response = await fetch("/api/apolo/mostqi", {
-          body: JSON.stringify({ action: "probe", documento: digits, query }),
+          body: JSON.stringify({ action: "probe", documento: digits, params, query }),
           cache: "no-store",
           headers: {
             "Content-Type": "application/json",
@@ -224,6 +235,25 @@ export function EnrichmentLab() {
     },
     [documento, persona],
   );
+
+  // AuthScore (CARELI_PF_05): valida o contato declarado. modelCode e fixo.
+  const validarContato = useCallback(() => {
+    if (!contato.phone && !contato.email && !contato.cep) {
+      setErro("Preencha ao menos telefone, e-mail ou CEP para validar.");
+      return;
+    }
+    void consultar("CARELI_PF_05", {
+      addressLine1: contato.addressLine1,
+      addressLine2: contato.addressLine2,
+      cep: soDigitos(contato.cep),
+      city: contato.city,
+      email: contato.email,
+      modelCode: "scorealgorithmimpl",
+      neighborhood: contato.neighborhood,
+      phone: soDigitos(contato.phone),
+      state: contato.state,
+    });
+  }, [consultar, contato]);
 
   const copiarDecisoes = useCallback(async () => {
     const linhas: string[] = [
@@ -317,7 +347,9 @@ export function EnrichmentLab() {
             placeholder={persona === "pf" ? "CPF (só números)" : "CNPJ (só números)"}
             value={documento}
           />
-          {queriesPersona.map((item) => {
+          {queriesPersona
+            .filter((item) => !item.contato)
+            .map((item) => {
             const estado = queries[item.query];
             return (
               <button
@@ -348,13 +380,6 @@ export function EnrichmentLab() {
             );
           })}
         </div>
-
-        {queriesPersona.some((item) => item.proposta) ? (
-          <p className="mt-3 flex items-start gap-1.5 text-[11px] text-slate-500">
-            <Sparkles className="mt-0.5 size-3.5 shrink-0 text-[#A07C3B]" aria-hidden="true" />
-            A query pontilhada reúne datasets que ainda não temos contratados.
-          </p>
-        ) : null}
 
         {erro ? (
           <p className="mt-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
@@ -410,6 +435,84 @@ export function EnrichmentLab() {
           </div>
         ) : null}
       </div>
+
+      {/* Validacao de contato (AuthScore / CARELI_PF_05) */}
+      {queriesPersona.some((item) => item.contato) ? (
+        <details className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800">
+            <ShieldCheck className="size-4 text-[#A07C3B]" aria-hidden="true" />
+            Validação de contato (AuthScore)
+          </summary>
+          <p className="mt-2 text-xs text-slate-500">
+            Diferente das outras: o AuthScore recebe o que a pessoa declarou e
+            responde se confere com a base. É a etapa do fim do cadastro. Preencha
+            e rode; alimenta as respostas de telefone, e-mail e endereço nas abas.
+          </p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            <ContatoInput
+              label="Telefone (DDD + número)"
+              onChange={(value) => setContato((c) => ({ ...c, phone: value }))}
+              placeholder="31991234567"
+              value={contato.phone}
+            />
+            <ContatoInput
+              label="E-mail"
+              onChange={(value) => setContato((c) => ({ ...c, email: value }))}
+              placeholder="cliente@exemplo.com"
+              value={contato.email}
+            />
+            <ContatoInput
+              label="CEP"
+              onChange={(value) => setContato((c) => ({ ...c, cep: value }))}
+              placeholder="30110001"
+              value={contato.cep}
+            />
+            <ContatoInput
+              label="Logradouro"
+              onChange={(value) => setContato((c) => ({ ...c, addressLine1: value }))}
+              placeholder="Rua das Flores"
+              value={contato.addressLine1}
+            />
+            <ContatoInput
+              label="Número e complemento"
+              onChange={(value) => setContato((c) => ({ ...c, addressLine2: value }))}
+              placeholder="100, apto 302"
+              value={contato.addressLine2}
+            />
+            <ContatoInput
+              label="Bairro"
+              onChange={(value) => setContato((c) => ({ ...c, neighborhood: value }))}
+              placeholder="Centro"
+              value={contato.neighborhood}
+            />
+            <ContatoInput
+              label="Cidade"
+              onChange={(value) => setContato((c) => ({ ...c, city: value }))}
+              placeholder="Belo Horizonte"
+              value={contato.city}
+            />
+            <ContatoInput
+              label="UF"
+              onChange={(value) => setContato((c) => ({ ...c, state: value }))}
+              placeholder="MG"
+              value={contato.state}
+            />
+          </div>
+          <button
+            className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            disabled={rodando !== null}
+            onClick={validarContato}
+            type="button"
+          >
+            {rodando === "CARELI_PF_05" ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <ShieldCheck className="size-4" aria-hidden="true" />
+            )}
+            Validar (CARELI_PF_05)
+          </button>
+        </details>
+      ) : null}
 
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         {/* Abas + campos */}
@@ -731,6 +834,32 @@ export function EnrichmentLab() {
         </aside>
       </div>
     </section>
+  );
+}
+
+function ContatoInput({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+        {label}
+      </span>
+      <input
+        className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm outline-none focus:border-[#A07C3B]/40"
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        value={value}
+      />
+    </label>
   );
 }
 

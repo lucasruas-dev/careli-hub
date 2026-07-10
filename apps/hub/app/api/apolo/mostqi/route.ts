@@ -42,6 +42,7 @@ export async function POST(request: Request) {
     documento?: string;
     fileBase64?: string;
     fileName?: string;
+    params?: Record<string, unknown>;
     query?: string;
     tags?: string[];
   } | null;
@@ -124,6 +125,8 @@ export async function POST(request: Request) {
       const probe = await probeEnrichment(String(body.documento ?? body.cpf ?? ""), {
         datasets: Array.isArray(body.datasets) ? body.datasets : undefined,
         includeRaw: true,
+        params:
+          body.params && typeof body.params === "object" ? body.params : undefined,
         query: typeof body.query === "string" ? body.query : undefined,
       });
       return NextResponse.json({ data: probe }, { headers: noStore });

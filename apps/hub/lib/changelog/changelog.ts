@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-10-authscore-pf05-turnover",
+    deployedAt: "2026-07-10T16:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Nova etapa Validação de contato: você preenche o telefone, o e-mail e o endereço que a pessoa declarou e o AuthScore responde se conferem com a base. É a checagem do fim do cadastro.",
+              "A rotatividade profissional entrou no Perfil ampliado, então esses campos também passam a vir preenchidos.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 3c0c21b4 (v1.31.3)",
+    technical: {
+      done: "A MOST criou CARELI_PF_05 com o AUTHSCORE GOLD isolado e adicionou professional_turnover a CARELI_PF_04. professional_turnover deixou de ser 'novo' (entra na PF_04). Os 4 campos auth_score_gold passaram a apontar para CARELI_PF_05 (deixaram de ser 'novo'). QuerySpec ganhou flag 'contato': a PF_05 nao vira botao comum (exige entrada declarada) e sim um painel Validacao de contato com telefone/email/cep/logradouro/numero/bairro/cidade/UF. probeEnrichment/route aceitam opts.params (merge no objeto parameters alem do cpf); validarContato monta {cpf, modelCode:'scorealgorithmimpl', phone, cep, addressLine1/2, neighborhood, city, state, email}. mockProbe: PF_04 volta a ter professional_turnover, novo bloco PF_05 com auth_score_gold. Removido o texto da 'query pontilhada' (nao ha mais query proposta). Custo: PF_04 agora 9 datasets (8 x 0,177 + turnover 0,18 = R$ 1,60); PF_05 (AuthScore) R$ 3,069.",
+      motivation:
+        "O AuthScore precisa do contato declarado como entrada, entao pertence a uma etapa de validacao propria, no fim do cadastro, nao a uma consulta por CPF. Com a PF_05 e o painel, o Lucas ve o resultado real dessa checagem.",
+    },
+    title: "Enriquecimento: validação de contato (AuthScore PF_05) + turnover na PF_04",
+    type: "novidade",
+    version: "1.31.4",
+  },
+  {
     buildTag: "2026-07-10-pf04-sem-authscore",
     deployedAt: "2026-07-10T15:10:00-03:00",
     modules: [

@@ -912,7 +912,14 @@ function probeUnavailable(
 // datasets crus. Aceita CPF (11) ou CNPJ (14).
 export async function probeEnrichment(
   documento: string,
-  opts: { datasets?: string[]; includeRaw?: boolean; query?: string } = {},
+  opts: {
+    datasets?: string[];
+    includeRaw?: boolean;
+    // Parametros extras alem do cpf/cnpj (ex.: AUTHSCORE GOLD exige phone, cep,
+    // endereco e email declarados). So chaves string->primitivo entram.
+    params?: Record<string, unknown>;
+    query?: string;
+  } = {},
 ): Promise<EnrichmentProbeResult> {
   const digits = (documento || "").replace(/\D/g, "");
   const cfg = config();
@@ -927,6 +934,11 @@ export async function probeEnrichment(
   }
 
   const parameters: JsonRecord = digits.length === 14 ? { cnpj: digits } : { cpf: digits };
+  if (opts.params) {
+    for (const [key, value] of Object.entries(opts.params)) {
+      if (value !== undefined && value !== null && value !== "") parameters[key] = value;
+    }
+  }
   const started = Date.now();
   let lastMsg = "";
 
@@ -1189,6 +1201,30 @@ const MOCK_PF: Record<string, ProbeDataset[]> = {
       relatedPeoplePhones: [
         { areaCode: "31", number: "997654321", relatedEntityName: "CARLOS EDUARDO PACHECO", relationshipType: "SPOUSE" },
       ],
+    }),
+    ds("professional_turnover", {
+      professionalTurnover: {
+        ageOfFirstJob: 19,
+        avgYearsBetweenProfessionalTurnover: 4.2,
+        hasWorkedInPublicSector: false,
+        isCurrentlyEmployed: true,
+        isEntrepeneur: true,
+      },
+    }),
+  ],
+  // AUTHSCORE GOLD isolado (exige contato declarado como entrada).
+  CARELI_PF_05: [
+    ds("auth_score_gold", {
+      AddressConfirmationStatus: "CONFIRMADO",
+      EmailMost: "maria.silva@gmail.com",
+      IsConfirmedEmail: true,
+      IsConfirmedPhone: true,
+      IsDeceased: false,
+      IsMinor: false,
+      IsPeP: false,
+      IsVip: false,
+      PhoneMost: "(31) 99123-4567",
+      Score: 88,
     }),
   ],
 };
