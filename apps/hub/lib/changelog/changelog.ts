@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-11-cad-pdf-de-verdade",
+    deployedAt: "2026-07-11T15:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O CAD agora vira um PDF de verdade: o botão Baixar CAD (PDF) gera o arquivo e baixa direto, sem passar pela tela de impressão do navegador.",
+              "Mesmo layout de antes (cabeçalho com o vínculo, dados em blocos, rodapé neutro), agora como documento pronto pra guardar ou enviar.",
+            ],
+            screen: "Cadastro de CAD — Revisão",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 88ce98b6 (v1.31.10)",
+    technical: {
+      done: "Gerar CAD saiu do window.print (dialogo Salvar como PDF, rejeitado) para PDF vetorial via pdf-lib. Novo modules/apolo/blocks/cadastro/cad-pdf.ts: montarCadPdf(cad) monta o documento (A4, Helvetica/Bold, cabecalho Cadastro de CAD + Enviado em + imobiliaria/corretor a direita, nome+papel, secoes em 2 colunas com label uppercase + valor, campos full em largura cheia, wrap por largura, rodape 'Ficha gerada automaticamente' + nome do arquivo em todas as paginas, sem Careli); gerarCadPdf baixa via Blob. cadastro-flow.gerarCad passou a montar CadSecao[] estruturado (cadField/cadSection devolvem objeto) e chama gerarCadPdf; removidos imprimirCad + escapeHtml. Botao 'Gerar CAD' (Printer) -> 'Baixar CAD (PDF)' (Download). pdf-lib@1.17.1 add ao apps/hub. Verificado: PDF de teste gerado pelo codigo real, layout fiel, acentos ok. Edge conhecido: CAD longo (com conjuge) pode deixar 1 campo orfao na pag 2 (a polir).",
+      motivation:
+        "O Lucas ja tinha aprovado o layout e rejeitou o dialogo de impressao. Precisava do PDF de verdade com urgencia (apresentando o Apolo).",
+    },
+    title: "Cadastro: Baixar CAD gera PDF de verdade (sem diálogo de impressão)",
+    type: "melhoria",
+    version: "1.31.11",
+  },
+  {
     buildTag: "2026-07-10-helpdesk-agente-triagem",
     deployedAt: "2026-07-10T23:55:00-03:00",
     modules: [
