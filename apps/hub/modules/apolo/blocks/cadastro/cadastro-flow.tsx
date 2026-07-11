@@ -6,12 +6,12 @@ import {
   Check,
   CheckCircle2,
   ChevronDown,
+  Download,
   FileText,
   Loader2,
   Lock,
   Mail,
   Pencil,
-  Printer,
   Send,
   ShieldCheck,
   UploadCloud,
@@ -37,6 +37,12 @@ import {
 } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+
+import {
+  type CadCampo,
+  type CadSecao,
+  gerarCadPdf,
+} from "./cad-pdf";
 
 // Wizard de cadastro de CAD (prospect). Etapas: Identificação -> Endereço ->
 // (Cônjuge se casado) -> Revisão. Campos read-only vêm do documento/MOST;
@@ -496,93 +502,13 @@ function formatRegistro(d: Date): Registro {
   return { completo: `${data} ${hora}`, data, hora };
 }
 
-function escapeHtml(value: string): string {
-  return String(value ?? "").replace(/[&<>"']/g, (c) => {
-    switch (c) {
-      case "&":
-        return "&amp;";
-      case "<":
-        return "&lt;";
-      case ">":
-        return "&gt;";
-      case '"':
-        return "&quot;";
-      default:
-        return "&#39;";
-    }
-  });
+// Monta um campo estruturado do CAD (o PDF cuida do layout).
+function cadField(label: string, value: string, full = false): CadCampo {
+  return { full, label, value: (value ?? "").trim() || "—" };
 }
 
-function cadField(label: string, value: string, full = false): string {
-  const v = escapeHtml(value).trim() || "—";
-  return `<div class="f${full ? " full" : ""}"><span class="l">${escapeHtml(
-    label,
-  )}</span><span class="v">${v}</span></div>`;
-}
-
-function cadSection(title: string, fields: string[]): string {
-  return `<section class="sec"><h2>${escapeHtml(
-    title,
-  )}</h2><div class="grid">${fields.join("")}</div></section>`;
-}
-
-// Abre uma janela nova com o CAD como documento próprio (sem o app em volta) e
-// dispara a impressão -> "Salvar como PDF" já com o nome CAD - Cliente - data.
-// Topo do documento: Documento (CAD) · Enviado em (data) · Vínculo (imobiliária).
-function imprimirCad(
-  titulo: string,
-  nome: string,
-  registro: Registro,
-  vinculo: string,
-  corpo: string,
-): void {
-  const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8" />
-<title>${escapeHtml(titulo)}</title>
-<style>
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#0f172a;background:#fff;-webkit-print-color-adjust:exact;print-color-adjust:exact}
-  .page{max-width:760px;margin:0 auto;padding:36px 44px}
-  .head{display:flex;align-items:flex-start;justify-content:space-between;gap:24px;padding-bottom:16px;border-bottom:2px solid #0d141c}
-  .head .t1{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#94a3b8;font-weight:700}
-  .head .titulo{margin-top:3px;font-size:21px;font-weight:700;color:#0d141c;letter-spacing:-.01em}
-  .meta{text-align:right;font-size:11px;color:#64748b;line-height:1.9}
-  .meta b{color:#0f172a;font-weight:600}
-  .who{margin:16px 0 2px;font-size:15px;font-weight:700;color:#0d141c}
-  .who small{display:block;font-size:11px;font-weight:500;color:#94a3b8;margin-top:2px}
-  .sec{margin-top:20px;break-inside:avoid}
-  .sec h2{font-size:10px;letter-spacing:.16em;text-transform:uppercase;color:#0d141c;font-weight:700;padding-bottom:6px;border-bottom:1px solid #e2e8f0;margin-bottom:11px}
-  .grid{display:grid;grid-template-columns:1fr 1fr;gap:11px 22px}
-  .f{display:flex;flex-direction:column;gap:2px}
-  .f.full{grid-column:1 / -1}
-  .f .l{font-size:8.5px;letter-spacing:.08em;text-transform:uppercase;color:#94a3b8;font-weight:600}
-  .f .v{font-size:13px;color:#1e293b}
-  .foot{margin-top:28px;padding-top:12px;border-top:1px solid #e2e8f0;font-size:9.5px;color:#94a3b8;display:flex;justify-content:space-between}
-  @page{margin:12mm}
-  @media print{.page{padding:0;max-width:none}}
-</style></head>
-<body>
-  <div class="page">
-    <div class="head">
-      <div>
-        <div class="titulo">Cadastro de CAD</div>
-      </div>
-      <div class="meta">
-        <div>Enviado em <b>${escapeHtml(registro.data)} às ${escapeHtml(registro.hora)}</b></div>
-        <div>Imobiliária / corretor <b>${escapeHtml(vinculo || "—")}</b></div>
-      </div>
-    </div>
-    <div class="who">${escapeHtml(nome)}<small>Prospect</small></div>
-    ${corpo}
-    <div class="foot"><span>Ficha gerada automaticamente</span><span>${escapeHtml(titulo)}</span></div>
-  </div>
-  <script>window.onload=function(){window.focus();window.print();};window.onafterprint=function(){window.close();};</script>
-</body></html>`;
-
-  const win = window.open("", "_blank", "width=920,height=1200");
-  if (!win) return;
-  win.document.open();
-  win.document.write(html);
-  win.document.close();
+function cadSection(title: string, fields: CadCampo[]): CadSecao {
+  return { fields, title };
 }
 
 export function CadastroFlow() {
@@ -1601,7 +1527,7 @@ function StepRevisao({
   }
 
   function gerarCad() {
-    const secoes: string[] = [];
+    const secoes: CadSecao[] = [];
     if (isPj) {
       secoes.push(
         cadSection("Dados da empresa", [
@@ -1701,13 +1627,15 @@ function StepRevisao({
         );
       }
     }
-    imprimirCad(
-      cadTitulo,
-      nomeCliente,
-      registro,
-      label(imobiliarias, perfil.imobiliariaId),
-      secoes.join(""),
-    );
+    void gerarCadPdf({
+      arquivo: cadTitulo,
+      data: registro.data,
+      hora: registro.hora,
+      nome: nomeCliente,
+      papel: isPj ? "Pessoa jurídica" : "Prospect",
+      secoes,
+      vinculo: label(imobiliarias, perfil.imobiliariaId),
+    });
   }
 
   return (
@@ -1729,8 +1657,8 @@ function StepRevisao({
           onClick={gerarCad}
           className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#0d141c] px-4 text-sm font-semibold text-white hover:bg-[#0d141c]/90"
         >
-          <Printer className="size-4" aria-hidden="true" />
-          Gerar CAD
+          <Download className="size-4" aria-hidden="true" />
+          Baixar CAD (PDF)
         </button>
       </div>
 

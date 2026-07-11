@@ -40,7 +40,8 @@
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "recharts": "^3.8.1",
-    "web-push": "^3.6.7"
+    "web-push": "^3.6.7",
+    "pdf-lib": "^1.17.1"
   },
   "devDependencies": {
     "@repo/eslint-config": "*",
