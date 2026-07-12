@@ -24,6 +24,8 @@ export type ApoloScreen =
 
 export type ApoloScreenItem = {
   description: string;
+  // Oculto do sidebar por enquanto (o Lucas libera as telas uma a uma).
+  hidden?: boolean;
   icon: LucideIcon;
   id: ApoloScreen;
   label: string;
@@ -68,19 +70,22 @@ export const apoloProfileCardOrder = [
 
 export const apoloScreens = [
   {
-    description: "Insights executivos do cadastro mestre.",
-    icon: LayoutDashboard,
-    id: "dashboard",
-    label: "Dashboard",
-  },
-  {
     description: "Cadastro, consulta, carteira e timeline 360.",
+    hidden: false,
     icon: ContactRound,
     id: "crm",
     label: "CRM 360",
   },
   {
+    description: "Insights executivos do cadastro mestre.",
+    hidden: true,
+    icon: LayoutDashboard,
+    id: "dashboard",
+    label: "Dashboard",
+  },
+  {
     description: "Relatorios de perfis, qualidade e operacao.",
+    hidden: true,
     icon: FileSpreadsheet,
     id: "relatorios",
     label: "Relatorios",

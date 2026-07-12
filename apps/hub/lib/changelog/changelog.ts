@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-11-apolo-sidebar",
+    deployedAt: "2026-07-11T17:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O Apolo ganhou o menu lateral igual aos outros módulos, que recolhe pra uma faixa fina.",
+              "Por enquanto com uma tela só, o CRM 360; as demais entram aos poucos. O botão de novo cadastro continua no topo do CRM.",
+            ],
+            screen: "CRM 360",
+          },
+        ],
+      },
+    ],
+    rollback: "commit dde2aa6f (v1.31.12)",
+    technical: {
+      done: "Novo ApoloSidebar (modules/apolo/blocks/shell/apolo-sidebar.tsx) espelhando o Sidebar do Hades (mesma pele panteon-module-sidebar, colapsavel w-60/72px, estado em apolo.sidebarCollapsed via usePersistedState), mas comandando a tela por estado interno (activeScreen) em vez de rota. catalog.ts: ApoloScreenItem ganhou flag hidden; CRM 360 reordenado pra primeiro (default ja era crm), Dashboard e Relatorios marcados hidden (o sidebar so mostra !hidden). ApoloHeader perdeu o seletor de telas (nav) e a prop onChangeScreen; ficou so com acoes + botao de novo cadastro. ApoloPage: renderiza o sidebar + offset lg:pl-60/72px no container. Telas Dashboard/Relatorios seguem no codigo, so ocultas do menu ate o Lucas liberar.",
+      motivation:
+        "Padronizar o Apolo com os demais modulos (menu lateral), com o CRM 360 como a tela principal. As outras telas entram uma a uma conforme o Lucas for liberando.",
+    },
+    title: "Apolo: menu lateral (sidebar) com o CRM 360",
+    type: "melhoria",
+    version: "1.31.13",
+  },
+  {
     buildTag: "2026-07-11-cadastro-enxuto",
     deployedAt: "2026-07-11T16:20:00-03:00",
     modules: [

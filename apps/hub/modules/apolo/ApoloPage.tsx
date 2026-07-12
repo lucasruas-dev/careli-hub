@@ -4,6 +4,7 @@ import { type ApoloScreen } from "@/lib/apolo/catalog";
 import { DashboardScreen } from "./blocks/dashboard/apolo-dashboard";
 import { ReportsScreen } from "./blocks/reports/apolo-reports";
 import { ApoloHeader } from "./blocks/shell/apolo-shell";
+import { ApoloSidebar } from "./blocks/shell/apolo-sidebar";
 import { CrmCommandCenter } from "./blocks/crm/command-center";
 import { EntityColumn } from "./blocks/crm/entity-list";
 import { RecordWorkspace } from "./blocks/crm/record-workspace";
@@ -29,6 +30,10 @@ export function ApoloPage() {
   const [activeScreen, setActiveScreen] = usePersistedState<ApoloScreen>(
     "apolo.activeScreen",
     "crm",
+  );
+  const [sidebarCollapsed, setSidebarCollapsed] = usePersistedState<boolean>(
+    "apolo.sidebarCollapsed",
+    false,
   );
   const [activeTab, setActiveTab] = usePersistedState<ApoloTab>(
     "apolo.activeTab",
@@ -158,13 +163,19 @@ export function ApoloPage() {
   }
 
   return (
-    <div className="flex h-[calc(100dvh-3.25rem)] min-h-0 max-h-[calc(100dvh-3.25rem)] overflow-hidden bg-[#F8FAFC] text-slate-950">
+    <div
+      className={`flex h-[calc(100dvh-3.25rem)] min-h-0 max-h-[calc(100dvh-3.25rem)] overflow-hidden bg-[#F8FAFC] text-slate-950 transition-[padding-left] duration-300 ease-out ${
+        sidebarCollapsed ? "lg:pl-[72px]" : "lg:pl-60"
+      }`}
+    >
+      <ApoloSidebar
+        active={activeScreen}
+        collapsed={sidebarCollapsed}
+        onSelect={setActiveScreen}
+        onToggle={() => setSidebarCollapsed((value) => !value)}
+      />
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4">
-        <ApoloHeader
-          dashboard={dashboard}
-          screen={activeScreen}
-          onChangeScreen={setActiveScreen}
-        />
+        <ApoloHeader dashboard={dashboard} />
         {activeScreen === "dashboard" ? (
           <DashboardScreen dashboard={dashboard} entities={entities} loading={loading} />
         ) : null}
