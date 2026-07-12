@@ -271,43 +271,6 @@ function mockConjugeEnrichment(): Enrichment {
 }
 
 // Certidão/consulta oficial devolvida pela análise (PF_02 certidões, PF_03 GOLD).
-type Certidao = {
-  emissao: string;
-  status: string;
-  titulo: string;
-  tone: "atencao" | "bom" | "neutro";
-  url: string;
-  validade: string;
-};
-type Analise = {
-  available: boolean;
-  certidoes: Certidao[];
-  patrimonio: string;
-  renda: string;
-  warnings: string[];
-};
-
-function mockCertidoes(): Certidao[] {
-  return [
-    {
-      emissao: "09/07/2026", status: "NADA CONSTA", titulo: "Antecedentes Criminais (Polícia Federal)",
-      tone: "bom", url: "", validade: "07/10/2026",
-    },
-    {
-      emissao: "09/07/2026", status: "NÃO CONSTA", titulo: "CND Trabalhista",
-      tone: "bom", url: "", validade: "05/01/2027",
-    },
-    {
-      emissao: "09/07/2026", status: "REGULAR", titulo: "Situação na Receita Federal",
-      tone: "bom", url: "", validade: "",
-    },
-    {
-      emissao: "09/07/2026", status: "CONSTA (2 processos)", titulo: "Processos COMPROT",
-      tone: "atencao", url: "", validade: "",
-    },
-  ];
-}
-
 // MOST classifica o documento. Cartão CNPJ / comprovante de inscrição -> PJ.
 function isCnpjDoc(type: string): boolean {
   return /cnpj|cartao.?cnpj|comprovante.*inscri|pessoa.?jur|company|business/i.test(
@@ -1477,53 +1440,12 @@ function StepRevisao({
   const registro = formatRegistro(new Date());
   const cadTitulo = `CAD - ${nomeCliente} - ${registro.completo}`;
   const [enviado, setEnviado] = useState(false);
-  const [certidoes, setCertidoes] = useState<Certidao[] | null>(null);
-  const [certLoading, setCertLoading] = useState(false);
-  const [certErro, setCertErro] = useState("");
-  const [gold, setGold] = useState<Analise | null>(null);
-  const [goldLoading, setGoldLoading] = useState(false);
-  const [goldErro, setGoldErro] = useState("");
-  const cpfDigits = (identidade?.cpf ?? "").replace(/\D/g, "");
-  const podeAnalisar = !isPj && cpfDigits.length === 11;
 
-  async function rodarAnalise(query: string): Promise<Analise> {
-    if (LOCAL_MOCK) {
-      await delay(1800);
-      return {
-        available: true, certidoes: mockCertidoes(),
-        patrimonio: "R$ 100 mil a R$ 250 mil", renda: "3 a 6 salários", warnings: [],
-      };
-    }
-    return apiPost<Analise>({ action: "enrich", cpf: cpfDigits, query });
-  }
-
-  // Ao enviar, dispara as CERTIDÕES (CARELI_PF_02) em segundo plano.
-  async function enviar() {
+  // Certidões, análise financeira (GOLD) e demais consultas sob demanda saíram
+  // do cadastro (decisão do Lucas 11/jul): o cadastro/CAD mostra só o que é
+  // automático; o sob demanda o operador roda depois, na ficha do Apolo.
+  function enviar() {
     setEnviado(true);
-    if (!podeAnalisar) return;
-    setCertLoading(true);
-    setCertErro("");
-    try {
-      const data = await rodarAnalise("CARELI_PF_02");
-      setCertidoes(data.certidoes ?? []);
-    } catch (err) {
-      setCertErro((err as Error).message);
-    } finally {
-      setCertLoading(false);
-    }
-  }
-
-  // Análise financeira profunda (CARELI_PF_03, GOLD) — manual.
-  async function rodarGold() {
-    setGoldLoading(true);
-    setGoldErro("");
-    try {
-      setGold(await rodarAnalise("CARELI_PF_03"));
-    } catch (err) {
-      setGoldErro((err as Error).message);
-    } finally {
-      setGoldLoading(false);
-    }
   }
 
   function gerarCad() {
@@ -1757,65 +1679,6 @@ function StepRevisao({
           ) : null}
         </>
       )}
-
-      {enviado ? (
-        <div className="mt-6 border-t border-slate-100 pt-5">
-          <Secao title="Certidões">
-            {certLoading ? (
-              <div className="sm:col-span-2 lg:col-span-3">
-                <ReadingBar text="Consultando certidões (pode levar até 2 minutos)…" />
-              </div>
-            ) : certErro ? (
-              <p className="text-xs font-medium text-rose-600 sm:col-span-2 lg:col-span-3">
-                {certErro}
-              </p>
-            ) : certidoes && certidoes.length ? (
-              certidoes.map((certidao, index) => (
-                <CertidaoCard key={`${certidao.titulo}-${index}`} certidao={certidao} />
-              ))
-            ) : (
-              <p className="text-xs text-slate-400 sm:col-span-2 lg:col-span-3">
-                {podeAnalisar
-                  ? "Nenhuma certidão retornada."
-                  : "Certidões disponíveis para pessoa física."}
-              </p>
-            )}
-          </Secao>
-
-          <div className="mt-5">
-            <div className="flex items-center justify-between gap-3">
-              <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#0d141c]">
-                Análise financeira
-              </p>
-              {podeAnalisar && !gold ? (
-                <button
-                  type="button"
-                  onClick={rodarGold}
-                  disabled={goldLoading}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-xs font-semibold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
-                >
-                  {goldLoading ? (
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
-                  ) : null}
-                  {goldLoading ? "Rodando…" : "Rodar análise financeira"}
-                </button>
-              ) : null}
-            </div>
-            {goldErro ? (
-              <p className="mt-2 text-xs font-medium text-rose-600">{goldErro}</p>
-            ) : null}
-            {gold ? (
-              <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
-                <ReadField label="Renda estimada" value={gold.renda} />
-                <ReadField label="Patrimônio" value={gold.patrimonio} />
-                {gold.certidoes.map((certidao, index) => (
-                  <CertidaoCard key={`g-${certidao.titulo}-${index}`} certidao={certidao} />
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </div>
-      ) : null}
 
       <div className="mt-6 flex items-center justify-between gap-2">
         <button
@@ -2174,43 +2037,6 @@ function EmailField({
           {mensagem}
         </p>
       ) : null}
-    </div>
-  );
-}
-
-function CertidaoCard({ certidao }: { certidao: Certidao }) {
-  const tone =
-    certidao.tone === "bom"
-      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-      : certidao.tone === "atencao"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-slate-200 bg-slate-50 text-slate-600";
-  return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
-      <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
-        <FileText className="size-2.5" aria-hidden="true" />
-        {certidao.titulo}
-      </div>
-      <div className="mt-1.5 flex flex-wrap items-center gap-2">
-        <span
-          className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${tone}`}
-        >
-          {certidao.status || "consultado"}
-        </span>
-        {certidao.url ? (
-          <a
-            href={certidao.url}
-            target="_blank"
-            rel="noreferrer"
-            className="text-[11px] font-semibold text-[#A07C3B] hover:underline"
-          >
-            Ver PDF
-          </a>
-        ) : null}
-        {certidao.validade ? (
-          <span className="text-[10px] text-slate-400">val. {certidao.validade}</span>
-        ) : null}
-      </div>
     </div>
   );
 }

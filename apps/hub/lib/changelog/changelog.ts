@@ -32,6 +32,39 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-11-cadastro-enxuto",
+    deployedAt: "2026-07-11T16:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O cadastro de prospect ficou enxuto: mostra só o que é automático (identificação, contato, renda), que é o que sai no CAD.",
+              "As consultas sob demanda (certidões, análise financeira) saíram do cadastro; elas ficam para o operador rodar depois, na ficha do cliente.",
+            ],
+            screen: "Cadastro de CAD — Revisão",
+          },
+          {
+            items: [
+              "A configuração de enriquecimento foi fechada: GOLD e validação de contato ficaram de fora, endereço/profissional/risco/vínculos também; automático só o essencial. Custo por cadastro de prospect caiu de ~R$ 17 para ~R$ 2,23.",
+            ],
+            screen: "Enriquecimento (laboratório)",
+          },
+        ],
+      },
+    ],
+    rollback: "commit ec371aa5 (v1.31.11)",
+    technical: {
+      done: "Decisao do Lucas (11/jul): o cadastro/CAD mostra so o enriquecimento AUTO; o sob demanda vai pro Apolo. cadastro-flow: enviar() so marca enviado (nao dispara mais CARELI_PF_02 certidoes); removido o bloco Certidoes + botao 'Rodar analise financeira' (GOLD) da Revisao; removidos rodarAnalise/rodarGold, estados cert/gold, CertidaoCard, mockCertidoes, types Analise/Certidao. enrichment-spec: pf_gold (12) + auth_score_gold (4) -> fora; certidoes (PF_02) operador; excluidos por decisao nome do pai/obito/outros docs (basic_data) + addresses_extended + occupation_data + kyc + business_relationships + social_assistance + professional_turnover -> fora; related_people -> operador; phones/emails (PF_01) -> auto. class_organization (CRECI) -> fora no PROSPECT (so no cadastro de imobiliaria/corretor). Restou AUTO no prospect: basic_data, phones_extended, emails_extended, financial_data = 4 datasets ~R$ 2,23/cadastro (era ~R$ 17). PENDENTE (proxima fase): cadastro de imobiliaria/corretor (com CRECI) e a ficha do Apolo rodando o sob demanda.",
+      motivation:
+        "Fechar o enriquecimento: automatico so o que vale e sai no CAD; o caro (GOLD/AuthScore) fora; o resto sob demanda no Apolo. Reduz o custo do cadastro em ~86%.",
+    },
+    title: "Cadastro de prospect: enxuto (só o automático) + enriquecimento fechado",
+    type: "melhoria",
+    version: "1.31.12",
+  },
+  {
     buildTag: "2026-07-11-cad-pdf-de-verdade",
     deployedAt: "2026-07-11T15:00:00-03:00",
     modules: [
