@@ -32,43 +32,6 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
-    buildTag: "2026-07-13-iris-email-ajustes",
-    deployedAt: "2026-07-13T16:10:00-03:00",
-    modules: [
-      {
-        module: "Iris",
-        screens: [
-          {
-            items: [
-              "No cockpit, a resposta de e-mail enviada mostra só a mensagem do operador (a assinatura continua indo pro cliente, mas não polui a conversa interna).",
-            ],
-            screen: "Atendimento",
-          },
-        ],
-      },
-      {
-        module: "Setup",
-        screens: [
-          {
-            items: [
-              "Corrigido: a coluna Cargo em Usuários agora exibe o valor salvo (a lista não estava carregando o campo).",
-            ],
-            screen: "Usuários",
-          },
-        ],
-      },
-    ],
-    rollback: "commit c002cccb (v1.33.0)",
-    technical: {
-      done: "email-reply: caredesk_messages.body passa a guardar SÓ o texto digitado (antes guardava o corpo já assinado) — o envio ao cliente segue com assinatura (bodyText=signedBody + bodyHtml). loadUsersQuery (lib/setup/data.ts) inclui job_title no SELECT (fallback tolerante) — a lista do Setup nao carregava o campo, entao a coluna Cargo mostrava '-' mesmo com o dado salvo.",
-      motivation:
-        "Ajustes pos-go-live da UI de e-mail (v1.33.0): Lucas notou a assinatura poluindo o card do cockpit e a coluna Cargo aparecendo vazia apesar de salvar.",
-    },
-    title: "Ajustes da UI de e-mail: cockpit limpo + coluna Cargo",
-    type: "correcao",
-    version: "1.33.1",
-  },
-  {
     buildTag: "2026-07-13-iris-email-ui",
     deployedAt: "2026-07-13T15:30:00-03:00",
     modules: [
