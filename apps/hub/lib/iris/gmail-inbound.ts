@@ -125,10 +125,18 @@ async function ingestOne(
   message: ParsedGmailMessage,
 ): Promise<IngestOutcome> {
   const recipients = extractEmails([message.deliveredTo, message.to]);
-  const channel = await findEmailChannel(client, recipients);
+  let channel = await findEmailChannel(client, recipients);
 
   if (!channel) {
-    // Nenhum grupo mapeado (piloto = só contato@). Não vira ticket.
+    // Fallback por THREAD: a resposta do cliente pode voltar endereçada à caixa robô (caca@)
+    // em vez do grupo (contato@) — acontece enquanto o Send-As não está configurado, aí o
+    // envio sai como caca@ e o "responder" do cliente vai pra caca@. Se o threadId casa com um
+    // ticket existente, usamos o canal dele e anexamos. Robusto e não depende do destinatário.
+    channel = await findChannelByExistingThread(client, message.threadId);
+  }
+
+  if (!channel) {
+    // Nenhum grupo mapeado nem thread conhecida. Não vira ticket.
     return "skipped";
   }
 
@@ -195,6 +203,45 @@ async function findEmailChannel(
   }
 
   return data;
+}
+
+// Casa o canal pelo THREAD do Gmail: procura um ticket cujo source_context.gmailThreadId seja
+// o mesmo e devolve o canal (kind=email) dele. Usado quando o destinatário não bate (resposta
+// do cliente que voltou pra caixa robô). Inequívoco mesmo com vários grupos.
+async function findChannelByExistingThread(
+  client: IrisAdminClient,
+  threadId: string,
+): Promise<ChannelRow | null> {
+  if (!threadId) {
+    return null;
+  }
+
+  const { data: ticket, error: ticketError } = await client
+    .from("caredesk_tickets")
+    .select("channel_id")
+    .eq("source_context->>gmailThreadId", threadId)
+    .not("channel_id", "is", null)
+    .order("opened_at", { ascending: false })
+    .limit(1)
+    .maybeSingle<{ channel_id: string | null }>();
+
+  if (ticketError || !ticket?.channel_id) {
+    return null;
+  }
+
+  const { data: channel, error: channelError } = await client
+    .from("caredesk_channels")
+    .select("id,external_account_id,config,workspace_id")
+    .eq("id", ticket.channel_id)
+    .eq("kind", "email")
+    .eq("status", "active")
+    .maybeSingle<ChannelRow>();
+
+  if (channelError) {
+    throw channelError;
+  }
+
+  return channel;
 }
 
 function readChannelQueueSlug(channel: ChannelRow): string {
