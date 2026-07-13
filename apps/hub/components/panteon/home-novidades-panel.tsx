@@ -51,8 +51,9 @@ function formatBrDate(iso: string) {
 }
 
 export function HomeNovidadesPanel() {
-  const entries = PANTEON_CHANGELOG;
-  const current = PANTEON_CHANGELOG[0];
+  // Entradas internas bumpam versão (sinal de atualização da PWA) mas não aparecem aqui.
+  const entries = PANTEON_CHANGELOG.filter((entry) => !entry.internal);
+  const current = entries[0];
 
   return (
     <Surface

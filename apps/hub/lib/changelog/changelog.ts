@@ -18,6 +18,10 @@ export type ChangelogModule = {
 export type ChangelogEntry = {
   buildTag: string;
   deployedAt: string;
+  // Interno: entra no bump de versão (sinal de atualização da PWA + aba Deploy do Zeus),
+  // mas NÃO aparece no painel de Novidades da Home (ex.: ajuste de polish pós-go-live que o
+  // Lucas pediu pra não anunciar). Ver [[feedback-deploy-changelog-obrigatorio]].
+  internal?: boolean;
   modules: ChangelogModule[];
   rollback?: string;
   // Detalhe tecnico (so no Zeus).
@@ -31,6 +35,44 @@ export type ChangelogEntry = {
 };
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
+  {
+    buildTag: "2026-07-13-iris-email-ajustes",
+    deployedAt: "2026-07-13T16:20:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Cockpit: a resposta de e-mail enviada mostra só a mensagem do operador (a assinatura vai pro cliente, mas não polui a conversa interna).",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "A coluna Cargo em Usuários passa a exibir o valor salvo (a lista não estava carregando o campo).",
+            ],
+            screen: "Usuários",
+          },
+        ],
+      },
+    ],
+    rollback: "commit c002cccb (v1.33.0)",
+    technical: {
+      done: "Interno (nao entra no painel de Novidades, mas bumpa versao pra a PWA pegar o build novo). email-reply: caredesk_messages.body guarda so o texto digitado (envio ao cliente segue assinado). loadUsersQuery (lib/setup/data.ts) inclui job_title no SELECT (a lista do Setup nao carregava o campo -> coluna Cargo mostrava '-' mesmo salvando). Flag ChangelogEntry.internal filtra do HomeNovidadesPanel.",
+      motivation:
+        "Ajustes pos-go-live da UI de e-mail (v1.33.0). Lucas pediu pra nao anunciar no painel, mas sem bump de versao a PWA nao entrega o fix aos clientes (bundle cacheado).",
+    },
+    title: "Ajustes da UI de e-mail (interno)",
+    type: "correcao",
+    version: "1.33.1",
+  },
   {
     buildTag: "2026-07-13-iris-email-ui",
     deployedAt: "2026-07-13T15:30:00-03:00",
