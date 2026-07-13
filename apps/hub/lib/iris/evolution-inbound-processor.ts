@@ -1,5 +1,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { fetchEvolutionGroupInfo } from "@/lib/iris/evolution-api";
+
 // Ingestão READ-ONLY de mensagens de grupo vindas da Evolution API
 // (instância caca-observadora). Modelo: 1 grupo = 1 conversa contínua na fila
 // "Grupos". A CACÁ apenas observa — nada é respondido nem enviado ao grupo.
@@ -326,13 +328,20 @@ async function ensureGroupConversation({
     };
   }
 
+  // Nome do grupo não vem no messages.upsert — busca na Evolution (best-effort)
+  // para dar título à conversa. Se falhar, cai no título genérico.
+  const groupInfo = existingRow?.subject
+    ? null
+    : await fetchEvolutionGroupInfo(message.groupJid);
+  const resolvedSubject = existingRow?.subject ?? groupInfo?.subject ?? null;
+
   // Contato sintético = o próprio grupo (título da conversa no cockpit).
   const contactId =
     existingRow?.contact_id ??
     (await ensureGroupContact({
       client,
       groupJid: message.groupJid,
-      subject: existingRow?.subject ?? null,
+      subject: resolvedSubject,
     }));
 
   const ticketId =
@@ -363,7 +372,8 @@ async function ensureGroupConversation({
     .from("caredesk_whatsapp_groups")
     .insert({
       group_jid: message.groupJid,
-      subject: null,
+      subject: resolvedSubject,
+      participants_count: groupInfo?.size ?? null,
       evolution_instance: instance,
       channel_id: channelId,
       ticket_id: ticketId,
