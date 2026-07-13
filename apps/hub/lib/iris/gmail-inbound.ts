@@ -604,16 +604,44 @@ function pickMessageBody(message: ParsedGmailMessage): string {
   const text = message.bodyText?.trim();
 
   if (text) {
-    return text;
+    return stripQuotedReply(text);
   }
 
   const fromHtml = message.bodyHtml ? htmlToText(message.bodyHtml) : "";
 
   if (fromHtml.trim()) {
-    return fromHtml.trim();
+    return stripQuotedReply(fromHtml.trim());
   }
 
   return message.snippet?.trim() || "(e-mail sem corpo de texto)";
+}
+
+// Remove o histórico citado da resposta (linha "Em ... escreveu:" / "On ... wrote:", bloco de
+// linhas com ">", separadores do Outlook), deixando só o texto novo que o cliente escreveu —
+// cada turno já é uma mensagem separada no ticket, então a citação é redundante e polui.
+function stripQuotedReply(body: string): string {
+  const markers = [
+    /\n[ \t]*Em .+?escreveu:/is, // Gmail pt-BR ("Em <data>, <nome> <email> escreveu:")
+    /\n[ \t]*On .+?wrote:/is, // Gmail en
+    /\n[ \t]*-{2,} ?(Original Message|Mensagem original|Forwarded message|Mensagem encaminhada)/i,
+    /\n[ \t]*(De|From):[ \t].+\n[ \t]*(Enviad[ao]|Sent|Para|To):/i, // Outlook
+    /\n[ \t]*>/, // primeira linha citada
+    /\n_{5,}\n/, // separador de linha (Outlook)
+  ];
+
+  let cut = body.length;
+
+  for (const marker of markers) {
+    const match = marker.exec(body);
+
+    if (match && match.index < cut) {
+      cut = match.index;
+    }
+  }
+
+  const trimmed = body.slice(0, cut).trim();
+
+  return trimmed || body.trim();
 }
 
 // Conversão simples HTML→texto pra guardar o corpo legível (o provider_payload.hasHtml
