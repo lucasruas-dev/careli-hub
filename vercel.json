@@ -30,6 +30,10 @@
     {
       "path": "/api/notifications/sweep",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/iris/gmail/poll",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

@@ -50,6 +50,7 @@ const PUBLIC_API_PREFIXES = [
   "/api/iris/gmail/authorize", // OAuth setup do Gmail da Iris (guardado por GMAIL_OAUTH_SETUP_KEY)
   "/api/iris/gmail/callback", // OAuth setup do Gmail (redirect do Google, sem Bearer)
   "/api/iris/gmail/status", // diagnostico da caixa Gmail (guardado por GMAIL_OAUTH_SETUP_KEY)
+  "/api/iris/gmail/poll", // cron de ingestao de e-mail da Iris (x-vercel-cron / CRON_SECRET)
 ];
 
 function isPublicApi(pathname: string) {
