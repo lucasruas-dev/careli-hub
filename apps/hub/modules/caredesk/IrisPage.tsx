@@ -5107,7 +5107,7 @@ function MessageBubble({
             ) : null}
             {showGroupSender ? (
               <div className="mb-1 flex items-center gap-1.5">
-                <span className="text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
+                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
                   {message.senderLabel}
                 </span>
               </div>

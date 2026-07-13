@@ -277,7 +277,7 @@ export function IrisConversationInboxSidebar({
                         </span>
                       ) : conversation.isGroup ? (
                         <span
-                          className="flex size-4 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white dark:bg-emerald-600/90"
+                          className="flex size-4 shrink-0 items-center justify-center rounded-md bg-amber-500 text-white dark:bg-amber-500/90"
                           title="Grupo de WhatsApp"
                           aria-label="Grupo de WhatsApp"
                         >
