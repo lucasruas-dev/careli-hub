@@ -23,8 +23,12 @@ const DEFAULT_SIGNATURE_ORG = "Careli · Atendimento";
 // Contatos institucionais da assinatura (override por canal via config).
 const DEFAULT_SIGNATURE_WHATSAPP = "5531999264143";
 const DEFAULT_SIGNATURE_SITE = "careli.adm.br";
-// Logo servida como asset público do app (email não aceita data-URI/inline).
+// Logo + ícones servidos como assets públicos do app (email não aceita data-URI/inline nem
+// fonte de ícone — precisa ser <img> com URL).
 const CARELI_EMAIL_LOGO_URL = "https://c2x.app.br/careli-email-logo.png";
+const EMAIL_ICON_URL = "https://c2x.app.br/email-icon-gold.png";
+const WHATSAPP_ICON_URL = "https://c2x.app.br/whatsapp-icon.png";
+const GLOBE_ICON_URL = "https://c2x.app.br/globe-icon-gold.png";
 const SIGNATURE_GOLD = "#A07C3B";
 
 type EmailSignature = {
@@ -369,22 +373,22 @@ function buildEmailHtml(body: string, sig: EmailSignature): string {
   const phone = formatBrPhone(sig.whatsapp);
   const waDigits = (sig.whatsapp ?? "").replace(/\D/g, "");
   const gray = "#5a6069";
-  const link = (href: string, text: string) =>
-    `<a href="${escapeHtml(href)}" style="color:${gray};text-decoration:none;">${escapeHtml(text)}</a>`;
+  // Cada contato: ícone (img) + link, alinhados numa tabelinha (email-safe).
+  const row = (iconUrl: string, href: string, text: string) =>
+    `<tr><td style="padding:1px 6px 1px 0;vertical-align:middle;"><img src="${iconUrl}" width="15" height="15" alt="" style="display:block;border:0;"></td><td style="padding:1px 0;vertical-align:middle;"><a href="${escapeHtml(href)}" style="color:${gray};text-decoration:none;">${escapeHtml(text)}</a></td></tr>`;
 
-  const contacts: string[] = [];
+  const rows: string[] = [];
   if (sig.boxEmail) {
-    contacts.push(link(`mailto:${sig.boxEmail}`, sig.boxEmail));
+    rows.push(row(EMAIL_ICON_URL, `mailto:${sig.boxEmail}`, sig.boxEmail));
   }
   if (phone && waDigits) {
-    contacts.push(link(`https://wa.me/${waDigits}`, `WhatsApp ${phone}`));
+    rows.push(row(WHATSAPP_ICON_URL, `https://wa.me/${waDigits}`, phone));
   }
   if (sig.site) {
     const siteUrl = /^https?:\/\//i.test(sig.site) ? sig.site : `https://${sig.site}`;
-    contacts.push(link(siteUrl, sig.site.replace(/^https?:\/\//i, "")));
+    rows.push(row(GLOBE_ICON_URL, siteUrl, sig.site.replace(/^https?:\/\//i, "")));
   }
 
-  const contactsHtml = contacts.join('<br style="line-height:1.7;">');
   const cargoHtml = sig.jobTitle
     ? `<div style="font-size:12.5px;font-weight:bold;color:${SIGNATURE_GOLD};margin-top:1px;">${escapeHtml(sig.jobTitle)}</div>`
     : "";
@@ -392,11 +396,11 @@ function buildEmailHtml(body: string, sig: EmailSignature): string {
   return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#3a3f46;">${bodyHtml}<br><br>
 <table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:6px;"><tr>
 <td style="padding-right:16px;vertical-align:middle;"><img src="${CARELI_EMAIL_LOGO_URL}" width="64" alt="Careli" style="display:block;border:0;width:64px;height:auto;"></td>
-<td style="padding:0 16px;vertical-align:middle;"><div style="width:2px;height:72px;background:${SIGNATURE_GOLD};font-size:0;line-height:0;">&nbsp;</div></td>
+<td style="padding:0 16px;vertical-align:middle;"><div style="width:2px;height:76px;background:${SIGNATURE_GOLD};font-size:0;line-height:0;">&nbsp;</div></td>
 <td style="vertical-align:middle;">
 <div style="font-size:15px;font-weight:bold;color:#101820;">${escapeHtml(sig.operatorName)}</div>
 ${cargoHtml}
-<div style="margin-top:8px;font-size:12.5px;color:${gray};">${contactsHtml}</div>
+<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:8px;font-size:12.5px;">${rows.join("")}</table>
 </td></tr></table></div>`;
 }
 
