@@ -3922,7 +3922,12 @@ export function ChronosExternalRoomPage({
                           }}
                         >
                           {createElement("whereby-embed", {
-                            background: "off",
+                            // background "on" = o Whereby pinta o fundo da sala
+                            // (room-background aplicado via Room Theme API = o
+                            // nosso papel de parede C2X). Com "off" o embed fica
+                            // transparente e DESCARTA o wallpaper (dava tela
+                            // branca no solo). Ver applyChronosWherebyRoomTheme.
+                            background: "on",
                             displayName: wherebyDisplayName || undefined,
                             externalId: wherebyExternalId || undefined,
                             lang: "pt",

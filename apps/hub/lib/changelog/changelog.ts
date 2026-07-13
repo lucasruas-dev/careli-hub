@@ -32,6 +32,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-13-chronos-fundo-sala",
+    deployedAt: "2026-07-13T10:42:00-03:00",
+    modules: [
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "O papel de parede C2X agora aparece de verdade no fundo da sala de reunião (tela de entrada, galeria e quando a câmera está desligada).",
+              "Antes o fundo ficava branco porque o vídeo estava configurado para descartar o papel de parede aplicado na sala.",
+            ],
+            screen: "Sala de reunião",
+          },
+        ],
+      },
+    ],
+    rollback: "commit cd08e447 (v1.32.1)",
+    technical: {
+      done: "ChronosExternalRoomPage: atributo do <whereby-embed> background 'off' -> 'on'. Com 'off' o embed ficava transparente e DESCARTAVA o room-background aplicado via Room Theme API (applyChronosWherebyRoomTheme: PUT /rooms/{roomName}/theme/room-background + room-knock-page-background), resultando em fundo branco na sala do hub (a sala manual do Whereby, com background on, mostrava o wallpaper). Com 'on' o Whereby pinta o fundo da sala com o wallpaper C2X que a API ja setava. Doc oficial confirma que a Room Theme API vale para salas efemeras (POST /meetings). Typecheck limpo.",
+      motivation:
+        "O wallpaper C2X do fundo da sala nao aparecia nas reunioes do hub (so na sala manual do Whereby). Causa raiz: o embed estava com background 'off' (transparente), jogando fora o papel de parede que a Room Theme API ja aplicava corretamente na sala.",
+    },
+    title: "Fundo da sala de reuniao com o papel de parede C2X",
+    type: "correcao",
+    version: "1.32.2",
+  },
+  {
     buildTag: "2026-07-13-zeus-escuro-acabamentos",
     deployedAt: "2026-07-13T08:34:15-03:00",
     modules: [
