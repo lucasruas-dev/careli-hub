@@ -47,6 +47,9 @@ const PUBLIC_API_PREFIXES = [
   "/api/pwa/manifest-mobile", // manifest publico da PWA mobile (/m)
   "/api/iris/report-render", // render de relatorio em imagem (edge, gated por chave/segredo)
   "/api/prometeu/tts", // voz da CACÁ no Telão publico (TVs sem login); teto de texto p/ custo
+  "/api/iris/gmail/authorize", // OAuth setup do Gmail da Iris (guardado por GMAIL_OAUTH_SETUP_KEY)
+  "/api/iris/gmail/callback", // OAuth setup do Gmail (redirect do Google, sem Bearer)
+  "/api/iris/gmail/status", // diagnostico da caixa Gmail (guardado por GMAIL_OAUTH_SETUP_KEY)
 ];
 
 function isPublicApi(pathname: string) {
