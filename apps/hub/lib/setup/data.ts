@@ -1533,12 +1533,13 @@ async function loadUsersQuery(client: ReturnType<typeof getHubSupabaseClient>) {
     "list users",
     client
       .from("hub_users")
-      .select("id,email,display_name,avatar_url,role,operational_profile,status")
+      .select("id,email,display_name,avatar_url,role,operational_profile,job_title,status")
       .order("display_name"),
   );
 
   const users =
-    result.error?.message.includes("operational_profile")
+    result.error?.message.includes("operational_profile") ||
+    result.error?.message.includes("job_title")
       ? await runSetupQuery<UserRow[]>(
           "list users legacy profile fallback",
           client

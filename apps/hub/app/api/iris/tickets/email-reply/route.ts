@@ -205,8 +205,9 @@ export async function POST(request: NextRequest) {
     site: readString(config.signatureSite) ?? DEFAULT_SIGNATURE_SITE,
     whatsapp: readString(config.signatureWhatsapp) ?? DEFAULT_SIGNATURE_WHATSAPP,
   };
-  // O cliente recebe multipart: HTML (com logo/assinatura) + texto puro (fallback). Guardamos
-  // o texto assinado no card do cockpit pra mostrar o que foi enviado.
+  // O cliente recebe multipart: HTML (com logo/assinatura) + texto puro (fallback). Mas o card
+  // do cockpit guarda SÓ a mensagem digitada (sem assinatura) — a assinatura é do cliente, não
+  // polui a conversa interna. Regra do Lucas.
   const signedBody = appendEmailSignature(body, signature);
   const bodyHtml = buildEmailHtml(body, signature);
 
@@ -225,7 +226,7 @@ export async function POST(request: NextRequest) {
   const { data: queued, error: insertError } = await client
     .from("caredesk_messages")
     .insert({
-      body: signedBody,
+      body,
       channel_id: ticket.channel_id,
       delivery_status: "queued",
       direction: "outbound",
