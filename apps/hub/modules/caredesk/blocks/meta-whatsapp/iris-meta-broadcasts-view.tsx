@@ -81,7 +81,7 @@ export function IrisMetaBroadcastsView({
           helpers={helpers}
         />
 
-        <div className="rounded-2xl border border-[#dbe3ef] bg-white p-4">
+        <div className="rounded-2xl border border-line bg-surface p-4">
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-base font-semibold">Disparos</h3>
             <button className="inline-flex h-9 items-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white">
@@ -94,19 +94,19 @@ export function IrisMetaBroadcastsView({
               data.broadcasts.map((campaign) => (
                 <div
                   key={campaign.id}
-                  className="grid grid-cols-[minmax(0,1fr)_150px_130px_110px] items-center gap-3 rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3"
+                  className="grid grid-cols-[minmax(0,1fr)_150px_130px_110px] items-center gap-3 rounded-xl border border-line bg-surface p-3"
                 >
                   <div>
                     <p className="font-semibold">{campaign.name}</p>
-                    <p className="text-xs text-[#63708a]">
+                    <p className="text-xs text-ink-muted">
                       {campaign.scheduledAt
                         ? helpers.formatDateTime(campaign.scheduledAt)
                         : "Sem agendamento"}
                     </p>
                   </div>
-                  <span className="text-sm text-[#34415a]">WhatsApp</span>
+                  <span className="text-sm text-ink">WhatsApp</span>
                   <IrisMetaStatusPill label={campaign.status} />
-                  <button className="justify-self-end rounded-lg border border-[#dbe3ef] px-3 py-2 text-xs font-semibold text-[#34415a]">
+                  <button className="justify-self-end rounded-lg border border-line px-3 py-2 text-xs font-semibold text-ink">
                     Abrir
                   </button>
                 </div>
@@ -262,7 +262,7 @@ function IrisMetaWhatsAppEnginePanel({
   const latestInbound = events.find((event) => event.direction === "inbound");
 
   return (
-    <section className="rounded-2xl border border-[#dbe3ef] bg-white p-4">
+    <section className="rounded-2xl border border-line bg-surface p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex items-center gap-2">
@@ -273,12 +273,12 @@ function IrisMetaWhatsAppEnginePanel({
               <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                 Meta WhatsApp
               </p>
-              <h3 className="text-base font-semibold text-slate-950">
+              <h3 className="text-base font-semibold text-ink">
                 Motor de homologacao
               </h3>
             </div>
           </div>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-ink-soft">
             Envio manual protegido e leitura dos webhooks recebidos. Automacoes
             e disparo em massa continuam fora deste teste.
           </p>
@@ -288,7 +288,7 @@ function IrisMetaWhatsAppEnginePanel({
           type="button"
           onClick={loadEvents}
           disabled={loading}
-          className="inline-flex h-9 items-center gap-2 rounded-xl border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-2 rounded-xl border border-line bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 disabled:cursor-not-allowed disabled:opacity-60"
         >
           <Activity className="h-4 w-4" aria-hidden="true" />
           Atualizar
@@ -320,12 +320,12 @@ function IrisMetaWhatsAppEnginePanel({
             />
           </div>
 
-          <div className="rounded-xl border border-slate-200/70 bg-slate-50/60">
-            <div className="flex items-center justify-between border-b border-slate-200/70 px-3 py-2">
-              <p className="text-sm font-semibold text-slate-950">
+          <div className="rounded-xl border border-line/70 bg-subtle/60">
+            <div className="flex items-center justify-between border-b border-line/70 px-3 py-2">
+              <p className="text-sm font-semibold text-ink">
                 Ultimos webhooks
               </p>
-              <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+              <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink-muted ring-1 ring-slate-200">
                 {loading ? "Carregando" : `${events.length} eventos`}
               </span>
             </div>
@@ -339,7 +339,7 @@ function IrisMetaWhatsAppEnginePanel({
                   />
                 ))
               ) : (
-                <div className="rounded-lg border border-slate-200/70 bg-white p-4 text-center text-sm font-medium text-slate-500">
+                <div className="rounded-lg border border-line/70 bg-surface p-4 text-center text-sm font-medium text-ink-muted">
                   {loading
                     ? "Carregando eventos..."
                     : "Nenhum webhook encontrado."}
@@ -350,31 +350,31 @@ function IrisMetaWhatsAppEnginePanel({
         </div>
 
         <aside className="space-y-3">
-          <div className="rounded-xl border border-[#A07C3B]/15 bg-[#fbf6ec] p-3">
-            <p className="text-sm font-semibold text-slate-950">Envio manual</p>
-            <label className="mt-3 block text-xs font-semibold text-slate-600">
+          <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/12 p-3">
+            <p className="text-sm font-semibold text-ink">Envio manual</p>
+            <label className="mt-3 block text-xs font-semibold text-ink-soft">
               WhatsApp destino
               <input
                 value={to}
                 onChange={(event) => setTo(event.target.value)}
                 placeholder="55DDDnumero"
-                className="mt-1 h-10 w-full rounded-lg border border-[#d8c8aa] bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#A07C3B]"
+                className="mt-1 h-10 w-full rounded-lg border border-[#d8c8aa] bg-surface px-3 text-sm font-semibold text-ink outline-none focus:border-[#A07C3B]"
               />
             </label>
-            <label className="mt-3 block text-xs font-semibold text-slate-600">
+            <label className="mt-3 block text-xs font-semibold text-ink-soft">
               Mensagem
               <textarea
                 value={body}
                 onChange={(event) => setBody(event.target.value)}
                 rows={4}
-                className="mt-1 w-full resize-none rounded-lg border border-[#d8c8aa] bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-[#A07C3B]"
+                className="mt-1 w-full resize-none rounded-lg border border-[#d8c8aa] bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-[#A07C3B]"
               />
             </label>
             <button
               type="button"
               onClick={sendTestMessage}
               disabled={sending || !to.trim() || !body.trim()}
-              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-subtle"
             >
               <Send className="h-4 w-4" aria-hidden="true" />
               {sending ? "Enviando" : "Enviar pela Iris"}
@@ -424,11 +424,11 @@ function MiniMetaStat({
   value: number;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white p-3">
-      <p className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+    <div className="rounded-xl border border-line/70 bg-surface p-3">
+      <p className="text-[11px] font-semibold uppercase tracking-normal text-ink-muted">
         {label}
       </p>
-      <p className="mt-1 text-lg font-semibold text-slate-950">
+      <p className="mt-1 text-lg font-semibold text-ink">
         {helpers.formatCount(value)}
       </p>
     </div>
@@ -447,10 +447,10 @@ function MetaEventRow({
       ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
       : event.direction === "status"
         ? "bg-sky-50 text-sky-700 ring-sky-100"
-        : "bg-slate-50 text-slate-600 ring-slate-200";
+        : "bg-subtle text-ink-soft ring-slate-200";
 
   return (
-    <div className="mb-2 rounded-lg border border-slate-200/70 bg-white p-3">
+    <div className="mb-2 rounded-lg border border-line/70 bg-surface p-3">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
@@ -459,14 +459,14 @@ function MetaEventRow({
             >
               {event.providerEventType}
             </span>
-            <span className="text-[11px] font-semibold text-slate-400">
+            <span className="text-[11px] font-semibold text-ink-muted">
               {helpers.formatDateTime(event.receivedAt)}
             </span>
           </div>
-          <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+          <p className="mt-1 truncate text-sm font-semibold text-ink">
             {event.contactName ?? event.contactWaId ?? "Contato Meta"}
           </p>
-          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-ink-soft">
             {event.messageText ??
               event.statusDetail ??
               event.messageId ??
@@ -497,8 +497,8 @@ function IrisMetaStatusPill({
         : tone === "green"
           ? "border-emerald-100 bg-emerald-50 text-emerald-700"
           : tone === "neutral"
-            ? "border-slate-200 bg-slate-50 text-slate-600"
-            : "border-[#eadcc2] bg-[#fbf6ec] text-[#8a682f]";
+            ? "border-line bg-subtle text-ink-soft"
+            : "border-[#eadcc2] bg-[#A07C3B]/12 text-[#8a682f]";
 
   return (
     <span

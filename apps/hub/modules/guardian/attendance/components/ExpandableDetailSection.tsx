@@ -48,7 +48,7 @@ export function ExpandableDetailSection({
       </div>
 
       {expanded ? (
-        <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+        <div className="mt-4 rounded-xl border border-line/70 bg-subtle/60 p-4">
           <div
             className={
               expandedLayout === "list"
@@ -73,7 +73,7 @@ export function ExpandableDetailSection({
           type="button"
           onClick={() => setExpanded((current) => !current)}
           aria-label={expanded ? "Ver menos" : buttonLabel}
-          className="mt-4 inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+          className="mt-4 inline-flex size-8 items-center justify-center rounded-lg border border-line/70 bg-surface text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
         >
           <ChevronDown
             className={`size-4 text-[#A07C3B] transition-transform ${
@@ -97,11 +97,11 @@ function InfoBlock({
   truncateValue?: boolean;
 }) {
   return (
-    <div className="min-w-0 rounded-xl border border-slate-200/70 bg-slate-50/60 px-3 py-2.5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+    <div className="min-w-0 rounded-xl border border-line/70 bg-subtle/60 px-3 py-2.5">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
       <Tooltip content={value} placement="top">
         <span
-          className={`mt-1 block text-sm font-semibold text-slate-950 ${
+          className={`mt-1 block text-sm font-semibold text-ink ${
             truncateValue ? "truncate" : ""
           }`}
         >

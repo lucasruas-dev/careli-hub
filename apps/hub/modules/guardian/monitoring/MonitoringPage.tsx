@@ -442,9 +442,9 @@ function MonitoringKpi({
   value: string;
 }) {
   const toneClass = {
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
     gold: "bg-[#A07C3B]/5 text-[#A07C3B] ring-[#A07C3B]/15",
-    neutral: "bg-slate-50 text-slate-600 ring-slate-200/70",
+    neutral: "bg-subtle text-ink-soft ring-line/70",
   }[tone];
 
   return (
@@ -452,13 +452,13 @@ function MonitoringKpi({
       <button
         type="button"
         onClick={onClick}
-        className="group w-full rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#A07C3B]/20 hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
+        className="group w-full rounded-xl border border-line/70 bg-surface p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#A07C3B]/20 hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
       >
         <div className="flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs font-semibold tracking-normal text-slate-400">{label}</p>
-            <p className="mt-2 text-xl font-semibold tracking-normal text-slate-950">{value}</p>
-            <p className="mt-1 line-clamp-1 text-xs text-slate-500">{helper}</p>
+            <p className="text-xs font-semibold tracking-normal text-ink-muted">{label}</p>
+            <p className="mt-2 text-xl font-semibold tracking-normal text-ink">{value}</p>
+            <p className="mt-1 line-clamp-1 text-xs text-ink-muted">{helper}</p>
           </div>
           <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-transform duration-200 group-hover:scale-105 ${toneClass}`}>
             <Icon className="size-4" aria-hidden="true" />
@@ -489,22 +489,22 @@ function OperationalPanel({
   tone?: Exclude<Tone, "success">;
 }) {
   const badgeClass = {
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
-    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15",
-    neutral: "bg-slate-50 text-slate-600 ring-slate-200/70",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    neutral: "bg-subtle text-ink-soft ring-line/70",
   }[tone];
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="overflow-hidden rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
       <button
         type="button"
         onClick={() => onToggle(id)}
-        className="flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-slate-50/70 lg:flex-row lg:items-center lg:justify-between"
+        className="flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-subtle/70 lg:flex-row lg:items-center lg:justify-between"
         aria-expanded={expanded}
       >
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold text-slate-950">{title}</h2>
+            <h2 className="text-sm font-semibold text-ink">{title}</h2>
             {badge ? (
               <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${badgeClass}`}>
                 {badge}
@@ -512,13 +512,13 @@ function OperationalPanel({
             ) : null}
           </div>
           <Tooltip content={summary} placement="bottom">
-            <span className="mt-1 line-clamp-1 text-xs text-slate-500">{summary}</span>
+            <span className="mt-1 line-clamp-1 text-xs text-ink-muted">{summary}</span>
           </Tooltip>
         </div>
         <Tooltip content={expanded ? "Recolher painel" : "Expandir painel"} placement="left">
           <span
             aria-label={expanded ? "Recolher painel" : "Expandir painel"}
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-line/70 bg-surface text-ink-soft"
           >
             <ChevronDown className={`size-4 text-[#A07C3B] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
           </span>
@@ -530,7 +530,7 @@ function OperationalPanel({
         }`}
       >
         <div className="min-h-0 overflow-hidden">
-          <div className="border-t border-slate-100 p-3">{children}</div>
+          <div className="border-t border-line p-3">{children}</div>
         </div>
       </div>
     </section>
@@ -563,18 +563,18 @@ function RealtimeDeskCard({
   value: string;
 }) {
   const toneClass = {
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
-    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15",
-    neutral: "bg-slate-50 text-slate-600 ring-slate-200/70",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    neutral: "bg-subtle text-ink-soft ring-line/70",
   }[tone];
 
   return (
-    <article className="rounded-xl border border-slate-200/70 bg-slate-50/50 p-3">
+    <article className="rounded-xl border border-line/70 bg-subtle/50 p-3">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-sm font-medium text-slate-500">{label}</p>
-          <p className="mt-2 text-xl font-semibold tracking-normal text-slate-950">{value}</p>
-          <p className="mt-0.5 text-xs text-slate-500">{helper}</p>
+          <p className="text-sm font-medium text-ink-muted">{label}</p>
+          <p className="mt-2 text-xl font-semibold tracking-normal text-ink">{value}</p>
+          <p className="mt-0.5 text-xs text-ink-muted">{helper}</p>
         </div>
         <div className={`flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ${toneClass}`}>
           <Icon className="size-4" aria-hidden="true" />
@@ -589,8 +589,8 @@ function DeskOperatorsRealtimeBlock() {
     <DetailSection title="Lista operacional realtime" icon={Radio} accent className="h-full">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[1040px] text-left text-sm">
-          <thead className="text-xs tracking-normal text-slate-500">
-            <tr className="border-b border-slate-100">
+          <thead className="text-xs tracking-normal text-ink-muted">
+            <tr className="border-b border-line">
               <th className="pb-3 font-medium">Operador</th>
               <th className="pb-3 font-medium">Tickets</th>
               <th className="pb-3 font-medium">Críticos</th>
@@ -602,22 +602,22 @@ function DeskOperatorsRealtimeBlock() {
               <th className="pb-3 font-medium">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-line">
             {deskOperators.map((operator) => (
               <tr key={operator.name}>
-                <td className="py-4 font-semibold text-slate-950">{operator.name}</td>
-                <td className="py-4 text-slate-600">{operator.tickets}</td>
+                <td className="py-4 font-semibold text-ink">{operator.name}</td>
+                <td className="py-4 text-ink-soft">{operator.tickets}</td>
                 <td className="py-4">
-                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${operator.critical > 0 ? "bg-rose-50 text-rose-700 ring-rose-100" : "bg-slate-50 text-slate-500 ring-slate-200"}`}>
+                  <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${operator.critical > 0 ? "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25" : "bg-subtle text-ink-muted ring-line"}`}>
                     {operator.critical}
                   </span>
                 </td>
-                <td className="py-4 font-medium text-slate-950">{operator.slaDue}</td>
-                <td className="py-4 text-slate-600">{operator.noResponse}</td>
-                <td className="py-4 font-medium text-slate-950">{operator.firstResponse}</td>
-                <td className="py-4 text-slate-600">{operator.averageResponse}</td>
+                <td className="py-4 font-medium text-ink">{operator.slaDue}</td>
+                <td className="py-4 text-ink-soft">{operator.noResponse}</td>
+                <td className="py-4 font-medium text-ink">{operator.firstResponse}</td>
+                <td className="py-4 text-ink-soft">{operator.averageResponse}</td>
                 <td className="py-4">
-                  <span className="rounded-full bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                  <span className="rounded-full bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                     {operator.newMessages}
                   </span>
                 </td>
@@ -642,15 +642,15 @@ function DeskHeatmapBlock() {
             key={`${operator}-${metric}`}
             className={`rounded-xl border px-3 py-3 ${
               tone === "danger"
-                ? "border-rose-100 bg-rose-50"
+                ? "border-rose-100 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12"
                 : tone === "gold"
                   ? "border-[#A07C3B]/15 bg-[#A07C3B]/5"
-                  : "border-slate-200/70 bg-slate-50/60"
+                  : "border-line/70 bg-subtle/60"
             }`}
           >
-            <p className="truncate text-[11px] font-semibold tracking-normal text-slate-400">{operator}</p>
-            <p className="mt-1 truncate text-xs font-medium text-slate-500">{metric}</p>
-            <p className={`mt-2 text-lg font-semibold ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}>
+            <p className="truncate text-[11px] font-semibold tracking-normal text-ink-muted">{operator}</p>
+            <p className="mt-1 truncate text-xs font-medium text-ink-muted">{metric}</p>
+            <p className={`mt-2 text-lg font-semibold ${tone === "danger" ? "text-rose-700 dark:text-rose-300" : tone === "gold" ? "text-[#7A5E2C] dark:text-[#d9b877]" : "text-ink"}`}>
               {value > 0 ? `${value}%` : EMPTY_FIELD}
             </p>
           </div>
@@ -665,16 +665,16 @@ function AiOperationalBlock() {
     <DetailSection title="IA operacional" icon={Bot} accent>
       <div className="grid gap-3 lg:grid-cols-3">
         <article className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-4">
-          <p className="text-sm font-semibold text-slate-950">Gargalo identificado</p>
-          <p className="mt-2 text-sm leading-6 text-slate-700">{EMPTY_FIELD}</p>
+          <p className="text-sm font-semibold text-ink">Gargalo identificado</p>
+          <p className="mt-2 text-sm leading-6 text-ink">{EMPTY_FIELD}</p>
         </article>
-        <article className="rounded-xl border border-rose-100 bg-rose-50 p-4">
+        <article className="rounded-xl border border-rose-100 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12 p-4">
           <p className="text-sm font-semibold text-rose-800">Risco previsto</p>
-          <p className="mt-2 text-sm leading-6 text-rose-700">{EMPTY_FIELD}</p>
+          <p className="mt-2 text-sm leading-6 text-rose-700 dark:text-rose-300">{EMPTY_FIELD}</p>
         </article>
-        <article className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
-          <p className="text-sm font-semibold text-slate-950">Recomendação</p>
-          <p className="mt-2 text-sm leading-6 text-slate-600">{EMPTY_FIELD}</p>
+        <article className="rounded-xl border border-line/70 bg-subtle/60 p-4">
+          <p className="text-sm font-semibold text-ink">Recomendação</p>
+          <p className="mt-2 text-sm leading-6 text-ink-soft">{EMPTY_FIELD}</p>
         </article>
       </div>
     </DetailSection>
@@ -686,8 +686,8 @@ function TodayAppointmentsBlock() {
     <DetailSection title="Atendimentos de hoje" icon={CalendarDays} accent className="h-full">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[900px] text-left text-sm">
-          <thead className="text-xs tracking-normal text-slate-500">
-            <tr className="border-b border-slate-100">
+          <thead className="text-xs tracking-normal text-ink-muted">
+            <tr className="border-b border-line">
               <th className="pb-3 font-medium">Horário</th>
               <th className="pb-3 font-medium">Cliente</th>
               <th className="pb-3 font-medium">Canal</th>
@@ -696,19 +696,19 @@ function TodayAppointmentsBlock() {
               <th className="pb-3 font-medium">Próxima ação</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-line">
             {todayAppointments.map((appointment) => (
               <tr key={`${appointment.time}-${appointment.client}`}>
-                <td className="w-20 py-4 font-semibold text-slate-950">{appointment.time}</td>
-                <td className="py-4 font-semibold text-slate-950">{appointment.client}</td>
+                <td className="w-20 py-4 font-semibold text-ink">{appointment.time}</td>
+                <td className="py-4 font-semibold text-ink">{appointment.client}</td>
                 <td className="py-4">
                   <ChannelBadge channel={appointment.channel} />
                 </td>
-                <td className="py-4 text-slate-600">{appointment.operator}</td>
+                <td className="py-4 text-ink-soft">{appointment.operator}</td>
                 <td className="py-4">
                   <ResultBadge result={appointment.result} />
                 </td>
-                <td className="max-w-[260px] py-4 text-slate-600">{appointment.nextAction}</td>
+                <td className="max-w-[260px] py-4 text-ink-soft">{appointment.nextAction}</td>
               </tr>
             ))}
           </tbody>
@@ -723,18 +723,18 @@ function OperationalQueueBlock() {
     <DetailSection title="Fila operacional do dia" icon={ListChecks} accent className="h-full">
       <div className="space-y-3">
         {operationalQueue.map((item, index) => (
-          <article key={`${item.client}-${item.unit}`} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
+          <article key={`${item.client}-${item.unit}`} className="rounded-xl border border-line/70 bg-subtle/60 p-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex min-w-0 gap-3">
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-white text-sm font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-surface text-sm font-semibold text-ink-muted ring-1 ring-line/70">
                   {index + 1}
                 </div>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <p className="font-semibold text-slate-950">{item.client}</p>
+                    <p className="font-semibold text-ink">{item.client}</p>
                     <PriorityBadge priority={item.priority} />
                   </div>
-                  <p className="mt-1 text-sm text-slate-500">
+                  <p className="mt-1 text-sm text-ink-muted">
                     {item.enterprise} · {item.unit}
                   </p>
                 </div>
@@ -757,16 +757,16 @@ function OperatorPlanBlock() {
     <DetailSection title="Plano do operador" icon={Target} accent>
       <div className="grid gap-4 xl:grid-cols-2">
         {operatorPlans.map((plan) => (
-          <article key={plan.name} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+          <article key={plan.name} className="rounded-xl border border-line/70 bg-subtle/60 p-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <div className="flex items-center gap-3">
-                  <div className="flex size-10 items-center justify-center rounded-xl bg-white text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                  <div className="flex size-10 items-center justify-center rounded-xl bg-surface text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                     <UserCheck className="size-4" aria-hidden="true" />
                   </div>
                   <div>
-                    <h4 className="font-semibold text-slate-950">{plan.name}</h4>
-                    <p className="mt-0.5 text-sm text-slate-500">{plan.focus}</p>
+                    <h4 className="font-semibold text-ink">{plan.name}</h4>
+                    <p className="mt-0.5 text-sm text-ink-muted">{plan.focus}</p>
                   </div>
                 </div>
               </div>
@@ -780,14 +780,14 @@ function OperatorPlanBlock() {
               <MetricTile label="Críticos" value={String(plan.criticalClients)} icon={Flame} tone={plan.criticalClients > 1 ? "danger" : "gold"} />
             </div>
 
-            <div className="mt-4 rounded-xl bg-white p-4 ring-1 ring-slate-200/70">
+            <div className="mt-4 rounded-xl bg-surface p-4 ring-1 ring-line/70">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
                   <ArrowRight className="size-4" aria-hidden="true" />
                 </div>
                 <div>
-                  <p className="text-xs font-medium tracking-[0.14em] text-slate-500">Próxima melhor ação</p>
-                  <p className="mt-2 text-sm leading-6 text-slate-700">{plan.nextBestAction}</p>
+                  <p className="text-xs font-medium tracking-[0.14em] text-ink-muted">Próxima melhor ação</p>
+                  <p className="mt-2 text-sm leading-6 text-ink">{plan.nextBestAction}</p>
                 </div>
               </div>
             </div>
@@ -803,8 +803,8 @@ function OperatorsBlock() {
     <DetailSection title="Operadores" icon={Radio}>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[820px] text-left text-sm">
-          <thead className="text-xs tracking-normal text-slate-500">
-            <tr className="border-b border-slate-100">
+          <thead className="text-xs tracking-normal text-ink-muted">
+            <tr className="border-b border-line">
               <th className="pb-3 font-medium">Operador</th>
               <th className="pb-3 font-medium">Status</th>
               <th className="pb-3 font-medium">Contatos</th>
@@ -814,16 +814,16 @@ function OperatorsBlock() {
               <th className="pb-3 font-medium">Recuperação do dia</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-line">
             {operators.map((operator) => (
               <tr key={operator.name}>
-                <td className="py-4 font-semibold text-slate-950">{operator.name}</td>
+                <td className="py-4 font-semibold text-ink">{operator.name}</td>
                 <td className="py-4"><StatusBadge status={operator.status} /></td>
-                <td className="py-4 text-slate-600">{operator.contacts}</td>
-                <td className="py-4 text-slate-600">{operator.portfolio}</td>
-                <td className="py-4 text-slate-600">{operator.promises}</td>
-                <td className="py-4 font-medium text-slate-950">{operator.sla}</td>
-                <td className="py-4 font-semibold text-slate-950">{operator.recovery}</td>
+                <td className="py-4 text-ink-soft">{operator.contacts}</td>
+                <td className="py-4 text-ink-soft">{operator.portfolio}</td>
+                <td className="py-4 text-ink-soft">{operator.promises}</td>
+                <td className="py-4 font-medium text-ink">{operator.sla}</td>
+                <td className="py-4 font-semibold text-ink">{operator.recovery}</td>
               </tr>
             ))}
           </tbody>
@@ -838,14 +838,14 @@ function PromisesBlock() {
     <DetailSection title="Promessas do dia" icon={CheckCircle2}>
       <div className="space-y-3">
         {promises.map((item) => (
-          <article key={`${item.client}-${item.time}`} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
+          <article key={`${item.client}-${item.time}`} className="rounded-xl border border-line/70 bg-subtle/60 p-3">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0">
-                <p className="font-semibold text-slate-950">{item.client}</p>
-                <p className="mt-1 text-sm text-slate-500">{item.time} · {item.owner}</p>
+                <p className="font-semibold text-ink">{item.client}</p>
+                <p className="mt-1 text-sm text-ink-muted">{item.time} · {item.owner}</p>
               </div>
               <div className="flex items-center gap-2">
-                <p className="rounded-lg bg-white px-3 py-2 text-sm font-semibold text-slate-950 ring-1 ring-slate-200/70">{item.amount}</p>
+                <p className="rounded-lg bg-surface px-3 py-2 text-sm font-semibold text-ink ring-1 ring-line/70">{item.amount}</p>
                 <PromiseBadge status={item.status} />
               </div>
             </div>
@@ -861,12 +861,12 @@ function AlertsBlock() {
     <DetailSection title="Alertas operacionais" icon={AlertTriangle}>
       <div className="grid gap-3 md:grid-cols-2">
         {alerts.map((alert) => (
-          <article key={alert.title} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+          <article key={alert.title} className="rounded-xl border border-line/70 bg-subtle/60 p-4">
             <div className="flex items-start gap-3">
-              <div className={`mt-0.5 size-2.5 shrink-0 rounded-full ${alert.tone === "danger" ? "bg-rose-500" : alert.tone === "gold" ? "bg-[#A07C3B]" : "bg-slate-400"}`} />
+              <div className={`mt-0.5 size-2.5 shrink-0 rounded-full ${alert.tone === "danger" ? "bg-rose-500" : alert.tone === "gold" ? "bg-[#A07C3B]" : "bg-subtle"}`} />
               <div>
-                <h4 className="text-sm font-semibold text-slate-950">{alert.title}</h4>
-                <p className="mt-2 text-sm leading-6 text-slate-500">{alert.description}</p>
+                <h4 className="text-sm font-semibold text-ink">{alert.title}</h4>
+                <p className="mt-2 text-sm leading-6 text-ink-muted">{alert.description}</p>
               </div>
             </div>
           </article>
@@ -883,10 +883,10 @@ function SlaBlock() {
         {slaStages.map(([label, value]) => (
           <div key={label}>
             <div className="flex items-center justify-between gap-3">
-              <span className="text-sm font-medium text-slate-600">{label}</span>
-              <span className="text-sm font-semibold text-slate-950">{value > 0 ? `${value}%` : EMPTY_FIELD}</span>
+              <span className="text-sm font-medium text-ink-soft">{label}</span>
+              <span className="text-sm font-semibold text-ink">{value > 0 ? `${value}%` : EMPTY_FIELD}</span>
             </div>
-            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-subtle">
               <div className="h-full rounded-full bg-[#A07C3B]/70" style={{ width: `${value > 0 ? value : 0}%` }} />
             </div>
           </div>
@@ -908,24 +908,24 @@ function KpiDrawer({ data, onClose }: { data: DrawerDataset | null; onClose: () 
         type="button"
         aria-label="Fechar detalhes"
         onClick={onClose}
-        className={`absolute inset-0 bg-slate-950/20 transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-black/20 transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
       />
       <aside
-        className={`absolute right-0 top-0 flex h-full w-full max-w-[460px] flex-col border-l border-slate-200/70 bg-white shadow-[-24px_0_60px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        className={`absolute right-0 top-0 flex h-full w-full max-w-[460px] flex-col border-l border-line/70 bg-surface shadow-[-24px_0_60px_rgba(15,23,42,0.16)] transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
       >
         {data ? (
           <>
-            <div className="border-b border-slate-100 px-5 py-4">
+            <div className="border-b border-line px-5 py-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-medium tracking-[0.14em] text-[#A07C3B]">Detalhamento</p>
-                  <h2 className="mt-2 text-lg font-semibold text-slate-950">{data.title}</h2>
-                  <p className="mt-1 text-sm leading-6 text-slate-500">{data.description}</p>
+                  <h2 className="mt-2 text-lg font-semibold text-ink">{data.title}</h2>
+                  <p className="mt-1 text-sm leading-6 text-ink-muted">{data.description}</p>
                 </div>
                 <button
                   type="button"
                   onClick={onClose}
-                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-950"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
                   aria-label="Fechar drawer"
                 >
                   <X className="size-4" aria-hidden="true" />
@@ -935,9 +935,9 @@ function KpiDrawer({ data, onClose }: { data: DrawerDataset | null; onClose: () 
 
             <div className="flex-1 space-y-3 overflow-y-auto p-5">
               {data.items.map((item) => (
-                <article key={`${data.title}-${item.title}-${item.subtitle ?? ""}`} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
-                  <h3 className="text-sm font-semibold text-slate-950">{item.title}</h3>
-                  {item.subtitle ? <p className="mt-1 text-sm text-slate-500">{item.subtitle}</p> : null}
+                <article key={`${data.title}-${item.title}-${item.subtitle ?? ""}`} className="rounded-xl border border-line/70 bg-subtle/60 p-4">
+                  <h3 className="text-sm font-semibold text-ink">{item.title}</h3>
+                  {item.subtitle ? <p className="mt-1 text-sm text-ink-muted">{item.subtitle}</p> : null}
                   <div className="mt-4 grid gap-2 sm:grid-cols-2">
                     {item.fields.map((field) => (
                       <FieldPill key={`${item.title}-${field.label}`} {...field} />
@@ -957,8 +957,8 @@ function FieldPill({ label, tone = "neutral", value }: DrawerField) {
   const valueClass = getToneTextClass(tone);
 
   return (
-    <div className="min-w-0 rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200/70">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+    <div className="min-w-0 rounded-lg bg-surface px-3 py-2 ring-1 ring-line/70">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
       <p className={`mt-1 truncate text-sm font-semibold ${valueClass}`}>{value}</p>
     </div>
   );
@@ -976,9 +976,9 @@ function MetricTile({
   value: string;
 }) {
   return (
-    <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200/70">
+    <div className="rounded-xl bg-surface p-3 ring-1 ring-line/70">
       <div className="flex items-center justify-between gap-2">
-        <p className="text-xs font-medium text-slate-500">{label}</p>
+        <p className="text-xs font-medium text-ink-muted">{label}</p>
         <Icon className={`size-4 ${getToneTextClass(tone)}`} aria-hidden="true" />
       </div>
       <p className={`mt-3 text-xl font-semibold tracking-normal ${getToneTextClass(tone)}`}>{value}</p>
@@ -988,8 +988,8 @@ function MetricTile({
 
 function InfoPill({ label, tone = "neutral", value }: { label: string; tone?: Tone; value: string }) {
   return (
-    <div className="min-w-0 rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200/70">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+    <div className="min-w-0 rounded-lg bg-surface px-3 py-2 ring-1 ring-line/70">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
       <p className={`mt-1 truncate text-sm font-semibold ${getToneTextClass(tone)}`}>{value}</p>
     </div>
   );
@@ -997,30 +997,30 @@ function InfoPill({ label, tone = "neutral", value }: { label: string; tone?: To
 
 function StatusBadge({ status }: { status: string }) {
   const className = {
-    Ausente: "bg-amber-50 text-amber-700 ring-amber-100",
-    Offline: "bg-slate-50 text-slate-500 ring-slate-200",
-    Online: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-  }[status] ?? "bg-slate-50 text-slate-500 ring-slate-200";
+    Ausente: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/25",
+    Offline: "bg-subtle text-ink-muted ring-line",
+    Online: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+  }[status] ?? "bg-subtle text-ink-muted ring-line";
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${className}`}>{status}</span>;
 }
 
 function PriorityBadge({ priority }: { priority: string }) {
   const className = {
-    Alta: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
-    "Crítica": "bg-rose-50 text-rose-700 ring-rose-100",
-    "Média": "bg-slate-50 text-slate-700 ring-slate-200",
-  }[priority] ?? "bg-slate-50 text-slate-500 ring-slate-200";
+    Alta: "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    "Crítica": "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+    "Média": "bg-subtle text-ink ring-line",
+  }[priority] ?? "bg-subtle text-ink-muted ring-line";
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${className}`}>{priority}</span>;
 }
 
 function PromiseBadge({ status }: { status: string }) {
   const className = {
-    Cumprida: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    Pendente: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
-    Vencida: "bg-rose-50 text-rose-700 ring-rose-100",
-  }[status] ?? "bg-slate-50 text-slate-500 ring-slate-200";
+    Cumprida: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+    Pendente: "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    Vencida: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+  }[status] ?? "bg-subtle text-ink-muted ring-line";
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${className}`}>{status}</span>;
 }
@@ -1028,10 +1028,10 @@ function PromiseBadge({ status }: { status: string }) {
 function ResultBadge({ result }: { result: string }) {
   const tone = getResultTone(result);
   const className = {
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
-    gold: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
-    neutral: "bg-slate-50 text-slate-700 ring-slate-200",
-    success: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+    gold: "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    neutral: "bg-subtle text-ink ring-line",
+    success: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
   }[tone];
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${className}`}>{result}</span>;
@@ -1041,7 +1041,7 @@ function ChannelBadge({ channel }: { channel: string }) {
   const Icon = channel === "WhatsApp" ? MessageCircle : channel === "Ligação" ? PhoneCall : Mail;
 
   return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200/70">
+    <span className="inline-flex items-center gap-1.5 rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-ink ring-1 ring-line/70">
       <Icon className="size-3.5" aria-hidden="true" />
       {channel}
     </span>
@@ -1063,10 +1063,10 @@ function getPriorityTone(priority: string): Tone {
 
 function getToneTextClass(tone: Tone) {
   return {
-    danger: "text-rose-700",
-    gold: "text-[#7A5E2C]",
-    neutral: "text-slate-950",
-    success: "text-emerald-700",
+    danger: "text-rose-700 dark:text-rose-300",
+    gold: "text-[#7A5E2C] dark:text-[#d9b877]",
+    neutral: "text-ink",
+    success: "text-emerald-700 dark:text-emerald-300",
   }[tone];
 }
 

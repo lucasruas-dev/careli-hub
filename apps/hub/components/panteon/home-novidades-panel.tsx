@@ -57,7 +57,7 @@ export function HomeNovidadesPanel() {
   return (
     <Surface
       bordered
-      className="relative col-span-12 h-full min-h-[20rem] overflow-hidden border-[#d9e0e7] bg-white p-0 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)] xl:col-span-5"
+      className="relative col-span-12 h-full min-h-[20rem] overflow-hidden border-line bg-surface p-0 shadow-[0_18px_42px_rgb(16_24_32_/_0.08)] xl:col-span-5"
     >
       <div className="absolute inset-0 flex flex-col p-5">
       <div className="flex items-start justify-between gap-3">
@@ -69,7 +69,7 @@ export function HomeNovidadesPanel() {
             <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[#A07C3B]">
               Novidades
             </p>
-            <p className="m-0 text-sm font-semibold text-[#17202f]">
+            <p className="m-0 text-sm font-semibold text-ink">
               O que mudou no Panteon
             </p>
           </div>
@@ -77,7 +77,7 @@ export function HomeNovidadesPanel() {
 
         {current ? (
           <div className="shrink-0 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/[0.06] px-2.5 py-1 text-right">
-            <p className="m-0 text-[9px] font-semibold uppercase tracking-wide text-[#98a2b3]">
+            <p className="m-0 text-[9px] font-semibold uppercase tracking-wide text-ink-muted">
               Build atual
             </p>
             <p className="m-0 font-mono text-sm font-bold leading-none text-[#7A5E2C]">
@@ -89,7 +89,7 @@ export function HomeNovidadesPanel() {
 
       <div className="mt-4 flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto pr-1">
         {entries.length === 0 ? (
-          <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
+          <div className="rounded-md border border-dashed border-line bg-subtle p-5 text-sm text-ink-muted">
             Nenhuma novidade registrada ainda.
           </div>
         ) : (
@@ -107,7 +107,7 @@ function NovidadeCard({ entry }: { entry: ChangelogEntry }) {
   const tone = typeVisual[entry.type];
 
   return (
-    <article className="rounded-xl border border-[#edf0f4] bg-[#fafbfc] p-3">
+    <article className="rounded-xl border border-line bg-subtle p-3">
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ${tone.chip}`}
@@ -117,19 +117,19 @@ function NovidadeCard({ entry }: { entry: ChangelogEntry }) {
         <span className="font-mono text-[11px] font-semibold text-[#7A5E2C]">
           {entry.version}
         </span>
-        <span className="text-[11px] text-[#98a2b3]">
+        <span className="text-[11px] text-ink-muted">
           {formatBrDate(entry.deployedAt)}
         </span>
       </div>
 
-      <p className="m-0 mt-1.5 text-sm font-semibold text-[#17202f]">
+      <p className="m-0 mt-1.5 text-sm font-semibold text-ink">
         {entry.title}
       </p>
 
       <div className="mt-2 flex flex-col gap-2">
         {entry.modules.map((module) => (
           <div key={module.module}>
-            <p className="m-0 text-xs font-bold text-[#344054]">
+            <p className="m-0 text-xs font-bold text-ink">
               {module.module}
             </p>
             <div className="mt-1 flex flex-col gap-1.5">
@@ -141,7 +141,7 @@ function NovidadeCard({ entry }: { entry: ChangelogEntry }) {
                   <ul className="m-0 mt-0.5 flex list-none flex-col gap-1 p-0">
                     {screen.items.map((item, index) => (
                       <li
-                        className="flex gap-1.5 text-[13px] leading-snug text-[#475467]"
+                        className="flex gap-1.5 text-[13px] leading-snug text-ink-soft"
                         key={index}
                       >
                         <span className="mt-1.5 size-1 shrink-0 rounded-full bg-[#A07C3B]" />

@@ -32,6 +32,66 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-12-tema-claro-escuro",
+    deployedAt: "2026-07-12T21:49:11-03:00",
+    modules: [
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "Novo botão de tema no topo do hub: alterna entre claro e escuro num clique, e a sua preferência fica salva.",
+              "A tela Início (Home) já vem 100% ajustada aos dois temas.",
+            ],
+            screen: "Tema claro/escuro",
+          },
+        ],
+      },
+      {
+        module: "Hermes",
+        screens: [
+          {
+            items: [
+              "Comunicação ajustada ao tema escuro: lista de canais, conversas, threads e a barra de escrever.",
+            ],
+            screen: "Comunicação",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Atendimento ajustado ao tema escuro: fila, conversa, cockpit do cliente e os balões de mensagem.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "Cobrança ajustada ao tema escuro: painel, fila, tela de cobrança e a ficha do cliente.",
+            ],
+            screen: "Cobrança",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 0a786ca6 (v1.31.13)",
+    technical: {
+      done: "Tema claro/escuro global finalizado e validado em 4 frentes: Panteon (Home/shell/topbar/sidebar), Hermes (pulsex), Iris (caredesk) e Hades (guardian). Mecanismo: theme-provider injeta os tokens uix inline no :root; useHubTheme() expoe {mode,setMode,toggle}; @custom-variant dark + tokens @theme (bg-canvas<surface<subtle, text-ink/soft/muted, border-line...). Padrao de montagem: fundo=bg-canvas (mais escuro) < cards=bg-surface. Sidebar/nav via .panteon-module-sidebar--themed + __active-icon (chip preto + icone branco). KpiCard ganhou accent (tiles de icone coloridos, texto neutro). Correcao de infra junto: pool do C2X (lib/guardian/db.ts) com maxIdle/idleTimeout + withHadesDbRetry (retry em ER_CON_COUNT_ERROR) pra mitigar 'Too many connections'. Tambem embarcado: Prometeu como MOCK (modules/prometeu + /public/prometeu servido publico via allowlist do proxy; rota publica /api/prometeu/tts com voz da Caca ElevenLabs capada em 320 chars) pra apresentacao da fila do lancamento. A receita de tokens tocou tambem Apolo/Chronos/Agenda/Monitoramento/Inteligencia, ainda NAO finalizados no escuro (claro e o padrao, entao seguem iguais no claro).",
+      motivation:
+        "Entregar o tema claro/escuro do hub com as 4 telas de maior uso 100% ajustadas, mantendo o claro como padrao. Prometeu sobe como mock pra apresentacao da fila do lancamento.",
+    },
+    title: "Tema claro/escuro no hub (Panteon, Hermes, Iris e Hades)",
+    type: "novidade",
+    version: "1.32.0",
+  },
+  {
     buildTag: "2026-07-11-apolo-sidebar",
     deployedAt: "2026-07-11T17:10:00-03:00",
     modules: [

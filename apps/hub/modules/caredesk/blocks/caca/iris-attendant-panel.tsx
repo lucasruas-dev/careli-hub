@@ -89,8 +89,8 @@ export function IrisAttendantPanel({
     result?.nextStep === "choose_boleto" && billingItems.length > 0;
 
   return (
-    <div className="shrink-0 border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-      <div className="rounded-xl border border-[#A07C3B]/20 bg-white p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
+    <div className="shrink-0 border-b border-line bg-subtle/60 px-4 py-3">
+      <div className="rounded-xl border border-[#A07C3B]/20 bg-surface p-3 shadow-[0_12px_30px_rgba(15,23,42,0.08)]">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2.5">
             <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#101820] text-white">
@@ -100,7 +100,7 @@ export function IrisAttendantPanel({
               <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                 Cacá
               </p>
-              <h3 className="truncate text-sm font-semibold text-slate-950">
+              <h3 className="truncate text-sm font-semibold text-ink">
                 Atendimento ao cliente e boletos
               </h3>
             </div>
@@ -108,7 +108,7 @@ export function IrisAttendantPanel({
           <button
             type="button"
             onClick={onClose}
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-[#7A5E2C]"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-[#7A5E2C]"
             aria-label="Fechar Cacá"
           >
             <X className="size-4" aria-hidden="true" />
@@ -116,8 +116,8 @@ export function IrisAttendantPanel({
         </div>
 
         <div className="mt-3 grid gap-2 xl:grid-cols-[1fr_210px_auto]">
-          <label className="min-w-0 rounded-lg border border-slate-200/70 bg-slate-50 px-3 py-2">
-            <span className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+          <label className="min-w-0 rounded-lg border border-line/70 bg-subtle px-3 py-2">
+            <span className="text-[11px] font-semibold uppercase tracking-normal text-ink-muted">
               Mensagem do cliente
             </span>
             <textarea
@@ -126,12 +126,12 @@ export function IrisAttendantPanel({
               disabled={disabled || loading}
               rows={2}
               placeholder="Use a ultima mensagem recebida ou descreva a solicitacao."
-              className="mt-1 min-h-12 w-full resize-none bg-transparent text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:text-slate-400"
+              className="mt-1 min-h-12 w-full resize-none bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted disabled:cursor-not-allowed disabled:text-ink-muted"
             />
           </label>
 
-          <div className="rounded-lg border border-slate-200/70 bg-slate-50 px-3 py-2">
-            <span className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+          <div className="rounded-lg border border-line/70 bg-subtle px-3 py-2">
+            <span className="text-[11px] font-semibold uppercase tracking-normal text-ink-muted">
               CPF/CNPJ
             </span>
             <div className="mt-1 flex items-center gap-2">
@@ -145,9 +145,9 @@ export function IrisAttendantPanel({
                 disabled={disabled || loading}
                 inputMode="numeric"
                 placeholder="4 digitos"
-                className="h-9 min-w-0 flex-1 rounded-md border border-slate-200 bg-white px-2 text-sm font-semibold text-slate-900 outline-none transition-colors focus:border-[#A07C3B]/45 disabled:cursor-not-allowed disabled:text-slate-400"
+                className="h-9 min-w-0 flex-1 rounded-md border border-line bg-surface px-2 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]/45 disabled:cursor-not-allowed disabled:text-ink-muted"
               />
-              <div className="grid w-[82px] grid-cols-2 rounded-md bg-white p-0.5 ring-1 ring-slate-200">
+              <div className="grid w-[82px] grid-cols-2 rounded-md bg-surface p-0.5 ring-1 ring-slate-200">
                 {[
                   { label: "Fim", value: "last4" as const },
                   { label: "Ini", value: "first4" as const },
@@ -161,7 +161,7 @@ export function IrisAttendantPanel({
                       "h-8 rounded text-[11px] font-semibold transition-colors disabled:cursor-not-allowed",
                       documentPosition === option.value
                         ? "bg-[#101820] text-white"
-                        : "text-slate-500 hover:bg-slate-100",
+                        : "text-ink-muted hover:bg-subtle",
                     ].join(" ")}
                   >
                     {option.label}
@@ -175,7 +175,7 @@ export function IrisAttendantPanel({
             type="button"
             onClick={onAnalyze}
             disabled={disabled || loading}
-            className="inline-flex h-full min-h-14 items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="inline-flex h-full min-h-14 items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-subtle"
           >
             <Sparkles className="size-4" aria-hidden="true" />
             {loading ? "Analisando" : "Analisar"}
@@ -190,9 +190,9 @@ export function IrisAttendantPanel({
 
         {result ? (
           <div className="mt-3 grid gap-3 xl:grid-cols-[minmax(0,1fr)_260px]">
-            <div className="min-w-0 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3">
+            <div className="min-w-0 rounded-lg border border-line/70 bg-subtle/70 p-3">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="inline-flex items-center gap-1 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
+                <span className="inline-flex items-center gap-1 rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-slate-200">
                   <CheckCircle2
                     className="size-3 text-emerald-600"
                     aria-hidden="true"
@@ -206,18 +206,18 @@ export function IrisAttendantPanel({
                   </span>
                 ) : null}
                 {result.source ? (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-[#fbf6ec] px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                  <span className="inline-flex items-center gap-1 rounded-full bg-[#A07C3B]/12 px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
                     {result.source === "openai" ? "OpenAI" : "Regra segura"}
                   </span>
                 ) : null}
               </div>
 
               {replyText ? (
-                <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
-                  <p className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+                <div className="mt-3 rounded-lg border border-line bg-surface p-3">
+                  <p className="text-[11px] font-semibold uppercase tracking-normal text-ink-muted">
                     Resposta sugerida
                   </p>
-                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-slate-800">
+                  <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-ink">
                     {replyText}
                   </p>
                   <div className="mt-3 flex justify-end">
@@ -234,8 +234,8 @@ export function IrisAttendantPanel({
               ) : null}
             </div>
 
-            <div className="min-w-0 rounded-lg border border-slate-200/70 bg-white p-3">
-              <p className="text-[11px] font-semibold uppercase tracking-normal text-slate-500">
+            <div className="min-w-0 rounded-lg border border-line/70 bg-surface p-3">
+              <p className="text-[11px] font-semibold uppercase tracking-normal text-ink-muted">
                 Boletos
               </p>
               {hasBoletoOptions ? (
@@ -246,19 +246,19 @@ export function IrisAttendantPanel({
                       type="button"
                       onClick={() => onSelectBillingItem(item)}
                       disabled={loading}
-                      className="w-full rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-left transition-colors hover:border-[#A07C3B]/30 hover:bg-[#fbf6ec] disabled:cursor-not-allowed disabled:opacity-60"
+                      className="w-full rounded-lg border border-line bg-subtle px-3 py-2 text-left transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:opacity-60"
                     >
-                      <span className="block text-xs font-semibold text-slate-950">
+                      <span className="block text-xs font-semibold text-ink">
                         {item.number} - {item.reference}
                       </span>
-                      <span className="mt-0.5 block text-[11px] font-medium text-slate-500">
+                      <span className="mt-0.5 block text-[11px] font-medium text-ink-muted">
                         {item.value} - {item.status}
                       </span>
                     </button>
                   ))}
                 </div>
               ) : (
-                <div className="mt-2 rounded-lg border border-dashed border-slate-200 bg-slate-50 px-3 py-4 text-xs font-semibold text-slate-400">
+                <div className="mt-2 rounded-lg border border-dashed border-line bg-subtle px-3 py-4 text-xs font-semibold text-ink-muted">
                   Nenhum boleto selecionavel nesta analise.
                 </div>
               )}

@@ -26,13 +26,13 @@ export function ConversationItem({
         <button
           aria-current={active ? "page" : undefined}
           aria-label={channel.name}
-          className="relative grid h-11 w-11 place-items-center rounded-xl text-left outline-none transition hover:bg-[#2A2B32]/80 focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:bg-[#2A2B32]"
+          className="relative grid h-11 w-11 place-items-center rounded-xl text-left outline-none transition hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:bg-black/[0.07] dark:hover:bg-white/[0.05] dark:data-[active=true]:bg-white/[0.08]"
           data-active={active}
           onClick={() => onSelect?.(channel.id)}
           type="button"
         >
           {active ? (
-            <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
+            <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-ink-muted" />
           ) : null}
           <ChannelAvatar
             active={active}
@@ -50,13 +50,13 @@ export function ConversationItem({
   return (
     <button
       aria-current={active ? "page" : undefined}
-      className="relative grid w-full grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-3 rounded-lg px-4 py-2 text-left outline-none transition hover:bg-[#2A2B32]/80 focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:bg-[#2A2B32]"
+      className="relative grid w-full grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-3 rounded-lg px-4 py-2 text-left outline-none transition hover:bg-black/[0.04] focus-visible:ring-2 focus-visible:ring-[#d0ad69] data-[active=true]:bg-black/[0.07] dark:hover:bg-white/[0.05] dark:data-[active=true]:bg-white/[0.08]"
       data-active={active}
       onClick={() => onSelect?.(channel.id)}
       type="button"
     >
       {active ? (
-        <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#A07C3B]" />
+        <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-ink-muted" />
       ) : null}
       <ChannelAvatar
         active={active}
@@ -85,8 +85,8 @@ export function ConversationItem({
             <span
               className={`truncate text-sm ${
                 channel.unreadCount || channel.unreadMentionCount
-                  ? "font-bold text-white"
-                  : "font-semibold text-[#f7f8fa]"
+                  ? "font-bold text-ink"
+                  : "font-semibold text-ink-soft"
               }`}
             >
               {channel.name}
@@ -154,7 +154,7 @@ function ChannelAvatar({
   return (
     <span
       className={`relative grid ${avatarSizeClass} place-items-center overflow-visible border bg-white/[0.06] ${
-        active ? "text-[#D5B46F]" : "text-[#f7f8fa]"
+        active ? "text-ink" : "text-ink-soft"
       } ${
         isDirect
           ? "rounded-full border-white/20 text-xs font-semibold shadow-[0_0_0_1px_rgba(255,255,255,0.08)]"
@@ -199,7 +199,7 @@ function ChannelAvatar({
       {isDirect && channel.status ? (
         <span
           aria-hidden="true"
-          className="absolute -bottom-0.5 -right-0.5 z-20 h-3 w-3 rounded-full border-2 border-[#343541] data-[status=agenda]:bg-sky-500 data-[status=away]:bg-red-500 data-[status=busy]:bg-sky-500 data-[status=lunch]:bg-yellow-400 data-[status=offline]:bg-zinc-500 data-[status=online]:bg-emerald-500"
+          className="absolute -bottom-0.5 -right-0.5 z-20 h-3 w-3 rounded-full border-2 border-line data-[status=agenda]:bg-sky-500 data-[status=away]:bg-red-500 data-[status=busy]:bg-sky-500 data-[status=lunch]:bg-yellow-400 data-[status=offline]:bg-zinc-500 data-[status=online]:bg-emerald-500"
           data-status={channel.status}
         />
       ) : null}

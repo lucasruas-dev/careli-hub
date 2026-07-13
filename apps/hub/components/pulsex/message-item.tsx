@@ -1,6 +1,5 @@
 "use client";
 
-import { AthenaIcon } from "@/components/athena-icon";
 import type {
   HermesMessage,
   HermesMessageMention,
@@ -23,6 +22,7 @@ import {
   Pencil,
   Reply,
   SmilePlus,
+  Sparkles,
   Tag,
   Video,
   X,
@@ -260,11 +260,11 @@ export function MessageItem({
       <div
         className={`group relative ${onOpenThread && !isEditing ? "cursor-pointer" : ""} ${
           isStandaloneVisual
-            ? "max-w-[10rem] border-0 bg-transparent px-1 py-0 text-[#101820] shadow-none"
+            ? "max-w-[10rem] border-0 bg-transparent px-1 py-0 text-ink shadow-none"
             : `max-w-[min(72%,46rem)] border px-3 py-2 shadow-[0_1px_2px_rgba(16,24,32,0.12)] ${
                 isOwn
-                  ? "rounded-2xl rounded-br-md border-[#d6e7df] bg-[#effaf5] text-[#101820]"
-                  : "rounded-2xl rounded-bl-md border-[#e5e9ef] bg-white text-[var(--uix-text-primary)]"
+                  ? "rounded-2xl rounded-br-md border-[#d6e7df] bg-[#effaf5] text-ink shadow-sm dark:border-[#1f6b50]/60 dark:bg-[#1c5742]"
+                  : "rounded-2xl rounded-bl-md border-[#e5e9ef] bg-surface text-[var(--uix-text-primary)] shadow-sm dark:border-white/[0.07] dark:bg-[#282b2a]"
               }`
         }`}
         onClick={handleBubbleClick}
@@ -274,8 +274,8 @@ export function MessageItem({
             aria-hidden="true"
             className={`absolute bottom-0 h-3 w-3 rotate-45 ${
               isOwn
-                ? "-right-1 border-r border-b border-[#d6e7df] bg-[#effaf5]"
-                : "-left-1 border-l border-b border-[#e5e9ef] bg-white"
+                ? "-right-1 border-r border-b border-[#d6e7df] bg-[#effaf5] dark:border-[#1f6b50]/60 dark:bg-[#1c5742]"
+                : "-left-1 border-l border-b border-[#e5e9ef] bg-surface dark:border-white/[0.07] dark:bg-[#282b2a]"
             }`}
           />
         ) : null}
@@ -303,7 +303,7 @@ export function MessageItem({
           <form className="relative grid gap-2" onSubmit={handleSubmitEdit}>
             <textarea
               aria-label="Editar mensagem"
-              className="max-h-32 min-h-20 resize-none rounded-md border border-[#d9e0ea] bg-white px-3 py-2 text-sm leading-5 text-[#121722] outline-none transition focus:border-[#A07C3B]"
+              className="max-h-32 min-h-20 resize-none rounded-md border border-line bg-surface px-3 py-2 text-sm leading-5 text-ink outline-none transition focus:border-[#A07C3B]"
               disabled={isSavingEdit}
               onChange={(event) => setEditValue(event.target.value)}
               onKeyDown={handleEditKeyDown}
@@ -318,7 +318,7 @@ export function MessageItem({
             <span className="flex justify-end gap-1.5">
               <button
                 aria-label="Cancelar edicao"
-                className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-8 w-8 place-items-center rounded-md text-ink-muted outline-none transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 disabled={isSavingEdit}
                 onClick={() => {
                   setEditValue(message.body);
@@ -352,11 +352,11 @@ export function MessageItem({
         ) : null}
         <div
           className={`relative mt-1 flex items-center justify-end gap-2 text-[0.66rem] ${
-            isOwn ? "text-[#2f6b52]" : "text-[#667085]"
+            isOwn ? "text-[#2f6b52] dark:text-[#9fd8bd]" : "text-ink-muted"
           }`}
         >
           {message.editedAt ? <span>editada</span> : null}
-          <span className="font-bold text-[#101820]">{message.timestamp}</span>
+          <span className="font-bold text-ink">{message.timestamp}</span>
           {isOwn ? (
             <Tooltip content={deliveryIndicator.label}>
               <span
@@ -375,7 +375,7 @@ export function MessageItem({
         </div>
         <div
           className={`relative mt-1.5 flex flex-wrap items-center gap-1 opacity-90 ${
-            isOwn ? "justify-end text-[#2f6b52]" : "justify-start"
+            isOwn ? "justify-end text-[#2f6b52] dark:text-[#9fd8bd]" : "justify-start"
           }`}
         >
           {onToggleReaction && !message.deletedAt ? (
@@ -383,7 +383,7 @@ export function MessageItem({
               <button
                 aria-expanded={isReactionPickerOpen}
                 aria-label="Reagir com emoji"
-                className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+                className="inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 dark:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
                 onClick={() => {
                   setIsInfoOpen(false);
                   setIsTagMenuOpen(false);
@@ -434,7 +434,7 @@ export function MessageItem({
                 </span>
               ) : null}
               {hasUnreadThreadReplies ? (
-                <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-white px-1 text-[0.56rem] font-black leading-none text-[#0f766e] ring-1 ring-[#0f766e]/25">
+                <span className="absolute -right-1.5 -top-1.5 grid h-4 min-w-4 place-items-center rounded-full bg-surface px-1 text-[0.56rem] font-black leading-none text-[#0f766e] ring-1 ring-[#0f766e]/25">
                   {threadUnreadCount > 9 ? "9+" : threadUnreadCount}
                 </span>
               ) : null}
@@ -443,17 +443,17 @@ export function MessageItem({
           {onAskAiReply && !message.deletedAt ? (
             <button
               aria-label="Responder com Athena"
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 dark:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
               onClick={() => onAskAiReply(message.id)}
               type="button"
             >
-              <AthenaIcon aria-hidden="true" className="size-4" />
+              <Sparkles aria-hidden="true" className="size-4" />
             </button>
           ) : null}
           {isOwn && onEditMessage && !message.deletedAt ? (
             <button
               aria-label="Editar mensagem"
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 dark:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
               onClick={() => {
                 setIsReactionPickerOpen(false);
                 setEditValue(message.body);
@@ -469,7 +469,7 @@ export function MessageItem({
             <button
               aria-expanded={isTagMenuOpen}
               aria-label="Marcar mensagem"
-              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              className="inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.68rem] text-inherit opacity-65 outline-none transition hover:bg-[#A07C3B]/10 hover:opacity-100 dark:opacity-90 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
               onClick={() => {
                 setIsReactionPickerOpen(false);
                 setIsInfoOpen(false);
@@ -480,14 +480,14 @@ export function MessageItem({
               <Tag aria-hidden="true" size={12} />
             </button>
             {isTagMenuOpen ? (
-              <div className="absolute right-0 top-full z-[90] mt-2 w-44 overflow-hidden rounded-md border border-[#d9e0ea] bg-[#ffffff] py-1 text-left text-xs text-[#344054] shadow-[0_16px_34px_rgba(16,24,32,0.20)] ring-1 ring-[#d9e0ea]">
+              <div className="absolute right-0 top-full z-[90] mt-2 w-44 overflow-hidden rounded-md border border-line bg-raised py-1 text-left text-xs text-ink shadow-[0_16px_34px_rgba(16,24,32,0.20)] ring-1 ring-line">
                 {hermesMessageTagOptions.map((tag) => {
                   const selected = message.tags?.includes(tag.id) ?? false;
 
                   return (
                     <button
                       aria-pressed={selected}
-                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left outline-none transition hover:bg-[#f3f6fa] focus-visible:bg-[#f3f6fa]"
+                      className="flex w-full items-center justify-between gap-2 px-3 py-2 text-left outline-none transition hover:bg-subtle focus-visible:bg-subtle"
                       key={tag.id}
                       onClick={() => onToggleTag?.(message.id, tag.id)}
                       type="button"
@@ -496,7 +496,7 @@ export function MessageItem({
                         className={`rounded-full border px-2 py-0.5 text-[0.64rem] font-semibold ${
                           selected
                             ? getHermesMessageTagClassName(tag.id)
-                            : "border-[#d9e0ea] bg-white text-[#667085]"
+                            : "border-line bg-surface text-ink-muted"
                         }`}
                       >
                         {tag.label}
@@ -589,8 +589,8 @@ function MessageInfoPanel({
   });
 
   return (
-    <div className="relative z-[90] mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-[#d9e0ea] bg-[#ffffff] p-3 text-left text-xs text-[#344054] shadow-[0_18px_42px_rgba(16,24,32,0.20)] ring-1 ring-[#d9e0ea]">
-      <div className="mb-2 flex items-center gap-2 border-b border-[#eef2f7] pb-2 text-sm font-semibold text-[#121722]">
+    <div className="relative z-[90] mt-2 max-h-64 w-full overflow-y-auto rounded-xl border border-line bg-raised p-3 text-left text-xs text-ink shadow-[0_18px_42px_rgba(16,24,32,0.20)] ring-1 ring-line">
+      <div className="mb-2 flex items-center gap-2 border-b border-line pb-2 text-sm font-semibold text-[#121722]">
         <CheckCheck aria-hidden="true" size={15} />
         Informações
       </div>
@@ -609,7 +609,7 @@ function MessageInfoPanel({
       ) : null}
       {message.tags?.length ? (
         <div className="mt-2">
-          <p className="m-0 mb-1 text-[0.68rem] font-semibold uppercase text-[#667085]">
+          <p className="m-0 mb-1 text-[0.68rem] font-semibold uppercase text-ink-muted">
             Tags
           </p>
           <div className="flex flex-wrap gap-1">
@@ -643,7 +643,7 @@ function ReactionPicker({
 }) {
   return (
     <div
-      className={`absolute top-full z-[90] mt-2 flex items-center gap-1 rounded-full border border-[#d9e0ea] bg-[#ffffff] px-1.5 py-1 shadow-[0_18px_40px_rgba(16,24,32,0.22)] ring-1 ring-[#d9e0ea] ${
+      className={`absolute top-full z-[90] mt-2 flex items-center gap-1 rounded-full border border-line bg-raised px-1.5 py-1 shadow-[0_18px_40px_rgba(16,24,32,0.22)] ring-1 ring-line ${
         placement === "right" ? "right-0" : "left-0"
       }`}
     >
@@ -659,7 +659,7 @@ function ReactionPicker({
           <button
             aria-label={`Reagir com ${emoji}`}
             aria-pressed={selected}
-            className="grid h-8 w-8 place-items-center rounded-full text-[1.2rem] outline-none transition hover:scale-125 hover:bg-[#f3f6fa] focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-[#eaf7f0]"
+            className="grid h-8 w-8 place-items-center rounded-full text-[1.2rem] outline-none transition hover:scale-125 hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-[#eaf7f0]"
             key={emoji}
             onClick={() => onSelect(emoji)}
             type="button"
@@ -689,7 +689,7 @@ function ReactionSummary({
         isOwn ? "justify-end" : "justify-start"
       }`}
     >
-      <div className="inline-flex max-w-full flex-wrap items-center gap-1 rounded-full border border-[#d9e0ea] bg-white px-1.5 py-0.5 text-xs shadow-sm">
+      <div className="flex max-w-full flex-wrap items-center gap-1 text-xs">
         {reactions.map((reaction) => {
           const selected =
             Boolean(currentUserId) &&
@@ -699,7 +699,7 @@ function ReactionSummary({
             <button
               aria-label={`${reaction.count} reacoes com ${reaction.emoji}`}
               aria-pressed={selected}
-              className="inline-flex h-6 items-center gap-1 rounded-full px-1.5 text-[0.72rem] font-semibold text-[#344054] outline-none transition hover:bg-[#f3f6fa] focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-[#eaf7f0] aria-pressed:text-[#16794f]"
+              className="inline-flex h-6 items-center gap-1 rounded-full border border-line bg-surface px-2 text-[0.72rem] font-semibold text-ink shadow-sm outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:border-[#16794f]/40 aria-pressed:bg-[#eaf7f0] aria-pressed:text-[#16794f] dark:aria-pressed:bg-[#16794f]/25 dark:aria-pressed:text-[#8fe0b8]"
               disabled={!onSelect}
               key={reaction.emoji}
               onClick={() => onSelect?.(reaction.emoji)}
@@ -751,7 +751,7 @@ export function MessageAttachmentPreview({
     return (
       <button
         aria-label={`Visualizar imagem ${attachment.label}`}
-        className="mb-2 block w-full overflow-hidden rounded-md border border-[#d9e0ea] bg-[#f3f6fa] text-left outline-none transition hover:border-[#A07C3B] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+        className="mb-2 block w-full overflow-hidden rounded-md border border-line bg-subtle text-left outline-none transition hover:border-[#A07C3B] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
         onClick={() => onPreview?.(attachment)}
         type="button"
       >
@@ -768,7 +768,7 @@ export function MessageAttachmentPreview({
 
   if (attachment.type === "audio" && attachment.url) {
     return (
-      <div className="mb-2 rounded-md border border-[#d9e0ea] bg-[#f3f6fa] p-2.5">
+      <div className="mb-2 rounded-md border border-line bg-subtle p-2.5">
         <AttachmentCaption attachment={attachment} />
         <audio className="mt-2 w-full" controls src={attachment.url} />
       </div>
@@ -777,7 +777,7 @@ export function MessageAttachmentPreview({
 
   if (attachment.type === "video" && attachment.url) {
     return (
-      <div className="mb-2 overflow-hidden rounded-md border border-[#d9e0ea] bg-[#f3f6fa]">
+      <div className="mb-2 overflow-hidden rounded-md border border-line bg-subtle">
         <video
           className="max-h-60 w-full bg-black"
           controls
@@ -791,9 +791,9 @@ export function MessageAttachmentPreview({
   const Icon = getAttachmentIcon(attachment.type);
 
   return (
-    <div className="mb-2 grid gap-2 rounded-md border border-[#d9e0ea] bg-[#f3f6fa] p-2.5 text-xs">
+    <div className="mb-2 grid gap-2 rounded-md border border-line bg-subtle p-2.5 text-xs">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-white text-[#667085]">
+        <span className="grid h-8 w-8 shrink-0 place-items-center rounded-md bg-surface text-ink-muted">
           <Icon aria-hidden="true" size={16} />
         </span>
         <span className="min-w-0 flex-1">
@@ -801,7 +801,7 @@ export function MessageAttachmentPreview({
             {attachment.label}
           </span>
           {attachment.sizeBytes ? (
-            <span className="mt-0.5 block text-[#667085]">
+            <span className="mt-0.5 block text-ink-muted">
               {formatFileSize(attachment.sizeBytes)}
             </span>
           ) : null}
@@ -822,7 +822,7 @@ export function MessageAttachmentPreview({
           />
         </div>
       ) : (
-        <span className="text-[#667085]">Arquivo indisponivel.</span>
+        <span className="text-ink-muted">Arquivo indisponivel.</span>
       )}
     </div>
   );
@@ -841,7 +841,7 @@ function AttachmentActionLink({
 }) {
   return (
     <a
-      className="inline-flex h-7 items-center gap-1.5 rounded-md border border-[#cfd8e3] bg-white px-2 font-semibold text-[#344054] no-underline outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      className="inline-flex h-7 items-center gap-1.5 rounded-md border border-line bg-surface px-2 font-semibold text-ink no-underline outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
       download={download}
       href={href}
       rel="noreferrer"
@@ -867,11 +867,11 @@ function AttachmentCaption({
         {attachment.label}
       </span>
       {attachment.durationSeconds ? (
-        <span className="text-[#667085]">
+        <span className="text-ink-muted">
           {formatDuration(attachment.durationSeconds)}
         </span>
       ) : attachment.sizeBytes ? (
-        <span className="text-[#667085]">
+        <span className="text-ink-muted">
           {formatFileSize(attachment.sizeBytes)}
         </span>
       ) : null}
@@ -904,7 +904,7 @@ function getAttachmentIcon(
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-2 py-1">
-      <span className="text-[#667085]">{label}</span>
+      <span className="text-ink-muted">{label}</span>
       <span className="min-w-0 truncate font-medium text-[#121722]">
         {value}
       </span>
@@ -943,7 +943,7 @@ function MessageAvatar({
   return (
     <span
       aria-label={`Foto de ${name}`}
-      className="mb-1 grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full border border-[#d9e0ea] bg-[#101820] text-[0.68rem] font-semibold text-white shadow-sm"
+      className="mb-1 grid h-8 w-8 shrink-0 place-items-center overflow-hidden rounded-full border border-line bg-[#101820] text-[0.68rem] font-semibold text-white shadow-sm"
       role="img"
       style={
         avatarUrl
@@ -1113,7 +1113,7 @@ function getDeliveryIndicator({
   if (message.deliveryStatus === "pending") {
     return {
       Icon: Clock3,
-      className: "text-[#8b98aa]",
+      className: "text-ink-muted",
       label: "Enviando",
     };
   }
@@ -1140,14 +1140,14 @@ function getDeliveryIndicator({
   ) {
     return {
       Icon: CheckCheck,
-      className: "text-[#8b98aa]",
+      className: "text-ink-muted",
       label: "Entregue",
     };
   }
 
   return {
     Icon: Check,
-    className: "text-[#8b98aa]",
+    className: "text-ink-muted",
     label: "Enviado",
   };
 }
@@ -1197,7 +1197,7 @@ function renderMessageBody(
             className="grid grid-cols-[0.85rem_minmax(0,1fr)] gap-1.5 py-0.5"
             key={`line-${index}`}
           >
-            <span className="pt-px text-center text-base font-black leading-5 text-[#101820]">
+            <span className="pt-px text-center text-base font-black leading-5 text-ink">
               •
             </span>
             <span className="min-w-0">

@@ -40,7 +40,7 @@ export function PanteonModuleTabsBar({
   tabs: readonly PanteonModuleTab[];
 }) {
   return (
-    <header className="flex h-[3.25rem] shrink-0 items-center gap-2 border-b border-white/[0.06] bg-[#0d141c] px-3">
+    <header className="flex h-[3.25rem] shrink-0 items-center gap-2 border-b border-white/[0.07] bg-[#0a0b0b] px-3">
       <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto">
         <PanteonHomeTab
           active={homeActive}

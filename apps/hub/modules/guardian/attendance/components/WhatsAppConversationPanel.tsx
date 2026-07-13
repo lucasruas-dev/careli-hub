@@ -677,19 +677,19 @@ export function WhatsAppConversationPanel({
   }
 
   return (
-    <section className="relative flex h-[calc(100vh-112px)] min-h-0 w-full overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="relative flex h-[calc(100vh-112px)] min-h-0 w-full overflow-hidden rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
         <aside
-          className={`hidden shrink-0 border-r border-slate-100 bg-slate-50/70 transition-all duration-300 lg:flex lg:flex-col ${
+          className={`hidden shrink-0 border-r border-line bg-subtle/70 transition-all duration-300 lg:flex lg:flex-col ${
             conversationListCollapsed ? "w-14" : "w-72"
           }`}
         >
-          <div className={`${conversationListCollapsed ? "p-2" : "border-b border-slate-100 p-3"}`}>
+          <div className={`${conversationListCollapsed ? "p-2" : "border-b border-line p-3"}`}>
             {conversationListCollapsed ? (
               <div className="flex flex-col items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setConversationListCollapsed(false)}
-                  className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                  className="flex size-9 items-center justify-center rounded-lg border border-line/70 bg-surface text-ink-muted transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:text-[#d9b877]"
                   aria-label="Expandir lista de conversas"
                 >
                   <PanelLeftOpen className="size-4" aria-hidden="true" />
@@ -697,7 +697,7 @@ export function WhatsAppConversationPanel({
                 <div className="flex size-9 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
                   <MessageCircle className="size-4" aria-hidden="true" />
                 </div>
-                <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                   {conversations.length}
                 </span>
               </div>
@@ -706,31 +706,31 @@ export function WhatsAppConversationPanel({
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Inbox WhatsApp</p>
-                <h2 className="mt-1 text-sm font-semibold text-slate-950">Conversas</h2>
+                <h2 className="mt-1 text-sm font-semibold text-ink">Conversas</h2>
               </div>
               <button
                 type="button"
                 onClick={() => setConversationListCollapsed(true)}
-                className="flex size-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white hover:text-[#7A5E2C]"
+                className="flex size-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-[#7A5E2C] dark:text-[#d9b877]"
                 aria-label="Recolher lista de conversas"
               >
                 <PanelLeftClose className="size-4" aria-hidden="true" />
               </button>
             </div>
-            <div className="mt-3 rounded-lg border border-slate-200/70 bg-white px-3 py-1.5">
+            <div className="mt-3 rounded-lg border border-line/70 bg-surface px-3 py-1.5">
               <input
                 aria-label="Buscar conversa"
                 placeholder="Buscar conversa..."
-                className="h-7 w-full bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+                className="h-7 w-full bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
               />
             </div>
-            <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-slate-100/70 p-1">
+            <div className="mt-2 grid grid-cols-3 gap-1 rounded-lg bg-subtle/70 p-1">
               {["Abertas", "Pendentes", "Encerradas"].map((filter, index) => (
                 <button
                   key={filter}
                   type="button"
                   className={`h-7 rounded-md text-[11px] font-semibold transition-colors ${
-                    index === 0 ? "bg-white text-[#7A5E2C] shadow-sm" : "text-slate-500 hover:bg-white/70"
+                    index === 0 ? "bg-surface text-[#7A5E2C] dark:text-[#d9b877] shadow-sm" : "text-ink-muted hover:bg-surface/70"
                   }`}
                 >
                   {filter}
@@ -750,14 +750,14 @@ export function WhatsAppConversationPanel({
                 className={`mb-2 w-full rounded-lg border px-3 py-2.5 text-left transition-colors ${
                   conversation.id === client.id
                     ? "border-[#A07C3B]/25 bg-[#A07C3B]/5"
-                    : "border-slate-200/70 bg-white hover:bg-slate-50"
+                    : "border-line/70 bg-surface hover:bg-subtle"
                 }`}
               >
                 <div className="flex items-start justify-between gap-3">
-                  <p className="min-w-0 truncate text-sm font-semibold text-slate-950">{conversation.name}</p>
-                  <span className="text-[11px] text-slate-400">{conversation.time}</span>
+                  <p className="min-w-0 truncate text-sm font-semibold text-ink">{conversation.name}</p>
+                  <span className="text-[11px] text-ink-muted">{conversation.time}</span>
                 </div>
-                <p className="mt-1 line-clamp-1 text-xs text-slate-500">{conversation.preview}</p>
+                <p className="mt-1 line-clamp-1 text-xs text-ink-muted">{conversation.preview}</p>
               </button>
             ))}
           </div>
@@ -765,15 +765,15 @@ export function WhatsAppConversationPanel({
         </aside>
 
         <main className="flex min-w-0 flex-1 flex-col">
-          <header className="shrink-0 border-b border-slate-100 bg-white">
+          <header className="shrink-0 border-b border-line bg-surface">
             <div className="flex flex-col gap-2 px-4 py-2.5 xl:flex-row xl:items-center xl:justify-between">
               <div className="flex min-w-0 items-center gap-3">
-                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+                <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-100 dark:ring-emerald-500/25">
                   <MessageCircle className="size-5" aria-hidden="true" />
                 </div>
                 <div className="min-w-0">
-                  <h2 className="truncate text-base font-semibold text-slate-950">{client.nome}</h2>
-                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
+                  <h2 className="truncate text-base font-semibold text-ink">{client.nome}</h2>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-ink-muted">
                     <span>{ticket.protocol}</span>
                     <span aria-hidden="true">•</span>
                     <span>{ticket.status}</span>
@@ -781,7 +781,7 @@ export function WhatsAppConversationPanel({
                       <>
                         <span aria-hidden="true">•</span>
                         <Tooltip content="Ticket criado automaticamente após mensagem recebida." placement="bottom">
-                          <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                          <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                             ? Autoaberto
                           </span>
                         </Tooltip>
@@ -793,12 +793,12 @@ export function WhatsAppConversationPanel({
 
               <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center xl:justify-end">
                 {ticketActive ? (
-                  <label className="inline-flex h-9 max-w-full items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/70 px-2 text-xs font-semibold text-slate-600">
+                  <label className="inline-flex h-9 max-w-full items-center gap-2 rounded-lg border border-line/70 bg-subtle/70 px-2 text-xs font-semibold text-ink-soft">
                     <span className="shrink-0">Perfil</span>
                     <select
                       value={ticket.profileId}
                       onChange={(event) => changeTicketProfile(event.target.value)}
-                      className="h-6 max-w-52 bg-transparent text-xs font-semibold text-slate-700 outline-none"
+                      className="h-6 max-w-52 bg-transparent text-xs font-semibold text-ink outline-none"
                     >
                       {irisTicketProfiles.map((profile) => (
                         <option key={profile.id} value={profile.id}>
@@ -808,7 +808,7 @@ export function WhatsAppConversationPanel({
                     </select>
                   </label>
                 ) : null}
-                <div className="flex w-fit items-center gap-1 rounded-lg border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+                <div className="flex w-fit items-center gap-1 rounded-lg border border-line/70 bg-surface p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
                   <HeaderToolbarButton icon={ArrowLeft} label="Voltar para atendimento" onClick={onClose} />
                   {ticketActive ? (
                     <HeaderToolbarButton icon={X} label="Encerrar atendimento" onClick={() => setTicketCloseOpen(true)} />
@@ -839,26 +839,26 @@ export function WhatsAppConversationPanel({
           </header>
 
           {feedback ? (
-            <div className="mx-4 mt-3 rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+            <div className="mx-4 mt-3 rounded-xl border border-emerald-100 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/12 px-3 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-300">
               {feedback}
             </div>
           ) : null}
 
-          <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/40 px-4 py-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-subtle/40 px-4 py-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
             <div className="mx-auto max-w-5xl space-y-4">
               {visiblePreviousTicketCycles.length > 0 ? (
                 <div className="flex flex-col items-center gap-2">
                   <button
                     type="button"
                     onClick={() => setShowPreviousTickets((current) => !current)}
-                    className="inline-flex h-9 items-center rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+                    className="inline-flex h-9 items-center rounded-lg border border-line/70 bg-surface px-3 text-xs font-semibold text-ink-soft shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
                   >
                     {showPreviousTickets
                       ? "Ocultar tickets anteriores"
                       : `Ver tickets anteriores (${visiblePreviousTicketCycles.length})`}
                   </button>
                   {archivedTicketCount > 0 && showPreviousTickets ? (
-                    <span className="text-[11px] font-medium text-slate-400">
+                    <span className="text-[11px] font-medium text-ink-muted">
                       Histórico completo preparado para paginação futura
                     </span>
                   ) : null}
@@ -912,10 +912,10 @@ export function WhatsAppConversationPanel({
             </div>
           </div>
 
-          <footer className="shrink-0 border-t border-slate-100 bg-white p-2.5">
+          <footer className="shrink-0 border-t border-line bg-surface p-2.5">
             {!operationReady ? (
-              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2">
-                <div className="flex items-center gap-2 text-xs font-semibold text-amber-800">
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-amber-200 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/12 px-3 py-2">
+                <div className="flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
                   <LockKeyhole className="size-3.5" aria-hidden="true" />
                   <span>? Complete o ticket para iniciar o atendimento</span>
                 </div>
@@ -935,7 +935,7 @@ export function WhatsAppConversationPanel({
               {operationReady ? <TicketChecklist items={ticketChecklist} compact /> : null}
             </div>
 
-            <div className={`flex items-end gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-2 transition-opacity ${operationReady ? "opacity-100" : "opacity-55"}`}>
+            <div className={`flex items-end gap-2 rounded-xl border border-line/70 bg-subtle/70 p-2 transition-opacity ${operationReady ? "opacity-100" : "opacity-55"}`}>
               <ComposerIconButton disabled={!operationReady || sendingMessage} label="Emoji" onClick={() => setDraft((current) => `${current}??`)}>
                 <Smile className="size-4" aria-hidden="true" />
               </ComposerIconButton>
@@ -947,7 +947,7 @@ export function WhatsAppConversationPanel({
                 onChange={(event) => setDraft(event.target.value)}
                 placeholder={operationReady ? "Escrever mensagem WhatsApp..." : "Ticket incompleto"}
                 disabled={!operationReady || sendingMessage}
-                className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-ink outline-none placeholder:text-ink-muted"
               />
               <ComposerIconButton disabled={!operationReady || sendingMessage} label="Enviar áudio" onClick={() => sendMessage("audio")}>
                 <Mic className="size-4" aria-hidden="true" />
@@ -957,7 +957,7 @@ export function WhatsAppConversationPanel({
                   type="button"
                   disabled={!operationReady || sendingMessage}
                   onClick={() => sendMessage("text")}
-                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-subtle"
                   aria-label={operationReady ? "Enviar mensagem" : blockedTooltip}
                 >
                   <Send className="size-4" aria-hidden="true" />
@@ -968,7 +968,7 @@ export function WhatsAppConversationPanel({
         </main>
 
         <aside
-          className={`hidden shrink-0 border-l border-slate-100 bg-white transition-all duration-300 xl:block ${
+          className={`hidden shrink-0 border-l border-line bg-surface transition-all duration-300 xl:block ${
             contextCollapsed ? "w-14" : "w-[380px]"
           }`}
         >
@@ -978,7 +978,7 @@ export function WhatsAppConversationPanel({
                 <button
                   type="button"
                   onClick={() => setContextCollapsed(false)}
-                  className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                  className="flex size-9 items-center justify-center rounded-lg border border-line/70 bg-surface text-ink-muted transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:text-[#d9b877]"
                   aria-label="Expandir contexto"
                 >
                   <PanelRightOpen className="size-4" aria-hidden="true" />
@@ -1075,12 +1075,12 @@ function MessageBubble({ message, showDate }: { message: WhatsAppMessage; showDa
       {showDate ? <DateSeparator label={message.date} /> : null}
       <div className={`flex ${sent ? "justify-end" : "justify-start"}`}>
         <div
-          className={`max-w-[82%] rounded-2xl px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ring-1 ${
-            sent ? "bg-[#A07C3B]/8 text-slate-900 ring-[#A07C3B]/15" : "bg-white text-slate-900 ring-slate-200/70"
+          className={`max-w-[82%] rounded-2xl px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] ring-1 ${
+            sent ? "bg-[#A07C3B]/8 text-ink ring-[#A07C3B]/15" : "bg-surface text-ink ring-line/70"
           }`}
         >
           <MessageContent message={message} />
-          <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-slate-400">
+          <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-ink-muted">
             {message.operator ? <span>{message.operator}</span> : null}
             <span>{message.time}</span>
             {sent ? <MessageStatusIcon status={message.status ?? "enviada"} /> : null}
@@ -1095,24 +1095,24 @@ function MessageContent({ message }: { message: WhatsAppMessage }) {
   if (message.kind === "audio") {
     return (
       <div className="flex min-w-56 items-center gap-3">
-        <div className="flex size-9 items-center justify-center rounded-full bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
+        <div className="flex size-9 items-center justify-center rounded-full bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-100 dark:ring-emerald-500/25">
           <Mic className="size-4" aria-hidden="true" />
         </div>
-        <div className="h-2 flex-1 overflow-hidden rounded-full bg-slate-200">
+        <div className="h-2 flex-1 overflow-hidden rounded-full bg-subtle">
           <div className="h-full w-2/3 rounded-full bg-[#A07C3B]" />
         </div>
-        <span className="text-xs font-semibold text-slate-500">{message.duration}</span>
+        <span className="text-xs font-semibold text-ink-muted">{message.duration}</span>
       </div>
     );
   }
 
   if (message.kind === "document") {
     return (
-      <div className="flex min-w-64 items-center gap-3 rounded-xl border border-slate-200/70 bg-white/70 p-3">
+      <div className="flex min-w-64 items-center gap-3 rounded-xl border border-line/70 bg-surface/70 p-3">
         <FileText className="size-5 shrink-0 text-[#A07C3B]" aria-hidden="true" />
         <div className="min-w-0">
-          <p className="truncate text-sm font-semibold text-slate-950">{message.fileName}</p>
-          <p className="mt-0.5 text-xs text-slate-500">{message.body}</p>
+          <p className="truncate text-sm font-semibold text-ink">{message.fileName}</p>
+          <p className="mt-0.5 text-xs text-ink-muted">{message.body}</p>
         </div>
       </div>
     );
@@ -1123,31 +1123,31 @@ function MessageContent({ message }: { message: WhatsAppMessage }) {
 
 function MessageStatusIcon({ status }: { status: MessageStatus }) {
   if (status === "lida") return <CheckCheck className="size-3.5 text-sky-500" aria-hidden="true" />;
-  if (status === "entregue") return <CheckCheck className="size-3.5 text-slate-400" aria-hidden="true" />;
-  return <Check className="size-3.5 text-slate-400" aria-hidden="true" />;
+  if (status === "entregue") return <CheckCheck className="size-3.5 text-ink-muted" aria-hidden="true" />;
+  return <Check className="size-3.5 text-ink-muted" aria-hidden="true" />;
 }
 
 function TicketSeparator({ compact = false, cycle }: { compact?: boolean; cycle: TicketCycle }) {
   return (
     <div className={`relative ${compact ? "py-1" : "py-2"}`}>
-      <div className="absolute left-0 right-0 top-1/2 h-px bg-slate-200/80" aria-hidden="true" />
+      <div className="absolute left-0 right-0 top-1/2 h-px bg-subtle/80" aria-hidden="true" />
       <div
-        className={`relative mx-auto w-fit max-w-full border border-slate-200/70 bg-white text-center shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+        className={`relative mx-auto w-fit max-w-full border border-line/70 bg-surface text-center shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] ${
           compact ? "rounded-xl px-3 py-2" : "rounded-2xl px-4 py-3"
         }`}
       >
         <div className="flex flex-wrap items-center justify-center gap-2">
-          <span className="rounded-full bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+          <span className="rounded-full bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
             Ticket {cycle.protocol}
           </span>
-          <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+          <span className="rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
             {cycle.status}
           </span>
         </div>
-        <p className={`${compact ? "mt-1 text-xs" : "mt-2 text-sm"} font-semibold text-slate-950`}>
+        <p className={`${compact ? "mt-1 text-xs" : "mt-2 text-sm"} font-semibold text-ink`}>
           {cycle.profileName}
         </p>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-ink-muted">
           {cycle.openedAt} · {cycle.operator}
           {cycle.unitCode ? ` · ${cycle.unitCode}` : ""}
         </p>
@@ -1349,22 +1349,22 @@ function TicketSetupModal({
   }
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/25 px-4 backdrop-blur-[2px]">
       <button
         type="button"
         aria-label="Fechar abertura de ticket"
         onClick={onClose}
         className="absolute inset-0 cursor-default"
       />
-      <section className="relative z-10 w-full max-w-4xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
-        <header className="border-b border-slate-100 px-5 py-4">
+      <section className="relative z-10 w-full max-w-4xl rounded-2xl border border-line/70 bg-surface shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
+        <header className="border-b border-line px-5 py-4">
           <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">
             {mode === "complete" ? "Completar cobranca" : "Abertura Iris"}
           </p>
-          <h2 className="mt-1 text-lg font-semibold text-slate-950">
+          <h2 className="mt-1 text-lg font-semibold text-ink">
             {mode === "complete" ? "Completar dados da cobranca" : "Iniciar cobranca pela Iris"}
           </h2>
-          <p className="mt-1 text-sm text-slate-500">
+          <p className="mt-1 text-sm text-ink-muted">
             {mode === "complete"
               ? "Complete os dados operacionais da cobranca criada a partir do atendimento do cliente."
               : "A Iris cria o atendimento AT e o Hades registra a cobranca CB vinculada a esse atendimento."}
@@ -1376,12 +1376,12 @@ function TicketSetupModal({
             <div className="grid gap-3 sm:grid-cols-2">
               <ReadonlyField label="Cliente" value={client.nome} />
               <ReadonlyField label="Telefone" value={client.dados360.telefone} />
-              <label className="min-w-0 rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-                <span className="text-xs font-medium text-slate-500">Canal</span>
+              <label className="min-w-0 rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+                <span className="text-xs font-medium text-ink-muted">Canal</span>
                 <select
                   value={channelId}
                   onChange={(event) => setChannelId(event.target.value)}
-                  className="mt-1 h-7 w-full min-w-0 rounded-md border border-transparent bg-slate-50/80 px-2 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-white focus:ring-2 focus:ring-[#A07C3B]/10"
+                  className="mt-1 h-7 w-full min-w-0 rounded-md border border-transparent bg-subtle/80 px-2 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-surface focus:ring-2 focus:ring-[#A07C3B]/10"
                 >
                   {channels.map((channel) => (
                     <option key={channel.id} value={channel.id}>
@@ -1394,12 +1394,12 @@ function TicketSetupModal({
             </div>
 
             <div className="grid gap-3 sm:grid-cols-2">
-              <label className="block rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-                <span className="text-xs font-medium text-slate-500">Fila Iris</span>
+              <label className="block rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+                <span className="text-xs font-medium text-ink-muted">Fila Iris</span>
                 <select
                   value={queueId}
                   onChange={(event) => setQueueId(event.target.value)}
-                  className="mt-1 h-9 w-full rounded-lg border border-transparent bg-slate-50/80 px-2 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-white focus:ring-2 focus:ring-[#A07C3B]/10"
+                  className="mt-1 h-9 w-full rounded-lg border border-transparent bg-subtle/80 px-2 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-surface focus:ring-2 focus:ring-[#A07C3B]/10"
                 >
                   {queues.map((queue) => (
                     <option key={queue.id} value={queue.id}>
@@ -1409,11 +1409,11 @@ function TicketSetupModal({
                 </select>
               </label>
               <label className="block rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 py-2.5">
-                <span className="text-xs font-semibold text-[#7A5E2C]">Perfil</span>
+                <span className="text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877]">Perfil</span>
                 <select
                   value={profileId}
                   onChange={(event) => setProfileId(event.target.value)}
-                  className="mt-1 h-9 w-full rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-sm font-semibold text-slate-800 outline-none transition-colors focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
+                  className="mt-1 h-9 w-full rounded-lg border border-[#A07C3B]/20 bg-surface px-3 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
                 >
                   {profilesForQueue.map((profile) => (
                     <option key={profile.id} value={profile.id}>
@@ -1424,12 +1424,12 @@ function TicketSetupModal({
               </label>
             </div>
 
-            <label className="block rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-              <span className="text-xs font-medium text-slate-500">Template Meta aprovado</span>
+            <label className="block rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+              <span className="text-xs font-medium text-ink-muted">Template Meta aprovado</span>
               <select
                 value={templateId}
                 onChange={(event) => setTemplateId(event.target.value)}
-                className="mt-1 h-9 w-full rounded-lg border border-transparent bg-slate-50/80 px-2 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-white focus:ring-2 focus:ring-[#A07C3B]/10"
+                className="mt-1 h-9 w-full rounded-lg border border-transparent bg-subtle/80 px-2 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-surface focus:ring-2 focus:ring-[#A07C3B]/10"
               >
                 {templates.map((template) => (
                   <option key={template.id} value={template.id}>
@@ -1437,14 +1437,14 @@ function TicketSetupModal({
                   </option>
                 ))}
               </select>
-              <p className="mt-2 text-xs font-medium text-slate-500">
+              <p className="mt-2 text-xs font-medium text-ink-muted">
                 {selectedTemplate?.templateName ?? "Aguardando template aprovado na Iris."}
               </p>
             </label>
 
             {requiresIrisUnit(selectedProfile) ? (
-              <div className="rounded-xl border border-slate-200/70 bg-white p-3">
-                <p className="text-xs font-semibold text-slate-500">Unidade vinculada a cobranca</p>
+              <div className="rounded-xl border border-line/70 bg-surface p-3">
+                <p className="text-xs font-semibold text-ink-muted">Unidade vinculada a cobranca</p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {client.carteira.unidades.map((unit) => {
                     const active = selectedUnitIds.includes(unit.id);
@@ -1457,7 +1457,7 @@ function TicketSetupModal({
                         className={`min-h-9 rounded-lg px-3 py-1.5 text-left text-xs font-semibold transition-colors ${
                           active
                             ? "bg-[#A07C3B] text-white"
-                            : "border border-slate-200/70 bg-white text-slate-600 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+                            : "border border-line/70 bg-surface text-ink-soft hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
                         }`}
                       >
                         {unit.matricula} · {unit.unidadeLote}
@@ -1471,10 +1471,10 @@ function TicketSetupModal({
             )}
 
             {requiresIrisInstallment(selectedProfile) ? (
-              <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+              <div className="rounded-xl border border-line/70 bg-subtle/70 p-3">
                 <div className="flex items-center justify-between gap-3">
-                  <p className="text-xs font-semibold text-slate-500">Parcelas relacionadas</p>
-                  <span className="text-xs font-semibold text-[#7A5E2C]">
+                  <p className="text-xs font-semibold text-ink-muted">Parcelas relacionadas</p>
+                  <span className="text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
                     {relatedInstallments.length} selecionada(s)
                   </span>
                 </div>
@@ -1487,7 +1487,7 @@ function TicketSetupModal({
                         Array.from(event.currentTarget.selectedOptions).map((option) => option.value),
                       )
                     }
-                    className="mt-3 min-h-40 w-full rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
+                    className="mt-3 min-h-40 w-full rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
                   >
                     {installmentOptions.map((installment) => (
                       <option key={installment.value} value={installment.value}>
@@ -1496,7 +1496,7 @@ function TicketSetupModal({
                     ))}
                   </select>
                 ) : (
-                    <p className="text-sm font-medium text-slate-500">
+                    <p className="text-sm font-medium text-ink-muted">
                       Aguardando parcelas reais do C2X para a unidade selecionada.
                     </p>
                 )}
@@ -1505,18 +1505,18 @@ function TicketSetupModal({
               <ReadonlyField label="Parcelas relacionadas" value="Nao obrigatorio para este perfil" />
             )}
 
-            <label className="block rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-              <span className="text-xs font-semibold text-slate-500">Observacao inicial, se necessario</span>
+            <label className="block rounded-xl border border-line/70 bg-subtle/70 p-3">
+              <span className="text-xs font-semibold text-ink-muted">Observacao inicial, se necessario</span>
               <textarea
                 value={initialNote}
                 onChange={(event) => setInitialNote(event.target.value)}
-                className="mt-2 min-h-20 w-full resize-none rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+                className="mt-2 min-h-20 w-full resize-none rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm leading-6 text-ink outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
                 placeholder="Contexto breve do atendimento..."
               />
             </label>
           </div>
 
-          <aside className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
+          <aside className="rounded-xl border border-line/70 bg-subtle/70 p-4">
             <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Iris</p>
             <div className="mt-3 grid gap-2">
               <ReadonlyField label="Canal" value={selectedChannel?.name ?? EMPTY_FIELD} />
@@ -1531,7 +1531,7 @@ function TicketSetupModal({
             <button
               type="button"
               onClick={() => setSlaExpanded((current) => !current)}
-              className="mt-3 inline-flex h-9 w-full items-center justify-between rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:text-[#7A5E2C]"
+              className="mt-3 inline-flex h-9 w-full items-center justify-between rounded-lg border border-line/70 bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:text-[#7A5E2C] dark:text-[#d9b877]"
             >
               SLA e prioridade
               <span>{slaExpanded ? "Ocultar" : "Expandir"}</span>
@@ -1544,7 +1544,7 @@ function TicketSetupModal({
                 <ReadonlyField label="Resolucao" value={selectedProfile ? formatSlaMinutes(selectedProfile.slaResolutionMinutes) : EMPTY_FIELD} />
               </div>
             ) : null}
-            <p className="mt-3 text-xs leading-5 text-slate-500">
+            <p className="mt-3 text-xs leading-5 text-ink-muted">
               {selectedUnits.length
                 ? `Unidade(s): ${selectedUnits.map((unit) => unit?.matricula).filter(Boolean).join(", ")}`
                 : "Selecione a unidade para carregar as parcelas."}
@@ -1552,9 +1552,9 @@ function TicketSetupModal({
           </aside>
         </div>
 
-        <footer className="border-t border-slate-100 p-4">
+        <footer className="border-t border-line p-4">
           {error || formError || !templateApproved || !canOpenTicket ? (
-            <p className="mb-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-medium text-amber-800">
+            <p className="mb-3 rounded-lg border border-amber-200 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-sm font-medium text-amber-800 dark:text-amber-300">
               {error
                 ? error
                 : formError
@@ -1613,24 +1613,24 @@ function TicketCloseModal({
   const [finalNote, setFinalNote] = useState("Atendimento encerrado com histórico consolidado para acompanhamento.");
 
   return (
-    <div className="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/25 px-4 backdrop-blur-[2px]">
+    <div className="absolute inset-0 z-30 flex items-center justify-center bg-black/25 px-4 backdrop-blur-[2px]">
       <button
         type="button"
         aria-label="Fechar encerramento de ticket"
         onClick={onClose}
         className="absolute inset-0 cursor-default"
       />
-      <section className="relative z-10 w-full max-w-xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+      <section className="relative z-10 w-full max-w-xl rounded-2xl border border-line/70 bg-surface shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
+        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>
             <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Encerrar atendimento</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">Ticket {ticket.protocol}</h2>
+            <h2 className="mt-1 text-lg font-semibold text-ink">Ticket {ticket.protocol}</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fechar encerramento"
-            className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            className="flex size-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -1639,17 +1639,17 @@ function TicketCloseModal({
         <div className="space-y-3 p-5">
           <EditableField label="Resultado do atendimento" value={result} onChange={setResult} />
           <EditableField label="Próximo passo" value={nextStep} onChange={setNextStep} />
-          <label className="block rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-            <span className="text-xs font-semibold tracking-normal text-slate-400">Observação final</span>
+          <label className="block rounded-xl border border-line/70 bg-subtle/70 p-4">
+            <span className="text-xs font-semibold tracking-normal text-ink-muted">Observação final</span>
             <textarea
               value={finalNote}
               onChange={(event) => setFinalNote(event.target.value)}
-              className="mt-2 min-h-24 w-full resize-none rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="mt-2 min-h-24 w-full resize-none rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm leading-6 text-ink outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
             />
           </label>
         </div>
 
-        <footer className="border-t border-slate-100 p-4">
+        <footer className="border-t border-line p-4">
           <button
             type="button"
             onClick={() => onSubmit(result, nextStep, finalNote)}
@@ -1744,30 +1744,30 @@ function OperationDrawer({
   }
 
   return (
-    <div className="absolute inset-0 z-30 flex justify-end bg-slate-950/25 backdrop-blur-[2px]">
+    <div className="absolute inset-0 z-30 flex justify-end bg-black/25 backdrop-blur-[2px]">
       <button
         type="button"
         aria-label="Fechar operacao"
         onClick={onClose}
         className="absolute inset-0 cursor-default"
       />
-      <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+      <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>
             <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">
               WhatsApp operacional
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">
+            <h2 className="mt-1 text-lg font-semibold text-ink">
               {isPromise ? "Registrar promessa" : isAgreement ? "Criar acordo" : isBoleto ? "Enviar boleto" : "Consultar parcelas"}
             </h2>
-            <p className="mt-1 text-sm text-slate-500">{client.nome} · {client.dados360.telefone}</p>
-            <p className="mt-1 text-xs font-semibold text-[#7A5E2C]">Origem: WhatsApp • Ticket {ticket.protocol}</p>
+            <p className="mt-1 text-sm text-ink-muted">{client.nome} · {client.dados360.telefone}</p>
+            <p className="mt-1 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877]">Origem: WhatsApp • Ticket {ticket.protocol}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fechar formulário"
-            className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            className="flex size-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -1778,11 +1778,11 @@ function OperationDrawer({
             <ReadonlyField label="Cliente" value={client.nome} />
             <ReadonlyField label="Telefone" value={client.dados360.telefone} />
             <label className="min-w-0 rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 py-2.5 sm:col-span-2">
-              <span className="text-xs font-semibold text-[#7A5E2C]">Unidade relacionada à ação</span>
+              <span className="text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877]">Unidade relacionada à ação</span>
               <select
                 value={unit?.id ?? ""}
                 onChange={(event) => setUnitId(event.target.value)}
-                className="mt-2 h-9 w-full rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-sm font-semibold text-slate-700 outline-none"
+                className="mt-2 h-9 w-full rounded-lg border border-[#A07C3B]/20 bg-surface px-3 text-sm font-semibold text-ink outline-none"
               >
                 {client.carteira.unidades.map((portfolioUnit) => (
                   <option key={portfolioUnit.id} value={portfolioUnit.id}>
@@ -1831,13 +1831,13 @@ function OperationDrawer({
           </div>
 
           {isBoleto || mode === "installments" ? (
-            <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+            <div className="mt-4 rounded-xl border border-line/70 bg-subtle/70 p-3">
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Consulta C2X</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-950">Boletos originais vinculados à unidade</p>
+                  <p className="mt-1 text-sm font-semibold text-ink">Boletos originais vinculados à unidade</p>
                 </div>
-                <span className="w-fit rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                <span className="w-fit rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink-muted ring-1 ring-line">
                   Hades não gera boletos
                 </span>
               </div>
@@ -1853,13 +1853,13 @@ function OperationDrawer({
                       onClick={() => setSelectedBoletoId(boleto.id)}
                       className={`rounded-lg border p-3 text-left transition-colors ${
                         active
-                          ? "border-[#A07C3B]/30 bg-white shadow-sm"
-                          : "border-slate-200/70 bg-white/70 hover:border-[#A07C3B]/20 hover:bg-white"
+                          ? "border-[#A07C3B]/30 bg-surface shadow-sm"
+                          : "border-line/70 bg-surface/70 hover:border-[#A07C3B]/20 hover:bg-surface"
                       }`}
                     >
                       <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="text-sm font-semibold text-slate-950">Parcela {boleto.parcela}</p>
-                        <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                        <p className="text-sm font-semibold text-ink">Parcela {boleto.parcela}</p>
+                        <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-muted ring-1 ring-line">
                           {boleto.status}
                         </span>
                       </div>
@@ -1874,14 +1874,14 @@ function OperationDrawer({
               </div>
 
               {selectedBoleto ? (
-                <div className="mt-3 rounded-lg border border-dashed border-slate-300 bg-white p-3">
+                <div className="mt-3 rounded-lg border border-dashed border-line bg-surface p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div>
-                      <p className="text-xs font-semibold tracking-normal text-slate-400">Preview C2X</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-950">Boleto original • Parcela {selectedBoleto.parcela}</p>
-                      <p className="mt-1 font-mono text-xs text-slate-500">{selectedBoleto.linhaDigitavel}</p>
+                      <p className="text-xs font-semibold tracking-normal text-ink-muted">Preview C2X</p>
+                      <p className="mt-1 text-sm font-semibold text-ink">Boleto original • Parcela {selectedBoleto.parcela}</p>
+                      <p className="mt-1 font-mono text-xs text-ink-muted">{selectedBoleto.linhaDigitavel}</p>
                     </div>
-                    <span className="rounded-md bg-[#A07C3B]/5 px-2 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                    <span className="rounded-md bg-[#A07C3B]/5 px-2 py-1 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                       C2X
                     </span>
                   </div>
@@ -1890,17 +1890,17 @@ function OperationDrawer({
             </div>
           ) : null}
 
-          <label className="mt-4 block rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-            <span className="text-xs font-semibold tracking-normal text-slate-400">Observação</span>
+          <label className="mt-4 block rounded-xl border border-line/70 bg-subtle/70 p-4">
+            <span className="text-xs font-semibold tracking-normal text-ink-muted">Observação</span>
             <textarea
               value={note}
               onChange={(event) => setNote(event.target.value)}
-              className="mt-2 min-h-24 w-full resize-none rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="mt-2 min-h-24 w-full resize-none rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm leading-6 text-ink outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
             />
           </label>
         </div>
 
-        <footer className="border-t border-slate-100 p-4">
+        <footer className="border-t border-line p-4">
           <button
             type="button"
             onClick={save}
@@ -1956,25 +1956,25 @@ function ClientContextPanel({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="border-b border-slate-100 p-3">
+      <div className="border-b border-line p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Contexto</p>
-            <h3 className="mt-1 truncate text-sm font-semibold text-slate-950">{client.nome}</h3>
-            <p className="mt-0.5 text-xs text-slate-500">{client.dados360.telefone}</p>
+            <h3 className="mt-1 truncate text-sm font-semibold text-ink">{client.nome}</h3>
+            <p className="mt-0.5 text-xs text-ink-muted">{client.dados360.telefone}</p>
           </div>
           <Tooltip content="Recolher contexto" placement="bottom">
             <button
               type="button"
               onClick={onCollapse}
-              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+              className="flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-[#7A5E2C] dark:text-[#d9b877]"
               aria-label="Recolher contexto"
             >
               <PanelRightClose className="size-4" aria-hidden="true" />
             </button>
           </Tooltip>
         </div>
-        <div className="mt-3 flex gap-1 overflow-x-auto rounded-lg bg-slate-100/70 p-1 [scrollbar-width:none]">
+        <div className="mt-3 flex gap-1 overflow-x-auto rounded-lg bg-subtle/70 p-1 [scrollbar-width:none]">
           {contextTabs.map((tab) => {
             const Icon = tab.icon;
             return (
@@ -1984,7 +1984,7 @@ function ClientContextPanel({
                   onClick={() => setActiveTab(tab.id)}
                   aria-label={tab.label}
                   className={`flex size-8 shrink-0 items-center justify-center rounded-md transition-colors ${
-                    activeTab === tab.id ? "bg-white text-[#7A5E2C] shadow-sm" : "text-slate-500 hover:bg-white/70"
+                    activeTab === tab.id ? "bg-surface text-[#7A5E2C] dark:text-[#d9b877] shadow-sm" : "text-ink-muted hover:bg-surface/70"
                   }`}
                 >
                   <Icon className="size-4" aria-hidden="true" />
@@ -2012,7 +2012,7 @@ function ClientContextPanel({
             <ContextItem label="Unidade vinculada" value={selectedUnit?.matricula ?? "-"} />
             </div>
             <div className="space-y-2">
-              <p className="text-xs font-semibold tracking-normal text-slate-400">Unidades</p>
+              <p className="text-xs font-semibold tracking-normal text-ink-muted">Unidades</p>
               {client.carteira.unidades.map((unit) => {
               const active = selectedUnitId === unit.id;
 
@@ -2023,17 +2023,17 @@ function ClientContextPanel({
                   onClick={() => onSelectUnit(unit.id)}
                   className={`w-full rounded-xl border px-3 py-2 text-left transition-colors ${
                     active
-                      ? "border-[#A07C3B]/30 bg-white text-slate-950 shadow-sm"
-                      : "border-slate-200/70 bg-slate-50/70 text-slate-700 hover:border-[#A07C3B]/25 hover:bg-white"
+                      ? "border-[#A07C3B]/30 bg-surface text-ink shadow-sm"
+                      : "border-line/70 bg-subtle/70 text-ink hover:border-[#A07C3B]/25 hover:bg-surface"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0 space-y-1">
-                      <p className="truncate text-xs font-semibold text-[#7A5E2C]">Cod. {unit.matricula}</p>
+                      <p className="truncate text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877]">Cod. {unit.matricula}</p>
                       <p className="truncate text-sm font-semibold">{unit.empreendimento}</p>
-                      <p className="text-xs text-slate-500">Quadra {unit.quadra} · Lote {unit.lote}</p>
+                      <p className="text-xs text-ink-muted">Quadra {unit.quadra} · Lote {unit.lote}</p>
                     </div>
-                    <span className="shrink-0 rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                    <span className="shrink-0 rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-muted ring-1 ring-line/70">
                       {unit.unidadeLote}
                     </span>
                   </div>
@@ -2047,8 +2047,8 @@ function ClientContextPanel({
         {activeTab === "actions" ? (
           <div className="space-y-3">
             {!operationReady ? (
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
-                <div className="flex items-center gap-2 text-xs font-semibold text-amber-800">
+              <div className="rounded-lg border border-amber-200 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/12 p-3">
+                <div className="flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
                   <LockKeyhole className="size-3.5" aria-hidden="true" />
                   <span>Complete o ticket para operar</span>
                 </div>
@@ -2081,19 +2081,19 @@ function ClientContextPanel({
             <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-4">
               <div className="flex items-center gap-2">
                 <Sparkles className="size-4 text-[#A07C3B]" aria-hidden="true" />
-                <p className="text-sm font-semibold text-slate-950">IA da conversa</p>
+                <p className="text-sm font-semibold text-ink">IA da conversa</p>
               </div>
-              <p className="mt-2 text-sm leading-6 text-slate-700">
+              <p className="mt-2 text-sm leading-6 text-ink">
                 Cliente demonstra abertura para composição. Recomenda confirmar valor possível, registrar promessa
                 com data curta ou formalizar acordo com entrada acessível.
               </p>
             </div>
-            <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
+            <div className="rounded-xl border border-line/70 bg-subtle/70 p-4">
               <div className="flex items-center gap-2">
                 <Bot className="size-4 text-[#A07C3B]" aria-hidden="true" />
-                <p className="text-sm font-semibold text-slate-950">Resumo IA</p>
+                <p className="text-sm font-semibold text-ink">Resumo IA</p>
               </div>
-              <p className="mt-2 text-sm leading-6 text-slate-600">
+              <p className="mt-2 text-sm leading-6 text-ink-soft">
                 Histórico recente: cobrança amigável enviada, cliente pediu boleto C2X e sinalizou pagamento parcial.
               </p>
             </div>
@@ -2106,24 +2106,24 @@ function ClientContextPanel({
             <button
               type="button"
               onClick={() => setHistoryExpanded((current) => !current)}
-              className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-9 w-full items-center justify-center rounded-lg border border-line/70 bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
             >
               {historyExpanded ? "Ocultar tickets anteriores" : `Ver tickets anteriores (${previousTickets.length})`}
             </button>
             {historyExpanded ? (
-              <p className="text-center text-[11px] font-medium text-slate-400">Histórico completo preparado para versão futura</p>
+              <p className="text-center text-[11px] font-medium text-ink-muted">Histórico completo preparado para versão futura</p>
             ) : null}
             <div className="space-y-2">
               {visibleTickets.map((cycle) => (
-                <div key={cycle.protocol} className="rounded-lg border border-slate-200/70 bg-slate-50/70 p-3">
+                <div key={cycle.protocol} className="rounded-lg border border-line/70 bg-subtle/70 p-3">
                   <div className="flex items-center justify-between gap-3">
-                    <p className="font-mono text-xs font-semibold text-[#7A5E2C]">{cycle.protocol}</p>
-                    <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                    <p className="font-mono text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877]">{cycle.protocol}</p>
+                    <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink-muted ring-1 ring-line/70">
                       {cycle.status}
                     </span>
                   </div>
-                  <p className="mt-2 text-sm font-semibold text-slate-950">{cycle.profileName}</p>
-                  <p className="mt-1 text-xs text-slate-500">{cycle.openedAt} · {cycle.operator}</p>
+                  <p className="mt-2 text-sm font-semibold text-ink">{cycle.profileName}</p>
+                  <p className="mt-1 text-xs text-ink-muted">{cycle.openedAt} · {cycle.operator}</p>
                 </div>
               ))}
             </div>
@@ -2142,24 +2142,24 @@ function TemplateModal({
   onSelect: (body: string) => void;
 }) {
   return (
-    <div className="absolute inset-0 z-20 flex items-center justify-center bg-slate-950/20 px-4">
+    <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/20 px-4">
       <button
         type="button"
         aria-label="Fechar templates"
         onClick={onClose}
         className="absolute inset-0 cursor-default"
       />
-      <section className="relative z-10 w-full max-w-2xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+      <section className="relative z-10 w-full max-w-2xl rounded-2xl border border-line/70 bg-surface shadow-[0_20px_70px_rgba(15,23,42,0.2)]">
+        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>
             <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Templates WhatsApp</p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">Usar template</h2>
+            <h2 className="mt-1 text-lg font-semibold text-ink">Usar template</h2>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fechar templates"
-            className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            className="flex size-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -2171,10 +2171,10 @@ function TemplateModal({
               key={template.id}
               type="button"
               onClick={() => onSelect(template.body)}
-              className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+              className="rounded-xl border border-line/70 bg-subtle/60 p-4 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
             >
-              <p className="text-sm font-semibold text-slate-950">{template.title}</p>
-              <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">{template.body}</p>
+              <p className="text-sm font-semibold text-ink">{template.title}</p>
+              <p className="mt-2 line-clamp-3 text-sm leading-6 text-ink-soft">{template.body}</p>
             </button>
           ))}
         </div>
@@ -2198,7 +2198,7 @@ function HeaderToolbarButton({
         type="button"
         onClick={onClick}
         aria-label={label}
-        className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/20"
+        className="flex size-8 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:text-[#d9b877] focus-visible:ring-2 focus-visible:ring-[#A07C3B]/20"
       >
         <Icon className="size-4" aria-hidden="true" />
       </button>
@@ -2233,7 +2233,7 @@ function OperationalToolbar({
 
   return (
     <div
-      className={`flex w-fit gap-1 rounded-lg border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+      className={`flex w-fit gap-1 rounded-lg border border-line/70 bg-surface p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] ${
         vertical ? "flex-wrap" : "items-center"
       }`}
       aria-label="Toolbar operacional"
@@ -2272,7 +2272,7 @@ function ToolbarIconButton({
         disabled={disabled}
         onClick={onClick}
         aria-label={tooltip}
-        className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+        className="flex size-8 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:text-[#d9b877] disabled:cursor-not-allowed disabled:text-ink-muted disabled:hover:bg-transparent"
       >
         <Icon className="size-4" aria-hidden="true" />
       </button>
@@ -2296,8 +2296,8 @@ function TicketChecklist({
           <span
             className={`inline-flex h-6 items-center gap-1 rounded-full px-2 text-[11px] font-semibold ring-1 ${
               item.ok
-                ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
-                : "bg-amber-50 text-amber-800 ring-amber-200"
+                ? "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25"
+                : "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-amber-200 dark:ring-amber-500/25"
             } ${compact ? "px-1.5" : ""}`}
           >
             <span aria-hidden="true">{item.ok ? "?" : "!"}</span>
@@ -2327,7 +2327,7 @@ function ComposerIconButton({
         disabled={disabled}
         onClick={onClick}
         aria-label={label}
-        className="flex size-10 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-white hover:text-[#A07C3B] disabled:cursor-not-allowed disabled:text-slate-300 disabled:hover:bg-transparent"
+        className="flex size-10 shrink-0 items-center justify-center rounded-xl text-ink-muted transition-colors hover:bg-surface hover:text-[#A07C3B] disabled:cursor-not-allowed disabled:text-ink-muted disabled:hover:bg-transparent"
       >
         {children}
       </button>
@@ -2337,18 +2337,18 @@ function ComposerIconButton({
 
 function ContextItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-950">{value}</p>
+    <div className="rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
     </div>
   );
 }
 
 function ReadonlyField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-950">{value}</p>
+    <div className="min-w-0 rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -2622,12 +2622,12 @@ function EditableField({
   value: string;
 }) {
   return (
-    <label className="min-w-0 rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+    <label className="min-w-0 rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+      <span className="text-xs font-medium text-ink-muted">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-7 w-full min-w-0 rounded-md border border-transparent bg-slate-50/80 px-2 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-white focus:ring-2 focus:ring-[#A07C3B]/10"
+        className="mt-1 h-7 w-full min-w-0 rounded-md border border-transparent bg-subtle/80 px-2 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-surface focus:ring-2 focus:ring-[#A07C3B]/10"
       />
     </label>
   );
@@ -2636,7 +2636,7 @@ function EditableField({
 function DateSeparator({ label }: { label: string }) {
   return (
     <div className="flex justify-center">
-      <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
+      <span className="rounded-full bg-surface px-3 py-1 text-xs font-semibold text-ink-muted ring-1 ring-line/70">
         {label}
       </span>
     </div>

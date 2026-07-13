@@ -185,10 +185,10 @@ export function IrisConversationComposerActions({
       : blockedTooltip;
 
   return (
-    <footer className="shrink-0 border-t border-slate-100 bg-white p-2.5">
+    <footer className="shrink-0 border-t border-line bg-surface p-2.5">
       {!ticketClosed ? (
         <div className="mb-2 flex items-center gap-2">
-          <div className="inline-flex rounded-lg border border-slate-200/70 bg-slate-50/70 p-0.5">
+          <div className="inline-flex rounded-lg border border-line/70 bg-subtle/70 p-0.5">
             <button
               type="button"
               onClick={() => onComposerModeChange?.("reply")}
@@ -197,8 +197,8 @@ export function IrisConversationComposerActions({
               className={[
                 "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
                 !noteMode
-                  ? "bg-white text-[#0f766e] shadow-sm ring-1 ring-emerald-100"
-                  : "text-slate-500 hover:text-slate-700",
+                  ? "bg-surface text-[#0f766e] shadow-sm ring-1 ring-emerald-100"
+                  : "text-ink-muted hover:text-ink",
               ].join(" ")}
             >
               <MessageSquare className="size-3.5" aria-hidden="true" />
@@ -211,8 +211,8 @@ export function IrisConversationComposerActions({
               className={[
                 "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors",
                 noteMode
-                  ? "bg-[#fbf6ec] text-[#7A5E2C] shadow-sm ring-1 ring-[#A07C3B]/25"
-                  : "text-slate-500 hover:text-slate-700",
+                  ? "bg-[#A07C3B]/12 text-[#7A5E2C] shadow-sm ring-1 ring-[#A07C3B]/25"
+                  : "text-ink-muted hover:text-ink",
               ].join(" ")}
             >
               <Headset className="size-3.5" aria-hidden="true" />
@@ -233,7 +233,7 @@ export function IrisConversationComposerActions({
       ) : null}
 
       {!ticketClosed && !noteMode && lockedByCaca ? (
-        <div className="mb-2 rounded-lg border border-[#A07C3B]/25 bg-[#fbf6ec] px-3 py-2">
+        <div className="mb-2 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/12 px-3 py-2">
           <div className="flex flex-wrap items-center gap-2 text-xs font-semibold text-[#7A5E2C]">
             <Sparkles className="size-3.5 shrink-0" aria-hidden="true" />
             <span className="min-w-0 flex-1">
@@ -245,7 +245,7 @@ export function IrisConversationComposerActions({
                 type="button"
                 onClick={() => setCacaReplyOpen((current) => !current)}
                 aria-pressed={cacaReplyOpen}
-                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[#A07C3B]/40 bg-white px-2.5 py-1 text-[11px] font-semibold text-[#7A5E2C] transition-colors hover:bg-[#f4ebdc]"
+                className="inline-flex shrink-0 items-center gap-1.5 rounded-md border border-[#A07C3B]/40 bg-surface px-2.5 py-1 text-[11px] font-semibold text-[#7A5E2C] transition-colors hover:bg-[#f4ebdc]"
               >
                 <Sparkles className="size-3.5" aria-hidden="true" />
                 Responder como Caca
@@ -260,7 +260,7 @@ export function IrisConversationComposerActions({
                 onChange={(event) => setCacaText(event.target.value)}
                 rows={3}
                 placeholder="Mensagem enviada ao cliente assinada como Caca..."
-                className="w-full resize-none rounded-lg border border-[#A07C3B]/30 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/60"
+                className="w-full resize-none rounded-lg border border-[#A07C3B]/30 bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-[#A07C3B]/60"
               />
               <div className="flex items-center justify-end gap-2">
                 <button
@@ -269,7 +269,7 @@ export function IrisConversationComposerActions({
                     setCacaReplyOpen(false);
                     setCacaText("");
                   }}
-                  className="inline-flex h-8 items-center rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  className="inline-flex h-8 items-center rounded-lg border border-line/70 bg-surface px-3 text-xs font-medium text-ink-soft hover:bg-subtle"
                 >
                   Cancelar
                 </button>
@@ -305,16 +305,16 @@ export function IrisConversationComposerActions({
           className={[
             "mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2",
             customerServiceWindow.open
-              ? "border-emerald-100 bg-emerald-50"
-              : "border-amber-200 bg-amber-50",
+              ? "border-emerald-100 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/12"
+              : "border-amber-200 bg-amber-50 dark:border-amber-500/30 dark:bg-amber-500/12",
           ].join(" ")}
         >
           <div
             className={[
               "flex min-w-0 items-center gap-2 text-xs font-semibold",
               customerServiceWindow.open
-                ? "text-emerald-700"
-                : "text-amber-800",
+                ? "text-emerald-700 dark:text-emerald-300"
+                : "text-amber-800 dark:text-amber-300",
             ].join(" ")}
           >
             {customerServiceWindow.open ? (
@@ -339,7 +339,7 @@ export function IrisConversationComposerActions({
                 type="button"
                 onClick={onOpenNotes}
                 aria-label="Notas do atendimento"
-                className="flex size-8 items-center justify-center rounded-lg border border-slate-200/80 bg-white text-slate-500 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                className="flex size-8 items-center justify-center rounded-lg border border-line/80 bg-surface text-ink-muted transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
               >
                 <StickyNote className="size-4" aria-hidden="true" />
               </button>
@@ -356,7 +356,7 @@ export function IrisConversationComposerActions({
                   "flex size-8 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-45",
                   attendantOpen
                     ? "border-[#A07C3B]/40 bg-[#A07C3B] text-white hover:bg-[#8E6F35]"
-                    : "border-[#A07C3B]/25 bg-[#fbf6ec] text-[#7A5E2C] hover:bg-[#f4ebdc]",
+                    : "border-[#A07C3B]/25 bg-[#A07C3B]/12 text-[#7A5E2C] hover:bg-[#f4ebdc]",
                 ].join(" ")}
               >
                 <Sparkles className="size-4" aria-hidden="true" />
@@ -367,19 +367,19 @@ export function IrisConversationComposerActions({
       </div>
 
       {hasComposerContext ? (
-        <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-[#eadcc2] bg-[#fbf6ec] px-3 py-2">
+        <div className="mb-2 flex items-start justify-between gap-3 rounded-lg border border-[#eadcc2] bg-[#A07C3B]/12 px-3 py-2">
           <div className="min-w-0">
             <p className="text-[11px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
               {composerContextLabel}
             </p>
-            <p className="mt-0.5 line-clamp-1 text-xs font-medium text-slate-600">
+            <p className="mt-0.5 line-clamp-1 text-xs font-medium text-ink-soft">
               {composerContextBody}
             </p>
           </div>
           <button
             type="button"
             onClick={onCancelComposerContext}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-[#7A5E2C]"
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-surface hover:text-[#7A5E2C]"
             aria-label="Cancelar contexto"
           >
             <X className="size-4" aria-hidden="true" />
@@ -388,7 +388,7 @@ export function IrisConversationComposerActions({
       ) : null}
 
       {attachmentPreview ? (
-        <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#eadcc2] bg-[#fbf6ec] px-3 py-2">
+        <div className="mb-2 flex items-center justify-between gap-3 rounded-lg border border-[#eadcc2] bg-[#A07C3B]/12 px-3 py-2">
           <div className="flex min-w-0 items-center gap-2.5">
             {attachmentPreview.kind === "image" && attachmentPreview.previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -398,7 +398,7 @@ export function IrisConversationComposerActions({
                 className="size-10 shrink-0 rounded-md object-cover"
               />
             ) : (
-              <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-white text-[#7A5E2C]">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-surface text-[#7A5E2C]">
                 <FileText className="size-5" aria-hidden="true" />
               </span>
             )}
@@ -406,7 +406,7 @@ export function IrisConversationComposerActions({
               <p className="text-[11px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
                 {attachmentPreview.kind === "image" ? "Imagem" : "Documento"}
               </p>
-              <p className="mt-0.5 line-clamp-1 text-xs font-medium text-slate-600">
+              <p className="mt-0.5 line-clamp-1 text-xs font-medium text-ink-soft">
                 {attachmentPreview.fileName}
               </p>
             </div>
@@ -414,7 +414,7 @@ export function IrisConversationComposerActions({
           <button
             type="button"
             onClick={onCancelAttachment}
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white hover:text-[#7A5E2C]"
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-surface hover:text-[#7A5E2C]"
             aria-label="Remover anexo"
           >
             <X className="size-4" aria-hidden="true" />
@@ -424,13 +424,13 @@ export function IrisConversationComposerActions({
 
       <div ref={emojiPickerRef} className="relative">
         {emojiPickerOpen && composerReady ? (
-          <div className="absolute bottom-full left-0 z-20 mb-2 grid max-h-56 w-56 grid-cols-6 gap-1 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 shadow-[0_18px_45px_rgba(15,23,42,0.14)]">
+          <div className="absolute bottom-full left-0 z-20 mb-2 grid max-h-56 w-56 grid-cols-6 gap-1 overflow-y-auto rounded-xl border border-line bg-surface p-2 shadow-[0_18px_45px_rgba(15,23,42,0.14)]">
             {emojiOptions.map((emoji) => (
               <button
                 key={emoji}
                 type="button"
                 onClick={() => onInsertEmoji(emoji)}
-                className="flex size-8 items-center justify-center rounded-lg text-base transition-colors hover:bg-slate-100"
+                className="flex size-8 items-center justify-center rounded-lg text-base transition-colors hover:bg-subtle"
                 aria-label={`Inserir ${emoji}`}
               >
                 {emoji}
@@ -443,8 +443,8 @@ export function IrisConversationComposerActions({
           className={[
             "flex items-center gap-2 rounded-xl border p-2 transition-opacity",
             noteMode
-              ? "border-[#A07C3B]/40 bg-[#fbf6ec]"
-              : "border-slate-200/70 bg-slate-50/70",
+              ? "border-[#A07C3B]/40 bg-[#A07C3B]/12"
+              : "border-line/70 bg-subtle/70",
             composerReady ? "opacity-100" : "opacity-55",
           ].join(" ")}
         >
@@ -454,7 +454,7 @@ export function IrisConversationComposerActions({
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
                 <span className="relative inline-flex size-3 rounded-full bg-rose-500" />
               </span>
-              <span className="text-sm font-medium text-slate-600">
+              <span className="text-sm font-medium text-ink-soft">
                 Gravando
               </span>
               <span className="font-mono text-sm tabular-nums text-rose-500">
@@ -476,7 +476,7 @@ export function IrisConversationComposerActions({
                 <button
                   type="button"
                   onClick={onCancelAudio}
-                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-rose-500"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-rose-500"
                   aria-label="Cancelar gravacao"
                 >
                   <Trash2 className="size-4" aria-hidden="true" />
@@ -499,7 +499,7 @@ export function IrisConversationComposerActions({
                 <button
                   type="button"
                   onClick={onCancelAudio}
-                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-rose-500"
+                  className="flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-rose-500"
                   aria-label="Descartar audio"
                 >
                   <Trash2 className="size-4" aria-hidden="true" />
@@ -515,7 +515,7 @@ export function IrisConversationComposerActions({
                   type="button"
                   disabled={sending}
                   onClick={onSendAudioPreview}
-                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-subtle"
                   aria-label="Enviar audio"
                 >
                   <Send className="size-4" aria-hidden="true" />
@@ -561,7 +561,7 @@ export function IrisConversationComposerActions({
                     : composerPlaceholder
                 }
                 disabled={!composerReady}
-                className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-ink outline-none placeholder:text-ink-muted"
               />
               <ComposerIconButton
                 disabled={!canSendFreeForm || sending || noteMode}
@@ -579,7 +579,7 @@ export function IrisConversationComposerActions({
                     !composerReady
                   }
                   onClick={onSendMessage}
-                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-subtle"
                   aria-label={sendLabel}
                 >
                   <Send className="size-4" aria-hidden="true" />
@@ -626,7 +626,7 @@ function OperationalToolbar({
             disabled={disabled}
             onClick={() => onCreate(tool.kind)}
             aria-label={tool.label}
-            className="flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-400 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-45"
+            className="flex size-8 items-center justify-center rounded-lg border border-line/70 bg-surface text-ink-muted transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-45"
           >
             <tool.icon className="size-4" aria-hidden="true" />
           </button>
@@ -654,7 +654,7 @@ function ComposerIconButton({
         disabled={disabled}
         onClick={onClick}
         aria-label={label}
-        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-45"
+        className="flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-45"
       >
         {children}
       </button>
@@ -678,7 +678,7 @@ function TicketChecklist({
             "inline-flex items-center gap-1 rounded-full px-2 py-1 text-[11px] font-semibold ring-1",
             item.ok
               ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
-              : "bg-white text-amber-700 ring-amber-200",
+              : "bg-surface text-amber-700 ring-amber-200",
             compact ? "py-0.5" : "",
           ].join(" ")}
         >

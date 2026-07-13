@@ -89,7 +89,7 @@ export type IrisConversationReadOnlyRenderers = {
 
 export function IrisConversationEmptyState() {
   return (
-    <div className="flex h-full min-h-0 items-center justify-center rounded-2xl border border-[#dbe3ef] bg-white">
+    <div className="flex h-full min-h-0 items-center justify-center rounded-2xl border border-line bg-surface">
       <div className="text-center">
         <MessageCircle className="mx-auto h-8 w-8 text-[#A07C3B]" />
         <h3 className="mt-3 text-base font-semibold">Selecione um ticket</h3>
@@ -125,17 +125,17 @@ export function IrisConversationInboxSidebar({
   return (
     <aside
       className={[
-        "hidden shrink-0 border-r border-slate-300/80 bg-white shadow-[4px_0_18px_rgba(15,23,42,0.05)] transition-all duration-300 lg:flex lg:flex-col",
+        "hidden shrink-0 border-r border-line/80 bg-surface shadow-[4px_0_18px_rgba(15,23,42,0.05)] transition-all duration-300 lg:flex lg:flex-col",
         collapsed ? "w-14" : "w-80",
       ].join(" ")}
     >
-      <div className={collapsed ? "p-2" : "border-b border-slate-100 p-3"}>
+      <div className={collapsed ? "p-2" : "border-b border-line p-3"}>
         {collapsed ? (
           <div className="flex flex-col items-center gap-2">
             <button
               type="button"
               onClick={() => onCollapseChange(false)}
-              className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+              className="flex size-9 items-center justify-center rounded-lg border border-line/70 bg-surface text-ink-muted transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
               aria-label="Expandir conversas"
               title="Expandir conversas"
             >
@@ -144,7 +144,7 @@ export function IrisConversationInboxSidebar({
             <div className="flex size-9 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
               <MessageCircle className="size-4" aria-hidden="true" />
             </div>
-            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+            <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
               {conversations.length}
             </span>
           </div>
@@ -152,27 +152,27 @@ export function IrisConversationInboxSidebar({
           <>
             <div className="flex items-start justify-between gap-3">
               <div>
-                <h2 className="text-sm font-semibold text-slate-950">
+                <h2 className="text-sm font-semibold text-ink">
                   Fila de atendimento
                 </h2>
               </div>
               <button
                 type="button"
                 onClick={() => onCollapseChange(true)}
-                className="flex size-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-white hover:text-[#7A5E2C]"
+                className="flex size-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-surface hover:text-[#7A5E2C]"
                 aria-label="Recolher conversas"
                 title="Recolher conversas"
               >
                 <PanelLeftClose className="size-4" aria-hidden="true" />
               </button>
             </div>
-            <label className="mt-3 flex rounded-lg border border-slate-200/70 bg-white px-3 py-1.5">
+            <label className="mt-3 flex rounded-lg border border-line/70 bg-surface px-3 py-1.5">
               <span className="sr-only">Buscar conversa</span>
               <input
                 value={search}
                 onChange={(event) => onSearchChange(event.target.value)}
                 placeholder="Buscar conversa..."
-                className="h-7 w-full bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+                className="h-7 w-full bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
               />
             </label>
           </>
@@ -193,13 +193,13 @@ export function IrisConversationInboxSidebar({
                   ? "bg-[#A07C3B]"
                   : waitState.tone === "espera"
                     ? "bg-emerald-500"
-                    : "bg-slate-300";
+                    : "bg-subtle";
               const waitTextClass =
                 waitState.tone === "pendente"
                   ? "text-[#7A5E2C]"
                   : waitState.tone === "espera"
                     ? "text-emerald-600"
-                    : "text-slate-400";
+                    : "text-ink-muted";
 
               return (
                 <button
@@ -207,10 +207,10 @@ export function IrisConversationInboxSidebar({
                   type="button"
                   onClick={() => onSelectTicket(conversation.id)}
                   className={[
-                    "flex w-full items-center gap-2 border-b border-slate-100 px-2.5 py-2 text-left transition-colors",
+                    "flex w-full items-center gap-2 border-b border-line px-2.5 py-2 text-left transition-colors",
                     active
                       ? "bg-[#A07C3B]/5 shadow-[inset_3px_0_0_#A07C3B]"
-                      : "hover:bg-slate-50/70",
+                      : "hover:bg-subtle/70",
                   ].join(" ")}
                 >
                   <span
@@ -224,7 +224,7 @@ export function IrisConversationInboxSidebar({
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                       <span
-                        className={`min-w-0 truncate text-sm text-slate-950 ${
+                        className={`min-w-0 truncate text-sm text-ink ${
                           conversation.unread ? "font-bold" : "font-medium"
                         }`}
                       >
@@ -232,12 +232,12 @@ export function IrisConversationInboxSidebar({
                       </span>
                       <BoardProfileChip crm={crm} />
                     </span>
-                    <span className="mt-0.5 block truncate text-xs text-slate-500 [overflow-wrap:anywhere]">
+                    <span className="mt-0.5 block truncate text-xs text-ink-muted [overflow-wrap:anywhere]">
                       {conversation.lastMessagePreview}
                     </span>
                   </span>
                   <span className="flex shrink-0 flex-col items-end gap-0.5">
-                    <span className="text-[10px] tabular-nums text-slate-400">
+                    <span className="text-[10px] tabular-nums text-ink-muted">
                       {helpers.conversationTime(conversation)}
                     </span>
                     {unreadCount > 0 ? (
@@ -257,7 +257,7 @@ export function IrisConversationInboxSidebar({
               );
             })
           ) : (
-            <div className="m-2.5 rounded-lg border border-slate-200/70 bg-white p-4 text-center text-xs font-semibold text-slate-400">
+            <div className="m-2.5 rounded-lg border border-line/70 bg-surface p-4 text-center text-xs font-semibold text-ink-muted">
               Nenhuma conversa encontrada
             </div>
           )}
@@ -285,7 +285,7 @@ export function IrisConversationMessagesTimeline({
   return (
     <div
       ref={viewportRef}
-      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-slate-50/40 px-3 py-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] sm:px-4"
+      className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-subtle/40 px-3 py-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] sm:px-4"
     >
       <div className="w-full min-w-0 space-y-5">
         {previousTickets.length > 0 ? (
@@ -293,7 +293,7 @@ export function IrisConversationMessagesTimeline({
             <button
               type="button"
               onClick={onTogglePreviousTickets}
-              className="inline-flex h-9 items-center rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-9 items-center rounded-lg border border-line/70 bg-surface px-3 text-xs font-semibold text-ink-soft shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
             >
               {showPreviousTickets
                 ? "Ocultar tickets anteriores"
@@ -350,8 +350,8 @@ export function IrisConversationContextSidebar({
   ticketContextNote?: IrisConversationContextNote | null;
 }) {
   return (
-    <aside className="hidden w-[330px] shrink-0 border-l border-slate-100 bg-white xl:block">
-      <div className="border-b border-slate-100 p-3">
+    <aside className="hidden w-[330px] shrink-0 border-l border-line bg-surface xl:block">
+      <div className="border-b border-line p-3">
         <div className="flex items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-2.5">
             {renderers.renderContactAvatar(ticket, "lg")}
@@ -359,20 +359,20 @@ export function IrisConversationContextSidebar({
               <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                 Contexto
               </p>
-              <h3 className="mt-1 truncate text-sm font-semibold text-slate-950">
+              <h3 className="mt-1 truncate text-sm font-semibold text-ink">
                 {helpers.ticketContactLabel(ticket)}
               </h3>
-              <p className="mt-0.5 text-xs font-medium text-slate-500">
+              <p className="mt-0.5 text-xs font-medium text-ink-muted">
                 {ticket.contactPhone ?? "Sem telefone"}
               </p>
             </div>
           </div>
           <MessageSquareText
-            className="size-4 text-slate-300"
+            className="size-4 text-ink-muted"
             aria-hidden="true"
           />
         </div>
-        <div className="mt-3 grid grid-cols-4 gap-1 rounded-lg bg-slate-100/70 p-1">
+        <div className="mt-3 grid grid-cols-4 gap-1 rounded-lg bg-subtle/70 p-1">
           {contextShortcuts.map((shortcut) => (
             <Tooltip
               content={shortcut.label}
@@ -386,10 +386,10 @@ export function IrisConversationContextSidebar({
                 className={[
                   "flex size-8 items-center justify-center rounded-md transition-colors",
                   shortcut.disabled
-                    ? "cursor-not-allowed text-slate-300"
+                    ? "cursor-not-allowed text-ink-muted"
                     : shortcut.active
-                      ? "bg-white text-[#7A5E2C]"
-                      : "text-slate-500 hover:bg-white hover:text-[#7A5E2C]",
+                      ? "bg-surface text-[#7A5E2C]"
+                      : "text-ink-muted hover:bg-surface hover:text-[#7A5E2C]",
                 ].join(" ")}
                 aria-label={shortcut.label}
               >
@@ -401,15 +401,15 @@ export function IrisConversationContextSidebar({
       </div>
 
       <div className="min-h-0 space-y-2 overflow-y-auto p-3 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-        <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 px-3 py-2.5">
+        <div className="rounded-xl border border-line/70 bg-subtle/70 px-3 py-2.5">
           <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
             Nota do operador
           </p>
-          <p className="mt-1 text-sm font-medium text-slate-700 [overflow-wrap:anywhere]">
+          <p className="mt-1 text-sm font-medium text-ink [overflow-wrap:anywhere]">
             {ticketContextNote?.text?.trim() ||
               "Sem nota registrada para este cliente."}
           </p>
-          <p className="mt-1 text-[11px] text-slate-500">
+          <p className="mt-1 text-[11px] text-ink-muted">
             {ticketContextNote?.updatedAt
               ? `Atualizada em ${helpers.formatDateTime(ticketContextNote.updatedAt)}`
               : "Use o primeiro icone para registrar observacoes do atendimento."}
@@ -476,10 +476,10 @@ export function IrisConversationContextSidebar({
           <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
             Historico Iris
           </p>
-          <p className="mt-1 text-sm font-semibold text-slate-950">
+          <p className="mt-1 text-sm font-semibold text-ink">
             {previousTickets.length} tickets anteriores
           </p>
-          <p className="mt-1 text-xs leading-5 text-slate-600">
+          <p className="mt-1 text-xs leading-5 text-ink-soft">
             {ticket.messages.length} mensagens neste atendimento.
           </p>
         </div>
@@ -496,9 +496,9 @@ function ConversationContextItem({
   value: ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 break-words text-sm font-semibold text-slate-950 [overflow-wrap:anywhere]">
+    <div className="rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-ink [overflow-wrap:anywhere]">
         {value}
       </p>
     </div>

@@ -12,23 +12,24 @@ export type DashboardQueueItem = {
 };
 
 const riskStyles: Record<string, string> = {
-  Crítica: "bg-rose-50 text-rose-700 ring-rose-100",
-  Alta: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
-  Média: "bg-slate-50 text-slate-700 ring-slate-200",
-  Baixa: "bg-slate-50 text-slate-500 ring-slate-200",
+  Crítica:
+    "bg-rose-50 text-rose-700 ring-rose-100 dark:bg-rose-500/12 dark:text-rose-300 dark:ring-rose-500/25",
+  Alta: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15 dark:bg-[#A07C3B]/15 dark:text-[#d9b877] dark:ring-[#A07C3B]/30",
+  Média: "bg-subtle text-ink ring-line",
+  Baixa: "bg-subtle text-ink-muted ring-line",
 };
 
 export function CollectionQueueTable({ items }: { items: DashboardQueueItem[] }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex flex-col gap-3 border-b border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+    <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex flex-col gap-3 border-b border-line px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
-          <h2 className="text-base font-semibold text-slate-950">Fila prioritária</h2>
-          <p className="mt-1 text-sm text-slate-500">Clientes e lotes priorizados por risco, atraso e saldo.</p>
+          <h2 className="text-base font-semibold text-ink">Fila prioritária</h2>
+          <p className="mt-1 text-sm text-ink-muted">Clientes e lotes priorizados por risco, atraso e saldo.</p>
         </div>
         <button
           type="button"
-          className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+          className="h-9 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-ink"
         >
           Ver fila completa
         </button>
@@ -36,7 +37,7 @@ export function CollectionQueueTable({ items }: { items: DashboardQueueItem[] })
 
       <div className="overflow-x-auto">
         <table className="w-full min-w-[980px] text-left text-sm">
-          <thead className="bg-slate-50/70 text-xs tracking-normal text-slate-500">
+          <thead className="bg-subtle/70 text-xs tracking-normal text-ink-muted">
             <tr>
               <th className="px-5 py-3 font-medium">Cliente</th>
               <th className="px-5 py-3 font-medium">Empreendimento</th>
@@ -48,14 +49,14 @@ export function CollectionQueueTable({ items }: { items: DashboardQueueItem[] })
               <th className="px-5 py-3 font-medium">Status</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-line">
             {items.map((item) => (
-              <tr key={`${item.cliente}-${item.unidadeLote}`} className="transition-colors hover:bg-slate-50/60">
-                <td className="whitespace-nowrap px-5 py-4 font-medium text-slate-950">{item.cliente}</td>
-                <td className="whitespace-nowrap px-5 py-4 text-slate-600">{item.empreendimento}</td>
-                <td className="whitespace-nowrap px-5 py-4 text-slate-600">{item.unidadeLote}</td>
-                <td className="whitespace-nowrap px-5 py-4 text-slate-600">{item.atraso}</td>
-                <td className="whitespace-nowrap px-5 py-4 font-medium text-slate-900">{item.saldo}</td>
+              <tr key={`${item.cliente}-${item.unidadeLote}`} className="transition-colors hover:bg-subtle">
+                <td className="whitespace-nowrap px-5 py-4 font-medium text-ink">{item.cliente}</td>
+                <td className="whitespace-nowrap px-5 py-4 text-ink-soft">{item.empreendimento}</td>
+                <td className="whitespace-nowrap px-5 py-4 text-ink-soft">{item.unidadeLote}</td>
+                <td className="whitespace-nowrap px-5 py-4 text-ink-soft">{item.atraso}</td>
+                <td className="whitespace-nowrap px-5 py-4 font-medium text-ink">{item.saldo}</td>
                 <td className="whitespace-nowrap px-5 py-4">
                   <span
                     className={`inline-flex rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${
@@ -65,8 +66,8 @@ export function CollectionQueueTable({ items }: { items: DashboardQueueItem[] })
                     {item.risco}
                   </span>
                 </td>
-                <td className="whitespace-nowrap px-5 py-4 text-slate-600">{item.responsavel}</td>
-                <td className="whitespace-nowrap px-5 py-4 text-slate-600">{item.status}</td>
+                <td className="whitespace-nowrap px-5 py-4 text-ink-soft">{item.responsavel}</td>
+                <td className="whitespace-nowrap px-5 py-4 text-ink-soft">{item.status}</td>
               </tr>
             ))}
           </tbody>

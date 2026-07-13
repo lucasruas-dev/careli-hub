@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prometeu · Módulo</title>
+<style>
+  :root{
+    --canvas:#f7f8fa; --panel:#ffffff; --subtle:#eef1f4; --line:#dce2ea; --line-strong:#c5ceda;
+    --text:#121722; --text2:#485466; --muted:#667085;
+    --brand:#a07c3b; --brand-soft:rgba(160,124,59,.12); --brand-deep:#7c5f2c;
+    --info:#2563eb; --info-soft:rgba(37,99,235,.10); --ok:#14804a;
+    --shadow:0 8px 24px rgb(18 23 34 / 0.10); --shadow-sm:0 2px 6px rgb(18 23 34 / 0.08);
+  }
+  body.dark{
+    --canvas:#101211; --panel:#181a19; --subtle:#26292a; --line:#2b2e2c; --line-strong:#3a3e3c;
+    --text:#e9edeb; --text2:#cfd3d0; --muted:#98a09a;
+    --brand:#cba25a; --brand-soft:rgba(203,162,90,.16); --info:#5b8def;
+    --shadow:0 10px 30px rgb(0 0 0 / .5); --shadow-sm:0 2px 8px rgb(0 0 0 / .4);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--canvas);color:var(--text);font-family:Arial,Helvetica,sans-serif;min-height:100vh;padding:34px 26px 60px}
+  .wrap{max-width:1080px;margin:0 auto}
+
+  header{display:flex;align-items:center;gap:16px;margin-bottom:8px}
+  .mod-icon{width:52px;height:52px;border-radius:13px;background:#232832;color:#dce2ea;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .mod-icon svg{width:27px;height:27px}
+  .brand h1{font-size:26px;font-weight:800;letter-spacing:-.01em}
+  .brand .sub{font-size:12px;color:var(--muted);letter-spacing:.16em;text-transform:uppercase;margin-top:2px}
+  .h-right{margin-left:auto}
+  .tbtn{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .tbtn svg{width:19px;height:19px}
+  .lead{color:var(--text2);font-size:15px;line-height:1.5;margin:14px 0 26px;max-width:660px}
+  .lead b{color:var(--text)}
+
+  /* faixa do fluxo */
+  .flow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px 18px;margin-bottom:30px;box-shadow:var(--shadow-sm)}
+  .flow .step{display:flex;align-items:center;gap:9px;font-size:13.5px;font-weight:700}
+  .flow .num{width:22px;height:22px;border-radius:50%;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;flex-shrink:0}
+  .flow .arr{color:var(--muted);font-size:15px}
+
+  .sec-tit{font-size:12.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:26px 0 14px;display:flex;align-items:center;gap:10px}
+  .sec-tit::after{content:"";flex:1;height:1px;background:var(--line)}
+
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:16px}
+  .tile{display:flex;flex-direction:column;gap:0;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:20px;text-decoration:none;color:inherit;box-shadow:var(--shadow-sm);transition:transform .14s,box-shadow .14s,border-color .14s;position:relative;overflow:hidden}
+  .tile:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--brand)}
+  .tile-top{display:flex;align-items:center;gap:13px;margin-bottom:12px}
+  .ti{width:46px;height:46px;border-radius:12px;background:var(--brand-soft);color:var(--brand);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .ti svg{width:24px;height:24px}
+  .tile.live .ti{background:var(--info-soft);color:var(--info)}
+  .tile h3{font-size:17px;font-weight:800}
+  .tile .tag{font-size:10.5px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-top:2px}
+  .tile p{font-size:13.5px;color:var(--text2);line-height:1.45}
+  .tile .go{margin-top:14px;font-size:13px;font-weight:800;color:var(--brand);display:flex;align-items:center;gap:6px}
+  .tile .go svg{width:15px;height:15px}
+  .roles{display:flex;flex-wrap:wrap;gap:6px;margin-top:12px}
+  .roles span{font-size:11px;font-weight:700;background:var(--subtle);border:1px solid var(--line);border-radius:7px;padding:4px 8px;color:var(--text2)}
+
+  footer{margin-top:34px;color:var(--muted);font-size:12.5px;text-align:center}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 2 12 7 7 2M12 7v6M5 13h14l-1.5 8h-11L5 13Z"/></svg></div>
+    <div class="brand"><h1>Prometeu</h1><div class="sub">Gestão de fila do lançamento</div></div>
+    <div class="h-right"><button class="tbtn" onclick="document.body.classList.toggle('dark')" title="Tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg></button></div>
+  </header>
+
+  <p class="lead">Fila estilo banco pro dia do lançamento. Cada cliente vira uma <b>credencial com QR</b>; a jornada anda pela <b>Recepção → Salão de vendas → Secretaria</b>, com chamadas no telão e voz da CACÁ. Abaixo, todas as telas do módulo.</p>
+
+  <div class="flow">
+    <div class="step"><span class="num">1</span> Setup do lançamento</div><span class="arr">→</span>
+    <div class="step"><span class="num">2</span> Etiquetas em lote</div><span class="arr">→</span>
+    <div class="step"><span class="num">3</span> Recepção bipa (credencia)</div><span class="arr">→</span>
+    <div class="step"><span class="num">4</span> Salão chama</div><span class="arr">→</span>
+    <div class="step"><span class="num">5</span> Secretaria fecha</div>
+  </div>
+
+  <div class="sec-tit">Preparação · antes do evento</div>
+  <div class="grid">
+    <a class="tile" href="setup.html" target="_blank">
+      <div class="tile-top"><div class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.2 2h-.4a2 2 0 0 0-2 2 1.7 1.7 0 0 1-2.6 1.5 2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7A1.7 1.7 0 0 1 3 12a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7A1.7 1.7 0 0 1 7.8 18a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2 1.7 1.7 0 0 1 2.6-1.5 2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7A1.7 1.7 0 0 1 21 12a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7A1.7 1.7 0 0 1 16.2 6.6 2 2 0 0 0 14.2 4"/><circle cx="12" cy="12" r="3"/></svg></div>
+        <div><h3>Setup</h3><div class="tag">Configuração</div></div></div>
+      <p>Monta o lançamento: empreendimento, data, mesas, número de chamadas e etapas.</p>
+      <div class="go">Abrir <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </a>
+    <a class="tile" href="etiqueta.html" target="_blank">
+      <div class="tile-top"><div class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="9" width="12" height="8" rx="1"/><path d="M6 9V4h12v5M6 17H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/></svg></div>
+        <div><h3>Etiqueta</h3><div class="tag">Emissão de credenciais</div></div></div>
+      <p>Gera a credencial (QR + Apolo + C2X) e imprime em <b>lote por empreendimento ou por imobiliária</b> pra entrega antecipada.</p>
+      <div class="go">Abrir <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </a>
+  </div>
+
+  <div class="sec-tit">Operação ao vivo · dia do evento</div>
+  <div class="grid">
+    <a class="tile live" href="cockpit.html" target="_blank">
+      <div class="tile-top"><div class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l3-4 3 3 4-6"/></svg></div>
+        <div><h3>Central</h3><div class="tag">Comando ao vivo</div></div></div>
+      <p>War-room: KPIs, mapa por zonas, gargalos, últimas chamadas e feed em tempo real.</p>
+      <div class="go">Abrir <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </a>
+    <a class="tile live" href="atendente.html" target="_blank">
+      <div class="tile-top"><div class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="2" width="16" height="20" rx="2"/><path d="M12 18h.01"/></svg></div>
+        <div><h3>Atendente</h3><div class="tag">Tablet · postos</div></div></div>
+      <p>Cada posição usa esta tela. A <b>Recepção credencia</b> (bipa o QR → fila); Salão e Secretaria chamam e atendem.</p>
+      <div class="roles"><span>Recepção · bipa</span><span>Salão · chama</span><span>Secretaria · fecha</span></div>
+      <div class="go">Abrir <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </a>
+    <a class="tile live" href="telao.html" target="_blank">
+      <div class="tile-top"><div class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+        <div><h3>Telão</h3><div class="tag">Painel público</div></div></div>
+      <p>Chamadas na tela grande (nome + destino + mesa) com a voz da CACÁ e vídeo de fundo.</p>
+      <div class="go">Abrir <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </a>
+    <a class="tile live" href="locutor.html" target="_blank">
+      <div class="tile-top"><div class="ti"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10a7 7 0 0 1-14 0M12 17v4"/></svg></div>
+        <div><h3>Locutor</h3><div class="tag">CACÁ ao vivo</div></div></div>
+      <p>Manda mensagens pra CACÁ falar no telão (avisos, comemoração de venda) com o tom escolhido.</p>
+      <div class="go">Abrir <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></div>
+    </a>
+  </div>
+
+  <footer>Prometeu · mockup navegável · abre cada tela em nova aba</footer>
+</div>
+</body>
+</html>

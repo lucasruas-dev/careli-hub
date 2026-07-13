@@ -2529,7 +2529,7 @@ export function HermesWorkspace() {
 
   return (
     <div
-      className={`grid h-full min-h-0 overflow-hidden bg-[#f3f6fa] transition-[grid-template-columns] duration-200 ease-out ${
+      className={`grid h-full min-h-0 overflow-hidden bg-subtle dark:bg-canvas transition-[grid-template-columns] duration-200 ease-out ${
         isSidebarCollapsed
           ? "[grid-template-columns:5rem_minmax(0,1fr)]"
           : "[grid-template-columns:21.5rem_minmax(0,1fr)]"
@@ -2559,7 +2559,7 @@ export function HermesWorkspace() {
       />
       <div className="min-h-0 min-w-0 p-3 pl-0">
         <main
-          className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.35rem] border border-[#d9e0ea] bg-[#f3f6fa] shadow-[0_14px_36px_rgba(16,24,32,0.08)]"
+          className="relative flex h-full min-h-0 min-w-0 flex-col overflow-hidden rounded-[1.35rem] border border-line bg-subtle shadow-[0_14px_36px_rgba(16,24,32,0.08)]"
           ref={conversationAreaRef}
         >
           <ConversationHeader
@@ -2577,7 +2577,7 @@ export function HermesWorkspace() {
             unreadCallCount={unreadCallCount}
           />
           <div
-            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-[#f3f6fa] py-4"
+            className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden bg-subtle py-4"
             onScroll={handleMessageScroll}
             ref={messageScrollContainerRef}
           >
@@ -3102,8 +3102,8 @@ function HermesNotificationStack({
     <div className="pointer-events-none absolute right-4 top-20 z-30 grid w-80 gap-2">
       {notifications.map((notification) => (
         <article
-          className={`pointer-events-auto rounded-md border bg-white p-3 shadow-xl ${
-            notification.mentioned ? "border-[#A07C3B]/45" : "border-[#d9e0ea]"
+          className={`pointer-events-auto rounded-md border bg-surface p-3 shadow-xl ${
+            notification.mentioned ? "border-[#A07C3B]/45" : "border-line"
           }`}
           key={notification.id}
         >
@@ -3120,16 +3120,16 @@ function HermesNotificationStack({
               onClick={() => onSelect(notification.channelId)}
               type="button"
             >
-              <p className="m-0 truncate text-sm font-semibold text-[#101820]">
+              <p className="m-0 truncate text-sm font-semibold text-ink">
                 {notification.title}
               </p>
-              <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-[#667085]">
+              <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-ink-muted">
                 {notification.description}
               </p>
             </button>
             <button
               aria-label="Fechar notificacao"
-              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-[#667085] transition hover:bg-[#eef2f7] hover:text-[#101820]"
+              className="grid h-7 w-7 shrink-0 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink"
               onClick={() => onDismiss(notification.id)}
               type="button"
             >

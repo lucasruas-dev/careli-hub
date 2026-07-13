@@ -53,7 +53,7 @@ import type {
 } from "@/modules/guardian/attendance/types";
 
 const EMPTY_FIELD = "-";
-const neutralPillStyle = "bg-slate-50 text-slate-500 ring-slate-200";
+const neutralPillStyle = "bg-subtle text-ink-muted ring-line";
 
 type ClientDetailPanelProps = {
   client: QueueClient;
@@ -218,20 +218,20 @@ export function ClientDetailPanel({
   }
 
   return (
-    <section className="flex min-h-0 flex-col rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:h-[calc(100vh-112px)]">
-      <header className="shrink-0 border-b border-slate-100 px-4 py-3">
+    <section className="flex min-h-0 flex-col rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] xl:h-[calc(100vh-112px)]">
+      <header className="shrink-0 border-b border-line px-4 py-3">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="flex items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-subtle text-[#A07C3B] ring-1 ring-line/70">
                 <Building2 className="size-4" aria-hidden="true" />
               </div>
               <div className="min-w-0">
-                <h2 className="truncate text-lg font-semibold tracking-normal text-slate-950">
+                <h2 className="truncate text-lg font-semibold tracking-normal text-ink">
                   {client.nome}
                 </h2>
                 <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs">
-                  <span className="truncate text-slate-500">
+                  <span className="truncate text-ink-muted">
                     {client.segmento} · {client.carteira.empreendimento}
                   </span>
                   <Tooltip content={paymentBehavior.tooltip} placement="bottom">
@@ -256,7 +256,7 @@ export function ClientDetailPanel({
                 type="button"
                 onClick={() => setAttendanceOpen(true)}
                 aria-label="Abrir atendimento"
-                className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-100 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-100"
               >
                 <MessageCircle className="size-4" aria-hidden="true" />
               </button>
@@ -285,7 +285,7 @@ export function ClientDetailPanel({
         </div>
 
         <nav
-          className="mt-3 flex w-fit flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1"
+          className="mt-3 flex w-fit flex-wrap gap-1 rounded-xl border border-line/70 bg-surface p-1"
           aria-label="Workspace operacional"
         >
           {workspaceTabs.map((tab) => {
@@ -301,12 +301,12 @@ export function ClientDetailPanel({
                   aria-label={tab.label}
                   className={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset transition-colors ${
                     active
-                      ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/20"
-                      : "bg-white text-slate-600 ring-slate-200/70 hover:bg-slate-50 hover:text-slate-950"
+                      ? "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/20"
+                      : "bg-surface text-ink-soft ring-line/70 hover:bg-subtle hover:text-ink"
                   }`}
                 >
                   <Icon
-                    className={`size-4 ${active ? "text-[#A07C3B]" : "text-slate-400"}`}
+                    className={`size-4 ${active ? "text-[#A07C3B]" : "text-ink-muted"}`}
                   />
                 </button>
               </Tooltip>
@@ -315,7 +315,7 @@ export function ClientDetailPanel({
         </nav>
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/35 p-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] sm:p-5 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-subtle/35 p-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] sm:p-5 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-subtle [&::-webkit-scrollbar-track]:bg-transparent">
         <div className="space-y-5">
           {renderWorkspaceTab({
             activeTab,
@@ -383,7 +383,7 @@ function buildPaymentBehavior(client: QueueClient) {
 
   if (client.c2xInstallmentsLoaded === false) {
     return {
-      className: "bg-slate-50 text-slate-600 ring-slate-200",
+      className: "bg-subtle text-ink-soft ring-line",
       icon: Clock3,
       label: "Calculando histórico",
       tooltip:
@@ -393,7 +393,7 @@ function buildPaymentBehavior(client: QueueClient) {
 
   if (paidInstallments.length === 0) {
     return {
-      className: "bg-slate-50 text-slate-600 ring-slate-200",
+      className: "bg-subtle text-ink-soft ring-line",
       icon: Clock3,
       label: "Sem histórico pago",
       tooltip:
@@ -415,7 +415,7 @@ function buildPaymentBehavior(client: QueueClient) {
 
   if (averageDelay <= -1) {
     return {
-      className: "bg-emerald-50 text-emerald-700 ring-emerald-200",
+      className: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-500/25",
       icon: ThumbsUp,
       label:
         roundedDays === 1 ? "Antecipa 1 dia" : `Antecipa ${roundedDays} dias`,
@@ -425,7 +425,7 @@ function buildPaymentBehavior(client: QueueClient) {
 
   if (averageDelay >= 1) {
     return {
-      className: "bg-rose-50 text-rose-700 ring-rose-200",
+      className: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-200 dark:ring-rose-500/25",
       icon: ThumbsDown,
       label: roundedDays === 1 ? "Atrasa 1 dia" : `Atrasa ${roundedDays} dias`,
       tooltip: `${baseTooltip} Em media, paga apos o vencimento.`,
@@ -433,7 +433,7 @@ function buildPaymentBehavior(client: QueueClient) {
   }
 
   return {
-    className: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/20",
+    className: "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/20",
     icon: Clock3,
     label: "Paga no vencimento",
     tooltip: `${baseTooltip} Historico medio muito proximo do vencimento.`,
@@ -650,10 +650,10 @@ function CompactKpi({
 }) {
   const toneClass =
     tone === "danger"
-      ? "text-rose-700"
+      ? "text-rose-700 dark:text-rose-300"
       : tone === "gold"
-        ? "text-[#7A5E2C]"
-        : "text-slate-950";
+        ? "text-[#7A5E2C] dark:text-[#d9b877]"
+        : "text-ink";
 
   return (
     <Tooltip
@@ -665,9 +665,9 @@ function CompactKpi({
       <button
         type="button"
         onClick={onClick}
-        className="w-full rounded-xl border border-slate-200/70 bg-white px-3 py-2 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+        className="w-full rounded-xl border border-line/70 bg-surface px-3 py-2 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
       >
-        <p className="truncate text-[11px] font-medium text-slate-500">{label}</p>
+        <p className="truncate text-[11px] font-medium text-ink-muted">{label}</p>
         <p className={`mt-0.5 truncate text-base font-semibold ${toneClass}`}>
           {value}
         </p>
@@ -866,7 +866,7 @@ function AiExecutiveCard({
           type="button"
           onClick={onOpenAi}
           aria-label="Abrir sugestões IA"
-          className="mt-4 inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+          className="mt-4 inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
         >
           <BotMessageSquare className="size-4" aria-hidden="true" />
         </button>
@@ -905,10 +905,10 @@ function RiskCockpit({
           <button
             type="button"
             onClick={onOpenRiskAnalysis}
-            className="w-full rounded-xl border border-slate-200/70 bg-white p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+            className="w-full rounded-xl border border-line/70 bg-surface p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
           >
-            <p className="text-xs font-medium text-slate-500">Score de risco</p>
-            <p className="mt-2 text-lg font-semibold text-rose-700">
+            <p className="text-xs font-medium text-ink-muted">Score de risco</p>
+            <p className="mt-2 text-lg font-semibold text-rose-700 dark:text-rose-300">
               {client.scoreRisco}/100
             </p>
             <ArrowRight
@@ -926,20 +926,20 @@ function RiskCockpit({
           <button
             type="button"
             onClick={onOpenRiskAnalysis}
-            className="w-full rounded-xl border border-slate-200/70 bg-white p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+            className="w-full rounded-xl border border-line/70 bg-surface p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
           >
             <div className="flex items-center gap-2">
-              <p className="text-xs font-medium text-slate-500">
+              <p className="text-xs font-medium text-ink-muted">
                 Tendência de evasão
               </p>
-              <span className="rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-inset ring-slate-200">
+              <span className="rounded-full bg-subtle px-1.5 py-0.5 text-[10px] font-semibold text-ink-soft ring-1 ring-inset ring-line">
                 regra
               </span>
             </div>
-            <p className="mt-2 text-lg font-semibold text-slate-950">
+            <p className="mt-2 text-lg font-semibold text-ink">
               {evasionTrend}%
             </p>
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-ink-muted">
               Atraso, parcelas e resposta operacional
             </p>
           </button>
@@ -953,15 +953,15 @@ function RiskCockpit({
           <button
             type="button"
             onClick={onOpenRiskAnalysis}
-            className="w-full rounded-xl border border-slate-200/70 bg-white p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+            className="w-full rounded-xl border border-line/70 bg-surface p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
           >
-            <p className="text-xs font-medium text-slate-500">
+            <p className="text-xs font-medium text-ink-muted">
               Risco operacional
             </p>
-            <p className="mt-2 text-lg font-semibold text-[#7A5E2C]">
+            <p className="mt-2 text-lg font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
               {client.workflow.stage}
             </p>
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-ink-muted">
               Etapa atual do workflow
             </p>
           </button>
@@ -975,15 +975,15 @@ function RiskCockpit({
           <button
             type="button"
             onClick={onOpenRiskAnalysis}
-            className="w-full rounded-xl border border-slate-200/70 bg-white p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+            className="w-full rounded-xl border border-line/70 bg-surface p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
           >
-            <p className="text-xs font-medium text-slate-500">
+            <p className="text-xs font-medium text-ink-muted">
               Risco financeiro
             </p>
-            <p className="mt-2 text-lg font-semibold text-rose-700">
+            <p className="mt-2 text-lg font-semibold text-rose-700 dark:text-rose-300">
               {financialRisk}
             </p>
-            <p className="mt-2 text-xs text-slate-500">
+            <p className="mt-2 text-xs text-ink-muted">
               Chance de quebra do acordo
             </p>
           </button>
@@ -992,10 +992,10 @@ function RiskCockpit({
 
       <div className="mt-4 flex items-center gap-2">
         <BotMessageSquare className="size-4 text-[#A07C3B]" aria-hidden="true" />
-        <p className="text-sm font-semibold text-slate-950">
+        <p className="text-sm font-semibold text-ink">
           Inteligência da cobrança
         </p>
-        <span className="rounded-full bg-[#A07C3B]/8 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+        <span className="rounded-full bg-[#A07C3B]/8 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
           cérebro de IA
         </span>
         {onOpenAi ? (
@@ -1004,7 +1004,7 @@ function RiskCockpit({
               type="button"
               onClick={onOpenAi}
               aria-label="Abrir sugestões IA"
-              className="ml-auto inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+              className="ml-auto inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
             >
               <BotMessageSquare className="size-4" aria-hidden="true" />
             </button>
@@ -1144,15 +1144,15 @@ function SpouseDetailsBlock({
   items: Array<{ label: string; value: string }>;
 }) {
   return (
-    <details className="group rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <details className="group rounded-xl border border-line/70 bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
       <summary className="flex cursor-pointer list-none items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-slate-950">
+          <p className="text-sm font-semibold text-ink">
             Dados do cônjuge
           </p>
-          <p className="mt-1 truncate text-xs text-slate-500">{spouseName}</p>
+          <p className="mt-1 truncate text-xs text-ink-muted">{spouseName}</p>
         </div>
-        <span className="inline-flex items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C]">
+        <span className="inline-flex items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
           Expandir
           <ChevronDown
             className="size-3.5 transition-transform group-open:rotate-180"
@@ -1160,7 +1160,7 @@ function SpouseDetailsBlock({
           />
         </span>
       </summary>
-      <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+      <div className="mt-4 rounded-xl border border-line/70 bg-subtle/60 p-4">
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {items.map((item) => (
             <InfoPanel
@@ -1207,8 +1207,8 @@ function PortfolioSummaryCard({
   return (
     <div className="rounded-xl border border-[#A07C3B]/25 bg-[#A07C3B]/8 p-3">
       <div className="flex items-center gap-2">
-        <MapPinned className="size-4 text-[#7A5E2C]" aria-hidden="true" />
-        <p className="text-sm font-semibold text-[#5C461F]">Resumo da carteira</p>
+        <MapPinned className="size-4 text-[#7A5E2C] dark:text-[#d9b877]" aria-hidden="true" />
+        <p className="text-sm font-semibold text-ink">Resumo da carteira</p>
       </div>
       <div className="mt-2 flex flex-wrap gap-x-4 gap-y-2">
         <CarteiraStat
@@ -1225,8 +1225,8 @@ function PortfolioSummaryCard({
         />
       </div>
       <p className="mt-2 truncate text-xs">
-        <span className="text-[#7A5E2C]">Contato: </span>
-        <span className="font-semibold text-[#4A3717]">
+        <span className="text-[#7A5E2C] dark:text-[#d9b877]">Contato: </span>
+        <span className="font-semibold text-ink">
           {client.dados360.telefone}
         </span>
       </p>
@@ -1236,7 +1236,7 @@ function PortfolioSummaryCard({
             type="button"
             onClick={onOpenPortfolio}
             aria-label="Ver carteira"
-            className="flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
+            className="flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-surface text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/5"
           >
             <ArrowRight className="size-4" aria-hidden="true" />
           </button>
@@ -1247,7 +1247,7 @@ function PortfolioSummaryCard({
               type="button"
               onClick={onOpenWhatsApp}
               aria-label="Abrir Iris"
-              className="flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
+              className="flex size-8 items-center justify-center rounded-lg border border-emerald-100 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-100 dark:hover:bg-emerald-500/20"
             >
               <MessageCircle className="size-4" aria-hidden="true" />
             </button>
@@ -1261,8 +1261,8 @@ function PortfolioSummaryCard({
 function CarteiraStat({ label, value }: { label: string; value: string }) {
   return (
     <div className="min-w-0">
-      <p className="text-[11px] text-[#7A5E2C]">{label}</p>
-      <p className="truncate text-sm font-semibold text-[#4A3717]">{value}</p>
+      <p className="text-[11px] text-ink-muted">{label}</p>
+      <p className="truncate text-sm font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -1314,7 +1314,7 @@ function PortfolioTab({
     >
       {!maximized ? (
         <aside
-          className={`min-w-0 self-start 2xl:sticky 2xl:top-0 2xl:max-h-[calc(100vh-160px)] 2xl:overflow-y-auto rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-300 ${
+          className={`min-w-0 self-start 2xl:sticky 2xl:top-0 2xl:max-h-[calc(100vh-160px)] 2xl:overflow-y-auto rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] transition-all duration-300 ${
             listCollapsed ? "p-2" : "p-4"
           }`}
         >
@@ -1326,7 +1326,7 @@ function PortfolioTab({
                 ? "Expandir lista de unidades"
                 : "Recolher lista de unidades"
             }
-            className="mb-3 flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-[#A07C3B] transition-colors hover:bg-[#A07C3B]/5"
+            className="mb-3 flex size-9 items-center justify-center rounded-lg border border-line/70 bg-surface text-[#A07C3B] transition-colors hover:bg-[#A07C3B]/5"
           >
             {listCollapsed ? (
               <PanelLeftOpen className="size-4" aria-hidden="true" />
@@ -1350,8 +1350,8 @@ function PortfolioTab({
                     }}
                     className={`flex size-8 items-center justify-center rounded-lg text-xs font-semibold ring-1 ring-inset transition-colors ${
                       selectedUnit.matricula === unit.matricula
-                        ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/20"
-                        : "bg-slate-50 text-slate-500 ring-slate-200/70 hover:bg-[#A07C3B]/5"
+                        ? "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/20"
+                        : "bg-subtle text-ink-muted ring-line/70 hover:bg-[#A07C3B]/5"
                     }`}
                   >
                     {index + 1}
@@ -1362,10 +1362,10 @@ function PortfolioTab({
           ) : (
             <>
               <div className="mb-4">
-                <p className="text-sm font-semibold text-slate-950">
+                <p className="text-sm font-semibold text-ink">
                   Unidades
                 </p>
-                <p className="mt-1 text-xs text-slate-500">
+                <p className="mt-1 text-xs text-ink-muted">
                   Selecione uma unidade para operar.
                 </p>
               </div>
@@ -1381,13 +1381,13 @@ function PortfolioTab({
                     className={`group w-full rounded-xl border p-4 text-left transition-colors ${
                       selectedUnit.matricula === unit.matricula
                         ? "border-[#A07C3B]/30 bg-[#A07C3B]/5"
-                        : "border-slate-200/70 bg-slate-50/60 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+                        : "border-line/70 bg-subtle/60 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
                     }`}
                   >
-                    <p className="text-sm font-semibold text-slate-950">
+                    <p className="text-sm font-semibold text-ink">
                       {unit.empreendimento}
                     </p>
-                    <p className="mt-1 text-xs text-slate-500">
+                    <p className="mt-1 text-xs text-ink-muted">
                       Quadra {unit.quadra} · Lote {formatLote(unit.lote)} ·{" "}
                       {unit.area}
                     </p>
@@ -1407,17 +1407,17 @@ function PortfolioTab({
       ) : null}
 
       <DetailSection title="Unidade selecionada" icon={MapPinned} accent>
-        <div className="mb-5 flex flex-col gap-4 border-b border-slate-100 pb-5 lg:flex-row lg:items-start lg:justify-between">
+        <div className="mb-5 flex flex-col gap-4 border-b border-line pb-5 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex flex-wrap items-center gap-2">
-              <h3 className="text-lg font-semibold text-slate-950">
+              <h3 className="text-lg font-semibold text-ink">
                 {selectedUnit.empreendimento}
               </h3>
-              <span className="w-fit rounded-full border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-medium text-[#7A5E2C]">
+              <span className="w-fit rounded-full border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-medium text-[#7A5E2C] dark:text-[#d9b877]">
                 {selectedUnit.statusVenda}
               </span>
             </div>
-            <p className="mt-1 text-sm text-slate-500">
+            <p className="mt-1 text-sm text-ink-muted">
               Quadra {selectedUnit.quadra} · Lote{" "}
               {formatLote(selectedUnit.lote)} · {selectedUnit.area}
             </p>
@@ -1436,7 +1436,7 @@ function PortfolioTab({
                 aria-label={
                   maximized ? "Sair do modo maximizado" : "Maximizar detalhe"
                 }
-                className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-line/70 bg-surface text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               >
                 {maximized ? (
                   <Minimize2
@@ -1488,7 +1488,7 @@ function SubtabNav({
 }) {
   return (
     <nav
-      className="flex w-fit flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1"
+      className="flex w-fit flex-wrap gap-1 rounded-xl border border-line/70 bg-surface p-1"
       aria-label="Detalhes da unidade"
     >
       {unitSubtabs.map((tab) => {
@@ -1502,12 +1502,12 @@ function SubtabNav({
               aria-label={tab.label}
               className={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset transition-colors ${
                 active
-                  ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/20"
-                  : "bg-white text-slate-600 ring-slate-200/70 hover:bg-slate-50"
+                  ? "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/20"
+                  : "bg-surface text-ink-soft ring-line/70 hover:bg-subtle"
               }`}
             >
               <Icon
-                className={`size-3.5 ${active ? "text-[#A07C3B]" : "text-slate-400"}`}
+                className={`size-3.5 ${active ? "text-[#A07C3B]" : "text-ink-muted"}`}
               />
             </button>
           </Tooltip>
@@ -1592,13 +1592,13 @@ function UnitScopeControl({
   selectedUnitId: "all" | string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white p-3">
-      <label className="flex flex-col gap-2 text-xs font-semibold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+    <div className="rounded-xl border border-line/70 bg-surface p-3">
+      <label className="flex flex-col gap-2 text-xs font-semibold text-ink-muted sm:flex-row sm:items-center sm:justify-between">
         Filtrar por unidade/lote
         <select
           value={selectedUnitId}
           onChange={(event) => onChange(event.target.value as "all" | string)}
-          className="h-9 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition-colors hover:bg-slate-50"
+          className="h-9 rounded-lg border border-line/70 bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors hover:bg-subtle"
         >
           <option value="all">Todas as unidades/lotes</option>
           {client.carteira.unidades.map((unit) => (
@@ -1645,7 +1645,7 @@ function RiskTab({
             tone="gold"
           />
         </div>
-        <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
+        <div className="mt-4 rounded-xl border border-line/70 bg-subtle/70 p-4">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <span
               className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${priorityStyles[client.prioridade] ?? neutralPillStyle}`}
@@ -1663,7 +1663,7 @@ function RiskTab({
               {client.agreement.status}
             </span>
           </div>
-          <p className="text-sm leading-6 text-slate-600">
+          <p className="text-sm leading-6 text-ink-soft">
             {client.agreement.risk === EMPTY_FIELD
               ? EMPTY_FIELD
               : `O cliente está em ${client.workflow.stage.toLowerCase()}, com ${client.parcelas.vencidas} parcela(s) vencida(s), saldo em atraso de ${client.saldoDevedor} e chance de quebra de acordo de ${client.agreement.aiSuggestion.breakChance}%.`}
@@ -1767,7 +1767,7 @@ function DocumentsTab({
   return (
     <DetailSection title="Documentos" icon={FileText} accent>
       {documentError ? (
-        <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+        <p className="mb-3 rounded-lg border border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300">
           {documentError}
         </p>
       ) : null}
@@ -1775,11 +1775,11 @@ function DocumentsTab({
         {documents.map((document) => (
           <article
             key={document.id}
-            className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4"
+            className="rounded-xl border border-line/70 bg-subtle/70 p-4"
           >
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="truncate text-sm font-semibold text-slate-950">
+                <p className="truncate text-sm font-semibold text-ink">
                   {document.title}
                 </p>
                 {document.href ? (
@@ -1789,7 +1789,7 @@ function DocumentsTab({
                     onClick={() =>
                       void openHadesDocument(document.href, document.id)
                     }
-                    className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-white px-2 py-1 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+                    className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-surface px-2 py-1 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
                   >
                     <span className="truncate">{document.detail}</span>
                     {openingDocumentId === document.id ? (
@@ -1799,12 +1799,12 @@ function DocumentsTab({
                     )}
                   </button>
                 ) : (
-                  <p className="mt-1 truncate text-xs text-slate-500">
+                  <p className="mt-1 truncate text-xs text-ink-muted">
                     {document.detail}
                   </p>
                 )}
                 {document.meta ? (
-                  <p className="mt-1 truncate text-xs font-medium text-slate-500">
+                  <p className="mt-1 truncate text-xs font-medium text-ink-muted">
                     {document.meta}
                   </p>
                 ) : null}
@@ -1812,12 +1812,12 @@ function DocumentsTab({
               {document.unitBadge || document.status ? (
                 <div className="flex shrink-0 flex-col items-end gap-2">
                   {document.unitBadge ? (
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
+                    <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/20">
                       {document.unitBadge}
                     </span>
                   ) : null}
                   {document.status ? (
-                    <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                    <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
                       {document.status}
                     </span>
                   ) : null}
@@ -1872,20 +1872,20 @@ function RiskAnalysisModal({
         type="button"
         aria-label="Fechar análise de risco"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-950/25 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/25 backdrop-blur-[2px]"
       />
 
-      <section className="relative z-10 w-full max-w-3xl rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+      <section className="relative z-10 w-full max-w-3xl rounded-2xl border border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="flex size-10 items-center justify-center rounded-xl bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
               <ShieldAlert className="size-5" aria-hidden="true" />
             </div>
             <div>
-              <h2 className="text-base font-semibold text-slate-950">
+              <h2 className="text-base font-semibold text-ink">
                 Análise de risco
               </h2>
-              <p className="mt-1 text-sm text-slate-500">{client.nome}</p>
+              <p className="mt-1 text-sm text-ink-muted">{client.nome}</p>
             </div>
           </div>
 
@@ -1893,7 +1893,7 @@ function RiskAnalysisModal({
             type="button"
             onClick={onClose}
             aria-label="Fechar modal"
-            className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            className="flex size-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -2015,24 +2015,24 @@ function OverviewEventsCard({
           {events.map((event) => (
             <div
               key={event.id}
-              className="rounded-lg border border-slate-200/70 bg-slate-50/70 px-3 py-2"
+              className="rounded-lg border border-line/70 bg-subtle/70 px-3 py-2"
             >
               <div className="flex items-center justify-between gap-3">
-                <p className="truncate text-sm font-semibold text-slate-950">
+                <p className="truncate text-sm font-semibold text-ink">
                   {event.title}
                 </p>
-                <span className="shrink-0 text-xs text-slate-400">
+                <span className="shrink-0 text-xs text-ink-muted">
                   {event.occurredAt}
                 </span>
               </div>
-              <p className="mt-1 line-clamp-1 text-xs text-slate-500">
+              <p className="mt-1 line-clamp-1 text-xs text-ink-muted">
                 {event.description}
               </p>
             </div>
           ))}
         </div>
       ) : (
-        <p className="text-xs text-slate-400">
+        <p className="text-xs text-ink-muted">
           Sem eventos recentes para este cliente.
         </p>
       )}
@@ -2084,13 +2084,13 @@ function ActionMetric({
       <button
         type="button"
         onClick={onClick}
-        className="group w-full rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+        className="group w-full rounded-xl border border-line/70 bg-surface p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
       >
-        <p className="text-xs font-medium text-slate-500">{label}</p>
+        <p className="text-xs font-medium text-ink-muted">{label}</p>
         <p
           className={`mt-2 font-semibold tracking-normal ${
             compact ? "line-clamp-2 text-sm leading-5" : "truncate text-lg"
-          } ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}
+          } ${tone === "danger" ? "text-rose-700 dark:text-rose-300" : tone === "gold" ? "text-[#7A5E2C] dark:text-[#d9b877]" : "text-ink"}`}
         >
           {value}
         </p>
@@ -2113,13 +2113,13 @@ function MetricTile({
   value: string;
 }) {
   const toneClass = {
-    neutral: "bg-white text-slate-950 ring-slate-200/70",
-    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15",
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
+    neutral: "bg-surface text-ink ring-line/70",
+    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
   }[tone];
   return (
     <div className={`min-w-0 rounded-xl px-3 py-2.5 ring-1 ${toneClass}`}>
-      <p className="truncate text-xs font-medium text-slate-500">{label}</p>
+      <p className="truncate text-xs font-medium text-ink-muted">{label}</p>
       <p className="mt-1 truncate text-lg font-semibold tracking-normal">
         {value}
       </p>
@@ -2139,17 +2139,17 @@ function InfoPanel({
   tag?: "IA" | "regra";
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+    <div className="rounded-xl border border-line/70 bg-subtle/70 p-3">
       <div className="flex items-center gap-2">
-        <p className="text-xs font-semibold tracking-normal text-slate-400">
+        <p className="text-xs font-semibold tracking-normal text-ink-muted">
           {title}
         </p>
         {tag ? (
           <span
             className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${
               tag === "IA"
-                ? "bg-indigo-50 text-indigo-700 ring-indigo-100"
-                : "bg-slate-100 text-slate-600 ring-slate-200"
+                ? "bg-indigo-50 dark:bg-indigo-500/12 text-indigo-700 dark:text-indigo-300 ring-indigo-100 dark:ring-indigo-500/25"
+                : "bg-subtle text-ink-soft ring-line"
             }`}
           >
             {tag}
@@ -2157,7 +2157,7 @@ function InfoPanel({
         ) : null}
       </div>
       <Tooltip content={value} placement="bottom">
-        <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">
+        <span className="mt-1 line-clamp-2 text-xs leading-5 text-ink">
           {value}
         </span>
       </Tooltip>
@@ -2167,9 +2167,9 @@ function InfoPanel({
 
 function CompactInfo({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200/70">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+    <div className="min-w-0 rounded-lg bg-surface px-3 py-2 ring-1 ring-line/70">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink">
         {value}
       </p>
     </div>
@@ -2178,9 +2178,9 @@ function CompactInfo({ label, value }: { label: string; value: string }) {
 
 function UnitContext({ label, unit }: { label: string; unit: PortfolioUnit }) {
   return (
-    <div className="mb-4 rounded-xl border border-slate-200/70 bg-slate-50/70 px-3 py-2.5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+    <div className="mb-4 rounded-xl border border-line/70 bg-subtle/70 px-3 py-2.5">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink">
         {unit.empreendimento} · Quadra {unit.quadra} · Lote{" "}
         {formatLote(unit.lote)}
       </p>

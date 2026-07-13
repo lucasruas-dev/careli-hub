@@ -48,20 +48,20 @@ type AgreementsCenterCardProps = {
   unit?: PortfolioUnit;
 };
 
-const neutralPillStyle = "bg-slate-50 text-slate-500 ring-slate-200";
+const neutralPillStyle = "bg-subtle text-ink-muted ring-line";
 
 const promiseStatusStyles: Record<PaymentPromiseStatus, string> = {
-  "Promessa realizada": "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
-  "Aguardando pagamento": "bg-indigo-50 text-indigo-700 ring-indigo-100",
-  Cumprida: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-  Quebrada: "bg-rose-50 text-rose-700 ring-rose-100",
-  Reagendada: "bg-amber-50 text-amber-700 ring-amber-100",
+  "Promessa realizada": "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+  "Aguardando pagamento": "bg-indigo-50 dark:bg-indigo-500/12 text-indigo-700 dark:text-indigo-300 ring-indigo-100 dark:ring-indigo-500/25",
+  Cumprida: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+  Quebrada: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+  Reagendada: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/25",
   Cancelada: "bg-zinc-100 text-zinc-700 ring-zinc-200",
 };
 
 const typeStyles: Record<CommitmentType, string> = {
-  "Promessa de pagamento": "bg-slate-50 text-slate-700 ring-slate-200",
-  Acordo: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
+  "Promessa de pagamento": "bg-subtle text-ink ring-line",
+  Acordo: "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
 };
 const contactChannelOptions = ["WhatsApp", "Ligação", "E-mail", "Presencial", "SMS"];
 
@@ -297,17 +297,17 @@ export function AgreementsCenterCard({
       <div className="mb-4 flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-[#A07C3B]/8 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+            <span className="rounded-full bg-[#A07C3B]/8 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
               Promessas e acordos
             </span>
             {unit ? (
-              <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+              <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
                 Cod. unidade {unit.matricula}
               </span>
             ) : null}
           </div>
-          <p className="mt-2 text-sm font-semibold text-slate-950">{client.nome}</p>
-          <p className="mt-1 text-xs text-slate-500">
+          <p className="mt-2 text-sm font-semibold text-ink">{client.nome}</p>
+          <p className="mt-1 text-xs text-ink-muted">
             Histórico operacional de acordos e promessas com trilha auditável de status e alterações.
           </p>
         </div>
@@ -318,7 +318,7 @@ export function AgreementsCenterCard({
               type="button"
               onClick={() => setDrawer({ mode: "Nova promessa" })}
               aria-label="Nova promessa"
-              className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+              className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
             >
               <CalendarPlus className="size-4" aria-hidden="true" />
             </button>
@@ -337,7 +337,7 @@ export function AgreementsCenterCard({
       </div>
 
       {feedback ? (
-        <div className="mb-3 rounded-lg border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
+        <div className="mb-3 rounded-lg border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 py-2 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
           {feedback}
         </div>
       ) : null}
@@ -351,17 +351,17 @@ export function AgreementsCenterCard({
         <MetricCard label="Valor prometido" value={formatMoney(summary.promisedValue)} tone="gold" />
       </div>
 
-      <div className="mb-4 grid gap-3 rounded-xl border border-slate-200/70 bg-slate-50/60 p-3 xl:grid-cols-[minmax(0,1fr)_300px]">
+      <div className="mb-4 grid gap-3 rounded-xl border border-line/70 bg-subtle/60 p-3 xl:grid-cols-[minmax(0,1fr)_300px]">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <button type="button" onClick={toggleFilters} className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-600 hover:bg-[#A07C3B]/5" aria-expanded={filtersExpanded}>
+            <button type="button" onClick={toggleFilters} className="inline-flex h-8 items-center gap-2 rounded-lg border border-line/70 bg-surface px-2.5 text-xs font-semibold text-ink-soft hover:bg-[#A07C3B]/5" aria-expanded={filtersExpanded}>
               <Filter className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
               Filtros{activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
               <ChevronDown className={`size-3.5 text-[#A07C3B] transition-transform ${filtersExpanded ? "rotate-180" : ""}`} aria-hidden="true" />
             </button>
             {activeFilters.map((filter) => (
               <Tooltip key={`${filter.label}-${filter.value}`} content={`Remover ${filter.label}`} placement="top">
-                <button type="button" onClick={filter.clear} className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                <button type="button" onClick={filter.clear} className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                   <span className="truncate">{filter.value}</span><span aria-hidden="true">×</span>
                 </button>
               </Tooltip>
@@ -400,12 +400,12 @@ export function AgreementsCenterCard({
           </div>
         </div>
 
-        <div className="rounded-xl border border-[#A07C3B]/15 bg-white p-3">
+        <div className="rounded-xl border border-[#A07C3B]/15 bg-surface p-3">
           <div className="flex items-center gap-2">
             <Sparkles className="size-4 text-[#A07C3B]" aria-hidden="true" />
-            <p className="text-sm font-semibold text-slate-950">IA operacional</p>
+            <p className="text-sm font-semibold text-ink">IA operacional</p>
           </div>
-          <p className="mt-2 text-xs leading-5 text-slate-600">
+          <p className="mt-2 text-xs leading-5 text-ink-soft">
             Risco de quebra {client.agreement.aiSuggestion.breakChance}%. Recomenda follow-up antes do
             vencimento e composição com entrada proporcional ao histórico.
           </p>
@@ -413,8 +413,8 @@ export function AgreementsCenterCard({
       </div>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="overflow-hidden rounded-xl border border-slate-200/70 bg-white">
-          <div className="grid grid-cols-[0.95fr_0.85fr_0.9fr_0.85fr_0.8fr_0.85fr_84px] gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-xs font-semibold text-slate-500 max-lg:hidden">
+        <div className="overflow-hidden rounded-xl border border-line/70 bg-surface">
+          <div className="grid grid-cols-[0.95fr_0.85fr_0.9fr_0.85fr_0.8fr_0.85fr_84px] gap-3 border-b border-line bg-subtle/80 px-4 py-2.5 text-xs font-semibold text-ink-muted max-lg:hidden">
             <span>Tipo</span>
             <span>Status</span>
             <span>Cliente</span>
@@ -424,21 +424,21 @@ export function AgreementsCenterCard({
             <span className="text-right">Ações</span>
           </div>
 
-          <div className="max-h-[520px] overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300">
+          <div className="max-h-[520px] overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-subtle">
             {filteredRecords.map((record) => (
               <article
                 key={record.id}
-                className="grid gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 lg:grid-cols-[0.95fr_0.85fr_0.9fr_0.85fr_0.8fr_0.85fr_84px] lg:items-center"
+                className="grid gap-3 border-b border-line px-4 py-3 last:border-b-0 lg:grid-cols-[0.95fr_0.85fr_0.9fr_0.85fr_0.8fr_0.85fr_84px] lg:items-center"
               >
                 <div className="min-w-0">
                   <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${typeStyles[record.type]}`}>
                     {record.type}
                   </span>
-                  <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+                  <p className="mt-1 truncate text-sm font-semibold text-ink">
                     {record.enterprise}
                   </p>
-                  <p className="mt-0.5 truncate text-xs text-slate-500">{record.unitLabel}</p>
-                  <p className="mt-1 w-fit rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                  <p className="mt-0.5 truncate text-xs text-ink-muted">{record.unitLabel}</p>
+                  <p className="mt-1 w-fit rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                     {record.protocol}
                   </p>
                 </div>
@@ -446,28 +446,28 @@ export function AgreementsCenterCard({
                 <div>{renderStatusBadge(record)}</div>
 
                 <div className="min-w-0">
-                  <p className="truncate text-xs text-slate-500 lg:hidden">Cliente</p>
-                  <p className="mt-1 truncate text-sm font-semibold text-slate-950 lg:mt-0">{record.client}</p>
-                  <p className="mt-0.5 truncate text-xs text-slate-500">{record.operator}</p>
+                  <p className="truncate text-xs text-ink-muted lg:hidden">Cliente</p>
+                  <p className="mt-1 truncate text-sm font-semibold text-ink lg:mt-0">{record.client}</p>
+                  <p className="mt-0.5 truncate text-xs text-ink-muted">{record.operator}</p>
                 </div>
 
                 <div className="min-w-0">
-                  <p className="truncate text-xs text-slate-500 lg:hidden">Cod. unidade</p>
-                  <p className="mt-1 truncate text-sm font-semibold text-slate-950 lg:mt-0">{record.unitCode}</p>
+                  <p className="truncate text-xs text-ink-muted lg:hidden">Cod. unidade</p>
+                  <p className="mt-1 truncate text-sm font-semibold text-ink lg:mt-0">{record.unitCode}</p>
                 </div>
 
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-slate-500">Valor</p>
-                  <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+                  <p className="text-xs font-medium text-ink-muted">Valor</p>
+                  <p className="mt-1 truncate text-sm font-semibold text-ink">
                     {record.type === "Promessa de pagamento" ? record.promisedValue : record.negotiatedValue}
                   </p>
                 </div>
 
                 <div className="min-w-0">
-                  <p className="text-xs font-medium text-slate-500">
+                  <p className="text-xs font-medium text-ink-muted">
                     {record.type === "Promessa de pagamento" ? "Data prometida" : "Entrada"}
                   </p>
-                  <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+                  <p className="mt-1 truncate text-sm font-semibold text-ink">
                     {record.type === "Promessa de pagamento" ? record.promisedDate : record.entryDueDate}
                   </p>
                 </div>
@@ -477,7 +477,7 @@ export function AgreementsCenterCard({
                     <button
                       type="button"
                       onClick={() => setDrawer({ mode: "Editar compromisso", record })}
-                      className="flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#A07C3B]"
+                      className="flex size-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-[#A07C3B]"
                       aria-label="Editar compromisso"
                     >
                       <Edit3 className="size-4" aria-hidden="true" />
@@ -487,7 +487,7 @@ export function AgreementsCenterCard({
                     <button
                       type="button"
                       onClick={() => handlePrimaryAction(record, updateStatus)}
-                      className="flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#A07C3B]"
+                      className="flex size-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-[#A07C3B]/5 hover:text-[#A07C3B]"
                       aria-label="Alterar status"
                     >
                       <RefreshCw className="size-4" aria-hidden="true" />
@@ -498,7 +498,7 @@ export function AgreementsCenterCard({
             ))}
 
             {filteredRecords.length === 0 ? (
-              <div className="px-4 py-8 text-center text-sm text-slate-500">
+              <div className="px-4 py-8 text-center text-sm text-ink-muted">
                 Nenhum compromisso encontrado para os filtros selecionados.
               </div>
             ) : null}
@@ -533,12 +533,12 @@ function CommitmentInsights({
 }) {
   return (
     <div className="grid gap-3">
-      <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+      <div className="rounded-xl border border-line/70 bg-subtle/60 p-4">
         <div className="mb-3 flex items-center gap-2">
           <TrendingUp className="size-4 text-[#A07C3B]" aria-hidden="true" />
-          <p className="text-sm font-semibold text-slate-950">Recuperação</p>
+          <p className="text-sm font-semibold text-ink">Recuperação</p>
         </div>
-        <div className="h-2 overflow-hidden rounded-full bg-white ring-1 ring-slate-200/70">
+        <div className="h-2 overflow-hidden rounded-full bg-surface ring-1 ring-line/70">
           <div
             className="h-full rounded-full bg-[#A07C3B]"
             style={{ width: `${Math.min(client.agreement.recoveryRate, 100)}%` }}
@@ -550,17 +550,17 @@ function CommitmentInsights({
         </div>
       </div>
 
-      <div className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <div className="rounded-xl border border-line/70 bg-surface p-4">
         <div className="mb-3 flex items-center gap-2">
           <BadgePercent className="size-4 text-[#A07C3B]" aria-hidden="true" />
-          <p className="text-sm font-semibold text-slate-950">Recomendação IA</p>
+          <p className="text-sm font-semibold text-ink">Recomendação IA</p>
         </div>
-        <p className="text-sm leading-6 text-slate-600">{client.agreement.aiSuggestion.composition}</p>
-        <div className="mt-3 rounded-xl bg-slate-50/80 p-3 ring-1 ring-slate-200/70">
-          <p className="text-xs font-semibold tracking-normal text-slate-400">
+        <p className="text-sm leading-6 text-ink-soft">{client.agreement.aiSuggestion.composition}</p>
+        <div className="mt-3 rounded-xl bg-subtle/80 p-3 ring-1 ring-line/70">
+          <p className="text-xs font-semibold tracking-normal text-ink-muted">
             Próxima ação
           </p>
-          <p className="mt-1 text-sm leading-6 text-slate-700">
+          <p className="mt-1 text-sm leading-6 text-ink">
             {client.agreement.aiSuggestion.nextAction}
           </p>
         </div>
@@ -599,23 +599,23 @@ function CommitmentDrawer({
         type="button"
         aria-label="Fechar central de compromissos"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-950/25 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/25 backdrop-blur-[2px]"
       />
 
-      <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+      <aside className="relative z-10 flex h-full w-full max-w-xl flex-col border-l border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div>
             <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">
               Central Operacional
             </p>
-            <h2 className="mt-1 text-lg font-semibold text-slate-950">{mode}</h2>
-            <p className="mt-1 text-sm text-slate-500">{client.nome}</p>
+            <h2 className="mt-1 text-lg font-semibold text-ink">{mode}</h2>
+            <p className="mt-1 text-sm text-ink-muted">{client.nome}</p>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fechar drawer"
-            className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            className="flex size-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -734,12 +734,12 @@ function CreateCommitmentForm({
         <ReadonlyField label={isPromise ? "Status da promessa" : "Status do acordo"} value={automaticStatus} />
       </div>
 
-      <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-        <p className="text-xs font-semibold tracking-normal text-slate-400">Observação</p>
+      <div className="rounded-xl border border-line/70 bg-subtle/70 p-4">
+        <p className="text-xs font-semibold tracking-normal text-ink-muted">Observação</p>
         <textarea
           value={draft.note}
           onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))}
-          className="mt-2 min-h-24 w-full resize-none rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+          className="mt-2 min-h-24 w-full resize-none rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm leading-6 text-ink outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
         />
       </div>
 
@@ -868,19 +868,19 @@ function CommitmentDetail({
         />
       </div>
 
-      <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-        <p className="text-xs font-semibold tracking-normal text-slate-400">Observação</p>
+      <div className="rounded-xl border border-line/70 bg-subtle/70 p-4">
+        <p className="text-xs font-semibold tracking-normal text-ink-muted">Observação</p>
         <textarea
           value={draft.note}
           onChange={(event) => setDraft((current) => ({ ...current, note: event.target.value }))}
-          className="mt-2 min-h-24 w-full resize-none rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm leading-6 text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+          className="mt-2 min-h-24 w-full resize-none rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm leading-6 text-ink outline-none transition-colors focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
         />
       </div>
 
       <button
         type="button"
         onClick={() => onSave(record, draft)}
-        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-4 text-sm font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+        className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-4 text-sm font-semibold text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
       >
         <CheckCircle2 className="size-4" aria-hidden="true" />
         Salvar edição
@@ -902,20 +902,20 @@ function CommitmentDetail({
         )}
       </div>
 
-      <div className="rounded-xl border border-slate-200/70 bg-white p-4">
-        <p className="mb-3 text-sm font-semibold text-slate-950">Histórico de alterações</p>
+      <div className="rounded-xl border border-line/70 bg-surface p-4">
+        <p className="mb-3 text-sm font-semibold text-ink">Histórico de alterações</p>
         <div className="space-y-3">
           {record.history.map((entry) => (
             <div key={entry.id} className="border-l-2 border-[#A07C3B]/30 pl-3">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs font-semibold text-slate-950">{entry.action}</p>
-                <span className="text-[11px] text-slate-400">{entry.occurredAt}</span>
+                <p className="text-xs font-semibold text-ink">{entry.action}</p>
+                <span className="text-[11px] text-ink-muted">{entry.occurredAt}</span>
               </div>
-              <p className="mt-1 w-fit rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+              <p className="mt-1 w-fit rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                 {entry.protocol}
               </p>
-              <p className="mt-1 text-xs leading-5 text-slate-600">{entry.description}</p>
-              <p className="mt-1 text-[11px] font-semibold text-slate-400">{entry.operator}</p>
+              <p className="mt-1 text-xs leading-5 text-ink-soft">{entry.description}</p>
+              <p className="mt-1 text-[11px] font-semibold text-ink-muted">{entry.operator}</p>
             </div>
           ))}
         </div>
@@ -964,12 +964,12 @@ function FilterSelect({
 }) {
   return (
     <label className="min-w-0">
-      <span className="mb-1 block text-xs font-semibold text-slate-500">{label}</span>
+      <span className="mb-1 block text-xs font-semibold text-ink-muted">{label}</span>
       <select
         disabled={disabled}
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="h-9 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition-colors hover:bg-slate-50 disabled:bg-slate-50 disabled:text-slate-400"
+        className="h-9 w-full rounded-lg border border-line/70 bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors hover:bg-subtle disabled:bg-subtle disabled:text-ink-muted"
       >
         {children}
       </select>
@@ -990,7 +990,7 @@ function StatusButton({
     <button
       type="button"
       onClick={onClick}
-      className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+      className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-line/70 bg-surface px-3 text-xs font-semibold text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:text-[#d9b877]"
     >
       <Icon className="size-4 text-[#A07C3B]" aria-hidden="true" />
       {label}
@@ -1008,14 +1008,14 @@ function MetricCard({
   tone?: "neutral" | "gold" | "danger";
 }) {
   const toneClass = {
-    neutral: "bg-slate-50/70 text-slate-950 ring-slate-200/70",
-    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15",
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
+    neutral: "bg-subtle/70 text-ink ring-line/70",
+    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
   }[tone];
 
   return (
     <div className={`min-w-0 rounded-xl px-3 py-2.5 ring-1 ${toneClass}`}>
-      <p className="truncate text-xs font-medium text-slate-500">{label}</p>
+      <p className="truncate text-xs font-medium text-ink-muted">{label}</p>
       <p className="mt-1 truncate text-lg font-semibold tracking-normal">{value}</p>
     </div>
   );
@@ -1023,18 +1023,18 @@ function MetricCard({
 
 function CompactInfo({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-lg bg-white px-3 py-2 ring-1 ring-slate-200/70">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-950">{value}</p>
+    <div className="min-w-0 rounded-lg bg-surface px-3 py-2 ring-1 ring-line/70">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
     </div>
   );
 }
 
 function ReadonlyField({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 truncate text-sm font-semibold text-slate-950">{value}</p>
+    <div className="min-w-0 rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className="mt-1 truncate text-sm font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -1049,12 +1049,12 @@ function EditableField({
   value: string;
 }) {
   return (
-    <label className="min-w-0 rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+    <label className="min-w-0 rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+      <span className="text-xs font-medium text-ink-muted">{label}</span>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-7 w-full min-w-0 rounded-md border border-transparent bg-slate-50/80 px-2 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-white focus:ring-2 focus:ring-[#A07C3B]/10"
+        className="mt-1 h-7 w-full min-w-0 rounded-md border border-transparent bg-subtle/80 px-2 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-surface focus:ring-2 focus:ring-[#A07C3B]/10"
       />
     </label>
   );
@@ -1072,12 +1072,12 @@ function SelectField({
   value: string;
 }) {
   return (
-    <label className="min-w-0 rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+    <label className="min-w-0 rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+      <span className="text-xs font-medium text-ink-muted">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-8 w-full min-w-0 rounded-md border border-transparent bg-slate-50/80 px-2 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-white focus:ring-2 focus:ring-[#A07C3B]/10"
+        className="mt-1 h-8 w-full min-w-0 rounded-md border border-transparent bg-subtle/80 px-2 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]/35 focus:bg-surface focus:ring-2 focus:ring-[#A07C3B]/10"
       >
         {children}
       </select>

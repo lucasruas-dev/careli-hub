@@ -436,13 +436,13 @@ function SetupView({
   if (setupTab === "templates") {
     return (
       <div className="grid h-full min-h-0 gap-4 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-        <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-white p-4">
+        <section className="min-w-0 rounded-2xl border border-line bg-surface p-4">
           <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
             <div>
               <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#A07C3B]">
                 Setup Iris
               </p>
-              <h3 className="mt-1 text-base font-semibold text-[#101820]">
+              <h3 className="mt-1 text-base font-semibold text-ink">
                 Templates Meta WhatsApp
               </h3>
             </div>
@@ -463,13 +463,13 @@ function SetupView({
 
   return (
     <div className="grid h-full min-h-0 gap-4 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-      <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-white p-4">
+      <section className="min-w-0 rounded-2xl border border-line bg-surface p-4">
         <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
           <div>
             <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-[#A07C3B]">
               Setup Iris
             </p>
-            <h3 className="mt-1 text-base font-semibold text-[#101820]">
+            <h3 className="mt-1 text-base font-semibold text-ink">
               Filas e assuntos
             </h3>
           </div>
@@ -506,20 +506,20 @@ function SetupView({
 
         <div className="mt-4 grid gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
           <div className="min-w-0 space-y-3 xl:max-h-[calc(100vh-300px)] xl:overflow-y-auto xl:pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-            <div className="rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+            <div className="rounded-2xl border border-line bg-surface p-3">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-normal text-[#8a96aa]">
+                  <p className="text-xs font-semibold uppercase tracking-normal text-ink-muted">
                     Filas
                   </p>
-                  <h4 className="mt-1 text-sm font-semibold text-[#101820]">
+                  <h4 className="mt-1 text-sm font-semibold text-ink">
                     Rotas de atendimento
                   </h4>
                 </div>
                 <button
                   type="button"
                   onClick={startNewQueue}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-[#dbe3ef] bg-white text-[#A07C3B] transition-colors hover:border-[#A07C3B]/35"
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-surface text-[#A07C3B] transition-colors hover:border-[#A07C3B]/35"
                   aria-label="Nova fila"
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
@@ -533,15 +533,15 @@ function SetupView({
                   className={[
                     "w-full rounded-xl border p-3 text-left transition-colors",
                     selectedQueueId === "all"
-                      ? "border-[#101820] bg-white"
-                      : "border-[#e4eaf3] bg-white hover:border-[#A07C3B]/35",
+                      ? "border-[#101820] bg-surface"
+                      : "border-line bg-surface hover:border-[#A07C3B]/35",
                   ].join(" ")}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="text-sm font-semibold text-[#101820]">
+                    <span className="text-sm font-semibold text-ink">
                       Todas as filas
                     </span>
-                    <span className="rounded-full bg-[#f4f6fa] px-2 py-0.5 text-[11px] font-semibold text-[#63708a]">
+                    <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-muted">
                       {formatCount(data.profiles.length)}
                     </span>
                   </div>
@@ -568,8 +568,8 @@ function SetupView({
                       className={[
                         "w-full cursor-pointer rounded-xl border p-3 text-left outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#A07C3B]/40",
                         selected
-                          ? "border-[#A07C3B]/55 bg-[#fbf6ec]"
-                          : "border-[#e4eaf3] bg-white hover:border-[#A07C3B]/35",
+                          ? "border-[#A07C3B]/55 bg-[#A07C3B]/12"
+                          : "border-line bg-surface hover:border-[#A07C3B]/35",
                       ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
@@ -579,16 +579,16 @@ function SetupView({
                               className="h-2.5 w-2.5 shrink-0 rounded-full"
                               style={{ backgroundColor: queue.color }}
                             />
-                            <span className="truncate text-sm font-semibold text-[#101820]">
+                            <span className="truncate text-sm font-semibold text-ink">
                               {queue.name}
                             </span>
                           </div>
-                          <p className="mt-1 truncate text-xs font-medium text-[#63708a]">
+                          <p className="mt-1 truncate text-xs font-medium text-ink-muted">
                             {queue.slug} | {queue.assignmentStrategy}
                           </p>
                         </div>
                         <div className="flex shrink-0 items-center gap-1.5">
-                          <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                          <span className="rounded-full bg-surface px-2 py-0.5 text-[11px] font-semibold text-ink-muted ring-1 ring-[#dbe3ef]">
                             {setupStatusLabel[queue.status] ?? queue.status}
                           </span>
                           <button
@@ -598,17 +598,17 @@ function SetupView({
                               startEditQueue(queue);
                             }}
                             aria-label="Editar fila"
-                            className="grid h-7 w-7 place-items-center rounded-lg border border-[#dbe3ef] bg-white text-[#63708a] transition-colors hover:border-[#A07C3B]/35 hover:text-[#A07C3B]"
+                            className="grid h-7 w-7 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:border-[#A07C3B]/35 hover:text-[#A07C3B]"
                           >
                             <Pencil className="h-3.5 w-3.5" aria-hidden="true" />
                           </button>
                         </div>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
+                        <span className="rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
                           {priorityLabel[queue.defaultPriority]}
                         </span>
-                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                        <span className="rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-ink-muted ring-1 ring-[#dbe3ef]">
                           {formatCount(queueSubjects)} assuntos
                         </span>
                       </div>
@@ -626,25 +626,25 @@ function SetupView({
             <form
               onSubmit={saveQueue}
               onClick={(event) => event.stopPropagation()}
-              className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#dbe3ef] bg-white p-4 shadow-2xl [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
+              className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-surface p-4 shadow-2xl [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
             >
               <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
+                  <span className="grid h-9 w-9 place-items-center rounded-xl bg-[#A07C3B]/12 text-[#A07C3B]">
                     <Workflow className="h-4 w-4" aria-hidden="true" />
                   </span>
                   <div>
-                    <h4 className="text-sm font-semibold text-[#101820]">
+                    <h4 className="text-sm font-semibold text-ink">
                       {editingQueueId ? "Editar fila" : "Nova fila"}
                     </h4>
-                    <p className="text-xs text-[#63708a]">caredesk_queues</p>
+                    <p className="text-xs text-ink-muted">caredesk_queues</p>
                   </div>
                 </div>
                 <button
                   type="button"
                   onClick={() => setQueueModalOpen(false)}
                   aria-label="Fechar"
-                  className="grid h-8 w-8 place-items-center rounded-lg border border-[#dbe3ef] text-[#63708a] transition-colors hover:border-[#A07C3B]/35 hover:text-[#101820]"
+                  className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:border-[#A07C3B]/35 hover:text-ink"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                 </button>
@@ -657,7 +657,7 @@ function SetupView({
                     onChange={(event) =>
                       updateQueueForm("name", event.target.value)
                     }
-                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                     placeholder="Atendimento"
                   />
                 </SetupField>
@@ -667,7 +667,7 @@ function SetupView({
                     onChange={(event) =>
                       updateQueueForm("channelId", event.target.value)
                     }
-                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                   >
                     <option value="">Selecione o número…</option>
                     {data.channels
@@ -689,7 +689,7 @@ function SetupView({
                           slugifyIrisQueue(event.target.value),
                         )
                       }
-                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                      className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                       placeholder="atendimento"
                     />
                   </SetupField>
@@ -700,7 +700,7 @@ function SetupView({
                       onChange={(event) =>
                         updateQueueForm("color", event.target.value)
                       }
-                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white p-1 outline-none"
+                      className="h-10 w-full rounded-lg border border-line bg-surface p-1 outline-none"
                     />
                   </SetupField>
                 </div>
@@ -711,7 +711,7 @@ function SetupView({
                       onChange={(event) =>
                         updateQueueForm("defaultPriority", event.target.value)
                       }
-                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                      className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                     >
                       {priorityOptions.map((priority) => (
                         <option key={priority} value={priority}>
@@ -726,7 +726,7 @@ function SetupView({
                       onChange={(event) =>
                         updateQueueForm("status", event.target.value)
                       }
-                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                      className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                     >
                       {setupStatusOptions.map((status) => (
                         <option key={status} value={status}>
@@ -748,7 +748,7 @@ function SetupView({
                           event.target.value,
                         )
                       }
-                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                      className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                     />
                   </SetupField>
                   <SetupField label="Resolucao">
@@ -762,7 +762,7 @@ function SetupView({
                           event.target.value,
                         )
                       }
-                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                      className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                     />
                   </SetupField>
                 </div>
@@ -773,7 +773,7 @@ function SetupView({
                       onChange={(event) =>
                         updateQueueForm("routingStrategy", event.target.value)
                       }
-                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                      className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                     />
                   </SetupField>
                   <SetupField label="Distribuicao">
@@ -785,14 +785,14 @@ function SetupView({
                           event.target.value,
                         )
                       }
-                      className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                      className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                     />
                   </SetupField>
                 </div>
               </div>
 
               {queueFeedback ? (
-                <p className="mt-3 rounded-lg border border-[#dbe3ef] bg-[#fbfcfe] px-3 py-2 text-xs font-semibold text-[#63708a]">
+                <p className="mt-3 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-muted">
                   {queueFeedback}
                 </p>
               ) : null}
@@ -800,7 +800,7 @@ function SetupView({
               <button
                 type="submit"
                 disabled={savingQueue}
-                className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#101820] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-slate-300"
+                className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#101820] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-subtle"
               >
                 <Save className="h-4 w-4" aria-hidden="true" />
                 {savingQueue ? "Salvando..." : "Salvar fila"}
@@ -810,24 +810,24 @@ function SetupView({
             ) : null}
           </div>
 
-          <div className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3 xl:max-h-[calc(100vh-300px)] xl:overflow-hidden">
+          <div className="min-w-0 rounded-2xl border border-line bg-surface p-3 xl:max-h-[calc(100vh-300px)] xl:overflow-hidden">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-normal text-[#8a96aa]">
+                <p className="text-xs font-semibold uppercase tracking-normal text-ink-muted">
                   Assuntos
                 </p>
-                <h4 className="mt-1 text-sm font-semibold text-[#101820]">
+                <h4 className="mt-1 text-sm font-semibold text-ink">
                   {selectedQueue?.name ?? "Todas as filas"}
                 </h4>
               </div>
               <div className="flex items-center gap-2">
-                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                <span className="rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-ink-muted ring-1 ring-[#dbe3ef]">
                   {formatCount(visibleProfiles.length)} visiveis
                 </span>
                 <button
                   type="button"
                   onClick={startNewProfile}
-                  className="grid h-9 w-9 place-items-center rounded-lg border border-[#dbe3ef] bg-white text-[#A07C3B] transition-colors hover:border-[#A07C3B]/35"
+                  className="grid h-9 w-9 place-items-center rounded-lg border border-line bg-surface text-[#A07C3B] transition-colors hover:border-[#A07C3B]/35"
                   aria-label="Novo assunto"
                 >
                   <Plus className="h-4 w-4" aria-hidden="true" />
@@ -845,7 +845,7 @@ function SetupView({
                   value={subjectSearch}
                   onChange={(event) => setSubjectSearch(event.target.value)}
                   placeholder="Buscar assunto"
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white pl-9 pr-3 text-sm font-semibold text-[#34415a] outline-none"
+                  className="h-10 w-full rounded-lg border border-line bg-surface pl-9 pr-3 text-sm font-semibold text-ink outline-none"
                 />
               </label>
             </div>
@@ -861,32 +861,32 @@ function SetupView({
                       className={[
                         "w-full rounded-xl border p-3 text-left transition-colors",
                         editingProfileId === profile.id
-                          ? "border-[#A07C3B]/45 bg-[#fbf6ec]"
-                          : "border-[#e4eaf3] bg-white hover:border-[#A07C3B]/30",
+                          ? "border-[#A07C3B]/45 bg-[#A07C3B]/12"
+                          : "border-line bg-surface hover:border-[#A07C3B]/30",
                       ].join(" ")}
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-[#101820]">
+                          <p className="truncate text-sm font-semibold text-ink">
                             {profile.name}
                           </p>
-                          <p className="mt-1 truncate text-xs font-medium text-[#63708a]">
+                          <p className="mt-1 truncate text-xs font-medium text-ink-muted">
                             {profile.queueLabel} | {profile.category} |{" "}
                             {profile.slug}
                           </p>
                         </div>
-                        <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                        <span className="shrink-0 rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-ink-muted ring-1 ring-[#dbe3ef]">
                           {setupStatusLabel[profile.status] ?? profile.status}
                         </span>
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
+                        <span className="rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
                           {priorityLabel[profile.priority]}
                         </span>
-                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                        <span className="rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-ink-muted ring-1 ring-[#dbe3ef]">
                           TPR {profile.slaFirstResponseMinutes} min
                         </span>
-                        <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                        <span className="rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-ink-muted ring-1 ring-[#dbe3ef]">
                           TMA {formatSlaMinutes(profile.slaResolutionMinutes)}
                         </span>
                       </div>
@@ -911,18 +911,18 @@ function SetupView({
           <form
             onSubmit={saveProfile}
             onClick={(event) => event.stopPropagation()}
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-[#dbe3ef] bg-white p-4 shadow-2xl [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl border border-line bg-surface p-4 shadow-2xl [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
           >
             <div className="mb-3 flex items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#fbf6ec] text-[#A07C3B]">
+                <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-[#A07C3B]/12 text-[#A07C3B]">
                   <Settings2 className="h-4 w-4" aria-hidden="true" />
                 </span>
                 <div>
-                  <h4 className="text-sm font-semibold text-[#101820]">
+                  <h4 className="text-sm font-semibold text-ink">
                     {editingProfileId ? "Editar assunto" : "Novo assunto"}
                   </h4>
-                  <p className="text-xs text-[#63708a]">
+                  <p className="text-xs text-ink-muted">
                     caredesk_ticket_profiles
                   </p>
                 </div>
@@ -931,7 +931,7 @@ function SetupView({
                 type="button"
                 onClick={() => setProfileModalOpen(false)}
                 aria-label="Fechar"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-[#dbe3ef] text-[#63708a] transition-colors hover:border-[#A07C3B]/35 hover:text-[#101820]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:border-[#A07C3B]/35 hover:text-ink"
               >
                 <X className="h-4 w-4" aria-hidden="true" />
               </button>
@@ -944,7 +944,7 @@ function SetupView({
                   onChange={(event) =>
                     updateProfileForm("queueId", event.target.value)
                   }
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                 >
                   <option value="">Selecione</option>
                   {data.queues.map((queue) => (
@@ -961,7 +961,7 @@ function SetupView({
                   onChange={(event) =>
                     updateProfileForm("name", event.target.value)
                   }
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                   placeholder="Ex.: Segunda via de boleto"
                 />
               </SetupField>
@@ -976,7 +976,7 @@ function SetupView({
                         slugifyIrisProfile(event.target.value),
                       )
                     }
-                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                     placeholder="segunda-via-boleto"
                   />
                 </SetupField>
@@ -986,7 +986,7 @@ function SetupView({
                     onChange={(event) =>
                       updateProfileForm("category", event.target.value)
                     }
-                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                     placeholder="Financeiro"
                   />
                 </SetupField>
@@ -999,7 +999,7 @@ function SetupView({
                     onChange={(event) =>
                       updateProfileForm("priority", event.target.value)
                     }
-                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                   >
                     {priorityOptions.map((priority) => (
                       <option key={priority} value={priority}>
@@ -1014,7 +1014,7 @@ function SetupView({
                     onChange={(event) =>
                       updateProfileForm("status", event.target.value)
                     }
-                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                   >
                     {setupStatusOptions.map((status) => (
                       <option key={status} value={status}>
@@ -1037,7 +1037,7 @@ function SetupView({
                         event.target.value,
                       )
                     }
-                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                   />
                 </SetupField>
                 <SetupField label="TMA alvo">
@@ -1051,7 +1051,7 @@ function SetupView({
                         event.target.value,
                       )
                     }
-                    className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                   />
                 </SetupField>
               </div>
@@ -1062,7 +1062,7 @@ function SetupView({
                   onChange={(event) =>
                     updateProfileForm("requiredFields", event.target.value)
                   }
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                   placeholder="contact_id, queue_id"
                 />
               </SetupField>
@@ -1073,14 +1073,14 @@ function SetupView({
                   onChange={(event) =>
                     updateProfileForm("description", event.target.value)
                   }
-                  className="min-h-20 w-full resize-none rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-sm font-medium text-[#34415a] outline-none"
+                  className="min-h-20 w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink outline-none"
                   placeholder="Quando usar este assunto no atendimento."
                 />
               </SetupField>
             </div>
 
             {profileFeedback ? (
-              <p className="mt-3 rounded-lg border border-[#dbe3ef] bg-[#fbfcfe] px-3 py-2 text-xs font-semibold text-[#63708a]">
+              <p className="mt-3 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-muted">
                 {profileFeedback}
               </p>
             ) : null}
@@ -1088,7 +1088,7 @@ function SetupView({
             <button
               type="submit"
               disabled={savingProfile}
-              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+              className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#A07C3B] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-subtle"
             >
               <Save className="h-4 w-4" aria-hidden="true" />
               {savingProfile ? "Salvando..." : "Salvar assunto"}
@@ -1115,7 +1115,7 @@ function IrisSetupTabs({
   ];
 
   return (
-    <div className="inline-flex h-10 rounded-xl border border-[#dbe3ef] bg-[#fbfcfe] p-1">
+    <div className="inline-flex h-10 rounded-xl border border-line bg-surface p-1">
       {tabs.map((tab) => {
         const Icon = tab.icon;
         const selected = active === tab.id;
@@ -1129,7 +1129,7 @@ function IrisSetupTabs({
               "inline-flex items-center gap-2 rounded-lg px-3 text-sm font-semibold transition-colors",
               selected
                 ? "bg-[#101820] text-white shadow-sm"
-                : "text-[#63708a] hover:bg-white hover:text-[#101820]",
+                : "text-ink-muted hover:bg-surface hover:text-ink",
             ].join(" ")}
           >
             <Icon className="h-4 w-4" aria-hidden="true" />
@@ -2173,10 +2173,10 @@ function IrisTemplateSetupPanel({
   return (
     <div className="space-y-4">
       <div className={`grid gap-4 ${templateEditorOpen ? "xl:grid-cols-[minmax(0,0.9fr)_minmax(520px,1.1fr)]" : ""}`}>
-        <section className="min-w-0 rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+        <section className="min-w-0 rounded-2xl border border-line bg-surface p-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h4 className="text-sm font-semibold text-[#101820]">
+              <h4 className="text-sm font-semibold text-ink">
                 Biblioteca de templates
               </h4>
             </div>
@@ -2198,7 +2198,7 @@ function IrisTemplateSetupPanel({
                     !selectedLibraryTemplate || Boolean(removingTemplateId)
                   }
                   aria-label="Excluir template da biblioteca Iris"
-                  className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200 bg-rose-50 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
                 >
                   <Trash2 className="h-4 w-4" aria-hidden="true" />
                 </button>
@@ -2226,13 +2226,13 @@ function IrisTemplateSetupPanel({
                 value={templateSearch}
                 onChange={(event) => setTemplateSearch(event.target.value)}
                 placeholder="Buscar template"
-                className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white pl-9 pr-3 text-sm font-semibold text-[#34415a] outline-none"
+                className="h-10 w-full rounded-lg border border-line bg-surface pl-9 pr-3 text-sm font-semibold text-ink outline-none"
               />
             </label>
             <select
               value={queueFilter}
               onChange={(event) => setQueueFilter(event.target.value)}
-              className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+              className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
             >
               <option value="all">Todas as filas</option>
               {queueOptions.map((queue) => (
@@ -2263,7 +2263,7 @@ function IrisTemplateSetupPanel({
                     "inline-flex h-8 items-center gap-1.5 rounded-full px-3 text-xs font-semibold ring-1 transition-colors",
                     selected
                       ? "bg-[#101820] text-white ring-[#101820]"
-                      : "bg-white text-[#63708a] ring-[#dbe3ef] hover:text-[#101820]",
+                      : "bg-surface text-ink-muted ring-[#dbe3ef] hover:text-ink",
                   ].join(" ")}
                 >
                   {filter.label}
@@ -2272,7 +2272,7 @@ function IrisTemplateSetupPanel({
                       "inline-flex min-w-[1.25rem] items-center justify-center rounded-full px-1 text-[10px] font-bold tabular-nums",
                       selected
                         ? "bg-white/20 text-white"
-                        : "bg-[#eef2f8] text-[#34415a]",
+                        : "bg-subtle text-ink",
                     ].join(" ")}
                   >
                     {count}
@@ -2298,23 +2298,23 @@ function IrisTemplateSetupPanel({
                     type="button"
                     onClick={() => loadTemplateIntoForm(template)}
                     className={[
-                      "w-full rounded-xl border bg-white p-3 text-left transition-colors",
+                      "w-full rounded-xl border bg-surface p-3 text-left transition-colors",
                       selected
                         ? "border-[#A07C3B] shadow-sm"
-                        : "border-[#e4eaf3] hover:border-[#A07C3B]/40",
+                        : "border-line hover:border-[#A07C3B]/40",
                     ].join(" ")}
                   >
                     <div className="flex min-w-0 items-start justify-between gap-3">
                       <div className="min-w-0">
                         <div className="flex min-w-0 flex-wrap items-center gap-2">
-                          <p className="max-w-full truncate text-sm font-semibold text-[#101820]">
+                          <p className="max-w-full truncate text-sm font-semibold text-ink">
                             {template.name}
                           </p>
-                          <span className="shrink-0 rounded-full bg-[#f4f6fa] px-2 py-0.5 text-[10px] font-semibold text-[#63708a]">
+                          <span className="shrink-0 rounded-full bg-subtle px-2 py-0.5 text-[10px] font-semibold text-ink-muted">
                             {readTemplateQueueLabel(template)}
                           </span>
                           {headerFormat ? (
-                            <span className="shrink-0 rounded-full bg-[#eef6ff] px-2 py-0.5 text-[10px] font-semibold text-[#1769aa]">
+                            <span className="shrink-0 rounded-full bg-subtle px-2 py-0.5 text-[10px] font-semibold text-[#1769aa]">
                               {templateHeaderFormatLabel(headerFormat)}
                             </span>
                           ) : null}
@@ -2324,7 +2324,7 @@ function IrisTemplateSetupPanel({
                             </span>
                           ) : null}
                         </div>
-                        <p className="mt-1 truncate text-xs font-semibold text-[#63708a]">
+                        <p className="mt-1 truncate text-xs font-semibold text-ink-muted">
                           {readTemplateSubjectLabel(template)}
                         </p>
                       </div>
@@ -2334,7 +2334,7 @@ function IrisTemplateSetupPanel({
                         {templateStatusLabel(status)}
                       </span>
                     </div>
-                    <p className="mt-2 truncate text-xs text-[#63708a]">
+                    <p className="mt-2 truncate text-xs text-ink-muted">
                       {template.body ??
                         readTemplateMetaName(template) ??
                         template.slug}
@@ -2343,11 +2343,11 @@ function IrisTemplateSetupPanel({
                 );
               })
             ) : (
-              <div className="rounded-xl border border-dashed border-[#dbe3ef] bg-white px-4 py-10 text-center">
-                <p className="text-sm font-semibold text-[#101820]">
+              <div className="rounded-xl border border-dashed border-line bg-surface px-4 py-10 text-center">
+                <p className="text-sm font-semibold text-ink">
                   Nenhum template neste filtro.
                 </p>
-                <p className="mt-1 text-xs text-[#63708a]">
+                <p className="mt-1 text-xs text-ink-muted">
                   Ajuste fila, status ou busca para visualizar outros registros.
                 </p>
               </div>
@@ -2357,14 +2357,14 @@ function IrisTemplateSetupPanel({
 
         {templateEditorOpen ? (
         <aside className="min-w-0 space-y-3">
-          <div className="rounded-2xl border border-[#dbe3ef] bg-white p-3">
+          <div className="rounded-2xl border border-line bg-surface p-3">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-center gap-2">
                 <button
                   type="button"
                   onClick={() => setTemplateEditorOpen(false)}
                   aria-label="Fechar editor"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-[#dbe3ef] text-[#63708a] transition-colors hover:border-[#A07C3B]/35 hover:text-[#101820]"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-line text-ink-muted transition-colors hover:border-[#A07C3B]/35 hover:text-ink"
                 >
                   <X className="h-4 w-4" aria-hidden="true" />
                 </button>
@@ -2372,7 +2372,7 @@ function IrisTemplateSetupPanel({
                   <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                     Criacao
                   </p>
-                  <h4 className="mt-1 text-sm font-semibold text-[#101820]">
+                  <h4 className="mt-1 text-sm font-semibold text-ink">
                     {selectedTemplateId ? "Editar template" : "Novo template"}
                   </h4>
                 </div>
@@ -2387,7 +2387,7 @@ function IrisTemplateSetupPanel({
                   type="button"
                   onClick={() => checkTemplateStatus()}
                   disabled={checkingTemplate}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#dbe3ef] bg-white px-3 text-xs font-semibold text-[#34415a] transition-colors hover:border-[#A07C3B]/30 disabled:cursor-not-allowed disabled:bg-slate-100"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink transition-colors hover:border-[#A07C3B]/30 disabled:cursor-not-allowed disabled:bg-subtle"
                 >
                   <Search className="h-4 w-4" aria-hidden="true" />
                   {checkingTemplate ? "Consultando" : "Consultar"}
@@ -2396,7 +2396,7 @@ function IrisTemplateSetupPanel({
                   type="button"
                   onClick={syncApprovedMetaTemplates}
                   disabled={syncingMetaTemplates}
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#fff8ec] px-3 text-xs font-semibold text-[#7A5E2C] transition-colors hover:border-[#A07C3B]/45 disabled:cursor-not-allowed disabled:bg-slate-100 disabled:text-slate-400"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#fff8ec] px-3 text-xs font-semibold text-[#7A5E2C] transition-colors hover:border-[#A07C3B]/45 disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted"
                 >
                   <RefreshCw
                     className={`h-4 w-4 ${syncingMetaTemplates ? "animate-spin" : ""}`}
@@ -2413,7 +2413,7 @@ function IrisTemplateSetupPanel({
                     templateMediaMissing ||
                     uploadingTemplateMedia
                   }
-                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-subtle"
                 >
                   <Send className="h-4 w-4" aria-hidden="true" />
                   {creatingTemplate ? "Enviando" : "Enviar para Meta"}
@@ -2445,7 +2445,7 @@ function IrisTemplateSetupPanel({
                       updateTemplateForm("phoneNumberId", numero);
                     }
                   }}
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                 >
                   <option value="">Selecione a fila…</option>
                   {queues
@@ -2462,7 +2462,7 @@ function IrisTemplateSetupPanel({
             <div className="mt-3">
               <SetupField label="Telefone de envio">
                 <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_minmax(180px,0.45fr)]">
-                  <div className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-[#dbe3ef] bg-white px-3">
+                  <div className="flex h-10 min-w-0 items-center gap-2 rounded-lg border border-line bg-surface px-3">
                     <Smartphone
                       className="h-4 w-4 shrink-0 text-[#A07C3B]"
                       aria-hidden="true"
@@ -2474,7 +2474,7 @@ function IrisTemplateSetupPanel({
                         setLastTemplateRefreshAt("");
                         updateTemplateForm("phoneNumberId", event.target.value);
                       }}
-                      className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-[#34415a] outline-none"
+                      className="min-w-0 flex-1 bg-transparent text-sm font-semibold text-ink outline-none"
                     >
                       <option value="">Selecione o telefone</option>
                       {templatePhoneNumbers.map((phoneNumber) => (
@@ -2484,7 +2484,7 @@ function IrisTemplateSetupPanel({
                       ))}
                     </select>
                   </div>
-                  <div className="flex h-10 min-w-0 items-center rounded-lg border border-[#dbe3ef] bg-[#fbfcfe] px-3 text-xs font-semibold text-[#63708a]">
+                  <div className="flex h-10 min-w-0 items-center rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-muted">
                     <span className="truncate">
                       {selectedTemplatePhoneNumber?.displayPhoneNumber
                         ? selectedTemplatePhoneNumber.isDefault
@@ -2494,7 +2494,7 @@ function IrisTemplateSetupPanel({
                     </span>
                   </div>
                 </div>
-                <p className="mt-1 truncate text-xs font-medium text-[#63708a]">
+                <p className="mt-1 truncate text-xs font-medium text-ink-muted">
                   {selectedTemplatePhoneNumber?.displayPhoneNumber
                     ? `${formatMetaPhoneNumberOption(selectedTemplatePhoneNumber)} sera usado para consultar, criar e enviar este template.`
                     : templateForm.phoneNumberId
@@ -2507,7 +2507,7 @@ function IrisTemplateSetupPanel({
             <div className="mt-3 rounded-xl border border-[#e7dfd3] bg-[#f8f4ec] p-3">
               <div className="mb-2 flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold text-[#101820]">
+                  <p className="text-sm font-semibold text-ink">
                     Athena · Assistente de templates
                   </p>
                   <p className="text-[11px] font-medium text-[#8a7a5c]">
@@ -2515,7 +2515,7 @@ function IrisTemplateSetupPanel({
                     válido e preenche os campos abaixo.
                   </p>
                 </div>
-                <span className="shrink-0 rounded-full bg-white px-2 py-1 text-[10px] font-semibold text-[#A07C3B] ring-1 ring-[#e7dfd3]">
+                <span className="shrink-0 rounded-full bg-surface px-2 py-1 text-[10px] font-semibold text-[#A07C3B] ring-1 ring-[#e7dfd3]">
                   Opus 4.8
                 </span>
               </div>
@@ -2523,7 +2523,7 @@ function IrisTemplateSetupPanel({
                 value={athenaPrompt}
                 onChange={(event) => setAthenaPrompt(event.target.value)}
                 placeholder="Ex.: cobrança citando o empreendimento e o valor total das parcelas vencidas, com botões enviar boleto, negociar e falar com atendente."
-                className="min-h-16 w-full resize-none rounded-lg border border-[#e7dfd3] bg-white px-3 py-2 text-sm font-medium leading-6 text-[#34415a] outline-none"
+                className="min-h-16 w-full resize-none rounded-lg border border-[#e7dfd3] bg-surface px-3 py-2 text-sm font-medium leading-6 text-ink outline-none"
               />
               <div className="mt-2 flex items-center justify-between gap-3">
                 <p className="min-w-0 flex-1 truncate text-[11px] font-medium text-[#b0392e]">
@@ -2559,7 +2559,7 @@ function IrisTemplateSetupPanel({
                   onChange={(event) =>
                     updateTemplateForm("displayName", event.target.value)
                   }
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                 />
               </SetupField>
               <SetupField label="Nome Meta">
@@ -2573,7 +2573,7 @@ function IrisTemplateSetupPanel({
                         .replace(/[^a-z0-9_]/g, "_"),
                     )
                   }
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                 />
               </SetupField>
             </div>
@@ -2585,7 +2585,7 @@ function IrisTemplateSetupPanel({
                   onChange={(event) =>
                     updateTemplateForm("category", event.target.value)
                   }
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                 >
                   <option value="MARKETING">Marketing</option>
                   <option value="UTILITY">Utility</option>
@@ -2598,18 +2598,18 @@ function IrisTemplateSetupPanel({
                   onChange={(event) =>
                     updateTemplateForm("language", event.target.value)
                   }
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                 />
               </SetupField>
             </div>
 
-            <div className="mt-3 rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3">
+            <div className="mt-3 rounded-xl border border-line bg-surface p-3">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                  <h5 className="text-sm font-semibold text-[#101820]">
+                  <h5 className="text-sm font-semibold text-ink">
                     Midia do header
                   </h5>
-                  <p className="mt-1 text-xs font-medium text-[#63708a]">
+                  <p className="mt-1 text-xs font-medium text-ink-muted">
                     Use imagem ou video quando a primeira mensagem precisar de
                     contexto visual aprovado pela Meta.
                   </p>
@@ -2641,8 +2641,8 @@ function IrisTemplateSetupPanel({
                       className={[
                         "min-w-0 rounded-lg border px-3 py-2 text-left transition-colors",
                         selected
-                          ? "border-[#A07C3B] bg-[#fff8ec] text-[#101820]"
-                          : "border-[#dbe3ef] bg-white text-[#63708a] hover:border-[#A07C3B]/40 hover:text-[#101820]",
+                          ? "border-[#A07C3B] bg-[#fff8ec] text-ink"
+                          : "border-line bg-surface text-ink-muted hover:border-[#A07C3B]/40 hover:text-ink",
                       ].join(" ")}
                     >
                       <div className="flex items-center gap-2">
@@ -2664,7 +2664,7 @@ function IrisTemplateSetupPanel({
 
               {templateForm.headerFormat !== "NONE" ? (
                 <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
-                  <div className="rounded-lg border border-[#dbe3ef] bg-white p-3">
+                  <div className="rounded-lg border border-line bg-surface p-3">
                     <input
                       ref={templateMediaInputRef}
                       type="file"
@@ -2674,11 +2674,11 @@ function IrisTemplateSetupPanel({
                     />
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="truncate text-xs font-semibold text-[#101820]">
+                        <p className="truncate text-xs font-semibold text-ink">
                           {templateForm.headerFileName ||
                             "Exemplo para aprovacao"}
                         </p>
-                        <p className="mt-1 text-[11px] font-medium text-[#63708a]">
+                        <p className="mt-1 text-[11px] font-medium text-ink-muted">
                           A Meta usa este arquivo como amostra do template.
                         </p>
                       </div>
@@ -2687,7 +2687,7 @@ function IrisTemplateSetupPanel({
                           <button
                             type="button"
                             onClick={clearTemplateHeaderMedia}
-                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-[#dbe3ef] bg-white text-[#63708a] hover:border-rose-200 hover:text-rose-600"
+                            className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted hover:border-rose-200 hover:text-rose-600"
                             aria-label="Remover midia"
                           >
                             <X className="h-4 w-4" aria-hidden="true" />
@@ -2697,7 +2697,7 @@ function IrisTemplateSetupPanel({
                           type="button"
                           onClick={() => templateMediaInputRef.current?.click()}
                           disabled={uploadingTemplateMedia}
-                          className="inline-flex h-8 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-slate-300"
+                          className="inline-flex h-8 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:bg-subtle"
                         >
                           <Upload className="h-4 w-4" aria-hidden="true" />
                           {uploadingTemplateMedia
@@ -2715,7 +2715,7 @@ function IrisTemplateSetupPanel({
                         updateTemplateForm("headerSendLink", event.target.value)
                       }
                       placeholder="https://..."
-                      className="h-12 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                      className="h-12 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                     />
                   </SetupField>
                 </div>
@@ -2729,7 +2729,7 @@ function IrisTemplateSetupPanel({
                   onChange={(event) =>
                     updateTemplateForm("buttonsText", event.target.value)
                   }
-                  className="h-10 w-full rounded-lg border border-[#dbe3ef] bg-white px-3 text-sm font-semibold text-[#34415a] outline-none"
+                  className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                 />
               </SetupField>
             </div>
@@ -2741,17 +2741,17 @@ function IrisTemplateSetupPanel({
                   onChange={(event) =>
                     updateTemplateForm("bodyText", event.target.value)
                   }
-                  className="min-h-28 w-full resize-none rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-sm font-medium leading-6 text-[#34415a] outline-none"
+                  className="min-h-28 w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium leading-6 text-ink outline-none"
                 />
               </SetupField>
             </div>
 
-            <div className="mt-3 rounded-xl border border-[#e4eaf3] bg-[#fbfcfe] p-3">
+            <div className="mt-3 rounded-xl border border-line bg-surface p-3">
               <div className="mb-3 flex items-center justify-between gap-3">
-                <h5 className="text-sm font-semibold text-[#101820]">
+                <h5 className="text-sm font-semibold text-ink">
                   Variaveis
                 </h5>
-                <span className="rounded-full bg-white px-2 py-1 text-[11px] font-semibold text-[#63708a] ring-1 ring-[#dbe3ef]">
+                <span className="rounded-full bg-surface px-2 py-1 text-[11px] font-semibold text-ink-muted ring-1 ring-[#dbe3ef]">
                   Meta {`{{1}}`}, {`{{2}}`}
                 </span>
               </div>
@@ -2762,16 +2762,16 @@ function IrisTemplateSetupPanel({
                     type="button"
                     onClick={() => addTemplateVariable(variable)}
                     title={`${variable.label} · ${variable.readiness}`}
-                    className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-[#dbe3ef] bg-white px-2.5 py-1.5 text-left transition-colors hover:border-[#A07C3B]/35 hover:bg-[#fbf6ec]"
+                    className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-left transition-colors hover:border-[#A07C3B]/35 hover:bg-[#A07C3B]/12"
                   >
-                    <span className="min-w-0 truncate text-xs font-semibold text-[#101820]">
+                    <span className="min-w-0 truncate text-xs font-semibold text-ink">
                       {variable.label}
                     </span>
                     <span className="flex shrink-0 items-center gap-1.5">
                       <span className="font-mono text-[11px] text-[#A07C3B]">
                         +
                       </span>
-                      <span className="rounded-full bg-[#f4f6fa] px-1.5 py-0.5 text-[10px] font-semibold text-[#63708a]">
+                      <span className="rounded-full bg-subtle px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted">
                         {variable.readiness}
                       </span>
                     </span>
@@ -2786,14 +2786,14 @@ function IrisTemplateSetupPanel({
               <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                 Preview
               </p>
-              <span className="truncate text-xs font-semibold text-[#63708a]">
+              <span className="truncate text-xs font-semibold text-ink-muted">
                 {templateForm.queueLabel} / {templateForm.subjectLabel}
               </span>
             </div>
             {templateForm.headerFormat !== "NONE" ? (
-              <div className="mt-3 flex min-h-24 items-center justify-center rounded-xl border border-dashed border-[#d8c7a7] bg-white px-4 py-3 text-center">
+              <div className="mt-3 flex min-h-24 items-center justify-center rounded-xl border border-dashed border-[#d8c7a7] bg-surface px-4 py-3 text-center">
                 <div>
-                  <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[#fbf6ec] text-[#A07C3B]">
+                  <div className="mx-auto mb-2 flex h-10 w-10 items-center justify-center rounded-lg bg-[#A07C3B]/12 text-[#A07C3B]">
                     {templateForm.headerFormat === "IMAGE" ? (
                       <ImageIcon className="h-5 w-5" aria-hidden="true" />
                     ) : templateForm.headerFormat === "VIDEO" ? (
@@ -2802,16 +2802,16 @@ function IrisTemplateSetupPanel({
                       <FileText className="h-5 w-5" aria-hidden="true" />
                     )}
                   </div>
-                  <p className="text-xs font-semibold text-[#101820]">
+                  <p className="text-xs font-semibold text-ink">
                     Header {selectedHeaderOption.label}
                   </p>
-                  <p className="mt-1 max-w-xs truncate text-[11px] font-medium text-[#63708a]">
+                  <p className="mt-1 max-w-xs truncate text-[11px] font-medium text-ink-muted">
                     {templateForm.headerFileName || "Midia de exemplo pendente"}
                   </p>
                 </div>
               </div>
             ) : null}
-            <p className="mt-2 break-words text-sm font-medium leading-6 text-[#101820]">
+            <p className="mt-2 break-words text-sm font-medium leading-6 text-ink">
               {preview}
             </p>
             {buttons.length ? (
@@ -2819,7 +2819,7 @@ function IrisTemplateSetupPanel({
                 {buttons.map((button) => (
                   <span
                     key={button}
-                    className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-100 bg-white px-2 text-sm font-semibold text-emerald-700"
+                    className="inline-flex h-9 min-w-0 items-center justify-center rounded-lg border border-emerald-100 bg-surface px-2 text-sm font-semibold text-emerald-700"
                   >
                     <span className="truncate">{button}</span>
                   </span>
@@ -2828,13 +2828,13 @@ function IrisTemplateSetupPanel({
             ) : null}
           </div>
 
-          <div className="rounded-2xl border border-[#dbe3ef] bg-[#fbfcfe] p-3">
+          <div className="rounded-2xl border border-line bg-surface p-3">
             <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                   Status Meta
                 </p>
-                <h4 className="mt-1 truncate text-sm font-semibold text-[#101820]">
+                <h4 className="mt-1 truncate text-sm font-semibold text-ink">
                   {templateForm.displayName}
                 </h4>
               </div>
@@ -2845,7 +2845,7 @@ function IrisTemplateSetupPanel({
               </span>
             </div>
 
-            <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-xs font-semibold text-[#63708a]">
+            <label className="mt-3 flex cursor-pointer items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-muted">
               <span>Atualizar aprovacao automaticamente</span>
               <input
                 type="checkbox"
@@ -2856,12 +2856,12 @@ function IrisTemplateSetupPanel({
             </label>
 
             {lastTemplateRefreshAt ? (
-              <p className="mt-2 text-xs font-medium text-[#63708a]">
+              <p className="mt-2 text-xs font-medium text-ink-muted">
                 Ultima consulta: {lastTemplateRefreshAt}
               </p>
             ) : null}
             {selectedTemplatePhoneNumber ? (
-              <p className="mt-1 truncate text-xs font-semibold text-[#34415a]">
+              <p className="mt-1 truncate text-xs font-semibold text-ink">
                 Telefone:{" "}
                 {formatMetaPhoneNumberOption(selectedTemplatePhoneNumber)}
               </p>
@@ -2892,7 +2892,7 @@ function IrisTemplateSetupPanel({
               {templateForm.headerFormat !== "NONE" &&
               templateForm.headerHandle &&
               !templateForm.headerSendLink.trim() ? (
-                <p className="rounded-lg border border-[#dbe3ef] bg-white px-3 py-2 text-xs font-semibold text-[#63708a]">
+                <p className="rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-muted">
                   Cadastre uma URL publica para a Iris enviar esta midia no
                   atendimento ativo.
                 </p>
@@ -2919,16 +2919,16 @@ function IrisTemplateMetricCard({
   value: string;
 }) {
   return (
-    <div className="rounded-2xl border border-[#dbe3ef] bg-white p-3">
+    <div className="rounded-2xl border border-line bg-surface p-3">
       <div className="flex items-center justify-between gap-3">
         <span
           className={`grid h-9 w-9 place-items-center rounded-xl ${toneBg(tone)}`}
         >
           <Icon className={`h-4 w-4 ${toneText(tone)}`} aria-hidden="true" />
         </span>
-        <span className="text-lg font-semibold text-[#101820]">{value}</span>
+        <span className="text-lg font-semibold text-ink">{value}</span>
       </div>
-      <p className="mt-3 truncate text-xs font-semibold uppercase tracking-normal text-[#8a96aa]">
+      <p className="mt-3 truncate text-xs font-semibold uppercase tracking-normal text-ink-muted">
         {label}
       </p>
     </div>

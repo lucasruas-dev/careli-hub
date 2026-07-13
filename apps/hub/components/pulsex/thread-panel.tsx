@@ -358,8 +358,8 @@ export function ThreadPanel({
   const isReplyEmpty = replyValue.trim().length === 0 && !attachment;
 
   return (
-    <aside className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-l-[1.15rem] border-l border-[#d9e0ea] bg-white">
-      <header className="flex h-16 items-center justify-between border-b border-[#d9e0ea] px-5">
+    <aside className="grid h-full grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-l-[1.15rem] border-l border-line bg-surface">
+      <header className="flex h-16 items-center justify-between border-b border-line px-5">
         <div>
           <p className="m-0 text-sm font-semibold text-[var(--uix-text-primary)]">
             Respostas
@@ -370,14 +370,14 @@ export function ThreadPanel({
         </div>
         <button
           aria-label="Fechar respostas"
-          className="grid h-9 w-9 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-[#eef2f7] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+          className="grid h-9 w-9 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-subtle hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
           onClick={onClose}
           type="button"
         >
           <X aria-hidden="true" size={17} />
         </button>
       </header>
-      <div className="min-h-0 overflow-auto bg-[#f3f6fa] py-4">
+      <div className="min-h-0 overflow-auto bg-subtle py-4">
         <MessageItem
           author={users.find((user) => user.id === message.authorId)}
           currentUserId={currentUserId}
@@ -413,7 +413,7 @@ export function ThreadPanel({
         )}
       </div>
       <form
-        className="border-t border-[#d9e0ea] px-4 py-3"
+        className="border-t border-line px-4 py-3"
         onSubmit={handleSubmit}
       >
         <input
@@ -423,7 +423,7 @@ export function ThreadPanel({
           ref={fileInputRef}
           type="file"
         />
-        <div className="grid gap-2 rounded-[1.15rem] border border-[#d9e0ea] bg-white p-2 shadow-[0_10px_26px_rgba(16,24,32,0.08)] transition focus-within:border-[var(--uix-brand-primary)]">
+        <div className="grid gap-2 rounded-[1.15rem] border border-line bg-surface p-2 shadow-[0_10px_26px_rgba(16,24,32,0.08)] transition focus-within:border-[var(--uix-brand-primary)]">
           {attachment ? (
             <ThreadAttachmentPreview
               attachment={attachment}
@@ -454,19 +454,19 @@ export function ThreadPanel({
               <button
                 aria-label="Emojis"
                 aria-pressed={isEmojiPickerOpen || undefined}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-[#A07C3B]/10 aria-pressed:text-[#7b5f2d]"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-muted outline-none transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-[#A07C3B]/10 aria-pressed:text-[#7b5f2d]"
                 onClick={() => setIsEmojiPickerOpen((current) => !current)}
                 type="button"
               >
                 <Smile aria-hidden="true" size={18} />
               </button>
               {isEmojiPickerOpen ? (
-                <div className="absolute bottom-full left-0 z-40 mb-2 max-h-72 w-72 overflow-auto rounded-md border border-[#d9e0ea] bg-white p-2 shadow-xl">
+                <div className="absolute bottom-full left-0 z-40 mb-2 max-h-72 w-72 overflow-auto rounded-md border border-line bg-surface p-2 shadow-xl">
                   <div className="grid grid-cols-7 gap-1">
                     {composerEmojiOptions.map((emoji) => (
                       <button
                         aria-label={`Inserir ${emoji}`}
-                        className="grid h-9 w-9 place-items-center rounded-md text-[1.3rem] outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                        className="grid h-9 w-9 place-items-center rounded-md text-[1.3rem] outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                         key={emoji}
                         onClick={() => insertEmoji(emoji)}
                         type="button"
@@ -480,7 +480,7 @@ export function ThreadPanel({
             </div>
             <button
               aria-label="Anexar arquivo"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-muted outline-none transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
               onClick={() => fileInputRef.current?.click()}
               type="button"
             >
@@ -488,7 +488,7 @@ export function ThreadPanel({
             </button>
             <button
               aria-label="Marcar pessoa"
-              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+              className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-ink-muted outline-none transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
               onClick={() => {
                 const textarea = replyTextareaRef.current;
                 const start = textarea?.selectionStart ?? replyValue.length;
@@ -569,10 +569,10 @@ function ThreadAttachmentPreview({
   const isImageAttachment = attachment.type === "image" && Boolean(attachment.url);
 
   return (
-    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-[#d9e0ea] bg-[#f8fafc] p-2">
+    <div className="flex min-w-0 items-center gap-2 rounded-xl border border-line bg-subtle p-2">
       <span
         aria-label={attachment.label}
-        className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-white text-[#667085]"
+        className="grid h-14 w-14 shrink-0 place-items-center overflow-hidden rounded-lg bg-surface text-ink-muted"
         role="img"
         style={
           isImageAttachment
@@ -591,14 +591,14 @@ function ThreadAttachmentPreview({
           {attachment.label}
         </span>
         {attachment.sizeBytes ? (
-          <span className="text-[0.68rem] text-[#667085]">
+          <span className="text-[0.68rem] text-ink-muted">
             {formatFileSize(attachment.sizeBytes)}
           </span>
         ) : null}
       </span>
       <button
         aria-label="Remover anexo"
-        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-[#667085] transition hover:bg-[#e6ebf2] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
+        className="grid h-8 w-8 shrink-0 place-items-center rounded-full text-ink-muted transition hover:bg-[#e6ebf2] hover:text-ink focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)]"
         onClick={onRemove}
         type="button"
       >
@@ -669,7 +669,7 @@ function ThreadDateSeparator({ label }: { label: string }) {
       className="my-2 flex justify-center px-4"
       role="separator"
     >
-      <span className="rounded-full border border-[#d9e0ea] bg-white px-3 py-1 text-xs font-semibold text-[#475467] shadow-sm">
+      <span className="rounded-full border border-line bg-surface px-3 py-1 text-xs font-semibold text-ink-soft shadow-sm">
         {label}
       </span>
     </div>
@@ -748,14 +748,14 @@ function MentionAutocomplete({
 }) {
   return (
     <div
-      className="absolute bottom-full left-0 z-40 mb-2 w-72 overflow-hidden rounded-md border border-[#d9e0ea] bg-white shadow-xl"
+      className="absolute bottom-full left-0 z-40 mb-2 w-72 overflow-hidden rounded-md border border-line bg-surface shadow-xl"
       id="pulsex-thread-mention-listbox"
       role="listbox"
     >
       {users.map((user, index) => (
         <button
           aria-selected={index === activeIndex}
-          className="grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-left outline-none transition hover:bg-[#f3f6fa] data-[active=true]:bg-[#f7f3eb]"
+          className="grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-left outline-none transition hover:bg-subtle data-[active=true]:bg-[#f7f3eb]"
           data-active={index === activeIndex}
           key={user.id}
           onClick={() => onSelect(user)}
@@ -770,7 +770,7 @@ function MentionAutocomplete({
             <span className="block truncate text-sm font-semibold text-[#121722]">
               {user.label}
             </span>
-            <span className="block truncate text-xs text-[#667085]">
+            <span className="block truncate text-xs text-ink-muted">
               {user.role} / {getPresenceLabel(user.status)}
             </span>
           </span>

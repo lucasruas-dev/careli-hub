@@ -1,0 +1,502 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prometeu · Telão</title>
+<style>
+  :root{
+    --panel:#181a19; --line:#2b2e2c; --line-strong:#3a3e3c; --text:#e9edeb; --muted:#98a09a; --inverse:#101211;
+    --brand:#cba25a; --ok:#3fae74; --warn:#d69a3d; --danger:#e0655a; --info:#5b8def;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0b0b;color:var(--text);font-family:Arial,Helvetica,sans-serif;height:100vh;overflow:hidden}
+
+  /* VÍDEO em tela cheia (fundo) */
+  #bg{position:fixed;inset:0;z-index:0;background:#0a0b0b;transition:filter .3s}
+  #bg-video{width:100%;height:100%;object-fit:cover;display:none}
+  #bg-video.on{display:block}
+  #bg-yt-wrap{position:absolute;inset:0;display:none}
+  #bg-yt-wrap iframe,#bg-yt-wrap #bg-yt{position:absolute;inset:0;width:100%!important;height:100%!important;border:0}
+  .idle-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;color:var(--muted);text-align:center;padding:30px}
+  .idle-ph .big{font-size:clamp(30px,4vw,56px);font-weight:800;color:var(--text)}
+  body.tem-conteudo .idle-ph{display:none}
+  body.chamando #bg{filter:brightness(.45) blur(2px)}
+
+  /* relógio flutuante (sempre em primeiro plano) */
+  .clock{position:fixed;top:18px;right:28px;z-index:60;font-size:38px;font-weight:800;font-variant-numeric:tabular-nums;color:#fff;text-shadow:0 2px 16px rgba(0,0,0,.8)}
+
+  /* topbar (some em tela cheia) */
+  #topbar{position:fixed;top:16px;left:24px;z-index:40;display:flex;align-items:center;gap:16px}
+  .mod-icon{width:46px;height:46px;border-radius:12px;background:#101820;color:#cba25a;border:1px solid rgba(160,124,59,.55);display:flex;align-items:center;justify-content:center}
+  .mod-icon svg{width:24px;height:24px}
+  .brand h1{font-size:20px;font-weight:800}
+  .brand .sub{font-size:10.5px;color:var(--muted);letter-spacing:.16em;text-transform:uppercase;margin-top:2px}
+  .canal-chip{display:inline-flex;align-items:center;font-size:16px;font-weight:800;color:#fff;border-radius:11px;padding:7px 16px}
+  .ev{font-size:16px;font-weight:700}
+  .tools{position:fixed;top:74px;left:24px;z-index:40;display:flex;gap:10px}
+  .tbtn{width:44px;height:44px;border-radius:11px;border:1px solid var(--line);background:rgba(24,26,25,.85);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;backdrop-filter:blur(4px)}
+  .tbtn svg{width:21px;height:21px}
+  .tbtn.on{background:var(--brand);border-color:var(--brand);color:#fff}
+
+  /* CHAMADA (quadro do telão por cima do vídeo) */
+  .call{position:fixed;inset:0;z-index:30;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:4px;padding:40px;background:radial-gradient(130% 130% at 50% 45%,rgba(10,11,10,.5),rgba(10,11,10,.86))}
+  body.chamando .call{display:flex;animation:cfade .3s ease}
+  @keyframes cfade{from{opacity:0;transform:scale(.97)}to{opacity:1;transform:scale(1)}}
+  .chamando-tag{display:inline-flex;align-items:center;gap:16px;font-size:30px;font-weight:800;letter-spacing:.3em;text-transform:uppercase;color:var(--brand)}
+  .chamando-tag .pulse{width:15px;height:15px;border-radius:50%;background:var(--brand);animation:pulse 1.3s infinite}
+  @keyframes pulse{0%,100%{opacity:1;box-shadow:0 0 0 0 color-mix(in srgb,var(--brand) 55%,transparent)}50%{opacity:.5;box-shadow:0 0 0 20px transparent}}
+  .voz{display:inline-flex;gap:3px;align-items:flex-end;height:22px;margin-left:6px}
+  .voz i{width:4px;background:var(--brand);border-radius:2px;height:5px}
+  body.falando .voz i{animation:vz .6s infinite ease-in-out}
+  .voz i:nth-child(2){animation-delay:.15s}.voz i:nth-child(3){animation-delay:.3s}.voz i:nth-child(4){animation-delay:.45s}
+  @keyframes vz{0%,100%{height:5px}50%{height:22px}}
+  .tela-nome{font-size:clamp(80px,13vw,240px);font-weight:800;line-height:1;color:#fff;margin:20px 0 8px;text-shadow:0 8px 50px rgba(0,0,0,.7)}
+  .tela-imob{font-size:clamp(24px,2.9vw,48px);color:#e6ebf2;font-weight:600;text-shadow:0 2px 20px rgba(0,0,0,.7)}
+  .tela-destino{margin-top:42px;display:inline-flex;align-items:center;gap:26px;font-size:clamp(36px,5.6vw,92px);font-weight:800;text-transform:uppercase;color:#fff;border-radius:30px;padding:24px 60px;box-shadow:0 20px 70px rgba(0,0,0,.55)}
+  .tela-destino .mesa{background:rgba(255,255,255,.22);border-radius:22px;padding:6px 30px}
+
+  /* COMEMORAÇÃO DE VENDA */
+  .venda{position:fixed;inset:0;z-index:35;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:6px;padding:40px;background:radial-gradient(130% 130% at 50% 40%,rgba(18,66,44,.74),rgba(10,11,10,.92))}
+  body.comemorando .venda{display:flex;animation:cfade .35s ease}
+  body.comemorando #bg{filter:brightness(.4) blur(2px)}
+  .v-banner{font-size:clamp(34px,4.4vw,72px);font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:#8fe7ba;animation:piscar .7s ease-in-out infinite}
+  @keyframes piscar{0%,100%{opacity:1;transform:scale(1);text-shadow:0 0 30px rgba(63,174,116,.7)}50%{opacity:.5;transform:scale(1.07);text-shadow:0 0 55px rgba(90,210,150,1)}}
+  .v-nome{font-size:clamp(80px,13vw,240px);font-weight:800;color:#fff;line-height:1;margin-top:12px;text-shadow:0 8px 50px rgba(0,0,0,.7)}
+  .v-unidade{font-size:clamp(22px,2.7vw,44px);font-weight:800;color:#6fd0a3;letter-spacing:.02em;margin-top:6px}
+  .v-fala{margin-top:32px;font-size:clamp(30px,3.4vw,60px);font-weight:600;color:#e9edeb;max-width:1250px;line-height:1.22;text-shadow:0 3px 24px rgba(0,0,0,.7);min-height:1.2em}
+  .confetti{position:absolute;inset:0;overflow:hidden;pointer-events:none}
+  .confetti i{position:absolute;top:-24px;width:11px;height:15px;border-radius:2px;opacity:.95;animation:queda linear forwards}
+  @keyframes queda{to{transform:translateY(112vh) rotate(760deg);opacity:.6}}
+  .venda-btn{background:linear-gradient(135deg,#2f9d63,#3fae74)!important;color:#062012!important;border-color:#3fae74!important;display:none!important}
+  body.admin .venda-btn{display:flex!important}
+
+  /* LOCUTOR AO VIVO (CACÁ fala a mensagem do admin) */
+  .locutor{position:fixed;inset:0;z-index:36;display:none;flex-direction:column;align-items:center;justify-content:center;text-align:center;gap:26px;padding:60px;background:radial-gradient(130% 130% at 50% 45%,rgba(10,11,10,.55),rgba(10,11,10,.9))}
+  body.locutando .locutor{display:flex;animation:cfade .3s ease}
+  body.locutando #bg{filter:brightness(.4) blur(2px)}
+  .loc-tag{display:inline-flex;align-items:center;gap:14px;font-size:26px;font-weight:800;letter-spacing:.28em;text-transform:uppercase;color:var(--brand)}
+  .loc-tag .pulse{width:14px;height:14px;border-radius:50%;background:var(--brand);animation:pulse 1.3s infinite}
+  .loc-texto{font-size:clamp(40px,5.4vw,108px);font-weight:800;color:#fff;line-height:1.14;max-width:1400px;text-shadow:0 8px 50px rgba(0,0,0,.7)}
+
+  /* rodapé: já chamados (esq) + próximos (dir) */
+  .rodape{position:fixed;left:0;right:0;bottom:0;z-index:20;display:flex;justify-content:space-between;align-items:flex-end;gap:24px;padding:26px 30px 30px;background:linear-gradient(to top,rgba(10,11,10,.93),rgba(10,11,10,.4) 60%,transparent)}
+  .grp{max-width:47%;min-width:0;overflow:hidden}
+  .grp-lb{font-size:15px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#aab4c4;margin-bottom:13px}
+  .grp.prox{text-align:right}
+  .lista{display:flex;gap:16px;align-items:stretch}
+  .grp.prox .lista{justify-content:flex-end}
+  .pcard{background:rgba(20,22,21,.42);border:1px solid rgba(255,255,255,.14);border-radius:18px;padding:18px 26px;backdrop-filter:blur(9px);display:flex;flex-direction:column;justify-content:center;flex-shrink:0}
+  .pcard .pn{font-size:34px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:270px;line-height:1.05;text-shadow:0 2px 14px rgba(0,0,0,.9)}
+  .pcard .pd{font-size:16px;font-weight:700;margin-top:8px;text-transform:uppercase;letter-spacing:.03em}
+  .pcard.next{border-color:var(--brand);box-shadow:0 0 0 2px color-mix(in srgb,var(--brand) 34%,transparent)}
+  .lista-empty{font-size:15px;color:var(--muted)}
+
+  /* controles demo (centro-baixo) */
+  .ctrl{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);display:flex;gap:10px;background:rgba(24,26,25,.9);border:1px solid var(--line);border-radius:16px;padding:10px;box-shadow:0 12px 40px rgba(0,0,0,.4);z-index:45;backdrop-filter:blur(6px)}
+  .ctrl button{border:1px solid var(--line-strong);background:var(--panel);color:var(--text);border-radius:11px;padding:12px 18px;font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;display:flex;align-items:center;gap:9px}
+  .ctrl button svg{width:18px;height:18px}
+  .ctrl button.primary{background:var(--brand);color:#fff;border-color:var(--brand)}
+  .ctrl button:hover{filter:brightness(1.08)}
+
+  /* TELA CHEIA: só vídeo + relógio + quadro da chamada + listas */
+  body.fs #topbar,body.fs .tools{display:none}
+  body.fs .ctrl{opacity:0;pointer-events:none;transition:opacity .2s}
+  body.fs:hover .ctrl{opacity:1;pointer-events:auto}
+
+  /* modais */
+  .modal-ov{position:fixed;inset:0;background:rgba(10,11,10,.72);backdrop-filter:blur(6px);z-index:70;display:none;align-items:center;justify-content:center;padding:24px}
+  .modal-ov.open{display:flex}
+  .modal{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 40px 100px rgba(0,0,0,.55);width:min(520px,94vw);padding:28px 30px 24px}
+  .modal h3{font-size:22px;font-weight:800;margin-bottom:4px}
+  .modal p{font-size:13.5px;color:var(--muted);margin-bottom:16px}
+  .modal label{display:block;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px}
+  .modal input[type=text],.modal input[type=file]{width:100%;border:1px solid var(--line);border-radius:11px;background:#101211;color:var(--text);padding:12px;font:inherit;font-size:14px}
+  .modal .row{display:flex;gap:8px}.modal .row input{flex:1}
+  .modal .row button,.modal .acts button{border:1px solid var(--line-strong);background:var(--panel);color:var(--text);border-radius:11px;padding:12px 16px;font:inherit;font-size:14px;font-weight:700;cursor:pointer}
+  .modal input[type=range]{width:100%}
+  .switch{display:flex;align-items:center;gap:11px;cursor:pointer;font-size:14.5px;font-weight:600;margin-top:6px}
+  .switch .track{width:44px;height:26px;border-radius:20px;background:var(--line-strong);position:relative;transition:.2s;flex-shrink:0}
+  .switch .track::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s}
+  .switch.on .track{background:var(--ok)} .switch.on .track::after{left:21px}
+  .modal .acts{display:flex;justify-content:flex-end;margin-top:22px}
+  .modal .acts .conf{background:var(--brand);color:#fff;border-color:var(--brand)}
+
+  .start{position:fixed;inset:0;background:rgba(10,11,10,.92);backdrop-filter:blur(6px);z-index:80;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;color:#fff}
+  .start.hide{display:none}
+  .start h2{font-size:34px;font-weight:800}
+  .start p{font-size:16px;color:#aeb8c6;max-width:470px;text-align:center}
+  .start .btns{display:flex;gap:16px;margin-top:8px}
+  .start .btns button{border:0;border-radius:16px;color:#fff;font-size:18px;font-weight:800;padding:18px 34px;cursor:pointer;display:flex;align-items:center;gap:12px;box-shadow:0 16px 50px rgba(0,0,0,.5)}
+  .start .btns svg{width:24px;height:24px}
+</style>
+</head>
+<body>
+
+<div id="bg">
+  <video id="bg-video" loop playsinline></video>
+  <div id="bg-yt-wrap"><div id="bg-yt"></div></div>
+  <div class="idle-ph" id="idle-ph"><div class="big">Aguardando chamadas</div><div>Configure um vídeo pra rodar enquanto isso (ícone ▶ à esquerda).</div></div>
+</div>
+
+<div class="clock" id="clock">--:--</div>
+
+<div id="topbar">
+  <div class="mod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg></div>
+  <div class="brand"><h1>Telão</h1><div class="sub">Prometeu · Chamadas</div></div>
+  <span class="canal-chip" id="canal-chip">—</span>
+  <div class="ev">Vale do Ouro</div>
+</div>
+<div class="tools">
+  <button class="tbtn" onclick="abrirIdle()" title="Conteúdo ocioso"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m10 8 6 4-6 4V8z"/><rect x="2" y="4" width="20" height="16" rx="2"/></svg></button>
+  <button class="tbtn on" id="btn-som" onclick="toggleMute()" title="Som das chamadas"><svg id="ic-som" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/></svg></button>
+  <button class="tbtn" onclick="fullscreen()" title="Tela cheia"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3M21 8V5a2 2 0 0 0-2-2h-3M3 16v3a2 2 0 0 0 2 2h3M16 21h3a2 2 0 0 0 2-2v-3"/></svg></button>
+</div>
+
+<div class="call" id="chamada-box">
+  <div class="chamando-tag"><span class="pulse"></span> Chamando <span class="voz"><i></i><i></i><i></i><i></i></span></div>
+  <div class="tela-nome" id="t-nome"></div>
+  <div class="tela-imob" id="t-imob"></div>
+  <div class="tela-destino" id="t-destino"></div>
+</div>
+
+<div class="venda" id="venda-box">
+  <div class="confetti" id="confetti"></div>
+  <div class="v-banner">🎉 Mais uma venda! 🎉</div>
+  <div class="v-nome" id="v-nome"></div>
+  <div class="v-unidade" id="v-unidade"></div>
+  <div class="v-fala" id="v-fala"></div>
+</div>
+
+<div class="locutor" id="locutor-box">
+  <div class="loc-tag"><span class="pulse"></span> CACÁ <span class="voz"><i></i><i></i><i></i><i></i></span></div>
+  <div class="loc-texto" id="loc-texto"></div>
+</div>
+
+<div class="rodape">
+  <div class="grp"><div class="grp-lb">Já chamados</div><div class="lista" id="lista-ant"></div></div>
+  <div class="grp prox"><div class="grp-lb">Próximos</div><div class="lista" id="lista-prox"></div></div>
+</div>
+
+<div class="ctrl">
+  <button onclick="rechamar()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg> Rechamar</button>
+  <button class="primary" onclick="proxima()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Chamar próximo</button>
+  <button class="venda-btn" onclick="comemorarVenda()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14M12 2v3M12 5a7 7 0 0 0-5 11.9c.6.6 1 1.4 1 2.1h8c0-.7.4-1.5 1-2.1A7 7 0 0 0 12 5zM8 9l1.5 3L12 9l2.5 3L16 9"/></svg> Comemorar venda</button>
+</div>
+
+<!-- conteúdo ocioso -->
+<div class="modal-ov" id="idle-modal">
+  <div class="modal">
+    <h3>Conteúdo ocioso</h3>
+    <p>O que roda no telão enquanto não há chamada. Na chamada aparece o quadro por cima e o som abaixa.</p>
+    <label>Vídeo do YouTube (link ou ID)</label>
+    <div class="row"><input type="text" id="yt-url" placeholder="https://youtube.com/watch?v=..."><button onclick="usarYouTube()">Usar</button></div>
+    <label>Ou enviar um vídeo do computador</label>
+    <input type="file" id="file-video" accept="video/*" onchange="usarArquivo(this)">
+    <label>Áudio do vídeo</label>
+    <div class="switch" id="sw-mudo" onclick="toggleVideoMudo()"><span class="track"></span> Cortar o áudio do vídeo (uso a playlist do DJ)</div>
+    <label>Volume do vídeo <span id="vol-val">80%</span></label>
+    <input type="range" id="vol-range" min="0" max="100" value="80" oninput="setVol(this.value)">
+    <div class="acts"><button class="conf" onclick="fecharIdle()">Pronto</button></div>
+  </div>
+</div>
+
+<!-- iniciar: escolhe o canal desta TV + destrava o áudio -->
+<div class="start" id="start">
+  <h2>Telão do lançamento</h2>
+  <p>Escolha o que esta TV vai chamar. Cada TV mostra só as chamadas do seu setor, com o toque e a voz da <b>CACÁ</b>.</p>
+  <div class="btns">
+    <button style="background:#a07c3b" onclick="iniciar('secretaria')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Secretaria</button>
+    <button style="background:#8b5cf6" onclick="iniciar('salao')"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Salão de vendas</button>
+  </div>
+</div>
+
+<script src="https://www.youtube.com/iframe_api"></script>
+<script>
+  const NOMES=["Ricardo Souza","Marina Alves","João Pedro Lima","Camila Ferreira","Bruno Costa","Letícia Dias","Paulo Reis","Ana Martins","Rafael Nunes","Beatriz Rocha","Diego Alves","Fernanda Melo","Gustavo Pinto","Larissa Campos","Sônia Braga","Eduardo Nunes"];
+  const IMOBS=["Singular Imóveis","Lopes Vale","Prime Negócios","Bela Vista Imóveis","Rocha Imóveis"];
+  const CORRETORES=["Rogério Lima","Tânia Souza","Vinícius Prado","Sônia Braga","Élcio Martins","Priscila Nunes","Wagner Dias","Cléo Ramos"];
+  const pad=(n,l)=>String(n).padStart(l,"0");
+  const rnd=a=>a[Math.floor(Math.random()*a.length)];
+  const DESTINOS={salao:{label:"Salão de vendas",cor:"#8b5cf6"},secretaria:{label:"Secretaria",cor:"#a07c3b"}};
+  const CACA_TTS_ENDPOINT="/api/prometeu/tts";
+
+  let canal=(new URLSearchParams(location.search).get("canal")||"").toLowerCase();
+  if(canal!=="secretaria"&&canal!=="salao") canal="";
+  // disparo MANUAL da comemoração = admin/coordenação. No mock vem LIGADO por padrão; um telão
+  // público/travado abre com ?admin=0. Em prod, a venda finalizada dispara a comemoração sozinha.
+  const ehAdmin = new URLSearchParams(location.search).get("admin")!=="0";
+  let atual=null, fila=[], ultimas=[], muted=false, holdTimer=null;
+
+  function aplicarCanal(){
+    const d=DESTINOS[canal]||{label:"—",cor:"#667085"};
+    const chip=document.getElementById("canal-chip"); chip.textContent=d.label; chip.style.background=d.cor;
+    document.title="Telão · "+d.label;
+    fila=[]; for(let i=0;i<4;i++) fila.push(novaChamada()); renderListas();
+  }
+  function tick(){const n=new Date();document.getElementById("clock").textContent=[n.getHours(),n.getMinutes()].map(x=>pad(x,2)).join(":");}
+  tick();setInterval(tick,1000);
+
+  function novaChamada(){
+    const sec=canal==="secretaria";
+    return {nome:rnd(NOMES), imob:rnd(IMOBS), corretor:sec?null:rnd(CORRETORES), tipo:canal, mesa:sec?pad(6+Math.floor(Math.random()*14),2):null};
+  }
+  function cardPessoa(c,i,prox){
+    const d=DESTINOS[c.tipo];
+    if(prox) return `<div class="pcard ${i===0?'next':''}"><div class="pn">${c.nome}</div></div>`; // próximo: só o nome (mesa/corretor só ao chamar)
+    const sub = c.tipo==="secretaria" ? (c.mesa?`Mesa ${c.mesa}`:d.label) : (c.corretor?"Corretor "+c.corretor:d.label);
+    return `<div class="pcard"><div class="pn">${c.nome}</div><div class="pd" style="color:${d.cor}">${sub}</div></div>`;
+  }
+  function renderListas(){
+    document.getElementById("lista-prox").innerHTML = fila.length?fila.slice(0,2).map((c,i)=>cardPessoa(c,i,true)).join("") : `<div class="lista-empty">Sem próximos.</div>`;
+    document.getElementById("lista-ant").innerHTML = ultimas.length?ultimas.slice(0,2).map(c=>cardPessoa(c)).join("") : `<div class="lista-empty">Ninguém chamado ainda.</div>`;
+  }
+  function renderCall(){
+    if(!atual)return;
+    document.getElementById("t-nome").textContent=atual.nome;
+    document.getElementById("t-imob").textContent=atual.imob+(atual.corretor?"  ·  Corretor "+atual.corretor:"");
+    const d=DESTINOS[atual.tipo], dest=document.getElementById("t-destino");
+    dest.style.background=d.cor;
+    dest.innerHTML = atual.tipo==="secretaria" ? `Mesa ${atual.mesa}` : d.label; // secretaria: só a mesa
+  }
+
+  // ===== conteúdo ocioso (vídeo) + ducking + corte de áudio =====
+  const bgVideo=document.getElementById("bg-video");
+  let idleVol=0.8, videoMudo=false; const DUCK=0.1;
+  try{ const sv=localStorage.getItem("prometeu_vol"); if(sv!=null)idleVol=(+sv)/100; videoMudo=localStorage.getItem("prometeu_mudo")==="1"; }catch(e){}
+  document.getElementById("vol-range").value=Math.round(idleVol*100);
+  document.getElementById("vol-val").textContent=Math.round(idleVol*100)+"%";
+  document.getElementById("sw-mudo").classList.toggle("on",videoMudo);
+  let ytPlayer=null, ytReady=false, pendingYT=null;
+  window.onYouTubeIframeAPIReady=()=>{ ytReady=true; if(pendingYT){criarYT(pendingYT);pendingYT=null;} };
+  function aplicarVol(v){
+    const vol=videoMudo?0:v;
+    try{bgVideo.muted=videoMudo;bgVideo.volume=vol;}catch(e){}
+    if(ytPlayer&&ytPlayer.setVolume){try{ videoMudo?ytPlayer.mute():ytPlayer.unMute(); ytPlayer.setVolume(Math.round(vol*100)); }catch(e){}}
+  }
+  function volAtual(){ return document.body.classList.contains("chamando")?DUCK:idleVol; }
+  function duckIdle(on){ aplicarVol(on?DUCK:idleVol); }
+  function setVol(v){ idleVol=(+v)/100; document.getElementById("vol-val").textContent=v+"%"; aplicarVol(volAtual()); try{localStorage.setItem("prometeu_vol",v);}catch(e){} }
+  function toggleVideoMudo(){ videoMudo=!videoMudo; document.getElementById("sw-mudo").classList.toggle("on",videoMudo); aplicarVol(volAtual()); try{localStorage.setItem("prometeu_mudo",videoMudo?"1":"0");}catch(e){} }
+  function extrairYT(s){ const m=s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/)||s.match(/^([\w-]{11})$/); return m?m[1]:null; }
+  function carregarYouTube(id){
+    bgVideo.pause(); bgVideo.classList.remove("on");
+    document.getElementById("bg-yt-wrap").style.display="block";
+    document.body.classList.add("tem-conteudo");
+    if(!ytReady){ pendingYT=id; } else { criarYT(id); }
+  }
+  function usarYouTube(){
+    const id=extrairYT(document.getElementById("yt-url").value.trim());
+    if(!id){alert("Link do YouTube inválido.");return;}
+    try{localStorage.setItem("prometeu_yt",id);}catch(e){} // lembra pro próximo F5
+    carregarYouTube(id);
+    fecharIdle(); // fecha o modal e revela o vídeo
+  }
+  function criarYT(id){
+    if(ytPlayer){ try{ytPlayer.loadVideoById(id);aplicarVol(volAtual());}catch(e){} return; }
+    const melhorQualidade=e=>{ try{e.target.setPlaybackQuality("hd1080");}catch(_){} try{e.target.unloadModule("captions");e.target.unloadModule("cc");}catch(_){} };
+    ytPlayer=new YT.Player("bg-yt",{width:"100%",height:"100%",videoId:id,playerVars:{autoplay:1,controls:0,loop:1,playlist:id,modestbranding:1,rel:0,fs:0,disablekb:1,playsinline:1,iv_load_policy:3,cc_load_policy:0,vq:"hd1080"},events:{onReady:e=>{aplicarVol(volAtual());melhorQualidade(e);e.target.playVideo();},onStateChange:e=>{ if(e.data===1) melhorQualidade(e); }}});
+  }
+  function usarArquivo(input){
+    const f=input.files&&input.files[0]; if(!f)return;
+    if(ytPlayer){try{ytPlayer.destroy();}catch(e){}ytPlayer=null;}
+    document.getElementById("bg-yt-wrap").style.display="none";
+    document.body.classList.add("tem-conteudo");
+    bgVideo.src=URL.createObjectURL(f); bgVideo.classList.add("on"); aplicarVol(volAtual()); bgVideo.play().catch(()=>{});
+    try{localStorage.removeItem("prometeu_yt");}catch(e){} // arquivo não persiste; limpa o YT salvo
+    fecharIdle();
+  }
+  function abrirIdle(){document.getElementById("idle-modal").classList.add("open");}
+  function fecharIdle(){document.getElementById("idle-modal").classList.remove("open");}
+
+  // ===== som: alerta + VOZ DA CACÁ =====
+  const alerta=new Audio("alerta.mp3"); alerta.preload="auto"; alerta.volume=0.9;
+  function tocarAlerta(depois){
+    if(muted){depois();return;}
+    let done=false; const go=()=>{if(done)return;done=true;depois();};
+    try{ alerta.pause(); alerta.currentTime=0; alerta.onended=go; alerta.play().catch(go); setTimeout(go,4000); } catch(e){ go(); }
+  }
+  const palco=()=>document.getElementById("chamada-box");
+  const VOZ_SETTINGS={ stability:0.55, similarity_boost:0.85, style:0.3, use_speaker_boost:true, speed:0.82 }; // chamada: locução calma
+  const VOZ_FESTA={ stability:0.3, similarity_boost:0.85, style:0.7, use_speaker_boost:true, speed:1.03 };    // comemoração: animada e empolgada
+  const VOZ_GANHO=2.4;        // chamada
+  const VOZ_GANHO_FESTA=1.6;  // comemoração (v3 sai mais alto → menos ganho pra não estourar)
+  let vozAtual=null, actx=null;
+  function unlockAudio(){ try{ actx=actx||new (window.AudioContext||window.webkitAudioContext)(); if(actx.state==="suspended")actx.resume(); }catch(e){} }
+  function montarTexto(c){
+    const corretor=c.corretor?`Com o corretor ${c.corretor}. `:"";
+    const local=c.tipo==="secretaria"?`Por favor, dirija-se à mesa ${+c.mesa}.`:`Por favor, compareça ao salão de vendas.`;
+    return `Atenção. ${c.nome}. ${corretor}${local}`;
+  }
+  async function buscarVoz(texto,settings,modelId){
+    if(!CACA_TTS_ENDPOINT)return null;
+    try{ const r=await fetch(CACA_TTS_ENDPOINT,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:texto,voiceSettings:settings||VOZ_SETTINGS,modelId:modelId||undefined})}); if(!r.ok)return null; return new Audio(URL.createObjectURL(await r.blob())); }catch(e){ return null; }
+  }
+  function tocarVoz(a,onEnd,ganho){
+    vozAtual=a; document.body.classList.add("falando"); a.volume=1;
+    a.addEventListener("ended",()=>{document.body.classList.remove("falando");onEnd&&onEnd();},{once:true});
+    try{ unlockAudio(); const src=actx.createMediaElementSource(a); const g=actx.createGain(); g.gain.value=ganho||VOZ_GANHO; src.connect(g); g.connect(actx.destination); }catch(e){}
+    a.play().catch(()=>{document.body.classList.remove("falando");onEnd&&onEnd();});
+  }
+  function falarNavegador(text,onEnd){
+    if(!("speechSynthesis" in window)){onEnd&&onEnd();return;}
+    speechSynthesis.cancel();
+    const u=new SpeechSynthesisUtterance(text); u.lang="pt-BR"; u.rate=.84; u.pitch=1;
+    const pt=(speechSynthesis.getVoices()||[]).filter(v=>/pt.?BR|portugu/i.test(v.lang+" "+v.name));
+    const v=pt.find(v=>/maria|francisca|luciana|fernanda|camila|female|mulher/i.test(v.name))||pt.find(v=>/google/i.test(v.name))||pt[0]; if(v)u.voice=v;
+    u.onstart=()=>document.body.classList.add("falando");
+    u.onend=()=>{document.body.classList.remove("falando");onEnd&&onEnd();};
+    speechSynthesis.speak(u);
+  }
+  function anunciar(c,aoTerminar){
+    const texto=montarTexto(c);
+    const vozP=muted?Promise.resolve(null):buscarVoz(texto);
+    tocarAlerta(async ()=>{
+      if(muted){aoTerminar&&aoTerminar();return;}
+      const a=await vozP;
+      if(a) tocarVoz(a,aoTerminar); else falarNavegador(texto,aoTerminar);
+    });
+  }
+
+  // ===== chamada transitória =====
+  function chamar(c){
+    clearTimeout(holdTimer);
+    atual=c;
+    document.body.classList.add("chamando");
+    renderCall(); duckIdle(true);
+    anunciar(c,()=>{ ultimas.unshift(c); ultimas=ultimas.slice(0,6); renderListas(); holdTimer=setTimeout(encerrar,2500); });
+  }
+  function encerrar(){ document.body.classList.remove("chamando"); duckIdle(false); }
+  let chamadaPendente=false;
+  const ocupadoNoPalco=()=>document.body.classList.contains("comemorando")||document.body.classList.contains("locutando");
+  function proxima(){
+    if(ocupadoNoPalco()){ chamadaPendente=true; return; } // espera a comemoração/locutor acabar
+    if(!fila.length) fila.push(novaChamada());
+    const c=fila.shift(); fila.push(novaChamada()); renderListas();
+    chamar(c);
+  }
+  function rechamar(){ if(ocupadoNoPalco())return; if(atual) chamar(atual); }
+
+  // ===== comemoração de venda (som venda.mp3 + CACÁ improvisa via LLM) =====
+  const venda=new Audio("venda.mp3"); venda.preload="auto"; venda.volume=0.95;
+  const COMEMORAR_ENDPOINT="http://localhost:5180/comemorar";
+  const FALLBACK_FALAS=[
+    "Parabéns, {nome}! Mais uma família realizando o sonho aqui no Vale do Ouro!",
+    "É venda! Parabéns, {nome}, o Vale do Ouro está de portas abertas pra você!",
+    "Que alegria! {nome} acaba de conquistar seu lugar no Vale do Ouro. Felicidades!",
+    "Mais uma venda! Parabéns, {nome}, seja muito bem-vindo à família Vale do Ouro!",
+  ];
+  function novaVenda(){
+    return {comprador:rnd(NOMES), corretor:rnd(CORRETORES), unidade:"VOR"+pad(1+Math.floor(Math.random()*14),2)+pad(1+Math.floor(Math.random()*40),2), empreendimento:"Vale do Ouro"};
+  }
+  async function textoComemoracao(v){
+    try{ const r=await fetch(COMEMORAR_ENDPOINT,{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(v)}); if(r.ok){const j=await r.json(); if(j.text) return j.text;} }catch(e){}
+    return rnd(FALLBACK_FALAS).replace("{nome}", v.comprador.split(" ")[0]); // rede de segurança
+  }
+  function dispararConfetti(){
+    const box=document.getElementById("confetti"); box.innerHTML="";
+    const cores=["#ffd77a","#ffffff","#ec7f2e","#8b5cf6","#3fae74","#e0655a"];
+    for(let i=0;i<36;i++){ const p=document.createElement("i"); p.style.left=Math.random()*100+"%"; p.style.background=cores[i%cores.length]; p.style.animationDuration=(2.6+Math.random()*2.6)+"s"; p.style.animationDelay=(Math.random()*1.3)+"s"; p.style.width=(7+Math.random()*8)+"px"; box.appendChild(p); }
+  }
+  function tocarVenda(depois){ // toca o venda.mp3 UMA vez, no começo, depois chama o callback
+    if(muted){depois();return;}
+    let done=false; const go=()=>{if(done)return;done=true;depois();};
+    try{ venda.pause(); venda.currentTime=0; venda.onended=go; venda.play().catch(go); setTimeout(go,6000); }catch(e){ go(); }
+  }
+  function comemorarVenda(){
+    clearTimeout(holdTimer);
+    document.body.classList.remove("chamando");
+    const v=novaVenda();
+    document.getElementById("v-nome").textContent=v.comprador;
+    document.getElementById("v-unidade").textContent="Unidade "+v.unidade+"  ·  Corretor "+v.corretor;
+    document.getElementById("v-fala").textContent="";
+    document.body.classList.add("comemorando"); dispararConfetti(); duckIdle(true);
+    const falaP = muted?Promise.resolve(""):textoComemoracao(v);                                 // CACÁ improvisa (curto)
+    const vozP  = muted?Promise.resolve(null):falaP.then(f=>buscarVoz(f||`Parabéns, ${v.comprador.split(" ")[0]}!`, VOZ_FESTA, "eleven_v3")); // voz FESTIVA + motor v3 (mais expressivo)
+    tocarVenda(async ()=>{                                                                        // som 2x, depois a CACÁ
+      const fala=await falaP; document.getElementById("v-fala").textContent=fala||"";
+      if(muted){ holdTimer=setTimeout(fimComemoracao,4000); return; }
+      const a=await vozP;
+      if(a) tocarVoz(a,()=>holdTimer=setTimeout(fimComemoracao,3000),VOZ_GANHO_FESTA); else falarNavegador(fala,()=>holdTimer=setTimeout(fimComemoracao,3000));
+    });
+  }
+  function fimComemoracao(){
+    document.body.classList.remove("comemorando"); duckIdle(false);
+    if(chamadaPendente){ chamadaPendente=false; setTimeout(proxima,500); } // as chamadas que esperaram voltam
+    if(pendenteExterna){ const p=pendenteExterna; pendenteExterna=null; setTimeout(()=>chamar(p),500); }
+  }
+
+  // ===== LOCUTOR AO VIVO: o telão escuta o painel do admin e a CACÁ fala a mensagem =====
+  const LOCUTOR_ENDPOINT="http://localhost:5180/locutor";
+  const TONS_TELAO={
+    animado:{settings:{stability:0.3,similarity_boost:0.85,style:0.7,use_speaker_boost:true},modelId:"eleven_v3",ganho:1.6},
+    caloroso:{settings:{stability:0.45,similarity_boost:0.9,style:0.45,use_speaker_boost:true},modelId:null,ganho:2.0},
+    neutro:{settings:{stability:0.6,similarity_boost:0.85,style:0.2,use_speaker_boost:false},modelId:null,ganho:2.2},
+  };
+  let lastLocutorId=0, locutorPoll=null;
+  async function pollLocutor(){
+    try{ const r=await fetch(LOCUTOR_ENDPOINT); if(!r.ok)return; const m=await r.json(); if(m&&m.id&&m.id>lastLocutorId){ lastLocutorId=m.id; if(m.text) falarLocutor(m); } }catch(e){}
+  }
+  function iniciarPollLocutor(){ // pega o id atual pra não repetir mensagem antiga, e começa a escutar
+    fetch(LOCUTOR_ENDPOINT).then(r=>r.json()).then(m=>{ lastLocutorId=(m&&m.id)||0; }).catch(()=>{}).finally(()=>{ if(!locutorPoll)locutorPoll=setInterval(pollLocutor,1500); });
+  }
+  function falarLocutor(m){
+    clearTimeout(holdTimer);
+    document.body.classList.remove("chamando","comemorando");
+    document.getElementById("loc-texto").textContent=m.text;
+    document.body.classList.add("locutando"); duckIdle(true);
+    const conf=TONS_TELAO[m.tom]||TONS_TELAO.animado;
+    const vozP=muted?Promise.resolve(null):buscarVoz(m.text, conf.settings, conf.modelId||undefined);
+    vozP.then(a=>{ if(a) tocarVoz(a,()=>holdTimer=setTimeout(fimLocutor,3000),conf.ganho); else falarNavegador(m.text,()=>holdTimer=setTimeout(fimLocutor,3000)); });
+  }
+  function fimLocutor(){
+    document.body.classList.remove("locutando"); duckIdle(false);
+    if(chamadaPendente){ chamadaPendente=false; setTimeout(proxima,500); }
+    if(pendenteExterna){ const p=pendenteExterna; pendenteExterna=null; setTimeout(()=>chamar(p),500); }
+  }
+
+  // ===== CHAMADA VINDA DO ATENDENTE: o telão escuta o proxy e mostra na TV do canal =====
+  // Ponte com o Atendente = BroadcastChannel (mesma origem, entre abas/TVs). Sem servidor.
+  const canalFila=("BroadcastChannel" in window)?new BroadcastChannel("prometeu-fila"):null;
+  let lastChamadaId=0, pendenteExterna=null;
+  function iniciarEscutaChamada(){
+    if(!canalFila)return;
+    canalFila.onmessage=(ev)=>{
+      const m=ev.data;
+      if(m && m.nome && m.tipo===canal && (m.id||0)>lastChamadaId){ lastChamadaId=m.id||Date.now(); chamarExterno(m); } // só as do MEU canal
+    };
+  }
+  function chamarExterno(m){
+    const call={nome:m.nome, imob:m.imob, corretor:m.tipo==="salao"?m.corretor:null, tipo:m.tipo, mesa:m.mesa};
+    if(Array.isArray(m.proximos)) fila = m.proximos.map(n=>({nome:n, tipo:canal})); // reflete a fila REAL do atendente
+    renderListas(); // atualiza os "próximos" na hora (não espera a voz)
+    if(document.body.classList.contains("comemorando")||document.body.classList.contains("locutando")){ pendenteExterna=call; return; } // espera a festa/locutor
+    chamar(call);
+  }
+
+  function toggleMute(){
+    muted=!muted;
+    document.getElementById("btn-som").classList.toggle("on",!muted);
+    document.getElementById("ic-som").innerHTML=muted
+      ?`<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="22" y1="9" x2="16" y2="15"/><line x1="16" y1="9" x2="22" y2="15"/>`
+      :`<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7M19 5a9 9 0 0 1 0 14"/>`;
+    if(muted){try{speechSynthesis.cancel();}catch(e){} if(vozAtual)try{vozAtual.pause();}catch(e){} document.body.classList.remove("falando");}
+  }
+  function fullscreen(){const el=document.documentElement;if(!document.fullscreenElement)el.requestFullscreen&&el.requestFullscreen();else document.exitFullscreen();}
+  document.addEventListener("fullscreenchange",()=>document.body.classList.toggle("fs",!!document.fullscreenElement));
+
+  function iniciar(c){
+    canal=c; aplicarCanal();
+    document.getElementById("start").classList.add("hide");
+    try{alerta.load();}catch(e){} unlockAudio();
+    if("speechSynthesis" in window){speechSynthesis.getVoices();}
+    iniciarPollLocutor(); // passa a escutar o painel do locutor
+    iniciarEscutaChamada(); // passa a escutar as chamadas do atendente (BroadcastChannel)
+    try{ const savedYt=localStorage.getItem("prometeu_yt"); if(savedYt){ document.getElementById("yt-url").value="https://youtu.be/"+savedYt; carregarYouTube(savedYt); } }catch(e){} // restaura o vídeo do último uso
+  }
+
+  if(ehAdmin) document.body.classList.add("admin"); // libera o disparo manual da comemoração
+  if(canal) aplicarCanal(); else renderListas();
+</script>
+</body>
+</html>

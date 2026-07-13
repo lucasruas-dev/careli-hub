@@ -259,13 +259,13 @@ export function IrisCobrancaContextSidebar({
 
   if (collapsed) {
     return (
-      <aside className="hidden w-14 shrink-0 flex-col items-center gap-2 border-l border-slate-100 bg-white p-2 xl:flex">
+      <aside className="hidden w-14 shrink-0 flex-col items-center gap-2 border-l border-line bg-surface p-2 xl:flex">
         <button
           type="button"
           onClick={onToggleCollapsed}
           aria-label="Expandir contexto"
           title="Expandir contexto"
-          className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+          className="flex size-9 items-center justify-center rounded-lg border border-line/70 bg-surface text-ink-muted transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
         >
           <PanelRightOpen className="size-4" aria-hidden="true" />
         </button>
@@ -282,12 +282,12 @@ export function IrisCobrancaContextSidebar({
   }
 
   return (
-    <aside className="hidden w-[340px] shrink-0 flex-col border-l border-slate-100 bg-white xl:flex">
-      <div className="border-b border-slate-100 p-3">
+    <aside className="hidden w-[340px] shrink-0 flex-col border-l border-line bg-surface xl:flex">
+      <div className="border-b border-line p-3">
         <div className="flex items-center gap-2">
           <div
             className={[
-              "grid flex-1 gap-1 rounded-lg bg-slate-100/70 p-1",
+              "grid flex-1 gap-1 rounded-lg bg-subtle/70 p-1",
               tabs.length >= 5 ? "grid-cols-5" : "grid-cols-4",
             ].join(" ")}
           >
@@ -300,8 +300,8 @@ export function IrisCobrancaContextSidebar({
                   className={[
                     "flex h-8 items-center justify-center rounded-md transition-colors",
                     tab === option.id
-                      ? "bg-white text-[#7A5E2C] shadow-sm"
-                      : "text-slate-500 hover:bg-white hover:text-[#7A5E2C]",
+                      ? "bg-surface text-[#7A5E2C] shadow-sm"
+                      : "text-ink-muted hover:bg-surface hover:text-[#7A5E2C]",
                   ].join(" ")}
                 >
                   <option.icon className="size-4" aria-hidden="true" />
@@ -314,7 +314,7 @@ export function IrisCobrancaContextSidebar({
             onClick={onToggleCollapsed}
             aria-label="Recolher contexto"
             title="Recolher contexto"
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-[#7A5E2C]"
           >
             <PanelRightClose className="size-4" aria-hidden="true" />
           </button>
@@ -343,7 +343,7 @@ export function IrisCobrancaContextSidebar({
 
       <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-3 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
         {loading && !client ? (
-          <p className="flex items-center gap-2 px-1 py-3 text-xs text-slate-400">
+          <p className="flex items-center gap-2 px-1 py-3 text-xs text-ink-muted">
             <Loader2 className="size-4 animate-spin" aria-hidden="true" />
             Carregando contexto de cobrança…
           </p>
@@ -491,52 +491,52 @@ function ProposalDetailModal({
         onClick={onClose}
         className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
       />
-      <div className="relative z-10 flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+      <div className="relative z-10 flex max-h-[85vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <span className="flex size-8 items-center justify-center rounded-lg bg-[#A07C3B] text-white">
               <HandCoins className="size-4" aria-hidden="true" />
             </span>
             <div>
-              <h2 className="text-base font-semibold text-slate-950">
+              <h2 className="text-base font-semibold text-ink">
                 {commitment.type}
               </h2>
-              <p className="text-[11px] text-slate-500">{commitment.protocol}</p>
+              <p className="text-[11px] text-ink-muted">{commitment.protocol}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
+            className="flex size-8 items-center justify-center rounded-lg text-ink-muted hover:bg-subtle"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
         </header>
         <div className="min-h-0 flex-1 overflow-y-auto p-4">
-          <div className="overflow-hidden rounded-xl border border-slate-200/70 bg-white">
+          <div className="overflow-hidden rounded-xl border border-line/70 bg-surface">
             {rows
               .filter((row) => row.value && row.value.trim())
               .map((row, index) => (
                 <div
                   key={row.label}
                   className={`flex items-start justify-between gap-3 px-3 py-2 ${
-                    index > 0 ? "border-t border-slate-100" : ""
+                    index > 0 ? "border-t border-line" : ""
                   }`}
                 >
-                  <span className="shrink-0 text-[11px] font-medium text-slate-500">
+                  <span className="shrink-0 text-[11px] font-medium text-ink-muted">
                     {row.label}
                   </span>
-                  <span className="min-w-0 break-words text-right text-xs font-semibold text-slate-900 [overflow-wrap:anywhere]">
+                  <span className="min-w-0 break-words text-right text-xs font-semibold text-ink [overflow-wrap:anywhere]">
                     {row.value}
                   </span>
                 </div>
               ))}
           </div>
           {commitment.note ? (
-            <div className="mt-2 rounded-xl border border-slate-200/70 bg-slate-50/70 px-3 py-2.5">
-              <p className="text-[11px] font-semibold text-slate-500">Observação</p>
-              <p className="mt-1 text-xs text-slate-700 [overflow-wrap:anywhere]">
+            <div className="mt-2 rounded-xl border border-line/70 bg-subtle/70 px-3 py-2.5">
+              <p className="text-[11px] font-semibold text-ink-muted">Observação</p>
+              <p className="mt-1 text-xs text-ink [overflow-wrap:anywhere]">
                 {commitment.note}
               </p>
             </div>
@@ -562,18 +562,18 @@ function ProposalChoiceModal({
         onClick={onCancel}
         className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
       />
-      <div className="relative z-10 w-full max-w-xs rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-        <h2 className="text-base font-semibold text-slate-950">
+      <div className="relative z-10 w-full max-w-xs rounded-2xl border border-line/70 bg-surface p-5 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <h2 className="text-base font-semibold text-ink">
           Registrar proposta
         </h2>
-        <p className="mt-1 text-[11px] text-slate-500">
+        <p className="mt-1 text-[11px] text-ink-muted">
           Escolha o que vai registrar para este cliente.
         </p>
         <div className="mt-4 grid grid-cols-2 gap-2">
           <button
             type="button"
             onClick={() => onChoose("promessa")}
-            className="flex flex-col items-center gap-1 rounded-xl border border-slate-200/70 bg-white px-3 py-3 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
+            className="flex flex-col items-center gap-1 rounded-xl border border-line/70 bg-surface px-3 py-3 text-xs font-semibold text-ink transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
           >
             <Clock3 className="size-5 text-[#A07C3B]" aria-hidden="true" />
             Promessa
@@ -581,7 +581,7 @@ function ProposalChoiceModal({
           <button
             type="button"
             onClick={() => onChoose("acordo")}
-            className="flex flex-col items-center gap-1 rounded-xl border border-slate-200/70 bg-white px-3 py-3 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
+            className="flex flex-col items-center gap-1 rounded-xl border border-line/70 bg-surface px-3 py-3 text-xs font-semibold text-ink transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
           >
             <HandCoins className="size-5 text-[#A07C3B]" aria-hidden="true" />
             Acordo
@@ -590,7 +590,7 @@ function ProposalChoiceModal({
         <button
           type="button"
           onClick={onCancel}
-          className="mt-3 h-9 w-full rounded-lg border border-slate-200/70 bg-white text-sm font-medium text-slate-700 hover:bg-slate-50"
+          className="mt-3 h-9 w-full rounded-lg border border-line/70 bg-surface text-sm font-medium text-ink hover:bg-subtle"
         >
           Cancelar
         </button>
@@ -628,12 +628,12 @@ function CarteiraStat({
       ? "text-emerald-600"
       : tone === "danger"
         ? "text-rose-600"
-        : "text-slate-900";
+        : "text-ink";
 
   return (
-    <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center">
+    <div className="rounded-lg bg-subtle px-2 py-1.5 text-center">
       <p className={`text-sm font-semibold ${color}`}>{value}</p>
-      <p className="text-[10px] text-slate-500">{label}</p>
+      <p className="text-[10px] text-ink-muted">{label}</p>
     </div>
   );
 }
@@ -677,7 +677,7 @@ function CarteiraTab({
         return (
           <div
             key={`${link.enterprise ?? "link"}-${index}`}
-            className="overflow-hidden rounded-xl border border-slate-200/70 bg-white"
+            className="overflow-hidden rounded-xl border border-line/70 bg-surface"
           >
             <button
               type="button"
@@ -692,8 +692,8 @@ function CarteiraTab({
                   return next;
                 })
               }
-              className={`flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-slate-50 ${
-                isOpen ? "border-b border-slate-100 bg-slate-50/70" : ""
+              className={`flex w-full items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-subtle ${
+                isOpen ? "border-b border-line bg-subtle/70" : ""
               }`}
             >
               <LandPlot
@@ -701,10 +701,10 @@ function CarteiraTab({
                 aria-hidden="true"
               />
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-slate-900">
+                <p className="truncate text-sm font-semibold text-ink">
                   {unitLabel || "Unidade"}
                 </p>
-                <p className="truncate text-[11px] text-slate-500">
+                <p className="truncate text-[11px] text-ink-muted">
                   <span className="capitalize">
                     {(link.enterprise ?? "").toLowerCase()}
                   </span>
@@ -722,12 +722,12 @@ function CarteiraTab({
               </div>
               {isOpen ? (
                 <ChevronUp
-                  className="size-4 shrink-0 text-slate-400"
+                  className="size-4 shrink-0 text-ink-muted"
                   aria-hidden="true"
                 />
               ) : (
                 <ChevronDown
-                  className="size-4 shrink-0 text-slate-400"
+                  className="size-4 shrink-0 text-ink-muted"
                   aria-hidden="true"
                 />
               )}
@@ -740,7 +740,7 @@ function CarteiraTab({
                     href={link.contractUrl}
                     target="_blank"
                     rel="noreferrer"
-                    className="mb-3 flex items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-white px-3 py-2 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
+                    className="mb-3 flex items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-surface px-3 py-2 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
                   >
                     <FileText className="size-4" aria-hidden="true" /> Ver contrato
                   </a>
@@ -764,7 +764,7 @@ function CarteiraTab({
                 </div>
 
                 {installments.length ? (
-                  <div className="overflow-hidden rounded-xl border border-slate-200/70">
+                  <div className="overflow-hidden rounded-xl border border-line/70">
                     {installments.map((item, itemIndex) => {
                       const tone = apoloInstallmentTone(item);
                       const dotClass =
@@ -778,7 +778,7 @@ function CarteiraTab({
                           ? "text-rose-600"
                           : tone === "liquidada"
                             ? "text-emerald-600"
-                            : "text-slate-500";
+                            : "text-ink-muted";
                       const statusLine =
                         tone === "liquidada"
                           ? `liquidada${item.paidAt ? ` · pago ${item.paidAt}` : ""}`
@@ -790,7 +790,7 @@ function CarteiraTab({
                         <div
                           key={item.id ?? `${index}-${itemIndex}`}
                           className={`flex items-center gap-2.5 px-3 py-2 ${
-                            itemIndex > 0 ? "border-t border-slate-100" : ""
+                            itemIndex > 0 ? "border-t border-line" : ""
                           }`}
                         >
                           <span
@@ -798,10 +798,10 @@ function CarteiraTab({
                             aria-hidden="true"
                           />
                           <div className="min-w-0 flex-1">
-                            <p className="truncate text-xs font-semibold text-slate-900">
+                            <p className="truncate text-xs font-semibold text-ink">
                               {item.reference ?? "Parcela"}
                               {item.number ? (
-                                <span className="font-normal text-slate-400">
+                                <span className="font-normal text-ink-muted">
                                   {" "}
                                   · {item.number}
                                 </span>
@@ -812,7 +812,7 @@ function CarteiraTab({
                             </p>
                           </div>
                           <div className="shrink-0 text-right">
-                            <p className="text-xs font-semibold text-slate-900">
+                            <p className="text-xs font-semibold text-ink">
                               {item.value ?? "-"}
                             </p>
                             {tone !== "liquidada" &&
@@ -909,10 +909,10 @@ function ParcelasTab({
           <div key={empreendimento} className="space-y-1.5">
             <div className="flex items-center gap-1.5 px-0.5">
               <Building2 className="size-3.5 shrink-0 text-[#A07C3B]" aria-hidden="true" />
-              <span className="truncate text-[11px] font-semibold text-slate-700">
+              <span className="truncate text-[11px] font-semibold text-ink">
                 {empreendimento}
               </span>
-              <span className="shrink-0 text-[10px] text-slate-400">· {items.length}</span>
+              <span className="shrink-0 text-[10px] text-ink-muted">· {items.length}</span>
             </div>
             {items.map((installment) => {
               const url = installment.invoiceUrl ?? installment.paymentUrl ?? "";
@@ -920,19 +920,19 @@ function ParcelasTab({
               return (
                 <div
                   key={installment.id}
-                  className="rounded-lg border border-slate-200/70 bg-white px-3 py-2"
+                  className="rounded-lg border border-line/70 bg-surface px-3 py-2"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-slate-900">
+                      <p className="truncate text-xs font-semibold text-ink">
                         {installment.unitCode ? (
                           <span className="text-[#7A5E2C]">{installment.unitCode} · </span>
                         ) : null}
                         {installment.number}
                       </p>
-                      <p className="text-[11px] text-slate-500">{installment.reference}</p>
+                      <p className="text-[11px] text-ink-muted">{installment.reference}</p>
                     </div>
-                    <span className="shrink-0 text-xs font-semibold text-slate-950">
+                    <span className="shrink-0 text-xs font-semibold text-ink">
                       {installment.value}
                     </span>
                   </div>
@@ -960,7 +960,7 @@ function ParcelasTab({
                       )}
                     </button>
                   ) : (
-                    <p className="mt-2 text-[10px] text-slate-400">
+                    <p className="mt-2 text-[10px] text-ink-muted">
                       Sem link de boleto disponível.
                     </p>
                   )}
@@ -1021,18 +1021,18 @@ function ClienteTab({
   });
   return (
     <div className="space-y-2.5">
-      <div className="overflow-hidden rounded-xl border border-slate-200/70 bg-white">
+      <div className="overflow-hidden rounded-xl border border-line/70 bg-surface">
         {fields.map((field, index) => (
           <div
             key={field.label}
             className={`flex items-start justify-between gap-4 px-4 py-3.5 ${
-              index > 0 ? "border-t border-slate-100" : ""
+              index > 0 ? "border-t border-line" : ""
             }`}
           >
-            <span className="shrink-0 text-sm font-medium text-slate-500">
+            <span className="shrink-0 text-sm font-medium text-ink-muted">
               {field.label}
             </span>
-            <span className="min-w-0 break-words text-right text-sm font-semibold text-slate-900 [overflow-wrap:anywhere]">
+            <span className="min-w-0 break-words text-right text-sm font-semibold text-ink [overflow-wrap:anywhere]">
               {field.value}
             </span>
           </div>
@@ -1043,7 +1043,7 @@ function ClienteTab({
           href={`/hades/cobranca?clientId=${encodeURIComponent(clientId)}&tab=cliente&from=atendimento${
             atProtocol ? `&reopenAt=${encodeURIComponent(atProtocol)}` : ""
           }`}
-          className="flex items-center justify-center gap-2 rounded-xl border border-[#A07C3B]/25 bg-white px-3 py-2.5 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
+          className="flex items-center justify-center gap-2 rounded-xl border border-[#A07C3B]/25 bg-surface px-3 py-2.5 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
         >
           <ExternalLink className="size-4" aria-hidden="true" />
           Abrir cadastro no Hades
@@ -1075,23 +1075,23 @@ function FinanceiroTab({
   return (
     <div className="space-y-3">
       <div className="grid grid-cols-3 gap-2">
-        <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center">
-          <p className="text-sm font-semibold text-slate-900">
+        <div className="rounded-lg bg-subtle px-2 py-1.5 text-center">
+          <p className="text-sm font-semibold text-ink">
             {financial.totalPortfolio ?? "-"}
           </p>
-          <p className="text-[10px] text-slate-500">Carteira</p>
+          <p className="text-[10px] text-ink-muted">Carteira</p>
         </div>
-        <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center">
+        <div className="rounded-lg bg-subtle px-2 py-1.5 text-center">
           <p className="text-sm font-semibold text-emerald-600">
             {financial.paidAmount ?? "-"}
           </p>
-          <p className="text-[10px] text-slate-500">Pago</p>
+          <p className="text-[10px] text-ink-muted">Pago</p>
         </div>
-        <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center">
+        <div className="rounded-lg bg-subtle px-2 py-1.5 text-center">
           <p className="text-sm font-semibold text-rose-600">
             {financial.overdueAmount ?? "-"}
           </p>
-          <p className="text-[10px] text-slate-500">Vencido</p>
+          <p className="text-[10px] text-ink-muted">Vencido</p>
         </div>
       </div>
 
@@ -1103,7 +1103,7 @@ function FinanceiroTab({
             </span>
           ) : null}
           {risk ? (
-            <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-medium capitalize text-slate-600 ring-1 ring-slate-200">
+            <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2.5 py-1 text-[11px] font-medium capitalize text-ink-soft ring-1 ring-slate-200">
               Risco {risk.toLowerCase()}
             </span>
           ) : null}
@@ -1111,7 +1111,7 @@ function FinanceiroTab({
       ) : null}
 
       <div>
-        <p className="mb-2 text-xs font-semibold text-slate-500">
+        <p className="mb-2 text-xs font-semibold text-ink-muted">
           Acordos e promessas
         </p>
         <EmptyHint text="Nenhum acordo ou promessa registrado para este cliente." />
@@ -1147,20 +1147,20 @@ function PropostasTab({
             type="button"
             key={commitment.id}
             onClick={() => onView(commitment)}
-            className="w-full rounded-xl border border-slate-200/70 bg-white px-3 py-2.5 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-slate-50"
+            className="w-full rounded-xl border border-line/70 bg-surface px-3 py-2.5 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-subtle"
           >
             <div className="flex items-center justify-between gap-2">
-              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-900">
+              <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink">
                 <Building2 className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
                 {commitment.type}
               </span>
-              <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-600 ring-1 ring-slate-200/70">
+              <span className="rounded-full bg-subtle px-2 py-0.5 text-[10px] font-semibold text-ink-soft ring-1 ring-slate-200/70">
                 {commitment.status}
               </span>
             </div>
-            <p className="mt-1.5 text-sm font-semibold text-slate-950">{value}</p>
+            <p className="mt-1.5 text-sm font-semibold text-ink">{value}</p>
             <div className="flex items-center justify-between gap-2">
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-ink-muted">
                 {commitment.protocol} · {date}
               </p>
               <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-[#7A5E2C]">
@@ -1196,9 +1196,9 @@ const TIMELINE_VISUAL: Record<
   quitacao: { Icon: CheckCircle2, cls: "bg-emerald-50 text-emerald-700" },
   quebra: { Icon: XCircle, cls: "bg-rose-50 text-rose-600" },
   retorno: { Icon: Phone, cls: "bg-amber-50 text-amber-700" },
-  task: { Icon: ClipboardList, cls: "bg-slate-100 text-slate-600" },
-  nota: { Icon: FileText, cls: "bg-slate-100 text-slate-600" },
-  outro: { Icon: Clock3, cls: "bg-slate-100 text-slate-500" },
+  task: { Icon: ClipboardList, cls: "bg-subtle text-ink-soft" },
+  nota: { Icon: FileText, cls: "bg-subtle text-ink-soft" },
+  outro: { Icon: Clock3, cls: "bg-subtle text-ink-muted" },
 };
 
 // Sem campo de tipo/origem na timeline (vem de fontes diferentes), entao
@@ -1322,13 +1322,13 @@ function TimelineTab({
     <div className="space-y-3">
       {groups.map((group) => (
         <div key={group.key}>
-          <p className="mb-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-normal text-slate-400">
+          <p className="mb-1.5 px-0.5 text-[11px] font-semibold uppercase tracking-normal text-ink-muted">
             {group.label}
           </p>
           <div className="relative space-y-0.5">
             <span
               aria-hidden="true"
-              className="absolute bottom-2 left-[12px] top-2 w-px bg-slate-200"
+              className="absolute bottom-2 left-[12px] top-2 w-px bg-subtle"
             />
             {group.events.map((event) => {
               const { origin, type } = classifyTimelineEvent(event);
@@ -1342,16 +1342,16 @@ function TimelineTab({
                     <visual.Icon className="size-3.5" aria-hidden="true" />
                   </span>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-semibold text-slate-900 [overflow-wrap:anywhere]">
+                    <p className="text-xs font-semibold text-ink [overflow-wrap:anywhere]">
                       {event.title}
                     </p>
                     {event.description ? (
-                      <p className="mt-0.5 text-[11px] text-slate-500 [overflow-wrap:anywhere]">
+                      <p className="mt-0.5 text-[11px] text-ink-muted [overflow-wrap:anywhere]">
                         {event.description}
                       </p>
                     ) : null}
                     <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1">
-                      <span className="text-[10px] text-slate-400">
+                      <span className="text-[10px] text-ink-muted">
                         {Number.isNaN(time)
                           ? formatDateTime(event.occurredAt)
                           : timelineTimeLabel(time)}
@@ -1361,7 +1361,7 @@ function TimelineTab({
                           "inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-semibold",
                           origin === "auto"
                             ? "bg-[#A07C3B]/10 text-[#7A5E2C]"
-                            : "bg-slate-100 text-slate-600",
+                            : "bg-subtle text-ink-soft",
                         ].join(" ")}
                       >
                         {origin === "auto" ? (
@@ -1399,7 +1399,7 @@ function TicketsTab({
   }
   return (
     <div className="space-y-2">
-      <p className="px-0.5 text-[11px] font-semibold uppercase tracking-normal text-slate-400">
+      <p className="px-0.5 text-[11px] font-semibold uppercase tracking-normal text-ink-muted">
         Atendimentos do cliente
       </p>
       {tickets.map((item) => {
@@ -1413,7 +1413,7 @@ function TicketsTab({
               "w-full rounded-xl border px-3 py-2.5 text-left transition-colors",
               current
                 ? "border-[#A07C3B]/30 bg-[#A07C3B]/5"
-                : "border-slate-200/70 bg-white hover:border-[#A07C3B]/25 hover:bg-slate-50",
+                : "border-line/70 bg-surface hover:border-[#A07C3B]/25 hover:bg-subtle",
             ].join(" ")}
           >
             <div className="flex items-center justify-between gap-2">
@@ -1425,20 +1425,20 @@ function TicketsTab({
                   atual
                 </span>
               ) : (
-                <ArrowRight className="size-3.5 text-slate-300" aria-hidden="true" />
+                <ArrowRight className="size-3.5 text-ink-muted" aria-hidden="true" />
               )}
             </div>
-            <p className="mt-0.5 truncate text-xs font-semibold text-slate-900">
+            <p className="mt-0.5 truncate text-xs font-semibold text-ink">
               {item.subject || "Sem assunto"}
             </p>
-            <p className="mt-1 text-[10px] text-slate-400">
+            <p className="mt-1 text-[10px] text-ink-muted">
               Aberto {formatDateTime(item.openedAt)}
               {item.closedAt
                 ? ` · encerrado ${formatDateTime(item.closedAt)}`
                 : ""}
             </p>
             {item.operator ? (
-              <p className="mt-0.5 truncate text-[10px] text-slate-400">
+              <p className="mt-0.5 truncate text-[10px] text-ink-muted">
                 Operador: {item.operator}
               </p>
             ) : null}
@@ -1451,7 +1451,7 @@ function TicketsTab({
 
 function EmptyHint({ text }: { text: string }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white px-3 py-6 text-center text-xs font-medium text-slate-400">
+    <div className="rounded-xl border border-line/70 bg-surface px-3 py-6 text-center text-xs font-medium text-ink-muted">
       {text}
     </div>
   );
@@ -1471,13 +1471,13 @@ function Indicator({
       ? "text-rose-700"
       : tone === "warning"
         ? "text-amber-700"
-        : "text-slate-900";
+        : "text-ink";
   return (
-    <div className="rounded-lg bg-slate-50 px-2 py-1.5 text-center">
+    <div className="rounded-lg bg-subtle px-2 py-1.5 text-center">
       <p className={`text-base font-semibold leading-none ${toneClass}`}>
         {value}
       </p>
-      <p className="mt-1 text-[10px] font-medium text-slate-400">{label}</p>
+      <p className="mt-1 text-[10px] font-medium text-ink-muted">{label}</p>
     </div>
   );
 }

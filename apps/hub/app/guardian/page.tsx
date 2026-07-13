@@ -420,6 +420,7 @@ export default function HadesPage() {
       variation: scopedRealKpis ? formatCount(scopedRealKpis.totalPortfolioPayments) : "--",
       description: scopedRealKpis ? "parcelas na carteira" : realDataDescription,
       icon: Banknote,
+      accent: "brand" as const,
     },
     {
       id: "delinquency" as const,
@@ -432,6 +433,7 @@ export default function HadesPage() {
       variation: scopedRealKpis ? "vencidas" : "--",
       description: scopedRealKpis ? "sobre vencidas + liquidadas" : realDataDescription,
       icon: Percent,
+      accent: "danger" as const,
     },
     {
       id: "overdueAmount" as const,
@@ -441,6 +443,7 @@ export default function HadesPage() {
       variation: scopedRealKpis ? formatCount(scopedRealKpis.overduePrincipalPayments) : "--",
       description: scopedRealKpis ? "parcelas vencidas" : realDataDescription,
       icon: CircleDollarSign,
+      accent: "warn" as const,
     },
     {
       id: "monthlyRecovery" as const,
@@ -450,6 +453,7 @@ export default function HadesPage() {
       variation: scopedRealKpis ? formatCount(scopedRealKpis.monthlyRecoveryPayments) : "--",
       description: scopedRealKpis ? "pagas apos 10 dias" : realDataDescription,
       icon: TrendingUp,
+      accent: "ok" as const,
     },
     {
       id: "overdueClients" as const,
@@ -458,6 +462,7 @@ export default function HadesPage() {
       variation: scopedRealKpis ? "clientes" : "--",
       description: scopedRealKpis ? "clientes distintos" : realDataDescription,
       icon: Users,
+      accent: "warn" as const,
     },
     {
       id: "criticalContracts" as const,
@@ -466,6 +471,7 @@ export default function HadesPage() {
       variation: scopedRealKpis ? "> 3 parcelas" : "--",
       description: scopedRealKpis ? "contratos em atraso" : realDataDescription,
       icon: AlertTriangle,
+      accent: "danger" as const,
     },
   ];
 
@@ -585,26 +591,26 @@ function DashboardPanel({
   tone?: "danger" | "gold" | "neutral";
 }) {
   const badgeClass = {
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
-    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15",
-    neutral: "bg-slate-50 text-slate-600 ring-slate-200",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    neutral: "bg-subtle text-ink-soft ring-line",
   }[tone];
 
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="overflow-hidden rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
       <button
         type="button"
         onClick={() => onToggle(id)}
-        className="flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-slate-50/70 lg:flex-row lg:items-center lg:justify-between"
+        className="flex w-full flex-col gap-2 px-4 py-3 text-left transition-colors hover:bg-subtle/70 lg:flex-row lg:items-center lg:justify-between"
         aria-expanded={expanded}
       >
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-sm font-semibold text-slate-950">{title}</h2>
+            <h2 className="text-sm font-semibold text-ink">{title}</h2>
             {badge ? <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${badgeClass}`}>{badge}</span> : null}
           </div>
           <Tooltip content={summaryTitle ?? summary} placement="bottom">
-            <span className="mt-1 block truncate text-xs text-slate-500">
+            <span className="mt-1 block truncate text-xs text-ink-muted">
               {summary}
             </span>
           </Tooltip>
@@ -612,7 +618,7 @@ function DashboardPanel({
         <Tooltip content={expanded ? "Recolher painel" : "Expandir painel"} placement="left">
           <span
             aria-label={expanded ? "Recolher painel" : "Expandir painel"}
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-line/70 bg-surface text-ink-soft"
           >
             <ChevronDown className={`size-4 text-[#A07C3B] transition-transform ${expanded ? "rotate-180" : ""}`} aria-hidden="true" />
           </span>
@@ -620,7 +626,7 @@ function DashboardPanel({
       </button>
       <div className={`grid transition-all duration-300 ease-out ${expanded ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"}`}>
         <div className="min-h-0 overflow-hidden">
-          <div className="border-t border-slate-100 p-3">{children}</div>
+          <div className="border-t border-line p-3">{children}</div>
         </div>
       </div>
     </section>
@@ -634,13 +640,13 @@ function _ActionMetricGrid({ metrics }: { metrics: Array<[string, string, string
         <Tooltip key={`${label}-${value}`} content={action} placement="bottom" className="w-full" triggerClassName="w-full">
           <button
             type="button"
-            className="group w-full rounded-xl border border-slate-200/70 bg-slate-50/50 p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+            className="group w-full rounded-xl border border-line/70 bg-subtle/50 p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
           >
             <div className="flex items-start justify-between gap-2">
-              <p className="text-xs font-semibold tracking-normal text-slate-400">{label}</p>
+              <p className="text-xs font-semibold tracking-normal text-ink-muted">{label}</p>
               <ArrowUpRight className="size-3.5 text-[#A07C3B] opacity-70 transition-opacity group-hover:opacity-100" aria-hidden="true" />
             </div>
-            <p className={`mt-1.5 text-xl font-semibold ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}>
+            <p className={`mt-1.5 text-xl font-semibold ${tone === "danger" ? "text-rose-700 dark:text-rose-300" : tone === "gold" ? "text-[#7A5E2C] dark:text-[#d9b877]" : "text-ink"}`}>
               {value}
             </p>
           </button>
@@ -661,7 +667,7 @@ function ExecutiveAiBlock({
 }) {
   if (error) {
     return (
-      <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+      <div className="rounded-xl border border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12 p-4 text-sm font-medium text-rose-700 dark:text-rose-300">
         {error}
       </div>
     );
@@ -669,7 +675,7 @@ function ExecutiveAiBlock({
 
   if (isLoading) {
     return (
-      <div className="rounded-xl border border-slate-200 bg-white p-6 text-center text-sm font-medium text-slate-500">
+      <div className="rounded-xl border border-line bg-surface p-6 text-center text-sm font-medium text-ink-muted">
         Carregando ranking de inadimplência...
       </div>
     );
@@ -677,17 +683,17 @@ function ExecutiveAiBlock({
 
   return (
     <div className="space-y-4">
-      <section className="rounded-xl border border-slate-200 bg-white p-4">
-        <h3 className="text-sm font-semibold text-slate-950">
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <h3 className="text-sm font-semibold text-ink">
           Top 15 clientes inadimplentes
         </h3>
-        <p className="mt-0.5 text-xs font-medium text-slate-500">
+        <p className="mt-0.5 text-xs font-medium text-ink-muted">
           Maior valor em aberto.
         </p>
         {topClients.length > 0 ? (
           <div className="mt-3 max-h-80 overflow-y-auto pr-1">
             <table className="w-full text-left text-xs">
-              <thead className="sticky top-0 z-10 bg-white text-[11px] tracking-wide text-slate-400">
+              <thead className="sticky top-0 z-10 bg-surface text-[11px] tracking-wide text-ink-muted">
                 <tr>
                   <th className="py-1 pr-2 font-semibold">#</th>
                   <th className="py-1 pr-2 font-semibold">Cliente</th>
@@ -701,24 +707,24 @@ function ExecutiveAiBlock({
                 {topClients.map((client, index) => (
                   <tr
                     key={`${client.name}-${index}`}
-                    className="border-t border-slate-100"
+                    className="border-t border-line"
                   >
-                    <td className="py-1.5 pr-2 font-semibold text-slate-400">
+                    <td className="py-1.5 pr-2 font-semibold text-ink-muted">
                       {index + 1}
                     </td>
-                    <td className="py-1.5 pr-2 font-medium text-slate-800">
+                    <td className="py-1.5 pr-2 font-medium text-ink">
                       {client.name}
                     </td>
-                    <td className="py-1.5 pr-2 text-slate-500">
+                    <td className="py-1.5 pr-2 text-ink-muted">
                       {client.enterprise ?? "—"}
                     </td>
-                    <td className="py-1.5 pr-2 text-right text-slate-600">
+                    <td className="py-1.5 pr-2 text-right text-ink-soft">
                       {formatCount(client.overduePayments)}
                     </td>
-                    <td className="py-1.5 pr-2 text-right font-semibold text-slate-900">
+                    <td className="py-1.5 pr-2 text-right font-semibold text-ink">
                       <MoneyValue value={client.overdueAmount} />
                     </td>
-                    <td className="py-1.5 text-right text-slate-600">
+                    <td className="py-1.5 text-right text-ink-soft">
                       {formatCount(client.overdueDays)}d
                     </td>
                   </tr>
@@ -727,7 +733,7 @@ function ExecutiveAiBlock({
             </table>
           </div>
         ) : (
-          <div className="mt-3 rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-500">
+          <div className="mt-3 rounded-xl border border-dashed border-line bg-subtle/60 px-4 py-8 text-center text-sm text-ink-muted">
             Nenhum cliente inadimplente neste recorte.
           </div>
         )}
@@ -751,18 +757,18 @@ function _InsightCard({
     <article
       className={`rounded-xl border p-3 ${
         tone === "danger"
-          ? "border-rose-100 bg-rose-50"
+          ? "border-rose-100 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12"
           : tone === "gold"
             ? "border-[#A07C3B]/15 bg-[#A07C3B]/5"
-            : "border-slate-200/70 bg-slate-50/60"
+            : "border-line/70 bg-subtle/60"
       }`}
     >
-      <p className="text-sm font-semibold text-slate-950">{title}</p>
-      <p className={`mt-1.5 text-lg font-semibold ${tone === "danger" ? "text-rose-700" : tone === "gold" ? "text-[#7A5E2C]" : "text-slate-950"}`}>
+      <p className="text-sm font-semibold text-ink">{title}</p>
+      <p className={`mt-1.5 text-lg font-semibold ${tone === "danger" ? "text-rose-700 dark:text-rose-300" : tone === "gold" ? "text-[#7A5E2C] dark:text-[#d9b877]" : "text-ink"}`}>
         {value}
       </p>
       <Tooltip content={text} placement="bottom">
-        <span className="mt-1 block text-xs leading-5 text-slate-600">{text}</span>
+        <span className="mt-1 block text-xs leading-5 text-ink-soft">{text}</span>
       </Tooltip>
     </article>
   );
@@ -789,19 +795,19 @@ function DashboardKpiDrawer({
         type="button"
         aria-label="Fechar detalhes do KPI"
         onClick={onClose}
-        className={`absolute inset-0 bg-slate-950/20 backdrop-blur-[2px] transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-black/20 backdrop-blur-[2px] transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
       />
       <aside
-        className={`absolute right-0 top-0 flex h-full w-full max-w-[1120px] flex-col border-l border-slate-200/70 bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out ${
+        className={`absolute right-0 top-0 flex h-full w-full max-w-[1120px] flex-col border-l border-line/70 bg-surface shadow-[-24px_0_70px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
-        <header className="border-b border-slate-100 px-5 py-4">
+        <header className="border-b border-line px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-medium tracking-normal text-[#A07C3B]">Detalhamento do indicador</p>
-              <h2 className="mt-2 text-lg font-semibold text-slate-950">{title}</h2>
-              <p className="mt-1 text-sm text-slate-500">
+              <h2 className="mt-2 text-lg font-semibold text-ink">{title}</h2>
+              <p className="mt-1 text-sm text-ink-muted">
                 {isLoading
                   ? "Carregando base real do C2X..."
                   : error
@@ -813,7 +819,7 @@ function DashboardKpiDrawer({
               type="button"
               onClick={onClose}
               aria-label="Fechar painel"
-              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
             >
               <X className="size-4" aria-hidden="true" />
             </button>
@@ -826,17 +832,17 @@ function DashboardKpiDrawer({
               <PanteonLoadingMark size="sm" />
             </div>
           ) : error ? (
-            <div className="rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm font-medium text-rose-700">
+            <div className="rounded-xl border border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12 p-4 text-sm font-medium text-rose-700 dark:text-rose-300">
               {error}
             </div>
           ) : rows.length === 0 ? (
-            <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 text-sm text-slate-500">
+            <div className="rounded-xl border border-line/70 bg-subtle/70 p-4 text-sm text-ink-muted">
               Nenhum registro encontrado.
             </div>
           ) : (
-            <div className="overflow-x-auto rounded-xl border border-slate-200/70">
+            <div className="overflow-x-auto rounded-xl border border-line/70">
               <table className="w-full min-w-[920px] text-left text-sm">
-                <thead className="sticky top-0 z-10 bg-slate-50 text-xs tracking-normal text-slate-500">
+                <thead className="sticky top-0 z-10 bg-subtle text-xs tracking-normal text-ink-muted">
                   <tr>
                     <th className="px-4 py-3 font-medium">Cliente</th>
                     <th className="px-4 py-3 font-medium">Empreendimento</th>
@@ -847,22 +853,22 @@ function DashboardKpiDrawer({
                     <th className="px-4 py-3 text-right font-medium">Atraso</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100 bg-white">
+                <tbody className="divide-y divide-line bg-surface">
                   {rows.map((row, index) => (
-                    <tr key={`${title}-${index}`} className="hover:bg-slate-50/60">
-                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-slate-950">{row.cliente}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.empreendimento}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">{row.unidade}</td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
+                    <tr key={`${title}-${index}`} className="hover:bg-subtle/60">
+                      <td className="whitespace-nowrap px-4 py-3 font-semibold text-ink">{row.cliente}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.empreendimento}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.unidade}</td>
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-ink-soft">
                         {row.parcelas === null ? "—" : formatCount(row.parcelas)}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                      <td className="whitespace-nowrap px-4 py-3 text-ink-soft">
                         {row.vencimento ? formatDate(row.vencimento) : "—"}
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-slate-950">
+                      <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">
                         <MoneyValue value={row.saldo} />
                       </td>
-                      <td className="whitespace-nowrap px-4 py-3 text-right text-slate-600">
+                      <td className="whitespace-nowrap px-4 py-3 text-right text-ink-soft">
                         {row.atraso === null ? "—" : `${formatCount(row.atraso)}d`}
                       </td>
                     </tr>
@@ -918,19 +924,19 @@ function EnterprisePerformanceTable({
   }
 
   return (
-    <section className="relative overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="border-b border-slate-100 px-5 py-4">
+    <section className="relative overflow-hidden rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
+      <div className="border-b border-line px-5 py-4">
         <div className="flex items-center gap-3">
-          <div className="flex size-9 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+          <div className="flex size-9 items-center justify-center rounded-xl bg-[#A07C3B]/10 text-[#A07C3B] ring-1 ring-[#A07C3B]/20 dark:text-[#d9b877] dark:ring-[#A07C3B]/25">
             <Building2 className="size-4" aria-hidden="true" />
           </div>
           <div>
-            <h2 className="text-base font-semibold text-slate-950">Performance por empreendimento</h2>
+            <h2 className="text-base font-semibold text-ink">Performance por empreendimento</h2>
           </div>
         </div>
       </div>
       {error ? (
-        <div className="border-b border-amber-100 bg-amber-50 px-5 py-3 text-sm text-amber-800">
+        <div className="border-b border-amber-100 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/12 px-5 py-3 text-sm text-amber-800 dark:text-amber-300">
           {data.length > 0
             ? "Nao foi possivel atualizar agora. Mantendo o ultimo snapshot real carregado."
             : "Nao foi possivel carregar o consolidado real. Os dados serao exibidos quando o C2X responder."}
@@ -938,7 +944,7 @@ function EnterprisePerformanceTable({
       ) : null}
       <div className="max-h-[640px] min-h-72 overflow-auto">
         <table className="w-full min-w-[1120px] text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-50 text-xs tracking-normal text-slate-500">
+          <thead className="sticky top-0 z-10 bg-subtle text-xs tracking-normal text-ink-muted">
             <tr>
               <SortableEnterpriseHeader
                 activeSort={sort}
@@ -990,33 +996,33 @@ function EnterprisePerformanceTable({
               />
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-line">
             {sortedData.length > 0 ? (
               sortedData.map((item) => (
                 <tr
                   key={item.enterpriseName}
                   onClick={() => onSelect(item.enterpriseName)}
-                  className={`cursor-pointer transition-colors hover:bg-slate-50/60 ${selected === item.enterpriseName ? "bg-[#A07C3B]/5" : ""}`}
+                  className={`cursor-pointer transition-colors hover:bg-subtle/60 ${selected === item.enterpriseName ? "bg-[#A07C3B]/5" : ""}`}
                 >
-                  <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-950">{item.enterpriseName}</td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 font-medium text-ink">{item.enterpriseName}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-ink-soft">
                     <MoneyValue value={item.totalPortfolioAmount} />
                   </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">
+                  <td className="whitespace-nowrap px-5 py-3 text-ink-soft">
                     <MoneyValue value={item.delinquencyBaseAmount} />
                   </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">{pct(item.overduePrincipalAmount, item.delinquencyBaseAmount, 2)}</td>
-                  <td className="whitespace-nowrap px-5 py-3 font-medium text-slate-900">
+                  <td className="whitespace-nowrap px-5 py-3 text-ink-soft">{pct(item.overduePrincipalAmount, item.delinquencyBaseAmount, 2)}</td>
+                  <td className="whitespace-nowrap px-5 py-3 font-medium text-ink">
                     <MoneyValue value={item.overduePrincipalAmount} />
                   </td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">{formatCount(item.overduePrincipalPayments)}</td>
-                  <td className="whitespace-nowrap px-5 py-3 text-slate-600">{formatCount(item.overdueClients)}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-ink-soft">{formatCount(item.overduePrincipalPayments)}</td>
+                  <td className="whitespace-nowrap px-5 py-3 text-ink-soft">{formatCount(item.overdueClients)}</td>
                   <td className="whitespace-nowrap px-5 py-3">
                     <div className="flex flex-col items-center gap-1 text-center">
-                      <span className="rounded-full border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-medium text-[#7A5E2C]">
+                      <span className="rounded-full border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-medium text-[#7A5E2C] dark:text-[#d9b877]">
                         {pct(item.monthlyRecoveryAmount, item.monthlyRecoveryAmount + item.overduePrincipalAmount)}
                       </span>
-                      <span className="text-xs text-slate-500">
+                      <span className="text-xs text-ink-muted">
                         <MoneyValue value={item.monthlyRecoveryAmount} /> | {formatCount(item.monthlyRecoveryPayments)} pagas
                       </span>
                     </div>
@@ -1025,7 +1031,7 @@ function EnterprisePerformanceTable({
               ))
             ) : isLoading ? null : (
               <tr>
-                <td colSpan={8} className="px-5 py-8 text-center text-sm text-slate-500">
+                <td colSpan={8} className="px-5 py-8 text-center text-sm text-ink-muted">
                   Aguardando dados reais do C2X.
                 </td>
               </tr>
@@ -1065,12 +1071,12 @@ function SortableEnterpriseHeader({
       <button
         type="button"
         onClick={() => onSort(sortKey)}
-        className="inline-flex items-center gap-1.5 text-left transition-colors hover:text-[#7A5E2C]"
+        className="inline-flex items-center gap-1.5 text-left transition-colors hover:text-[#7A5E2C] dark:text-[#d9b877]"
       >
         {label}
         <ChevronDown
           className={`size-3.5 transition-transform ${
-            isActive ? "text-[#A07C3B]" : "text-slate-300"
+            isActive ? "text-[#A07C3B]" : "text-ink-muted"
           } ${isActive && activeSort.direction === "asc" ? "rotate-180" : ""}`}
           aria-hidden="true"
         />
@@ -1139,17 +1145,17 @@ function AgingDistributionCard({
   );
 
   return (
-    <section className="relative rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="relative rounded-xl border border-line/70 bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-950">
+          <h2 className="text-base font-semibold text-ink">
             Aging da inadimplência
           </h2>
-          <p className="mt-0.5 text-xs font-medium text-slate-500">
+          <p className="mt-0.5 text-xs font-medium text-ink-muted">
             Por {view === "parcela" ? "parcelas" : "clientes"} · faixa de atraso
           </p>
         </div>
-        <div className="flex items-center gap-0.5 rounded-lg bg-slate-100 p-0.5">
+        <div className="flex items-center gap-0.5 rounded-lg bg-subtle p-0.5">
           <Tooltip content="Por parcela">
             <button
               type="button"
@@ -1158,8 +1164,8 @@ function AgingDistributionCard({
               aria-pressed={view === "parcela"}
               className={`flex size-7 items-center justify-center rounded-md transition ${
                 view === "parcela"
-                  ? "bg-white text-[#A07C3B] shadow-sm"
-                  : "text-slate-400 hover:text-slate-600"
+                  ? "bg-surface text-[#A07C3B] shadow-sm"
+                  : "text-ink-muted hover:text-ink-soft"
               }`}
             >
               <Banknote className="size-4" aria-hidden="true" />
@@ -1173,8 +1179,8 @@ function AgingDistributionCard({
               aria-pressed={view === "cliente"}
               className={`flex size-7 items-center justify-center rounded-md transition ${
                 view === "cliente"
-                  ? "bg-white text-[#A07C3B] shadow-sm"
-                  : "text-slate-400 hover:text-slate-600"
+                  ? "bg-surface text-[#A07C3B] shadow-sm"
+                  : "text-ink-muted hover:text-ink-soft"
               }`}
             >
               <Users className="size-4" aria-hidden="true" />
@@ -1198,7 +1204,7 @@ function AgingDistributionCard({
             );
           })
         ) : (
-          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-500">
+          <div className="rounded-xl border border-dashed border-line bg-subtle/60 px-4 py-8 text-center text-sm text-ink-muted">
             {isLoading ? (
               "Carregando"
             ) : isLoadingEmptyState ? (
@@ -1234,8 +1240,8 @@ function DistributionCard({
   );
 
   return (
-    <section className="relative rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <h2 className="text-base font-semibold text-slate-950">{title}</h2>
+    <section className="relative rounded-xl border border-line/70 bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
+      <h2 className="text-base font-semibold text-ink">{title}</h2>
       <div className="mt-5 min-h-40 space-y-4">
         {data.length > 0 ? (
           data.map((item) => {
@@ -1252,7 +1258,7 @@ function DistributionCard({
             );
           })
         ) : (
-          <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-500">
+          <div className="rounded-xl border border-dashed border-line bg-subtle/60 px-4 py-8 text-center text-sm text-ink-muted">
             {isLoading ? (
               "Carregando"
             ) : isLoadingEmptyState ? (
@@ -1284,13 +1290,13 @@ function Bar({
   return (
     <div>
       <div className="flex items-center justify-between gap-3">
-        <span className="text-sm text-slate-600">{label}</span>
-        <span className="text-sm font-semibold text-slate-950">
-          {value} <span className="font-medium text-slate-400">| {sub}</span>
+        <span className="text-sm text-ink-soft">{label}</span>
+        <span className="text-sm font-semibold text-ink">
+          {value} <span className="font-medium text-ink-muted">| {sub}</span>
         </span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
-        <div className="h-full rounded-full bg-[#A07C3B]/70" style={{ width: `${percentage}%` }} />
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-subtle">
+        <div className="h-full rounded-full bg-[#A07C3B]/70 dark:bg-gradient-to-r dark:from-[#8a6a30] dark:to-[#d9b877]" style={{ width: `${percentage}%` }} />
       </div>
     </div>
   );

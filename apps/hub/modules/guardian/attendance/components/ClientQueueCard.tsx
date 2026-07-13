@@ -28,13 +28,13 @@ export function ClientQueueCard({
       className={`w-full rounded-xl border p-4 text-left transition-all ${
         selected
           ? "border-[#A07C3B]/30 bg-[#A07C3B]/5 shadow-[0_10px_30px_rgba(160,124,59,0.08)]"
-          : "border-transparent bg-white hover:border-slate-200/70 hover:bg-slate-50/80"
+          : "border-transparent bg-surface hover:border-line/70 hover:bg-subtle/80"
       }`}
     >
       <div className="flex items-start justify-between gap-3">
         <button type="button" onClick={onSelect} className="min-w-0 flex-1 text-left">
-          <p className="truncate text-sm font-semibold text-slate-950">{client.nome}</p>
-          <p className="mt-1 text-xs text-slate-500">Responsável: {client.responsavel}</p>
+          <p className="truncate text-sm font-semibold text-ink">{client.nome}</p>
+          <p className="mt-1 text-xs text-ink-muted">Responsável: {client.responsavel}</p>
         </button>
 
         <Tooltip content="Abrir atendimento" placement="top">
@@ -42,7 +42,7 @@ export function ClientQueueCard({
             type="button"
             onClick={onOpenAttendance}
             aria-label="Abrir atendimento"
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-emerald-100 bg-emerald-50 text-emerald-700 transition-colors hover:bg-emerald-100"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-emerald-100 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-100"
           >
             <MessageCircle className="size-4" aria-hidden="true" />
           </button>
@@ -66,7 +66,7 @@ export function ClientQueueCard({
           {client.workflow.stage}
         </span>
         {mode === "daily" && contactedToday ? (
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+          <span className="rounded-full bg-emerald-50 dark:bg-emerald-500/12 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-100 dark:ring-emerald-500/25">
             Contatado hoje
           </span>
         ) : null}
@@ -74,24 +74,24 @@ export function ClientQueueCard({
 
       <button type="button" onClick={onSelect} className="mt-4 grid w-full grid-cols-4 gap-3 text-left">
         <div>
-          <p className="text-xs text-slate-500">Atraso</p>
-          <p className="mt-1 text-sm font-medium text-slate-950">{client.atrasoDias} dias</p>
+          <p className="text-xs text-ink-muted">Atraso</p>
+          <p className="mt-1 text-sm font-medium text-ink">{client.atrasoDias} dias</p>
         </div>
         <div>
-          <p className="text-xs text-slate-500">Parcelas</p>
-          <p className="mt-1 text-sm font-medium text-slate-950">{client.parcelas.vencidas}</p>
+          <p className="text-xs text-ink-muted">Parcelas</p>
+          <p className="mt-1 text-sm font-medium text-ink">{client.parcelas.vencidas}</p>
         </div>
         <div>
-          <p className="text-xs text-slate-500">Saldo</p>
+          <p className="text-xs text-ink-muted">Saldo</p>
           <Tooltip content={client.saldoDevedor} placement="top">
-            <span className="mt-1 block text-sm font-medium text-slate-950">
+            <span className="mt-1 block text-sm font-medium text-ink">
               {formatCompactCurrency(client.saldoDevedor)}
             </span>
           </Tooltip>
         </div>
         <div>
-          <p className="text-xs text-slate-500">Risco</p>
-          <p className="mt-1 text-sm font-medium text-slate-950">{client.scoreRisco}</p>
+          <p className="text-xs text-ink-muted">Risco</p>
+          <p className="mt-1 text-sm font-medium text-ink">{client.scoreRisco}</p>
         </div>
       </button>
     </article>

@@ -76,24 +76,24 @@ export function ManagerApprovalCenter() {
   const [pendingCount, setPendingCount] = useState<number | null>(null);
 
   return (
-    <section className="overflow-hidden rounded-xl border border-[#d9e0e7] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="overflow-hidden rounded-xl border border-[#d9e0e7] bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b border-[#edf1f5] px-5 py-4">
         <div className="flex items-center gap-2.5">
           <span className="flex size-8 items-center justify-center rounded-lg bg-[#A07C3B] text-white">
             <Coins className="size-4" aria-hidden="true" />
           </span>
           <div>
-            <h2 className="text-base font-semibold text-slate-950">
+            <h2 className="text-base font-semibold text-ink">
               Central de Propostas
             </h2>
-            <p className="text-[11px] text-slate-500">
+            <p className="text-[11px] text-ink-muted">
               {isAdmin
                 ? "Cobrança · saúde financeira da recuperação"
                 : "Cobrança · minhas propostas"}
             </p>
           </div>
         </div>
-        <nav className="inline-flex gap-1 rounded-lg bg-slate-100/80 p-1">
+        <nav className="inline-flex gap-1 rounded-lg bg-subtle/80 p-1">
           <TabButton active={tab === "overview"} onClick={() => setTab("overview")}>
             Visão geral
           </TabButton>
@@ -146,7 +146,7 @@ function TabButton({
       type="button"
       onClick={onClick}
       className={`flex items-center rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
-        active ? "bg-[#A07C3B] text-white" : "text-slate-600 hover:text-slate-900"
+        active ? "bg-[#A07C3B] text-white" : "text-ink-soft hover:text-ink"
       }`}
     >
       {children}
@@ -235,9 +235,9 @@ function OverviewTab({
           <button
             type="button"
             onClick={onGoToApprovals}
-            className="flex items-center justify-between rounded-lg border border-[#A07C3B]/35 bg-[#FFF9EF] px-4 py-2.5 text-left transition-colors hover:bg-[#FCF3E2]"
+            className="flex items-center justify-between rounded-lg border border-[#A07C3B]/35 bg-[#FFF9EF] dark:bg-[#A07C3B]/10 px-4 py-2.5 text-left transition-colors hover:bg-[#FCF3E2] dark:hover:bg-[#A07C3B]/15"
           >
-            <span className="flex items-center gap-2 text-xs text-[#7A5E2C]">
+            <span className="flex items-center gap-2 text-xs text-[#7A5E2C] dark:text-[#d9b877]">
               <Inbox className="size-4" aria-hidden="true" />
               Fila de aprovação:{" "}
               <strong className="font-semibold">
@@ -245,7 +245,7 @@ function OverviewTab({
               </strong>{" "}
               aguardando decisão
             </span>
-            <span className="flex items-center gap-1 text-xs font-semibold text-[#7A5E2C]">
+            <span className="flex items-center gap-1 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
               Abrir <ArrowRight className="size-3.5" aria-hidden="true" />
             </span>
           </button>
@@ -303,9 +303,11 @@ function OverviewTab({
 
       {isAdmin && summary ? (
         <div className="grid gap-3 lg:grid-cols-2">
-          <div className="rounded-xl border border-slate-200/70 bg-white p-4">
-            <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-950">
-              <TrendingUp className="size-4 text-sky-600" aria-hidden="true" />
+          <div className="rounded-xl border border-line/70 bg-surface p-4">
+            <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-ink">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-sky-500/10 text-sky-600 ring-1 ring-sky-500/20 dark:bg-sky-500/12 dark:text-sky-300 dark:ring-sky-500/25">
+                <TrendingUp className="size-3.5" aria-hidden="true" />
+              </span>
               Previsibilidade
             </p>
             <div className="grid gap-2.5">
@@ -325,21 +327,23 @@ function OverviewTab({
                 max={Math.max(summary.previsao.d7, summary.previsao.d15, summary.previsao.d30, 1)}
               />
             </div>
-            <div className="mt-3 flex items-baseline justify-between border-t border-slate-200/70 pt-2.5">
-              <span className="text-xs text-slate-500">A vencer (30d)</span>
-              <span className="text-sm font-semibold text-emerald-700">
+            <div className="mt-3 flex items-baseline justify-between border-t border-line/70 pt-2.5">
+              <span className="text-xs text-ink-muted">A vencer (30d)</span>
+              <span className="text-sm font-semibold text-emerald-700 dark:text-emerald-300">
                 {formatMoney(summary.previsao.total)}
               </span>
             </div>
           </div>
 
-          <div className="rounded-xl border border-slate-200/70 bg-white p-4">
-            <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-slate-950">
-              <Building2 className="size-4 text-[#A07C3B]" aria-hidden="true" />
+          <div className="rounded-xl border border-line/70 bg-surface p-4">
+            <p className="mb-3 flex items-center gap-1.5 text-sm font-semibold text-ink">
+              <span className="flex size-6 shrink-0 items-center justify-center rounded-md bg-[#A07C3B]/10 text-[#A07C3B] ring-1 ring-[#A07C3B]/20 dark:text-[#d9b877] dark:ring-[#A07C3B]/30">
+                <Building2 className="size-3.5" aria-hidden="true" />
+              </span>
               Por empreendimento
             </p>
             {summary.porEmpreendimento.length === 0 ? (
-              <p className="px-1 py-3 text-xs text-slate-400">
+              <p className="px-1 py-3 text-xs text-ink-muted">
                 Sem propostas registradas ainda.
               </p>
             ) : (
@@ -358,7 +362,7 @@ function OverviewTab({
                     }
                   />
                 ))}
-                <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-slate-400">
+                <div className="mt-1 flex flex-wrap gap-3 text-[10px] text-ink-muted">
                   <Legend color={GOLD} label="em negociação" />
                   <Legend color="#378ADD" label="promessa" />
                   <Legend color="#1D9E75" label="recuperado" />
@@ -404,11 +408,11 @@ function KpiCard({
   onClick?: () => void;
 }) {
   const tones: Record<typeof tone, { bg: string; label: string; ring: string; value: string }> = {
-    blue: { bg: "bg-[#E6F1FB]", label: "text-[#185FA5]", ring: "ring-[#185FA5]", value: "text-[#0C447C]" },
-    gold: { bg: "bg-[#A07C3B]/8", label: "text-[#7A5E2C]", ring: "ring-[#A07C3B]", value: "text-[#7A5E2C]" },
-    green: { bg: "bg-[#E1F5EE]", label: "text-[#0F6E56]", ring: "ring-[#0F6E56]", value: "text-[#0F6E56]" },
-    neutral: { bg: "bg-slate-50/80", label: "text-slate-500", ring: "ring-slate-300", value: "text-slate-950" },
-    red: { bg: "bg-[#FCEBEB]", label: "text-[#A32D2D]", ring: "ring-[#A32D2D]", value: "text-[#A32D2D]" },
+    blue: { bg: "bg-[#E6F1FB] dark:bg-[#5b8def]/12", label: "text-[#185FA5] dark:text-[#8fb4f0]", ring: "ring-[#185FA5] dark:ring-[#5b8def]", value: "text-[#0C447C] dark:text-[#b9d2f5]" },
+    gold: { bg: "bg-[#A07C3B]/8", label: "text-[#7A5E2C] dark:text-[#d9b877]", ring: "ring-[#A07C3B]", value: "text-[#7A5E2C] dark:text-[#d9b877]" },
+    green: { bg: "bg-[#E1F5EE] dark:bg-[#3fae74]/12", label: "text-[#0F6E56] dark:text-[#5fc79a]", ring: "ring-[#0F6E56] dark:ring-[#3fae74]", value: "text-[#0F6E56] dark:text-[#8adcb8]" },
+    neutral: { bg: "bg-subtle/80", label: "text-ink-muted", ring: "ring-line", value: "text-ink" },
+    red: { bg: "bg-[#FCEBEB] dark:bg-[#e0655a]/12", label: "text-[#A32D2D] dark:text-[#eb8a82]", ring: "ring-[#A32D2D] dark:ring-[#e0655a]", value: "text-[#A32D2D] dark:text-[#f0a59e]" },
   };
   const style = tones[tone];
   const interactive = Boolean(onClick);
@@ -426,7 +430,7 @@ function KpiCard({
       <p className={`mt-0.5 truncate text-xl font-semibold ${style.value}`}>
         {value}
       </p>
-      <p className="truncate text-[10px] text-slate-400">{hint}</p>
+      <p className="truncate text-[10px] text-ink-muted">{hint}</p>
     </button>
   );
 }
@@ -441,14 +445,14 @@ function StatusCard({
   onSelect: (filter: TableFilter) => void;
 }) {
   const stats: { filter: TableFilter; label: string; value: number; tone: string }[] = [
-    { filter: "pendente", label: "Em aprovação", tone: "text-blue-700", value: counts.pendente },
-    { filter: "aprovado", label: "Aprovadas", tone: "text-emerald-700", value: counts.aprovado },
-    { filter: "reprovado", label: "Reprovadas", tone: "text-rose-700", value: counts.reprovado },
-    { filter: "em_elaboracao", label: "Em elaboração", tone: "text-slate-600", value: counts.em_elaboracao },
+    { filter: "pendente", label: "Em aprovação", tone: "text-blue-700 dark:text-[#8fb4f0]", value: counts.pendente },
+    { filter: "aprovado", label: "Aprovadas", tone: "text-emerald-700 dark:text-emerald-300", value: counts.aprovado },
+    { filter: "reprovado", label: "Reprovadas", tone: "text-rose-700 dark:text-rose-300", value: counts.reprovado },
+    { filter: "em_elaboracao", label: "Em elaboração", tone: "text-ink-soft", value: counts.em_elaboracao },
   ];
 
   return (
-    <div className="grid gap-2 rounded-xl border border-slate-200/70 bg-white p-3 sm:grid-cols-[160px_minmax(0,1fr)]">
+    <div className="grid gap-2 rounded-xl border border-line/70 bg-surface p-3 sm:grid-cols-[160px_minmax(0,1fr)]">
       <button
         type="button"
         onClick={() => onSelect("all")}
@@ -456,8 +460,8 @@ function StatusCard({
           active === "all" ? "ring-2 ring-[#A07C3B]" : ""
         }`}
       >
-        <p className="text-[11px] text-[#7A5E2C]">Total de propostas</p>
-        <p className="mt-0.5 text-2xl font-semibold text-[#7A5E2C]">{counts.total}</p>
+        <p className="text-[11px] text-[#7A5E2C] dark:text-[#d9b877]">Total de propostas</p>
+        <p className="mt-0.5 text-2xl font-semibold text-[#7A5E2C] dark:text-[#d9b877]">{counts.total}</p>
       </button>
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
         {stats.map((stat) => (
@@ -465,12 +469,12 @@ function StatusCard({
             key={stat.filter}
             type="button"
             onClick={() => onSelect(stat.filter)}
-            className={`rounded-lg bg-slate-50/80 px-3 py-2 text-left transition hover:bg-slate-100 ${
-              active === stat.filter ? "ring-2 ring-slate-300" : ""
+            className={`rounded-lg bg-subtle/80 px-3 py-2 text-left transition hover:bg-subtle ${
+              active === stat.filter ? "ring-2 ring-line" : ""
             }`}
           >
             <p className={`text-lg font-semibold ${stat.tone}`}>{stat.value}</p>
-            <p className="truncate text-[11px] text-slate-500">{stat.label}</p>
+            <p className="truncate text-[11px] text-ink-muted">{stat.label}</p>
           </button>
         ))}
       </div>
@@ -490,10 +494,10 @@ function PrevisaoBar({
   return (
     <div>
       <div className="mb-1 flex justify-between text-xs">
-        <span className="text-slate-500">{label}</span>
-        <span className="text-slate-900">{formatMoney(value)}</span>
+        <span className="text-ink-muted">{label}</span>
+        <span className="text-ink">{formatMoney(value)}</span>
       </div>
-      <div className="h-1.5 rounded-full bg-slate-100">
+      <div className="h-1.5 rounded-full bg-subtle">
         <div
           className="h-1.5 rounded-full bg-sky-500"
           style={{ width: `${Math.round((value / max) * 100)}%` }}
@@ -521,16 +525,16 @@ function EmpreendimentoRow({
       type="button"
       onClick={onClick}
       className={`block w-full rounded-lg p-1 text-left transition ${
-        active ? "bg-[#A07C3B]/5 ring-1 ring-[#A07C3B]/30" : "hover:bg-slate-50"
+        active ? "bg-[#A07C3B]/5 ring-1 ring-[#A07C3B]/30" : "hover:bg-subtle"
       }`}
     >
       <div className="mb-1 flex justify-between text-xs">
-        <span className="font-semibold text-slate-900">{entry.empreendimento}</span>
-        <span className="text-slate-400">
+        <span className="font-semibold text-ink">{entry.empreendimento}</span>
+        <span className="text-ink-muted">
           {formatMoneyShort(entry.acordo + entry.promessa)} em neg.
         </span>
       </div>
-      <div className="flex h-1.5 overflow-hidden rounded-full bg-slate-100">
+      <div className="flex h-1.5 overflow-hidden rounded-full bg-subtle">
         <div style={{ background: GOLD, width: seg(entry.acordo) }} />
         <div style={{ background: "#378ADD", width: seg(entry.promessa) }} />
         <div style={{ background: "#1D9E75", width: seg(entry.recuperado) }} />
@@ -589,47 +593,47 @@ function ProposalsTable({
   const openItem = filtered.find((item) => item.id === openId) ?? null;
 
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white">
-      <div className="flex flex-wrap items-center gap-2 border-b border-slate-100 p-3">
+    <div className="rounded-xl border border-line/70 bg-surface">
+      <div className="flex flex-wrap items-center gap-2 border-b border-line p-3">
         <div className="relative flex-1 min-w-48">
           <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
             aria-hidden="true"
           />
           <input
             value={term}
             onChange={(event) => onTerm(event.target.value)}
             placeholder="Buscar cliente, protocolo, operador, empreendimento ou unidade"
-            className="h-9 w-full rounded-lg border border-slate-200/70 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+            className="h-9 w-full rounded-lg border border-line/70 bg-surface pl-9 pr-3 text-sm text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
           />
         </div>
         {hasFilter ? (
           <button
             type="button"
             onClick={onClearFilter}
-            className="inline-flex h-8 items-center gap-1 rounded-full bg-[#A07C3B]/10 px-3 text-xs font-semibold text-[#7A5E2C] hover:bg-[#A07C3B]/15"
+            className="inline-flex h-8 items-center gap-1 rounded-full bg-[#A07C3B]/10 px-3 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877] hover:bg-[#A07C3B]/15"
           >
             {empreendimento ?? FILTER_LABELS[filter]}
             <X className="size-3" aria-hidden="true" />
           </button>
         ) : null}
-        <span className="ml-auto text-xs text-slate-400">
+        <span className="ml-auto text-xs text-ink-muted">
           {filtered.length} proposta(s)
         </span>
       </div>
 
       {loading ? (
-        <div className="flex items-center gap-2 px-4 py-8 text-sm text-slate-500">
+        <div className="flex items-center gap-2 px-4 py-8 text-sm text-ink-muted">
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           Carregando propostas...
         </div>
       ) : filtered.length === 0 ? (
-        <div className="px-4 py-10 text-center text-sm text-slate-500">
+        <div className="px-4 py-10 text-center text-sm text-ink-muted">
           Nenhuma proposta encontrada.
         </div>
       ) : (
-        <div className="divide-y divide-slate-100">
-          <div className="hidden grid-cols-[minmax(0,1.5fr)_80px_minmax(0,1.1fr)_88px_88px_100px_104px_92px_36px] gap-3 px-4 py-2 text-[11px] font-semibold text-slate-400 xl:grid">
+        <div className="divide-y divide-line">
+          <div className="hidden grid-cols-[minmax(0,1.5fr)_80px_minmax(0,1.1fr)_88px_88px_100px_104px_92px_36px] gap-3 px-4 py-2 text-[11px] font-semibold text-ink-muted xl:grid">
             <span>Cliente</span>
             <span>Tipo</span>
             <span>Empreendimento</span>
@@ -683,10 +687,10 @@ function ProposalTableRow({
       onKeyDown={(event) => {
         if (event.key === "Enter") onOpen();
       }}
-      className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 text-left hover:bg-slate-50 xl:grid-cols-[minmax(0,1.5fr)_80px_minmax(0,1.1fr)_88px_88px_100px_104px_92px_36px]"
+      className="grid w-full cursor-pointer grid-cols-[minmax(0,1fr)_auto] items-center gap-3 px-4 py-2.5 text-left hover:bg-subtle xl:grid-cols-[minmax(0,1.5fr)_80px_minmax(0,1.1fr)_88px_88px_100px_104px_92px_36px]"
     >
       <span className="min-w-0">
-        <span className="flex items-center gap-1.5 text-sm font-semibold text-slate-950">
+        <span className="flex items-center gap-1.5 text-sm font-semibold text-ink">
           {novidade ? (
             <Tooltip content="Novidade nesta proposta" placement="top">
               <span className="size-2 shrink-0 rounded-full bg-[#A07C3B]" />
@@ -694,32 +698,32 @@ function ProposalTableRow({
           ) : null}
           <span className="truncate">{clientName}</span>
         </span>
-        <span className="block truncate text-[11px] text-slate-400">
+        <span className="block truncate text-[11px] text-ink-muted">
           {operator ? `${operator} · ` : ""}
           {item.protocol}
         </span>
-        <span className="block truncate text-[11px] text-slate-400 xl:hidden">
+        <span className="block truncate text-[11px] text-ink-muted xl:hidden">
           {isAcordo ? "Acordo" : "Promessa"} · {formatMoney(item.totalAmount)}
         </span>
       </span>
-      <span className="hidden text-xs text-slate-600 xl:block">
+      <span className="hidden text-xs text-ink-soft xl:block">
         {isAcordo ? "Acordo" : "Promessa"}
       </span>
       <span className="hidden min-w-0 xl:block">
-        <span className="block truncate text-xs text-slate-600">
+        <span className="block truncate text-xs text-ink-soft">
           {compromissoEmpreendimento(item.metadata)}
         </span>
         {unidade ? (
-          <span className="block truncate text-[11px] text-slate-400">{unidade}</span>
+          <span className="block truncate text-[11px] text-ink-muted">{unidade}</span>
         ) : null}
       </span>
-      <span className="hidden text-xs text-slate-600 xl:block">
+      <span className="hidden text-xs text-ink-soft xl:block">
         {exec.dueDate ? formatBrDate(exec.dueDate) : "—"}
       </span>
-      <span className="hidden text-xs text-slate-600 xl:block">
+      <span className="hidden text-xs text-ink-soft xl:block">
         {exec.paidDate ? formatDateOnly(exec.paidDate) : "—"}
       </span>
-      <span className="hidden text-right text-sm font-semibold text-slate-900 xl:block">
+      <span className="hidden text-right text-sm font-semibold text-ink xl:block">
         {formatMoney(item.totalAmount)}
       </span>
       <span>
@@ -737,7 +741,7 @@ function ProposalTableRow({
             {exec.status.label}
           </span>
         ) : (
-          <span className="text-[11px] text-slate-300">—</span>
+          <span className="text-[11px] text-ink-muted">—</span>
         )}
       </span>
       <span className="hidden justify-end xl:flex">
@@ -749,7 +753,7 @@ function ProposalTableRow({
               openClientDetail(item);
             }}
             aria-label="Abrir propostas do cliente"
-            className="flex size-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+            className="flex size-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:text-[#d9b877]"
           >
             <ExternalLink className="size-3.5" aria-hidden="true" />
           </button>
@@ -796,21 +800,21 @@ function ProposalDetailModal({
         type="button"
         aria-label="Fechar"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
       />
-      <div className="relative z-10 flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
           <div className="flex flex-wrap items-center gap-2">
             <span
               className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
                 isAcordo
-                  ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15"
-                  : "bg-slate-50 text-slate-700 ring-slate-200"
+                  ? "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15"
+                  : "bg-subtle text-ink ring-line"
               }`}
             >
               {isAcordo ? "Acordo" : "Promessa"}
             </span>
-            <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-inset ring-[#A07C3B]/15">
+            <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-inset ring-[#A07C3B]/15">
               {item.protocol}
             </span>
             <span
@@ -825,7 +829,7 @@ function ProposalDetailModal({
                 type="button"
                 onClick={() => openClientDetail(item)}
                 aria-label="Abrir propostas do cliente"
-                className="flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+                className="flex size-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-[#7A5E2C] dark:text-[#d9b877]"
               >
                 <ExternalLink className="size-4" aria-hidden="true" />
               </button>
@@ -835,7 +839,7 @@ function ProposalDetailModal({
                 type="button"
                 onClick={() => editProposalInClient(item)}
                 aria-label="Editar no cliente"
-                className="flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+                className="flex size-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-[#7A5E2C] dark:text-[#d9b877]"
               >
                 <Pencil className="size-4" aria-hidden="true" />
               </button>
@@ -846,7 +850,7 @@ function ProposalDetailModal({
                 disabled={busy}
                 onClick={() => void handleDelete()}
                 aria-label="Excluir proposta"
-                className="flex size-8 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+                className="flex size-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-rose-50 dark:bg-rose-500/12 hover:text-rose-600 disabled:opacity-50"
               >
                 {busy ? (
                   <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -859,15 +863,15 @@ function ProposalDetailModal({
               type="button"
               onClick={onClose}
               aria-label="Fechar"
-              className="flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
+              className="flex size-8 items-center justify-center rounded-lg text-ink-muted hover:bg-subtle"
             >
               <X className="size-4" aria-hidden="true" />
             </button>
           </div>
         </header>
 
-        <div className="border-b border-slate-100 px-5 py-2 text-xs text-slate-500">
-          <span className="font-semibold text-slate-800">{clientName}</span>
+        <div className="border-b border-line px-5 py-2 text-xs text-ink-muted">
+          <span className="font-semibold text-ink">{clientName}</span>
           {operator ? ` · enviado por ${operator}` : ""} ·{" "}
           {formatWhen(item.submittedAt ?? item.createdAt)}
         </div>
@@ -880,17 +884,17 @@ function ProposalDetailModal({
               <PromessaBreakdown item={item} />
             )}
             {item.notes ? (
-              <div className="rounded-lg bg-slate-50/70 px-3 py-2">
-                <p className="text-[10px] font-semibold text-slate-400">Observação</p>
-                <p className="mt-0.5 text-xs text-slate-600">{item.notes}</p>
+              <div className="rounded-lg bg-subtle/70 px-3 py-2">
+                <p className="text-[10px] font-semibold text-ink-muted">Observação</p>
+                <p className="mt-0.5 text-xs text-ink-soft">{item.notes}</p>
               </div>
             ) : null}
             {item.approvalReason ? (
-              <div className="rounded-lg bg-slate-50/70 px-3 py-2">
-                <p className="text-[10px] font-semibold text-slate-400">
+              <div className="rounded-lg bg-subtle/70 px-3 py-2">
+                <p className="text-[10px] font-semibold text-ink-muted">
                   Decisão do gestor
                 </p>
-                <p className="mt-0.5 text-xs text-slate-600">{item.approvalReason}</p>
+                <p className="mt-0.5 text-xs text-ink-soft">{item.approvalReason}</p>
               </div>
             ) : null}
           </div>
@@ -959,26 +963,26 @@ function ApprovalsTab({
     <div className="flex flex-col gap-3">
       <div className="relative">
         <Search
-          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+          className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
           aria-hidden="true"
         />
         <input
           value={term}
           onChange={(event) => setTerm(event.target.value)}
           placeholder="Buscar cliente, protocolo, operador, empreendimento ou unidade"
-          className="h-9 w-full rounded-lg border border-slate-200/70 bg-white pl-9 pr-3 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+          className="h-9 w-full rounded-lg border border-line/70 bg-surface pl-9 pr-3 text-sm text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
         />
       </div>
 
       <div className="grid gap-3 lg:grid-cols-[minmax(0,0.85fr)_minmax(0,1.15fr)]">
         <div className="lg:border-r lg:border-[#edf1f5] lg:pr-3">
           {loading ? (
-            <div className="flex items-center gap-2 px-1 py-8 text-sm text-slate-500">
+            <div className="flex items-center gap-2 px-1 py-8 text-sm text-ink-muted">
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
               Carregando...
             </div>
           ) : filtered.length === 0 ? (
-            <div className="px-1 py-10 text-center text-sm text-slate-500">
+            <div className="px-1 py-10 text-center text-sm text-ink-muted">
               Nenhuma proposta pendente.
             </div>
           ) : (
@@ -1004,7 +1008,7 @@ function ApprovalsTab({
               onDecided={() => handleDecided(selected.id)}
             />
           ) : (
-            <div className="flex h-full min-h-48 items-center justify-center rounded-xl border border-dashed border-slate-200/80 bg-slate-50/60 px-4 py-10 text-center text-sm text-slate-500">
+            <div className="flex h-full min-h-48 items-center justify-center rounded-xl border border-dashed border-line/80 bg-subtle/60 px-4 py-10 text-center text-sm text-ink-muted">
               Selecione uma proposta para revisar.
             </div>
           )}
@@ -1035,12 +1039,12 @@ function ProposalQueueRow({
       onClick={onSelect}
       className={`w-full rounded-lg border px-3 py-2.5 text-left transition focus:outline-none focus:ring-2 focus:ring-[#A07C3B]/25 ${
         active
-          ? "border-[#A07C3B]/45 bg-[#FFF9EF]"
-          : "border-[#edf1f5] bg-white hover:border-[#d9e0e7] hover:bg-slate-50"
+          ? "border-[#A07C3B]/45 bg-[#FFF9EF] dark:bg-[#A07C3B]/10"
+          : "border-[#edf1f5] bg-surface hover:border-[#d9e0e7] hover:bg-subtle"
       }`}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-slate-950">
+        <span className="flex min-w-0 items-center gap-1.5 text-sm font-semibold text-ink">
           {novidade ? (
             <span
               className="size-2 shrink-0 rounded-full bg-[#A07C3B]"
@@ -1051,12 +1055,12 @@ function ProposalQueueRow({
         </span>
         <RiskPill risk={risk} />
       </div>
-      <p className="mt-1 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+      <p className="mt-1 flex items-center justify-between gap-2 text-[11px] text-ink-muted">
         <span className="truncate">
           {isAcordo ? "Acordo" : "Promessa"} · {item.protocol}
           {submittedBy ? ` · ${submittedBy}` : ""}
         </span>
-        <span className="shrink-0 font-semibold text-slate-900">
+        <span className="shrink-0 font-semibold text-ink">
           {formatMoney(item.totalAmount)}
         </span>
       </p>
@@ -1114,19 +1118,19 @@ function ProposalDecisionPanel({
   }
 
   return (
-    <div className="flex flex-col gap-3 rounded-xl border border-slate-200/70 bg-white p-3.5">
+    <div className="flex flex-col gap-3 rounded-xl border border-line/70 bg-surface p-3.5">
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <span
             className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
               isAcordo
-                ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15"
-                : "bg-slate-50 text-slate-700 ring-slate-200"
+                ? "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15"
+                : "bg-subtle text-ink ring-line"
             }`}
           >
             {isAcordo ? "Acordo" : "Promessa"}
           </span>
-          <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-inset ring-[#A07C3B]/15">
+          <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-inset ring-[#A07C3B]/15">
             {item.protocol}
           </span>
         </div>
@@ -1134,8 +1138,8 @@ function ProposalDecisionPanel({
       </div>
 
       <div>
-        <p className="text-sm font-semibold text-slate-950">{clientName}</p>
-        <p className="text-[11px] text-slate-500">
+        <p className="text-sm font-semibold text-ink">{clientName}</p>
+        <p className="text-[11px] text-ink-muted">
           <Send className="mr-1 inline size-3 align-[-1px]" aria-hidden="true" />
           {submittedBy ? `enviado por ${submittedBy} · ` : ""}
           {formatWhen(item.submittedAt ?? item.createdAt)}
@@ -1143,9 +1147,9 @@ function ProposalDecisionPanel({
       </div>
 
       <div className="grid grid-cols-2 gap-2">
-        <div className="rounded-lg bg-slate-50/80 px-2.5 py-2">
-          <p className="text-[10px] text-slate-400">Contrato</p>
-          <p className="truncate text-xs text-slate-800">
+        <div className="rounded-lg bg-subtle/80 px-2.5 py-2">
+          <p className="text-[10px] text-ink-muted">Contrato</p>
+          <p className="truncate text-xs text-ink">
             {contract.empreendimento}
             {contract.matriculas ? ` · ${contract.matriculas}` : ""}
           </p>
@@ -1156,19 +1160,19 @@ function ProposalDecisionPanel({
                 ? void openHadesContract(contract.contractDocumentId)
                 : openClientDetail(item)
             }
-            className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 hover:underline"
+            className="mt-0.5 inline-flex items-center gap-1 text-[11px] font-medium text-sky-700 dark:text-sky-300 hover:underline"
           >
             <FileText className="size-3" aria-hidden="true" /> ver contrato
           </button>
         </div>
-        <div className="rounded-lg bg-slate-50/80 px-2.5 py-2">
-          <p className="text-[10px] text-slate-400">Em atraso</p>
-          <p className="text-xs text-slate-800">
+        <div className="rounded-lg bg-subtle/80 px-2.5 py-2">
+          <p className="text-[10px] text-ink-muted">Em atraso</p>
+          <p className="text-xs text-ink">
             {contract.parcelasVencidas ?? "—"} parcelas
             {contract.atrasoDias ? ` · ${contract.atrasoDias}d` : ""}
           </p>
           {contract.saldoDevedor ? (
-            <p className="text-[11px] text-rose-700">saldo {contract.saldoDevedor}</p>
+            <p className="text-[11px] text-rose-700 dark:text-rose-300">saldo {contract.saldoDevedor}</p>
           ) : null}
         </div>
       </div>
@@ -1176,13 +1180,13 @@ function ProposalDecisionPanel({
       {isAcordo ? <AcordoBreakdown item={item} /> : <PromessaBreakdown item={item} />}
 
       {item.notes ? (
-        <p className="rounded-lg bg-slate-50/70 px-3 py-2 text-xs text-slate-600">
+        <p className="rounded-lg bg-subtle/70 px-3 py-2 text-xs text-ink-soft">
           {item.notes}
         </p>
       ) : null}
 
       {risk.reason ? (
-        <p className="flex items-start gap-1.5 rounded-lg bg-[#FAEEDA]/70 px-3 py-2 text-[11px] text-[#854F0B]">
+        <p className="flex items-start gap-1.5 rounded-lg bg-[#FAEEDA]/70 dark:bg-amber-500/12 px-3 py-2 text-[11px] text-[#854F0B] dark:text-amber-300">
           <ChartBar className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
           <span>
             <span className="font-semibold">Risco (regra):</span> {risk.reason}
@@ -1192,8 +1196,8 @@ function ProposalDecisionPanel({
 
       {isAdmin ? (
         mode ? (
-          <div className="rounded-lg border border-slate-200/70 bg-slate-50/60 p-3">
-            <p className="mb-1.5 text-xs font-semibold text-slate-700">
+          <div className="rounded-lg border border-line/70 bg-subtle/60 p-3">
+            <p className="mb-1.5 text-xs font-semibold text-ink">
               Motivo da {mode === "reprovado" ? "reprovação" : "devolução"}{" "}
               (obrigatório)
             </p>
@@ -1205,7 +1209,7 @@ function ProposalDecisionPanel({
                   ? "Por que está reprovando..."
                   : "O que o operador precisa ajustar..."
               }
-              className="min-h-16 w-full resize-none rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="min-h-16 w-full resize-none rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
             />
             <div className="mt-2 flex items-center justify-end gap-2">
               <button
@@ -1214,7 +1218,7 @@ function ProposalDecisionPanel({
                   setMode(null);
                   setReason("");
                 }}
-                className="inline-flex h-8 items-center rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-medium text-slate-700 hover:bg-slate-50"
+                className="inline-flex h-8 items-center rounded-lg border border-line/70 bg-surface px-3 text-xs font-medium text-ink hover:bg-subtle"
               >
                 Cancelar
               </button>
@@ -1254,7 +1258,7 @@ function ProposalDecisionPanel({
               type="button"
               disabled={busy}
               onClick={() => setMode("reprovado")}
-              className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-rose-200 px-3 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 disabled:opacity-50"
+              className="inline-flex h-9 flex-1 items-center justify-center gap-2 rounded-lg border border-rose-200 dark:border-rose-500/25 px-3 text-sm font-semibold text-rose-600 transition-colors hover:bg-rose-50 dark:bg-rose-500/12 disabled:opacity-50"
             >
               <X className="size-4" aria-hidden="true" />
               Reprovar
@@ -1265,7 +1269,7 @@ function ProposalDecisionPanel({
                 disabled={busy}
                 onClick={() => setMode("devolvido")}
                 aria-label="Devolver para ajuste"
-                className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 text-slate-500 transition-colors hover:bg-slate-50 hover:text-amber-700 disabled:opacity-50"
+                className="flex size-9 items-center justify-center rounded-lg border border-line/70 text-ink-muted transition-colors hover:bg-subtle hover:text-amber-700 dark:text-amber-300 disabled:opacity-50"
               >
                 <Undo2 className="size-4" aria-hidden="true" />
               </button>
@@ -1273,14 +1277,14 @@ function ProposalDecisionPanel({
           </div>
         )
       ) : (
-        <p className="flex items-center gap-1.5 rounded-lg bg-slate-50/70 px-3 py-2 text-[11px] text-slate-500">
+        <p className="flex items-center gap-1.5 rounded-lg bg-subtle/70 px-3 py-2 text-[11px] text-ink-muted">
           <Lock className="size-3.5" aria-hidden="true" />
           Aguardando decisão do Admin. Você pode conversar abaixo.
         </p>
       )}
 
       {actionError ? (
-        <p className="text-xs font-semibold text-rose-700">{actionError}</p>
+        <p className="text-xs font-semibold text-rose-700 dark:text-rose-300">{actionError}</p>
       ) : null}
 
       <ProposalChat
@@ -1289,7 +1293,7 @@ function ProposalDecisionPanel({
         placeholder="Responder o operador..."
         note={
           submittedBy ? (
-            <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700">
+            <span className="rounded-full bg-emerald-50 dark:bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-semibold text-emerald-700 dark:text-emerald-300">
               {submittedBy}
             </span>
           ) : undefined
@@ -1311,7 +1315,7 @@ function AcordoBreakdown({ item }: { item: GuardianCompromissoDetail }) {
   const entry = metaEntryAmount(meta);
 
   return (
-    <div className="rounded-lg bg-slate-50/70 px-3 py-2.5">
+    <div className="rounded-lg bg-subtle/70 px-3 py-2.5">
       <Line label="Valor original" value={formatMoney(original ?? item.totalAmount)} />
       {discount ? (
         <Line label="Desconto" value={`− ${formatMoney(discount)}`} tone="danger" />
@@ -1323,11 +1327,11 @@ function AcordoBreakdown({ item }: { item: GuardianCompromissoDetail }) {
           tone="success"
         />
       ) : null}
-      <div className="mt-1 flex items-center justify-between border-t border-slate-200/70 pt-1.5 text-sm font-semibold">
-        <span className="text-[#7A5E2C]">Valor do acordo</span>
-        <span className="text-[#7A5E2C]">{formatMoney(item.totalAmount)}</span>
+      <div className="mt-1 flex items-center justify-between border-t border-line/70 pt-1.5 text-sm font-semibold">
+        <span className="text-[#7A5E2C] dark:text-[#d9b877]">Valor do acordo</span>
+        <span className="text-[#7A5E2C] dark:text-[#d9b877]">{formatMoney(item.totalAmount)}</span>
       </div>
-      <div className="mt-1 flex items-center justify-between text-[11px] text-slate-400">
+      <div className="mt-1 flex items-center justify-between text-[11px] text-ink-muted">
         <span>
           {paymentMode}
           {entry ? ` · entrada ${formatMoney(entry)}` : ""}
@@ -1338,7 +1342,7 @@ function AcordoBreakdown({ item }: { item: GuardianCompromissoDetail }) {
         {item.parcelas.map((parcela) => (
           <span
             key={parcela.id}
-            className="rounded-md border border-slate-200/70 bg-white px-2 py-1 text-[11px] text-slate-600"
+            className="rounded-md border border-line/70 bg-surface px-2 py-1 text-[11px] text-ink-soft"
           >
             {parcela.sequence}/{item.installmentsCount} ·{" "}
             {formatBrDate(parcela.dueDate)} · {formatMoney(parcela.amount)}
@@ -1351,7 +1355,7 @@ function AcordoBreakdown({ item }: { item: GuardianCompromissoDetail }) {
 
 function PromessaBreakdown({ item }: { item: GuardianCompromissoDetail }) {
   return (
-    <div className="rounded-lg bg-slate-50/70 px-3 py-2.5">
+    <div className="rounded-lg bg-subtle/70 px-3 py-2.5">
       <Line label="Valor prometido" value={formatMoney(item.totalAmount)} />
       <Line label="Nova data" value={formatBrDate(item.promisedDate)} />
     </div>
@@ -1369,14 +1373,14 @@ function Line({
 }) {
   return (
     <div className="flex items-center justify-between py-0.5 text-xs">
-      <span className="text-slate-500">{label}</span>
+      <span className="text-ink-muted">{label}</span>
       <span
         className={
           tone === "danger"
             ? "text-rose-600"
             : tone === "success"
               ? "text-emerald-600"
-              : "text-slate-900"
+              : "text-ink"
         }
       >
         {value}
@@ -1412,9 +1416,9 @@ function riskHeuristic(item: GuardianCompromissoDetail): Risk {
 
 function RiskPill({ risk }: { risk: Risk }) {
   const styles: Record<Risk["tone"], string> = {
-    high: "bg-rose-50 text-rose-700 ring-rose-100",
-    low: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    mid: "bg-amber-50 text-amber-700 ring-amber-100",
+    high: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+    low: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+    mid: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/25",
   };
   return (
     <span
@@ -1441,13 +1445,13 @@ function statusCounts(items: GuardianCompromissoDetail[]) {
 function statusBadge(status: GuardianApprovalStatus): { cls: string; label: string } {
   switch (status) {
     case "aprovado":
-      return { cls: "bg-emerald-50 text-emerald-700 ring-emerald-100", label: "Aprovada" };
+      return { cls: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25", label: "Aprovada" };
     case "reprovado":
-      return { cls: "bg-rose-50 text-rose-700 ring-rose-100", label: "Reprovada" };
+      return { cls: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25", label: "Reprovada" };
     case "em_elaboracao":
-      return { cls: "bg-slate-100 text-slate-600 ring-slate-200", label: "Em elaboração" };
+      return { cls: "bg-subtle text-ink-soft ring-line", label: "Em elaboração" };
     default:
-      return { cls: "bg-blue-50 text-blue-700 ring-blue-100", label: "Em aprovação" };
+      return { cls: "bg-blue-50 text-blue-700 ring-blue-100 dark:bg-[#5b8def]/12 dark:text-[#8fb4f0] dark:ring-[#5b8def]/25", label: "Em aprovação" };
   }
 }
 
@@ -1714,10 +1718,10 @@ function proposalExecution(item: GuardianCompromissoDetail): {
       .sort((a, b) => b.localeCompare(a))[0] ?? null;
 
   const status = allPaid
-    ? { cls: "bg-emerald-50 text-emerald-700 ring-emerald-100", label: "Liquidada" }
+    ? { cls: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25", label: "Liquidada" }
     : overdue
-      ? { cls: "bg-rose-50 text-rose-700 ring-rose-100", label: "Vencida" }
-      : { cls: "bg-blue-50 text-blue-700 ring-blue-100", label: "A vencer" };
+      ? { cls: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25", label: "Vencida" }
+      : { cls: "bg-blue-50 text-blue-700 ring-blue-100 dark:bg-[#5b8def]/12 dark:text-[#8fb4f0] dark:ring-[#5b8def]/25", label: "A vencer" };
 
   return { dueDate: allPaid ? lastDue : nextDue, paidDate: lastPaid, status };
 }

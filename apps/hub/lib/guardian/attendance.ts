@@ -1,6 +1,6 @@
 import type { Pool, RowDataPacket } from "mysql2/promise";
 
-import { getHadesDbPool, sanitizeHadesDbError } from "@/lib/guardian/db";
+import { getHadesDbPool, sanitizeHadesDbError, withHadesDbRetry } from "@/lib/guardian/db";
 import { buildC2xWhatsAppNumber } from "@/lib/iris/phone-country";
 import { buildQueueClientsFromSources } from "@/modules/guardian/attendance/data";
 import type {
@@ -556,12 +556,16 @@ export async function loadHadesAttendanceQueueSummary(
 }
 
 export async function loadHadesAttendanceClient(clientId: string) {
-  const clients = await loadHadesAttendanceQueue({
-    clientId,
-    includeClientsWithoutOverdue: true,
-    includeInstallments: true,
-    strict: true,
-  });
+  // strict:true re-lanca erros do C2X; o retry recupera de "Too many connections"
+  // (teto de conexoes do legado) tentando de novo com backoff antes de falhar.
+  const clients = await withHadesDbRetry(() =>
+    loadHadesAttendanceQueue({
+      clientId,
+      includeClientsWithoutOverdue: true,
+      includeInstallments: true,
+      strict: true,
+    }),
+  );
 
   return clients[0] ?? null;
 }

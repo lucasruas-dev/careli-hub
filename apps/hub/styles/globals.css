@@ -1,5 +1,28 @@
 @import "tailwindcss";
 
+/* Modo escuro dirigido pelo toggle (o ThemeProvider seta data-uix-theme no :root),
+   pra os utilitarios dark: responderem ao nosso tema (nao ao prefers-color-scheme). */
+@custom-variant dark (&:where([data-uix-theme="dark"], [data-uix-theme="dark"] *));
+
+/* Cores semanticas do tema (claro/escuro) — mapeiam os tokens do @repo/uix, que o
+   ThemeProvider troca no :root. Usar estas em vez de cor fixa: bg-surface / bg-canvas /
+   bg-subtle / bg-inverse / text-ink / text-ink-soft / text-ink-muted / border-line /
+   border-line-strong / bg-brand / text-brand-ink. Assim a tela vira no dark sozinha. */
+@theme {
+  --color-canvas: var(--uix-surface-canvas);
+  --color-surface: var(--uix-surface-base);
+  --color-raised: var(--uix-surface-raised);
+  --color-subtle: var(--uix-surface-subtle);
+  --color-inverse: var(--uix-surface-inverse);
+  --color-ink: var(--uix-text-primary);
+  --color-ink-soft: var(--uix-text-secondary);
+  --color-ink-muted: var(--uix-text-muted);
+  --color-line: var(--uix-border-subtle);
+  --color-line-strong: var(--uix-border-strong);
+  --color-brand: var(--uix-color-brand-primary);
+  --color-brand-ink: var(--uix-color-brand-foreground);
+}
+
 * {
   box-sizing: border-box;
 }
@@ -208,6 +231,31 @@ button {
 .panteon-module-sidebar__top {
   border-bottom: 1px solid rgb(255 255 255 / 0.075);
   padding: 0.875rem 0.75rem 0.75rem;
+}
+
+/* Rail que ACOMPANHA o tema (claro/escuro). O rail base fica escuro fixo; os modulos
+   migram um a um adicionando esta classe + trocando as cores fixas por tokens. */
+.panteon-module-sidebar--themed {
+  background: color-mix(in srgb, var(--uix-surface-subtle) 82%, var(--uix-text-muted) 18%);
+  border-right: 1px solid var(--uix-border-strong);
+  color: var(--uix-text-primary);
+  box-shadow: 1px 0 4px rgb(16 24 32 / 0.06);
+}
+:root[data-uix-theme="dark"] .panteon-module-sidebar--themed {
+  background: var(--uix-surface-base);
+  border-right-color: var(--uix-border-subtle);
+  box-shadow: none;
+}
+.panteon-module-sidebar--themed .panteon-module-sidebar__top {
+  border-bottom-color: var(--uix-border-subtle);
+}
+
+/* O AppShell (uix) usa fundo claro FIXO (#f3f6fa) nos modos module/fullscreen — nao
+   acompanha o tema. Trocamos pelo canvas do tema pra ficar escuro no modo escuro.
+   `:root` na frente = especificidade maior que a regra do uix. */
+:root .uix-app-shell[data-layout-mode="module"],
+:root .uix-app-shell[data-layout-mode="fullscreen"] {
+  background: var(--uix-surface-canvas);
 }
 
 .panteon-module-sidebar__icon {

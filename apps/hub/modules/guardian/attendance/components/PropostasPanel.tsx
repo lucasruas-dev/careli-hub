@@ -123,7 +123,7 @@ export function PropostasPanel({
           <button
             type="button"
             onClick={() => setForm("promessa")}
-            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
           >
             <CalendarPlus className="size-4" aria-hidden="true" />
             Nova promessa
@@ -140,18 +140,18 @@ export function PropostasPanel({
       </div>
 
       {error ? (
-        <p className="mb-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+        <p className="mb-3 rounded-lg border border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300">
           {error}
         </p>
       ) : null}
 
       {loading ? (
-        <div className="flex items-center gap-2 px-1 py-6 text-sm text-slate-500">
+        <div className="flex items-center gap-2 px-1 py-6 text-sm text-ink-muted">
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           Carregando propostas...
         </div>
       ) : items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-slate-200/80 bg-slate-50/60 px-4 py-8 text-center text-sm text-slate-500">
+        <div className="rounded-xl border border-dashed border-line/80 bg-subtle/60 px-4 py-8 text-center text-sm text-ink-muted">
           Nenhuma proposta registrada. Crie uma promessa ou um acordo.
         </div>
       ) : (
@@ -237,22 +237,22 @@ function CompromissoCard({
   }
 
   return (
-    <article className="rounded-xl border border-slate-200/70 bg-white p-4">
+    <article className="rounded-xl border border-line/70 bg-surface p-4">
       <div className="flex flex-wrap items-center gap-2">
         <span
           className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${
             isAcordo
-              ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15"
-              : "bg-slate-50 text-slate-700 ring-slate-200"
+              ? "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15"
+              : "bg-subtle text-ink ring-line"
           }`}
         >
           {isAcordo ? "Acordo" : "Promessa"}
         </span>
-        <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-inset ring-[#A07C3B]/15">
+        <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-inset ring-[#A07C3B]/15">
           {item.protocol}
         </span>
         <ApprovalBadge approval={approval} />
-        <span className="ml-auto text-sm font-semibold text-slate-950">
+        <span className="ml-auto text-sm font-semibold text-ink">
           {formatMoney(item.totalAmount)}
         </span>
         <Tooltip
@@ -268,8 +268,8 @@ function CompromissoCard({
             aria-pressed={chatOpen}
             className={`relative flex size-7 items-center justify-center rounded-md transition-colors ${
               chatOpen
-                ? "bg-[#A07C3B]/10 text-[#7A5E2C]"
-                : "text-slate-400 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                ? "bg-[#A07C3B]/10 text-[#7A5E2C] dark:text-[#d9b877]"
+                : "text-ink-muted hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:text-[#d9b877]"
             }`}
           >
             <MessageSquare className="size-3.5" aria-hidden="true" />
@@ -284,7 +284,7 @@ function CompromissoCard({
               type="button"
               onClick={onEdit}
               aria-label="Editar proposta"
-              className="flex size-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+              className="flex size-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:text-[#d9b877]"
             >
               <Edit3 className="size-3.5" aria-hidden="true" />
             </button>
@@ -296,7 +296,7 @@ function CompromissoCard({
             onClick={() => void handleDelete()}
             disabled={deleting}
             aria-label="Excluir proposta"
-            className="flex size-7 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50"
+            className="flex size-7 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-rose-50 dark:bg-rose-500/12 hover:text-rose-600 disabled:opacity-50"
           >
             {deleting ? (
               <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
@@ -307,7 +307,7 @@ function CompromissoCard({
         </Tooltip>
       </div>
 
-      <p className="mt-2 text-xs text-slate-500">
+      <p className="mt-2 text-xs text-ink-muted">
         {item.installmentsCount} parcela(s) ·{" "}
         {isAcordo
           ? `1a em ${formatBrDate(item.firstDueDate)}`
@@ -318,7 +318,7 @@ function CompromissoCard({
         {item.parcelas.map((parcela) => (
           <span
             key={parcela.id}
-            className="rounded-md border border-slate-200/70 bg-slate-50/70 px-2 py-1 text-[11px] text-slate-600"
+            className="rounded-md border border-line/70 bg-subtle/70 px-2 py-1 text-[11px] text-ink-soft"
           >
             {parcela.sequence}/{item.installmentsCount} ·{" "}
             {formatBrDate(parcela.dueDate)} · {formatMoney(parcela.amount)}
@@ -348,10 +348,10 @@ function ApprovalBadge({
   approval: "pendente" | "aprovado" | "reprovado" | "elaboracao";
 }) {
   const styles: Record<typeof approval, string> = {
-    aprovado: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    elaboracao: "bg-slate-100 text-slate-600 ring-slate-200",
+    aprovado: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+    elaboracao: "bg-subtle text-ink-soft ring-line",
     pendente: "bg-blue-50 text-blue-700 ring-blue-100",
-    reprovado: "bg-rose-50 text-rose-700 ring-rose-100",
+    reprovado: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
   };
   const labels: Record<typeof approval, string> = {
     aprovado: "Aprovada",
@@ -650,17 +650,17 @@ export function ProposalModal({
         type="button"
         aria-label="Fechar"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
       />
-      <div className="relative z-10 flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4">
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
           <div className="flex items-center gap-2">
             {isAcordo ? (
               <Handshake className="size-4 text-[#A07C3B]" aria-hidden="true" />
             ) : (
               <CalendarPlus className="size-4 text-[#A07C3B]" aria-hidden="true" />
             )}
-            <h2 className="text-base font-semibold text-slate-950">
+            <h2 className="text-base font-semibold text-ink">
               {existing
                 ? isAcordo
                   ? "Editar acordo"
@@ -669,41 +669,41 @@ export function ProposalModal({
                   ? "Novo acordo"
                   : "Nova promessa"}
             </h2>
-            <span className="text-xs text-slate-500">{client.nome}</span>
+            <span className="text-xs text-ink-muted">{client.nome}</span>
           </div>
           <button
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
+            className="flex size-8 items-center justify-center rounded-lg text-ink-muted hover:bg-subtle"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
         </header>
 
-        <div className="border-b border-slate-100 px-5 py-1.5 text-[11px] text-slate-500">
-          Unidade(s): <span className="font-medium text-slate-700">{unitsLabel}</span>
+        <div className="border-b border-line px-5 py-1.5 text-[11px] text-ink-muted">
+          Unidade(s): <span className="font-medium text-ink">{unitsLabel}</span>
         </div>
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <section>
             <div className="mb-2 flex items-center justify-between gap-2">
-              <p className="text-xs font-semibold text-slate-500">
+              <p className="text-xs font-semibold text-ink-muted">
                 {isAcordo ? "1 · Parcelas em negociação" : "Parcelas em negociação"}
               </p>
               {overdue.length > 1 ? (
                 <button
                   type="button"
                   onClick={toggleAll}
-                  className="text-[11px] font-semibold text-[#A07C3B] transition-colors hover:text-[#7A5E2C]"
+                  className="text-[11px] font-semibold text-[#A07C3B] transition-colors hover:text-[#7A5E2C] dark:text-[#d9b877]"
                 >
                   {allSelected ? "Limpar seleção" : "Incluir todas"}
                 </button>
               ) : null}
             </div>
-            <div className="max-h-52 overflow-y-auto rounded-lg border border-slate-200/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+            <div className="max-h-52 overflow-y-auto rounded-lg border border-line/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
               {overdue.length === 0 ? (
-                <p className="px-3 py-4 text-xs text-slate-400">
+                <p className="px-3 py-4 text-xs text-ink-muted">
                   Sem parcelas vencidas para negociar.
                 </p>
               ) : (
@@ -714,31 +714,31 @@ export function ProposalModal({
                       type="button"
                       key={item.id}
                       onClick={() => toggle(item.id)}
-                      className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-xs last:border-b-0 hover:bg-slate-50"
+                      className="flex w-full items-center gap-2 border-b border-line px-3 py-2 text-left text-xs last:border-b-0 hover:bg-subtle"
                     >
                       <span
                         className={`flex size-4 items-center justify-center rounded ${
                           checked
                             ? "bg-[#A07C3B] text-white"
-                            : "border border-slate-300"
+                            : "border border-line"
                         }`}
                       >
                         {checked ? <Check className="size-3" aria-hidden="true" /> : null}
                       </span>
-                      <span className="flex-1 truncate text-slate-700">
-                        <span className="font-semibold text-slate-900">
+                      <span className="flex-1 truncate text-ink">
+                        <span className="font-semibold text-ink">
                           {item.number}
                         </span>{" "}
                         · {item.reference}
                       </span>
-                      <span className="font-semibold text-slate-950">{item.value}</span>
+                      <span className="font-semibold text-ink">{item.value}</span>
                     </button>
                   );
                 })
               )}
             </div>
             {isAcordo ? (
-              <p className="mt-1 text-[11px] text-slate-400">
+              <p className="mt-1 text-[11px] text-ink-muted">
                 Pode juntar parcelas de qualquer unidade (cobrança é por cliente).
               </p>
             ) : null}
@@ -747,7 +747,7 @@ export function ProposalModal({
           {isAcordo ? (
             <>
               <section>
-                <p className="mb-2 text-xs font-semibold text-slate-500">2 · Ajustes</p>
+                <p className="mb-2 text-xs font-semibold text-ink-muted">2 · Ajustes</p>
                 <div className="grid grid-cols-3 gap-2">
                   <AdjustmentField label="Desconto" tone="danger" adjustment={discount} onChange={setDiscount} computed={-discountValue} />
                   <AdjustmentField label="Juros" tone="success" adjustment={interest} onChange={setInterest} computed={interestValue} />
@@ -760,10 +760,10 @@ export function ProposalModal({
               </section>
 
               <section>
-                <p className="mb-2 text-xs font-semibold text-slate-500">
+                <p className="mb-2 text-xs font-semibold text-ink-muted">
                   3 · Forma de pagamento
                 </p>
-                <div className="mb-3 inline-flex gap-1 rounded-lg bg-slate-100/80 p-1">
+                <div className="mb-3 inline-flex gap-1 rounded-lg bg-subtle/80 p-1">
                   {(["a_vista", "parcelado"] as PaymentMode[]).map((mode) => (
                     <button
                       key={mode}
@@ -772,7 +772,7 @@ export function ProposalModal({
                       className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
                         paymentMode === mode
                           ? "bg-[#A07C3B] text-white"
-                          : "text-slate-600 hover:text-slate-900"
+                          : "text-ink-soft hover:text-ink"
                       }`}
                     >
                       {mode === "a_vista" ? "À vista" : "Parcelado"}
@@ -824,8 +824,8 @@ export function ProposalModal({
                         />
                       </Field>
                     </div>
-                    <div className="overflow-hidden rounded-lg border border-slate-200/70">
-                      <div className="flex items-center gap-2 bg-slate-50 px-3 py-1.5 text-[11px] text-slate-500">
+                    <div className="overflow-hidden rounded-lg border border-line/70">
+                      <div className="flex items-center gap-2 bg-subtle px-3 py-1.5 text-[11px] text-ink-muted">
                         <span className="w-12">Parcela</span>
                         <span className="flex-1">Valor (R$)</span>
                         <span className="w-32">Vencimento</span>
@@ -833,9 +833,9 @@ export function ProposalModal({
                       {editParcelas.map((parcela, index) => (
                         <div
                           key={`${parcela.label}-${index}`}
-                          className="flex items-center gap-2 border-t border-slate-100 px-3 py-1.5"
+                          className="flex items-center gap-2 border-t border-line px-3 py-1.5"
                         >
-                          <span className="w-12 text-[11px] font-medium text-slate-600">
+                          <span className="w-12 text-[11px] font-medium text-ink-soft">
                             {parcela.label}
                           </span>
                           <input
@@ -844,7 +844,7 @@ export function ProposalModal({
                             onChange={(event) =>
                               updateParcela(index, { amount: event.target.value })
                             }
-                            className="h-7 min-w-0 flex-1 rounded-md border border-slate-200/70 bg-white px-2 text-xs font-semibold text-slate-950 outline-none focus:border-[#A07C3B]/40"
+                            className="h-7 min-w-0 flex-1 rounded-md border border-line/70 bg-surface px-2 text-xs font-semibold text-ink outline-none focus:border-[#A07C3B]/40"
                           />
                           <input
                             type="date"
@@ -852,15 +852,15 @@ export function ProposalModal({
                             onChange={(event) =>
                               updateParcela(index, { dueDate: event.target.value })
                             }
-                            className="h-7 w-32 rounded-md border border-slate-200/70 bg-white px-1.5 text-xs text-slate-700 outline-none focus:border-[#A07C3B]/40"
+                            className="h-7 w-32 rounded-md border border-line/70 bg-surface px-1.5 text-xs text-ink outline-none focus:border-[#A07C3B]/40"
                           />
                         </div>
                       ))}
                       <div
                         className={`flex items-center justify-between border-t px-3 py-2 text-xs font-semibold ${
                           sumMatches
-                            ? "border-emerald-100 bg-emerald-50 text-emerald-700"
-                            : "border-rose-200 bg-rose-50 text-rose-700"
+                            ? "border-emerald-100 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+                            : "border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300"
                         }`}
                       >
                         <span>Total</span>
@@ -887,22 +887,22 @@ export function ProposalModal({
               value={notes}
               onChange={(event) => setNotes(event.target.value)}
               placeholder="Contexto da negociação..."
-              className="min-h-16 w-full resize-none rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="min-h-16 w-full resize-none rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
             />
           </Field>
 
           {formError ? (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+            <p className="rounded-lg border border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300">
               {formError}
             </p>
           ) : null}
         </div>
 
-        <footer className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-4">
+        <footer className="flex items-center justify-end gap-2 border-t border-line px-5 py-4">
           <button
             type="button"
             onClick={onClose}
-            className="inline-flex h-9 items-center rounded-lg border border-slate-200/70 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+            className="inline-flex h-9 items-center rounded-lg border border-line/70 bg-surface px-4 text-sm font-medium text-ink hover:bg-subtle"
           >
             Cancelar
           </button>
@@ -943,15 +943,15 @@ function AdjustmentField({
   computed: number;
 }) {
   return (
-    <div className="rounded-lg bg-slate-50/70 px-2.5 py-2">
-      <p className="text-[11px] text-slate-500">{label}</p>
+    <div className="rounded-lg bg-subtle/70 px-2.5 py-2">
+      <p className="text-[11px] text-ink-muted">{label}</p>
       <div className="mt-1 flex items-center gap-1">
         <input
           inputMode="decimal"
           value={adjustment.value}
           onChange={(event) => onChange({ ...adjustment, value: event.target.value })}
           placeholder="0"
-          className="h-7 w-full min-w-0 rounded-md border border-slate-200/70 bg-white px-1.5 text-sm font-semibold text-slate-950 outline-none focus:border-[#A07C3B]/40"
+          className="h-7 w-full min-w-0 rounded-md border border-line/70 bg-surface px-1.5 text-sm font-semibold text-ink outline-none focus:border-[#A07C3B]/40"
         />
         <button
           type="button"
@@ -961,7 +961,7 @@ function AdjustmentField({
               mode: adjustment.mode === "percent" ? "value" : "percent",
             })
           }
-          className="h-7 shrink-0 rounded-md border border-slate-200/70 bg-white px-1.5 text-[11px] font-semibold text-[#7A5E2C]"
+          className="h-7 shrink-0 rounded-md border border-line/70 bg-surface px-1.5 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877]"
         >
           {adjustment.mode === "percent" ? "%" : "R$"}
         </button>
@@ -991,15 +991,15 @@ function Summary({
       className={`flex-1 rounded-lg px-3 py-2 ${
         accent
           ? "border border-[#A07C3B]/30 bg-[#A07C3B]/8"
-          : "bg-slate-50/70"
+          : "bg-subtle/70"
       }`}
     >
-      <p className={`text-[11px] ${accent ? "text-[#7A5E2C]" : "text-slate-500"}`}>
+      <p className={`text-[11px] ${accent ? "text-[#7A5E2C] dark:text-[#d9b877]" : "text-ink-muted"}`}>
         {label}
       </p>
       <p
         className={`mt-0.5 text-sm font-semibold ${
-          accent ? "text-[#412402]" : "text-slate-950"
+          accent ? "text-[#412402]" : "text-ink"
         }`}
       >
         {value}
@@ -1017,14 +1017,14 @@ function Field({
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-xs font-medium text-slate-500">{label}</span>
+      <span className="mb-1 block text-xs font-medium text-ink-muted">{label}</span>
       {children}
     </label>
   );
 }
 
 const inputClass =
-  "h-9 w-full rounded-lg border border-slate-200/70 bg-white px-2.5 text-sm font-medium text-slate-950 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10";
+  "h-9 w-full rounded-lg border border-line/70 bg-surface px-2.5 text-sm font-medium text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10";
 
 // --- helpers ---
 

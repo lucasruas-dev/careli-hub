@@ -169,14 +169,14 @@ export function IrisHistoryView({
     : `${helpers.formatCount(closedTickets.length)} encerrados`;
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <header className="shrink-0 border-b border-slate-100 px-4 py-3">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="shrink-0 border-b border-line px-4 py-3">
         <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
           <div>
-            <h2 className="text-base font-semibold text-slate-950">
+            <h2 className="text-base font-semibold text-ink">
               Historico de atendimentos
             </h2>
-            <p className="mt-1 text-xs font-medium text-slate-500">
+            <p className="mt-1 text-xs font-medium text-ink-muted">
               {headerDescription}
             </p>
           </div>
@@ -194,7 +194,7 @@ export function IrisHistoryView({
             <button
               type="button"
               onClick={onClearFocus}
-              className="ml-auto inline-flex h-7 items-center rounded-md border border-[#A07C3B]/30 bg-white px-2.5 text-[11px] font-semibold text-[#7A5E2C] transition-colors hover:bg-[#fff8ec]"
+              className="ml-auto inline-flex h-7 items-center rounded-md border border-[#A07C3B]/30 bg-surface px-2.5 text-[11px] font-semibold text-[#7A5E2C] transition-colors hover:bg-[#fff8ec]"
             >
               Ver todos
             </button>
@@ -203,14 +203,14 @@ export function IrisHistoryView({
       </header>
 
       <div className="grid min-h-0 flex-1 gap-3 p-3">
-        <div className="grid gap-2 rounded-xl border border-slate-200/70 bg-slate-50/60 p-2 lg:grid-cols-[minmax(0,1fr)_180px_190px_190px]">
-          <label className="flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-500">
+        <div className="grid gap-2 rounded-xl border border-line/70 bg-subtle/60 p-2 lg:grid-cols-[minmax(0,1fr)_180px_190px_190px]">
+          <label className="flex h-10 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3 text-sm text-ink-muted">
             <Search className="size-4 text-[#A07C3B]" aria-hidden="true" />
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
               placeholder="Buscar cliente, protocolo ou assunto..."
-              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+              className="min-w-0 flex-1 bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
             />
           </label>
           <FilterSelect
@@ -219,29 +219,29 @@ export function IrisHistoryView({
             options={queues}
             onChange={setQueue}
           />
-          <label className="grid h-10 items-center rounded-lg border border-slate-200/70 bg-white px-3">
+          <label className="grid h-10 items-center rounded-lg border border-line/70 bg-surface px-3">
             <span className="sr-only">Inicio no periodo</span>
             <input
               type="datetime-local"
               value={periodStart}
               onChange={(event) => setPeriodStart(event.target.value)}
-              className="w-full bg-transparent text-xs font-medium text-slate-700 outline-none"
+              className="w-full bg-transparent text-xs font-medium text-ink outline-none"
               aria-label="Inicio no periodo"
             />
           </label>
-          <label className="grid h-10 items-center rounded-lg border border-slate-200/70 bg-white px-3">
+          <label className="grid h-10 items-center rounded-lg border border-line/70 bg-surface px-3">
             <span className="sr-only">Encerramento no periodo</span>
             <input
               type="datetime-local"
               value={periodEnd}
               onChange={(event) => setPeriodEnd(event.target.value)}
-              className="w-full bg-transparent text-xs font-medium text-slate-700 outline-none"
+              className="w-full bg-transparent text-xs font-medium text-ink outline-none"
               aria-label="Encerramento no periodo"
             />
           </label>
         </div>
 
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200/70">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line/70">
           <IrisTicketListHeader />
           <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
             {filteredTickets.length > 0 ? (

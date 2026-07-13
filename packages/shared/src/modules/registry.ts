@@ -90,6 +90,37 @@ export const hubModules = [
     ],
   },
   {
+    id: "prometeu",
+    name: "Prometeu",
+    description:
+      "Gestao de fila do dia do lancamento: credencial, recepcao, salao, secretaria e telao.",
+    category: "commercial",
+    status: "active",
+    basePath: "/prometeu",
+    iconKey: "prometeu",
+    realtimeEnabled: true,
+    order: 19,
+    requiredPermissions: [],
+    routes: [
+      {
+        id: "prometeu-overview",
+        label: "Modulo",
+        path: "/prometeu",
+        description: "Fila do lancamento: Setup, etiquetas, recepcao, salao e telao.",
+      },
+    ],
+    navigationItems: [
+      {
+        badge: "beta",
+        id: "prometeu-overview",
+        label: "Prometeu",
+        path: "/prometeu",
+        iconKey: "prometeu",
+        order: 10,
+      },
+    ],
+  },
+  {
     id: "setup",
     name: "Setup",
     description: "Configuracao central de usuarios, estrutura e modulos do Panteon.",

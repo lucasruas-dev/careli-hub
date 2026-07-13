@@ -33,7 +33,7 @@ import {
   isHubModuleActive,
   orderedHubModules,
 } from "@repo/shared";
-import { Badge, Surface, WorkspaceHeader, WorkspaceLayout } from "@repo/uix";
+import { Badge, Surface, WorkspaceLayout } from "@repo/uix";
 import {
   AlertTriangle,
   CalendarCheck2,
@@ -244,7 +244,12 @@ export default function HomePage() {
           <WorkspaceLayout
             className="careli-home"
             header={
-              <WorkspaceHeader title={`${getGreeting()}, ${displayName}.`} />
+              <h1
+                className="m-0 text-[1.4rem] font-semibold tracking-tight"
+                style={{ color: "var(--uix-text-primary)" }}
+              >
+                {`${getGreeting()}, ${displayName}.`}
+              </h1>
             }
           >
         {homeError ? (
@@ -305,14 +310,14 @@ function HomeModuleRail() {
     .sort((first, second) => first.name.localeCompare(second.name, "pt-BR"));
 
   return (
-    <aside className="panteon-module-sidebar relative flex h-full w-[15rem] shrink-0 flex-col overflow-y-auto border-r px-4 py-4 text-[#ECECF1]">
+    <aside className="panteon-module-sidebar panteon-module-sidebar--themed relative flex h-full w-[15rem] shrink-0 flex-col overflow-y-auto border-r px-4 py-4 text-ink">
       <div className="panteon-module-sidebar__top -mx-4 mb-4 px-4">
-        <div className="grid min-h-12 items-center rounded-xl bg-white/[0.035] px-2.5 py-2">
-          <div className="flex min-w-0 items-center gap-2.5 text-[#d5dde8]">
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+        <div className="grid min-h-12 items-center rounded-xl bg-black/[0.03] px-2.5 py-2 dark:bg-white/[0.04]">
+          <div className="flex min-w-0 items-center gap-2.5 text-ink">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#A07C3B]/55 bg-[#101820] text-[#cba25a] dark:bg-white/[0.14] dark:text-ink">
               <LayoutGrid aria-hidden="true" className="h-4 w-4" />
             </span>
-            <span className="min-w-0 truncate text-sm font-semibold leading-tight text-white">
+            <span className="min-w-0 truncate text-sm font-semibold leading-tight text-ink">
               Modulos
             </span>
           </div>
@@ -329,14 +334,14 @@ function HomeModuleRail() {
             <button
               className={`flex h-11 items-center gap-3 rounded-lg border px-2.5 text-left text-sm font-medium outline-none transition focus-visible:ring-2 focus-visible:ring-[#d0ad69] ${
                 active
-                  ? "border-[#A07C3B]/35 bg-[#171b23] text-white"
-                  : "border-transparent text-[#c5ced9] hover:border-white/[0.08] hover:bg-white/[0.06] hover:text-white"
+                  ? "border-[#A07C3B]/55 bg-[#A07C3B]/12 text-ink"
+                  : "border-transparent text-ink-soft hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/[0.06] hover:text-ink"
               }`}
               key={hubModule.id}
               onClick={() => router.push(hubModule.basePath)}
               type="button"
             >
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.055] text-[#d7dee8]">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-black/[0.04] text-ink-soft dark:bg-white/[0.06]">
                 {moduleIconMap[hubModule.id] ?? (
                   <FileText aria-hidden="true" size={18} />
                 )}
@@ -362,13 +367,13 @@ function HomeTabs({
   const tabClassName = (tab: HomeTab) =>
     `h-9 rounded-md px-4 text-sm font-semibold transition ${
       activeTab === tab
-        ? "bg-[#101820] text-white"
-        : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
+        ? "bg-inverse text-brand-ink dark:bg-white/[0.14] dark:text-ink"
+        : "text-ink-muted hover:bg-subtle hover:text-ink"
     }`;
 
   return (
     <nav
-      className={`inline-grid w-fit rounded-lg border border-[#d9e0e7] bg-white p-1 shadow-[0_8px_22px_rgb(16_24_32_/_0.05)] ${
+      className={`inline-grid w-fit rounded-lg border border-line bg-surface p-1 shadow-[0_8px_22px_rgb(16_24_32_/_0.05)] ${
         isAdmin ? "grid-cols-4" : "grid-cols-3"
       }`}
     >
@@ -437,9 +442,9 @@ function _DayMetric({
   value: number;
 }) {
   return (
-    <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
-      <p className="m-0 text-2xl font-semibold text-[#101820]">{value}</p>
-      <p className="m-0 mt-1 text-xs text-[#667085]">{label}</p>
+    <div className="rounded-md border border-line bg-subtle p-3">
+      <p className="m-0 text-2xl font-semibold text-ink">{value}</p>
+      <p className="m-0 mt-1 text-xs text-ink-muted">{label}</p>
       {note ? (
         <p className="m-0 mt-2 text-[0.6875rem] font-semibold uppercase tracking-[0.12em] text-[#A07C3B]">
           {note}
@@ -464,8 +469,8 @@ function AvailabilityAdminPanel({
 
   if (!snapshot) {
     return (
-      <Surface bordered className="border-[#d9e0e7] bg-white p-6">
-        <div className="mt-4 rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-sm text-[#667085]">
+      <Surface bordered className="border-line bg-surface p-6">
+        <div className="mt-4 rounded-md border border-dashed border-line bg-subtle p-5 text-sm text-ink-muted">
           Carregando historico de presenca e disponibilidade.
         </div>
       </Surface>
@@ -517,12 +522,12 @@ function AvailabilityAdminPanel({
 
   return (
     <section className="grid grid-cols-12 gap-5">
-      <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)]">
+      <Surface bordered className="col-span-12 border-line bg-surface p-5 shadow-[0_14px_34px_rgb(16_24_32_/_0.07)]">
         <div className="grid gap-3 lg:grid-cols-[minmax(16rem,1fr)_12rem_12rem_auto]">
           <label>
             <span className="sr-only">Colaborador</span>
             <select
-              className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#17202f] outline-none focus:border-[#A07C3B]"
+              className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-semibold normal-case tracking-normal text-ink outline-none focus:border-[#A07C3B]"
               onChange={(event) => setSelectedUserId(event.target.value)}
               value={selectedUserId}
             >
@@ -537,7 +542,7 @@ function AvailabilityAdminPanel({
           <label>
             <span className="sr-only">Evento</span>
             <select
-              className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold normal-case tracking-normal text-[#17202f] outline-none focus:border-[#A07C3B]"
+              className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-semibold normal-case tracking-normal text-ink outline-none focus:border-[#A07C3B]"
               onChange={(event) =>
                 setEventFilter(event.target.value as AvailabilityEventFilter)
               }
@@ -553,13 +558,13 @@ function AvailabilityAdminPanel({
           <label>
             <span className="sr-only">Data</span>
             <input
-              className="h-10 w-full rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#17202f] outline-none focus:border-[#A07C3B]"
+              className="h-10 w-full rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none focus:border-[#A07C3B]"
               onChange={(event) => setDateFilter(event.target.value)}
               type="date"
               value={dateFilter}
             />
           </label>
-          <div className="flex min-w-[18rem] items-center justify-between gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] px-3 py-2 text-sm font-semibold text-[#17202f]">
+          <div className="flex min-w-[18rem] items-center justify-between gap-3 rounded-md border border-line bg-subtle px-3 py-2 text-sm font-semibold text-ink">
             <span>
               {currentCounts.online} online / {currentCounts.away} ausentes /{" "}
               {currentCounts.lunch} almoco / {currentCounts.agenda} agenda /{" "}
@@ -567,7 +572,7 @@ function AvailabilityAdminPanel({
             </span>
             {dateFilter ? (
               <button
-                className="rounded-md border border-[#d9e0e7] bg-white px-2 py-1 text-xs text-[#667085] transition hover:border-[#A07C3B] hover:text-[#101820]"
+                className="rounded-md border border-line bg-surface px-2 py-1 text-xs text-ink-muted transition hover:border-[#A07C3B] hover:text-ink"
                 onClick={() => setDateFilter("")}
                 type="button"
               >
@@ -578,14 +583,14 @@ function AvailabilityAdminPanel({
         </div>
       </Surface>
 
-      <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 xl:col-span-4">
+      <Surface bordered className="col-span-12 border-line bg-surface p-5 xl:col-span-4">
         <div className="grid max-h-[38rem] gap-2 overflow-auto pr-1">
           {snapshot.team.map((member) => (
             <button
               className={`grid w-full grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-md border p-3 text-left transition ${
                 selectedUserId === member.userId
-                  ? "border-[#A07C3B] bg-[#fffaf1]"
-                  : "border-[#edf0f4] bg-[#fafbfc] hover:border-[#d9e0e7]"
+                  ? "border-[#A07C3B] bg-[#A07C3B]/[0.08]"
+                  : "border-line bg-subtle hover:border-line"
               }`}
               key={member.userId}
               onClick={() =>
@@ -598,7 +603,7 @@ function AvailabilityAdminPanel({
               <span className="min-w-0">
                 <span className="flex items-center gap-2">
                   <span className={`h-2.5 w-2.5 rounded-full ${getPresenceDotClassName(member.currentStatus)}`} />
-                  <span className="truncate text-sm font-semibold text-[#17202f]">
+                  <span className="truncate text-sm font-semibold text-ink">
                     {member.displayName}
                   </span>
                 </span>
@@ -613,7 +618,7 @@ function AvailabilityAdminPanel({
         </div>
       </Surface>
 
-      <Surface bordered className="col-span-12 border-[#d9e0e7] bg-white p-5 xl:col-span-8">
+      <Surface bordered className="col-span-12 border-line bg-surface p-5 xl:col-span-8">
         <div className="grid max-h-[38rem] gap-2 overflow-auto pr-1">
           {dateGroups.length ? (
             dateGroups.map((group) => {
@@ -621,16 +626,16 @@ function AvailabilityAdminPanel({
 
               return (
                 <div
-                  className="overflow-hidden rounded-md border border-[#edf0f4] bg-[#fafbfc]"
+                  className="overflow-hidden rounded-md border border-line bg-subtle"
                   key={group.dateKey}
                 >
                   <button
-                    className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left text-sm font-semibold text-[#17202f] transition hover:bg-white"
+                    className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left text-sm font-semibold text-ink transition hover:bg-surface"
                     onClick={() => toggleDateGroup(group.dateKey)}
                     type="button"
                   >
                     <span>{group.label}</span>
-                    <span className="flex items-center gap-2 text-xs text-[#667085]">
+                    <span className="flex items-center gap-2 text-xs text-ink-muted">
                       {group.events.length}
                       <ChevronDown
                         aria-hidden="true"
@@ -640,19 +645,19 @@ function AvailabilityAdminPanel({
                     </span>
                   </button>
                   {isExpanded ? (
-                    <div className="grid gap-2 border-t border-[#edf0f4] bg-white p-2">
+                    <div className="grid gap-2 border-t border-line bg-surface p-2">
                       {group.events.map(({ event, kind }) => (
                         <article
-                          className="grid gap-3 rounded-md border border-[#edf0f4] bg-white p-3 lg:grid-cols-[4.5rem_minmax(0,1fr)_auto]"
+                          className="grid gap-3 rounded-md border border-line bg-surface p-3 lg:grid-cols-[4.5rem_minmax(0,1fr)_auto]"
                           key={event.id}
                         >
                           <time
-                            className="text-sm font-semibold text-[#17202f]"
+                            className="text-sm font-semibold text-ink"
                             dateTime={event.startedAt}
                           >
                             {formatPresenceTime(event.startedAt)}
                           </time>
-                          <p className="m-0 min-w-0 truncate text-sm font-semibold text-[#17202f]">
+                          <p className="m-0 min-w-0 truncate text-sm font-semibold text-ink">
                             {formatJourneyMacroText(event, kind)}
                           </p>
                           <Badge variant={getJourneyBadgeVariant(kind)}>
@@ -666,20 +671,20 @@ function AvailabilityAdminPanel({
               );
             })
           ) : shouldShowCurrentStatus && selectedMember ? (
-            <div className="overflow-hidden rounded-md border border-[#edf0f4] bg-[#fafbfc]">
-              <div className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left text-sm font-semibold text-[#17202f]">
+            <div className="overflow-hidden rounded-md border border-line bg-subtle">
+              <div className="flex w-full items-center justify-between gap-3 px-3 py-3 text-left text-sm font-semibold text-ink">
                 <span>{formatPresenceDate(snapshot.generatedAt)}</span>
-                <span className="text-xs text-[#667085]">1</span>
+                <span className="text-xs text-ink-muted">1</span>
               </div>
-              <div className="grid gap-2 border-t border-[#edf0f4] bg-white p-2">
-                <article className="grid gap-3 rounded-md border border-[#edf0f4] bg-white p-3 lg:grid-cols-[4.5rem_minmax(0,1fr)_auto]">
+              <div className="grid gap-2 border-t border-line bg-surface p-2">
+                <article className="grid gap-3 rounded-md border border-line bg-surface p-3 lg:grid-cols-[4.5rem_minmax(0,1fr)_auto]">
                   <time
-                    className="text-sm font-semibold text-[#17202f]"
+                    className="text-sm font-semibold text-ink"
                     dateTime={snapshot.generatedAt}
                   >
                     {formatPresenceTime(snapshot.generatedAt)}
                   </time>
-                  <p className="m-0 min-w-0 truncate text-sm font-semibold text-[#17202f]">
+                  <p className="m-0 min-w-0 truncate text-sm font-semibold text-ink">
                     {formatCurrentStatusText(selectedMember)}
                   </p>
                   <span
@@ -691,7 +696,7 @@ function AvailabilityAdminPanel({
               </div>
             </div>
           ) : (
-            <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-4 text-sm text-[#667085]">
+            <div className="rounded-md border border-dashed border-line bg-subtle p-4 text-sm text-ink-muted">
               Nenhum registro.
             </div>
           )}
@@ -728,7 +733,7 @@ function AsanaPerformancePanel({
   return (
     <Surface
       bordered
-      className={`border-[#d9e0e7] bg-white p-5 shadow-[0_12px_30px_rgb(16_24_32_/_0.06)] ${className ?? ""}`}
+      className={`border-line bg-surface p-5 shadow-[0_12px_30px_rgb(16_24_32_/_0.06)] ${className ?? ""}`}
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PanelTitle
@@ -753,7 +758,7 @@ function AsanaPerformancePanel({
           ) : null}
           <button
             aria-label="Atualizar painel Asana"
-            className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#667085] transition hover:bg-[#f5f7fa] hover:text-[#101820]"
+            className="grid h-9 w-9 place-items-center rounded-md border border-line bg-surface text-ink-muted transition hover:bg-subtle hover:text-ink"
             disabled={isLoading}
             onClick={onRefresh}
             type="button"
@@ -839,15 +844,15 @@ function AsanaPeriodControls({
   ] as const;
 
   return (
-    <div className="mt-4 flex flex-wrap items-center gap-2 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-2">
-      <div className="inline-flex rounded-md border border-[#d9e0e7] bg-white p-1">
+    <div className="mt-4 flex flex-wrap items-center gap-2 rounded-md border border-line bg-subtle p-2">
+      <div className="inline-flex rounded-md border border-line bg-surface p-1">
         {presets.map((preset) => (
           <button
             aria-pressed={period.preset === preset.value}
             className={`h-8 rounded px-3 text-xs font-semibold transition ${
               period.preset === preset.value
-                ? "bg-[#101820] text-white"
-                : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
+                ? "bg-inverse text-brand-ink dark:bg-white/[0.14] dark:text-ink"
+                : "text-ink-muted hover:bg-subtle hover:text-ink"
             }`}
             disabled={disabled}
             key={preset.value}
@@ -858,10 +863,10 @@ function AsanaPeriodControls({
           </button>
         ))}
       </div>
-      <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#8a97a8]">
+      <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
         Inicio
         <input
-          className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm font-semibold normal-case tracking-normal text-[#17202f]"
+          className="h-9 rounded-md border border-line bg-surface px-2 text-sm font-semibold normal-case tracking-normal text-ink"
           disabled={disabled}
           onChange={(event) =>
             onChange({
@@ -874,10 +879,10 @@ function AsanaPeriodControls({
           value={period.startDate}
         />
       </label>
-      <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-[#8a97a8]">
+      <label className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
         Fim
         <input
-          className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm font-semibold normal-case tracking-normal text-[#17202f]"
+          className="h-9 rounded-md border border-line bg-surface px-2 text-sm font-semibold normal-case tracking-normal text-ink"
           disabled={disabled}
           onChange={(event) =>
             onChange({
@@ -918,15 +923,15 @@ function AsanaConfigState({
   ];
 
   return (
-    <div className="mt-4 grid min-h-52 place-items-center rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-center">
+    <div className="mt-4 grid min-h-52 place-items-center rounded-md border border-dashed border-line bg-subtle p-5 text-center">
       <div className="max-w-xl">
-        <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[#fff6e3] text-[#A07C3B]">
+        <span className="mx-auto grid h-11 w-11 place-items-center rounded-full bg-[#A07C3B]/12 text-[#A07C3B]">
           <KeyRound aria-hidden="true" size={20} />
         </span>
-        <p className="m-0 mt-3 text-sm font-semibold text-[#101820]">
+        <p className="m-0 mt-3 text-sm font-semibold text-ink">
           Configurar Asana server-side
         </p>
-        <p className="m-0 mt-2 text-xs leading-5 text-[#667085]">
+        <p className="m-0 mt-2 text-xs leading-5 text-ink-muted">
           {error ??
             snapshot?.message ??
             "O token deve ficar somente no ambiente do servidor. Em modo geral, a Home busca todos os espacos de trabalho acessiveis e cruza os colaboradores pelo e-mail cadastrado."}
@@ -934,19 +939,19 @@ function AsanaConfigState({
         <div className="mt-3 flex flex-wrap justify-center gap-2">
           {missingEnv.map((key) => (
             <code
-              className="rounded-md border border-[#eadfc8] bg-white px-2 py-1 text-xs font-semibold text-[#6f5728]"
+              className="rounded-md border border-[#eadfc8] bg-surface px-2 py-1 text-xs font-semibold text-[#6f5728]"
               key={key}
             >
               {key}
             </code>
           ))}
-          <code className="rounded-md border border-[#edf0f4] bg-white px-2 py-1 text-xs font-semibold text-[#667085]">
+          <code className="rounded-md border border-line bg-surface px-2 py-1 text-xs font-semibold text-ink-muted">
             ASANA_WORKSPACE_MODE=all
           </code>
-          <code className="rounded-md border border-[#edf0f4] bg-white px-2 py-1 text-xs font-semibold text-[#667085]">
+          <code className="rounded-md border border-line bg-surface px-2 py-1 text-xs font-semibold text-ink-muted">
             ASANA_WORKSPACE_GIDS opcional
           </code>
-          <code className="rounded-md border border-[#edf0f4] bg-white px-2 py-1 text-xs font-semibold text-[#667085]">
+          <code className="rounded-md border border-line bg-surface px-2 py-1 text-xs font-semibold text-ink-muted">
             ASANA_TASK_WINDOW_DAYS
           </code>
         </div>
@@ -968,12 +973,12 @@ function AsanaKpi({
 }) {
   const toneClasses: Record<"danger" | "neutral" | "success", string> = {
     danger: "text-red-700",
-    neutral: "text-[#101820]",
+    neutral: "text-ink",
     success: "text-emerald-700",
   };
 
   return (
-    <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
+    <div className="rounded-md border border-line bg-subtle p-3">
       <div className={`flex items-center gap-2 text-xs ${toneClasses[tone]}`}>
         {icon}
         <span className="font-semibold uppercase tracking-[0.08em]">
@@ -998,12 +1003,12 @@ function AsanaCollaboratorRow({
   const dueSoonRate = collaborator.dueSoonRate ?? 0;
 
   return (
-    <article className="grid grid-cols-2 items-center gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 2xl:grid-cols-[minmax(12rem,1.15fr)_repeat(6,minmax(4.2rem,0.5fr))_minmax(12rem,0.9fr)]">
+    <article className="grid grid-cols-2 items-center gap-3 rounded-md border border-line bg-subtle p-3 2xl:grid-cols-[minmax(12rem,1.15fr)_repeat(6,minmax(4.2rem,0.5fr))_minmax(12rem,0.9fr)]">
       <div className="min-w-0">
-        <p className="m-0 truncate text-sm font-semibold text-[#17202f]">
+        <p className="m-0 truncate text-sm font-semibold text-ink">
           {collaborator.name}
         </p>
-        <p className="m-0 mt-1 truncate text-xs text-[#667085]">
+        <p className="m-0 mt-1 truncate text-xs text-ink-muted">
           {collaborator.matched
             ? `${collaborator.email} / ${formatWorkspaceNames(collaborator.workspaceNames)}`
             : "sem usuario Asana"}
@@ -1032,13 +1037,13 @@ function AsanaCollaboratorRow({
         value={formatDelayDays(collaborator.averageDelayDays)}
       />
       <div className="min-w-0">
-        <div className="flex items-center justify-between gap-2 text-xs font-semibold text-[#485466]">
+        <div className="flex items-center justify-between gap-2 text-xs font-semibold text-ink-soft">
           <span>{formatPercent(collaborator.onTimeRate)} no prazo</span>
           <span>{formatPercent(collaborator.lateRate)} fora</span>
           <span>{formatPercent(collaborator.overdueRate)} venc.</span>
           <span>{formatPercent(collaborator.dueSoonRate)} a vencer</span>
         </div>
-        <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-[#eef1f4]">
+        <div className="mt-2 flex h-2 overflow-hidden rounded-full bg-subtle">
           <span
             className="bg-emerald-500"
             style={{ width: `${onTimeRate}%` }}
@@ -1074,12 +1079,12 @@ function CompactMetric({
     <div>
       <p
         className={`m-0 text-sm font-semibold ${
-          tone === "danger" ? "text-red-700" : "text-[#101820]"
+          tone === "danger" ? "text-red-700" : "text-ink"
         }`}
       >
         {value}
       </p>
-      <p className="m-0 mt-1 text-[0.6875rem] uppercase tracking-[0.08em] text-[#8a97a8]">
+      <p className="m-0 mt-1 text-[0.6875rem] uppercase tracking-[0.08em] text-ink-muted">
         {label}
       </p>
     </div>
@@ -1099,14 +1104,14 @@ function PanelTitle({
     <div>
       <p
         className={`m-0 text-xs font-medium uppercase tracking-[0.14em] ${
-          dark ? "text-white/55" : "text-[#667085]"
+          dark ? "text-white/55" : "text-ink-muted"
         }`}
       >
         {eyebrow}
       </p>
       <h2
         className={`m-0 mt-1 text-base font-semibold ${
-          dark ? "text-white" : "text-[#101820]"
+          dark ? "text-white" : "text-ink"
         }`}
       >
         {title}
@@ -1125,13 +1130,13 @@ function _PulseMetric({
   value: number;
 }) {
   return (
-    <Surface bordered className="border-[#d9e0e7] bg-white p-3 shadow-[0_8px_20px_rgb(16_24_32_/_0.045)]">
+    <Surface bordered className="border-line bg-surface p-3 shadow-[0_8px_20px_rgb(16_24_32_/_0.045)]">
       <div className="flex items-center justify-between gap-2 text-[#A07C3B]">
         {icon}
         <span className="h-2 w-2 rounded-full bg-[#A07C3B]" />
       </div>
-      <p className="m-0 mt-3 text-2xl font-semibold text-[#101820]">{value}</p>
-      <p className="m-0 mt-1 text-xs text-[#667085]">{label}</p>
+      <p className="m-0 mt-3 text-2xl font-semibold text-ink">{value}</p>
+      <p className="m-0 mt-1 text-xs text-ink-muted">{label}</p>
     </Surface>
   );
 }
@@ -1164,9 +1169,9 @@ function _StatusPill({
 
 function _MiniLightMetric({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-2.5">
-      <p className="m-0 text-sm font-semibold text-[#101820]">{value}</p>
-      <p className="m-0 mt-1 text-xs text-[#667085]">{label}</p>
+    <div className="rounded-md border border-line bg-subtle p-2.5">
+      <p className="m-0 text-sm font-semibold text-ink">{value}</p>
+      <p className="m-0 mt-1 text-xs text-ink-muted">{label}</p>
     </div>
   );
 }

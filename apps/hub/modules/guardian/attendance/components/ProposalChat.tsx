@@ -104,20 +104,20 @@ export function ProposalChat({
   }
 
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white p-3">
-      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-slate-500">
+    <div className="rounded-xl border border-line/70 bg-surface p-3">
+      <p className="mb-2 flex items-center gap-1.5 text-xs font-semibold text-ink-muted">
         <MessageSquare className="size-3.5" aria-hidden="true" />
         {heading}
         {note}
       </p>
 
       {loading ? (
-        <div className="flex items-center gap-2 px-1 py-3 text-xs text-slate-400">
+        <div className="flex items-center gap-2 px-1 py-3 text-xs text-ink-muted">
           <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
           Carregando...
         </div>
       ) : comments.length === 0 ? (
-        <p className="px-1 py-2 text-xs text-slate-400">Sem mensagens ainda.</p>
+        <p className="px-1 py-2 text-xs text-ink-muted">Sem mensagens ainda.</p>
       ) : (
         <div
           ref={scrollRef}
@@ -140,7 +140,7 @@ export function ProposalChat({
             }
           }}
           placeholder={placeholder}
-          className="h-9 flex-1 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+          className="h-9 flex-1 rounded-lg border border-line/70 bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
         />
         <Tooltip content="Enviar" placement="left">
           <button
@@ -165,21 +165,21 @@ export function ProposalChat({
 function CommentBubble({ comment }: { comment: GuardianCompromissoComment }) {
   const tone =
     comment.kind === "aprovacao"
-      ? "bg-emerald-50 text-emerald-800"
+      ? "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-800"
       : comment.kind === "reprovacao"
-        ? "bg-rose-50 text-rose-800"
+        ? "bg-rose-50 dark:bg-rose-500/12 text-rose-800"
         : comment.kind === "sistema"
-          ? "bg-amber-50 text-amber-800"
-          : "bg-slate-50 text-slate-700";
+          ? "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300"
+          : "bg-subtle text-ink";
 
   return (
     <div className="flex gap-2">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#A07C3B]/12 text-[10px] font-semibold text-[#7A5E2C]">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-[#A07C3B]/12 text-[10px] font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
         {initials(comment.authorName ?? "?")}
       </span>
       <div className={`min-w-0 flex-1 rounded-lg px-2.5 py-1.5 ${tone}`}>
         <p className="text-xs">{comment.body}</p>
-        <p className="mt-0.5 text-[10px] text-slate-400">
+        <p className="mt-0.5 text-[10px] text-ink-muted">
           {comment.authorName ?? "Sistema"} · {formatWhen(comment.createdAt)}
         </p>
       </div>

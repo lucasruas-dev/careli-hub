@@ -46,19 +46,19 @@ export function HadesClientPicker({
         type="button"
         aria-label="Fechar"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
       />
-      <div className="relative z-10 flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+      <div className="relative z-10 flex max-h-[80vh] w-full max-w-md flex-col overflow-hidden rounded-2xl border border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <span className="flex size-8 items-center justify-center rounded-lg bg-[#A07C3B] text-white">
               <UserRound className="size-4" aria-hidden="true" />
             </span>
             <div>
-              <h2 className="text-base font-semibold text-slate-950">
+              <h2 className="text-base font-semibold text-ink">
                 Novo atendimento
               </h2>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-ink-muted">
                 escolha o cliente da fila de cobrança
               </p>
             </div>
@@ -67,28 +67,28 @@ export function HadesClientPicker({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
+            className="flex size-8 items-center justify-center rounded-lg text-ink-muted hover:bg-subtle"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
         </header>
 
-        <div className="border-b border-slate-100 p-3">
-          <div className="flex items-center gap-2 rounded-lg border border-slate-200/70 px-3">
-            <Search className="size-4 shrink-0 text-slate-400" aria-hidden="true" />
+        <div className="border-b border-line p-3">
+          <div className="flex items-center gap-2 rounded-lg border border-line/70 px-3">
+            <Search className="size-4 shrink-0 text-ink-muted" aria-hidden="true" />
             <input
               autoFocus
               value={query}
               onChange={(event) => setQuery(event.target.value)}
               placeholder="Buscar por nome, CPF ou empreendimento…"
-              className="h-9 w-full bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+              className="h-9 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
             />
           </div>
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
           {results.length === 0 ? (
-            <p className="px-3 py-6 text-center text-xs text-slate-400">
+            <p className="px-3 py-6 text-center text-xs text-ink-muted">
               Nenhum cliente encontrado na fila de cobrança.
             </p>
           ) : (
@@ -99,14 +99,14 @@ export function HadesClientPicker({
                 onClick={() => onSelect(client.id)}
                 className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left transition-colors hover:bg-[#A07C3B]/6"
               >
-                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#A07C3B]/12 text-[10px] font-semibold text-[#7A5E2C]">
+                <span className="flex size-8 shrink-0 items-center justify-center rounded-full bg-[#A07C3B]/12 text-[10px] font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
                   {initials(client.nome)}
                 </span>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-semibold text-slate-950">
+                  <span className="block truncate text-sm font-semibold text-ink">
                     {client.nome}
                   </span>
-                  <span className="block truncate text-[11px] text-slate-500">
+                  <span className="block truncate text-[11px] text-ink-muted">
                     {client.carteira?.empreendimento ?? "—"}
                     {client.parcelas?.vencidas
                       ? ` · ${client.parcelas.vencidas} vencidas`
@@ -114,12 +114,12 @@ export function HadesClientPicker({
                   </span>
                 </span>
                 <span className="shrink-0 text-right">
-                  <span className="block text-xs font-semibold text-rose-700">
+                  <span className="block text-xs font-semibold text-rose-700 dark:text-rose-300">
                     {client.saldoDevedor}
                   </span>
                 </span>
                 <ArrowRight
-                  className="size-4 shrink-0 text-slate-300 transition-colors group-hover:text-[#A07C3B]"
+                  className="size-4 shrink-0 text-ink-muted transition-colors group-hover:text-[#A07C3B]"
                   aria-hidden="true"
                 />
               </button>
@@ -127,7 +127,7 @@ export function HadesClientPicker({
           )}
         </div>
 
-        <footer className="border-t border-slate-100 px-5 py-2.5 text-[11px] text-slate-400">
+        <footer className="border-t border-line px-5 py-2.5 text-[11px] text-ink-muted">
           {results.length} de {clients.length} clientes
           {query ? " (filtrados)" : ""}
         </footer>

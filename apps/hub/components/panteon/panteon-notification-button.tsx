@@ -82,7 +82,7 @@ export function PanteonNotificationButton({
         <button
           aria-expanded={open}
           aria-label="Abrir central de notificacoes"
-          className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] outline-none transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          className="relative grid h-8 w-8 shrink-0 place-items-center rounded-md border border-white/[0.08] bg-white/[0.04] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.08] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={() => setOpen((currentValue) => !currentValue)}
           type="button"
         >

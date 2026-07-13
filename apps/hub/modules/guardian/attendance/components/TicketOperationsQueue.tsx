@@ -98,32 +98,32 @@ const profileOptions = [
 ];
 
 const statusStyles: Record<TicketQueueStatus, string> = {
-  Pendente: "bg-slate-50 text-slate-600 ring-slate-200",
-  "Aguardando operador": "bg-amber-50 text-amber-700 ring-amber-100",
-  "Em atendimento": "bg-emerald-50 text-emerald-700 ring-emerald-100",
-  "Aguardando cliente": "bg-sky-50 text-sky-700 ring-sky-100",
-  "SLA crítico": "bg-rose-50 text-rose-700 ring-rose-100",
-  Encerrado: "bg-slate-100 text-slate-500 ring-slate-200",
-  Reaberto: "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15",
+  Pendente: "bg-subtle text-ink-soft ring-line",
+  "Aguardando operador": "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/25",
+  "Em atendimento": "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+  "Aguardando cliente": "bg-sky-50 dark:bg-sky-500/12 text-sky-700 dark:text-sky-300 ring-sky-100 dark:ring-sky-500/25",
+  "SLA crítico": "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+  Encerrado: "bg-subtle text-ink-muted ring-line",
+  Reaberto: "bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
 };
 
 const priorityStyles: Record<AttendancePriority, string> = {
-  "Crítica": "bg-rose-50 text-rose-700 ring-rose-100",
+  "Crítica": "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
   Alta: "bg-orange-50 text-orange-700 ring-orange-100",
-  "Média": "bg-amber-50 text-amber-700 ring-amber-100",
-  Baixa: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  "Média": "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/25",
+  Baixa: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
 };
 
 const slaStyles: Record<OperationalTicket["slaState"], string> = {
-  "Crítico": "bg-rose-50 text-rose-700 ring-rose-100",
-  "Atenção": "bg-amber-50 text-amber-700 ring-amber-100",
-  "Dentro do SLA": "bg-emerald-50 text-emerald-700 ring-emerald-100",
+  "Crítico": "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+  "Atenção": "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/25",
+  "Dentro do SLA": "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
 };
 
 const responseToneStyles: Record<ResponseTone, string> = {
-  Excelente: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-  "Atenção": "bg-amber-50 text-amber-700 ring-amber-100",
-  "Crítico": "bg-rose-50 text-rose-700 ring-rose-100",
+  Excelente: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+  "Atenção": "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/25",
+  "Crítico": "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
 };
 
 export function TicketOperationsQueue({
@@ -203,12 +203,12 @@ export function TicketOperationsQueue({
   }
 
   return (
-    <section className="rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <header className="border-b border-slate-100 px-4 py-3">
+    <section className="rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
+      <header className="border-b border-line px-4 py-3">
         <div className="flex flex-col gap-3">
           <div className="min-w-0">
             <p className="text-xs font-semibold tracking-normal text-[#A07C3B]">Fila operacional de tickets</p>
-            <h2 className="mt-1 text-base font-semibold text-slate-950">Inbox operacional</h2>
+            <h2 className="mt-1 text-base font-semibold text-ink">Inbox operacional</h2>
             <p className="hidden">
               Gestão consolidada de tickets, WhatsApp, promessas, acordos, SLA e follow-ups auditáveis.
             </p>
@@ -226,14 +226,14 @@ export function TicketOperationsQueue({
 
       <div className="grid gap-3 p-3 2xl:grid-cols-[minmax(0,1fr)_300px]">
         <div className="min-w-0 space-y-3">
-          <div className="flex flex-col gap-2 rounded-xl border border-slate-200/70 bg-slate-50/60 p-2">
-            <label className="flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-500">
+          <div className="flex flex-col gap-2 rounded-xl border border-line/70 bg-subtle/60 p-2">
+            <label className="flex h-10 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3 text-sm text-ink-muted">
               <Search className="size-4 text-[#A07C3B]" aria-hidden="true" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Buscar protocolo, cliente ou unidade..."
-                className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+                className="min-w-0 flex-1 bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
               />
             </label>
             <FilterSummaryBar activeFilters={activeFilters} expanded={filtersExpanded} onToggle={toggleFilters} />
@@ -248,12 +248,12 @@ export function TicketOperationsQueue({
                   <FilterSelect label="Unidade" value={unit} options={units} onChange={setUnit} />
                   <FilterSelect label="SLA" value={sla} options={["Todos", "Crítico", "Atenção", "Dentro do SLA"]} onChange={(value) => setSla(value as SlaFilter)} />
                   <FilterSelect label="Período" value={period} options={["Todos", "Hoje", "Últimos 7 dias", "Este mês"]} onChange={(value) => setPeriod(value as PeriodFilter)} />
-                  <label className="flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-500">
+                  <label className="flex h-10 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3 text-xs font-semibold text-ink-muted">
                     <ArrowUpDown className="size-4 text-[#A07C3B]" aria-hidden="true" />
                     <select
                       value={sortMode}
                       onChange={(event) => setSortMode(event.target.value)}
-                      className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-slate-700 outline-none"
+                      className="min-w-0 flex-1 bg-transparent text-xs font-semibold text-ink outline-none"
                     >
                       <option>SLA mais crítico</option>
                       <option>Aguardando cliente</option>
@@ -267,8 +267,8 @@ export function TicketOperationsQueue({
             </div>
           </div>
 
-          <div className="overflow-hidden rounded-xl border border-slate-200/70">
-            <div className="hidden grid-cols-[1.05fr_0.85fr_0.75fr_0.8fr_0.8fr_0.9fr_0.75fr_0.85fr] gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-2 text-xs font-semibold tracking-normal text-slate-400 xl:grid">
+          <div className="overflow-hidden rounded-xl border border-line/70">
+            <div className="hidden grid-cols-[1.05fr_0.85fr_0.75fr_0.8fr_0.8fr_0.9fr_0.75fr_0.85fr] gap-3 border-b border-line bg-subtle/80 px-4 py-2 text-xs font-semibold tracking-normal text-ink-muted xl:grid">
               <span>Ticket</span>
               <span>Perfil</span>
               <span>Operador</span>
@@ -295,10 +295,10 @@ export function TicketOperationsQueue({
           <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/5 p-3">
             <div className="flex items-center gap-2">
               <Bot className="size-4 text-[#A07C3B]" aria-hidden="true" />
-              <p className="text-sm font-semibold text-slate-950">Athena na fila</p>
+              <p className="text-sm font-semibold text-ink">Athena na fila</p>
             </div>
             <Tooltip content="Priorizar tickets com SLA crítico, promessa vencendo e alto saldo." placement="bottom">
-              <span className="mt-1 line-clamp-2 text-xs leading-5 text-slate-700">
+              <span className="mt-1 line-clamp-2 text-xs leading-5 text-ink">
                 Priorizar tickets com SLA crítico, promessa vencendo e alto saldo. Há risco operacional concentrado em
                 negociações com cliente sem resposta após 24h.
               </span>
@@ -326,13 +326,13 @@ function TicketQueueRow({
 }) {
   return (
     <article
-      className={`grid gap-3 border-b border-slate-100 px-4 py-3 transition-colors last:border-b-0 hover:bg-slate-50/70 xl:grid-cols-[1.05fr_0.85fr_0.75fr_0.8fr_0.8fr_0.9fr_0.75fr_0.85fr] xl:items-center ${
+      className={`grid gap-3 border-b border-line px-4 py-3 transition-colors last:border-b-0 hover:bg-subtle/70 xl:grid-cols-[1.05fr_0.85fr_0.75fr_0.8fr_0.8fr_0.9fr_0.75fr_0.85fr] xl:items-center ${
         ticket.hasNewMessage ? "bg-[#A07C3B]/5 shadow-[inset_3px_0_0_#A07C3B]" : ""
       }`}
     >
       <button type="button" onClick={() => onSelectClient(ticket.clientId)} className="min-w-0 text-left">
         <div className="flex items-center gap-2">
-          <span className="font-mono text-sm font-semibold text-[#7A5E2C]">{ticket.protocol}</span>
+          <span className="font-mono text-sm font-semibold text-[#7A5E2C] dark:text-[#d9b877]">{ticket.protocol}</span>
           {ticket.hasNewMessage ? (
             <span className="rounded-full bg-[#A07C3B] px-2 py-0.5 text-[11px] font-semibold text-white shadow-[0_0_0_3px_rgba(160,124,59,0.12)]">
               nova
@@ -342,34 +342,34 @@ function TicketQueueRow({
             {ticket.priority}
           </span>
         </div>
-        <p className="mt-1 truncate text-sm font-semibold text-slate-950">{ticket.client}</p>
-        <p className="mt-0.5 truncate text-xs text-slate-500">
+        <p className="mt-1 truncate text-sm font-semibold text-ink">{ticket.client}</p>
+        <p className="mt-0.5 truncate text-xs text-ink-muted">
           {ticket.enterprise} · {ticket.unitCode}
         </p>
       </button>
 
       <div className="min-w-0">
-        <p className="truncate text-sm font-semibold text-slate-800">{ticket.profile}</p>
-        <p className="mt-0.5 truncate text-xs text-slate-500">{ticket.smartReason}</p>
+        <p className="truncate text-sm font-semibold text-ink">{ticket.profile}</p>
+        <p className="mt-0.5 truncate text-xs text-ink-muted">{ticket.smartReason}</p>
       </div>
 
-      <div className="text-sm font-medium text-slate-600">
+      <div className="text-sm font-medium text-ink-soft">
         <p className="truncate">{ticket.operator}</p>
-        <p className="mt-0.5 text-xs text-slate-400">{ticket.openedAt}</p>
+        <p className="mt-0.5 text-xs text-ink-muted">{ticket.openedAt}</p>
       </div>
 
       <div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${slaStyles[ticket.slaState]}`}>
           {ticket.sla}
         </span>
-        <p className="mt-1 text-xs text-slate-400">{ticket.handlingTime}</p>
+        <p className="mt-1 text-xs text-ink-muted">{ticket.handlingTime}</p>
       </div>
 
       <div>
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${statusStyles[ticket.status]}`}>
           {ticket.status}
         </span>
-        <p className={`mt-1 text-xs ${ticket.hasNewMessage ? "font-semibold text-[#7A5E2C]" : "text-slate-400"}`}>
+        <p className={`mt-1 text-xs ${ticket.hasNewMessage ? "font-semibold text-[#7A5E2C] dark:text-[#d9b877]" : "text-ink-muted"}`}>
           {ticket.hasNewMessage ? ticket.responseWait : ticket.lastContact}
         </p>
       </div>
@@ -378,12 +378,12 @@ function TicketQueueRow({
         <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ${responseToneStyles[ticket.responseTone]}`}>
           {ticket.responseTone}
         </span>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-ink-muted">
           1ª {ticket.firstResponseTime} · média {ticket.averageResponseTime}
         </p>
       </div>
 
-      <p className="text-sm font-medium text-slate-600">{ticket.nextFollowUp}</p>
+      <p className="text-sm font-medium text-ink-soft">{ticket.nextFollowUp}</p>
 
       <div className="flex justify-end">
         <Tooltip content="Abrir atendimento" placement="left">
@@ -391,7 +391,7 @@ function TicketQueueRow({
             type="button"
             onClick={() => onOpenWhatsApp(ticket.clientId)}
             aria-label="Abrir atendimento do ticket"
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+            className="inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
           >
             <MessageCircle className="size-4" aria-hidden="true" />
           </button>
@@ -416,20 +416,20 @@ function KpiCard({
 }) {
   const toneClass =
     tone === "danger"
-      ? "bg-rose-50 text-rose-700 ring-rose-100"
+      ? "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25"
       : tone === "gold"
-        ? "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15"
-        : "bg-slate-50 text-slate-700 ring-slate-200";
+        ? "bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15"
+        : "bg-subtle text-ink ring-line";
 
   return (
     <Tooltip content={`${label}: ${value}`} placement="bottom" className="w-full" triggerClassName="w-full">
-      <span className="group flex min-h-14 items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/55 px-3 py-2 transition-colors hover:border-[#A07C3B]/20 hover:bg-white">
+      <span className="group flex min-h-14 items-center gap-2 rounded-lg border border-line/70 bg-subtle/55 px-3 py-2 transition-colors hover:border-[#A07C3B]/20 hover:bg-surface">
         <span className={`flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 transition-transform group-hover:scale-105 ${toneClass}`}>
           <Icon className="size-4" aria-hidden="true" />
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-base font-semibold leading-5 text-slate-950">{value}</span>
-          <span className="block truncate text-[11px] font-semibold tracking-normal text-slate-400">{shortLabel}</span>
+          <span className="block truncate text-base font-semibold leading-5 text-ink">{value}</span>
+          <span className="block truncate text-[11px] font-semibold tracking-normal text-ink-muted">{shortLabel}</span>
         </span>
       </span>
     </Tooltip>
@@ -451,7 +451,7 @@ function FilterSummaryBar({
         <button
           type="button"
           onClick={onToggle}
-          className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+          className="inline-flex h-8 items-center gap-2 rounded-lg border border-line/70 bg-surface px-2.5 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
           aria-expanded={expanded}
         >
           <Filter className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
@@ -464,7 +464,7 @@ function FilterSummaryBar({
           <button
             type="button"
             onClick={filter.clear}
-            className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
+            className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15"
           >
             <span className="truncate">{filter.value}</span>
             <span aria-hidden="true">×</span>
@@ -477,10 +477,10 @@ function FilterSummaryBar({
 
 function InsightCard({ description, title, value }: { description: string; title: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white p-4">
-      <p className="text-xs font-semibold tracking-normal text-slate-400">{title}</p>
-      <p className="mt-1 text-base font-semibold text-slate-950">{value}</p>
-      <p className="mt-1 text-sm leading-6 text-slate-500">{description}</p>
+    <div className="rounded-xl border border-line/70 bg-surface p-4">
+      <p className="text-xs font-semibold tracking-normal text-ink-muted">{title}</p>
+      <p className="mt-1 text-base font-semibold text-ink">{value}</p>
+      <p className="mt-1 text-sm leading-6 text-ink-muted">{description}</p>
     </div>
   );
 }
@@ -497,12 +497,12 @@ function FilterSelect({
   value: string;
 }) {
   return (
-    <label className="flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-500">
+    <label className="flex h-10 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3 text-xs font-semibold text-ink-muted">
       <span className="sr-only">{label}</span>
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="min-w-0 w-full bg-transparent text-xs font-semibold text-slate-700 outline-none"
+        className="min-w-0 w-full bg-transparent text-xs font-semibold text-ink outline-none"
         aria-label={label}
       >
         {options.map((option) => (

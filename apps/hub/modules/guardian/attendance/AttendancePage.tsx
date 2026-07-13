@@ -646,9 +646,9 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
   if (!selectedClient) {
     if (queueLoading) {
       return (
-        <div className="relative min-h-[calc(100dvh-9rem)] overflow-hidden rounded-xl border border-[#d9e0e7] bg-white/50 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="relative min-h-[calc(100dvh-9rem)] overflow-hidden rounded-xl border border-[#d9e0e7] bg-surface/50 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
           <PanteonLoadingState
-            className="rounded-xl bg-white/70 backdrop-blur-sm"
+            className="rounded-xl bg-surface/70 backdrop-blur-sm"
             markSize="lg"
             title="Carregando fila operacional do C2X"
             variant="overlay"
@@ -658,7 +658,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
     }
 
     return (
-      <div className="rounded-xl border border-slate-200/70 bg-white p-8 text-center text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="rounded-xl border border-line/70 bg-surface p-8 text-center text-sm text-ink-muted shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
         {queueError ?? "Aguardando dados reais do C2X para montar a fila de cobrança."}
       </div>
     );
@@ -841,7 +841,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
                   setBackToCentral(false);
                 }}
                 aria-label="Voltar à Central de Propostas"
-                className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#FFF9EF] text-[#7A5E2C] transition-colors hover:bg-[#FCF3E2]"
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#FFF9EF] dark:bg-[#A07C3B]/10 text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#FCF3E2] dark:hover:bg-[#A07C3B]/15"
               >
                 <ArrowLeft className="size-4" aria-hidden="true" />
               </button>
@@ -856,7 +856,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
                   setBackToAtendimento(false);
                 }}
                 aria-label="Voltar ao atendimento"
-                className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#FFF9EF] text-[#7A5E2C] transition-colors hover:bg-[#FCF3E2]"
+                className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#FFF9EF] dark:bg-[#A07C3B]/10 text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#FCF3E2] dark:hover:bg-[#A07C3B]/15"
               >
                 <ArrowLeft className="size-4" aria-hidden="true" />
               </button>
@@ -864,7 +864,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
           ) : null}
           <nav
             aria-label="Atalhos do Hades"
-            className="inline-flex items-center gap-1 rounded-xl border border-[#d9e0e7] bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
+            className="inline-flex items-center gap-1 rounded-xl border border-[#d9e0e7] bg-surface p-1 shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
           >
             {attendanceSections.map((section) => {
               const Icon = section.icon;
@@ -885,8 +885,8 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
                     }}
                     className={`inline-flex size-9 items-center justify-center rounded-lg border text-sm transition focus:outline-none focus:ring-2 focus:ring-[#A07C3B]/35 ${
                       isActive
-                        ? "border-[#A07C3B]/35 bg-[#F8F3E8] text-[#8A6A2F]"
-                        : "border-transparent bg-white text-slate-500 hover:border-[#d9e0e7] hover:text-slate-900"
+                        ? "border-transparent panteon-module-sidebar__active-icon"
+                        : "border-transparent bg-surface text-ink-muted hover:border-line hover:text-ink"
                     }`}
                   >
                     <Icon className="size-4" aria-hidden="true" />
@@ -932,7 +932,7 @@ export function AttendancePage({ clients, loadFromC2x = false }: AttendancePageP
                     type="button"
                     onClick={() => setQueueCollapsed(false)}
                     aria-label="Expandir fila diária"
-                    className="flex size-11 items-center justify-center rounded-xl border border-[#d9e0e7] bg-white text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/35 hover:text-[#8A6A2F]"
+                    className="flex size-11 items-center justify-center rounded-xl border border-[#d9e0e7] bg-surface text-ink-muted shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] transition-colors hover:border-[#A07C3B]/35 hover:text-[#8A6A2F]"
                   >
                     <PanelLeftOpen className="size-4" aria-hidden="true" />
                   </button>
@@ -1141,14 +1141,14 @@ function AgreementsPanel({
   onSelectClient: (clientId: string) => void;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-[#d9e0e7] bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="overflow-hidden rounded-xl border border-[#d9e0e7] bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)]">
       <div className="border-b border-[#edf1f5] px-5 py-4">
-        <p className="text-[11px] font-semibold tracking-[0.18em] text-slate-400">
+        <p className="text-[11px] font-semibold tracking-[0.18em] text-ink-muted">
           Hades
         </p>
         <div className="mt-1 flex items-center justify-between gap-3">
-          <h2 className="text-base font-semibold text-slate-950">Acordos feitos</h2>
-          <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+          <h2 className="text-base font-semibold text-ink">Acordos feitos</h2>
+          <span className="rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-soft">
             {clients.length}
           </span>
         </div>
@@ -1156,7 +1156,7 @@ function AgreementsPanel({
 
       <div className="max-h-[calc(100dvh-18rem)] overflow-y-auto p-3">
         {clients.length === 0 ? (
-          <div className="rounded-lg border border-dashed border-[#d9e0e7] px-4 py-8 text-center text-sm text-slate-500">
+          <div className="rounded-lg border border-dashed border-[#d9e0e7] px-4 py-8 text-center text-sm text-ink-muted">
             Nenhum acordo feito encontrado na fila carregada.
           </div>
         ) : (
@@ -1174,37 +1174,37 @@ function AgreementsPanel({
                   onClick={() => onSelectClient(client.id)}
                   className={`w-full rounded-lg border px-4 py-3 text-left transition focus:outline-none focus:ring-2 focus:ring-[#A07C3B]/25 ${
                     isActive
-                      ? "border-[#A07C3B]/45 bg-[#FFF9EF]"
-                      : "border-[#edf1f5] bg-white hover:border-[#d9e0e7] hover:bg-slate-50"
+                      ? "border-[#A07C3B]/45 bg-[#FFF9EF] dark:bg-[#A07C3B]/10"
+                      : "border-[#edf1f5] bg-surface hover:border-[#d9e0e7] hover:bg-subtle"
                   }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-slate-950">
+                      <p className="truncate text-sm font-semibold text-ink">
                         {client.nome}
                       </p>
-                      <p className="mt-1 truncate text-xs text-slate-500">
+                      <p className="mt-1 truncate text-xs text-ink-muted">
                         {agreement?.enterprise ?? client.carteira.empreendimento}
                       </p>
                     </div>
-                    <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-inset ring-emerald-100">
+                    <span className="rounded-full bg-emerald-50 dark:bg-emerald-500/12 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-100 dark:ring-emerald-500/25">
                       {status}
                     </span>
                   </div>
 
-                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-slate-500">
+                  <div className="mt-3 grid grid-cols-3 gap-2 text-xs text-ink-muted">
                     <div>
-                      <p className="font-semibold text-slate-900">{amount}</p>
+                      <p className="font-semibold text-ink">{amount}</p>
                       <p>valor</p>
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-900">
+                      <p className="font-semibold text-ink">
                         {agreement?.installmentsCount ?? client.agreement?.installmentsCount ?? "-"}
                       </p>
                       <p>parcelas</p>
                     </div>
                     <div>
-                      <p className="font-semibold text-slate-900">{client.atrasoDias}d</p>
+                      <p className="font-semibold text-ink">{client.atrasoDias}d</p>
                       <p>atraso</p>
                     </div>
                   </div>

@@ -92,7 +92,7 @@ export function ConversationHeader({
   // mensagens do canal pelo termo e mostra so as que casam (com contador).
   if (isSearchOpen) {
     return (
-      <header className="flex h-16 items-center gap-3 border-b border-[#d9e0ea] bg-white px-4">
+      <header className="flex h-16 items-center gap-3 border-b border-line bg-surface px-4">
         <Search
           aria-hidden="true"
           className="shrink-0 text-[var(--uix-text-muted)]"
@@ -101,7 +101,7 @@ export function ConversationHeader({
         <input
           aria-label={`Buscar mensagens em ${channel.name}`}
           autoFocus
-          className="h-9 min-w-0 flex-1 rounded-md border border-[#d9e0ea] bg-white px-3 text-sm text-[var(--uix-text-primary)] outline-none transition placeholder:text-[#9aa6b5] focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+          className="h-9 min-w-0 flex-1 rounded-md border border-line bg-surface px-3 text-sm text-[var(--uix-text-primary)] outline-none transition placeholder:text-ink-muted focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
           onChange={(event) => onSearchChange(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === "Escape") {
@@ -126,7 +126,7 @@ export function ConversationHeader({
   }
 
   return (
-    <header className="grid h-16 grid-cols-[minmax(12rem,1fr)_auto_auto] items-center gap-4 border-b border-[#d9e0ea] bg-white px-4">
+    <header className="grid h-16 grid-cols-[minmax(12rem,1fr)_auto_auto] items-center gap-4 border-b border-line bg-surface px-4">
       <div className="flex min-w-0 items-center gap-3">
         <ChannelAvatar channel={channel} />
         <div className="min-w-0">
@@ -260,10 +260,10 @@ function CallHistoryMenu({
   const visibleEntries = entries.slice(0, 10);
 
   return (
-    <div className="absolute right-0 top-10 z-[90] w-[23rem] overflow-hidden rounded-xl border border-[#d9e0ea] bg-white text-[#101820] shadow-[0_22px_60px_rgba(16,24,32,0.22)]">
-      <div className="border-b border-[#edf1f6] px-4 py-3">
+    <div className="absolute right-0 top-10 z-[90] w-[23rem] overflow-hidden rounded-xl border border-line bg-surface text-ink shadow-[0_22px_60px_rgba(16,24,32,0.22)]">
+      <div className="border-b border-line px-4 py-3">
         <p className="m-0 text-sm font-semibold">Chamadas</p>
-        <p className="m-0 mt-0.5 text-xs text-[#667085]">
+        <p className="m-0 mt-0.5 text-xs text-ink-muted">
           {entries.length > 0
             ? `${entries.length} registro${entries.length === 1 ? "" : "s"} recentes`
             : "Nenhuma chamada registrada"}
@@ -281,10 +281,10 @@ function CallHistoryMenu({
         </div>
       ) : (
         <div className="px-4 py-8 text-center">
-          <p className="m-0 text-sm font-semibold text-[#344054]">
+          <p className="m-0 text-sm font-semibold text-ink">
             Sem chamadas ainda
           </p>
-          <p className="m-0 mt-1 text-xs leading-5 text-[#667085]">
+          <p className="m-0 mt-1 text-xs leading-5 text-ink-muted">
             Chamadas recebidas, perdidas e realizadas aparecerao aqui.
           </p>
         </div>
@@ -304,7 +304,7 @@ function CallHistoryMenuItem({
 
   return (
     <button
-      className="grid w-full grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-2 py-2 text-left outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      className="grid w-full grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg px-2 py-2 text-left outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
       onClick={() => onReturnCall(entry)}
       type="button"
     >
@@ -324,21 +324,21 @@ function CallHistoryMenuItem({
         {entry.callerAvatarUrl ? null : copy.icon}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-sm font-semibold text-[#101820]">
+        <span className="block truncate text-sm font-semibold text-ink">
           {entry.callerName}
         </span>
         <span className={`mt-0.5 block truncate text-xs ${copy.textClass}`}>
           {copy.title}
         </span>
-        <span className="mt-0.5 block truncate text-[0.68rem] text-[#667085]">
+        <span className="mt-0.5 block truncate text-[0.68rem] text-ink-muted">
           {entry.channelName}
         </span>
       </span>
       <span className="text-right">
-        <span className="block text-xs font-bold text-[#101820]">
+        <span className="block text-xs font-bold text-ink">
           {formatCallHistoryTime(entry.startedAt)}
         </span>
-        <span className="mt-1 inline-flex rounded-full border border-[#d9e0ea] px-2 py-0.5 text-[0.62rem] font-semibold text-[#667085]">
+        <span className="mt-1 inline-flex rounded-full border border-line px-2 py-0.5 text-[0.62rem] font-semibold text-ink-muted">
           Retornar
         </span>
       </span>
@@ -369,9 +369,9 @@ function getCallHistoryCopy(entry: HermesCallHistoryEntry) {
 
   if (entry.direction === "outgoing") {
     return {
-      avatarClass: "bg-[#f2f4f7] text-[#344054]",
+      avatarClass: "bg-subtle text-ink",
       icon: <PhoneOutgoing aria-hidden="true" size={17} />,
-      textClass: "text-[#667085]",
+      textClass: "text-ink-muted",
       title: `Ligacao de ${kindLabel} realizada`,
     };
   }
@@ -379,7 +379,7 @@ function getCallHistoryCopy(entry: HermesCallHistoryEntry) {
   return {
     avatarClass: "bg-[#ecfdf3] text-emerald-700",
     icon: <PhoneIncoming aria-hidden="true" size={17} />,
-    textClass: "text-[#667085]",
+    textClass: "text-ink-muted",
     title: `Ligacao de ${kindLabel} recebida`,
   };
 }
@@ -461,7 +461,7 @@ function ParticipantStack({
           </Tooltip>
         ))}
         {hiddenCount > 0 ? (
-          <span className="-ml-2 grid h-8 min-w-8 place-items-center rounded-full border-2 border-white bg-[#f8fafc] px-2 text-[0.68rem] font-semibold text-[#667085] shadow-sm">
+          <span className="-ml-2 grid h-8 min-w-8 place-items-center rounded-full border-2 border-white bg-subtle px-2 text-[0.68rem] font-semibold text-ink-muted shadow-sm">
             +{hiddenCount}
           </span>
         ) : null}

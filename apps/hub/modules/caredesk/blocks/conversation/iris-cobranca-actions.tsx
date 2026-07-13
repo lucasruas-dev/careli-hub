@@ -85,14 +85,14 @@ export function IrisCobrancaCloseModal({
       title="Encerrar atendimento"
     >
       <label className="block">
-        <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+        <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
           Assunto do atendimento{" "}
           <span className="font-normal text-rose-500">(obrigatório)</span>
         </span>
         <select
           value={subject}
           onChange={(event) => setSubject(event.target.value)}
-          className="h-9 w-full rounded-lg border border-slate-200/70 bg-white px-2 text-sm text-slate-800 outline-none focus:border-[#A07C3B]/40"
+          className="h-9 w-full rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40"
         >
           <option value="">Selecione o assunto…</option>
           {subjectOptions.map((option) => (
@@ -103,14 +103,14 @@ export function IrisCobrancaCloseModal({
         </select>
       </label>
       <label className="block">
-        <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+        <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
           Motivo do encerramento{" "}
           <span className="font-normal text-rose-500">(obrigatório)</span>
         </span>
         <select
           value={reason}
           onChange={(event) => setReason(event.target.value)}
-          className="h-9 w-full rounded-lg border border-slate-200/70 bg-white px-2 text-sm text-slate-800 outline-none focus:border-[#A07C3B]/40"
+          className="h-9 w-full rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40"
         >
           <option value="">Selecione o motivo…</option>
           {IRIS_CLOSE_REASON_OPTIONS.map((option) => (
@@ -121,16 +121,16 @@ export function IrisCobrancaCloseModal({
         </select>
       </label>
       <label className="block">
-        <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+        <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
           Observação do encerramento{" "}
-          <span className="font-normal text-slate-400">(opcional)</span>
+          <span className="font-normal text-ink-muted">(opcional)</span>
         </span>
         <textarea
           value={note}
           onChange={(event) => setNote(event.target.value)}
           rows={3}
           placeholder="Resumo do desfecho, combinados, próximos passos…"
-          className="w-full resize-none rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#A07C3B]/40"
+          className="w-full resize-none rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40"
         />
       </label>
       <ModalFooter
@@ -218,20 +218,20 @@ export function IrisCobrancaTransferModal({
       title="Direcionar atendimento"
     >
       {loading ? (
-        <p className="flex items-center gap-2 py-3 text-xs text-slate-400">
+        <p className="flex items-center gap-2 py-3 text-xs text-ink-muted">
           <Loader2 className="size-4 animate-spin" aria-hidden="true" />
           Carregando colaboradores e setores…
         </p>
       ) : (
         <>
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+            <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
               Colaborador
             </span>
             <select
               value={userId}
               onChange={(event) => setUserId(event.target.value)}
-              className="h-9 w-full rounded-lg border border-slate-200/70 bg-white px-2 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/40"
+              className="h-9 w-full rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40"
             >
               <option value="">Sem colaborador específico</option>
               {operators.map((operator) => (
@@ -243,14 +243,14 @@ export function IrisCobrancaTransferModal({
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+            <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
               Setor / fila{" "}
-              <span className="font-normal text-slate-400">(opcional)</span>
+              <span className="font-normal text-ink-muted">(opcional)</span>
             </span>
             <select
               value={queueId}
               onChange={(event) => setQueueId(event.target.value)}
-              className="h-9 w-full rounded-lg border border-slate-200/70 bg-white px-2 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/40"
+              className="h-9 w-full rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40"
             >
               <option value="">Manter na fila atual</option>
               {queues.map((queue) => (
@@ -261,7 +261,7 @@ export function IrisCobrancaTransferModal({
             </select>
           </label>
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+            <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
               Motivo
             </span>
             <textarea
@@ -269,7 +269,7 @@ export function IrisCobrancaTransferModal({
               onChange={(event) => setReason(event.target.value)}
               rows={2}
               placeholder="Por que está direcionando este atendimento?"
-              className="w-full resize-none rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#A07C3B]/40"
+              className="w-full resize-none rounded-lg border border-line/70 bg-surface px-3 py-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40"
             />
           </label>
         </>
@@ -314,22 +314,22 @@ function ModalShell({
         onClick={onCancel}
         className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
       />
-      <div className="relative z-10 flex w-full max-w-md flex-col gap-3 rounded-2xl border border-slate-200/70 bg-white p-5 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+      <div className="relative z-10 flex w-full max-w-md flex-col gap-3 rounded-2xl border border-line/70 bg-surface p-5 shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2.5">
             <span className="flex size-8 items-center justify-center rounded-lg bg-[#A07C3B] text-white">
               {icon}
             </span>
             <div>
-              <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-              <p className="text-[11px] text-slate-500">{subtitle}</p>
+              <h2 className="text-base font-semibold text-ink">{title}</h2>
+              <p className="text-[11px] text-ink-muted">{subtitle}</p>
             </div>
           </div>
           <button
             type="button"
             onClick={onCancel}
             aria-label="Fechar"
-            className="flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
+            className="flex size-8 items-center justify-center rounded-lg text-ink-muted hover:bg-subtle"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -360,7 +360,7 @@ function ModalFooter({
       <button
         type="button"
         onClick={onCancel}
-        className="inline-flex h-9 items-center rounded-lg border border-slate-200/70 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+        className="inline-flex h-9 items-center rounded-lg border border-line/70 bg-surface px-4 text-sm font-medium text-ink hover:bg-subtle"
       >
         Cancelar
       </button>

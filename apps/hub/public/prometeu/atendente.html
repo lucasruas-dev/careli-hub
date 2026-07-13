@@ -1,0 +1,869 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prometeu · Atendente</title>
+<style>
+  :root{
+    --canvas:#f7f8fa; --panel:#ffffff; --subtle:#eef1f4; --line:#dce2ea; --line-strong:#c5ceda;
+    --text:#121722; --text2:#485466; --muted:#667085; --inverse:#f7f8fa;
+    --brand:#a07c3b; --brand-soft:rgba(160,124,59,.12);
+    --ok:#14804a; --ok-soft:rgba(20,128,74,.12);
+    --warn:#b7791f; --warn-soft:rgba(183,121,31,.15);
+    --danger:#c24135; --danger-soft:rgba(194,65,53,.14);
+    --info:#2563eb; --info-soft:rgba(37,99,235,.10);
+    --shadow:0 8px 24px rgb(18 23 34 / 0.10); --shadow-sm:0 2px 6px rgb(18 23 34 / 0.08);
+  }
+  body.dark{
+    --canvas:#101211; --panel:#181a19; --subtle:#26292a; --line:#2b2e2c; --line-strong:#3a3e3c;
+    --text:#e9edeb; --text2:#cfd3d0; --muted:#98a09a; --inverse:#101211;
+    --brand:#cba25a; --brand-soft:rgba(203,162,90,.16);
+    --ok:#3fae74; --ok-soft:rgba(63,174,116,.16);
+    --warn:#d69a3d; --warn-soft:rgba(214,154,61,.18);
+    --danger:#e0655a; --danger-soft:rgba(224,101,90,.18);
+    --info:#5b8def;
+    --shadow:0 10px 30px rgb(0 0 0 / .5); --shadow-sm:0 2px 8px rgb(0 0 0 / .4);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--canvas);color:var(--text);font-family:Arial,Helvetica,sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:16px 18px}
+
+  header{display:flex;align-items:center;gap:16px;margin-bottom:14px;flex-shrink:0}
+  .mod-icon{width:44px;height:44px;border-radius:11px;background:#232832;color:#dce2ea;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .mod-icon svg{width:23px;height:23px}
+  .brand h1{font-size:20px;font-weight:700}
+  .brand .sub{font-size:11px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:1px}
+  .postos{margin-left:22px;display:flex;gap:4px;background:var(--subtle);border:1px solid var(--line);border-radius:12px;padding:4px}
+  .postos button{border:0;background:transparent;color:var(--muted);cursor:pointer;font:inherit;font-size:14px;font-weight:700;padding:10px 20px;border-radius:9px;transition:all .2s}
+  .postos button.on{background:var(--text);color:var(--inverse)}
+  .postos button:disabled{opacity:.32;cursor:not-allowed}
+  .role-tag{margin-left:12px;font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:5px 11px;border-radius:20px;background:var(--subtle);color:var(--muted);border:1px solid var(--line)}
+  .h-right{margin-left:auto;display:flex;align-items:center;gap:18px}
+  .atend{display:flex;align-items:center;gap:9px;font-size:14px;font-weight:700}
+  .atend .av{width:34px;height:34px;border-radius:9px;background:var(--subtle);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:12px}
+  .atend small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+  .clock{font-size:20px;font-weight:700;font-variant-numeric:tabular-nums}
+  .tbtn{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .tbtn svg{width:18px;height:18px}
+
+  .grid{flex:1;display:grid;grid-template-columns:1fr 430px;gap:16px;min-height:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;min-height:0}
+  .card-head{display:flex;align-items:center;gap:12px;padding:15px 20px;border-bottom:1px solid var(--line);flex-shrink:0}
+  .card-head h2{font-size:13px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .card-head .badge{margin-left:auto;font-size:13px;color:var(--muted)}
+  .card-head .badge b{color:var(--text);font-size:16px}
+
+  /* tabs fila / retorno */
+  .fila-tit{padding:14px 18px 0;font-size:12px;font-weight:800;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);flex-shrink:0}
+  .ftabs{display:flex;gap:4px;padding:8px 16px 0;flex-shrink:0}
+  .ftabs button{border:0;background:transparent;color:var(--muted);cursor:pointer;font:inherit;font-size:13.5px;font-weight:700;padding:9px 16px;border-radius:9px 9px 0 0;transition:all .2s;border-bottom:2px solid transparent}
+  .ftabs button.on{color:var(--text);border-bottom-color:var(--text)}
+  .ftabs .n{font-size:11px;background:var(--subtle);border:1px solid var(--line);border-radius:20px;padding:1px 8px;margin-left:6px;color:var(--muted)}
+
+  .fila{flex:1;overflow-y:auto;padding:6px 12px}
+  .frow{display:flex;align-items:center;gap:14px;padding:12px 10px;border-radius:12px;transition:background .15s}
+  .frow:hover{background:var(--subtle)}
+  .fpos{width:34px;height:34px;border-radius:9px;background:var(--subtle);border:1px solid var(--line);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:var(--muted);flex-shrink:0}
+  .frow.prox .fpos{background:var(--text);color:var(--inverse);border-color:var(--text)}
+  .fav{width:42px;height:42px;border-radius:11px;background:var(--subtle);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:15px;flex-shrink:0}
+  .finfo{flex:1;min-width:0}
+  .fnome{font-size:16px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .fimob{font-size:13px;color:var(--muted);margin-top:2px}
+  .fwait{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;white-space:nowrap}
+  .fwait.old{color:var(--danger)}
+  .fcall{border:1px solid var(--line-strong);background:var(--panel);color:var(--text2);border-radius:10px;padding:9px 16px;font-size:14px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s}
+  .fcall:hover{background:var(--text);color:var(--inverse);border-color:var(--text)}
+  .fcall.no-show{border-color:var(--danger);color:var(--danger);background:var(--danger-soft)}
+  .fcall.no-show:hover{background:var(--danger);color:#fff;border-color:var(--danger)}
+  .fila-empty{padding:40px;text-align:center;color:var(--muted);font-size:15px}
+
+  .cta{display:flex;gap:12px;margin:14px;flex-shrink:0}
+  .chamar-prox{flex:1;border:0;border-radius:14px;background:var(--text);color:var(--inverse);font-size:19px;font-weight:800;padding:19px;cursor:pointer;box-shadow:var(--shadow);display:flex;align-items:center;justify-content:center;gap:12px;transition:transform .1s}
+  .chamar-prox:hover{transform:translateY(-1px)} .chamar-prox:active{transform:translateY(1px)}
+  .chamar-prox svg{width:24px;height:24px}
+  .chamar-prox:disabled{opacity:.4;cursor:not-allowed;transform:none}
+  .btn-ocupado{flex-shrink:0;border:1.5px solid var(--line-strong);background:var(--panel);color:var(--text2);border-radius:14px;font-size:15px;font-weight:700;padding:0 24px;cursor:pointer;display:flex;align-items:center;gap:9px;transition:all .15s}
+  .btn-ocupado svg{width:19px;height:19px}
+  .btn-ocupado.on{background:var(--warn);border-color:var(--warn);color:#fff}
+  .btn-bipar{flex:1;border:1.5px solid var(--line-strong);background:var(--panel);color:var(--text);border-radius:14px;font-size:17px;font-weight:800;padding:19px;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:11px;transition:all .15s}
+  .btn-bipar svg{width:23px;height:23px}
+  .btn-bipar:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-soft)}
+  /* visibilidade por posto/papel */
+  body:not(.can-chamar) #btn-prox,body:not(.can-chamar) #btn-ocupado{display:none}
+  body:not(.can-bipar) #btn-bipar{display:none}
+  /* selo proposta personalizada */
+  .perso-badge{display:inline-flex;align-items:center;gap:4px;font-size:10.5px;font-weight:800;color:var(--brand);background:var(--brand-soft);border:1px solid var(--brand);border-radius:20px;padding:2px 8px;margin-left:8px;vertical-align:middle}
+  .frow.perso{box-shadow:inset 3px 0 0 var(--brand)}
+
+  .side{display:flex;flex-direction:column;gap:16px;min-height:0}
+  .atual{flex-shrink:0;padding:22px;text-align:center}
+  .atual.ativa{border-color:var(--text);box-shadow:0 0 0 2px var(--text),var(--shadow-sm)}
+  .atual .ring{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:800;letter-spacing:.14em;text-transform:uppercase;color:var(--text2)}
+  .atual .ring .pulse{width:10px;height:10px;border-radius:50%;background:var(--info);animation:pulse 1.4s infinite}
+  @keyframes pulse{50%{opacity:.35;box-shadow:0 0 0 6px var(--info-soft)}}
+  .atual .anome{font-size:34px;font-weight:800;margin-top:12px;line-height:1.1}
+  .atual .aimob{font-size:14px;color:var(--muted);margin-top:4px}
+  .atual .adest{display:inline-flex;align-items:center;gap:8px;margin-top:16px;background:var(--info-soft);color:var(--info);border:1px solid var(--info);border-radius:30px;padding:9px 22px;font-size:18px;font-weight:800}
+  .atual .atimer{font-size:13px;color:var(--muted);margin-top:12px;font-variant-numeric:tabular-nums}
+  .atual .acts{display:flex;gap:10px;margin-top:18px}
+  .atual .acts button{flex:1;border-radius:11px;padding:14px 6px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--line-strong);background:var(--panel);color:var(--text2)}
+  .b-rechamar:hover{background:var(--subtle)}
+  .b-ausencia{background:var(--danger-soft)!important;color:var(--danger)!important;border-color:var(--danger)!important}
+  .b-ausencia:hover{background:var(--danger)!important;color:#fff!important}
+  .b-compareceu{background:var(--ok-soft)!important;color:var(--ok)!important;border-color:var(--ok)!important}
+  .b-compareceu:hover{background:var(--ok)!important;color:#fff!important}
+  .atual-vazio{padding:42px 22px;text-align:center;color:var(--muted)}
+
+  /* mesas 3 estados (cockpit) */
+  .mesas-strip{display:none;flex-wrap:wrap;gap:8px;padding:14px 18px}
+  /* minha mesa (só o atendente) */
+  .minha-mesa-card{display:none}
+  body.can-atender .minha-mesa-card{display:flex;flex-direction:column}
+  .mm-badge{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;padding:4px 11px;border-radius:20px;background:var(--subtle);color:var(--muted);border:1px solid var(--line)}
+  .mm-body{display:flex;align-items:center;gap:16px;padding:16px 18px}
+  .mm-num{width:66px;height:66px;border-radius:16px;background:var(--subtle);color:var(--text2);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:800;flex-shrink:0;border:1.5px solid var(--line-strong)}
+  .mm-lb{font-size:12px;color:var(--muted)}
+  .mm-sub{font-size:16px;font-weight:700;margin-top:2px}
+  .minha-mesa-card.atendimento .mm-num,.minha-mesa-card.atendimento .mm-badge{background:var(--ok-soft);color:var(--ok);border-color:var(--ok)}
+  .minha-mesa-card.ocupada .mm-num,.minha-mesa-card.ocupada .mm-badge{background:var(--warn-soft);color:var(--warn);border-color:var(--warn)}
+  /* fila do salão (em negociação): só o salão de vendas vê */
+  .negociacao-card{display:none;flex-direction:column;min-height:0;max-height:52vh}
+  body[data-posto="salao"] .negociacao-card{display:flex}
+  .negociacao-card .fila{padding-bottom:8px}
+  .neg-chip{flex-shrink:0;font-size:11px;font-weight:600;color:var(--ok);background:var(--ok-soft);border:1px solid color-mix(in srgb,var(--ok) 35%,transparent);border-radius:20px;padding:3px 10px}
+  .neg-time{flex-shrink:0;font-size:12.5px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--muted)}
+  /* botão WhatsApp nas filas */
+  .wpp-btn{flex-shrink:0;width:34px;height:34px;border-radius:9px;border:1px solid color-mix(in srgb,#25d366 45%,var(--line));background:color-mix(in srgb,#25d366 12%,transparent);color:#1ba64e;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .15s}
+  .wpp-btn:hover{background:#25d366;color:#fff;border-color:#25d366}
+  .wpp-btn.big{width:auto;gap:8px;padding:0 16px;height:42px;font:inherit;font-size:14px;font-weight:700}
+  /* nome clicável (abre ficha) */
+  .fnome.link,.unome.link{cursor:pointer}
+  .fnome.link:hover,.unome.link:hover{text-decoration:underline;text-underline-offset:2px}
+  .mchip{width:54px;height:48px;border-radius:10px;border:1.5px solid var(--line-strong);background:var(--subtle);display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--muted)}
+  .mchip .mn{font-size:15px;font-weight:800}
+  .mchip .ms{font-size:8px;margin-top:1px;letter-spacing:.02em}
+  .mchip.atendimento{border-color:var(--ok);background:var(--ok-soft);color:var(--ok)}
+  .mchip.ocupada{border-color:var(--warn);background:var(--warn-soft);color:var(--warn)}
+
+  .ult{flex:1;overflow-y:auto;padding:6px 14px 14px}
+  .ucall{display:flex;align-items:center;gap:11px;padding:9px 6px;border-bottom:1px solid var(--line)}
+  .ucall:last-child{border-bottom:0}
+  .uav{width:32px;height:32px;border-radius:8px;background:var(--subtle);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:11px}
+  .uinfo{flex:1;min-width:0}
+  .unome{font-size:13.5px;font-weight:700}
+  .udest{font-size:11.5px;color:var(--muted)}
+  .ust{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px}
+  .ust.ok{background:var(--ok-soft);color:var(--ok)}
+  .ust.aus{background:var(--danger-soft);color:var(--danger)}
+  .ust.dir{background:var(--info-soft);color:var(--info)}
+
+  /* ===== ATENDIMENTO (inline na aba OU janela flutuante Document PiP) ===== */
+  #atendimento{display:none;position:fixed;bottom:20px;right:20px;width:392px;background:var(--panel);border:1px solid var(--line);border-radius:18px;box-shadow:0 24px 60px rgba(0,0,0,.42);z-index:95;flex-direction:column;overflow:hidden}
+  /* INLINE na aba (não popado): tela de atendimento centralizada, esconde a fila */
+  body.em-atendimento:not(.pip-out) #atendimento{display:flex;top:78px;bottom:22px;left:50%;transform:translateX(-50%);right:auto;width:min(720px,94vw)}
+  body.em-atendimento:not(.pip-out) .grid{display:none}
+  /* POPADO pra janela flutuante: a aba volta a mostrar a fila (card foi pra fora) */
+  body.em-atendimento.pip-out #atendimento{display:none}
+  /* dentro da janela flutuante do SO (Document PiP): preenche a janela */
+  body.pip-solo{margin:0;background:var(--panel)}
+  body.pip-solo #atendimento{display:flex!important;position:static;width:100%;height:100vh;border:0;border-radius:0;box-shadow:none;transform:none}
+  body.pip-solo .pip-head{cursor:default}
+  body.pip-solo .pip-body{flex:1}
+  body.pip-solo .at-actions{margin-top:auto}
+  body.pip-solo .b-popout{display:none}
+  .pip-head-r{display:flex;align-items:center;gap:12px}
+  .b-popout{background:rgba(255,255,255,.22);border:0;color:#fff;border-radius:8px;width:28px;height:28px;display:flex;align-items:center;justify-content:center;cursor:pointer}
+  .b-popout:hover{background:rgba(255,255,255,.38)}
+  .pip-head{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;background:var(--ok);color:#fff;user-select:none}
+  .pip-head .em{display:flex;align-items:center;gap:8px;font-size:11.5px;font-weight:800;letter-spacing:.1em;text-transform:uppercase}
+  .pip-head .em .pulse{width:9px;height:9px;border-radius:50%;background:#fff;animation:pulse2 1.3s infinite}
+  @keyframes pulse2{50%{opacity:.4}}
+  .pip-head .cr{font-size:27px;font-weight:800;font-variant-numeric:tabular-nums}
+  .pip-head.paused{background:var(--warn)}
+  .pip-body{padding:16px 18px}
+  .at-cli{display:flex;align-items:center;gap:12px}
+  .at-av{width:46px;height:46px;border-radius:12px;background:var(--subtle);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:16px;flex-shrink:0}
+  .at-nome{font-size:19px;font-weight:800}
+  .at-sub{font-size:12.5px;color:var(--muted);margin-top:2px}
+  .u-wrap{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .u-chip{font-size:12.5px;font-weight:700;font-family:Consolas,monospace;background:var(--subtle);border:1px solid var(--line);color:var(--text);padding:4px 9px;border-radius:7px}
+  .pip-perso{display:inline-flex;align-items:center;gap:6px;margin-top:12px;font-size:11.5px;font-weight:800;color:var(--brand);background:var(--brand-soft);border:1px solid var(--brand);border-radius:20px;padding:4px 11px}
+  .at-actions{display:flex;gap:8px;padding:2px 18px 16px}
+  .at-actions button{flex:1;border-radius:11px;padding:12px 4px;font-size:13px;font-weight:700;cursor:pointer;border:1.5px solid var(--line-strong);background:var(--panel);color:var(--text2)}
+  .at-actions .b-pausar:hover{background:var(--warn-soft);border-color:var(--warn);color:var(--warn)}
+  .at-actions .b-direcionar:hover{background:var(--info-soft);border-color:var(--info);color:var(--info)}
+  .at-actions .b-finalizar{background:var(--ok);border-color:var(--ok);color:#fff}
+  .at-actions .b-finalizar:hover{filter:brightness(1.08)}
+
+  /* modal direcionar */
+  .modal-ov{position:fixed;inset:0;background:rgba(18,23,34,.5);backdrop-filter:blur(2px);z-index:100;display:none;align-items:center;justify-content:center;padding:24px}
+  .modal-ov.open{display:flex}
+  .modal{background:var(--panel);border-radius:16px;box-shadow:0 24px 60px rgb(18 23 34 /.3);width:min(480px,94vw);padding:24px}
+  .modal h3{font-size:19px;font-weight:800;margin-bottom:4px}
+  .modal p{font-size:13px;color:var(--muted);margin-bottom:18px}
+  .modal label{display:block;font-size:12px;font-weight:700;color:var(--text2);margin:14px 0 7px;letter-spacing:.03em}
+  .dir-opts{display:flex;flex-wrap:wrap;gap:8px}
+  .dir-opts button{border:1px solid var(--line);background:var(--panel);color:var(--text2);border-radius:10px;padding:10px 15px;font-size:13.5px;font-weight:700;cursor:pointer}
+  .dir-opts button.on{background:var(--info-soft);color:var(--info);border-color:var(--info)}
+  .modal textarea{width:100%;min-height:80px;border:1px solid var(--line);border-radius:11px;background:var(--subtle);color:var(--text);padding:12px;font:inherit;font-size:14px;resize:vertical}
+  .modal-acts{display:flex;gap:10px;margin-top:20px}
+  .modal-acts button{flex:1;border-radius:11px;padding:13px;font-size:14px;font-weight:700;cursor:pointer;border:1px solid var(--line-strong);background:var(--panel);color:var(--text2)}
+  .modal-acts .conf{background:var(--info);border-color:var(--info);color:#fff}
+  .modal select{width:100%;border:1px solid var(--line);border-radius:11px;background:var(--subtle);color:var(--text);padding:12px;font:inherit;font-size:14px}
+  .bip-scan{display:flex;align-items:center;gap:14px;border:1.5px dashed var(--line-strong);border-radius:12px;padding:16px;background:var(--subtle)}
+  .bip-scan svg{width:34px;height:34px;color:var(--text2);flex-shrink:0}
+  .bip-scan.lido{border-style:solid;border-color:var(--ok);background:var(--ok-soft)}
+  .bip-scan.lido svg{color:var(--ok)}
+  .bs-nome{font-size:16px;font-weight:800}
+  .bs-cod{font-size:12px;color:var(--muted);font-family:Consolas,monospace;margin-top:2px}
+  .pa-shot{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;border:1.5px dashed var(--line-strong);border-radius:12px;padding:22px;cursor:pointer;color:var(--text2);background:var(--subtle);transition:all .15s}
+  .pa-shot:hover{border-color:var(--brand);color:var(--brand)}
+  .pa-shot svg{width:30px;height:30px}
+  .pa-shot.ok{border-style:solid;border-color:var(--ok);background:var(--ok-soft);color:var(--ok)}
+  .chk{display:flex;align-items:center;gap:9px;cursor:pointer;font-size:14px;font-weight:700;color:var(--text);margin-top:14px}
+  .chk small{font-weight:400;color:var(--muted)}
+  .chk .box{width:20px;height:20px;border:1.5px solid var(--line-strong);border-radius:6px;flex-shrink:0;display:flex;align-items:center;justify-content:center}
+  .chk .box.on{background:var(--brand);border-color:var(--brand)}
+  .chk .box.on::after{content:"✓";color:#fff;font-size:13px;font-weight:900}
+  /* modal BIPAR em destaque (mesmo peso da chamada) */
+  #bip-modal{background:rgba(8,11,17,.62);backdrop-filter:blur(7px);padding:40px}
+  #bip-modal .modal{width:min(640px,94vw);border-radius:24px;box-shadow:0 40px 100px rgba(0,0,0,.5);padding:38px 40px 34px}
+  #bip-modal h3{font-size:26px}
+  #bip-modal>.modal>p{font-size:14.5px;margin-bottom:22px}
+  #bip-modal .bip-scan{padding:22px 24px;gap:18px;border-radius:16px}
+  #bip-modal .bip-scan svg{width:44px;height:44px}
+  #bip-modal .bs-nome{font-size:24px}
+  #bip-modal .bs-cod{font-size:13px}
+  #bip-modal .modal-acts{margin-top:26px;gap:14px}
+  #bip-modal .modal-acts button{padding:17px;font-size:16px;border-radius:14px}
+  /* bipar: digitar código (fallback da câmera) */
+  .bip-manual{margin-top:14px}
+  .bm-label{font-size:12.5px;color:var(--muted)}
+  .bm-row{display:flex;gap:8px;margin-top:7px}
+  .bm-row input{flex:1;border:1px solid var(--line);border-radius:11px;background:var(--subtle);color:var(--text);padding:12px;font:inherit;font-size:14px;text-transform:uppercase}
+  .bm-row button{border:1px solid var(--line-strong);background:var(--panel);color:var(--text);border-radius:11px;padding:0 16px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer}
+  .bm-row button:hover{border-color:var(--brand);color:var(--brand)}
+  /* ficha do cliente */
+  #cli-modal .modal{padding:0}
+  .cli-card{width:min(560px,94vw);max-height:88vh;overflow:hidden;display:flex;flex-direction:column}
+  .cli-head{display:flex;align-items:center;gap:16px;padding:24px 26px 18px}
+  .cli-av{width:58px;height:58px;border-radius:15px;background:var(--subtle);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:20px;flex-shrink:0}
+  .cli-hi{flex:1;min-width:0}
+  .cli-nome{font-size:22px;font-weight:800}
+  .cli-sub{font-size:13.5px;color:var(--muted);margin-top:2px}
+  #cli-perso{margin-top:7px}
+  .cli-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px 18px;padding:4px 26px 6px}
+  .cli-lb{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted)}
+  .cli-vl{font-size:14.5px;font-weight:600;margin-top:2px}
+  .cli-sec{font-size:12px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);padding:16px 26px 8px}
+  #cli-unids{padding:0 26px}
+  .clt{padding:4px 26px 8px;overflow-y:auto}
+  .clt-item{display:flex;gap:13px;position:relative;padding-bottom:15px}
+  .clt-item:not(.last)::before{content:"";position:absolute;left:6px;top:15px;bottom:0;width:2px;background:var(--ok)}
+  .clt-dot{width:14px;height:14px;border-radius:50%;background:var(--ok);flex-shrink:0;margin-top:2px}
+  .clt-item.cur .clt-dot{background:var(--info);box-shadow:0 0 0 4px var(--info-soft)}
+  .clt-t{font-size:13.5px;font-weight:600}
+  .clt-w{font-size:11.5px;color:var(--muted);margin-top:1px;font-variant-numeric:tabular-nums}
+  #cli-modal .modal-acts{padding:12px 26px 22px}
+
+  /* chamada em destaque (overlay central) */
+  .chamada-ov{position:fixed;inset:0;background:rgba(8,11,17,.62);backdrop-filter:blur(7px);z-index:110;display:none;align-items:center;justify-content:center;padding:40px}
+  .chamada-ov.open{display:flex;animation:cfade .22s ease}
+  @keyframes cfade{from{opacity:0}to{opacity:1}}
+  .chamada-card{background:var(--panel);border:1px solid var(--line);border-radius:26px;box-shadow:0 40px 100px rgba(0,0,0,.55);padding:48px 60px 40px;text-align:center;max-width:760px;width:100%;animation:cpop .3s cubic-bezier(.2,.9,.3,1.2)}
+  @keyframes cpop{from{transform:scale(.9);opacity:.4}to{transform:scale(1);opacity:1}}
+  .chamada-card .cring{display:inline-flex;align-items:center;gap:10px;font-size:14px;font-weight:800;letter-spacing:.2em;text-transform:uppercase;color:var(--info)}
+  .chamada-card .cring .pulse{width:12px;height:12px;border-radius:50%;background:var(--info);animation:pulse 1.3s infinite}
+  @keyframes pulse{50%{opacity:.35;box-shadow:0 0 0 8px var(--info-soft)}}
+  .chamada-card .cnome{font-size:clamp(48px,7vw,80px);font-weight:800;line-height:1.02;margin-top:18px}
+  .chamada-card .cimob{font-size:18px;color:var(--muted);margin-top:8px}
+  .chamada-card .cdest{display:inline-flex;align-items:center;gap:10px;margin-top:26px;background:var(--info-soft);color:var(--info);border:2px solid var(--info);border-radius:40px;padding:14px 34px;font-size:26px;font-weight:800}
+  .chamada-card .ctimer{font-size:14px;color:var(--muted);margin-top:16px;font-variant-numeric:tabular-nums}
+  .chamada-card .cacts{display:flex;gap:12px;margin-top:30px}
+  .chamada-card .cacts button{flex:1;border-radius:14px;padding:18px;font-size:16px;font-weight:800;cursor:pointer;border:1.5px solid var(--line-strong);background:var(--panel);color:var(--text2)}
+  .cb-rechamar:hover{background:var(--subtle)}
+  .cb-ausencia{background:var(--danger-soft)!important;color:var(--danger)!important;border-color:var(--danger)!important}
+  .cb-ausencia:hover{background:var(--danger)!important;color:#fff!important}
+  .cb-compareceu{background:var(--ok)!important;color:#fff!important;border-color:var(--ok)!important}
+  .cb-compareceu:hover{filter:brightness(1.08)}
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#232832;color:#fff;padding:14px 24px;border-radius:14px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:12px;box-shadow:0 12px 40px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:all .3s;z-index:120}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #toast .wpp{font-size:12px;font-weight:400;opacity:.8;border-left:1px solid rgba(255,255,255,.2);padding-left:12px}
+  #toast .tw-ic{color:#25d366;display:inline-flex;align-items:center}
+  /* cards de indicadores (atendente) */
+  .kpis{display:none;grid-template-columns:repeat(4,1fr);gap:14px;padding:16px 16px 0}
+  body.can-atender .kpis{display:grid}
+  body.em-atendimento:not(.pip-out) .kpis{display:none}
+  .kpi{display:flex;align-items:center;gap:13px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-sm);padding:15px 18px}
+  .kpi-ic{width:40px;height:40px;border-radius:11px;background:var(--subtle);color:var(--text2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .kpi-ic svg{width:20px;height:20px}
+  .kpi.ok .kpi-ic{background:var(--ok-soft);color:var(--ok)} .kpi.info .kpi-ic{background:var(--info-soft);color:var(--info)} .kpi.warn .kpi-ic{background:var(--warn-soft);color:var(--warn)} .kpi.danger .kpi-ic{background:var(--danger-soft);color:var(--danger)}
+  .kpi-vl{font-size:24px;font-weight:800;font-variant-numeric:tabular-nums;line-height:1}
+  .kpi-lb{font-size:12px;color:var(--muted);margin-top:3px}
+</style>
+</head>
+<body data-posto="salao">
+
+<header>
+  <div class="mod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg></div>
+  <div class="brand"><h1>Central · Atendente</h1><div class="sub">Prometeu · Gestão de Fila</div></div>
+  <div class="postos">
+    <button data-p="recepcao" onclick="setPosto('recepcao')">Recepção</button>
+    <button class="on" data-p="salao" onclick="setPosto('salao')">Salão de vendas</button>
+    <button data-p="secretaria" onclick="setPosto('secretaria')">Secretaria</button>
+  </div>
+  <div class="postos roletog" id="roletog">
+    <button class="on" data-r="organizador" onclick="setRole('organizador')">Organizador</button>
+    <button data-r="atendente" onclick="setRole('atendente')">Atendente</button>
+  </div>
+  <div class="h-right">
+    <div class="atend"><span class="av" id="h-av">AP</span><span id="h-nome">Ana Paula<small id="h-fl">Organizador · Salão de vendas</small></span></div>
+    <div class="clock" id="clock">10:42</div>
+    <button class="tbtn" onclick="document.body.classList.toggle('dark')" title="Tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+  </div>
+</header>
+
+<!-- indicadores do atendente -->
+<div class="kpis" id="kpis">
+  <div class="kpi ok"><div class="kpi-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><div><div class="kpi-vl" id="kpi-atd">0</div><div class="kpi-lb">Atendimentos hoje</div></div></div>
+  <div class="kpi info"><div class="kpi-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></div><div><div class="kpi-vl" id="kpi-tmed">0:00</div><div class="kpi-lb">Tempo médio</div></div></div>
+  <div class="kpi warn"><div class="kpi-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/></svg></div><div><div class="kpi-vl" id="kpi-espera">0</div><div class="kpi-lb">Em espera</div></div></div>
+  <div class="kpi danger"><div class="kpi-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 22h14M5 2h14M17 22v-4.2a2 2 0 0 0-.6-1.4L12 12 7.6 16.4a2 2 0 0 0-.6 1.4V22M7 2v4.2c0 .5.2 1 .6 1.4L12 12l4.4-4.4c.4-.4.6-.9.6-1.4V2"/></svg></div><div><div class="kpi-vl" id="kpi-espera-max">0</div><div class="kpi-lb">Maior espera</div></div></div>
+</div>
+
+<!-- ===== MODO CHAMADA ===== -->
+<div class="grid">
+  <div class="card">
+    <div class="fila-tit" id="fila-tit">Espera · a chamar</div>
+    <div class="ftabs">
+      <button class="on" data-t="fila" onclick="setFtab('fila')">Fila <span class="n" id="n-fila">0</span></button>
+      <button data-t="retorno" onclick="setFtab('retorno')">Aguardando retorno <span class="n" id="n-retorno">0</span></button>
+    </div>
+    <div class="fila" id="fila"></div>
+    <div class="cta">
+      <button class="chamar-prox" id="btn-prox" onclick="chamarProximo()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Chamar próximo</button>
+      <button class="btn-bipar" id="btn-bipar" onclick="abrirBip()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9v6M11 9v6M15 9v6M19 9v6" stroke-width="1.6"/></svg> Bipar entrada</button>
+      <button class="btn-ocupado" id="btn-ocupado" onclick="toggleOcupado()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg> Ocupado</button>
+    </div>
+  </div>
+
+  <div class="side">
+    <div class="card negociacao-card">
+      <div class="card-head"><h2>Fila do salão · em negociação</h2><div class="badge"><b id="neg-count">0</b> no salão</div></div>
+      <div class="fila" id="fila-neg"></div>
+    </div>
+    <div class="card minha-mesa-card livre" id="minha-mesa">
+      <div class="card-head"><h2>Minha mesa</h2><span class="mm-badge" id="mm-state">Disponível</span></div>
+      <div class="mm-body">
+        <div class="mm-num" id="mm-num">03</div>
+        <div class="mm-info"><div class="mm-lb">Mesa da secretaria</div><div class="mm-sub" id="mm-sub">pronta para o próximo</div></div>
+      </div>
+    </div>
+    <div class="card" style="flex:1">
+      <div class="card-head"><h2>Últimas chamadas</h2></div>
+      <div class="ult" id="ult"></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===== MODO ATENDIMENTO (Picture-in-Picture) ===== -->
+<div id="atendimento">
+  <div class="pip-head" id="pip-head">
+    <div class="em"><span class="pulse"></span><span id="at-status">Em atendimento</span></div>
+    <div class="pip-head-r">
+      <button class="b-popout" onclick="poparPiP()" title="Abrir em janela flutuante"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="15" height="15"><path d="M15 3h6v6M21 3l-9 9M10 5H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5"/></svg></button>
+      <div class="cr" id="at-ct">00:00</div>
+    </div>
+  </div>
+  <div class="pip-body">
+    <div class="at-cli">
+      <div class="at-av" id="at-av"></div>
+      <div><div class="at-nome" id="at-nome"></div><div class="at-sub" id="at-sub"></div></div>
+    </div>
+    <div class="u-wrap" id="at-unids"></div>
+    <div id="at-perso"></div>
+  </div>
+  <div class="at-actions">
+    <button class="b-pausar" onclick="pausar()" id="b-pausar"><svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg> Pausar</button>
+    <button class="b-direcionar" onclick="abrirDirecionar()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="16" height="16"><polyline points="15 14 20 9 15 4"/><path d="M4 20v-7a4 4 0 0 1 4-4h12"/></svg> Direcionar</button>
+    <button class="b-finalizar" onclick="finalizar()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" width="16" height="16"><polyline points="20 6 9 17 4 12"/></svg> Finalizar</button>
+  </div>
+</div>
+
+<!-- modal direcionar -->
+<div class="modal-ov" id="dir-modal">
+  <div class="modal">
+    <h3>Direcionar cliente</h3>
+    <p>Devolve o cliente para uma etapa anterior. Informe o motivo.</p>
+    <label>Direcionar para</label>
+    <div class="dir-opts" id="dir-opts"></div>
+    <label>Motivo do direcionamento</label>
+    <textarea id="dir-motivo" placeholder="Ex.: corrigir a proposta comercial, revisar condição de pagamento..."></textarea>
+    <div class="modal-acts">
+      <button onclick="fecharDirecionar()">Cancelar</button>
+      <button class="conf" onclick="confirmarDirecionar()">Confirmar direcionamento</button>
+    </div>
+  </div>
+</div>
+
+<!-- modal bipar (secretaria: foto da PA + personalizada) -->
+<div class="modal-ov" id="bip-modal">
+  <div class="modal">
+    <h3 id="bip-title">Bipar entrada</h3>
+    <p id="bip-sub">Leia o QR do crachá para registrar a entrada na fila.</p>
+    <div class="bip-scan" id="bip-scan"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M14 20v.01M20 20v.01M17 17h3v3"/></svg><div><div class="bs-nome" id="bip-nome">Abrindo câmera… leia o QR</div><div class="bs-cod" id="bip-cod"></div><div class="bs-cod" id="bip-cor"></div><div class="bs-cod" id="bip-doc"></div></div></div>
+    <div class="bip-manual">
+      <span class="bm-label">Não conseguiu ler o QR? Digite o código do crachá</span>
+      <div class="bm-row"><input id="bip-code-input" placeholder="Ex.: APL-00015" onkeydown="if(event.key==='Enter')bipManual()"><button type="button" onclick="bipManual()">Usar código</button></div>
+    </div>
+    <div id="bip-secretaria" style="display:none">
+      <label>Foto da PA (proposta de aquisição)</label>
+      <div class="pa-shot" id="pa-shot" onclick="registrarPA()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/><circle cx="12" cy="13" r="3.5"/></svg>
+        <span id="pa-label">Tirar foto da PA</span>
+      </div>
+      <label class="chk" onclick="togglePerso()"><span class="box" id="perso-box"></span> Plano personalizado <small>(fica marcado na fila)</small></label>
+    </div>
+    <div class="modal-acts">
+      <button onclick="fecharBip()">Cancelar</button>
+      <button class="conf" onclick="confirmarBip()" id="bip-conf">Registrar na fila</button>
+    </div>
+  </div>
+</div>
+
+<!-- ficha do cliente (dados + unidades + jornada) -->
+<div class="modal-ov" id="cli-modal">
+  <div class="modal cli-card">
+    <div class="cli-head">
+      <div class="cli-av" id="cli-av"></div>
+      <div class="cli-hi">
+        <div class="cli-nome" id="cli-nome"></div>
+        <div class="cli-sub" id="cli-sub"></div>
+        <div id="cli-perso"></div>
+      </div>
+      <button class="wpp-btn big" id="cli-wpp" title="Enviar acompanhamento da fila no WhatsApp"></button>
+    </div>
+    <div class="cli-grid">
+      <div><div class="cli-lb">CPF</div><div class="cli-vl" id="cli-cpf"></div></div>
+      <div><div class="cli-lb">Telefone</div><div class="cli-vl" id="cli-tel"></div></div>
+      <div><div class="cli-lb">Imobiliária</div><div class="cli-vl" id="cli-imob"></div></div>
+      <div><div class="cli-lb">Corretor</div><div class="cli-vl" id="cli-cor"></div></div>
+    </div>
+    <div class="cli-sec">Unidades (<span id="cli-unum">0</span>)</div>
+    <div class="u-wrap" id="cli-unids"></div>
+    <div class="cli-sec">Jornada no evento</div>
+    <div class="clt" id="cli-tl"></div>
+    <div class="modal-acts"><button onclick="fecharCliente()">Fechar</button></div>
+  </div>
+</div>
+
+<!-- CHAMADA em destaque no centro (ofusca o fundo) -->
+<div class="chamada-ov" id="chamada">
+  <div class="chamada-card">
+    <div class="cring"><span class="pulse"></span>Chamando</div>
+    <div class="cnome" id="c-nome"></div>
+    <div class="cimob" id="c-imob"></div>
+    <div class="cdest" id="c-dest"></div>
+    <div class="ctimer" id="c-timer">chamado agora</div>
+    <div class="cacts">
+      <button class="cb-rechamar" onclick="rechamar()">🔁 Rechamar</button>
+      <button class="cb-ausencia" onclick="ausencia()">✕ Não veio</button>
+      <button class="cb-compareceu" id="cb-conf" onclick="compareceu()">✓ Compareceu</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const iniciais=n=>n.split(" ").map(p=>p[0]).slice(0,2).join("");
+  const hm=t=>new Date(t).toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+  function tick(){const n=new Date();document.getElementById("clock").textContent=[n.getHours(),n.getMinutes()].map(x=>String(x).padStart(2,"0")).join(":");}
+  tick();setInterval(tick,1000);
+
+  const NOMES=["Ricardo Souza","Marina Alves","João Pedro Lima","Camila Ferreira","Bruno Costa","Letícia Dias","Paulo Reis","Ana Martins","Rafael Nunes","Beatriz Rocha","Diego Alves","Fernanda Melo","Gustavo Pinto","Larissa Campos"];
+  const IMOBS=["Singular Imóveis","Lopes Vale","Prime Negócios","Bela Vista Imóveis","Rocha Imóveis"];
+  const CORRETORES=["Rogério Lima","Tânia Souza","Vinícius Prado","Sônia Braga","Élcio Martins","Priscila Nunes","Wagner Dias","Cléo Ramos"];
+  const POSTO_LABEL={recepcao:"Recepção",salao:"Salão de vendas",secretaria:"Secretaria"};
+
+  let posto="salao", ftab="fila", ocupado=false, role="organizador";
+  let atual=null, ultimas=[], atendimento=null, dirDestino=null;
+  let atdCount=12, atdTotalMs=12*8.5*60000; // KPIs do atendente (seed: 12 atend., média 8m30)
+  const ROLE_LABEL={organizador:"Organizador",atendente:"Atendente"};
+  const FILA_TITULO={recepcao:"Fila da recepção",salao:"Fila da recepção",secretaria:"Fila da secretaria"};
+  const MESAS=[];
+  for(let i=1;i<=10;i++){const e=i%3===0?"livre":(i%4===0?"ocupada":"atendimento"); MESAS.push({num:String(i).padStart(2,"0"),estado:i>6?"livre":e});}
+
+  const ATENDENTES=["Ana Paula","Carlos Menezes","Juliana Reis","Marcos Vieira"];
+  const WPP_ICON=`<svg viewBox="0 0 32 32" width="17" height="17" fill="currentColor"><path d="M16 3C9 3 3.5 8.5 3.5 15.5c0 2.4.7 4.7 1.9 6.7L3 29l7-1.8c1.9 1 4 1.6 6 1.6 7 0 12.5-5.5 12.5-12.5S23 3 16 3zm0 22.8c-1.8 0-3.6-.5-5.1-1.4l-.4-.2-4.2 1.1 1.1-4-.2-.4c-1-1.6-1.5-3.4-1.5-5.3C5.5 9.6 10.2 5 16 5s10.5 4.6 10.5 10.5S21.8 25.8 16 25.8zm5.8-7.9c-.3-.2-1.9-.9-2.2-1-.3-.1-.5-.2-.7.2s-.8 1-.9 1.1c-.2.2-.3.2-.6.1-.3-.2-1.3-.5-2.5-1.6-.9-.8-1.5-1.8-1.7-2.1-.2-.3 0-.5.1-.6l.5-.5c.2-.2.2-.3.3-.5.1-.2 0-.4 0-.5s-.7-1.7-1-2.3c-.3-.6-.5-.5-.7-.5h-.6c-.2 0-.5.1-.8.4-.3.3-1 1-1 2.5s1.1 2.9 1.2 3.1c.2.2 2.1 3.3 5.1 4.6.7.3 1.3.5 1.7.6.7.2 1.4.2 1.9.1.6-.1 1.9-.8 2.1-1.5.3-.7.3-1.4.2-1.5-.1-.2-.3-.2-.6-.4z"/></svg>`;
+  let CID=0; const CLIENTES={};
+  const pad=(n,l)=>String(n).padStart(l,"0");
+  const genCPF=i=>`${pad(100+(i*7)%900,3)}.${pad(100+(i*13)%900,3)}.${pad(100+(i*17)%900,3)}-${pad((i*29)%100,2)}`;
+  const genTel=i=>`+55 31 9${pad(1000+(i*37)%9000,4)}-${pad((i*53)%10000,4)}`;
+  function novoCliente(i){
+    const nU=(i%5===0)?2:1, unids=[];
+    for(let u=0;u<nU;u++) unids.push("VOR"+pad(1+((i+u)%14),2)+pad(1+((i*2+u*5)%40),2));
+    const c={id:++CID, nome:NOMES[i%NOMES.length], imob:IMOBS[i%IMOBS.length], corretor:CORRETORES[(i*3)%CORRETORES.length], cpf:genCPF(i), tel:genTel(i), chegada:Date.now()-(4+i*3)*60000, unids, perso:false, atd:null};
+    CLIENTES[c.id]=c; return c;
+  }
+  // filas por ETAPA do fluxo: recepção (aguardando salão) → salão (em negociação) → secretaria (em espera)
+  const FILAS={recepcao:[],salao:[],secretaria:[]};
+  const RETORNOS={recepcao:[],salao:[],secretaria:[]};
+  for(let i=0;i<8;i++) FILAS.recepcao.push(novoCliente(i));            // fila da recepção (aguardando chamada pro salão)
+  for(let i=8;i<11;i++) FILAS.salao.push(novoCliente(i));              // em negociação (já no salão de vendas)
+  for(let i=11;i<19;i++){const c=novoCliente(i); if(i%3===0)c.perso=true; FILAS.secretaria.push(c);}  // em espera na secretaria
+  // qual fila cada posto CHAMA/exibe à esquerda: salão chama a fila da recepção; secretaria chama a da secretaria
+  const leftFila=()=>posto==="secretaria"?FILAS.secretaria:FILAS.recepcao;
+  const curRet=()=>RETORNOS[posto];
+
+  const fmtWait=t=>{const m=Math.floor((Date.now()-t)/60000);return m>=60?`${Math.floor(m/60)}h${String(m%60).padStart(2,"0")}`:`${m} min`;};
+  const effRole=()=>posto==="secretaria"?role:"organizador";
+  // capacidades por posto/papel
+  function caps(){
+    if(posto==="recepcao") return {chamar:false,bipar:true, atender:false}; // só credencia (lê QR → fila da recepção)
+    if(posto==="salao")    return {chamar:true, bipar:false,atender:false}; // só chama (bip é no overlay da chamada)
+    if(role==="atendente") return {chamar:true, bipar:false,atender:true};  // secretaria atendente: chama + atende
+    return {chamar:false,bipar:true,atender:false};                          // secretaria organizador: só bipa (PA+perso)
+  }
+
+  function renderFila(){
+    const fila=leftFila(), retorno=curRet(), cap=caps();
+    document.getElementById("n-fila").textContent=fila.length;
+    document.getElementById("n-retorno").textContent=retorno.length;
+    document.getElementById("fila-tit").textContent=FILA_TITULO[posto];
+    const lista=ftab==="fila"?fila:retorno;
+    const box=document.getElementById("fila");
+    if(!lista.length){box.innerHTML=`<div class="fila-empty">${ftab==="fila"?"Fila vazia.":"Ninguém aguardando retorno."}</div>`;return;}
+    box.innerHTML=lista.map((c,i)=>{
+      const min=Math.floor((Date.now()-c.chegada)/60000);
+      const btnChamar=cap.chamar?`<button class="fcall" onclick="chamar('${ftab}',${i})">${ftab==="retorno"?"Rechamar":"Chamar"}</button>`:"";
+      const act=ftab==="retorno"?`${btnChamar}<button class="fcall no-show" title="Cliente foi embora / desistiu" onclick="noShow(${i})">No-show</button>`:btnChamar;
+      const badge=c.perso?`<span class="perso-badge">★ plano personalizado</span>`:"";
+      return `<div class="frow ${ftab==="fila"&&cap.chamar&&i===0?'prox':''} ${c.perso?'perso':''}">
+        <div class="fpos">${ftab==="fila"?i+1:'↩'}</div>
+        <div class="fav">${iniciais(c.nome)}</div>
+        <div class="finfo"><div class="fnome link" onclick="openCliente(${c.id})">${c.nome}${badge}</div><div class="fimob">${c.imob} · ${c.corretor}</div></div>
+        <div class="fwait ${min>=45?'old':''}">⏱ ${fmtWait(c.chegada)}</div>
+        <button class="wpp-btn" title="Enviar acompanhamento da fila no WhatsApp" onclick="dispararWpp(${c.id})">${WPP_ICON}</button>
+        ${act}
+      </div>`;}).join("");
+  }
+  const MINHA_MESA_NUM="03"; // mesa fixa do atendente (viria do Setup)
+  const minhaMesa=()=>MESAS.find(m=>m.num===MINHA_MESA_NUM);
+  function renderMesas(){ renderMinhaMesa(); } // (overview das mesas foi pra Central)
+  function renderMinhaMesa(){
+    const card=document.getElementById("minha-mesa"); if(!card)return;
+    const m=minhaMesa();
+    card.className=`card minha-mesa-card ${m.estado}`;
+    document.getElementById("mm-num").textContent=m.num;
+    let label,sub;
+    if(atendimento){label="Em atendimento";sub=atendimento.c.nome;}
+    else if(m.estado==="ocupada"){label="Aguardando cliente";sub=atual?atual.nome:"chamada enviada";}
+    else {label="Disponível";sub="pronta para o próximo";}
+    document.getElementById("mm-state").textContent=label;
+    document.getElementById("mm-sub").textContent=sub;
+  }
+  function renderAtual(){
+    const ov=document.getElementById("chamada");
+    if(!atual){ov.classList.remove("open");return;}
+    document.getElementById("c-nome").textContent=atual.nome;
+    document.getElementById("c-imob").textContent=atual.imob+"  ·  "+atual.corretor+(atual.perso?"  ·  ★ plano personalizado":"");
+    document.getElementById("c-dest").textContent="📍 "+atual.destino;
+    document.getElementById("cb-conf").innerHTML=caps().atender?"✓ Compareceu":`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="20" height="20" style="vertical-align:-4px"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3v3M20 14v.01M14 20v.01M20 20v.01M17 17h3v3"/></svg> Bipar · ler QR`;
+    ov.classList.add("open");
+  }
+  function renderUlt(){
+    const box=document.getElementById("ult");
+    box.innerHTML=ultimas.length?ultimas.map(u=>`<div class="ucall"><div class="uav">${iniciais(u.nome)}</div><div class="uinfo"><div class="unome${u.cliId?' link':''}"${u.cliId?` onclick="openCliente(${u.cliId})"`:""}>${u.nome}</div><div class="udest">${u.destino}</div></div><span class="ust ${u.st}">${u.stLabel}</span></div>`).join(""):`<div class="fila-empty" style="padding:24px">Sem chamadas ainda.</div>`;
+  }
+  function renderNeg(){ // fila do salão de vendas (em negociação) — só o salão vê
+    const box=document.getElementById("fila-neg"); if(!box)return;
+    document.getElementById("neg-count").textContent=FILAS.salao.length;
+    box.innerHTML=FILAS.salao.length?FILAS.salao.map(c=>{
+      const s=Math.floor((Date.now()-c.chegada)/1000), cron=`${Math.floor(s/60)}:${pad(s%60,2)}`;
+      return `<div class="frow ${c.perso?'perso':''}">
+      <div class="fav">${iniciais(c.nome)}</div>
+      <div class="finfo"><div class="fnome link" onclick="openCliente(${c.id})">${c.nome}${c.perso?`<span class="perso-badge">★ plano personalizado</span>`:""}</div><div class="fimob">${c.imob} · ${c.corretor}</div></div>
+      <div class="neg-time">⏱ ${cron}</div>
+      <span class="neg-chip">em negociação</span>
+      <button class="wpp-btn" title="Enviar acompanhamento da fila no WhatsApp" onclick="dispararWpp(${c.id})">${WPP_ICON}</button>
+    </div>`;}).join(""):`<div class="fila-empty" style="padding:22px">Ninguém em negociação ainda.</div>`;
+  }
+  function dispararWpp(id){
+    const c=CLIENTES[id]; if(!c)return;
+    const t=document.getElementById("toast");
+    t.innerHTML=`${WPP_ICON} Acompanhamento enviado para <b>${c.nome}</b> <span class="wpp">${c.tel}</span>`;
+    t.classList.add("show");clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove("show"),3000);
+  }
+  // ===== FICHA DO CLIENTE (dados + unidades + jornada no evento) =====
+  let fichaId=null;
+  function openCliente(id){
+    const c=CLIENTES[id]; if(!c)return; fichaId=id;
+    document.getElementById("cli-av").textContent=iniciais(c.nome);
+    document.getElementById("cli-nome").textContent=c.nome;
+    document.getElementById("cli-sub").textContent=c.imob+" · Corretor "+c.corretor;
+    document.getElementById("cli-perso").innerHTML=c.perso?`<span class="pip-perso">★ Plano personalizado</span>`:"";
+    document.getElementById("cli-cpf").textContent=c.cpf;
+    document.getElementById("cli-tel").textContent=c.tel;
+    document.getElementById("cli-imob").textContent=c.imob;
+    document.getElementById("cli-cor").textContent=c.corretor;
+    document.getElementById("cli-unum").textContent=c.unids.length;
+    document.getElementById("cli-unids").innerHTML=c.unids.map(u=>`<span class="u-chip">${u}</span>`).join("");
+    document.getElementById("cli-wpp").innerHTML=WPP_ICON+"<span>WhatsApp</span>";
+    document.getElementById("cli-wpp").onclick=()=>dispararWpp(id);
+    // jornada sintetizada (mock a partir do horário de chegada)
+    const atd=ATENDENTES[c.id%ATENDENTES.length];
+    let t=c.chegada; const st=[];
+    st.push(["Credenciado na entrada",hm(t)]); t+=3*60000;
+    st.push(["Entrou na fila da recepção",hm(t)]); t+=9*60000;
+    st.push(["Chamado ao salão de vendas",hm(t)]); t+=2*60000;
+    st.push([`Em negociação com o corretor ${c.corretor}`,hm(t)]); t+=7*60000;
+    c.unids.forEach(u=>{st.push([`Reservou a unidade ${u}`,hm(t)]);t+=4*60000;});
+    st.push(["Direcionado à secretaria",hm(t)]); t+=3*60000;
+    st.push(["PA registrada"+(c.perso?" · plano personalizado":""),hm(t)]); t+=2*60000;
+    st.push(["Em espera na secretaria",hm(t)]); t+=11*60000;
+    st.push([`Atendido por ${atd} · Mesa 03`,hm(t),true]);
+    document.getElementById("cli-tl").innerHTML=st.map((s,i)=>`<div class="clt-item ${s[2]?'cur':''} ${i===st.length-1?'last':''}"><div class="clt-dot"></div><div class="clt-tx"><div class="clt-t">${s[0]}</div><div class="clt-w">${s[1]}</div></div></div>`).join("");
+    document.getElementById("cli-modal").classList.add("open");
+  }
+  function fecharCliente(){document.getElementById("cli-modal").classList.remove("open");}
+  function toast(nome){const t=document.getElementById("toast");t.innerHTML=`🔊 Chamando <b>${nome}</b> <span class="wpp">aviso enviado no WhatsApp</span>`;t.classList.add("show");clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove("show"),3200);}
+  function hint(msg){const t=document.getElementById("toast");t.innerHTML=`⚠️ ${msg}`;t.classList.add("show");clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove("show"),2600);}
+  function toastWpp(nome,destino,aviso){const t=document.getElementById("toast");t.innerHTML=`<span class="tw-ic">${WPP_ICON}</span> <b>${nome}</b> ${destino} <span class="wpp">${aviso}</span>`;t.classList.add("show");clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove("show"),3400);}
+  const proximaMesa=()=>MESAS.find(m=>m.estado==="livre");
+
+  function updateActions(){
+    const c=caps();
+    document.body.classList.toggle("can-chamar",c.chamar);
+    document.body.classList.toggle("can-bipar",c.bipar);
+    document.body.classList.toggle("can-atender",c.atender);
+    document.getElementById("btn-prox").disabled=ocupado||!!atendimento;
+    document.getElementById("h-fl").textContent=`${ROLE_LABEL[effRole()]} · ${POSTO_LABEL[posto]}`;
+    const atBtn=document.querySelector('.roletog button[data-r="atendente"]');
+    if(atBtn) atBtn.disabled=posto!=="secretaria";
+    renderKPIs();renderMinhaMesa();
+  }
+  function renderKPIs(){
+    document.getElementById("kpi-atd").textContent=atdCount;
+    const avg=atdCount?Math.round(atdTotalMs/atdCount/1000):0;
+    document.getElementById("kpi-tmed").textContent=`${Math.floor(avg/60)}:${pad(avg%60,2)}`;
+    document.getElementById("kpi-espera").textContent=FILAS.secretaria.length;
+    const maisAntigo=FILAS.secretaria.length?Math.min(...FILAS.secretaria.map(c=>c.chegada)):null;
+    document.getElementById("kpi-espera-max").textContent=maisAntigo?fmtWait(maisAntigo):"—";
+  }
+
+  function chamar(origem,i){
+    if(atendimento){hint("Finalize o atendimento antes de chamar.");return;}
+    const arr=origem==="fila"?leftFila():curRet();
+    const c=arr[i]; if(!c) return;
+    if(atual){curRet().unshift({...atual});} // chamada anterior sem desfecho vai p/ retorno
+    arr.splice(i,1);
+    let destino,mesa=null;
+    if(posto==="secretaria"){mesa=minhaMesa();destino=`Secretaria · Mesa ${mesa.num}`;mesa.estado="ocupada";} // atendente chama pra SUA mesa
+    else destino=POSTO_LABEL[posto];
+    atual={...c,destino,mesa,calledAt:Date.now()};
+    avisarTelao(c, posto==="secretaria"?"secretaria":"salao", posto==="secretaria"?mesa.num:null); // manda pro telão
+    toast(c.nome);renderFila();renderMesas();renderAtual();
+  }
+  // ponte com o telão = BroadcastChannel (mesma origem): a chamada aparece na TV do setor + reflete a fila
+  const canalTelao=("BroadcastChannel" in window)?new BroadcastChannel("prometeu-fila"):null;
+  function avisarTelao(c,tipo,mesaNum){
+    const proximos=leftFila().slice(0,4).map(x=>x.nome); // a fila real depois de tirar quem foi chamado
+    try{ canalTelao && canalTelao.postMessage({id:Date.now(),nome:c.nome,imob:c.imob,corretor:c.corretor,tipo,mesa:mesaNum,proximos}); }catch(e){}
+  }
+  function chamarProximo(){if(atendimento||ocupado)return;if(leftFila().length)chamar("fila",0);}
+  function rechamar(){if(atual){atual.calledAt=Date.now();toast(atual.nome);renderAtual();}}
+  function ausencia(){ // não veio: vai para aguardando retorno, libera mesa
+    if(!atual)return;
+    if(atual.mesa)atual.mesa.estado="livre";
+    curRet().unshift({...atual});
+    ultimas.unshift({nome:atual.nome,cliId:atual.id,destino:atual.destino,st:"aus",stLabel:"não veio"});ultimas=ultimas.slice(0,8);
+    atual=null;renderFila();renderMesas();renderAtual();renderUlt();
+  }
+  function noShow(i){ // no aguardando retorno: cliente foi embora / desistiu → sai da fila
+    const c=curRet()[i]; if(!c)return;
+    curRet().splice(i,1);
+    ultimas.unshift({nome:c.nome,cliId:c.id,destino:"→ Não compareceu",st:"aus",stLabel:"no-show"});ultimas=ultimas.slice(0,8);
+    renderFila();renderUlt();renderKPIs();
+  }
+  function compareceu(){
+    if(!atual)return;
+    if(caps().atender){ // atendente da secretaria: abre o atendimento (PiP)
+      if(atual.mesa)atual.mesa.estado="atendimento";
+      ultimas.unshift({nome:atual.nome,cliId:atual.id,destino:atual.destino,st:"ok",stLabel:"em atendimento"});ultimas=ultimas.slice(0,8);
+      const cli=atual; atual=null; renderMesas();renderAtual();renderUlt(); iniciarAtendimento(cli); return;
+    }
+    // organizador do salão: leu o QR → cliente passa pra fila do salão (EM NEGOCIAÇÃO)
+    FILAS.salao.unshift({...atual,chegada:Date.now()});
+    ultimas.unshift({nome:atual.nome,cliId:atual.id,destino:"→ Salão · em negociação",st:"ok",stLabel:"em negociação"});ultimas=ultimas.slice(0,8);
+    toastWpp(atual.nome,"→ em negociação","aviso enviado via WhatsApp");
+    atual=null;renderFila();renderNeg();renderMesas();renderAtual();renderUlt();
+  }
+  function toggleOcupado(){ocupado=!ocupado;document.getElementById("btn-ocupado").classList.toggle("on",ocupado);updateActions();}
+
+  function setFtab(t){ftab=t;document.querySelectorAll(".ftabs button").forEach(b=>b.classList.toggle("on",b.dataset.t===t));renderFila();}
+  function setPosto(p){
+    posto=p;document.body.dataset.posto=p;
+    document.querySelectorAll(".postos:not(.roletog) button").forEach(b=>b.classList.toggle("on",b.dataset.p===p));
+    if(p!=="secretaria"&&role!=="organizador") setRole("organizador");
+    atual=null; // trocar de posto limpa a chamada em aberto (mock)
+    updateActions();renderFila();renderNeg();renderAtual();
+  }
+  function setRole(r){
+    if(r==="atendente"&&posto!=="secretaria")return; // atendente só existe na secretaria
+    role=r;document.querySelectorAll(".roletog button").forEach(b=>b.classList.toggle("on",b.dataset.r===r));
+    updateActions();renderFila();renderAtual();
+  }
+
+  // ===== BIPAR (ler QR): recepção credencia na fila da recepção / secretaria registra PA + personalizada =====
+  let bipCliente=null,bipPA=false,bipPerso=false;
+  function abrirBip(){
+    if(atendimento){hint("Finalize o atendimento antes de bipar.");return;}
+    bipCliente=null;bipPA=false;bipPerso=false;
+    const sec=posto==="secretaria";
+    document.getElementById("bip-secretaria").style.display=sec?"block":"none";
+    document.getElementById("bip-title").textContent=sec?"Bipar · secretaria":"Credenciar entrada";
+    document.getElementById("bip-sub").textContent=sec?"Cliente chegou na secretaria. Registre a foto da PA e marque se é plano personalizado.":"Leia o QR do crachá (câmera) ou digite o código para credenciar o cliente na fila da recepção.";
+    document.getElementById("bip-conf").textContent=sec?"Registrar na fila da secretaria":"Credenciar";
+    document.getElementById("bip-scan").classList.remove("lido");
+    document.getElementById("bip-nome").textContent="Abrindo câmera… leia o QR";
+    document.getElementById("bip-cod").textContent="";
+    document.getElementById("bip-cor").textContent="";
+    document.getElementById("bip-doc").textContent="";
+    document.getElementById("bip-code-input").value="";
+    document.getElementById("pa-shot").classList.remove("ok");
+    document.getElementById("pa-label").textContent="Tirar foto da PA";
+    document.getElementById("perso-box").classList.remove("on");
+    document.getElementById("bip-modal").classList.add("open");
+    setTimeout(()=>{ // simula a leitura do QR pela câmera
+      if(!document.getElementById("bip-modal").classList.contains("open")||bipCliente)return;
+      lerCracha("APL-"+pad(Math.floor(Math.random()*90000)+10000,5));
+    },900);
+  }
+  function lerCracha(cod){ // preenche o cartão a partir do código do crachá (QR lido OU digitado)
+    bipCliente=novoCliente(Math.floor(Math.random()*90)+10);
+    document.getElementById("bip-scan").classList.add("lido");
+    document.getElementById("bip-nome").textContent=bipCliente.nome;
+    document.getElementById("bip-cod").textContent=cod+" · "+bipCliente.imob;
+    document.getElementById("bip-cor").textContent="Corretor · "+bipCliente.corretor;
+    document.getElementById("bip-doc").textContent="CPF "+bipCliente.cpf+" · "+bipCliente.tel;
+  }
+  function bipManual(){
+    const v=document.getElementById("bip-code-input").value.trim();
+    if(!v){hint("Digite o código do crachá.");return;}
+    lerCracha(v.toUpperCase());
+  }
+  function registrarPA(){bipPA=true;document.getElementById("pa-shot").classList.add("ok");document.getElementById("pa-label").textContent="Foto da PA registrada ✓";}
+  function togglePerso(){bipPerso=!bipPerso;document.getElementById("perso-box").classList.toggle("on",bipPerso);}
+  function fecharBip(){document.getElementById("bip-modal").classList.remove("open");}
+  function confirmarBip(){
+    if(!bipCliente){hint("Faça a leitura do QR primeiro.");return;}
+    let nomeC;
+    if(posto==="secretaria"){
+      if(!bipPA){hint("Registre a foto da PA antes de concluir.");return;}
+      const c={...bipCliente,perso:bipPerso,atd:null,chegada:Date.now()};
+      FILAS.secretaria.push(c); nomeC=c.nome;
+      ultimas.unshift({nome:c.nome,cliId:c.id,destino:"→ Secretaria · em espera"+(bipPerso?" · plano personalizado":""),st:"ok",stLabel:"em espera"});
+      toastWpp(nomeC,"→ fila da secretaria","aviso enviado via WhatsApp");
+    }else{ // recepção credencia → entra na fila da recepção
+      FILAS.recepcao.push({...bipCliente,chegada:Date.now()}); nomeC=bipCliente.nome;
+      ultimas.unshift({nome:bipCliente.nome,cliId:bipCliente.id,destino:"→ Fila da recepção",st:"ok",stLabel:"credenciado"});
+      toastWpp(nomeC,"→ fila da recepção","senha da fila enviada via WhatsApp");
+    }
+    ultimas=ultimas.slice(0,8);
+    fecharBip();renderFila();renderNeg();renderUlt();renderKPIs();
+  }
+
+  // ===== ATENDIMENTO — Document Picture-in-Picture (janela solta, always-on-top) =====
+  const atRoot=document.getElementById("atendimento"); // referência fixa; segue o card mesmo movido pra janela PiP
+  const atEl=id=>atRoot.querySelector("#"+id);
+  function moverCardParaMain(){ if(atRoot.ownerDocument!==document) document.body.appendChild(document.adoptNode(atRoot)); }
+
+  function iniciarAtendimento(c){
+    atendimento={c, startedAt:Date.now(), paused:false, pausedAcc:0, pausedAt:null, pip:null};
+    document.body.classList.add("em-atendimento");
+    atEl("at-av").textContent=iniciais(c.nome);
+    atEl("at-nome").textContent=c.nome;
+    atEl("at-sub").textContent=c.imob+" · "+c.corretor+" · "+c.destino;
+    atEl("at-unids").innerHTML=c.unids.map(u=>`<span class="u-chip">${u}</span>`).join("");
+    atEl("at-perso").innerHTML=c.perso?`<span class="pip-perso">★ Plano personalizado</span>`:"";
+    atEl("pip-head").classList.remove("paused");
+    atEl("at-status").textContent="Em atendimento";
+    atEl("b-pausar").innerHTML=`<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg> Pausar`;
+    updateActions();
+    abrirPiP();
+  }
+  function copiarEstilos(pip){
+    [...document.styleSheets].forEach(ss=>{ try{
+      const css=[...ss.cssRules].map(r=>r.cssText).join("\n");
+      const st=pip.document.createElement("style"); st.textContent=css; pip.document.head.appendChild(st);
+    }catch(e){} });
+    if(document.body.classList.contains("dark")) pip.document.body.classList.add("dark");
+    pip.document.body.classList.add("pip-solo");
+    pip.document.title="Atendimento";
+  }
+  function poparPiP(){ if(atendimento&&!atendimento.pip) abrirPiP(); }
+  function abrirPiP(){
+    if(!("documentPictureInPicture" in window)) return; // sem suporte: fica inline na aba
+    documentPictureInPicture.requestWindow({width:400,height:340}).then(pip=>{
+      if(!atendimento){ try{pip.close();}catch(e){} return; }
+      atendimento.pip=pip;
+      copiarEstilos(pip);
+      ["pausar","finalizar","abrirDirecionar","selDir","fecharDirecionar","confirmarDirecionar","poparPiP"].forEach(fn=>{pip[fn]=window[fn];});
+      pip.document.body.appendChild(atRoot); // move o card pra janela flutuante do SO
+      document.body.classList.add("pip-out"); // card saiu pra janela → a aba mostra a fila
+      pip.addEventListener("pagehide",()=>{ // voltou pra aba (botão de retorno) OU fechou a janela
+        if(!atendimento||atendimento._appClose) return;
+        atendimento.pip=null; moverCardParaMain(); document.body.classList.remove("pip-out"); // NÃO finaliza: mostra o atendimento inline
+      });
+    }).catch(()=>{}); // sem gesto/suporte: segue inline
+  }
+  function pausar(){
+    if(!atendimento)return;
+    atendimento.paused=!atendimento.paused;
+    const b=atEl("b-pausar"), hd=atEl("pip-head"), st=atEl("at-status");
+    if(atendimento.paused){atendimento.pausedAt=Date.now();b.innerHTML=`<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M8 5v14l11-7z"/></svg> Retomar`;hd.classList.add("paused");st.textContent="Pausado";}
+    else{atendimento.pausedAcc+=Date.now()-atendimento.pausedAt;b.innerHTML=`<svg viewBox="0 0 24 24" fill="currentColor" width="16" height="16"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg> Pausar`;hd.classList.remove("paused");st.textContent="Em atendimento";}
+  }
+  function sairAtendimento(){
+    if(!atendimento)return;
+    const pip=atendimento.pip; atendimento._appClose=true; atendimento=null;
+    moverCardParaMain();
+    document.body.classList.remove("em-atendimento","pip-out");
+    atEl("pip-head").classList.remove("paused");
+    atEl("at-status").textContent="Em atendimento";
+    if(pip){ try{pip.close();}catch(e){} }
+    updateActions();
+  }
+  function finalizar(){
+    if(!atendimento){return;}
+    if(atendimento.c.mesa)atendimento.c.mesa.estado="livre";
+    atdCount++; atdTotalMs+=Math.max(0,Date.now()-atendimento.startedAt-atendimento.pausedAcc); // alimenta os KPIs
+    ultimas.unshift({nome:atendimento.c.nome,cliId:atendimento.c.id,destino:atendimento.c.destino,st:"ok",stLabel:"finalizado"});ultimas=ultimas.slice(0,8);
+    sairAtendimento();renderMesas();renderUlt();renderKPIs();
+  }
+  const DIR_DESTINOS=["Negociação (salão)","Reserva","Recepção","Financeiro"];
+  function abrirDirecionar(){
+    dirDestino=null;document.getElementById("dir-motivo").value="";
+    document.getElementById("dir-opts").innerHTML=DIR_DESTINOS.map(d=>`<button data-d="${d}" onclick="selDir(this)">${d}</button>`).join("");
+    document.getElementById("dir-modal").classList.add("open");
+  }
+  function selDir(b){dirDestino=b.dataset.d;document.querySelectorAll("#dir-opts button").forEach(x=>x.classList.toggle("on",x===b));}
+  function fecharDirecionar(){document.getElementById("dir-modal").classList.remove("open");}
+  function confirmarDirecionar(){
+    if(!dirDestino){alert("Escolha o destino do direcionamento.");return;}
+    if(atendimento){ultimas.unshift({nome:atendimento.c.nome,cliId:atendimento.c.id,destino:"→ "+dirDestino,st:"dir",stLabel:"direcionado"});ultimas=ultimas.slice(0,8);
+      if(atendimento.c.mesa)atendimento.c.mesa.estado="livre";}
+    fecharDirecionar();sairAtendimento();renderMesas();renderUlt();
+  }
+
+  setInterval(()=>{
+    if(atual){const s=Math.floor((Date.now()-atual.calledAt)/1000);const el=document.getElementById("c-timer");if(el)el.textContent=`chamado há ${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;}
+    if(atendimento&&!atendimento.paused){const ms=Date.now()-atendimento.startedAt-atendimento.pausedAcc;const s=Math.floor(ms/1000);atEl("at-ct").textContent=`${String(Math.floor(s/60)).padStart(2,"0")}:${String(s%60).padStart(2,"0")}`;}
+    renderFila(); if(posto==="salao")renderNeg(); if(document.body.classList.contains("can-atender"))renderKPIs();
+  },1000);
+
+  setPosto("salao");renderMesas();renderUlt();
+</script>
+</body>
+</html>

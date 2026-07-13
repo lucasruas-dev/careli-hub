@@ -385,7 +385,7 @@ export function MessageComposer({
 
   return (
     <form
-      className="relative flex min-h-16 shrink-0 items-end gap-1.5 border-t border-[#d9e0ea] bg-white px-3 py-2"
+      className="relative flex min-h-16 shrink-0 items-end gap-1.5 border-t border-line bg-surface px-3 py-2"
       onSubmit={handleSubmit}
     >
       <input
@@ -484,7 +484,7 @@ export function MessageComposer({
                 className={`inline-flex h-6 items-center gap-1 rounded-full border px-2 text-[0.68rem] font-semibold outline-none transition hover:brightness-95 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] ${
                   selected
                     ? getHermesMessageTagClassName(tag.id)
-                    : "border-[#d9e0ea] bg-white text-[#667085]"
+                    : "border-line bg-surface text-ink-muted"
                 }`}
                 key={tag.id}
                 onClick={() => onToggleTag?.(tag.id)}
@@ -501,7 +501,7 @@ export function MessageComposer({
           aria-controls={isMentionOpen ? "pulsex-mention-listbox" : undefined}
           aria-expanded={isMentionOpen}
           aria-label={`Mensagem para ${channelName}`}
-          className="max-h-28 min-h-10 w-full resize-none rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-3 py-2.5 text-sm leading-5 text-[var(--uix-text-primary)] outline-none transition placeholder:text-[var(--uix-text-muted)] focus:border-[#A07C3B] focus:bg-white"
+          className="max-h-28 min-h-10 w-full resize-none rounded-md border border-line bg-subtle px-3 py-2.5 text-sm leading-5 text-[var(--uix-text-primary)] outline-none transition placeholder:text-[var(--uix-text-muted)] focus:border-[#A07C3B] focus:bg-surface"
           onBlur={() => window.setTimeout(closeMentionMenu, 120)}
           onChange={handleValueChange}
           onKeyDown={handleKeyDown}
@@ -528,7 +528,7 @@ export function MessageComposer({
       />
       <button
         aria-label="Enviar mensagem"
-        className="mb-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-[#e6ebf2] disabled:text-[#8b98aa]"
+        className="mb-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted"
         disabled={isEmpty}
         type="submit"
       >
@@ -544,12 +544,12 @@ function EmojiPicker({
   onSelect: (emoji: string) => void;
 }) {
   return (
-    <div className="absolute bottom-full left-0 z-40 mb-2 max-h-80 w-80 overflow-auto rounded-md border border-[#d9e0ea] bg-white p-2 shadow-xl">
+    <div className="absolute bottom-full left-0 z-40 mb-2 max-h-80 w-80 overflow-auto rounded-md border border-line bg-surface p-2 shadow-xl">
       <div className="grid grid-cols-8 gap-1">
         {composerEmojiOptions.map((emoji) => (
           <button
             aria-label={`Inserir ${emoji}`}
-            className="grid h-9 w-9 place-items-center rounded-md text-[1.35rem] outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            className="grid h-9 w-9 place-items-center rounded-md text-[1.35rem] outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             key={emoji}
             onClick={() => onSelect(emoji)}
             type="button"
@@ -640,7 +640,7 @@ function StickerPicker({
     activeTab === "saved" ? savedStickers : [...composerStickerOptions];
 
   return (
-    <div className="absolute bottom-full left-0 z-40 mb-2 w-[22rem] rounded-xl border border-[#d9e0ea] bg-white p-2 shadow-xl">
+    <div className="absolute bottom-full left-0 z-40 mb-2 w-[22rem] rounded-xl border border-line bg-surface p-2 shadow-xl">
       <input
         accept="image/png,image/jpeg,image/webp,image/gif"
         className="hidden"
@@ -649,11 +649,11 @@ function StickerPicker({
         type="file"
       />
       <div className="mb-2 flex items-center justify-between px-1">
-        <span className="text-xs font-semibold uppercase text-[#667085]">
+        <span className="text-xs font-semibold uppercase text-ink-muted">
           Figurinhas
         </span>
         <button
-          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-2 text-xs font-semibold text-[#344054] outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-subtle px-2 text-xs font-semibold text-ink outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={() => fileInputRef.current?.click()}
           type="button"
         >
@@ -661,10 +661,10 @@ function StickerPicker({
           Salvar
         </button>
       </div>
-      <div className="mb-2 grid grid-cols-2 rounded-lg bg-[#f3f6fa] p-1">
+      <div className="mb-2 grid grid-cols-2 rounded-lg bg-subtle p-1">
         <button
           aria-pressed={activeTab === "saved"}
-          className="h-8 rounded-md text-xs font-semibold text-[#667085] outline-none transition hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-white aria-pressed:text-[#101820] aria-pressed:shadow-sm"
+          className="h-8 rounded-md text-xs font-semibold text-ink-muted outline-none transition hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-sm"
           onClick={() => setActiveTab("saved")}
           type="button"
         >
@@ -672,7 +672,7 @@ function StickerPicker({
         </button>
         <button
           aria-pressed={activeTab === "default"}
-          className="h-8 rounded-md text-xs font-semibold text-[#667085] outline-none transition hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-white aria-pressed:text-[#101820] aria-pressed:shadow-sm"
+          className="h-8 rounded-md text-xs font-semibold text-ink-muted outline-none transition hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B] aria-pressed:bg-surface aria-pressed:text-ink aria-pressed:shadow-sm"
           onClick={() => setActiveTab("default")}
           type="button"
         >
@@ -690,19 +690,19 @@ function StickerPicker({
             <div className="relative" key={sticker.id}>
               <button
                 aria-label={`Enviar figurinha ${sticker.label}`}
-                className="grid min-h-24 w-full justify-items-center gap-1 rounded-xl border border-[#d9e0ea] bg-[#f8fafc] px-2 py-3 text-center outline-none transition hover:-translate-y-0.5 hover:border-[#A07C3B]/60 hover:bg-[#fffaf0] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid min-h-24 w-full justify-items-center gap-1 rounded-xl border border-line bg-subtle px-2 py-3 text-center outline-none transition hover:-translate-y-0.5 hover:border-[#A07C3B]/60 hover:bg-[#fffaf0] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 onClick={() => onSelect(sticker)}
                 type="button"
               >
                 <StickerArtwork sticker={sticker} />
-                <span className="max-w-full truncate text-[0.68rem] font-semibold text-[#344054]">
+                <span className="max-w-full truncate text-[0.68rem] font-semibold text-ink">
                   {sticker.label}
                 </span>
               </button>
               {activeTab === "saved" ? (
                 <button
                   aria-label={`Remover figurinha ${sticker.label}`}
-                  className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full border border-[#d9e0ea] bg-white text-[#667085] shadow-sm outline-none transition hover:border-red-200 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                  className="absolute right-1 top-1 grid h-6 w-6 place-items-center rounded-full border border-line bg-surface text-ink-muted shadow-sm outline-none transition hover:border-red-200 hover:text-red-600 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                   onClick={() => handleDeleteSticker(sticker.id)}
                   type="button"
                 >
@@ -713,12 +713,12 @@ function StickerPicker({
           ))}
         </div>
       ) : (
-        <div className="grid min-h-36 place-items-center rounded-xl border border-dashed border-[#cfd8e3] bg-[#f8fafc] px-4 text-center">
+        <div className="grid min-h-36 place-items-center rounded-xl border border-dashed border-line bg-subtle px-4 text-center">
           <div>
-            <p className="m-0 text-sm font-semibold text-[#344054]">
+            <p className="m-0 text-sm font-semibold text-ink">
               Nenhuma figurinha salva
             </p>
-            <p className="m-0 mt-1 text-xs leading-5 text-[#667085]">
+            <p className="m-0 mt-1 text-xs leading-5 text-ink-muted">
               Salve imagens pequenas para enviar como figurinha.
             </p>
           </div>
@@ -757,14 +757,14 @@ function MentionAutocomplete({
 }) {
   return (
     <div
-      className="absolute bottom-full left-0 z-30 mb-2 w-80 overflow-hidden rounded-md border border-[#d9e0ea] bg-white shadow-xl"
+      className="absolute bottom-full left-0 z-30 mb-2 w-80 overflow-hidden rounded-md border border-line bg-surface shadow-xl"
       id="pulsex-mention-listbox"
       role="listbox"
     >
       {users.map((user, index) => (
         <button
           aria-selected={index === activeIndex}
-          className="grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-left outline-none transition hover:bg-[#f3f6fa] data-[active=true]:bg-[#f7f3eb]"
+          className="grid w-full grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-2 px-3 py-2 text-left outline-none transition hover:bg-subtle data-[active=true]:bg-[#f7f3eb]"
           data-active={index === activeIndex}
           key={user.id}
           onMouseDown={(event) => event.preventDefault()}
@@ -779,7 +779,7 @@ function MentionAutocomplete({
             <span className="block truncate text-sm font-semibold text-[#121722]">
               {user.label}
             </span>
-            <span className="block truncate text-xs text-[#667085]">
+            <span className="block truncate text-xs text-ink-muted">
               {user.role} · {getPresenceLabel(user.status)}
             </span>
           </span>
@@ -808,7 +808,7 @@ function ComposerAction({
     <button
       aria-label={ariaLabel}
       aria-pressed={active || undefined}
-      className="mb-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-[#eef2f7] hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-red-50 aria-pressed:text-red-600"
+      className="mb-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-md text-[var(--uix-text-muted)] outline-none transition hover:bg-subtle hover:text-[var(--uix-text-primary)] focus-visible:ring-2 focus-visible:ring-[var(--uix-focus-ring)] aria-pressed:bg-red-50 aria-pressed:text-red-600"
       onClick={onClick}
       type="button"
     >
@@ -827,17 +827,17 @@ function AttachmentChip({
   const Icon = getAttachmentIcon(attachment.type);
 
   return (
-    <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-[#d9e0ea] bg-[#f8fafc] px-2.5 py-1 text-xs text-[#485466]">
+    <span className="inline-flex max-w-full items-center gap-2 rounded-full border border-line bg-subtle px-2.5 py-1 text-xs text-[#485466]">
       <Icon aria-hidden="true" size={14} />
       <span className="truncate font-semibold">{attachment.label}</span>
       {attachment.durationSeconds ? (
-        <span className="text-[#667085]">
+        <span className="text-ink-muted">
           {formatAttachmentDuration(attachment.durationSeconds)}
         </span>
       ) : null}
       <button
         aria-label="Remover anexo"
-        className="grid h-5 w-5 place-items-center rounded-full text-[#667085] transition hover:bg-[#e6ebf2] hover:text-[#101820]"
+        className="grid h-5 w-5 place-items-center rounded-full text-ink-muted transition hover:bg-[#e6ebf2] hover:text-ink"
         onClick={onRemove}
         type="button"
       >

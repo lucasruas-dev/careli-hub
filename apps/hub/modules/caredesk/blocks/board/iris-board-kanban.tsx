@@ -163,10 +163,10 @@ export function IrisBoardKanban({
           <div
             key={indicator.label}
             title={indicator.title}
-            className={`rounded-xl border bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+            className={`rounded-xl border bg-surface p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
               indicator.tone === "danger"
                 ? "border-rose-100"
-                : "border-slate-200/70"
+                : "border-line/70"
             }`}
           >
             <p
@@ -175,14 +175,14 @@ export function IrisBoardKanban({
                   ? "text-rose-600"
                   : indicator.tone === "gold"
                     ? "text-[#7A5E2C]"
-                    : "text-slate-400"
+                    : "text-ink-muted"
               }`}
             >
               {indicator.label}
             </p>
             <p
               className={`mt-1 truncate text-xl font-semibold leading-none ${
-                indicator.tone === "danger" ? "text-rose-600" : "text-slate-950"
+                indicator.tone === "danger" ? "text-rose-600" : "text-ink"
               }`}
             >
               {indicator.value}
@@ -192,13 +192,13 @@ export function IrisBoardKanban({
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
-        <label className="flex h-9 min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3">
+        <label className="flex h-9 min-w-[180px] flex-1 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3">
           <Search className="size-4 shrink-0 text-[#A07C3B]" aria-hidden="true" />
           <input
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Buscar cliente, protocolo, assunto..."
-            className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+            className="min-w-0 flex-1 bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
           />
         </label>
         <div className="w-[168px] shrink-0">
@@ -209,7 +209,7 @@ export function IrisBoardKanban({
             onChange={(value) => setSortMode(value as SortMode)}
           />
         </div>
-        <div className="inline-flex shrink-0 rounded-lg border border-slate-200/70 bg-slate-50/70 p-0.5">
+        <div className="inline-flex shrink-0 rounded-lg border border-line/70 bg-subtle/70 p-0.5">
           <button
             type="button"
             onClick={() => setViewMode("kanban")}
@@ -218,8 +218,8 @@ export function IrisBoardKanban({
             className={[
               "flex size-7 items-center justify-center rounded-md transition-colors",
               viewMode === "kanban"
-                ? "bg-[#101820] text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-700",
+                ? "bg-[#101820] text-white shadow-sm dark:bg-white/[0.14] dark:text-ink dark:shadow-none"
+                : "text-ink-muted hover:text-ink",
             ].join(" ")}
           >
             <LayoutGrid className="size-4" aria-hidden="true" />
@@ -232,15 +232,15 @@ export function IrisBoardKanban({
             className={[
               "flex size-7 items-center justify-center rounded-md transition-colors",
               viewMode === "lista"
-                ? "bg-[#101820] text-white shadow-sm"
-                : "text-slate-500 hover:text-slate-700",
+                ? "bg-[#101820] text-white shadow-sm dark:bg-white/[0.14] dark:text-ink dark:shadow-none"
+                : "text-ink-muted hover:text-ink",
             ].join(" ")}
           >
             <List className="size-4" aria-hidden="true" />
           </button>
         </div>
         {viewMode === "kanban" ? (
-          <div className="inline-flex shrink-0 rounded-lg border border-slate-200/70 bg-slate-50/70 p-0.5">
+          <div className="inline-flex shrink-0 rounded-lg border border-line/70 bg-subtle/70 p-0.5">
             {groupModes.map((mode) => {
               const active = mode.key === groupMode;
 
@@ -252,8 +252,8 @@ export function IrisBoardKanban({
                   className={[
                     "rounded-md px-2.5 py-1.5 text-xs font-semibold transition-colors",
                     active
-                      ? "bg-[#101820] text-white shadow-sm"
-                      : "text-slate-500 hover:text-slate-700",
+                      ? "bg-[#101820] text-white shadow-sm dark:bg-white/[0.14] dark:text-ink dark:shadow-none"
+                      : "text-ink-muted hover:text-ink",
                   ].join(" ")}
                 >
                   {mode.label}
@@ -267,7 +267,7 @@ export function IrisBoardKanban({
             type="button"
             aria-label="Novo atendimento"
             onClick={() => onStartAttendance()}
-            className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#101820] text-white shadow-sm transition-colors hover:bg-[#1f2c3a]"
+            className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#101820] text-white shadow-sm transition-colors hover:bg-[#1f2c3a] dark:bg-white/[0.12] dark:text-ink dark:shadow-none dark:hover:bg-white/[0.18]"
           >
             <Plus className="size-4" aria-hidden="true" />
           </button>
@@ -288,7 +288,7 @@ export function IrisBoardKanban({
           ))}
         </div>
       ) : (
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-white">
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line/70 bg-surface">
           <div className="min-h-0 flex-1 overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
             {visibleTickets.length > 0 ? (
               visibleTickets.map((ticket) => (
@@ -329,19 +329,19 @@ function BoardColumnView({
   renderers: IrisTicketQueueRenderers;
 }) {
   return (
-    <div className="flex w-[264px] shrink-0 flex-col rounded-xl border border-slate-200/70 bg-slate-50/50">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-3 py-2">
+    <div className="flex w-[264px] shrink-0 flex-col rounded-xl border border-line/70 bg-subtle/50">
+      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-line px-3 py-2">
         <span className="flex min-w-0 items-center gap-2">
           <span
             className="size-2 shrink-0 rounded-full"
             style={{ backgroundColor: column.accent }}
             aria-hidden="true"
           />
-          <span className="truncate text-xs font-semibold uppercase tracking-normal text-slate-500">
+          <span className="truncate text-xs font-semibold uppercase tracking-normal text-ink-muted">
             {column.label}
           </span>
         </span>
-        <span className="shrink-0 rounded-full bg-white px-2 py-0.5 text-[11px] font-bold text-slate-500 ring-1 ring-slate-200">
+        <span className="shrink-0 rounded-full bg-surface px-2 py-0.5 text-[11px] font-bold text-ink-muted ring-1 ring-slate-200 dark:ring-white/10">
           {column.tickets.length}
         </span>
       </div>
@@ -359,7 +359,7 @@ function BoardColumnView({
             />
           ))
         ) : (
-          <p className="px-1 py-6 text-center text-[11px] text-slate-300">
+          <p className="px-1 py-6 text-center text-[11px] text-ink-muted">
             Nada por aqui
           </p>
         )}
@@ -427,11 +427,11 @@ function BoardCard({
         }
       }}
       style={{ borderLeftColor: queueAccentColor(ticket.queueLabel) }}
-      className="cursor-pointer rounded-lg border border-slate-200/70 border-l-[3px] bg-white px-2.5 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
+      className="cursor-pointer rounded-lg border border-line/70 border-l-[3px] bg-surface px-2.5 py-2 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-subtle/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]/30"
     >
       <div className="mb-1 flex flex-wrap items-center gap-1.5">
         {isEmail ? (
-          <Mail className="size-3.5 shrink-0 text-slate-400" aria-hidden="true" />
+          <Mail className="size-3.5 shrink-0 text-ink-muted" aria-hidden="true" />
         ) : (
           <MessageCircle
             className="size-3.5 shrink-0 text-emerald-500"
@@ -462,17 +462,17 @@ function BoardCard({
           {ticket.protocol}
         </p>
       ) : null}
-      <p className="truncate text-sm font-semibold text-slate-950">
+      <p className="truncate text-sm font-semibold text-ink">
         {helpers.ticketContactLabel(ticket)}
       </p>
       {subject ? (
-        <p className="mt-0.5 truncate text-xs text-slate-500">{subject}</p>
+        <p className="mt-0.5 truncate text-xs text-ink-muted">{subject}</p>
       ) : null}
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <span
           className={`truncate text-[11px] tabular-nums ${
-            slaCritical ? "font-semibold text-rose-500" : "text-slate-400"
+            slaCritical ? "font-semibold text-rose-500" : "text-ink-muted"
           }`}
         >
           {slaCritical ? `vencido · ${lastMessageAt}` : lastMessageAt}
@@ -494,7 +494,7 @@ function BoardCard({
               className="size-5 rounded-full object-cover"
             />
           ) : (
-            <span className="flex size-5 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[8px] font-bold text-slate-600">
+            <span className="flex size-5 items-center justify-center rounded-full border border-line bg-subtle text-[8px] font-bold text-ink-soft">
               {operatorInitials(assigneeName)}
             </span>
           )}

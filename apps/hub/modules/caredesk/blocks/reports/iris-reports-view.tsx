@@ -46,7 +46,7 @@ export function IrisReportsView({
 
   return (
     <div className="grid grid-cols-[minmax(0,1fr)_360px] gap-4">
-      <section className="rounded-2xl border border-[#dbe3ef] bg-white p-4">
+      <section className="rounded-2xl border border-line bg-surface p-4">
         <h3 className="mb-4 text-base font-semibold">
           Performance operacional
         </h3>

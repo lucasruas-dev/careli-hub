@@ -59,32 +59,32 @@ const eventVisuals: Record<
 > = {
   "Ligação realizada": {
     icon: PhoneCall,
-    className: "bg-indigo-50 text-indigo-700 ring-indigo-100",
+    className: "bg-indigo-50 dark:bg-indigo-500/12 text-indigo-700 dark:text-indigo-300 ring-indigo-100 dark:ring-indigo-500/25",
     dotClassName: "bg-indigo-500",
   },
   "WhatsApp enviado": {
     icon: MessageCircle,
-    className: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    className: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
     dotClassName: "bg-emerald-500",
   },
   "Promessa de pagamento": {
     icon: CalendarCheck,
-    className: "bg-teal-50 text-teal-700 ring-teal-100",
+    className: "bg-teal-50 dark:bg-teal-500/12 text-teal-700 dark:text-teal-300 ring-teal-100 dark:ring-teal-500/25",
     dotClassName: "bg-teal-500",
   },
   "Acordo gerado": {
     icon: Handshake,
-    className: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
+    className: "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
     dotClassName: "bg-[#A07C3B]",
   },
   "Quebra de acordo": {
     icon: AlertTriangle,
-    className: "bg-rose-50 text-rose-700 ring-rose-100",
+    className: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
     dotClassName: "bg-rose-500",
   },
   "Boleto C2X": {
     icon: ReceiptText,
-    className: "bg-sky-50 text-sky-700 ring-sky-100",
+    className: "bg-sky-50 dark:bg-sky-500/12 text-sky-700 dark:text-sky-300 ring-sky-100 dark:ring-sky-500/25",
     dotClassName: "bg-sky-500",
   },
   "Atualização cadastral": {
@@ -94,12 +94,12 @@ const eventVisuals: Record<
   },
   "Observação operacional": {
     icon: ClipboardList,
-    className: "bg-slate-50 text-slate-600 ring-slate-200",
-    dotClassName: "bg-slate-400",
+    className: "bg-subtle text-ink-soft ring-line",
+    dotClassName: "bg-subtle",
   },
   "Alteração de risco": {
     icon: ShieldAlert,
-    className: "bg-amber-50 text-amber-700 ring-amber-100",
+    className: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/25",
     dotClassName: "bg-amber-500",
   },
   "Acionamento jurídico": {
@@ -109,22 +109,22 @@ const eventVisuals: Record<
   },
   "Interação da IA": {
     icon: Bot,
-    className: "bg-violet-50 text-violet-700 ring-violet-100",
+    className: "bg-violet-50 dark:bg-violet-500/12 text-violet-700 ring-violet-100 dark:ring-violet-500/25",
     dotClassName: "bg-violet-500",
   },
 };
 
 const statusStyles: Record<TimelineEventStatus, string> = {
-  Realizado: "bg-indigo-50 text-indigo-700 ring-indigo-100",
-  Enviado: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-  Prometido: "bg-teal-50 text-teal-700 ring-teal-100",
-  Gerado: "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
-  Quebrado: "bg-rose-50 text-rose-700 ring-rose-100",
+  Realizado: "bg-indigo-50 dark:bg-indigo-500/12 text-indigo-700 dark:text-indigo-300 ring-indigo-100 dark:ring-indigo-500/25",
+  Enviado: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+  Prometido: "bg-teal-50 dark:bg-teal-500/12 text-teal-700 dark:text-teal-300 ring-teal-100 dark:ring-teal-500/25",
+  Gerado: "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+  Quebrado: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
   Atualizado: "bg-cyan-50 text-cyan-700 ring-cyan-100",
-  Registrado: "bg-slate-50 text-slate-600 ring-slate-200",
-  Elevado: "bg-amber-50 text-amber-700 ring-amber-100",
+  Registrado: "bg-subtle text-ink-soft ring-line",
+  Elevado: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/25",
   "Jurídico": "bg-zinc-100 text-zinc-700 ring-zinc-200",
-  IA: "bg-violet-50 text-violet-700 ring-violet-100",
+  IA: "bg-violet-50 dark:bg-violet-500/12 text-violet-700 ring-violet-100 dark:ring-violet-500/25",
 };
 
 const manualEventTypes: TimelineEventType[] = [
@@ -226,7 +226,7 @@ export function OperationalTimeline({
     <DetailSection title="Timeline operacional do cliente" icon={ClipboardList} accent>
       <div className="mb-3 flex flex-col gap-3">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-xs font-semibold tracking-normal text-slate-400">
+          <p className="text-xs font-semibold tracking-normal text-ink-muted">
             {filteredEvents.length === events.length
               ? `${events.length} eventos`
               : `${filteredEvents.length} de ${events.length} eventos`}
@@ -244,20 +244,20 @@ export function OperationalTimeline({
         <div className="flex flex-wrap items-center gap-2">
           <div className="relative min-w-[160px] flex-1">
             <Search
-              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-slate-400"
+              className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-ink-muted"
               aria-hidden="true"
             />
             <input
               value={filterSearch}
               onChange={(event) => setFilterSearch(event.target.value)}
               placeholder="Buscar protocolo, texto…"
-              className="h-8 w-full rounded-lg border border-slate-200 bg-white pl-8 pr-2.5 text-xs text-slate-800 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="h-8 w-full rounded-lg border border-line bg-surface pl-8 pr-2.5 text-xs text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
             />
           </div>
           <select
             value={filterType}
             onChange={(event) => setFilterType(event.target.value)}
-            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-700 outline-none focus:border-[#A07C3B]/40"
+            className="h-8 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink outline-none focus:border-[#A07C3B]/40"
           >
             <option value="all">Todas as atividades</option>
             {availableTypes.map((type) => (
@@ -270,7 +270,7 @@ export function OperationalTimeline({
             type="date"
             value={filterDate}
             onChange={(event) => setFilterDate(event.target.value)}
-            className="h-8 rounded-lg border border-slate-200 bg-white px-2.5 text-xs text-slate-700 outline-none focus:border-[#A07C3B]/40"
+            className="h-8 rounded-lg border border-line bg-surface px-2.5 text-xs text-ink outline-none focus:border-[#A07C3B]/40"
           />
           {hasFilter ? (
             <button
@@ -280,7 +280,7 @@ export function OperationalTimeline({
                 setFilterType("all");
                 setFilterDate("");
               }}
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-500 transition-colors hover:bg-slate-50"
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink-muted transition-colors hover:bg-subtle"
             >
               <X className="size-3.5" aria-hidden="true" />
               Limpar
@@ -290,15 +290,15 @@ export function OperationalTimeline({
       </div>
 
       {feedback ? (
-        <div className="mb-3 rounded-lg border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 py-2 text-xs font-semibold text-[#7A5E2C]">
+        <div className="mb-3 rounded-lg border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 py-2 text-xs font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
           {feedback}
         </div>
       ) : null}
 
-      <div className="max-h-[640px] overflow-y-auto pr-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300 [&::-webkit-scrollbar-track]:bg-transparent">
+      <div className="max-h-[640px] overflow-y-auto pr-2 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-subtle [&::-webkit-scrollbar-track]:bg-transparent">
         <div className="space-y-4">
           {groupedEvents.length === 0 ? (
-            <p className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 px-3 py-6 text-center text-xs text-slate-500">
+            <p className="rounded-xl border border-dashed border-line bg-subtle/60 px-3 py-6 text-center text-xs text-ink-muted">
               {hasFilter
                 ? "Nenhum evento para esse filtro."
                 : "Sem eventos na timeline."}
@@ -306,11 +306,11 @@ export function OperationalTimeline({
           ) : null}
           {groupedEvents.map((group) => (
             <div key={group.key}>
-              <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-normal text-slate-400">
+              <p className="mb-2 flex items-center gap-2 text-[11px] font-semibold uppercase tracking-normal text-ink-muted">
                 {group.label}
-                <span className="h-px flex-1 bg-slate-100" />
+                <span className="h-px flex-1 bg-subtle" />
               </p>
-              <div className="relative space-y-2 before:absolute before:left-[16px] before:top-2 before:bottom-2 before:w-px before:bg-slate-200">
+              <div className="relative space-y-2 before:absolute before:left-[16px] before:top-2 before:bottom-2 before:w-px before:bg-subtle">
                 {group.events.map((event) => {
                   const visual =
                     eventVisuals[event.type] ?? eventVisuals["Observação operacional"];
@@ -325,30 +325,30 @@ export function OperationalTimeline({
                         <Icon className="size-4" aria-hidden="true" />
                       </span>
 
-                      <div className="min-w-0 flex-1 rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-slate-300">
+                      <div className="min-w-0 flex-1 rounded-xl border border-line/70 bg-surface p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] transition-colors hover:border-line">
                         <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                           <div className="min-w-0">
                             <div className="flex flex-wrap items-center gap-2">
-                              <p className="text-sm font-semibold text-slate-950">{event.title}</p>
-                              <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                              <p className="text-sm font-semibold text-ink">{event.title}</p>
+                              <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-muted ring-1 ring-line">
                                 {event.type}
                               </span>
                             </div>
 
                             {event.description ? (
-                              <p className="mt-1 text-xs leading-5 text-slate-500 [overflow-wrap:anywhere]">
+                              <p className="mt-1 text-xs leading-5 text-ink-muted [overflow-wrap:anywhere]">
                                 {event.description}
                               </p>
                             ) : null}
                             {event.protocol || event.unitCode ? (
                               <div className="mt-2 flex flex-wrap gap-2">
                                 {event.protocol ? (
-                                  <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                                  <span className="rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                                     {event.protocol}
                                   </span>
                                 ) : null}
                                 {event.unitCode ? (
-                                  <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-500 ring-1 ring-slate-200">
+                                  <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-muted ring-1 ring-line">
                                     Unidade {event.unitCode}
                                   </span>
                                 ) : null}
@@ -368,13 +368,13 @@ export function OperationalTimeline({
                           </span>
                         </div>
 
-                        <div className="mt-2 flex flex-col gap-1 border-t border-slate-100 pt-2 text-xs text-slate-500 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="mt-2 flex flex-col gap-1 border-t border-line pt-2 text-xs text-ink-muted sm:flex-row sm:items-center sm:justify-between">
                           <span className="inline-flex flex-wrap items-center gap-1.5">
                             <span
                               className={`inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
                                 origin === "auto"
-                                  ? "bg-[#A07C3B]/10 text-[#7A5E2C]"
-                                  : "bg-slate-100 text-slate-600"
+                                  ? "bg-[#A07C3B]/10 text-[#7A5E2C] dark:text-[#d9b877]"
+                                  : "bg-subtle text-ink-soft"
                               }`}
                             >
                               {origin === "auto" ? (
@@ -384,7 +384,7 @@ export function OperationalTimeline({
                               )}
                               {origin === "auto" ? "Auto · Hades" : "Manual · operador"}
                             </span>
-                            <span className="font-medium text-slate-600">{event.operator}</span>
+                            <span className="font-medium text-ink-soft">{event.operator}</span>
                           </span>
                           <time dateTime={event.occurredAt}>{event.occurredAt}</time>
                         </div>
@@ -500,19 +500,19 @@ function ManualTimelineDrawer({
         type="button"
         aria-label="Fechar registro operacional"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
       />
-      <div className="relative z-10 flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.28)]">
-        <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.28)]">
+        <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
           <div className="flex items-center gap-3">
-            <span className="flex size-9 items-center justify-center rounded-lg bg-[#A07C3B]/10 text-[#7A5E2C]">
+            <span className="flex size-9 items-center justify-center rounded-lg bg-[#A07C3B]/10 text-[#7A5E2C] dark:text-[#d9b877]">
               <ClipboardList className="size-5" aria-hidden="true" />
             </span>
             <div>
-              <h2 className="text-base font-semibold text-slate-950">
+              <h2 className="text-base font-semibold text-ink">
                 Registrar atividade
               </h2>
-              <p className="text-xs text-slate-500">
+              <p className="text-xs text-ink-muted">
                 {client?.nome ?? "Cliente selecionado"}
               </p>
             </div>
@@ -521,7 +521,7 @@ function ManualTimelineDrawer({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="flex size-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-50 hover:text-slate-900"
+            className="flex size-8 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -529,7 +529,7 @@ function ManualTimelineDrawer({
 
         <div className="min-h-0 flex-1 space-y-4 overflow-y-auto p-5">
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-500">Tipo</span>
+            <span className="mb-1 block text-xs font-semibold text-ink-muted">Tipo</span>
             <select
               value={draft.type}
               onChange={(event) => {
@@ -540,7 +540,7 @@ function ManualTimelineDrawer({
                   type,
                 }));
               }}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
             >
               {manualEventTypes.map((type) => (
                 <option key={type}>{type}</option>
@@ -549,11 +549,11 @@ function ManualTimelineDrawer({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-500">Unidade</span>
+            <span className="mb-1 block text-xs font-semibold text-ink-muted">Unidade</span>
             <select
               value={draft.unitId}
               onChange={(event) => setDraft((current) => ({ ...current, unitId: event.target.value }))}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
             >
               {units.map((unit) => (
                 <option key={unit.id} value={unit.id}>
@@ -564,51 +564,51 @@ function ManualTimelineDrawer({
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-500">Titulo</span>
+            <span className="mb-1 block text-xs font-semibold text-ink-muted">Titulo</span>
             <input
               value={draft.title}
               onChange={(event) => setDraft((current) => ({ ...current, title: event.target.value }))}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
             />
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-500">Data e hora</span>
+            <span className="mb-1 block text-xs font-semibold text-ink-muted">Data e hora</span>
             <input
               value={draft.occurredAt}
               onChange={(event) => setDraft((current) => ({ ...current, occurredAt: event.target.value }))}
-              className="h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-900 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
             />
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-500">Operador</span>
+            <span className="mb-1 block text-xs font-semibold text-ink-muted">Operador</span>
             <input
               value={draft.operator}
               readOnly
-              className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-900 outline-none"
+              className="h-10 w-full rounded-lg border border-line bg-subtle px-3 text-sm font-semibold text-ink outline-none"
             />
           </label>
 
           <label className="block">
-            <span className="mb-1 block text-xs font-semibold text-slate-500">Registro</span>
+            <span className="mb-1 block text-xs font-semibold text-ink-muted">Registro</span>
             <textarea
               value={draft.description}
               onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))}
               placeholder="Descreva o contato, cobrança, retorno, observação ou encaminhamento."
-              className="min-h-32 w-full resize-none rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm leading-6 text-slate-800 outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="min-h-32 w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-6 text-ink outline-none focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10"
             />
           </label>
 
-          <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+          <div className="rounded-xl border border-line bg-subtle/60 p-3">
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div>
-                <p className="text-xs font-semibold text-slate-700">Anexos do evento</p>
-                <p className="mt-0.5 text-[11px] text-slate-500">
+                <p className="text-xs font-semibold text-ink">Anexos do evento</p>
+                <p className="mt-0.5 text-[11px] text-ink-muted">
                   Print, arquivo ou audio de ate 8 MB.
                 </p>
               </div>
-              <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5">
+              <label className="inline-flex h-8 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5">
                 <Paperclip className="size-3.5 text-[#A07C3B]" aria-hidden="true" />
                 Anexar
                 <input
@@ -625,7 +625,7 @@ function ManualTimelineDrawer({
             </div>
 
             {attachmentFeedback ? (
-              <p className="mt-2 text-xs font-semibold text-amber-700">
+              <p className="mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
                 {attachmentFeedback}
               </p>
             ) : null}
@@ -635,13 +635,13 @@ function ManualTimelineDrawer({
                 {draft.attachments.map((attachment) => (
                   <li
                     key={attachment.id}
-                    className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
+                    className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2"
                   >
                     <div className="min-w-0">
-                      <p className="truncate text-xs font-semibold text-slate-800">
+                      <p className="truncate text-xs font-semibold text-ink">
                         {attachment.fileName}
                       </p>
-                      <p className="text-[11px] text-slate-500">
+                      <p className="text-[11px] text-ink-muted">
                         {attachment.type === "audio" ? "Audio" : attachment.type === "image" ? "Imagem" : "Arquivo"} · {formatBytes(attachment.sizeBytes)}
                       </p>
                     </div>
@@ -656,7 +656,7 @@ function ManualTimelineDrawer({
                         }))
                       }
                       aria-label={`Remover anexo ${attachment.fileName}`}
-                      className="flex size-8 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-rose-50 hover:text-rose-700"
+                      className="flex size-8 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-rose-50 dark:bg-rose-500/12 hover:text-rose-700 dark:text-rose-300"
                     >
                       <X className="size-4" aria-hidden="true" />
                     </button>
@@ -670,7 +670,7 @@ function ManualTimelineDrawer({
             type="button"
             disabled={saving || !draft.title.trim() || !draft.description.trim()}
             onClick={() => onSave(draft)}
-            className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="inline-flex h-10 w-full items-center justify-center rounded-lg bg-[#A07C3B] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-subtle"
           >
             {saving ? "Salvando..." : "Salvar registro"}
           </button>
@@ -694,15 +694,15 @@ function EventAttachments({
       {attachments.map((attachment) => (
         <div
           key={attachment.id}
-          className="min-w-0 overflow-hidden rounded-lg border border-slate-200 bg-slate-50/80 p-2"
+          className="min-w-0 overflow-hidden rounded-lg border border-line bg-subtle/80 p-2"
         >
           <div className="mb-2 flex items-center gap-2">
             <Paperclip className="size-3.5 shrink-0 text-[#A07C3B]" aria-hidden="true" />
             <div className="min-w-0">
-              <p className="truncate text-xs font-semibold text-slate-700">
+              <p className="truncate text-xs font-semibold text-ink">
                 {attachment.fileName}
               </p>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-ink-muted">
                 {formatBytes(attachment.sizeBytes)}
               </p>
             </div>
@@ -712,7 +712,7 @@ function EventAttachments({
             <a
               href={attachment.dataUrl}
               download={attachment.fileName}
-              className="block overflow-hidden rounded-md border border-slate-200 bg-white"
+              className="block overflow-hidden rounded-md border border-line bg-surface"
             >
               <img
                 src={attachment.dataUrl}
@@ -735,7 +735,7 @@ function EventAttachments({
             <a
               href={attachment.dataUrl}
               download={attachment.fileName}
-              className="inline-flex h-8 w-full items-center justify-center rounded-md border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
+              className="inline-flex h-8 w-full items-center justify-center rounded-md border border-line bg-surface px-2 text-xs font-semibold text-ink transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
             >
               Abrir arquivo
             </a>

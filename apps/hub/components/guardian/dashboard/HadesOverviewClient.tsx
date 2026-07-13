@@ -97,33 +97,33 @@ function HadesOverview({
 
   return (
     <div className="flex w-full flex-col gap-4">
-      <section className="flex flex-col gap-4 rounded-xl border border-slate-200/70 bg-white px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center lg:justify-between">
+      <section className="flex flex-col gap-4 rounded-xl border border-line bg-surface px-5 py-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)] lg:flex-row lg:items-center lg:justify-between">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex h-7 items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700">
+            <span className="inline-flex h-7 items-center rounded-full border border-emerald-100 bg-emerald-50 px-3 text-xs font-semibold text-emerald-700 dark:border-emerald-500/25 dark:bg-emerald-500/12 dark:text-emerald-300">
               <ShieldCheck className="mr-1.5 size-3.5" aria-hidden="true" />
               Read-only conectado
             </span>
-            <span className="inline-flex h-7 items-center rounded-full border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 text-xs font-semibold text-[#7A5E2C]">
+            <span className="inline-flex h-7 items-center rounded-full border border-[#A07C3B]/15 bg-[#A07C3B]/5 px-3 text-xs font-semibold text-[#7A5E2C] dark:border-[#A07C3B]/30 dark:bg-[#A07C3B]/12 dark:text-[#d9b877]">
               prod_careli
             </span>
           </div>
-          <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">
+          <h1 className="mt-3 text-2xl font-semibold tracking-normal text-ink">
             Hades operacional
           </h1>
-          <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-600">
+          <p className="mt-1 max-w-3xl text-sm leading-6 text-ink-soft">
             Primeira leitura real do Hades dentro do Hub: propostas,
             parcelas, assinaturas e unidades sem alterar o banco original.
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
-          <p className="text-xs text-slate-500">
+          <p className="text-xs text-ink-muted">
             Atualizado {formatDateTime(data.generatedAt)}
           </p>
           <button
             type="button"
             onClick={onRefresh}
-            className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:hover:bg-[#A07C3B]/15 dark:hover:text-[#d9b877]"
           >
             <RefreshCw className="size-4" aria-hidden="true" />
             Atualizar
@@ -210,19 +210,20 @@ function MetricCard({
   value: string;
 }) {
   const toneClass = {
-    danger: "text-rose-700 bg-rose-50 ring-rose-100",
-    gold: "text-[#7A5E2C] bg-[#A07C3B]/5 ring-[#A07C3B]/15",
-    neutral: "text-[#A07C3B] bg-slate-50 ring-slate-200/70",
+    danger:
+      "text-rose-700 bg-rose-50 ring-rose-100 dark:text-rose-300 dark:bg-rose-500/12 dark:ring-rose-500/25",
+    gold: "text-[#7A5E2C] bg-[#A07C3B]/5 ring-[#A07C3B]/15 dark:text-[#d9b877] dark:bg-[#A07C3B]/12 dark:ring-[#A07C3B]/30",
+    neutral: "text-[#A07C3B] bg-subtle ring-line dark:text-[#d9b877]",
   }[tone];
 
   return (
-    <article className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <article className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="text-xs font-semibold tracking-normal text-slate-400">
+          <p className="text-xs font-semibold tracking-normal text-ink-muted">
             {title}
           </p>
-          <p className="mt-2 text-2xl font-semibold tracking-normal text-slate-950">
+          <p className="mt-2 text-2xl font-semibold tracking-normal text-ink">
             {value}
           </p>
         </div>
@@ -232,7 +233,7 @@ function MetricCard({
           <Icon className="size-4 stroke-[1.8]" aria-hidden="true" />
         </div>
       </div>
-      <p className="mt-3 truncate text-xs text-slate-500">{description}</p>
+      <p className="mt-3 truncate text-xs text-ink-muted">{description}</p>
     </article>
   );
 }
@@ -247,11 +248,11 @@ function DistributionPanel({
   total: number;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-center justify-between gap-3">
         <div>
-          <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-          <p className="mt-1 text-sm text-slate-500">
+          <h2 className="text-base font-semibold text-ink">{title}</h2>
+          <p className="mt-1 text-sm text-ink-muted">
             {formatNumber(total)} registros distribuidos por etapa.
           </p>
         </div>
@@ -280,9 +281,9 @@ function PaymentStatusPanel({
   total: number;
 }) {
   return (
-    <section className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-      <p className="mt-1 text-sm text-slate-500">
+    <section className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <h2 className="text-base font-semibold text-ink">{title}</h2>
+      <p className="mt-1 text-sm text-ink-muted">
         {formatNumber(total)} parcelas por situacao financeira.
       </p>
       <div className="mt-5 space-y-3">
@@ -311,12 +312,12 @@ function ProgressRow({
   return (
     <div>
       <div className="flex items-center justify-between gap-3">
-        <span className="truncate text-sm font-medium text-slate-700">
+        <span className="truncate text-sm font-medium text-ink">
           {label}
         </span>
-        <span className="text-sm font-semibold text-slate-950">{value}</span>
+        <span className="text-sm font-semibold text-ink">{value}</span>
       </div>
-      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+      <div className="mt-2 h-2 overflow-hidden rounded-full bg-subtle">
         <div
           className="h-full rounded-full bg-[#A07C3B]/75"
           style={{ width: `${Math.max(percent, 2)}%` }}
@@ -405,14 +406,14 @@ function DataTable({
   title: string;
 }) {
   return (
-    <section className="overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="border-b border-slate-100 px-5 py-4">
-        <h2 className="text-base font-semibold text-slate-950">{title}</h2>
-        <p className="mt-1 text-sm text-slate-500">{description}</p>
+    <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="border-b border-line px-5 py-4">
+        <h2 className="text-base font-semibold text-ink">{title}</h2>
+        <p className="mt-1 text-sm text-ink-muted">{description}</p>
       </div>
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="bg-slate-50/80 text-xs tracking-normal text-slate-500">
+          <thead className="bg-subtle text-xs tracking-normal text-ink-muted">
             <tr>
               {headers.map((header) => (
                 <th key={header} className="px-4 py-3 font-medium">
@@ -421,16 +422,16 @@ function DataTable({
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 bg-white">
+          <tbody className="divide-y divide-line bg-surface">
             {rows.map((row, rowIndex) => (
-              <tr key={`${title}-${rowIndex}`} className="hover:bg-slate-50/60">
+              <tr key={`${title}-${rowIndex}`} className="hover:bg-subtle">
                 {row.map((cell, cellIndex) => (
                   <td
                     key={`${title}-${rowIndex}-${cellIndex}`}
                     className={`whitespace-nowrap px-4 py-3 ${
                       cellIndex === 0
-                        ? "font-semibold text-slate-950"
-                        : "text-slate-600"
+                        ? "font-semibold text-ink"
+                        : "text-ink-soft"
                     }`}
                   >
                     {cell}
@@ -442,7 +443,7 @@ function DataTable({
         </table>
       </div>
       {rows.length === 0 ? (
-        <div className="border-t border-slate-100 px-5 py-8 text-center text-sm text-slate-500">
+        <div className="border-t border-line px-5 py-8 text-center text-sm text-ink-muted">
           Nenhum registro encontrado.
         </div>
       ) : null}
@@ -462,13 +463,13 @@ function HadesLoading() {
         {Array.from({ length: 6 }, (_, index) => (
           <div
             key={index}
-            className="h-32 animate-pulse rounded-xl bg-white ring-1 ring-slate-200/70"
+            className="h-32 animate-pulse rounded-xl bg-surface ring-1 ring-line"
           />
         ))}
       </div>
       <div className="grid gap-4 xl:grid-cols-2">
-        <div className="h-80 animate-pulse rounded-xl bg-white ring-1 ring-slate-200/70" />
-        <div className="h-80 animate-pulse rounded-xl bg-white ring-1 ring-slate-200/70" />
+        <div className="h-80 animate-pulse rounded-xl bg-surface ring-1 ring-line" />
+        <div className="h-80 animate-pulse rounded-xl bg-surface ring-1 ring-line" />
       </div>
     </div>
   );
@@ -482,20 +483,20 @@ function HadesError({
   onRetry: () => void;
 }) {
   return (
-    <section className="rounded-xl border border-rose-100 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="rounded-xl border border-rose-100 bg-surface p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-rose-500/25">
       <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-700 ring-1 ring-rose-100">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-rose-50 text-rose-700 ring-1 ring-rose-100 dark:bg-rose-500/12 dark:text-rose-300 dark:ring-rose-500/25">
           <AlertTriangle className="size-5" aria-hidden="true" />
         </div>
         <div>
-          <h2 className="text-base font-semibold text-slate-950">
+          <h2 className="text-base font-semibold text-ink">
             Hades indisponivel
           </h2>
-          <p className="mt-1 text-sm text-slate-600">{message}</p>
+          <p className="mt-1 text-sm text-ink-soft">{message}</p>
           <button
             type="button"
             onClick={onRetry}
-            className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-slate-950 px-3 text-sm font-semibold text-white transition-colors hover:bg-[#A07C3B]"
+            className="mt-4 inline-flex h-10 items-center gap-2 rounded-lg bg-inverse px-3 text-sm font-semibold text-brand-ink transition-colors hover:bg-[#A07C3B] hover:text-white"
           >
             <RefreshCw className="size-4" aria-hidden="true" />
             Tentar novamente

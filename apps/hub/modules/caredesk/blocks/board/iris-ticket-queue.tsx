@@ -208,11 +208,11 @@ export function IrisTicketQueue({
   }, [helpers, ownerScopedTickets, priority, queue, search, status]);
 
   return (
-    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <header className="shrink-0 border-b border-slate-100 px-4 py-3">
+    <section className="flex h-full min-h-0 flex-col overflow-hidden rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <header className="shrink-0 border-b border-line px-4 py-3">
         <div className="flex flex-col gap-3">
           <div className="flex min-w-0 flex-wrap items-center justify-between gap-2">
-            <h2 className="text-base font-semibold text-slate-950">
+            <h2 className="text-base font-semibold text-ink">
               Inbox
             </h2>
             <Tooltip
@@ -225,7 +225,7 @@ export function IrisTicketQueue({
                 aria-label="Novo atendimento"
                 title="Novo atendimento"
                 onClick={() => onStartAttendance(queue)}
-                className="inline-flex size-9 items-center justify-center rounded-lg bg-[#101820] text-white shadow-sm transition-colors hover:bg-[#1f2c3a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                className="inline-flex size-9 items-center justify-center rounded-lg bg-[#101820] text-white shadow-sm transition-colors hover:bg-[#1f2c3a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#d0ad69] dark:bg-white/[0.12] dark:text-ink dark:shadow-none dark:hover:bg-white/[0.18]"
               >
                 <Plus className="size-4" aria-hidden="true" />
               </button>
@@ -233,7 +233,7 @@ export function IrisTicketQueue({
           </div>
           <div
             className={[
-              "grid gap-2 rounded-xl border border-slate-200/70 bg-slate-50/70 p-1.5",
+              "grid gap-2 rounded-xl border border-line/70 bg-subtle/70 p-1.5",
               ownerViewOptions.length === 3 ? "grid-cols-3" : "grid-cols-2",
             ].join(" ")}
           >
@@ -248,8 +248,8 @@ export function IrisTicketQueue({
                   className={[
                     "inline-flex h-9 items-center justify-center gap-2 rounded-lg text-xs font-semibold transition-colors",
                     active
-                      ? "bg-[#101820] text-white shadow-sm"
-                      : "bg-white text-slate-600 ring-1 ring-slate-200 hover:text-[#7A5E2C]",
+                      ? "bg-[#101820] text-white shadow-sm dark:bg-white/[0.14] dark:text-ink dark:shadow-none"
+                      : "bg-surface text-ink-soft ring-1 ring-slate-200 hover:text-[#7A5E2C] dark:ring-white/10 dark:hover:text-[#d9b877]",
                   ].join(" ")}
                 >
                   <span>{option}</span>
@@ -272,14 +272,14 @@ export function IrisTicketQueue({
 
       <div className="grid min-h-0 flex-1 gap-3 p-3">
         <div className="flex min-h-0 min-w-0 flex-col gap-3">
-          <div className="grid gap-2 rounded-xl border border-slate-200/70 bg-slate-50/60 p-2 lg:grid-cols-[minmax(0,1fr)_150px_150px_150px]">
-            <label className="flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-500">
+          <div className="grid gap-2 rounded-xl border border-line/70 bg-subtle/60 p-2 lg:grid-cols-[minmax(0,1fr)_150px_150px_150px]">
+            <label className="flex h-10 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3 text-sm text-ink-muted">
               <Search className="size-4 text-[#A07C3B]" aria-hidden="true" />
               <input
                 value={search}
                 onChange={(event) => setSearch(event.target.value)}
                 placeholder="Buscar protocolo, cliente ou assunto..."
-                className="min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-700 outline-none placeholder:text-slate-400"
+                className="min-w-0 flex-1 bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
               />
             </label>
             <FilterSelect
@@ -302,7 +302,7 @@ export function IrisTicketQueue({
             />
           </div>
 
-          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-200/70">
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line/70">
             <IrisTicketListHeader showChatTitle />
             <div className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
               {filteredTickets.length > 0 ? (
@@ -368,19 +368,19 @@ export function queueChipClasses(queueLabel: string): string {
   const key = queueLabel.trim().toLowerCase();
 
   if (key.includes("cobran")) {
-    return "border-[#A07C3B]/25 bg-[#A07C3B]/10 text-[#7A5E2C]";
+    return "border-[#A07C3B]/25 bg-[#A07C3B]/10 text-[#7A5E2C] dark:border-[#A07C3B]/35 dark:bg-[#A07C3B]/15 dark:text-[#d9b877]";
   }
   if (key.includes("gurgel")) {
-    return "border-violet-200 bg-violet-50 text-violet-700";
+    return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-400/30 dark:bg-violet-400/15 dark:text-violet-300";
   }
   if (key.includes("jurid") || key.includes("juríd")) {
-    return "border-rose-200 bg-rose-50 text-rose-700";
+    return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-400/30 dark:bg-rose-400/15 dark:text-rose-300";
   }
   if (key.includes("atend")) {
-    return "border-sky-200 bg-sky-50 text-sky-700";
+    return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-400/30 dark:bg-sky-400/15 dark:text-sky-300";
   }
 
-  return "border-slate-200 bg-slate-50 text-slate-500";
+  return "border-line bg-subtle text-ink-muted dark:border-white/10 dark:bg-white/[0.06] dark:text-ink-muted";
 }
 
 // Papel do contato pro card, a partir do CRM360 do Apolo (crm360Registration).
@@ -476,19 +476,18 @@ export function BoardProfileChip({ crm }: { crm: BoardCrmChip }) {
     return null;
   }
 
+  const tone =
+    crm.dotColor === "red"
+      ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/15 dark:text-rose-300"
+      : crm.dotColor === "green"
+        ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300"
+        : "border-line bg-surface text-ink-soft";
+
   return (
     <span
       title={crm.label}
-      className="inline-flex shrink-0 items-center gap-1 rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-[9px] font-medium text-slate-600"
+      className={`inline-flex shrink-0 items-center rounded-full border px-1.5 py-0.5 text-[9px] font-semibold ${tone}`}
     >
-      {crm.dotColor ? (
-        <span
-          className={`size-1.5 shrink-0 rounded-full ${
-            crm.dotColor === "red" ? "bg-rose-500" : "bg-emerald-500"
-          }`}
-          aria-hidden="true"
-        />
-      ) : null}
       {crm.label}
     </span>
   );
@@ -542,7 +541,7 @@ export function IrisTicketRow({
           onOpenAttendance(ticket.id);
         }
       }}
-      className={`flex min-w-0 cursor-pointer items-center gap-2.5 border-b border-slate-100 px-3 py-2 transition-colors last:border-b-0 hover:bg-slate-50/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#A07C3B]/30 ${
+      className={`flex min-w-0 cursor-pointer items-center gap-2.5 border-b border-line px-3 py-2 transition-colors last:border-b-0 hover:bg-subtle/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#A07C3B]/30 ${
         ticket.unread ? "bg-[#A07C3B]/5 shadow-[inset_3px_0_0_#A07C3B]" : ""
       }`}
     >
@@ -556,7 +555,7 @@ export function IrisTicketRow({
         ) : null}
         <div className="flex min-w-0 items-center gap-1.5">
           <span
-            className={`truncate text-sm text-slate-950 ${
+            className={`truncate text-sm text-ink ${
               ticket.unread ? "font-bold" : "font-medium"
             }`}
             title={contactName}
@@ -581,7 +580,7 @@ export function IrisTicketRow({
         </div>
         <p
           className={`mt-0.5 truncate text-xs ${
-            ticket.unread ? "font-medium text-slate-600" : "text-slate-400"
+            ticket.unread ? "font-medium text-ink-soft" : "text-ink-muted"
           }`}
           title={ticket.lastMessagePreview}
         >
@@ -589,7 +588,7 @@ export function IrisTicketRow({
           {ticket.lastMessagePreview}
         </p>
         {showTimeline ? (
-          <p className="mt-1 truncate text-[11px] font-medium text-slate-500">
+          <p className="mt-1 truncate text-[11px] font-medium text-ink-muted">
             Inicio: {timelineStartedAt} | Encerramento: {timelineClosedAt}
           </p>
         ) : null}
@@ -598,7 +597,7 @@ export function IrisTicketRow({
       <div className="flex shrink-0 flex-col items-end gap-1">
         <span
           className={`text-[11px] tabular-nums ${
-            slaCritical ? "font-semibold text-rose-500" : "text-slate-400"
+            slaCritical ? "font-semibold text-rose-500" : "text-ink-muted"
           }`}
           title={`Última mensagem: ${lastMessageAt}`}
         >
@@ -631,7 +630,7 @@ export function IrisTicketRow({
             className="size-6 rounded-full object-cover"
           />
         ) : (
-          <span className="flex size-6 items-center justify-center rounded-full border border-slate-200 bg-slate-50 text-[9px] font-bold text-slate-600">
+          <span className="flex size-6 items-center justify-center rounded-full border border-line bg-subtle text-[9px] font-bold text-ink-soft">
             {operatorInitials(assigneeName)}
           </span>
         )}

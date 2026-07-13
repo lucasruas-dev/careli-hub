@@ -1,0 +1,169 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prometeu · Locutor</title>
+<style>
+  :root{
+    --canvas:#f7f8fa; --panel:#ffffff; --subtle:#eef1f4; --line:#dce2ea; --line-strong:#c5ceda;
+    --text:#121722; --text2:#485466; --muted:#667085; --inverse:#f7f8fa;
+    --brand:#a07c3b; --brand-soft:rgba(160,124,59,.12);
+    --ok:#14804a; --ok-soft:rgba(20,128,74,.12); --info:#2563eb; --info-soft:rgba(37,99,235,.10);
+    --shadow-sm:0 2px 6px rgb(18 23 34 / 0.08);
+  }
+  body.dark{
+    --canvas:#101211; --panel:#181a19; --subtle:#26292a; --line:#2b2e2c; --line-strong:#3a3e3c;
+    --text:#e9edeb; --text2:#cfd3d0; --muted:#98a09a; --inverse:#101211;
+    --brand:#cba25a; --brand-soft:rgba(203,162,90,.16); --ok:#3fae74; --ok-soft:rgba(63,174,116,.16); --info:#5b8def; --info-soft:rgba(91,141,239,.14);
+    --shadow-sm:0 2px 8px rgb(0 0 0 / .4);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--canvas);color:var(--text);font-family:Arial,Helvetica,sans-serif;min-height:100vh;padding:18px 22px 40px}
+  header{display:flex;align-items:center;gap:16px;margin-bottom:20px;max-width:820px;margin-left:auto;margin-right:auto}
+  .mod-icon{width:46px;height:46px;border-radius:12px;background:#232832;color:#dce2ea;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .mod-icon svg{width:24px;height:24px}
+  .brand h1{font-size:20px;font-weight:800}
+  .brand .sub{font-size:11px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:1px}
+  .admin-chip{margin-left:auto;font-size:12px;font-weight:700;color:var(--brand);background:var(--brand-soft);border:1px solid var(--brand);border-radius:20px;padding:6px 13px}
+  .tbtn{width:40px;height:40px;border-radius:10px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center;margin-left:12px}
+  .tbtn svg{width:18px;height:18px}
+
+  .wrap{max-width:820px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-sm);padding:22px}
+  .lbl{font-size:12px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .presets{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:16px}
+  .presets button{border:1px solid var(--line);background:var(--subtle);color:var(--text2);border-radius:20px;padding:8px 14px;font:inherit;font-size:13px;font-weight:700;cursor:pointer}
+  .presets button:hover{border-color:var(--brand);color:var(--brand)}
+  textarea{width:100%;min-height:120px;border:1.5px solid var(--line);border-radius:14px;background:var(--subtle);color:var(--text);padding:16px;font:inherit;font-size:19px;line-height:1.35;resize:vertical}
+  textarea:focus{outline:none;border-color:var(--brand)}
+  .row{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:16px}
+  .seg{display:flex;gap:6px;background:var(--subtle);border:1px solid var(--line);border-radius:12px;padding:4px}
+  .seg button{border:0;background:transparent;color:var(--muted);cursor:pointer;font:inherit;font-size:14px;font-weight:700;padding:9px 16px;border-radius:9px}
+  .seg button.on{background:var(--text);color:var(--inverse)}
+  .btn{border:1px solid var(--line-strong);background:var(--panel);color:var(--text);border-radius:12px;padding:13px 20px;font:inherit;font-size:15px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:9px}
+  .btn svg{width:18px;height:18px}
+  .btn.ia{border-color:var(--info);color:var(--info);background:var(--info-soft)}
+  .btn.ia:hover{background:var(--info);color:#fff}
+  .btn.prev:hover{border-color:var(--brand);color:var(--brand)}
+  .btn.falar{margin-left:auto;background:var(--ok);border-color:var(--ok);color:#fff;font-size:16px;padding:15px 28px}
+  .btn.falar:hover{filter:brightness(1.08)}
+  .btn:disabled{opacity:.5;cursor:not-allowed}
+  .hint{font-size:12.5px;color:var(--muted);margin-top:12px}
+  #status{min-height:22px;font-size:14.5px;font-weight:700;margin-top:6px}
+  #status.ok{color:var(--ok)} #status.err{color:#c24135} #status.load{color:var(--muted)}
+  .hist{display:flex;flex-direction:column;gap:8px}
+  .hist .h{display:flex;align-items:center;gap:12px;background:var(--subtle);border:1px solid var(--line);border-radius:11px;padding:11px 14px}
+  .hist .ht{flex:1;font-size:14.5px;font-weight:600}
+  .hist .hm{font-size:11px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .hist .again{border:1px solid var(--line-strong);background:var(--panel);color:var(--text2);border-radius:8px;padding:6px 11px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+  .hist-empty{font-size:13.5px;color:var(--muted);text-align:center;padding:14px}
+  .gate{max-width:520px;margin:80px auto;text-align:center;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:40px 34px}
+  .gate h2{font-size:22px;font-weight:800;margin-bottom:8px}
+  .gate p{font-size:15px;color:var(--muted);line-height:1.5}
+  .gate code{background:var(--subtle);border:1px solid var(--line);border-radius:7px;padding:2px 8px;font-size:13px}
+</style>
+</head>
+<body>
+
+<div id="app" style="display:none">
+  <header>
+    <div class="mod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a3 3 0 0 0-3 3v6a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z"/><path d="M19 10v1a7 7 0 0 1-14 0v-1M12 18v4M8 22h8"/></svg></div>
+    <div class="brand"><h1>Painel do Locutor</h1><div class="sub">Prometeu · CACÁ ao vivo</div></div>
+    <span class="admin-chip">Admin / Coordenação</span>
+    <button class="tbtn" onclick="document.body.classList.toggle('dark')" title="Tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+  </header>
+
+  <div class="wrap">
+    <div class="card">
+      <div class="lbl">Mensagem pra CACÁ falar no telão</div>
+      <div class="presets" id="presets"></div>
+      <textarea id="msg" placeholder="Escreva o que a CACÁ vai falar... ex: pessoal, a praça de alimentação já está aberta, aproveitem!"></textarea>
+      <div class="row">
+        <div class="seg" id="tom">
+          <button class="on" data-t="animado" onclick="setTom('animado')">Animada</button>
+          <button data-t="caloroso" onclick="setTom('caloroso')">Calorosa</button>
+          <button data-t="neutro" onclick="setTom('neutro')">Neutra</button>
+        </div>
+        <button class="btn ia" onclick="melhorar()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 4.6L18.5 9.5 13.9 11.4 12 16l-1.9-4.6L5.5 9.5l4.6-1.9L12 3z"/><path d="M19 14l.8 2 2 .8-2 .8-.8 2-.8-2-2-.8 2-.8.8-2z"/></svg> Dar o tempero (IA)</button>
+        <button class="btn prev" onclick="ouvir()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.5 8.5a5 5 0 0 1 0 7"/></svg> Ouvir prévia</button>
+        <button class="btn falar" onclick="falar()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg> Falar no telão</button>
+      </div>
+      <div id="status"></div>
+      <div class="hint">A mensagem toca no telão do salão selecionado. As chamadas esperam a CACÁ terminar de falar.</div>
+    </div>
+
+    <div class="card">
+      <div class="lbl">Últimas falas</div>
+      <div class="hist" id="hist"><div class="hist-empty">Nada ainda. Escreva algo e mande pro telão.</div></div>
+    </div>
+  </div>
+</div>
+
+<div class="gate" id="gate" style="display:none">
+  <h2>Acesso restrito</h2>
+  <p>O painel do locutor é só para <b>admin / coordenação</b>. Em produção o acesso vem do login; aqui no mock, é só entrar.</p>
+  <button onclick="entrarDemo()" style="margin-top:22px;border:0;border-radius:12px;background:var(--brand);color:#fff;font:inherit;font-size:15px;font-weight:800;padding:14px 26px;cursor:pointer">Entrar como admin (demo)</button>
+</div>
+
+<script>
+  const PROXY="http://localhost:5180";
+  const PRESETS=["Sejam todos muito bem-vindos ao Vale do Ouro!","A praça de alimentação já está aberta, aproveitem!","Últimas unidades com condição especial, corram!","Obrigado a todos pela presença, está sendo incrível!","Daqui a pouco tem sorteio, fiquem por aqui!"];
+  const TONS={
+    animado:{settings:{stability:0.3,similarity_boost:0.85,style:0.7,use_speaker_boost:true},modelId:"eleven_v3"},
+    caloroso:{settings:{stability:0.45,similarity_boost:0.9,style:0.45,use_speaker_boost:true},modelId:null},
+    neutro:{settings:{stability:0.6,similarity_boost:0.85,style:0.2,use_speaker_boost:false},modelId:null},
+  };
+  let tom="animado", hist=[], previa=null;
+
+  const ehAdmin = new URLSearchParams(location.search).get("admin")==="1";
+  document.getElementById(ehAdmin?"app":"gate").style.display="block";
+  function entrarDemo(){ document.getElementById("gate").style.display="none"; document.getElementById("app").style.display="block"; }
+
+  document.getElementById("presets").innerHTML=PRESETS.map(p=>`<button onclick="usarPreset(this)">${p}</button>`).join("");
+  function usarPreset(b){ document.getElementById("msg").value=b.textContent; document.getElementById("msg").focus(); }
+  function setTom(t){ tom=t; document.querySelectorAll("#tom button").forEach(b=>b.classList.toggle("on",b.dataset.t===t)); }
+  function setStatus(msg,cls){ const s=document.getElementById("status"); s.textContent=msg||""; s.className=cls||""; }
+  const msgVal=()=>document.getElementById("msg").value.trim();
+
+  async function melhorar(){
+    const t=msgVal(); if(!t){setStatus("Escreva algo primeiro.","err");return;}
+    setStatus("A CACÁ está temperando o texto…","load");
+    try{
+      const r=await fetch(PROXY+"/escrever",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,tom})});
+      const j=await r.json();
+      if(j.text){ document.getElementById("msg").value=j.text; setStatus("Prontinho! Ajuste se quiser e mande pro telão.","ok"); }
+      else setStatus("Não consegui melhorar agora, tente de novo.","err");
+    }catch(e){ setStatus("Erro ao falar com a IA.","err"); }
+  }
+  async function ouvir(){
+    const t=msgVal(); if(!t){setStatus("Escreva algo primeiro.","err");return;}
+    setStatus("Gerando a prévia…","load");
+    try{
+      const conf=TONS[tom];
+      const r=await fetch(PROXY+"/tts",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,voiceSettings:conf.settings,modelId:conf.modelId||undefined})});
+      if(!r.ok){setStatus("Não consegui gerar a voz.","err");return;}
+      if(previa)try{previa.pause();}catch(e){}
+      previa=new Audio(URL.createObjectURL(await r.blob())); previa.play();
+      setStatus("Tocando a prévia (só aqui, ainda não foi pro telão).","ok");
+    }catch(e){ setStatus("Erro ao gerar a prévia.","err"); }
+  }
+  async function falar(){
+    const t=msgVal(); if(!t){setStatus("Escreva algo primeiro.","err");return;}
+    setStatus("Enviando pro telão…","load");
+    try{
+      const r=await fetch(PROXY+"/locutor",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify({text:t,tom})});
+      if(!r.ok){setStatus("Não consegui enviar.","err");return;}
+      setStatus("🔊 Enviado! A CACÁ vai falar no telão.","ok");
+      hist.unshift({text:t,quando:new Date().toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})}); hist=hist.slice(0,8); renderHist();
+    }catch(e){ setStatus("Erro ao enviar pro telão.","err"); }
+  }
+  function renderHist(){
+    document.getElementById("hist").innerHTML = hist.length
+      ? hist.map((h,i)=>`<div class="h"><div class="ht">${h.text}</div><div class="hm">${h.quando}</div><button class="again" onclick="reenviar(${i})">Repetir</button></div>`).join("")
+      : `<div class="hist-empty">Nada ainda. Escreva algo e mande pro telão.</div>`;
+  }
+  function reenviar(i){ document.getElementById("msg").value=hist[i].text; falar(); }
+</script>
+</body>
+</html>

@@ -131,9 +131,9 @@ export function InstallmentsCard({
   return (
     <DetailSection title="Parcelas" icon={ReceiptText}>
       {unit ? (
-        <div className="mb-4 rounded-xl border border-slate-200/70 bg-slate-50/60 px-3 py-2.5">
-          <p className="text-xs font-medium text-slate-500">Contrato selecionado</p>
-          <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+        <div className="mb-4 rounded-xl border border-line/70 bg-subtle/60 px-3 py-2.5">
+          <p className="text-xs font-medium text-ink-muted">Contrato selecionado</p>
+          <p className="mt-1 truncate text-sm font-semibold text-ink">
             {unit.empreendimento} · Quadra {unit.quadra} · Lote {formatLote(unit.lote)}
           </p>
         </div>
@@ -153,7 +153,7 @@ export function InstallmentsCard({
 
       <div className="mb-3 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <div className="flex flex-wrap items-center gap-2">
-          <p className="text-sm font-medium text-slate-700">Lista de parcelas</p>
+          <p className="text-sm font-medium text-ink">Lista de parcelas</p>
           {canToggleInstallments ? (
             <Tooltip content={showAllInstallments ? "Ver menos parcelas" : "Ver mais parcelas"} placement="bottom">
               <button
@@ -164,7 +164,7 @@ export function InstallmentsCard({
                   )
                 }
                 aria-label={showAllInstallments ? "Ver menos parcelas" : "Ver mais parcelas"}
-                className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+                className="flex size-9 items-center justify-center rounded-lg border border-line/70 bg-surface text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               >
                 <ChevronDown className={`size-4 text-[#A07C3B] transition-transform ${showAllInstallments ? "rotate-180" : ""}`} aria-hidden="true" />
               </button>
@@ -175,7 +175,7 @@ export function InstallmentsCard({
               type="button"
               onClick={toggleFilters}
               aria-label={filtersOpen ? "Recolher filtros" : "Expandir filtros"}
-              className="inline-flex h-9 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-9 items-center gap-2 rounded-lg border border-line/70 bg-surface px-2.5 text-xs font-semibold text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
             >
               <Filter className="size-4 text-[#A07C3B]" aria-hidden="true" />
               Filtros{activeFilters.length > 0 ? ` (${activeFilters.length})` : ""}
@@ -187,7 +187,7 @@ export function InstallmentsCard({
           <div className="flex flex-wrap gap-1.5">
             {activeFilters.map((filter) => (
               <Tooltip key={`${filter.label}-${filter.value}`} content={`Remover ${filter.label}`} placement="top">
-                <button type="button" onClick={filter.clear} className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                <button type="button" onClick={filter.clear} className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                   <span className="truncate">{filter.value}</span><span aria-hidden="true">×</span>
                 </button>
               </Tooltip>
@@ -195,12 +195,12 @@ export function InstallmentsCard({
           </div>
         ) : null}
 
-        <label className="flex items-center gap-2 text-sm text-slate-500">
+        <label className="flex items-center gap-2 text-sm text-ink-muted">
           Ordenar por
           <select
             value={sortBy}
             onChange={(event) => setSortBy(event.target.value as SortOption)}
-            className="h-9 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition-colors hover:bg-slate-50"
+            className="h-9 rounded-lg border border-line/70 bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors hover:bg-subtle"
           >
             {sortOptions.map((option) => (
               <option key={option} value={option}>
@@ -212,7 +212,7 @@ export function InstallmentsCard({
       </div>
 
       {filtersOpen ? (
-        <div className="mb-4 rounded-xl border border-slate-200/70 bg-slate-50/60 p-3">
+        <div className="mb-4 rounded-xl border border-line/70 bg-subtle/60 p-3">
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             <FilterInput
               label="Competência inicial"
@@ -239,11 +239,11 @@ export function InstallmentsCard({
               onChange={setDueDateEnd}
             />
             <label>
-              <span className="text-xs font-medium text-slate-500">Status</span>
+              <span className="text-xs font-medium text-ink-muted">Status</span>
               <select
                 value={statusFilter}
                 onChange={(event) => setStatusFilter(event.target.value as StatusFilter)}
-                className="mt-1 h-9 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition-colors hover:bg-slate-50"
+                className="mt-1 h-9 w-full rounded-lg border border-line/70 bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors hover:bg-subtle"
               >
                 {statusOptions.map((option) => (
                   <option key={option} value={option}>
@@ -268,7 +268,7 @@ export function InstallmentsCard({
       >
         {installmentsPending ? (
           <PanteonLoadingState
-            className="border-slate-200/70 bg-slate-50/60"
+            className="border-line/70 bg-subtle/60"
             minHeightClassName="min-h-32"
             title="Carregando parcelas reais do C2X"
           />
@@ -276,12 +276,12 @@ export function InstallmentsCard({
           visibleInstallments.map((installment) => (
           <article
             key={installment.id ?? installment.number}
-            className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-3 transition-all duration-300 ease-out"
+            className="rounded-xl border border-line/70 bg-subtle/60 p-3 transition-all duration-300 ease-out"
           >
             <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-semibold text-slate-950">
+                  <p className="text-sm font-semibold text-ink">
                     {installment.number}
                   </p>
                   <StatusBadge status={installment.status} />
@@ -317,7 +317,7 @@ export function InstallmentsCard({
           </article>
           ))
         ) : (
-          <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 px-4 py-6 text-center text-sm text-slate-500">
+          <div className="rounded-xl border border-line/70 bg-subtle/60 px-4 py-6 text-center text-sm text-ink-muted">
             Nenhuma parcela real encontrada para este contrato.
           </div>
         )}
@@ -341,13 +341,13 @@ function FilterInput({
 }) {
   return (
     <label>
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <span className="text-xs font-medium text-ink-muted">{label}</span>
       <input
         type={type}
         value={value}
         placeholder={placeholder}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-1 h-9 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition-colors placeholder:text-slate-400 hover:bg-slate-50"
+        className="mt-1 h-9 w-full rounded-lg border border-line/70 bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-muted hover:bg-subtle"
       />
     </label>
   );
@@ -365,14 +365,14 @@ function SummaryCard({
   tone?: "neutral" | "gold" | "danger";
 }) {
   const toneClass = {
-    neutral: "bg-slate-50/70 text-slate-950 ring-slate-200/70",
-    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15",
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
+    neutral: "bg-subtle/70 text-ink ring-line/70",
+    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
   }[tone];
 
   return (
     <div className={`min-w-0 rounded-xl px-3 py-2.5 ring-1 ${toneClass}`}>
-      <p className="truncate text-xs font-medium text-slate-500">{label}</p>
+      <p className="truncate text-xs font-medium text-ink-muted">{label}</p>
       <p className="mt-1 flex min-w-0 items-baseline gap-2">
         <span className="shrink-0 text-lg font-semibold tracking-normal">{value}</span>
         {detail ? (
@@ -395,18 +395,18 @@ function InstallmentInfo({
   value: string;
 }) {
   const toneClass = {
-    blue: "bg-sky-50 text-sky-700 ring-sky-100",
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
-    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15",
-    muted: "bg-slate-50 text-slate-500 ring-slate-200/70",
-    neutral: "bg-white text-slate-950 ring-slate-200/70",
-    success: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    warning: "bg-amber-50 text-amber-700 ring-amber-100",
+    blue: "bg-sky-50 dark:bg-sky-500/12 text-sky-700 dark:text-sky-300 ring-sky-100 dark:ring-sky-500/25",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    muted: "bg-subtle text-ink-muted ring-line/70",
+    neutral: "bg-surface text-ink ring-line/70",
+    success: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+    warning: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/25",
   }[tone];
 
   return (
     <div className={`min-w-0 rounded-lg px-3 py-2 ring-1 ${toneClass}`}>
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
       <p className="mt-1 truncate text-sm font-semibold">{value}</p>
     </div>
   );
@@ -414,9 +414,9 @@ function InstallmentInfo({
 
 function StatusBadge({ status }: { status: Installment["status"] }) {
   const className = {
-    "A vencer": "bg-slate-50 text-slate-600 ring-slate-200",
-    Liquidada: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    Vencida: "bg-rose-50 text-rose-700 ring-rose-100",
+    "A vencer": "bg-subtle text-ink-soft ring-line",
+    Liquidada: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+    Vencida: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
   }[status];
 
   return (
@@ -442,7 +442,7 @@ function ActionIcon({
           type="button"
           aria-label={`${label} indisponível`}
           disabled
-          className="inline-flex size-9 cursor-not-allowed items-center justify-center rounded-lg border border-amber-200/80 bg-amber-50 text-amber-700"
+          className="inline-flex size-9 cursor-not-allowed items-center justify-center rounded-lg border border-amber-200 dark:border-amber-500/25/80 bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"
         >
           <Icon className="size-4" aria-hidden="true" />
         </button>
@@ -457,7 +457,7 @@ function ActionIcon({
         target="_blank"
         rel="noreferrer"
         aria-label={label}
-        className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-200 bg-emerald-50 text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800"
+        className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-200 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 transition-colors hover:border-emerald-300 hover:bg-emerald-100 hover:text-emerald-800"
       >
         <Icon className="size-4" aria-hidden="true" />
       </a>
@@ -550,7 +550,7 @@ function PaymentViewingIndicator({ installment }: { installment: Installment }) 
       <Tooltip content="Consultando visualização" placement="left">
         <span
           aria-label="Consultando visualização do boleto"
-          className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200 bg-white text-slate-400"
+          className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted"
         >
           <PanteonLoadingMark size="xs" />
         </span>
@@ -572,10 +572,10 @@ function PaymentViewingIndicator({ installment }: { installment: Installment }) 
       : "Ainda não visualizado";
   const Icon = viewed ? Eye : EyeOff;
   const className = viewed
-    ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+    ? "border-emerald-200 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
     : unavailable
-      ? "border-slate-200 bg-slate-50 text-slate-500"
-      : "border-rose-200 bg-rose-50 text-rose-700";
+      ? "border-line bg-subtle text-ink-muted"
+      : "border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300";
 
   return (
     <Tooltip content={tooltipLabel} placement="left">

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, LogOut } from "lucide-react";
+import { ChevronDown, LogOut, Moon, Sun } from "lucide-react";
 import { useRef, useState } from "react";
 import { Tooltip } from "@repo/uix";
 
@@ -12,6 +12,7 @@ import {
   type HubPresenceStatus,
 } from "@/lib/hub-presence";
 import { useAuth } from "@/providers/auth-provider";
+import { useHubTheme } from "@/providers/theme-provider";
 import { PANTEON_VERSION } from "@/lib/build-info";
 import { PanteonLoadingMark } from "@/components/panteon/panteon-loading";
 import { PanteonNotificationButton } from "@/components/panteon/panteon-notification-button";
@@ -45,6 +46,8 @@ export function PanteonTopbarUser({
   return (
     <div className={`flex h-10 shrink-0 items-center gap-2 ${className}`}>
       <PanteonUpdatePill onDark={onDark} />
+
+      <ThemeToggle onDark={onDark} />
 
       <PanteonNotificationButton />
 
@@ -117,6 +120,32 @@ export function PanteonTopbarUser({
         </button>
       </Tooltip>
     </div>
+  );
+}
+
+function ThemeToggle({ onDark }: { onDark: boolean }) {
+  const { mode, toggle } = useHubTheme();
+  const isDark = mode === "dark";
+
+  return (
+    <Tooltip content={isDark ? "Tema claro" : "Tema escuro"} placement="bottom">
+      <button
+        aria-label={isDark ? "Ativar tema claro" : "Ativar tema escuro"}
+        className={`grid h-8 w-8 shrink-0 place-items-center rounded-md outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+          onDark
+            ? "text-[#a5afbd] hover:bg-white/10 hover:text-white"
+            : "text-[#526078] hover:bg-[#f3f6fa] hover:text-[#101820]"
+        }`}
+        onClick={toggle}
+        type="button"
+      >
+        {isDark ? (
+          <Sun aria-hidden="true" size={16} />
+        ) : (
+          <Moon aria-hidden="true" size={16} />
+        )}
+      </button>
+    </Tooltip>
   );
 }
 

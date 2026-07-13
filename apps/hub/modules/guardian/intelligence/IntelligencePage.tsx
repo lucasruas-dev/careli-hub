@@ -334,10 +334,10 @@ export function IntelligencePage() {
         <DetailSection title="Tendências" icon={TrendingUp} accent className="min-h-[420px]">
           <div className="mb-5 flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
             <div>
-              <h3 className="text-sm font-semibold text-slate-950">{currentTrend.title}</h3>
-              <p className="mt-1 max-w-2xl text-sm leading-6 text-slate-500">{currentTrend.description}</p>
+              <h3 className="text-sm font-semibold text-ink">{currentTrend.title}</h3>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-ink-muted">{currentTrend.description}</p>
             </div>
-            <div className="inline-flex w-full rounded-xl bg-slate-50 p-1 ring-1 ring-slate-200/70 sm:w-auto">
+            <div className="inline-flex w-full rounded-xl bg-subtle p-1 ring-1 ring-line/70 sm:w-auto">
               {[
                 ["behavior", "Comportamento"],
                 ["recovery", "Recuperação"],
@@ -348,8 +348,8 @@ export function IntelligencePage() {
                   onClick={() => setTrendView(value as TrendView)}
                   className={`h-9 flex-1 rounded-lg px-3 text-sm font-medium transition-colors sm:flex-none ${
                     trendView === value
-                      ? "bg-white text-slate-950 shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
-                      : "text-slate-500 hover:text-slate-950"
+                      ? "bg-surface text-ink shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
+                      : "text-ink-muted hover:text-ink"
                   }`}
                 >
                   {label}
@@ -406,15 +406,15 @@ export function IntelligencePage() {
         <DetailSection title="IA da cobrança" icon={BrainCircuit} accent className="min-h-[360px]">
           <div className="space-y-3">
             {visibleStrategicInsights.map((insight) => (
-              <article key={insight.label} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+              <article key={insight.label} className="rounded-xl border border-line/70 bg-subtle/60 p-4">
                 <div className="flex items-start gap-3">
                   <div className="flex size-8 shrink-0 items-center justify-center rounded-xl bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
                     <BrainCircuit className="size-4" aria-hidden="true" />
                   </div>
                   <div>
-                    <p className="text-xs font-medium tracking-[0.14em] text-slate-500">{insight.label}</p>
-                    <h3 className="mt-1 text-sm font-semibold text-slate-950">{insight.value}</h3>
-                    <p className="mt-2 text-sm leading-6 text-slate-500">{insight.detail}</p>
+                    <p className="text-xs font-medium tracking-[0.14em] text-ink-muted">{insight.label}</p>
+                    <h3 className="mt-1 text-sm font-semibold text-ink">{insight.value}</h3>
+                    <p className="mt-2 text-sm leading-6 text-ink-muted">{insight.detail}</p>
                   </div>
                 </div>
               </article>
@@ -466,13 +466,13 @@ function IntelligenceKpi({
     <button
       type="button"
       onClick={onClick}
-      className="group rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#A07C3B]/20 hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
+      className="group rounded-xl border border-line/70 bg-surface p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] transition-all duration-200 hover:-translate-y-0.5 hover:border-[#A07C3B]/20 hover:shadow-[0_12px_30px_rgba(15,23,42,0.08)]"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="text-sm font-medium text-ink-muted">{label}</p>
           <p className={`mt-3 text-2xl font-semibold tracking-normal ${getToneTextClass(tone)}`}>{value}</p>
-          <p className="mt-1 text-sm text-slate-500">{helper}</p>
+          <p className="mt-1 text-sm text-ink-muted">{helper}</p>
         </div>
         <div className={`flex size-9 shrink-0 items-center justify-center rounded-xl ring-1 ${getToneSoftClass(tone)}`}>
           <Icon className="size-4" aria-hidden="true" />
@@ -492,28 +492,28 @@ function ProfileCard({
   title: string;
 }) {
   return (
-    <article className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+    <article className="rounded-xl border border-line/70 bg-subtle/60 p-4">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-xl bg-white text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+          <div className="flex size-8 items-center justify-center rounded-xl bg-surface text-[#7A5E2C] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
             <Icon className="size-4" aria-hidden="true" />
           </div>
-          <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
+          <h3 className="text-sm font-semibold text-ink">{title}</h3>
         </div>
-        <span className="text-xs font-medium text-slate-400">risco</span>
+        <span className="text-xs font-medium text-ink-muted">risco</span>
       </div>
       <div className="space-y-3">
         {data.map((item) => (
           <div key={item.label}>
             <div className="flex items-center justify-between gap-3">
-              <span className="truncate text-sm text-slate-600">{item.label}</span>
-              <span className="text-sm font-semibold text-slate-950">{item.risk > 0 ? item.risk : EMPTY_FIELD}</span>
+              <span className="truncate text-sm text-ink-soft">{item.label}</span>
+              <span className="text-sm font-semibold text-ink">{item.risk > 0 ? item.risk : EMPTY_FIELD}</span>
             </div>
             <div className="mt-2 flex items-center gap-2">
-              <div className="h-2 flex-1 overflow-hidden rounded-full bg-white ring-1 ring-slate-200/70">
+              <div className="h-2 flex-1 overflow-hidden rounded-full bg-surface ring-1 ring-line/70">
                 <div className="h-full rounded-full bg-[#A07C3B]/70" style={{ width: `${item.risk > 0 ? item.risk : 0}%` }} />
               </div>
-              <span className="w-10 text-right text-xs font-medium text-slate-400">{item.share > 0 ? `${item.share}%` : EMPTY_FIELD}</span>
+              <span className="w-10 text-right text-xs font-medium text-ink-muted">{item.share > 0 ? `${item.share}%` : EMPTY_FIELD}</span>
             </div>
           </div>
         ))}
@@ -552,23 +552,23 @@ function KpiContractsDrawer({
         type="button"
         aria-label="Fechar detalhes do KPI"
         onClick={onClose}
-        className={`absolute inset-0 bg-slate-950/20 backdrop-blur-[2px] transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
+        className={`absolute inset-0 bg-black/20 backdrop-blur-[2px] transition-opacity ${isOpen ? "opacity-100" : "opacity-0"}`}
       />
       <aside
-        className={`absolute right-0 top-0 flex h-full w-full max-w-[720px] flex-col border-l border-slate-200/70 bg-white shadow-[-24px_0_70px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
+        className={`absolute right-0 top-0 flex h-full w-full max-w-[720px] flex-col border-l border-line/70 bg-surface shadow-[-24px_0_70px_rgba(15,23,42,0.18)] transition-transform duration-300 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"}`}
       >
-        <header className="border-b border-slate-100 px-5 py-4">
+        <header className="border-b border-line px-5 py-4">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-medium tracking-[0.14em] text-[#A07C3B]">Detalhamento do KPI</p>
-              <h2 className="mt-2 text-lg font-semibold text-slate-950">{title}</h2>
-              <p className="mt-1 text-sm text-slate-500">Clientes e contratos relacionados ao indicador selecionado.</p>
+              <h2 className="mt-2 text-lg font-semibold text-ink">{title}</h2>
+              <p className="mt-1 text-sm text-ink-muted">Clientes e contratos relacionados ao indicador selecionado.</p>
             </div>
             <button
               type="button"
               onClick={onClose}
               aria-label="Fechar painel"
-              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+              className="flex size-9 shrink-0 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
             >
               <X className="size-4" aria-hidden="true" />
             </button>
@@ -578,15 +578,15 @@ function KpiContractsDrawer({
         <div className="flex-1 overflow-y-auto p-5">
           <div className="space-y-3">
             {items.map((item) => (
-              <article key={`${title}-${item.contrato}`} className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+              <article key={`${title}-${item.contrato}`} className="rounded-xl border border-line/70 bg-subtle/60 p-4">
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                   <div className="min-w-0">
-                    <h3 className="text-sm font-semibold text-slate-950">{item.cliente}</h3>
-                    <p className="mt-1 text-sm text-slate-500">
+                    <h3 className="text-sm font-semibold text-ink">{item.cliente}</h3>
+                    <p className="mt-1 text-sm text-ink-muted">
                       {item.empreendimento} · {item.unidadeLote} · {item.contrato}
                     </p>
                   </div>
-                  <span className="w-fit rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200/70">
+                  <span className="w-fit rounded-full bg-surface px-2.5 py-1 text-xs font-medium text-ink ring-1 ring-line/70">
                     {item.status}
                   </span>
                 </div>
@@ -620,8 +620,8 @@ function RiskByEnterpriseBlock() {
     <DetailSection title="Risco por empreendimento" icon={BarChart3} accent className="h-full">
       <div className="overflow-x-auto">
         <table className="w-full min-w-[760px] text-left text-sm">
-          <thead className="text-xs tracking-normal text-slate-500">
-            <tr className="border-b border-slate-100">
+          <thead className="text-xs tracking-normal text-ink-muted">
+            <tr className="border-b border-line">
               <th className="pb-3 font-medium">Empreendimento</th>
               <th className="pb-3 font-medium">Score médio</th>
               <th className="pb-3 font-medium">Inadimplência</th>
@@ -629,14 +629,14 @@ function RiskByEnterpriseBlock() {
               <th className="pb-3 font-medium">Recuperação</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100">
+          <tbody className="divide-y divide-line">
             {visibleEnterpriseRisk.map((item) => (
               <tr key={item.enterprise}>
-                <td className="py-4 font-semibold text-slate-950">{item.enterprise}</td>
-                <td className="py-4 text-slate-600">{item.score}</td>
-                <td className="py-4 font-medium text-slate-950">{item.delinquency}</td>
+                <td className="py-4 font-semibold text-ink">{item.enterprise}</td>
+                <td className="py-4 text-ink-soft">{item.score}</td>
+                <td className="py-4 font-medium text-ink">{item.delinquency}</td>
                 <td className="py-4"><RiskBadge risk={item.risk} /></td>
-                <td className="py-4 font-semibold text-slate-950">{item.recovery}</td>
+                <td className="py-4 font-semibold text-ink">{item.recovery}</td>
               </tr>
             ))}
           </tbody>
@@ -653,8 +653,8 @@ function AnalyticChartsBlock() {
   return (
     <DetailSection title="Sinais preditivos" icon={Target} className="h-full">
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="h-[260px] rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
-          <p className="mb-3 text-sm font-semibold text-slate-950">Recuperação por canal</p>
+        <div className="h-[260px] rounded-xl border border-line/70 bg-subtle/60 p-4">
+          <p className="mb-3 text-sm font-semibold text-ink">Recuperação por canal</p>
           <ChartReady>
             <ResponsiveContainer width="100%" height="85%">
               <BarChart data={visibleRecoveryByChannel} margin={{ left: -20, right: 8, top: 8, bottom: 0 }}>
@@ -672,8 +672,8 @@ function AnalyticChartsBlock() {
           </ChartReady>
         </div>
 
-        <div className="h-[260px] rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
-          <p className="mb-3 text-sm font-semibold text-slate-950">Radar de risco</p>
+        <div className="h-[260px] rounded-xl border border-line/70 bg-subtle/60 p-4">
+          <p className="mb-3 text-sm font-semibold text-ink">Radar de risco</p>
           <ChartReady>
             <ResponsiveContainer width="100%" height="85%">
               <RadarChart data={visibleRiskRadar}>
@@ -735,13 +735,13 @@ function OperationalMapBlock() {
               <div />
               {visibleHeatmapRows[0].cells.map((cell) => (
                 <div key={cell.enterprise} className="px-3 pb-1">
-                  <p className="text-xs font-semibold tracking-normal text-slate-500">{cell.enterprise}</p>
+                  <p className="text-xs font-semibold tracking-normal text-ink-muted">{cell.enterprise}</p>
                 </div>
               ))}
 
               {visibleHeatmapRows.map((row) => (
                 <div key={row.label} className="contents">
-                  <div className="flex items-center rounded-xl bg-slate-50 px-3 text-sm font-semibold text-slate-700 ring-1 ring-slate-200/70">
+                  <div className="flex items-center rounded-xl bg-subtle px-3 text-sm font-semibold text-ink ring-1 ring-line/70">
                     {row.label}
                   </div>
                   {row.cells.map((cell) => {
@@ -758,15 +758,15 @@ function OperationalMapBlock() {
                           <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${getSeverityBadgeClass(cell.severity)}`}>
                             {cell.severity}
                           </span>
-                          <span className={`text-xs font-semibold ${isUp ? "text-rose-700" : "text-emerald-700"}`}>
+                          <span className={`text-xs font-semibold ${isUp ? "text-rose-700 dark:text-rose-300" : "text-emerald-700 dark:text-emerald-300"}`}>
                             {cell.trend === EMPTY_FIELD ? EMPTY_FIELD : `${isUp ? "â†‘" : "â†“"} ${cell.trend}`}
                           </span>
                         </div>
 
                         <div className="mt-5 space-y-1">
-                          <p className="text-xl font-semibold tracking-normal text-slate-950">{cell.clients > 0 ? `${cell.clients} clientes` : EMPTY_FIELD}</p>
-                          <p className="text-sm font-semibold text-slate-700">{cell.amount}</p>
-                          <p className="text-xs text-slate-500">em atraso na faixa</p>
+                          <p className="text-xl font-semibold tracking-normal text-ink">{cell.clients > 0 ? `${cell.clients} clientes` : EMPTY_FIELD}</p>
+                          <p className="text-sm font-semibold text-ink">{cell.amount}</p>
+                          <p className="text-xs text-ink-muted">em atraso na faixa</p>
                         </div>
                       </button>
                     );
@@ -784,21 +784,21 @@ function OperationalMapBlock() {
             type="button"
             aria-label="Fechar detalhes do mapa operacional"
             onClick={() => setSelectedCell(null)}
-            className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-black/20 backdrop-blur-[2px]"
           />
-          <aside className="absolute right-0 top-0 flex h-full w-full max-w-[420px] flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-            <header className="border-b border-slate-100 px-5 py-4">
+          <aside className="absolute right-0 top-0 flex h-full w-full max-w-[420px] flex-col border-l border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+            <header className="border-b border-line px-5 py-4">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <p className="text-xs font-medium tracking-[0.14em] text-[#A07C3B]">Mapa operacional</p>
-                  <h2 className="mt-2 text-lg font-semibold text-slate-950">{selectedCell.enterprise}</h2>
-                  <p className="mt-1 text-sm text-slate-500">{selectedCell.city} · {selectedCell.range}</p>
+                  <h2 className="mt-2 text-lg font-semibold text-ink">{selectedCell.enterprise}</h2>
+                  <p className="mt-1 text-sm text-ink-muted">{selectedCell.city} · {selectedCell.range}</p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setSelectedCell(null)}
                   aria-label="Fechar painel"
-                  className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                  className="flex size-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
                 >
                   <X className="size-4" aria-hidden="true" />
                 </button>
@@ -814,26 +814,26 @@ function OperationalMapBlock() {
 
               <article className={`rounded-xl p-4 ring-1 ${getOperationalHeatClass(selectedCell.severity)}`}>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm font-semibold text-slate-950">Prioridade operacional</span>
+                  <span className="text-sm font-semibold text-ink">Prioridade operacional</span>
                   <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${getSeverityBadgeClass(selectedCell.severity)}`}>
                     {selectedCell.severity}
                   </span>
                 </div>
-                <p className="mt-3 text-sm leading-6 text-slate-600">
+                <p className="mt-3 text-sm leading-6 text-ink-soft">
                   {EMPTY_FIELD}
                 </p>
               </article>
 
               <div>
-                <p className="mb-3 text-xs font-medium tracking-[0.14em] text-slate-500">Clientes</p>
+                <p className="mb-3 text-xs font-medium tracking-[0.14em] text-ink-muted">Clientes</p>
                 <div className="space-y-2">
                   {selectedCell.clientNames.map((client, index) => (
-                    <div key={client} className="flex items-center justify-between rounded-xl border border-slate-200/70 bg-slate-50/70 px-3 py-3">
+                    <div key={client} className="flex items-center justify-between rounded-xl border border-line/70 bg-subtle/70 px-3 py-3">
                       <div>
-                        <p className="text-sm font-semibold text-slate-950">{client}</p>
-                        <p className="mt-1 text-xs text-slate-500">Score operacional {EMPTY_FIELD}</p>
+                        <p className="text-sm font-semibold text-ink">{client}</p>
+                        <p className="mt-1 text-xs text-ink-muted">Score operacional {EMPTY_FIELD}</p>
                       </div>
-                      <span className="text-xs font-medium text-slate-500">{EMPTY_FIELD}</span>
+                      <span className="text-xs font-medium text-ink-muted">{EMPTY_FIELD}</span>
                     </div>
                   ))}
                 </div>
@@ -858,10 +858,10 @@ function TrendMetricCard({
   value: string;
 }) {
   return (
-    <article className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
-      <p className="text-xs font-medium tracking-[0.14em] text-slate-500">{label}</p>
+    <article className="rounded-xl border border-line/70 bg-subtle/60 p-4">
+      <p className="text-xs font-medium tracking-[0.14em] text-ink-muted">{label}</p>
       <p className={`mt-2 text-xl font-semibold tracking-normal ${getToneTextClass(tone)}`}>{value}</p>
-      <p className="mt-1 text-sm text-slate-500">{helper}</p>
+      <p className="mt-1 text-sm text-ink-muted">{helper}</p>
     </article>
   );
 }
@@ -984,7 +984,7 @@ function HadesIntelligenceAssistant() {
         type="button"
         onClick={() => setOpen(true)}
         aria-label="Abrir IA da Cobrança"
-        className="fixed bottom-6 right-6 z-40 flex h-12 items-center gap-3 rounded-2xl border border-[#A07C3B]/20 bg-white px-4 text-[#7A5E2C] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#A07C3B]/5"
+        className="fixed bottom-6 right-6 z-40 flex h-12 items-center gap-3 rounded-2xl border border-[#A07C3B]/20 bg-surface px-4 text-[#7A5E2C] dark:text-[#d9b877] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#A07C3B]/5"
       >
         <BrainCircuit className="size-5" aria-hidden="true" />
         <span className="hidden text-sm font-semibold sm:block">IA</span>
@@ -996,19 +996,19 @@ function HadesIntelligenceAssistant() {
             type="button"
             aria-label="Fechar IA da Cobrança"
             onClick={() => setOpen(false)}
-            className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-black/20 backdrop-blur-[2px]"
           />
 
-          <aside className="absolute right-0 top-0 flex h-full w-full max-w-[460px] flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-            <header className="border-b border-slate-100 px-5 py-4">
+          <aside className="absolute right-0 top-0 flex h-full w-full max-w-[460px] flex-col border-l border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+            <header className="border-b border-line px-5 py-4">
               <div className="flex items-start justify-between gap-4">
                 <div className="flex items-center gap-3">
                   <div className="flex size-10 items-center justify-center rounded-xl bg-[#A07C3B]/5 text-[#A07C3B] ring-1 ring-[#A07C3B]/15">
                     <BrainCircuit className="size-5" aria-hidden="true" />
                   </div>
                   <div>
-                    <h2 className="text-base font-semibold text-slate-950">IA da Cobrança</h2>
-                    <p className="mt-1 text-sm text-slate-500">Analista estratégico da carteira</p>
+                    <h2 className="text-base font-semibold text-ink">IA da Cobrança</h2>
+                    <p className="mt-1 text-sm text-ink-muted">Analista estratégico da carteira</p>
                   </div>
                 </div>
 
@@ -1016,7 +1016,7 @@ function HadesIntelligenceAssistant() {
                   type="button"
                   onClick={() => setOpen(false)}
                   aria-label="Fechar painel"
-                  className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                  className="flex size-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
                 >
                   <X className="size-4" aria-hidden="true" />
                 </button>
@@ -1046,7 +1046,7 @@ function HadesIntelligenceAssistant() {
                       className={`max-w-[330px] rounded-2xl px-4 py-3 ${
                         message.role === "user"
                           ? "rounded-tr-sm bg-[#A07C3B] text-white"
-                          : "rounded-tl-sm border border-slate-200/70 bg-slate-50/80 text-slate-700"
+                          : "rounded-tl-sm border border-line/70 bg-subtle/80 text-ink"
                       }`}
                     >
                       <p className="text-sm leading-6">{message.content}</p>
@@ -1056,7 +1056,7 @@ function HadesIntelligenceAssistant() {
               </div>
 
               <div>
-                <p className="mb-2 text-xs font-medium tracking-normal text-slate-400">Sugestões rápidas</p>
+                <p className="mb-2 text-xs font-medium tracking-normal text-ink-muted">Sugestões rápidas</p>
                 <div className="flex flex-wrap gap-2">
                   {assistantSuggestions.map((suggestion) => (
                     <button
@@ -1064,7 +1064,7 @@ function HadesIntelligenceAssistant() {
                       type="button"
                       disabled={isSending}
                       onClick={() => sendAiQuestion(suggestion.prompt)}
-                      className="rounded-full border border-slate-200/70 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 disabled:cursor-wait disabled:opacity-60"
+                      className="rounded-full border border-line/70 bg-surface px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink disabled:cursor-wait disabled:opacity-60"
                     >
                       {suggestion.label}
                     </button>
@@ -1073,8 +1073,8 @@ function HadesIntelligenceAssistant() {
               </div>
             </div>
 
-            <div className="border-t border-slate-100 p-4">
-              <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-slate-50/80 px-3 py-2">
+            <div className="border-t border-line p-4">
+              <div className="flex items-center gap-2 rounded-2xl border border-line/70 bg-subtle/80 px-3 py-2">
                 <input
                   type="text"
                   value={inputValue}
@@ -1085,7 +1085,7 @@ function HadesIntelligenceAssistant() {
                     }
                   }}
                   placeholder="Pergunte sobre a carteira"
-                  className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                  className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
                 />
                 <button
                   type="button"
@@ -1267,8 +1267,8 @@ function countBy<T>(items: T[], getKey: (item: T) => string) {
 
 function InfoTile({ label, tone = "neutral", value }: { label: string; tone?: Tone; value: string }) {
   return (
-    <div className="min-w-0 rounded-xl border border-slate-200/70 bg-slate-50/70 px-3 py-2.5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
+    <div className="min-w-0 rounded-xl border border-line/70 bg-subtle/70 px-3 py-2.5">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
       <p className={`mt-1 truncate text-sm font-semibold ${getToneTextClass(tone)}`}>{value}</p>
     </div>
   );
@@ -1276,12 +1276,12 @@ function InfoTile({ label, tone = "neutral", value }: { label: string; tone?: To
 
 function InsightCard({ description, title, tone }: { description: string; title: string; tone: string }) {
   return (
-    <article className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+    <article className="rounded-xl border border-line/70 bg-subtle/60 p-4">
       <div className="flex items-start gap-3">
         <div className={`mt-1 size-2.5 shrink-0 rounded-full ${tone === "danger" ? "bg-rose-500" : tone === "success" ? "bg-emerald-500" : "bg-[#A07C3B]"}`} />
         <div>
-          <h3 className="text-sm font-semibold text-slate-950">{title}</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-500">{description}</p>
+          <h3 className="text-sm font-semibold text-ink">{title}</h3>
+          <p className="mt-2 text-sm leading-6 text-ink-muted">{description}</p>
         </div>
       </div>
     </article>
@@ -1300,7 +1300,7 @@ function ChartReady({ children }: { children: ReactNode }) {
   }, []);
 
   if (!ready) {
-    return <div className="h-full w-full rounded-xl bg-slate-100/50" />;
+    return <div className="h-full w-full rounded-xl bg-subtle/50" />;
   }
 
   return children;
@@ -1308,11 +1308,11 @@ function ChartReady({ children }: { children: ReactNode }) {
 
 function RiskBadge({ risk }: { risk: string }) {
   const className = {
-    "Alto": "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15",
-    "Baixo": "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    "Crítico": "bg-rose-50 text-rose-700 ring-rose-100",
-    "Moderado": "bg-slate-50 text-slate-700 ring-slate-200",
-  }[risk] ?? "bg-slate-50 text-slate-500 ring-slate-200";
+    "Alto": "bg-[#A07C3B]/8 text-[#7A5E2C] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    "Baixo": "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
+    "Crítico": "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
+    "Moderado": "bg-subtle text-ink ring-line",
+  }[risk] ?? "bg-subtle text-ink-muted ring-line";
 
   return <span className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 ring-inset ${className}`}>{risk}</span>;
 }
@@ -1323,13 +1323,13 @@ function ChartTooltip({ active, label, payload }: { active?: boolean; label?: st
   }
 
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white px-3 py-2 shadow-[0_14px_40px_rgba(15,23,42,0.12)]">
-      {label ? <p className="mb-1 text-xs font-semibold text-slate-500">{label}</p> : null}
+    <div className="rounded-xl border border-line/70 bg-surface px-3 py-2 shadow-[0_14px_40px_rgba(15,23,42,0.12)]">
+      {label ? <p className="mb-1 text-xs font-semibold text-ink-muted">{label}</p> : null}
       <div className="space-y-1">
         {payload.map((item) => (
           <div key={`${item.name}-${item.value}`} className="flex items-center justify-between gap-5 text-xs">
-            <span className="text-slate-500">{item.name}</span>
-            <span className="font-semibold text-slate-950">{item.value}</span>
+            <span className="text-ink-muted">{item.name}</span>
+            <span className="font-semibold text-ink">{item.value}</span>
           </div>
         ))}
       </div>
@@ -1342,8 +1342,8 @@ function getOperationalHeatClass(severity: string) {
     "Atenção": "border-yellow-200/80 bg-yellow-50/80 ring-yellow-200/80",
     "Crítico": "border-red-200/80 bg-red-50/85 ring-red-200/80",
     "Risco": "border-orange-200/80 bg-orange-50/85 ring-orange-200/80",
-    "Saudável": "border-slate-200/80 bg-slate-50/85 ring-slate-200/80",
-  }[severity] ?? "border-slate-200/80 bg-slate-50/85 ring-slate-200/80";
+    "Saudável": "border-line/80 bg-subtle/85 ring-line/80",
+  }[severity] ?? "border-line/80 bg-subtle/85 ring-line/80";
 }
 
 function getSeverityBadgeClass(severity: string) {
@@ -1351,8 +1351,8 @@ function getSeverityBadgeClass(severity: string) {
     "Atenção": "bg-yellow-100/80 text-yellow-800 ring-yellow-200",
     "Crítico": "bg-red-100/80 text-red-800 ring-red-200",
     "Risco": "bg-orange-100/80 text-orange-800 ring-orange-200",
-    "Saudável": "bg-slate-100 text-slate-700 ring-slate-200",
-  }[severity] ?? "bg-slate-100 text-slate-700 ring-slate-200";
+    "Saudável": "bg-subtle text-ink ring-line",
+  }[severity] ?? "bg-subtle text-ink ring-line";
 }
 
 function getSeverityDotClass(severity: string) {
@@ -1360,24 +1360,24 @@ function getSeverityDotClass(severity: string) {
     "Atenção": "bg-yellow-400",
     "Crítico": "bg-red-500",
     "Risco": "bg-orange-500",
-    "Saudável": "bg-slate-400",
-  }[severity] ?? "bg-slate-400";
+    "Saudável": "bg-subtle",
+  }[severity] ?? "bg-subtle";
 }
 
 function getToneSoftClass(tone: Tone) {
   return {
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/25",
     gold: "bg-[#A07C3B]/5 text-[#A07C3B] ring-[#A07C3B]/15",
-    neutral: "bg-slate-50 text-slate-600 ring-slate-200/70",
-    success: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    neutral: "bg-subtle text-ink-soft ring-line/70",
+    success: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/25",
   }[tone];
 }
 
 function getToneTextClass(tone: Tone) {
   return {
-    danger: "text-rose-700",
-    gold: "text-[#7A5E2C]",
-    neutral: "text-slate-950",
-    success: "text-emerald-700",
+    danger: "text-rose-700 dark:text-rose-300",
+    gold: "text-[#7A5E2C] dark:text-[#d9b877]",
+    neutral: "text-ink",
+    success: "text-emerald-700 dark:text-emerald-300",
   }[tone];
 }

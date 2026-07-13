@@ -157,9 +157,9 @@ function HermesMessageListLoading() {
       className="grid gap-3 px-6 py-4"
       role="status"
     >
-      <div className="h-20 w-[min(28rem,80%)] animate-pulse rounded-2xl border border-[#d9e0ea] bg-white" />
+      <div className="h-20 w-[min(28rem,80%)] animate-pulse rounded-2xl border border-line bg-surface" />
       <div className="ml-auto h-20 w-[min(30rem,78%)] animate-pulse rounded-2xl border border-emerald-100 bg-emerald-50" />
-      <div className="h-16 w-[min(22rem,68%)] animate-pulse rounded-2xl border border-[#d9e0ea] bg-white" />
+      <div className="h-16 w-[min(22rem,68%)] animate-pulse rounded-2xl border border-line bg-surface" />
     </div>
   );
 }
@@ -246,7 +246,7 @@ function HermesDateSeparator({ label }: { label: string }) {
       className="my-2 flex justify-center px-4"
       role="separator"
     >
-      <span className="rounded-full border border-[#d9e0ea] bg-white px-3 py-1 text-xs font-semibold text-[#475467] shadow-sm">
+      <span className="rounded-full border border-line bg-surface px-3 py-1 text-xs font-semibold text-ink-soft shadow-sm">
         {label}
       </span>
     </div>
@@ -273,7 +273,7 @@ function HermesCallEventCard({
         className={`grid w-full grid-cols-[2.5rem_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border px-4 py-3 text-left shadow-sm outline-none transition hover:shadow-md focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
           isOutgoing
             ? "border-[#c8ecd7] bg-[#eaf8f0]"
-            : "border-[#e1e7ef] bg-white"
+            : "border-line bg-surface"
         }`}
         onClick={() => onReturnCall?.(entry)}
         type="button"
@@ -285,14 +285,14 @@ function HermesCallEventCard({
           {copy.icon}
         </span>
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-[#101820]">
+          <span className="block truncate text-sm font-semibold text-ink">
             {copy.title}
           </span>
-          <span className="mt-0.5 block truncate text-xs text-[#667085]">
+          <span className="mt-0.5 block truncate text-xs text-ink-muted">
             {copy.subtitle}
           </span>
         </span>
-        <span className="self-end text-xs font-bold text-[#101820]">
+        <span className="self-end text-xs font-bold text-ink">
           {formatCallEventTime(entry.startedAt)}
         </span>
       </button>
@@ -334,7 +334,7 @@ function getCallEventCopy(entry: HermesCallHistoryEntry) {
       icon: callIcon,
       iconClass:
         entry.direction === "outgoing"
-          ? "bg-[#f2f4f7] text-[#344054]"
+          ? "bg-subtle text-ink"
           : "bg-[#ecfdf3] text-emerald-700",
       subtitle:
         entry.direction === "outgoing" ? "Chamando" : "Clique para retornar",
@@ -347,7 +347,7 @@ function getCallEventCopy(entry: HermesCallHistoryEntry) {
 
   return {
     icon: callIcon,
-    iconClass: "bg-[#f2f4f7] text-[#344054]",
+    iconClass: "bg-subtle text-ink",
     subtitle: entry.durationLabel
       ? `Duracao ${entry.durationLabel}`
       : "Clique para ligar novamente",

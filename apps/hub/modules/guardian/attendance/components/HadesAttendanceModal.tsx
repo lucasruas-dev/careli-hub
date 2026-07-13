@@ -374,19 +374,19 @@ export function HadesAttendanceModal({
         type="button"
         aria-label="Fechar"
         onClick={onClose}
-        className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
+        className="absolute inset-0 bg-black/30 backdrop-blur-[2px]"
       />
-      <div className="relative z-10 flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <span className="flex size-8 items-center justify-center rounded-lg bg-[#A07C3B] text-white">
               <Headset className="size-4" aria-hidden="true" />
             </span>
             <div>
-              <h2 className="text-base font-semibold text-slate-950">
+              <h2 className="text-base font-semibold text-ink">
                 Abrir atendimento de cobrança
               </h2>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-ink-muted">
                 cria o protocolo AT (Iris) + CB (Hades)
               </p>
             </div>
@@ -395,7 +395,7 @@ export function HadesAttendanceModal({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
+            className="flex size-8 items-center justify-center rounded-lg text-ink-muted hover:bg-subtle"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -403,15 +403,15 @@ export function HadesAttendanceModal({
 
         <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto p-5">
           {detail ? (
-            <div className="flex items-center gap-3 rounded-xl bg-slate-50/80 px-3 py-2.5">
-              <div className="flex size-9 items-center justify-center rounded-full bg-[#A07C3B]/12 text-[11px] font-semibold text-[#7A5E2C]">
+            <div className="flex items-center gap-3 rounded-xl bg-subtle/80 px-3 py-2.5">
+              <div className="flex size-9 items-center justify-center rounded-full bg-[#A07C3B]/12 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
                 {initials(detail.nome)}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-slate-950">
+                <p className="truncate text-sm font-semibold text-ink">
                   {detail.nome}
                 </p>
-                <p className="truncate text-[11px] text-slate-500">
+                <p className="truncate text-[11px] text-ink-muted">
                   {detail.carteira.empreendimento}
                   {detail.dados360?.telefone
                     ? ` · ${detail.dados360.telefone}`
@@ -419,16 +419,16 @@ export function HadesAttendanceModal({
                 </p>
               </div>
               <div className="shrink-0 text-right">
-                <p className="text-sm font-semibold text-rose-700">
+                <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">
                   {detail.saldoDevedor}
                 </p>
-                <p className="text-[10px] text-slate-400">
+                <p className="text-[10px] text-ink-muted">
                   {detail.parcelas.vencidas} vencidas
                 </p>
               </div>
             </div>
           ) : (
-            <div className="flex items-center gap-2 rounded-xl border border-dashed border-slate-200/80 bg-slate-50/60 px-3 py-2.5 text-xs text-slate-500">
+            <div className="flex items-center gap-2 rounded-xl border border-dashed border-line/80 bg-subtle/60 px-3 py-2.5 text-xs text-ink-muted">
               <Search className="size-4" aria-hidden="true" />
               Busca de cliente da fila de cobrança — entra na fila de atendimento.
             </div>
@@ -436,12 +436,12 @@ export function HadesAttendanceModal({
 
           {/* Codigo de unidade — qual unidade e esse atendimento. */}
           {detail ? (
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200/70 px-3 py-2 text-xs">
+            <div className="flex items-center gap-2 rounded-lg border border-line/70 px-3 py-2 text-xs">
               <Building2 className="size-4 shrink-0 text-[#A07C3B]" aria-hidden="true" />
-              <span className="font-semibold text-slate-500">
+              <span className="font-semibold text-ink-muted">
                 Código de unidade
               </span>
-              <span className="ml-auto truncate text-right font-semibold text-slate-900">
+              <span className="ml-auto truncate text-right font-semibold text-ink">
                 {unitCodes.length
                   ? unitCodes.join(" · ")
                   : loadingDetail
@@ -454,9 +454,9 @@ export function HadesAttendanceModal({
           {detail ? (
             <div>
               <div className="mb-1.5 flex items-end justify-between gap-2">
-                <p className="text-[11px] font-semibold text-slate-500">
+                <p className="text-[11px] font-semibold text-ink-muted">
                   Parcelas relacionadas{" "}
-                  <span className="font-normal text-slate-400">
+                  <span className="font-normal text-ink-muted">
                     (cobrança é por cliente — pode juntar de várias unidades)
                   </span>
                 </p>
@@ -464,20 +464,20 @@ export function HadesAttendanceModal({
                   <button
                     type="button"
                     onClick={toggleAll}
-                    className="shrink-0 whitespace-nowrap rounded-md border border-[#A07C3B]/25 bg-[#A07C3B]/6 px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12"
+                    className="shrink-0 whitespace-nowrap rounded-md border border-[#A07C3B]/25 bg-[#A07C3B]/6 px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/12"
                   >
                     {allSelected ? "Limpar" : "Selecionar todas"}
                   </button>
                 ) : null}
               </div>
-              <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+              <div className="max-h-40 overflow-y-auto rounded-lg border border-line/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
                 {loadingDetail && overdue.length === 0 ? (
-                  <p className="flex items-center gap-2 px-3 py-4 text-xs text-slate-400">
+                  <p className="flex items-center gap-2 px-3 py-4 text-xs text-ink-muted">
                     <Loader2 className="size-4 animate-spin" aria-hidden="true" />
                     Carregando parcelas do cliente…
                   </p>
                 ) : overdue.length === 0 ? (
-                  <p className="px-3 py-4 text-xs text-slate-400">
+                  <p className="px-3 py-4 text-xs text-ink-muted">
                     Sem parcelas vencidas carregadas para este cliente.
                   </p>
                 ) : (
@@ -488,32 +488,32 @@ export function HadesAttendanceModal({
                         type="button"
                         key={item.id}
                         onClick={() => toggle(item.id)}
-                        className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-xs last:border-b-0 hover:bg-slate-50"
+                        className="flex w-full items-center gap-2 border-b border-line px-3 py-2 text-left text-xs last:border-b-0 hover:bg-subtle"
                       >
                         <span
                           className={`flex size-4 items-center justify-center rounded ${
                             checked
                               ? "bg-[#A07C3B] text-white"
-                              : "border border-slate-300"
+                              : "border border-line"
                           }`}
                         >
                           {checked ? (
                             <Check className="size-3" aria-hidden="true" />
                           ) : null}
                         </span>
-                        <span className="flex-1 truncate text-slate-700">
+                        <span className="flex-1 truncate text-ink">
                           {item.unitCode ? (
-                            <span className="text-[#7A5E2C]">
+                            <span className="text-[#7A5E2C] dark:text-[#d9b877]">
                               {item.unitCode}
                               {" · "}
                             </span>
                           ) : null}
-                          <span className="font-semibold text-slate-900">
+                          <span className="font-semibold text-ink">
                             {item.number}
                           </span>{" "}
                           · {item.reference}
                         </span>
-                        <span className="font-semibold text-slate-950">
+                        <span className="font-semibold text-ink">
                           {item.value}
                         </span>
                       </button>
@@ -522,10 +522,10 @@ export function HadesAttendanceModal({
                 )}
               </div>
               <div className="mt-1 flex justify-between text-[11px]">
-                <span className="text-slate-500">
+                <span className="text-ink-muted">
                   {selectedInstallments.length} de {overdue.length} selecionadas
                 </span>
-                <span className="font-semibold text-slate-900">
+                <span className="font-semibold text-ink">
                   {formatMoney(selectedTotal)}
                 </span>
               </div>
@@ -534,13 +534,13 @@ export function HadesAttendanceModal({
 
           <div className="grid grid-cols-2 gap-3">
             <label className="block">
-              <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+              <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
                 Assunto
               </span>
               <select
                 value={profileId}
                 onChange={(event) => setProfileId(event.target.value)}
-                className="h-9 w-full rounded-lg border border-slate-200/70 bg-white px-2 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/40"
+                className="h-9 w-full rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40"
               >
                 {(config?.profiles ?? []).map((profile) => (
                   <option key={profile.id} value={profile.id}>
@@ -550,10 +550,10 @@ export function HadesAttendanceModal({
               </select>
             </label>
             <div>
-              <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+              <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
                 Canal
               </span>
-              <div className="flex h-9 items-center gap-1.5 rounded-lg border border-slate-200/70 px-2.5 text-sm text-slate-700">
+              <div className="flex h-9 items-center gap-1.5 rounded-lg border border-line/70 px-2.5 text-sm text-ink">
                 <MessageCircle className="size-4 text-emerald-600" aria-hidden="true" />
                 WhatsApp · Cobrança
               </div>
@@ -562,14 +562,14 @@ export function HadesAttendanceModal({
 
           {/* Template aprovado no Meta (via Iris) — canal cobranca. */}
           <label className="block">
-            <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+            <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
               Template aprovado (Meta)
             </span>
             <select
               value={templateId}
               onChange={(event) => setTemplateId(event.target.value)}
               disabled={!config?.templates.length}
-              className="h-9 w-full rounded-lg border border-slate-200/70 bg-white px-2 text-sm text-slate-700 outline-none focus:border-[#A07C3B]/40 disabled:bg-slate-50 disabled:text-slate-400"
+              className="h-9 w-full rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40 disabled:bg-subtle disabled:text-ink-muted"
             >
               {config?.templates.length ? (
                 config.templates.map((item) => (
@@ -585,17 +585,17 @@ export function HadesAttendanceModal({
 
           {template ? (
             <div>
-              <p className="mb-1 text-[11px] font-semibold text-slate-500">
+              <p className="mb-1 text-[11px] font-semibold text-ink-muted">
                 Pré-visualização da mensagem{" "}
-                <span className="font-normal text-slate-400">
+                <span className="font-normal text-ink-muted">
                   (enviada só com a janela de 24h fechada)
                 </span>
               </p>
-              <div className="rounded-lg border border-slate-200/70 bg-slate-50/70 px-3 py-2 text-xs leading-relaxed text-slate-700 whitespace-pre-line">
+              <div className="rounded-lg border border-line/70 bg-subtle/70 px-3 py-2 text-xs leading-relaxed text-ink whitespace-pre-line">
                 {previewText ?? "Template de cobrança aprovado."}
               </div>
               {installmentLabels.length > 3 ? (
-                <p className="mt-1 text-[10px] text-slate-400">
+                <p className="mt-1 text-[10px] text-ink-muted">
                   {installmentLabels.length} parcelas — a mensagem resume as 3
                   primeiras + “+{installmentLabels.length - 3} parcela(s)” para
                   não estourar o template.
@@ -605,14 +605,14 @@ export function HadesAttendanceModal({
           ) : null}
 
           {error ? (
-            <p className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+            <p className="rounded-lg border border-rose-200 dark:border-rose-500/25 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300">
               {error}
             </p>
           ) : null}
         </div>
 
-        <footer className="flex items-center justify-between gap-3 border-t border-slate-100 px-5 py-3.5">
-          <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+        <footer className="flex items-center justify-between gap-3 border-t border-line px-5 py-3.5">
+          <span className="flex items-center gap-1.5 text-[11px] text-ink-muted">
             <Info className="size-3.5" aria-hidden="true" />
             Cria AT + CB e abre a conversa
           </span>
@@ -620,7 +620,7 @@ export function HadesAttendanceModal({
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-9 items-center rounded-lg border border-slate-200/70 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex h-9 items-center rounded-lg border border-line/70 bg-surface px-4 text-sm font-medium text-ink hover:bg-subtle"
             >
               Cancelar
             </button>

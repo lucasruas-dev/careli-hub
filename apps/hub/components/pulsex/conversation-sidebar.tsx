@@ -149,18 +149,18 @@ export function ConversationSidebar({
   }
 
   return (
-    <aside className="panteon-module-sidebar flex h-full w-full flex-col overflow-hidden border-r">
+    <aside className="panteon-module-sidebar panteon-module-sidebar--themed flex h-full w-full flex-col overflow-hidden border-r">
       <div className="panteon-module-sidebar__top shrink-0">
         {isCollapsed ? (
           <div className="grid justify-items-center gap-2 pb-1 pt-0.5">
-            <span className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.035] text-[#d5dde8]">
+            <span className="grid h-10 w-10 place-items-center rounded-lg border border-[#A07C3B]/55 bg-[#101820] text-[#cba25a]">
               <MessageSquareText aria-hidden="true" size={18} />
             </span>
             <Tooltip content="Expandir sidebar" placement="right">
               <button
                 aria-label="Expandir sidebar"
                 aria-pressed={isCollapsed}
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-line dark:border-white/[0.075] text-ink-muted outline-none transition hover:border-line-strong dark:border-white/[0.16] hover:bg-black/[0.05] dark:bg-white/[0.07] hover:text-ink focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
                 onClick={onToggleCollapsed}
                 type="button"
               >
@@ -169,13 +169,13 @@ export function ConversationSidebar({
             </Tooltip>
           </div>
         ) : (
-          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
-            <div className="flex min-w-0 items-center gap-2.5 text-[#d5dde8]">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl bg-black/[0.03] dark:bg-white/[0.035] px-2.5 py-2">
+            <div className="flex min-w-0 items-center gap-2.5 text-ink">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#A07C3B]/55 bg-[#101820] text-[#cba25a]">
                 <MessageSquareText aria-hidden="true" size={18} />
               </span>
               <span className="grid min-w-0 gap-0.5">
-                <span className="min-w-0 truncate text-sm font-semibold leading-tight text-white">
+                <span className="min-w-0 truncate text-sm font-semibold leading-tight text-ink">
                   Hermes
                 </span>
               </span>
@@ -185,7 +185,7 @@ export function ConversationSidebar({
               <button
                 aria-label="Recolher sidebar"
                 aria-pressed={isCollapsed}
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-line dark:border-white/[0.075] text-ink-muted outline-none transition hover:border-line-strong dark:border-white/[0.16] hover:bg-black/[0.05] dark:bg-white/[0.07] hover:text-ink focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
                 onClick={onToggleCollapsed}
                 type="button"
               >
@@ -198,10 +198,10 @@ export function ConversationSidebar({
           <>
             <label className="mt-4 block">
               <span className="sr-only">Buscar conversa</span>
-              <span className="flex h-10 items-center gap-2 rounded-md border border-white/[0.09] bg-white/[0.06] px-3 text-[#a5afbd] focus-within:border-[#A07C3B] focus-within:bg-white/[0.075]">
+              <span className="flex h-10 items-center gap-2 rounded-md border border-line dark:border-white/[0.09] bg-black/[0.04] dark:bg-white/[0.06] px-3 text-ink-muted focus-within:border-[#A07C3B] focus-within:bg-black/[0.05] dark:bg-white/[0.075]">
                 <Search aria-hidden="true" size={16} />
                 <input
-                  className="min-w-0 flex-1 bg-transparent text-sm text-[#f7f8fa] outline-none placeholder:text-[#a5afbd]"
+                  className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
                   placeholder="Buscar conversa..."
                 />
               </span>
@@ -209,7 +209,7 @@ export function ConversationSidebar({
             <div className="relative mt-2" ref={filtersRef}>
               <button
                 aria-expanded={isFilterOpen}
-                className="flex h-8 w-full items-center justify-between rounded-md px-2 text-sm text-[#c9d1dc] outline-none transition hover:bg-white/[0.065] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                className="flex h-8 w-full items-center justify-between rounded-md px-2 text-sm text-ink-soft outline-none transition hover:bg-white/[0.065] hover:text-ink focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
                 onClick={() => setIsFilterOpen((currentValue) => !currentValue)}
                 type="button"
               >
@@ -228,10 +228,10 @@ export function ConversationSidebar({
                 )}
               </button>
               {isFilterOpen ? (
-                <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-white/[0.085] bg-[#2A2B32] py-1 shadow-xl">
+                <div className="absolute left-0 right-0 top-full z-20 mt-1 overflow-hidden rounded-md border border-white/[0.085] bg-[#A07C3B]/12 py-1 shadow-xl">
                   {messageFilters.map((filter) => (
                     <button
-                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-[#c9d1dc] outline-none transition hover:bg-white/[0.065] hover:text-white focus-visible:bg-white/[0.065] data-[active=true]:text-white"
+                      className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-ink-soft outline-none transition hover:bg-white/[0.065] hover:text-ink focus-visible:bg-white/[0.065] data-[active=true]:text-white"
                       data-active={filter.id === activeMessageFilter}
                       key={filter.id}
                       onClick={() => {
@@ -248,7 +248,7 @@ export function ConversationSidebar({
                   ))}
                   {activeMessageFilter === "all" ? null : (
                     <button
-                      className="flex w-full items-center gap-2 border-t border-white/[0.07] px-3 py-2 text-left text-sm text-[#a5afbd] outline-none transition hover:bg-white/[0.065] hover:text-white focus-visible:bg-white/[0.065]"
+                      className="flex w-full items-center gap-2 border-t border-white/[0.07] px-3 py-2 text-left text-sm text-ink-muted outline-none transition hover:bg-white/[0.065] hover:text-ink focus-visible:bg-white/[0.065]"
                       onClick={() => {
                         onSelectMessageFilter?.("all");
                         setIsFilterOpen(false);
@@ -266,7 +266,7 @@ export function ConversationSidebar({
               <button
                 aria-controls="pulsex-shortcuts-panel"
                 aria-expanded={isShortcutsOpen}
-                className="flex h-8 w-full items-center justify-between rounded-md px-2 text-sm text-[#c9d1dc] outline-none transition hover:bg-white/[0.065] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+                className="flex h-8 w-full items-center justify-between rounded-md px-2 text-sm text-ink-soft outline-none transition hover:bg-white/[0.065] hover:text-ink focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
                 onClick={() =>
                   setIsShortcutsOpen((currentValue) => !currentValue)
                 }
@@ -278,7 +278,7 @@ export function ConversationSidebar({
                 </span>
                 <span className="flex items-center gap-2">
                   {shortcutsCount > 0 ? (
-                    <span className="rounded-full bg-white/[0.09] px-1.5 py-0.5 text-[0.62rem] font-semibold text-[#f7f8fa]">
+                    <span className="rounded-full bg-white/[0.09] px-1.5 py-0.5 text-[0.62rem] font-semibold text-ink">
                       {shortcutsCount}
                     </span>
                   ) : null}
@@ -355,7 +355,7 @@ export function ConversationSidebar({
                 {group.sectors.map((sector) => (
                   <div className="grid gap-1" key={sector.id}>
                     {sector.name ? (
-                      <p className="m-0 px-4 text-[0.66rem] font-semibold uppercase text-[#7f8a99]">
+                      <p className="m-0 px-4 text-[0.66rem] font-semibold uppercase text-ink-muted">
                         {sector.name}
                       </p>
                     ) : null}
@@ -370,7 +370,7 @@ export function ConversationSidebar({
             </SidebarSection>
           ))
         ) : (
-          <p className="m-0 px-4 py-2 text-xs text-[#a5afbd]">
+          <p className="m-0 px-4 py-2 text-xs text-ink-muted">
             {activeShortcutFilter
               ? "Nenhum canal neste atalho."
               : dataStatus === "fallback"
@@ -396,7 +396,7 @@ export function ConversationSidebar({
                 onSelectChannel={onSelectChannel}
               />
             ) : (
-              <p className="m-0 px-4 py-2 text-xs text-[#a5afbd]">
+              <p className="m-0 px-4 py-2 text-xs text-ink-muted">
                 {activeShortcutFilter
                   ? "Nenhuma direta neste atalho."
                   : "Nenhum usuario disponivel."}
@@ -406,7 +406,7 @@ export function ConversationSidebar({
         )}
       </div>
       {!isCollapsed && dataStatus !== "ready" ? (
-        <div className="border-t border-white/[0.075] px-4 py-2 text-xs text-[#a5afbd]">
+        <div className="border-t border-line dark:border-white/[0.075] px-4 py-2 text-xs text-ink-muted">
           {dataStatus === "loading" ? (
             <span className="inline-flex items-center gap-2">
               <PanteonLoadingMark size="xs" />
@@ -490,7 +490,7 @@ function QuickAction({
   return (
     <button
       aria-pressed={active}
-      className="grid min-h-[4.75rem] grid-rows-[auto_1fr] rounded-md border border-white/[0.075] bg-white/[0.055] p-2 text-left text-[#c9d1dc] outline-none transition hover:border-white/[0.13] hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[#d0ad69] aria-pressed:border-[#A07C3B]/55 aria-pressed:bg-[#A07C3B]/20 aria-pressed:text-white"
+      className="grid min-h-[4.75rem] grid-rows-[auto_1fr] rounded-md border border-line dark:border-white/[0.075] bg-white/[0.055] p-2 text-left text-ink-soft outline-none transition hover:border-white/[0.13] hover:bg-black/[0.05] dark:bg-white/[0.075] hover:text-ink focus-visible:ring-2 focus-visible:ring-[#d0ad69] aria-pressed:border-[#A07C3B]/55 aria-pressed:bg-[#A07C3B]/20 aria-pressed:text-white"
       onClick={onClick}
       type="button"
     >
@@ -498,7 +498,7 @@ function QuickAction({
         {icon}
         <span className="truncate">{label}</span>
       </span>
-      <span className="self-end text-base font-semibold text-white">
+      <span className="self-end text-base font-semibold text-ink">
         {value}
       </span>
     </button>
@@ -524,7 +524,7 @@ function SidebarSection({
     <section className="py-1">
       <button
         aria-expanded={!collapsed}
-        className="mb-1 grid w-full grid-cols-[1rem_minmax(0,1fr)_auto_auto] items-center gap-2 px-4 py-1 text-left text-[0.68rem] font-semibold uppercase text-[#a5afbd] outline-none transition hover:text-[#dce2ea] focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
+        className="mb-1 grid w-full grid-cols-[1rem_minmax(0,1fr)_auto_auto] items-center gap-2 px-4 py-1 text-left text-[0.68rem] font-semibold uppercase text-ink-muted outline-none transition hover:text-ink focus-visible:ring-2 focus-visible:ring-[#d0ad69]"
         onClick={onToggle}
         type="button"
       >
@@ -538,7 +538,7 @@ function SidebarSection({
           <span className="truncate">{title}</span>
         </span>
         {unreadCount > 0 ? (
-          <span className="rounded-full bg-white/[0.09] px-1.5 py-0.5 text-[0.62rem] text-[#dce2ea]">
+          <span className="rounded-full bg-white/[0.09] px-1.5 py-0.5 text-[0.62rem] text-ink">
             {unreadCount}
           </span>
         ) : null}

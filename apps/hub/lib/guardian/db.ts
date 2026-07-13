@@ -108,6 +108,13 @@ export function getHadesDbPool(): HadesPoolResult {
       connectTimeout: 8000,
       connectionLimit: 5,
       database: config.database,
+      // O C2X (legado, gerido pela house) tem max_connections escasso e compartilhado
+      // com o Rails prod + instancias serverless. NAO hoardar conexoes: solta as ociosas
+      // rapido (maxIdle baixo + idleTimeout curto) pra devolver slot pro banco.
+      maxIdle: 1,
+      idleTimeout: 20000,
+      enableKeepAlive: true,
+      keepAliveInitialDelay: 10000,
       host: config.host,
       password: config.password,
       port: config.port,
@@ -121,6 +128,40 @@ export function getHadesDbPool(): HadesPoolResult {
   }
 
   return { ok: true, pool: guardianPool, config };
+}
+
+// Erros TRANSIENTES do C2X (banco legado com max_connections escasso/compartilhado):
+// vale tentar de novo com backoff em vez de estourar erro pro usuario na hora.
+const HADES_RETRYABLE_DB_CODES = new Set([
+  "ER_CON_COUNT_ERROR", // Too many connections (o teto do C2X)
+  "ETIMEDOUT",
+  "PROTOCOL_CONNECTION_LOST",
+  "ECONNRESET",
+  "PROTOCOL_SEQUENCE_TIMEOUT",
+]);
+
+export async function withHadesDbRetry<T>(
+  run: () => Promise<T>,
+  attempts = 3,
+): Promise<T> {
+  let lastError: unknown;
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    try {
+      return await run();
+    } catch (error) {
+      lastError = error;
+      const code = (error as { code?: string } | null)?.code;
+
+      if (!code || !HADES_RETRYABLE_DB_CODES.has(code) || attempt === attempts - 1) {
+        throw error;
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
+    }
+  }
+
+  throw lastError;
 }
 
 export async function pingHadesDb(): Promise<HadesPingResult> {

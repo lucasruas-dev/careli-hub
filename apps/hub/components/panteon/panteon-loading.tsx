@@ -88,7 +88,7 @@ export function PanteonLoadingState({
         aria-busy="true"
         aria-label={statusLabel}
         className={[
-          "absolute inset-0 z-20 grid place-items-center rounded-[inherit] border border-white/45 bg-white/80 p-6 text-center shadow-[inset_0_0_0_1px_rgba(217,224,231,0.45)] backdrop-blur-sm",
+          "absolute inset-0 z-20 grid place-items-center rounded-[inherit] border border-white/45 dark:border-white/10 bg-white/80 dark:bg-black/50 p-6 text-center shadow-[inset_0_0_0_1px_rgba(217,224,231,0.45)] dark:shadow-none backdrop-blur-sm",
           className ?? "",
         ].join(" ")}
         role="status"
@@ -97,11 +97,11 @@ export function PanteonLoadingState({
           <PanteonLoadingMark size={markSize} />
           {showLabel ? (
             <>
-              <p className="m-0 mt-3 text-sm font-semibold text-[#101820]">
+              <p className="m-0 mt-3 text-sm font-semibold text-ink">
                 {title}
               </p>
               {description ? (
-                <p className="m-0 mt-2 max-w-md text-xs leading-5 text-[#667085]">
+                <p className="m-0 mt-2 max-w-md text-xs leading-5 text-ink-muted">
                   {description}
                 </p>
               ) : null}
@@ -117,7 +117,7 @@ export function PanteonLoadingState({
       aria-busy="true"
       aria-label={statusLabel}
       className={[
-        "grid place-items-center rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-6 text-center",
+        "grid place-items-center rounded-md border border-dashed border-line bg-subtle/50 p-6 text-center",
         minHeightClassName,
         className ?? "",
       ].join(" ")}
@@ -127,11 +127,11 @@ export function PanteonLoadingState({
         <PanteonLoadingMark size={markSize} />
         {showLabel ? (
           <>
-            <p className="m-0 mt-3 text-sm font-semibold text-[#101820]">
+            <p className="m-0 mt-3 text-sm font-semibold text-ink">
               {title}
             </p>
             {description ? (
-              <p className="m-0 mt-2 max-w-md text-xs leading-5 text-[#667085]">
+              <p className="m-0 mt-2 max-w-md text-xs leading-5 text-ink-muted">
                 {description}
               </p>
             ) : null}

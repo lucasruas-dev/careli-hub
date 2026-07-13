@@ -461,7 +461,7 @@ export function AiCopilotDrawer({
           type="button"
           onClick={() => setOpen(true)}
           aria-label="Abrir assistente de cobrança"
-          className="fixed bottom-5 right-5 z-50 flex size-14 items-center justify-center overflow-hidden rounded-full border border-[#A07C3B]/30 bg-white shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5"
+          className="fixed bottom-5 right-5 z-50 flex size-14 items-center justify-center overflow-hidden rounded-full border border-[#A07C3B]/30 bg-surface shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5"
         >
           <AthenaIcon className="size-full object-cover" aria-hidden="true" />
           <span className="absolute right-1 top-1 size-3 rounded-full bg-emerald-500 ring-2 ring-white" />
@@ -481,19 +481,19 @@ export function AiCopilotDrawer({
             type="button"
             aria-label="Fechar assistente de cobrança"
             onClick={requestClose}
-            className="absolute inset-0 bg-slate-950/20 backdrop-blur-[2px]"
+            className="absolute inset-0 bg-black/20 backdrop-blur-[2px]"
             />
           ) : null}
 
           <aside
             className={
               ticketRecordingMinimized
-                ? "w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-slate-200/80 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
-                : "absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]"
+                ? "w-[min(24rem,calc(100vw-2rem))] overflow-hidden rounded-xl border border-line/80 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
+                : "absolute right-0 top-0 flex h-full w-full max-w-[560px] flex-col border-l border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]"
             }
           >
             <header
-              className={`shrink-0 border-b border-slate-100 bg-white px-5 py-4 ${
+              className={`shrink-0 border-b border-line bg-surface px-5 py-4 ${
                 ticketRecordingMinimized ? "hidden" : ""
               }`}
             >
@@ -507,8 +507,8 @@ export function AiCopilotDrawer({
                     />
                   </div>
                   <div>
-                    <h2 className="text-base font-semibold text-slate-950">{AI_AGENT_NAME}</h2>
-                    <p className="mt-1 text-sm text-slate-500">Assistente Virtual da Careli</p>
+                    <h2 className="text-base font-semibold text-ink">{AI_AGENT_NAME}</h2>
+                    <p className="mt-1 text-sm text-ink-muted">Assistente Virtual da Careli</p>
                   </div>
                 </div>
 
@@ -516,7 +516,7 @@ export function AiCopilotDrawer({
                   type="button"
                   onClick={requestClose}
                   aria-label="Fechar painel"
-                  className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                  className="flex size-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
                 >
                   <X className="size-4" aria-hidden="true" />
                 </button>
@@ -524,7 +524,7 @@ export function AiCopilotDrawer({
             </header>
 
             <nav
-              className={`grid shrink-0 grid-cols-2 gap-1 border-b border-slate-100 bg-white p-2 ${
+              className={`grid shrink-0 grid-cols-2 gap-1 border-b border-line bg-surface p-2 ${
                 ticketRecordingMinimized ? "hidden" : ""
               }`}
             >
@@ -534,8 +534,8 @@ export function AiCopilotDrawer({
                 onClick={() => setActiveAgentTab("agent")}
                 className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg text-xs font-semibold transition ${
                   activeAgentTab === "agent"
-                    ? "bg-slate-950 text-white"
-                    : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-950"
+                    ? "bg-slate-950 text-white dark:bg-white/[0.14] dark:text-ink dark:shadow-none"
+                    : "bg-subtle text-ink-muted hover:bg-subtle hover:text-ink"
                 }`}
               >
                 <BotMessageSquare className="size-4" aria-hidden="true" />
@@ -547,8 +547,8 @@ export function AiCopilotDrawer({
                 onClick={() => setActiveAgentTab("ticket")}
                 className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg text-xs font-semibold transition ${
                   activeAgentTab === "ticket"
-                    ? "bg-slate-950 text-white"
-                    : "bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-slate-950"
+                    ? "bg-slate-950 text-white dark:bg-white/[0.14] dark:text-ink dark:shadow-none"
+                    : "bg-subtle text-ink-muted hover:bg-subtle hover:text-ink"
                 }`}
               >
                 <Bug className="size-4" aria-hidden="true" />
@@ -561,7 +561,7 @@ export function AiCopilotDrawer({
                 className={
                   ticketRecordingMinimized
                     ? "p-3"
-                    : "min-h-0 flex-1 overflow-y-auto bg-slate-50/55 px-5 py-5"
+                    : "min-h-0 flex-1 overflow-y-auto bg-subtle/55 px-5 py-5"
                 }
               >
                 <HubTicketOpenForm
@@ -574,15 +574,15 @@ export function AiCopilotDrawer({
               </div>
             ) : (
               <>
-            <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/55 px-5 py-5">
+            <div className="min-h-0 flex-1 overflow-y-auto bg-subtle/55 px-5 py-5">
               <div className="grid gap-2 sm:grid-cols-2">
                 {visibleSummaryCards.map(([label, value]) => (
                   <div
                     key={label}
-                    className="rounded-xl border border-slate-200/70 bg-white px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
+                    className="rounded-xl border border-line/70 bg-surface px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
                   >
-                    <p className="text-xs font-medium text-slate-500">{label}</p>
-                    <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-slate-950">{value}</p>
+                    <p className="text-xs font-medium text-ink-muted">{label}</p>
+                    <p className="mt-1 line-clamp-2 text-sm font-semibold leading-5 text-ink">{value}</p>
                   </div>
                 ))}
               </div>
@@ -602,10 +602,10 @@ export function AiCopilotDrawer({
                     ) : null}
 
                     <div
-                      className={`max-w-[82%] rounded-2xl px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] sm:max-w-[430px] ${
+                      className={`max-w-[82%] rounded-2xl px-4 py-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.45)] sm:max-w-[430px] ${
                         message.role === "user"
                           ? "rounded-br-md bg-[#A07C3B] text-white"
-                          : "rounded-bl-md border border-slate-200/70 bg-white text-slate-700"
+                          : "rounded-bl-md border border-line/70 bg-surface text-ink"
                       }`}
                     >
                       <MessageContent content={message.content} isUser={message.role === "user"} />
@@ -631,7 +631,7 @@ export function AiCopilotDrawer({
               </div>
             </div>
 
-            <div className="shrink-0 border-t border-slate-100 bg-white p-4">
+            <div className="shrink-0 border-t border-line bg-surface p-4">
               <div className="mb-3 flex gap-2 overflow-x-auto pb-1">
                 {intelligence.quickSuggestions.map((suggestion) => (
                   <button
@@ -639,13 +639,13 @@ export function AiCopilotDrawer({
                     type="button"
                     disabled={isSending}
                     onClick={() => sendAiQuestion(suggestion.prompt)}
-                    className="shrink-0 rounded-full border border-slate-200/70 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 disabled:cursor-wait disabled:opacity-60"
+                    className="shrink-0 rounded-full border border-line/70 bg-surface px-3 py-1.5 text-xs font-medium text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink disabled:cursor-wait disabled:opacity-60"
                   >
                     {suggestion.label}
                   </button>
                 ))}
               </div>
-              <div className="flex items-center gap-2 rounded-2xl border border-slate-200/70 bg-slate-50/80 px-3 py-2">
+              <div className="flex items-center gap-2 rounded-2xl border border-line/70 bg-subtle/80 px-3 py-2">
                 <input
                   type="text"
                   value={inputValue}
@@ -656,7 +656,7 @@ export function AiCopilotDrawer({
                     }
                   }}
                   placeholder="Pergunte ao assistente de cobrança"
-                  className="min-w-0 flex-1 bg-transparent text-sm text-slate-900 outline-none placeholder:text-slate-400"
+                  className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
                 />
                 <button
                   type="button"
@@ -689,24 +689,24 @@ function MessageContent({
 
   if (!isUser && installmentTable) {
     return (
-      <div className="space-y-3 text-sm leading-6 text-slate-700">
+      <div className="space-y-3 text-sm leading-6 text-ink">
         <PlainMessageContent content={installmentTable.intro} isUser={isUser} />
-        <div className="space-y-2 rounded-2xl border border-slate-200/70 bg-slate-50/70 p-2">
+        <div className="space-y-2 rounded-2xl border border-line/70 bg-subtle/70 p-2">
           {installmentTable.rows.map((row, index) => (
             <article
               key={`${row.reference}-${row.number}-${index}`}
-              className="rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
+              className="rounded-xl border border-line/70 bg-surface p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)]"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <p className="text-xs font-medium text-slate-500">Ref. {row.reference}</p>
-                  <p className="mt-0.5 text-sm font-semibold text-slate-950">Parcela {row.number}</p>
+                  <p className="text-xs font-medium text-ink-muted">Ref. {row.reference}</p>
+                  <p className="mt-0.5 text-sm font-semibold text-ink">Parcela {row.number}</p>
                 </div>
-                <span className="rounded-full bg-rose-50 px-2 py-1 text-xs font-semibold text-rose-700 ring-1 ring-rose-100">
+                <span className="rounded-full bg-rose-50 dark:bg-rose-500/12 px-2 py-1 text-xs font-semibold text-rose-700 dark:text-rose-300 ring-1 ring-rose-100 dark:ring-rose-500/25">
                   {row.status}
                 </span>
               </div>
-              <div className="mt-3 grid gap-2 text-xs text-slate-600 sm:grid-cols-2">
+              <div className="mt-3 grid gap-2 text-xs text-ink-soft sm:grid-cols-2">
                 <InstallmentAiField label="Original" value={row.originalDueDate} />
                 <InstallmentAiField label="Atual" value={row.currentDueDate} />
                 <InstallmentAiField label="Pagamento" value={row.paymentDate} />
@@ -741,7 +741,7 @@ function PlainMessageContent({
   }
 
   return (
-    <div className={`space-y-2 text-sm leading-6 ${isUser ? "text-white" : "text-slate-700"}`}>
+    <div className={`space-y-2 text-sm leading-6 ${isUser ? "text-white" : "text-ink"}`}>
       {paragraphs.map((paragraph, index) => {
         const isBullet = paragraph.startsWith("- ");
         const text = isBullet ? paragraph.slice(2) : paragraph;
@@ -767,9 +767,9 @@ function InstallmentAiField({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200/70 bg-slate-50/80 px-2.5 py-2">
-      <p className="text-[11px] font-medium text-slate-500">{label}</p>
-      <p className={`mt-0.5 ${strong ? "font-semibold text-slate-950" : "font-medium text-slate-700"}`}>{value}</p>
+    <div className="rounded-lg border border-line/70 bg-subtle/80 px-2.5 py-2">
+      <p className="text-[11px] font-medium text-ink-muted">{label}</p>
+      <p className={`mt-0.5 ${strong ? "font-semibold text-ink" : "font-medium text-ink"}`}>{value}</p>
     </div>
   );
 }
@@ -827,7 +827,7 @@ function renderInlineText(text: string) {
           href={href}
           target="_blank"
           rel="noreferrer"
-          className="break-all font-semibold text-[#A07C3B] underline decoration-[#A07C3B]/35 underline-offset-4 hover:text-[#7A5E2C]"
+          className="break-all font-semibold text-[#A07C3B] underline decoration-[#A07C3B]/35 underline-offset-4 hover:text-[#7A5E2C] dark:text-[#d9b877]"
         >
           {part}
         </a>

@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prometeu · Etiqueta</title>
+<style>
+  :root{
+    --canvas:#f7f8fa; --panel:#ffffff; --subtle:#eef1f4; --line:#dce2ea; --line-strong:#c5ceda;
+    --text:#121722; --text2:#485466; --muted:#667085; --inverse:#f7f8fa;
+    --brand:#a07c3b; --brand-soft:rgba(160,124,59,.12); --brand-deep:#7c5f2c;
+    --ok:#14804a; --ok-soft:rgba(20,128,74,.12); --info:#2563eb; --info-soft:rgba(37,99,235,.10);
+    --shadow:0 8px 24px rgb(18 23 34 / 0.10); --shadow-sm:0 2px 6px rgb(18 23 34 / 0.08);
+  }
+  body.dark{
+    --canvas:#101211; --panel:#181a19; --subtle:#26292a; --line:#2b2e2c; --line-strong:#3a3e3c;
+    --text:#e9edeb; --text2:#cfd3d0; --muted:#98a09a; --inverse:#101211;
+    --brand:#cba25a; --brand-soft:rgba(203,162,90,.16); --info:#5b8def;
+    --shadow:0 10px 30px rgb(0 0 0 / .5); --shadow-sm:0 2px 8px rgb(0 0 0 / .4);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--canvas);color:var(--text);font-family:Arial,Helvetica,sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column;padding:16px 20px}
+
+  header{display:flex;align-items:center;gap:16px;margin-bottom:16px;flex-shrink:0}
+  .mod-icon{width:44px;height:44px;border-radius:11px;background:#232832;color:#dce2ea;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .mod-icon svg{width:23px;height:23px}
+  .brand h1{font-size:20px;font-weight:800}
+  .brand .sub{font-size:11px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:1px}
+  .ev-chip{margin-left:18px;display:flex;align-items:center;gap:9px;background:var(--subtle);border:1px solid var(--line);border-radius:12px;padding:8px 15px;font-size:13.5px;font-weight:700}
+  .ev-chip small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+  .h-right{margin-left:auto;display:flex;align-items:center;gap:12px}
+  .tbtn{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .tbtn svg{width:18px;height:18px}
+
+  .grid{flex:1;display:grid;grid-template-columns:380px 1fr;gap:18px;min-height:0}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;min-height:0}
+  .card-head{display:flex;align-items:center;gap:10px;padding:15px 18px;border-bottom:1px solid var(--line);flex-shrink:0}
+  .card-head h2{font-size:13px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:800}
+  .card-head .n{margin-left:auto;font-size:13px;color:var(--muted)}
+
+  /* lista de clientes */
+  .search{padding:12px 14px;flex-shrink:0}
+  .search input{width:100%;border:1px solid var(--line);border-radius:11px;background:var(--subtle);color:var(--text);padding:11px 14px;font:inherit;font-size:14px}
+  .search input:focus{outline:none;border-color:var(--brand)}
+  .filtro-imob{display:flex;align-items:center;gap:9px;padding:0 14px 12px;flex-shrink:0}
+  .filtro-imob .lb{font-size:11.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);white-space:nowrap}
+  .filtro-imob select{flex:1;min-width:0;border:1px solid var(--line);border-radius:9px;background:var(--subtle);color:var(--text);padding:9px 12px;font:inherit;font-size:14px;font-weight:600}
+  .filtro-imob select:focus{outline:none;border-color:var(--brand)}
+  .lista{flex:1;overflow-y:auto;padding:0 10px 10px}
+  .cli{display:flex;align-items:center;gap:12px;padding:11px 12px;border-radius:11px;cursor:pointer;border:1px solid transparent}
+  .cli:hover{background:var(--subtle)}
+  .cli.sel{background:var(--brand-soft);border-color:var(--brand)}
+  .cli .av{width:38px;height:38px;border-radius:10px;background:var(--subtle);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+  .cli.sel .av{background:var(--brand);color:#fff}
+  .cli-info{flex:1;min-width:0}
+  .cli-nome{font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cli-sub{font-size:12px;color:var(--muted);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cli-cod{font-size:11px;font-weight:700;color:var(--brand);font-family:Consolas,monospace;flex-shrink:0}
+  .lista-empty{padding:30px;text-align:center;color:var(--muted);font-size:14px}
+
+  /* barra de lançamento */
+  .lanc-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px 18px;border-bottom:1px solid var(--line);background:var(--subtle);flex-shrink:0}
+  .lanc-bar .lb{font-size:11.5px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  .lanc-bar select,.lanc-bar input{border:1px solid var(--line);border-radius:9px;background:var(--panel);color:var(--text);padding:9px 12px;font:inherit;font-size:14px;font-weight:600}
+  .lanc-bar select{min-width:200px} .lanc-bar select:focus,.lanc-bar input:focus{outline:none;border-color:var(--brand)}
+  /* preview */
+  .prev-body{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:20px;padding:24px;overflow:auto}
+  .prev-hint{font-size:13px;color:var(--muted)}
+  .acts{display:flex;gap:12px;padding:14px 18px;border-top:1px solid var(--line);flex-shrink:0}
+  .acts button{border-radius:12px;padding:13px 20px;font:inherit;font-size:14.5px;font-weight:700;cursor:pointer;display:inline-flex;align-items:center;gap:9px;border:1px solid var(--line-strong);background:var(--panel);color:var(--text)}
+  .acts button svg{width:18px;height:18px}
+  .acts .primary{margin-left:auto;background:var(--text);color:var(--inverse);border-color:var(--text)}
+  .acts button:disabled{opacity:.45;cursor:not-allowed}
+
+  /* ===== ETIQUETA TÉRMICA MONOCROMÁTICA (100mm x 50mm, só preto/branco) ===== */
+  .etq{width:100mm;height:50mm;background:#fff;color:#000;overflow:hidden;border:0.4mm solid #000;display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  #prev .etq{transform:scale(1.9);box-shadow:0 16px 50px rgba(0,0,0,.25)} /* só o preview na tela, ampliado */
+  .etq-top{background:#000;color:#fff;padding:1.6mm 3mm;display:flex;align-items:center;justify-content:space-between;gap:3mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .etq-top-l{min-width:0}
+  .etq-emp{font-size:10.5pt;font-weight:800;letter-spacing:.02em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .etq-data{font-size:6.5pt;font-weight:700;letter-spacing:.04em;opacity:.9;margin-top:.4mm;white-space:nowrap}
+  .etq-logo{height:6.5mm;width:auto;flex-shrink:0;filter:brightness(0) invert(1)} /* força branco na barra preta (monocromático) */
+  .etq-body{flex:1;display:flex;gap:3.5mm;padding:2.5mm 3mm;align-items:center;min-height:0}
+  .etq-qrbox{display:flex;flex-direction:column;align-items:center;gap:.8mm;flex-shrink:0}
+  .etq-qr{width:25mm;height:25mm}
+  .etq-qr svg{display:block;width:100%;height:100%}
+  .etq-cod{font-size:6pt;font-weight:700;color:#555;letter-spacing:.03em;font-family:Consolas,monospace;white-space:nowrap} /* código discreto p/ digitar se o QR falhar */
+  .etq-cod i{font-style:normal;font-weight:600;opacity:.55;margin-right:.5mm}
+  .etq-dados{flex:1;min-width:0}
+  .etq-nome{font-size:15pt;font-weight:800;line-height:1.06;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+  .etq-imob{font-size:9.5pt;font-weight:700;margin-top:1mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .etq-cor{font-size:8pt;margin-top:.6mm;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .etq-foot{background:#000;color:#fff;padding:1.5mm 3mm;display:flex;justify-content:space-between;gap:2mm;font-size:8pt;font-weight:800;font-family:Consolas,monospace;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  .etq-foot span{white-space:nowrap}
+  .etq-foot i{font-style:normal;font-weight:600;opacity:.7;margin-right:.6mm}
+
+  #print-area{display:none}
+
+  @media print{
+    body *{visibility:hidden}
+    #print-area, #print-area *{visibility:visible}
+    #print-area{display:block;position:absolute;inset:0}
+    .etq{border:0.3mm solid #000;margin:0;page-break-after:always}
+    @page{size:100mm 50mm;margin:0}
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="mod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 2.6a2 2 0 0 0-1.4-.6H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.8 8.8a2 2 0 0 0 2.8 0l6.4-6.4a2 2 0 0 0 0-2.8z"/><circle cx="7.5" cy="7.5" r="1.3"/></svg></div>
+  <div class="brand"><h1>Etiqueta de credenciamento</h1><div class="sub">Apolo · Prometeu</div></div>
+  <div class="ev-chip"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span><span id="ev-nome">Vale do Ouro</span><small id="ev-data">lançamento · 12/07/2026</small></span></div>
+  <div class="h-right">
+    <button class="tbtn" onclick="document.body.classList.toggle('dark')" title="Tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+  </div>
+</header>
+
+<div class="grid">
+  <div class="card">
+    <div class="card-head"><h2>Clientes do lançamento</h2><span class="n" id="lista-n"></span></div>
+    <div class="search"><input id="busca" placeholder="Buscar por nome, CPF, imobiliária ou código..." oninput="renderLista()"></div>
+    <div class="filtro-imob"><span class="lb">Imobiliária</span><select id="sel-imob" onchange="renderLista()"></select></div>
+    <div class="lista" id="lista"></div>
+  </div>
+
+  <div class="card">
+    <div class="card-head"><h2>Etiqueta</h2><span class="n">cola no crachá do cliente</span></div>
+    <div class="lanc-bar">
+      <span class="lb">Credenciar para:</span>
+      <select id="sel-emp" onchange="setEmpreendimento(this.value)"></select>
+      <span class="lb">Data</span>
+      <input type="date" id="sel-data" value="2026-07-12" onchange="setData(this.value)">
+    </div>
+    <div class="prev-body" id="prev"><div class="prev-hint">Selecione um cliente na lista pra gerar a etiqueta.</div></div>
+    <div class="acts">
+      <button onclick="imprimirTodas()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="9" width="12" height="8" rx="1"/><path d="M6 9V4h12v5M6 17H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/></svg> Imprimir todas (<span id="todas-n">0</span>)</button>
+      <button class="primary" id="btn-imprimir" onclick="imprimirUma()" disabled><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="9" width="12" height="8" rx="1"/><path d="M6 9V4h12v5M6 17H4a2 2 0 0 1-2-2v-3a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v3a2 2 0 0 1-2 2h-2"/></svg> Imprimir etiqueta</button>
+    </div>
+  </div>
+</div>
+
+<div id="print-area"></div>
+
+<script>
+  const NOMES=["Ricardo Souza","Marina Alves","João Pedro Lima","Camila Ferreira","Bruno Costa","Letícia Dias","Paulo Reis","Ana Martins","Rafael Nunes","Beatriz Rocha","Diego Alves","Fernanda Melo","Gustavo Pinto","Larissa Campos","Sônia Braga","Eduardo Nunes","Patrícia Lopes","Rodrigo Sales"];
+  const IMOBS=["Singular Imóveis","Lopes Vale","Prime Negócios","Bela Vista Imóveis","Rocha Imóveis"];
+  const CORRETORES=["Rogério Lima","Tânia Souza","Vinícius Prado","Sônia Braga","Élcio Martins","Priscila Nunes","Wagner Dias","Cléo Ramos"];
+  const iniciais=n=>n.split(" ").map(p=>p[0]).slice(0,2).join("").toUpperCase();
+  const pad=(n,l)=>String(n).padStart(l,"0");
+  const genCPF=i=>`${pad(100+(i*7)%900,3)}.${pad(100+(i*13)%900,3)}.${pad(100+(i*17)%900,3)}-${pad((i*29)%100,2)}`;
+  const genTel=i=>`(31) 9${pad(1000+(i*37)%9000,4)}-${pad((i*53)%10000,4)}`;
+
+  // empreendimento que cada CAD aponta (no real: o time marca MANUAL no Apolo ao subir o CAD)
+  const CLI_EMP=["VDO","VDO","VDO","VDO","CDJ","VDO","VDO","LBR","VDO","MDS","VDO","VDO","CDJ","VDO","RDP"];
+  const CLIENTES=NOMES.map((nome,i)=>({
+    id:i+1, nome, imob:IMOBS[i%IMOBS.length], corretor:CORRETORES[(i*3)%CORRETORES.length],
+    cpf:genCPF(i), tel:genTel(i),
+    empSigla:CLI_EMP[i%CLI_EMP.length], // vínculo CAD→empreendimento
+    apolo:"APL-"+pad(1+i*7,5), // código próprio do Apolo (NOVO) = chave do check-in
+    c2x:"CLI"+(3200+i*3)       // user_code do C2X (venda) = operador acha o cliente rápido no C2X; vem via Apolo↔apolo_source_links
+  }));
+  let selId=null;
+
+  // ===== lançamento (empreendimento + data) — selecionável na emissão =====
+  // Empreendimentos REAIS do C2X (tabela enterprises); test/aux fora (TSC/SDT/LAB/LAG).
+  // Em produção esta lista vem do C2X via Apolo; o do evento é cadastrado no C2X e aparece aqui.
+  const EMPREENDIMENTOS=[
+    {sigla:"VDO", nome:"Veredas do Ouro", cidade:"Pedro Leopoldo"},
+    {sigla:"CDJ", nome:"Cidade Jardim", cidade:"Ipatinga"},
+    {sigla:"LBR", nome:"Lagoa Bonita", cidade:"Governador Valadares"},
+    {sigla:"LBP", nome:"Lagoa Bonita (Paulo Lobato)", cidade:"Governador Valadares"},
+    {sigla:"LBF", nome:"Lagoa Bonita (Rocha Marques)", cidade:"Governador Valadares"},
+    {sigla:"LOU", nome:"Lavra do Ouro", cidade:"Mateus Leme"},
+    {sigla:"LOS", nome:"Lavra do Ouro (II)", cidade:"Mateus Leme"},
+    {sigla:"RDP", nome:"Rio de Pedras", cidade:"Itabirito"},
+    {sigla:"RPS", nome:"Rio de Pedras (II)", cidade:"Itabirito"},
+    {sigla:"RPC", nome:"Rio de Pedras (III)", cidade:"Itabirito"},
+    {sigla:"PDV", nome:"Portal dos Vales", cidade:"Itambacuri"},
+    {sigla:"PVS", nome:"Portal dos Vales (II)", cidade:"Itambacuri"},
+    {sigla:"MDS", nome:"Morada da Serra", cidade:"Capitólio"},
+    {sigla:"MDB", nome:"Morada da Brisa", cidade:"Itabira"},
+    {sigla:"MLN", nome:"Milênium", cidade:"Contagem"},
+    {sigla:"MLC", nome:"Milênium Mall", cidade:"Contagem"},
+    {sigla:"REP", nome:"Recanto do Pará", cidade:"Pompéu"},
+    {sigla:"EDL", nome:"Estância do Lago", cidade:"Ipatinga"},
+    {sigla:"HDP", nome:"Haras do Passo", cidade:"Itabirito"},
+    {sigla:"PRI", nome:"Privilege Residence", cidade:"Ituiutaba"},
+    {sigla:"SOU", nome:"Soul Ipanema", cidade:"Ipatinga"},
+    {sigla:"VAL", nome:"Vista Alegre", cidade:"Desterro de Entre Rios"},
+    {sigla:"VDP", nome:"Vistas da Praia", cidade:"Almenara"},
+    {sigla:"VBL", nome:"Viva Boulevard", cidade:"Conselheiro Lafaiete"},
+  ];
+  const MESES=["JAN","FEV","MAR","ABR","MAI","JUN","JUL","AGO","SET","OUT","NOV","DEZ"];
+  const fmtData=iso=>{const [y,m,d]=iso.split("-");return `${d} · ${MESES[+m-1]} · ${y}`;};
+  let lancamento={ sigla:EMPREENDIMENTOS[0].sigla, emp:EMPREENDIMENTOS[0].nome, cidade:EMPREENDIMENTOS[0].cidade, data:"2026-07-12" };
+  function setEmpreendimento(sigla){
+    const e=EMPREENDIMENTOS.find(x=>x.sigla===sigla)||EMPREENDIMENTOS[0];
+    lancamento.sigla=e.sigla; lancamento.emp=e.nome; lancamento.cidade=e.cidade;
+    atualizarEvChip(); popularImobs();
+    selId=null; renderLista();
+    const lote=filtrados(); if(lote.length) selecionar(lote[0].id); else limparPrev(); // trocar de empreendimento = mostra o lote dele
+  }
+  function limparPrev(){ document.getElementById("prev").innerHTML='<div class="prev-hint">Nenhum CAD deste empreendimento ainda.</div>'; document.getElementById("btn-imprimir").disabled=true; }
+  function setData(v){ lancamento.data=v||lancamento.data; atualizarEvChip(); if(selId)selecionar(selId); }
+  function atualizarEvChip(){ document.getElementById("ev-nome").textContent=lancamento.emp; document.getElementById("ev-data").textContent="lançamento · "+lancamento.data.split("-").reverse().join("/"); }
+
+  // QR "de aparência" (mock): finder patterns + timing + dados pseudo-aleatórios do seed.
+  // Em produção = QR real do Apolo codificando "C2X + CPF" (o que é bipado no evento).
+  function hash32(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
+  function qrSVG(seed){
+    const N=25,m=2,total=N+m*2; let h=hash32(seed);
+    const rnd=()=>{h^=h<<13;h^=h>>>17;h^=h<<5;h>>>=0;return h/4294967295;};
+    const finder=(x,y,fx,fy)=>{const dx=x-fx,dy=y-fy;if(dx<0||dy<0||dx>6||dy>6)return null;return (dx===0||dx===6||dy===0||dy===6)||(dx>=2&&dx<=4&&dy>=2&&dy<=4);};
+    let rects="";
+    for(let y=0;y<N;y++)for(let x=0;x<N;x++){
+      let v=finder(x,y,0,0); if(v===null)v=finder(x,y,N-7,0); if(v===null)v=finder(x,y,0,N-7);
+      if(v===null){ if(x===6||y===6) v=(x+y)%2===0; else v=rnd()>0.52; }
+      if(v) rects+=`<rect x="${x+m}" y="${y+m}" width="1" height="1"/>`;
+    }
+    return `<svg viewBox="0 0 ${total} ${total}" shape-rendering="crispEdges"><rect width="${total}" height="${total}" fill="#fff"/><g fill="#000">${rects}</g></svg>`;
+  }
+
+  function etiquetaHTML(c){
+    return `<div class="etq">
+      <div class="etq-top"><div class="etq-top-l"><div class="etq-emp">${lancamento.emp.toUpperCase()}</div><div class="etq-data">CREDENCIAL · ${fmtData(lancamento.data)}</div></div><img class="etq-logo" src="c2x-logo.png" alt="C2X"></div>
+      <div class="etq-body">
+        <div class="etq-qrbox">
+          <div class="etq-qr">${qrSVG(c.apolo+"|"+c.c2x)}</div>
+          <div class="etq-cod">${c.apolo}</div>
+        </div>
+        <div class="etq-dados">
+          <div class="etq-nome">${c.nome}</div>
+          <div class="etq-imob">${c.imob}</div>
+          <div class="etq-cor">Corretor: ${c.corretor}</div>
+        </div>
+      </div>
+      <div class="etq-foot">
+        <span><i>C2X</i> ${c.c2x}</span>
+        <span><i>CPF</i> ${c.cpf}</span>
+        <span><i>TEL</i> ${c.tel}</span>
+      </div>
+    </div>`;
+  }
+
+  function filtrados(){
+    const q=document.getElementById("busca").value.trim().toLowerCase();
+    const imob=document.getElementById("sel-imob").value;
+    let lote=CLIENTES.filter(c=>c.empSigla===lancamento.sigla);   // lote do empreendimento
+    if(imob) lote=lote.filter(c=>c.imob===imob);                  // maço da imobiliária (entrega antecipada)
+    if(!q) return lote;
+    return lote.filter(c=>(c.nome+" "+c.imob+" "+c.cpf+" "+c.c2x+" "+c.apolo+" "+c.corretor).toLowerCase().includes(q));
+  }
+  function popularImobs(){
+    const doLote=[...new Set(CLIENTES.filter(c=>c.empSigla===lancamento.sigla).map(c=>c.imob))].sort();
+    document.getElementById("sel-imob").innerHTML='<option value="">Todas as imobiliárias</option>'+doLote.map(i=>`<option value="${i}">${i}</option>`).join("");
+  }
+  function renderLista(){
+    const list=filtrados();
+    document.getElementById("lista-n").textContent=list.length+" cliente"+(list.length!==1?"s":"");
+    document.getElementById("todas-n").textContent=list.length;
+    const box=document.getElementById("lista");
+    box.innerHTML=list.length?list.map(c=>`<div class="cli ${c.id===selId?'sel':''}" onclick="selecionar(${c.id})">
+      <div class="av">${iniciais(c.nome)}</div>
+      <div class="cli-info"><div class="cli-nome">${c.nome}</div><div class="cli-sub">${c.imob} · CPF ${c.cpf}</div></div>
+      <div class="cli-cod">C2X ${c.c2x}</div>
+    </div>`).join(""):`<div class="lista-empty">Nenhum cliente encontrado.</div>`;
+  }
+  function selecionar(id){
+    selId=id; renderLista();
+    const c=CLIENTES.find(x=>x.id===id);
+    document.getElementById("prev").innerHTML=etiquetaHTML(c);
+    document.getElementById("btn-imprimir").disabled=false;
+  }
+  function imprimirUma(){
+    if(!selId)return; const c=CLIENTES.find(x=>x.id===selId);
+    document.getElementById("print-area").innerHTML=etiquetaHTML(c);
+    window.print();
+  }
+  function imprimirTodas(){
+    const list=filtrados(); if(!list.length)return;
+    const imob=document.getElementById("sel-imob").value;
+    const alvo=imob?`${imob} · ${lancamento.emp}`:lancamento.emp;
+    if(!confirm(`Imprimir ${list.length} etiqueta(s) de ${alvo}?`))return;
+    document.getElementById("print-area").innerHTML=list.map(etiquetaHTML).join("");
+    window.print();
+  }
+
+  // dropdown de empreendimentos (reais do C2X)
+  document.getElementById("sel-emp").innerHTML=EMPREENDIMENTOS.map(e=>`<option value="${e.sigla}">${e.nome} · ${e.sigla}</option>`).join("");
+  atualizarEvChip();
+  popularImobs();
+  renderLista();
+  // deep-link do card do Apolo (?cliente=ID): abre já no empreendimento do próprio CAD
+  const cliParam=+new URLSearchParams(location.search).get("cliente");
+  const alvo=cliParam && CLIENTES.find(c=>c.id===cliParam);
+  if(alvo){
+    const e=EMPREENDIMENTOS.find(x=>x.sigla===alvo.empSigla);
+    if(e){ lancamento.sigla=e.sigla; lancamento.emp=e.nome; lancamento.cidade=e.cidade; document.getElementById("sel-emp").value=e.sigla; atualizarEvChip(); }
+    renderLista(); selecionar(alvo.id);
+  } else {
+    const lote=filtrados(); if(lote.length) selecionar(lote[0].id); // abre mostrando o 1º do lote
+  }
+</script>
+</body>
+</html>

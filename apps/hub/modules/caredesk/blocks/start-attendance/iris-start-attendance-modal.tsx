@@ -714,17 +714,17 @@ export function IrisStartAttendanceModal({
         onClick={onClose}
         className="absolute inset-0 bg-slate-950/30 backdrop-blur-[2px]"
       />
-      <div className="relative z-10 flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
-        <header className="flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-3.5">
+      <div className="relative z-10 flex max-h-[88vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line/70 bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.22)]">
+        <header className="flex items-center justify-between gap-3 border-b border-line px-5 py-3.5">
           <div className="flex items-center gap-2.5">
             <span className="flex size-8 items-center justify-center rounded-lg bg-[#101820] text-white">
               <Headset className="size-4" aria-hidden="true" />
             </span>
             <div>
-              <h2 className="text-base font-semibold text-slate-950">
+              <h2 className="text-base font-semibold text-ink">
                 Abrir atendimento
               </h2>
-              <p className="text-[11px] text-slate-500">
+              <p className="text-[11px] text-ink-muted">
                 cria o protocolo AT (Iris) e a janela de 24h
               </p>
             </div>
@@ -733,7 +733,7 @@ export function IrisStartAttendanceModal({
             type="button"
             onClick={onClose}
             aria-label="Fechar"
-            className="flex size-8 items-center justify-center rounded-lg text-slate-500 hover:bg-slate-50"
+            className="flex size-8 items-center justify-center rounded-lg text-ink-muted hover:bg-subtle"
           >
             <X className="size-4" aria-hidden="true" />
           </button>
@@ -741,15 +741,15 @@ export function IrisStartAttendanceModal({
 
         <div className="min-h-0 flex-1 space-y-3.5 overflow-y-auto p-5 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
           {selectedClient ? (
-            <div className="flex items-center gap-3 rounded-xl bg-slate-50/80 px-3 py-2.5">
-              <div className="flex size-9 items-center justify-center rounded-full bg-[#101820]/10 text-[11px] font-semibold text-[#101820]">
+            <div className="flex items-center gap-3 rounded-xl bg-subtle/80 px-3 py-2.5">
+              <div className="flex size-9 items-center justify-center rounded-full bg-[#101820]/10 text-[11px] font-semibold text-ink">
                 {initials(selectedClient.label)}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold text-slate-950">
+                <p className="truncate text-sm font-semibold text-ink">
                   {selectedClient.label}
                 </p>
-                <p className="truncate text-[11px] text-slate-500">
+                <p className="truncate text-[11px] text-ink-muted">
                   {selectedClient.profileLabel} ·{" "}
                   {formatPhoneForDisplay(selectedClient.phone)}
                 </p>
@@ -761,7 +761,7 @@ export function IrisStartAttendanceModal({
                   setResults([]);
                   setQuery("");
                 }}
-                className="flex shrink-0 items-center gap-1 rounded-md border border-slate-200/70 bg-white px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                className="flex shrink-0 items-center gap-1 rounded-md border border-line/70 bg-surface px-2 py-1 text-[11px] font-semibold text-ink-soft hover:bg-subtle"
               >
                 <Search className="size-3" aria-hidden="true" />
                 trocar
@@ -769,42 +769,42 @@ export function IrisStartAttendanceModal({
             </div>
           ) : (
             <div className="space-y-2">
-              <div className="flex h-10 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3">
-                <Search className="size-4 text-[#101820]" aria-hidden="true" />
+              <div className="flex h-10 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3">
+                <Search className="size-4 text-ink" aria-hidden="true" />
                 <input
                   value={query}
                   onChange={(event) => setQuery(event.target.value)}
                   placeholder="Buscar cliente no Apolo por nome ou telefone..."
-                  className="min-w-0 flex-1 bg-transparent text-sm text-slate-700 outline-none placeholder:text-slate-400"
+                  className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
                 />
                 {searching ? (
                   <Loader2
-                    className="size-4 animate-spin text-slate-400"
+                    className="size-4 animate-spin text-ink-muted"
                     aria-hidden="true"
                   />
                 ) : null}
               </div>
               {query.trim().length >= 2 ? (
-                <div className="max-h-60 overflow-y-auto rounded-lg border border-slate-200/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+                <div className="max-h-60 overflow-y-auto rounded-lg border border-line/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
                   {results.length ? (
                     results.map((client) => (
                       <button
                         key={client.id}
                         type="button"
                         onClick={() => setSelectedClient(client)}
-                        className="flex w-full flex-col gap-0.5 border-b border-slate-100 px-3 py-2 text-left last:border-b-0 hover:bg-slate-50"
+                        className="flex w-full flex-col gap-0.5 border-b border-line px-3 py-2 text-left last:border-b-0 hover:bg-subtle"
                       >
-                        <span className="truncate text-sm font-semibold text-slate-950">
+                        <span className="truncate text-sm font-semibold text-ink">
                           {client.label}
                         </span>
-                        <span className="truncate text-[11px] text-slate-500">
+                        <span className="truncate text-[11px] text-ink-muted">
                           {client.profileLabel} ·{" "}
                           {formatPhoneForDisplay(client.phone)}
                         </span>
                       </button>
                     ))
                   ) : (
-                    <p className="px-3 py-6 text-center text-xs text-slate-400">
+                    <p className="px-3 py-6 text-center text-xs text-ink-muted">
                       {searching
                         ? "Buscando no Apolo..."
                         : "Nenhum cliente localizado com telefone para WhatsApp."}
@@ -812,7 +812,7 @@ export function IrisStartAttendanceModal({
                   )}
                 </div>
               ) : (
-                <p className="px-1 text-[11px] text-slate-400">
+                <p className="px-1 text-[11px] text-ink-muted">
                   Digite pelo menos 2 caracteres para buscar.
                 </p>
               )}
@@ -856,7 +856,7 @@ export function IrisStartAttendanceModal({
               </div>
             ) : (
             <>
-              <div className="grid grid-cols-2 gap-1 rounded-lg bg-slate-100/70 p-1">
+              <div className="grid grid-cols-2 gap-1 rounded-lg bg-subtle/70 p-1">
                 {(
                   [
                     { icon: Ticket, label: "Tickets", value: "tickets" },
@@ -872,8 +872,8 @@ export function IrisStartAttendanceModal({
                       onClick={() => setContextMode(option.value)}
                       className={`flex h-8 items-center justify-center gap-1.5 rounded-md text-[13px] font-semibold transition-colors ${
                         active
-                          ? "bg-white text-slate-900 shadow-sm ring-1 ring-slate-200"
-                          : "text-slate-500 hover:text-slate-700"
+                          ? "bg-surface text-ink shadow-sm ring-1 ring-slate-200"
+                          : "text-ink-muted hover:text-ink"
                       }`}
                     >
                       <Icon className="size-4" aria-hidden="true" />
@@ -885,15 +885,15 @@ export function IrisStartAttendanceModal({
 
               {contextMode === "tickets" ? (
                 <div>
-                  <p className="mb-1.5 text-[11px] font-semibold text-slate-500">
+                  <p className="mb-1.5 text-[11px] font-semibold text-ink-muted">
                     Ticket relacionado{" "}
-                    <span className="font-normal text-slate-400">
+                    <span className="font-normal text-ink-muted">
                       (referencia o protocolo no template)
                     </span>
                   </p>
-                  <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+                  <div className="max-h-40 overflow-y-auto rounded-lg border border-line/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
                     {clientTickets.length === 0 ? (
-                      <p className="px-3 py-4 text-xs text-slate-400">
+                      <p className="px-3 py-4 text-xs text-ink-muted">
                         Sem tickets anteriores deste cliente. O template usa o
                         protocolo gerado na abertura.
                       </p>
@@ -907,26 +907,26 @@ export function IrisStartAttendanceModal({
                             onClick={() =>
                               setSelectedTicketId(checked ? "" : ticket.id)
                             }
-                            className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-xs last:border-b-0 hover:bg-slate-50"
+                            className="flex w-full items-center gap-2 border-b border-line px-3 py-2 text-left text-xs last:border-b-0 hover:bg-subtle"
                           >
                             <span
                               className={`flex size-4 items-center justify-center rounded-full ${
                                 checked
                                   ? "bg-emerald-600 text-white"
-                                  : "border border-slate-300"
+                                  : "border border-line"
                               }`}
                             >
                               {checked ? (
                                 <Check className="size-3" aria-hidden="true" />
                               ) : null}
                             </span>
-                            <span className="min-w-0 flex-1 truncate text-slate-700">
-                              <span className="font-semibold text-slate-900">
+                            <span className="min-w-0 flex-1 truncate text-ink">
+                              <span className="font-semibold text-ink">
                                 {ticket.protocol}
                               </span>{" "}
                               · {ticket.subject}
                             </span>
-                            <span className="shrink-0 text-[11px] text-slate-400">
+                            <span className="shrink-0 text-[11px] text-ink-muted">
                               {formatStartDate(ticket.createdAt)}
                             </span>
                           </button>
@@ -938,9 +938,9 @@ export function IrisStartAttendanceModal({
               ) : (
                 <div>
                   <div className="mb-1.5 flex items-end justify-between gap-2">
-                    <p className="text-[11px] font-semibold text-slate-500">
+                    <p className="text-[11px] font-semibold text-ink-muted">
                       Parcelas relacionadas{" "}
-                      <span className="font-normal text-slate-400">
+                      <span className="font-normal text-ink-muted">
                         (resumo no template)
                       </span>
                     </p>
@@ -954,9 +954,9 @@ export function IrisStartAttendanceModal({
                       </button>
                     ) : null}
                   </div>
-                  <div className="max-h-40 overflow-y-auto rounded-lg border border-slate-200/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
+                  <div className="max-h-40 overflow-y-auto rounded-lg border border-line/70 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
                     {loadingDetail && overdue.length === 0 ? (
-                      <p className="flex items-center gap-2 px-3 py-4 text-xs text-slate-400">
+                      <p className="flex items-center gap-2 px-3 py-4 text-xs text-ink-muted">
                         <Loader2
                           className="size-4 animate-spin"
                           aria-hidden="true"
@@ -964,7 +964,7 @@ export function IrisStartAttendanceModal({
                         Carregando parcelas do cliente…
                       </p>
                     ) : overdue.length === 0 ? (
-                      <p className="px-3 py-4 text-xs text-slate-400">
+                      <p className="px-3 py-4 text-xs text-ink-muted">
                         Sem parcelas vencidas carregadas para este cliente.
                       </p>
                     ) : (
@@ -975,32 +975,32 @@ export function IrisStartAttendanceModal({
                             type="button"
                             key={row.id}
                             onClick={() => toggleInstallment(row.id)}
-                            className="flex w-full items-center gap-2 border-b border-slate-100 px-3 py-2 text-left text-xs last:border-b-0 hover:bg-slate-50"
+                            className="flex w-full items-center gap-2 border-b border-line px-3 py-2 text-left text-xs last:border-b-0 hover:bg-subtle"
                           >
                             <span
                               className={`flex size-4 items-center justify-center rounded ${
                                 checked
                                   ? "bg-emerald-600 text-white"
-                                  : "border border-slate-300"
+                                  : "border border-line"
                               }`}
                             >
                               {checked ? (
                                 <Check className="size-3" aria-hidden="true" />
                               ) : null}
                             </span>
-                            <span className="min-w-0 flex-1 truncate text-slate-700">
+                            <span className="min-w-0 flex-1 truncate text-ink">
                               {row.unitCode ? (
                                 <span className="text-emerald-700">
                                   {row.unitCode}
                                   {" · "}
                                 </span>
                               ) : null}
-                              <span className="font-semibold text-slate-900">
+                              <span className="font-semibold text-ink">
                                 {row.number}
                               </span>{" "}
                               · {row.reference}
                             </span>
-                            <span className="shrink-0 font-semibold text-slate-950">
+                            <span className="shrink-0 font-semibold text-ink">
                               {row.value}
                             </span>
                           </button>
@@ -1009,7 +1009,7 @@ export function IrisStartAttendanceModal({
                     )}
                   </div>
                   {overdue.length > 0 ? (
-                    <p className="mt-1 text-[11px] text-slate-500">
+                    <p className="mt-1 text-[11px] text-ink-muted">
                       {selectedInstallmentRows.length} de {overdue.length}{" "}
                       selecionadas
                     </p>
@@ -1019,7 +1019,7 @@ export function IrisStartAttendanceModal({
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+                  <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
                     Fila
                   </span>
                   <div className="relative">
@@ -1029,7 +1029,7 @@ export function IrisStartAttendanceModal({
                         setSelectedQueueId(event.target.value)
                       }
                       disabled={!activeQueues.length}
-                      className="h-9 w-full appearance-none rounded-lg border border-slate-200/70 bg-white px-2 pr-7 text-sm text-slate-700 outline-none focus:border-[#101820]/40 disabled:bg-slate-50 disabled:text-slate-400"
+                      className="h-9 w-full appearance-none rounded-lg border border-line/70 bg-surface px-2 pr-7 text-sm text-ink outline-none focus:border-[#101820]/40 disabled:bg-subtle disabled:text-ink-muted"
                     >
                       {activeQueues.length ? (
                         activeQueues.map((queue) => (
@@ -1042,13 +1042,13 @@ export function IrisStartAttendanceModal({
                       )}
                     </select>
                     <ChevronDown
-                      className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+                      className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
                       aria-hidden="true"
                     />
                   </div>
                 </label>
                 <label className="block">
-                  <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+                  <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
                     Assunto
                   </span>
                   <div className="relative">
@@ -1058,7 +1058,7 @@ export function IrisStartAttendanceModal({
                         setSelectedProfileId(event.target.value)
                       }
                       disabled={!subjectOptions.length}
-                      className="h-9 w-full appearance-none rounded-lg border border-slate-200/70 bg-white px-2 pr-7 text-sm text-slate-700 outline-none focus:border-[#101820]/40 disabled:bg-slate-50 disabled:text-slate-400"
+                      className="h-9 w-full appearance-none rounded-lg border border-line/70 bg-surface px-2 pr-7 text-sm text-ink outline-none focus:border-[#101820]/40 disabled:bg-subtle disabled:text-ink-muted"
                     >
                       {subjectOptions.length ? (
                         subjectOptions.map((profile) => (
@@ -1071,27 +1071,27 @@ export function IrisStartAttendanceModal({
                       )}
                     </select>
                     <ChevronDown
-                      className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+                      className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
                       aria-hidden="true"
                     />
                   </div>
                 </label>
               </div>
 
-              <div className="flex items-center gap-1.5 text-[11px] text-slate-500">
+              <div className="flex items-center gap-1.5 text-[11px] text-ink-muted">
                 <MessageCircle
                   className="size-3.5 text-emerald-600"
                   aria-hidden="true"
                 />
                 Envia pelo WhatsApp da fila{" "}
-                <span className="font-semibold text-slate-700">
+                <span className="font-semibold text-ink">
                   {selectedQueue?.name ?? "Atendimento"}
                 </span>
                 {selectedQueuePhoneNumberId ? null : " · número padrão"}
               </div>
 
               <label className="block">
-                <span className="mb-1 block text-[11px] font-semibold text-slate-500">
+                <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
                   Template aprovado (Meta)
                 </span>
                 <div className="relative">
@@ -1101,7 +1101,7 @@ export function IrisStartAttendanceModal({
                       setSelectedTemplateId(event.target.value)
                     }
                     disabled={!templateOptions.length}
-                    className="h-9 w-full appearance-none rounded-lg border border-slate-200/70 bg-white px-2 pr-7 text-sm text-slate-700 outline-none focus:border-[#101820]/40 disabled:bg-slate-50 disabled:text-slate-400"
+                    className="h-9 w-full appearance-none rounded-lg border border-line/70 bg-surface px-2 pr-7 text-sm text-ink outline-none focus:border-[#101820]/40 disabled:bg-subtle disabled:text-ink-muted"
                   >
                     {templateOptions.length ? (
                       templateOptions.map((template) => (
@@ -1114,7 +1114,7 @@ export function IrisStartAttendanceModal({
                     )}
                   </select>
                   <ChevronDown
-                    className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-slate-400"
+                    className="pointer-events-none absolute right-2 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
                     aria-hidden="true"
                   />
                 </div>
@@ -1128,13 +1128,13 @@ export function IrisStartAttendanceModal({
 
               {selectedTemplate ? (
                 <div>
-                  <p className="mb-1 text-[11px] font-semibold text-slate-500">
+                  <p className="mb-1 text-[11px] font-semibold text-ink-muted">
                     Pré-visualização{" "}
-                    <span className="font-normal text-slate-400">
+                    <span className="font-normal text-ink-muted">
                       (enviada só com a janela de 24h fechada)
                     </span>
                   </p>
-                  <div className="rounded-lg border border-slate-200/70 bg-slate-50/70 px-3 py-2 text-xs leading-relaxed whitespace-pre-line text-slate-700">
+                  <div className="rounded-lg border border-line/70 bg-subtle/70 px-3 py-2 text-xs leading-relaxed whitespace-pre-line text-ink">
                     {previewText ?? "Template aprovado."}
                   </div>
                 </div>
@@ -1154,8 +1154,8 @@ export function IrisStartAttendanceModal({
           ) : null}
         </div>
 
-        <footer className="flex items-center justify-between gap-3 border-t border-slate-100 px-5 py-3.5">
-          <span className="flex items-center gap-1.5 text-[11px] text-slate-400">
+        <footer className="flex items-center justify-between gap-3 border-t border-line px-5 py-3.5">
+          <span className="flex items-center gap-1.5 text-[11px] text-ink-muted">
             <Info className="size-3.5" aria-hidden="true" />
             Janela aberta reaproveita a conversa
           </span>
@@ -1163,7 +1163,7 @@ export function IrisStartAttendanceModal({
             <button
               type="button"
               onClick={onClose}
-              className="inline-flex h-9 items-center rounded-lg border border-slate-200/70 bg-white px-4 text-sm font-medium text-slate-700 hover:bg-slate-50"
+              className="inline-flex h-9 items-center rounded-lg border border-line/70 bg-surface px-4 text-sm font-medium text-ink hover:bg-subtle"
             >
               Cancelar
             </button>

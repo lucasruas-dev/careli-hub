@@ -272,12 +272,12 @@ export function AthenaAgentPanel({
     <aside
       className={
         compactTicketMode
-          ? "w-full bg-transparent text-[#101820]"
-          : "flex h-full min-h-0 flex-col border-l border-[#d9e0ea] bg-white text-[#101820]"
+          ? "w-full bg-transparent text-ink"
+          : "flex h-full min-h-0 flex-col border-l border-line bg-surface text-ink"
       }
     >
       <header
-        className={`flex h-16 shrink-0 items-center justify-between border-b border-[#e6ebf2] px-4 ${
+        className={`flex h-16 shrink-0 items-center justify-between border-b border-line px-4 ${
           compactTicketMode ? "hidden" : ""
         }`}
       >
@@ -294,14 +294,14 @@ export function AthenaAgentPanel({
             <span className="block truncate text-sm font-semibold">
               {AI_AGENT_NAME}
             </span>
-            <span className="block truncate text-xs text-[#667085]">
+            <span className="block truncate text-xs text-ink-muted">
               Agente Hermes
             </span>
           </span>
         </div>
         <button
           aria-label="Fechar Athena"
-          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#eef2f7] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          className="grid h-8 w-8 place-items-center rounded-md text-ink-muted outline-none transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onClose}
           type="button"
         >
@@ -310,7 +310,7 @@ export function AthenaAgentPanel({
       </header>
 
       <nav
-        className={`grid shrink-0 grid-cols-2 gap-1 border-b border-[#eef2f7] bg-white p-2 ${
+        className={`grid shrink-0 grid-cols-2 gap-1 border-b border-line bg-surface p-2 ${
           compactTicketMode ? "hidden" : ""
         }`}
       >
@@ -333,7 +333,7 @@ export function AthenaAgentPanel({
           className={
             compactTicketMode
               ? "p-0"
-              : "min-h-0 flex-1 overflow-y-auto bg-[#f3f6fa] p-4"
+              : "min-h-0 flex-1 overflow-y-auto bg-subtle p-4"
           }
         >
           <HubTicketOpenForm
@@ -346,7 +346,7 @@ export function AthenaAgentPanel({
         </div>
       ) : (
         <>
-          <div className="shrink-0 border-b border-[#eef2f7] px-4 py-3">
+          <div className="shrink-0 border-b border-line px-4 py-3">
             {focusedMessage ? (
               <FocusedMessageCard
                 focusedMessage={focusedMessage}
@@ -361,13 +361,13 @@ export function AthenaAgentPanel({
             <div className="grid grid-cols-2 gap-2">
               {panelQuickActions.map((action) => (
                 <button
-                  className="grid min-h-16 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-2.5 py-2 text-left text-xs font-semibold text-[#344054] outline-none transition hover:border-[#A07C3B]/50 hover:bg-[#f7f3eb] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                  className="grid min-h-16 grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-2 rounded-md border border-line bg-subtle px-2.5 py-2 text-left text-xs font-semibold text-ink outline-none transition hover:border-[#A07C3B]/50 hover:bg-[#f7f3eb] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                   disabled={isSending}
                   key={action.label}
                   onClick={() => void sendAiQuestion(action.prompt)}
                   type="button"
                 >
-                  <span className="grid h-7 w-7 place-items-center rounded-md bg-white text-[#A07C3B]">
+                  <span className="grid h-7 w-7 place-items-center rounded-md bg-surface text-[#A07C3B]">
                     <action.icon aria-hidden="true" size={15} />
                   </span>
                   <span className="min-w-0 leading-4">{action.label}</span>
@@ -376,7 +376,7 @@ export function AthenaAgentPanel({
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto bg-[#f3f6fa] px-3 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto bg-subtle px-3 py-4">
             <div className="grid gap-3">
               {chatMessages.map((message) => (
                 <AthenaBubble
@@ -393,12 +393,12 @@ export function AthenaAgentPanel({
           </div>
 
           <form
-            className="grid shrink-0 grid-cols-[minmax(0,1fr)_2.5rem] gap-2 border-t border-[#d9e0ea] bg-white p-3"
+            className="grid shrink-0 grid-cols-[minmax(0,1fr)_2.5rem] gap-2 border-t border-line bg-surface p-3"
             onSubmit={handleSubmit}
           >
             <textarea
               aria-label="Perguntar para Athena"
-              className="max-h-24 min-h-10 resize-none rounded-md border border-[#d9e0ea] bg-[#f8fafc] px-3 py-2 text-sm leading-5 outline-none transition placeholder:text-[#8b98aa] focus:border-[#A07C3B] focus:bg-white"
+              className="max-h-24 min-h-10 resize-none rounded-md border border-line bg-subtle px-3 py-2 text-sm leading-5 outline-none transition placeholder:text-ink-muted focus:border-[#A07C3B] focus:bg-surface"
               disabled={isSending}
               onChange={(event) => setInputValue(event.target.value)}
               onKeyDown={(event) => {
@@ -413,7 +413,7 @@ export function AthenaAgentPanel({
             />
             <button
               aria-label="Enviar para Athena"
-              className="grid h-10 w-10 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0ea] disabled:text-[#8b98aa]"
+              className="grid h-10 w-10 place-items-center rounded-md bg-[#A07C3B] text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0ea] disabled:text-ink-muted"
               disabled={isSending || !inputValue.trim()}
               type="submit"
             >
@@ -449,8 +449,8 @@ function AthenaBubble({
       <div
         className={`max-w-[86%] rounded-2xl border px-3 py-2 text-sm leading-6 shadow-sm ${
           isUser
-            ? "rounded-br-md border-[#A07C3B]/35 bg-[#f7f3eb] text-[#101820]"
-            : "rounded-bl-md border-[#d9e0ea] bg-white text-[#17202f]"
+            ? "rounded-br-md border-[#A07C3B]/35 bg-[#f7f3eb] text-ink"
+            : "rounded-bl-md border-line bg-surface text-ink"
         }`}
       >
         <div className="m-0">{renderAthenaMessageContent(message.content)}</div>
@@ -458,7 +458,7 @@ function AthenaBubble({
           <Tooltip content={useAsDraftLabel} placement="top">
             <button
               aria-label={useAsDraftLabel}
-              className="mt-2 grid h-8 w-8 place-items-center rounded-md border border-[#cfd8e3] bg-[#f8fafc] text-[#344054] outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              className="mt-2 grid h-8 w-8 place-items-center rounded-md border border-line bg-subtle text-ink outline-none transition hover:border-[#A07C3B] hover:text-[#7b5f2d] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               onClick={() =>
                 onUseAsDraft(
                   message.draftContent ?? extractDraftContent(message.content),
@@ -492,7 +492,7 @@ function AgentTabButton({
       className={`inline-flex h-9 items-center justify-center gap-2 rounded-md text-xs font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
         active
           ? "bg-[#101820] text-white"
-          : "bg-[#f8fafc] text-[#667085] hover:bg-[#eef2f7] hover:text-[#101820]"
+          : "bg-subtle text-ink-muted hover:bg-subtle hover:text-ink"
       }`}
       onClick={onClick}
       type="button"
@@ -514,17 +514,17 @@ function FocusedMessageCard({
     focusedMessage.authorName ?? getUserLabel(users, focusedMessage.authorId);
 
   return (
-    <div className="mb-3 rounded-md border border-[#cfd8e3] bg-[#f8fafc] p-3 text-left">
-      <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#667085]">
+    <div className="mb-3 rounded-md border border-line bg-subtle p-3 text-left">
+      <p className="m-0 text-[0.68rem] font-semibold uppercase text-ink-muted">
         Mensagem em foco
       </p>
-      <p className="m-0 mt-1 text-xs font-semibold text-[#101820]">
+      <p className="m-0 mt-1 text-xs font-semibold text-ink">
         {authorName}
-        <span className="ml-2 font-medium text-[#667085]">
+        <span className="ml-2 font-medium text-ink-muted">
           {focusedMessage.timestamp}
         </span>
       </p>
-      <p className="m-0 mt-1 line-clamp-3 text-xs leading-5 text-[#344054]">
+      <p className="m-0 mt-1 line-clamp-3 text-xs leading-5 text-ink">
         {focusedMessage.body}
       </p>
     </div>
@@ -542,7 +542,7 @@ function ToneSelector({
 }) {
   return (
     <div className="mb-3">
-      <p className="m-0 mb-2 text-[0.68rem] font-semibold uppercase text-[#667085]">
+      <p className="m-0 mb-2 text-[0.68rem] font-semibold uppercase text-ink-muted">
         Tom da resposta
       </p>
       <div
@@ -559,7 +559,7 @@ function ToneSelector({
               className={`inline-flex h-8 min-w-0 items-center justify-center gap-1.5 rounded-md border px-2 text-[0.68rem] font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-60 ${
                 isSelected
                   ? "border-[#A07C3B] bg-[#f7f3eb] text-[#7b5f2d] shadow-sm"
-                  : "border-[#d9e0ea] bg-white text-[#344054] hover:border-[#A07C3B]/50 hover:bg-[#f8fafc]"
+                  : "border-line bg-surface text-ink hover:border-[#A07C3B]/50 hover:bg-subtle"
               }`}
               disabled={disabled}
               key={tone.id}
@@ -646,7 +646,7 @@ function renderAthenaMessageContent(content: string) {
           className="grid grid-cols-[0.85rem_minmax(0,1fr)] gap-1.5 py-0.5"
           key={`athena-line-${index}`}
         >
-          <span className="pt-px text-center text-base font-black leading-5 text-[#101820]">
+          <span className="pt-px text-center text-base font-black leading-5 text-ink">
             •
           </span>
           <span className="min-w-0 whitespace-pre-wrap">

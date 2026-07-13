@@ -161,7 +161,7 @@ export function IrisAthenaPanel({
   }
 
   return (
-    <div className="flex max-h-[64vh] w-full flex-col overflow-hidden rounded-xl border border-[#A07C3B]/30 bg-white shadow-[0_24px_60px_rgba(15,23,42,0.20)]">
+    <div className="flex max-h-[64vh] w-full flex-col overflow-hidden rounded-xl border border-[#A07C3B]/30 bg-surface shadow-[0_24px_60px_rgba(15,23,42,0.20)]">
         <div className="flex shrink-0 items-center justify-between gap-3 border-b border-[#A07C3B]/15 bg-[#A07C3B]/8 px-3 py-2.5">
           <div className="flex items-center gap-2.5">
             <span className="flex size-8 items-center justify-center rounded-lg bg-[#A07C3B] text-white">
@@ -182,7 +182,7 @@ export function IrisAthenaPanel({
           </button>
         </div>
 
-        <div className="flex shrink-0 flex-wrap gap-1.5 border-b border-slate-100 px-3 py-2.5">
+        <div className="flex shrink-0 flex-wrap gap-1.5 border-b border-line px-3 py-2.5">
           {(cobrancaMode ? SHORTCUTS : IRIS_SHORTCUTS).map((shortcut) => (
             <Tooltip key={shortcut.action} content={shortcut.label} placement="top">
               <button
@@ -190,7 +190,7 @@ export function IrisAthenaPanel({
                 onClick={() => onSend(shortcut.action)}
                 disabled={disabled || loading}
                 aria-label={shortcut.label}
-                className="flex size-7 items-center justify-center rounded-md border border-slate-200/80 bg-white text-slate-500 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-50"
+                className="flex size-7 items-center justify-center rounded-md border border-line/80 bg-surface text-ink-muted transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <shortcut.icon className="size-3.5" aria-hidden="true" />
               </button>
@@ -199,18 +199,18 @@ export function IrisAthenaPanel({
         </div>
 
         {contextMessage ? (
-          <div className="flex shrink-0 items-start gap-2 border-b border-slate-100 bg-[#A07C3B]/6 px-3 py-2">
+          <div className="flex shrink-0 items-start gap-2 border-b border-line bg-[#A07C3B]/6 px-3 py-2">
             <span className="mt-0.5 shrink-0 text-[10px] font-semibold uppercase tracking-normal text-[#7A5E2C]">
               Sobre
             </span>
-            <p className="line-clamp-2 min-w-0 flex-1 text-[11px] italic text-slate-600">
+            <p className="line-clamp-2 min-w-0 flex-1 text-[11px] italic text-ink-soft">
               “{contextMessage}”
             </p>
             <button
               type="button"
               onClick={onClearContext}
               aria-label="Remover contexto da mensagem"
-              className="shrink-0 text-slate-400 transition-colors hover:text-[#7A5E2C]"
+              className="shrink-0 text-ink-muted transition-colors hover:text-[#7A5E2C]"
             >
               <X className="size-3.5" aria-hidden="true" />
             </button>
@@ -219,10 +219,10 @@ export function IrisAthenaPanel({
 
         <div
           ref={threadRef}
-          className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50/40 p-3 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
+          className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-subtle/40 p-3 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]"
         >
           {thread.length === 0 && !loading ? (
-            <p className="px-1 py-3 text-center text-xs text-slate-400">
+            <p className="px-1 py-3 text-center text-xs text-ink-muted">
               Peça à Athena para montar uma mensagem, resumir a conversa ou tirar
               uma dúvida sobre o cliente.
             </p>
@@ -232,7 +232,7 @@ export function IrisAthenaPanel({
             message.role === "operator" ? (
               <div
                 key={message.id}
-                className="ml-auto max-w-[80%] rounded-[10px_10px_2px_10px] border border-slate-200/70 bg-white px-3 py-2 text-xs leading-relaxed text-slate-700"
+                className="ml-auto max-w-[80%] rounded-[10px_10px_2px_10px] border border-line/70 bg-surface px-3 py-2 text-xs leading-relaxed text-ink"
               >
                 {message.audioUrl ? (
                   <>
@@ -242,7 +242,7 @@ export function IrisAthenaPanel({
                       className="h-8 w-full"
                     />
                     {message.text ? (
-                      <p className="mt-1 text-[11px] italic text-slate-400">
+                      <p className="mt-1 text-[11px] italic text-ink-muted">
                         “{message.text}”
                       </p>
                     ) : null}
@@ -261,8 +261,8 @@ export function IrisAthenaPanel({
                     Athena
                   </span>
                 </div>
-                <div className="rounded-[2px_10px_10px_10px] border border-slate-200/70 bg-white px-3 py-2.5">
-                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-slate-800">
+                <div className="rounded-[2px_10px_10px_10px] border border-line/70 bg-surface px-3 py-2.5">
+                  <p className="whitespace-pre-wrap text-xs leading-relaxed text-ink">
                     {message.text}
                   </p>
                   <div className="mt-2 flex gap-1.5">
@@ -284,7 +284,7 @@ export function IrisAthenaPanel({
                         type="button"
                         onClick={() => void copy(message)}
                         aria-label="Copiar"
-                        className="flex size-7 items-center justify-center rounded-md border border-slate-200/80 text-slate-500 transition-colors hover:bg-slate-50"
+                        className="flex size-7 items-center justify-center rounded-md border border-line/80 text-ink-muted transition-colors hover:bg-subtle"
                       >
                         <Copy className="size-3.5" aria-hidden="true" />
                       </button>
@@ -303,7 +303,7 @@ export function IrisAthenaPanel({
           ) : null}
         </div>
 
-        <div className="flex shrink-0 items-end gap-2 border-t border-slate-100 px-3 py-2.5">
+        <div className="flex shrink-0 items-end gap-2 border-t border-line px-3 py-2.5">
           <Sparkles className="mb-1.5 size-4 shrink-0 text-[#A07C3B]" aria-hidden="true" />
           <textarea
             value={prompt}
@@ -312,7 +312,7 @@ export function IrisAthenaPanel({
             disabled={disabled || loading}
             rows={1}
             placeholder={recording ? "Gravando áudio…" : "Peça algo à Athena…"}
-            className="max-h-24 min-h-9 flex-1 resize-none bg-transparent py-1.5 text-sm text-slate-800 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed"
+            className="max-h-24 min-h-9 flex-1 resize-none bg-transparent py-1.5 text-sm text-ink outline-none placeholder:text-ink-muted disabled:cursor-not-allowed"
           />
           <Tooltip content={recording ? "Parar e enviar" : "Gravar áudio"} placement="top">
             <button
@@ -324,7 +324,7 @@ export function IrisAthenaPanel({
                 "flex size-9 shrink-0 items-center justify-center rounded-lg border transition-colors disabled:cursor-not-allowed disabled:opacity-50",
                 recording
                   ? "border-rose-200 bg-rose-50 text-rose-600"
-                  : "border-slate-200/80 text-slate-500 hover:bg-slate-50 hover:text-[#7A5E2C]",
+                  : "border-line/80 text-ink-muted hover:bg-subtle hover:text-[#7A5E2C]",
               ].join(" ")}
             >
               {transcribing ? (
@@ -341,7 +341,7 @@ export function IrisAthenaPanel({
             onClick={submitFree}
             disabled={disabled || loading || !prompt.trim()}
             aria-label="Enviar para a Athena"
-            className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B] text-white transition-colors hover:bg-[#8E6F35] disabled:cursor-not-allowed disabled:bg-subtle"
           >
             <Send className="size-4" aria-hidden="true" />
           </button>

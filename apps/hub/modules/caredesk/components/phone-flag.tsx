@@ -85,7 +85,7 @@ export function PhoneFlag({
     return (
       <Globe
         aria-label="País desconhecido"
-        className={`inline-block size-3.5 shrink-0 align-[-2px] text-slate-400${extra}`}
+        className={`inline-block size-3.5 shrink-0 align-[-2px] text-ink-muted${extra}`}
       />
     );
   }

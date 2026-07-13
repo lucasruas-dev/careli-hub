@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Prometeu · Setup</title>
+<style>
+  :root{
+    --canvas:#f7f8fa; --panel:#ffffff; --subtle:#eef1f4; --line:#dce2ea; --line-strong:#c5ceda;
+    --text:#121722; --text2:#485466; --muted:#667085; --inverse:#f7f8fa;
+    --brand:#a07c3b; --brand-soft:rgba(160,124,59,.12);
+    --ok:#14804a; --ok-soft:rgba(20,128,74,.12);
+    --warn:#b7791f; --warn-soft:rgba(183,121,31,.15);
+    --danger:#c24135; --danger-soft:rgba(194,65,53,.14);
+    --info:#2563eb; --info-soft:rgba(37,99,235,.10);
+    --shadow:0 8px 24px rgb(18 23 34 / 0.10); --shadow-sm:0 2px 6px rgb(18 23 34 / 0.08);
+  }
+  body.dark{
+    --canvas:#101211; --panel:#181a19; --subtle:#26292a; --line:#2b2e2c; --line-strong:#3a3e3c;
+    --text:#e9edeb; --text2:#cfd3d0; --muted:#98a09a; --inverse:#101211;
+    --brand:#cba25a; --brand-soft:rgba(203,162,90,.16);
+    --ok:#3fae74; --ok-soft:rgba(63,174,116,.16);
+    --warn:#d69a3d; --warn-soft:rgba(214,154,61,.18);
+    --danger:#e0655a; --danger-soft:rgba(224,101,90,.18);
+    --info:#5b8def;
+    --shadow:0 10px 30px rgb(0 0 0 / .5); --shadow-sm:0 2px 8px rgb(0 0 0 / .4);
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--canvas);color:var(--text);font-family:Arial,Helvetica,sans-serif;min-height:100vh;padding:16px 22px 48px}
+
+  header{display:flex;align-items:center;gap:16px;margin-bottom:20px}
+  .mod-icon{width:44px;height:44px;border-radius:11px;background:#232832;color:#dce2ea;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .mod-icon svg{width:23px;height:23px}
+  .brand h1{font-size:20px;font-weight:700}
+  .brand .sub{font-size:11px;color:var(--muted);letter-spacing:.14em;text-transform:uppercase;margin-top:1px}
+  .h-right{margin-left:auto;display:flex;align-items:center;gap:16px}
+  .ev-chip{display:flex;align-items:center;gap:9px;background:var(--subtle);border:1px solid var(--line);border-radius:12px;padding:8px 15px;font-size:13.5px;font-weight:700}
+  .ev-chip small{display:block;font-size:11px;color:var(--muted);font-weight:400}
+  .tbtn{width:38px;height:38px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .tbtn svg{width:18px;height:18px}
+  .btn-primary{border:0;border-radius:12px;background:var(--text);color:var(--inverse);font-size:14.5px;font-weight:800;padding:12px 22px;cursor:pointer;display:flex;align-items:center;gap:9px;box-shadow:var(--shadow-sm)}
+  .btn-primary svg{width:18px;height:18px}
+  .btn-primary:hover{transform:translateY(-1px)}
+
+  .wrap{max-width:1240px;margin:0 auto;display:flex;flex-direction:column;gap:18px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-sm)}
+  .card-head{display:flex;align-items:center;gap:12px;padding:16px 22px;border-bottom:1px solid var(--line)}
+  .card-head h2{font-size:13px;letter-spacing:.11em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  .card-head .hint{margin-left:auto;font-size:12.5px;color:var(--muted)}
+
+  /* configuração do lançamento */
+  .cfg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px 22px;padding:22px}
+  .fld{display:flex;flex-direction:column;gap:7px}
+  .fld.wide{grid-column:span 2}
+  .fld label{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted)}
+  .fld input{border:1px solid var(--line);border-radius:11px;background:var(--subtle);color:var(--text);padding:12px 14px;font:inherit;font-size:14.5px;font-weight:600}
+  .fld input:focus{outline:none;border-color:var(--brand)}
+  .fld .with-suffix{display:flex;align-items:center;gap:10px}
+  .fld .with-suffix input{width:100px}
+  .fld .with-suffix span{font-size:13px;color:var(--muted)}
+  .switch{display:inline-flex;align-items:center;gap:10px;cursor:pointer;font-size:14px;font-weight:600}
+  .switch .track{width:44px;height:26px;border-radius:20px;background:var(--line-strong);position:relative;transition:.2s;flex-shrink:0}
+  .switch .track::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:#fff;transition:.2s;box-shadow:0 1px 3px rgba(0,0,0,.3)}
+  .switch.on .track{background:var(--ok)} .switch.on .track::after{left:21px}
+
+  /* metas de tempo */
+  .metas-body{padding:22px}
+  .metas-gerais{display:grid;grid-template-columns:1fr 1fr;gap:18px 22px}
+  .meta-list{margin-top:18px;border-top:1px solid var(--line)}
+  .meta-row{display:flex;align-items:center;gap:14px;padding:13px 2px;border-bottom:1px solid var(--line)}
+  .meta-row:last-child{border-bottom:0}
+  .meta-dot{width:12px;height:12px;border-radius:50%;flex-shrink:0}
+  .meta-info{flex:1;min-width:0}
+  .meta-nome{font-size:14.5px;font-weight:700}
+  .meta-sub{font-size:12px;color:var(--muted);margin-top:1px}
+  .meta-fields{display:flex;gap:12px;flex-shrink:0}
+  .meta-fields label{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:700;letter-spacing:.03em;text-transform:uppercase;color:var(--muted)}
+  .meta-fields input{width:62px;border:1px solid var(--line);border-radius:9px;background:var(--subtle);color:var(--text);padding:8px 8px;font:inherit;font-size:14px;font-weight:700;text-align:center}
+  .meta-fields input:focus{outline:none;border-color:var(--brand)}
+  .meta-fields .alerta input{border-color:color-mix(in srgb,var(--danger) 30%,var(--line))}
+
+  /* resumo */
+  .resumo{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+  .kpi{display:flex;align-items:center;gap:13px;background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow-sm);padding:16px 18px}
+  .kpi-ic{width:40px;height:40px;border-radius:11px;background:var(--subtle);color:var(--text2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .kpi-ic svg{width:20px;height:20px}
+  .kpi.ok .kpi-ic{background:var(--ok-soft);color:var(--ok)} .kpi.info .kpi-ic{background:var(--info-soft);color:var(--info)} .kpi.brand .kpi-ic{background:var(--brand-soft);color:var(--brand)}
+  .kpi-vl{font-size:23px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums}
+  .kpi-lb{font-size:12px;color:var(--muted);margin-top:3px}
+
+  /* quadro da equipe */
+  .board{display:grid;grid-template-columns:repeat(5,1fr);gap:16px}
+  .col{background:var(--panel);border:1px solid var(--line);border-radius:16px;box-shadow:var(--shadow-sm);display:flex;flex-direction:column;overflow:hidden}
+  .col-head{display:flex;align-items:center;gap:11px;padding:15px 16px;border-bottom:1px solid var(--line)}
+  .col-ic{width:34px;height:34px;border-radius:9px;background:var(--subtle);color:var(--text2);display:flex;align-items:center;justify-content:center;flex-shrink:0}
+  .col-ic svg{width:18px;height:18px}
+  .col-nome{font-size:14.5px;font-weight:800}
+  .col-sub{font-size:11.5px;color:var(--muted);margin-top:1px}
+  .col-n{margin-left:auto;font-size:13px;font-weight:800;background:var(--subtle);border:1px solid var(--line);border-radius:20px;min-width:26px;height:24px;display:flex;align-items:center;justify-content:center;padding:0 8px}
+  .col-body{display:flex;flex-direction:column;gap:8px;padding:12px 14px;min-height:60px}
+  .col-empty{font-size:12.5px;color:var(--muted);text-align:center;padding:18px 0}
+  .col-add{margin:2px 14px 14px;border:1.5px dashed var(--line-strong);background:transparent;color:var(--text2);border-radius:11px;padding:11px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;transition:.15s}
+  .col-add:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-soft)}
+  .pp{display:flex;align-items:center;gap:11px;background:var(--subtle);border:1px solid var(--line);border-radius:11px;padding:9px 11px}
+  .pp-av{width:36px;height:36px;border-radius:9px;background:var(--panel);border:1px solid var(--line);color:var(--text2);display:flex;align-items:center;justify-content:center;font-weight:800;font-size:13px;flex-shrink:0}
+  .pp-info{flex:1;min-width:0}
+  .pp-nome{font-size:14px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .pp-badge{display:inline-block;margin-top:3px;font-size:11px;font-weight:700;color:var(--muted);background:var(--panel);border:1px solid var(--line);border-radius:20px;padding:2px 9px}
+  .pp-badge.coord{color:var(--brand);background:var(--brand-soft);border-color:var(--brand)}
+  .pp-badge.mesa{color:var(--ok);background:var(--ok-soft);border-color:color-mix(in srgb,var(--ok) 35%,transparent)}
+  .pp-badge.inc{color:var(--info);background:var(--info-soft);border-color:color-mix(in srgb,var(--info) 35%,transparent)}
+  .pp-x{width:26px;height:26px;border-radius:7px;border:0;background:transparent;color:var(--muted);cursor:pointer;font-size:13px;flex-shrink:0;opacity:.5;transition:.15s}
+  .pp:hover .pp-x{opacity:1} .pp-x:hover{background:var(--danger-soft);color:var(--danger)}
+
+  /* modal adicionar pessoa */
+  .modal-ov{position:fixed;inset:0;background:rgba(8,11,17,.6);backdrop-filter:blur(6px);z-index:100;display:none;align-items:center;justify-content:center;padding:24px}
+  .modal-ov.open{display:flex}
+  .modal{background:var(--panel);border-radius:20px;box-shadow:0 40px 100px rgba(0,0,0,.5);width:min(520px,94vw);padding:30px 32px 26px}
+  .modal h3{font-size:22px;font-weight:800;margin-bottom:4px}
+  .modal p{font-size:13.5px;color:var(--muted);margin-bottom:20px}
+  .modal label{display:block;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);margin:16px 0 8px}
+  .modal input,.modal select{width:100%;border:1px solid var(--line);border-radius:12px;background:var(--subtle);color:var(--text);padding:13px 14px;font:inherit;font-size:15px;font-weight:600}
+  .modal input:focus,.modal select:focus{outline:none;border-color:var(--brand)}
+  .seg{display:flex;gap:8px}
+  .seg.wrap{flex-wrap:wrap}
+  .seg.wrap button{flex:1 1 calc(50% - 4px)}
+  .seg button{flex:1;border:1.5px solid var(--line);background:var(--panel);color:var(--text2);border-radius:12px;padding:12px 6px;font:inherit;font-size:13.5px;font-weight:700;cursor:pointer;transition:.15s}
+  .seg button.on{background:var(--text);color:var(--inverse);border-color:var(--text)}
+  .lbl-src{text-transform:none;letter-spacing:0;font-weight:400;color:var(--muted)}
+  .modal-acts{display:flex;gap:12px;margin-top:24px}
+  .modal-acts button{flex:1;border-radius:12px;padding:14px;font-size:14.5px;font-weight:700;cursor:pointer;border:1px solid var(--line-strong);background:var(--panel);color:var(--text2)}
+  .modal-acts .conf{background:var(--text);border-color:var(--text);color:var(--inverse)}
+
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:#232832;color:#fff;padding:14px 24px;border-radius:14px;font-size:15px;font-weight:700;display:flex;align-items:center;gap:12px;box-shadow:0 12px 40px rgba(0,0,0,.35);opacity:0;pointer-events:none;transition:all .3s;z-index:120}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  @media(max-width:1200px){ .board{grid-template-columns:repeat(3,1fr)} }
+  @media(max-width:1000px){ .board,.resumo{grid-template-columns:repeat(2,1fr)} .cfg-grid{grid-template-columns:repeat(2,1fr)} .fld.wide{grid-column:span 2} }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="mod-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="10" x2="21" y1="6" y2="6"/><line x1="10" x2="21" y1="12" y2="12"/><line x1="10" x2="21" y1="18" y2="18"/><path d="M4 6h1v4"/><path d="M4 10h2"/><path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1"/></svg></div>
+  <div class="brand"><h1>Central · Setup</h1><div class="sub">Prometeu · Gestão de Fila</div></div>
+  <div class="h-right">
+    <div class="ev-chip"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg><span>Vale do Ouro<small>lançamento · 12/07/2026</small></span></div>
+    <button class="tbtn" onclick="document.body.classList.toggle('dark')" title="Tema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg></button>
+    <button class="btn-primary" onclick="iniciarLancamento()"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg> Iniciar lançamento</button>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <!-- configuração do lançamento -->
+  <div class="card">
+    <div class="card-head"><h2>Configuração do lançamento</h2><span class="hint">Dados do evento e da operação</span></div>
+    <div class="cfg-grid">
+      <div class="fld"><label>Empreendimento</label><input id="cfg-emp" value="Vale do Ouro"></div>
+      <div class="fld"><label>Construtora</label><input id="cfg-const" value="Construtora Cecílio Rocha"></div>
+      <div class="fld"><label>Data do lançamento</label><input id="cfg-data" type="date" value="2026-07-12"></div>
+      <div class="fld wide"><label>Local do evento</label><input id="cfg-local" value="Espaço Cecílio Rocha · Av. das Palmeiras, 1200"></div>
+      <div class="fld"><label>Mesas da secretaria</label><div class="with-suffix"><input id="cfg-mesas" type="number" min="1" max="28" value="10" onchange="setMesas(this.value)"><span>mesas numeradas</span></div></div>
+      <div class="fld"><label>Senha da fila</label><div class="switch on" id="sw-wpp" onclick="this.classList.toggle('on')"><span class="track"></span> Enviar pelo WhatsApp</div></div>
+    </div>
+  </div>
+
+  <!-- metas de tempo -->
+  <div class="card">
+    <div class="card-head"><h2>Metas de tempo</h2><span class="hint">Referência dos indicadores · colorem gargalos na Central e no tablet do atendente</span></div>
+    <div class="metas-body">
+      <div class="metas-gerais">
+        <div class="fld"><label>Tempo total no evento (meta)</label><div class="with-suffix"><input id="meta-total" type="number" min="1" value="45"><span>min · credenciamento → concluído</span></div></div>
+        <div class="fld"><label>Tempo médio de atendimento (meta)</label><div class="with-suffix"><input id="meta-atd" type="number" min="1" value="20"><span>min · na mesa da secretaria</span></div></div>
+      </div>
+      <div class="meta-list" id="meta-list"></div>
+    </div>
+  </div>
+
+  <!-- resumo -->
+  <div class="resumo">
+    <div class="kpi"><div class="kpi-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></div><div><div class="kpi-vl" id="r-total">0</div><div class="kpi-lb">Pessoas na equipe</div></div></div>
+    <div class="kpi info"><div class="kpi-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/></svg></div><div><div class="kpi-vl" id="r-org">0</div><div class="kpi-lb">Organizadores</div></div></div>
+    <div class="kpi ok"><div class="kpi-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></div><div><div class="kpi-vl" id="r-atd">0</div><div class="kpi-lb">Atendentes</div></div></div>
+    <div class="kpi brand"><div class="kpi-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg></div><div><div class="kpi-vl" id="r-mesas">0/0</div><div class="kpi-lb">Mesas atribuídas</div></div></div>
+  </div>
+
+  <!-- quadro da equipe -->
+  <div class="card" style="background:transparent;border:0;box-shadow:none">
+    <div class="card-head" style="border:0;padding:0 2px 12px"><h2>Equipe do lançamento</h2><span class="hint">Vincule cada pessoa ao papel, posto e mesa</span></div>
+    <div class="board" id="board"></div>
+  </div>
+
+</div>
+
+<!-- modal adicionar pessoa -->
+<div class="modal-ov" id="add-modal">
+  <div class="modal">
+    <h3>Adicionar pessoa</h3>
+    <p>Vincule uma pessoa do cadastro a um papel e local para este lançamento.</p>
+    <label>Papel</label>
+    <div class="seg wrap" id="add-papel">
+      <button data-p="coordenacao" onclick="setAddPapel('coordenacao')">Coordenação</button>
+      <button data-p="incorporador" onclick="setAddPapel('incorporador')">Incorporador</button>
+      <button data-p="organizador" onclick="setAddPapel('organizador')">Organizador</button>
+      <button data-p="atendente" onclick="setAddPapel('atendente')">Atendente</button>
+    </div>
+    <label>Pessoa <span class="lbl-src" id="add-src"></span></label>
+    <select id="add-pessoa"></select>
+    <div id="add-local-row">
+      <label>Local (posto)</label>
+      <div class="seg" id="add-local">
+        <button data-l="recepcao" onclick="setAddLocal('recepcao')">Recepção</button>
+        <button data-l="salao" onclick="setAddLocal('salao')">Salão de vendas</button>
+        <button data-l="secretaria" onclick="setAddLocal('secretaria')">Secretaria</button>
+      </div>
+    </div>
+    <div id="add-mesa-row">
+      <label>Mesa da secretaria</label>
+      <select id="add-mesa"></select>
+    </div>
+    <div class="modal-acts">
+      <button onclick="fecharAdd()">Cancelar</button>
+      <button class="conf" onclick="confirmarAdd()">Adicionar à equipe</button>
+    </div>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+  const iniciais=n=>n.split(" ").map(p=>p[0]).slice(0,2).join("").toUpperCase();
+  const pad=(n,l)=>String(n).padStart(l,"0");
+  let evento={mesas:10};
+  // cadastros (no sistema real: colaboradores = usuários do HUB; incorporador = contatos da construtora no CRM/Apolo)
+  const COLABORADORES=["Lucas Ruas","Nívea Costa","Beatriz Nunes","Paulo Henrique","Rafael Gomes","Larissa Prado","Sônia Mendes","Ana Paula","Carlos Menezes","Juliana Reis","Marcos Vieira","Fernando Aguiar","Patrícia Lopes","Rodrigo Sales","Camila Duarte","Henrique Vaz"];
+  const INCORPORADOR_CONTATOS=["Cecílio Rocha Jr.","Marta Rocha","Eduardo Cecílio","Bianca Rocha"];
+
+  let uid=0; const equipe=[];
+  function addPessoa(nome,papel,local,mesa){equipe.push({id:++uid,nome,papel,local:(papel==="coordenacao"||papel==="incorporador")?null:local,mesa:papel==="atendente"?mesa:null});}
+  // seed
+  addPessoa("Lucas Ruas","coordenacao");
+  addPessoa("Nívea Costa","coordenacao");
+  addPessoa("Cecílio Rocha Jr.","incorporador");
+  addPessoa("Marta Rocha","incorporador");
+  addPessoa("Beatriz Nunes","organizador","recepcao");
+  addPessoa("Paulo Henrique","organizador","recepcao");
+  addPessoa("Rafael Gomes","organizador","salao");
+  addPessoa("Larissa Prado","organizador","salao");
+  addPessoa("Sônia Mendes","organizador","secretaria");
+  addPessoa("Ana Paula","atendente","secretaria","03");
+  addPessoa("Carlos Menezes","atendente","secretaria","04");
+  addPessoa("Juliana Reis","atendente","secretaria","05");
+  addPessoa("Marcos Vieira","atendente","secretaria","06");
+
+  const COLS=[
+    {key:"coordenacao",nome:"Coordenação",sub:"time Careli · vê tudo",icon:`<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>`},
+    {key:"incorporador",nome:"Incorporador",sub:"construtora · acompanha",icon:`<path d="M3 21h18M6 21V7l6-4 6 4v14M10 9h.01M14 9h.01M10 13h.01M14 13h.01M10 17h4"/>`},
+    {key:"recepcao",nome:"Recepção",sub:"credencia · lê QR",icon:`<path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" x2="3" y1="12" y2="12"/>`},
+    {key:"salao",nome:"Salão de vendas",sub:"chama + bipa",icon:`<path d="m3 11 18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>`},
+    {key:"secretaria",nome:"Secretaria",sub:"bipa PA · atende",icon:`<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>`},
+  ];
+  const svgWrap=p=>`<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${p}</svg>`;
+  const pessoasCol=key=>{
+    if(key==="coordenacao")return equipe.filter(p=>p.papel==="coordenacao");
+    if(key==="incorporador")return equipe.filter(p=>p.papel==="incorporador");
+    return equipe.filter(p=>(p.papel==="organizador"||p.papel==="atendente")&&p.local===key);
+  };
+
+  function pessoaCard(p){
+    const badge=p.papel==="coordenacao"?`<span class="pp-badge coord">Coordenação</span>`
+      :p.papel==="incorporador"?`<span class="pp-badge inc">Incorporador</span>`
+      :p.papel==="atendente"?`<span class="pp-badge mesa">Mesa ${p.mesa}</span>`
+      :`<span class="pp-badge">Organizador</span>`;
+    return `<div class="pp"><div class="pp-av">${iniciais(p.nome)}</div><div class="pp-info"><div class="pp-nome">${p.nome}</div>${badge}</div><button class="pp-x" title="Remover" onclick="removerPessoa(${p.id})">✕</button></div>`;
+  }
+  function renderBoard(){
+    document.getElementById("board").innerHTML=COLS.map(col=>{
+      const ppl=pessoasCol(col.key);
+      return `<div class="col">
+        <div class="col-head"><div class="col-ic">${svgWrap(col.icon)}</div><div><div class="col-nome">${col.nome}</div><div class="col-sub">${col.sub}</div></div><span class="col-n">${ppl.length}</span></div>
+        <div class="col-body">${ppl.map(pessoaCard).join("")||`<div class="col-empty">Ninguém vinculado.</div>`}</div>
+        <button class="col-add" onclick="abrirAdd('${col.key}')">+ Adicionar</button>
+      </div>`;
+    }).join("");
+  }
+  function renderResumo(){
+    document.getElementById("r-total").textContent=equipe.length;
+    document.getElementById("r-org").textContent=equipe.filter(p=>p.papel==="organizador").length;
+    document.getElementById("r-atd").textContent=equipe.filter(p=>p.papel==="atendente").length;
+    document.getElementById("r-mesas").textContent=`${equipe.filter(p=>p.papel==="atendente").length}/${evento.mesas}`;
+  }
+  function removerPessoa(id){const i=equipe.findIndex(p=>p.id===id);if(i>=0)equipe.splice(i,1);renderBoard();renderResumo();}
+  function setMesas(v){evento.mesas=Math.max(1,+v||1);renderResumo();}
+
+  // ===== adicionar pessoa =====
+  let addPapel="organizador", addLocal="recepcao";
+  function abrirAdd(colKey){
+    if(colKey==="coordenacao"){addPapel="coordenacao";addLocal=null;}
+    else if(colKey==="incorporador"){addPapel="incorporador";addLocal=null;}
+    else if(colKey==="secretaria"){addPapel="atendente";addLocal="secretaria";}
+    else {addPapel="organizador";addLocal=colKey;}
+    syncAddForm();
+    document.getElementById("add-modal").classList.add("open");
+  }
+  function setAddPapel(p){
+    addPapel=p;
+    if(p==="atendente")addLocal="secretaria";
+    else if(p==="coordenacao"||p==="incorporador")addLocal=null;
+    else if(p==="organizador"&&!addLocal)addLocal="recepcao"; // organizador precisa de um posto
+    syncAddForm();
+  }
+  function setAddLocal(l){addLocal=l;syncAddForm();}
+  function poolFor(papel){
+    const base=papel==="incorporador"?INCORPORADOR_CONTATOS:COLABORADORES;
+    const usados=new Set(equipe.map(p=>p.nome));
+    return base.filter(n=>!usados.has(n));
+  }
+  function syncAddForm(){
+    document.querySelectorAll("#add-papel button").forEach(b=>b.classList.toggle("on",b.dataset.p===addPapel));
+    document.getElementById("add-local-row").style.display=addPapel==="organizador"?"block":"none";
+    document.querySelectorAll("#add-local button").forEach(b=>b.classList.toggle("on",b.dataset.l===addLocal));
+    document.getElementById("add-mesa-row").style.display=addPapel==="atendente"?"block":"none";
+    if(addPapel==="atendente"){
+      const livres=mesasLivres(), sel=document.getElementById("add-mesa");
+      sel.innerHTML=livres.length?livres.map(m=>`<option value="${m}">Mesa ${m}</option>`).join(""):`<option value="">Sem mesa livre</option>`;
+    }
+    // pessoa puxada do cadastro
+    const pool=poolFor(addPapel), psel=document.getElementById("add-pessoa");
+    psel.innerHTML=pool.length?pool.map(n=>`<option>${n}</option>`).join(""):`<option value="">Todos já vinculados</option>`;
+    document.getElementById("add-src").textContent=addPapel==="incorporador"?"· contatos da construtora (CRM)":"· cadastro de colaboradores";
+  }
+  function mesasLivres(){
+    const usadas=new Set(equipe.filter(p=>p.papel==="atendente").map(p=>p.mesa));
+    const all=[]; for(let i=1;i<=evento.mesas;i++)all.push(pad(i,2));
+    return all.filter(m=>!usadas.has(m));
+  }
+  function confirmarAdd(){
+    const nome=document.getElementById("add-pessoa").value;
+    if(!nome){toast("Selecione a pessoa no cadastro.");return;}
+    let mesa=null;
+    if(addPapel==="atendente"){mesa=document.getElementById("add-mesa").value;if(!mesa){toast("Sem mesa livre. Aumente o nº de mesas da secretaria.");return;}}
+    addPessoa(nome,addPapel,addLocal,mesa);
+    fecharAdd();renderBoard();renderResumo();
+    const local=addPapel==="coordenacao"?"Coordenação":addPapel==="incorporador"?"Incorporador":addPapel==="atendente"?`Secretaria · Mesa ${mesa}`:COLS.find(c=>c.key===addLocal).nome;
+    toast(`<b>${nome}</b> vinculado · ${local}`);
+  }
+  function fecharAdd(){document.getElementById("add-modal").classList.remove("open");}
+
+  // ===== metas de tempo (referência dos indicadores) =====
+  const metas={ total:45, atendimento:20, filas:[
+    {nome:"Fila da recepção", sub:"espera até ser chamado pro salão", meta:10, alerta:20, cor:"#64748b"},
+    {nome:"Negociação (salão)", sub:"tempo com o corretor no salão", meta:15, alerta:30, cor:"#ec7f2e"},
+    {nome:"Fila da secretaria", sub:"espera até o atendente chamar", meta:12, alerta:25, cor:"#8b5cf6"},
+    {nome:"Atendimento", sub:"na mesa da secretaria", meta:20, alerta:40, cor:"#22a95b"},
+  ]};
+  function renderMetas(){
+    document.getElementById("meta-list").innerHTML=metas.filas.map((f,i)=>`
+      <div class="meta-row">
+        <div class="meta-dot" style="background:${f.cor}"></div>
+        <div class="meta-info"><div class="meta-nome">${f.nome}</div><div class="meta-sub">${f.sub}</div></div>
+        <div class="meta-fields">
+          <label class="meta">Meta <input type="number" min="1" value="${f.meta}" onchange="metas.filas[${i}].meta=+this.value"> min</label>
+          <label class="alerta">Alerta <input type="number" min="1" value="${f.alerta}" onchange="metas.filas[${i}].alerta=+this.value"> min</label>
+        </div>
+      </div>`).join("");
+  }
+  function iniciarLancamento(){
+    toast(`Lançamento iniciado · ${equipe.length} na equipe, ${equipe.filter(p=>p.papel==="atendente").length} atendentes em mesa`);
+  }
+  function toast(html){const t=document.getElementById("toast");t.innerHTML=html;t.classList.add("show");clearTimeout(window._tt);window._tt=setTimeout(()=>t.classList.remove("show"),3200);}
+
+  renderBoard();renderResumo();renderMetas();
+</script>
+</body>
+</html>

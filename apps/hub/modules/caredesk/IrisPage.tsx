@@ -1284,9 +1284,9 @@ export function IrisPage({
     <div
       onClick={registerIrisNotificationPermissionIntent}
       className={[
-        "h-full min-h-0 overflow-hidden bg-[#f3f6fa] text-[#101820]",
+        "h-full min-h-0 overflow-hidden bg-subtle dark:bg-canvas text-ink",
         embedded && !embeddedBoardOnly
-          ? "rounded-2xl border border-[#dbe3ef]"
+          ? "rounded-2xl border border-line"
           : "",
       ].join(" ")}
     >
@@ -1325,9 +1325,9 @@ export function IrisPage({
         />
       ) : null}
       {embeddedBoardOnly ? (
-        <section className="h-[calc(100vh-11rem)] min-h-[560px] overflow-hidden rounded-2xl border border-[#dbe3ef] bg-[#f3f6fa] p-3">
+        <section className="h-[calc(100vh-11rem)] min-h-[560px] overflow-hidden rounded-2xl border border-line bg-subtle dark:bg-canvas p-3">
           {loadError ? (
-            <div className="h-full rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
+            <div className="h-full rounded-2xl border border-rose-200 bg-surface p-8 text-center text-sm font-semibold text-rose-700">
               {loadError}
             </div>
           ) : activeView === "atendimento" ? (
@@ -1380,7 +1380,7 @@ export function IrisPage({
           onToggleCollapsed={() => setSidebarCollapsed((current) => !current)}
         >
           {loadError ? (
-            <div className="h-full rounded-2xl border border-rose-200 bg-white p-8 text-center text-sm font-semibold text-rose-700">
+            <div className="h-full rounded-2xl border border-rose-200 bg-surface p-8 text-center text-sm font-semibold text-rose-700">
               {loadError}
             </div>
           ) : activeView === "gestao" ? (
@@ -3642,7 +3642,7 @@ function IrisConversationPanel({
   };
 
   return (
-    <section className="relative flex h-full min-h-0 w-full overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="relative flex h-full min-h-0 w-full overflow-hidden rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <IrisConversationInboxSidebar
         cobrancaMode={cobrancaMode}
         collapsed={conversationListCollapsed}
@@ -3658,20 +3658,20 @@ function IrisConversationPanel({
         selectedTicketId={selectedTicketId}
       />
 
-      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-white">
-        <header className="shrink-0 border-b border-slate-100 bg-white">
+      <main className="relative flex min-w-0 flex-1 flex-col overflow-hidden bg-surface">
+        <header className="shrink-0 border-b border-line bg-surface">
           <div className="flex flex-col gap-2 px-4 py-2.5 xl:flex-row xl:items-center xl:justify-between">
             <div className="flex min-w-0 items-center gap-3">
               <ContactAvatar ticket={ticket} size="md" />
               <div className="min-w-0">
-                <h2 className="truncate text-base font-semibold text-slate-950">
+                <h2 className="truncate text-base font-semibold text-ink">
                   {/* Prefere o nome COMPLETO do Apolo (mesma fonte do painel Cliente,
                       apoloContextEntity) — o phone-match leve às vezes não casa e o
                       header caía pro display_name do WhatsApp (ex.: só "Aguiar"). */}
                   {capitalizeName(apoloContextEntity?.displayName) ||
                     ticketContactLabel(ticket)}
                 </h2>
-                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-slate-500">
+                <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-ink-muted">
                   <span>{ticket.protocol}</span>
                   <span aria-hidden="true">-</span>
                   <span>{statusLabel[ticketStatus]}</span>
@@ -3686,29 +3686,31 @@ function IrisConversationPanel({
                   {contactProfileLabel ? (
                     <>
                       <span aria-hidden="true">·</span>
-                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold capitalize text-slate-600 ring-1 ring-slate-200">
+                      <span
+                        title={
+                          contactDelinquency === "inadimplente"
+                            ? "Comprador inadimplente"
+                            : contactDelinquency === "adimplente"
+                              ? "Comprador adimplente"
+                              : undefined
+                        }
+                        className={[
+                          "rounded-full px-2 py-0.5 text-[11px] font-semibold capitalize ring-1",
+                          contactDelinquency === "inadimplente"
+                            ? "bg-rose-50 text-rose-700 ring-rose-200 dark:bg-rose-500/12 dark:text-rose-300 dark:ring-rose-500/25"
+                            : contactDelinquency === "adimplente"
+                              ? "bg-emerald-50 text-emerald-700 ring-emerald-200 dark:bg-emerald-500/12 dark:text-emerald-300 dark:ring-emerald-500/25"
+                              : "bg-subtle text-ink-soft ring-slate-200 dark:ring-white/10",
+                        ].join(" ")}
+                      >
                         {contactProfileLabel.toLowerCase()}
                       </span>
                     </>
                   ) : null}
-                  {contactDelinquency ? (
-                    <span
-                      className={[
-                        "rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1",
-                        contactDelinquency === "inadimplente"
-                          ? "bg-rose-50 text-rose-700 ring-rose-200"
-                          : "bg-emerald-50 text-emerald-700 ring-emerald-200",
-                      ].join(" ")}
-                    >
-                      {contactDelinquency === "inadimplente"
-                        ? "Inadimplente"
-                        : "Adimplente"}
-                    </span>
-                  ) : null}
                   {cobrancaMode && ticket.contactPhone ? (
                     <>
                       <span aria-hidden="true">·</span>
-                      <span className="font-semibold text-slate-700">
+                      <span className="font-semibold text-ink">
                         {ticket.contactPhone}
                       </span>
                     </>
@@ -3719,12 +3721,12 @@ function IrisConversationPanel({
 
             <div className="flex min-w-0 items-center gap-2 xl:justify-end">
               {cobrancaMode ? (
-                <label className="hidden h-9 max-w-full items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/70 px-2 text-xs font-semibold text-slate-600 sm:inline-flex">
+                <label className="hidden h-9 max-w-full items-center gap-2 rounded-lg border border-line/70 bg-subtle/70 px-2 text-xs font-semibold text-ink-soft sm:inline-flex">
                   <span className="shrink-0">Assunto</span>
                   <select
                     value={cobrancaAssunto(ticket.profileLabel)}
                     disabled
-                    className="h-6 max-w-52 bg-transparent text-xs font-semibold text-slate-700 outline-none"
+                    className="h-6 max-w-52 bg-transparent text-xs font-semibold text-ink outline-none"
                     aria-label="Assunto do atendimento"
                   >
                     <option>{cobrancaAssunto(ticket.profileLabel)}</option>
@@ -3749,7 +3751,7 @@ function IrisConversationPanel({
                   onClick={() => setTransferModalOpen(true)}
                   disabled={ticketClosed || transferring}
                   aria-label="Direcionar / transferir atendimento"
-                  className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
                 >
                   <Forward className="size-4" aria-hidden="true" />
                 </button>
@@ -3787,18 +3789,18 @@ function IrisConversationPanel({
                           ? "Encerrar atendimento"
                           : "Encerrar chat"
                   }
-                  className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200/70 bg-rose-50/70 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-slate-200 disabled:bg-slate-100 disabled:text-slate-400"
+                  className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200/70 bg-rose-50/70 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
                 >
                   <CircleStop className="h-4 w-4" aria-hidden="true" />
                 </button>
               </Tooltip>
-              <div className="flex w-fit items-center gap-1 rounded-lg border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+              <div className="flex w-fit items-center gap-1 rounded-lg border border-line/70 bg-surface p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                 <Tooltip content="Voltar" placement="bottom">
                   <button
                     type="button"
                     onClick={onClose}
                     aria-label="Voltar para o board"
-                    className="flex size-8 items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-slate-50 hover:text-[#7A5E2C]"
+                    className="flex size-8 items-center justify-center rounded-md text-ink-muted transition-colors hover:bg-subtle hover:text-[#7A5E2C]"
                   >
                     <ArrowLeft className="size-4" aria-hidden="true" />
                   </button>
@@ -4099,15 +4101,15 @@ function IrisConversationPanel({
             onClick={() => setNotesModalOpen(false)}
             className="absolute inset-0 cursor-default"
           />
-          <section className="relative z-10 flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_90px_rgba(15,23,42,0.24)]">
-            <header className="border-b border-slate-100 px-5 py-4">
+          <section className="relative z-10 flex w-full max-w-md flex-col overflow-hidden rounded-2xl border border-line/70 bg-surface shadow-[0_24px_90px_rgba(15,23,42,0.24)]">
+            <header className="border-b border-line px-5 py-4">
               <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                 Atendimento {ticket.protocol}
               </p>
-              <h2 className="mt-1 text-lg font-semibold text-slate-950">
+              <h2 className="mt-1 text-lg font-semibold text-ink">
                 Nota do atendimento
               </h2>
-              <p className="mt-0.5 text-xs text-slate-500">
+              <p className="mt-0.5 text-xs text-ink-muted">
                 Fica registrada no ticket, visivel pra equipe.
               </p>
             </header>
@@ -4117,14 +4119,14 @@ function IrisConversationPanel({
                 onChange={(event) => setContextNoteDraft(event.target.value)}
                 rows={5}
                 placeholder="Escreva uma observacao sobre este atendimento..."
-                className="w-full resize-none rounded-xl border border-slate-200/70 bg-slate-50/60 px-3 py-2 text-sm text-slate-800 outline-none focus:border-[#A07C3B]/40"
+                className="w-full resize-none rounded-xl border border-line/70 bg-subtle/60 px-3 py-2 text-sm text-ink outline-none focus:border-[#A07C3B]/40"
               />
             </div>
-            <footer className="flex items-center justify-end gap-2 border-t border-slate-100 px-5 py-3">
+            <footer className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
               <button
                 type="button"
                 onClick={() => setNotesModalOpen(false)}
-                className="inline-flex h-9 items-center rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50"
+                className="inline-flex h-9 items-center rounded-lg border border-line/70 bg-surface px-3 text-sm font-semibold text-ink-soft transition-colors hover:bg-subtle"
               >
                 Cancelar
               </button>
@@ -4151,18 +4153,18 @@ function IrisConversationPanel({
             onClick={() => setContextModalMode(null)}
             className="absolute inset-0 cursor-default"
           />
-          <section className="relative z-10 flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_90px_rgba(15,23,42,0.24)]">
-            <header className="flex items-start justify-between gap-4 border-b border-slate-100 px-5 py-4">
+          <section className="relative z-10 flex max-h-full w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-line/70 bg-surface shadow-[0_24px_90px_rgba(15,23,42,0.24)]">
+            <header className="flex items-start justify-between gap-4 border-b border-line px-5 py-4">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                   Contexto do cliente
                 </p>
-                <h2 className="mt-1 text-lg font-semibold text-slate-950">
+                <h2 className="mt-1 text-lg font-semibold text-ink">
                   {contextModalMode === "client"
                     ? "Dados do cliente e nota interna"
                     : "Agenda mensal e atividades"}
                 </h2>
-                <p className="mt-1 text-sm text-slate-500">
+                <p className="mt-1 text-sm text-ink-muted">
                   {contextModalMode === "client"
                     ? "Dados vindos do Apolo e anotacoes do operador para continuidade do atendimento."
                     : "Visual mensal da agenda com criacao de tarefas do cliente."}
@@ -4172,7 +4174,7 @@ function IrisConversationPanel({
                 type="button"
                 onClick={() => setContextModalMode(null)}
                 aria-label="Fechar popup"
-                className="flex size-9 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-900"
+                className="flex size-9 items-center justify-center rounded-lg text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
               >
                 <X className="size-4" aria-hidden="true" />
               </button>
@@ -4182,7 +4184,7 @@ function IrisConversationPanel({
               <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1fr)_340px] [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
                 <div className="space-y-2">
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                    <p className="text-xs font-semibold uppercase tracking-normal text-ink-muted">
                       Dados Apolo
                     </p>
                     <button
@@ -4190,7 +4192,7 @@ function IrisConversationPanel({
                       onClick={() => {
                         void loadApoloContext();
                       }}
-                      className="inline-flex h-7 items-center gap-1 rounded-md border border-slate-200 bg-white px-2 text-[11px] font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
+                      className="inline-flex h-7 items-center gap-1 rounded-md border border-line bg-surface px-2 text-[11px] font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
                     >
                       <RefreshCw
                         className={`size-3 ${apoloContextLoading ? "animate-spin" : ""}`}
@@ -4201,7 +4203,7 @@ function IrisConversationPanel({
                   </div>
 
                   {apoloContextLoading ? (
-                    <p className="rounded-lg border border-slate-200/70 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+                    <p className="rounded-lg border border-line/70 bg-subtle px-3 py-2 text-xs font-semibold text-ink-muted">
                       Carregando dados do Apolo...
                     </p>
                   ) : null}
@@ -4256,13 +4258,13 @@ function IrisConversationPanel({
                   ) : null}
 
                   {apoloContextUpdatedAt ? (
-                    <p className="text-[11px] font-medium text-slate-400">
+                    <p className="text-[11px] font-medium text-ink-muted">
                       Atualizado em {formatDateTime(apoloContextUpdatedAt)}
                     </p>
                   ) : null}
                 </div>
 
-                <div className="space-y-3 rounded-xl border border-[#A07C3B]/15 bg-[#fbf6ec] p-3">
+                <div className="space-y-3 rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/12 p-3">
                   <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                     Nota interna
                   </p>
@@ -4273,7 +4275,7 @@ function IrisConversationPanel({
                     }
                     rows={10}
                     placeholder="Registre observacoes importantes para os proximos atendimentos..."
-                    className="w-full resize-none rounded-lg border border-[#eadcc2] bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/45"
+                    className="w-full resize-none rounded-lg border border-[#eadcc2] bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-[#A07C3B]/45"
                   />
                   <button
                     type="button"
@@ -4281,7 +4283,7 @@ function IrisConversationPanel({
                       void saveContextNote();
                     }}
                     disabled={contextSaving}
-                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#17212b] disabled:cursor-not-allowed disabled:bg-slate-300"
+                    className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#17212b] disabled:cursor-not-allowed disabled:bg-subtle"
                   >
                     <Save className="size-3.5" aria-hidden="true" />
                     {contextSaving ? "Salvando..." : "Salvar nota"}
@@ -4290,7 +4292,7 @@ function IrisConversationPanel({
               </div>
             ) : (
               <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5 xl:grid-cols-[minmax(0,1fr)_360px] [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-                <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+                <div className="rounded-xl border border-line/70 bg-subtle/70 p-3">
                   <div className="mb-3 flex items-center justify-between gap-2">
                     <button
                       type="button"
@@ -4299,7 +4301,7 @@ function IrisConversationPanel({
                           shiftMonthIso(contextAgendaMonthCursor, -1),
                         )
                       }
-                      className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
+                      className="inline-flex size-8 items-center justify-center rounded-md border border-line bg-surface text-ink-soft transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
                       aria-label="Mes anterior"
                     >
                       <ChevronRight
@@ -4307,7 +4309,7 @@ function IrisConversationPanel({
                         aria-hidden="true"
                       />
                     </button>
-                    <p className="text-sm font-semibold text-slate-900">
+                    <p className="text-sm font-semibold text-ink">
                       {agendaCalendar.monthLabel}
                     </p>
                     <button
@@ -4317,7 +4319,7 @@ function IrisConversationPanel({
                           shiftMonthIso(contextAgendaMonthCursor, 1),
                         )
                       }
-                      className="inline-flex size-8 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
+                      className="inline-flex size-8 items-center justify-center rounded-md border border-line bg-surface text-ink-soft transition-colors hover:border-[#A07C3B]/30 hover:text-[#7A5E2C]"
                       aria-label="Proximo mes"
                     >
                       <ChevronRight className="size-4" aria-hidden="true" />
@@ -4328,7 +4330,7 @@ function IrisConversationPanel({
                     {agendaCalendar.weekdayLabels.map((label) => (
                       <span
                         key={label}
-                        className="px-1 py-1 text-center text-[11px] font-semibold text-slate-500"
+                        className="px-1 py-1 text-center text-[11px] font-semibold text-ink-muted"
                       >
                         {label}
                       </span>
@@ -4340,14 +4342,14 @@ function IrisConversationPanel({
                           className={[
                             "min-h-16 rounded-md border px-1.5 py-1",
                             day.inCurrentMonth
-                              ? "border-slate-200/70 bg-white"
-                              : "border-slate-100 bg-slate-50 text-slate-400",
+                              ? "border-line/70 bg-surface"
+                              : "border-line bg-subtle text-ink-muted",
                           ].join(" ")}
                         >
                           <p
                             className={[
                               "text-[11px] font-semibold",
-                              day.isToday ? "text-[#7A5E2C]" : "text-slate-600",
+                              day.isToday ? "text-[#7A5E2C]" : "text-ink-soft",
                             ].join(" ")}
                           >
                             {day.dayNumber}
@@ -4365,7 +4367,7 @@ function IrisConversationPanel({
                 </div>
 
                 <div className="space-y-3">
-                  <div className="rounded-xl border border-[#A07C3B]/15 bg-[#fbf6ec] p-3">
+                  <div className="rounded-xl border border-[#A07C3B]/15 bg-[#A07C3B]/12 p-3">
                     <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
                       Nova atividade
                     </p>
@@ -4376,7 +4378,7 @@ function IrisConversationPanel({
                           setContextAgendaTitleDraft(event.target.value)
                         }
                         placeholder="Ex.: Encaminhar boleto"
-                        className="h-10 w-full rounded-lg border border-[#eadcc2] bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/45"
+                        className="h-10 w-full rounded-lg border border-[#eadcc2] bg-surface px-3 text-sm text-ink outline-none transition-colors focus:border-[#A07C3B]/45"
                       />
                       <input
                         type="datetime-local"
@@ -4384,7 +4386,7 @@ function IrisConversationPanel({
                         onChange={(event) =>
                           setContextAgendaDateDraft(event.target.value)
                         }
-                        className="h-10 w-full rounded-lg border border-[#eadcc2] bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/45"
+                        className="h-10 w-full rounded-lg border border-[#eadcc2] bg-surface px-3 text-sm text-ink outline-none transition-colors focus:border-[#A07C3B]/45"
                       />
                       <textarea
                         rows={3}
@@ -4393,7 +4395,7 @@ function IrisConversationPanel({
                           setContextAgendaNotesDraft(event.target.value)
                         }
                         placeholder="Detalhes opcionais da atividade..."
-                        className="w-full resize-none rounded-lg border border-[#eadcc2] bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-[#A07C3B]/45"
+                        className="w-full resize-none rounded-lg border border-[#eadcc2] bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors focus:border-[#A07C3B]/45"
                       />
                     </div>
                     <button
@@ -4402,15 +4404,15 @@ function IrisConversationPanel({
                         void createContextAgendaEvent();
                       }}
                       disabled={contextSaving}
-                      className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#17212b] disabled:cursor-not-allowed disabled:bg-slate-300"
+                      className="mt-3 inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#17212b] disabled:cursor-not-allowed disabled:bg-subtle"
                     >
                       <CalendarClock className="size-3.5" aria-hidden="true" />
                       {contextSaving ? "Salvando..." : "Agendar atividade"}
                     </button>
                   </div>
 
-                  <div className="rounded-xl border border-slate-200/70 bg-white p-3">
-                    <p className="text-xs font-semibold uppercase tracking-normal text-slate-400">
+                  <div className="rounded-xl border border-line/70 bg-surface p-3">
+                    <p className="text-xs font-semibold uppercase tracking-normal text-ink-muted">
                       Linha do tempo
                     </p>
                     <div className="mt-2 max-h-72 space-y-2 overflow-y-auto pr-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
@@ -4418,26 +4420,26 @@ function IrisConversationPanel({
                         agendaTimeline.slice(0, 14).map((item) => (
                           <article
                             key={item.id}
-                            className="rounded-lg border border-slate-200/70 bg-slate-50/70 px-3 py-2"
+                            className="rounded-lg border border-line/70 bg-subtle/70 px-3 py-2"
                           >
                             <div className="flex flex-wrap items-center gap-1.5">
-                              <p className="text-xs font-semibold text-slate-900">
+                              <p className="text-xs font-semibold text-ink">
                                 {item.title}
                               </p>
-                              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">
+                              <span className="rounded-full bg-subtle px-2 py-0.5 text-[10px] font-semibold text-ink-soft">
                                 {item.kindLabel}
                               </span>
                             </div>
-                            <p className="mt-1 text-[11px] text-slate-600">
+                            <p className="mt-1 text-[11px] text-ink-soft">
                               {item.description}
                             </p>
-                            <p className="mt-1 text-[10px] font-semibold text-slate-500">
+                            <p className="mt-1 text-[10px] font-semibold text-ink-muted">
                               {item.dateLabel}
                             </p>
                           </article>
                         ))
                       ) : (
-                        <p className="rounded-lg border border-slate-200/70 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-500">
+                        <p className="rounded-lg border border-line/70 bg-subtle px-3 py-2 text-xs font-semibold text-ink-muted">
                           Sem atividades registradas. A agenda esta pronta para
                           novos agendamentos.
                         </p>
@@ -4480,21 +4482,21 @@ function TicketSeparator({
   return (
     <div
       className={`flex items-center justify-center gap-3 ${
-        compact ? "" : "sticky top-0 z-10 bg-slate-50/95 py-2 backdrop-blur-sm"
+        compact ? "" : "sticky top-0 z-10 bg-subtle/95 py-2 backdrop-blur-sm"
       }`}
     >
-      <div className="h-px flex-1 bg-slate-200/70" />
+      <div className="h-px flex-1 bg-subtle/70" />
       <div
         className={[
-          "rounded-2xl border border-slate-200/70 bg-white px-4 py-2 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+          "rounded-2xl border border-line/70 bg-surface px-4 py-2 text-center shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
           compact ? "min-w-[260px]" : "min-w-[320px]",
         ].join(" ")}
       >
         <div className="flex flex-wrap items-center justify-center gap-2">
-          <span className="rounded-full bg-[#fbf6ec] px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+          <span className="rounded-full bg-[#A07C3B]/12 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15 dark:bg-[#A07C3B]/15 dark:text-[#d9b877] dark:ring-[#A07C3B]/30">
             Ticket {ticket.protocol}
           </span>
-          <span className="rounded-full bg-slate-50 px-2 py-0.5 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
+          <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-soft ring-1 ring-slate-200 dark:ring-white/10">
             {statusLabel[status]}
           </span>
         </div>
@@ -4507,8 +4509,8 @@ function TicketSeparator({
                 aria-label="Assunto do atendimento"
                 className={`mt-2 block w-full rounded-lg border px-2 py-1 text-center text-sm font-semibold outline-none focus:border-[#A07C3B]/40 ${
                   (subject ?? "").trim()
-                    ? "border-slate-200/70 bg-white text-slate-950"
-                    : "border-rose-300 bg-rose-50 text-rose-700"
+                    ? "border-line/70 bg-surface text-ink"
+                    : "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-400/50 dark:bg-rose-500/15 dark:text-rose-300"
                 }`}
               >
                 <option value="">Selecione o assunto…</option>
@@ -4519,21 +4521,21 @@ function TicketSeparator({
                 ))}
               </select>
             ) : (
-              <p className="mt-2 text-sm font-semibold text-slate-950">
+              <p className="mt-2 text-sm font-semibold text-ink">
                 {ticket.subject?.trim() || ticketCrmSubtitle(ticket)}
               </p>
             )}
-            <p className="mt-1 text-xs font-medium capitalize text-slate-500">
+            <p className="mt-1 text-xs font-medium capitalize text-ink-muted">
               {openedDayLabel} · WhatsApp · {ticket.queueLabel}
             </p>
           </>
         ) : (
-          <p className="mt-1 truncate text-xs font-medium text-slate-500">
+          <p className="mt-1 truncate text-xs font-medium text-ink-muted">
             {formatDateTime(ticket.openedAt)} - {ticket.queueLabel}
           </p>
         )}
       </div>
-      <div className="h-px flex-1 bg-slate-200/70" />
+      <div className="h-px flex-1 bg-subtle/70" />
     </div>
   );
 }
@@ -4553,7 +4555,7 @@ function IrisTemplateFeedbackBox({ feedback }: { feedback: unknown }) {
         ? "border-[#f2dfbf] bg-[#fffbeb] text-[#7A5E2C]"
         : tone === "success"
           ? "border-emerald-100 bg-emerald-50 text-emerald-900"
-          : "border-[#dbe3ef] bg-white text-[#34415a]";
+          : "border-line bg-surface text-ink";
   const metaLine = [
     normalized.metaCode ? `Codigo Meta: ${normalized.metaCode}` : null,
     normalized.providerMessage
@@ -4586,7 +4588,7 @@ function IrisTemplateFeedbackBox({ feedback }: { feedback: unknown }) {
             </p>
           ) : null}
           {metaLine.length ? (
-            <div className="mt-2 space-y-1 rounded-md bg-white/65 px-2 py-1.5 text-[11px] font-semibold leading-4 opacity-90">
+            <div className="mt-2 space-y-1 rounded-md bg-surface/65 px-2 py-1.5 text-[11px] font-semibold leading-4 opacity-90">
               {metaLine.map((line) => (
                 <p key={line}>{line}</p>
               ))}
@@ -4694,7 +4696,7 @@ function IrisInboundNoticeToast({
   onOpen: () => void;
 }) {
   return (
-    <div className="fixed right-5 top-20 z-[90] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#eadcc2] bg-white p-3 shadow-[0_18px_45px_rgba(15,23,42,0.18)]">
+    <div className="fixed right-5 top-20 z-[90] w-[340px] max-w-[calc(100vw-2rem)] rounded-xl border border-[#eadcc2] bg-surface p-3 shadow-[0_18px_45px_rgba(15,23,42,0.18)]">
       <div className="flex items-start gap-3">
         <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100">
           <MessageCircle className="size-5" aria-hidden="true" />
@@ -4703,21 +4705,21 @@ function IrisInboundNoticeToast({
           <p className="text-xs font-semibold uppercase tracking-normal text-[#A07C3B]">
             Nova mensagem WhatsApp
           </p>
-          <p className="mt-1 truncate text-sm font-semibold text-slate-950">
+          <p className="mt-1 truncate text-sm font-semibold text-ink">
             {notice.title}
           </p>
-          <p className="mt-1 line-clamp-2 text-xs leading-5 text-slate-600">
+          <p className="mt-1 line-clamp-2 text-xs leading-5 text-ink-soft">
             {notice.body}
           </p>
           <div className="mt-2 flex items-center justify-between gap-2">
-            <span className="text-[11px] font-medium text-slate-400">
+            <span className="text-[11px] font-medium text-ink-muted">
               {formatDateTime(notice.receivedAt)}
             </span>
             <div className="flex items-center gap-1">
               <button
                 type="button"
                 onClick={onDismiss}
-                className="h-7 rounded-md px-2 text-[11px] font-semibold text-slate-500 transition-colors hover:bg-slate-50"
+                className="h-7 rounded-md px-2 text-[11px] font-semibold text-ink-muted transition-colors hover:bg-subtle"
               >
                 Fechar
               </button>
@@ -4756,7 +4758,7 @@ function ContactAvatar({
     return (
       <img
         alt={label}
-        className={`${sizeClass} shrink-0 rounded-full border border-slate-200 object-cover shadow-[0_1px_2px_rgba(15,23,42,0.08)]`}
+        className={`${sizeClass} shrink-0 rounded-full border border-line object-cover shadow-[0_1px_2px_rgba(15,23,42,0.08)]`}
         src={imageUrl}
         onError={() => setImageFailed(true)}
       />
@@ -4765,7 +4767,7 @@ function ContactAvatar({
 
   return (
     <span
-      className={`${sizeClass} ${textClass} flex shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 font-semibold uppercase text-emerald-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)]`}
+      className={`${sizeClass} ${textClass} flex shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 font-semibold uppercase text-emerald-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300`}
     >
       {contactInitials(label)}
     </span>
@@ -4804,11 +4806,11 @@ function MessageBubble({
     if (message.messageType === "note") {
       return (
         <div className="flex justify-center">
-          <div className="w-full max-w-[80%] rounded-xl border border-[#A07C3B]/30 bg-[#fbf6ec] px-3.5 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <div className="mb-1 text-[11px] font-semibold text-slate-900">
+          <div className="w-full max-w-[80%] rounded-xl border border-[#A07C3B]/30 bg-[#A07C3B]/12 px-3.5 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="mb-1 text-[11px] font-semibold text-ink">
               {message.senderLabel ?? "Operador"}
             </div>
-            <p className="whitespace-pre-wrap text-sm text-slate-700 [overflow-wrap:anywhere]">
+            <p className="whitespace-pre-wrap text-sm text-ink [overflow-wrap:anywhere]">
               {message.body}
             </p>
             <div className="mt-1 text-right text-[11px] text-[#A07C3B]/70">
@@ -4821,7 +4823,7 @@ function MessageBubble({
 
     return (
       <div className="flex justify-center">
-        <div className="max-w-[70%] rounded-full border border-slate-200/70 bg-white px-3 py-1.5 text-center text-xs font-semibold text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] [overflow-wrap:anywhere]">
+        <div className="max-w-[70%] rounded-full border border-line/70 bg-surface px-3 py-1.5 text-center text-xs font-semibold text-ink-muted shadow-[0_1px_2px_rgba(15,23,42,0.04)] [overflow-wrap:anywhere]">
           {message.body}
         </div>
       </div>
@@ -4860,13 +4862,13 @@ function MessageBubble({
             className={[
               "min-w-[128px] max-w-full rounded-2xl px-4 py-3 text-sm shadow-[0_1px_2px_rgba(15,23,42,0.05)] [overflow-wrap:anywhere]",
               outbound
-                ? "border border-[#c8ecd7] bg-[#eaf8f0] text-slate-900"
-                : "border border-slate-200 bg-white text-slate-800",
+                ? "border border-[#c8ecd7] bg-[#eaf8f0] text-ink dark:border-[#1f6b50]/60 dark:bg-[#1c5742] dark:text-[var(--uix-text-primary)]"
+                : "border border-line bg-surface text-ink dark:border-white/[0.07] dark:bg-[#282b2a] dark:text-[var(--uix-text-primary)]",
             ].join(" ")}
           >
             {outbound && message.senderLabel ? (
               <div className="mb-1.5 flex items-center justify-end gap-1.5">
-                <span className="rounded-full border border-[#c8ecd7] bg-white/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-[#0f766e]">
+                <span className="rounded-full border border-[#c8ecd7] bg-surface/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-[#0f766e] dark:border-[#1f6b50]/60 dark:bg-white/[0.06] dark:text-[#9fd8bd]">
                   {message.senderLabel}
                 </span>
               </div>
@@ -4878,7 +4880,7 @@ function MessageBubble({
               />
             ) : null}
             <MessageContent message={message} outbound={outbound} />
-            <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-slate-400">
+            <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-ink-muted">
               {message.editedAt ? <span>editada</span> : null}
               <span>{formatDateTime(message.createdAt)}</span>
               {outbound ? <MessageDeliveryIndicator message={message} /> : null}
@@ -4916,7 +4918,7 @@ function MessageBubbleActions({
   return (
     <div
       className={[
-        "absolute -top-3 z-10 flex items-center gap-1 rounded-full border border-slate-200 bg-white px-1 py-0.5 opacity-0 shadow-[0_8px_22px_rgba(15,23,42,0.12)] transition-opacity focus-within:opacity-100 group-hover:opacity-100",
+        "absolute -top-3 z-10 flex items-center gap-1 rounded-full border border-line bg-surface px-1 py-0.5 opacity-0 shadow-[0_8px_22px_rgba(15,23,42,0.12)] transition-opacity focus-within:opacity-100 group-hover:opacity-100",
         outbound ? "right-2" : "left-2",
       ].join(" ")}
     >
@@ -4925,18 +4927,18 @@ function MessageBubbleActions({
           key={emoji}
           type="button"
           onClick={() => onReact(message, emoji)}
-          className="flex size-7 items-center justify-center rounded-full text-sm transition-colors hover:bg-slate-100"
+          className="flex size-7 items-center justify-center rounded-full text-sm transition-colors hover:bg-subtle"
           aria-label={`Reagir com ${emoji}`}
         >
           {emoji}
         </button>
       ))}
-      <span className="h-5 w-px bg-slate-200" aria-hidden="true" />
+      <span className="h-5 w-px bg-subtle" aria-hidden="true" />
       <Tooltip content="Responder" placement="top">
         <button
           type="button"
           onClick={() => onReply(message)}
-          className="flex size-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#7A5E2C]"
+          className="flex size-7 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-subtle hover:text-[#7A5E2C]"
           aria-label="Responder mensagem"
         >
           <Reply className="size-3.5" aria-hidden="true" />
@@ -4959,7 +4961,7 @@ function MessageBubbleActions({
           <button
             type="button"
             onClick={() => onEdit(message)}
-            className="flex size-7 items-center justify-center rounded-full text-slate-500 transition-colors hover:bg-slate-100 hover:text-[#7A5E2C]"
+            className="flex size-7 items-center justify-center rounded-full text-ink-muted transition-colors hover:bg-subtle hover:text-[#7A5E2C]"
             aria-label="Editar mensagem"
           >
             <Edit3 className="size-3.5" aria-hidden="true" />
@@ -4982,11 +4984,11 @@ function MessageReplyPreview({
       className={[
         "mb-2 rounded-xl border-l-2 px-3 py-2 text-xs",
         outbound
-          ? "border-[#A07C3B] bg-white/70 text-slate-600"
-          : "border-emerald-400 bg-emerald-50/70 text-slate-600",
+          ? "border-[#A07C3B] bg-surface/70 text-ink-soft dark:bg-black/20"
+          : "border-emerald-400 bg-emerald-50/70 text-ink-soft dark:border-emerald-500/50 dark:bg-emerald-500/10",
       ].join(" ")}
     >
-      <div className="flex items-center gap-1.5 font-semibold text-slate-700">
+      <div className="flex items-center gap-1.5 font-semibold text-ink">
         <MessageSquareReply className="size-3.5" aria-hidden="true" />
         <span>{reply.senderLabel ?? "Mensagem"}</span>
       </div>
@@ -5005,7 +5007,7 @@ function MessageReactionStrip({
   return (
     <div
       className={[
-        "absolute -bottom-3 flex rounded-full border border-slate-200 bg-white px-1.5 py-0.5 text-sm shadow-[0_6px_16px_rgba(15,23,42,0.12)]",
+        "absolute -bottom-3 flex rounded-full border border-line bg-surface px-1.5 py-0.5 text-sm shadow-[0_6px_16px_rgba(15,23,42,0.12)]",
         outbound ? "right-3" : "left-3",
       ].join(" ")}
     >
@@ -5068,7 +5070,7 @@ function MessageContent({
             "flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors",
             outbound
               ? "border-white/40 bg-white/15 hover:bg-white/25"
-              : "border-slate-200 bg-white hover:bg-slate-50",
+              : "border-line bg-surface hover:bg-subtle",
           ].join(" ")}
         >
           <FileText className="size-5 shrink-0" aria-hidden="true" />
@@ -5322,16 +5324,16 @@ function AudioMessageContent({
           />
         ) : (
           <>
-            <div className="h-2 rounded-full bg-slate-200">
+            <div className="h-2 rounded-full bg-subtle">
               <div className="h-2 w-1/3 rounded-full bg-[#A07C3B]" />
             </div>
-            <p className="mt-1 text-xs font-semibold text-slate-500">
+            <p className="mt-1 text-xs font-semibold text-ink-muted">
               Audio WhatsApp
             </p>
           </>
         )}
       </div>
-      <span className="shrink-0 text-xs font-semibold text-slate-500">
+      <span className="shrink-0 text-xs font-semibold text-ink-muted">
         {formatAudioDuration(message.audioDurationMs)}
       </span>
     </div>
@@ -5354,7 +5356,7 @@ function InlineAvatar({
     return (
       <img
         alt={label}
-        className="size-8 shrink-0 rounded-full border border-slate-200 object-cover shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
+        className="size-8 shrink-0 rounded-full border border-line object-cover shadow-[0_1px_2px_rgba(15,23,42,0.08)]"
         src={imageUrl}
         onError={() => setFailed(true)}
       />
@@ -5366,8 +5368,8 @@ function InlineAvatar({
       className={[
         "flex size-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold uppercase shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
         tone === "gold"
-          ? "border-[#eadcc2] bg-[#fbf6ec] text-[#7A5E2C]"
-          : "border-emerald-100 bg-emerald-50 text-emerald-700",
+          ? "border-[#eadcc2] bg-[#A07C3B]/12 text-[#7A5E2C] dark:border-[#A07C3B]/40 dark:bg-[#A07C3B]/15 dark:text-[#d9b877]"
+          : "border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300",
       ].join(" ")}
     >
       {contactInitials(label)}
@@ -5398,7 +5400,7 @@ function MessageDeliveryIndicator({ message }: { message: IrisMessage }) {
       ? "text-sky-500"
       : normalized === "failed"
         ? "text-rose-500"
-        : "text-slate-400";
+        : "text-ink-muted";
   const tooltip = pendingMetaSend
     ? "Aguardando envio pela Meta"
     : normalized === "failed" && message.failureReason
@@ -5486,9 +5488,9 @@ function shouldRepairOutboundMessage(message: IrisMessage) {
 
 function ContextItem({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white px-3 py-2.5">
-      <p className="text-xs font-medium text-slate-500">{label}</p>
-      <p className="mt-1 break-words text-sm font-semibold text-slate-950 [overflow-wrap:anywhere]">
+    <div className="rounded-xl border border-line/70 bg-surface px-3 py-2.5">
+      <p className="text-xs font-medium text-ink-muted">{label}</p>
+      <p className="mt-1 break-words text-sm font-semibold text-ink [overflow-wrap:anywhere]">
         {value}
       </p>
     </div>
@@ -5510,8 +5512,8 @@ function StatusPill({
         : tone === "green"
           ? "border-emerald-100 bg-emerald-50 text-emerald-700"
           : tone === "neutral"
-            ? "border-slate-200 bg-slate-50 text-slate-600"
-            : "border-[#eadcc2] bg-[#fbf6ec] text-[#8a682f]";
+            ? "border-line bg-subtle text-ink-soft"
+            : "border-[#eadcc2] bg-[#A07C3B]/12 text-[#8a682f]";
 
   return (
     <span
@@ -5535,7 +5537,7 @@ function Crm360Badge({
     ? "border-emerald-100 bg-emerald-50 text-emerald-700"
     : missing
       ? "border-rose-100 bg-rose-50 text-rose-700"
-      : "border-slate-200 bg-slate-50 text-slate-500";
+      : "border-line bg-subtle text-ink-muted";
 
   return (
     <Tooltip
@@ -5552,7 +5554,7 @@ function Crm360Badge({
               ? "bg-emerald-500"
               : missing
                 ? "bg-rose-500"
-                : "bg-slate-400"
+                : "bg-subtle"
           }`}
           aria-hidden="true"
         />
@@ -5792,7 +5794,7 @@ function conversationTime(ticket: IrisTicket) {
 function IrisLoading() {
   return (
     <PanteonLoadingState
-      className="rounded-2xl border-[#dbe3ef] bg-white p-8"
+      className="rounded-2xl border-line bg-surface p-8"
       minHeightClassName="min-h-32"
       title="Carregando fila"
     />
@@ -5800,11 +5802,11 @@ function IrisLoading() {
 }
 
 function toneBg(tone: IrisTone) {
-  if (tone === "gold") return "bg-[#fbf6ec]";
+  if (tone === "gold") return "bg-[#A07C3B]/12";
   if (tone === "green") return "bg-emerald-50";
   if (tone === "red") return "bg-rose-50";
   if (tone === "blue") return "bg-sky-50";
-  return "bg-[#f4f6fa]";
+  return "bg-subtle";
 }
 
 function toneText(tone: IrisTone) {
@@ -5812,7 +5814,7 @@ function toneText(tone: IrisTone) {
   if (tone === "green") return "text-emerald-600";
   if (tone === "red") return "text-rose-600";
   if (tone === "blue") return "text-sky-600";
-  return "text-[#63708a]";
+  return "text-ink-muted";
 }
 
 function crm360ContextLabel(registration?: IrisCrm360Registration | null) {
@@ -6625,10 +6627,10 @@ function templateStatusTone(status?: string | null) {
   }
 
   if (status === "NOT_FOUND") {
-    return "bg-slate-50 text-slate-700 ring-slate-200";
+    return "bg-subtle text-ink ring-slate-200";
   }
 
-  return "bg-slate-50 text-slate-600 ring-slate-200";
+  return "bg-subtle text-ink-soft ring-slate-200";
 }
 
 function normalizeMetaTemplateStatusKey(status?: string | null) {
@@ -7563,7 +7565,7 @@ function slaLabel(ticket: IrisTicket) {
 
 function slaClasses(ticket: IrisTicket) {
   if (isClosedTicket(ticket)) {
-    return "bg-slate-50 text-slate-600 ring-slate-200";
+    return "bg-subtle text-ink-soft ring-slate-200";
   }
 
   if (isSlaCritical(ticket)) {
