@@ -6,7 +6,6 @@ import {
   Inbox,
   LayoutGrid,
   List,
-  Mail,
   MessageCircle,
   Plus,
   Search,
@@ -16,6 +15,9 @@ import { Tooltip } from "@repo/uix";
 import type { IrisBoardMetrics } from "./iris-board-view";
 import {
   BoardProfileChip,
+  EmailChannelChip,
+  emailBoxLabel,
+  isEmailBoardTicket,
   type IrisBoardTicket,
   type IrisTicketQueueHelpers,
   type IrisTicketQueueRenderers,
@@ -403,9 +405,7 @@ function BoardCard({
   const slaCritical = helpers.isSlaCritical(ticket);
   const assigneeName = (ticket.assignedToLabel ?? "").trim();
   const handledByCaca = assigneeName === "" || assigneeName === cacaOwnerLabel;
-  const isEmail =
-    ticket.channelKind === "email" ||
-    ticket.channelLabel.toLowerCase().includes("mail");
+  const isEmail = isEmailBoardTicket(ticket);
   const subject = (ticket.subject ?? "").trim();
   const crm = readBoardTicketCrm(ticket.crm360Registration);
   const lastMessageAt = helpers.formatDateTime(
@@ -433,20 +433,22 @@ function BoardCard({
     >
       <div className="mb-1 flex flex-wrap items-center gap-1.5">
         {isEmail ? (
-          <Mail className="size-3.5 shrink-0 text-ink-muted" aria-hidden="true" />
+          <EmailChannelChip boxLabel={emailBoxLabel(ticket.channelLabel)} size="xs" />
         ) : (
-          <MessageCircle
-            className="size-3.5 shrink-0 text-emerald-500"
-            aria-hidden="true"
-          />
+          <>
+            <MessageCircle
+              className="size-3.5 shrink-0 text-emerald-500"
+              aria-hidden="true"
+            />
+            <span
+              className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${queueChipClasses(
+                ticket.queueLabel,
+              )}`}
+            >
+              {ticket.queueLabel}
+            </span>
+          </>
         )}
-        <span
-          className={`rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${queueChipClasses(
-            ticket.queueLabel,
-          )}`}
-        >
-          {ticket.queueLabel}
-        </span>
         <BoardProfileChip crm={crm} />
         {(ticket.unreadCount ?? 0) > 0 ? (
           <span
@@ -544,6 +546,11 @@ function buildColumns(
 
   const keyOf = (ticket: IrisBoardTicket): string => {
     if (mode === "fila") {
+      // Cada caixa de e-mail é uma fila própria (Contato, Cobrança...), não a queue
+      // genérica "Atendimento" do banco. Regra do Lucas.
+      if (isEmailBoardTicket(ticket)) {
+        return emailBoxLabel(ticket.channelLabel);
+      }
       return ticket.queueLabel || "Sem fila";
     }
     if (mode === "canal") {

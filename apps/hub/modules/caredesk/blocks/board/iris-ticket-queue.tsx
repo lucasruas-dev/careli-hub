@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Inbox, Plus, Search } from "lucide-react";
+import { Bot, Inbox, Mail, Plus, Search } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
 import { EmptyState, FilterSelect } from "../shared/iris-ui";
@@ -384,6 +384,58 @@ export function queueChipClasses(queueLabel: string): string {
   return "border-line bg-subtle text-ink-muted dark:border-white/10 dark:bg-white/[0.06] dark:text-ink-muted";
 }
 
+// Nome da CAIXA (fila) de e-mail a partir do rótulo do canal: cada caixa (contato@,
+// cobranca@...) é uma fila. "E-mail Contato" -> "Contato". Regra do Lucas: mostrar a caixa,
+// não o "Atendimento" genérico.
+export function emailBoxLabel(channelLabel: string): string {
+  const cleaned = channelLabel
+    .replace(/^\s*e-?mail\s*/i, "")
+    .replace(/\s*careli\s*$/i, "")
+    .trim();
+
+  return cleaned || channelLabel.trim() || "E-mail";
+}
+
+// Ticket é de e-mail? (kind do canal, com heurística no rótulo como reforço.)
+export function isEmailBoardTicket(ticket: {
+  channelKind?: string | null;
+  channelLabel?: string | null;
+}): boolean {
+  return (
+    ticket.channelKind === "email" ||
+    Boolean(ticket.channelLabel?.toLowerCase().includes("mail"))
+  );
+}
+
+// Selo de canal E-MAIL (envelope + caixa/fila), visualmente distinto do WhatsApp.
+// Deixa claro "é e-mail" e de qual caixa (Contato, Cobrança...).
+export function EmailChannelChip({
+  boxLabel,
+  size = "sm",
+}: {
+  boxLabel: string;
+  size?: "sm" | "xs";
+}) {
+  return (
+    <span
+      title={`E-mail · ${boxLabel}`}
+      className={[
+        "inline-flex shrink-0 items-center gap-1 rounded-full border font-semibold uppercase tracking-wide",
+        "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-400/30 dark:bg-indigo-400/15 dark:text-indigo-300",
+        size === "xs"
+          ? "px-1.5 py-0.5 text-[9px]"
+          : "px-2 py-0.5 text-[10px]",
+      ].join(" ")}
+    >
+      <Mail
+        className={size === "xs" ? "size-3" : "size-3.5"}
+        aria-hidden="true"
+      />
+      <span>E-mail · {boxLabel}</span>
+    </span>
+  );
+}
+
 // Papel do contato pro card, a partir do CRM360 do Apolo (crm360Registration).
 // Regra Careli: cliente vira Comprador (tem carteira = snapshot financeiro) ou
 // Prospect (sem). Demais papéis: nome curto (Imob./Incorp./Forn./Parc.).
@@ -564,13 +616,17 @@ export function IrisTicketRow({
             {contactName}
           </span>
           <BoardProfileChip crm={crm} />
-          <span
-            className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${queueChipClasses(
-              ticket.queueLabel,
-            )}`}
-          >
-            {ticket.queueLabel}
-          </span>
+          {isEmailBoardTicket(ticket) ? (
+            <EmailChannelChip boxLabel={emailBoxLabel(ticket.channelLabel)} />
+          ) : (
+            <span
+              className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${queueChipClasses(
+                ticket.queueLabel,
+              )}`}
+            >
+              {ticket.queueLabel}
+            </span>
+          )}
           {ticket.unread ? (
             <span
               className="ml-auto size-2 shrink-0 rounded-full bg-[#A07C3B]"

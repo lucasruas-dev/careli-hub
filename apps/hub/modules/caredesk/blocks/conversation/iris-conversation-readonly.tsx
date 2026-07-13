@@ -225,10 +225,13 @@ export function IrisConversationInboxSidebar({
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
                       {conversation.channelKind === "email" ? (
-                        <Mail
-                          className="size-3.5 shrink-0 text-ink-muted"
+                        <span
+                          className="flex size-4 shrink-0 items-center justify-center rounded-md bg-indigo-500 text-white dark:bg-indigo-500/90"
+                          title="E-mail"
                           aria-label="E-mail"
-                        />
+                        >
+                          <Mail className="size-2.5" aria-hidden="true" />
+                        </span>
                       ) : null}
                       <span
                         className={`min-w-0 truncate text-sm text-ink ${

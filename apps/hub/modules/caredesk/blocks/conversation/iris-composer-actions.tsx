@@ -307,7 +307,7 @@ export function IrisConversationComposerActions({
         </div>
       ) : null}
 
-      {!ticketClosed && !noteMode && !lockedByCaca ? (
+      {!ticketClosed && !noteMode && !lockedByCaca && !isEmailChannel ? (
         <div
           className={[
             "mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2",

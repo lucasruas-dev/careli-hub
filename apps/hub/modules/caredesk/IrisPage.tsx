@@ -32,6 +32,7 @@ import {
   ImageIcon,
   Inbox,
   LayoutDashboard,
+  Mail,
   Megaphone,
   MessageCircle,
   MessageSquareReply,
@@ -66,6 +67,8 @@ import {
 import { IrisBoardKanban } from "./blocks/board/iris-board-kanban";
 import { type IrisBoardMetrics } from "./blocks/board/iris-board-view";
 import {
+  EmailChannelChip,
+  emailBoxLabel,
   type IrisTicketQueueHelpers,
   type IrisTicketQueueRenderers,
   queueChipClasses,
@@ -3773,13 +3776,19 @@ function IrisConversationPanel({
                   <span aria-hidden="true">-</span>
                   <span>{statusLabel[ticketStatus]}</span>
                   <span aria-hidden="true">·</span>
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${queueChipClasses(
-                      ticket.queueLabel,
-                    )}`}
-                  >
-                    {ticket.queueLabel}
-                  </span>
+                  {ticketIsEmail ? (
+                    <EmailChannelChip
+                      boxLabel={emailBoxLabel(ticket.channelLabel)}
+                    />
+                  ) : (
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide ${queueChipClasses(
+                        ticket.queueLabel,
+                      )}`}
+                    >
+                      {ticket.queueLabel}
+                    </span>
+                  )}
                   {contactProfileLabel ? (
                     <>
                       <span aria-hidden="true">·</span>
@@ -3912,6 +3921,8 @@ function IrisConversationPanel({
             {feedback}
           </div>
         ) : null}
+
+        {ticketIsEmail ? <IrisEmailThreadHeader ticket={ticket} /> : null}
 
         {/* Athena do Hades agora cobre tambem o atendimento (ver IrisAthenaPanel abaixo). */}
         {false ? (
@@ -4575,6 +4586,10 @@ function TicketSeparator({
   ticket: IrisTicket;
 }) {
   const status = effectiveIrisStatus(ticket);
+  const email = isEmailTicket(ticket);
+  const channelLine = email
+    ? `E-mail · ${emailBoxLabel(ticket.channelLabel)}`
+    : `WhatsApp · ${ticket.queueLabel}`;
   const subjectChoices = Array.from(
     new Set([subject, ...(subjectOptions ?? [])]),
   ).filter((value): value is string => Boolean(value && value.trim()));
@@ -4607,7 +4622,7 @@ function TicketSeparator({
         </div>
         {!compact ? (
           <>
-            {onSubjectChange ? (
+            {onSubjectChange && !email ? (
               <select
                 value={subject ?? ""}
                 onChange={(event) => onSubjectChange(event.target.value)}
@@ -4626,12 +4641,14 @@ function TicketSeparator({
                 ))}
               </select>
             ) : (
-              <p className="mt-2 text-sm font-semibold text-ink">
-                {ticket.subject?.trim() || ticketCrmSubtitle(ticket)}
+              // E-mail já tem assunto próprio — mostra estático (sem catálogo do WhatsApp).
+              <p className="mt-2 text-sm font-semibold text-ink [overflow-wrap:anywhere]">
+                {ticket.subject?.trim() ||
+                  (email ? "(sem assunto)" : ticketCrmSubtitle(ticket))}
               </p>
             )}
             <p className="mt-1 text-xs font-medium capitalize text-ink-muted">
-              {openedDayLabel} · WhatsApp · {ticket.queueLabel}
+              {openedDayLabel} · {channelLine}
             </p>
           </>
         ) : (
@@ -4641,6 +4658,52 @@ function TicketSeparator({
         )}
       </div>
       <div className="h-px flex-1 bg-subtle/70" />
+    </div>
+  );
+}
+
+// Cabeçalho de E-MAIL do cockpit: deixa claro que o atendimento é por e-mail e mostra
+// De / Para / Assunto (como um cliente de e-mail), diferente do chat do WhatsApp.
+function IrisEmailThreadHeader({ ticket }: { ticket: IrisTicket }) {
+  const subject =
+    ticket.subject?.trim() ||
+    readTicketRecordString(ticket.sourceContext, "subject") ||
+    "(sem assunto)";
+  const fromLabel = ticketContactLabel(ticket);
+  const fromEmail =
+    ticket.contactEmail?.trim() ||
+    readTicketRecordString(ticket.sourceContext, "fromEmail") ||
+    "";
+  const toAddress =
+    readTicketRecordString(ticket.sourceContext, "groupAddress") ||
+    emailBoxLabel(ticket.channelLabel);
+
+  return (
+    <div className="mx-4 mt-3">
+      <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 dark:border-indigo-400/30 dark:bg-indigo-500/10">
+        <div className="mb-2 flex items-center gap-2">
+          <span className="flex size-6 items-center justify-center rounded-lg bg-indigo-500 text-white">
+            <Mail className="size-3.5" aria-hidden="true" />
+          </span>
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">
+            E-mail · {emailBoxLabel(ticket.channelLabel)}
+          </span>
+        </div>
+        <p className="text-sm font-semibold text-ink [overflow-wrap:anywhere]">
+          {subject}
+        </p>
+        <dl className="mt-1.5 grid grid-cols-[auto_minmax(0,1fr)] gap-x-2 gap-y-0.5 text-xs text-ink-muted">
+          <dt className="font-semibold text-ink-soft">De</dt>
+          <dd className="min-w-0 truncate">
+            {fromLabel}
+            {fromEmail ? (
+              <span className="text-ink-muted"> · {fromEmail}</span>
+            ) : null}
+          </dd>
+          <dt className="font-semibold text-ink-soft">Para</dt>
+          <dd className="min-w-0 truncate">{toAddress}</dd>
+        </dl>
+      </div>
     </div>
   );
 }
@@ -4858,6 +4921,8 @@ function ContactAvatar({
   const imageUrl =
     ticket.contactAvatarUrl && !imageFailed ? ticket.contactAvatarUrl : null;
   const label = ticketContactLabel(ticket);
+  // Cor do avatar = cor do canal (e-mail = azul/indigo; WhatsApp = verde).
+  const email = isEmailTicket(ticket);
 
   if (imageUrl) {
     return (
@@ -4872,7 +4937,14 @@ function ContactAvatar({
 
   return (
     <span
-      className={`${sizeClass} ${textClass} flex shrink-0 items-center justify-center rounded-full border border-emerald-100 bg-emerald-50 font-semibold uppercase text-emerald-700 shadow-[0_1px_2px_rgba(15,23,42,0.04)] dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300`}
+      className={[
+        sizeClass,
+        textClass,
+        "flex shrink-0 items-center justify-center rounded-full border font-semibold uppercase shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+        email
+          ? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-400/30 dark:bg-indigo-400/15 dark:text-indigo-300"
+          : "border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300",
+      ].join(" ")}
     >
       {contactInitials(label)}
     </span>
@@ -4932,6 +5004,20 @@ function MessageBubble({
           {message.body}
         </div>
       </div>
+    );
+  }
+
+  // E-mail: renderiza cada mensagem como um CARTÃO de e-mail (De/quando + corpo), largura
+  // cheia, em vez do balão estilo WhatsApp — deixa claro que o canal é e-mail.
+  if (isEmailTicket(ticket)) {
+    return (
+      <EmailMessageCard
+        avatarLabel={avatarLabel}
+        avatarUrl={avatarUrl}
+        message={message}
+        outbound={outbound}
+        senderEmail={outbound ? null : ticket.contactEmail ?? null}
+      />
     );
   }
 
@@ -4996,6 +5082,75 @@ function MessageBubble({
               reactions={message.reactions}
               outbound={outbound}
             />
+          ) : null}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Cartão de mensagem de e-mail (largura cheia, com De/quem + corpo). Recebido = neutro;
+// Enviado = tom dourado (identidade do operador), com "Enviado por".
+function EmailMessageCard({
+  avatarLabel,
+  avatarUrl,
+  message,
+  outbound,
+  senderEmail,
+}: {
+  avatarLabel: string;
+  avatarUrl?: string | null;
+  message: IrisMessage;
+  outbound: boolean;
+  senderEmail?: string | null;
+}) {
+  return (
+    <div className="flex w-full min-w-0 justify-center">
+      <div
+        className={[
+          "w-full max-w-[860px] rounded-xl border shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
+          outbound
+            ? "border-[#A07C3B]/25 bg-[#A07C3B]/5 dark:border-[#A07C3B]/30 dark:bg-[#A07C3B]/10"
+            : "border-line bg-surface dark:border-white/[0.07]",
+        ].join(" ")}
+      >
+        <div className="flex items-center gap-2.5 border-b border-line/70 px-3.5 py-2 dark:border-white/[0.06]">
+          <InlineAvatar
+            avatarUrl={avatarUrl}
+            label={avatarLabel}
+            tone={outbound ? "gold" : "indigo"}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-ink">
+              {avatarLabel}
+              {senderEmail ? (
+                <span className="font-normal text-ink-muted">
+                  {" "}
+                  · {senderEmail}
+                </span>
+              ) : null}
+            </p>
+            <p className="text-[11px] font-medium text-ink-muted">
+              {outbound ? "Enviado" : "Recebido"} · {formatDateTime(message.createdAt)}
+            </p>
+          </div>
+          <span
+            className={[
+              "shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
+              outbound
+                ? "border-[#A07C3B]/25 bg-surface text-[#7A5E2C] dark:bg-white/[0.06] dark:text-[#d9b877]"
+                : "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-400/30 dark:bg-indigo-400/15 dark:text-indigo-300",
+            ].join(" ")}
+          >
+            {outbound ? "Resposta" : "E-mail"}
+          </span>
+        </div>
+        <div className="px-3.5 py-3">
+          <MessageContent message={message} outbound={outbound} />
+          {outbound ? (
+            <div className="mt-2 flex items-center justify-end gap-1.5 text-[11px] text-ink-muted">
+              <MessageDeliveryIndicator message={message} />
+            </div>
           ) : null}
         </div>
       </div>
@@ -5452,7 +5607,7 @@ function InlineAvatar({
 }: {
   avatarUrl?: string | null;
   label: string;
-  tone: "gold" | "green";
+  tone: "gold" | "green" | "indigo";
 }) {
   const [failed, setFailed] = useState(false);
   const imageUrl = avatarUrl && !failed ? avatarUrl : null;
@@ -5474,7 +5629,9 @@ function InlineAvatar({
         "flex size-8 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold uppercase shadow-[0_1px_2px_rgba(15,23,42,0.04)]",
         tone === "gold"
           ? "border-[#eadcc2] bg-[#A07C3B]/12 text-[#7A5E2C] dark:border-[#A07C3B]/40 dark:bg-[#A07C3B]/15 dark:text-[#d9b877]"
-          : "border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300",
+          : tone === "indigo"
+            ? "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-400/30 dark:bg-indigo-400/15 dark:text-indigo-300"
+            : "border-emerald-100 bg-emerald-50 text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300",
       ].join(" ")}
     >
       {contactInitials(label)}
