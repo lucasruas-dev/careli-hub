@@ -2,6 +2,7 @@
 
 import type { ReactNode, RefObject } from "react";
 import {
+  Inbox,
   Mail,
   MessageCircle,
   MessageSquareText,
@@ -105,11 +106,12 @@ export type IrisInboxChannelFilter = "all" | "whatsapp" | "group" | "email";
 const IRIS_INBOX_CHANNEL_FILTERS: {
   key: IrisInboxChannelFilter;
   label: string;
+  icon: LucideIcon;
 }[] = [
-  { key: "all", label: "Tudo" },
-  { key: "whatsapp", label: "WhatsApp" },
-  { key: "group", label: "Grupo" },
-  { key: "email", label: "E-mail" },
+  { key: "all", label: "Tudo", icon: Inbox },
+  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
+  { key: "group", label: "Grupo", icon: Users },
+  { key: "email", label: "E-mail", icon: Mail },
 ];
 
 export function IrisConversationInboxSidebar({
@@ -193,22 +195,26 @@ export function IrisConversationInboxSidebar({
                 className="h-7 w-full bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
               />
             </label>
-            <div className="mt-2 flex flex-wrap gap-1">
+            <div className="mt-2 flex flex-wrap gap-1.5">
               {IRIS_INBOX_CHANNEL_FILTERS.map((option) => {
                 const active = channelFilter === option.key;
+                const Icon = option.icon;
                 return (
                   <button
                     key={option.key}
                     type="button"
                     onClick={() => onChannelFilterChange(option.key)}
+                    title={option.label}
+                    aria-label={option.label}
+                    aria-pressed={active}
                     className={[
-                      "rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 transition-colors",
+                      "flex size-7 items-center justify-center rounded-full ring-1 transition-colors",
                       active
                         ? "bg-[#A07C3B]/12 text-[#7A5E2C] ring-[#A07C3B]/25 dark:text-[#d9b877]"
                         : "bg-surface text-ink-muted ring-line/70 hover:text-ink",
                     ].join(" ")}
                   >
-                    {option.label}
+                    <Icon className="size-3.5" aria-hidden="true" />
                   </button>
                 );
               })}
