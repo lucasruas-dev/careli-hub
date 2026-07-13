@@ -20,6 +20,21 @@ const GMAIL_PROVIDER = "gmail";
 const DEFAULT_FROM_NAME = "Careli";
 // Linha de "departamento" da assinatura. Override por canal via config.signatureOrg.
 const DEFAULT_SIGNATURE_ORG = "Careli · Atendimento";
+// Contatos institucionais da assinatura (override por canal via config).
+const DEFAULT_SIGNATURE_WHATSAPP = "553199264143";
+const DEFAULT_SIGNATURE_SITE = "careli.adm.br";
+// Logo servida como asset público do app (email não aceita data-URI/inline).
+const CARELI_EMAIL_LOGO_URL = "https://c2x.app.br/careli-email-logo.png";
+const SIGNATURE_GOLD = "#A07C3B";
+
+type EmailSignature = {
+  boxEmail?: string | null;
+  jobTitle?: string | null;
+  operatorName: string;
+  org?: string | null;
+  site?: string | null;
+  whatsapp?: string | null;
+};
 const MESSAGE_SELECT =
   "id,ticket_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)";
 
@@ -176,14 +191,20 @@ export async function POST(request: NextRequest) {
 
   const operator = await getOperatorIdentity(client, user.id);
 
-  // Assinatura automática com base no operador (nome + org + caixa). O cliente recebe o texto
-  // já assinado; guardamos o corpo assinado pra o card do cockpit mostrar o que foi enviado.
-  const signedBody = appendEmailSignature(body, {
-    address: groupAddress ?? recipient,
+  // Dados da assinatura (operador + Careli). Telefone/site são da Careli, com override por
+  // canal via config (signatureWhatsapp/signatureSite).
+  const signature: EmailSignature = {
+    boxEmail: groupAddress ?? recipient,
     jobTitle: operator.jobTitle,
     operatorName: operator.label,
     org: readString(config.signatureOrg) ?? DEFAULT_SIGNATURE_ORG,
-  });
+    site: readString(config.signatureSite) ?? DEFAULT_SIGNATURE_SITE,
+    whatsapp: readString(config.signatureWhatsapp) ?? DEFAULT_SIGNATURE_WHATSAPP,
+  };
+  // O cliente recebe multipart: HTML (com logo/assinatura) + texto puro (fallback). Guardamos
+  // o texto assinado no card do cockpit pra mostrar o que foi enviado.
+  const signedBody = appendEmailSignature(body, signature);
+  const bodyHtml = buildEmailHtml(body, signature);
 
   const basePayload = {
     operatorAvatarUrl: operator.avatarUrl,
@@ -229,6 +250,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await sendGmailMessage({
+      bodyHtml,
       bodyText: signedBody,
       ...(from ? { from } : {}),
       inReplyTo,
@@ -321,23 +343,85 @@ function withReplyPrefix(subject: string): string {
   return /^re:/i.test(subject.trim()) ? subject.trim() : `Re: ${subject.trim()}`;
 }
 
-// Assinatura automática com base no operador: nome + cargo + org (departamento) + caixa.
-// Ex.:  "...corpo...\n\nFabrício Silva\nAnalista de Atendimento\nCareli · Atendimento\ncontato@careli.adm.br"
-function appendEmailSignature(
-  body: string,
-  { address, jobTitle, operatorName, org }: {
-    address?: string | null;
-    jobTitle?: string | null;
-    operatorName: string;
-    org?: string | null;
-  },
-): string {
-  const signature = [operatorName, jobTitle, org, address]
+// Assinatura em TEXTO PURO (fallback do multipart + corpo salvo no card do cockpit):
+// nome + cargo + org + e-mail + WhatsApp + site.
+function appendEmailSignature(body: string, sig: EmailSignature): string {
+  const phone = formatBrPhone(sig.whatsapp);
+  const lines = [
+    sig.operatorName,
+    sig.jobTitle,
+    sig.org,
+    sig.boxEmail,
+    phone ? `WhatsApp: ${phone}` : null,
+    sig.site,
+  ]
     .map((line) => (typeof line === "string" ? line.trim() : ""))
     .filter(Boolean)
     .join("\n");
 
-  return `${body.trimEnd()}\n\n${signature}`;
+  return `${body.trimEnd()}\n\n${lines}`;
+}
+
+// Corpo do e-mail em HTML: texto do operador (escapado, com quebras) + assinatura rica
+// (logo Careli + nome/cargo + contatos), tabela inline (email-safe). Ver [[project-iris-email-grupos]].
+function buildEmailHtml(body: string, sig: EmailSignature): string {
+  const bodyHtml = escapeHtml(body.trim()).replace(/\r?\n/g, "<br>");
+  const phone = formatBrPhone(sig.whatsapp);
+  const waDigits = (sig.whatsapp ?? "").replace(/\D/g, "");
+  const gray = "#5a6069";
+  const link = (href: string, text: string) =>
+    `<a href="${escapeHtml(href)}" style="color:${gray};text-decoration:none;">${escapeHtml(text)}</a>`;
+
+  const contacts: string[] = [];
+  if (sig.boxEmail) {
+    contacts.push(link(`mailto:${sig.boxEmail}`, sig.boxEmail));
+  }
+  if (phone && waDigits) {
+    contacts.push(link(`https://wa.me/${waDigits}`, `WhatsApp ${phone}`));
+  }
+  if (sig.site) {
+    const siteUrl = /^https?:\/\//i.test(sig.site) ? sig.site : `https://${sig.site}`;
+    contacts.push(link(siteUrl, sig.site.replace(/^https?:\/\//i, "")));
+  }
+
+  const contactsHtml = contacts.join('<br style="line-height:1.7;">');
+  const cargoHtml = sig.jobTitle
+    ? `<div style="font-size:12.5px;font-weight:bold;color:${SIGNATURE_GOLD};margin-top:1px;">${escapeHtml(sig.jobTitle)}</div>`
+    : "";
+
+  return `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#3a3f46;">${bodyHtml}<br><br>
+<table cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;margin-top:6px;"><tr>
+<td style="padding-right:16px;vertical-align:middle;"><img src="${CARELI_EMAIL_LOGO_URL}" width="64" alt="Careli" style="display:block;border:0;width:64px;height:auto;"></td>
+<td style="padding:0 16px;vertical-align:middle;"><div style="width:2px;height:72px;background:${SIGNATURE_GOLD};font-size:0;line-height:0;">&nbsp;</div></td>
+<td style="vertical-align:middle;">
+<div style="font-size:15px;font-weight:bold;color:#101820;">${escapeHtml(sig.operatorName)}</div>
+${cargoHtml}
+<div style="margin-top:8px;font-size:12.5px;color:${gray};">${contactsHtml}</div>
+</td></tr></table></div>`;
+}
+
+// 553199264143 -> "(31) 99264-4143". Sem DDI/formato reconhecido, devolve o que dá.
+function formatBrPhone(value?: string | null): string | null {
+  const digits = (value ?? "").replace(/\D/g, "");
+  const local = digits.startsWith("55") ? digits.slice(2) : digits;
+
+  if (local.length === 11) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 7)}-${local.slice(7)}`;
+  }
+  if (local.length === 10) {
+    return `(${local.slice(0, 2)}) ${local.slice(2, 6)}-${local.slice(6)}`;
+  }
+
+  return digits ? value?.trim() ?? null : null;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
 }
 
 function normalizeText(value: unknown): string | null {

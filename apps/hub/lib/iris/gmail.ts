@@ -272,6 +272,7 @@ function walkParts(
 // inReplyTo (o Message-ID original) + references. `from` deve ser um endereço que a caixa tem
 // permissao de enviar (a propria caca@, ou um alias/Send-As do grupo).
 export async function sendGmailMessage({
+  bodyHtml,
   bodyText,
   from = getGmailIngestMailbox(),
   inReplyTo,
@@ -280,6 +281,9 @@ export async function sendGmailMessage({
   threadId,
   to,
 }: {
+  // Quando informado, envia multipart/alternative (texto + HTML) — o cliente escolhe a
+  // versão rica (com logo/assinatura) e cai no texto puro se bloquear HTML.
+  bodyHtml?: string | null;
   bodyText: string;
   from?: string;
   inReplyTo?: string | null;
@@ -293,8 +297,6 @@ export async function sendGmailMessage({
     `To: ${to}`,
     `Subject: ${encodeHeaderValue(subjectLine)}`,
     "MIME-Version: 1.0",
-    'Content-Type: text/plain; charset="UTF-8"',
-    "Content-Transfer-Encoding: 8bit",
   ];
 
   if (inReplyTo) {
@@ -302,7 +304,38 @@ export async function sendGmailMessage({
     headerLines.push(`References: ${references ? `${references} ${inReplyTo}` : inReplyTo}`);
   }
 
-  const rawMessage = `${headerLines.join("\r\n")}\r\n\r\n${bodyText}`;
+  let rawMessage: string;
+
+  if (bodyHtml) {
+    const boundary = `iris_${Date.now().toString(36)}_${Math.random()
+      .toString(36)
+      .slice(2)}`;
+
+    headerLines.push(
+      `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    );
+
+    const parts = [
+      `--${boundary}`,
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      bodyText,
+      `--${boundary}`,
+      'Content-Type: text/html; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit",
+      "",
+      bodyHtml,
+      `--${boundary}--`,
+    ];
+
+    rawMessage = `${headerLines.join("\r\n")}\r\n\r\n${parts.join("\r\n")}`;
+  } else {
+    headerLines.push('Content-Type: text/plain; charset="UTF-8"');
+    headerLines.push("Content-Transfer-Encoding: 8bit");
+    rawMessage = `${headerLines.join("\r\n")}\r\n\r\n${bodyText}`;
+  }
+
   const data = await gmailFetch<{ id?: string; threadId?: string }>(
     "/messages/send",
     {

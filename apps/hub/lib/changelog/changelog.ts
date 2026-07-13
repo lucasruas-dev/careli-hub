@@ -43,7 +43,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
               "Os e-mails que chegam em contato@careli.adm.br agora aparecem na Iris como atendimento, com visual próprio de e-mail (cor azul, envelope) e a caixa (Contato) aparecendo como fila.",
               "Board: agrupar por Fila mostra 'Contato' como fila; agrupar por Canal separa WhatsApp | E-mail. O assunto do e-mail aparece no card.",
               "Cockpit de e-mail com cara de e-mail: cabeçalho com De / Para / Assunto, mensagens em formato de carta e avatar na cor do canal (azul).",
-              "Ao abrir um e-mail, o operador responde direto pelo compositor: a resposta sai por e-mail, no mesmo assunto/conversa do cliente, com assinatura automática do operador (nome + cargo + Careli · Atendimento + caixa).",
+              "Ao abrir um e-mail, o operador responde direto pelo compositor: a resposta sai por e-mail (HTML), no mesmo assunto/conversa do cliente, com assinatura automática formatada: logo da Careli, nome + cargo do operador, e-mail, WhatsApp (link) e site.",
               "E-mail não tem a janela de 24h do WhatsApp. Anexo, áudio e reação (recursos do WhatsApp) ficam ocultos no e-mail.",
             ],
             screen: "Atendimento / Board",
