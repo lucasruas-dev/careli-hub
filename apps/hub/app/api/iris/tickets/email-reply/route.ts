@@ -18,6 +18,8 @@ export const runtime = "nodejs";
 // Lucas). Ver [[project-iris-email-grupos]].
 const GMAIL_PROVIDER = "gmail";
 const DEFAULT_FROM_NAME = "Careli";
+// Linha de "departamento" da assinatura. Override por canal via config.signatureOrg.
+const DEFAULT_SIGNATURE_ORG = "Careli · Atendimento";
 const MESSAGE_SELECT =
   "id,ticket_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)";
 
@@ -174,10 +176,19 @@ export async function POST(request: NextRequest) {
 
   const operator = await getOperatorIdentity(client, user.id);
 
+  // Assinatura automática com base no operador (nome + org + caixa). O cliente recebe o texto
+  // já assinado; guardamos o corpo assinado pra o card do cockpit mostrar o que foi enviado.
+  const signedBody = appendEmailSignature(body, {
+    address: groupAddress ?? recipient,
+    operatorName: operator.label,
+    org: readString(config.signatureOrg) ?? DEFAULT_SIGNATURE_ORG,
+  });
+
   const basePayload = {
     operatorAvatarUrl: operator.avatarUrl,
     operatorLabel: operator.label,
     provider: GMAIL_PROVIDER,
+    signed: true,
     source_module: "iris",
     subject: subjectLine,
     to: recipient,
@@ -188,7 +199,7 @@ export async function POST(request: NextRequest) {
   const { data: queued, error: insertError } = await client
     .from("caredesk_messages")
     .insert({
-      body,
+      body: signedBody,
       channel_id: ticket.channel_id,
       delivery_status: "queued",
       direction: "outbound",
@@ -217,7 +228,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await sendGmailMessage({
-      bodyText: body,
+      bodyText: signedBody,
       ...(from ? { from } : {}),
       inReplyTo,
       references,
@@ -302,6 +313,24 @@ async function getOperatorIdentity(
 
 function withReplyPrefix(subject: string): string {
   return /^re:/i.test(subject.trim()) ? subject.trim() : `Re: ${subject.trim()}`;
+}
+
+// Assinatura automática com base no operador: nome + org (departamento) + caixa.
+// Ex.:  "...corpo...\n\nFabrício Silva\nCareli · Atendimento\ncontato@careli.adm.br"
+function appendEmailSignature(
+  body: string,
+  { address, operatorName, org }: {
+    address?: string | null;
+    operatorName: string;
+    org?: string | null;
+  },
+): string {
+  const signature = [operatorName, org, address]
+    .map((line) => (typeof line === "string" ? line.trim() : ""))
+    .filter(Boolean)
+    .join("\n");
+
+  return `${body.trimEnd()}\n\n${signature}`;
 }
 
 function normalizeText(value: unknown): string | null {
