@@ -95,6 +95,7 @@ type UserRow = {
   email: string;
   hub_user_assignments?: UserAssignmentRow[];
   id: string;
+  job_title?: string | null;
   operational_profile?: SetupOperationalProfileRole | null;
   role: SetupUser["role"];
   status: SetupUser["status"];
@@ -983,6 +984,7 @@ export async function linkUserAssignment(input: LinkUserAssignmentInput) {
     avatar_url: input.avatarUrl?.trim() || null,
     display_name: input.fullName.trim(),
     email: input.email.trim().toLowerCase(),
+    job_title: input.jobTitle?.trim() || null,
     operational_profile: input.profile,
     role: mapOperationalProfileToRole(input.profile),
     status: input.status,
@@ -1691,6 +1693,7 @@ function mapUser(row: UserRow): SetupUser {
     displayName: row.display_name,
     email: row.email,
     id: row.id,
+    jobTitle: row.job_title ?? undefined,
     operationalProfile: row.operational_profile ?? mapRoleToOperationalProfile(row.role),
     role: row.role,
     sectorId: assignment?.sector_id ?? undefined,

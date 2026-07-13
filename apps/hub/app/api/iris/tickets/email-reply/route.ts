@@ -180,6 +180,7 @@ export async function POST(request: NextRequest) {
   // já assinado; guardamos o corpo assinado pra o card do cockpit mostrar o que foi enviado.
   const signedBody = appendEmailSignature(body, {
     address: groupAddress ?? recipient,
+    jobTitle: operator.jobTitle,
     operatorName: operator.label,
     org: readString(config.signatureOrg) ?? DEFAULT_SIGNATURE_ORG,
   });
@@ -297,16 +298,21 @@ export async function POST(request: NextRequest) {
 async function getOperatorIdentity(
   client: IrisAdminClient,
   userId: string,
-): Promise<{ avatarUrl: string | null; label: string }> {
+): Promise<{ avatarUrl: string | null; jobTitle: string | null; label: string }> {
   const { data } = await client
     .from("hub_users")
-    .select("display_name,avatar_url")
+    .select("display_name,avatar_url,job_title")
     .eq("id", userId)
-    .maybeSingle<{ avatar_url: string | null; display_name: string | null }>();
+    .maybeSingle<{
+      avatar_url: string | null;
+      display_name: string | null;
+      job_title: string | null;
+    }>();
   const name = readString(data?.display_name);
 
   return {
     avatarUrl: readUrl(data?.avatar_url),
+    jobTitle: readString(data?.job_title),
     label: name ?? "Operador Iris",
   };
 }
@@ -315,17 +321,18 @@ function withReplyPrefix(subject: string): string {
   return /^re:/i.test(subject.trim()) ? subject.trim() : `Re: ${subject.trim()}`;
 }
 
-// Assinatura automática com base no operador: nome + org (departamento) + caixa.
-// Ex.:  "...corpo...\n\nFabrício Silva\nCareli · Atendimento\ncontato@careli.adm.br"
+// Assinatura automática com base no operador: nome + cargo + org (departamento) + caixa.
+// Ex.:  "...corpo...\n\nFabrício Silva\nAnalista de Atendimento\nCareli · Atendimento\ncontato@careli.adm.br"
 function appendEmailSignature(
   body: string,
-  { address, operatorName, org }: {
+  { address, jobTitle, operatorName, org }: {
     address?: string | null;
+    jobTitle?: string | null;
     operatorName: string;
     org?: string | null;
   },
 ): string {
-  const signature = [operatorName, org, address]
+  const signature = [operatorName, jobTitle, org, address]
     .map((line) => (typeof line === "string" ? line.trim() : ""))
     .filter(Boolean)
     .join("\n");

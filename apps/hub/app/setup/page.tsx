@@ -693,6 +693,7 @@ function SetupTabContent({
             "Nome",
             "Email",
             "Perfil",
+            "Cargo",
             "Departamento",
             "Setor",
             "Status",
@@ -702,6 +703,7 @@ function SetupTabContent({
             user.displayName,
             user.email,
             user.operationalProfile,
+            user.jobTitle ?? "-",
             user.departmentName ?? "Sem departamento",
             user.sectorName ?? "Sem setor",
             user.status,
@@ -2614,6 +2616,7 @@ function CreateOperationalUserModal({
   );
   const [email, setEmail] = useState("");
   const [fullName, setFullName] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
   const [password, setPassword] = useState("");
   const [profile, setProfile] = useState<SetupOperationalProfileRole>("op1");
   const [sectorId, setSectorId] = useState("");
@@ -2629,6 +2632,7 @@ function CreateOperationalUserModal({
       departmentId,
       email,
       fullName,
+      jobTitle,
       password,
       profile,
       sectorId,
@@ -2686,6 +2690,12 @@ function CreateOperationalUserModal({
               value={password}
             />
             <ProfileSelect onChange={setProfile} value={profile} />
+            <TextInput
+              label="Cargo"
+              onChange={setJobTitle}
+              placeholder="Ex.: Analista de Atendimento"
+              value={jobTitle}
+            />
             <label className="grid gap-1.5">
               <span className="text-xs font-semibold text-[#667085]">
                 Departamento
@@ -2763,6 +2773,7 @@ function LinkUserAssignmentModal({
   const [isUploadingAvatar, setIsUploadingAvatar] = useState(false);
   const [email, setEmail] = useState(user.email);
   const [fullName, setFullName] = useState(user.displayName);
+  const [jobTitle, setJobTitle] = useState(user.jobTitle ?? "");
   const [profile, setProfile] = useState<SetupOperationalProfileRole>(
     user.operationalProfile,
   );
@@ -2782,6 +2793,7 @@ function LinkUserAssignmentModal({
       departmentId,
       email,
       fullName,
+      jobTitle,
       profile,
       sectorId,
       status,
@@ -2835,6 +2847,12 @@ function LinkUserAssignmentModal({
             label="E-mail"
             onChange={setEmail}
             value={email}
+          />
+          <TextInput
+            label="Cargo"
+            onChange={setJobTitle}
+            placeholder="Ex.: Analista de Atendimento"
+            value={jobTitle}
           />
           <div className="grid gap-1.5 md:col-span-2">
             <span className="text-xs font-semibold text-[#667085]">

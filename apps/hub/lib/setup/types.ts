@@ -32,6 +32,7 @@ export type SetupUser = {
   displayName: string;
   email: string;
   id: string;
+  jobTitle?: string;
   operationalProfile: SetupOperationalProfileRole;
   role: "admin" | "leader" | "operator" | "viewer";
   sectorId?: string;
@@ -201,6 +202,7 @@ export type CreateOperationalUserInput = {
   departmentId: string;
   email: string;
   fullName: string;
+  jobTitle?: string;
   password: string;
   profile: SetupOperationalProfileRole;
   sectorId: string;
@@ -212,6 +214,7 @@ export type LinkUserAssignmentInput = {
   departmentId: string;
   email: string;
   fullName: string;
+  jobTitle?: string;
   profile: SetupOperationalProfileRole;
   sectorId: string;
   status: "active" | "disabled";

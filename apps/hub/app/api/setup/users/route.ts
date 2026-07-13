@@ -10,6 +10,7 @@ type CreateOperationalUserPayload = {
   departmentId?: unknown;
   email?: unknown;
   fullName?: unknown;
+  jobTitle?: unknown;
   password?: unknown;
   profile?: unknown;
   sectorId?: unknown;
@@ -21,6 +22,7 @@ type UpdateOperationalUserPayload = {
   departmentId?: unknown;
   email?: unknown;
   fullName?: unknown;
+  jobTitle?: unknown;
   profile?: unknown;
   sectorId?: unknown;
   status?: unknown;
@@ -31,6 +33,7 @@ type ParsedOperationalUserPayload = {
   departmentId: string;
   email: string;
   fullName: string;
+  jobTitle: string;
   password: string;
   profile: OperationalProfileRole;
   sectorId: string;
@@ -43,6 +46,7 @@ type ListHubUserRow = {
   email: string;
   hub_user_assignments?: ListHubUserAssignmentRow[];
   id: string;
+  job_title?: string | null;
   operational_profile?: OperationalProfileRole | null;
   role: HubUserRole;
   status: string;
@@ -105,10 +109,11 @@ export async function GET(request: NextRequest) {
 
   const result = await adminClient
     .from("hub_users")
-    .select("id,email,display_name,avatar_url,role,operational_profile,status")
+    .select("id,email,display_name,avatar_url,role,operational_profile,job_title,status")
     .order("display_name");
   const users =
-    result.error?.message.includes("operational_profile")
+    result.error?.message.includes("operational_profile") ||
+    result.error?.message.includes("job_title")
       ? await adminClient
           .from("hub_users")
           .select("id,email,display_name,avatar_url,role,status")
@@ -265,6 +270,7 @@ export async function PATCH(request: NextRequest) {
       avatar_url: payload.data.avatarUrl || null,
       display_name: payload.data.fullName,
       email: payload.data.email,
+      job_title: payload.data.jobTitle || null,
       operational_profile: payload.data.profile,
       role,
       status: payload.data.status,
@@ -463,6 +469,7 @@ export async function POST(request: NextRequest) {
     display_name: payload.data.fullName,
     email: payload.data.email,
     id: createdAuthUser.user.id,
+    job_title: payload.data.jobTitle || null,
     operational_profile: payload.data.profile,
     role,
     status: payload.data.status,
@@ -674,6 +681,7 @@ async function createOperationalUserWithSignupFallback({
     .update({
       display_name: payload.fullName,
       email: payload.email,
+      job_title: payload.jobTitle || null,
       operational_profile: payload.profile,
       role,
       status: payload.status,
@@ -813,6 +821,7 @@ function parsePayload(payload: unknown):
   const password = getString(input.password);
   const departmentId = getString(input.departmentId);
   const sectorId = getString(input.sectorId);
+  const jobTitle = getString(input.jobTitle);
   const profile = getString(input.profile);
   const status = getString(input.status);
 
@@ -841,6 +850,7 @@ function parsePayload(payload: unknown):
       departmentId,
       email,
       fullName,
+      jobTitle,
       password,
       profile,
       sectorId,
@@ -857,6 +867,7 @@ function parseAssignmentPayload(payload: unknown):
         departmentId: string;
         email: string;
         fullName: string;
+        jobTitle: string;
         profile: OperationalProfileRole;
         sectorId: string;
         status: SetupUserStatus;
@@ -874,6 +885,7 @@ function parseAssignmentPayload(payload: unknown):
   const departmentId = getString(input.departmentId);
   const email = getString(input.email).toLowerCase();
   const fullName = getString(input.fullName);
+  const jobTitle = getString(input.jobTitle);
   const profile = getString(input.profile);
   const sectorId = getString(input.sectorId);
   const status = getString(input.status);
@@ -901,6 +913,7 @@ function parseAssignmentPayload(payload: unknown):
       departmentId,
       email,
       fullName,
+      jobTitle,
       profile,
       sectorId,
       status,
