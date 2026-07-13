@@ -53,6 +53,7 @@ export function PanteonTopbarUser({
 
       <PanteonPresenceControl
         disabled={!isPresenceReady}
+        onDark={onDark}
         onChange={(nextStatus) => {
           setIsPresenceMenuOpen(false);
           void hubPresence
@@ -152,6 +153,7 @@ function ThemeToggle({ onDark }: { onDark: boolean }) {
 function PanteonPresenceControl({
   disabled,
   onChange,
+  onDark,
   onOpenChange,
   open,
   status,
@@ -160,13 +162,14 @@ function PanteonPresenceControl({
 }: {
   disabled: boolean;
   onChange: (status: HubPresenceStatus) => void;
+  onDark: boolean;
   onOpenChange: (open: boolean) => void;
   open: boolean;
   status: HubPresenceStatus;
   statusLabel?: string;
   visibilityClassName: string;
 }) {
-  const tone = getPresenceTone(status);
+  const tone = getPresenceTone(status, onDark);
   const controlRef = useRef<HTMLDivElement>(null);
 
   useOutsideDismiss({
@@ -196,13 +199,23 @@ function PanteonPresenceControl({
         {disabled ? null : <ChevronDown aria-hidden="true" size={14} />}
       </button>
       {open && !disabled ? (
-        <div className="absolute right-0 top-10 z-[var(--uix-z-popover)] w-44 rounded-md border border-[#d9e0e7] bg-white p-1.5 shadow-xl">
+        <div
+          className={`absolute right-0 top-10 z-[var(--uix-z-popover)] w-44 rounded-md border p-1.5 shadow-xl ${
+            onDark
+              ? "border-white/10 bg-[#242725]"
+              : "border-[#d9e0e7] bg-white"
+          }`}
+        >
           {hubPresenceStatusOptions.map((option) => {
-            const optionTone = getPresenceTone(option);
+            const optionTone = getPresenceTone(option, onDark);
 
             return (
               <button
-                className="flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm text-[#17202f] outline-none transition hover:bg-[#f4f6f8] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className={`flex h-9 w-full items-center gap-2 rounded-md px-2 text-left text-sm outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+                  onDark
+                    ? "text-[#dadcd7] hover:bg-white/10"
+                    : "text-[#17202f] hover:bg-[#f4f6f8]"
+                }`}
                 key={option}
                 onClick={() => onChange(option)}
                 type="button"
@@ -222,9 +235,9 @@ function PanteonPresenceControl({
   );
 }
 
-function getPresenceTone(status: HubPresenceStatus) {
+function getPresenceTone(status: HubPresenceStatus, onDark: boolean) {
   const normalizedStatus = status === "busy" ? "agenda" : status;
-  const tones = {
+  const lightTones = {
     agenda: {
       button: "border-sky-200 bg-sky-50 text-sky-700",
       dot: "bg-sky-500",
@@ -247,13 +260,36 @@ function getPresenceTone(status: HubPresenceStatus) {
     },
   } as const satisfies Record<
     Exclude<HubPresenceStatus, "busy">,
-    {
-      button: string;
-      dot: string;
-    }
+    { button: string; dot: string }
+  >;
+  // Barra escura (onDark): pilulas translucidas + texto claro, pra nao virar mancha clara no grafite.
+  const darkTones = {
+    agenda: {
+      button: "border-sky-500/30 bg-sky-500/15 text-sky-200",
+      dot: "bg-sky-500",
+    },
+    away: {
+      button: "border-red-500/30 bg-red-500/15 text-red-200",
+      dot: "bg-red-500",
+    },
+    lunch: {
+      button: "border-yellow-500/30 bg-yellow-500/15 text-yellow-200",
+      dot: "bg-yellow-400",
+    },
+    offline: {
+      button: "border-white/[0.12] bg-white/[0.06] text-[#a5afbd]",
+      dot: "bg-zinc-400",
+    },
+    online: {
+      button: "border-emerald-500/30 bg-emerald-500/15 text-emerald-200",
+      dot: "bg-emerald-500",
+    },
+  } as const satisfies Record<
+    Exclude<HubPresenceStatus, "busy">,
+    { button: string; dot: string }
   >;
 
-  return tones[normalizedStatus];
+  return (onDark ? darkTones : lightTones)[normalizedStatus];
 }
 
 function getInitials(name: string) {

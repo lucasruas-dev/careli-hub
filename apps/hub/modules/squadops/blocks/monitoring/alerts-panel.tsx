@@ -121,8 +121,8 @@ export function OperationsAlertCenter({
     <button
       className={`mt-4 flex w-full flex-wrap items-center justify-between gap-3 rounded-xl border p-4 text-left transition-colors ${
         hasAlert
-          ? "border-amber-200 bg-amber-50 hover:bg-amber-100/70"
-          : "border-slate-200/70 bg-slate-50/70 hover:bg-slate-100/70"
+          ? "border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 hover:bg-amber-100/70 dark:bg-amber-500/15"
+          : "border-line bg-subtle hover:bg-subtle"
       }`}
       onClick={onOpen}
       type="button"
@@ -131,20 +131,20 @@ export function OperationsAlertCenter({
         <span
           className={`flex size-10 shrink-0 items-center justify-center rounded-lg ring-1 ${
             hasAlert
-              ? "bg-white text-amber-700 ring-amber-200"
-              : "bg-white text-slate-500 ring-slate-200"
+              ? "bg-surface text-amber-700 dark:text-amber-300 ring-amber-200 dark:ring-amber-500/25"
+              : "bg-surface text-ink-muted ring-line"
           }`}
         >
           <BellRing className="size-4" />
         </span>
         <div className="min-w-0">
-          <p className="m-0 text-xs font-semibold uppercase text-slate-500">
+          <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
             Alertas operacionais
           </p>
-          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-ink">
             {title}
           </p>
-          <p className="m-0 mt-1 text-xs text-slate-500">
+          <p className="m-0 mt-1 text-xs text-ink-muted">
             {hasAlert
               ? "Abrir popup para confirmar leitura, ignorar, registrar devolutiva ou gerar prompt."
               : "Abrir popup para consultar historico e protocolos de alertas."}
@@ -153,7 +153,7 @@ export function OperationsAlertCenter({
       </div>
       <div className="flex shrink-0 items-center gap-2">
         <Badge variant={getRiskVariant(risk)}>{risk}</Badge>
-        <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+        <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
           {alertCount} ativo(s)
         </span>
         <ChevronRight className="size-4 text-[#A07C3B]" />
@@ -183,9 +183,9 @@ export function OperationsAlertsDialog({
   watcher,
 }: OperationsAlertsDialogProps) {
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[2px]">
-      <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-2xl">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+    <div className="fixed inset-0 z-50 flex items-start justify-center bg-black/35 px-4 py-6 backdrop-blur-[2px]">
+      <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-6xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
           <PanelTitle
             eyebrow={`${alerts.length} ativo(s) / ${alertProtocols.length} protocolo(s)`}
             icon={<BellRing size={18} />}
@@ -193,7 +193,7 @@ export function OperationsAlertsDialog({
           />
           <button
             aria-label="Fechar alertas"
-            className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            className="inline-flex size-9 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
             onClick={onClose}
             type="button"
           >
@@ -264,7 +264,7 @@ function OperationsAlertsPanel({
   return (
     <Surface
       bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="min-w-0 overflow-hidden border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
       <PanelTitle
         eyebrow={`${alerts.length} alertas`}
@@ -275,59 +275,59 @@ function OperationsAlertsPanel({
         {alerts.length > 0 ? (
           alerts.map((alert) => (
             <article
-              className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+              className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
               key={alert.id}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="m-0 text-sm font-semibold text-slate-950">
+                  <p className="m-0 text-sm font-semibold text-ink">
                     {alert.title}
                   </p>
-                  <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+                  <p className="m-0 mt-1 text-xs font-semibold text-ink-muted">
                     {alert.module} / {alert.origin}
                   </p>
-                  <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+                  <p className="m-0 mt-1 text-xs font-semibold text-ink-muted">
                     Registro: {formatDateTime(alert.generatedAt)}
                     {alert.lastSeenAt && alert.lastSeenAt !== alert.generatedAt
                       ? ` / ultima: ${formatDateTime(alert.lastSeenAt)}`
                       : ""}
                   </p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <span className="rounded-full bg-[#A07C3B]/10 px-2 py-1 text-[0.68rem] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                    <span className="rounded-full bg-[#A07C3B]/10 px-2 py-1 text-[0.68rem] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                       {alert.protocol}
                     </span>
-                    <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                    <span className="rounded-full bg-subtle px-2 py-1 text-[0.68rem] font-semibold text-ink-muted ring-1 ring-line">
                       {getFeedbackStatusLabel(
                         alert.technicalFeedbackStatus ?? "pendente",
                       )}
                     </span>
                     {alert.occurrenceCount ? (
-                      <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                      <span className="rounded-full bg-subtle px-2 py-1 text-[0.68rem] font-semibold text-ink-muted ring-1 ring-line">
                         {alert.occurrenceCount}x
                       </span>
                     ) : null}
-                    <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                    <span className="rounded-full bg-subtle px-2 py-1 text-[0.68rem] font-semibold text-ink-muted ring-1 ring-line">
                       Analise: {alert.analysis.label}
                     </span>
                   </div>
                 </div>
                 <Badge variant={getRiskVariant(alert.level)}>{alert.level}</Badge>
               </div>
-              <p className="m-0 mt-3 text-xs leading-5 text-slate-600">
+              <p className="m-0 mt-3 text-xs leading-5 text-ink-soft">
                 {alert.impact}
               </p>
-              <p className="m-0 mt-2 rounded-lg bg-slate-50/80 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
+              <p className="m-0 mt-2 rounded-lg bg-subtle p-3 text-xs leading-5 text-ink-soft ring-1 ring-line">
                 {alert.recommendation}
               </p>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-500">
+                <span className="text-xs font-semibold text-ink-muted">
                   Agente: {alert.recommendedAgent}
                 </span>
                 <div className="flex items-center gap-2">
                   <Tooltip content="Confirmar leitura" placement="top">
                     <button
                       aria-label={`Confirmar leitura do protocolo ${alert.protocol}`}
-                      className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 dark:border-emerald-500/30 bg-surface text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-50 dark:bg-emerald-500/12 disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={acknowledgingProtocol === alert.protocol}
                       onClick={() => onAcknowledgeProtocol(alert.protocol)}
                       type="button"
@@ -345,7 +345,7 @@ function OperationsAlertsPanel({
                   >
                     <button
                       aria-label={`Registrar devolutiva tecnica do protocolo ${alert.protocol}`}
-                      className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                      className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7a5e2c] dark:text-[#d9b877]"
                       onClick={() => onOpenProtocol(alert)}
                       type="button"
                     >
@@ -355,7 +355,7 @@ function OperationsAlertsPanel({
                   <Tooltip content="Ignorar alerta" placement="top">
                     <button
                       aria-label={`Ignorar protocolo ${alert.protocol}`}
-                      className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:border-line-strong hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
                       disabled={ignoringProtocol === alert.protocol}
                       onClick={() => onIgnoreProtocol(alert.protocol)}
                       type="button"
@@ -370,7 +370,7 @@ function OperationsAlertsPanel({
                   <Tooltip content="Criar prompt para agente" placement="top">
                     <button
                       aria-label={`Criar prompt para ${alert.recommendedAgent}`}
-                      className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
+                      className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-surface text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/5 ${
                         copiedCommandId === alert.id ? "bg-[#A07C3B]/10" : ""
                       }`}
                       onClick={() => onCopyCommand(alert.command, alert.id)}
@@ -407,7 +407,7 @@ function OpsWatcherPanel({
   return (
     <Surface
       bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="min-w-0 overflow-hidden border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
       <PanelTitle
         eyebrow={watcher ? watcher.status : "aguardando"}
@@ -415,21 +415,21 @@ function OpsWatcherPanel({
         title="Ops Watcher"
       />
       {watcher ? (
-        <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
+        <div className="mt-4 rounded-xl border border-line bg-subtle p-4">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <p className="m-0 text-sm font-semibold leading-6 text-slate-950">
+            <p className="m-0 text-sm font-semibold leading-6 text-ink">
               {watcher.message}
             </p>
             <Badge variant={getRiskVariant(watcher.risk)}>{watcher.risk}</Badge>
           </div>
-          <p className="m-0 mt-3 text-xs leading-5 text-slate-600">
+          <p className="m-0 mt-3 text-xs leading-5 text-ink-soft">
             Motivo: {watcher.reason}
           </p>
-          <p className="m-0 mt-2 text-xs font-semibold text-slate-500">
+          <p className="m-0 mt-2 text-xs font-semibold text-ink-muted">
             Agente recomendado: {watcher.agent}
           </p>
           {watcher.protocol ? (
-            <span className="mt-3 inline-flex rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+            <span className="mt-3 inline-flex rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
               {watcher.protocol}
             </span>
           ) : null}
@@ -439,7 +439,7 @@ function OpsWatcherPanel({
                 <Tooltip content="Confirmar leitura" placement="top">
                   <button
                     aria-label={`Confirmar leitura do protocolo ${watcher.protocol}`}
-                    className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex size-9 items-center justify-center rounded-lg border border-emerald-200 dark:border-emerald-500/30 bg-surface text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-50 dark:bg-emerald-500/12 disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={acknowledgingProtocol === watcher.protocol}
                     onClick={() => onAcknowledgeProtocol(watcher.protocol)}
                     type="button"
@@ -454,7 +454,7 @@ function OpsWatcherPanel({
                 <Tooltip content="Registrar devolutiva tecnica" placement="top">
                   <button
                     aria-label={`Registrar devolutiva tecnica do protocolo ${watcher.protocol}`}
-                    className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                    className="inline-flex size-9 items-center justify-center rounded-lg border border-line bg-surface text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7a5e2c] dark:text-[#d9b877]"
                     onClick={() => onOpenProtocol(watcher.protocol)}
                     type="button"
                   >
@@ -464,7 +464,7 @@ function OpsWatcherPanel({
                 <Tooltip content="Ignorar alerta" placement="top">
                   <button
                     aria-label={`Ignorar protocolo ${watcher.protocol}`}
-                    className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                    className="inline-flex size-9 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:border-line-strong hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
                     disabled={ignoringProtocol === watcher.protocol}
                     onClick={() => onIgnoreProtocol(watcher.protocol)}
                     type="button"
@@ -481,7 +481,7 @@ function OpsWatcherPanel({
             <Tooltip content="Criar prompt para agente" placement="top">
               <button
                 aria-label={`Criar prompt para ${watcher.agent}`}
-                className={`inline-flex size-9 items-center justify-center rounded-lg bg-[#101820] text-white transition-colors hover:bg-[#1b2533] ${
+                className={`inline-flex size-9 items-center justify-center rounded-lg bg-inverse text-brand-ink transition-colors hover:bg-[#1b2533] ${
                   copiedCommandId === watcher.dedupeKey
                     ? "ring-2 ring-[#A07C3B]/30"
                     : ""
@@ -499,18 +499,18 @@ function OpsWatcherPanel({
       )}
 
       <div className="mt-5">
-        <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+        <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
           Historico de notificacoes
         </p>
         <div className="mt-3 grid max-h-64 gap-2 overflow-y-auto pr-1">
           {notifications.length > 0 ? (
             notifications.map((notification) => (
               <div
-                className="rounded-xl border border-slate-200/70 bg-white p-3 text-xs leading-5 text-slate-600"
+                className="rounded-xl border border-line bg-surface p-3 text-xs leading-5 text-ink-soft"
                 key={`${notification.dedupeKey}-${notification.generatedAt}`}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="font-semibold text-slate-950">
+                  <span className="font-semibold text-ink">
                     {formatDateTime(notification.generatedAt)}
                   </span>
                   <div className="flex items-center gap-2">
@@ -519,7 +519,7 @@ function OpsWatcherPanel({
                         <Tooltip content="Confirmar leitura" placement="top">
                           <button
                             aria-label={`Confirmar leitura do protocolo ${notification.protocol}`}
-                            className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition-colors hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 dark:border-emerald-500/30 bg-surface text-emerald-700 dark:text-emerald-300 transition-colors hover:bg-emerald-50 dark:bg-emerald-500/12 disabled:cursor-not-allowed disabled:opacity-60"
                             disabled={
                               acknowledgingProtocol === notification.protocol
                             }
@@ -541,7 +541,7 @@ function OpsWatcherPanel({
                         >
                           <button
                             aria-label={`Registrar devolutiva tecnica do protocolo ${notification.protocol}`}
-                            className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                            className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7a5e2c] dark:text-[#d9b877]"
                             onClick={() =>
                               onOpenProtocol(notification.protocol)
                             }
@@ -553,7 +553,7 @@ function OpsWatcherPanel({
                         <Tooltip content="Ignorar alerta" placement="top">
                           <button
                             aria-label={`Ignorar protocolo ${notification.protocol}`}
-                            className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:border-line-strong hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
                             disabled={
                               ignoringProtocol === notification.protocol
                             }
@@ -577,7 +577,7 @@ function OpsWatcherPanel({
                     <Tooltip content="Criar prompt para agente" placement="top">
                       <button
                         aria-label={`Criar prompt para ${notification.agent}`}
-                        className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
+                        className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-surface text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/5 ${
                           copiedCommandId === notification.dedupeKey
                             ? "bg-[#A07C3B]/10"
                             : ""
@@ -596,7 +596,7 @@ function OpsWatcherPanel({
                   </div>
                 </div>
                 {notification.protocol ? (
-                  <p className="m-0 mt-1 text-[0.68rem] font-semibold text-[#7A5E2C]">
+                  <p className="m-0 mt-1 text-[0.68rem] font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
                     {notification.protocol}
                   </p>
                 ) : null}
@@ -604,7 +604,7 @@ function OpsWatcherPanel({
               </div>
             ))
           ) : (
-            <p className="m-0 rounded-xl bg-slate-50/70 p-3 text-xs text-slate-500 ring-1 ring-slate-200/70">
+            <p className="m-0 rounded-xl bg-subtle p-3 text-xs text-ink-muted ring-1 ring-line">
               Sem notificacao enviada nesta sessao.
             </p>
           )}
@@ -627,9 +627,9 @@ function AlertProtocolsHistoryPanel({
   return (
     <Surface
       bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="min-w-0 overflow-hidden border-line bg-surface p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
-      <div className="border-b border-slate-100 p-5">
+      <div className="border-b border-line p-5">
         <PanelTitle
           eyebrow={`${protocols.length} protocolos`}
           icon={<MessageSquareText size={18} />}
@@ -640,13 +640,13 @@ function AlertProtocolsHistoryPanel({
         {protocols.length > 0 ? (
           protocols.map((protocol) => (
             <article
-              className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+              className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
               key={protocol.id}
             >
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                    <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                       {protocol.protocol}
                     </span>
                     <Badge
@@ -656,17 +656,17 @@ function AlertProtocolsHistoryPanel({
                     >
                       {getFeedbackStatusLabel(protocol.technicalFeedbackStatus)}
                     </Badge>
-                    <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                    <span className="rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-muted ring-1 ring-line">
                       {protocol.occurrenceCount} ocorrencias
                     </span>
-                    <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
+                    <span className="rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-muted ring-1 ring-line">
                       Analise: {protocol.analysis.label}
                     </span>
                   </div>
-                  <p className="m-0 mt-3 text-sm font-semibold text-slate-950">
+                  <p className="m-0 mt-3 text-sm font-semibold text-ink">
                     {protocol.title}
                   </p>
-                  <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+                  <p className="m-0 mt-1 text-xs font-semibold text-ink-muted">
                     {protocol.module} / {protocol.origin} / ultimo:{" "}
                     {formatDateTime(protocol.lastSeenAt)}
                   </p>
@@ -675,13 +675,13 @@ function AlertProtocolsHistoryPanel({
                   {protocol.level}
                 </Badge>
               </div>
-              <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-slate-600">
+              <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-ink-soft">
                 {protocol.technicalFeedback
                   ? protocol.technicalFeedback
                   : "Aguardando devolutiva tecnica do dev responsavel."}
               </p>
               <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                <span className="text-xs font-semibold text-slate-500">
+                <span className="text-xs font-semibold text-ink-muted">
                   Agente: {protocol.recommendedAgent}
                 </span>
                 <div className="flex items-center gap-2">
@@ -691,7 +691,7 @@ function AlertProtocolsHistoryPanel({
                   >
                     <button
                       aria-label={`Registrar devolutiva tecnica do protocolo ${protocol.protocol}`}
-                      className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C]"
+                      className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-[#7a5e2c] dark:text-[#d9b877]"
                       onClick={() => onOpenProtocol(protocol)}
                       type="button"
                     >
@@ -701,7 +701,7 @@ function AlertProtocolsHistoryPanel({
                   <Tooltip content="Criar prompt para agente" placement="top">
                     <button
                       aria-label={`Criar prompt para ${protocol.recommendedAgent}`}
-                      className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 ${
+                      className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-surface text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/5 ${
                         copiedCommandId === protocol.protocol
                           ? "bg-[#A07C3B]/10"
                           : ""

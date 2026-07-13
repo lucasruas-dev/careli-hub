@@ -88,13 +88,13 @@ function PanteonHomeTab({
       aria-label="Abrir a Home do Panteon"
       className={`flex h-[2.375rem] shrink-0 items-center gap-2.5 rounded-[9px] border pl-2 pr-3 outline-none transition focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)] ${
         active
-          ? "border-[#D6B56F]/45 bg-[#1b2430] text-white shadow-[inset_0_-2px_0_#D6B56F]"
+          ? "border-[#D6B56F]/45 bg-[#242725] text-white shadow-[inset_0_-2px_0_#D6B56F]"
           : "border-white/[0.06] bg-white/[0.04] text-[#d5dde8] hover:bg-white/[0.07] hover:text-white"
       }`}
       onClick={onSelect}
       type="button"
     >
-      <span className="grid h-[1.625rem] w-[1.625rem] shrink-0 place-items-center rounded-md border border-[#A07C3B]/55 bg-[#101820]">
+      <span className="grid h-[1.625rem] w-[1.625rem] shrink-0 place-items-center rounded-md border border-[#A07C3B]/55 bg-[#101211]">
         <span
           aria-hidden="true"
           className="block h-4 w-4 bg-contain bg-center bg-no-repeat"
@@ -121,7 +121,7 @@ function ModuleTab({
     <div
       className={`flex h-[2.375rem] shrink-0 items-center gap-2 rounded-[9px] border pl-2.5 pr-1.5 transition ${
         tab.active
-          ? "border-[#D6B56F]/45 bg-[#1b2430] text-white shadow-[inset_0_-2px_0_#D6B56F]"
+          ? "border-[#D6B56F]/45 bg-[#242725] text-white shadow-[inset_0_-2px_0_#D6B56F]"
           : "border-white/[0.06] bg-white/[0.04] text-[#c5ced9] hover:bg-white/[0.07] hover:text-white"
       }`}
     >

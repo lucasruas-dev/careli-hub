@@ -62,7 +62,7 @@ export function MonitoringPeakPanel({
   return (
     <Surface
       bordered
-      className={`min-w-0 border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+      className={`min-w-0 border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
         isTvMode ? "min-h-0 overflow-hidden p-4" : "p-5"
       }`}
     >
@@ -78,21 +78,21 @@ export function MonitoringPeakPanel({
         {peaks.length > 0 ? (
           peaks.map((check) => (
             <div
-              className="rounded-xl border border-slate-200/70 bg-slate-50/50 p-3"
+              className="rounded-xl border border-line bg-subtle p-3"
               key={`${check.id}-${check.checkedAt}-peak`}
             >
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="min-w-0">
-                  <p className="m-0 truncate text-sm font-semibold text-slate-950">
+                  <p className="m-0 truncate text-sm font-semibold text-ink">
                     {check.label}
                   </p>
-                  <p className="m-0 mt-1 text-xs text-slate-500">
+                  <p className="m-0 mt-1 text-xs text-ink-muted">
                     {check.module} / {formatDateTime(check.checkedAt)}
                   </p>
                 </div>
                 <Badge variant={getRiskVariant(check.risk)}>{check.risk}</Badge>
               </div>
-              <div className="mt-3 h-2 overflow-hidden rounded-full bg-white ring-1 ring-slate-200/70">
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface ring-1 ring-line">
                 <div
                   className={`h-full rounded-full ${responsePerformanceBarClass(check.responseMs)}`}
                   style={{
@@ -100,7 +100,7 @@ export function MonitoringPeakPanel({
                   }}
                 />
               </div>
-              <div className="mt-2 flex items-center justify-between text-xs font-semibold text-slate-600">
+              <div className="mt-2 flex items-center justify-between text-xs font-semibold text-ink-soft">
                 <span>{check.responseMs}ms</span>
                 <span>{formatPayload(check.payloadBytes)}</span>
               </div>
@@ -111,9 +111,9 @@ export function MonitoringPeakPanel({
         )}
       </div>
       {maxPayloadCheck && !isTvMode ? (
-        <p className="m-0 mt-4 rounded-xl bg-yellow-50 p-3 text-xs leading-5 text-slate-600 ring-1 ring-yellow-200">
+        <p className="m-0 mt-4 rounded-xl bg-yellow-50 dark:bg-yellow-500/12 p-3 text-xs leading-5 text-ink-soft ring-1 ring-yellow-200 dark:ring-yellow-500/25">
           Maior payload recente:{" "}
-          <strong className="text-slate-950">{maxPayloadCheck.label}</strong>{" "}
+          <strong className="text-ink">{maxPayloadCheck.label}</strong>{" "}
           com {formatPayload(maxPayloadCheck.payloadBytes)}.
         </p>
       ) : null}
@@ -168,13 +168,13 @@ function PerformanceLineChart({ checks, isTvMode }: PerformanceLineChartProps) {
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
+    <div className="rounded-2xl border border-line bg-surface p-4 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="m-0 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-400">
+          <p className="m-0 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-ink-muted">
             Curva de resposta
           </p>
-          <p className="m-0 mt-1 text-2xl font-semibold text-slate-950">
+          <p className="m-0 mt-1 text-2xl font-semibold text-ink">
             {maxResponse}ms
           </p>
         </div>
@@ -184,11 +184,11 @@ function PerformanceLineChart({ checks, isTvMode }: PerformanceLineChartProps) {
           >
             pico {maxResponse}ms
           </span>
-          <span className="rounded-full bg-slate-50 px-2.5 py-1 text-slate-500 ring-1 ring-slate-200/70">
+          <span className="rounded-full bg-subtle px-2.5 py-1 text-ink-muted ring-1 ring-line">
             {visibleChecks.length} checks
           </span>
           {latestCheck ? (
-            <span className="rounded-full bg-slate-50 px-2.5 py-1 text-slate-500 ring-1 ring-slate-200/70">
+            <span className="rounded-full bg-subtle px-2.5 py-1 text-ink-muted ring-1 ring-line">
               ultimo {latestCheck.responseMs}ms
             </span>
           ) : null}
@@ -249,11 +249,11 @@ function PerformanceLineChart({ checks, isTvMode }: PerformanceLineChartProps) {
           })}
         </svg>
       </div>
-      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-slate-500">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 text-xs font-semibold text-ink-muted">
         <span>
           menor {minResponse}ms / maior {maxResponse}ms
         </span>
-        <span className={delta > 0 ? "text-yellow-700" : "text-emerald-700"}>
+        <span className={delta > 0 ? "text-yellow-700 dark:text-yellow-300" : "text-emerald-700 dark:text-emerald-300"}>
           {delta > 0 ? "+" : ""}
           {delta}ms no ultimo check
         </span>

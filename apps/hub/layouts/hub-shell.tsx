@@ -577,7 +577,7 @@ export function HubShell({
         topbar={
           isOperationalChrome ? (
             <PanteonModuleTabsBar
-              brandSrc={panteonBrandIconSrc}
+              brandSrc="/panteon-mark-light.png"
               homeActive={!activeModuleId}
               onCloseTab={handleCloseModuleTab}
               onOpenLauncher={handleOpenModuleLauncher}
@@ -635,22 +635,22 @@ export function HubShell({
         <>
           <button
             aria-label="Fechar menu Panteon"
-            className="fixed inset-0 z-[var(--uix-z-overlay)] cursor-default bg-black/[0.06] outline-none"
+            className="fixed inset-0 z-[var(--uix-z-overlay)] cursor-default bg-black/50 outline-none"
             onClick={() => setIsOperationalRailOpen(false)}
             type="button"
           />
           <aside
             aria-label="Menu Panteon"
-            className="careli-module-launcher fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-[15.25rem] gap-2 rounded-xl border border-white/[0.09] bg-[#232832] p-2.5 shadow-2xl"
+            className="careli-module-launcher fixed left-3 top-[4.25rem] z-[var(--uix-z-modal)] grid w-[15.25rem] gap-2 rounded-xl border border-white/[0.09] bg-[#242725] p-2.5 shadow-2xl"
           >
             <Tooltip content="Panteon" placement="right">
               <Link
                 aria-label="Voltar para a Home do Panteon"
-                className="careli-module-launcher__home flex h-12 items-center gap-3 rounded-lg border border-white/[0.075] bg-white/[0.04] px-2.5 text-[#d7dee8] outline-none transition hover:border-[#A07C3B]/45 hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                className="careli-module-launcher__home flex h-12 items-center gap-3 rounded-lg border border-white/[0.075] bg-white/[0.04] px-2.5 text-[#dadcd7] outline-none transition hover:border-[#A07C3B]/45 hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                 href="/"
                 onClick={() => setIsOperationalRailOpen(false)}
               >
-                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+                <span className="grid h-8 w-8 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101211]">
                   <PanteonBrandMark
                     className="h-6 w-6"
                     src={panteonBrandIconSrc}
@@ -672,7 +672,7 @@ export function HubShell({
                 {item.disabled ? (
                   <button
                     aria-label={`${item.label} em preparacao`}
-                    className="relative flex h-11 w-full cursor-not-allowed items-center gap-3 rounded-lg border border-transparent px-2.5 text-[#687386] opacity-60 outline-none"
+                    className="relative flex h-11 w-full cursor-not-allowed items-center gap-3 rounded-lg border border-transparent px-2.5 text-[#7a7d76] opacity-60 outline-none"
                     disabled
                     type="button"
                   >
@@ -690,14 +690,14 @@ export function HubShell({
                         ? "page"
                         : undefined
                     }
-                    className="careli-module-launcher__item relative flex h-11 items-center gap-3 rounded-lg border border-transparent px-2.5 text-[#c5ceda] outline-none transition hover:border-white/[0.08] hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)] aria-[current=page]:border-[#A07C3B]/35 aria-[current=page]:bg-[#171b23] aria-[current=page]:text-white"
+                    className="careli-module-launcher__item relative flex h-11 items-center gap-3 rounded-lg border border-transparent px-2.5 text-[#c8cac4] outline-none transition hover:border-white/[0.08] hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)] aria-[current=page]:border-[#A07C3B]/35 aria-[current=page]:bg-[#2b2e2c] aria-[current=page]:text-white"
                     href={item.path}
                     onClick={() => setIsOperationalRailOpen(false)}
                   >
                     {isShellPathActive(pathname, item.path) ? (
                       <span className="absolute left-0 top-2 h-7 w-0.5 rounded-full bg-[#D6B56F]" />
                     ) : null}
-                    <span className="careli-module-launcher__icon grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.055] text-[#d7dee8]">
+                    <span className="careli-module-launcher__icon grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-white/[0.055] text-[#dadcd7]">
                       {item.icon}
                     </span>
                     <span className="min-w-0 flex-1 truncate text-sm font-semibold">
@@ -710,7 +710,7 @@ export function HubShell({
             <Tooltip content="Sair" placement="right">
               <button
                 aria-label="Sair"
-                className="flex h-10 w-full items-center gap-3 rounded-lg border border-transparent px-2.5 text-[#aeb7c5] outline-none transition hover:border-white/[0.08] hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
+                className="flex h-10 w-full items-center gap-3 rounded-lg border border-transparent px-2.5 text-[#b0b2ac] outline-none transition hover:border-white/[0.08] hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[var(--uix-color-focus)]"
                 onClick={() => {
                   void signOut();
                 }}

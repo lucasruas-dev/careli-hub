@@ -2070,8 +2070,8 @@ export function ZeusPage({
     <>
       <WorkspaceLayout>
         {error ? (
-          <Surface bordered className="border-red-100 bg-red-50 p-4">
-            <div className="flex items-center gap-2 text-sm font-semibold text-red-700">
+          <Surface bordered className="border-red-100 dark:border-red-500/25 bg-red-50 dark:bg-red-500/12 p-4">
+            <div className="flex items-center gap-2 text-sm font-semibold text-red-700 dark:text-red-300">
               <AlertTriangle className="size-4" />
               {error}
             </div>
@@ -2342,7 +2342,7 @@ export function ZeusPage({
 
   if (standalone) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-950">
+      <main className="min-h-screen bg-canvas text-ink">
         {pageContent}
       </main>
     );
@@ -2350,7 +2350,7 @@ export function ZeusPage({
 
   return (
     <HubShell chrome="operational" layoutMode="module">
-      <div className="h-full overflow-y-auto bg-[#f3f6fa]">{pageContent}</div>
+      <div className="h-full overflow-y-auto bg-canvas">{pageContent}</div>
     </HubShell>
   );
 }
@@ -2384,26 +2384,26 @@ function AlertProtocolFeedbackDrawer({
     <div className="fixed inset-0 z-50">
       <button
         aria-label="Fechar devolutiva tecnica"
-        className="absolute inset-0 bg-slate-950/25 backdrop-blur-[1px]"
+        className="absolute inset-0 bg-black/25 backdrop-blur-[1px]"
         onClick={onClose}
         type="button"
       />
-      <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col overflow-hidden border-l border-slate-200/80 bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+      <aside className="absolute right-0 top-0 flex h-full w-full max-w-xl flex-col overflow-hidden border-l border-line bg-surface shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-line p-5">
           <div>
-            <p className="m-0 text-xs font-semibold uppercase text-[#7A5E2C]">
+            <p className="m-0 text-xs font-semibold uppercase text-[#7a5e2c] dark:text-[#d9b877]">
               Devolutiva tecnica
             </p>
-            <h2 className="m-0 mt-1 text-xl font-semibold text-slate-950">
+            <h2 className="m-0 mt-1 text-xl font-semibold text-ink">
               {protocol.protocol}
             </h2>
-            <p className="m-0 mt-2 text-sm leading-6 text-slate-600">
+            <p className="m-0 mt-2 text-sm leading-6 text-ink-soft">
               {protocol.title}
             </p>
           </div>
           <button
             aria-label="Fechar"
-            className="inline-flex size-10 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            className="inline-flex size-10 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
             onClick={onClose}
             type="button"
           >
@@ -2412,7 +2412,7 @@ function AlertProtocolFeedbackDrawer({
         </div>
 
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
-          <div className="grid gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4 text-sm leading-6 text-slate-700">
+          <div className="grid gap-3 rounded-xl border border-line bg-subtle p-4 text-sm leading-6 text-ink">
             <div className="flex flex-wrap gap-2">
               <Badge variant={riskToBadgeVariant(protocol.level)}>
                 {protocol.level}
@@ -2420,20 +2420,20 @@ function AlertProtocolFeedbackDrawer({
               <Badge variant={alertFeedbackStatusVariant(status)}>
                 {alertFeedbackStatusLabel(status)}
               </Badge>
-              <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-500 ring-1 ring-slate-200/70">
+              <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-muted ring-1 ring-line">
                 {protocol.occurrenceCount} ocorrencias
               </span>
             </div>
             <p className="m-0">
-              <span className="font-semibold text-slate-950">Origem: </span>
+              <span className="font-semibold text-ink">Origem: </span>
               {protocol.module} / {protocol.origin}
             </p>
             <p className="m-0">
-              <span className="font-semibold text-slate-950">Impacto: </span>
+              <span className="font-semibold text-ink">Impacto: </span>
               {protocol.impact}
             </p>
             <p className="m-0">
-              <span className="font-semibold text-slate-950">
+              <span className="font-semibold text-ink">
                 Recomendacao:{" "}
               </span>
               {protocol.recommendation}
@@ -2441,11 +2441,11 @@ function AlertProtocolFeedbackDrawer({
           </div>
 
           <label className="mt-5 block">
-            <span className="text-xs font-semibold uppercase text-slate-500">
+            <span className="text-xs font-semibold uppercase text-ink-muted">
               Status do parecer
             </span>
             <select
-              className="mt-2 h-11 w-full rounded-lg border border-slate-200/80 bg-white px-3 text-sm font-semibold text-slate-700 outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/15"
+              className="mt-2 h-11 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/15"
               onChange={(event) =>
                 onStatusChange(
                   event.target.value as OperationsAlertFeedbackStatus,
@@ -2462,11 +2462,11 @@ function AlertProtocolFeedbackDrawer({
           </label>
 
           <label className="mt-4 block">
-            <span className="text-xs font-semibold uppercase text-slate-500">
+            <span className="text-xs font-semibold uppercase text-ink-muted">
               Parecer do dev
             </span>
             <textarea
-              className="mt-2 min-h-40 w-full resize-y rounded-xl border border-slate-200/80 bg-white p-3 text-sm leading-6 text-slate-700 outline-none transition placeholder:text-slate-400 focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/15"
+              className="mt-2 min-h-40 w-full resize-y rounded-xl border border-line bg-surface p-3 text-sm leading-6 text-ink outline-none transition placeholder:text-ink-muted focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/15"
               onChange={(event) => onFeedbackChange(event.target.value)}
               placeholder="Cole aqui a devolutiva: persiste, corrigido, nao observado, bloqueio, evidencia e proxima acao."
               value={feedback}
@@ -2474,22 +2474,22 @@ function AlertProtocolFeedbackDrawer({
           </label>
 
           {error ? (
-            <p className="mt-3 rounded-lg border border-red-100 bg-red-50 p-3 text-sm font-semibold text-red-700">
+            <p className="mt-3 rounded-lg border border-red-100 dark:border-red-500/25 bg-red-50 dark:bg-red-500/12 p-3 text-sm font-semibold text-red-700 dark:text-red-300">
               {error}
             </p>
           ) : null}
 
           {protocol.technicalFeedbackAt ? (
-            <p className="m-0 mt-4 text-xs font-semibold text-slate-500">
+            <p className="m-0 mt-4 text-xs font-semibold text-ink-muted">
               Ultima devolutiva:{" "}
               {formatOperationDateTime(protocol.technicalFeedbackAt)}
             </p>
           ) : null}
         </div>
 
-        <div className="border-t border-slate-100 p-5">
+        <div className="border-t border-line p-5">
           <button
-            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533] disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="inline-flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:bg-subtle"
             disabled={isSaving}
             onClick={onSave}
             type="button"
@@ -2514,12 +2514,12 @@ function ZeusAccessState({
 }) {
   const content = (
     <WorkspaceLayout>
-        <Surface bordered className="border-slate-200/70 bg-white p-6">
+        <Surface bordered className="border-line bg-surface p-6">
           <UixEmptyState
             description={description}
             title={title}
             visual={
-              <span className="flex size-12 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+              <span className="flex size-12 items-center justify-center rounded-xl bg-subtle text-[#A07C3B] ring-1 ring-line">
                 <ShieldAlert className="size-5" />
               </span>
             }
@@ -2530,7 +2530,7 @@ function ZeusAccessState({
 
   if (standalone) {
     return (
-      <main className="min-h-screen bg-slate-50 text-slate-950">
+      <main className="min-h-screen bg-canvas text-ink">
         {content}
       </main>
     );
@@ -2538,7 +2538,7 @@ function ZeusAccessState({
 
   return (
     <HubShell chrome="operational" layoutMode="module">
-      <div className="h-full overflow-y-auto bg-[#f3f6fa]">{content}</div>
+      <div className="h-full overflow-y-auto bg-canvas">{content}</div>
     </HubShell>
   );
 }
@@ -2583,10 +2583,10 @@ function _OperationsSourcePanel({
 
   return (
     <section className="grid grid-cols-1 gap-3 md:grid-cols-[minmax(0,1fr)_auto]">
-      <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex min-w-0 items-start gap-3">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-subtle text-[#A07C3B] ring-1 ring-line">
               {isStructured ? (
                 <Database className="size-5" />
               ) : (
@@ -2594,17 +2594,17 @@ function _OperationsSourcePanel({
               )}
             </span>
             <div className="min-w-0">
-              <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+              <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
                 fonte operacional
               </p>
-              <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
+              <h2 className="m-0 mt-1 text-base font-semibold text-ink">
                 {source.label}
               </h2>
-              <p className="m-0 mt-1 text-sm leading-6 text-slate-600">
+              <p className="m-0 mt-1 text-sm leading-6 text-ink-soft">
                 {source.description}
               </p>
               {source.error ? (
-                <p className="m-0 mt-2 text-xs font-semibold text-amber-700">
+                <p className="m-0 mt-2 text-xs font-semibold text-amber-700 dark:text-amber-300">
                   {source.error}
                 </p>
               ) : null}
@@ -2616,8 +2616,8 @@ function _OperationsSourcePanel({
         </div>
       </div>
 
-      <div className="grid min-w-[18rem] gap-2 rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="flex items-center justify-between gap-3 text-xs font-semibold text-slate-500">
+      <div className="grid min-w-[18rem] gap-2 rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center justify-between gap-3 text-xs font-semibold text-ink-muted">
           <span>{source.recordsCount} registros</span>
           <span>
             {latestSync
@@ -2626,7 +2626,7 @@ function _OperationsSourcePanel({
           </span>
         </div>
         <button
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
           onClick={onRefresh}
           type="button"
         >
@@ -2634,7 +2634,7 @@ function _OperationsSourcePanel({
           Atualizar tela
         </button>
         <button
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533]"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-inverse px-3 text-sm font-semibold text-brand-ink transition-colors hover:opacity-90"
           onClick={onCreateRecord}
           type="button"
         >
@@ -2642,7 +2642,7 @@ function _OperationsSourcePanel({
           Novo registro
         </button>
         <button
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isSyncing}
           onClick={onSync}
           type="button"
@@ -2653,7 +2653,7 @@ function _OperationsSourcePanel({
           {isSyncing ? "Sincronizando" : "Sincronizar diário"}
         </button>
         <button
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5B24] transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-60"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7a5b24] dark:text-[#d9b877] transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/10 disabled:cursor-not-allowed disabled:opacity-60"
           disabled={isImportingLocalFile}
           onClick={onImportLocalFile}
           type="button"
@@ -2695,7 +2695,7 @@ function OperationRecordModal({
   }
 
   return (
-    <div className="fixed inset-0 z-[80] bg-slate-950/25 p-4 backdrop-blur-[1px]">
+    <div className="fixed inset-0 z-[80] bg-black/25 p-4 backdrop-blur-[1px]">
       <button
         aria-label="Fechar novo registro operacional"
         className="absolute inset-0 cursor-default"
@@ -2703,28 +2703,28 @@ function OperationRecordModal({
         type="button"
       />
       <form
-        className="relative ml-auto flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
+        className="relative ml-auto flex h-full w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_24px_80px_rgba(15,23,42,0.24)]"
         onSubmit={(event) => {
           event.preventDefault();
           onSave();
         }}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+        <div className="flex items-start justify-between gap-4 border-b border-line p-5">
           <div>
             <p className="m-0 text-xs font-semibold uppercase text-[#A07C3B]">
               Supabase vivo
             </p>
-            <h2 className="m-0 mt-1 text-xl font-semibold text-slate-950">
+            <h2 className="m-0 mt-1 text-xl font-semibold text-ink">
               Novo registro operacional
             </h2>
-              <p className="m-0 mt-2 text-sm leading-6 text-slate-600">
+              <p className="m-0 mt-2 text-sm leading-6 text-ink-soft">
                 Registra direto no banco. A tela atualiza pela API; deploy fica
                 reservado para mudanca de codigo.
               </p>
           </div>
           <button
             aria-label="Fechar novo registro operacional"
-            className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            className="inline-flex size-10 shrink-0 items-center justify-center rounded-xl border border-line bg-surface text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
             onClick={onClose}
             type="button"
           >
@@ -2734,11 +2734,11 @@ function OperationRecordModal({
 
         <div className="grid min-h-0 flex-1 gap-4 overflow-y-auto p-5">
           <label className="grid gap-2">
-            <span className="text-xs font-semibold uppercase text-slate-500">
+            <span className="text-xs font-semibold uppercase text-ink-muted">
               Titulo
             </span>
             <input
-              className="h-11 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
+              className="h-11 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]"
               onChange={(event) => onChange("subject", event.target.value)}
               placeholder="Ex.: [Zeus] Registro vivo no banco"
               value={form.subject}
@@ -2773,11 +2773,11 @@ function OperationRecordModal({
           </div>
 
           <label className="grid gap-2">
-            <span className="text-xs font-semibold uppercase text-slate-500">
+            <span className="text-xs font-semibold uppercase text-ink-muted">
               Tela ou area
             </span>
             <input
-              className="h-11 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
+              className="h-11 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none transition-colors focus:border-[#A07C3B]"
               onChange={(event) => onChange("screen", event.target.value)}
               value={form.screen}
             />
@@ -2812,17 +2812,17 @@ function OperationRecordModal({
           </div>
 
           <label className="grid gap-2">
-            <span className="text-xs font-semibold uppercase text-slate-500">
+            <span className="text-xs font-semibold uppercase text-ink-muted">
               Proxima squad recomendada
             </span>
             <input
-              className="h-11 rounded-lg border border-slate-200/70 bg-white px-3 text-sm text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
+              className="h-11 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none transition-colors focus:border-[#A07C3B]"
               onChange={(event) => onChange("nextSquad", event.target.value)}
               value={form.nextSquad}
             />
           </label>
 
-          <label className="flex items-center gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3 text-sm font-semibold text-slate-700">
+          <label className="flex items-center gap-3 rounded-xl border border-line bg-subtle p-3 text-sm font-semibold text-ink">
             <input
               checked={form.needsDeploy}
               className="size-4 accent-[#A07C3B]"
@@ -2833,22 +2833,22 @@ function OperationRecordModal({
           </label>
 
           {error ? (
-            <p className="m-0 rounded-xl bg-red-50 p-3 text-sm font-semibold text-red-700 ring-1 ring-red-100">
+            <p className="m-0 rounded-xl bg-red-50 dark:bg-red-500/12 p-3 text-sm font-semibold text-red-700 dark:text-red-300 ring-1 ring-red-100 dark:ring-red-500/20">
               {error}
             </p>
           ) : null}
         </div>
 
-        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-slate-100 p-5">
+        <div className="flex flex-wrap items-center justify-end gap-3 border-t border-line p-5">
           <button
-            className="inline-flex h-10 items-center justify-center rounded-lg border border-slate-200/70 bg-white px-4 text-sm font-semibold text-slate-600 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            className="inline-flex h-10 items-center justify-center rounded-lg border border-line bg-surface px-4 text-sm font-semibold text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
             onClick={onClose}
             type="button"
           >
             Cancelar
           </button>
           <button
-            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533] disabled:cursor-not-allowed disabled:bg-slate-400"
+            className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:bg-subtle"
             disabled={isSaving}
             type="submit"
           >
@@ -2874,11 +2874,11 @@ function SelectField({
 }) {
   return (
     <label className="grid gap-2">
-      <span className="text-xs font-semibold uppercase text-slate-500">
+      <span className="text-xs font-semibold uppercase text-ink-muted">
         {label}
       </span>
       <select
-        className="h-11 rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
+        className="h-11 rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none transition-colors focus:border-[#A07C3B]"
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >
@@ -2905,11 +2905,11 @@ function TextAreaField({
 }) {
   return (
     <label className="grid gap-2">
-      <span className="text-xs font-semibold uppercase text-slate-500">
+      <span className="text-xs font-semibold uppercase text-ink-muted">
         {label}
       </span>
       <textarea
-        className="min-h-24 rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm leading-6 text-slate-950 outline-none transition-colors focus:border-[#A07C3B]"
+        className="min-h-24 rounded-lg border border-line bg-surface px-3 py-2 text-sm leading-6 text-ink outline-none transition-colors focus:border-[#A07C3B]"
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         value={value}
@@ -2946,7 +2946,7 @@ function _ZeusCommandCenter({
   return (
     <Surface
       bordered
-      className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden border-line bg-surface p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
       <div className="grid gap-0 xl:grid-cols-[minmax(0,1fr)_25rem]">
         <div className="p-5">
@@ -2955,10 +2955,10 @@ function _ZeusCommandCenter({
               <p className="m-0 text-xs font-semibold uppercase text-[#A07C3B]">
                 centro operacional
               </p>
-              <h2 className="m-0 mt-1 text-xl font-semibold tracking-normal text-slate-950">
+              <h2 className="m-0 mt-1 text-xl font-semibold tracking-normal text-ink">
                 Operacao do Panteon em tempo real
               </h2>
-              <p className="m-0 mt-2 max-w-3xl text-sm leading-6 text-slate-600">
+              <p className="m-0 mt-2 max-w-3xl text-sm leading-6 text-ink-soft">
                 Alertas, historico, releases e pendencias organizados para
                 decidir a proxima acao sem repetir informacao na tela.
               </p>
@@ -3008,20 +3008,20 @@ function _ZeusCommandCenter({
           </div>
         </div>
 
-        <aside className="border-t border-slate-100 bg-slate-50/60 p-5 xl:border-l xl:border-t-0">
-          <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+        <aside className="border-t border-line bg-subtle p-5 xl:border-l xl:border-t-0">
+          <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
             próximo encaminhamento
           </p>
-          <p className="m-0 mt-2 text-lg font-semibold text-slate-950">
+          <p className="m-0 mt-2 text-lg font-semibold text-ink">
             {nextSquad}
           </p>
-          <p className="m-0 mt-3 line-clamp-3 text-sm leading-6 text-slate-600">
+          <p className="m-0 mt-3 line-clamp-3 text-sm leading-6 text-ink-soft">
             {latestRecord?.shortSummary ??
               "Aguardando leitura do diário operacional."}
           </p>
           <div className="mt-4 grid grid-cols-2 gap-2">
             <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#1b2533]"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-inverse px-3 text-xs font-semibold text-brand-ink transition-colors hover:opacity-90"
               onClick={onOpenCritical}
               type="button"
             >
@@ -3029,7 +3029,7 @@ function _ZeusCommandCenter({
               Atenção
             </button>
             <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               onClick={onOpenPoAi}
               type="button"
             >
@@ -3037,7 +3037,7 @@ function _ZeusCommandCenter({
               PO AI
             </button>
             <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               onClick={onOpenTimeline}
               type="button"
             >
@@ -3045,7 +3045,7 @@ function _ZeusCommandCenter({
               Timeline
             </button>
             <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               onClick={onOpenMonitoring}
               type="button"
             >
@@ -3053,7 +3053,7 @@ function _ZeusCommandCenter({
               Monitoring
             </button>
             <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               onClick={onOpenAudits}
               type="button"
             >
@@ -3079,21 +3079,21 @@ function FocusMetric({
   value: number | string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <div className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+          <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
             {label}
           </p>
-          <p className="m-0 mt-2 text-2xl font-semibold text-slate-950">
+          <p className="m-0 mt-2 text-2xl font-semibold text-ink">
             {value}
           </p>
         </div>
-        <span className="flex size-9 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+        <span className="flex size-9 items-center justify-center rounded-lg bg-subtle text-[#A07C3B] ring-1 ring-line">
           {icon}
         </span>
       </div>
-      <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-slate-500">
+      <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-ink-muted">
         {detail}
       </p>
     </div>
@@ -3251,13 +3251,13 @@ function DatabaseMonitoringView({
     <section
       className={
         isTvMode
-          ? "fixed inset-0 z-[60] h-screen overflow-hidden bg-slate-100 p-4"
+          ? "fixed inset-0 z-[60] h-screen overflow-hidden bg-subtle p-4"
           : "grid gap-5"
       }
     >
       <Surface
         bordered
-        className={`border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+        className={`border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
           isTvMode ? "flex h-full min-h-0 flex-col overflow-hidden p-4" : "p-5"
         }`}
       >
@@ -3273,7 +3273,7 @@ function DatabaseMonitoringView({
               onChange={onIntervalChange}
             />
             <button
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               onClick={onRefresh}
               type="button"
             >
@@ -3283,7 +3283,7 @@ function DatabaseMonitoringView({
               Atualizar agora
             </button>
             <button
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#1b2533]"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg bg-inverse px-3 text-xs font-semibold text-brand-ink transition-colors hover:opacity-90"
               onClick={onAnalyze}
               type="button"
             >
@@ -3291,7 +3291,7 @@ function DatabaseMonitoringView({
               Analisar agora
             </button>
             <button
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-surface px-3 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/5"
               onClick={onOpenPoAi}
               type="button"
             >
@@ -3299,7 +3299,7 @@ function DatabaseMonitoringView({
               Ops Copilot
             </button>
             <button
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
               disabled={isAuthDiagnosticsLoading}
               onClick={() => void runAuthDiagnostics()}
               type="button"
@@ -3319,8 +3319,8 @@ function DatabaseMonitoringView({
               }
               className={`inline-flex size-9 items-center justify-center rounded-lg text-xs font-semibold transition-colors ${
                 isTvMode
-                  ? "bg-[#101820] text-white hover:bg-[#1b2533]"
-                  : "border border-slate-200/70 bg-white text-slate-600 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+                  ? "bg-inverse text-brand-ink hover:opacity-90"
+                  : "border border-line bg-surface text-ink-soft hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               }`}
               onClick={() => setIsTvMode((current) => !current)}
               type="button"
@@ -3335,7 +3335,7 @@ function DatabaseMonitoringView({
         </div>
 
         {error ? (
-          <p className="mt-4 rounded-xl border border-red-100 bg-red-50 p-3 text-sm font-semibold text-red-700">
+          <p className="mt-4 rounded-xl border border-red-100 dark:border-red-500/25 bg-red-50 dark:bg-red-500/12 p-3 text-sm font-semibold text-red-700 dark:text-red-300">
             {error}
           </p>
         ) : null}
@@ -3465,7 +3465,7 @@ function AuthDiagnosticsPanel({
         : "warning";
 
   return (
-    <div className="mt-4 rounded-2xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <div className="mt-4 rounded-2xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PanelTitle
           eyebrow="diagnostico sob demanda"
@@ -3477,7 +3477,7 @@ function AuthDiagnosticsPanel({
         </Badge>
       </div>
       {error ? (
-        <p className="m-0 mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+        <p className="m-0 mt-3 rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 p-3 text-sm font-semibold text-amber-800 dark:text-amber-300">
           {error}
         </p>
       ) : null}
@@ -3515,7 +3515,7 @@ function AuthDiagnosticsPanel({
         <div className="mt-3 grid gap-2">
           {diagnostics.recommendations.map((recommendation) => (
             <p
-              className="m-0 rounded-xl bg-slate-50 px-3 py-2 text-xs font-medium leading-5 text-slate-600 ring-1 ring-slate-200/70"
+              className="m-0 rounded-xl bg-subtle px-3 py-2 text-xs font-medium leading-5 text-ink-soft ring-1 ring-line"
               key={recommendation}
             >
               {recommendation}
@@ -3538,17 +3538,17 @@ function AuthDiagnosticsMetric({
 }) {
   const toneClass =
     tone === "danger"
-      ? "border-red-200 bg-red-50 text-red-700"
+      ? "border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/12 text-red-700 dark:text-red-300"
       : tone === "warning"
-        ? "border-amber-200 bg-amber-50 text-amber-700"
-        : "border-slate-200 bg-slate-50 text-slate-700";
+        ? "border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"
+        : "border-line bg-subtle text-ink";
 
   return (
     <div className={`rounded-xl border p-3 ${toneClass}`}>
       <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.08em] opacity-75">
         {label}
       </p>
-      <p className="m-0 mt-1 text-xl font-semibold text-slate-950">{value}</p>
+      <p className="m-0 mt-1 text-xl font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -3561,16 +3561,16 @@ function PanteonPerformanceIndicators({
   isTvMode: boolean;
 }) {
   return (
-    <div className="mt-5 rounded-2xl border border-slate-200/70 bg-slate-50/60 p-4">
+    <div className="mt-5 rounded-2xl border border-line bg-subtle p-4">
       <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
         <div>
           <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-[#A07C3B]">
             Vercel + Supabase
           </p>
-          <h3 className="m-0 mt-1 text-lg font-semibold text-slate-950">
+          <h3 className="m-0 mt-1 text-lg font-semibold text-ink">
             Minha visao pro Panteon
           </h3>
-          <p className="m-0 mt-1 text-xs leading-5 text-slate-500">
+          <p className="m-0 mt-1 text-xs leading-5 text-ink-muted">
             Vercel mede entrada e funcao; Supabase mostra dados, consultas e
             estabilidade.
           </p>
@@ -3600,14 +3600,14 @@ function PanteonPerformanceIndicatorCard({
 }) {
   return (
     <div
-      className={`min-w-0 rounded-xl border bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${performanceCardBorderClass(indicator.tone)}`}
+      className={`min-w-0 rounded-xl border bg-surface p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${performanceCardBorderClass(indicator.tone)}`}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="m-0 truncate text-xs font-semibold uppercase tracking-[0.12em] text-slate-400">
+          <p className="m-0 truncate text-xs font-semibold uppercase tracking-[0.12em] text-ink-muted">
             {indicator.label}
           </p>
-          <p className="m-0 mt-2 truncate text-2xl font-semibold text-slate-950">
+          <p className="m-0 mt-2 truncate text-2xl font-semibold text-ink">
             {indicator.value}
           </p>
         </div>
@@ -3617,10 +3617,10 @@ function PanteonPerformanceIndicatorCard({
           {getPanteonIndicatorIcon(indicator.id)}
         </span>
       </div>
-      <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-slate-500">
+      <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-ink-muted">
         {indicator.detail}
       </p>
-      <p className="m-0 mt-2 truncate text-[0.68rem] font-semibold text-slate-400">
+      <p className="m-0 mt-2 truncate text-[0.68rem] font-semibold text-ink-muted">
         {indicator.evidence}
       </p>
     </div>
@@ -3769,7 +3769,7 @@ function MonitoringHotspotsPanel({
   return (
     <Surface
       bordered
-      className={`min-w-0 border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
+      className={`min-w-0 border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${
         isTvMode ? "min-h-0 overflow-hidden p-4" : "p-5"
       }`}
     >
@@ -3782,16 +3782,16 @@ function MonitoringHotspotsPanel({
         {hotspots.length > 0 ? (
           hotspots.map((source) => (
             <button
-              className={`flex items-center justify-between gap-3 rounded-xl border bg-white p-3 text-left transition hover:bg-slate-50 ${performanceCardBorderClass(monitoringSourceTone(source.risk, source.status))}`}
+              className={`flex items-center justify-between gap-3 rounded-xl border bg-surface p-3 text-left transition hover:bg-subtle ${performanceCardBorderClass(monitoringSourceTone(source.risk, source.status))}`}
               key={source.id}
               onClick={() => onSelectSource(source.id)}
               type="button"
             >
               <div className="min-w-0">
-                <p className="m-0 truncate text-sm font-semibold text-slate-950">
+                <p className="m-0 truncate text-sm font-semibold text-ink">
                   {source.label}
                 </p>
-                <p className="m-0 mt-1 text-xs text-slate-500">
+                <p className="m-0 mt-1 text-xs text-ink-muted">
                   pico {source.peakResponseMs}ms / payload{" "}
                   {formatBytes(source.peakPayloadBytes)}
                 </p>
@@ -3817,9 +3817,9 @@ function MonitoringSourceDialog({
   source: MonitoringSourceSummary;
 }) {
   return (
-    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-slate-950/35 px-4 py-6 backdrop-blur-[2px]">
-      <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-slate-200/70 bg-white shadow-2xl">
-        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-100 px-5 py-4">
+    <div className="fixed inset-0 z-[70] flex items-start justify-center bg-black/35 px-4 py-6 backdrop-blur-[2px]">
+      <div className="flex max-h-[calc(100vh-3rem)] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+        <div className="flex flex-wrap items-start justify-between gap-3 border-b border-line px-5 py-4">
           <PanelTitle
             eyebrow="detalhe da instancia"
             icon={getMonitoringSourceIcon(source.id)}
@@ -3827,7 +3827,7 @@ function MonitoringSourceDialog({
           />
           <button
             aria-label="Fechar detalhe da fonte"
-            className="inline-flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            className="inline-flex size-9 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
             onClick={onClose}
             type="button"
           >
@@ -3853,12 +3853,12 @@ function MonitoringSourceDialog({
               value={formatBytes(source.payloadBytes)}
             />
           </div>
-          <div className="mt-4 rounded-xl border border-slate-200/70 bg-slate-50/40 p-4">
+          <div className="mt-4 rounded-xl border border-line bg-subtle p-4">
             <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-              <p className="m-0 text-sm font-semibold text-slate-950">
+              <p className="m-0 text-sm font-semibold text-ink">
                 Tendencia de resposta
               </p>
-              <p className="m-0 text-xs text-slate-500">
+              <p className="m-0 text-xs text-ink-muted">
                 ultimo check:{" "}
                 {source.lastCheckAt
                   ? formatOperationDateTime(source.lastCheckAt)
@@ -3878,11 +3878,11 @@ function MonitoringSourceDialog({
           <div className="mt-4 grid gap-3">
             {source.currentChecks.map((check) => (
               <div
-                className="rounded-xl border border-slate-200/70 bg-white p-4 text-xs leading-5 text-slate-600"
+                className="rounded-xl border border-line bg-surface p-4 text-xs leading-5 text-ink-soft"
                 key={`${source.id}-${check.id}-detail`}
               >
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="m-0 font-semibold text-slate-950">
+                  <p className="m-0 font-semibold text-ink">
                     {check.label}
                   </p>
                   <Badge variant={riskToBadgeVariant(check.risk)}>
@@ -3893,11 +3893,11 @@ function MonitoringSourceDialog({
                   Esperado: {check.expected.description} / Recebido:{" "}
                   {check.received}
                 </p>
-                <p className="m-0 mt-1 break-all text-slate-500">
+                <p className="m-0 mt-1 break-all text-ink-muted">
                   {check.method} {check.endpoint}
                 </p>
                 {check.error ? (
-                  <p className="m-0 mt-2 rounded-lg bg-red-50 p-2 font-semibold text-red-700">
+                  <p className="m-0 mt-2 rounded-lg bg-red-50 dark:bg-red-500/12 p-2 font-semibold text-red-700 dark:text-red-300">
                     {check.error}
                   </p>
                 ) : null}
@@ -3918,11 +3918,11 @@ function MonitoringDetailMetric({
   value: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white p-4">
-      <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+    <div className="rounded-xl border border-line bg-surface p-4">
+      <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
         {label}
       </p>
-      <p className="m-0 mt-2 truncate text-lg font-semibold text-slate-950">
+      <p className="m-0 mt-2 truncate text-lg font-semibold text-ink">
         {value}
       </p>
     </div>
@@ -3947,13 +3947,13 @@ function MonitoringIntervalControl({
   }[];
 
   return (
-    <div className="inline-flex rounded-lg border border-slate-200/70 bg-white p-1">
+    <div className="inline-flex rounded-lg border border-line bg-surface p-1">
       {options.map((option) => (
         <button
           className={`h-7 rounded-md px-2.5 text-xs font-semibold transition-colors ${
             intervalMs === option.value
-              ? "bg-[#101820] text-white"
-              : "text-slate-500 hover:bg-slate-50 hover:text-slate-950"
+              ? "bg-inverse text-brand-ink"
+              : "text-ink-muted hover:bg-subtle hover:text-ink"
           }`}
           key={option.value}
           onClick={() => onChange(option.value)}
@@ -3974,9 +3974,9 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
   return (
     <Surface
       bordered
-      className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="overflow-hidden border-line bg-surface p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
-      <div className="border-b border-slate-100 p-5">
+      <div className="border-b border-line p-5">
         <PanelTitle
           eyebrow={`${checks.length} checks nesta sessao`}
           icon={<History size={18} />}
@@ -3991,22 +3991,22 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
 
               return (
                 <div
-                  className="overflow-hidden rounded-xl border border-slate-200/70 bg-white"
+                  className="overflow-hidden rounded-xl border border-line bg-surface"
                   key={group.key}
                 >
                   <button
                     aria-expanded={isExpanded}
-                    className="flex w-full flex-wrap items-center justify-between gap-3 bg-slate-50/70 px-4 py-3 text-left transition hover:bg-slate-100/70"
+                    className="flex w-full flex-wrap items-center justify-between gap-3 bg-subtle px-4 py-3 text-left transition hover:bg-subtle"
                     onClick={() =>
                       setExpandedGroupKey(isExpanded ? null : group.key)
                     }
                     type="button"
                   >
                     <div>
-                      <p className="m-0 text-sm font-semibold text-slate-950">
+                      <p className="m-0 text-sm font-semibold text-ink">
                         {group.label}
                       </p>
-                      <p className="m-0 mt-1 text-xs font-medium text-slate-500">
+                      <p className="m-0 mt-1 text-xs font-medium text-ink-muted">
                         {group.checks.length} checks / {group.alertCount}{" "}
                         alertas
                       </p>
@@ -4015,19 +4015,19 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
                       <Badge variant={riskToBadgeVariant(group.highestRisk)}>
                         {group.highestRisk}
                       </Badge>
-                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 ring-1 ring-slate-200">
+                      <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink ring-1 ring-line">
                         Status Panteon:{" "}
                         {generalStatusLabel(
                           riskToGeneralStatus(group.highestRisk),
                         )}
                       </span>
-                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                      <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
                         maior tempo {group.maxResponseMs}ms
                       </span>
-                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                      <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
                         payload {formatBytes(group.maxPayloadBytes)}
                       </span>
-                      <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
+                      <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/20">
                         {isExpanded ? "recolher" : "expandir"}
                       </span>
                       {isExpanded ? (
@@ -4039,7 +4039,7 @@ function ChecksHistoryPanel({ checks }: { checks: OperationsCheckMetric[] }) {
                   </button>
 
                   {isExpanded ? (
-                    <div className="grid gap-3 border-t border-slate-100 bg-white p-4 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid gap-3 border-t border-line bg-surface p-4 md:grid-cols-2 xl:grid-cols-3">
                       {group.checks.map((check, index) => (
                         <CheckMetricCard
                           check={check}
@@ -4064,39 +4064,39 @@ function CheckMetricCard({ check }: { check: OperationsCheckMetric }) {
   const metaEntries = formatCheckMetaEntries(check);
 
   return (
-    <article className="rounded-xl border border-slate-200/70 bg-slate-50/40 p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+    <article className="rounded-xl border border-line bg-subtle p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="m-0 text-xs font-semibold text-slate-500">
+          <p className="m-0 text-xs font-semibold text-ink-muted">
             {formatOperationDateTime(check.checkedAt)}
           </p>
-          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-ink">
             {check.label}
           </p>
-          <p className="m-0 mt-1 truncate text-xs text-slate-500">
+          <p className="m-0 mt-1 truncate text-xs text-ink-muted">
             {check.module}
           </p>
         </div>
         <Badge variant={riskToBadgeVariant(check.risk)}>{check.risk}</Badge>
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
-        <div className="rounded-lg bg-white p-2 ring-1 ring-slate-200/70">
-          <p className="m-0 font-semibold uppercase text-slate-400">Status</p>
-          <p className="m-0 mt-1 truncate text-slate-700">{check.received}</p>
+        <div className="rounded-lg bg-surface p-2 ring-1 ring-line">
+          <p className="m-0 font-semibold uppercase text-ink-muted">Status</p>
+          <p className="m-0 mt-1 truncate text-ink">{check.received}</p>
         </div>
-        <div className="rounded-lg bg-white p-2 ring-1 ring-slate-200/70">
-          <p className="m-0 font-semibold uppercase text-slate-400">Tempo</p>
-          <p className="m-0 mt-1 text-slate-700">{check.responseMs}ms</p>
+        <div className="rounded-lg bg-surface p-2 ring-1 ring-line">
+          <p className="m-0 font-semibold uppercase text-ink-muted">Tempo</p>
+          <p className="m-0 mt-1 text-ink">{check.responseMs}ms</p>
         </div>
-        <div className="rounded-lg bg-white p-2 ring-1 ring-slate-200/70">
-          <p className="m-0 font-semibold uppercase text-slate-400">Payload</p>
-          <p className="m-0 mt-1 text-slate-700">
+        <div className="rounded-lg bg-surface p-2 ring-1 ring-line">
+          <p className="m-0 font-semibold uppercase text-ink-muted">Payload</p>
+          <p className="m-0 mt-1 text-ink">
             {formatBytes(check.payloadBytes)}
           </p>
         </div>
-        <div className="rounded-lg bg-white p-2 ring-1 ring-slate-200/70">
-          <p className="m-0 font-semibold uppercase text-slate-400">Alerta</p>
-          <p className="m-0 mt-1 text-slate-700">
+        <div className="rounded-lg bg-surface p-2 ring-1 ring-line">
+          <p className="m-0 font-semibold uppercase text-ink-muted">Alerta</p>
+          <p className="m-0 mt-1 text-ink">
             {check.alertGenerated ? "sim" : "nao"}
           </p>
         </div>
@@ -4105,11 +4105,11 @@ function CheckMetricCard({ check }: { check: OperationsCheckMetric }) {
         <div className="mt-3 flex flex-wrap gap-2">
           {metaEntries.map((entry) => (
             <span
-              className="rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70"
+              className="rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line"
               key={entry.key}
             >
               {entry.label}:{" "}
-              <span className="text-slate-950">{entry.value}</span>
+              <span className="text-ink">{entry.value}</span>
             </span>
           ))}
         </div>
@@ -4421,22 +4421,22 @@ function ZeusViewTabs({
   return (
     <nav
       aria-label="Visões do Zeus"
-      className="flex w-full flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="flex w-full flex-wrap gap-1 rounded-xl border border-line bg-surface p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
       {zeusViews.map((view) => {
         const isActive = activeView === view.id;
         const hasNewTickets =
           view.id === "itTickets" && itTicketAttentionCount > 0;
         const buttonClassName = isActive
-          ? "bg-[#101820] text-white shadow-sm"
+          ? "bg-inverse text-brand-ink shadow-sm"
           : hasNewTickets
-            ? "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/25 hover:bg-[#A07C3B]/15 hover:text-[#101820]"
-            : "text-slate-600 hover:bg-slate-50 hover:text-slate-950";
+            ? "bg-[#A07C3B]/10 text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/25 hover:bg-[#A07C3B]/15 hover:text-ink"
+            : "text-ink-soft hover:bg-subtle hover:text-ink";
         const counterClassName = isActive
           ? "bg-white/15 text-white"
           : hasNewTickets
-            ? "bg-[#A07C3B]/15 text-[#7A5E2C]"
-            : "bg-slate-100 text-slate-500";
+            ? "bg-[#A07C3B]/15 text-[#7a5e2c] dark:text-[#d9b877]"
+            : "bg-subtle text-ink-muted";
         const tabTooltip = hasNewTickets
           ? `${itTicketAttentionCount} ticket(s) novo(s) aguardando Zeus`
           : view.label;
@@ -4480,12 +4480,12 @@ function _ZeusNotificationButton({
 }) {
   return (
     <button
-      className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-slate-50"
+      className="flex items-center justify-between gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-subtle"
       onClick={onClick}
       type="button"
     >
-      <span className="text-sm font-semibold text-slate-800">{label}</span>
-      <span className="rounded-full bg-slate-100 px-2 py-0.5 font-mono text-xs font-semibold text-slate-600">
+      <span className="text-sm font-semibold text-ink">{label}</span>
+      <span className="rounded-full bg-subtle px-2 py-0.5 font-mono text-xs font-semibold text-ink-soft">
         {count}
       </span>
     </button>
@@ -4502,23 +4502,23 @@ function _getZeusPresenceTone(status: HubPresenceStatus) {
   const normalizedStatus = status === "busy" ? "agenda" : status;
   const tones = {
     agenda: {
-      button: "border-sky-200 bg-sky-50 text-sky-700",
+      button: "border-sky-200 dark:border-sky-500/30 bg-sky-50 dark:bg-sky-500/12 text-sky-700 dark:text-sky-300",
       dot: "bg-sky-500",
     },
     away: {
-      button: "border-red-200 bg-red-50 text-red-700",
+      button: "border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/12 text-red-700 dark:text-red-300",
       dot: "bg-red-500",
     },
     lunch: {
-      button: "border-yellow-200 bg-yellow-50 text-yellow-700",
+      button: "border-yellow-200 dark:border-yellow-500/30 bg-yellow-50 dark:bg-yellow-500/12 text-yellow-700 dark:text-yellow-300",
       dot: "bg-yellow-400",
     },
     offline: {
-      button: "border-zinc-200 bg-zinc-50 text-zinc-500",
-      dot: "bg-zinc-400",
+      button: "border-line bg-subtle text-ink-muted",
+      dot: "bg-subtle",
     },
     online: {
-      button: "border-emerald-200 bg-emerald-50 text-emerald-700",
+      button: "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
       dot: "bg-emerald-500",
     },
   } as const satisfies Record<
@@ -4554,7 +4554,7 @@ function _ReleaseRegistersSourcePanel({
   return (
     <Surface
       bordered
-      className="border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PanelTitle
@@ -4566,25 +4566,25 @@ function _ReleaseRegistersSourcePanel({
           {usingReleaseRegisters ? "indices por ambiente" : "fallback diario"}
         </Badge>
       </div>
-      <p className="m-0 mt-3 text-sm leading-6 text-slate-600">
+      <p className="m-0 mt-3 text-sm leading-6 text-ink-soft">
         {usingReleaseRegisters
           ? "Homologacao e producao agora alimentam a tela a partir dos registros operacionais separados."
           : "Sem registros por ambiente disponiveis; a tela preserva o diario canonico como fallback."}
       </p>
       <div className="mt-4 flex flex-wrap gap-2">
-        <span className="rounded-full bg-[#A07C3B]/10 px-3 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+        <span className="rounded-full bg-[#A07C3B]/10 px-3 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
           Homologacao {homologationCount}
         </span>
-        <span className="rounded-full bg-slate-950 px-3 py-1 text-xs font-semibold text-white">
+        <span className="rounded-full bg-inverse px-3 py-1 text-xs font-semibold text-brand-ink">
           Producao {productionCount}
         </span>
-        <span className="rounded-full bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
+        <span className="rounded-full bg-subtle px-3 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
           {releaseRegisters?.sourcePath ??
             "docs/operations/engineering-operations.md"}
         </span>
       </div>
       {error ? (
-        <p className="m-0 mt-3 rounded-xl bg-amber-50 p-3 text-sm leading-6 text-amber-800 ring-1 ring-amber-200/70">
+        <p className="m-0 mt-3 rounded-xl bg-amber-50 dark:bg-amber-500/12 p-3 text-sm leading-6 text-amber-800 dark:text-amber-300 ring-1 ring-amber-200/70 dark:ring-amber-500/25">
           {error}
         </p>
       ) : null}
@@ -4634,7 +4634,7 @@ function _HomologationOperationsPanel({
   return (
     <Surface
       bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="min-w-0 overflow-hidden border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
@@ -4643,7 +4643,7 @@ function _HomologationOperationsPanel({
             icon={<ClipboardCheck size={18} />}
             title="Homologacao por modulo"
           />
-          <p className="m-0 mt-3 max-w-4xl text-sm leading-6 text-slate-600">
+          <p className="m-0 mt-3 max-w-4xl text-sm leading-6 text-ink-soft">
             Valide cada pacote publicado pelo agente do modulo em homologacao.
             No final, a Athena gera o prompt por modulo para Hefesto publicar
             somente os itens aprovados; reprovados ou bloqueados ficam fora do
@@ -4671,7 +4671,7 @@ function _HomologationOperationsPanel({
               : "Fallback local"}
         </Badge>
         {reviewError ? (
-          <span className="text-[#B26A00]">{reviewError}</span>
+          <span className="text-[#b26a00] dark:text-[#e0b968]">{reviewError}</span>
         ) : null}
       </div>
 
@@ -4711,11 +4711,11 @@ function HomologationMetric({
   value: string;
 }) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-slate-50/50 p-4">
-      <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-400">
+    <div className="rounded-xl border border-line bg-subtle p-4">
+      <p className="m-0 text-[0.68rem] font-semibold uppercase text-ink-muted">
         {label}
       </p>
-      <p className="m-0 mt-2 text-xl font-semibold text-slate-950">{value}</p>
+      <p className="m-0 mt-2 text-xl font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -4742,16 +4742,16 @@ function HomologationModuleGroupSection({
   const summary = getHomologationModuleSummary(group.protocols, reviews);
 
   return (
-    <section className="grid gap-3 border-b border-slate-100 pb-4 last:border-b-0 last:pb-0">
-      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-slate-50/70 p-3 ring-1 ring-slate-200/70">
+    <section className="grid gap-3 border-b border-line pb-4 last:border-b-0 last:pb-0">
+      <div className="flex flex-wrap items-start justify-between gap-3 rounded-xl bg-subtle p-3 ring-1 ring-line">
         <div className="min-w-0">
-          <p className="m-0 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#7A5E2C]">
+          <p className="m-0 text-[0.68rem] font-semibold uppercase tracking-[0.08em] text-[#7a5e2c] dark:text-[#d9b877]">
             {group.agent}
           </p>
-          <h3 className="m-0 mt-1 text-sm font-semibold text-slate-950">
+          <h3 className="m-0 mt-1 text-sm font-semibold text-ink">
             {group.module}
           </h3>
-          <p className="m-0 mt-1 text-xs leading-5 text-slate-500">
+          <p className="m-0 mt-1 text-xs leading-5 text-ink-muted">
             {group.protocols.length} pacote(s), {summary.total} item(ns) de
             homologacao e {summary.readyPackages} prompt(s) liberado(s).
           </p>
@@ -4816,16 +4816,16 @@ function HomologationReleaseCard({
       : "Conclua itens em teste ou aguardando teste antes do prompt";
 
   return (
-    <article className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <article className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="m-0 font-mono text-xs font-semibold text-[#7A5E2C]">
+          <p className="m-0 font-mono text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
             {releaseProtocol.protocol}
           </p>
-          <h3 className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+          <h3 className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-ink">
             {releaseProtocol.title}
           </h3>
-          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+          <p className="m-0 mt-1 text-xs font-semibold text-ink-muted">
             {formatReleaseModuleList(releaseProtocol)} /{" "}
             {formatOperationDateTime(releaseProtocol.plannedAt)}
           </p>
@@ -4856,8 +4856,8 @@ function HomologationReleaseCard({
         ))}
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-50/80 p-3 ring-1 ring-slate-200/70">
-        <p className="m-0 text-xs leading-5 text-slate-600">
+      <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-subtle p-3 ring-1 ring-line">
+        <p className="m-0 text-xs leading-5 text-ink-soft">
           {summary.canGeneratePrompt
             ? summary.isPartial
               ? "Homologacao parcial concluida. A Athena gera o prompt levando somente os aprovados para producao."
@@ -4868,7 +4868,7 @@ function HomologationReleaseCard({
         </p>
         <Tooltip content={promptTooltip} placement="top">
           <button
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-[#1f2d3a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-slate-300"
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-3 text-sm font-semibold text-brand-ink shadow-sm transition-colors hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-subtle"
             disabled={!summary.canGeneratePrompt}
             onClick={() => onCopyCommand(productionPrompt, promptId)}
             type="button"
@@ -4908,19 +4908,19 @@ function HomologationItemRow({
   review: HomologationItemReview;
 }) {
   return (
-    <div className="grid gap-3 rounded-lg border border-slate-200/70 bg-slate-50/40 p-3 lg:grid-cols-[minmax(0,1fr)_12rem_minmax(14rem,0.9fr)]">
+    <div className="grid gap-3 rounded-lg border border-line bg-subtle p-3 lg:grid-cols-[minmax(0,1fr)_12rem_minmax(14rem,0.9fr)]">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           {item.record ? (
             <button
-              className="font-mono text-xs font-semibold text-[#7A5E2C] underline-offset-2 hover:underline"
+              className="font-mono text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] underline-offset-2 hover:underline"
               onClick={() => onSelectRecord(item.record!)}
               type="button"
             >
               {item.protocol}
             </button>
           ) : (
-            <span className="font-mono text-xs font-semibold text-[#7A5E2C]">
+            <span className="font-mono text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
               {item.protocol}
             </span>
           )}
@@ -4928,16 +4928,16 @@ function HomologationItemRow({
             {item.kind}
           </Badge>
         </div>
-        <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+        <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-ink">
           {item.title}
         </p>
-        <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+        <p className="m-0 mt-1 text-xs font-semibold text-ink-muted">
           {item.module} / {item.type}
         </p>
       </div>
 
       <label className="block">
-        <span className="mb-1 block text-[0.68rem] font-semibold uppercase text-slate-400">
+        <span className="mb-1 block text-[0.68rem] font-semibold uppercase text-ink-muted">
           Validacao
         </span>
         <select
@@ -4958,7 +4958,7 @@ function HomologationItemRow({
       </label>
 
       <label className="block">
-        <span className="mb-1 block text-[0.68rem] font-semibold uppercase text-slate-400">
+        <span className="mb-1 block text-[0.68rem] font-semibold uppercase text-ink-muted">
           Observacao
         </span>
         <input
@@ -4998,7 +4998,7 @@ function OperationsFiltersBar({
   return (
     <Surface
       bordered
-      className="border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-[repeat(6,minmax(0,1fr))_minmax(14rem,1.4fr)]">
         <FilterSelect
@@ -5038,7 +5038,7 @@ function OperationsFiltersBar({
           onChange={(value) => updateFilter("period", value)}
         />
         <label className="block">
-          <span className="mb-1.5 block text-xs font-semibold text-slate-500">
+          <span className="mb-1.5 block text-xs font-semibold text-ink-muted">
             Palavra-chave
           </span>
           <span className="relative block">
@@ -5069,7 +5069,7 @@ function FilterSelect({
 }) {
   return (
     <label className="block">
-      <span className="mb-1.5 block text-xs font-semibold text-slate-500">
+      <span className="mb-1.5 block text-xs font-semibold text-ink-muted">
         {label}
       </span>
       <select
@@ -5232,7 +5232,7 @@ function CriticalOperationsPanel({
   return (
     <Surface
       bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="min-w-0 overflow-hidden border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
       <PanelTitle
         eyebrow={`${records.length + routines.length} itens`}
@@ -5242,15 +5242,15 @@ function CriticalOperationsPanel({
       <div className="mt-4 grid max-h-[58vh] min-w-0 gap-2 overflow-y-auto overscroll-contain pr-1">
         {routines.map((routine) => (
           <button
-            className="w-full min-w-0 overflow-hidden rounded-xl border border-amber-200 bg-amber-50 p-3 text-left transition-colors hover:border-amber-300 hover:bg-amber-100/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
+            className="w-full min-w-0 overflow-hidden rounded-xl border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 p-3 text-left transition-colors hover:border-amber-300 dark:border-amber-500/40 hover:bg-amber-100/70 dark:bg-amber-500/15 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-300"
             key={routine.id}
             onClick={() => onSelectRoutine(routine)}
             type="button"
           >
-            <p className="m-0 line-clamp-2 break-words text-sm font-semibold text-amber-900">
+            <p className="m-0 line-clamp-2 break-words text-sm font-semibold text-amber-900 dark:text-amber-300">
               {routine.name}
             </p>
-            <p className="m-0 mt-1 text-xs leading-5 text-amber-800">
+            <p className="m-0 mt-1 text-xs leading-5 text-amber-800 dark:text-amber-300">
               Rotina vencida ou não executada. Última execução:{" "}
               {formatOperationDateTime(routine.lastExecution)}.
             </p>
@@ -5259,17 +5259,17 @@ function CriticalOperationsPanel({
         {records.length > 0 ? (
           records.map((record) => (
             <button
-              className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              className="w-full min-w-0 overflow-hidden rounded-xl border border-line bg-surface p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               key={record.id}
               onClick={() => onSelectRecord(record)}
               type="button"
             >
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="m-0 line-clamp-2 break-words text-sm font-semibold text-slate-950">
+                  <p className="m-0 line-clamp-2 break-words text-sm font-semibold text-ink">
                     {record.subject}
                   </p>
-                  <p className="m-0 mt-1 truncate text-xs leading-5 text-slate-500">
+                  <p className="m-0 mt-1 truncate text-xs leading-5 text-ink-muted">
                     {record.module} / {record.routine}
                   </p>
                 </div>
@@ -5280,7 +5280,7 @@ function CriticalOperationsPanel({
                   {record.status}
                 </Badge>
               </div>
-              <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-slate-600">
+              <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-ink-soft">
                 {getRecordCardSummary(record)}
               </p>
             </button>
@@ -5307,7 +5307,7 @@ function OperationalList({
   return (
     <Surface
       bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="min-w-0 overflow-hidden border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
       <PanelTitle
         eyebrow={`${records.length} itens`}
@@ -5318,17 +5318,17 @@ function OperationalList({
         {records.length > 0 ? (
           records.map((record) => (
             <button
-              className="w-full min-w-0 overflow-hidden rounded-xl border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              className="w-full min-w-0 overflow-hidden rounded-xl border border-line bg-surface p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               key={record.id}
               onClick={() => onSelectRecord(record)}
               type="button"
             >
               <div className="flex min-w-0 items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="m-0 line-clamp-2 break-words text-sm font-semibold text-slate-950">
+                  <p className="m-0 line-clamp-2 break-words text-sm font-semibold text-ink">
                     {record.subject}
                   </p>
-                  <p className="m-0 mt-1 truncate text-xs leading-5 text-slate-500">
+                  <p className="m-0 mt-1 truncate text-xs leading-5 text-ink-muted">
                     {record.module} / {record.type}
                   </p>
                 </div>
@@ -5339,7 +5339,7 @@ function OperationalList({
                   {record.status}
                 </Badge>
               </div>
-              <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-slate-600">
+              <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-ink-soft">
                 {getRecordCardSummary(record)}
               </p>
             </button>
@@ -5364,22 +5364,22 @@ function OperationDetailDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/20 backdrop-blur-[1px]">
+    <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px]">
       <button
         aria-label="Fechar detalhe operacional"
         className="absolute inset-0 cursor-default"
         onClick={onClose}
         type="button"
       />
-      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-line bg-surface shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-line p-5">
           <PanelTitle
             icon={<FileText size={18} />}
             eyebrow={formatOperationDateTime(record.localDateTime)}
             title="Detalhe operacional"
           />
           <button
-            className="grid size-9 place-items-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            className="grid size-9 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
             onClick={onClose}
             type="button"
           >
@@ -5388,33 +5388,33 @@ function OperationDetailDrawer({
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto p-5">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+            <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
               {record.protocol}
             </span>
             <Badge variant={statusVariant(record.status)}>
               {record.status}
             </Badge>
-            <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
+            <span className="rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
               {record.type}
             </span>
-            <span className="rounded-full bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+            <span className="rounded-full bg-[#A07C3B]/5 px-2.5 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
               {record.module}
             </span>
           </div>
-          <h2 className="m-0 mt-4 text-xl font-semibold text-slate-950">
+          <h2 className="m-0 mt-4 text-xl font-semibold text-ink">
             {record.subject}
           </h2>
-          <p className="m-0 mt-2 text-sm leading-6 text-slate-600">
+          <p className="m-0 mt-2 text-sm leading-6 text-ink-soft">
             {record.shortSummary}
           </p>
 
           <OperationalDetailSummary record={record} />
 
-          <details className="mt-5 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-            <summary className="cursor-pointer text-xs font-semibold uppercase text-slate-500">
+          <details className="mt-5 rounded-xl border border-line bg-subtle p-4">
+            <summary className="cursor-pointer text-xs font-semibold uppercase text-ink-muted">
               Conteudo bruto do registro
             </summary>
-            <pre className="m-0 mt-3 max-h-80 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-slate-700">
+            <pre className="m-0 mt-3 max-h-80 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-ink">
               {record.rawContent}
             </pre>
           </details>
@@ -5467,19 +5467,19 @@ function OperationalDetailSummary({
     .filter((section) => section.items.length > 0);
 
   return (
-    <div className="mt-5 rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <div className="mt-5 rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex flex-wrap gap-2">
         {metadata.length > 0 ? (
           metadata.map((item) => (
             <span
-              className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70"
+              className="rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line"
               key={`${item.label}-${item.value}`}
             >
               {item.label}: {item.value}
             </span>
           ))
         ) : (
-          <span className="text-sm text-slate-500">
+          <span className="text-sm text-ink-muted">
             Dados principais nao informados.
           </span>
         )}
@@ -5489,13 +5489,13 @@ function OperationalDetailSummary({
         {sections.length > 0 ? (
           sections.map((section) => (
             <section
-              className="border-t border-slate-100 pt-4 first:border-t-0 first:pt-0"
+              className="border-t border-line pt-4 first:border-t-0 first:pt-0"
               key={section.title}
             >
-              <h3 className="m-0 text-sm font-semibold text-slate-950">
+              <h3 className="m-0 text-sm font-semibold text-ink">
                 {section.title}
               </h3>
-              <ul className="m-0 mt-2 grid list-none gap-2 p-0 text-sm leading-6 text-slate-700">
+              <ul className="m-0 mt-2 grid list-none gap-2 p-0 text-sm leading-6 text-ink">
                 {section.items.map((item, index) => (
                   <li
                     className="grid grid-cols-[0.45rem_minmax(0,1fr)] gap-3"
@@ -5509,7 +5509,7 @@ function OperationalDetailSummary({
             </section>
           ))
         ) : (
-          <p className="m-0 text-sm text-slate-500">
+          <p className="m-0 text-sm text-ink-muted">
             Detalhamento operacional nao informado.
           </p>
         )}
@@ -7194,4 +7194,4 @@ function normalizeDateTimeForParsing(value: string) {
 }
 
 const fieldClassName =
-  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10";
+  "h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10";

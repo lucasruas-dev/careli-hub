@@ -119,14 +119,14 @@ export const metadata: Metadata = {
   manifest: "/api/pwa/manifest",
   other: {
     "mobile-web-app-capable": "yes",
-    "msapplication-TileColor": "#101820",
+    "msapplication-TileColor": "#101211",
   },
 };
 
 export const viewport: Viewport = {
   colorScheme: "light",
   initialScale: 1,
-  themeColor: "#101820",
+  themeColor: "#101211",
   width: "device-width",
 };
 

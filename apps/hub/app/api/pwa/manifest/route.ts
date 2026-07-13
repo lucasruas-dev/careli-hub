@@ -36,7 +36,7 @@ export function GET(request: NextRequest) {
     ? "/panteon-mark-homolog.png"
     : "/panteon-mark.png";
   const manifest = {
-    background_color: "#101820",
+    background_color: "#101211",
     categories: ["business", "productivity"],
     description: "Panteon Careli C2X",
     display: "standalone",
@@ -93,7 +93,7 @@ export function GET(request: NextRequest) {
       },
     ],
     start_url: "/",
-    theme_color: "#101820",
+    theme_color: "#101211",
   };
 
   return new Response(JSON.stringify(manifest), {

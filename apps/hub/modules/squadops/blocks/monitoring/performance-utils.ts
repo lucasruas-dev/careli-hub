@@ -309,50 +309,50 @@ export function performanceChartColors(tone: PerformanceTone) {
 
 export function performanceCardBorderClass(tone: PerformanceTone) {
   if (tone === "red") {
-    return "border-red-200 hover:border-red-300";
+    return "border-red-200 dark:border-red-500/30 hover:border-red-300 dark:border-red-500/40";
   }
 
   if (tone === "yellow") {
-    return "border-yellow-200 hover:border-yellow-300";
+    return "border-yellow-200 dark:border-yellow-500/30 hover:border-yellow-300 dark:border-yellow-500/40";
   }
 
   if (tone === "green") {
-    return "border-emerald-200 hover:border-emerald-300";
+    return "border-emerald-200 dark:border-emerald-500/30 hover:border-emerald-300 dark:border-emerald-500/40";
   }
 
-  return "border-slate-200/70 hover:border-slate-300";
+  return "border-line hover:border-line-strong";
 }
 
 export function performanceIconClass(tone: PerformanceTone) {
   if (tone === "red") {
-    return "bg-red-50 text-red-600 ring-red-200 group-hover:bg-red-100";
+    return "bg-red-50 dark:bg-red-500/12 text-red-600 dark:text-red-300 ring-red-200 dark:ring-red-500/25 group-hover:bg-red-100 dark:bg-red-500/15";
   }
 
   if (tone === "yellow") {
-    return "bg-yellow-50 text-yellow-700 ring-yellow-200 group-hover:bg-yellow-100";
+    return "bg-yellow-50 dark:bg-yellow-500/12 text-yellow-700 dark:text-yellow-300 ring-yellow-200 dark:ring-yellow-500/25 group-hover:bg-yellow-100 dark:bg-yellow-500/15";
   }
 
   if (tone === "green") {
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200 group-hover:bg-emerald-100";
+    return "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-500/25 group-hover:bg-emerald-100 dark:bg-emerald-500/15";
   }
 
-  return "bg-slate-50 text-slate-500 ring-slate-200/70 group-hover:bg-slate-100";
+  return "bg-subtle text-ink-muted ring-line group-hover:bg-subtle";
 }
 
 export function performancePillClass(tone: PerformanceTone) {
   if (tone === "red") {
-    return "bg-red-50 text-red-700 ring-red-200";
+    return "bg-red-50 dark:bg-red-500/12 text-red-700 dark:text-red-300 ring-red-200 dark:ring-red-500/25";
   }
 
   if (tone === "yellow") {
-    return "bg-yellow-50 text-yellow-700 ring-yellow-200";
+    return "bg-yellow-50 dark:bg-yellow-500/12 text-yellow-700 dark:text-yellow-300 ring-yellow-200 dark:ring-yellow-500/25";
   }
 
   if (tone === "green") {
-    return "bg-emerald-50 text-emerald-700 ring-emerald-200";
+    return "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-200 dark:ring-emerald-500/25";
   }
 
-  return "bg-slate-50 text-slate-500 ring-slate-200/70";
+  return "bg-subtle text-ink-muted ring-line";
 }
 
 function normalizeMonitoringText(value: string) {

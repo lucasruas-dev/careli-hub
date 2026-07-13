@@ -57,38 +57,38 @@ const statusTone: Record<
   critico: {
     dot: "bg-rose-500",
     label: "Critico",
-    pill: "bg-rose-50 text-rose-700 ring-rose-200/70",
+    pill: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-200/70 dark:ring-rose-500/25",
   },
   indisponivel: {
-    dot: "bg-slate-400",
+    dot: "bg-subtle",
     label: "Indisponivel",
-    pill: "bg-slate-100 text-slate-600 ring-slate-200/70",
+    pill: "bg-subtle text-ink-soft ring-line",
   },
   operacional: {
     dot: "bg-emerald-500",
     label: "Operacional",
-    pill: "bg-emerald-50 text-emerald-700 ring-emerald-200/70",
+    pill: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-200/70 dark:ring-emerald-500/25",
   },
   operacional_com_atencao: {
     dot: "bg-amber-500",
     label: "Atencao",
-    pill: "bg-amber-50 text-amber-700 ring-amber-200/70",
+    pill: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-200/70 dark:ring-amber-500/25",
   },
 };
 
 const riskPill: Record<OperationsRiskLevel, string> = {
-  alto: "bg-orange-50 text-orange-700 ring-orange-200/70",
-  baixo: "bg-emerald-50 text-emerald-700 ring-emerald-200/70",
-  critico: "bg-rose-50 text-rose-700 ring-rose-200/70",
-  medio: "bg-amber-50 text-amber-700 ring-amber-200/70",
+  alto: "bg-orange-50 dark:bg-orange-500/12 text-orange-700 dark:text-orange-300 ring-orange-200/70 dark:ring-orange-500/25",
+  baixo: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-200/70 dark:ring-emerald-500/25",
+  critico: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-200/70 dark:ring-rose-500/25",
+  medio: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-200/70 dark:ring-amber-500/25",
 };
 
 // Borda do card de ocorrencia pela severidade (leitura imediata bom/ruim).
 const riskCardBorder: Record<OperationsRiskLevel, string> = {
-  alto: "border-orange-200/80",
-  baixo: "border-emerald-200/70",
-  critico: "border-rose-200/80",
-  medio: "border-amber-200/80",
+  alto: "border-orange-200/80 dark:border-orange-500/30",
+  baixo: "border-emerald-200/70 dark:border-emerald-500/30",
+  critico: "border-rose-200/80 dark:border-rose-500/30",
+  medio: "border-amber-200/80 dark:border-amber-500/30",
 };
 
 // Regua de latencia: cores derivam de classifyResponseTime (fonte unica do timeRisk
@@ -98,36 +98,36 @@ const timeRiskTone: Record<
   { border: string; dot: string; icon: string; label: string; range: string; value: string }
 > = {
   atencao: {
-    border: "border-amber-200/80",
+    border: "border-amber-200/80 dark:border-amber-500/30",
     dot: "bg-amber-400",
-    icon: "bg-amber-50 text-amber-600",
+    icon: "bg-amber-50 dark:bg-amber-500/12 text-amber-600 dark:text-amber-300",
     label: "Atencao",
     range: "500-1500",
-    value: "text-amber-700",
+    value: "text-amber-700 dark:text-amber-300",
   },
   bom: {
-    border: "border-emerald-200/80",
+    border: "border-emerald-200/80 dark:border-emerald-500/30",
     dot: "bg-emerald-500",
-    icon: "bg-emerald-50 text-emerald-600",
+    icon: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-600 dark:text-emerald-300",
     label: "Bom",
     range: "<500ms",
-    value: "text-emerald-700",
+    value: "text-emerald-700 dark:text-emerald-300",
   },
   critico: {
-    border: "border-rose-200/80",
+    border: "border-rose-200/80 dark:border-rose-500/30",
     dot: "bg-rose-500",
-    icon: "bg-rose-50 text-rose-600",
+    icon: "bg-rose-50 dark:bg-rose-500/12 text-rose-600 dark:text-rose-300",
     label: "Critico",
     range: ">3000ms",
-    value: "text-rose-700",
+    value: "text-rose-700 dark:text-rose-300",
   },
   lento: {
-    border: "border-orange-200/80",
+    border: "border-orange-200/80 dark:border-orange-500/30",
     dot: "bg-orange-500",
-    icon: "bg-orange-50 text-orange-600",
+    icon: "bg-orange-50 dark:bg-orange-500/12 text-orange-600 dark:text-orange-300",
     label: "Lento",
     range: "1500-3000",
-    value: "text-orange-700",
+    value: "text-orange-700 dark:text-orange-300",
   },
 };
 
@@ -203,7 +203,7 @@ function StatusDot({
       }
       placement="top"
     >
-      <span className="inline-flex items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+      <span className="inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-sm font-medium text-ink">
         <span className={`size-2.5 rounded-full ${tone.dot}`} aria-hidden />
         {label}
       </span>
@@ -228,18 +228,18 @@ function MetricCard({
   const borderClass = latency
     ? latency.border
     : tone === "alert"
-      ? "border-rose-200/70"
-      : "border-slate-200/70";
+      ? "border-rose-200/70 dark:border-rose-500/30"
+      : "border-line";
   const iconClass = latency
     ? latency.icon
     : tone === "alert"
-      ? "bg-rose-50 text-rose-600"
-      : "bg-slate-50 text-[#A07C3B]";
-  const valueClass = latency ? latency.value : "text-slate-950";
+      ? "bg-rose-50 dark:bg-rose-500/12 text-rose-600 dark:text-rose-300"
+      : "bg-subtle text-[#A07C3B]";
+  const valueClass = latency ? latency.value : "text-ink";
 
   return (
     <div
-      className={`flex items-center gap-3 rounded-xl border bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${borderClass}`}
+      className={`flex items-center gap-3 rounded-xl border bg-surface p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${borderClass}`}
       title={latency ? `${label}: ${latency.label} (${latency.range})` : undefined}
     >
       <span
@@ -251,7 +251,7 @@ function MetricCard({
         <p className={`m-0 text-xl font-semibold leading-none ${valueClass}`}>
           {value}
         </p>
-        <p className="m-0 mt-1 truncate text-xs font-medium text-slate-500">
+        <p className="m-0 mt-1 truncate text-xs font-medium text-ink-muted">
           {label}
         </p>
       </div>
@@ -282,7 +282,7 @@ function OccurrenceCard({
 
   return (
     <li
-      className={`flex flex-col gap-2 rounded-xl border bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${riskCardBorder[alert.level]}`}
+      className={`flex flex-col gap-2 rounded-xl border bg-surface p-3 shadow-[0_1px_2px_rgba(15,23,42,0.04)] ${riskCardBorder[alert.level]}`}
     >
       {/* Problema: nivel + titulo + acoes */}
       <div className="flex flex-wrap items-start justify-between gap-2">
@@ -293,7 +293,7 @@ function OccurrenceCard({
             {alert.level}
           </span>
           <span
-            className="min-w-0 truncate text-sm font-semibold text-slate-900"
+            className="min-w-0 truncate text-sm font-semibold text-ink"
             title={alert.title}
           >
             {alert.title}
@@ -304,7 +304,7 @@ function OccurrenceCard({
             <Tooltip content="Confirmar leitura" placement="top">
               <button
                 aria-label={`Confirmar leitura do protocolo ${alert.protocol}`}
-                className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 bg-white text-emerald-700 transition hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex size-8 items-center justify-center rounded-lg border border-emerald-200 dark:border-emerald-500/30 bg-surface text-emerald-700 dark:text-emerald-300 transition hover:bg-emerald-50 dark:bg-emerald-500/12 disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isAcknowledging}
                 onClick={() => onAcknowledgeProtocol(alert.protocol)}
                 type="button"
@@ -321,7 +321,7 @@ function OccurrenceCard({
             <Tooltip content="Silenciar / ignorar" placement="top">
               <button
                 aria-label={`Silenciar protocolo ${alert.protocol}`}
-                className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition hover:border-slate-300 hover:bg-slate-50 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-muted transition hover:border-line-strong hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isIgnoring}
                 onClick={() => onIgnoreProtocol(alert.protocol)}
                 type="button"
@@ -341,7 +341,7 @@ function OccurrenceCard({
             >
               <button
                 aria-label={`Acionar ${alert.recommendedAgent}`}
-                className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-white text-[#7A5E2C] transition hover:bg-[#A07C3B]/5 ${
+                className={`inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-surface text-[#7a5e2c] dark:text-[#d9b877] transition hover:bg-[#A07C3B]/5 ${
                   copiedCommandId === alert.id ? "bg-[#A07C3B]/10" : ""
                 }`}
                 onClick={() => onCopyCommand(alert.command, alert.id)}
@@ -355,12 +355,12 @@ function OccurrenceCard({
       </div>
 
       {/* Causa: impacto + endpoint + latencia (regua) */}
-      <p className="m-0 text-xs leading-5 text-slate-600">
-        <span className="font-semibold text-slate-500">Causa:</span>{" "}
+      <p className="m-0 text-xs leading-5 text-ink-soft">
+        <span className="font-semibold text-ink-muted">Causa:</span>{" "}
         {alert.impact}
       </p>
-      <div className="flex flex-wrap items-center gap-2 text-[11px] text-slate-500">
-        <code className="rounded bg-slate-50 px-1.5 py-0.5 text-slate-500">
+      <div className="flex flex-wrap items-center gap-2 text-[11px] text-ink-muted">
+        <code className="rounded bg-subtle px-1.5 py-0.5 text-ink-muted">
           {alert.endpoint}
         </code>
         <span className="inline-flex items-center gap-1">
@@ -370,10 +370,10 @@ function OccurrenceCard({
       </div>
 
       {/* O que fazer: recomendacao + agente */}
-      <p className="m-0 rounded-lg bg-slate-50/80 p-2 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/60">
-        <span className="font-semibold text-slate-500">Fazer:</span>{" "}
+      <p className="m-0 rounded-lg bg-subtle p-2 text-xs leading-5 text-ink-soft ring-1 ring-line">
+        <span className="font-semibold text-ink-muted">Fazer:</span>{" "}
         {alert.recommendation}
-        <span className="ml-1 font-semibold text-[#7A5E2C]">
+        <span className="ml-1 font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
           · {alert.recommendedAgent}
         </span>
       </p>
@@ -397,9 +397,9 @@ function formatBrDate(dayKey: string) {
 }
 
 const costTrendVisual = {
-  down: { Icon: TrendingDown, className: "text-emerald-600", label: "abaixo da média" },
-  flat: { Icon: Minus, className: "text-slate-400", label: "na média" },
-  up: { Icon: TrendingUp, className: "text-rose-600", label: "acima da média" },
+  down: { Icon: TrendingDown, className: "text-emerald-600 dark:text-emerald-300", label: "abaixo da média" },
+  flat: { Icon: Minus, className: "text-ink-muted", label: "na média" },
+  up: { Icon: TrendingUp, className: "text-rose-600 dark:text-rose-300", label: "acima da média" },
 } as const;
 
 function costBarColor(cost: number) {
@@ -453,7 +453,7 @@ function CostDailyBars({
                 style={{ height: barHeight }}
               />
             </div>
-            <span className="text-[9px] tabular-nums text-slate-400">
+            <span className="text-[9px] tabular-nums text-ink-muted">
               {point.day.slice(8)}
             </span>
           </div>
@@ -524,21 +524,21 @@ function CostHistoryModal({
 
   return (
     <div
-      className="fixed inset-0 z-[var(--uix-z-modal)] flex items-center justify-center bg-slate-900/40 p-4"
+      className="fixed inset-0 z-[var(--uix-z-modal)] flex items-center justify-center bg-black/40 p-4"
       onClick={onClose}
     >
       <div
-        className="w-full max-w-lg rounded-2xl border border-slate-200 bg-white p-5 shadow-2xl"
+        className="w-full max-w-lg rounded-2xl border border-line bg-surface p-5 shadow-2xl"
         onClick={(event) => event.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between gap-2">
-          <p className="m-0 flex items-center gap-2 text-sm font-semibold text-slate-900">
+          <p className="m-0 flex items-center gap-2 text-sm font-semibold text-ink">
             <CalendarRange className="size-4 text-[#A07C3B]" />
             Histórico de custo (Vercel · faturado)
           </p>
           <button
             aria-label="Fechar"
-            className="grid size-8 place-items-center rounded-lg border border-slate-200 text-slate-500 transition hover:bg-slate-50"
+            className="grid size-8 place-items-center rounded-lg border border-line text-ink-muted transition hover:bg-subtle"
             onClick={onClose}
             type="button"
           >
@@ -547,19 +547,19 @@ function CostHistoryModal({
         </div>
 
         <div className="flex flex-wrap items-end gap-2">
-          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-500">
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-ink-muted">
             De
             <input
-              className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-[#A07C3B]"
+              className="rounded-lg border border-line px-2 py-1.5 text-sm text-ink outline-none focus:border-[#A07C3B]"
               onChange={(event) => setFrom(event.target.value)}
               type="date"
               value={from}
             />
           </label>
-          <label className="flex flex-col gap-1 text-[11px] font-semibold text-slate-500">
+          <label className="flex flex-col gap-1 text-[11px] font-semibold text-ink-muted">
             Até
             <input
-              className="rounded-lg border border-slate-200 px-2 py-1.5 text-sm text-slate-900 outline-none focus:border-[#A07C3B]"
+              className="rounded-lg border border-line px-2 py-1.5 text-sm text-ink outline-none focus:border-[#A07C3B]"
               onChange={(event) => setTo(event.target.value)}
               type="date"
               value={to}
@@ -577,23 +577,23 @@ function CostHistoryModal({
         </div>
 
         {error ? (
-          <p className="m-0 mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 ring-1 ring-rose-200">
+          <p className="m-0 mt-3 rounded-lg bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-medium text-rose-700 dark:text-rose-300 ring-1 ring-rose-200 dark:ring-rose-500/25">
             {error}
           </p>
         ) : null}
 
         {history ? (
           <div className="mt-4">
-            <p className="m-0 mb-2 text-xs text-slate-500">
+            <p className="m-0 mb-2 text-xs text-ink-muted">
               {formatBrDate(history.from)} – {formatBrDate(history.to)} ·{" "}
-              <span className="font-semibold text-slate-900">
+              <span className="font-semibold text-ink">
                 total {formatUsd(history.total)}
               </span>
             </p>
             {history.days.length > 1 ? (
               <CostDailyBars points={history.days} />
             ) : (
-              <p className="m-0 text-xs text-slate-400">Sem dados no período.</p>
+              <p className="m-0 text-xs text-ink-muted">Sem dados no período.</p>
             )}
           </div>
         ) : null}
@@ -619,17 +619,17 @@ function CostPanel({
   const TrendIcon = trend.Icon;
 
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <div className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <DollarSign className="size-4 text-[#A07C3B]" />
-          <p className="m-0 text-xs font-semibold text-slate-500">
+          <p className="m-0 text-xs font-semibold text-ink-muted">
             Custo · ciclo {monthLabel}
           </p>
         </div>
         <div className="flex items-center gap-2">
           <button
-            className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 transition hover:bg-slate-50"
+            className="inline-flex items-center gap-1.5 rounded-lg border border-line px-2 py-1 text-[11px] font-semibold text-ink-soft transition hover:bg-subtle"
             onClick={() => setIsHistoryOpen(true)}
             type="button"
           >
@@ -651,39 +651,39 @@ function CostPanel({
 
       {/* Destaque: acumulado do mes + expectativa final (projecao ate o fim do mes) */}
       <div className="mb-3 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-slate-200/70 bg-slate-50/50 p-3">
-          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        <div className="rounded-lg border border-line bg-subtle p-3">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
             Acumulado no ciclo
           </p>
-          <p className="m-0 mt-1 text-3xl font-bold leading-none text-slate-950">
+          <p className="m-0 mt-1 text-3xl font-bold leading-none text-ink">
             {formatUsd(monthAccumulated)}
           </p>
-          <p className="m-0 mt-1 text-[11px] text-slate-500">
+          <p className="m-0 mt-1 text-[11px] text-ink-muted">
             Vercel + Supabase · ciclo até agora
           </p>
         </div>
         <div className="rounded-lg border border-[#A07C3B]/30 bg-[#A07C3B]/[0.06] p-3">
-          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[#7A5E2C]">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-[#7a5e2c] dark:text-[#d9b877]">
             Expectativa final
           </p>
-          <p className="m-0 mt-1 text-3xl font-bold leading-none text-[#7A5E2C]">
+          <p className="m-0 mt-1 text-3xl font-bold leading-none text-[#7a5e2c] dark:text-[#d9b877]">
             {formatUsd(monthProjection)}
           </p>
-          <p className="m-0 mt-1 text-[11px] text-slate-500">
+          <p className="m-0 mt-1 text-[11px] text-ink-muted">
             projeção até o fim do ciclo
           </p>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2">
-        <div className="rounded-lg border border-slate-200/70 bg-slate-50/40 p-3">
-          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        <div className="rounded-lg border border-line bg-subtle p-3">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
             Vercel · uso variável{vercel.day ? ` · ${formatBrDate(vercel.day)}` : ""}
           </p>
           {vercel.configured ? (
             <>
               <div className="mt-1 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="text-2xl font-semibold leading-none text-slate-950">
+                <span className="text-2xl font-semibold leading-none text-ink">
                   {formatUsd(vercel.variableCost)}
                 </span>
                 <span
@@ -693,60 +693,60 @@ function CostPanel({
                   {trend.label}
                 </span>
               </div>
-              <p className="m-0 mt-1 text-[11px] text-slate-500">
+              <p className="m-0 mt-1 text-[11px] text-ink-muted">
                 típico/dia: {formatUsd(vercel.typicalDailyCost)}
               </p>
               {vercel.topServices.length > 0 ? (
                 <ul className="m-0 mt-2 flex list-none flex-col gap-1 p-0">
                   {vercel.topServices.map((item) => (
                     <li
-                      className="flex items-center justify-between gap-2 text-[11px] text-slate-600"
+                      className="flex items-center justify-between gap-2 text-[11px] text-ink-soft"
                       key={item.service}
                     >
                       <span className="min-w-0 truncate">{item.service}</span>
-                      <span className="shrink-0 font-medium text-slate-700">
+                      <span className="shrink-0 font-medium text-ink">
                         {formatUsd(item.cost)}
                       </span>
                     </li>
                   ))}
                 </ul>
               ) : (
-                <p className="m-0 mt-2 text-[11px] text-slate-400">
+                <p className="m-0 mt-2 text-[11px] text-ink-muted">
                   Sem uso variável no dia.
                 </p>
               )}
             </>
           ) : (
-            <p className="m-0 mt-1 text-[11px] text-slate-400">
+            <p className="m-0 mt-1 text-[11px] text-ink-muted">
               Configure VERCEL_API_TOKEN para ler o custo real da Vercel.
             </p>
           )}
         </div>
 
-        <div className="rounded-lg border border-slate-200/70 bg-slate-50/40 p-3">
-          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+        <div className="rounded-lg border border-line bg-subtle p-3">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
             Supabase · estimativa
           </p>
           <div className="mt-1 flex items-baseline gap-2">
-            <span className="text-2xl font-semibold leading-none text-slate-950">
+            <span className="text-2xl font-semibold leading-none text-ink">
               {formatUsd(supabase.estimateDailyCost)}
             </span>
-            <span className="text-[11px] text-slate-500">/dia</span>
+            <span className="text-[11px] text-ink-muted">/dia</span>
           </div>
-          <p className="m-0 mt-1 text-[11px] text-slate-500">{supabase.note}</p>
+          <p className="m-0 mt-1 text-[11px] text-ink-muted">{supabase.note}</p>
         </div>
       </div>
 
       {vercel.configured && vercel.dailySeries.length > 1 ? (
         <div className="mt-3">
-          <p className="m-0 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <p className="m-0 mb-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
             Custo por dia (Vercel · faturado)
           </p>
           <CostDailyBars points={vercel.dailySeries} />
         </div>
       ) : null}
 
-      <p className="m-0 mt-3 text-[11px] text-slate-400">
+      <p className="m-0 mt-3 text-[11px] text-ink-muted">
         Plano fixo: Vercel {formatUsd(vercel.monthlyFixedCost)} + Supabase{" "}
         {formatUsd(supabase.estimateMonthlyCost)} ≈ {formatUsd(fixedMonthly)}/mês
       </p>
@@ -808,7 +808,7 @@ export function HealthBoard({
             <Tooltip content="Atualizar leitura" placement="top">
               <button
                 aria-label="Atualizar leitura"
-                className="flex size-9 items-center justify-center rounded-lg border border-slate-200/70 bg-white text-slate-600 transition hover:bg-slate-50"
+                className="flex size-9 items-center justify-center rounded-lg border border-line bg-surface text-ink-soft transition hover:bg-subtle"
                 onClick={onRefresh}
                 type="button"
               >
@@ -859,7 +859,7 @@ export function HealthBoard({
           content="Faixa de latencia das respostas. Mesma regua que classifica risco e alertas."
           placement="top"
         >
-          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <span className="inline-flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
             <Gauge className="size-3.5" />
             Regua latencia
           </span>
@@ -869,12 +869,12 @@ export function HealthBoard({
 
           return (
             <span
-              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-slate-500"
+              className="inline-flex items-center gap-1.5 text-[11px] font-medium text-ink-muted"
               key={risk}
             >
               <span className={`size-2 rounded-full ${tone.dot}`} aria-hidden />
               {tone.label}
-              <span className="text-slate-400">{tone.range}</span>
+              <span className="text-ink-muted">{tone.range}</span>
             </span>
           );
         })}
@@ -884,8 +884,8 @@ export function HealthBoard({
         <CostPanel accessToken={accessToken ?? undefined} cost={snapshot.cost} />
       ) : null}
 
-      <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <p className="m-0 mb-3 text-xs font-semibold text-slate-500">
+      <div className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <p className="m-0 mb-3 text-xs font-semibold text-ink-muted">
           Integracoes
         </p>
         <div className="flex flex-wrap gap-2">
@@ -932,19 +932,19 @@ export function HealthBoard({
       </div>
 
       {watcherCritical && watcher ? (
-        <div className="rounded-xl border-2 border-rose-200 bg-rose-50/60 p-4">
+        <div className="rounded-xl border-2 border-rose-200 dark:border-rose-500/30 bg-rose-50/60 dark:bg-rose-500/12 p-4">
           <div className="flex items-center gap-2">
-            <BellRing className="size-4 text-rose-600" />
-            <p className="m-0 text-sm font-semibold text-rose-700">
+            <BellRing className="size-4 text-rose-600 dark:text-rose-300" />
+            <p className="m-0 text-sm font-semibold text-rose-700 dark:text-rose-300">
               Ops Watcher - risco {watcher.risk}
             </p>
           </div>
-          <p className="m-0 mt-2 text-sm text-slate-700">{watcher.impact}</p>
-          <p className="m-0 mt-1 text-sm text-slate-500">{watcher.reason}</p>
+          <p className="m-0 mt-2 text-sm text-ink">{watcher.impact}</p>
+          <p className="m-0 mt-1 text-sm text-ink-muted">{watcher.reason}</p>
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             {activeAlerts.length > 0 ? (
@@ -952,7 +952,7 @@ export function HealthBoard({
             ) : (
               <CheckCircle2 className="size-4 text-emerald-500" />
             )}
-            <p className="m-0 text-xs font-semibold text-slate-500">
+            <p className="m-0 text-xs font-semibold text-ink-muted">
               {activeAlerts.length > 0
                 ? `${activeAlerts.length} ocorrencia(s) ativa(s)`
                 : "Nenhuma ocorrencia ativa"}
@@ -964,7 +964,7 @@ export function HealthBoard({
               placement="top"
             >
               <button
-                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-slate-500 transition hover:bg-slate-50 hover:text-slate-700"
+                className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-[11px] font-semibold text-ink-muted transition hover:bg-subtle hover:text-ink"
                 onClick={onOpenFullCenter}
                 type="button"
               >
@@ -995,7 +995,7 @@ export function HealthBoard({
       </div>
 
       {generatedAt ? (
-        <p className="m-0 text-right text-xs text-slate-400">
+        <p className="m-0 text-right text-xs text-ink-muted">
           Ultima leitura: {generatedAt}
         </p>
       ) : null}

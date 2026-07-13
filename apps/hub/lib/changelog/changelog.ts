@@ -32,6 +32,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-13-zeus-escuro-acabamentos",
+    deployedAt: "2026-07-13T08:34:15-03:00",
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "O Zeus (HelpDesk, Monitoramento e Deploys) ganhou o tema escuro completo.",
+              "No HelpDesk, a prioridade “Alta” agora aparece em verde no quadro.",
+            ],
+            screen: "Tema escuro",
+          },
+        ],
+      },
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "Barra de topo (abas) e o menu de módulos passaram pro grafite neutro, sem o tom azulado.",
+              "O status de presença (Online/Agenda/Ausente…) ficou legível no fundo escuro.",
+              "A barra de título do app agora combina com o fundo (era um azul que destoava), e a logo do Panteon na aba ficou branca.",
+            ],
+            screen: "Acabamentos do tema escuro",
+          },
+        ],
+      },
+    ],
+    rollback: "commit cceda2f6 (v1.32.0)",
+    technical: {
+      done: "Conversão dark do módulo Zeus (squadops): script de receita (~1.830 substituições) em 16 arquivos — neutros slate/white/ink→tokens, fundo de página→bg-canvas, variantes dark nos intents, botões #101820+text-white→bg-inverse+text-brand-ink. helpdesk-board priorityVariant: alta 'warning'→'success' (verde). Acabamentos da moldura (sempre-escura, decisão do Lucas): panteon-module-tabs aba ativa #1b2430→#242725 e tile #101820→#101211; hub-shell launcher #232832→#242725 + tile/item-ativo neutros + backdrop bg-black/[0.06]→/50; panteon-topbar-user PanteonPresenceControl agora recebe onDark e usa tons translucidos no escuro (getPresenceTone light/dark) + dropdown escuro; aba da Home usa /panteon-mark-light.png (logo branca) no lugar da marca dourada de homolog. CHROME DA JANELA (a 'barra azulada' real do PWA/desktop): themeColor + msapplication-TileColor (app/layout.tsx) e theme_color + background_color (manifest + manifest-mobile) de #101820 (navy) → #101211 (grafite neutro). Typecheck limpo.",
+      motivation:
+        "Estender o tema claro/escuro ao Zeus e fechar os acabamentos do escuro que ainda destoavam (azulado na barra de topo, menu de módulos, status de presença e, principalmente, a cor da janela do app desktop que vinha do manifest PWA).",
+    },
+    title: "Tema escuro no Zeus + acabamentos (barra, menu, status, janela)",
+    type: "melhoria",
+    version: "1.32.1",
+  },
+  {
     buildTag: "2026-07-12-tema-claro-escuro",
     deployedAt: "2026-07-12T21:49:11-03:00",
     modules: [

@@ -42,7 +42,7 @@ export type PromptTemplate<TTarget extends string = string> = {
 };
 
 const poAiFieldClassName =
-  "h-10 w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10";
+  "h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10";
 
 export function createPoAiMessage(
   role: PoAiChatMessage["role"],
@@ -75,7 +75,7 @@ export function FloatingPoAiButton({
   return (
     <button
       aria-label="Abrir PO AI"
-      className="fixed bottom-6 right-40 z-40 inline-flex h-12 items-center gap-3 rounded-2xl border border-[#A07C3B]/25 bg-white px-4 text-sm font-semibold text-[#7A5E2C] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      className="fixed bottom-6 right-40 z-40 inline-flex h-12 items-center gap-3 rounded-2xl border border-[#A07C3B]/25 bg-surface px-4 text-sm font-semibold text-[#7a5e2c] dark:text-[#d9b877] shadow-[0_18px_50px_rgba(15,23,42,0.18)] transition-all hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
       onClick={onClick}
       type="button"
     >
@@ -116,32 +116,32 @@ function PoAiChannelPanel<TTarget extends string>({
   return (
     <Surface
       bordered
-      className="flex min-h-0 flex-1 flex-col overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="flex min-h-0 flex-1 flex-col overflow-hidden border-line bg-surface p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
-      <div className="border-b border-slate-100 p-5">
+      <div className="border-b border-line p-5">
         <PanelTitle
           eyebrow="Cérebro do Panteon"
           icon={<Bot size={18} />}
           title="PO AI"
         />
         <div className="mt-3 flex flex-wrap gap-2">
-          <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-1 ring-emerald-100">
+          <span className="rounded-full bg-emerald-50 dark:bg-emerald-500/12 px-2.5 py-1 text-xs font-semibold text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-100 dark:ring-emerald-500/20">
             monitoramento real
           </span>
-          <span className="rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 ring-1 ring-amber-100">
+          <span className="rounded-full bg-amber-50 dark:bg-amber-500/12 px-2.5 py-1 text-xs font-semibold text-amber-800 dark:text-amber-300 ring-1 ring-amber-100 dark:ring-amber-500/20">
             diário = histórico
           </span>
-          <span className="rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-700 ring-1 ring-sky-100">
+          <span className="rounded-full bg-sky-50 dark:bg-sky-500/12 px-2.5 py-1 text-xs font-semibold text-sky-700 dark:text-sky-300 ring-1 ring-sky-100 dark:ring-sky-500/20">
             código do Panteon
           </span>
-          <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
+          <span className="rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
             sem execução automática
           </span>
         </div>
       </div>
 
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-slate-50/70 p-4">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-subtle p-4">
           {messages.map((message) => (
             <PoAiMessageBubble
               formatDateTime={formatDateTime}
@@ -151,7 +151,7 @@ function PoAiChannelPanel<TTarget extends string>({
           ))}
           {isLoading ? (
             <div className="flex justify-start">
-              <div className="rounded-2xl border border-slate-200/70 bg-white px-3 py-2 text-sm font-semibold text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
+              <div className="rounded-2xl border border-line bg-surface px-3 py-2 text-sm font-semibold text-ink-muted shadow-[0_1px_2px_rgba(15,23,42,0.03)]">
                 <span className="inline-flex items-center gap-2">
                   <Loader2 className="size-4 animate-spin text-[#A07C3B]" />
                   PO AI consultando monitoramento real, histórico e código do
@@ -162,14 +162,14 @@ function PoAiChannelPanel<TTarget extends string>({
           ) : null}
         </div>
 
-        <div className="border-t border-slate-100 bg-white p-4">
+        <div className="border-t border-line bg-surface p-4">
           {error ? (
-            <p className="m-0 mb-3 rounded-lg bg-red-50 p-3 text-xs font-semibold text-red-700 ring-1 ring-red-100">
+            <p className="m-0 mb-3 rounded-lg bg-red-50 dark:bg-red-500/12 p-3 text-xs font-semibold text-red-700 dark:text-red-300 ring-1 ring-red-100 dark:ring-red-500/20">
               {error}
             </p>
           ) : null}
           <label className="block">
-            <span className="mb-1.5 block text-xs font-semibold text-slate-500">
+            <span className="mb-1.5 block text-xs font-semibold text-ink-muted">
               Conversar com o PO AI
             </span>
             <textarea
@@ -199,7 +199,7 @@ function PoAiChannelPanel<TTarget extends string>({
               ))}
             </select>
             <button
-              className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-white px-3 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/5 disabled:cursor-not-allowed disabled:opacity-60"
+              className="inline-flex h-10 items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-surface px-3 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/5 disabled:cursor-not-allowed disabled:opacity-60"
               disabled={isLoading}
               onClick={onGeneratePrompt}
               type="button"
@@ -211,7 +211,7 @@ function PoAiChannelPanel<TTarget extends string>({
 
           <div className="mt-3 grid grid-cols-3 gap-2">
             <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               onClick={() => onQuestionChange("O que foi feito hoje?")}
               type="button"
             >
@@ -219,7 +219,7 @@ function PoAiChannelPanel<TTarget extends string>({
               Hoje
             </button>
             <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               onClick={() =>
                 onQuestionChange(
                   "Como está o banco de dados no monitoramento real agora? Use o diário apenas como histórico.",
@@ -231,7 +231,7 @@ function PoAiChannelPanel<TTarget extends string>({
               Banco
             </button>
             <button
-              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-slate-200/70 bg-white px-3 text-xs font-semibold text-slate-600 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+              className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
               onClick={() =>
                 onQuestionChange("O que precisa ir para Hefesto?")
               }
@@ -243,7 +243,7 @@ function PoAiChannelPanel<TTarget extends string>({
           </div>
 
           <button
-            className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533] disabled:cursor-not-allowed disabled:opacity-60"
+            className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isLoading}
             onClick={() => onAsk(question)}
             type="button"
@@ -295,16 +295,16 @@ export function PoAiDrawer<TTarget extends string>({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/20 backdrop-blur-[1px]">
+    <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px]">
       <button
         aria-label="Fechar PO AI"
         className="absolute inset-0 cursor-default"
         onClick={onClose}
         type="button"
       />
-      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-slate-50 p-4 shadow-2xl">
+      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-line bg-subtle p-4 shadow-2xl">
         <button
-          className="absolute right-7 top-7 z-10 grid size-9 place-items-center rounded-lg border border-slate-200/70 bg-white text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-slate-50 hover:text-slate-950"
+          className="absolute right-7 top-7 z-10 grid size-9 place-items-center rounded-lg border border-line bg-surface text-ink-muted shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:bg-subtle hover:text-ink"
           onClick={onClose}
           type="button"
         >
@@ -362,7 +362,7 @@ export function PromptLibraryModal<TTarget extends string>({
   }
 
   return (
-    <div className="fixed inset-0 z-[70] bg-slate-950/35 p-4 backdrop-blur-[2px]">
+    <div className="fixed inset-0 z-[70] bg-black/35 p-4 backdrop-blur-[2px]">
       <button
         aria-label="Fechar biblioteca de prompts"
         className="absolute inset-0 cursor-default"
@@ -372,17 +372,17 @@ export function PromptLibraryModal<TTarget extends string>({
       <div
         aria-label="Biblioteca de prompts do PO AI"
         aria-modal="true"
-        className="relative z-10 mx-auto flex h-full max-h-[48rem] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        className="relative z-10 mx-auto flex h-full max-h-[48rem] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
         role="dialog"
       >
-        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-slate-100 p-5">
+        <div className="flex flex-wrap items-start justify-between gap-4 border-b border-line p-5">
           <PanelTitle
             eyebrow="modelos prontos"
             icon={<WandSparkles size={18} />}
             title="Biblioteca de prompts"
           />
           <button
-            className="grid size-9 place-items-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            className="grid size-9 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
             onClick={onClose}
             type="button"
           >
@@ -391,7 +391,7 @@ export function PromptLibraryModal<TTarget extends string>({
         </div>
 
         <div className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[21rem_minmax(0,1fr)]">
-          <aside className="min-h-0 overflow-y-auto border-b border-slate-100 bg-slate-50/70 p-4 lg:border-b-0 lg:border-r">
+          <aside className="min-h-0 overflow-y-auto border-b border-line bg-subtle p-4 lg:border-b-0 lg:border-r">
             <div className="grid gap-2">
               {templates.map((template) => {
                 const isSelected = template.id === selectedTemplate.id;
@@ -401,25 +401,25 @@ export function PromptLibraryModal<TTarget extends string>({
                     aria-pressed={isSelected}
                     className={`rounded-lg border p-3 text-left transition-colors ${
                       isSelected
-                        ? "border-[#A07C3B]/35 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
-                        : "border-slate-200/70 bg-white/70 hover:border-[#A07C3B]/25 hover:bg-white"
+                        ? "border-[#A07C3B]/35 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.06)]"
+                        : "border-line bg-white/70 hover:border-[#A07C3B]/25 hover:bg-surface"
                     }`}
                     key={template.id}
                     onClick={() => onSelectTemplate(template.id)}
                     type="button"
                   >
                     <div className="flex items-start gap-3">
-                      <span className="flex size-9 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+                      <span className="flex size-9 items-center justify-center rounded-lg bg-subtle text-[#A07C3B] ring-1 ring-line">
                         {promptTemplateIcon(template)}
                       </span>
                       <span className="min-w-0">
-                        <span className="block text-sm font-semibold text-slate-950">
+                        <span className="block text-sm font-semibold text-ink">
                           {template.label}
                         </span>
-                        <span className="mt-1 block text-xs leading-5 text-slate-500">
+                        <span className="mt-1 block text-xs leading-5 text-ink-muted">
                           {template.description}
                         </span>
-                        <span className="mt-2 inline-flex rounded-full bg-white px-2.5 py-1 text-[0.68rem] font-semibold uppercase text-slate-500 ring-1 ring-slate-200/70">
+                        <span className="mt-2 inline-flex rounded-full bg-surface px-2.5 py-1 text-[0.68rem] font-semibold uppercase text-ink-muted ring-1 ring-line">
                           {promptTemplateTypeLabel(template.type)}
                         </span>
                       </span>
@@ -433,17 +433,17 @@ export function PromptLibraryModal<TTarget extends string>({
           <section className="flex min-h-0 flex-col p-5">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div>
-                <p className="m-0 text-xs font-semibold uppercase text-[#7A5E2C]">
+                <p className="m-0 text-xs font-semibold uppercase text-[#7a5e2c] dark:text-[#d9b877]">
                   {selectedTemplate.target}
                 </p>
-                <h3 className="m-0 mt-1 text-lg font-semibold text-slate-950">
+                <h3 className="m-0 mt-1 text-lg font-semibold text-ink">
                   {selectedTemplate.label}
                 </h3>
-                <p className="m-0 mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                <p className="m-0 mt-2 max-w-2xl text-sm leading-6 text-ink-soft">
                   Texto pronto para copiar e enviar ao dev responsavel.
                 </p>
               </div>
-              <span className="inline-flex items-center gap-2 rounded-full bg-[#A07C3B]/10 px-3 py-1.5 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+              <span className="inline-flex items-center gap-2 rounded-full bg-[#A07C3B]/10 px-3 py-1.5 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                 {promptTemplateIcon(selectedTemplate)}
                 {promptTemplateTypeLabel(selectedTemplate.type)}
               </span>
@@ -451,7 +451,7 @@ export function PromptLibraryModal<TTarget extends string>({
 
             <textarea
               aria-label="Prompt selecionado"
-              className="mt-4 min-h-0 flex-1 resize-none rounded-lg border border-slate-200 bg-slate-50/80 p-4 font-mono text-xs leading-5 text-slate-800 outline-none focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="mt-4 min-h-0 flex-1 resize-none rounded-lg border border-line bg-subtle p-4 font-mono text-xs leading-5 text-ink outline-none focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
               readOnly
               spellCheck={false}
               value={selectedTemplate.body}
@@ -459,7 +459,7 @@ export function PromptLibraryModal<TTarget extends string>({
 
             <div className="mt-4 flex flex-wrap items-center justify-end gap-2">
               <button
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-[#101820] px-4 text-sm font-semibold text-white transition-colors hover:bg-[#1b2533]"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:opacity-90"
                 onClick={() => void copyPrompt(selectedTemplate)}
                 type="button"
               >
@@ -528,7 +528,7 @@ function PoAiMessageBubble({
   if (message.role === "user") {
     return (
       <div className="flex justify-end">
-        <div className="max-w-[86%] rounded-2xl bg-[#101820] px-4 py-3 text-sm leading-6 text-white shadow-[0_1px_2px_rgba(15,23,42,0.08)]">
+        <div className="max-w-[86%] rounded-2xl bg-inverse px-4 py-3 text-sm leading-6 text-brand-ink shadow-[0_1px_2px_rgba(15,23,42,0.08)]">
           <p className="m-0 whitespace-pre-wrap">{message.content}</p>
           <p className="m-0 mt-2 text-right text-[0.68rem] font-semibold text-white/55">
             {formatDateTime(message.createdAt)}
@@ -541,8 +541,8 @@ function PoAiMessageBubble({
   return (
     <div className="flex justify-start">
       <div className="max-w-[94%]">
-        <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-slate-500">
-          <span className="flex size-7 items-center justify-center rounded-lg bg-white text-[#A07C3B] ring-1 ring-slate-200/70">
+        <div className="mb-2 flex items-center gap-2 text-xs font-semibold text-ink-muted">
+          <span className="flex size-7 items-center justify-center rounded-lg bg-surface text-[#A07C3B] ring-1 ring-line">
             <Bot className="size-4" />
           </span>
           <span>PO AI</span>
@@ -569,19 +569,19 @@ function CopilotAnswerBubbles({
       className={
         compact
           ? "grid gap-3"
-          : "mt-4 rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+          : "mt-4 rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
       }
     >
       {!compact ? (
         <div className="flex items-center gap-2">
-          <span className="flex size-8 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+          <span className="flex size-8 items-center justify-center rounded-lg bg-subtle text-[#A07C3B] ring-1 ring-line">
             <Bot className="size-4" />
           </span>
           <div>
-            <p className="m-0 text-xs font-semibold uppercase text-[#7A5E2C]">
+            <p className="m-0 text-xs font-semibold uppercase text-[#7a5e2c] dark:text-[#d9b877]">
               Resposta do PO AI
             </p>
-            <p className="m-0 mt-0.5 text-xs text-slate-500">
+            <p className="m-0 mt-0.5 text-xs text-ink-muted">
               Organizado por frente para leitura rápida
             </p>
           </div>
@@ -591,11 +591,11 @@ function CopilotAnswerBubbles({
       <div className={compact ? "grid gap-3" : "mt-4 grid gap-3"}>
         {sections.map((section) => (
           <article
-            className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+            className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
             key={section.id}
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <h3 className="m-0 text-[0.95rem] font-semibold text-slate-950">
+              <h3 className="m-0 text-[0.95rem] font-semibold text-ink">
                 {section.title}
               </h3>
               <span
@@ -608,14 +608,14 @@ function CopilotAnswerBubbles({
               {section.items.map((item, index) =>
                 isCopilotSubheading(item) ? (
                   <li
-                    className="pt-2 text-xs font-semibold uppercase text-[#7A5E2C]"
+                    className="pt-2 text-xs font-semibold uppercase text-[#7a5e2c] dark:text-[#d9b877]"
                     key={`${section.id}-${index}`}
                   >
                     {item.replace(/:$/, "")}
                   </li>
                 ) : (
                   <li
-                    className="grid grid-cols-[0.45rem_minmax(0,1fr)] gap-3 text-sm leading-6 text-slate-700"
+                    className="grid grid-cols-[0.45rem_minmax(0,1fr)] gap-3 text-sm leading-6 text-ink"
                     key={`${section.id}-${index}`}
                   >
                     <span className="mt-[0.62rem] size-1.5 rounded-full bg-[#A07C3B]" />
@@ -847,18 +847,18 @@ function copilotSectionLabel(type: CopilotAnswerSection["type"]) {
 
 function copilotSectionBadgeClass(type: CopilotAnswerSection["type"]) {
   if (type === "module") {
-    return "bg-sky-50 text-sky-700 ring-1 ring-sky-100";
+    return "bg-sky-50 dark:bg-sky-500/12 text-sky-700 dark:text-sky-300 ring-1 ring-sky-100 dark:ring-sky-500/20";
   }
 
   if (type === "prompt") {
-    return "bg-violet-50 text-violet-700 ring-1 ring-violet-100";
+    return "bg-violet-50 dark:bg-violet-500/12 text-violet-700 dark:text-violet-300 ring-1 ring-violet-100 dark:ring-violet-500/20";
   }
 
   if (type === "risk") {
-    return "bg-amber-50 text-amber-800 ring-1 ring-amber-100";
+    return "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-1 ring-amber-100 dark:ring-amber-500/20";
   }
 
-  return "bg-[#A07C3B]/10 text-[#7A5E2C] ring-1 ring-[#A07C3B]/15";
+  return "bg-[#A07C3B]/10 text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15";
 }
 
 function normalizeSearchText(value: string) {

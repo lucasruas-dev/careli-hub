@@ -1033,8 +1033,8 @@ export function HubItTicketsBoard({
 
   if (!accessToken) {
     return (
-      <Surface bordered className="border-amber-100 bg-amber-50 p-5">
-        <div className="flex items-center gap-3 text-sm font-semibold text-amber-800">
+      <Surface bordered className="border-amber-100 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/12 p-5">
+        <div className="flex items-center gap-3 text-sm font-semibold text-amber-800 dark:text-amber-300">
           <AlertTriangle className="size-4" />
           Sessao ausente para abrir o HelpDesk.
         </div>
@@ -1046,7 +1046,7 @@ export function HubItTicketsBoard({
     <section className="min-w-0">
       <Surface
         bordered
-        className="overflow-x-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+        className="overflow-x-hidden border-line bg-surface p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
       >
         <HelpDeskBoardToolbar
           activeTickets={activeQueueTickets.length}
@@ -1145,13 +1145,13 @@ export function HubItTicketsBoard({
         />
       ) : null}
       {attentionToast ? (
-        <div className="fixed bottom-6 right-6 z-[70] max-w-sm rounded-xl border border-[#A07C3B]/25 bg-white p-4 text-sm font-semibold text-slate-800 shadow-2xl">
+        <div className="fixed bottom-6 right-6 z-[70] max-w-sm rounded-xl border border-[#A07C3B]/25 bg-surface p-4 text-sm font-semibold text-ink shadow-2xl">
           <div className="flex items-start gap-3">
-            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-[#101820] text-white">
+            <span className="grid size-9 shrink-0 place-items-center rounded-full bg-inverse text-brand-ink">
               <MessageSquareReply className="size-4" />
             </span>
             <div className="min-w-0">
-              <p className="m-0 text-xs uppercase text-[#7A5E2C]">
+              <p className="m-0 text-xs uppercase text-[#7a5e2c] dark:text-[#d9b877]">
                 HelpDesk
               </p>
               <p className="m-0 mt-1 leading-5">{attentionToast}</p>
@@ -1166,8 +1166,8 @@ export function HubItTicketsBoard({
 function OperationalErrorBanner({ message }: { message: string }) {
   const isMigrationPending = isHubItTicketsMigrationPendingMessage(message);
   const className = isMigrationPending
-    ? "border-b border-amber-100 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-800"
-    : "border-b border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700";
+    ? "border-b border-amber-100 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/12 px-4 py-3 text-sm font-semibold text-amber-800 dark:text-amber-300"
+    : "border-b border-red-100 dark:border-red-500/25 bg-red-50 dark:bg-red-500/12 px-4 py-3 text-sm font-semibold text-red-700 dark:text-red-300";
 
   return <div className={className}>{message}</div>;
 }
@@ -1206,7 +1206,7 @@ function TicketDetailModal({
   triageResult: HubItTicketTriageResult | null;
 }) {
   return (
-    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-[#101820]/45 p-4">
+    <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-4">
       <button
         aria-label="Fechar detalhe do ticket"
         className="absolute inset-0 cursor-default"
@@ -1215,22 +1215,22 @@ function TicketDetailModal({
       />
       <div
         aria-modal="true"
-        className="relative flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        className="relative flex max-h-[88vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
         role="dialog"
       >
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 border-b border-line bg-subtle px-4 py-3">
           <div className="min-w-0">
-            <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-500">
+            <p className="m-0 text-[0.68rem] font-semibold uppercase text-ink-muted">
               Historico / detalhe
             </p>
-            <p className="m-0 truncate font-mono text-sm font-semibold text-[#7A5E2C]">
+            <p className="m-0 truncate font-mono text-sm font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
               {ticket.protocol}
             </p>
           </div>
           <Tooltip content="Fechar" placement="left">
             <button
               aria-label="Fechar detalhe do ticket"
-              className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+              className="grid size-9 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:border-[#A07C3B]/30 hover:text-ink"
               onClick={onClose}
               type="button"
             >
@@ -1348,7 +1348,7 @@ function TicketInsightModal({
   }, [groupKeySignature, groups]);
 
   return (
-    <div className="fixed inset-0 z-[85] flex items-center justify-center bg-[#101820]/45 p-4">
+    <div className="fixed inset-0 z-[85] flex items-center justify-center bg-black/45 p-4">
       <button
         aria-label="Fechar lista de tickets"
         className="absolute inset-0 cursor-default"
@@ -1357,22 +1357,22 @@ function TicketInsightModal({
       />
       <div
         aria-modal="true"
-        className="relative flex max-h-[82vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        className="relative flex max-h-[82vh] w-full max-w-5xl flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
         role="dialog"
       >
-        <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <div className="flex items-center justify-between gap-3 border-b border-line bg-subtle px-4 py-3">
           <div className="min-w-0">
-            <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#7A5E2C]">
+            <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#7a5e2c] dark:text-[#d9b877]">
               Indicador
             </p>
-            <h3 className="m-0 truncate text-base font-semibold text-slate-950">
+            <h3 className="m-0 truncate text-base font-semibold text-ink">
               {title}
             </h3>
           </div>
           <Tooltip content="Fechar" placement="left">
             <button
               aria-label="Fechar lista de tickets"
-              className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+              className="grid size-9 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:border-[#A07C3B]/30 hover:text-ink"
               onClick={onClose}
               type="button"
             >
@@ -1380,7 +1380,7 @@ function TicketInsightModal({
             </button>
           </Tooltip>
         </div>
-        <div className="grid gap-3 border-b border-slate-100 bg-white px-4 py-3">
+        <div className="grid gap-3 border-b border-line bg-surface px-4 py-3">
           <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-[1.2fr_repeat(5,minmax(0,0.82fr))]">
             <ManagementSearchInput
               label="Ticket"
@@ -1465,14 +1465,14 @@ function TicketInsightModal({
             </QueueFilterSelect>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+            <span className="rounded-full bg-subtle px-2 py-1 text-xs font-semibold text-ink-soft">
               {filteredTickets.length} ticket(s)
             </span>
             <div className="flex flex-wrap items-center gap-2">
               {groups.length > 0 ? (
                 <>
                   <button
-                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink-soft transition hover:border-[#A07C3B]/30 hover:text-ink"
                     onClick={() =>
                       setExpandedGroups(new Set(groups.map((group) => group.key)))
                     }
@@ -1482,7 +1482,7 @@ function TicketInsightModal({
                     Expandir
                   </button>
                   <button
-                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+                    className="inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink-soft transition hover:border-[#A07C3B]/30 hover:text-ink"
                     onClick={() => setExpandedGroups(new Set())}
                     type="button"
                   >
@@ -1494,8 +1494,8 @@ function TicketInsightModal({
               <button
                 className={`inline-flex h-8 items-center gap-1.5 rounded-lg border px-2.5 text-xs font-semibold transition ${
                   hasFilters
-                    ? "cursor-pointer border-[#A07C3B]/30 bg-[#A07C3B]/10 text-[#7A5E2C] hover:border-[#A07C3B]/50"
-                    : "cursor-default border-slate-200 bg-slate-50 text-slate-400"
+                    ? "cursor-pointer border-[#A07C3B]/30 bg-[#A07C3B]/10 text-[#7a5e2c] dark:text-[#d9b877] hover:border-[#A07C3B]/50"
+                    : "cursor-default border-line bg-subtle text-ink-muted"
                 }`}
                 disabled={!hasFilters}
                 onClick={() =>
@@ -1524,11 +1524,11 @@ function TicketInsightModal({
 
                 return (
                   <section
-                    className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50/60"
+                    className="overflow-hidden rounded-xl border border-line bg-subtle"
                     key={group.key}
                   >
                     <button
-                      className="flex w-full cursor-pointer items-center justify-between gap-3 border-b border-slate-200 bg-white px-3 py-2 text-left transition hover:bg-slate-50"
+                      className="flex w-full cursor-pointer items-center justify-between gap-3 border-b border-line bg-surface px-3 py-2 text-left transition hover:bg-subtle"
                       onClick={() =>
                         setExpandedGroups((currentGroups) => {
                           const nextGroups = new Set(currentGroups);
@@ -1544,17 +1544,17 @@ function TicketInsightModal({
                       }
                       type="button"
                     >
-                      <h4 className="m-0 truncate text-sm font-semibold text-slate-950">
+                      <h4 className="m-0 truncate text-sm font-semibold text-ink">
                         {group.label}
                       </h4>
                       <span className="inline-flex items-center gap-2">
-                        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                        <span className="rounded-full bg-subtle px-2 py-1 text-xs font-semibold text-ink-soft">
                           {group.tickets.length}
                         </span>
                         {isExpanded ? (
-                          <ChevronUp className="size-4 text-slate-400" />
+                          <ChevronUp className="size-4 text-ink-muted" />
                         ) : (
-                          <ChevronDown className="size-4 text-slate-400" />
+                          <ChevronDown className="size-4 text-ink-muted" />
                         )}
                       </span>
                     </button>
@@ -1590,8 +1590,8 @@ function TicketInsightModal({
           ) : (
             <div className="grid min-h-40 place-items-center text-center">
               <div>
-                <Inbox className="mx-auto size-7 text-slate-300" />
-                <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
+                <Inbox className="mx-auto size-7 text-ink-muted" />
+                <p className="m-0 mt-2 text-sm font-semibold text-ink-muted">
                   Nenhum ticket neste indicador.
                 </p>
               </div>
@@ -1614,18 +1614,18 @@ function InsightTicketButton({
 }) {
   return (
     <button
-      className="grid cursor-pointer gap-2 rounded-lg border border-slate-200 bg-white px-3 py-3 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] md:grid-cols-[7.5rem_minmax(0,1fr)_7rem_7rem_7rem] md:items-center"
+      className="grid cursor-pointer gap-2 rounded-lg border border-line bg-surface px-3 py-3 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] md:grid-cols-[7.5rem_minmax(0,1fr)_7rem_7rem_7rem] md:items-center"
       onClick={() => onOpenTicket(ticket)}
       type="button"
     >
-      <span className="font-mono text-xs font-semibold text-[#7A5E2C]">
+      <span className="font-mono text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
         {ticket.protocol}
       </span>
       <span className="min-w-0">
-        <span className="block truncate text-sm font-semibold text-slate-950">
+        <span className="block truncate text-sm font-semibold text-ink">
           {ticket.title}
         </span>
-        <span className="block truncate text-xs text-slate-500">
+        <span className="block truncate text-xs text-ink-muted">
           {ticket.requester.name} /{" "}
           {departmentByTicketProtocol.get(ticket.protocol) ??
             "Sem departamento"}{" "}
@@ -1637,7 +1637,7 @@ function InsightTicketButton({
       <Badge variant={priorityVariant(ticket.priority)}>
         {hubItTicketPriorityLabels[ticket.priority]}
       </Badge>
-      <span className="text-xs font-medium text-slate-500">
+      <span className="text-xs font-medium text-ink-muted">
         {formatDateShort(ticket.updatedAt)}
       </span>
     </button>
@@ -1666,7 +1666,7 @@ function BacklogFormModal({
   const canSubmit = form.module.trim() && form.screen.trim();
 
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-[#101820]/50 p-4">
+    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4">
       <button
         aria-label="Fechar formulario de Backlog"
         className="absolute inset-0 cursor-default"
@@ -1675,7 +1675,7 @@ function BacklogFormModal({
       />
       <form
         aria-label="Formulario de Backlog"
-        className="relative w-full max-w-xl overflow-hidden rounded-xl border border-slate-200 bg-white shadow-2xl"
+        className="relative w-full max-w-xl overflow-hidden rounded-xl border border-line bg-surface shadow-2xl"
         onSubmit={(event) => {
           event.preventDefault();
 
@@ -1692,19 +1692,19 @@ function BacklogFormModal({
           });
         }}
       >
-        <div className="flex items-start justify-between gap-4 border-b border-slate-200 bg-slate-50 px-4 py-3">
+        <div className="flex items-start justify-between gap-4 border-b border-line bg-subtle px-4 py-3">
           <div className="min-w-0">
-            <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#7A5E2C]">
+            <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#7a5e2c] dark:text-[#d9b877]">
               Backlog
             </p>
-            <h3 className="m-0 mt-1 truncate text-base font-semibold text-slate-950">
+            <h3 className="m-0 mt-1 truncate text-base font-semibold text-ink">
               {ticket.protocol} / {ticket.title}
             </h3>
           </div>
           <Tooltip content="Fechar" placement="left">
             <button
               aria-label="Fechar formulario de Backlog"
-              className="grid size-9 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+              className="grid size-9 shrink-0 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:border-[#A07C3B]/30 hover:text-ink"
               onClick={onClose}
               type="button"
             >
@@ -1715,7 +1715,7 @@ function BacklogFormModal({
         <div className="grid gap-4 p-4">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold uppercase text-slate-500">
+              <span className="text-xs font-semibold uppercase text-ink-muted">
                 Tipo
               </span>
               <select
@@ -1736,7 +1736,7 @@ function BacklogFormModal({
               </select>
             </label>
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold uppercase text-slate-500">
+              <span className="text-xs font-semibold uppercase text-ink-muted">
                 Prioridade
               </span>
               <select
@@ -1759,7 +1759,7 @@ function BacklogFormModal({
           </div>
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold uppercase text-slate-500">
+              <span className="text-xs font-semibold uppercase text-ink-muted">
                 Modulo
               </span>
               <input
@@ -1774,7 +1774,7 @@ function BacklogFormModal({
               />
             </label>
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold uppercase text-slate-500">
+              <span className="text-xs font-semibold uppercase text-ink-muted">
                 Tela / fluxo
               </span>
               <input
@@ -1790,7 +1790,7 @@ function BacklogFormModal({
             </label>
           </div>
           <label className="grid gap-1.5">
-            <span className="text-xs font-semibold uppercase text-slate-500">
+            <span className="text-xs font-semibold uppercase text-ink-muted">
               Observacao
             </span>
             <textarea
@@ -1805,8 +1805,8 @@ function BacklogFormModal({
               value={form.note}
             />
           </label>
-          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-            <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-slate-600">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-subtle px-3 py-2">
+            <div className="flex min-w-0 items-center gap-2 text-xs font-semibold text-ink-soft">
               {getBacklogTypeIcon(form.type)}
               <span className="truncate">
                 {hubItTicketRoadmapTypeLabels[form.type]} /{" "}
@@ -1815,7 +1815,7 @@ function BacklogFormModal({
             </div>
             <div className="flex items-center gap-2">
               <button
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-600 transition hover:border-slate-300 hover:text-slate-900"
+                className="h-9 rounded-lg border border-line bg-surface px-3 text-xs font-semibold text-ink-soft transition hover:border-line-strong hover:text-ink"
                 disabled={isSaving}
                 onClick={onClose}
                 type="button"
@@ -1823,7 +1823,7 @@ function BacklogFormModal({
                 Cancelar
               </button>
               <button
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#101820] px-3 text-xs font-semibold text-white transition hover:bg-[#1d2634] disabled:cursor-not-allowed disabled:opacity-60"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-3 text-xs font-semibold text-brand-ink transition hover:bg-[#1d2634] disabled:cursor-not-allowed disabled:opacity-60"
                 disabled={isSaving || !canSubmit}
                 type="submit"
               >
@@ -1922,13 +1922,13 @@ function HelpDeskBoardToolbar({
   }[];
 
   return (
-    <div className="border-b border-slate-200/70 bg-white">
+    <div className="border-b border-line bg-surface">
       <div className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
         <div className="min-w-0">
-          <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#7A5E2C]">
+          <p className="m-0 text-[0.68rem] font-semibold uppercase text-[#7a5e2c] dark:text-[#d9b877]">
             Zeus HelpDesk
           </p>
-          <h2 className="m-0 mt-1 text-base font-semibold text-slate-950">
+          <h2 className="m-0 mt-1 text-base font-semibold text-ink">
             {selectedView === "gestao"
               ? "Gestao executiva"
               : selectedView === "historico"
@@ -1938,11 +1938,11 @@ function HelpDeskBoardToolbar({
         </div>
 
         <div className="flex min-w-0 flex-1 flex-wrap items-center justify-end gap-2">
-          <label className="flex h-9 w-full min-w-56 max-w-md items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 text-sm text-slate-500 shadow-[0_1px_2px_rgba(15,23,42,0.03)] focus-within:border-[#A07C3B]/45 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
-            <Search className="size-4 shrink-0 text-slate-400" />
+          <label className="flex h-9 w-full min-w-56 max-w-md items-center gap-2 rounded-lg border border-line bg-surface px-3 text-sm text-ink-muted shadow-[0_1px_2px_rgba(15,23,42,0.03)] focus-within:border-[#A07C3B]/45 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+            <Search className="size-4 shrink-0 text-ink-muted" />
             <input
               aria-label="Buscar ticket, colaborador, modulo ou assunto"
-              className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400"
+              className="min-w-0 flex-1 border-0 bg-transparent p-0 text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
               onChange={(event) => onSearchChange(event.target.value)}
               placeholder="Ticket, colaborador, modulo ou assunto"
               type="search"
@@ -1951,7 +1951,7 @@ function HelpDeskBoardToolbar({
             {searchQuery.trim() ? (
               <button
                 aria-label="Limpar busca"
-                className="grid size-6 shrink-0 place-items-center rounded-md text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                className="grid size-6 shrink-0 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink"
                 onClick={() => onSearchChange("")}
                 type="button"
               >
@@ -1963,7 +1963,7 @@ function HelpDeskBoardToolbar({
             <Tooltip content="PO AI" placement="bottom">
               <button
                 aria-label="Abrir PO AI"
-                className="grid size-9 shrink-0 place-items-center rounded-lg border border-[#A07C3B]/25 bg-white text-[#7A5E2C] transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5"
+                className="grid size-9 shrink-0 place-items-center rounded-lg border border-[#A07C3B]/25 bg-surface text-[#7a5e2c] dark:text-[#d9b877] transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5"
                 onClick={onOpenPoAi}
                 type="button"
               >
@@ -1974,7 +1974,7 @@ function HelpDeskBoardToolbar({
           <Tooltip content="Atualizar HelpDesk" placement="bottom">
             <button
               aria-label="Atualizar HelpDesk"
-              className="grid size-9 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/25 hover:text-slate-950"
+              className="grid size-9 shrink-0 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:border-[#A07C3B]/25 hover:text-ink"
               onClick={onRefresh}
               type="button"
             >
@@ -1988,14 +1988,14 @@ function HelpDeskBoardToolbar({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 px-4 py-3">
-        <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3">
+        <div className="inline-flex rounded-lg border border-line bg-subtle p-1">
           {tabs.map((tab) => (
             <button
               className={`inline-flex h-9 items-center gap-2 rounded-md px-3 text-xs font-semibold transition ${
                 selectedView === tab.id
-                  ? "bg-[#101820] text-white shadow-sm"
-                  : "text-slate-600 hover:bg-white hover:text-slate-950"
+                  ? "bg-inverse text-brand-ink shadow-sm"
+                  : "text-ink-soft hover:bg-surface hover:text-ink"
               }`}
               key={tab.id}
               onClick={() => onViewChange(tab.id)}
@@ -2003,7 +2003,7 @@ function HelpDeskBoardToolbar({
             >
               <span
                 className={
-                  selectedView === tab.id ? "text-[#D7B46A]" : "text-slate-400"
+                  selectedView === tab.id ? "text-[#D7B46A]" : "text-ink-muted"
                 }
               >
                 {tab.icon}
@@ -2013,7 +2013,7 @@ function HelpDeskBoardToolbar({
                 className={`rounded-full px-1.5 py-0.5 font-mono text-[0.65rem] ${
                   selectedView === tab.id
                     ? "bg-white/12 text-white"
-                    : "bg-white text-slate-500 ring-1 ring-slate-200"
+                    : "bg-surface text-ink-muted ring-1 ring-line"
                 }`}
               >
                 {tab.count}
@@ -2039,7 +2039,7 @@ function HelpDeskBoardToolbar({
               value={workflowCounts.validacao}
             />
             <button
-              className="inline-flex h-8 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:border-[#A07C3B]/25 hover:text-slate-950"
+              className="inline-flex h-8 items-center gap-1 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink-soft transition hover:border-[#A07C3B]/25 hover:text-ink"
               onClick={onToggleDates}
               type="button"
             >
@@ -2055,7 +2055,7 @@ function HelpDeskBoardToolbar({
       </div>
 
       {selectedView === "fila" && isDatesExpanded ? (
-        <div className="grid gap-2 border-t border-slate-100 bg-slate-50/70 px-4 py-3 sm:grid-cols-5">
+        <div className="grid gap-2 border-t border-line bg-subtle px-4 py-3 sm:grid-cols-5">
           <DeliveryFilterButton
             active={deliveryFilter === "todos"}
             label={`Todos ${activeTickets}`}
@@ -2088,8 +2088,8 @@ function HelpDeskBoardToolbar({
       ) : null}
 
       {selectedView === "fila" ? (
-        <div className="grid gap-3 border-t border-slate-100 bg-white px-4 py-3 xl:grid-cols-[auto_minmax(0,1fr)] xl:items-center">
-          <div className="inline-flex w-fit rounded-lg border border-slate-200 bg-slate-50 p-1">
+        <div className="grid gap-3 border-t border-line bg-surface px-4 py-3 xl:grid-cols-[auto_minmax(0,1fr)] xl:items-center">
+          <div className="inline-flex w-fit rounded-lg border border-line bg-subtle p-1">
             <QueueModeButton
               active={queueDisplayMode === "lista"}
               icon={<ClipboardList className="size-3.5" />}
@@ -2190,8 +2190,8 @@ function HelpDeskBoardToolbar({
             <button
               className={`inline-flex h-9 items-center justify-center gap-2 self-end rounded-lg border px-3 text-xs font-semibold transition ${
                 hasQueueFilters
-                  ? "cursor-pointer border-[#A07C3B]/30 bg-[#A07C3B]/10 text-[#7A5E2C] hover:border-[#A07C3B]/50"
-                  : "cursor-default border-slate-200 bg-slate-50 text-slate-400"
+                  ? "cursor-pointer border-[#A07C3B]/30 bg-[#A07C3B]/10 text-[#7a5e2c] dark:text-[#d9b877] hover:border-[#A07C3B]/50"
+                  : "cursor-default border-line bg-subtle text-ink-muted"
               }`}
               disabled={!hasQueueFilters}
               onClick={onClearQueueFilters}
@@ -2222,13 +2222,13 @@ function QueueModeButton({
     <button
       className={`inline-flex h-8 cursor-pointer items-center gap-1.5 rounded-md px-2.5 text-xs font-semibold transition ${
         active
-          ? "bg-[#101820] text-white shadow-sm"
-          : "text-slate-600 hover:bg-white hover:text-slate-950"
+          ? "bg-inverse text-brand-ink shadow-sm"
+          : "text-ink-soft hover:bg-surface hover:text-ink"
       }`}
       onClick={onClick}
       type="button"
     >
-      <span className={active ? "text-[#D7B46A]" : "text-slate-400"}>
+      <span className={active ? "text-[#D7B46A]" : "text-ink-muted"}>
         {icon}
       </span>
       {label}
@@ -2249,11 +2249,11 @@ function QueueFilterSelect({
 }) {
   return (
     <label className="grid min-w-0 gap-1">
-      <span className="text-[0.66rem] font-semibold uppercase text-slate-500">
+      <span className="text-[0.66rem] font-semibold uppercase text-ink-muted">
         {label}
       </span>
       <select
-        className="h-9 w-full min-w-0 cursor-pointer rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 outline-none transition hover:border-[#A07C3B]/30 focus:border-[#A07C3B]/50 focus:ring-2 focus:ring-[#A07C3B]/10"
+        className="h-9 w-full min-w-0 cursor-pointer rounded-lg border border-line bg-surface px-2 text-xs font-semibold text-ink outline-none transition hover:border-[#A07C3B]/30 focus:border-[#A07C3B]/50 focus:ring-2 focus:ring-[#A07C3B]/10"
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >
@@ -2276,13 +2276,13 @@ function ManagementSearchInput({
 }) {
   return (
     <label className="grid gap-1">
-      <span className="text-[0.66rem] font-semibold uppercase text-slate-500">
+      <span className="text-[0.66rem] font-semibold uppercase text-ink-muted">
         {label}
       </span>
-      <span className="flex h-9 items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700 transition focus-within:border-[#A07C3B]/50 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
-        <Search className="size-3.5 shrink-0 text-slate-400" />
+      <span className="flex h-9 items-center gap-2 rounded-lg border border-line bg-surface px-2 text-xs font-semibold text-ink transition focus-within:border-[#A07C3B]/50 focus-within:ring-2 focus-within:ring-[#A07C3B]/10">
+        <Search className="size-3.5 shrink-0 text-ink-muted" />
         <input
-          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-xs font-semibold outline-none placeholder:text-slate-400"
+          className="min-w-0 flex-1 border-0 bg-transparent p-0 text-xs font-semibold outline-none placeholder:text-ink-muted"
           onChange={(event) => onChange(event.target.value)}
           placeholder={placeholder}
           type="search"
@@ -2291,7 +2291,7 @@ function ManagementSearchInput({
         {value.trim() ? (
           <button
             aria-label="Limpar filtro"
-            className="grid size-5 shrink-0 place-items-center rounded text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+            className="grid size-5 shrink-0 place-items-center rounded text-ink-muted transition hover:bg-subtle hover:text-ink"
             onClick={() => onChange("")}
             type="button"
           >
@@ -2336,7 +2336,7 @@ function HelpDeskManagementPanel({
   const resolutionLabel = formatHoursKpi(stats.resolutionAverageHours);
 
   return (
-    <div className="bg-slate-50/50 p-4 xl:p-5">
+    <div className="bg-subtle p-4 xl:p-5">
       <div className="mb-4 grid gap-3 md:grid-cols-4">
         <ExecutiveKpi
           label="Hoje"
@@ -2361,14 +2361,14 @@ function HelpDeskManagementPanel({
       </div>
 
       {setupUsersStatus !== "ready" ? (
-        <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600">
+        <div className="mb-3 inline-flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-soft">
           <Building2 className="size-4 text-[#A07C3B]" />
           {departmentStatus}
         </div>
       ) : null}
 
       {setupUsersError ? (
-        <div className="mb-3 rounded-lg border border-amber-100 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+        <div className="mb-3 rounded-lg border border-amber-100 dark:border-amber-500/25 bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
           {setupUsersError}
         </div>
       ) : null}
@@ -2426,9 +2426,9 @@ function HelpDeskManagementPanel({
 
       <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.36fr)]">
         <DailyVolumePanel dailyVolume={stats.dailyVolume} />
-        <section className="rounded-lg border border-slate-200 bg-white p-3">
+        <section className="rounded-lg border border-line bg-surface p-3">
           <div className="mb-3 flex items-center justify-between gap-2">
-            <h4 className="m-0 text-sm font-semibold text-slate-950">
+            <h4 className="m-0 text-sm font-semibold text-ink">
               Performance
             </h4>
             <LineChart className="size-4 text-[#A07C3B]" />
@@ -2540,14 +2540,14 @@ function ManagementMetricTile({
 }) {
   const toneClassName =
     tone === "success"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+      ? "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20"
       : tone === "warning"
-        ? "bg-amber-50 text-amber-700 ring-amber-100"
-        : "bg-slate-50 text-slate-700 ring-slate-200";
+        ? "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20"
+        : "bg-subtle text-ink ring-line";
 
   return (
     <button
-      className="rounded-lg border border-slate-200/70 bg-white p-3 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] disabled:hover:translate-y-0 disabled:hover:border-slate-200/70 disabled:hover:shadow-none"
+      className="rounded-lg border border-line bg-surface p-3 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] disabled:hover:translate-y-0 disabled:hover:border-line disabled:hover:shadow-none"
       disabled={!onClick}
       onClick={onClick}
       type="button"
@@ -2558,14 +2558,14 @@ function ManagementMetricTile({
         >
           {icon}
         </span>
-        <span className="font-mono text-2xl font-semibold text-slate-950">
+        <span className="font-mono text-2xl font-semibold text-ink">
           {value}
         </span>
       </div>
-      <p className="m-0 mt-3 text-xs font-semibold uppercase text-slate-500">
+      <p className="m-0 mt-3 text-xs font-semibold uppercase text-ink-muted">
         {label}
       </p>
-      <p className="m-0 mt-1 truncate text-xs text-slate-500">{hint}</p>
+      <p className="m-0 mt-1 truncate text-xs text-ink-muted">{hint}</p>
     </button>
   );
 }
@@ -2580,12 +2580,12 @@ function ExecutiveKpi({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-3">
-      <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-500">
+    <div className="rounded-lg border border-line bg-surface p-3">
+      <p className="m-0 text-[0.68rem] font-semibold uppercase text-ink-muted">
         {label}
       </p>
-      <p className="m-0 mt-2 text-lg font-semibold text-slate-950">{value}</p>
-      <p className="m-0 mt-1 truncate text-xs text-slate-500">{supporting}</p>
+      <p className="m-0 mt-2 text-lg font-semibold text-ink">{value}</p>
+      <p className="m-0 mt-1 truncate text-xs text-ink-muted">{supporting}</p>
     </div>
   );
 }
@@ -2605,19 +2605,19 @@ function DailyVolumePanel({
   );
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-3">
+    <section className="rounded-lg border border-line bg-surface p-3">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h4 className="m-0 text-sm font-semibold text-slate-950">
+        <h4 className="m-0 text-sm font-semibold text-ink">
           Movimento por dia
         </h4>
         <Tooltip content="Recebidos, tratados e enviados para validacao nos ultimos dias.">
-          <span className="grid size-6 place-items-center rounded-md text-slate-400">
+          <span className="grid size-6 place-items-center rounded-md text-ink-muted">
             <LineChart className="size-4" />
           </span>
         </Tooltip>
       </div>
-      <div className="mb-3 flex flex-wrap gap-2 text-[0.66rem] font-semibold uppercase text-slate-500">
-        <ChartLegendDot className="bg-[#101820]" label="Recebido" />
+      <div className="mb-3 flex flex-wrap gap-2 text-[0.66rem] font-semibold uppercase text-ink-muted">
+        <ChartLegendDot className="bg-inverse" label="Recebido" />
         <ChartLegendDot className="bg-[#A07C3B]" label="Tratado" />
         <ChartLegendDot className="bg-emerald-500" label="Validacao" />
       </div>
@@ -2628,20 +2628,20 @@ function DailyVolumePanel({
           return (
             <div
               aria-label={`${formatDayLabel(item.day)}: ${item.created} recebido(s), ${item.treated} tratado(s), ${item.validation} em validacao`}
-              className="group relative grid cursor-help gap-3 rounded-lg bg-slate-50 px-3 py-2 transition hover:bg-slate-100/80 lg:grid-cols-[4.8rem_minmax(0,1fr)_2.5rem] lg:items-center"
+              className="group relative grid cursor-help gap-3 rounded-lg bg-subtle px-3 py-2 transition hover:bg-subtle lg:grid-cols-[4.8rem_minmax(0,1fr)_2.5rem] lg:items-center"
               key={item.day}
             >
               <div>
-                <p className="m-0 text-[0.68rem] font-semibold text-slate-500">
+                <p className="m-0 text-[0.68rem] font-semibold text-ink-muted">
                   {formatDayLabel(item.day)}
                 </p>
-                <p className="m-0 text-xs font-semibold text-slate-950">
+                <p className="m-0 text-xs font-semibold text-ink">
                   {total}
                 </p>
               </div>
               <div className="grid min-w-0 gap-1.5">
                 <DailyVolumeBar
-                  className="bg-[#101820]"
+                  className="bg-inverse"
                   maxValue={maxValue}
                   value={item.created}
                 />
@@ -2656,10 +2656,10 @@ function DailyVolumePanel({
                   value={item.validation}
                 />
               </div>
-              <span className="text-right font-mono text-xs font-semibold text-slate-500">
+              <span className="text-right font-mono text-xs font-semibold text-ink-muted">
                 {total}
               </span>
-              <span className="pointer-events-none absolute left-20 top-2 z-20 rounded-lg bg-[#101820] px-3 py-2 text-[0.68rem] font-semibold text-white opacity-0 shadow-xl transition group-hover:opacity-100">
+              <span className="pointer-events-none absolute left-20 top-2 z-20 rounded-lg bg-inverse px-3 py-2 text-[0.68rem] font-semibold text-brand-ink opacity-0 shadow-xl transition group-hover:opacity-100">
                 {item.created} recebido(s), {item.treated} tratado(s),{" "}
                 {item.validation} em validacao
               </span>
@@ -2681,7 +2681,7 @@ function DailyVolumeBar({
   value: number;
 }) {
   return (
-    <span className="block h-2 overflow-hidden rounded-full bg-slate-200">
+    <span className="block h-2 overflow-hidden rounded-full bg-subtle">
       <span
         className={`block h-full rounded-full ${className}`}
         style={{ width: getChartBarWidth(value, maxValue) }}
@@ -2707,9 +2707,9 @@ function ChartLegendDot({
 
 function PerformanceLine({ label, value }: { label: string; value: number }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg bg-slate-50 px-3 py-2">
-      <span className="text-xs font-semibold text-slate-500">{label}</span>
-      <span className="font-mono text-sm font-semibold text-slate-950">
+    <div className="flex items-center justify-between gap-3 rounded-lg bg-subtle px-3 py-2">
+      <span className="text-xs font-semibold text-ink-muted">{label}</span>
+      <span className="font-mono text-sm font-semibold text-ink">
         {value}
       </span>
     </div>
@@ -2765,19 +2765,19 @@ function DepartmentDemandTable({
   );
 
   return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
+    <section className="overflow-hidden rounded-lg border border-line bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-subtle px-3 py-2">
         <div>
-          <h4 className="m-0 text-sm font-semibold text-slate-950">
+          <h4 className="m-0 text-sm font-semibold text-ink">
             Tickets por departamento
           </h4>
         </div>
         <button
-          className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+          className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink-soft transition hover:border-[#A07C3B]/30 hover:text-ink"
           onClick={() => setIsExpanded((currentValue) => !currentValue)}
           type="button"
         >
-          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 font-mono text-[0.65rem]">
+          <span className="rounded-full bg-subtle px-1.5 py-0.5 font-mono text-[0.65rem]">
             {visibleDepartments.length}
           </span>
           {isExpanded ? "Recolher" : "Expandir"}
@@ -2790,7 +2790,7 @@ function DepartmentDemandTable({
       </div>
       {isExpanded ? (
         <>
-          <div className="grid gap-2 border-b border-slate-100 bg-white px-3 py-3 md:grid-cols-4">
+          <div className="grid gap-2 border-b border-line bg-surface px-3 py-3 md:grid-cols-4">
             <ManagementSearchInput
               label="Ticket"
               onChange={(value) => updateFilter("query", value)}
@@ -2839,7 +2839,7 @@ function DepartmentDemandTable({
             </QueueFilterSelect>
           </div>
           <div
-            className="hidden grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_6rem_minmax(9rem,0.7fr)] gap-3 border-b border-slate-100 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
+            className="hidden grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_6rem_minmax(9rem,0.7fr)] gap-3 border-b border-line px-3 py-2 text-[0.68rem] font-semibold uppercase text-ink-muted xl:grid"
             role="row"
           >
             <span>Departamento</span>
@@ -2852,7 +2852,7 @@ function DepartmentDemandTable({
             <span>Ultimo</span>
           </div>
           {visibleDepartments.length > 0 ? (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-line">
               {visibleDepartments.map((department) => (
                 <button
                   className="grid w-full cursor-pointer gap-2 px-3 py-3 text-left text-sm transition hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] xl:grid-cols-[minmax(10rem,1fr)_4rem_4rem_5rem_5rem_5rem_6rem_minmax(9rem,0.7fr)] xl:items-center xl:gap-3"
@@ -2860,9 +2860,9 @@ function DepartmentDemandTable({
                   onClick={() => onOpenDepartment(department)}
                   type="button"
                 >
-                  <span className="min-w-0 font-semibold text-slate-950">
+                  <span className="min-w-0 font-semibold text-ink">
                     <span className="block truncate">{department.department}</span>
-                    <span className="mt-1 block text-xs font-medium text-slate-500 lg:hidden">
+                    <span className="mt-1 block text-xs font-medium text-ink-muted lg:hidden">
                       {department.total} total / {department.backlog} backlog /{" "}
                       {department.modules.slice(0, 2).join(", ") || "sem modulo"}
                     </span>
@@ -2874,16 +2874,16 @@ function DepartmentDemandTable({
                   <MetricCell value={department.requesterCount} />
                   <MetricCell tone="danger" value={department.highPriority} />
                   {department.latestTicket ? (
-                    <span className="min-w-0 rounded-lg px-2 py-1 text-left text-xs font-semibold text-[#7A5E2C]">
+                    <span className="min-w-0 rounded-lg px-2 py-1 text-left text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
                       <span className="block truncate">
                         {department.latestTicket.protocol}
                       </span>
-                      <span className="block truncate font-medium text-slate-500">
+                      <span className="block truncate font-medium text-ink-muted">
                         {formatDateShort(department.latestTicket.updatedAt)}
                       </span>
                     </span>
                   ) : (
-                    <span className="text-xs text-slate-400">-</span>
+                    <span className="text-xs text-ink-muted">-</span>
                   )}
                 </button>
               ))}
@@ -2891,8 +2891,8 @@ function DepartmentDemandTable({
           ) : (
             <div className="grid min-h-32 place-items-center px-4 py-8 text-center">
               <div>
-                <Building2 className="mx-auto size-7 text-slate-300" />
-                <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
+                <Building2 className="mx-auto size-7 text-ink-muted" />
+                <p className="m-0 mt-2 text-sm font-semibold text-ink-muted">
                   Sem departamentos para exibir.
                 </p>
               </div>
@@ -2953,19 +2953,19 @@ function CollaboratorDemandTable({
   );
 
   return (
-    <section className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
+    <section className="overflow-hidden rounded-lg border border-line bg-surface">
+      <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line bg-subtle px-3 py-2">
         <div className="flex items-center gap-2">
-          <h4 className="m-0 text-sm font-semibold text-slate-950">
+          <h4 className="m-0 text-sm font-semibold text-ink">
             Colaboradores
           </h4>
         </div>
         <button
-          className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-slate-200 bg-white px-2.5 text-xs font-semibold text-slate-600 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+          className="inline-flex h-8 cursor-pointer items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink-soft transition hover:border-[#A07C3B]/30 hover:text-ink"
           onClick={() => setIsExpanded((currentValue) => !currentValue)}
           type="button"
         >
-          <span className="rounded-full bg-slate-100 px-1.5 py-0.5 font-mono text-[0.65rem]">
+          <span className="rounded-full bg-subtle px-1.5 py-0.5 font-mono text-[0.65rem]">
             {visibleCollaborators.length}
           </span>
           {isExpanded ? "Recolher" : "Expandir"}
@@ -2978,7 +2978,7 @@ function CollaboratorDemandTable({
       </div>
       {isExpanded ? (
         <>
-          <div className="grid gap-2 border-b border-slate-100 bg-white px-3 py-3 md:grid-cols-4">
+          <div className="grid gap-2 border-b border-line bg-surface px-3 py-3 md:grid-cols-4">
             <ManagementSearchInput
               label="Ticket"
               onChange={(value) => updateFilter("query", value)}
@@ -3029,7 +3029,7 @@ function CollaboratorDemandTable({
             </QueueFilterSelect>
           </div>
           <div
-            className="hidden grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_6rem_7rem_minmax(8rem,0.7fr)] gap-3 border-b border-slate-100 px-3 py-2 text-[0.68rem] font-semibold uppercase text-slate-500 xl:grid"
+            className="hidden grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_6rem_7rem_minmax(8rem,0.7fr)] gap-3 border-b border-line px-3 py-2 text-[0.68rem] font-semibold uppercase text-ink-muted xl:grid"
             role="row"
           >
             <span>Colaborador</span>
@@ -3042,7 +3042,7 @@ function CollaboratorDemandTable({
             <span>Ultimo</span>
           </div>
           {visibleCollaborators.length > 0 ? (
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-line">
               {visibleCollaborators.slice(0, 12).map((collaborator) => (
                 <button
                   className="grid w-full cursor-pointer gap-2 px-3 py-3 text-left transition hover:-translate-y-0.5 hover:bg-[#A07C3B]/5 hover:shadow-[0_8px_18px_rgba(15,23,42,0.06)] xl:grid-cols-[minmax(14rem,1fr)_4rem_4rem_5rem_5rem_6rem_7rem_minmax(8rem,0.7fr)] xl:items-center"
@@ -3057,10 +3057,10 @@ function CollaboratorDemandTable({
                       variant="gold"
                     />
                     <span className="min-w-0">
-                      <span className="block truncate text-sm font-semibold text-slate-950">
+                      <span className="block truncate text-sm font-semibold text-ink">
                         {collaborator.label}
                       </span>
-                      <span className="block truncate text-xs font-medium text-slate-500">
+                      <span className="block truncate text-xs font-medium text-ink-muted">
                         {collaborator.department}
                       </span>
                     </span>
@@ -3070,20 +3070,20 @@ function CollaboratorDemandTable({
                   <MetricCell tone="warning" value={collaborator.inProgress} />
                   <MetricCell value={collaborator.backlog} />
                   <MetricCell tone="danger" value={collaborator.highPriority} />
-                  <span className="truncate text-xs font-semibold text-slate-600">
+                  <span className="truncate text-xs font-semibold text-ink-soft">
                     {collaborator.modules[0] ?? "Panteon"}
                   </span>
                   {collaborator.latestTicket ? (
-                    <span className="min-w-0 text-xs font-semibold text-[#7A5E2C]">
+                    <span className="min-w-0 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
                       <span className="block truncate">
                         {collaborator.latestTicket.protocol}
                       </span>
-                      <span className="block truncate font-medium text-slate-500">
+                      <span className="block truncate font-medium text-ink-muted">
                         {formatDateShort(collaborator.latestTicket.updatedAt)}
                       </span>
                     </span>
                   ) : (
-                    <span className="text-xs text-slate-400">-</span>
+                    <span className="text-xs text-ink-muted">-</span>
                   )}
                 </button>
               ))}
@@ -3091,8 +3091,8 @@ function CollaboratorDemandTable({
           ) : (
             <div className="grid min-h-32 place-items-center px-4 py-8 text-center">
               <div>
-                <UserRound className="mx-auto size-7 text-slate-300" />
-                <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
+                <UserRound className="mx-auto size-7 text-ink-muted" />
+                <p className="m-0 mt-2 text-sm font-semibold text-ink-muted">
                   Sem colaboradores para exibir.
                 </p>
               </div>
@@ -3116,17 +3116,17 @@ function DemandDimensionPanel({
   const maxTotal = Math.max(1, ...items.map((item) => item.total));
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white p-3">
+    <section className="rounded-lg border border-line bg-surface p-3">
       <div className="mb-3 flex items-center justify-between gap-3">
         <div className="flex items-center gap-2">
-          <h4 className="m-0 text-sm font-semibold text-slate-950">{title}</h4>
+          <h4 className="m-0 text-sm font-semibold text-ink">{title}</h4>
           <Tooltip content="Distribuicao do recorte atual." placement="top">
-            <span className="grid size-6 place-items-center rounded-md text-slate-400">
+            <span className="grid size-6 place-items-center rounded-md text-ink-muted">
               <BarChart3 className="size-4" />
             </span>
           </Tooltip>
         </div>
-        <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+        <span className="rounded-full bg-subtle px-2 py-1 text-xs font-semibold text-ink-soft">
           {items.length}
         </span>
       </div>
@@ -3144,20 +3144,20 @@ function DemandDimensionPanel({
                 type="button"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <span className="min-w-0 truncate text-sm font-semibold text-slate-800">
+                  <span className="min-w-0 truncate text-sm font-semibold text-ink">
                     {item.label}
                   </span>
-                  <span className="font-mono text-sm font-semibold text-slate-950">
+                  <span className="font-mono text-sm font-semibold text-ink">
                     {item.total}
                   </span>
                 </div>
-                <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div className="h-2 overflow-hidden rounded-full bg-subtle">
                   <div
                     className="h-full rounded-full bg-[#A07C3B]"
                     style={{ width: `${percentage}%` }}
                   />
                 </div>
-                <div className="flex flex-wrap gap-1.5 text-[0.68rem] font-semibold text-slate-500">
+                <div className="flex flex-wrap gap-1.5 text-[0.68rem] font-semibold text-ink-muted">
                   <span>{item.finalized} feitos</span>
                   <span>{item.inProgress} tratando</span>
                   <span>{item.backlog} backlog</span>
@@ -3167,7 +3167,7 @@ function DemandDimensionPanel({
           })}
         </div>
       ) : (
-        <p className="m-0 rounded-lg bg-slate-50 px-3 py-4 text-center text-sm font-semibold text-slate-500">
+        <p className="m-0 rounded-lg bg-subtle px-3 py-4 text-center text-sm font-semibold text-ink-muted">
           Sem dados para exibir.
         </p>
       )}
@@ -3184,12 +3184,12 @@ function MetricCell({
 }) {
   const className =
     tone === "success"
-      ? "bg-emerald-50 text-emerald-700"
+      ? "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
       : tone === "warning"
-        ? "bg-amber-50 text-amber-700"
+        ? "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"
         : tone === "danger"
-          ? "bg-red-50 text-red-700"
-          : "bg-slate-100 text-slate-700";
+          ? "bg-red-50 dark:bg-red-500/12 text-red-700 dark:text-red-300"
+          : "bg-subtle text-ink";
 
   return (
     <span
@@ -3220,13 +3220,13 @@ function MeetingTicketDisclosure({
   const [isExpanded, setIsExpanded] = useState(false);
   const iconClassName =
     tone === "success"
-      ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
+      ? "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20"
       : tone === "warning"
-        ? "bg-amber-50 text-amber-700 ring-amber-100"
-        : "bg-slate-50 text-slate-700 ring-slate-200";
+        ? "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20"
+        : "bg-subtle text-ink ring-line";
 
   return (
-    <section className="rounded-lg border border-slate-200 bg-white">
+    <section className="rounded-lg border border-line bg-surface">
       <button
         className="flex w-full cursor-pointer items-center justify-between gap-3 px-3 py-3 text-left transition hover:bg-[#A07C3B]/5"
         onClick={() => setIsExpanded((currentValue) => !currentValue)}
@@ -3239,46 +3239,46 @@ function MeetingTicketDisclosure({
             {icon}
           </span>
           <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold text-slate-950">
+            <span className="block truncate text-sm font-semibold text-ink">
               {title}
             </span>
-            <span className="block truncate text-xs font-medium text-slate-500">
+            <span className="block truncate text-xs font-medium text-ink-muted">
               Clique para {isExpanded ? "ocultar" : "abrir"}
             </span>
           </span>
         </span>
         <span className="flex items-center gap-2">
-          <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+          <span className="rounded-full bg-subtle px-2 py-1 text-xs font-semibold text-ink-soft">
             {tickets.length}
           </span>
           {isExpanded ? (
-            <ChevronUp className="size-4 text-slate-400" />
+            <ChevronUp className="size-4 text-ink-muted" />
           ) : (
-            <ChevronDown className="size-4 text-slate-400" />
+            <ChevronDown className="size-4 text-ink-muted" />
           )}
         </span>
       </button>
       {isExpanded ? (
-        <div className="border-t border-slate-100 p-3">
+        <div className="border-t border-line p-3">
           {tickets.length > 0 ? (
             <div className="grid gap-2">
               {tickets.map((ticket) => (
                 <button
-                  className="grid min-w-0 cursor-pointer gap-1 rounded-lg border border-slate-200 bg-slate-50/60 px-3 py-2 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+                  className="grid min-w-0 cursor-pointer gap-1 rounded-lg border border-line bg-subtle px-3 py-2 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
                   key={ticket.id}
                   onClick={() => onOpenTicket(ticket)}
                   type="button"
                 >
                   <span className="flex min-w-0 items-center justify-between gap-2">
-                    <span className="truncate font-mono text-xs font-semibold text-[#7A5E2C]">
+                    <span className="truncate font-mono text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
                       {ticket.protocol}
                     </span>
                     <StatusBadge status={ticket.status} ticket={ticket} />
                   </span>
-                  <span className="truncate text-sm font-semibold text-slate-950">
+                  <span className="truncate text-sm font-semibold text-ink">
                     {ticket.title}
                   </span>
-                  <span className="truncate text-xs text-slate-500">
+                  <span className="truncate text-xs text-ink-muted">
                     {departmentByTicketProtocol.get(ticket.protocol) ??
                       "Sem departamento"}{" "}
                     / {formatDateShort(ticket.updatedAt)}
@@ -3287,7 +3287,7 @@ function MeetingTicketDisclosure({
               ))}
             </div>
           ) : (
-            <p className="m-0 rounded-lg bg-slate-50 px-3 py-4 text-center text-sm font-semibold text-slate-500">
+            <p className="m-0 rounded-lg bg-subtle px-3 py-4 text-center text-sm font-semibold text-ink-muted">
               {emptyMessage}
             </p>
           )}
@@ -3365,28 +3365,28 @@ function TicketWorkflowKanban({
   }));
 
   return (
-    <div className="bg-white p-4">
+    <div className="bg-surface p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="m-0 text-base font-semibold text-slate-950">
+          <h3 className="m-0 text-base font-semibold text-ink">
             Kanban da fila
           </h3>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+        <span className="rounded-full bg-subtle px-3 py-1 text-xs font-semibold text-ink-soft">
           {tickets.length} ticket(s)
         </span>
       </div>
       <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-5">
         {columns.map((column) => (
           <section
-            className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/70"
+            className="min-w-0 rounded-xl border border-line bg-subtle"
             key={column.stage}
           >
-            <div className="flex items-center justify-between gap-2 border-b border-slate-200 px-3 py-2">
-              <h4 className="m-0 text-sm font-semibold text-slate-950">
+            <div className="flex items-center justify-between gap-2 border-b border-line px-3 py-2">
+              <h4 className="m-0 text-sm font-semibold text-ink">
                 {workflowStageLabels[column.stage]}
               </h4>
-              <span className="rounded-full bg-white px-2 py-0.5 font-mono text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+              <span className="rounded-full bg-surface px-2 py-0.5 font-mono text-xs font-semibold text-ink-soft ring-1 ring-line">
                 {column.tickets.length}
               </span>
             </div>
@@ -3401,7 +3401,7 @@ function TicketWorkflowKanban({
                   />
                 ))
               ) : (
-                <p className="m-0 rounded-lg border border-dashed border-slate-200 bg-white px-3 py-5 text-center text-xs font-semibold text-slate-400">
+                <p className="m-0 rounded-lg border border-dashed border-line bg-surface px-3 py-5 text-center text-xs font-semibold text-ink-muted">
                   Sem tickets.
                 </p>
               )}
@@ -3425,14 +3425,14 @@ function TicketDeliveryCalendar({
   const calendar = useMemo(() => buildTicketDeliveryCalendar(tickets), [tickets]);
 
   return (
-    <div className="bg-white p-4">
+    <div className="bg-surface p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="m-0 text-base font-semibold text-slate-950">
+          <h3 className="m-0 text-base font-semibold text-ink">
             Calendario de entrega
           </h3>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+        <span className="rounded-full bg-subtle px-3 py-1 text-xs font-semibold text-ink-soft">
           {calendar.visibleCount} ticket(s)
         </span>
       </div>
@@ -3443,20 +3443,20 @@ function TicketDeliveryCalendar({
             className={`min-h-44 rounded-xl border p-2 ${
               day.isToday
                 ? "border-[#A07C3B]/35 bg-[#A07C3B]/5"
-                : "border-slate-200 bg-slate-50/70"
+                : "border-line bg-subtle"
             }`}
             key={day.key}
           >
             <div className="mb-2 flex items-center justify-between gap-2">
               <div>
-                <p className="m-0 text-[0.66rem] font-semibold uppercase text-slate-500">
+                <p className="m-0 text-[0.66rem] font-semibold uppercase text-ink-muted">
                   {day.weekday}
                 </p>
-                <h4 className="m-0 text-sm font-semibold text-slate-950">
+                <h4 className="m-0 text-sm font-semibold text-ink">
                   {day.label}
                 </h4>
               </div>
-              <span className="rounded-full bg-white px-2 py-0.5 font-mono text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+              <span className="rounded-full bg-surface px-2 py-0.5 font-mono text-xs font-semibold text-ink-soft ring-1 ring-line">
                 {day.tickets.length}
               </span>
             </div>
@@ -3470,12 +3470,12 @@ function TicketDeliveryCalendar({
                 />
               ))}
               {day.tickets.length > 4 ? (
-                <span className="rounded-lg bg-white px-2 py-1 text-center text-xs font-semibold text-slate-500 ring-1 ring-slate-200">
+                <span className="rounded-lg bg-surface px-2 py-1 text-center text-xs font-semibold text-ink-muted ring-1 ring-line">
                   +{day.tickets.length - 4} ticket(s)
                 </span>
               ) : null}
               {day.tickets.length === 0 ? (
-                <p className="m-0 rounded-lg border border-dashed border-slate-200 bg-white px-2 py-5 text-center text-xs font-semibold text-slate-400">
+                <p className="m-0 rounded-lg border border-dashed border-line bg-surface px-2 py-5 text-center text-xs font-semibold text-ink-muted">
                   Sem entregas
                 </p>
               ) : null}
@@ -3503,8 +3503,8 @@ function TicketDeliveryCalendar({
         ) : null}
       </div>
       {calendar.visibleCount === 0 ? (
-        <div className="grid min-h-36 place-items-center rounded-xl border border-dashed border-slate-200 bg-slate-50 px-4 py-8 text-center">
-          <p className="m-0 text-sm font-semibold text-slate-500">
+        <div className="grid min-h-36 place-items-center rounded-xl border border-dashed border-line bg-subtle px-4 py-8 text-center">
+          <p className="m-0 text-sm font-semibold text-ink-muted">
             Sem entregas futuras no calendario.
           </p>
         </div>
@@ -3530,19 +3530,19 @@ function CalendarSpecialLane({
     <section
       className={`mb-3 rounded-xl border p-3 ${
         tone === "danger"
-          ? "border-red-100 bg-red-50"
-          : "border-slate-200 bg-slate-50/70"
+          ? "border-red-100 dark:border-red-500/25 bg-red-50 dark:bg-red-500/12"
+          : "border-line bg-subtle"
       }`}
     >
       <div className="mb-2 flex items-center justify-between gap-2">
         <h4
           className={`m-0 text-sm font-semibold ${
-            tone === "danger" ? "text-red-700" : "text-slate-950"
+            tone === "danger" ? "text-red-700 dark:text-red-300" : "text-ink"
           }`}
         >
           {label}
         </h4>
-        <span className="rounded-full bg-white px-2 py-0.5 font-mono text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+        <span className="rounded-full bg-surface px-2 py-0.5 font-mono text-xs font-semibold text-ink-soft ring-1 ring-line">
           {tickets.length}
         </span>
       </div>
@@ -3576,27 +3576,27 @@ function TicketQueueCompactCard({
       className={`grid cursor-pointer gap-2 rounded-lg border px-3 py-3 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:shadow-[0_10px_24px_rgba(15,23,42,0.08)] ${
         isSelected
           ? "border-[#A07C3B]/35 bg-[#A07C3B]/10"
-          : "border-slate-200 bg-white"
+          : "border-line bg-surface"
       }`}
       onClick={() => onSelectTicket(ticket.protocol)}
       type="button"
     >
       <span className="flex min-w-0 items-center justify-between gap-2">
-        <span className="truncate font-mono text-xs font-semibold text-[#7A5E2C]">
+        <span className="truncate font-mono text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
           {ticket.protocol}
         </span>
         <Badge variant={priorityVariant(ticket.priority)}>
           {hubItTicketPriorityLabels[ticket.priority]}
         </Badge>
       </span>
-      <span className="line-clamp-2 text-sm font-semibold text-slate-950">
+      <span className="line-clamp-2 text-sm font-semibold text-ink">
         {ticket.title}
       </span>
-      <span className="flex min-w-0 items-center gap-2 text-xs text-slate-500">
+      <span className="flex min-w-0 items-center gap-2 text-xs text-ink-muted">
         <RequesterAvatar requester={ticket.requester} size="xs" variant="gold" />
         <span className="min-w-0 truncate">{ticket.requester.name}</span>
       </span>
-      <span className="grid gap-1 text-[0.68rem] font-semibold text-slate-500">
+      <span className="grid gap-1 text-[0.68rem] font-semibold text-ink-muted">
         <span>Recepcao {formatDateShort(ticket.createdAt)}</span>
         <span>
           Entrega{" "}
@@ -3623,18 +3623,18 @@ function TicketCalendarItem({
       className={`grid cursor-pointer gap-1 rounded-lg border px-2 py-2 text-left transition hover:-translate-y-0.5 hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5 ${
         isSelected
           ? "border-[#A07C3B]/35 bg-[#A07C3B]/10"
-          : "border-slate-200 bg-white"
+          : "border-line bg-surface"
       }`}
       onClick={() => onSelectTicket(ticket.protocol)}
       type="button"
     >
-      <span className="truncate font-mono text-[0.68rem] font-semibold text-[#7A5E2C]">
+      <span className="truncate font-mono text-[0.68rem] font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
         {ticket.protocol}
       </span>
-      <span className="line-clamp-2 text-xs font-semibold text-slate-950">
+      <span className="line-clamp-2 text-xs font-semibold text-ink">
         {ticket.title}
       </span>
-      <span className="truncate text-[0.66rem] font-medium text-slate-500">
+      <span className="truncate text-[0.66rem] font-medium text-ink-muted">
         {ticket.requester.name}
       </span>
     </button>
@@ -3686,20 +3686,20 @@ function TicketOperationsTable({
   }, []);
 
   return (
-    <div className="bg-white p-4">
+    <div className="bg-surface p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h3 className="m-0 text-base font-semibold text-slate-950">
+          <h3 className="m-0 text-base font-semibold text-ink">
             {title}
           </h3>
         </div>
-        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+        <span className="rounded-full bg-subtle px-3 py-1 text-xs font-semibold text-ink-soft">
           {tickets.length} ticket(s)
         </span>
       </div>
-      <div className="overflow-hidden rounded-xl border border-slate-200">
+      <div className="overflow-hidden rounded-xl border border-line">
         <div
-          className="hidden grid-cols-[5.6rem_minmax(0,1.45fr)_6.5rem_minmax(0,0.65fr)_minmax(0,0.6fr)_minmax(0,0.58fr)_5rem_5.1rem_5.4rem_5.4rem] gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-[0.66rem] font-semibold uppercase text-slate-500 xl:grid"
+          className="hidden grid-cols-[5.6rem_minmax(0,1.45fr)_6.5rem_minmax(0,0.65fr)_minmax(0,0.6fr)_minmax(0,0.58fr)_5rem_5.1rem_5.4rem_5.4rem] gap-3 border-b border-line bg-subtle px-3 py-2 text-[0.66rem] font-semibold uppercase text-ink-muted xl:grid"
           role="row"
         >
           <HistorySortHeader
@@ -3764,7 +3764,7 @@ function TicketOperationsTable({
           />
         </div>
         {sortedTickets.length > 0 ? (
-          <div className="divide-y divide-slate-100">
+          <div className="divide-y divide-line">
             {sortedTickets.map((ticket) => {
               const isSelected = ticket.protocol === selectedProtocol;
               const moduleLabel = normalizeTicketModuleLabel(
@@ -3778,18 +3778,18 @@ function TicketOperationsTable({
                 <button
                   className={`grid w-full cursor-pointer gap-2 px-3 py-3 text-left transition xl:grid-cols-[5.6rem_minmax(0,1.45fr)_6.5rem_minmax(0,0.65fr)_minmax(0,0.6fr)_minmax(0,0.58fr)_5rem_5.1rem_5.4rem_5.4rem] xl:items-center xl:gap-3 ${
                     isSelected
-                      ? "bg-[#A07C3B]/10 text-slate-950"
-                      : "bg-white text-slate-700 hover:bg-slate-50"
+                      ? "bg-[#A07C3B]/10 text-ink"
+                      : "bg-surface text-ink hover:bg-subtle"
                   }`}
                   key={ticket.id}
                   onClick={() => onSelectTicket(ticket.protocol)}
                   type="button"
                 >
                   <span className="min-w-0">
-                    <span className="block font-mono text-xs font-semibold text-slate-950">
+                    <span className="block font-mono text-xs font-semibold text-ink">
                       {ticket.protocol}
                     </span>
-                    <span className="mt-1 block text-[0.68rem] font-semibold uppercase text-slate-400 xl:hidden">
+                    <span className="mt-1 block text-[0.68rem] font-semibold uppercase text-ink-muted xl:hidden">
                       {workflowStageLabels[getTicketWorkflowStage(ticket)]}
                     </span>
                   </span>
@@ -3797,7 +3797,7 @@ function TicketOperationsTable({
                     <span className="block truncate text-sm font-semibold">
                       {ticket.title}
                     </span>
-                    <span className="mt-1 block truncate text-xs text-slate-500">
+                    <span className="mt-1 block truncate text-xs text-ink-muted">
                       {departmentLabel} / {moduleLabel} /{" "}
                       {hubItTicketCategoryLabels[ticket.category]}
                     </span>
@@ -3807,14 +3807,14 @@ function TicketOperationsTable({
                   </span>
                   <span className="min-w-0 text-sm font-medium">
                     <span className="block truncate">{ticket.requester.name}</span>
-                    <span className="mt-1 block truncate text-xs text-slate-400">
+                    <span className="mt-1 block truncate text-xs text-ink-muted">
                       {ticket.assignedTo?.name ?? "Sem responsavel"}
                     </span>
                   </span>
-                  <span className="truncate text-sm font-semibold text-slate-600">
+                  <span className="truncate text-sm font-semibold text-ink-soft">
                     {departmentLabel}
                   </span>
-                  <span className="truncate text-sm font-semibold text-slate-600">
+                  <span className="truncate text-sm font-semibold text-ink-soft">
                     {moduleLabel}
                   </span>
                   <span>
@@ -3822,11 +3822,11 @@ function TicketOperationsTable({
                       {hubItTicketPriorityLabels[ticket.priority]}
                     </Badge>
                   </span>
-                  <span className="text-xs font-medium text-slate-500">
+                  <span className="text-xs font-medium text-ink-muted">
                     {formatDateShort(ticket.createdAt)}
                   </span>
                   <DeliveryDateCell ticket={ticket} />
-                  <span className="truncate text-xs font-medium text-slate-500">
+                  <span className="truncate text-xs font-medium text-ink-muted">
                     {formatDateShort(ticket.updatedAt)}
                   </span>
                 </button>
@@ -3836,8 +3836,8 @@ function TicketOperationsTable({
         ) : (
           <div className="grid min-h-36 place-items-center px-4 py-8 text-center">
             <div>
-              <History className="mx-auto size-7 text-slate-300" />
-              <p className="m-0 mt-2 text-sm font-semibold text-slate-500">
+              <History className="mx-auto size-7 text-ink-muted" />
+              <p className="m-0 mt-2 text-sm font-semibold text-ink-muted">
                 {emptyView === "historico"
                   ? "Historico vazio."
                   : "Nenhum ticket na fila."}
@@ -3879,7 +3879,7 @@ function HistorySortHeader({
     <button
       aria-label={`Ordenar por ${label}`}
       className={`inline-flex items-center gap-1 text-left font-semibold uppercase transition ${
-        active ? "text-[#7A5E2C]" : "text-slate-500 hover:text-slate-800"
+        active ? "text-[#7a5e2c] dark:text-[#d9b877]" : "text-ink-muted hover:text-ink"
       }`}
       onClick={onClick}
       type="button"
@@ -3905,10 +3905,10 @@ function QueueSummaryPill({
   value: number | string;
 }) {
   const toneClass = {
-    danger: "bg-red-50 text-red-700 ring-red-100",
-    neutral: "bg-slate-100 text-slate-700 ring-slate-200",
-    success: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    warning: "bg-amber-50 text-amber-700 ring-amber-100",
+    danger: "bg-red-50 dark:bg-red-500/12 text-red-700 dark:text-red-300 ring-red-100 dark:ring-red-500/20",
+    neutral: "bg-subtle text-ink ring-line",
+    success: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20",
+    warning: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20",
   }[tone];
 
   return (
@@ -3980,11 +3980,11 @@ function TicketWorkspace({
 
   return (
     <div className="grid min-w-0 gap-4 overflow-x-hidden p-4 xl:p-5">
-      <header className="grid gap-4 border-b border-slate-100 pb-4">
+      <header className="grid gap-4 border-b border-line pb-4">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="font-mono text-sm font-semibold text-[#7A5E2C]">
+              <span className="font-mono text-sm font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
                 {ticket.protocol}
               </span>
               <StatusBadge status={ticket.status} ticket={ticket} />
@@ -3998,16 +3998,16 @@ function TicketWorkspace({
                 {hubItTicketPriorityLabels[ticket.priority]}
               </Badge>
               {isDetailLoading ? (
-                <span className="inline-flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[0.68rem] font-semibold text-slate-500">
+                <span className="inline-flex items-center gap-1 rounded-full bg-subtle px-2 py-0.5 text-[0.68rem] font-semibold text-ink-muted">
                   <Loader2 className="size-3 animate-spin" />
                   detalhes
                 </span>
               ) : null}
             </div>
-            <h2 className="m-0 mt-2 text-xl font-semibold tracking-normal text-slate-950 xl:text-2xl">
+            <h2 className="m-0 mt-2 text-xl font-semibold tracking-normal text-ink xl:text-2xl">
               {ticket.title}
             </h2>
-            <p className="m-0 mt-2 text-sm text-slate-500">
+            <p className="m-0 mt-2 text-sm text-ink-muted">
               {ticket.module} / aberto em {formatDateTime(ticket.createdAt)}
             </p>
           </div>
@@ -4056,7 +4056,7 @@ function TicketWorkspace({
             title="Relato do usuario"
             visual={<RequesterAvatar requester={ticket.requester} size="xs" />}
           >
-            <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+            <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-ink">
               {ticket.userDescription}
             </p>
           </WorkspaceDisclosureBlock>
@@ -4074,7 +4074,7 @@ function TicketWorkspace({
               title="Como deveria funcionar"
               visual={<CheckCircle2 className="size-4" />}
             >
-              <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+              <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-ink">
                 {ticket.expectedResult || "Nao informado."}
               </p>
             </WorkspaceDisclosureBlock>
@@ -4085,7 +4085,7 @@ function TicketWorkspace({
               title="O que ocorreu"
               visual={<AlertTriangle className="size-4" />}
             >
-              <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+              <p className="m-0 whitespace-pre-wrap text-sm leading-6 text-ink">
                 {ticket.actualResult || "Nao informado."}
               </p>
             </WorkspaceDisclosureBlock>
@@ -4144,7 +4144,7 @@ function TriageBar({
   return (
     <div className="grid gap-3 rounded-xl border border-[#A07C3B]/25 bg-gradient-to-br from-[#fffaf0] to-white p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase text-[#7A5E2C]">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase text-[#7a5e2c] dark:text-[#d9b877]">
           <span className="grid size-6 place-items-center rounded-full bg-[#A07C3B]/12 text-[#A07C3B]">
             <Sparkles className="size-3.5" />
           </span>
@@ -4170,12 +4170,12 @@ function TriageBar({
       </div>
 
       {!triageResult ? (
-        <p className="m-0 text-xs text-slate-500">
+        <p className="m-0 text-xs text-ink-muted">
           O agente le o chamado, procura duplicata, confere o changelog, sugere
           a classificacao e prepara a devolutiva. Nunca fecha o ticket.
         </p>
       ) : unavailable ? (
-        <p className="m-0 flex items-center gap-2 text-xs font-semibold text-amber-800">
+        <p className="m-0 flex items-center gap-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
           <AlertTriangle className="size-4" /> {triageResult.internalNote}
         </p>
       ) : (
@@ -4184,8 +4184,8 @@ function TriageBar({
             <span
               className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[0.68rem] font-semibold ${
                 responded
-                  ? "bg-emerald-50 text-emerald-700"
-                  : "bg-sky-50 text-sky-700"
+                  ? "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+                  : "bg-sky-50 dark:bg-sky-500/12 text-sky-700 dark:text-sky-300"
               }`}
             >
               {responded ? (
@@ -4197,27 +4197,27 @@ function TriageBar({
             </span>
             <TriageConfidenceBadge confidence={triageResult.confidence} />
             {triageResult.duplicateProtocol ? (
-              <span className="inline-flex items-center rounded-full bg-slate-100 px-2 py-0.5 text-[0.68rem] font-semibold text-slate-600">
+              <span className="inline-flex items-center rounded-full bg-subtle px-2 py-0.5 text-[0.68rem] font-semibold text-ink-soft">
                 Duplica {triageResult.duplicateProtocol}
               </span>
             ) : null}
             {triageResult.resolvedByVersion ? (
-              <span className="inline-flex items-center rounded-full bg-[#A07C3B]/12 px-2 py-0.5 text-[0.68rem] font-semibold text-[#7A5E2C]">
+              <span className="inline-flex items-center rounded-full bg-[#A07C3B]/12 px-2 py-0.5 text-[0.68rem] font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
                 Corrigido na {triageResult.resolvedByVersion}
               </span>
             ) : null}
             {triageResult.escalate ? (
-              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 px-2 py-0.5 text-[0.68rem] font-semibold text-rose-700">
+              <span className="inline-flex items-center gap-1 rounded-full bg-rose-50 dark:bg-rose-500/12 px-2 py-0.5 text-[0.68rem] font-semibold text-rose-700 dark:text-rose-300">
                 <AlertTriangle className="size-3.5" /> Escalar p/ engenharia
               </span>
             ) : null}
           </div>
           {triageResult.internalNote ? (
-            <p className="m-0 text-xs leading-5 text-slate-600">
+            <p className="m-0 text-xs leading-5 text-ink-soft">
               {triageResult.internalNote}
             </p>
           ) : null}
-          <p className="m-0 text-[0.68rem] text-slate-400">
+          <p className="m-0 text-[0.68rem] text-ink-muted">
             {responded
               ? "A devolutiva foi enviada ao solicitante e o chamado foi para validacao. Nada foi fechado."
               : "A devolutiva e a classificacao sugeridas ja estao no rascunho abaixo. Revise e envie."}
@@ -4234,9 +4234,9 @@ function TriageConfidenceBadge({
   confidence: HubItTicketTriageResult["confidence"];
 }) {
   const tone = {
-    alta: "bg-emerald-50 text-emerald-700",
-    baixa: "bg-slate-100 text-slate-500",
-    media: "bg-amber-50 text-amber-700",
+    alta: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+    baixa: "bg-subtle text-ink-muted",
+    media: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300",
   } as const;
 
   return (
@@ -4268,8 +4268,8 @@ function ClassificationEditor({
     draft.category !== ticket.category || draft.priority !== ticket.priority;
 
   return (
-    <div className="grid w-full gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:w-auto sm:min-w-[15rem]">
-      <div className="flex items-center gap-1.5 text-[0.68rem] font-semibold uppercase text-slate-500">
+    <div className="grid w-full gap-2 rounded-xl border border-line bg-subtle p-3 sm:w-auto sm:min-w-[15rem]">
+      <div className="flex items-center gap-1.5 text-[0.68rem] font-semibold uppercase text-ink-muted">
         <Sparkles className="size-3.5 text-[#A07C3B]" />
         Classificacao
       </div>
@@ -4318,10 +4318,10 @@ function ClassificationSelect({
   value: string;
 }) {
   return (
-    <label className="grid gap-1 text-[0.68rem] font-semibold uppercase text-slate-500">
+    <label className="grid gap-1 text-[0.68rem] font-semibold uppercase text-ink-muted">
       {label}
       <select
-        className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold normal-case text-slate-800 outline-none transition focus:border-[#A07C3B]/50"
+        className="h-8 rounded-lg border border-line bg-surface px-2 text-xs font-semibold normal-case text-ink outline-none transition focus:border-[#A07C3B]/50"
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >
@@ -4340,18 +4340,18 @@ function DeliverySummaryCard({ ticket }: { ticket: HubItTicket }) {
   const decisionLabel = getDeliveryDecisionLabel(ticket);
 
   return (
-    <div className="flex min-w-[12rem] items-center gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-      <span className="grid size-10 place-items-center rounded-full bg-emerald-50 text-emerald-700">
+    <div className="flex min-w-[12rem] items-center gap-3 rounded-xl border border-line bg-subtle p-3">
+      <span className="grid size-10 place-items-center rounded-full bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300">
         <CalendarDays className="size-4" />
       </span>
       <div className="min-w-0">
-        <p className="m-0 truncate text-xs font-semibold uppercase text-slate-500">
+        <p className="m-0 truncate text-xs font-semibold uppercase text-ink-muted">
           Entrega
         </p>
-        <p className="m-0 truncate text-sm font-semibold text-slate-950">
+        <p className="m-0 truncate text-sm font-semibold text-ink">
           {effectiveDate ? formatDateOnly(effectiveDate) : "Sem data"}
         </p>
-        <p className="m-0 truncate text-xs text-slate-500">
+        <p className="m-0 truncate text-xs text-ink-muted">
           {decisionLabel}
         </p>
       </div>
@@ -4371,16 +4371,16 @@ function UserSummaryCard({
   variant?: "dark" | "gold";
 }) {
   return (
-    <div className="flex min-w-[12rem] items-center gap-3 rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
+    <div className="flex min-w-[12rem] items-center gap-3 rounded-xl border border-line bg-subtle p-3">
       <RequesterAvatar requester={user ?? null} size="md" variant={variant} />
       <div className="min-w-0">
-        <p className="m-0 truncate text-xs font-semibold uppercase text-slate-500">
+        <p className="m-0 truncate text-xs font-semibold uppercase text-ink-muted">
           {label}
         </p>
-        <p className="m-0 truncate text-sm font-semibold text-slate-950">
+        <p className="m-0 truncate text-sm font-semibold text-ink">
           {user?.name ?? fallback}
         </p>
-        <p className="m-0 truncate text-xs text-slate-500">
+        <p className="m-0 truncate text-xs text-ink-muted">
           {user?.email ?? "sem e-mail"}
         </p>
       </div>
@@ -4413,10 +4413,10 @@ function WorkflowStepper({ ticket }: { ticket: HubItTicket }) {
           <div
             className={`min-w-0 rounded-lg border px-3 py-2 ${
               isDone
-                ? "border-emerald-100 bg-emerald-50 text-emerald-700"
+                ? "border-emerald-100 dark:border-emerald-500/25 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
                 : isActive
-                  ? "border-[#A07C3B]/30 bg-[#A07C3B]/10 text-[#7A5E2C]"
-                  : "border-slate-200 bg-slate-50 text-slate-500"
+                  ? "border-[#A07C3B]/30 bg-[#A07C3B]/10 text-[#7a5e2c] dark:text-[#d9b877]"
+                  : "border-line bg-subtle text-ink-muted"
             }`}
             key={step.id}
           >
@@ -4467,7 +4467,7 @@ function DeliveryDecisionPanel({
       </div>
 
       <label className="mt-3 grid gap-1.5">
-        <span className="text-xs font-semibold uppercase text-slate-500">
+        <span className="text-xs font-semibold uppercase text-ink-muted">
           Decisao
         </span>
         <select
@@ -4491,7 +4491,7 @@ function DeliveryDecisionPanel({
 
       {draft.deliveryDecision === "reject_with_new_date" ? (
         <label className="mt-3 grid gap-1.5">
-          <span className="text-xs font-semibold uppercase text-slate-500">
+          <span className="text-xs font-semibold uppercase text-ink-muted">
             Nova data
           </span>
           <input
@@ -4511,7 +4511,7 @@ function DeliveryDecisionPanel({
 
       {draft.deliveryDecision !== "manter" ? (
         <label className="mt-3 grid gap-1.5">
-          <span className="text-xs font-semibold uppercase text-slate-500">
+          <span className="text-xs font-semibold uppercase text-ink-muted">
             Observacao de prazo
           </span>
           <textarea
@@ -4529,7 +4529,7 @@ function DeliveryDecisionPanel({
       ) : null}
 
       {ticket.deliveryDecisionBy || ticket.deliveryDecisionAt ? (
-        <p className="m-0 mt-3 text-xs leading-5 text-slate-500">
+        <p className="m-0 mt-3 text-xs leading-5 text-ink-muted">
           Ultima decisao: {ticket.deliveryDecisionBy?.name ?? "Operador"} em{" "}
           {ticket.deliveryDecisionAt
             ? formatDateTime(ticket.deliveryDecisionAt)
@@ -4542,9 +4542,9 @@ function DeliveryDecisionPanel({
 
 function InfoPill({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2">
-      <p className="m-0 font-semibold uppercase text-slate-500">{label}</p>
-      <p className="m-0 mt-1 font-semibold text-slate-950">{value}</p>
+    <div className="rounded-lg border border-line bg-subtle px-3 py-2">
+      <p className="m-0 font-semibold uppercase text-ink-muted">{label}</p>
+      <p className="m-0 mt-1 font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -4565,13 +4565,13 @@ function DetailBlock({
       bordered
       className="border-[#A07C3B]/25 bg-gradient-to-br from-[#fffaf0] to-white p-4"
     >
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase text-[#7A5E2C]">
+      <div className="flex items-center gap-2 text-xs font-semibold uppercase text-[#7a5e2c] dark:text-[#d9b877]">
         <span className="grid size-6 place-items-center rounded-full bg-[#A07C3B]/12 text-[#A07C3B]">
           {icon}
         </span>
         {label}
       </div>
-      <p className="m-0 mt-3 whitespace-pre-wrap text-sm leading-6 text-slate-700">
+      <p className="m-0 mt-3 whitespace-pre-wrap text-sm leading-6 text-ink">
         {value}
       </p>
     </Surface>
@@ -4592,9 +4592,9 @@ function CollapsiblePanel({
   title: string;
 }) {
   return (
-    <Surface bordered className="border-slate-200/70 bg-white p-3">
+    <Surface bordered className="border-line bg-surface p-3">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
           <span className="text-[#A07C3B]">{icon}</span>
           {title}
         </div>
@@ -4604,7 +4604,7 @@ function CollapsiblePanel({
         >
           <button
             aria-label={isExpanded ? `Recolher ${title}` : `Expandir ${title}`}
-            className="grid size-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+            className="grid size-8 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:border-[#A07C3B]/30 hover:text-ink"
             onClick={onToggle}
             type="button"
           >
@@ -4637,17 +4637,17 @@ function WorkspaceDisclosureBlock({
   visual: ReactNode;
 }) {
   return (
-    <Surface bordered className="border-slate-200/70 bg-white p-0">
+    <Surface bordered className="border-line bg-surface p-0">
       <div className="flex items-center justify-between gap-3 p-3">
         <div className="flex min-w-0 items-center gap-3">
           <span className="grid shrink-0 place-items-center text-[#A07C3B]">
             {visual}
           </span>
           <div className="min-w-0">
-            <p className="m-0 text-[0.68rem] font-semibold uppercase text-slate-500">
+            <p className="m-0 text-[0.68rem] font-semibold uppercase text-ink-muted">
               {title}
             </p>
-            <p className="m-0 mt-0.5 truncate text-xs font-medium text-slate-500">
+            <p className="m-0 mt-0.5 truncate text-xs font-medium text-ink-muted">
               {summary}
             </p>
           </div>
@@ -4658,7 +4658,7 @@ function WorkspaceDisclosureBlock({
         >
           <button
             aria-label={isExpanded ? `Recolher ${title}` : `Expandir ${title}`}
-            className="grid size-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+            className="grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:border-[#A07C3B]/30 hover:text-ink"
             onClick={onToggle}
             type="button"
           >
@@ -4671,7 +4671,7 @@ function WorkspaceDisclosureBlock({
         </Tooltip>
       </div>
       {isExpanded ? (
-        <div className="border-t border-slate-100 px-3 py-3">{children}</div>
+        <div className="border-t border-line px-3 py-3">{children}</div>
       ) : null}
     </Surface>
   );
@@ -4685,13 +4685,13 @@ function TicketHistory({
   ticket: HubItTicket;
 }) {
   return (
-    <Surface bordered className="border-slate-200/70 bg-slate-50/70 p-4">
+    <Surface bordered className="border-line bg-subtle p-4">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
           <History className="size-4 text-[#A07C3B]" />
           Timeline
         </div>
-        {isLoading ? <Loader2 className="size-4 animate-spin text-slate-400" /> : null}
+        {isLoading ? <Loader2 className="size-4 animate-spin text-ink-muted" /> : null}
       </div>
       <div className="mt-3 grid max-h-[20rem] gap-2 overflow-y-auto pr-1">
         {ticket.events.length > 0 ? (
@@ -4699,7 +4699,7 @@ function TicketHistory({
             <TicketHistoryEvent event={event} key={event.id} ticket={ticket} />
           ))
         ) : (
-          <p className="m-0 text-sm text-slate-500">
+          <p className="m-0 text-sm text-ink-muted">
             {isLoading ? "Carregando historico." : "Sem historico registrado."}
           </p>
         )}
@@ -4723,24 +4723,24 @@ function TicketHistoryEvent({
     <div
       className={`flex gap-3 rounded-lg border px-3 py-2 text-xs leading-5 ${
         isZeus
-          ? "border-[#101820]/10 bg-[#101820]/[0.03]"
-          : "border-slate-200 bg-white"
+          ? "border-[#101820]/10 bg-black/[0.03]"
+          : "border-line bg-surface"
       }`}
     >
       <RequesterAvatar requester={actor.user} size="xs" variant={actor.variant} />
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-semibold text-slate-900">
+          <span className="font-semibold text-ink">
             {actor.user.name}
           </span>
-          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.62rem] font-semibold uppercase text-slate-500">
+          <span className="rounded-full bg-subtle px-2 py-0.5 text-[0.62rem] font-semibold uppercase text-ink-muted">
             {getTicketEventTypeLabel(event.type)}
           </span>
-          <span className="font-mono text-[0.62rem] text-slate-400">
+          <span className="font-mono text-[0.62rem] text-ink-muted">
             {formatDateTime(event.createdAt)}
           </span>
         </div>
-        <p className="m-0 mt-1 whitespace-pre-wrap text-slate-700">
+        <p className="m-0 mt-1 whitespace-pre-wrap text-ink">
           {message}
         </p>
       </div>
@@ -5118,16 +5118,16 @@ function TicketReplyForm({
   }
 
   return (
-    <Surface bordered className="border-slate-200/70 bg-white p-4">
+    <Surface bordered className="border-line bg-surface p-4">
       <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-950">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
           <MessageSquareReply className="size-4 text-[#A07C3B]" />
           Devolutiva
         </div>
         <Tooltip content={replyTooltip} placement="left">
           <button
             aria-label={replyTooltip}
-            className="grid size-9 place-items-center rounded-lg bg-[#101820] text-white transition hover:bg-[#1d2634] disabled:cursor-not-allowed disabled:opacity-60"
+            className="grid size-9 place-items-center rounded-lg bg-inverse text-brand-ink transition hover:bg-[#1d2634] disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSaving}
             onClick={() => onSave(replyStatus)}
             type="button"
@@ -5151,7 +5151,7 @@ function TicketReplyForm({
       <div className="mt-3 grid gap-1.5">
         <span className="flex items-center justify-between gap-2">
           <label
-            className="text-xs font-semibold uppercase text-slate-500"
+            className="text-xs font-semibold uppercase text-ink-muted"
             htmlFor="ticket-admin-response"
           >
             Resposta para o usuario
@@ -5159,7 +5159,7 @@ function TicketReplyForm({
           <Tooltip content="Mencionar usuario cadastrado" placement="left">
             <button
               aria-label="Mencionar usuario cadastrado"
-              className="inline-grid size-8 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:border-[#A07C3B]/30 hover:text-slate-950"
+              className="inline-grid size-8 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:border-[#A07C3B]/30 hover:text-ink"
               onClick={(event) => {
                 event.preventDefault();
                 setIsMentionPickerOpen((current) => !current);
@@ -5172,27 +5172,27 @@ function TicketReplyForm({
           </Tooltip>
         </span>
         {isMentionPickerOpen ? (
-          <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200 bg-white px-2">
-              <Search className="size-4 text-slate-400" />
+          <div className="rounded-xl border border-line bg-subtle p-2">
+            <div className="flex items-center gap-2 rounded-lg border border-line bg-surface px-2">
+              <Search className="size-4 text-ink-muted" />
               <input
-                className="h-9 min-w-0 flex-1 bg-transparent text-sm font-medium text-slate-800 outline-none placeholder:text-slate-400"
+                className="h-9 min-w-0 flex-1 bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
                 onChange={(event) => setMentionQuery(event.target.value)}
                 placeholder="Buscar usuario cadastrado"
                 value={mentionQuery}
               />
               {isMentionLoading ? (
-                <Loader2 className="size-4 animate-spin text-slate-400" />
+                <Loader2 className="size-4 animate-spin text-ink-muted" />
               ) : null}
             </div>
             <div className="mt-2 grid max-h-52 gap-1 overflow-y-auto">
               {mentionError ? (
-                <p className="m-0 rounded-lg bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+                <p className="m-0 rounded-lg bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300">
                   {mentionError}
                 </p>
               ) : null}
               {!mentionError && filteredMentionUsers.length === 0 ? (
-                <p className="m-0 rounded-lg bg-white px-3 py-2 text-xs font-medium text-slate-500">
+                <p className="m-0 rounded-lg bg-surface px-3 py-2 text-xs font-medium text-ink-muted">
                   {isMentionLoading
                     ? "Carregando usuarios."
                     : "Nenhum usuario encontrado."}
@@ -5200,7 +5200,7 @@ function TicketReplyForm({
               ) : null}
               {filteredMentionUsers.map((user) => (
                 <button
-                  className="flex items-center gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-white"
+                  className="flex items-center gap-2 rounded-lg px-2 py-2 text-left transition hover:bg-surface"
                   key={user.id}
                   onClick={(event) => {
                     event.preventDefault();
@@ -5218,10 +5218,10 @@ function TicketReplyForm({
                     size="sm"
                   />
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-slate-950">
+                    <span className="block truncate text-sm font-semibold text-ink">
                       {user.name}
                     </span>
-                    <span className="block truncate text-xs text-slate-500">
+                    <span className="block truncate text-xs text-ink-muted">
                       {user.email ?? "sem e-mail"}
                     </span>
                   </span>
@@ -5244,7 +5244,7 @@ function TicketReplyForm({
         />
       </div>
       <label className="mt-3 grid gap-1.5">
-        <span className="text-xs font-semibold uppercase text-slate-500">
+        <span className="text-xs font-semibold uppercase text-ink-muted">
           O que foi feito
         </span>
         <textarea
@@ -5259,14 +5259,14 @@ function TicketReplyForm({
           value={draft.resolutionSummary}
         />
       </label>
-      <div className="mt-3 grid gap-2 rounded-xl border border-slate-200 bg-slate-50/80 p-3">
+      <div className="mt-3 grid gap-2 rounded-xl border border-line bg-subtle p-3">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <p className="m-0 text-xs font-semibold uppercase text-slate-500">
+            <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
               Evidencias
             </p>
           </div>
-          <span className="rounded-full bg-white px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200">
+          <span className="rounded-full bg-surface px-2 py-1 text-[0.68rem] font-semibold text-ink-muted ring-1 ring-line">
             {replyAttachments.length}
           </span>
         </div>
@@ -5317,7 +5317,7 @@ function TicketReplyForm({
           }
         />
         {evidenceError ? (
-          <p className="m-0 text-xs font-semibold text-red-600">
+          <p className="m-0 text-xs font-semibold text-red-600 dark:text-red-300">
             {evidenceError}
           </p>
         ) : null}
@@ -5326,7 +5326,7 @@ function TicketReplyForm({
         <Tooltip content="Mover para Backlog" placement="top">
           <button
             aria-label="Mover para Backlog"
-            className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-[#A07C3B]/30 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+            className="grid size-10 place-items-center rounded-lg border border-line bg-surface text-ink transition hover:border-[#A07C3B]/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSaving}
             onClick={onOpenBacklogForm}
             type="button"
@@ -5337,7 +5337,7 @@ function TicketReplyForm({
         <Tooltip content={treatmentTooltip} placement="top">
           <button
             aria-label={treatmentTooltip}
-            className="grid size-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 transition hover:border-[#A07C3B]/30 hover:text-slate-950 disabled:cursor-not-allowed disabled:opacity-60"
+            className="grid size-10 place-items-center rounded-lg border border-line bg-surface text-ink transition hover:border-[#A07C3B]/30 hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
             disabled={isSaving}
             onClick={() => onSave(replyStatus)}
             type="button"
@@ -5389,8 +5389,8 @@ function EvidenceButton({
         aria-pressed={active || undefined}
         className={`grid size-9 place-items-center rounded-lg border text-sm font-semibold transition ${
           active
-            ? "border-red-200 bg-red-50 text-red-700"
-            : "border-slate-200 bg-white text-slate-600 hover:border-[#A07C3B]/30 hover:text-slate-950"
+            ? "border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/12 text-red-700 dark:text-red-300"
+            : "border-line bg-surface text-ink-soft hover:border-[#A07C3B]/30 hover:text-ink"
         }`}
         onClick={onClick}
         type="button"
@@ -5416,20 +5416,20 @@ function ReplyEvidenceList({
     <div className="grid gap-2">
       {attachments.map((attachment) => (
         <div
-          className="flex items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-2"
+          className="flex items-center justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2"
           key={attachment.fileName}
         >
           <div className="min-w-0">
-            <p className="m-0 truncate text-sm font-semibold text-slate-950">
+            <p className="m-0 truncate text-sm font-semibold text-ink">
               {attachment.fileName}
             </p>
-            <p className="m-0 text-xs text-slate-500">
+            <p className="m-0 text-xs text-ink-muted">
               {attachment.type} / {formatBytes(attachment.sizeBytes)}
             </p>
           </div>
           <button
             aria-label="Remover evidencia"
-            className="grid size-8 shrink-0 place-items-center rounded-lg text-slate-500 transition hover:bg-slate-50 hover:text-slate-950"
+            className="grid size-8 shrink-0 place-items-center rounded-lg text-ink-muted transition hover:bg-subtle hover:text-ink"
             onClick={() => onRemove(attachment.fileName)}
             type="button"
           >
@@ -5455,8 +5455,8 @@ function AttachmentsPanel({
 
   return (
     <>
-      <Surface bordered className="border-slate-200/70 bg-white p-4">
-        <div className="flex items-center gap-2 text-xs font-semibold uppercase text-slate-500">
+      <Surface bordered className="border-line bg-surface p-4">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase text-ink-muted">
           <Paperclip className="size-4 text-[#A07C3B]" />
           Evidencias anexadas
         </div>
@@ -5471,7 +5471,7 @@ function AttachmentsPanel({
             ))}
           </div>
         ) : (
-          <p className="m-0 mt-3 text-sm text-slate-500">
+          <p className="m-0 mt-3 text-sm text-ink-muted">
             Nenhum print, gravacao ou arquivo anexado.
           </p>
         )}
@@ -5479,23 +5479,23 @@ function AttachmentsPanel({
 
       {expandedAttachment?.dataUrl ? (
         <div
-          className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/90 p-2 md:p-4"
+          className="fixed inset-0 z-[80] grid place-items-center bg-black/90 p-2 md:p-4"
           onClick={() => setExpandedAttachmentId(null)}
           role="presentation"
         >
           <div
-            className="relative h-[96vh] w-[98vw] overflow-hidden rounded-xl bg-white shadow-2xl"
+            className="relative h-[96vh] w-[98vw] overflow-hidden rounded-xl bg-surface shadow-2xl"
             onClick={(event) => event.stopPropagation()}
             role="dialog"
           >
-            <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3">
-              <p className="m-0 truncate text-sm font-semibold text-slate-950">
+            <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
+              <p className="m-0 truncate text-sm font-semibold text-ink">
                 {expandedAttachment.fileName}
               </p>
               <Tooltip content="Fechar evidencia" placement="left">
                 <button
                   aria-label="Fechar evidencia"
-                  className="grid size-9 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950"
+                  className="grid size-9 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:text-ink"
                   onClick={() => setExpandedAttachmentId(null)}
                   type="button"
                 >
@@ -5515,7 +5515,7 @@ function AttachmentsPanel({
             ) : null}
             {expandedAttachment.type === "video" ? (
               <video
-                className="h-[calc(96vh-4rem)] w-full bg-slate-950 object-contain"
+                className="h-[calc(96vh-4rem)] w-full bg-inverse object-contain"
                 controls
                 src={expandedAttachment.dataUrl}
               />
@@ -5547,7 +5547,7 @@ function AttachmentCard({
   const canOpenFile = Boolean(attachment.dataUrl) && attachment.type === "file";
 
   return (
-    <div className="group overflow-hidden rounded-xl border border-slate-200 bg-slate-50 text-left transition hover:border-[#A07C3B]/30">
+    <div className="group overflow-hidden rounded-xl border border-line bg-subtle text-left transition hover:border-[#A07C3B]/30">
       {attachment.type === "image" && attachment.dataUrl ? (
         <button
           aria-label="Abrir imagem em tela grande"
@@ -5563,7 +5563,7 @@ function AttachmentCard({
             width={320}
             src={attachment.dataUrl}
           />
-          <span className="absolute right-2 top-2 grid size-8 place-items-center rounded-lg bg-slate-950/80 text-white">
+          <span className="absolute right-2 top-2 grid size-8 place-items-center rounded-lg bg-black/80 text-white">
             <Maximize2 className="size-4" />
           </span>
         </button>
@@ -5576,21 +5576,21 @@ function AttachmentCard({
           type="button"
         >
           <video
-            className="h-36 w-full bg-slate-950 object-contain"
+            className="h-36 w-full bg-inverse object-contain"
             src={attachment.dataUrl}
           />
-          <span className="absolute right-2 top-2 grid size-8 place-items-center rounded-lg bg-slate-950/80 text-white">
+          <span className="absolute right-2 top-2 grid size-8 place-items-center rounded-lg bg-black/80 text-white">
             <Maximize2 className="size-4" />
           </span>
         </button>
       ) : null}
       {attachment.type === "audio" && attachment.dataUrl ? (
-        <div className="grid h-36 place-items-center bg-slate-100 p-3">
+        <div className="grid h-36 place-items-center bg-subtle p-3">
           <audio className="w-full" controls src={attachment.dataUrl} />
         </div>
       ) : null}
       {!attachment.dataUrl || attachment.type === "file" ? (
-        <div className="grid h-36 place-items-center bg-slate-100 text-slate-400">
+        <div className="grid h-36 place-items-center bg-subtle text-ink-muted">
           {attachment.type === "image" ? (
             <ImageIcon className="size-7" />
           ) : attachment.type === "file" ? (
@@ -5602,10 +5602,10 @@ function AttachmentCard({
       ) : null}
       <div className="flex items-center justify-between gap-3 p-3">
         <div className="min-w-0">
-          <p className="m-0 truncate text-sm font-semibold text-slate-950">
+          <p className="m-0 truncate text-sm font-semibold text-ink">
             {attachment.fileName}
           </p>
-          <p className="m-0 mt-1 text-xs text-slate-500">
+          <p className="m-0 mt-1 text-xs text-ink-muted">
             {attachment.type} / {formatBytes(attachment.sizeBytes)}
           </p>
         </div>
@@ -5613,7 +5613,7 @@ function AttachmentCard({
           <Tooltip content="Ampliar evidencia" placement="left">
             <button
               aria-label="Ampliar evidencia"
-              className="grid size-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950"
+              className="grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:text-ink"
               onClick={onOpen}
               type="button"
             >
@@ -5625,7 +5625,7 @@ function AttachmentCard({
           <Tooltip content="Abrir arquivo" placement="left">
             <a
               aria-label="Abrir arquivo anexado"
-              className="grid size-8 shrink-0 place-items-center rounded-lg border border-slate-200 bg-white text-slate-500 transition hover:text-slate-950"
+              className="grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:text-ink"
               download={attachment.fileName}
               href={attachment.dataUrl ?? undefined}
               rel="noopener noreferrer"
@@ -5674,14 +5674,14 @@ function RequesterAvatar({
   const imageSize = size === "md" ? 40 : size === "sm" ? 36 : 32;
   const fallbackClass =
     variant === "dark"
-      ? "bg-[#101820] text-white"
-      : "bg-[#A07C3B]/15 text-[#7A5E2C]";
+      ? "bg-inverse text-brand-ink"
+      : "bg-[#A07C3B]/15 text-[#7a5e2c] dark:text-[#d9b877]";
 
   if (requester?.avatarUrl) {
     return (
       <Image
         alt={requester.name}
-        className={`${sizeClass} shrink-0 rounded-full object-cover ring-1 ring-slate-200`}
+        className={`${sizeClass} shrink-0 rounded-full object-cover ring-1 ring-line`}
         height={imageSize}
         unoptimized
         width={imageSize}
@@ -5701,7 +5701,7 @@ function RequesterAvatar({
 
 function MiniBadge({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[0.68rem] font-semibold text-slate-500">
+    <span className="rounded-full bg-subtle px-2 py-0.5 text-[0.68rem] font-semibold text-ink-muted">
       {children}
     </span>
   );
@@ -5720,17 +5720,17 @@ function DeliveryFilterButton({
 }) {
   const toneClass = {
     danger: active
-      ? "border-red-300 bg-red-50 text-red-700"
-      : "border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-700",
+      ? "border-red-300 dark:border-red-500/40 bg-red-50 dark:bg-red-500/12 text-red-700 dark:text-red-300"
+      : "border-line bg-surface text-ink-muted hover:border-red-200 dark:border-red-500/30 hover:text-red-700 dark:text-red-300",
     neutral: active
-      ? "border-[#A07C3B]/45 bg-[#A07C3B]/10 text-[#7A5E2C]"
-      : "border-slate-200 bg-white text-slate-500 hover:border-[#A07C3B]/30",
+      ? "border-[#A07C3B]/45 bg-[#A07C3B]/10 text-[#7a5e2c] dark:text-[#d9b877]"
+      : "border-line bg-surface text-ink-muted hover:border-[#A07C3B]/30",
     success: active
-      ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-      : "border-slate-200 bg-white text-slate-500 hover:border-emerald-200 hover:text-emerald-700",
+      ? "border-emerald-300 dark:border-emerald-500/40 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+      : "border-line bg-surface text-ink-muted hover:border-emerald-200 dark:border-emerald-500/30 hover:text-emerald-700 dark:text-emerald-300",
     warning: active
-      ? "border-amber-300 bg-amber-50 text-amber-700"
-      : "border-slate-200 bg-white text-slate-500 hover:border-amber-200 hover:text-amber-700",
+      ? "border-amber-300 dark:border-amber-500/40 bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"
+      : "border-line bg-surface text-ink-muted hover:border-amber-200 dark:border-amber-500/30 hover:text-amber-700 dark:text-amber-300",
   }[tone];
 
   return (
@@ -5760,7 +5760,7 @@ function DeliveryDueBadge({
   if (!deliveryState.date && deliveryState.label === "Sem data") {
     if (variant === "prominent") {
       return (
-        <span className={`${baseClass} bg-slate-100 text-slate-500`}>
+        <span className={`${baseClass} bg-subtle text-ink-muted`}>
           <span className="inline-flex items-center gap-1">
             <CalendarDays className="size-3.5" />
             Entrega
@@ -5812,7 +5812,7 @@ function priorityVariant(priority: HubItTicket["priority"]): BadgeVariant {
   }
 
   if (priority === "alta") {
-    return "warning";
+    return "success";
   }
 
   if (priority === "baixa") {
@@ -7343,18 +7343,18 @@ function getDefaultBacklogType(
 
 function getBacklogTypeIcon(type: HubItTicketRoadmapType) {
   if (type === "bug") {
-    return <Bug className="size-4 text-red-600" />;
+    return <Bug className="size-4 text-red-600 dark:text-red-300" />;
   }
 
   if (type === "divida_tecnica") {
-    return <Wrench className="size-4 text-amber-600" />;
+    return <Wrench className="size-4 text-amber-600 dark:text-amber-300" />;
   }
 
   if (type === "automacao_integracao") {
-    return <ClipboardList className="size-4 text-slate-600" />;
+    return <ClipboardList className="size-4 text-ink-soft" />;
   }
 
-  return <Sparkles className="size-4 text-[#7A5E2C]" />;
+  return <Sparkles className="size-4 text-[#7a5e2c] dark:text-[#d9b877]" />;
 }
 
 function getTodayDateInput() {
@@ -7582,7 +7582,7 @@ function getTicketDeliveryState(ticket: HubItTicket) {
 
   if (stage === "backlog") {
     return {
-      className: "bg-slate-100 text-slate-700 ring-1 ring-slate-200",
+      className: "bg-subtle text-ink ring-1 ring-line",
       date,
       days: Number.POSITIVE_INFINITY,
       label: "Backlog",
@@ -7591,7 +7591,7 @@ function getTicketDeliveryState(ticket: HubItTicket) {
 
   if (stage === "validacao") {
     return {
-      className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
+      className: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-100 dark:ring-emerald-500/20",
       date,
       days: Number.POSITIVE_INFINITY,
       label: "Validacao",
@@ -7600,7 +7600,7 @@ function getTicketDeliveryState(ticket: HubItTicket) {
 
   if (stage === "finalizado") {
     return {
-      className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
+      className: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-100 dark:ring-emerald-500/20",
       date,
       days: Number.POSITIVE_INFINITY,
       label: hubItTicketStatusLabels[ticket.status],
@@ -7620,7 +7620,7 @@ function getTicketDeliveryState(ticket: HubItTicket) {
 
   if (days <= 0) {
     return {
-      className: "bg-red-50 text-red-700 ring-1 ring-red-100",
+      className: "bg-red-50 dark:bg-red-500/12 text-red-700 dark:text-red-300 ring-1 ring-red-100 dark:ring-red-500/20",
       date,
       days,
       label: days < 0 ? `Atrasado ${Math.abs(days)}d` : "Hoje",
@@ -7629,7 +7629,7 @@ function getTicketDeliveryState(ticket: HubItTicket) {
 
   if (days <= 2) {
     return {
-      className: "bg-amber-50 text-amber-700 ring-1 ring-amber-100",
+      className: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-1 ring-amber-100 dark:ring-amber-500/20",
       date,
       days,
       label: `${days} dia${days > 1 ? "s" : ""}`,
@@ -7637,7 +7637,7 @@ function getTicketDeliveryState(ticket: HubItTicket) {
   }
 
   return {
-    className: "bg-emerald-50 text-emerald-700 ring-1 ring-emerald-100",
+    className: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-100 dark:ring-emerald-500/20",
     date,
     days,
     label: `${days} dias`,
@@ -7649,7 +7649,7 @@ function getTicketDeliveryDateTone(ticket: HubItTicket) {
 
   if (!date) {
     return {
-      className: "bg-slate-100 text-slate-500 ring-slate-200",
+      className: "bg-subtle text-ink-muted ring-line",
       dateLabel: "Sem data",
       statusLabel: "Pendente",
     };
@@ -7659,7 +7659,7 @@ function getTicketDeliveryDateTone(ticket: HubItTicket) {
 
   if (days < 0) {
     return {
-      className: "bg-red-50 text-red-700 ring-red-100",
+      className: "bg-red-50 dark:bg-red-500/12 text-red-700 dark:text-red-300 ring-red-100 dark:ring-red-500/20",
       dateLabel: formatDateOnly(date),
       statusLabel: "Vencido",
     };
@@ -7667,14 +7667,14 @@ function getTicketDeliveryDateTone(ticket: HubItTicket) {
 
   if (days <= 2) {
     return {
-      className: "bg-amber-50 text-amber-700 ring-amber-100",
+      className: "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20",
       dateLabel: formatDateOnly(date),
       statusLabel: days === 0 ? "Hoje" : "Perto",
     };
   }
 
   return {
-    className: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    className: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20",
     dateLabel: formatDateOnly(date),
     statusLabel: "Com folga",
   };
@@ -7796,4 +7796,4 @@ function formatBytes(bytes: number) {
 }
 
 const fieldClassName =
-  "w-full rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10";
+  "w-full rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-[#A07C3B]/40 focus:ring-2 focus:ring-[#A07C3B]/10";

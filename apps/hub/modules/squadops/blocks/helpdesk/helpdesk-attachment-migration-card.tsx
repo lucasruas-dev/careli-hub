@@ -103,17 +103,17 @@ export function HelpDeskAttachmentMigrationCard({
   const isMigrating = result.pending > 0;
 
   return (
-    <Surface bordered className="border-[#A07C3B]/25 bg-[#fffaf0] p-4">
+    <Surface bordered className="border-[#A07C3B]/25 bg-[#fffaf0] dark:bg-[#a07c3b]/10 p-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-start gap-3">
           <Database className="mt-0.5 size-5 shrink-0 text-[#A07C3B]" />
           <div>
-            <p className="m-0 text-sm font-semibold text-slate-950">
+            <p className="m-0 text-sm font-semibold text-ink">
               {isMigrating
                 ? `${result.pending} anexo(s) antigos ainda dentro do banco`
                 : `${result.purgeable} anexo(s) ja no Storage, ocupando espaco em dobro`}
             </p>
-            <p className="m-0 mt-1 text-xs text-slate-600">
+            <p className="m-0 mt-1 text-xs text-ink-soft">
               {isMigrating
                 ? "Eles continuam funcionando. Migrar move os arquivos pro Storage sem apagar nada."
                 : "Os arquivos ja estao no Storage. Liberar remove a copia em base64 do Postgres."}
@@ -137,7 +137,7 @@ export function HelpDeskAttachmentMigrationCard({
       </div>
 
       {result.migrated > 0 || result.purged > 0 ? (
-        <p className="m-0 mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700">
+        <p className="m-0 mt-3 flex items-center gap-2 text-xs font-semibold text-emerald-700 dark:text-emerald-300">
           <CheckCircle2 className="size-4" />
           {result.migrated > 0
             ? `${result.migrated} anexo(s) migrados.`
@@ -146,7 +146,7 @@ export function HelpDeskAttachmentMigrationCard({
       ) : null}
 
       {error || result.failures.length > 0 ? (
-        <p className="m-0 mt-3 flex items-start gap-2 text-xs font-semibold text-amber-800">
+        <p className="m-0 mt-3 flex items-start gap-2 text-xs font-semibold text-amber-800 dark:text-amber-300">
           <AlertTriangle className="mt-0.5 size-4 shrink-0" />
           {error ?? result.failures.slice(0, 2).join(" / ")}
         </p>

@@ -66,7 +66,7 @@ export function AuditRoutinesPanel({
   return (
     <Surface
       bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="min-w-0 overflow-hidden border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
       <div className="flex flex-wrap items-start justify-between gap-3">
         <PanelTitle
@@ -117,11 +117,11 @@ export function AuditRoutinesPanel({
 
 function AuditSummaryPill({ label, value }: AuditSummaryPillProps) {
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-3">
-      <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+    <div className="rounded-xl border border-line bg-subtle p-3">
+      <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
         {label}
       </p>
-      <p className="m-0 mt-1 text-sm font-semibold text-slate-950">{value}</p>
+      <p className="m-0 mt-1 text-sm font-semibold text-ink">{value}</p>
     </div>
   );
 }
@@ -136,8 +136,8 @@ function AuditRoutineGroup({
   return (
     <section>
       <div className="mb-3 flex items-center justify-between gap-3">
-        <h3 className="m-0 text-sm font-semibold text-slate-950">{title}</h3>
-        <span className="text-xs font-semibold text-slate-400">
+        <h3 className="m-0 text-sm font-semibold text-ink">{title}</h3>
+        <span className="text-xs font-semibold text-ink-muted">
           {routines.length} rotinas
         </span>
       </div>
@@ -168,16 +168,16 @@ function AuditRoutineCard({
 }: AuditRoutineCardProps) {
   return (
     <button
-      className="rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      className="rounded-xl border border-line bg-surface p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
       onClick={onSelect}
       type="button"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="m-0 truncate text-sm font-semibold text-slate-950">
+          <p className="m-0 truncate text-sm font-semibold text-ink">
             {routine.name}
           </p>
-          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+          <p className="m-0 mt-1 text-xs font-semibold text-ink-muted">
             {routine.frequency} / {routine.responsible}
           </p>
         </div>
@@ -189,18 +189,18 @@ function AuditRoutineCard({
           {routine.isOverdue ? "vencida" : routine.lastStatus}
         </Badge>
       </div>
-      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-slate-500">
-        <span className="rounded-full bg-slate-50 px-2.5 py-1 ring-1 ring-slate-200/70">
+      <div className="mt-3 flex flex-wrap gap-2 text-xs font-semibold text-ink-muted">
+        <span className="rounded-full bg-subtle px-2.5 py-1 ring-1 ring-line">
           Última: {formatDateTime(routine.lastExecution)}
         </span>
-        <span className="rounded-full bg-slate-50 px-2.5 py-1 ring-1 ring-slate-200/70">
+        <span className="rounded-full bg-subtle px-2.5 py-1 ring-1 ring-line">
           Histórico: {routine.history.length}
         </span>
       </div>
-      <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-slate-600">
+      <p className="m-0 mt-3 line-clamp-2 text-xs leading-5 text-ink-soft">
         {routine.consolidatedResult}
       </p>
-      <p className="m-0 mt-3 line-clamp-2 rounded-lg bg-slate-50/70 p-3 text-xs leading-5 text-slate-600 ring-1 ring-slate-200/70">
+      <p className="m-0 mt-3 line-clamp-2 rounded-lg bg-subtle p-3 text-xs leading-5 text-ink-soft ring-1 ring-line">
         {routine.script}
       </p>
     </button>
@@ -218,22 +218,22 @@ export function AuditRoutineDetailDrawer({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/20 backdrop-blur-[1px]">
+    <div className="fixed inset-0 z-50 bg-black/20 backdrop-blur-[1px]">
       <button
         aria-label="Fechar rotina de auditoria"
         className="absolute inset-0 cursor-default"
         onClick={onClose}
         type="button"
       />
-      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-slate-200 bg-white shadow-2xl">
-        <div className="flex items-start justify-between gap-4 border-b border-slate-100 p-5">
+      <aside className="absolute inset-y-0 right-0 z-10 flex w-full max-w-2xl flex-col border-l border-line bg-surface shadow-2xl">
+        <div className="flex items-start justify-between gap-4 border-b border-line p-5">
           <PanelTitle
             eyebrow={routine.frequency}
             icon={<ClipboardCheck size={18} />}
             title={routine.name}
           />
           <button
-            className="grid size-9 place-items-center rounded-lg border border-slate-200/70 bg-white text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-950"
+            className="grid size-9 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
             onClick={onClose}
             type="button"
           >
@@ -251,7 +251,7 @@ export function AuditRoutineDetailDrawer({
             >
               {routine.isOverdue ? "vencida" : routine.lastStatus}
             </Badge>
-            <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
+            <span className="rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
               {routine.responsible}
             </span>
           </div>
@@ -277,23 +277,23 @@ export function AuditRoutineDetailDrawer({
             <DetailBlock label="Script operacional" value={routine.script} />
           </div>
 
-          <div className="mt-5 rounded-xl border border-slate-200/70 bg-slate-50/70 p-4">
-            <p className="m-0 text-xs font-semibold uppercase text-slate-400">
+          <div className="mt-5 rounded-xl border border-line bg-subtle p-4">
+            <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
               Historico relacionado
             </p>
             <div className="mt-3 grid gap-3">
               {routine.history.length > 0 ? (
                 routine.history.map((record) => (
                   <article
-                    className="rounded-lg border border-slate-200/70 bg-white p-3"
+                    className="rounded-lg border border-line bg-surface p-3"
                     key={record.id}
                   >
                     <div className="flex flex-wrap items-start justify-between gap-2">
                       <div className="min-w-0">
-                        <p className="m-0 truncate text-sm font-semibold text-slate-950">
+                        <p className="m-0 truncate text-sm font-semibold text-ink">
                           {record.subject}
                         </p>
-                        <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+                        <p className="m-0 mt-1 text-xs font-semibold text-ink-muted">
                           {record.module} / {formatDateTime(record.localDateTime)}
                         </p>
                       </div>
@@ -301,7 +301,7 @@ export function AuditRoutineDetailDrawer({
                         {record.status}
                       </Badge>
                     </div>
-                    <pre className="m-0 mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-slate-700">
+                    <pre className="m-0 mt-3 max-h-64 overflow-y-auto whitespace-pre-wrap text-xs leading-5 text-ink">
                       {record.rawContent}
                     </pre>
                   </article>

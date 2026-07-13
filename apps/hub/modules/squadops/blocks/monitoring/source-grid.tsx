@@ -93,7 +93,7 @@ export function MonitoringSourceGrid({
           <p className="m-0 text-xs font-semibold uppercase tracking-[0.16em] text-[#A07C3B]">
             Instancias monitoradas
           </p>
-          <p className="m-0 mt-1 text-sm text-slate-500">
+          <p className="m-0 mt-1 text-sm text-ink-muted">
             Clique em uma fonte para abrir tempo, payload, endpoint e picos.
           </p>
         </div>
@@ -136,16 +136,16 @@ function MonitoringSourceCard({
 
   return (
     <button
-      className={`group min-w-0 rounded-xl border bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] ${performanceCardBorderClass(tone)}`}
+      className={`group min-w-0 rounded-xl border bg-surface p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition hover:-translate-y-0.5 hover:shadow-[0_12px_24px_rgba(15,23,42,0.08)] ${performanceCardBorderClass(tone)}`}
       onClick={onSelect}
       type="button"
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="m-0 truncate text-sm font-semibold text-slate-950">
+          <p className="m-0 truncate text-sm font-semibold text-ink">
             {source.label}
           </p>
-          <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-slate-500">
+          <p className="m-0 mt-1 line-clamp-2 text-xs leading-5 text-ink-muted">
             {source.description}
           </p>
         </div>
@@ -156,19 +156,19 @@ function MonitoringSourceCard({
         </span>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-2">
-        <div className="rounded-lg bg-slate-50/70 p-2 ring-1 ring-slate-200/70">
-          <p className="m-0 text-[0.65rem] font-semibold uppercase text-slate-400">
+        <div className="rounded-lg bg-subtle p-2 ring-1 ring-line">
+          <p className="m-0 text-[0.65rem] font-semibold uppercase text-ink-muted">
             Tempo
           </p>
-          <p className="m-0 mt-1 text-base font-semibold text-slate-950">
+          <p className="m-0 mt-1 text-base font-semibold text-ink">
             {source.responseMs}ms
           </p>
         </div>
-        <div className="rounded-lg bg-slate-50/70 p-2 ring-1 ring-slate-200/70">
-          <p className="m-0 text-[0.65rem] font-semibold uppercase text-slate-400">
+        <div className="rounded-lg bg-subtle p-2 ring-1 ring-line">
+          <p className="m-0 text-[0.65rem] font-semibold uppercase text-ink-muted">
             Payload
           </p>
-          <p className="m-0 mt-1 truncate text-base font-semibold text-slate-950">
+          <p className="m-0 mt-1 truncate text-base font-semibold text-ink">
             {formatPayload(source.payloadBytes)}
           </p>
         </div>
@@ -177,7 +177,7 @@ function MonitoringSourceCard({
         <Badge variant={getStatusVariant(source.status)}>
           {formatStatus(source.status)}
         </Badge>
-        <span className="rounded-full bg-slate-50 px-2 py-1 text-[0.68rem] font-semibold text-slate-500 ring-1 ring-slate-200/70">
+        <span className="rounded-full bg-subtle px-2 py-1 text-[0.68rem] font-semibold text-ink-muted ring-1 ring-line">
           {source.healthyCount}/{source.endpointCount} ok
         </span>
         {source.alertCount > 0 ? (
@@ -208,7 +208,7 @@ export function MiniTrendBars({
   if (visibleValues.length === 0) {
     return (
       <div
-        className={`flex ${tall ? "h-20" : "h-11"} items-center justify-center rounded-lg bg-slate-50 text-xs font-semibold text-slate-400 ring-1 ring-slate-200/70`}
+        className={`flex ${tall ? "h-20" : "h-11"} items-center justify-center rounded-lg bg-subtle text-xs font-semibold text-ink-muted ring-1 ring-line`}
       >
         sem historico
       </div>
@@ -217,7 +217,7 @@ export function MiniTrendBars({
 
   return (
     <div
-      className={`flex ${tall ? "h-20" : "h-11"} items-end gap-1 rounded-lg bg-slate-50/80 p-2 ring-1 ring-slate-200/70`}
+      className={`flex ${tall ? "h-20" : "h-11"} items-end gap-1 rounded-lg bg-subtle p-2 ring-1 ring-line`}
     >
       {visibleValues.map((value, index) => (
         <span

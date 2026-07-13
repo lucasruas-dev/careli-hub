@@ -54,31 +54,31 @@ export function ProtocolRecordCard({
 }: ProtocolRecordCardProps) {
   return (
     <button
-      className="w-full rounded-lg border border-slate-200/70 bg-white p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-colors hover:border-[#A07C3B]/25 hover:bg-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+      className="w-full rounded-lg border border-line bg-surface p-3 text-left shadow-[0_1px_2px_rgba(15,23,42,0.03)] transition-colors hover:border-[#A07C3B]/25 hover:bg-surface focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
       onClick={onSelect}
       type="button"
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="m-0 text-xs font-semibold text-[#7A5E2C]">
+          <p className="m-0 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877]">
             {record.protocol}
           </p>
-          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-slate-950">
+          <p className="m-0 mt-1 line-clamp-2 text-sm font-semibold text-ink">
             {record.subject}
           </p>
-          <p className="m-0 mt-1 text-xs font-semibold text-slate-500">
+          <p className="m-0 mt-1 text-xs font-semibold text-ink-muted">
             {record.screen} / {formatDateTime(record.localDateTime)}
           </p>
         </div>
         <Badge variant={getStatusVariant(record.status)}>{record.status}</Badge>
       </div>
-      <div className="mt-3 grid gap-2 text-xs leading-5 text-slate-600">
+      <div className="mt-3 grid gap-2 text-xs leading-5 text-ink-soft">
         <p className="m-0">
-          <span className="font-semibold text-slate-800">O que mudou: </span>
+          <span className="font-semibold text-ink">O que mudou: </span>
           {getChangeSummary(record)}
         </p>
         <p className="m-0">
-          <span className="font-semibold text-slate-800">Por que: </span>
+          <span className="font-semibold text-ink">Por que: </span>
           {getReasonSummary(record)}
         </p>
       </div>
@@ -98,9 +98,9 @@ export function TimelinePanel({
   return (
     <Surface
       bordered
-      className="min-w-0 overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="min-w-0 overflow-hidden border-line bg-surface p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
-      <div className="border-b border-slate-100 p-5">
+      <div className="border-b border-line p-5">
         <PanelTitle
           eyebrow={`${records.length} registros`}
           icon={<History size={18} />}
@@ -135,9 +135,9 @@ export function RecordsTable({
   return (
     <Surface
       bordered
-      className="overflow-hidden border-slate-200/70 bg-white p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
+      className="overflow-hidden border-line bg-surface p-0 shadow-[0_1px_2px_rgba(15,23,42,0.04)]"
     >
-      <div className="border-b border-slate-100 p-5">
+      <div className="border-b border-line p-5">
         <PanelTitle
           eyebrow={`${records.length} registros`}
           icon={<Layers3 size={18} />}
@@ -146,7 +146,7 @@ export function RecordsTable({
       </div>
       <div className="max-h-[66vh] overflow-auto overscroll-contain">
         <table className="min-w-[62rem] w-full border-collapse text-left text-sm">
-          <thead className="sticky top-0 z-10 bg-slate-50 text-xs font-semibold uppercase text-slate-400 shadow-[0_1px_0_rgba(226,232,240,0.9)]">
+          <thead className="sticky top-0 z-10 bg-subtle text-xs font-semibold uppercase text-ink-muted shadow-[0_1px_0_rgba(226,232,240,0.9)]">
             <tr>
               <th className="px-4 py-3">Protocolo</th>
               <th className="px-4 py-3">Assunto</th>
@@ -162,24 +162,24 @@ export function RecordsTable({
           <tbody>
             {records.map((record) => (
               <tr
-                className="cursor-pointer border-t border-slate-100 transition-colors hover:bg-[#A07C3B]/5"
+                className="cursor-pointer border-t border-line transition-colors hover:bg-[#A07C3B]/5"
                 key={record.id}
                 onClick={() => onSelectRecord(record)}
               >
                 <td className="whitespace-nowrap px-4 py-3">
-                  <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+                  <span className="rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                     {record.protocol}
                   </span>
                 </td>
                 <td className="max-w-64 px-4 py-3">
-                  <p className="m-0 truncate font-semibold text-slate-950">
+                  <p className="m-0 truncate font-semibold text-ink">
                     {record.subject}
                   </p>
                 </td>
-                <td className="px-4 py-3 text-slate-600">{record.module}</td>
-                <td className="px-4 py-3 text-slate-600">{record.squad}</td>
+                <td className="px-4 py-3 text-ink-soft">{record.module}</td>
+                <td className="px-4 py-3 text-ink-soft">{record.squad}</td>
                 <td className="px-4 py-3">
-                  <span className="rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
+                  <span className="rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
                     {record.type}
                   </span>
                 </td>
@@ -188,13 +188,13 @@ export function RecordsTable({
                     {record.status}
                   </Badge>
                 </td>
-                <td className="whitespace-nowrap px-4 py-3 text-slate-600">
+                <td className="whitespace-nowrap px-4 py-3 text-ink-soft">
                   {formatDateTime(record.localDateTime)}
                 </td>
-                <td className="max-w-52 px-4 py-3 text-slate-600">
+                <td className="max-w-52 px-4 py-3 text-ink-soft">
                   <span className="line-clamp-2">{record.nextSquad}</span>
                 </td>
-                <td className="max-w-56 px-4 py-3 text-slate-600">
+                <td className="max-w-56 px-4 py-3 text-ink-soft">
                   <span className="line-clamp-2">{record.risks}</span>
                 </td>
               </tr>
@@ -219,17 +219,17 @@ function TimelineItem({
 }: TimelineItemProps) {
   return (
     <button
-      className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-xl border border-slate-200/70 bg-white p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] lg:grid-cols-[auto_minmax(0,1fr)_auto]"
+      className="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-3 rounded-xl border border-line bg-surface p-4 text-left shadow-[0_1px_2px_rgba(15,23,42,0.04)] transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] lg:grid-cols-[auto_minmax(0,1fr)_auto]"
       onClick={onSelect}
       type="button"
     >
       <span className="mt-1 h-2.5 w-2.5 rounded-full bg-[#A07C3B]" />
       <div className="min-w-0">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <span className="shrink-0 rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+          <span className="shrink-0 rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
             {record.protocol}
           </span>
-          <p className="m-0 min-w-0 flex-1 truncate text-sm font-semibold text-[#101820]">
+          <p className="m-0 min-w-0 flex-1 truncate text-sm font-semibold text-ink">
             {record.subject}
           </p>
           <Badge
@@ -238,14 +238,14 @@ function TimelineItem({
           >
             {record.status}
           </Badge>
-          <span className="max-w-[12rem] truncate rounded-full bg-slate-50 px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200/70">
+          <span className="max-w-[12rem] truncate rounded-full bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
             {record.type}
           </span>
         </div>
-        <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-[#667085]">
+        <p className="m-0 mt-2 line-clamp-2 text-xs leading-5 text-ink-muted">
           {record.shortSummary}
         </p>
-        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-slate-500">
+        <div className="mt-3 flex min-w-0 flex-wrap items-center gap-2 text-xs font-semibold text-ink-muted">
           <span className="max-w-[11rem] truncate">{record.squad}</span>
           <span>/</span>
           <span className="max-w-[11rem] truncate">{record.module}</span>
@@ -257,7 +257,7 @@ function TimelineItem({
           ) : null}
         </div>
       </div>
-      <span className="whitespace-nowrap text-left text-xs font-semibold text-[#667085] lg:text-right">
+      <span className="whitespace-nowrap text-left text-xs font-semibold text-ink-muted lg:text-right">
         {formatDateTime(record.localDateTime)}
       </span>
     </button>
