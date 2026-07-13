@@ -2,6 +2,7 @@
 
 import type { ReactNode, RefObject } from "react";
 import {
+  Mail,
   MessageCircle,
   MessageSquareText,
   PanelLeftClose,
@@ -223,6 +224,12 @@ export function IrisConversationInboxSidebar({
                   </span>
                   <span className="min-w-0 flex-1">
                     <span className="flex min-w-0 items-center gap-1.5">
+                      {conversation.channelKind === "email" ? (
+                        <Mail
+                          className="size-3.5 shrink-0 text-ink-muted"
+                          aria-label="E-mail"
+                        />
+                      ) : null}
                       <span
                         className={`min-w-0 truncate text-sm text-ink ${
                           conversation.unread ? "font-bold" : "font-medium"

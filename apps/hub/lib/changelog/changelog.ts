@@ -32,6 +32,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-13-iris-email-ui",
+    deployedAt: "2026-07-13T15:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Os e-mails que chegam em contato@careli.adm.br agora aparecem na Iris como atendimento, com um ícone de envelope no card e na fila.",
+              "Dá pra agrupar o board por Canal (WhatsApp | E-mail) e o assunto do e-mail aparece no card.",
+              "Ao abrir um atendimento de e-mail, o operador responde direto pelo compositor: a resposta sai por e-mail, no mesmo assunto/conversa do cliente.",
+              "E-mail não tem a janela de 24h do WhatsApp — a resposta fica sempre liberada. Anexo, áudio e reação (recursos do WhatsApp) ficam ocultos no e-mail.",
+            ],
+            screen: "Atendimento / Board",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 73d039d8 (v1.32.3)",
+    technical: {
+      done: "UI de e-mail na Iris (Fase B-UI + outbound). Novo campo IrisTicket.channelKind (de caredesk_channels.kind) populado em mapTicketRow; helper isEmailTicket. getIrisCustomerServiceWindow curto-circuita e-mail como janela sempre aberta (sem 24h). Composer recebe channelKind: placeholder/labels de e-mail e desabilita anexo/audio; handlePickAttachment/reactToMessage/prepareEdit bloqueiam e-mail. Sidebar do cockpit mostra Canal=E-mail e oculta 'Janela WhatsApp'. Board card e inbox sidebar mostram ícone Mail. Nova rota POST /api/iris/tickets/email-reply (gated por config.outbound_enabled): resolve destinatario/assunto/thread do ultimo inbound e envia via sendGmailMessage (In-Reply-To/References/threadId), registrando a mensagem outbound e assumindo o ticket. sendMessage() roteia channelKind==='email' -> sendEmailReply. Typecheck e lint limpos.",
+      motivation:
+        "Continuacao da integracao de e-mail na Iris: a Fase A (conexao Gmail) e a Fase B inbound (e-mail -> ticket) ja estavam no ar; faltava a superficie de trabalho (ver o ticket de e-mail na fila, o cockpit e responder por e-mail). Pre-requisitos operacionais para o envio funcionar: ligar config.outbound_enabled do canal e configurar Send-As de contato@ na caixa caca@.",
+    },
+    title: "E-mail na Iris: fila, cockpit e resposta por e-mail",
+    type: "novidade",
+    version: "1.33.0",
+  },
+  {
     buildTag: "2026-07-13-chronos-titulo-agenda",
     deployedAt: "2026-07-13T11:20:00-03:00",
     modules: [

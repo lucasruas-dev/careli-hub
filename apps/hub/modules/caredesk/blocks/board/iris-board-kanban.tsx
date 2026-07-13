@@ -403,7 +403,9 @@ function BoardCard({
   const slaCritical = helpers.isSlaCritical(ticket);
   const assigneeName = (ticket.assignedToLabel ?? "").trim();
   const handledByCaca = assigneeName === "" || assigneeName === cacaOwnerLabel;
-  const isEmail = ticket.channelLabel.toLowerCase().includes("mail");
+  const isEmail =
+    ticket.channelKind === "email" ||
+    ticket.channelLabel.toLowerCase().includes("mail");
   const subject = (ticket.subject ?? "").trim();
   const crm = readBoardTicketCrm(ticket.crm360Registration);
   const lastMessageAt = helpers.formatDateTime(

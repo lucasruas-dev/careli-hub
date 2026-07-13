@@ -83,6 +83,9 @@ export type IrisTicket = {
   assignedToLabel: string;
   assignedToUserId?: string | null;
   channelId?: string | null;
+  // Tipo do canal do ticket (whatsapp | email | ...), vindo de caredesk_channels.kind.
+  // Distingue e-mail de WhatsApp na UI sem depender do texto do channelLabel.
+  channelKind?: string | null;
   hasDeliveryError?: boolean;
   channelLabel: string;
   contactAvatarUrl?: string | null;

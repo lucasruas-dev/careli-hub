@@ -2124,6 +2124,7 @@ function IrisConversationPanel({
     ? (ticket.messages.find((message) => message.id === editingMessageId) ??
       null)
     : null;
+  const ticketIsEmail = isEmailTicket(ticket);
   // Quando a Caca conduz o atendimento, o operador NAO pode atropelar (enviar):
   // so acompanha e direciona/transfere. O composer fica travado.
   const attendanceWithCaca = isCacaOwnedTicket(ticket);
@@ -2771,6 +2772,12 @@ function IrisConversationPanel({
       return;
     }
 
+    // E-mail: responde pelo Gmail (mesmo thread), não pelo WhatsApp/Meta.
+    if (isEmailTicket(ticket)) {
+      await sendEmailReply(body);
+      return;
+    }
+
     if (!canSendFreeForm) {
       setFeedback(customerServiceWindow.label);
       return;
@@ -2847,6 +2854,80 @@ function IrisConversationPanel({
         error instanceof Error
           ? error.message
           : "Nao foi possivel enviar a mensagem agora.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
+  // Responder um ticket de e-mail: o servidor envia pelo Gmail (caixa robô caca@),
+  // no mesmo thread do cliente. Sem janela de 24h e sem WhatsApp.
+  async function sendEmailReply(body: string) {
+    if (!body || sending || !operationReady) {
+      return;
+    }
+
+    setSending(true);
+    setFeedback("");
+
+    try {
+      const now = new Date().toISOString();
+      const optimisticMessage: IrisMessage = {
+        body,
+        createdAt: now,
+        deliveryStatus: "queued",
+        direction: "outbound",
+        id: `local-${now}`,
+        messageType: "text",
+        operatorAvatarUrl,
+        senderLabel: operatorLabel,
+        senderType: "operator",
+      };
+
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/tickets/email-reply", {
+        body: JSON.stringify({ body, ticketId: ticket.id }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: Record<string, unknown> | null;
+      } | null;
+
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Nao foi possivel enviar o e-mail.");
+      }
+
+      if (!payload?.message) {
+        onMessageCreated(ticket.id, optimisticMessage);
+      }
+
+      setDraft("");
+      setReplyToMessage(null);
+      setEmojiPickerOpen(false);
+      setFeedback("E-mail enviado.");
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel enviar e-mail", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar o e-mail agora.",
       );
     } finally {
       setSending(false);
@@ -3106,6 +3187,11 @@ function IrisConversationPanel({
       return;
     }
 
+    // Reação é recurso do WhatsApp (Meta). E-mail não tem.
+    if (isEmailTicket(ticket)) {
+      return;
+    }
+
     if (!canSendFreeForm) {
       setFeedback(customerServiceWindow.label);
       return;
@@ -3170,6 +3256,11 @@ function IrisConversationPanel({
 
   function prepareEdit(message: IrisMessage) {
     if (message.direction !== "outbound" || message.senderType !== "operator") {
+      return;
+    }
+
+    // Não dá pra "editar" um e-mail já enviado (o edit da Iris é do WhatsApp/Meta).
+    if (isEmailTicket(ticket)) {
       return;
     }
 
@@ -3447,6 +3538,12 @@ function IrisConversationPanel({
   // no compositor, com o rascunho servindo de legenda opcional.
   function handlePickAttachment(file: File | null | undefined) {
     if (!file) {
+      return;
+    }
+
+    // Anexo (incl. print colado) ainda não é suportado no e-mail (MVP outbound = texto).
+    if (isEmailTicket(ticket)) {
+      setFeedback("Anexo ainda não disponível no e-mail.");
       return;
     }
 
@@ -3857,6 +3954,7 @@ function IrisConversationPanel({
           attendantOpen={attendantOpen}
           blockedTooltip={blockedTooltip}
           canSendFreeForm={canSendFreeForm}
+          channelKind={ticketIsEmail ? "email" : "whatsapp"}
           cobrancaMode={cobrancaMode}
           composerMode={effectiveComposerMode}
           composerReady={composerReadyForMode}
@@ -4043,8 +4141,15 @@ function IrisConversationPanel({
               label: "Origem",
               value: ticketOrigin(ticket) === "active" ? "Ativo" : "Passivo",
             },
-            { label: "Canal", value: "WhatsApp" },
-            { label: "Janela WhatsApp", value: customerServiceWindow.contextLabel },
+            { label: "Canal", value: ticketIsEmail ? "E-mail" : "WhatsApp" },
+            ...(ticketIsEmail
+              ? []
+              : [
+                  {
+                    label: "Janela WhatsApp",
+                    value: customerServiceWindow.contextLabel,
+                  },
+                ]),
           ]}
           clientId={null}
           collapsed={contextCollapsed}
@@ -7105,6 +7210,18 @@ function isClosedTicket(ticket: IrisTicket) {
   return ["cancelled", "closed", "resolved"].includes(ticket.status);
 }
 
+// Ticket de e-mail (canal kind=email; provider=gmail no source_context como reforço).
+// E-mail não tem a janela de 24h do WhatsApp e responde por outro transporte (Gmail API).
+function isEmailTicket(ticket: IrisTicket) {
+  if (ticket.channelKind === "email") {
+    return true;
+  }
+
+  const provider = ticket.sourceContext?.["provider"];
+
+  return typeof provider === "string" && provider.toLowerCase() === "gmail";
+}
+
 function effectiveIrisStatus(ticket: IrisTicket): IrisStatus {
   if (shouldPromoteNewTicketToPending(ticket)) {
     return "pending";
@@ -7325,6 +7442,19 @@ function getIrisCustomerServiceWindow(
   ticket: IrisTicket,
   tickets: IrisTicket[],
 ) {
+  // E-mail não tem janela de 24h (isso é regra do WhatsApp/Meta): a resposta por e-mail
+  // fica sempre liberada. Curto-circuito antes de qualquer cálculo de janela.
+  if (isEmailTicket(ticket)) {
+    return {
+      contextLabel: "E-mail",
+      expiresAt: null,
+      label: "Resposta por e-mail sempre liberada.",
+      lastCustomerMessageAt: null,
+      open: true,
+      reason: "open" as const,
+    };
+  }
+
   const relatedTickets = getRelatedTicketsForCustomerServiceWindow(
     ticket,
     tickets,

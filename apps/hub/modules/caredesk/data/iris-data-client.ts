@@ -480,6 +480,7 @@ function mapTicketRow(input: {
     ),
     assignedToUserId: input.row.assigned_to_user_id ?? null,
     channelId: input.row.channel_id,
+    channelKind: input.channel?.kind ?? null,
     channelLabel: input.channel?.name ?? "Canal nao definido",
     hasDeliveryError: hasTicketDeliveryError(input.messages),
     contactAvatarUrl: getContactAvatarUrl(input.contact),

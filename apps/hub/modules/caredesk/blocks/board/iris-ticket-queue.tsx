@@ -34,6 +34,7 @@ export type IrisTicketStatusTone =
 export type IrisBoardTicket = {
   assignedToAvatarUrl?: string | null;
   assignedToLabel: string;
+  channelKind?: string | null;
   channelLabel: string;
   closedAt?: string | null;
   contactAvatarUrl?: string | null;

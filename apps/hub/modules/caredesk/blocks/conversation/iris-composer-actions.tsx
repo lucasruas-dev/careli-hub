@@ -52,6 +52,7 @@ export function IrisConversationComposerActions({
   attendantOpen = false,
   blockedTooltip,
   canSendFreeForm,
+  channelKind = "whatsapp",
   cobrancaMode = false,
   composerMode = "reply",
   composerReady,
@@ -98,6 +99,7 @@ export function IrisConversationComposerActions({
   attendantOpen?: boolean;
   blockedTooltip: string;
   canSendFreeForm: boolean;
+  channelKind?: string;
   cobrancaMode?: boolean;
   composerMode?: "reply" | "note";
   composerReady: boolean;
@@ -167,15 +169,20 @@ export function IrisConversationComposerActions({
     ? "Editando mensagem"
     : "Respondendo";
   const noteMode = composerMode === "note";
+  const isEmailChannel = channelKind === "email";
   const composerPlaceholder = noteMode
     ? "Mensagem assistida — nao vai pro cliente..."
     : composerReady
       ? editingMessageBody
         ? "Editar mensagem no Iris..."
-        : "Escrever mensagem WhatsApp..."
+        : isEmailChannel
+          ? "Escrever resposta de e-mail..."
+          : "Escrever mensagem WhatsApp..."
       : ticketClosed
         ? "Ticket encerrado"
-        : "Aguardando janela WhatsApp";
+        : isEmailChannel
+          ? "E-mail"
+          : "Aguardando janela WhatsApp";
   const sendLabel = noteMode
     ? "Enviar no modo assistido"
     : composerReady
@@ -539,11 +546,15 @@ export function IrisConversationComposerActions({
                 onChange={handleAttachmentInputChange}
               />
               <ComposerIconButton
-                disabled={!canSendFreeForm || sending || noteMode}
+                disabled={
+                  !canSendFreeForm || sending || noteMode || isEmailChannel
+                }
                 label={
                   noteMode
                     ? "Anexo indisponivel na nota"
-                    : "Anexar arquivo, foto ou print"
+                    : isEmailChannel
+                      ? "Anexo indisponivel no e-mail"
+                      : "Anexar arquivo, foto ou print"
                 }
                 onClick={() => fileInputRef.current?.click()}
               >
@@ -564,8 +575,16 @@ export function IrisConversationComposerActions({
                 className="min-h-11 flex-1 resize-none bg-transparent px-2 py-2 text-sm text-ink outline-none placeholder:text-ink-muted"
               />
               <ComposerIconButton
-                disabled={!canSendFreeForm || sending || noteMode}
-                label={noteMode ? "Audio indisponivel na nota" : "Gravar audio"}
+                disabled={
+                  !canSendFreeForm || sending || noteMode || isEmailChannel
+                }
+                label={
+                  noteMode
+                    ? "Audio indisponivel na nota"
+                    : isEmailChannel
+                      ? "Audio indisponivel no e-mail"
+                      : "Gravar audio"
+                }
                 onClick={onStartAudioRecording}
               >
                 <Mic className="size-4" aria-hidden="true" />
