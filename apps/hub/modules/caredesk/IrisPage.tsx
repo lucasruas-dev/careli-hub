@@ -99,6 +99,7 @@ import {
   IrisConversationEmptyState,
   IrisConversationInboxSidebar,
   IrisConversationMessagesTimeline,
+  type IrisInboxChannelFilter,
   type IrisConversationReadOnlyHelpers,
   type IrisConversationReadOnlyRenderers,
   type IrisConversationWaitState,
@@ -1649,6 +1650,9 @@ function IrisConversationPanel({
   tickets: IrisTicket[];
 }) {
   const [conversationFilter, setConversationFilter] = useState("Abertas");
+  // Filtro por canal na fila (Tudo / WhatsApp / Grupo / E-mail).
+  const [conversationChannel, setConversationChannel] =
+    useState<IrisInboxChannelFilter>("all");
   const [draft, setDraft] = useState("");
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -1771,6 +1775,20 @@ function IrisConversationPanel({
           return false;
         }
 
+        // Filtro por canal (Tudo / WhatsApp / Grupo / E-mail).
+        if (conversationChannel === "email" && !isEmailTicket(item)) {
+          return false;
+        }
+        if (conversationChannel === "group" && item.isGroup !== true) {
+          return false;
+        }
+        if (
+          conversationChannel === "whatsapp" &&
+          (isEmailTicket(item) || item.isGroup === true)
+        ) {
+          return false;
+        }
+
         if (conversationFilter === "Pendentes") {
           return ["new", "waiting_operator", "pending", "open"].includes(
             effectiveIrisStatus(item),
@@ -1784,7 +1802,7 @@ function IrisConversationPanel({
         return !isClosedTicket(item);
       })
       .sort(sortIrisTickets);
-  }, [conversationFilter, search, tickets]);
+  }, [conversationChannel, conversationFilter, search, tickets]);
 
   const previousTickets = useMemo(() => {
     return tickets
@@ -2128,6 +2146,8 @@ function IrisConversationPanel({
       null)
     : null;
   const ticketIsEmail = isEmailTicket(ticket);
+  // Grupo de WhatsApp: conversa de monitoramento (read-only), sem janela de 24h.
+  const ticketIsGroup = ticket.isGroup === true;
   // Quando a Caca conduz o atendimento, o operador NAO pode atropelar (enviar):
   // so acompanha e direciona/transfere. O composer fica travado.
   const attendanceWithCaca = isCacaOwnedTicket(ticket);
@@ -3744,11 +3764,13 @@ function IrisConversationPanel({
   return (
     <section className="relative flex h-full min-h-0 w-full overflow-hidden rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <IrisConversationInboxSidebar
+        channelFilter={conversationChannel}
         cobrancaMode={cobrancaMode}
         collapsed={conversationListCollapsed}
         conversations={conversations}
         filter={conversationFilter}
         helpers={irisConversationReadOnlyHelpers}
+        onChannelFilterChange={setConversationChannel}
         onCollapseChange={setConversationListCollapsed}
         onFilterChange={setConversationFilter}
         onSearchChange={setSearch}
@@ -3965,7 +3987,9 @@ function IrisConversationPanel({
           attendantOpen={attendantOpen}
           blockedTooltip={blockedTooltip}
           canSendFreeForm={canSendFreeForm}
-          channelKind={ticketIsEmail ? "email" : "whatsapp"}
+          channelKind={
+            ticketIsEmail ? "email" : ticketIsGroup ? "group" : "whatsapp"
+          }
           cobrancaMode={cobrancaMode}
           composerMode={effectiveComposerMode}
           composerReady={composerReadyForMode}
@@ -4152,8 +4176,15 @@ function IrisConversationPanel({
               label: "Origem",
               value: ticketOrigin(ticket) === "active" ? "Ativo" : "Passivo",
             },
-            { label: "Canal", value: ticketIsEmail ? "E-mail" : "WhatsApp" },
-            ...(ticketIsEmail
+            {
+              label: "Canal",
+              value: ticketIsEmail
+                ? "E-mail"
+                : ticketIsGroup
+                  ? "WhatsApp · Grupo"
+                  : "WhatsApp",
+            },
+            ...(ticketIsEmail || ticketIsGroup
               ? []
               : [
                   {
@@ -4587,9 +4618,12 @@ function TicketSeparator({
 }) {
   const status = effectiveIrisStatus(ticket);
   const email = isEmailTicket(ticket);
-  const channelLine = email
-    ? `E-mail · ${emailBoxLabel(ticket.channelLabel)}`
-    : `WhatsApp · ${ticket.queueLabel}`;
+  const group = ticket.isGroup === true;
+  const channelLine = group
+    ? `Grupo · ${ticket.queueLabel}`
+    : email
+      ? `E-mail · ${emailBoxLabel(ticket.channelLabel)}`
+      : `WhatsApp · ${ticket.queueLabel}`;
   const subjectChoices = Array.from(
     new Set([subject, ...(subjectOptions ?? [])]),
   ).filter((value): value is string => Boolean(value && value.trim()));
@@ -4622,7 +4656,7 @@ function TicketSeparator({
         </div>
         {!compact ? (
           <>
-            {onSubjectChange && !email ? (
+            {onSubjectChange && !email && !group ? (
               <select
                 value={subject ?? ""}
                 onChange={(event) => onSubjectChange(event.target.value)}
@@ -4641,10 +4675,14 @@ function TicketSeparator({
                 ))}
               </select>
             ) : (
-              // E-mail já tem assunto próprio — mostra estático (sem catálogo do WhatsApp).
+              // E-mail e grupo já têm assunto próprio — mostra estático (sem catálogo do WhatsApp).
               <p className="mt-2 text-sm font-semibold text-ink [overflow-wrap:anywhere]">
                 {ticket.subject?.trim() ||
-                  (email ? "(sem assunto)" : ticketCrmSubtitle(ticket))}
+                  (group
+                    ? ticket.contactLabel
+                    : email
+                      ? "(sem assunto)"
+                      : ticketCrmSubtitle(ticket))}
               </p>
             )}
             <p className="mt-1 text-xs font-medium capitalize text-ink-muted">

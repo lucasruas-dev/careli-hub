@@ -482,6 +482,7 @@ function mapTicketRow(input: {
     channelId: input.row.channel_id,
     channelKind: input.channel?.kind ?? null,
     channelLabel: input.channel?.name ?? "Canal nao definido",
+    isGroup: input.row.source_entity_type === "whatsapp-group",
     hasDeliveryError: hasTicketDeliveryError(input.messages),
     contactAvatarUrl: getContactAvatarUrl(input.contact),
     contactDocument: input.contact?.document ?? null,

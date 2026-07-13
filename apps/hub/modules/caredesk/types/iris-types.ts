@@ -88,6 +88,8 @@ export type IrisTicket = {
   channelKind?: string | null;
   hasDeliveryError?: boolean;
   channelLabel: string;
+  // Conversa de grupo de WhatsApp (monitoramento CACÁ, read-only).
+  isGroup?: boolean;
   contactAvatarUrl?: string | null;
   contactDocument?: string | null;
   contactEmail?: string | null;

@@ -40,6 +40,8 @@ export type IrisBoardTicket = {
   contactAvatarUrl?: string | null;
   contactLabel: string;
   crm360Registration?: unknown;
+  // Conversa de grupo de WhatsApp (monitoramento CACÁ, read-only).
+  isGroup?: boolean;
   firstRespondedAt?: string | null;
   firstResponseDueAt?: string | null;
   hasDeliveryError?: boolean;

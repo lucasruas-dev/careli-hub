@@ -7,6 +7,7 @@ import {
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
@@ -99,10 +100,24 @@ export function IrisConversationEmptyState() {
   );
 }
 
+export type IrisInboxChannelFilter = "all" | "whatsapp" | "group" | "email";
+
+const IRIS_INBOX_CHANNEL_FILTERS: {
+  key: IrisInboxChannelFilter;
+  label: string;
+}[] = [
+  { key: "all", label: "Tudo" },
+  { key: "whatsapp", label: "WhatsApp" },
+  { key: "group", label: "Grupo" },
+  { key: "email", label: "E-mail" },
+];
+
 export function IrisConversationInboxSidebar({
+  channelFilter,
   collapsed,
   conversations,
   helpers,
+  onChannelFilterChange,
   onCollapseChange,
   onSearchChange,
   onSelectTicket,
@@ -110,11 +125,13 @@ export function IrisConversationInboxSidebar({
   search,
   selectedTicketId,
 }: {
+  channelFilter: IrisInboxChannelFilter;
   cobrancaMode?: boolean;
   collapsed: boolean;
   conversations: IrisConversationTicket[];
   filter: string;
   helpers: IrisConversationReadOnlyHelpers;
+  onChannelFilterChange: (filter: IrisInboxChannelFilter) => void;
   onCollapseChange: (collapsed: boolean) => void;
   onFilterChange: (filter: string) => void;
   onSearchChange: (search: string) => void;
@@ -176,6 +193,26 @@ export function IrisConversationInboxSidebar({
                 className="h-7 w-full bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
               />
             </label>
+            <div className="mt-2 flex flex-wrap gap-1">
+              {IRIS_INBOX_CHANNEL_FILTERS.map((option) => {
+                const active = channelFilter === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    onClick={() => onChannelFilterChange(option.key)}
+                    className={[
+                      "rounded-full px-2.5 py-0.5 text-[11px] font-semibold ring-1 transition-colors",
+                      active
+                        ? "bg-[#A07C3B]/12 text-[#7A5E2C] ring-[#A07C3B]/25 dark:text-[#d9b877]"
+                        : "bg-surface text-ink-muted ring-line/70 hover:text-ink",
+                    ].join(" ")}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
           </>
         )}
       </div>
@@ -231,6 +268,14 @@ export function IrisConversationInboxSidebar({
                           aria-label="E-mail"
                         >
                           <Mail className="size-2.5" aria-hidden="true" />
+                        </span>
+                      ) : conversation.isGroup ? (
+                        <span
+                          className="flex size-4 shrink-0 items-center justify-center rounded-md bg-emerald-600 text-white dark:bg-emerald-600/90"
+                          title="Grupo de WhatsApp"
+                          aria-label="Grupo de WhatsApp"
+                        >
+                          <Users className="size-2.5" aria-hidden="true" />
                         </span>
                       ) : null}
                       <span

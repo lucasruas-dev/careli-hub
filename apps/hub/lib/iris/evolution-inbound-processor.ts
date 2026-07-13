@@ -353,6 +353,7 @@ async function ensureGroupConversation({
       channelId,
       queue,
       workspaceId,
+      subject: resolvedSubject,
     }));
 
   if (existingRow) {
@@ -435,6 +436,7 @@ async function createGroupTicket({
   channelId,
   queue,
   workspaceId,
+  subject,
 }: {
   client: EvolutionClient;
   message: NormalizedGroupMessage;
@@ -447,6 +449,7 @@ async function createGroupTicket({
     sla_resolution_minutes: number | null;
   } | null;
   workspaceId: string | null;
+  subject: string | null;
 }): Promise<string> {
   const protocol = await nextTicketProtocol(client);
   const now = message.sentAt || new Date().toISOString();
@@ -475,7 +478,7 @@ async function createGroupTicket({
       source_entity_type: "whatsapp-group",
       source_module: "iris",
       status: "open",
-      subject: null,
+      subject,
       workspace_id: workspaceId,
     })
     .select("id")
