@@ -607,6 +607,13 @@ function readMessageSenderLabel(row: any) {
   const payload = row?.provider_payload;
 
   if (payload && typeof payload === "object" && !Array.isArray(payload)) {
+    // Mensagem de grupo de WhatsApp: quem enviou é o participante, não o "grupo".
+    const groupParticipant = (payload as Record<string, unknown>)
+      .groupParticipantName;
+    if (typeof groupParticipant === "string" && groupParticipant.trim()) {
+      return groupParticipant.trim();
+    }
+
     const operatorLabel = (payload as Record<string, unknown>).operatorLabel;
     const displayLabel = maybeIrisOperatorLabel(operatorLabel);
 

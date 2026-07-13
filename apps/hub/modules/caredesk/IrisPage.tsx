@@ -5008,6 +5008,9 @@ function MessageBubble({
   const internal =
     message.direction === "internal" || message.senderType === "system";
   const canEdit = outbound && message.senderType === "operator";
+  // Em grupo, cada mensagem recebida é de um participante — mostra quem enviou.
+  const showGroupSender =
+    ticket.isGroup === true && !outbound && Boolean(message.senderLabel);
   const avatarLabel = outbound
     ? (message.senderLabel ?? "Operador Iris")
     : ticketContactLabel(ticket);
@@ -5098,6 +5101,13 @@ function MessageBubble({
             {outbound && message.senderLabel ? (
               <div className="mb-1.5 flex items-center justify-end gap-1.5">
                 <span className="rounded-full border border-[#c8ecd7] bg-surface/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-[#0f766e] dark:border-[#1f6b50]/60 dark:bg-white/[0.06] dark:text-[#9fd8bd]">
+                  {message.senderLabel}
+                </span>
+              </div>
+            ) : null}
+            {showGroupSender ? (
+              <div className="mb-1 flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
                   {message.senderLabel}
                 </span>
               </div>
