@@ -21,7 +21,7 @@ const DEFAULT_FROM_NAME = "Careli";
 // Linha de "departamento" da assinatura. Override por canal via config.signatureOrg.
 const DEFAULT_SIGNATURE_ORG = "Careli · Atendimento";
 // Contatos institucionais da assinatura (override por canal via config).
-const DEFAULT_SIGNATURE_WHATSAPP = "553199264143";
+const DEFAULT_SIGNATURE_WHATSAPP = "5531999264143";
 const DEFAULT_SIGNATURE_SITE = "careli.adm.br";
 // Logo servida como asset público do app (email não aceita data-URI/inline).
 const CARELI_EMAIL_LOGO_URL = "https://c2x.app.br/careli-email-logo.png";
