@@ -204,7 +204,9 @@ export function IrisConversationComposerActions({
               className={[
                 "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40",
                 !noteMode
-                  ? "bg-surface text-[#0f766e] shadow-sm ring-1 ring-emerald-100"
+                  ? isEmailChannel
+                    ? "bg-surface text-indigo-600 shadow-sm ring-1 ring-indigo-200 dark:text-indigo-300 dark:ring-indigo-400/30"
+                    : "bg-surface text-[#0f766e] shadow-sm ring-1 ring-emerald-100"
                   : "text-ink-muted hover:text-ink",
               ].join(" ")}
             >
