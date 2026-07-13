@@ -79,7 +79,12 @@ export async function ingestGmailInbox({
     return { ...empty, reason: "supabase-not-configured" };
   }
 
-  const unread = await listGmailMessageIds({ maxResults, query: "is:unread" });
+  // "Só os novos": ignora e-mails anteriores ao go-live de cada canal (config
+  // .ingestSinceEpoch). Filtra já na query do Gmail pelo menor cutoff (eficiência) e
+  // reconfirma por canal em ingestOne (correção multi-grupo).
+  const sinceEpoch = await getEmailChannelsMinIngestSince(client);
+  const query = sinceEpoch ? `is:unread after:${sinceEpoch}` : "is:unread";
+  const unread = await listGmailMessageIds({ maxResults, query });
   const summary: GmailInboundSummary = { ...empty, ok: true, unread: unread.length };
 
   for (const { id } of unread) {
@@ -125,6 +130,16 @@ async function ingestOne(
   if (!channel) {
     // Nenhum grupo mapeado (piloto = só contato@). Não vira ticket.
     return "skipped";
+  }
+
+  const ingestSince = readChannelIngestSince(channel);
+
+  if (ingestSince !== null) {
+    const messageEpoch = toEpochSeconds(message.date);
+
+    if (messageEpoch !== null && messageEpoch < ingestSince) {
+      return "skipped"; // anterior ao go-live deste canal — fica intacto
+    }
   }
 
   const fromEmail = message.fromEmail?.trim().toLowerCase() ?? null;
@@ -186,6 +201,49 @@ function readChannelQueueSlug(channel: ChannelRow): string {
   const slug = channel.config?.["defaultQueueSlug"];
 
   return typeof slug === "string" && slug.trim() ? slug.trim() : DEFAULT_EMAIL_QUEUE_SLUG;
+}
+
+function readChannelIngestSince(channel: ChannelRow): number | null {
+  const value = channel.config?.["ingestSinceEpoch"];
+
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+// Menor cutoff de ingestão entre os canais de e-mail ativos (pra filtrar a query do Gmail).
+async function getEmailChannelsMinIngestSince(
+  client: IrisAdminClient,
+): Promise<number | null> {
+  const { data, error } = await client
+    .from("caredesk_channels")
+    .select("config")
+    .eq("kind", "email")
+    .eq("status", "active");
+
+  if (error) {
+    throw error;
+  }
+
+  let min: number | null = null;
+
+  for (const row of (data ?? []) as Array<{ config: Record<string, unknown> | null }>) {
+    const value = row.config?.["ingestSinceEpoch"];
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      min = min === null ? value : Math.min(min, value);
+    }
+  }
+
+  return min;
+}
+
+function toEpochSeconds(iso: string | null): number | null {
+  if (!iso) {
+    return null;
+  }
+
+  const ms = new Date(iso).getTime();
+
+  return Number.isNaN(ms) ? null : Math.floor(ms / 1000);
 }
 
 // --- contato ---
