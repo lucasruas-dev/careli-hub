@@ -707,12 +707,17 @@ export function ChronosExternalRoomPage({
   useEffect(() => {
     const previousTitle = document.title;
 
-    document.title = "Careli";
+    // Topo/aba = nome da sala + assunto da reuniao AGENDADA (quando houver).
+    // Entrada espontanea (sem agenda) mostra so o nome da sala. Ver
+    // resolveChronosPublicRoomAgendaSubject no server.
+    document.title = room.meetingSubject
+      ? `${room.name} — ${room.meetingSubject}`
+      : room.name;
 
     return () => {
       document.title = previousTitle;
     };
-  }, []);
+  }, [room.name, room.meetingSubject]);
 
   useEffect(() => {
     const preference = readChronosBackgroundPreference(backgroundPreferenceKey);
@@ -3602,7 +3607,15 @@ export function ChronosExternalRoomPage({
                 <span className="sr-only">Careli</span>
               </span>
               <div className="rounded-lg bg-black/25 px-2 py-1 backdrop-blur-sm">
-                <h1 className="m-0 text-sm font-semibold">{room.name}</h1>
+                <h1 className="m-0 text-sm font-semibold">
+                  {room.name}
+                  {room.meetingSubject ? (
+                    <span className="font-normal text-white/70">
+                      {" · "}
+                      {room.meetingSubject}
+                    </span>
+                  ) : null}
+                </h1>
               </div>
             </div>
             <span className="sr-only" aria-live="polite">

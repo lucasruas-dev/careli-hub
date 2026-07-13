@@ -434,6 +434,10 @@ export type ChronosPublicRoom = {
   capacity: number;
   externalPath: string;
   id: string;
+  // Assunto da reuniao AGENDADA que esta acontecendo agora nesta sala (vem da
+  // Agenda do Chronos). Ausente em entrada espontanea (ad-hoc) — ai o topo/titulo
+  // mostra so o nome da sala.
+  meetingSubject?: string;
   minutesRequired: boolean;
   name: string;
   recordingRequired: boolean;

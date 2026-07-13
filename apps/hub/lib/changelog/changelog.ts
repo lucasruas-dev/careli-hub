@@ -32,6 +32,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-13-chronos-titulo-agenda",
+    deployedAt: "2026-07-13T11:20:00-03:00",
+    modules: [
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "O topo e a aba da sala de reunião agora mostram o nome da sala e o assunto da reunião agendada (puxado da Agenda).",
+              "Reunião espontânea (sem agenda) mostra só o nome da sala.",
+              'Corrigido: antes a aba mostrava sempre "Careli", em qualquer sala.',
+            ],
+            screen: "Sala de reunião",
+          },
+        ],
+      },
+    ],
+    rollback: "commit ddc10fe0 (v1.32.2)",
+    technical: {
+      done: "ChronosExternalRoomPage: document.title (aba) e o <h1> do cabecalho passam a exibir room.name + meetingSubject (antes o title era fixo 'Careli'). Novo campo ChronosPublicRoom.meetingSubject preenchido em getChronosPublicRoomBySlug via helper resolveChronosPublicRoomAgendaSubject: reusa resolveChronosPublicReservationMeeting (reuniao ativa lobby/live ou agendada na janela) e ignora entrada espontanea (ad-hoc marcada por metadata.source = 'chronos-whereby-native-entry' ou titulo auto '{sala} | Whereby'), retornando null nesses casos. Typecheck limpo.",
+      motivation:
+        "Pedido do Lucas: trazer o nome da sala + o assunto da reuniao agendada no topo/aba da sala externa. Antes a aba mostrava 'Careli' fixo em qualquer sala e nao existia o assunto na tela.",
+    },
+    title: "Nome da sala + assunto da agenda no topo da reuniao",
+    type: "melhoria",
+    version: "1.32.3",
+  },
+  {
     buildTag: "2026-07-13-chronos-fundo-sala",
     deployedAt: "2026-07-13T10:42:00-03:00",
     modules: [

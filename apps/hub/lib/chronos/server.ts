@@ -1414,7 +1414,54 @@ export async function getChronosPublicRoomBySlug(roomSlug: string) {
     throw error;
   }
 
-  return room ? mapPublicRoom(mapRoomRow(room)) : null;
+  if (!room) {
+    return null;
+  }
+
+  const meetingSubject = await resolveChronosPublicRoomAgendaSubject(
+    client,
+    room,
+  );
+
+  return {
+    ...mapPublicRoom(mapRoomRow(room)),
+    ...(meetingSubject ? { meetingSubject } : {}),
+  };
+}
+
+// Assunto da reuniao AGENDADA que esta acontecendo agora nesta sala, para o
+// titulo/topo da sala externa. Retorna null quando nao ha reserva ativa, quando
+// a reuniao e espontanea (ad-hoc, marcada por metadata.source =
+// "chronos-whereby-native-entry") ou quando o titulo e o auto "{sala} | Whereby".
+async function resolveChronosPublicRoomAgendaSubject(
+  client: ChronosClient,
+  room: ChronosRoomRow,
+): Promise<string | null> {
+  let meeting: ChronosMeetingRow;
+
+  try {
+    meeting = await resolveChronosPublicReservationMeeting(client, room);
+  } catch {
+    return null;
+  }
+
+  const metadata = readRecordMetadata(meeting.metadata);
+  const externalRoom = readRecordMetadata(metadata.externalRoom);
+  const source =
+    readChronosMetadataText(metadata, "source") ??
+    readChronosMetadataText(externalRoom, "source");
+
+  if (source === "chronos-whereby-native-entry") {
+    return null;
+  }
+
+  const title = typeof meeting.title === "string" ? meeting.title.trim() : "";
+
+  if (!title || title === `${room.name} | Whereby`) {
+    return null;
+  }
+
+  return title;
 }
 
 export async function joinChronosPublicRoom({
