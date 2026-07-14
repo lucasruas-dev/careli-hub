@@ -14,7 +14,7 @@ import { isApoloTabUnavailableForEntity, matchesApoloFilters } from "./data/apol
 import { getApoloAccessToken } from "./data/apolo-operations";
 import type { ApoloProfileFilter, ApoloTab } from "./types/apolo-local";
 import type { ApoloDashboardData } from "@/lib/apolo/types";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import { usePersistedState } from "@/hooks/use-persisted-state";
 
@@ -58,10 +58,17 @@ export function ApoloPage() {
   const [enterprisesError, setEnterprisesError] = useState<string | null>(null);
   const [enterprisesLoading, setEnterprisesLoading] = useState(false);
 
+  // Carrega uma vez ao abrir a tela. O guard é um REF (não o estado de loading): se
+  // `enterprisesLoading` estivesse nas deps, setá-lo re-rodaria o efeito, o cleanup marcaria
+  // active=false e a resposta seria descartada — o loading nunca desligaria.
+  const enterprisesRequestedRef = useRef(false);
+
   useEffect(() => {
-    if (activeScreen !== "empreendimentos" || enterprises || enterprisesLoading) {
+    if (activeScreen !== "empreendimentos" || enterprisesRequestedRef.current) {
       return;
     }
+
+    enterprisesRequestedRef.current = true;
 
     let active = true;
 
@@ -90,6 +97,9 @@ export function ApoloPage() {
           setEnterprises(payload.data);
         }
       } catch (loadError) {
+        // Libera o guard pra permitir nova tentativa ao reabrir a tela.
+        enterprisesRequestedRef.current = false;
+
         if (active) {
           setEnterprisesError(
             loadError instanceof Error
@@ -109,7 +119,7 @@ export function ApoloPage() {
     return () => {
       active = false;
     };
-  }, [activeScreen, enterprises, enterprisesLoading]);
+  }, [activeScreen]);
 
   useEffect(() => {
     let active = true;
@@ -236,7 +246,9 @@ export function ApoloPage() {
         onToggle={() => setSidebarCollapsed((value) => !value)}
       />
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4">
-        <ApoloHeader dashboard={dashboard} />
+        {/* O header do Apolo só carrega o "+ novo cadastro" — faz sentido no CRM (onde o
+            cadastro vive), não nas demais telas (ficava uma faixa vazia). */}
+        {activeScreen === "crm" ? <ApoloHeader dashboard={dashboard} /> : null}
         {activeScreen === "dashboard" ? (
           <DashboardScreen dashboard={dashboard} entities={entities} loading={loading} />
         ) : null}

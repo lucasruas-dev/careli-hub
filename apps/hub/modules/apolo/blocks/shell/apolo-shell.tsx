@@ -5,7 +5,7 @@ import { useState } from "react";
 import { CADASTRO_TIPOS } from "@/lib/apolo/cadastro-tipos";
 import type { ApoloDashboardData } from "@/lib/apolo/types";
 import { Tooltip } from "@repo/uix";
-import { FileText, MessageCircle, Plus, Sparkles } from "lucide-react";
+import { Plus } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 // Shell do Apolo (cabecalho + acoes) — extraido do ApoloPage monolitico.
@@ -25,9 +25,6 @@ export function ApoloHeader({
             Atualizacao pendente
           </span>
         ) : null}
-        <HeaderAction icon={MessageCircle} label="Atendimento" tone="emerald" />
-        <HeaderAction icon={FileText} label="Documentos" tone="slate" />
-        <HeaderAction icon={Sparkles} label="Preenchimento assistido" tone="amber" />
         <NovoCadastroMenu />
       </div>
     </header>

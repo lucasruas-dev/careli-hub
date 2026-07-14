@@ -40,9 +40,11 @@ export type ApoloEnterpriseScenario = Record<
 >;
 
 export type ApoloEnterpriseRow = {
-  // Código C2X (ex.: LBR). No grupo consolidado, é a lista das etapas.
-  code: string;
   city: string | null;
+  // Código C2X (ex.: LBR). No grupo consolidado, o rótulo das etapas ("LBF + LBR + LBP").
+  code: string;
+  // Códigos reais (1 na linha simples; N no produto consolidado). Usado pra buscar unidades.
+  codes: string[];
   id: string;
   incorporador: string | null;
   name: string;
@@ -139,6 +141,98 @@ export async function loadApoloEnterprises(): Promise<
   return { data: { rows: groupEnterpriseRows(mapped), totals: sumScenarios(mapped) }, ok: true };
 }
 
+export type ApoloEnterpriseUnit = {
+  area: number | null;
+  block: string | null;
+  bucket: ApoloEnterpriseBucket;
+  enterpriseCode: string;
+  id: string;
+  lot: string | null;
+  name: string | null;
+  price: number;
+  status: string;
+};
+
+type UnitQueryRow = RowDataPacket & {
+  area: string | number | null;
+  block: string | null;
+  enterprise_code: string | null;
+  id: number;
+  lot: string | null;
+  name: string | null;
+  price: string | number | null;
+  sale_blocked: number | null;
+  sale_status_id: number | null;
+  status: string | null;
+};
+
+// Unidades de um empreendimento (ou do produto consolidado: aceita N códigos).
+export async function loadApoloEnterpriseUnits(
+  codes: string[],
+): Promise<
+  { ok: true; units: ApoloEnterpriseUnit[] } | { error: string; ok: false }
+> {
+  const validCodes = codes
+    .map((code) => code.trim().toUpperCase())
+    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
+
+  if (!validCodes.length) {
+    return { ok: true, units: [] };
+  }
+
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return {
+      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
+      ok: false,
+    };
+  }
+
+  const placeholders = validCodes.map(() => "?").join(", ");
+  const [rows] = await poolResult.pool.query<UnitQueryRow[]>(
+    `select u.id, u.name, u.block, u.lot, u.area, u.price,
+            u.sale_status_id, u.sale_blocked,
+            ss.name as status, e.code as enterprise_code
+     from enterprise_unities u
+     join enterprises e on e.id = u.enterprise_id
+     left join sale_statuses ss on ss.id = u.sale_status_id
+     where e.code in (${placeholders})
+     order by e.code, u.block, u.lot, u.name`,
+    validCodes,
+  );
+
+  return { ok: true, units: rows.map(mapUnitRow) };
+}
+
+function mapUnitRow(row: UnitQueryRow): ApoloEnterpriseUnit {
+  const blocked = Number(row.sale_blocked ?? 0) === 1;
+  const statusId = Number(row.sale_status_id ?? 0);
+  const bucket: ApoloEnterpriseBucket =
+    statusId === SALE_STATUS.VENDIDO
+      ? "vendido"
+      : statusId === SALE_STATUS.EM_NEGOCIACAO
+        ? "negociacao"
+        : statusId === SALE_STATUS.RESERVADO
+          ? "reservado"
+          : blocked
+            ? "bloqueado"
+            : "disponivel";
+
+  return {
+    area: row.area === null ? null : toNumber(row.area),
+    block: cleanText(row.block),
+    bucket,
+    enterpriseCode: cleanText(row.enterprise_code) ?? "",
+    id: String(row.id),
+    lot: cleanText(row.lot),
+    name: cleanText(row.name),
+    price: toNumber(row.price),
+    // O status 5 nunca é usado no C2X; bloqueado vem do flag.
+    status: blocked ? "Bloqueado" : (cleanText(row.status) ?? "Sem status"),
+  };
+}
+
 // Consolida as etapas do mesmo produto numa linha só (regra ENTERPRISE_GROUPS); as etapas
 // viram `stages` (sub-linhas expansíveis). O que não está em grupo vira linha simples.
 function groupEnterpriseRows(rows: ApoloEnterpriseRow[]): ApoloEnterpriseRow[] {
@@ -164,6 +258,7 @@ function groupEnterpriseRows(rows: ApoloEnterpriseRow[]): ApoloEnterpriseRow[] {
     grouped.push({
       city: first?.city ?? null,
       code: stages.map((stage) => stage.code).join(" + "),
+      codes: stages.map((stage) => stage.code),
       id: `group:${group.display}`,
       incorporador:
         stages.find((stage) => stage.incorporador)?.incorporador ?? null,
@@ -216,10 +311,12 @@ function mapEnterpriseRow(row: EnterpriseQueryRow): ApoloEnterpriseRow {
     units: toNumber(units),
     value: toNumber(value),
   });
+  const code = cleanText(row.code) ?? String(row.id);
 
   return {
     city: cleanText(row.city),
-    code: cleanText(row.code) ?? String(row.id),
+    code,
+    codes: [code],
     id: String(row.id),
     incorporador: cleanText(row.incorporador),
     name: cleanText(row.name) ?? "Empreendimento",
