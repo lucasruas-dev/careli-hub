@@ -141,6 +141,188 @@ export async function loadApoloEnterprises(): Promise<
   return { data: { rows: groupEnterpriseRows(mapped), totals: sumScenarios(mapped) }, ok: true };
 }
 
+// Player ligado ao empreendimento no C2X. É a semente das arestas do grafo.
+//
+// PAPÉIS ACUMULÁVEIS (regra do Lucas): o `profile` declarado no C2X (Imobiliária, Corretor,
+// Incorporador...) é UM papel; a FUNÇÃO no empreendimento é outro — e eles se somam na mesma
+// entidade. Ex.: Luna Negócios é `Imobiliária` (perfil) E `Coordenador de Vendas` (função).
+//
+// Tradução de nome: no Apolo o `manager_id` do C2X chama-se COORDENADOR DE VENDAS (no C2X o
+// campo continua "gerente"). Nome de PJ mora em fantasy_name/social_name — daí o coalesce.
+export type ApoloEnterprisePlayerRelation =
+  | "captador"
+  | "coordenador"
+  | "coordenador_vendas"
+  | "incorporador";
+
+export type ApoloEnterprisePlayer = {
+  name: string;
+  // Função DESTE player no empreendimento (a futura aresta do grafo).
+  relation: ApoloEnterprisePlayerRelation;
+  // Papéis acumulados (perfil do C2X + a função aqui), já deduplicados.
+  roles: string[];
+};
+
+const relationLabels: Record<ApoloEnterprisePlayerRelation, string> = {
+  captador: "Captador",
+  coordenador: "Coordenador",
+  coordenador_vendas: "Coordenador de Vendas",
+  incorporador: "Incorporador",
+};
+
+export type ApoloEnterpriseCadastro = {
+  actValue: number | null;
+  city: string | null;
+  code: string;
+  createdAt: string | null;
+  divulgationName: string | null;
+  expectedDelivery: string | null;
+  focalEmail: string | null;
+  focalName: string | null;
+  focalPhone: string | null;
+  kind: string | null;
+  name: string;
+  players: ApoloEnterprisePlayer[];
+  state: string | null;
+};
+
+type CadastroQueryRow = RowDataPacket & {
+  act_value: string | number | null;
+  captador: string | null;
+  captador_perfil: string | null;
+  city: string | null;
+  code: string | null;
+  coordenador: string | null;
+  coordenador_perfil: string | null;
+  created_at: Date | string | null;
+  divulgation_name: string | null;
+  expected_delivery_date: Date | string | null;
+  focal_email: string | null;
+  focal_name: string | null;
+  focal_phone: string | null;
+  gerente: string | null;
+  gerente_perfil: string | null;
+  incorporador: string | null;
+  incorporador_perfil: string | null;
+  kind: string | null;
+  name: string | null;
+  state: string | null;
+};
+
+// Nome do player: PJ guarda em fantasy_name/social_name; PF em name.
+const PLAYER_NAME_SQL = `coalesce(nullif(trim(pu.name), ''), nullif(trim(pu.fantasy_name), ''), nullif(trim(pu.social_name), ''))`;
+
+function playerSelect(column: string, alias: string): string {
+  return `(select ${PLAYER_NAME_SQL} from users pu where pu.id = e.${column}) as ${alias},
+          (select pp.name from users pu join profiles pp on pp.id = pu.profile_id where pu.id = e.${column}) as ${alias}_perfil`;
+}
+
+// Cadastro do empreendimento (uma ficha por CÓDIGO — o produto consolidado tem N).
+export async function loadApoloEnterpriseCadastro(
+  codes: string[],
+): Promise<
+  { cadastros: ApoloEnterpriseCadastro[]; ok: true } | { error: string; ok: false }
+> {
+  const validCodes = codes
+    .map((code) => code.trim().toUpperCase())
+    .filter((code) => code && !EXCLUDED_ENTERPRISE_CODES.includes(code));
+
+  if (!validCodes.length) {
+    return { cadastros: [], ok: true };
+  }
+
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return {
+      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
+      ok: false,
+    };
+  }
+
+  const placeholders = validCodes.map(() => "?").join(", ");
+  const [rows] = await poolResult.pool.query<CadastroQueryRow[]>(
+    `select e.code, e.name, e.divulgation_name,
+            et.name as kind,
+            ci.name as city, st.acronym as state,
+            e.expected_delivery_date, e.act_value, e.created_at,
+            e.focal_name, e.focal_phone, e.focal_email,
+            ${playerSelect("incorporador_id", "incorporador")},
+            ${playerSelect("manager_id", "gerente")},
+            ${playerSelect("captivator_id", "captador")},
+            ${playerSelect("coordenador_id", "coordenador")}
+     from enterprises e
+     left join enterprise_types et on et.id = e.enterprise_type_id
+     left join cities ci on ci.id = e.city_id
+     left join states st on st.id = ci.state_id
+     where e.code in (${placeholders})
+     order by e.code`,
+    validCodes,
+  );
+
+  return { cadastros: rows.map(mapCadastroRow), ok: true };
+}
+
+function mapCadastroRow(row: CadastroQueryRow): ApoloEnterpriseCadastro {
+  // Papéis = perfil do C2X + a função no empreendimento (acumulam, sem duplicar).
+  const player = (
+    relation: ApoloEnterprisePlayerRelation,
+    name: string | null,
+    profile: string | null,
+  ): ApoloEnterprisePlayer | null => {
+    const cleaned = cleanText(name);
+
+    if (!cleaned) {
+      return null;
+    }
+
+    const roles = Array.from(
+      new Set(
+        [cleanText(profile), relationLabels[relation]].filter(
+          (role): role is string => Boolean(role),
+        ),
+      ),
+    );
+
+    return { name: cleaned, relation, roles };
+  };
+
+  const players = [
+    player("incorporador", row.incorporador, row.incorporador_perfil),
+    // C2X `manager_id` = "gerente"; no Apolo é o COORDENADOR DE VENDAS.
+    player("coordenador_vendas", row.gerente, row.gerente_perfil),
+    player("captador", row.captador, row.captador_perfil),
+    // Mantido no dado (o Lucas vai apontar no C2X quando houver escrita), mas a tela não exibe.
+    player("coordenador", row.coordenador, row.coordenador_perfil),
+  ].filter((entry): entry is ApoloEnterprisePlayer => Boolean(entry));
+
+  return {
+    actValue: row.act_value === null ? null : toNumber(row.act_value),
+    city: cleanText(row.city),
+    code: cleanText(row.code) ?? "",
+    createdAt: toIsoDate(row.created_at),
+    divulgationName: cleanText(row.divulgation_name),
+    expectedDelivery: toIsoDate(row.expected_delivery_date),
+    focalEmail: cleanText(row.focal_email),
+    focalName: cleanText(row.focal_name),
+    focalPhone: cleanText(row.focal_phone),
+    kind: cleanText(row.kind),
+    name: cleanText(row.name) ?? "Empreendimento",
+    players,
+    state: cleanText(row.state),
+  };
+}
+
+function toIsoDate(value: Date | string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const date = value instanceof Date ? value : new Date(value);
+
+  return Number.isNaN(date.getTime()) ? null : date.toISOString();
+}
+
 export type ApoloEnterpriseUnit = {
   area: number | null;
   block: string | null;

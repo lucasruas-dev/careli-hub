@@ -20,6 +20,8 @@ import {
 import type { LucideIcon } from "lucide-react";
 
 import type {
+  ApoloEnterpriseCadastro,
+  ApoloEnterprisePlayer,
   ApoloEnterpriseRow,
   ApoloEnterpriseScenario,
   ApoloEnterpriseUnit,
@@ -60,15 +62,19 @@ const buckets: Array<{
 ];
 
 const detailTabs = [
+  { icon: ContactRound, id: "cadastro", label: "Cadastro" },
   { icon: Layers, id: "resumo", label: "Resumo" },
   { icon: MapPinned, id: "unidades", label: "Unidades" },
   { icon: TrendingUp, id: "vendas", label: "Vendas" },
   { icon: CircleDollarSign, id: "financeiro", label: "Financeiro" },
-  { icon: ContactRound, id: "cadastro", label: "Cadastro" },
   { icon: Network, id: "relacionamentos", label: "Relacionamentos" },
 ] as const;
 
 type DetailTab = (typeof detailTabs)[number]["id"];
+
+// Perfil do C2X que a tela NÃO exibe (só a Careli tem coordenadora; o dado fica no cadastro
+// pra apontar no C2X quando houver escrita). Regra do Lucas.
+const hiddenRelations = new Set(["coordenador"]);
 
 export function EmpreendimentosScreen({
   data,
@@ -295,7 +301,7 @@ function EnterpriseDetail({
   onBack: () => void;
   row: ApoloEnterpriseRow;
 }) {
-  const [tab, setTab] = useState<DetailTab>("resumo");
+  const [tab, setTab] = useState<DetailTab>("cadastro");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
@@ -356,12 +362,190 @@ function EnterpriseDetail({
       </nav>
 
       <section className="min-h-0 flex-1 overflow-auto">
+        {tab === "cadastro" ? <CadastroTab row={row} /> : null}
         {tab === "resumo" ? <ResumoTab row={row} /> : null}
         {tab === "unidades" ? <UnidadesTab row={row} /> : null}
-        {tab !== "resumo" && tab !== "unidades" ? (
+        {tab === "vendas" || tab === "financeiro" || tab === "relacionamentos" ? (
           <PendingTab label={detailTabs.find((item) => item.id === tab)?.label ?? ""} />
         ) : null}
       </section>
+    </div>
+  );
+}
+
+function CadastroTab({ row }: { row: ApoloEnterpriseRow }) {
+  const [cadastros, setCadastros] = useState<ApoloEnterpriseCadastro[] | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function load() {
+      try {
+        setError(null);
+
+        const accessToken = await getApoloAccessToken();
+        const response = await fetch(
+          `/api/apolo/empreendimentos/cadastro?codes=${encodeURIComponent(row.codes.join(","))}`,
+          {
+            cache: "no-store",
+            headers: { Authorization: `Bearer ${accessToken}` },
+          },
+        );
+        const payload = (await response.json()) as {
+          data?: { cadastros: ApoloEnterpriseCadastro[] };
+          error?: string;
+        };
+
+        if (!response.ok || !payload.data) {
+          throw new Error(payload.error ?? "Nao foi possivel carregar o cadastro.");
+        }
+
+        if (active) {
+          setCadastros(payload.data.cadastros);
+        }
+      } catch (loadError) {
+        if (active) {
+          setError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Falha ao carregar o cadastro.",
+          );
+        }
+      }
+    }
+
+    void load();
+
+    return () => {
+      active = false;
+    };
+  }, [row.codes]);
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+        {error}
+      </div>
+    );
+  }
+
+  if (!cadastros) {
+    return <div className="h-64 animate-pulse rounded-xl border border-line bg-subtle" />;
+  }
+
+  return (
+    <div className="grid gap-3">
+      {cadastros.map((cadastro) => (
+        <CadastroCard cadastro={cadastro} key={cadastro.code} />
+      ))}
+    </div>
+  );
+}
+
+function CadastroCard({ cadastro }: { cadastro: ApoloEnterpriseCadastro }) {
+  const players = cadastro.players.filter(
+    (player) => !hiddenRelations.has(player.relation),
+  );
+
+  return (
+    <div className="rounded-xl border border-line bg-surface p-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <h3 className="m-0 text-sm font-semibold text-ink">{cadastro.name}</h3>
+        <span className="rounded-full border border-line bg-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+          {cadastro.code}
+        </span>
+        {cadastro.kind ? (
+          <span className="rounded-full border border-[#A07C3B]/25 bg-[#A07C3B]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#7A5E2C] dark:text-[#d9b877]">
+            {cadastro.kind}
+          </span>
+        ) : null}
+      </div>
+
+      <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <Fact
+          label="Nome de divulgação"
+          value={cadastro.divulgationName ?? "-"}
+        />
+        <Fact
+          label="Localização"
+          value={[cadastro.city, cadastro.state].filter(Boolean).join("/") || "-"}
+        />
+        <Fact
+          label="Entrega prevista"
+          value={formatDate(cadastro.expectedDelivery)}
+        />
+        <Fact
+          label="Valor do ato"
+          value={cadastro.actValue ? formatCurrency(cadastro.actValue) : "-"}
+        />
+      </dl>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
+        <div className="rounded-lg border border-line bg-subtle/60 p-3">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+            Players do empreendimento
+          </p>
+          <div className="mt-2 grid gap-2">
+            {players.length ? (
+              players.map((player) => (
+                <PlayerLine key={player.relation} player={player} />
+              ))
+            ) : (
+              <p className="m-0 text-sm font-medium text-ink-muted">
+                Nenhum player vinculado.
+              </p>
+            )}
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-line bg-subtle/60 p-3">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+            Contato
+          </p>
+          {cadastro.focalName || cadastro.focalPhone || cadastro.focalEmail ? (
+            <div className="mt-2">
+              <p className="m-0 text-sm font-semibold text-ink">
+                {cadastro.focalName ?? "-"}
+              </p>
+              <p className="m-0 mt-0.5 text-xs text-ink-muted">
+                {cadastro.focalPhone ?? "-"}
+              </p>
+              <p className="m-0 truncate text-xs text-ink-muted">
+                {cadastro.focalEmail ?? "-"}
+              </p>
+            </div>
+          ) : (
+            <p className="m-0 mt-2 text-sm font-medium text-ink-muted">
+              Sem contato informado.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Uma linha de player: o nome + os PAPÉIS acumulados (perfil do C2X + função aqui).
+// Ex.: Luna Negócios = Imobiliária + Coordenador de Vendas.
+function PlayerLine({ player }: { player: ApoloEnterprisePlayer }) {
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
+      <p className="m-0 min-w-0 truncate text-sm font-semibold text-ink">
+        {player.name}
+      </p>
+      <div className="flex shrink-0 flex-wrap gap-1">
+        {player.roles.map((role) => (
+          <span
+            className="rounded-full border border-[#A07C3B]/25 bg-[#A07C3B]/10 px-2 py-0.5 text-[10px] font-semibold text-[#7A5E2C] dark:text-[#d9b877]"
+            key={role}
+          >
+            {role}
+          </span>
+        ))}
+      </div>
     </div>
   );
 }
@@ -684,4 +868,16 @@ function formatCurrency(value: number): string {
     maximumFractionDigits: 0,
     style: "currency",
   }).format(value);
+}
+
+function formatDate(value: string | null): string {
+  if (!value) {
+    return "-";
+  }
+
+  const date = new Date(value);
+
+  return Number.isNaN(date.getTime())
+    ? "-"
+    : date.toLocaleDateString("pt-BR", { timeZone: "UTC" });
 }
