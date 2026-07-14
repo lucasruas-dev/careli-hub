@@ -2922,34 +2922,20 @@ function IrisConversationPanel({
 
   // Responder um ticket de e-mail: o servidor envia pelo Gmail (caixa robô caca@),
   // no mesmo thread do cliente. Sem janela de 24h e sem WhatsApp.
-  // Envia para o grupo pelo gateway Evolution. A mensagem sai pelo número
-  // observador (que é membro do grupo), não pelo número do operador.
-  async function sendGroupReply(body: string) {
-    if (!body || sending || !operationReady) {
-      return;
-    }
-
+  // Toda saída do grupo (texto, imagem, documento, áudio, reação) passa por aqui:
+  // vai pelo gateway Evolution, saindo pelo número observador (membro do grupo).
+  // Grupo não é ticket — o id da conversa É o id do grupo.
+  async function sendGroupRequest(
+    payload: Record<string, unknown>,
+    errorFallback: string,
+  ): Promise<boolean> {
     setSending(true);
     setFeedback("");
 
     try {
-      const now = new Date().toISOString();
-      const optimisticMessage: IrisMessage = {
-        body,
-        createdAt: now,
-        deliveryStatus: "queued",
-        direction: "outbound",
-        id: `local-${now}`,
-        messageType: "text",
-        operatorAvatarUrl,
-        senderLabel: operatorLabel,
-        senderType: "operator",
-      };
-
       const accessToken = await getIrisAccessToken();
       const response = await fetch("/api/iris/group-messages", {
-        // Grupo não é ticket: o id da conversa É o id do grupo.
-        body: JSON.stringify({ body, groupId: ticket.id }),
+        body: JSON.stringify({ ...payload, groupId: ticket.id }),
         cache: "no-store",
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -2957,16 +2943,16 @@ function IrisConversationPanel({
         },
         method: "POST",
       });
-      const payload = (await response.json().catch(() => null)) as {
+      const data = (await response.json().catch(() => null)) as {
         error?: string;
         message?: Record<string, unknown> | null;
       } | null;
 
-      if (payload?.message) {
+      if (data?.message) {
         onMessageCreated(
           ticket.id,
           ensureOperatorIdentity(
-            mapMessageRow(payload.message),
+            mapMessageRow(data.message),
             operatorLabel,
             operatorAvatarUrl,
           ),
@@ -2974,28 +2960,35 @@ function IrisConversationPanel({
       }
 
       if (!response.ok) {
-        throw new Error(
-          payload?.error ?? "Nao foi possivel enviar a mensagem ao grupo.",
-        );
+        throw new Error(data?.error ?? errorFallback);
       }
 
-      if (!payload?.message) {
-        onMessageCreated(ticket.id, optimisticMessage);
-      }
+      return true;
+    } catch (error) {
+      console.error("[caredesk] falha na saida para o grupo", error);
+      setFeedback(error instanceof Error ? error.message : errorFallback);
 
+      return false;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendGroupReply(body: string) {
+    if (!body || sending || !operationReady) {
+      return;
+    }
+
+    const ok = await sendGroupRequest(
+      { body },
+      "Nao foi possivel enviar a mensagem ao grupo.",
+    );
+
+    if (ok) {
       setDraft("");
       setReplyToMessage(null);
       setEmojiPickerOpen(false);
       setFeedback("Mensagem enviada ao grupo.");
-    } catch (error) {
-      console.error("[caredesk] nao foi possivel enviar ao grupo", error);
-      setFeedback(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel enviar a mensagem ao grupo.",
-      );
-    } finally {
-      setSending(false);
     }
   }
 
@@ -3340,10 +3333,12 @@ function IrisConversationPanel({
       return;
     }
 
-    // Grupo sai pelo gateway Evolution, não pelo Meta: reagir ainda não passa
-    // por lá (o envio de texto sim). Sem isso, caía no Meta e dava erro de telefone.
+    // Grupo: reage pelo gateway Evolution, não pelo Meta.
     if (ticketIsGroup) {
-      setFeedback("Em grupo ainda não dá para reagir pela Iris — só enviar texto.");
+      await sendGroupRequest(
+        { action: "react", emoji, messageId: message.id },
+        "Não foi possível reagir no grupo.",
+      );
       return;
     }
 
@@ -3596,13 +3591,8 @@ function IrisConversationPanel({
       return;
     }
 
-    // Grupo sai pelo gateway Evolution: audio ainda nao passa por la.
-    if (ticketIsGroup) {
-      setFeedback("Em grupo ainda nao da para enviar audio pela Iris — so texto.");
-      return;
-    }
-
-    if (!canSendFreeForm) {
+    // Grupo nao tem janela de 24h (o gate dela e do Meta).
+    if (!ticketIsGroup && !canSendFreeForm) {
       setFeedback(customerServiceWindow.label);
       return;
     }
@@ -3635,19 +3625,36 @@ function IrisConversationPanel({
         throw new Error("Audio muito grande para este recorte de homologacao.");
       }
 
+      const audioMedia = {
+        dataUrl,
+        durationMs,
+        fileName: `iris-audio-${Date.now()}.${outboundExt}`,
+        mimeType: outboundMime,
+        type: "audio" as const,
+      };
+
+      // Grupo: audio vai pelo gateway Evolution, nao pelo Meta.
+      if (ticketIsGroup) {
+        const ok = await sendGroupRequest(
+          { body: "", media: audioMedia },
+          "Nao foi possivel enviar o audio ao grupo.",
+        );
+
+        if (ok) {
+          setReplyToMessage(null);
+          setFeedback("Audio enviado ao grupo.");
+        }
+
+        return;
+      }
+
       const accessToken = await getIrisAccessToken();
       const response = await fetch("/api/iris/meta/messages", {
         body: JSON.stringify({
           body: "Audio WhatsApp",
           channelId: ticket.channelId ?? null,
           contactId: ticket.contactId ?? null,
-          media: {
-            dataUrl,
-            durationMs,
-            fileName: `iris-audio-${Date.now()}.${outboundExt}`,
-            mimeType: outboundMime,
-            type: "audio",
-          },
+          media: audioMedia,
           replyToMessageId: replyToMessage?.messageId ?? null,
           ticketId: ticket.id,
           to: ticket.contactPhone ?? "",
@@ -3794,12 +3801,6 @@ function IrisConversationPanel({
     kind: "document" | "image",
     caption: string,
   ) {
-    // Grupo sai pelo gateway Evolution: anexo ainda nao passa por la.
-    if (ticketIsGroup) {
-      setFeedback("Em grupo ainda nao da para enviar anexo pela Iris — so texto.");
-      return;
-    }
-
     setSending(true);
     setFeedback("");
 
@@ -3820,6 +3821,25 @@ function IrisConversationPanel({
 
       if (dataUrl.length > IRIS_AUDIO_MAX_DATA_URL_LENGTH) {
         throw new Error("Arquivo muito grande para enviar. Reduza o tamanho.");
+      }
+
+      // Grupo: anexo vai pelo gateway Evolution, nao pelo Meta.
+      if (ticketIsGroup) {
+        const ok = await sendGroupRequest(
+          { body: caption, media: { dataUrl, fileName, mimeType, type: kind } },
+          "Nao foi possivel enviar o anexo ao grupo.",
+        );
+
+        if (ok) {
+          setReplyToMessage(null);
+          setFeedback(
+            kind === "image"
+              ? "Imagem enviada ao grupo."
+              : "Documento enviado ao grupo.",
+          );
+        }
+
+        return;
       }
 
       const accessToken = await getIrisAccessToken();

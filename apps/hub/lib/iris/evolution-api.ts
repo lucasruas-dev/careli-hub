@@ -33,6 +33,72 @@ export async function sendEvolutionGroupText({
   groupJid: string;
   text: string;
 }): Promise<EvolutionSendResult> {
+  return postEvolutionMessage("sendText", { number: groupJid, text });
+}
+
+// Imagem / documento no grupo (Evolution: sendMedia).
+export async function sendEvolutionGroupMedia({
+  base64,
+  caption,
+  fileName,
+  groupJid,
+  mediatype,
+  mimeType,
+}: {
+  base64: string;
+  caption: string;
+  fileName: string;
+  groupJid: string;
+  mediatype: "document" | "image" | "video";
+  mimeType: string;
+}): Promise<EvolutionSendResult> {
+  return postEvolutionMessage("sendMedia", {
+    caption,
+    fileName,
+    media: base64,
+    mediatype,
+    mimetype: mimeType,
+    number: groupJid,
+  });
+}
+
+// Audio no grupo (Evolution: sendWhatsAppAudio — vai como mensagem de voz).
+export async function sendEvolutionGroupAudio({
+  base64,
+  groupJid,
+}: {
+  base64: string;
+  groupJid: string;
+}): Promise<EvolutionSendResult> {
+  return postEvolutionMessage("sendWhatsAppAudio", {
+    audio: base64,
+    number: groupJid,
+  });
+}
+
+// Reacao com emoji (Evolution: sendReaction). Precisa da CHAVE da mensagem
+// original no WhatsApp: remoteJid do grupo + id do provedor + fromMe.
+export async function sendEvolutionGroupReaction({
+  emoji,
+  fromMe,
+  groupJid,
+  providerMessageId,
+}: {
+  emoji: string;
+  fromMe: boolean;
+  groupJid: string;
+  providerMessageId: string;
+}): Promise<EvolutionSendResult> {
+  return postEvolutionMessage("sendReaction", {
+    key: { fromMe, id: providerMessageId, remoteJid: groupJid },
+    reaction: emoji,
+  });
+}
+
+async function postEvolutionMessage(
+  endpoint: "sendMedia" | "sendReaction" | "sendText" | "sendWhatsAppAudio",
+  payload: Record<string, unknown>,
+): Promise<EvolutionSendResult> {
   const config = getEvolutionApiConfig();
   if (!config) {
     return { ok: false, error: "Gateway Evolution nao configurado." };
@@ -40,34 +106,34 @@ export async function sendEvolutionGroupText({
 
   try {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 20000);
+    const timeout = setTimeout(() => controller.abort(), 30000);
 
     const response = await fetch(
-      `${config.url}/message/sendText/${encodeURIComponent(config.instance)}`,
+      `${config.url}/message/${endpoint}/${encodeURIComponent(config.instance)}`,
       {
         method: "POST",
         headers: {
           apikey: config.apiKey,
           "Content-Type": "application/json",
         },
-        body: JSON.stringify({ number: groupJid, text }),
+        body: JSON.stringify(payload),
         signal: controller.signal,
       },
     ).finally(() => clearTimeout(timeout));
 
-    const payload = (await response.json().catch(() => null)) as unknown;
+    const data = (await response.json().catch(() => null)) as unknown;
 
     if (!response.ok) {
       const detail =
-        payload && typeof payload === "object"
-          ? JSON.stringify(payload).slice(0, 300)
+        data && typeof data === "object"
+          ? JSON.stringify(data).slice(0, 300)
           : `HTTP ${response.status}`;
       return { ok: false, error: `Evolution recusou o envio: ${detail}` };
     }
 
     let providerMessageId: string | null = null;
-    if (payload && typeof payload === "object") {
-      const key = (payload as Record<string, unknown>).key;
+    if (data && typeof data === "object") {
+      const key = (data as Record<string, unknown>).key;
       if (key && typeof key === "object") {
         const id = (key as Record<string, unknown>).id;
         providerMessageId = typeof id === "string" ? id : null;
@@ -76,7 +142,10 @@ export async function sendEvolutionGroupText({
 
     return { ok: true, providerMessageId };
   } catch {
-    return { ok: false, error: "Falha de rede ao falar com o gateway Evolution." };
+    return {
+      ok: false,
+      error: "Falha de rede ao falar com o gateway Evolution.",
+    };
   }
 }
 
