@@ -3205,6 +3205,12 @@ function IrisConversationPanel({
       return;
     }
 
+    // Grupo sai pelo gateway Evolution: editar ainda nao passa por la.
+    if (ticketIsGroup) {
+      setFeedback("Em grupo ainda nao da para editar a mensagem pela Iris.");
+      return;
+    }
+
     setSending(true);
     setFeedback("");
 
@@ -3262,6 +3268,11 @@ function IrisConversationPanel({
   }
 
   async function sendExistingLocalMessage(message: IrisMessage) {
+    // Reparo de mensagem local so existe no caminho do Meta.
+    if (ticketIsGroup) {
+      return;
+    }
+
     repairingOutboundMessageIds.current.add(message.id);
     setSending(true);
     setFeedback("Sincronizando mensagem local com o WhatsApp.");
@@ -3326,6 +3337,13 @@ function IrisConversationPanel({
 
     // Reação é recurso do WhatsApp (Meta). E-mail não tem.
     if (isEmailTicket(ticket)) {
+      return;
+    }
+
+    // Grupo sai pelo gateway Evolution, não pelo Meta: reagir ainda não passa
+    // por lá (o envio de texto sim). Sem isso, caía no Meta e dava erro de telefone.
+    if (ticketIsGroup) {
+      setFeedback("Em grupo ainda não dá para reagir pela Iris — só enviar texto.");
       return;
     }
 
@@ -3578,6 +3596,12 @@ function IrisConversationPanel({
       return;
     }
 
+    // Grupo sai pelo gateway Evolution: audio ainda nao passa por la.
+    if (ticketIsGroup) {
+      setFeedback("Em grupo ainda nao da para enviar audio pela Iris — so texto.");
+      return;
+    }
+
     if (!canSendFreeForm) {
       setFeedback(customerServiceWindow.label);
       return;
@@ -3770,6 +3794,12 @@ function IrisConversationPanel({
     kind: "document" | "image",
     caption: string,
   ) {
+    // Grupo sai pelo gateway Evolution: anexo ainda nao passa por la.
+    if (ticketIsGroup) {
+      setFeedback("Em grupo ainda nao da para enviar anexo pela Iris — so texto.");
+      return;
+    }
+
     setSending(true);
     setFeedback("");
 
