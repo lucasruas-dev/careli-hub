@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-14-iris-grupos-sem-ticket",
+    deployedAt: "2026-07-14T14:20:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Agora dá para RESPONDER no grupo de WhatsApp direto pela Iris. A mensagem sai assinada com o nome de quem escreveu.",
+              "Grupo deixou de ser ticket: não tem mais encerramento, status nem SLA. Cada grupo tem um código próprio (GRP-0001) e a conversa é permanente.",
+              "As mensagens do grupo aparecem ao vivo, sem precisar de F5.",
+              "Indicadores do topo (SLA, 1ª resposta, TDR) não contam grupos — grupo não é atendimento.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit eaf0a699 (v1.34.2)",
+    technical: {
+      done: "REFACTOR: grupo sai da arquitetura de ticket. migration 0046: caredesk_messages.ticket_id vira nullable + coluna group_id (+ check: mensagem pertence a ticket OU grupo); caredesk_whatsapp_groups ganha codigo GRP-xxxx (sequence); tickets de grupo e contatos sinteticos apagados (mensagens movidas ao grupo ANTES — o FK ticket_id e ON DELETE CASCADE). migration 0047 CORRIGE a 0045, que habilitou RLS na tabela de grupos SEM policy: como loadIrisData roda no navegador, a tabela devolvia zero linhas e o grupo era invisivel. ENVIO: POST /api/iris/group-messages (sessao de operador; fica FORA de /api/iris/evolution porque o gate libera por prefixo) -> sendEvolutionGroupText (numero observador, membro do grupo), corpo assinado com signWhatsAppBody e salvo sem assinatura. loadGroupConversations monta cada grupo como conversa (formato IrisTicket, protocolo = GRP-xxxx). applyRealtimeMessageRow aceita ticket_id OU group_id. Board inclui grupos (unica porta de entrada do cockpit) mas o snapshot de metricas os exclui.",
+      motivation:
+        "Lucas, ao ver o grupo encerrado por engano: 'para os grupos, vamos tirar essa coisa de ticket, encerramento... podemos criar um ID para o grupo, pois la na frente, quando comecarmos a registrar as atividades, vamos precisar vincular a um ID que substituira o ticket'. O GRP-xxxx e a ancora: as ATIVIDADES detectadas no grupo (fase CACA) e que viram ticket, vinculadas ao grupo.",
+    },
+    title: "Iris: responder no grupo + grupo deixa de ser ticket (GRP-xxxx)",
+    type: "novidade",
+    version: "1.35.0",
+  },
+  {
     buildTag: "2026-07-14-dark-sidebars-hotfix",
     deployedAt: "2026-07-14T10:05:00-03:00",
     modules: [
