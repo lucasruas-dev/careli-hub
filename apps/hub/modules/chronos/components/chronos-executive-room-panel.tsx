@@ -192,7 +192,7 @@ export function ExecutiveRoomPanel({
   }
 
   return (
-    <Surface bordered className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border-[#d9e0e7] bg-[#101820] text-white">
+    <Surface bordered className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] border-line bg-inverse text-brand-ink">
       <div className="flex items-start justify-between gap-3 border-b border-white/[0.08] p-4">
         <PanelTitle
           dark
@@ -227,7 +227,7 @@ export function ExecutiveRoomPanel({
           )}
           {recordingActive ? (
             <span className="absolute right-3 top-3 inline-flex items-center gap-2 rounded-full bg-red-600 px-3 py-1 text-xs font-bold text-white">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-white" />
+              <span className="h-2 w-2 animate-pulse rounded-full bg-surface" />
               {formatChronosDuration(recordingSeconds)}
             </span>
           ) : null}

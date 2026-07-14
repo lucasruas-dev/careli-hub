@@ -36,6 +36,65 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-14-apolo-chronos-setup-escuro",
+    deployedAt: "2026-07-14T09:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O Apolo (CRM 360, ficha do cliente e cadastro) ganhou o tema escuro.",
+            ],
+            screen: "Tema escuro",
+          },
+        ],
+      },
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "A agenda ficou no tema escuro, incluindo a grade do calendário (dia/semana/mês), os eventos e os detalhes ao clicar.",
+            ],
+            screen: "Tema escuro",
+          },
+        ],
+      },
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "As telas de Setup (usuários, departamentos, setores, módulos, permissões) ganharam o tema escuro.",
+            ],
+            screen: "Tema escuro",
+          },
+        ],
+      },
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "Nas telas de página cheia (como o Setup), o seu nome e os ícones do topo voltaram a ficar legíveis no tema escuro.",
+            ],
+            screen: "Ajuste da barra de topo",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 8269f848 (v1.34.0)",
+    technical: {
+      done: "Conversao dark de Apolo (modules/apolo), Chronos (modules/chronos, exceto as paginas standalone de video ChronosExternalRoomPage/RecordingViewPage) e Setup (app/setup/page.tsx) via script de receita (~1.950 subst. em 47 arquivos): neutros hex+slate->tokens, fundo de pagina->bg-canvas, enfase escura (#101820/#0d141c/#1f2937 +text-white)->bg-inverse+text-brand-ink, intents e gold escuro com dark:. Chronos FullCalendar: override dark dedicado no <style> do chronos-calendar-canvas (scope :root[data-uix-theme=dark]) — grade grafite, bordas #2b2e2c, texto claro, eventos azul translucido, aneis brancos entre eventos->escuros. hub-shell: PanteonTopbarUser da topbar WorkspaceLayout (L618) agora recebe onDark={mode===dark} (useHubTheme) — corrige nome/icones apagados no escuro nas paginas de pagina cheia. Deploy feito de worktree isolado (branch local estava em feat/iris-email-ui, 8 commits atras da main com WIP de outra sessao); patch so das minhas mudancas aplicado sobre origin/main v1.34.0. Typecheck limpo.",
+      motivation:
+        "Estender o tema claro/escuro ao Apolo, Chronos e Setup (estagio 3), fechando mais tres modulos. Restam Agenda (Meu dia), Ares/Atlas e Mobile.",
+    },
+    title: "Tema escuro no Apolo, Chronos e Setup",
+    type: "melhoria",
+    version: "1.34.1",
+  },
+  {
     buildTag: "2026-07-13-iris-fila-grupos-whatsapp",
     deployedAt: "2026-07-13T18:10:00-03:00",
     modules: [

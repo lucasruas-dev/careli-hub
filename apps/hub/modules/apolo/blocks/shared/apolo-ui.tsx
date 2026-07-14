@@ -7,9 +7,9 @@ import type { ApoloDocumentSignal } from "@/lib/apolo/types";
 
 export function InfoTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200/70 bg-slate-50/70 p-3">
-      <p className="m-0 text-xs font-medium text-slate-500">{label}</p>
-      <p className="m-0 mt-2 break-words text-sm font-semibold text-slate-950">
+    <div className="rounded-lg border border-line bg-subtle p-3">
+      <p className="m-0 text-xs font-medium text-ink-muted">{label}</p>
+      <p className="m-0 mt-2 break-words text-sm font-semibold text-ink">
         {value}
       </p>
     </div>
@@ -29,13 +29,13 @@ export function InfoButtonTile({
 }) {
   return (
     <button
-      className="rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 disabled:cursor-not-allowed disabled:hover:border-slate-200/70 disabled:hover:bg-slate-50/70"
+      className="rounded-lg border border-line bg-subtle p-3 text-left transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 disabled:cursor-not-allowed disabled:hover:border-line disabled:hover:bg-subtle"
       disabled={disabled}
       onClick={onClick}
       type="button"
     >
-      <p className="m-0 text-xs font-medium text-slate-500">{label}</p>
-      <p className="m-0 mt-2 break-words text-sm font-semibold text-slate-950">
+      <p className="m-0 text-xs font-medium text-ink-muted">{label}</p>
+      <p className="m-0 mt-2 break-words text-sm font-semibold text-ink">
         {value}
       </p>
     </button>
@@ -44,9 +44,9 @@ export function InfoButtonTile({
 
 export function ReadonlyLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid gap-1 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3">
-      <span className="text-xs font-medium text-slate-500">{label}</span>
-      <span className="break-words text-sm font-semibold text-slate-950">
+    <div className="grid gap-1 rounded-lg border border-line bg-subtle p-3">
+      <span className="text-xs font-medium text-ink-muted">{label}</span>
+      <span className="break-words text-sm font-semibold text-ink">
         {value}
       </span>
     </div>
@@ -61,8 +61,8 @@ export function StatusLine({
   status: "attention" | "pending" | "verified";
 }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3">
-      <span className="min-w-0 break-words text-sm font-semibold text-slate-950">
+    <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-subtle p-3">
+      <span className="min-w-0 break-words text-sm font-semibold text-ink">
         {label}
       </span>
       <StatusPill status={status} />
@@ -81,9 +81,9 @@ export function StatusPill({
     verified: "OK",
   } as const;
   const className = {
-    attention: "bg-amber-50 text-amber-800 ring-amber-100",
-    pending: "bg-slate-50 text-slate-600 ring-slate-200/70",
-    verified: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    attention: "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20",
+    pending: "bg-subtle text-ink-soft ring-line",
+    verified: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20",
   } as const;
 
   return (
@@ -102,9 +102,9 @@ export function DocumentPill({ status }: { status: ApoloDocumentSignal["status"]
     ready: "Pronto",
   } as const;
   const className = {
-    blocked: "bg-rose-50 text-rose-700 ring-rose-100",
-    pending_review: "bg-amber-50 text-amber-800 ring-amber-100",
-    ready: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    blocked: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/20",
+    pending_review: "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20",
+    ready: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20",
   } as const;
 
   return (
@@ -118,7 +118,7 @@ export function DocumentPill({ status }: { status: ApoloDocumentSignal["status"]
 
 export function Pill({ children }: { children: ReactNode }) {
   return (
-    <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70">
+    <span className="rounded-full bg-subtle px-2.5 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line">
       {children}
     </span>
   );
@@ -133,17 +133,17 @@ export function PanelTitle({
 }) {
   return (
     <div>
-      <p className="m-0 text-xs font-semibold uppercase tracking-[0.08em] text-slate-400">
+      <p className="m-0 text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
         {eyebrow}
       </p>
-      <p className="m-0 mt-1 text-base font-semibold text-slate-950">{title}</p>
+      <p className="m-0 mt-1 text-base font-semibold text-ink">{title}</p>
     </div>
   );
 }
 
 export function EmptyPanel({ text }: { text: string }) {
   return (
-    <div className="rounded-lg border border-dashed border-slate-200 p-4 text-sm font-semibold text-slate-500">
+    <div className="rounded-lg border border-dashed border-line p-4 text-sm font-semibold text-ink-muted">
       {text}
     </div>
   );
@@ -161,16 +161,16 @@ export function InsightCard({
   value: string;
 }) {
   return (
-    <article className="rounded-xl border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <article className="rounded-xl border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="m-0 text-xs font-medium text-slate-500">{label}</p>
-          <p className="m-0 mt-2 text-2xl font-semibold leading-none text-slate-950">
+          <p className="m-0 text-xs font-medium text-ink-muted">{label}</p>
+          <p className="m-0 mt-2 text-2xl font-semibold leading-none text-ink">
             {value}
           </p>
-          <p className="m-0 mt-2 text-xs font-medium text-slate-500">{helper}</p>
+          <p className="m-0 mt-2 text-xs font-medium text-ink-muted">{helper}</p>
         </div>
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
           {icon}
         </span>
       </div>

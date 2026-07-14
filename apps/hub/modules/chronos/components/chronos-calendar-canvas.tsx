@@ -195,11 +195,11 @@ function ChronosTimeGrid({
     });
 
   return (
-    <div className="chronos-google-calendar h-full min-w-[58rem] overflow-hidden rounded-[28px] bg-white">
+    <div className="chronos-google-calendar h-full min-w-[58rem] overflow-hidden rounded-[28px] bg-surface">
       <FullCalendar
         allDaySlot
         dayHeaderContent={(arg) => (
-          <div className={arg.isToday ? "text-[#0b66d8]" : "text-[#101820]"}>
+          <div className={arg.isToday ? "text-[#0b66d8]" : "text-ink"}>
             <span className="block text-[11px] font-bold uppercase">
               {formatWeekday(arg.date)}
             </span>
@@ -368,6 +368,51 @@ function ChronosTimeGrid({
         .chronos-google-calendar .chronos-google-event-selected {
           box-shadow: 0 0 0 1px #ffffff, 0 0 0 3px rgba(160, 124, 59, 0.55);
         }
+        /* ===== TEMA ESCURO: grade grafite, texto claro, eventos/aneis adaptados ===== */
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc {
+          --fc-border-color: #2b2e2c;
+          --fc-event-border-color: rgba(91, 141, 239, 0.45);
+          --fc-event-bg-color: rgba(91, 141, 239, 0.16);
+          --fc-event-text-color: #b9d0ff;
+          --fc-page-bg-color: #181a19;
+          --fc-neutral-bg-color: #1c1e1d;
+          --fc-today-bg-color: rgba(217, 184, 119, 0.08);
+          color: #e9edeb;
+        }
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-scrollgrid,
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-theme-standard td,
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-theme-standard th {
+          border-color: #2b2e2c;
+        }
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-col-header-cell,
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-timegrid-axis,
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-timegrid-slot-label {
+          background: #181a19;
+        }
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-timegrid-axis-cushion,
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-timegrid-slot-label-cushion,
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-col-header-cell-cushion,
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-daygrid-day-number {
+          color: #b4bbb6;
+        }
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-timegrid-slot-minor {
+          border-top-color: #232523;
+        }
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-v-event {
+          background: rgba(91, 141, 239, 0.16);
+          border-color: rgba(91, 141, 239, 0.45);
+          color: #b9d0ff;
+        }
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-daygrid-event,
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-timegrid-event {
+          box-shadow: 0 0 0 1px #101211;
+        }
+        :root[data-uix-theme="dark"] .chronos-google-calendar .chronos-google-event-selected {
+          box-shadow: 0 0 0 1px #101211, 0 0 0 3px rgba(217, 184, 119, 0.6);
+        }
+        :root[data-uix-theme="dark"] .chronos-google-calendar .fc-timegrid-now-indicator-arrow {
+          box-shadow: 0 0 0 2px #101211;
+        }
       `}</style>
     </div>
   );
@@ -393,7 +438,7 @@ function ChronosMonthGrid({
     <div className="grid min-w-[58rem] grid-cols-7">
       {["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sab"].map((day) => (
         <div
-          className="border-b border-[#edf0f4] bg-[#fafbfc] p-2 text-center text-xs font-bold uppercase text-[#667085]"
+          className="border-b border-line bg-subtle p-2 text-center text-xs font-bold uppercase text-ink-muted"
           key={day}
         >
           {day}
@@ -407,8 +452,8 @@ function ChronosMonthGrid({
 
         return (
           <button
-            className={`min-h-32 border-b border-r border-[#edf0f4] p-2 text-left transition hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
-              outsideMonth ? "bg-[#fafbfc] text-[#98a2b3]" : "bg-white"
+            className={`min-h-32 border-b border-r border-line p-2 text-left transition hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
+              outsideMonth ? "bg-subtle text-ink-muted" : "bg-surface"
             }`}
             key={date.toISOString()}
             onClick={() => onCreateAt(setDateHour(date, 9))}
@@ -418,7 +463,7 @@ function ChronosMonthGrid({
               className={`mb-2 grid h-7 w-7 place-items-center rounded-full text-sm font-semibold ${
                 sameDay(date, new Date())
                   ? "bg-[#0b66d8] text-white"
-                  : "text-[#101820]"
+                  : "text-ink"
               }`}
             >
               {date.getDate()}
@@ -433,7 +478,7 @@ function ChronosMonthGrid({
                 />
               ))}
               {dayMeetings.length > 3 ? (
-                <span className="text-xs font-semibold text-[#667085]">
+                <span className="text-xs font-semibold text-ink-muted">
                   +{dayMeetings.length - 3} compromissos
                 </span>
               ) : null}
@@ -464,10 +509,10 @@ function ChronosYearGrid({
 
         return (
           <div
-            className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
+            className="rounded-md border border-line bg-subtle p-3"
             key={monthIndex}
           >
-            <p className="m-0 text-sm font-semibold text-[#101820]">
+            <p className="m-0 text-sm font-semibold text-ink">
               {formatMonthName(monthDate)}
             </p>
             <div className="mt-2 grid grid-cols-7 gap-1">
@@ -481,12 +526,12 @@ function ChronosYearGrid({
 
                 return (
                   <button
-                    className={`grid h-7 place-items-center rounded border text-xs font-semibold transition hover:bg-white ${
+                    className={`grid h-7 place-items-center rounded border text-xs font-semibold transition hover:bg-surface ${
                       typeVisual
                         ? typeVisual.pillClass
                         : sameDay(date, new Date())
                           ? "border-[#0b66d8] bg-[#0b66d8] text-white"
-                          : "border-transparent text-[#667085]"
+                          : "border-transparent text-ink-muted"
                     }`}
                     key={date.toISOString()}
                     onClick={() => onCreateAt(setDateHour(date, 9))}
@@ -519,18 +564,18 @@ function ChronosAgendaEventCard({
     <button
       className={`grid gap-2 rounded-md border border-l-4 p-3 text-left transition ${
         selected
-          ? `border-[#A07C3B] bg-[#fffaf0] ${typeVisual.accentClass}`
-          : `border-[#edf0f4] bg-[#fafbfc] hover:border-[#d9e0e7] hover:bg-white ${typeVisual.accentClass}`
+          ? `border-[#A07C3B] bg-[#fffaf0] dark:bg-[#a07c3b]/10 ${typeVisual.accentClass}`
+          : `border-line bg-subtle hover:border-line hover:bg-surface ${typeVisual.accentClass}`
       }`}
       onClick={() => onSelectMeeting(meeting.id)}
       type="button"
     >
       <span className="flex items-start justify-between gap-3">
         <span className="min-w-0">
-          <span className="block truncate text-sm font-semibold text-[#101820]">
+          <span className="block truncate text-sm font-semibold text-ink">
             {meeting.title}
           </span>
-          <span className="mt-1 block text-xs text-[#667085]">
+          <span className="mt-1 block text-xs text-ink-muted">
             {formatChronosDateTime(meeting.startsAt)} /{" "}
             {getChronosMeetingLocationLabel(meeting)}
           </span>
@@ -731,13 +776,13 @@ export function MiniCalendar({
 
   return (
     <div>
-      <p className="m-0 text-sm font-semibold text-[#101820]">
+      <p className="m-0 text-sm font-semibold text-ink">
         {formatMonthName(cursorDate)} {cursorDate.getFullYear()}
       </p>
       <div className="mt-3 grid grid-cols-7 gap-1">
         {["D", "S", "T", "Q", "Q", "S", "S"].map((day, index) => (
           <span
-            className="grid h-6 place-items-center text-[11px] font-bold uppercase text-[#98a2b3]"
+            className="grid h-6 place-items-center text-[11px] font-bold uppercase text-ink-muted"
             key={`${day}-${index}`}
           >
             {day}
@@ -753,13 +798,13 @@ export function MiniCalendar({
 
           return (
             <button
-              className={`grid h-7 place-items-center rounded text-xs font-semibold transition hover:bg-white ${
+              className={`grid h-7 place-items-center rounded text-xs font-semibold transition hover:bg-surface ${
                 sameDay(date, cursorDate)
-                  ? "bg-[#101820] text-white"
+                  ? "bg-inverse text-brand-ink"
                   : sameDay(date, new Date())
                     ? "bg-[#0b66d8] text-white"
                     : date.getMonth() === cursorDate.getMonth()
-                      ? "text-[#667085]"
+                      ? "text-ink-muted"
                       : "text-[#c0c7d2]"
               }`}
               key={date.toISOString()}

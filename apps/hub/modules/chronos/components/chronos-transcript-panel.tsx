@@ -68,12 +68,12 @@ export function TranscriptPanel({
   }
 
   return (
-    <Surface bordered className="grid min-h-full grid-rows-[auto_auto_minmax(0,1fr)] border-[#d9e0e7] bg-white">
-      <div className="flex items-start justify-between gap-3 border-b border-[#edf0f4] p-4">
+    <Surface bordered className="grid min-h-full grid-rows-[auto_auto_minmax(0,1fr)] border-line bg-surface">
+      <div className="flex items-start justify-between gap-3 border-b border-line p-4">
         <PanelTitle eyebrow="Transcricao" title="Memoria textual" />
         <div className="flex flex-wrap justify-end gap-2">
           <button
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820] disabled:cursor-not-allowed disabled:opacity-50"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-semibold text-ink-muted transition hover:bg-subtle hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
             disabled={meeting.transcript.length === 0}
             onClick={handleDownloadTranscript}
             type="button"
@@ -82,7 +82,7 @@ export function TranscriptPanel({
             Baixar
           </button>
           <button
-            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820]"
+            className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-semibold text-ink-muted transition hover:bg-subtle hover:text-ink"
             onClick={() => setExpanded((current) => !current)}
             type="button"
           >
@@ -98,40 +98,40 @@ export function TranscriptPanel({
       {expanded ? (
         <>
           {meeting.transcript.length > 0 ? (
-            <div className="border-b border-[#edf0f4] bg-white p-3">
+            <div className="border-b border-line bg-surface p-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
-                  <span className="grid h-8 w-8 place-items-center rounded-md bg-[#101820] text-[#A07C3B]">
+                  <span className="grid h-8 w-8 place-items-center rounded-md bg-inverse text-[#A07C3B]">
                     <FileText aria-hidden="true" size={14} />
                   </span>
                   <div>
-                    <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+                    <p className="m-0 text-xs font-bold uppercase text-ink-muted">
                       Previa
                     </p>
-                    <strong className="text-sm text-[#101820]">
+                    <strong className="text-sm text-ink">
                       Transcricao consultavel
                     </strong>
                   </div>
                 </div>
-                <span className="rounded-full border border-[#d9e0e7] bg-[#f8fafc] px-2.5 py-1 text-xs font-semibold text-[#526078]">
+                <span className="rounded-full border border-line bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-muted">
                   {meeting.transcript.length} trecho(s)
                 </span>
               </div>
-              <div className="mt-3 max-h-56 overflow-y-auto rounded-md border border-[#edf0f4] bg-[#fafbfc]">
+              <div className="mt-3 max-h-56 overflow-y-auto rounded-md border border-line bg-subtle">
                 {transcriptPreview.map((segment) => (
                   <div
-                    className="grid gap-1 border-b border-[#edf0f4] px-3 py-2 last:border-b-0"
+                    className="grid gap-1 border-b border-line px-3 py-2 last:border-b-0"
                     key={`preview-${segment.id}`}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <span className="truncate text-xs font-bold uppercase text-[#667085]">
+                      <span className="truncate text-xs font-bold uppercase text-ink-muted">
                         {segment.speakerLabel ?? "Participante"}
                       </span>
-                      <span className="shrink-0 text-xs text-[#98a2b3]">
+                      <span className="shrink-0 text-xs text-ink-muted">
                         {formatChronosDateTime(segment.createdAt)}
                       </span>
                     </div>
-                    <p className="m-0 line-clamp-2 text-sm leading-5 text-[#344054]">
+                    <p className="m-0 line-clamp-2 text-sm leading-5 text-ink">
                       {segment.content}
                     </p>
                   </div>
@@ -140,24 +140,24 @@ export function TranscriptPanel({
             </div>
           ) : null}
           <form
-            className="grid gap-2 border-b border-[#edf0f4] bg-[#fafbfc] p-3"
+            className="grid gap-2 border-b border-line bg-subtle p-3"
             onSubmit={handleSubmit}
           >
             <input
-              className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm outline-none focus:border-[#A07C3B]"
+              className="h-9 rounded-md border border-line bg-surface px-3 text-sm outline-none focus:border-[#A07C3B]"
               onChange={(event) => setSpeakerLabel(event.target.value)}
               placeholder="Participante"
               value={speakerLabel}
             />
             <textarea
-              className="min-h-24 resize-none rounded-md border border-[#d9e0e7] bg-white p-3 text-sm outline-none focus:border-[#A07C3B]"
+              className="min-h-24 resize-none rounded-md border border-line bg-surface p-3 text-sm outline-none focus:border-[#A07C3B]"
               onChange={(event) => setContent(event.target.value)}
               placeholder="Trecho da transcricao"
               required
               value={content}
             />
             <button
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white disabled:cursor-wait disabled:opacity-60"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-inverse px-3 text-sm font-semibold text-brand-ink disabled:cursor-wait disabled:opacity-60"
               disabled={saving}
               type="submit"
             >
@@ -168,18 +168,18 @@ export function TranscriptPanel({
           <div className="min-h-0 overflow-y-auto p-3">
             {meeting.transcript.map((segment) => (
               <div
-                className="mb-2 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3"
+                className="mb-2 rounded-md border border-line bg-subtle p-3"
                 key={segment.id}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-bold uppercase text-[#667085]">
+                  <span className="text-xs font-bold uppercase text-ink-muted">
                     {segment.speakerLabel ?? "Participante"}
                   </span>
-                  <span className="text-xs text-[#98a2b3]">
+                  <span className="text-xs text-ink-muted">
                     {formatChronosDateTime(segment.createdAt)}
                   </span>
                 </div>
-                <p className="m-0 mt-2 text-sm leading-6 text-[#344054]">
+                <p className="m-0 mt-2 text-sm leading-6 text-ink">
                   {segment.content}
                 </p>
               </div>
@@ -190,7 +190,7 @@ export function TranscriptPanel({
           </div>
         </>
       ) : (
-        <div className="p-3 text-sm font-semibold text-[#667085]">
+        <div className="p-3 text-sm font-semibold text-ink-muted">
           {meeting.transcript.length} trecho(s) transcrito(s) oculto(s).
         </div>
       )}

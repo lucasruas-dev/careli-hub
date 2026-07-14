@@ -373,23 +373,23 @@ export function EnrichmentLab() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A07C3B]">
             Apolo · Laboratório
           </p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-950">
+          <h1 className="mt-1 text-2xl font-semibold text-ink">
             Enriquecimento · o que vale a pena trazer
           </h1>
-          <p className="mt-1 max-w-3xl text-sm text-slate-500">
+          <p className="mt-1 max-w-3xl text-sm text-ink-muted">
             Rode a consulta, olhe o dado real e decida campo a campo o que serve
             pra operação: entra automático no cadastro, fica sob demanda pro
             operador, ou sai. Nada é gravado.
           </p>
         </div>
-        <div className="inline-flex rounded-lg border border-slate-200 bg-white p-1">
+        <div className="inline-flex rounded-lg border border-line bg-surface p-1">
           {(["pf", "pj"] as Persona[]).map((item) => (
             <button
               className={[
                 "rounded-md px-4 py-1.5 text-sm font-semibold transition-colors",
                 persona === item
-                  ? "bg-slate-900 text-white"
-                  : "text-slate-500 hover:text-slate-800",
+                  ? "bg-inverse text-brand-ink"
+                  : "text-ink-muted hover:text-ink",
               ].join(" ")}
               key={item}
               onClick={() => {
@@ -405,19 +405,19 @@ export function EnrichmentLab() {
       </header>
 
       {/* Consulta */}
-      <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+      <div className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
           <Search className="size-4 text-[#A07C3B]" aria-hidden="true" />
           Consulta
         </div>
-        <p className="mt-1 text-xs text-slate-500">
+        <p className="mt-1 text-xs text-ink-muted">
           Cada botão dispara uma query e é cobrado por dataset. Rode só o que
           precisa: a tela acumula os resultados.
         </p>
 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <input
-            className="h-9 w-52 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#A07C3B]/40"
+            className="h-9 w-52 rounded-lg border border-line px-3 text-sm outline-none focus:border-[#A07C3B]/40"
             inputMode="numeric"
             onChange={(event) => setDocumento(event.target.value)}
             placeholder={persona === "pf" ? "CPF (só números)" : "CNPJ (só números)"}
@@ -430,7 +430,7 @@ export function EnrichmentLab() {
             const rodandoEsta = rodando === item.query || rodandoTudo;
             return (
               <button
-                className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:opacity-50"
+                className="inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-3 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse disabled:opacity-50"
                 disabled={rodando !== null || rodandoTudo}
                 key={item.query}
                 onClick={() => void consultar(item.query)}
@@ -473,7 +473,7 @@ export function EnrichmentLab() {
                 "inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-sm font-semibold tabular-nums",
                 rodandoTudo
                   ? "border-[#A07C3B]/40 bg-[#A07C3B]/5 text-[#A07C3B]"
-                  : "border-emerald-200 bg-emerald-50 text-emerald-700",
+                  : "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
               ].join(" ")}
             >
               <Timer className="size-4" aria-hidden="true" />
@@ -484,21 +484,21 @@ export function EnrichmentLab() {
         </div>
 
         {erro ? (
-          <p className="mt-3 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+          <p className="mt-3 flex items-center gap-2 rounded-lg border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
             <AlertTriangle className="size-3.5 shrink-0" aria-hidden="true" />
             {erro}
           </p>
         ) : null}
 
         {Object.keys(dados).length ? (
-          <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
-            <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          <div className="mt-3 rounded-lg border border-line bg-subtle px-3 py-2">
+            <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
               Datasets recebidos ({Object.keys(dados).length})
             </div>
             <div className="mt-1.5 flex flex-wrap gap-1">
               {Object.values(dados).map((dataset) => (
                 <span
-                  className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-600"
+                  className="rounded bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-soft"
                   key={dataset.name}
                   title={`status ${dataset.status}`}
                 >
@@ -516,10 +516,10 @@ export function EnrichmentLab() {
                 className={[
                   "inline-flex items-center gap-2 rounded-full px-3 py-1 text-[11px] font-medium",
                   estado.erro
-                    ? "bg-rose-50 text-rose-700"
+                    ? "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300"
                     : estado.simulado
-                      ? "bg-amber-50 text-amber-700"
-                      : "bg-emerald-50 text-emerald-700",
+                      ? "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"
+                      : "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
                 ].join(" ")}
                 key={query}
               >
@@ -540,12 +540,12 @@ export function EnrichmentLab() {
 
       {/* Validacao de contato (AuthScore / CARELI_PF_05) */}
       {queriesPersona.some((item) => item.contato) ? (
-        <details className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-slate-800">
+        <details className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-ink">
             <ShieldCheck className="size-4 text-[#A07C3B]" aria-hidden="true" />
             Validação de contato (AuthScore)
           </summary>
-          <p className="mt-2 text-xs text-slate-500">
+          <p className="mt-2 text-xs text-ink-muted">
             Diferente das outras: o AuthScore recebe o que a pessoa declarou e
             responde se confere com a base. É a etapa do fim do cadastro. Preencha
             e rode; alimenta as respostas de telefone, e-mail e endereço nas abas.
@@ -601,7 +601,7 @@ export function EnrichmentLab() {
             />
           </div>
           <button
-            className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink hover:bg-inverse disabled:opacity-50"
             disabled={rodando !== null || rodandoTudo}
             onClick={validarContato}
             type="button"
@@ -619,7 +619,7 @@ export function EnrichmentLab() {
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_300px]">
         {/* Abas + campos */}
         <div className="min-w-0">
-          <nav className="flex flex-wrap gap-1 border-b border-slate-200 pb-2">
+          <nav className="flex flex-wrap gap-1 border-b border-line pb-2">
             {ABAS.filter((item) =>
               camposPersona.some((campo) => campo.aba === item.id),
             ).map((item) => {
@@ -629,8 +629,8 @@ export function EnrichmentLab() {
                   className={[
                     "rounded-lg px-3 py-1.5 text-sm font-medium transition-colors",
                     aba === item.id
-                      ? "bg-slate-900 text-white"
-                      : "text-slate-500 hover:bg-slate-100 hover:text-slate-800",
+                      ? "bg-inverse text-brand-ink"
+                      : "text-ink-muted hover:bg-subtle hover:text-ink",
                   ].join(" ")}
                   key={item.id}
                   onClick={() => setAba(item.id)}
@@ -644,18 +644,18 @@ export function EnrichmentLab() {
           </nav>
 
           {aba === "endereco" ? (
-            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50/70 px-3 py-2">
-              <span className="text-xs font-semibold text-slate-600">
+            <div className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-line bg-subtle px-3 py-2">
+              <span className="text-xs font-semibold text-ink-soft">
                 CEP do comprovante
               </span>
               <input
-                className="h-8 w-36 rounded-md border border-slate-200 px-2 font-mono text-xs outline-none focus:border-[#A07C3B]/40"
+                className="h-8 w-36 rounded-md border border-line px-2 font-mono text-xs outline-none focus:border-[#A07C3B]/40"
                 inputMode="numeric"
                 onChange={(event) => setCepComprovante(event.target.value)}
                 placeholder="30110001"
                 value={cepComprovante}
               />
-              <span className="text-[11px] text-slate-500">
+              <span className="text-[11px] text-ink-muted">
                 Comparamos com a base. Se divergir, seguimos com o comprovante e
                 só registramos a divergência.
               </span>
@@ -685,12 +685,12 @@ export function EnrichmentLab() {
 
         {/* Decisao + custo (referencia) */}
         <aside className="flex flex-col gap-4 lg:sticky lg:top-2 lg:self-start">
-          <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+          <div className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink">
               <ListChecks className="size-4 text-[#A07C3B]" aria-hidden="true" />
               O mundo ideal
             </div>
-            <p className="mt-1 text-[11px] text-slate-500">
+            <p className="mt-1 text-[11px] text-ink-muted">
               O que a operação precisa, sem pensar em preço ainda.
             </p>
 
@@ -701,10 +701,10 @@ export function EnrichmentLab() {
                 ).length;
                 return (
                   <div
-                    className="flex items-center justify-between gap-2 rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2"
+                    className="flex items-center justify-between gap-2 rounded-lg border border-line bg-subtle px-3 py-2"
                     key={item.value}
                   >
-                    <span className="text-xs font-medium text-slate-600">
+                    <span className="text-xs font-medium text-ink-soft">
                       {item.value === "auto"
                         ? "Automático no cadastro"
                         : item.value === "operador"
@@ -715,10 +715,10 @@ export function EnrichmentLab() {
                       className={[
                         "text-lg font-semibold tabular-nums",
                         item.value === "auto"
-                          ? "text-emerald-700"
+                          ? "text-emerald-700 dark:text-emerald-300"
                           : item.value === "operador"
-                            ? "text-amber-700"
-                            : "text-slate-400",
+                            ? "text-amber-700 dark:text-amber-300"
+                            : "text-ink-muted",
                       ].join(" ")}
                     >
                       {total}
@@ -733,14 +733,14 @@ export function EnrichmentLab() {
                 <div className="text-[10px] font-semibold uppercase tracking-wide text-[#A07C3B]">
                   Pedir ao MOST ({custo.novosPendentes.length})
                 </div>
-                <p className="mt-1 text-[10px] leading-relaxed text-slate-500">
+                <p className="mt-1 text-[10px] leading-relaxed text-ink-muted">
                   Datasets que você marcou mas que nenhuma query CARELI entrega
                   hoje. Sem eles em produção, o dado não aparece.
                 </p>
                 <div className="mt-1.5 flex flex-wrap gap-1">
                   {custo.novosPendentes.map((dataset) => (
                     <span
-                      className="rounded bg-white px-1.5 py-0.5 font-mono text-[10px] text-slate-600"
+                      className="rounded bg-surface px-1.5 py-0.5 font-mono text-[10px] text-ink-soft"
                       key={dataset}
                     >
                       {dataset}
@@ -764,9 +764,9 @@ export function EnrichmentLab() {
             </button>
           </div>
 
-          <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
             <button
-              className="flex w-full items-center justify-between gap-2 text-sm font-semibold text-slate-800"
+              className="flex w-full items-center justify-between gap-2 text-sm font-semibold text-ink"
               onClick={() => setMostrarCusto((valor) => !valor)}
               type="button"
             >
@@ -776,22 +776,22 @@ export function EnrichmentLab() {
               </span>
               <ChevronDown
                 aria-hidden="true"
-                className={`size-4 text-slate-400 transition-transform ${mostrarCusto ? "rotate-180" : ""}`}
+                className={`size-4 text-ink-muted transition-transform ${mostrarCusto ? "rotate-180" : ""}`}
               />
             </button>
 
             {!mostrarCusto ? (
-              <p className="mt-1 text-[11px] text-slate-500">
+              <p className="mt-1 text-[11px] text-ink-muted">
                 Deixado de lado por enquanto. Desenhe o ideal primeiro.
               </p>
             ) : null}
 
             <div className={mostrarCusto ? "" : "hidden"}>
-            <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+            <label className="mt-3 block text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
               Plano contratado
             </label>
             <select
-              className="mt-1 h-9 w-full rounded-lg border border-slate-200 bg-white px-2 text-sm outline-none focus:border-[#A07C3B]/40"
+              className="mt-1 h-9 w-full rounded-lg border border-line bg-surface px-2 text-sm outline-none focus:border-[#A07C3B]/40"
               onChange={(event) => setPlano(event.target.value as PlanoId)}
               value={plano}
             >
@@ -805,22 +805,22 @@ export function EnrichmentLab() {
 
             <div className="mt-3 grid grid-cols-2 gap-2">
               <div>
-                <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
                   Imagens lidas
                 </label>
                 <input
-                  className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-sm outline-none focus:border-[#A07C3B]/40"
+                  className="mt-1 h-9 w-full rounded-lg border border-line px-2 font-mono text-sm outline-none focus:border-[#A07C3B]/40"
                   inputMode="numeric"
                   onChange={(event) => setImagens(Number(soDigitos(event.target.value)) || 0)}
                   value={imagens}
                 />
               </div>
               <div>
-                <label className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                <label className="block text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
                   Cadastros por mês
                 </label>
                 <input
-                  className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 font-mono text-sm outline-none focus:border-[#A07C3B]/40"
+                  className="mt-1 h-9 w-full rounded-lg border border-line px-2 font-mono text-sm outline-none focus:border-[#A07C3B]/40"
                   inputMode="numeric"
                   onChange={(event) => setCadastrosMes(Number(soDigitos(event.target.value)) || 0)}
                   value={cadastrosMes}
@@ -843,7 +843,7 @@ export function EnrichmentLab() {
             </div>
 
             <div className="mt-4">
-              <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+              <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
                 A fatura do mês, em cada plano
               </div>
               <div className="mt-1.5 flex flex-col gap-1">
@@ -855,17 +855,17 @@ export function EnrichmentLab() {
                       className={[
                         "flex items-center justify-between gap-2 rounded-lg border px-2.5 py-1.5",
                         vencedor
-                          ? "border-emerald-200 bg-emerald-50"
-                          : "border-slate-100 bg-slate-50/70",
+                          ? "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12"
+                          : "border-line bg-subtle",
                       ].join(" ")}
                       key={item.plano.id}
                     >
                       <span className="min-w-0">
-                        <span className="block truncate text-[11px] font-medium text-slate-700">
+                        <span className="block truncate text-[11px] font-medium text-ink">
                           {item.plano.label}
                         </span>
                         {noPiso ? (
-                          <span className="block text-[9px] text-amber-600">
+                          <span className="block text-[9px] text-amber-600 dark:text-amber-300">
                             consumo {reais(item.consumo)}, paga o mínimo
                           </span>
                         ) : null}
@@ -873,7 +873,7 @@ export function EnrichmentLab() {
                       <span
                         className={[
                           "shrink-0 text-sm font-semibold tabular-nums",
-                          vencedor ? "text-emerald-700" : "text-slate-500",
+                          vencedor ? "text-emerald-700 dark:text-emerald-300" : "text-ink-muted",
                         ].join(" ")}
                       >
                         {reais(item.fatura)}
@@ -882,7 +882,7 @@ export function EnrichmentLab() {
                   );
                 })}
               </div>
-              <p className="mt-1.5 text-[10px] leading-relaxed text-slate-400">
+              <p className="mt-1.5 text-[10px] leading-relaxed text-ink-muted">
                 O que sobra abaixo do faturamento mínimo não acumula pro mês
                 seguinte. O desconto do enriquecimento é pequeno (9% e 17%), mas
                 a leitura de documentos e a IA generativa caem de 32% a 68%.
@@ -891,7 +891,7 @@ export function EnrichmentLab() {
 
             {custo.datasetsAuto.length ? (
               <div className="mt-4">
-                <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
                   Onde o dinheiro vai
                 </div>
                 <div className="mt-1.5 flex flex-col gap-1">
@@ -900,15 +900,15 @@ export function EnrichmentLab() {
                       className="flex items-center justify-between gap-2 text-[11px]"
                       key={linha.dataset}
                     >
-                      <span className="truncate font-mono text-slate-500" title={linha.codigo}>
+                      <span className="truncate font-mono text-ink-muted" title={linha.codigo}>
                         {linha.dataset}
                       </span>
                       <span
                         className={[
                           "shrink-0 tabular-nums",
                           linha.preco >= PRECO_CARO
-                            ? "font-semibold text-rose-600"
-                            : "text-slate-500",
+                            ? "font-semibold text-rose-600 dark:text-rose-300"
+                            : "text-ink-muted",
                         ].join(" ")}
                       >
                         {reais(linha.preco)}
@@ -920,13 +920,13 @@ export function EnrichmentLab() {
             ) : null}
 
             {custo.semPreco.length ? (
-              <p className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[10px] text-amber-700">
+              <p className="mt-3 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 px-2.5 py-1.5 text-[10px] text-amber-700 dark:text-amber-300">
                 Sem preço na proposta: {custo.semPreco.join(", ")}. Pedir cotação
                 antes de ligar.
               </p>
             ) : null}
 
-            <p className="mt-3 text-[10px] leading-relaxed text-slate-400">
+            <p className="mt-3 text-[10px] leading-relaxed text-ink-muted">
               O limite de {RATE_LIMIT_OCR_MENSAL.toLocaleString("pt-BR")} do
               contrato é um teto mensal de páginas lidas pelo OCR, ajustável por
               e-mail. Não se aplica ao enriquecimento.
@@ -952,11 +952,11 @@ function ContatoInput({
 }) {
   return (
     <label className="block">
-      <span className="block text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+      <span className="block text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
         {label}
       </span>
       <input
-        className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm outline-none focus:border-[#A07C3B]/40"
+        className="mt-1 h-9 w-full rounded-lg border border-line px-2 text-sm outline-none focus:border-[#A07C3B]/40"
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         value={value}
@@ -977,19 +977,19 @@ function Metrica({
   valor: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+    <div className="rounded-lg border border-line bg-subtle px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
         {label}
       </div>
       <div
         className={[
           "mt-0.5 font-semibold tabular-nums",
-          destaque ? "text-2xl text-[#A07C3B]" : "text-lg text-slate-800",
+          destaque ? "text-2xl text-[#A07C3B]" : "text-lg text-ink",
         ].join(" ")}
       >
         {valor}
       </div>
-      <div className="text-[10px] text-slate-400">{sub}</div>
+      <div className="text-[10px] text-ink-muted">{sub}</div>
     </div>
   );
 }
@@ -1026,14 +1026,14 @@ function CampoRow({
   return (
     <div
       className={[
-        "grid grid-cols-1 gap-3 rounded-xl border bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] sm:grid-cols-[minmax(0,1fr)_auto]",
-        politica === "fora" ? "border-slate-100 opacity-55" : "border-slate-200/70",
+        "grid grid-cols-1 gap-3 rounded-xl border bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.03)] sm:grid-cols-[minmax(0,1fr)_auto]",
+        politica === "fora" ? "border-line opacity-55" : "border-line",
       ].join(" ")}
     >
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold text-slate-800">{campo.label}</span>
-          <code className="rounded border border-slate-100 bg-slate-50 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">
+          <span className="text-sm font-semibold text-ink">{campo.label}</span>
+          <code className="rounded border border-line bg-subtle px-1.5 py-0.5 font-mono text-[10px] text-ink-muted">
             {campo.dataset}
           </code>
           {campo.novo ? (
@@ -1041,7 +1041,7 @@ function CampoRow({
               novo
             </span>
           ) : (
-            <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700">
+            <span className="rounded-full bg-emerald-50 dark:bg-emerald-500/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
               {campo.query.replace("CARELI_", "")}
             </span>
           )}
@@ -1050,8 +1050,8 @@ function CampoRow({
               className={[
                 "rounded-full px-2 py-0.5 text-[10px] font-semibold tabular-nums",
                 preco.preco >= PRECO_CARO
-                  ? "bg-rose-50 text-rose-700"
-                  : "bg-slate-100 text-slate-500",
+                  ? "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300"
+                  : "bg-subtle text-ink-muted",
               ].join(" ")}
               title={preco.codigo}
             >
@@ -1059,24 +1059,24 @@ function CampoRow({
             </span>
           ) : null}
           {campo.origem === "bestinfo" ? (
-            <span className="rounded-full bg-sky-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700">
+            <span className="rounded-full bg-sky-50 dark:bg-sky-500/12 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-sky-700 dark:text-sky-300">
               best info
             </span>
           ) : null}
           {outroDataset ? (
-            <span className="rounded-full bg-amber-50 px-2 py-0.5 text-[10px] font-semibold text-amber-700">
+            <span className="rounded-full bg-amber-50 dark:bg-amber-500/12 px-2 py-0.5 text-[10px] font-semibold text-amber-700 dark:text-amber-300">
               veio de {resolvido.nome}
             </span>
           ) : null}
         </div>
 
         {campo.nota ? (
-          <p className="mt-1 text-[11px] text-slate-500">{campo.nota}</p>
+          <p className="mt-1 text-[11px] text-ink-muted">{campo.nota}</p>
         ) : null}
 
         <div className="mt-2">
           {!queryRodada && !veio ? (
-            <p className="text-xs text-slate-400">
+            <p className="text-xs text-ink-muted">
               {campo.query === "CARELI_PF_05" ? (
                 "Ainda não validado. Preencha e rode a Validação de contato."
               ) : (
@@ -1087,14 +1087,14 @@ function CampoRow({
               )}
             </p>
           ) : !veio ? (
-            <p className="text-xs text-amber-600">
+            <p className="text-xs text-amber-600 dark:text-amber-300">
               A consulta rodou, mas este campo voltou vazio.
             </p>
           ) : (
             <ul className="flex flex-col gap-0.5">
               {linhas.map((linha, index) => (
                 <li
-                  className="break-words text-sm text-slate-800"
+                  className="break-words text-sm text-ink"
                   key={`${campo.id}-${index}`}
                 >
                   {campo.id === "enderecos" || campo.id === "pjEnderecos" ? (
@@ -1114,8 +1114,8 @@ function CampoRow({
               className={[
                 "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors",
                 emailOk === true
-                  ? "border-emerald-300 bg-emerald-50 text-emerald-700"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50",
+                  ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+                  : "border-line text-ink-soft hover:bg-subtle",
               ].join(" ")}
               onClick={() => onEmailOk(true)}
               type="button"
@@ -1127,8 +1127,8 @@ function CampoRow({
               className={[
                 "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition-colors",
                 emailOk === false
-                  ? "border-amber-300 bg-amber-50 text-amber-700"
-                  : "border-slate-200 text-slate-600 hover:bg-slate-50",
+                  ? "border-amber-300 bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"
+                  : "border-line text-ink-soft hover:bg-subtle",
               ].join(" ")}
               onClick={() => onEmailOk(false)}
               type="button"
@@ -1136,7 +1136,7 @@ function CampoRow({
               Corrigir no cadastro
             </button>
             {emailOk !== null ? (
-              <span className="text-[11px] text-slate-500">
+              <span className="text-[11px] text-ink-muted">
                 {emailOk
                   ? "Vai pro CAD com a tag confirmado."
                   : "O operador digita o e-mail certo; o sugerido fica como alternativa."}
@@ -1146,18 +1146,18 @@ function CampoRow({
         ) : null}
       </div>
 
-      <div className="flex h-fit shrink-0 overflow-hidden rounded-lg border border-slate-200">
+      <div className="flex h-fit shrink-0 overflow-hidden rounded-lg border border-line">
         {POLITICAS.map((item) => (
           <button
             className={[
-              "border-r border-slate-200 px-3 py-1.5 text-[11px] font-semibold transition-colors last:border-r-0",
+              "border-r border-line px-3 py-1.5 text-[11px] font-semibold transition-colors last:border-r-0",
               politica === item.value
                 ? item.value === "auto"
-                  ? "bg-emerald-50 text-emerald-700"
+                  ? "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
                   : item.value === "operador"
-                    ? "bg-amber-50 text-amber-700"
-                    : "bg-slate-100 text-slate-500"
-                : "text-slate-400 hover:bg-slate-50",
+                    ? "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"
+                    : "bg-subtle text-ink-muted"
+                : "text-ink-muted hover:bg-subtle",
             ].join(" ")}
             key={item.value}
             onClick={() => onPolitica(item.value)}
@@ -1186,7 +1186,7 @@ function EnderecoLinha({ cep, linha }: { cep: string; linha: string }) {
       <span
         className={[
           "rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide",
-          confere ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700",
+          confere ? "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300" : "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300",
         ].join(" ")}
       >
         {confere ? "confere" : "diverge"}

@@ -138,7 +138,7 @@ export default function SetupPage() {
     return (
       <HubShell layoutMode="module">
         <WorkspaceLayout>
-          <Surface bordered className="border-[#d9e0e7] bg-white p-6">
+          <Surface bordered className="border-line bg-surface p-6">
             <PanteonLoadingState
               description="Carregando perfil operacional."
               minHeightClassName="min-h-40"
@@ -156,7 +156,7 @@ export default function SetupPage() {
     return (
       <HubShell layoutMode="module">
         <WorkspaceLayout>
-          <Surface bordered className="border-[#d9e0e7] bg-white p-6">
+          <Surface bordered className="border-line bg-surface p-6">
             <EmptyState
               description={
                 isProfileError
@@ -484,18 +484,18 @@ function SetupWorkspace() {
   }
 
   return (
-    <WorkspaceLayout className="bg-[#f3f6fa]">
+    <WorkspaceLayout className="bg-canvas">
       <section className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
         {summary.map((item) => (
           <Surface
             bordered
-            className="border-[#d9e0e7] bg-white p-4"
+            className="border-line bg-surface p-4"
             key={item.label}
           >
-            <p className="m-0 text-2xl font-semibold text-[#101820]">
+            <p className="m-0 text-2xl font-semibold text-ink">
               {item.value}
             </p>
-            <p className="m-0 mt-1 text-xs text-[#667085]">{item.label}</p>
+            <p className="m-0 mt-1 text-xs text-ink-muted">{item.label}</p>
           </Surface>
         ))}
       </section>
@@ -503,7 +503,7 @@ function SetupWorkspace() {
       {error ? (
         <Surface
           bordered
-          className="border-amber-200 bg-amber-50 p-4 text-sm text-amber-800"
+          className="border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 p-4 text-sm text-amber-800 dark:text-amber-300"
         >
           <span className="inline-flex items-center gap-2 font-semibold">
             <ShieldAlert aria-hidden="true" size={16} />
@@ -515,21 +515,21 @@ function SetupWorkspace() {
       {success ? (
         <Surface
           bordered
-          className="border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-800"
+          className="border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12 p-4 text-sm font-semibold text-emerald-800 dark:text-emerald-300"
         >
           {success}
         </Surface>
       ) : null}
 
-      <Surface bordered className="border-[#d9e0e7] bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#e5eaf0] p-2">
+      <Surface bordered className="border-line bg-surface">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-2">
           <div className="flex flex-wrap gap-1">
             {setupTabs.map((tab) => {
               const TabIcon = tab.icon;
 
               return (
                 <button
-                  className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B] data-[active=true]:bg-[#101820] data-[active=true]:text-white"
+                  className="inline-flex h-9 items-center gap-2 rounded-md px-3 text-sm font-semibold text-ink-muted outline-none transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B] data-[active=true]:bg-inverse data-[active=true]:text-brand-ink"
                   data-active={activeTab === tab.id}
                   key={tab.id}
                   onClick={() => {
@@ -550,7 +550,7 @@ function SetupWorkspace() {
           <Tooltip content="Atualizar">
             <button
               aria-label="Atualizar"
-              className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#101820] outline-none transition hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              className="grid h-9 w-9 place-items-center rounded-md border border-line bg-surface text-ink outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               onClick={() => void refreshSetupData()}
               title="Atualizar"
               type="button"
@@ -933,11 +933,11 @@ function CreateSectorForm({
     <SetupFormCard title="Novo setor">
       <form className="grid gap-3" onSubmit={handleSubmit}>
         <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">
+          <span className="text-xs font-semibold text-ink-muted">
             Departamento
           </span>
           <select
-            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+            className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
             onChange={(event) => setDepartmentId(event.target.value)}
             value={departmentId}
           >
@@ -1023,16 +1023,16 @@ function HermesCreateChannelPanel({
   }
 
   return (
-    <section className="rounded-md border border-[#d9e0e7] bg-white">
-      <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-4 py-3">
+    <section className="rounded-md border border-line bg-surface">
+      <div className="flex items-center justify-between gap-3 border-b border-line px-4 py-3">
         <div>
-          <h3 className="m-0 text-sm font-semibold text-[#101820]">
+          <h3 className="m-0 text-sm font-semibold text-ink">
             Canais e grupos
           </h3>
-          <p className="m-0 mt-1 text-xs text-[#667085]">Hermes</p>
+          <p className="m-0 mt-1 text-xs text-ink-muted">Hermes</p>
         </div>
         <button
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white outline-none transition hover:bg-[#1f2933] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-inverse px-3 text-sm font-semibold text-brand-ink outline-none transition hover:bg-inverse focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={() => setIsExpanded((current) => !current)}
           type="button"
         >
@@ -1045,11 +1045,11 @@ function HermesCreateChannelPanel({
           <div className="grid gap-3 lg:grid-cols-2">
             <TextInput label="Nome" onChange={setName} value={name} />
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold text-[#667085]">
+              <span className="text-xs font-semibold text-ink-muted">
                 Departamento
               </span>
               <select
-                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+                className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
                 onChange={(event) => {
                   setDepartmentId(event.target.value);
                   setSectorId("");
@@ -1064,9 +1064,9 @@ function HermesCreateChannelPanel({
               </select>
             </label>
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold text-[#667085]">Tipo</span>
+              <span className="text-xs font-semibold text-ink-muted">Tipo</span>
               <select
-                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+                className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
                 onChange={(event) => {
                   const nextType = event.target
                     .value as CreateHermesChannelInput["type"];
@@ -1083,11 +1083,11 @@ function HermesCreateChannelPanel({
               </select>
             </label>
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold text-[#667085]">
+              <span className="text-xs font-semibold text-ink-muted">
                 Setor
               </span>
               <select
-                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+                className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
                 onChange={(event) => setSectorId(event.target.value)}
                 value={sectorId}
               >
@@ -1130,9 +1130,9 @@ function DataGrid({
   }
 
   return (
-    <div className="overflow-x-auto rounded-md border border-[#e5eaf0]">
+    <div className="overflow-x-auto rounded-md border border-line">
       <table className="w-full min-w-[44rem] border-collapse text-left text-sm">
-        <thead className="bg-[#f8fafc] text-xs uppercase text-[#667085]">
+        <thead className="bg-subtle text-xs uppercase text-ink-muted">
           <tr>
             {headers.map((header) => (
               <th className="px-3 py-2 font-semibold" key={header}>
@@ -1141,12 +1141,12 @@ function DataGrid({
             ))}
           </tr>
         </thead>
-        <tbody className="divide-y divide-[#edf0f4] bg-white">
+        <tbody className="divide-y divide-[#edf0f4] bg-surface">
           {rows.map((row, rowIndex) => (
             <tr key={String(rowIndex)}>
               {row.map((cell, cellIndex) => (
                 <td
-                  className="px-3 py-3 text-[#344054]"
+                  className="px-3 py-3 text-ink"
                   key={String(cellIndex)}
                 >
                   {typeof cell === "string" && isStatusValue(cell) ? (
@@ -1205,7 +1205,7 @@ function TabPanel({
   return (
     <div className="grid gap-4">
       <div className="flex items-center justify-between gap-3">
-        <h2 className="m-0 text-base font-semibold text-[#101820]">{title}</h2>
+        <h2 className="m-0 text-base font-semibold text-ink">{title}</h2>
         {action}
       </div>
       {children}
@@ -1246,7 +1246,7 @@ function RowActions({
       <Tooltip content="Editar">
         <button
           aria-label="Editar"
-          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          className="grid h-8 w-8 place-items-center rounded-md text-ink-muted outline-none transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onEdit}
           type="button"
         >
@@ -1256,14 +1256,14 @@ function RowActions({
       <Tooltip content="Arquivar">
         <button
           aria-label="Arquivar"
-          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#fff7e6] hover:text-[#8a682f] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          className="grid h-8 w-8 place-items-center rounded-md text-ink-muted outline-none transition hover:bg-[#fff7e6] dark:bg-[#a07c3b]/10 hover:text-[#8a682f] dark:text-[#d9b877] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onArchive}
           type="button"
         >
           <Archive aria-hidden="true" size={14} />
         </button>
       </Tooltip>
-      <MoreVertical aria-hidden="true" className="text-[#98a2b3]" size={14} />
+      <MoreVertical aria-hidden="true" className="text-ink-muted" size={14} />
     </div>
   );
 }
@@ -1284,7 +1284,7 @@ function ModuleConfigAction({
       >
         <button
           aria-label="Configurar modulo"
-          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-35"
+          className="grid h-8 w-8 place-items-center rounded-md text-ink-muted outline-none transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-35"
           disabled={disabled}
           onClick={onClick}
           type="button"
@@ -1302,7 +1302,7 @@ function UserAssignmentAction({ onClick }: { onClick: () => void }) {
       <Tooltip content="Editar usuario">
         <button
           aria-label="Editar usuario"
-          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          className="grid h-8 w-8 place-items-center rounded-md text-ink-muted outline-none transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onClick}
           type="button"
         >
@@ -1442,11 +1442,11 @@ function EditSectorModal({
     <SetupModal onClose={onClose} title="Editar setor">
       <form className="grid gap-3 p-5" onSubmit={handleSubmit}>
         <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">
+          <span className="text-xs font-semibold text-ink-muted">
             Departamento
           </span>
           <select
-            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+            className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
             onChange={(event) => setDepartmentId(event.target.value)}
             value={departmentId}
           >
@@ -1517,11 +1517,11 @@ function EditHermesChannelModal({
       <form className="grid gap-3 p-5" onSubmit={handleSubmit}>
         <TextInput label="Nome" onChange={setName} value={name} />
         <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">
+          <span className="text-xs font-semibold text-ink-muted">
             Departamento
           </span>
           <select
-            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+            className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
             onChange={(event) => {
               setDepartmentId(event.target.value);
               setSectorId("");
@@ -1537,9 +1537,9 @@ function EditHermesChannelModal({
           </select>
         </label>
         <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">Setor</span>
+          <span className="text-xs font-semibold text-ink-muted">Setor</span>
           <select
-            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+            className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
             onChange={(event) => setSectorId(event.target.value)}
             value={sectorId}
           >
@@ -1552,9 +1552,9 @@ function EditHermesChannelModal({
           </select>
         </label>
         <label className="grid gap-1.5">
-          <span className="text-xs font-semibold text-[#667085]">Tipo</span>
+          <span className="text-xs font-semibold text-ink-muted">Tipo</span>
           <select
-            className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+            className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
             onChange={(event) =>
               setType(event.target.value as SetupHermesChannel["type"])
             }
@@ -1608,15 +1608,15 @@ function SetupModal({
         type="button"
       />
       <div
-        className={`relative z-10 w-full rounded-md border border-[#d9e0e7] bg-white shadow-2xl ${sizeClass}`}
+        className={`relative z-10 w-full rounded-md border border-line bg-surface shadow-2xl ${sizeClass}`}
       >
-        <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
-          <h2 className="m-0 text-base font-semibold text-[#101820]">
+        <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+          <h2 className="m-0 text-base font-semibold text-ink">
             {title}
           </h2>
           <button
             aria-label="Fechar"
-            className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            className="grid h-8 w-8 place-items-center rounded-md text-ink-muted outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             onClick={onClose}
             type="button"
           >
@@ -1678,13 +1678,13 @@ function AtlasModuleConfigModal({
   return (
     <SetupModal onClose={onClose} size="full" title="Setup Atlas">
       <div className="grid max-h-[82vh] overflow-hidden lg:grid-cols-[17rem_minmax(0,1fr)]">
-        <aside className="border-b border-[#edf0f4] bg-[#f8fafc] p-4 lg:border-b-0 lg:border-r">
+        <aside className="border-b border-line bg-subtle p-4 lg:border-b-0 lg:border-r">
           <div className="mb-4 flex items-center justify-between gap-2">
             <div>
-              <p className="m-0 text-xs font-semibold uppercase text-[#667085]">
+              <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
                 Modulo
               </p>
-              <h3 className="m-0 mt-1 text-base font-semibold text-[#101820]">
+              <h3 className="m-0 mt-1 text-base font-semibold text-ink">
                 Atlas
               </h3>
             </div>
@@ -1700,8 +1700,8 @@ function AtlasModuleConfigModal({
                   aria-pressed={isSelected}
                   className={`flex h-10 items-center gap-2 rounded-md border px-2.5 text-left text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
                     isSelected
-                      ? "border-[#A07C3B] bg-white text-[#101820] shadow-sm"
-                      : "border-[#e5eaf0] bg-white/70 text-[#667085] hover:bg-white hover:text-[#101820]"
+                      ? "border-[#A07C3B] bg-surface text-ink shadow-sm"
+                      : "border-line bg-white/70 text-ink-muted hover:bg-surface hover:text-ink"
                   }`}
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
@@ -1710,8 +1710,8 @@ function AtlasModuleConfigModal({
                   <span
                     className={`grid h-7 w-7 shrink-0 place-items-center rounded-md ${
                       isSelected
-                        ? "bg-[#101820] text-[#A07C3B]"
-                        : "bg-[#f3f6fa] text-[#667085]"
+                        ? "bg-inverse text-[#A07C3B]"
+                        : "bg-subtle text-ink-muted"
                     }`}
                   >
                     <Icon aria-hidden="true" size={14} />
@@ -1721,14 +1721,14 @@ function AtlasModuleConfigModal({
               );
             })}
           </div>
-          <div className="mt-4 rounded-md border border-[#eadfca] bg-white p-3">
+          <div className="mt-4 rounded-md border border-[#eadfca] bg-surface p-3">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-xs font-semibold uppercase text-[#8a682f]">
+              <span className="text-xs font-semibold uppercase text-[#8a682f] dark:text-[#d9b877]">
                 Bonus
               </span>
               <Badge variant="danger">BLOQUEADO</Badge>
             </div>
-            <p className="m-0 mt-2 text-xs leading-5 text-[#667085]">
+            <p className="m-0 mt-2 text-xs leading-5 text-ink-muted">
               Regras de bonus e escrita seguem preservadas ate validacao humana.
             </p>
           </div>
@@ -1758,17 +1758,17 @@ function AtlasModuleConfigModal({
             />
           </div>
 
-          <section className="grid gap-4 rounded-md border border-[#e5eaf0] bg-white p-4">
+          <section className="grid gap-4 rounded-md border border-line bg-surface p-4">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#101820] text-[#A07C3B]">
+                <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-inverse text-[#A07C3B]">
                   <ActiveIcon aria-hidden="true" size={16} />
                 </span>
                 <div className="min-w-0">
-                  <h3 className="m-0 truncate text-base font-semibold text-[#101820]">
+                  <h3 className="m-0 truncate text-base font-semibold text-ink">
                     {activeTabMeta.label}
                   </h3>
-                  <p className="m-0 mt-1 text-sm text-[#667085]">
+                  <p className="m-0 mt-1 text-sm text-ink-muted">
                     Configuracao herdada das tabelas Atlas no Hub.
                   </p>
                 </div>
@@ -1788,12 +1788,12 @@ function AtlasModuleConfigModal({
               </div>
             </div>
             {error ? (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+              <div className="rounded-md border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 p-3 text-sm font-semibold text-amber-800 dark:text-amber-300">
                 {error}
               </div>
             ) : null}
             {success ? (
-              <div className="rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm font-semibold text-emerald-800">
+              <div className="rounded-md border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12 p-3 text-sm font-semibold text-emerald-800 dark:text-emerald-300">
                 {success}
               </div>
             ) : null}
@@ -1831,16 +1831,16 @@ function AtlasConfigSummaryCard({
   value: number;
 }) {
   return (
-    <div className="rounded-md border border-[#e5eaf0] bg-white p-3">
+    <div className="rounded-md border border-line bg-surface p-3">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-xs font-semibold uppercase text-[#667085]">
+        <span className="text-xs font-semibold uppercase text-ink-muted">
           {label}
         </span>
         <span className="grid h-7 w-7 place-items-center rounded-md bg-[#A07C3B]/10 text-[#A07C3B]">
           <Icon aria-hidden="true" size={14} />
         </span>
       </div>
-      <p className="m-0 mt-2 text-xl font-semibold text-[#101820]">
+      <p className="m-0 mt-2 text-xl font-semibold text-ink">
         {value}
       </p>
     </div>
@@ -1939,11 +1939,11 @@ function AtlasCreateConfigForm({
         ) : null}
         {isOccurrenceType ? (
           <label className="grid gap-1.5">
-            <span className="text-xs font-semibold text-[#667085]">
+            <span className="text-xs font-semibold text-ink-muted">
               Perfil
             </span>
             <select
-              className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#f4f7fa] disabled:text-[#8b96a8]"
+              className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B] disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted"
               disabled={data.atlas.occurrenceProfiles.length === 0}
               onChange={(event) => setProfileLegacyId(event.target.value)}
               value={profileLegacyId}
@@ -1960,7 +1960,7 @@ function AtlasCreateConfigForm({
           </label>
         ) : null}
         {isOccurrenceType && !hasRequiredProfile ? (
-          <p className="m-0 rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+          <p className="m-0 rounded-md border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 p-3 text-sm font-semibold text-amber-800 dark:text-amber-300">
             Crie um perfil antes de cadastrar uma ocorrencia.
           </p>
         ) : null}
@@ -2166,13 +2166,13 @@ function HermesModuleConfigModal({
           }}
           selectedDepartmentId={selectedDepartmentId}
         />
-        <main className="grid content-start gap-4 border-b border-[#edf0f4] p-4 lg:border-b-0 lg:border-r">
+        <main className="grid content-start gap-4 border-b border-line p-4 lg:border-b-0 lg:border-r">
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div>
-              <p className="m-0 text-xs font-semibold uppercase text-[#667085]">
+              <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
                 Departamento
               </p>
-              <h3 className="m-0 mt-1 text-lg font-semibold text-[#101820]">
+              <h3 className="m-0 mt-1 text-lg font-semibold text-ink">
                 {selectedDepartment?.name ?? "Sem departamento"}
               </h3>
             </div>
@@ -2223,15 +2223,15 @@ function HermesDepartmentList({
   );
 
   return (
-    <aside className="border-b border-[#edf0f4] bg-[#f8fafc] p-4 lg:border-b-0 lg:border-r">
+    <aside className="border-b border-line bg-subtle p-4 lg:border-b-0 lg:border-r">
       <div className="mb-3 flex items-center justify-between gap-2">
-        <h3 className="m-0 text-sm font-semibold text-[#101820]">
+        <h3 className="m-0 text-sm font-semibold text-ink">
           Departamentos
         </h3>
         <Badge variant="neutral">{departments.length}</Badge>
       </div>
       {departments.length === 0 ? (
-        <p className="m-0 rounded-md border border-dashed border-[#d9e0e7] bg-white p-4 text-sm text-[#667085]">
+        <p className="m-0 rounded-md border border-dashed border-line bg-surface p-4 text-sm text-ink-muted">
           Nenhum departamento ativo.
         </p>
       ) : (
@@ -2252,17 +2252,17 @@ function HermesDepartmentList({
               <button
                 className={`rounded-md border p-3 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
                   isSelected
-                    ? "border-[#A07C3B] bg-white shadow-sm"
-                    : "border-[#e5eaf0] bg-white/70 hover:bg-white"
+                    ? "border-[#A07C3B] bg-surface shadow-sm"
+                    : "border-line bg-white/70 hover:bg-surface"
                 }`}
                 key={department.id}
                 onClick={() => onSelectDepartment(department.id)}
                 type="button"
               >
-                <span className="block text-sm font-semibold text-[#101820]">
+                <span className="block text-sm font-semibold text-ink">
                   {department.name}
                 </span>
-                <span className="mt-2 flex flex-wrap gap-2 text-xs text-[#667085]">
+                <span className="mt-2 flex flex-wrap gap-2 text-xs text-ink-muted">
                   <span>{channels.length} canais</span>
                   <span>{participantCount} pessoas</span>
                 </span>
@@ -2292,11 +2292,11 @@ function HermesChannelList({
 }) {
   if (channels.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-[#d9e0e7] bg-white p-6 text-center">
-        <h3 className="m-0 text-base font-semibold text-[#101820]">
+      <div className="rounded-md border border-dashed border-line bg-surface p-6 text-center">
+        <h3 className="m-0 text-base font-semibold text-ink">
           Nenhum canal
         </h3>
-        <p className="m-0 mt-1 text-sm text-[#667085]">
+        <p className="m-0 mt-1 text-sm text-ink-muted">
           Crie o primeiro canal desse departamento.
         </p>
       </div>
@@ -2310,10 +2310,10 @@ function HermesChannelList({
 
         return (
           <article
-            className={`rounded-md border bg-white p-3 transition ${
+            className={`rounded-md border bg-surface p-3 transition ${
               isSelected
                 ? "border-[#A07C3B] shadow-sm"
-                : "border-[#e5eaf0] hover:border-[#cfd8e3]"
+                : "border-line hover:border-line"
             }`}
             key={channel.id}
           >
@@ -2324,10 +2324,10 @@ function HermesChannelList({
                 onClick={() => onSelectChannel(channel.id)}
                 type="button"
               >
-                <span className="block truncate text-sm font-semibold text-[#101820]">
+                <span className="block truncate text-sm font-semibold text-ink">
                   {channel.name}
                 </span>
-                <span className="mt-1 flex flex-wrap gap-2 text-xs text-[#667085]">
+                <span className="mt-1 flex flex-wrap gap-2 text-xs text-ink-muted">
                   <span>{getHermesChannelTypeLabel(channel.type)}</span>
                   <span>{channel.sectorName ?? "Departamento"}</span>
                   <span>
@@ -2341,7 +2341,7 @@ function HermesChannelList({
               />
             </div>
             {channel.description ? (
-              <p className="m-0 mt-2 line-clamp-2 text-xs text-[#667085]">
+              <p className="m-0 mt-2 line-clamp-2 text-xs text-ink-muted">
                 {channel.description}
               </p>
             ) : null}
@@ -2386,7 +2386,7 @@ function HermesMembersPanel({
 
   if (!channel) {
     return (
-      <aside className="bg-white p-4">
+      <aside className="bg-surface p-4">
         <EmptyState description="Selecione ou crie um canal." title="Pessoas" />
       </aside>
     );
@@ -2408,24 +2408,24 @@ function HermesMembersPanel({
   }
 
   return (
-    <aside className="bg-white p-4">
+    <aside className="bg-surface p-4">
       <div className="grid h-full content-start gap-4">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="m-0 text-xs font-semibold uppercase text-[#667085]">
+            <p className="m-0 text-xs font-semibold uppercase text-ink-muted">
               Pessoas
             </p>
-            <h3 className="m-0 mt-1 truncate text-base font-semibold text-[#101820]">
+            <h3 className="m-0 mt-1 truncate text-base font-semibold text-ink">
               {currentChannel.name}
             </h3>
-            <p className="m-0 mt-1 text-xs text-[#667085]">
+            <p className="m-0 mt-1 text-xs text-ink-muted">
               {selectedUserIds.length} vinculadas
             </p>
           </div>
           <Tooltip content="Editar canal">
             <button
               aria-label="Editar canal"
-              className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              className="grid h-8 w-8 place-items-center rounded-md text-ink-muted outline-none transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               onClick={() => onEditChannel(currentChannel)}
               type="button"
             >
@@ -2440,21 +2440,21 @@ function HermesMembersPanel({
           <div className="grid max-h-[44vh] gap-2 overflow-auto pr-1">
             {listedUsers.map((user) => (
               <label
-                className="flex cursor-pointer items-start gap-3 rounded-md border border-[#e5eaf0] bg-[#f8fafc] p-3 text-sm transition hover:bg-white"
+                className="flex cursor-pointer items-start gap-3 rounded-md border border-line bg-subtle p-3 text-sm transition hover:bg-surface"
                 key={user.id}
               >
                 <input
                   checked={selectedUserIds.includes(user.id)}
-                  className="mt-1 h-4 w-4 rounded border-[#cfd8e3] accent-[#A07C3B]"
+                  className="mt-1 h-4 w-4 rounded border-line accent-[#A07C3B]"
                   disabled={isSaving}
                   onChange={() => toggleUser(user.id)}
                   type="checkbox"
                 />
                 <span className="min-w-0">
-                  <span className="block truncate font-semibold text-[#101820]">
+                  <span className="block truncate font-semibold text-ink">
                     {user.displayName}
                   </span>
-                  <span className="block truncate text-xs text-[#667085]">
+                  <span className="block truncate text-xs text-ink-muted">
                     {user.sectorName ?? user.departmentName ?? user.email}
                   </span>
                 </span>
@@ -2464,7 +2464,7 @@ function HermesMembersPanel({
         )}
 
         <button
-          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0e7] disabled:text-[#667085]"
+          className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0e7] disabled:text-ink-muted"
           disabled={isSaving}
           onClick={() => {
             void handleSaveMembers();
@@ -2495,14 +2495,14 @@ function ParticipantPicker({
   }
 
   return (
-    <fieldset className="grid gap-2 rounded-md border border-[#d9e0e7] bg-white p-3">
-      <legend className="px-1 text-xs font-semibold text-[#667085]">
+    <fieldset className="grid gap-2 rounded-md border border-line bg-surface p-3">
+      <legend className="px-1 text-xs font-semibold text-ink-muted">
         Participantes
       </legend>
       <div className="grid max-h-40 gap-2 overflow-auto md:grid-cols-2">
         {users.map((user) => (
           <label
-            className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-[#344054] hover:bg-[#f3f6fa]"
+            className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 text-sm text-ink hover:bg-subtle"
             key={user.id}
           >
             <input
@@ -2648,14 +2648,14 @@ function CreateOperationalUserModal({
         onClick={onClose}
         type="button"
       />
-      <div className="relative z-10 w-full max-w-xl rounded-md border border-[#d9e0e7] bg-white shadow-2xl">
-        <div className="flex items-center justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
-          <h2 className="m-0 text-base font-semibold text-[#101820]">
+      <div className="relative z-10 w-full max-w-xl rounded-md border border-line bg-surface shadow-2xl">
+        <div className="flex items-center justify-between gap-3 border-b border-line px-5 py-4">
+          <h2 className="m-0 text-base font-semibold text-ink">
             Novo usuario
           </h2>
           <button
             aria-label="Fechar"
-            className="grid h-8 w-8 place-items-center rounded-md text-[#667085] outline-none transition hover:bg-[#f3f6fa] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            className="grid h-8 w-8 place-items-center rounded-md text-ink-muted outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             onClick={onClose}
             type="button"
           >
@@ -2665,7 +2665,7 @@ function CreateOperationalUserModal({
         <form className="grid gap-4 p-5" onSubmit={handleSubmit}>
           {error ? (
             <div
-              className="rounded-md border border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800"
+              className="rounded-md border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 p-3 text-sm font-semibold text-amber-800 dark:text-amber-300"
               role="alert"
             >
               {error}
@@ -2697,11 +2697,11 @@ function CreateOperationalUserModal({
               value={jobTitle}
             />
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold text-[#667085]">
+              <span className="text-xs font-semibold text-ink-muted">
                 Departamento
               </span>
               <select
-                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+                className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
                 onChange={(event) => {
                   setDepartmentId(event.target.value);
                   setSectorId("");
@@ -2716,11 +2716,11 @@ function CreateOperationalUserModal({
               </select>
             </label>
             <label className="grid gap-1.5">
-              <span className="text-xs font-semibold text-[#667085]">
+              <span className="text-xs font-semibold text-ink-muted">
                 Setor
               </span>
               <select
-                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+                className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
                 onChange={(event) => setSectorId(event.target.value)}
                 value={sectorId}
               >
@@ -2855,13 +2855,13 @@ function LinkUserAssignmentModal({
             value={jobTitle}
           />
           <div className="grid gap-1.5 md:col-span-2">
-            <span className="text-xs font-semibold text-[#667085]">
+            <span className="text-xs font-semibold text-ink-muted">
               Foto do perfil
             </span>
-            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-md border border-[#d9e0e7] bg-[#fafbfc] p-3">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 rounded-md border border-line bg-subtle p-3">
               <span
                 aria-label={`Foto de ${fullName}`}
-                className="grid h-12 w-12 place-items-center rounded-full bg-[#101820] bg-cover bg-center text-sm font-semibold text-white"
+                className="grid h-12 w-12 place-items-center rounded-full bg-inverse bg-cover bg-center text-sm font-semibold text-brand-ink"
                 role="img"
                 style={
                   avatarUrl
@@ -2873,7 +2873,7 @@ function LinkUserAssignmentModal({
               >
                 {avatarUrl ? null : fullName.trim().charAt(0).toUpperCase()}
               </span>
-              <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] outline-none transition hover:border-[#A07C3B]/45 hover:bg-[#fbf7ef]">
+              <label className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none transition hover:border-[#A07C3B]/45 hover:bg-[#fbf7ef] dark:bg-[#a07c3b]/10">
                 <Upload aria-hidden="true" size={15} />
                 {isUploadingAvatar ? "Importando..." : "Importar PNG"}
                 <input
@@ -2886,11 +2886,11 @@ function LinkUserAssignmentModal({
               </label>
             </div>
             {avatarError ? (
-              <p className="m-0 text-xs font-semibold text-red-700">
+              <p className="m-0 text-xs font-semibold text-red-700 dark:text-red-300">
                 {avatarError}
               </p>
             ) : (
-              <p className="m-0 text-xs text-[#667085]">
+              <p className="m-0 text-xs text-ink-muted">
                 Use um PNG quadrado de ate 2 MB.
               </p>
             )}
@@ -2898,11 +2898,11 @@ function LinkUserAssignmentModal({
         </div>
         <div className="grid gap-3 md:grid-cols-2">
           <label className="grid gap-1.5">
-            <span className="text-xs font-semibold text-[#667085]">
+            <span className="text-xs font-semibold text-ink-muted">
               Departamento
             </span>
             <select
-              className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+              className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
               onChange={(event) => {
                 setDepartmentId(event.target.value);
                 setSectorId("");
@@ -2917,9 +2917,9 @@ function LinkUserAssignmentModal({
             </select>
           </label>
           <label className="grid gap-1.5">
-            <span className="text-xs font-semibold text-[#667085]">Setor</span>
+            <span className="text-xs font-semibold text-ink-muted">Setor</span>
             <select
-              className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+              className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
               onChange={(event) => setSectorId(event.target.value)}
               value={sectorId}
             >
@@ -2960,8 +2960,8 @@ function SetupFormCard({
   title: string;
 }) {
   return (
-    <div className="rounded-md border border-[#e5eaf0] bg-[#f8fafc] p-4">
-      <h2 className="m-0 mb-3 text-sm font-semibold text-[#101820]">{title}</h2>
+    <div className="rounded-md border border-line bg-subtle p-4">
+      <h2 className="m-0 mb-3 text-sm font-semibold text-ink">{title}</h2>
       {children}
     </div>
   );
@@ -2982,9 +2982,9 @@ function TextInput({
 }) {
   return (
     <label className="grid gap-1.5">
-      <span className="text-xs font-semibold text-[#667085]">{label}</span>
+      <span className="text-xs font-semibold text-ink-muted">{label}</span>
       <input
-        className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none placeholder:text-[#98a2b3] focus:border-[#A07C3B]"
+        className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-[#A07C3B]"
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
         type={inputType}
@@ -3003,9 +3003,9 @@ function ProfileSelect({
 }) {
   return (
     <label className="grid gap-1.5">
-      <span className="text-xs font-semibold text-[#667085]">Perfil</span>
+      <span className="text-xs font-semibold text-ink-muted">Perfil</span>
       <select
-        className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+        className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
         onChange={(event) =>
           onChange(event.target.value as SetupOperationalProfileRole)
         }
@@ -3031,9 +3031,9 @@ function UserStatusSelect({
 }) {
   return (
     <label className="grid gap-1.5">
-      <span className="text-xs font-semibold text-[#667085]">Status</span>
+      <span className="text-xs font-semibold text-ink-muted">Status</span>
       <select
-        className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+        className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
         onChange={(event) =>
           onChange(event.target.value as CreateOperationalUserInput["status"])
         }
@@ -3057,9 +3057,9 @@ function TextAreaInput({
 }) {
   return (
     <label className="grid gap-1.5">
-      <span className="text-xs font-semibold text-[#667085]">{label}</span>
+      <span className="text-xs font-semibold text-ink-muted">{label}</span>
       <textarea
-        className="min-h-20 resize-y rounded-md border border-[#d9e0e7] bg-white px-3 py-2 text-sm text-[#101820] outline-none placeholder:text-[#98a2b3] focus:border-[#A07C3B]"
+        className="min-h-20 resize-y rounded-md border border-line bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-[#A07C3B]"
         onChange={(event) => onChange(event.target.value)}
         value={value}
       />
@@ -3076,9 +3076,9 @@ function StatusSelect({
 }) {
   return (
     <label className="grid gap-1.5">
-      <span className="text-xs font-semibold text-[#667085]">Status</span>
+      <span className="text-xs font-semibold text-ink-muted">Status</span>
       <select
-        className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none focus:border-[#A07C3B]"
+        className="h-10 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none focus:border-[#A07C3B]"
         onChange={(event) => onChange(event.target.value as SetupRecordStatus)}
         value={value}
       >
@@ -3102,14 +3102,14 @@ function FormActions({
   return (
     <div className="flex items-center justify-end gap-2">
       <button
-        className="inline-flex h-10 items-center justify-center rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#344054] outline-none transition hover:bg-[#f8fafc] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+        className="inline-flex h-10 items-center justify-center rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none transition hover:bg-subtle focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
         onClick={onCancel}
         type="button"
       >
         Cancelar
       </button>
       <button
-        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0e7] disabled:text-[#667085]"
+        className="inline-flex h-10 items-center justify-center gap-2 rounded-md bg-[#A07C3B] px-3 text-sm font-semibold text-white outline-none transition hover:brightness-110 focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:bg-[#d9e0e7] disabled:text-ink-muted"
         disabled={disabled}
         type="submit"
       >

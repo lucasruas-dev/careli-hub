@@ -96,7 +96,7 @@ function SummaryPanel({
   return (
     <div className="grid gap-4">
       {/* Cabecalho do relacionamento */}
-      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <PanelTitle eyebrow="Resumo" title={summaryName(entity)} />
           <div className="flex flex-wrap gap-1.5">
@@ -128,7 +128,7 @@ function SummaryPanel({
 
       {/* Ultimos eventos + contato/vinculo */}
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
-        <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+        <section className="rounded-xl border border-line bg-surface p-4">
           <PanelTitle eyebrow="Atividade" title="Ultimos eventos" />
           <div className="mt-4 grid gap-2">
             {recentEvents.length ? (
@@ -139,23 +139,23 @@ function SummaryPanel({
 
                 return (
                   <div
-                    className="flex items-start gap-3 rounded-lg border border-slate-200/70 bg-slate-50/70 p-3"
+                    className="flex items-start gap-3 rounded-lg border border-line bg-subtle p-3"
                     key={`${event.title}-${event.date}-${index}`}
                   >
-                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-white text-[#7A5E2C] ring-1 ring-slate-200/70">
+                    <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-surface text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-line">
                       <Icon className="size-4" aria-hidden="true" />
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="m-0 truncate text-sm font-semibold text-slate-950">
+                        <p className="m-0 truncate text-sm font-semibold text-ink">
                           {displayText(event.title)}
                         </p>
-                        <span className="shrink-0 text-xs font-medium text-slate-400">
+                        <span className="shrink-0 text-xs font-medium text-ink-muted">
                           {event.date || "-"}
                         </span>
                       </div>
                       {event.description ? (
-                        <p className="m-0 mt-0.5 truncate text-xs font-medium text-slate-500">
+                        <p className="m-0 mt-0.5 truncate text-xs font-medium text-ink-muted">
                           {displayText(event.description)}
                         </p>
                       ) : null}
@@ -169,7 +169,7 @@ function SummaryPanel({
           </div>
         </section>
 
-        <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+        <section className="rounded-xl border border-line bg-surface p-4">
           <PanelTitle eyebrow="Contato e vinculo" title="Como falar e por quem veio" />
           <div className="mt-4 grid gap-3">
             <InfoTile label="Telefone" value={primaryPhone?.value ?? "-"} />
@@ -193,7 +193,7 @@ function SummaryPanel({
 
       {/* Cenario financeiro (somente comprador) */}
       {isBuyer ? (
-        <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+        <section className="rounded-xl border border-line bg-surface p-4">
           <PanelTitle eyebrow="Financeiro" title="Cenario financeiro" />
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
             <InfoTile
@@ -269,7 +269,7 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
 
   return (
     <div className="grid gap-4">
-      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <PanelTitle eyebrow="Dados do cliente" title="Cadastro" />
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {cadastroRows.map(([label, value]) => (
@@ -277,7 +277,7 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
           ))}
         </div>
       </section>
-      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <PanelTitle eyebrow="Cadastro completo" title="Dados cadastrais" />
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {detailRows.map(([label, value]) => (
@@ -285,7 +285,7 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
           ))}
         </div>
       </section>
-      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <PanelTitle eyebrow="Conjuge e representantes" title="Dados complementares" />
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <ReadonlyLine label="Conjuge" value="-" />
@@ -339,14 +339,14 @@ function PortfolioPanel({ entity }: { entity: ApoloEntity }) {
 
   return (
     <section className="grid gap-4 xl:grid-cols-[22rem_minmax(0,1fr)]">
-      <aside className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <aside className="rounded-xl border border-line bg-surface p-4">
         <div className="flex items-center gap-3">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+          <span className="flex size-9 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
             <MapPinned className="size-4" aria-hidden="true" />
           </span>
           <div>
-            <p className="m-0 text-sm font-semibold text-slate-950">Unidades e lotes</p>
-            <p className="m-0 mt-1 text-xs font-medium text-slate-500">
+            <p className="m-0 text-sm font-semibold text-ink">Unidades e lotes</p>
+            <p className="m-0 mt-1 text-xs font-medium text-ink-muted">
               Selecione uma unidade para operar.
             </p>
           </div>
@@ -360,7 +360,7 @@ function PortfolioPanel({ entity }: { entity: ApoloEntity }) {
                 className={`rounded-xl border p-4 text-left transition-colors ${
                   active
                     ? "border-[#A07C3B]/30 bg-[#A07C3B]/5"
-                    : "border-slate-200/70 bg-slate-50/60 hover:border-[#A07C3B]/20 hover:bg-[#A07C3B]/5"
+                    : "border-line bg-subtle hover:border-[#A07C3B]/20 hover:bg-[#A07C3B]/5"
                 }`}
                 key={unit.id}
                 onClick={() => {
@@ -369,8 +369,8 @@ function PortfolioPanel({ entity }: { entity: ApoloEntity }) {
                 }}
                 type="button"
               >
-                <p className="m-0 text-sm font-semibold text-slate-950">{unit.enterprise}</p>
-                <p className="m-0 mt-1 text-xs font-medium text-slate-500">
+                <p className="m-0 text-sm font-semibold text-ink">{unit.enterprise}</p>
+                <p className="m-0 mt-1 text-xs font-medium text-ink-muted">
                   {portfolioUnitSubtitle(unit)}
                 </p>
                 <div className="mt-3 grid gap-2 sm:grid-cols-2">
@@ -382,19 +382,19 @@ function PortfolioPanel({ entity }: { entity: ApoloEntity }) {
           })}
         </div>
       </aside>
-      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
-        <div className="flex flex-col gap-3 border-b border-slate-100 pb-4 lg:flex-row lg:items-start lg:justify-between">
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <div className="flex flex-col gap-3 border-b border-line pb-4 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <div className="flex items-center gap-3">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                 <MapPinned className="size-4" aria-hidden="true" />
               </span>
-              <p className="m-0 text-sm font-semibold text-slate-950">Unidade selecionada</p>
+              <p className="m-0 text-sm font-semibold text-ink">Unidade selecionada</p>
             </div>
-            <h3 className="m-0 mt-3 text-xl font-semibold text-slate-950">
+            <h3 className="m-0 mt-3 text-xl font-semibold text-ink">
               {selectedUnit.enterprise}
             </h3>
-            <p className="m-0 mt-2 text-sm font-medium text-slate-500">
+            <p className="m-0 mt-2 text-sm font-medium text-ink-muted">
               {portfolioUnitSubtitle(selectedUnit)}
             </p>
           </div>
@@ -427,7 +427,7 @@ function ApoloUnitSubtabNav({
   onChange: (subtab: ApoloUnitSubtab) => void;
 }) {
   return (
-    <nav aria-label="Detalhes da unidade" className="mt-4 flex w-fit flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1">
+    <nav aria-label="Detalhes da unidade" className="mt-4 flex w-fit flex-wrap gap-1 rounded-xl border border-line bg-surface p-1">
       {apoloUnitSubtabs.map((tab) => {
         const Icon = tab.icon;
         const active = activeSubtab === tab.id;
@@ -438,15 +438,15 @@ function ApoloUnitSubtabNav({
               aria-label={tab.label}
               className={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset transition-colors ${
                 active
-                  ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/20"
-                  : "bg-white text-slate-600 ring-slate-200/70 hover:bg-slate-50"
+                  ? "bg-[#A07C3B]/8 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/20"
+                  : "bg-surface text-ink-soft ring-line hover:bg-subtle"
               }`}
               onClick={() => onChange(tab.id)}
               type="button"
             >
               <Icon
                 aria-hidden="true"
-                className={`size-3.5 ${active ? "text-[#A07C3B]" : "text-slate-400"}`}
+                className={`size-3.5 ${active ? "text-[#A07C3B]" : "text-ink-muted"}`}
               />
             </button>
           </Tooltip>
@@ -539,15 +539,15 @@ function ApoloInstallmentsPanel({
         <CompactInfo label="Risco" value={risk} />
       </div>
 
-      <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+      <div className="rounded-xl border border-line bg-subtle p-4">
         <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <p className="m-0 text-sm font-semibold text-slate-950">Lista de parcelas</p>
-            <p className="m-0 mt-1 text-xs font-medium text-slate-500">
+            <p className="m-0 text-sm font-semibold text-ink">Lista de parcelas</p>
+            <p className="m-0 mt-1 text-xs font-medium text-ink-muted">
               {unit.enterprise} / {unit.unitLabel}
             </p>
           </div>
-          <span className="w-fit rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
+          <span className="w-fit rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line">
             Leitura Apolo
           </span>
         </div>
@@ -559,13 +559,13 @@ function ApoloInstallmentsPanel({
 
               return (
                 <article
-                  className="rounded-xl border border-slate-200/70 bg-white p-3"
+                  className="rounded-xl border border-line bg-surface p-3"
                   key={installment.id}
                 >
                   <div className="flex flex-col gap-3 2xl:flex-row 2xl:items-start 2xl:justify-between">
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
-                        <p className="m-0 text-sm font-semibold text-slate-950">
+                        <p className="m-0 text-sm font-semibold text-ink">
                           Parcela {installment.number}
                         </p>
                         <InstallmentStatusBadge status={installment.status} />
@@ -580,7 +580,7 @@ function ApoloInstallmentsPanel({
                     </div>
                     {boletoUrl ? (
                       <a
-                        className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+                        className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
                         href={boletoUrl}
                         rel="noreferrer"
                         target="_blank"
@@ -589,7 +589,7 @@ function ApoloInstallmentsPanel({
                         <ExternalLink className="size-3.5" aria-hidden="true" />
                       </a>
                     ) : (
-                      <span className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-slate-200/70 bg-slate-50 px-3 text-sm font-semibold text-slate-400">
+                      <span className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-line bg-subtle px-3 text-sm font-semibold text-ink-muted">
                         Sem boleto
                       </span>
                     )}
@@ -599,7 +599,7 @@ function ApoloInstallmentsPanel({
             })}
           </div>
         ) : (
-          <div className="rounded-xl border border-slate-200/70 bg-white px-4 py-6 text-center text-sm font-medium text-slate-500">
+          <div className="rounded-xl border border-line bg-surface px-4 py-6 text-center text-sm font-medium text-ink-muted">
             Nenhuma parcela real encontrada para esta unidade.
           </div>
         )}
@@ -610,9 +610,9 @@ function ApoloInstallmentsPanel({
 
 function InstallmentStatusBadge({ status }: { status: ApoloInstallment["status"] }) {
   const className = {
-    "A vencer": "bg-sky-50 text-sky-700 ring-sky-100",
-    Liquidada: "bg-emerald-50 text-emerald-700 ring-emerald-100",
-    Vencida: "bg-rose-50 text-rose-700 ring-rose-100",
+    "A vencer": "bg-sky-50 dark:bg-sky-500/12 text-sky-700 dark:text-sky-300 ring-sky-100 dark:ring-sky-500/20",
+    Liquidada: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20",
+    Vencida: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/20",
   }[status];
 
   return (
@@ -646,13 +646,13 @@ function ApoloUnitTimelinePanel({
   return (
     <div className="grid gap-3">
       {visibleEvents.map((event) => (
-        <article className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-3" key={`${event.title}-${event.date}`}>
+        <article className="rounded-xl border border-line bg-subtle p-3" key={`${event.title}-${event.date}`}>
           <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="m-0 text-sm font-semibold text-slate-950">{event.title}</p>
-              <p className="m-0 mt-1 text-sm leading-6 text-slate-600">{event.description}</p>
+              <p className="m-0 text-sm font-semibold text-ink">{event.title}</p>
+              <p className="m-0 mt-1 text-sm leading-6 text-ink-soft">{event.description}</p>
             </div>
-            <span className="w-fit rounded-full bg-white px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200">
+            <span className="w-fit rounded-full bg-surface px-2.5 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line">
               {event.date}
             </span>
           </div>
@@ -668,22 +668,22 @@ function ApoloUnitContractPanel({ unit }: { unit: ApoloPortfolioUnit }) {
     : unit.contractUrl;
 
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-slate-50/60 p-4">
+    <div className="rounded-xl border border-line bg-subtle p-4">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <p className="m-0 text-sm font-semibold text-slate-950">Contrato</p>
-          <p className="m-0 mt-2 text-lg font-semibold text-[#7A5E2C]">{unit.unitCode}</p>
-          <p className="m-0 mt-1 text-sm font-medium text-slate-500">
+          <p className="m-0 text-sm font-semibold text-ink">Contrato</p>
+          <p className="m-0 mt-2 text-lg font-semibold text-[#7a5e2c] dark:text-[#d9b877]">{unit.unitCode}</p>
+          <p className="m-0 mt-1 text-sm font-medium text-ink-muted">
             {unit.enterprise} / {unit.unitLabel}
           </p>
         </div>
-        <span className="w-fit rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+        <span className="w-fit rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
           {unit.contractStatus ?? "Nao localizado"}
         </span>
       </div>
       {contractUrl ? (
         <a
-          className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10"
+          className="mt-4 inline-flex h-9 items-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
           href={contractUrl}
           rel="noreferrer"
           target="_blank"
@@ -693,7 +693,7 @@ function ApoloUnitContractPanel({ unit }: { unit: ApoloPortfolioUnit }) {
         </a>
       ) : (
         <button
-          className="mt-4 inline-flex h-9 cursor-not-allowed items-center rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-semibold text-slate-400"
+          className="mt-4 inline-flex h-9 cursor-not-allowed items-center rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink-muted"
           disabled
           type="button"
         >
@@ -706,9 +706,9 @@ function ApoloUnitContractPanel({ unit }: { unit: ApoloPortfolioUnit }) {
 
 function CompactInfo({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-lg border border-slate-200/70 bg-white p-3">
-      <p className="m-0 text-[11px] font-medium text-slate-500">{label}</p>
-      <p className="m-0 mt-1 break-words text-sm font-semibold text-slate-950">
+    <div className="rounded-lg border border-line bg-surface p-3">
+      <p className="m-0 text-[11px] font-medium text-ink-muted">{label}</p>
+      <p className="m-0 mt-1 break-words text-sm font-semibold text-ink">
         {value || "-"}
       </p>
     </div>
@@ -748,7 +748,7 @@ function FinancialPanel({ entity }: { entity: ApoloEntity }) {
 
   return (
     <section className="grid gap-4">
-      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <PanelTitle eyebrow="Financeiro" title="Cenario financeiro do cliente" />
         <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
           <FinancialMetric
@@ -785,16 +785,16 @@ function FinancialPanel({ entity }: { entity: ApoloEntity }) {
           />
           <FinancialMetric label="Risco" tone="gold" value={entity.financial.risk} />
         </div>
-        <p className="m-0 mt-3 text-xs font-medium text-slate-400">
+        <p className="m-0 mt-3 text-xs font-medium text-ink-muted">
           Pagamentos, acordos e promessas abaixo. (mock para validacao — registro/escrita
           depende da API do Apolo)
         </p>
       </section>
-      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div>
             <PanelTitle eyebrow="Financeiro" title="Area financeira" />
-            <p className="m-0 mt-2 text-sm font-medium text-slate-500">
+            <p className="m-0 mt-2 text-sm font-medium text-ink-muted">
               Acordos agora ficam em subaba propria para abrir espaco para novas leituras financeiras.
             </p>
           </div>
@@ -806,7 +806,7 @@ function FinancialPanel({ entity }: { entity: ApoloEntity }) {
       </section>
       {activeFinancialSubtab === "acordos" ? (
         <>
-          <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+          <section className="rounded-xl border border-line bg-surface p-4">
             <PanelTitle eyebrow="Acordos" title="Indicadores de acordos e promessas" />
             <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
               <FinancialMetric label="Promessas abertas" value={String(summary.openPromises)} tone="gold" />
@@ -817,34 +817,34 @@ function FinancialPanel({ entity }: { entity: ApoloEntity }) {
               <FinancialMetric label="Risco de quebra" value={entity.financial.risk} tone="gold" />
             </div>
           </section>
-          <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+          <section className="rounded-xl border border-line bg-surface p-4">
             <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
               <div>
                 <PanelTitle eyebrow="Central operacional" title="Acordos e promessas" />
-                <p className="m-0 mt-2 text-sm font-medium text-slate-500">
+                <p className="m-0 mt-2 text-sm font-medium text-ink-muted">
                   Estrutura nativa do Apolo para compromissos financeiros do relacionamento.
                 </p>
               </div>
               <div className="flex gap-2">
                 <Tooltip content="Nova promessa depende da API de escrita do Apolo" placement="bottom">
-                  <button className="inline-flex size-9 cursor-not-allowed items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7A5E2C] opacity-70" disabled type="button">
+                  <button className="inline-flex size-9 cursor-not-allowed items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7a5e2c] dark:text-[#d9b877] opacity-70" disabled type="button">
                     <CalendarClock className="size-4" aria-hidden="true" />
                   </button>
                 </Tooltip>
                 <Tooltip content="Novo acordo depende da API de escrita do Apolo" placement="bottom">
-                  <button className="inline-flex size-9 cursor-not-allowed items-center justify-center rounded-lg bg-slate-100 text-slate-400" disabled type="button">
+                  <button className="inline-flex size-9 cursor-not-allowed items-center justify-center rounded-lg bg-subtle text-ink-muted" disabled type="button">
                     <Handshake className="size-4" aria-hidden="true" />
                   </button>
                 </Tooltip>
               </div>
             </div>
 
-            <div className="mt-4 grid gap-3 rounded-xl border border-slate-200/70 bg-slate-50/60 p-3 xl:grid-cols-[minmax(0,1fr)_300px]">
+            <div className="mt-4 grid gap-3 rounded-xl border border-line bg-subtle p-3 xl:grid-cols-[minmax(0,1fr)_300px]">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <button
                     aria-expanded={filtersExpanded}
-                    className="inline-flex h-8 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-600 hover:bg-[#A07C3B]/5"
+                    className="inline-flex h-8 items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink-soft hover:bg-[#A07C3B]/5"
                     onClick={() => setFiltersExpanded((current) => !current)}
                     type="button"
                   >
@@ -854,7 +854,7 @@ function FinancialPanel({ entity }: { entity: ApoloEntity }) {
                   </button>
                   {activeFilters.map((filter) => (
                     <Tooltip content={`Remover ${filter.label}`} key={`${filter.label}-${filter.value}`} placement="top">
-                      <button className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15" onClick={filter.clear} type="button">
+                      <button className="inline-flex h-7 max-w-44 items-center gap-1 rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15" onClick={filter.clear} type="button">
                         <span className="truncate">{filter.value}</span>
                         <span aria-hidden="true">x</span>
                       </button>
@@ -888,12 +888,12 @@ function FinancialPanel({ entity }: { entity: ApoloEntity }) {
                 </div>
               </div>
 
-              <div className="rounded-xl border border-[#A07C3B]/15 bg-white p-3">
+              <div className="rounded-xl border border-[#A07C3B]/15 bg-surface p-3">
                 <div className="flex items-center gap-2">
                   <Sparkles className="size-4 text-[#A07C3B]" aria-hidden="true" />
-                  <p className="m-0 text-sm font-semibold text-slate-950">Leitura operacional</p>
+                  <p className="m-0 text-sm font-semibold text-ink">Leitura operacional</p>
                 </div>
-                <p className="m-0 mt-2 text-xs leading-5 text-slate-600">
+                <p className="m-0 mt-2 text-xs leading-5 text-ink-soft">
                   {entity.financial.paymentBehavior}
                 </p>
               </div>
@@ -915,7 +915,7 @@ function FinancialSubtabNav({
   onChange: (subtab: ApoloFinancialSubtab) => void;
 }) {
   return (
-    <nav aria-label="Areas financeiras" className="mt-4 flex flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1">
+    <nav aria-label="Areas financeiras" className="mt-4 flex flex-wrap gap-1 rounded-xl border border-line bg-surface p-1">
       {apoloFinancialSubtabs.map((tab) => {
         const Icon = tab.icon;
         const active = activeSubtab === tab.id;
@@ -925,8 +925,8 @@ function FinancialSubtabNav({
             aria-current={active ? "page" : undefined}
             className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
               active
-                ? "bg-slate-950 text-white"
-                : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                ? "bg-inverse text-brand-ink"
+                : "text-ink-soft hover:bg-subtle hover:text-ink"
             }`}
             key={tab.id}
             onClick={() => onChange(tab.id)}
@@ -951,14 +951,14 @@ function FinancialMetric({
   value: string;
 }) {
   const toneClass = {
-    danger: "bg-rose-50 text-rose-700 ring-rose-100",
-    gold: "bg-[#A07C3B]/5 text-[#7A5E2C] ring-[#A07C3B]/15",
-    neutral: "bg-slate-50/70 text-slate-950 ring-slate-200/70",
+    danger: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/20",
+    gold: "bg-[#A07C3B]/5 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/15",
+    neutral: "bg-subtle text-ink ring-line",
   }[tone];
 
   return (
     <div className={`min-w-0 rounded-xl px-3 py-2.5 ring-1 ${toneClass}`}>
-      <p className="truncate text-xs font-medium text-slate-500">{label}</p>
+      <p className="truncate text-xs font-medium text-ink-muted">{label}</p>
       <p className="mt-1 truncate text-lg font-semibold tracking-normal">{value}</p>
     </div>
   );
@@ -977,9 +977,9 @@ function ApoloFilterSelect({
 }) {
   return (
     <label>
-      <span className="text-xs font-medium text-slate-500">{label}</span>
+      <span className="text-xs font-medium text-ink-muted">{label}</span>
       <select
-        className="mt-1 h-9 w-full rounded-lg border border-slate-200/70 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition-colors hover:bg-slate-50"
+        className="mt-1 h-9 w-full rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink outline-none transition-colors hover:bg-subtle"
         onChange={(event) => onChange(event.target.value)}
         value={value}
       >
@@ -992,15 +992,15 @@ function ApoloFilterSelect({
 function ApoloFinancialRecordList({ records }: { records: ApoloFinancialRecord[] }) {
   if (!records.length) {
     return (
-      <div className="mt-4 rounded-xl border border-dashed border-slate-200 bg-white px-4 py-8 text-center text-sm font-semibold text-slate-500">
+      <div className="mt-4 rounded-xl border border-dashed border-line bg-surface px-4 py-8 text-center text-sm font-semibold text-ink-muted">
         Nenhum acordo ou promessa materializado no Apolo para os filtros selecionados.
       </div>
     );
   }
 
   return (
-    <div className="mt-4 overflow-hidden rounded-xl border border-slate-200/70 bg-white">
-      <div className="grid grid-cols-[0.95fr_0.85fr_0.9fr_0.85fr_0.8fr_0.85fr] gap-3 border-b border-slate-100 bg-slate-50/80 px-4 py-2.5 text-xs font-semibold text-slate-500 max-lg:hidden">
+    <div className="mt-4 overflow-hidden rounded-xl border border-line bg-surface">
+      <div className="grid grid-cols-[0.95fr_0.85fr_0.9fr_0.85fr_0.8fr_0.85fr] gap-3 border-b border-line bg-subtle px-4 py-2.5 text-xs font-semibold text-ink-muted max-lg:hidden">
         <span>Tipo</span>
         <span>Status</span>
         <span>Registro</span>
@@ -1011,15 +1011,15 @@ function ApoloFinancialRecordList({ records }: { records: ApoloFinancialRecord[]
       <div className="max-h-[520px] overflow-y-auto [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-slate-300">
         {records.map((record) => (
           <article
-            className="grid gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 lg:grid-cols-[0.95fr_0.85fr_0.9fr_0.85fr_0.8fr_0.85fr] lg:items-center"
+            className="grid gap-3 border-b border-line px-4 py-3 last:border-b-0 lg:grid-cols-[0.95fr_0.85fr_0.9fr_0.85fr_0.8fr_0.85fr] lg:items-center"
             key={record.id}
           >
             <div className="min-w-0">
               <span className={`inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1 ring-inset ${financialRecordTypeClass(record.type)}`}>
                 {record.type}
               </span>
-              <p className="m-0 mt-1 truncate text-sm font-semibold text-slate-950">{record.enterprise}</p>
-              <p className="m-0 mt-0.5 truncate text-xs text-slate-500">{record.unitLabel}</p>
+              <p className="m-0 mt-1 truncate text-sm font-semibold text-ink">{record.enterprise}</p>
+              <p className="m-0 mt-0.5 truncate text-xs text-ink-muted">{record.unitLabel}</p>
             </div>
             <div>
               <span className={`inline-flex rounded-full px-2.5 py-1 text-xs font-semibold ring-1 ring-inset ${financialRecordStatusClass(record.status)}`}>
@@ -1027,23 +1027,23 @@ function ApoloFinancialRecordList({ records }: { records: ApoloFinancialRecord[]
               </span>
             </div>
             <div className="min-w-0">
-              <p className="m-0 truncate text-xs text-slate-500 lg:hidden">Registro</p>
-              <p className="m-0 mt-1 truncate text-sm font-semibold text-slate-950 lg:mt-0">{record.title}</p>
-              <p className="m-0 mt-0.5 w-fit rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+              <p className="m-0 truncate text-xs text-ink-muted lg:hidden">Registro</p>
+              <p className="m-0 mt-1 truncate text-sm font-semibold text-ink lg:mt-0">{record.title}</p>
+              <p className="m-0 mt-0.5 w-fit rounded-full bg-[#A07C3B]/5 px-2 py-0.5 text-[11px] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                 {record.protocol}
               </p>
             </div>
             <div className="min-w-0">
-              <p className="m-0 truncate text-xs text-slate-500 lg:hidden">Cod. unidade</p>
-              <p className="m-0 mt-1 truncate text-sm font-semibold text-slate-950 lg:mt-0">{record.unitCode}</p>
+              <p className="m-0 truncate text-xs text-ink-muted lg:hidden">Cod. unidade</p>
+              <p className="m-0 mt-1 truncate text-sm font-semibold text-ink lg:mt-0">{record.unitCode}</p>
             </div>
             <div className="min-w-0">
-              <p className="m-0 text-xs font-medium text-slate-500">Valor</p>
-              <p className="m-0 mt-1 truncate text-sm font-semibold text-slate-950">{record.value}</p>
+              <p className="m-0 text-xs font-medium text-ink-muted">Valor</p>
+              <p className="m-0 mt-1 truncate text-sm font-semibold text-ink">{record.value}</p>
             </div>
             <div className="min-w-0">
-              <p className="m-0 text-xs font-medium text-slate-500">Data</p>
-              <p className="m-0 mt-1 truncate text-sm font-semibold text-slate-950">{record.date}</p>
+              <p className="m-0 text-xs font-medium text-ink-muted">Data</p>
+              <p className="m-0 mt-1 truncate text-sm font-semibold text-ink">{record.date}</p>
             </div>
           </article>
         ))}
@@ -1122,26 +1122,26 @@ function DocumentsPanel({
   return (
     <section className="grid gap-4">
       {documentError ? (
-        <p className="m-0 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-700">
+        <p className="m-0 rounded-lg border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-semibold text-rose-700 dark:text-rose-300">
           {documentError}
         </p>
       ) : null}
-      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <PanelTitle eyebrow="Documentos" title="Contrato" />
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {contractDocuments.map((document) => (
             <article
-              className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4"
+              className="rounded-xl border border-line bg-subtle p-4"
               key={document.id}
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="m-0 truncate text-sm font-semibold text-slate-950">
+                  <p className="m-0 truncate text-sm font-semibold text-ink">
                     {document.title}
                   </p>
                   {document.href ? (
                     <button
-                      className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-white px-2 py-1 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-wait disabled:opacity-70"
+                      className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-surface px-2 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-wait disabled:opacity-70"
                       disabled={openingDocumentId === document.id}
                       onClick={() => {
                         if (document.href) {
@@ -1154,19 +1154,19 @@ function DocumentsPanel({
                       <ExternalLink className="size-3" aria-hidden="true" />
                     </button>
                   ) : (
-                    <p className="m-0 mt-1 truncate text-xs text-slate-500">
+                    <p className="m-0 mt-1 truncate text-xs text-ink-muted">
                       {document.detail}
                     </p>
                   )}
-                  <p className="m-0 mt-1 truncate text-xs font-medium text-slate-500">
+                  <p className="m-0 mt-1 truncate text-xs font-medium text-ink-muted">
                     {document.meta}
                   </p>
                 </div>
                 <div className="flex shrink-0 flex-col items-end gap-2">
-                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20">
+                  <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/20">
                     {document.unitBadge}
                   </span>
-                  <span className="rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-600 ring-1 ring-slate-200">
+                  <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
                     {document.status}
                   </span>
                 </div>
@@ -1178,23 +1178,23 @@ function DocumentsPanel({
           ) : null}
         </div>
       </section>
-      <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
         <PanelTitle eyebrow="Documentos" title="Cadastro e anexos" />
         <div className="mt-4 grid gap-3 md:grid-cols-2">
           {identityDocuments.map((document) => (
             <article
-              className="rounded-xl border border-slate-200/70 bg-slate-50/70 p-4"
+              className="rounded-xl border border-line bg-subtle p-4"
               key={document.id}
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <p className="m-0 text-sm font-semibold text-slate-950">
+                  <p className="m-0 text-sm font-semibold text-ink">
                     {document.title}
                   </p>
-                  <p className="m-0 mt-1 text-xs text-slate-500">
+                  <p className="m-0 mt-1 text-xs text-ink-muted">
                     {document.detail}
                   </p>
-                  <p className="m-0 mt-1 text-xs font-medium text-slate-500">
+                  <p className="m-0 mt-1 text-xs font-medium text-ink-muted">
                     {document.meta}
                   </p>
                 </div>
@@ -1236,15 +1236,15 @@ function TimelinePanel({
   ] as const satisfies readonly { icon: LucideIcon; label: string }[];
 
   return (
-    <section className="rounded-xl border border-slate-200/70 bg-white p-4">
+    <section className="rounded-xl border border-line bg-surface p-4">
       <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
         <PanelTitle eyebrow={`${filteredEvents.length}/${events.length} eventos`} title="Timeline operacional do relacionamento" />
         <div className="flex flex-wrap gap-2">
-          <label className="flex h-8 min-w-[16rem] items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/80 px-2.5 text-slate-500">
+          <label className="flex h-8 min-w-[16rem] items-center gap-2 rounded-lg border border-line bg-subtle px-2.5 text-ink-muted">
             <Search className="size-3.5 shrink-0" aria-hidden="true" />
             <span className="sr-only">Buscar na timeline</span>
             <input
-              className="w-full bg-transparent text-xs font-semibold text-slate-900 outline-none placeholder:text-slate-400"
+              className="w-full bg-transparent text-xs font-semibold text-ink outline-none placeholder:text-ink-muted"
               onChange={(event) => setTimelineQuery(event.target.value)}
               placeholder="Buscar evento, protocolo ou unidade"
               type="search"
@@ -1257,7 +1257,7 @@ function TimelinePanel({
 
               return (
                 <button
-                  className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-slate-200/70 bg-white px-2.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-slate-950"
+                  className="inline-flex h-8 shrink-0 items-center gap-2 rounded-lg border border-line bg-surface px-2.5 text-xs font-semibold text-ink transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 hover:text-ink"
                   key={action.label}
                   type="button"
                 >
@@ -1269,7 +1269,7 @@ function TimelinePanel({
           </div>
         </div>
       </div>
-      <div className="relative space-y-3 before:absolute before:left-[18px] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-slate-200">
+      <div className="relative space-y-3 before:absolute before:left-[18px] before:top-2 before:h-[calc(100%-1rem)] before:w-px before:bg-subtle">
         {filteredEvents.map((event) => (
           <TimelineRow event={event} key={`${event.date}-${event.title}`} />
         ))}
@@ -1301,20 +1301,20 @@ function TimelineRow({
   ].some((term) => normalized.includes(term));
   const Icon = getTimelineIcon(normalized);
   const statusTone = {
-    attention: "bg-amber-50 text-amber-800 ring-amber-100",
-    blocked: "bg-rose-50 text-rose-700 ring-rose-100",
-    ok: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    attention: "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20",
+    blocked: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/20",
+    ok: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20",
   } as const satisfies Record<ApoloTimelineEvent["status"], string>;
 
   return (
     <article
-      className={`rounded-xl border border-slate-200/70 bg-white p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)] ${
+      className={`rounded-xl border border-line bg-surface p-3 shadow-[0_1px_2px_rgba(15,23,42,0.03)] ${
         compact ? "" : "relative ml-11"
       }`}
     >
       {!compact ? (
-        <span className="absolute -left-[3rem] top-3 grid size-9 place-items-center rounded-lg border border-slate-200/70 bg-white">
-          <span className="grid size-5 place-items-center rounded-full bg-emerald-50 text-emerald-700">
+        <span className="absolute -left-[3rem] top-3 grid size-9 place-items-center rounded-lg border border-line bg-surface">
+          <span className="grid size-5 place-items-center rounded-full bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300">
             <Icon className="size-3.5" aria-hidden="true" />
           </span>
         </span>
@@ -1323,11 +1323,11 @@ function TimelineRow({
         <div className="min-w-0">
           <div className="flex min-w-0 flex-wrap items-center gap-2">
             {compact ? (
-              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#A07C3B]/5 text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-[#A07C3B]/5 text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
                 <Icon className="size-3.5" aria-hidden="true" />
               </span>
             ) : null}
-            <p className="m-0 truncate text-sm font-semibold text-slate-950">
+            <p className="m-0 truncate text-sm font-semibold text-ink">
               {event.title}
             </p>
             <span
@@ -1338,11 +1338,11 @@ function TimelineRow({
             <Pill>{isAction ? "Acao operacional" : "Informativo"}</Pill>
             {isAction ? <Pill>Protocolo pendente</Pill> : null}
           </div>
-          <p className="m-0 mt-2 text-sm font-medium text-slate-600">
+          <p className="m-0 mt-2 text-sm font-medium text-ink-soft">
             {event.description}
           </p>
         </div>
-        <time className="shrink-0 text-xs font-medium text-slate-500">
+        <time className="shrink-0 text-xs font-medium text-ink-muted">
           {event.date}
         </time>
       </div>
@@ -1352,19 +1352,19 @@ function TimelineRow({
 
 function AuditPanel({ audit }: { audit: readonly ApoloAuditSignal[] }) {
   return (
-    <section className="overflow-x-auto rounded-lg border border-slate-200/70 bg-white">
+    <section className="overflow-x-auto rounded-lg border border-line bg-surface">
       <div className="min-w-[38rem]">
-        <div className="grid grid-cols-[minmax(0,1fr)_8rem_8rem] gap-3 border-b border-slate-100 bg-slate-50/70 px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-slate-500">
+        <div className="grid grid-cols-[minmax(0,1fr)_8rem_8rem] gap-3 border-b border-line bg-subtle px-4 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
           <span>Campo</span>
           <span>Status</span>
           <span>Atualizado</span>
         </div>
         {audit.map((item) => (
           <div
-            className="grid grid-cols-[minmax(0,1fr)_8rem_8rem] gap-3 border-b border-slate-100 px-4 py-3 text-sm font-medium text-slate-600 last:border-b-0"
+            className="grid grid-cols-[minmax(0,1fr)_8rem_8rem] gap-3 border-b border-line px-4 py-3 text-sm font-medium text-ink-soft last:border-b-0"
             key={item.field}
           >
-            <span className="min-w-0 truncate font-semibold text-slate-950">
+            <span className="min-w-0 truncate font-semibold text-ink">
               {item.field}
             </span>
             <span>{item.status}</span>

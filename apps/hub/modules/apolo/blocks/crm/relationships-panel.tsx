@@ -14,16 +14,16 @@ export function RelationshipsPanel({ entity }: { entity: ApoloEntity }) {
 
   return (
     <div className="grid gap-5">
-      <section className="rounded-xl border border-slate-200/70 bg-white p-5">
+      <section className="rounded-xl border border-line bg-surface p-5">
         <PanelTitle eyebrow="Rede" title="Relacionamentos" />
-        <p className="m-0 mt-2 text-sm font-medium text-slate-500">
+        <p className="m-0 mt-2 text-sm font-medium text-ink-muted">
           A rede visual (grafo navegável) entra na próxima fase. Por enquanto, os
           vínculos em lista, separados por tipo.
         </p>
         <RelGroup items={trabalho} tone="gold" />
         <RelGroup items={contato} tone="clay" />
         {entity.relationships.length === 0 ? (
-          <p className="m-0 mt-4 text-sm font-medium text-slate-400">
+          <p className="m-0 mt-4 text-sm font-medium text-ink-muted">
             Nenhum relacionamento cadastrado ainda.
           </p>
         ) : null}
@@ -47,23 +47,23 @@ function RelGroup({
 
   return (
     <div className="mt-5">
-      <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-slate-400">
+      <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
         {isGold ? "Trabalho" : "Contato"}
       </p>
       <div className="mt-2 grid gap-2">
         {items.map((rel) => (
           <div
             key={`${rel.label}-${rel.relation}`}
-            className="flex items-center justify-between gap-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2.5"
+            className="flex items-center justify-between gap-3 rounded-lg border border-line bg-subtle px-3 py-2.5"
           >
             <div className="min-w-0">
-              <p className="m-0 truncate text-sm font-semibold text-slate-900">{rel.label}</p>
-              <p className="m-0 text-xs text-slate-500">{rel.relation}</p>
+              <p className="m-0 truncate text-sm font-semibold text-ink">{rel.label}</p>
+              <p className="m-0 text-xs text-ink-muted">{rel.relation}</p>
             </div>
             <span
               className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ${
                 isGold
-                  ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15"
+                  ? "bg-[#A07C3B]/8 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/15"
                   : "bg-[#b5623a]/10 text-[#8a4526] ring-[#b5623a]/20"
               }`}
             >

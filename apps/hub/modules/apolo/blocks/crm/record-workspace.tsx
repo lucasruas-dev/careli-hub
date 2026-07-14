@@ -71,7 +71,7 @@ function RecordWorkspace({
   }
 
   return (
-    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       {entity ? <RecordHeader entity={entity} /> : <RecordHeaderEmpty loading={loading} />}
       <TabStrip activeTab={activeTab} disabled={!entity} entity={entity} onChangeTab={onChangeTab} />
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
@@ -82,7 +82,7 @@ function RecordWorkspace({
             onOpenCommercialRelationship={onOpenCommercialRelationship}
           />
         ) : (
-          <div className="grid min-h-64 place-items-center rounded-lg border border-dashed border-slate-200 p-6 text-center text-sm font-semibold text-slate-500">
+          <div className="grid min-h-64 place-items-center rounded-lg border border-dashed border-line p-6 text-center text-sm font-semibold text-ink-muted">
             {loading ? "Carregando detalhe 360" : "Selecione um relacionamento"}
           </div>
         )}
@@ -273,10 +273,10 @@ function HadesRecordWorkspace({ entity }: { entity: ApoloEntity }) {
 
 function HadesWorkspaceLoading({ entity }: { entity: ApoloEntity }) {
   return (
-    <section className="flex min-h-0 flex-col rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:h-[calc(100vh-112px)]">
+    <section className="flex min-h-0 flex-col rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:h-[calc(100vh-112px)]">
       <RecordHeader entity={entity} />
       <PanteonLoadingState
-        className="flex-1 rounded-none border-0 bg-slate-50/35"
+        className="flex-1 rounded-none border-0 bg-subtle"
         minHeightClassName="min-h-72"
         title="Carregando carteira, acordos, documentos e contrato"
       />
@@ -307,13 +307,13 @@ function HadesUnavailableWorkspace({
   }[];
 
   return (
-    <section className="flex min-h-0 flex-col rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:h-[calc(100vh-112px)]">
+    <section className="flex min-h-0 flex-col rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)] xl:h-[calc(100vh-112px)]">
       <RecordHeader entity={entity} />
       <nav
         aria-label="Workspace operacional"
-        className="shrink-0 border-b border-slate-100 px-4 py-3"
+        className="shrink-0 border-b border-line px-4 py-3"
       >
-        <div className="flex w-fit flex-wrap gap-1 rounded-xl border border-slate-200/70 bg-white p-1">
+        <div className="flex w-fit flex-wrap gap-1 rounded-xl border border-line bg-surface p-1">
           {disabledTabs.map((tab) => {
             const Icon = tab.icon;
 
@@ -323,8 +323,8 @@ function HadesUnavailableWorkspace({
                   aria-label={tab.label}
                   className={`inline-flex size-8 shrink-0 items-center justify-center rounded-lg ring-1 ring-inset ${
                     tab.enabled
-                      ? "bg-white text-slate-600 ring-slate-200/70"
-                      : "cursor-not-allowed bg-slate-50 text-slate-300 ring-slate-200/70"
+                      ? "bg-surface text-ink-soft ring-line"
+                      : "cursor-not-allowed bg-subtle text-ink-muted ring-line"
                   }`}
                   disabled={!tab.enabled}
                   type="button"
@@ -336,9 +336,9 @@ function HadesUnavailableWorkspace({
           })}
         </div>
       </nav>
-      <div className="min-h-0 flex-1 overflow-y-auto bg-slate-50/35 p-4 sm:p-5">
+      <div className="min-h-0 flex-1 overflow-y-auto bg-subtle p-4 sm:p-5">
         <div className="grid gap-5">
-          <section className="rounded-xl border border-slate-200/70 bg-white p-5">
+          <section className="rounded-xl border border-line bg-surface p-5">
             <PanelTitle eyebrow="Visao geral" title="Cadastro no CRM com carteira operacional pendente" />
             <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
               <InfoTile label={isCompanyEntity(entity) ? "Razao social" : "Nome"} value={summaryName(entity)} />
@@ -346,7 +346,7 @@ function HadesUnavailableWorkspace({
               <InfoTile label="Perfil" value={profileLabelList(entity)} />
               <InfoTile label="Compra" value={buyerStatusLabel(entity)} />
             </div>
-            <p className="m-0 mt-4 text-sm font-medium text-slate-500">
+            <p className="m-0 mt-4 text-sm font-medium text-ink-muted">
               {statusMessage}
             </p>
           </section>
@@ -384,16 +384,16 @@ function DisabledOperationCard({
   value: string;
 }) {
   return (
-    <article className="rounded-xl border border-slate-200/70 bg-white p-4">
+    <article className="rounded-xl border border-line bg-surface p-4">
       <div className="flex items-start gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400 ring-1 ring-slate-200/70">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-subtle text-ink-muted ring-1 ring-line">
           <Icon className="size-4" aria-hidden="true" />
         </span>
         <div className="min-w-0">
-          <p className="m-0 text-sm font-semibold text-slate-950">{label}</p>
-          <p className="m-0 mt-1 text-xs font-medium text-slate-500">{value}</p>
+          <p className="m-0 text-sm font-semibold text-ink">{label}</p>
+          <p className="m-0 mt-1 text-xs font-medium text-ink-muted">{value}</p>
           <button
-            className="mt-3 inline-flex h-8 cursor-not-allowed items-center rounded-lg border border-slate-200/70 bg-slate-50 px-3 text-xs font-semibold text-slate-400"
+            className="mt-3 inline-flex h-8 cursor-not-allowed items-center rounded-lg border border-line bg-subtle px-3 text-xs font-semibold text-ink-muted"
             disabled
             type="button"
           >
@@ -413,11 +413,11 @@ function RecordHeader({ entity }: { entity: ApoloEntity }) {
   const roleChips = Array.from(new Set([primaryProfile, ...entity.profiles]));
 
   return (
-    <header className="shrink-0 border-b border-slate-100 px-4 py-3">
+    <header className="shrink-0 border-b border-line px-4 py-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-3">
-            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-subtle text-[#A07C3B] ring-1 ring-line">
               {entity.kind === "pj" || entity.kind === "organization" ? (
                 <Building2 className="size-4" aria-hidden="true" />
               ) : (
@@ -425,11 +425,11 @@ function RecordHeader({ entity }: { entity: ApoloEntity }) {
               )}
             </div>
             <div className="min-w-0">
-              <h2 className="m-0 truncate text-lg font-semibold tracking-normal text-slate-950">
+              <h2 className="m-0 truncate text-lg font-semibold tracking-normal text-ink">
                 {headerName}
               </h2>
               <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2 text-xs">
-                <span className="truncate text-slate-500">
+                <span className="truncate text-ink-muted">
                   {entity.locationLabel}
                 </span>
                 {roleChips.map((role, index) => (
@@ -437,14 +437,14 @@ function RecordHeader({ entity }: { entity: ApoloEntity }) {
                     key={role}
                     className={`inline-flex shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ${
                       index === 0
-                        ? "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15"
-                        : "bg-slate-50 text-slate-600 ring-slate-200/70"
+                        ? "bg-[#A07C3B]/8 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/15"
+                        : "bg-subtle text-ink-soft ring-line"
                     }`}
                   >
                     {apoloProfileLabels[role] ?? role}
                   </span>
                 ))}
-                <span className="inline-flex shrink-0 rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70">
+                <span className="inline-flex shrink-0 rounded-full bg-subtle px-2 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line">
                   {registrationLabel}
                 </span>
               </div>
@@ -462,9 +462,9 @@ function RecordHeader({ entity }: { entity: ApoloEntity }) {
 
 function RecordHeaderEmpty({ loading }: { loading: boolean }) {
   return (
-    <header className="shrink-0 border-b border-slate-100 px-4 py-3">
+    <header className="shrink-0 border-b border-line px-4 py-3">
       <div className="flex items-center gap-3">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-slate-50 text-slate-400 ring-1 ring-slate-200/70">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-subtle text-ink-muted ring-1 ring-line">
           {loading ? (
             <PanteonLoadingMark size="xs" />
           ) : (
@@ -472,10 +472,10 @@ function RecordHeaderEmpty({ loading }: { loading: boolean }) {
           )}
         </div>
         <div>
-          <h2 className="m-0 text-lg font-semibold text-slate-950">
+          <h2 className="m-0 text-lg font-semibold text-ink">
             {loading ? "Carregando" : "Sem relacionamento selecionado"}
           </h2>
-          <p className="m-0 mt-1 text-xs text-slate-500">
+          <p className="m-0 mt-1 text-xs text-ink-muted">
             O detalhe aparece quando houver um item selecionado.
           </p>
         </div>
@@ -498,7 +498,7 @@ function TabStrip({
   return (
     <nav
       aria-label="Areas do relacionamento"
-      className="shrink-0 overflow-x-auto border-b border-slate-100 px-3 py-2"
+      className="shrink-0 overflow-x-auto border-b border-line px-3 py-2"
     >
       <div className="flex gap-1">
         {apoloTabs.map((tab) => {
@@ -513,8 +513,8 @@ function TabStrip({
                 aria-current={active ? "page" : undefined}
                 className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm font-semibold outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-50 ${
                   active
-                    ? "bg-slate-950 text-white"
-                    : "text-slate-600 hover:bg-slate-50 hover:text-slate-950"
+                    ? "bg-inverse text-brand-ink"
+                    : "text-ink-soft hover:bg-subtle hover:text-ink"
                 }`}
                 disabled={tabDisabled}
                 onClick={() => onChangeTab(tab.id)}

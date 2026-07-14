@@ -213,11 +213,11 @@ export function ChronosRoomsManagementScreen({
 
   return (
     <div className="grid gap-4">
-      <Surface bordered className="border-[#d9e0e7] bg-white">
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] p-4">
+      <Surface bordered className="border-line bg-surface">
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-4">
           <PanelTitle eyebrow="Salas" title="Ambientes fixos" />
           <button
-            className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:border-[#A07C3B] hover:text-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-55"
+            className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:border-[#A07C3B] hover:text-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-55"
             disabled={saving}
             onClick={startNewRoomDraft}
             type="button"
@@ -226,7 +226,7 @@ export function ChronosRoomsManagementScreen({
             Nova sala
           </button>
         </div>
-        <div className="hidden grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,0.8fr)_minmax(12rem,1fr)_minmax(8rem,0.7fr)_auto] gap-3 border-b border-[#edf0f4] bg-[#fafbfc] px-4 py-2 text-xs font-bold uppercase text-[#667085] lg:grid">
+        <div className="hidden grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,0.8fr)_minmax(12rem,1fr)_minmax(8rem,0.7fr)_auto] gap-3 border-b border-line bg-subtle px-4 py-2 text-xs font-bold uppercase text-ink-muted lg:grid">
           <span>Sala</span>
           <span>Link</span>
           <span>Configuracao</span>
@@ -246,8 +246,8 @@ export function ChronosRoomsManagementScreen({
               <div
                 className={`grid gap-3 px-4 py-3 text-sm transition lg:grid-cols-[minmax(12rem,1.2fr)_minmax(10rem,0.8fr)_minmax(12rem,1fr)_minmax(8rem,0.7fr)_auto] lg:items-center ${
                   roomEditorOpen && !isCreatingRoom && room.id === selectedRoom?.id
-                    ? "bg-[#fffaf0]"
-                    : "bg-white hover:bg-[#fafbfc]"
+                    ? "bg-[#fffaf0] dark:bg-[#a07c3b]/10"
+                    : "bg-surface hover:bg-subtle"
                 }`}
                 key={room.id}
               >
@@ -256,15 +256,15 @@ export function ChronosRoomsManagementScreen({
                   onClick={() => openRoomEditor(room)}
                   type="button"
                 >
-                  <span className="truncate font-semibold text-[#101820]">
+                  <span className="truncate font-semibold text-ink">
                     {room.name}
                   </span>
-                  <span className="text-xs text-[#667085]">
+                  <span className="text-xs text-ink-muted">
                     {room.capacity} lugares
                   </span>
                 </button>
                 <a
-                  className="truncate text-xs font-semibold text-[#526078] transition hover:text-[#A07C3B]"
+                  className="truncate text-xs font-semibold text-ink-muted transition hover:text-[#A07C3B]"
                   href={roomPath}
                   rel="noreferrer"
                   target="_blank"
@@ -292,7 +292,7 @@ export function ChronosRoomsManagementScreen({
                 </span>
                 <div className="flex justify-start lg:justify-end">
                   <button
-                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B] hover:text-[#A07C3B]"
+                    className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-semibold text-ink transition hover:border-[#A07C3B] hover:text-[#A07C3B]"
                     onClick={() => openRoomEditor(room)}
                     type="button"
                   >
@@ -312,19 +312,19 @@ export function ChronosRoomsManagementScreen({
       </Surface>
 
       {roomEditorOpen ? (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-[#101820]/35 px-4 py-8 backdrop-blur-sm">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-inverse/35 px-4 py-8 backdrop-blur-sm">
           <button
             aria-label="Fechar configuracao de sala"
             className="absolute inset-0 cursor-default"
             onClick={closeRoomEditor}
             type="button"
           />
-          <Surface bordered className="relative z-10 w-full max-w-3xl border-[#d9e0e7] bg-white shadow-2xl">
-            <div className="flex items-start justify-between gap-3 border-b border-[#edf0f4] p-4">
+          <Surface bordered className="relative z-10 w-full max-w-3xl border-line bg-surface shadow-2xl">
+            <div className="flex items-start justify-between gap-3 border-b border-line p-4">
               <PanelTitle eyebrow="Configuracao" title={roomFormTitle} />
               <button
                 aria-label="Fechar configuracao"
-                className="grid h-8 w-8 place-items-center rounded-md text-[#667085] transition hover:bg-[#f3f6fa] hover:text-[#101820]"
+                className="grid h-8 w-8 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink"
                 onClick={closeRoomEditor}
                 type="button"
               >
@@ -332,32 +332,32 @@ export function ChronosRoomsManagementScreen({
               </button>
             </div>
             <form className="grid gap-3 p-4" onSubmit={handleSaveRoom}>
-              <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+              <label className="grid gap-1 text-xs font-bold uppercase text-ink-muted">
                 Nome da sala
                 <input
-                  className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                  className="h-9 rounded-md border border-line bg-surface px-3 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                   onChange={(event) => updateRoomDraft("name", event.target.value)}
                   placeholder="Sala Financeiro"
                   value={roomDraft.name}
                 />
               </label>
-              <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+              <label className="grid gap-1 text-xs font-bold uppercase text-ink-muted">
                 Link externo
                 <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_8rem]">
                   <input
-                    className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    className="h-9 rounded-md border border-line bg-surface px-3 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                     onChange={(event) =>
                       updateRoomDraft("slug", slugifyRoomName(event.target.value))
                     }
                     placeholder="sala-financeiro"
                     value={roomDraft.slug}
                   />
-                  <span className="inline-flex h-9 items-center justify-center rounded-md border border-[#d9e0e7] bg-[#f8fafc] px-2 text-xs normal-case text-[#667085]">
+                  <span className="inline-flex h-9 items-center justify-center rounded-md border border-line bg-subtle px-2 text-xs normal-case text-ink-muted">
                     solicitar entrada
                   </span>
                 </div>
                 <a
-                  className="truncate rounded-md border border-[#edf0f4] bg-[#fafbfc] px-3 py-2 text-xs normal-case text-[#526078] transition hover:border-[#A07C3B] hover:text-[#A07C3B]"
+                  className="truncate rounded-md border border-line bg-subtle px-3 py-2 text-xs normal-case text-ink-muted transition hover:border-[#A07C3B] hover:text-[#A07C3B]"
                   href={externalRoomPath}
                   rel="noreferrer"
                   target="_blank"
@@ -365,10 +365,10 @@ export function ChronosRoomsManagementScreen({
                   {externalRoomLink}
                 </a>
               </label>
-              <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+              <label className="grid gap-1 text-xs font-bold uppercase text-ink-muted">
                 Lugares
                 <input
-                  className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                  className="h-9 rounded-md border border-line bg-surface px-3 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                   min={1}
                   max={200}
                   onChange={(event) =>
@@ -378,7 +378,7 @@ export function ChronosRoomsManagementScreen({
                   value={roomDraft.capacity}
                 />
               </label>
-              <div className="grid gap-2 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
+              <div className="grid gap-2 rounded-md border border-line bg-subtle p-3">
                 {[
                   {
                     checked: roomDraft.recordingRequired,
@@ -397,7 +397,7 @@ export function ChronosRoomsManagementScreen({
                   },
                 ].map((option) => (
                   <label
-                    className="flex items-center justify-between gap-3 text-sm font-semibold text-[#101820]"
+                    className="flex items-center justify-between gap-3 text-sm font-semibold text-ink"
                     key={option.key}
                   >
                     <span>{option.label}</span>
@@ -413,10 +413,10 @@ export function ChronosRoomsManagementScreen({
                 ))}
               </div>
               <div className="grid gap-2">
-                <span className="text-xs font-bold uppercase text-[#667085]">
+                <span className="text-xs font-bold uppercase text-ink-muted">
                   Fundo da sala
                 </span>
-                <label className="inline-flex h-9 w-fit cursor-pointer items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:border-[#A07C3B] hover:text-[#A07C3B]">
+                <label className="inline-flex h-9 w-fit cursor-pointer items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:border-[#A07C3B] hover:text-[#A07C3B]">
                   <ImagePlus aria-hidden="true" size={15} />
                   Subir fundo
                   <input
@@ -430,7 +430,7 @@ export function ChronosRoomsManagementScreen({
                 </label>
                 {roomDraft.backgroundDataUrl ? (
                   <div
-                    className="min-h-28 rounded-md border border-[#d9e0e7] bg-cover bg-center p-3"
+                    className="min-h-28 rounded-md border border-line bg-cover bg-center p-3"
                     style={{
                       backgroundImage: `linear-gradient(rgba(16, 24, 32, 0.22), rgba(16, 24, 32, 0.22)), url(${roomDraft.backgroundDataUrl})`,
                     }}
@@ -443,20 +443,20 @@ export function ChronosRoomsManagementScreen({
                   // Fundo salvo no banco: os bytes nao viajam mais no snapshot
                   // (fix 7/jul), entao mostramos o NOME do fundo definido em vez
                   // de mentir "sem fundo". Escolher novo arquivo substitui.
-                  <div className="rounded-md border border-[#d9e0e7] bg-[#f7f3eb] p-3 text-xs font-semibold text-[#7b5f2d]">
+                  <div className="rounded-md border border-line bg-[#f7f3eb] p-3 text-xs font-semibold text-[#7b5f2d]">
                     Fundo personalizado definido: {roomDraft.backgroundName}. Ele
                     e aplicado na sala de video; escolha um arquivo para
                     substituir.
                   </div>
                 ) : (
-                  <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-3 text-xs font-semibold text-[#667085]">
+                  <div className="rounded-md border border-dashed border-line bg-subtle p-3 text-xs font-semibold text-ink-muted">
                     Sem fundo enviado. A sala usa o padrao institucional Chronos.
                   </div>
                 )}
               </div>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#edf0f4] pt-3">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
                 <button
-                  className="inline-flex h-9 items-center gap-2 rounded-md border border-[#101820] bg-[#101820] px-3 text-sm font-semibold text-white transition hover:border-[#A07C3B] hover:bg-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-55"
+                  className="inline-flex h-9 items-center gap-2 rounded-md border border-line-strong bg-inverse px-3 text-sm font-semibold text-brand-ink transition hover:border-[#A07C3B] hover:bg-[#A07C3B] disabled:cursor-not-allowed disabled:opacity-55"
                   disabled={saving}
                   type="submit"
                 >
@@ -466,7 +466,7 @@ export function ChronosRoomsManagementScreen({
                 <div className="flex flex-wrap gap-2">
                   {isCreatingRoom ? (
                     <button
-                      className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#667085] transition hover:text-[#101820]"
+                      className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink-muted transition hover:text-ink"
                       onClick={() => {
                         closeRoomEditor();
                       }}
@@ -478,7 +478,7 @@ export function ChronosRoomsManagementScreen({
                   ) : null}
                   {!isCreatingRoom && selectedRoom ? (
                     <button
-                      className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-55"
+                      className="inline-flex h-9 items-center gap-2 rounded-md border border-red-200 dark:border-red-500/30 bg-surface px-3 text-sm font-semibold text-red-700 dark:text-red-300 transition hover:bg-red-50 dark:bg-red-500/12 disabled:cursor-not-allowed disabled:opacity-55"
                       disabled={saving}
                       onClick={handleDeleteRoom}
                       type="button"

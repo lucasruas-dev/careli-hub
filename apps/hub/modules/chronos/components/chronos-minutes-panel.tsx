@@ -144,8 +144,8 @@ export function MinutesPanel({
   }
 
   return (
-    <Surface bordered className="grid min-h-full grid-rows-[auto_minmax(0,1fr)_auto] border-[#d9e0e7] bg-white">
-      <div className="flex items-start justify-between gap-3 border-b border-[#edf0f4] p-4">
+    <Surface bordered className="grid min-h-full grid-rows-[auto_minmax(0,1fr)_auto] border-line bg-surface">
+      <div className="flex items-start justify-between gap-3 border-b border-line p-4">
         <PanelTitle eyebrow="Ata" title="Formalizacao" />
         <Badge variant={chronosMinutesStatusVariant[safeMeeting.minutesStatus]}>
           {chronosMinutesStatusLabels[safeMeeting.minutesStatus]}
@@ -160,8 +160,8 @@ export function MinutesPanel({
                   <button
                     className={`inline-flex h-9 items-center justify-center rounded-md border px-3 text-sm font-semibold transition ${
                       minutesProfile === profileId
-                        ? "border-[#101820] bg-[#101820] text-white"
-                        : "border-[#d9e0e7] bg-white text-[#526078] hover:bg-[#f8fafc]"
+                        ? "border-line-strong bg-inverse text-brand-ink"
+                        : "border-line bg-surface text-ink-muted hover:bg-subtle"
                     }`}
                     key={profileId}
                     onClick={() =>
@@ -174,7 +174,7 @@ export function MinutesPanel({
                 ),
               )}
             </div>
-            <div className="inline-flex rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-1">
+            <div className="inline-flex rounded-md border border-line bg-subtle p-1">
               {[
                 ["preview", "Ata"],
                 ["transcript", "Transcricao"],
@@ -183,8 +183,8 @@ export function MinutesPanel({
                 <button
                   className={`h-7 rounded px-2 text-xs font-bold transition ${
                     minutesView === viewId
-                      ? "bg-[#101820] text-white"
-                      : "text-[#526078] hover:bg-white"
+                      ? "bg-inverse text-brand-ink"
+                      : "text-ink-muted hover:bg-surface"
                   }`}
                   key={viewId}
                   onClick={() => setMinutesView(viewId as ChronosMinutesView)}
@@ -197,7 +197,7 @@ export function MinutesPanel({
           </div>
           <div className="grid gap-2 sm:grid-cols-2">
             <button
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-subtle disabled:cursor-wait disabled:opacity-60"
               disabled={saving || !canGenerateMinutes}
               onClick={() => void runPrimaryMinutesAction()}
               type="button"
@@ -214,7 +214,7 @@ export function MinutesPanel({
                   : "Aguardando evidencia"}
             </button>
             <button
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#101820] bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-black disabled:cursor-not-allowed disabled:border-[#d9e0e7] disabled:bg-[#f8fafc] disabled:text-[#8a95a6]"
+              className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-line-strong bg-inverse px-3 text-sm font-semibold text-brand-ink transition hover:bg-black disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
               disabled={
                 saving || !transcribableRecording || hasOfficialTranscript
               }
@@ -237,16 +237,16 @@ export function MinutesPanel({
                 : "Gravacao pendente"}
             </button>
           </div>
-          <div className="rounded-md border border-[#d9e0e7] bg-white px-3 py-2 text-xs font-semibold text-[#526078]">
+          <div className="rounded-md border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-muted">
             {minutesEvidenceLabel}
           </div>
-          <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 text-sm leading-6 text-[#344054]">
+          <div className="rounded-md border border-line bg-subtle p-3 text-sm leading-6 text-ink">
             {safeMeeting.executiveSummary || "Resumo executivo pendente."}
           </div>
         </div>
         {minutesView === "edit" ? (
           <textarea
-            className="min-h-[22rem] w-full resize-none rounded-md border border-[#d9e0e7] bg-white p-3 text-sm leading-6 outline-none focus:border-[#A07C3B]"
+            className="min-h-[22rem] w-full resize-none rounded-md border border-line bg-surface p-3 text-sm leading-6 outline-none focus:border-[#A07C3B]"
             onChange={(event) => setMinutesDraft(event.target.value)}
             value={minutesDraft}
           />
@@ -260,11 +260,11 @@ export function MinutesPanel({
           />
         )}
       </div>
-      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-[#edf0f4] p-3">
+      <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line p-3">
         {canDeleteMinutes && latestMinutes ? (
           <button
             aria-label="Excluir ata"
-            className="mr-auto inline-flex h-9 items-center gap-2 rounded-md border border-red-200 bg-white px-3 text-sm font-semibold text-red-700 transition hover:bg-red-50 disabled:cursor-wait disabled:opacity-60"
+            className="mr-auto inline-flex h-9 items-center gap-2 rounded-md border border-red-200 dark:border-red-500/30 bg-surface px-3 text-sm font-semibold text-red-700 dark:text-red-300 transition hover:bg-red-50 dark:bg-red-500/12 disabled:cursor-wait disabled:opacity-60"
             disabled={saving}
             onClick={() => void deleteLatestMinutes()}
             type="button"
@@ -274,7 +274,7 @@ export function MinutesPanel({
           </button>
         ) : null}
         <button
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-subtle disabled:cursor-wait disabled:opacity-60"
           disabled={saving || !minutesDraft.trim()}
           onClick={() =>
             openChronosMinutesPrintWindow({
@@ -288,7 +288,7 @@ export function MinutesPanel({
           PDF
         </button>
         <button
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-subtle disabled:cursor-wait disabled:opacity-60"
           disabled={saving || !canPersistMinutes}
           onClick={() => void saveMinutes("in_review")}
           type="button"
@@ -297,7 +297,7 @@ export function MinutesPanel({
           Revisao
         </button>
         <button
-          className="inline-flex h-9 items-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-wait disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-2 rounded-md bg-inverse px-3 text-sm font-semibold text-brand-ink transition hover:bg-inverse disabled:cursor-wait disabled:opacity-60"
           disabled={saving || !canPersistMinutes}
           onClick={() => void saveMinutes("approved")}
           type="button"
@@ -317,43 +317,43 @@ function ChronosTranscriptFormattedPreview({
 }) {
   if (meeting.transcript.length === 0) {
     return (
-      <div className="grid min-h-[18rem] place-items-center rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-5 text-center text-sm font-semibold text-[#667085]">
+      <div className="grid min-h-[18rem] place-items-center rounded-md border border-dashed border-line bg-subtle p-5 text-center text-sm font-semibold text-ink-muted">
         Transcricao ainda nao disponivel para esta reuniao.
       </div>
     );
   }
 
   return (
-    <div className="rounded-md border border-[#d9e0e7] bg-[#eef2f6] p-3">
-      <div className="mb-3 flex flex-wrap items-start justify-between gap-3 rounded-md border border-[#edf0f4] bg-white p-3">
+    <div className="rounded-md border border-line bg-subtle p-3">
+      <div className="mb-3 flex flex-wrap items-start justify-between gap-3 rounded-md border border-line bg-surface p-3">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-[#101820] text-[#A07C3B]">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-md bg-inverse text-[#A07C3B]">
             <MessageSquareText aria-hidden="true" size={16} />
           </span>
           <div className="min-w-0">
             <p className="m-0 text-xs font-bold uppercase text-[#A07C3B]">
               Transcricao formatada
             </p>
-            <h3 className="m-0 mt-1 truncate text-sm font-bold text-[#101820]">
+            <h3 className="m-0 mt-1 truncate text-sm font-bold text-ink">
               {meeting.protocol} | {meeting.title}
             </h3>
           </div>
         </div>
-        <span className="rounded-full border border-[#d9e0e7] bg-[#f8fafc] px-2.5 py-1 text-xs font-semibold text-[#526078]">
+        <span className="rounded-full border border-line bg-subtle px-2.5 py-1 text-xs font-semibold text-ink-muted">
           {meeting.transcript.length} trecho(s)
         </span>
       </div>
       <div className="grid gap-2">
         {meeting.transcript.map((segment, index) => (
           <article
-            className="grid gap-2 rounded-md border border-[#edf0f4] bg-white p-3 text-sm leading-6 text-[#344054]"
+            className="grid gap-2 rounded-md border border-line bg-surface p-3 text-sm leading-6 text-ink"
             key={segment.id}
           >
-            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] pb-2">
-              <span className="text-xs font-bold uppercase text-[#667085]">
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
+              <span className="text-xs font-bold uppercase text-ink-muted">
                 {index + 1}. {segment.speakerLabel ?? "Participante"}
               </span>
-              <span className="text-xs font-semibold text-[#98a2b3]">
+              <span className="text-xs font-semibold text-ink-muted">
                 {formatChronosDateTime(segment.createdAt)}
               </span>
             </div>

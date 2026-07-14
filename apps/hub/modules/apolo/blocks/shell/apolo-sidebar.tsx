@@ -47,7 +47,7 @@ export function ApoloSidebar({
                 type="button"
                 onClick={onToggle}
                 aria-label="Expandir sidebar"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-ink-muted outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               >
                 <PanelLeftOpen className="size-4" aria-hidden="true" />
               </button>
@@ -60,7 +60,7 @@ export function ApoloSidebar({
               href="/"
               className="flex min-w-0 items-center gap-2.5 text-[#d5dde8] outline-none transition hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             >
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-inverse">
                 <ContactRound className="size-[18px]" aria-hidden="true" />
               </span>
               <span className="grid min-w-0 gap-0.5">
@@ -74,7 +74,7 @@ export function ApoloSidebar({
                 type="button"
                 onClick={onToggle}
                 aria-label="Recolher sidebar"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-ink-muted outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               >
                 <PanelLeftClose className="size-4" aria-hidden="true" />
               </button>
@@ -145,7 +145,7 @@ export function ApoloSidebar({
 
       <div className={`pb-5 pt-4 ${collapsed ? "px-3" : "px-6"}`}>
         <p
-          className={`truncate text-xs font-medium tracking-[0.16em] text-[#8E8EA0] transition-opacity duration-200 ${
+          className={`truncate text-xs font-medium tracking-[0.16em] text-ink-muted transition-opacity duration-200 ${
             collapsed ? "opacity-0" : "opacity-100"
           }`}
         >

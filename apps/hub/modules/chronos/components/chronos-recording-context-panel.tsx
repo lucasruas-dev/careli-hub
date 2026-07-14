@@ -14,7 +14,7 @@ export function RecordingContextPanel({
   meeting,
 }: RecordingContextPanelProps) {
   return (
-    <Surface bordered className="min-h-full border-[#d9e0e7] bg-white p-4">
+    <Surface bordered className="min-h-full border-line bg-surface p-4">
       <PanelTitle eyebrow="Gravacoes" title="Identificacao da reuniao" />
       <div className="mt-4 grid gap-3">
         <InfoBlock label="protocolo" value={meeting.protocol} />

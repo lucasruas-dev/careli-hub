@@ -49,7 +49,7 @@ export function ChronosModuleSidebar({
             <Tooltip content="Expandir Chronos" placement="right">
               <button
                 aria-label="Expandir sidebar Chronos"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-ink-muted outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 onClick={onToggleCollapsed}
                 type="button"
               >
@@ -60,7 +60,7 @@ export function ChronosModuleSidebar({
         ) : (
           <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
             <div className="flex min-w-0 items-center gap-2.5 text-[#d5dde8]">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-[#101820]">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-inverse">
                 <CalendarClock aria-hidden="true" size={18} />
               </span>
               <span className="grid min-w-0 gap-0.5">
@@ -72,7 +72,7 @@ export function ChronosModuleSidebar({
             <Tooltip content="Recolher Chronos" placement="right">
               <button
                 aria-label="Recolher sidebar Chronos"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-[#a5afbd] outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-ink-muted outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 onClick={onToggleCollapsed}
                 type="button"
               >
@@ -115,7 +115,7 @@ export function ChronosModuleSidebar({
                   className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
                     isActive
                       ? "panteon-module-sidebar__active-icon"
-                      : "text-[#8E8EA0]"
+                      : "text-ink-muted"
                   }`}
                 >
                   <Icon
@@ -142,7 +142,7 @@ export function ChronosModuleSidebar({
 
       <div className={`pb-5 pt-4 ${collapsed ? "px-3" : "px-6"}`}>
         <p
-          className={`truncate text-xs font-medium uppercase tracking-[0.16em] text-[#8E8EA0] transition-opacity duration-200 ${
+          className={`truncate text-xs font-medium uppercase tracking-[0.16em] text-ink-muted transition-opacity duration-200 ${
             collapsed ? "opacity-0" : "opacity-100"
           }`}
         >
