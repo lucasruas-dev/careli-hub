@@ -1481,10 +1481,12 @@ function ManagementView({
   onStartAttendance: (queueLabel?: string) => void;
 }) {
   // Board (kanban): abertos + encerrados HOJE (pra alimentar a coluna "Resolvido hoje").
+  // Grupos NAO entram: nao sao atendimento (nao abrem, nao encerram, nao tem SLA).
   const boardTickets = useMemo(
     () =>
       data.tickets.filter(
         (ticket) =>
+          ticket.isGroup !== true &&
           (canSeeCacaQueue || !isCacaOwnedTicket(ticket)) &&
           (!isClosedTicket(ticket) || isClosedToday(ticket)),
       ),
@@ -2921,7 +2923,8 @@ function IrisConversationPanel({
 
       const accessToken = await getIrisAccessToken();
       const response = await fetch("/api/iris/group-messages", {
-        body: JSON.stringify({ body, ticketId: ticket.id }),
+        // Grupo não é ticket: o id da conversa É o id do grupo.
+        body: JSON.stringify({ body, groupId: ticket.id }),
         cache: "no-store",
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -3881,8 +3884,13 @@ function IrisConversationPanel({
                 </h2>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-ink-muted">
                   <span>{ticket.protocol}</span>
-                  <span aria-hidden="true">-</span>
-                  <span>{statusLabel[ticketStatus]}</span>
+                  {/* Grupo nao tem status de atendimento (nao abre nem encerra). */}
+                  {!ticketIsGroup ? (
+                    <>
+                      <span aria-hidden="true">-</span>
+                      <span>{statusLabel[ticketStatus]}</span>
+                    </>
+                  ) : null}
                   <span aria-hidden="true">·</span>
                   {ticketIsEmail ? (
                     <EmailChannelChip
@@ -3959,55 +3967,63 @@ function IrisConversationPanel({
                   </button>
                 </Tooltip>
               ) : null}
-              <Tooltip content="Direcionar / transferir atendimento" placement="bottom">
-                <button
-                  type="button"
-                  onClick={() => setTransferModalOpen(true)}
-                  disabled={ticketClosed || transferring}
-                  aria-label="Direcionar / transferir atendimento"
-                  className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
-                >
-                  <Forward className="size-4" aria-hidden="true" />
-                </button>
-              </Tooltip>
-              <Tooltip
-                content={
-                  ticketClosed
-                    ? cobrancaMode
-                      ? "Atendimento encerrado"
-                      : "Chat encerrado"
-                    : closingTicket
-                      ? cobrancaMode
-                        ? "Encerrando atendimento..."
-                        : "Encerrando chat..."
-                      : cobrancaMode
-                        ? "Encerrar atendimento"
-                        : "Encerrar chat"
-                }
-                placement="bottom"
-              >
-                <button
-                  type="button"
-                  onClick={() => setCloseModalOpen(true)}
-                  disabled={ticketClosed || closingTicket}
-                  aria-label={
-                    ticketClosed
-                      ? cobrancaMode
-                        ? "Atendimento encerrado"
-                        : "Chat encerrado"
-                      : closingTicket
+              {/* Grupo não é atendimento: não se transfere nem se encerra. */}
+              {!ticketIsGroup ? (
+                <>
+                  <Tooltip
+                    content="Direcionar / transferir atendimento"
+                    placement="bottom"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setTransferModalOpen(true)}
+                      disabled={ticketClosed || transferring}
+                      aria-label="Direcionar / transferir atendimento"
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
+                    >
+                      <Forward className="size-4" aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip
+                    content={
+                      ticketClosed
                         ? cobrancaMode
-                          ? "Encerrando atendimento"
-                          : "Encerrando chat"
-                        : cobrancaMode
-                          ? "Encerrar atendimento"
-                          : "Encerrar chat"
-                  }
-                  className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200/70 bg-rose-50/70 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
-                >
-                  <CircleStop className="h-4 w-4" aria-hidden="true" />
-                </button>
-              </Tooltip>
+                          ? "Atendimento encerrado"
+                          : "Chat encerrado"
+                        : closingTicket
+                          ? cobrancaMode
+                            ? "Encerrando atendimento..."
+                            : "Encerrando chat..."
+                          : cobrancaMode
+                            ? "Encerrar atendimento"
+                            : "Encerrar chat"
+                    }
+                    placement="bottom"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setCloseModalOpen(true)}
+                      disabled={ticketClosed || closingTicket}
+                      aria-label={
+                        ticketClosed
+                          ? cobrancaMode
+                            ? "Atendimento encerrado"
+                            : "Chat encerrado"
+                          : closingTicket
+                            ? cobrancaMode
+                              ? "Encerrando atendimento"
+                              : "Encerrando chat"
+                            : cobrancaMode
+                              ? "Encerrar atendimento"
+                              : "Encerrar chat"
+                      }
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200/70 bg-rose-50/70 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
+                    >
+                      <CircleStop className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                </>
+              ) : null}
               <div className="flex w-fit items-center gap-1 rounded-lg border border-line/70 bg-surface p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                 <Tooltip content="Voltar" placement="bottom">
                   <button
@@ -4208,7 +4224,25 @@ function IrisConversationPanel({
       ) : (
         <IrisCobrancaContextSidebar
           apoloEntity={apoloContextEntity}
-          clienteFields={[
+          clienteFields={
+            // Grupo nao tem cliente/CPF/operador: mostra o que e do grupo.
+            ticketIsGroup
+              ? [
+                  {
+                    label: "Grupo",
+                    value: ticket.subject?.trim() || ticket.contactLabel,
+                  },
+                  { label: "Código", value: ticket.protocol },
+                  {
+                    label: "Participantes",
+                    value:
+                      typeof ticket.metadata?.participantsCount === "number"
+                        ? String(ticket.metadata.participantsCount)
+                        : "-",
+                  },
+                  { label: "Canal", value: "WhatsApp · Grupo" },
+                ]
+              : [
             {
               label: "Cliente",
               value:
@@ -4278,7 +4312,8 @@ function IrisConversationPanel({
                     value: customerServiceWindow.contextLabel,
                   },
                 ]),
-          ]}
+                ]
+          }
           clientId={null}
           collapsed={contextCollapsed}
           currentTicketId={ticket.id}
@@ -4733,12 +4768,21 @@ function TicketSeparator({
         ].join(" ")}
       >
         <div className="flex flex-wrap items-center justify-center gap-2">
-          <span className="rounded-full bg-[#A07C3B]/12 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15 dark:bg-[#A07C3B]/15 dark:text-[#d9b877] dark:ring-[#A07C3B]/30">
-            Ticket {ticket.protocol}
+          {/* Grupo nao e ticket: mostra o codigo do grupo (GRP-xxxx), sem status. */}
+          <span
+            className={
+              group
+                ? "rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-400/15 dark:text-amber-300 dark:ring-amber-400/30"
+                : "rounded-full bg-[#A07C3B]/12 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15 dark:bg-[#A07C3B]/15 dark:text-[#d9b877] dark:ring-[#A07C3B]/30"
+            }
+          >
+            {group ? ticket.protocol : `Ticket ${ticket.protocol}`}
           </span>
-          <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-soft ring-1 ring-slate-200 dark:ring-white/10">
-            {statusLabel[status]}
-          </span>
+          {!group ? (
+            <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-soft ring-1 ring-slate-200 dark:ring-white/10">
+              {statusLabel[status]}
+            </span>
+          ) : null}
         </div>
         {!compact ? (
           <>

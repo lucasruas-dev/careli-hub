@@ -241,28 +241,163 @@ export async function loadIrisData({
   );
   const messagesByTicket = groupMessagesByTicket(messagesResult.data ?? []);
 
+  // Grupos NAO sao tickets (decisao do Lucas, 14/jul): sao entidades proprias
+  // (GRP-xxxx) e as mensagens penduram direto neles. Aqui eles entram na mesma
+  // lista de conversas do cockpit, como uma conversa permanente (sem SLA/encerramento).
+  const groupConversations = await loadGroupConversations({
+    includeGroups:
+      !operatorUserId &&
+      (!normalizedQueueSlugFilter ||
+        normalizedQueueSlugFilter === GROUP_QUEUE_SLUG),
+    queues,
+    supabase,
+  });
+
   return {
     broadcasts,
     channels,
     profiles,
     queues,
     templates,
-    tickets: ticketsRows.map((ticket) =>
-      mapTicketRow({
-        channel: ticket.channel_id ? channelById.get(ticket.channel_id) : null,
-        contact: ticket.contact_id ? contactById.get(ticket.contact_id) : null,
-        messages: messagesByTicket.get(ticket.id) ?? [],
-        profile: ticket.profile_id ? profileById.get(ticket.profile_id) : null,
-        queue: ticket.queue_id
-          ? (queueById.get(ticket.queue_id) ?? null)
-          : null,
-        assignedUser: ticket.assigned_to_user_id
-          ? assignedUserById.get(ticket.assigned_to_user_id)
-          : null,
-        row: ticket,
-      }),
-    ),
+    tickets: [
+      ...ticketsRows.map((ticket) =>
+        mapTicketRow({
+          channel: ticket.channel_id
+            ? channelById.get(ticket.channel_id)
+            : null,
+          contact: ticket.contact_id ? contactById.get(ticket.contact_id) : null,
+          messages: messagesByTicket.get(ticket.id) ?? [],
+          profile: ticket.profile_id ? profileById.get(ticket.profile_id) : null,
+          queue: ticket.queue_id
+            ? (queueById.get(ticket.queue_id) ?? null)
+            : null,
+          assignedUser: ticket.assigned_to_user_id
+            ? assignedUserById.get(ticket.assigned_to_user_id)
+            : null,
+          row: ticket,
+        }),
+      ),
+      ...groupConversations,
+    ],
   };
+}
+
+const GROUP_QUEUE_SLUG = "grupos-whatsapp";
+const GROUP_CHANNEL_SLUG = "whatsapp-grupo";
+
+// Carrega os grupos monitorados e suas mensagens, devolvendo cada grupo como uma
+// CONVERSA (formato IrisTicket para o cockpit reaproveitar a tela). Nao ha ticket
+// por tras: o "protocolo" e o codigo do grupo (GRP-xxxx) e o id e o id do grupo.
+async function loadGroupConversations({
+  includeGroups,
+  queues,
+  supabase,
+}: {
+  includeGroups: boolean;
+  queues: IrisQueueConfig[];
+  supabase: NonNullable<ReturnType<typeof getHubSupabaseClient>>;
+}): Promise<IrisTicket[]> {
+  if (!includeGroups) {
+    return [];
+  }
+
+  const groupsResult = await supabase
+    .from("caredesk_whatsapp_groups")
+    .select(
+      "id,code,group_jid,subject,participants_count,monitored,last_message_at,created_at,updated_at",
+    )
+    .eq("monitored", true)
+    .order("last_message_at", { ascending: false, nullsFirst: false })
+    .limit(100);
+
+  const groupRows = groupsResult.data ?? [];
+
+  if (groupRows.length === 0) {
+    return [];
+  }
+
+  const groupIds = groupRows.map((group: any) => group.id as string);
+
+  const groupMessagesResult = await supabase
+    .from("caredesk_messages")
+    .select(
+      "id,group_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
+    )
+    .in("group_id", groupIds)
+    .order("created_at", { ascending: false })
+    .limit(1000);
+
+  const messagesByGroup = new Map<string, IrisMessage[]>();
+  for (const row of groupMessagesResult.data ?? []) {
+    const groupId = (row as any).group_id as string | null;
+    if (!groupId) {
+      continue;
+    }
+    const list = messagesByGroup.get(groupId) ?? [];
+    list.push(mapMessageRow(row));
+    messagesByGroup.set(groupId, list);
+  }
+  // Vieram DESC (pra nao perder as mais novas no corte de 1000); o resto do
+  // codigo espera ordem cronologica.
+  for (const list of messagesByGroup.values()) {
+    list.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  }
+
+  const groupQueue = queues.find((queue) => queue.slug === GROUP_QUEUE_SLUG);
+  // O mapeamento de canais nao carrega o slug — busca o canal do grupo direto.
+  const groupChannelResult = await supabase
+    .from("caredesk_channels")
+    .select("id,name")
+    .eq("slug", GROUP_CHANNEL_SLUG)
+    .maybeSingle<{ id: string; name: string }>();
+  const groupChannel = groupChannelResult.data ?? null;
+
+  return groupRows.map((group: any) => {
+    const messages = messagesByGroup.get(group.id as string) ?? [];
+    const lastMessage = messages[messages.length - 1];
+    const title = (group.subject as string | null)?.trim() || "Grupo de WhatsApp";
+
+    return {
+      assignedToLabel: "Grupo monitorado",
+      channelId: groupChannel?.id ?? null,
+      channelKind: "whatsapp",
+      channelLabel: groupChannel?.name ?? "WhatsApp - Grupo",
+      contactLabel: title,
+      contactPhone: null,
+      createdAt: (group.created_at as string) ?? new Date().toISOString(),
+      id: group.id as string,
+      isGroup: true,
+      lastMessageAt:
+        (group.last_message_at as string | null) ??
+        lastMessage?.createdAt ??
+        (group.created_at as string),
+      lastMessagePreview: lastMessage
+        ? irisMessagePreview(lastMessage)
+        : "Sem mensagens registradas",
+      messages,
+      metadata: {
+        groupCode: group.code,
+        groupJid: group.group_jid,
+        participantsCount: group.participants_count,
+      },
+      openedAt: (group.created_at as string) ?? new Date().toISOString(),
+      priority: "medium",
+      profileLabel: "Grupo",
+      protocol: (group.code as string) ?? "GRP",
+      queueLabel: groupQueue?.name ?? "Grupos",
+      queueSlug: groupQueue?.slug ?? GROUP_QUEUE_SLUG,
+      sourceContext: {
+        groupJid: group.group_jid,
+        provider: "evolution",
+        readOnly: false,
+      },
+      sourceLabel: "WhatsApp · Grupo",
+      status: "open",
+      subject: title,
+      unread: false,
+      unreadCount: 0,
+    } satisfies IrisTicket;
+  });
 }
 
 export async function enrichTicketsWithCrm360(
