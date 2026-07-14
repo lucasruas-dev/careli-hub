@@ -77,25 +77,25 @@ export function ChronosDriveMeetingRecordingCard({
 
   if (viewMode === "list") {
     return (
-      <article className="grid gap-3 border-b border-[#edf0f4] bg-white px-3 py-3 text-sm text-[#101820] transition hover:bg-[#fafbfc] xl:grid-cols-[minmax(15rem,1.3fr)_minmax(11rem,0.9fr)_minmax(13rem,1fr)_auto] xl:items-center">
+      <article className="grid gap-3 border-b border-line bg-surface px-3 py-3 text-sm text-ink transition hover:bg-subtle xl:grid-cols-[minmax(15rem,1.3fr)_minmax(11rem,0.9fr)_minmax(13rem,1fr)_auto] xl:items-center">
         <div className="min-w-0">
-          <p className="m-0 truncate text-sm font-semibold text-[#101820]">
+          <p className="m-0 truncate text-sm font-semibold text-ink">
             {displayTitle}
           </p>
-          <p className="m-0 mt-1 truncate text-xs text-[#667085]">
+          <p className="m-0 mt-1 truncate text-xs text-ink-muted">
             {meeting.protocol}
             {recordingMeeting.roomLabel ? ` · ${recordingMeeting.roomLabel}` : ""}
           </p>
           {objective ? (
             <p
-              className="m-0 mt-1 truncate text-xs text-[#667085]"
+              className="m-0 mt-1 truncate text-xs text-ink-muted"
               title={objective}
             >
               {objective}
             </p>
           ) : null}
         </div>
-        <div className="grid gap-1 text-xs text-[#667085]">
+        <div className="grid gap-1 text-xs text-ink-muted">
           <span>{whenLine}</span>
           {detailLine ? <span>{detailLine}</span> : null}
           {people.length > 0 ? (
@@ -126,7 +126,7 @@ export function ChronosDriveMeetingRecordingCard({
   }
 
   return (
-    <article className="grid overflow-hidden rounded-md border border-[#edf0f4] bg-[#fafbfc] text-sm text-[#101820] transition hover:border-[#d9e0e7] hover:bg-white">
+    <article className="grid overflow-hidden rounded-md border border-line bg-subtle text-sm text-ink transition hover:border-line hover:bg-surface">
       {canOpenVideo ? (
         <video
           className="aspect-video w-full bg-black"
@@ -135,7 +135,7 @@ export function ChronosDriveMeetingRecordingCard({
           src={primaryRecording?.url}
         />
       ) : (
-        <div className="grid aspect-video place-items-center bg-[#101820] text-white">
+        <div className="grid aspect-video place-items-center bg-inverse text-brand-ink">
           <div className="grid justify-items-center gap-2">
             <Video aria-hidden="true" size={24} />
             <span className="text-xs font-semibold text-[#d7dee8]">
@@ -148,15 +148,15 @@ export function ChronosDriveMeetingRecordingCard({
       )}
       <div className="grid gap-3 p-3">
         <div className="min-w-0">
-          <p className="m-0 truncate text-sm font-semibold text-[#101820]">
+          <p className="m-0 truncate text-sm font-semibold text-ink">
             {displayTitle}
           </p>
-          <p className="m-0 mt-1 truncate text-xs text-[#667085]">
+          <p className="m-0 mt-1 truncate text-xs text-ink-muted">
             {meeting.protocol}
             {recordingMeeting.roomLabel ? ` · ${recordingMeeting.roomLabel}` : ""}
           </p>
         </div>
-        <div className="grid gap-1 text-xs text-[#667085]">
+        <div className="grid gap-1 text-xs text-ink-muted">
           <span>{whenLine}</span>
           {detailLine ? <span>{detailLine}</span> : null}
           {people.length > 0 ? (
@@ -335,7 +335,7 @@ function ChronosDriveArtifactChips({
 
 const chronosDriveChipStateClasses: Record<ChronosDriveArtifactState, string> = {
   failed: "border-[#f4c7c3] bg-[#fdecea] text-[#a50e0e]",
-  none: "border-[#e4e8ee] bg-[#f6f8fa] text-[#8a95a6]",
+  none: "border-[#e4e8ee] bg-[#f6f8fa] text-ink-muted",
   ok: "border-[#c9e7d4] bg-[#e6f4ea] text-[#188038]",
   processing: "border-[#f0e0bb] bg-[#fdf7e7] text-[#8a6d1d]",
 };
@@ -384,7 +384,7 @@ function ChronosDriveRecordingActions({
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       <button
-        className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
+        className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-surface px-2.5 text-xs font-semibold text-ink transition hover:border-[#A07C3B]"
         onClick={() => onOpenMeetingMinutes(recordingMeetingRuntime.meeting.id)}
         type="button"
       >
@@ -393,7 +393,7 @@ function ChronosDriveRecordingActions({
       </button>
       {canOpenVideo && primaryRecording ? (
         <button
-          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
+          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-surface px-2.5 text-xs font-semibold text-ink transition hover:border-[#A07C3B]"
           onClick={() => setPlayerOpen(true)}
           type="button"
         >
@@ -402,7 +402,7 @@ function ChronosDriveRecordingActions({
         </button>
       ) : (
         <button
-          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#8a95a6] disabled:cursor-not-allowed disabled:opacity-70"
+          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-line bg-surface px-2.5 text-xs font-semibold text-ink-muted disabled:cursor-not-allowed disabled:opacity-70"
           disabled
           title="O video ainda esta sendo copiado para o Drive"
           type="button"
@@ -413,7 +413,7 @@ function ChronosDriveRecordingActions({
       )}
       {downloadUrl && downloadUrl !== "#" && primaryRecording ? (
         <a
-          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-[#101820] bg-[#101820] px-2.5 text-xs font-semibold text-white transition hover:bg-black"
+          className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-line-strong bg-inverse px-2.5 text-xs font-semibold text-brand-ink transition hover:bg-black"
           download={primaryRecording.name}
           href={downloadUrl}
         >
@@ -424,10 +424,10 @@ function ChronosDriveRecordingActions({
       {playerOpen && primaryRecording?.url ? (
         <div
           aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center bg-[#101820]/75 p-4"
+          className="fixed inset-0 z-50 grid place-items-center bg-inverse/75 p-4"
           role="dialog"
         >
-          <div className="grid max-h-[92dvh] w-full max-w-5xl overflow-hidden rounded-md border border-[#2a3542] bg-[#101820] shadow-2xl">
+          <div className="grid max-h-[92dvh] w-full max-w-5xl overflow-hidden rounded-md border border-[#2a3542] bg-inverse shadow-2xl">
             <div className="flex items-center justify-between gap-3 border-b border-white/10 px-4 py-3">
               <div className="min-w-0">
                 <p className="m-0 truncate text-sm font-semibold text-white">
@@ -455,7 +455,7 @@ function ChronosDriveRecordingActions({
             {downloadUrl && downloadUrl !== "#" ? (
               <div className="flex justify-end border-t border-white/10 px-4 py-3">
                 <a
-                  className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/15 bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:bg-[#f3f6fa]"
+                  className="inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-md border border-white/15 bg-surface px-2.5 text-xs font-semibold text-ink transition hover:bg-subtle"
                   download={primaryRecording.name}
                   href={downloadUrl}
                 >

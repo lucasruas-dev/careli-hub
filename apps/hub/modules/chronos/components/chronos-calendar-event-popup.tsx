@@ -440,17 +440,17 @@ export function ChronosCalendarEventPopup({
 
   return (
     <form
-      className="relative z-10 grid max-h-[calc(100vh-6rem)] w-full max-w-[44rem] gap-3 overflow-y-auto overflow-x-hidden rounded-lg border border-[#d9e0e7] bg-white p-5 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]"
+      className="relative z-10 grid max-h-[calc(100vh-6rem)] w-full max-w-[44rem] gap-3 overflow-y-auto overflow-x-hidden rounded-lg border border-line bg-surface p-5 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]"
       onSubmit={handleSubmit}
       onClick={(event) => event.stopPropagation()}
     >
       <div className="flex items-center justify-between gap-3">
-        <span className="grid h-7 w-7 place-items-center rounded-md text-[#667085]">
+        <span className="grid h-7 w-7 place-items-center rounded-md text-ink-muted">
           <CalendarClock aria-hidden="true" size={17} />
         </span>
         <button
           aria-label="Fechar popup de evento"
-          className="grid h-8 w-8 place-items-center rounded-md text-[#667085] transition hover:bg-[#f5f7fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+          className="grid h-8 w-8 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
           onClick={onCancel}
           type="button"
         >
@@ -460,7 +460,7 @@ export function ChronosCalendarEventPopup({
 
       <div className="grid gap-3 pl-10">
         <input
-          className="h-11 border-0 border-b-2 border-[#d9e0e7] bg-transparent px-0 text-xl font-semibold text-[#101820] outline-none placeholder:text-[#667085] focus:border-[#A07C3B]"
+          className="h-11 border-0 border-b-2 border-line bg-transparent px-0 text-xl font-semibold text-ink outline-none placeholder:text-ink-muted focus:border-[#A07C3B]"
           onChange={(event) => setTitle(event.target.value)}
           placeholder="Adicionar titulo"
           required
@@ -474,7 +474,7 @@ export function ChronosCalendarEventPopup({
               className={`h-8 shrink-0 rounded-md px-3 text-xs font-semibold transition ${
                 calendarEventKind === kind.id
                   ? "bg-[#d8edf8] text-[#075985]"
-                  : "text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
+                  : "text-ink-muted hover:bg-subtle hover:text-ink"
               }`}
               key={kind.id}
               onClick={() => setCalendarEventKind(kind.id)}
@@ -488,22 +488,22 @@ export function ChronosCalendarEventPopup({
 
       <div className="grid gap-3">
         <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-3">
-          <Clock3 aria-hidden="true" className="justify-self-center text-[#667085]" size={17} />
+          <Clock3 aria-hidden="true" className="justify-self-center text-ink-muted" size={17} />
           <div className="grid gap-2 sm:grid-cols-2">
-            <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+            <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
               Inicio
               <input
-                className="h-9 rounded-md border border-[#d9e0e7] bg-[#fafbfc] px-3 text-sm font-medium normal-case text-[#101820] outline-none focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+                className="h-9 rounded-md border border-line bg-subtle px-3 text-sm font-medium normal-case text-ink outline-none focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                 onChange={(event) => handleStartsAtChange(event.target.value)}
                 required
                 type="datetime-local"
                 value={startsAt}
               />
             </label>
-            <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+            <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
               Fim
               <input
-                className="h-9 rounded-md border border-[#d9e0e7] bg-[#fafbfc] px-3 text-sm font-medium normal-case text-[#101820] outline-none focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+                className="h-9 rounded-md border border-line bg-subtle px-3 text-sm font-medium normal-case text-ink outline-none focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                 min={startsAt}
                 onChange={(event) => setEndsAt(event.target.value)}
                 required
@@ -515,9 +515,9 @@ export function ChronosCalendarEventPopup({
         </div>
 
         <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
-          <UsersRound aria-hidden="true" className="justify-self-center text-[#667085]" size={17} />
+          <UsersRound aria-hidden="true" className="justify-self-center text-ink-muted" size={17} />
           <div className="grid gap-2">
-            <div className="inline-grid w-fit grid-cols-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-0.5">
+            <div className="inline-grid w-fit grid-cols-2 rounded-md border border-line bg-subtle p-0.5">
               {[
                 { id: "internal", label: "Interno" },
                 { id: "external", label: "Apolo" },
@@ -526,8 +526,8 @@ export function ChronosCalendarEventPopup({
                   aria-pressed={inviteeSource === option.id}
                   className={`h-8 rounded px-3 text-xs font-semibold transition ${
                     inviteeSource === option.id
-                      ? "bg-[#101820] text-white"
-                      : "text-[#667085] hover:bg-white hover:text-[#101820]"
+                      ? "bg-inverse text-brand-ink"
+                      : "text-ink-muted hover:bg-surface hover:text-ink"
                   }`}
                   key={option.id}
                   onClick={() => {
@@ -546,11 +546,11 @@ export function ChronosCalendarEventPopup({
             <div className="relative">
               <Search
                 aria-hidden="true"
-                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#98a2b3]"
+                className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
                 size={15}
               />
               <input
-                className="h-9 w-full rounded-md border border-[#d9e0e7] bg-[#fafbfc] pl-9 pr-3 text-sm text-[#101820] outline-none placeholder:text-[#98a2b3] focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+                className="h-9 w-full rounded-md border border-line bg-subtle pl-9 pr-3 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                 onChange={(event) => setContactQuery(event.target.value)}
                 placeholder={
                   inviteeSource === "internal"
@@ -562,30 +562,30 @@ export function ChronosCalendarEventPopup({
               />
             </div>
             {contactSearchStatus === "loading" ? (
-              <span className="text-xs font-semibold text-[#667085]">
+              <span className="text-xs font-semibold text-ink-muted">
                 {inviteeSource === "internal"
                   ? "Buscando cadastro interno..."
                   : "Buscando contatos reais do Apolo..."}
               </span>
             ) : null}
             {contactSearchError ? (
-              <span className="text-xs font-semibold text-red-600">
+              <span className="text-xs font-semibold text-red-600 dark:text-red-300">
                 {contactSearchError}
               </span>
             ) : null}
             {contactOptions.length > 0 ? (
-              <div className="grid max-h-44 overflow-auto rounded-md border border-[#edf0f4] bg-white p-1">
+              <div className="grid max-h-44 overflow-auto rounded-md border border-line bg-surface p-1">
                 {contactOptions.map((invitee) => (
                   <button
-                    className="grid gap-0.5 rounded px-2 py-2 text-left text-sm transition hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                    className="grid gap-0.5 rounded px-2 py-2 text-left text-sm transition hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                     key={getInviteeKey(invitee)}
                     onClick={() => addInvitee(invitee)}
                     type="button"
                   >
-                    <span className="font-semibold text-[#101820]">
+                    <span className="font-semibold text-ink">
                       {invitee.displayName}
                     </span>
-                    <span className="truncate text-xs text-[#667085]">
+                    <span className="truncate text-xs text-ink-muted">
                       {[
                         invitee.email,
                         invitee.phone,
@@ -603,16 +603,16 @@ export function ChronosCalendarEventPopup({
               <div className="flex flex-wrap gap-1">
                 {selectedInvitees.map((invitee) => (
                   <span
-                    className="inline-flex min-h-7 items-center gap-1 rounded-md border border-[#d9e0e7] bg-white px-2 text-xs font-semibold text-[#344054]"
+                    className="inline-flex min-h-7 items-center gap-1 rounded-md border border-line bg-surface px-2 text-xs font-semibold text-ink"
                     key={getInviteeKey(invitee)}
                   >
                     {invitee.displayName}
-                    <span className="rounded bg-[#edf0f4] px-1 py-0.5 text-[10px] uppercase text-[#667085]">
+                    <span className="rounded bg-subtle px-1 py-0.5 text-[10px] uppercase text-ink-muted">
                       {invitee.source === "internal" ? "Interno" : "Apolo"}
                     </span>
                     <button
                       aria-label={`Remover ${invitee.displayName}`}
-                      className="grid h-5 w-5 place-items-center rounded text-[#667085] hover:bg-[#f5f7fa] hover:text-[#101820]"
+                      className="grid h-5 w-5 place-items-center rounded text-ink-muted hover:bg-subtle hover:text-ink"
                       onClick={() => removeInvitee(getInviteeKey(invitee))}
                       type="button"
                     >
@@ -622,7 +622,7 @@ export function ChronosCalendarEventPopup({
                 ))}
               </div>
             ) : (
-              <span className="text-xs text-[#667085]">
+              <span className="text-xs text-ink-muted">
                 Use Interno para o time da empresa e Apolo para convidados externos.
               </span>
             )}
@@ -636,7 +636,7 @@ export function ChronosCalendarEventPopup({
             <MapPin aria-hidden="true" className="mt-2 justify-self-center text-[#A07C3B]" size={17} />
           )}
           <div className="grid gap-2">
-            <div className="inline-grid w-fit grid-cols-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-0.5">
+            <div className="inline-grid w-fit grid-cols-2 rounded-md border border-line bg-subtle p-0.5">
               {[
                 { id: "online", label: "Online" },
                 { id: "offline", label: "Presencial" },
@@ -645,8 +645,8 @@ export function ChronosCalendarEventPopup({
                   aria-pressed={locationMode === option.id}
                   className={`h-8 rounded px-3 text-xs font-semibold transition ${
                     locationMode === option.id
-                      ? "bg-[#101820] text-white"
-                      : "text-[#667085] hover:bg-white hover:text-[#101820]"
+                      ? "bg-inverse text-brand-ink"
+                      : "text-ink-muted hover:bg-surface hover:text-ink"
                   }`}
                   key={option.id}
                   onClick={() =>
@@ -661,7 +661,7 @@ export function ChronosCalendarEventPopup({
             {locationMode === "online" ? (
               <div className="grid gap-1.5">
                 <select
-                  className="h-9 w-full min-w-0 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm text-[#344054] outline-none transition focus:border-[#A07C3B] focus:bg-[#fafbfc]"
+                  className="h-9 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-sm text-ink outline-none transition focus:border-[#A07C3B] focus:bg-subtle"
                   disabled={rooms.length === 0}
                   onChange={(event) => setRoomId(event.target.value)}
                   value={roomId}
@@ -674,7 +674,7 @@ export function ChronosCalendarEventPopup({
                 </select>
                 {selectedRoom ? (
                   <a
-                    className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-[#fafbfc] px-2 py-1 text-xs font-semibold text-[#526078] transition hover:border-[#A07C3B] hover:text-[#A07C3B]"
+                    className="inline-flex w-fit max-w-full items-center gap-1.5 rounded-md border border-line bg-subtle px-2 py-1 text-xs font-semibold text-ink-muted transition hover:border-[#A07C3B] hover:text-[#A07C3B]"
                     href={selectedRoomPath}
                     rel="noreferrer"
                     target="_blank"
@@ -686,7 +686,7 @@ export function ChronosCalendarEventPopup({
               </div>
             ) : (
               <input
-                className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none placeholder:text-[#98a2b3] focus:border-[#A07C3B] focus:bg-[#fafbfc] focus:ring-2 focus:ring-[#A07C3B]/20"
+                className="h-9 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-[#A07C3B] focus:bg-subtle focus:ring-2 focus:ring-[#A07C3B]/20"
                 onChange={(event) => setLocationAddress(event.target.value)}
                 placeholder="Endereco presencial"
                 required={locationMode === "offline"}
@@ -697,9 +697,9 @@ export function ChronosCalendarEventPopup({
         </div>
 
         <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-center gap-3">
-          <CalendarClock aria-hidden="true" className="justify-self-center text-[#667085]" size={17} />
+          <CalendarClock aria-hidden="true" className="justify-self-center text-ink-muted" size={17} />
           <select
-            className="h-9 rounded-md border border-transparent bg-white px-2 text-sm text-[#344054] outline-none transition hover:border-[#edf0f4] focus:border-[#A07C3B] focus:bg-[#fafbfc]"
+            className="h-9 rounded-md border border-transparent bg-surface px-2 text-sm text-ink outline-none transition hover:border-line focus:border-[#A07C3B] focus:bg-subtle"
             onChange={(event) => setProfileId(event.target.value)}
             value={selectedProfile.id}
           >
@@ -712,9 +712,9 @@ export function ChronosCalendarEventPopup({
         </div>
 
         <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
-          <FileText aria-hidden="true" className="mt-2 justify-self-center text-[#667085]" size={17} />
+          <FileText aria-hidden="true" className="mt-2 justify-self-center text-ink-muted" size={17} />
           <textarea
-            className="min-h-16 resize-none rounded-md border border-transparent bg-white p-2 text-sm outline-none transition hover:border-[#edf0f4] focus:border-[#A07C3B] focus:bg-[#fafbfc] focus:ring-2 focus:ring-[#A07C3B]/20"
+            className="min-h-16 resize-none rounded-md border border-transparent bg-surface p-2 text-sm outline-none transition hover:border-line focus:border-[#A07C3B] focus:bg-subtle focus:ring-2 focus:ring-[#A07C3B]/20"
             onChange={(event) => setObjective(event.target.value)}
             placeholder="Adicionar descricao"
             value={objective}
@@ -722,18 +722,18 @@ export function ChronosCalendarEventPopup({
         </div>
 
         <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
-          <ListChecks aria-hidden="true" className="mt-2 justify-self-center text-[#667085]" size={17} />
+          <ListChecks aria-hidden="true" className="mt-2 justify-self-center text-ink-muted" size={17} />
           <div className="grid gap-2">
             <div className="flex items-start gap-2">
               <textarea
-                className="min-h-16 flex-1 resize-none rounded-md border border-transparent bg-white p-2 text-sm outline-none transition hover:border-[#edf0f4] focus:border-[#A07C3B] focus:bg-[#fafbfc] focus:ring-2 focus:ring-[#A07C3B]/20"
+                className="min-h-16 flex-1 resize-none rounded-md border border-transparent bg-surface p-2 text-sm outline-none transition hover:border-line focus:border-[#A07C3B] focus:bg-subtle focus:ring-2 focus:ring-[#A07C3B]/20"
                 onChange={(event) => setAgenda(event.target.value)}
                 placeholder="Adicionar pauta"
                 value={agenda}
               />
               <button
                 aria-label="Gerar pauta com Athena"
-                className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#A07C3B] transition hover:bg-[#fff8ec] hover:text-[#7a5b24] focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-wait disabled:opacity-55"
+                className="grid h-9 w-9 shrink-0 place-items-center rounded-md border border-line bg-surface text-[#A07C3B] transition hover:bg-[#fff8ec] dark:bg-[#a07c3b]/10 hover:text-[#7a5b24] dark:text-[#d9b877] focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-wait disabled:opacity-55"
                 disabled={agendaAgentLoading || saving || !title.trim()}
                 onClick={() => {
                   setAgendaAgentError(null);
@@ -749,7 +749,7 @@ export function ChronosCalendarEventPopup({
               </button>
             </div>
             {agendaAgentError ? (
-              <span className="text-xs font-semibold text-red-600">
+              <span className="text-xs font-semibold text-red-600 dark:text-red-300">
                 {agendaAgentError}
               </span>
             ) : null}
@@ -757,18 +757,18 @@ export function ChronosCalendarEventPopup({
         </div>
 
         {showMoreOptions ? (
-          <div className="grid gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
+          <div className="grid gap-3 rounded-md border border-line bg-subtle p-3">
             <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
               <Repeat2
                 aria-hidden="true"
-                className="mt-2 justify-self-center text-[#667085]"
+                className="mt-2 justify-self-center text-ink-muted"
                 size={17}
               />
               <div className="grid gap-2">
-                <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                   Repete
                   <select
-                    className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm font-medium normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    className="h-9 rounded-md border border-line bg-surface px-2 text-sm font-medium normal-case text-ink outline-none focus:border-[#A07C3B]"
                     onChange={(event) =>
                       setRecurrenceMode(event.target.value as ChronosRecurrenceMode)
                     }
@@ -782,12 +782,12 @@ export function ChronosCalendarEventPopup({
                   </select>
                 </label>
                 {recurrenceMode === "custom" ? (
-                  <div className="grid gap-2 rounded-md border border-[#d9e0e7] bg-white p-2">
+                  <div className="grid gap-2 rounded-md border border-line bg-surface p-2">
                     <div className="grid gap-2 sm:grid-cols-[5rem_minmax(0,1fr)]">
-                      <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                      <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                         A cada
                         <input
-                          className="h-9 rounded-md border border-[#d9e0e7] px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                          className="h-9 rounded-md border border-line px-2 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                           min={1}
                           onChange={(event) =>
                             setCustomRepeatInterval(event.target.value)
@@ -796,10 +796,10 @@ export function ChronosCalendarEventPopup({
                           value={customRepeatInterval}
                         />
                       </label>
-                      <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                      <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                         Frequencia
                         <select
-                          className="h-9 rounded-md border border-[#d9e0e7] px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                          className="h-9 rounded-md border border-line px-2 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                           onChange={(event) =>
                             setCustomRepeatFrequency(
                               event.target.value as ChronosCustomRecurrenceFrequency,
@@ -815,10 +815,10 @@ export function ChronosCalendarEventPopup({
                       </label>
                     </div>
                     <div className="grid gap-2 sm:grid-cols-[8rem_minmax(0,1fr)]">
-                      <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                      <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                         Termina
                         <select
-                          className="h-9 rounded-md border border-[#d9e0e7] px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                          className="h-9 rounded-md border border-line px-2 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                           onChange={(event) =>
                             setCustomRepeatEnd(
                               event.target.value as ChronosCustomRecurrenceEnd,
@@ -830,10 +830,10 @@ export function ChronosCalendarEventPopup({
                           <option value="on_date">Em uma data</option>
                         </select>
                       </label>
-                      <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                      <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                         Ate
                         <input
-                          className="h-9 rounded-md border border-[#d9e0e7] px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B] disabled:opacity-50"
+                          className="h-9 rounded-md border border-line px-2 text-sm normal-case text-ink outline-none focus:border-[#A07C3B] disabled:opacity-50"
                           disabled={customRepeatEnd !== "on_date"}
                           onChange={(event) => setCustomRepeatUntil(event.target.value)}
                           type="date"
@@ -849,24 +849,24 @@ export function ChronosCalendarEventPopup({
             <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
               <Clock3
                 aria-hidden="true"
-                className="mt-2 justify-self-center text-[#667085]"
+                className="mt-2 justify-self-center text-ink-muted"
                 size={17}
               />
               <div className="grid min-w-0 gap-2 sm:grid-cols-3">
-                <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                   Notificacao
                   <input
-                    className="h-9 w-full min-w-0 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    className="h-9 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                     min={0}
                     onChange={(event) => setNotificationMinutes(event.target.value)}
                     type="number"
                     value={notificationMinutes}
                   />
                 </label>
-                <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                   Agenda
                   <select
-                    className="h-9 w-full min-w-0 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    className="h-9 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                     onChange={(event) =>
                       setAvailability(event.target.value as "busy" | "free")
                     }
@@ -876,10 +876,10 @@ export function ChronosCalendarEventPopup({
                     <option value="free">Livre</option>
                   </select>
                 </label>
-                <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                   Visibilidade
                   <select
-                    className="h-9 w-full min-w-0 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    className="h-9 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                     onChange={(event) =>
                       setVisibility(
                         event.target.value as "default" | "private" | "public",
@@ -898,10 +898,10 @@ export function ChronosCalendarEventPopup({
             <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
               <ShieldCheck
                 aria-hidden="true"
-                className="mt-1 justify-self-center text-[#667085]"
+                className="mt-1 justify-self-center text-ink-muted"
                 size={17}
               />
-              <div className="grid gap-2 text-sm font-semibold text-[#344054]">
+              <div className="grid gap-2 text-sm font-semibold text-ink">
                 <label className="flex items-center gap-2">
                   <input
                     checked={guestCanModify}
@@ -937,9 +937,9 @@ export function ChronosCalendarEventPopup({
         ) : null}
       </div>
 
-      <div className="flex items-center justify-end gap-2 border-t border-[#edf0f4] pt-3">
+      <div className="flex items-center justify-end gap-2 border-t border-line pt-3">
         <button
-          className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-semibold text-[#526078] transition hover:bg-[#f5f7fa] hover:text-[#101820]"
+          className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-semibold text-ink-muted transition hover:bg-subtle hover:text-ink"
           onClick={() => setShowMoreOptions((current) => !current)}
           type="button"
         >
@@ -951,7 +951,7 @@ export function ChronosCalendarEventPopup({
           Mais opcoes
         </button>
         <button
-          className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-[#101820] px-4 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-wait disabled:opacity-60"
+          className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-inverse px-4 text-sm font-semibold text-brand-ink transition hover:bg-inverse disabled:cursor-wait disabled:opacity-60"
           disabled={saving}
           type="submit"
         >
@@ -966,19 +966,19 @@ export function ChronosCalendarEventPopup({
 
       {agendaAgentOpen ? (
         <div className="absolute inset-0 z-20 grid place-items-center rounded-lg bg-white/75 px-4 backdrop-blur-sm">
-          <div className="grid w-full max-w-md gap-3 rounded-lg border border-[#d9e0e7] bg-white p-4 shadow-[0_22px_70px_rgb(16_24_32_/_0.18)]">
+          <div className="grid w-full max-w-md gap-3 rounded-lg border border-line bg-surface p-4 shadow-[0_22px_70px_rgb(16_24_32_/_0.18)]">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="m-0 text-sm font-bold text-[#101820]">
+                <p className="m-0 text-sm font-bold text-ink">
                   Contexto para Athena
                 </p>
-                <p className="m-0 mt-1 text-xs font-semibold text-[#667085]">
+                <p className="m-0 mt-1 text-xs font-semibold text-ink-muted">
                   Informe objetivo, decisoes esperadas, riscos ou publico.
                 </p>
               </div>
               <button
                 aria-label="Fechar contexto da pauta"
-                className="grid h-8 w-8 place-items-center rounded-md text-[#667085] transition hover:bg-[#f5f7fa] hover:text-[#101820]"
+                className="grid h-8 w-8 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink"
                 onClick={() => setAgendaAgentOpen(false)}
                 type="button"
               >
@@ -986,21 +986,21 @@ export function ChronosCalendarEventPopup({
               </button>
             </div>
             <textarea
-              className="min-h-32 resize-y rounded-md border border-[#d9e0e7] bg-[#fafbfc] px-3 py-3 text-sm leading-5 text-[#101820] outline-none transition placeholder:text-[#98a2b3] focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+              className="min-h-32 resize-y rounded-md border border-line bg-subtle px-3 py-3 text-sm leading-5 text-ink outline-none transition placeholder:text-ink-muted focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
               onChange={(event) => setAgendaAgentContext(event.target.value)}
               placeholder="Ex.: alinhar cronograma, validar riscos comerciais, definir responsaveis e proximos passos..."
               value={agendaAgentContext}
             />
             <div className="flex items-center justify-end gap-2">
               <button
-                className="h-9 rounded-md px-3 text-sm font-semibold text-[#526078] transition hover:bg-[#f5f7fa] hover:text-[#101820]"
+                className="h-9 rounded-md px-3 text-sm font-semibold text-ink-muted transition hover:bg-subtle hover:text-ink"
                 onClick={() => setAgendaAgentOpen(false)}
                 type="button"
               >
                 Cancelar
               </button>
               <button
-                className="inline-flex h-9 items-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:cursor-wait disabled:opacity-55"
+                className="inline-flex h-9 items-center gap-2 rounded-md bg-inverse px-3 text-sm font-semibold text-brand-ink transition hover:bg-inverse disabled:cursor-wait disabled:opacity-55"
                 disabled={agendaAgentLoading}
                 onClick={() => void handleGenerateAgenda()}
                 type="button"

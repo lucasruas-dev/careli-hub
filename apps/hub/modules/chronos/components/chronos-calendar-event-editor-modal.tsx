@@ -430,12 +430,12 @@ export function ChronosCalendarEventEditorModal({
   }
 
   return (
-    <section className="grid h-full grid-rows-[auto_minmax(0,1fr)] bg-[#f3f6fa] text-[#101820]">
-      <header className="flex items-center justify-between gap-3 border-b border-[#d9e0e7] bg-white px-5 py-4">
+    <section className="grid h-full grid-rows-[auto_minmax(0,1fr)] bg-subtle text-ink">
+      <header className="flex items-center justify-between gap-3 border-b border-line bg-surface px-5 py-4">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           <button
             aria-label="Fechar edicao"
-            className="grid h-10 w-10 place-items-center rounded-full border border-[#d9e0e7] bg-white text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            className="grid h-10 w-10 place-items-center rounded-full border border-line bg-surface text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             onClick={onClose}
             type="button"
           >
@@ -444,7 +444,7 @@ export function ChronosCalendarEventEditorModal({
           <CalendarClock aria-hidden="true" className="text-[#A07C3B]" size={22} />
           <input
             aria-label="Titulo do evento"
-            className="min-w-0 flex-1 border-0 bg-transparent text-2xl font-semibold text-[#101820] outline-none placeholder:text-[#98a2b3]"
+            className="min-w-0 flex-1 border-0 bg-transparent text-2xl font-semibold text-ink outline-none placeholder:text-ink-muted"
             onChange={(event) => setTitle(event.target.value)}
             placeholder="Titulo"
             value={title}
@@ -453,7 +453,7 @@ export function ChronosCalendarEventEditorModal({
         <div className="flex shrink-0 items-center gap-2">
           <button
             aria-label="Excluir evento"
-            className="grid h-10 w-10 place-items-center rounded-md text-red-600 transition hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-200 disabled:cursor-wait disabled:opacity-55"
+            className="grid h-10 w-10 place-items-center rounded-md text-red-600 dark:text-red-300 transition hover:bg-red-50 dark:bg-red-500/12 focus-visible:ring-2 focus-visible:ring-red-200 dark:ring-red-500/25 disabled:cursor-wait disabled:opacity-55"
             disabled={saving}
             onClick={() => void handleDelete()}
             type="button"
@@ -461,7 +461,7 @@ export function ChronosCalendarEventEditorModal({
             <Trash2 aria-hidden="true" size={18} />
           </button>
           <button
-            className="inline-flex h-10 items-center gap-2 rounded-md bg-[#101820] px-4 text-sm font-semibold text-white transition hover:bg-[#1f2937] focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-wait disabled:opacity-55"
+            className="inline-flex h-10 items-center gap-2 rounded-md bg-inverse px-4 text-sm font-semibold text-brand-ink transition hover:bg-inverse focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-wait disabled:opacity-55"
             disabled={saving || !title.trim()}
             onClick={() => void handleSave()}
             type="button"
@@ -478,22 +478,22 @@ export function ChronosCalendarEventEditorModal({
 
       <div className="min-h-0 overflow-auto p-6">
         <div className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[minmax(0,1.25fr)_minmax(20rem,0.75fr)]">
-          <div className="grid gap-4 rounded-lg border border-[#d9e0e7] bg-white p-5">
+          <div className="grid gap-4 rounded-lg border border-line bg-surface p-5">
             <div className="grid gap-3">
               <div className="grid gap-4 md:grid-cols-2">
-                <label className="grid gap-1 text-sm font-semibold text-[#344054]">
+                <label className="grid gap-1 text-sm font-semibold text-ink">
                   Inicio
                   <input
-                    className="h-11 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+                    className="h-11 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                     onChange={(event) => handleStartsAtChange(event.target.value)}
                     type={allDay ? "date" : "datetime-local"}
                     value={allDay ? toDateOnlyInput(startsAt) : startsAt}
                   />
                 </label>
-                <label className="grid gap-1 text-sm font-semibold text-[#344054]">
+                <label className="grid gap-1 text-sm font-semibold text-ink">
                   Fim
                   <input
-                    className="h-11 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm text-[#101820] outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+                    className="h-11 rounded-md border border-line bg-surface px-3 text-sm text-ink outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                     min={allDay ? toDateOnlyInput(startsAt) : startsAt}
                     onChange={(event) => setEndsAt(event.target.value)}
                     type={allDay ? "date" : "datetime-local"}
@@ -501,7 +501,7 @@ export function ChronosCalendarEventEditorModal({
                   />
                 </label>
               </div>
-              <label className="flex w-fit items-center gap-2 text-sm font-semibold text-[#344054]">
+              <label className="flex w-fit items-center gap-2 text-sm font-semibold text-ink">
                 <input
                   checked={allDay}
                   className="h-4 w-4 accent-[#A07C3B]"
@@ -515,14 +515,14 @@ export function ChronosCalendarEventEditorModal({
             <div className="grid gap-1">
               <div className="flex items-center justify-between gap-3">
                 <label
-                  className="text-sm font-semibold text-[#344054]"
+                  className="text-sm font-semibold text-ink"
                   htmlFor="chronos-event-agenda"
                 >
                   Pauta
                 </label>
                 <button
                   aria-label="Gerar pauta com Athena"
-                  className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#A07C3B] transition hover:bg-[#fff8ec] hover:text-[#7a5b24] focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-wait disabled:opacity-55"
+                  className="grid h-9 w-9 place-items-center rounded-md border border-line bg-surface text-[#A07C3B] transition hover:bg-[#fff8ec] dark:bg-[#a07c3b]/10 hover:text-[#7a5b24] dark:text-[#d9b877] focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-wait disabled:opacity-55"
                   disabled={agendaAgentLoading || saving || !title.trim()}
                   onClick={() => {
                     setAgendaAgentDraft(agenda);
@@ -541,7 +541,7 @@ export function ChronosCalendarEventEditorModal({
               </div>
               <div
                 aria-label="Pauta formatada"
-                className="max-h-[22rem] min-h-40 overflow-y-auto overflow-x-hidden rounded-md border border-[#d9e0e7] bg-[#f8fafc] px-3 py-3 text-sm leading-6 text-[#101820] outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+                className="max-h-[22rem] min-h-40 overflow-y-auto overflow-x-hidden rounded-md border border-line bg-subtle px-3 py-3 text-sm leading-6 text-ink outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                 id="chronos-event-agenda"
                 role="region"
                 tabIndex={0}
@@ -551,31 +551,31 @@ export function ChronosCalendarEventEditorModal({
                     items={parseChronosAgendaTextPreview(agenda)}
                   />
                 ) : (
-                  <span className="font-semibold text-[#98a2b3]">
+                  <span className="font-semibold text-ink-muted">
                     Adicionar pauta
                   </span>
                 )}
               </div>
               {agendaAgentError ? (
-                <span className="text-xs font-semibold text-red-600">
+                <span className="text-xs font-semibold text-red-600 dark:text-red-300">
                   {agendaAgentError}
                 </span>
               ) : null}
             </div>
 
-            <label className="grid gap-1 text-sm font-semibold text-[#344054]">
+            <label className="grid gap-1 text-sm font-semibold text-ink">
               Descricao
               <textarea
-                className="min-h-48 resize-y rounded-md border border-[#d9e0e7] bg-[#f8fafc] px-3 py-3 text-sm leading-6 text-[#101820] outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+                className="min-h-48 resize-y rounded-md border border-line bg-subtle px-3 py-3 text-sm leading-6 text-ink outline-none transition focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                 onChange={(event) => setObjective(event.target.value)}
                 placeholder="Adicionar descricao"
                 value={objective}
               />
             </label>
 
-            <div className="border-t border-[#edf0f4] pt-1">
+            <div className="border-t border-line pt-1">
               <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-semibold text-[#526078] transition hover:bg-[#f5f7fa] hover:text-[#101820]"
+                className="inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm font-semibold text-ink-muted transition hover:bg-subtle hover:text-ink"
                 onClick={() => setShowMoreOptions((current) => !current)}
                 type="button"
               >
@@ -589,17 +589,17 @@ export function ChronosCalendarEventEditorModal({
             </div>
 
             {showMoreOptions ? (
-              <div className="grid gap-3 rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
+              <div className="grid gap-3 rounded-md border border-line bg-subtle p-3">
                 <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
                   <Repeat2
                     aria-hidden="true"
-                    className="mt-2 justify-self-center text-[#667085]"
+                    className="mt-2 justify-self-center text-ink-muted"
                     size={17}
                   />
-                  <label className="grid min-w-0 gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                  <label className="grid min-w-0 gap-1 text-[11px] font-bold uppercase text-ink-muted">
                     Repete
                     <select
-                      className="h-9 w-full min-w-0 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm font-medium normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                      className="h-9 w-full min-w-0 rounded-md border border-line bg-surface px-2 text-sm font-medium normal-case text-ink outline-none focus:border-[#A07C3B]"
                       onChange={(event) =>
                         setRecurrenceMode(
                           event.target.value as ChronosRecurrenceMode,
@@ -613,7 +613,7 @@ export function ChronosCalendarEventEditorModal({
                         </option>
                       ))}
                     </select>
-                    <span className="text-[10px] font-medium normal-case text-[#667085]">
+                    <span className="text-[10px] font-medium normal-case text-ink-muted">
                       {isRecurringSeries
                         ? "Escolher uma opcao refaz a serie inteira com a nova frequencia (a partir deste evento)."
                         : "Escolha para transformar este evento em uma serie recorrente."}
@@ -623,14 +623,14 @@ export function ChronosCalendarEventEditorModal({
                 <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
                   <Clock3
                     aria-hidden="true"
-                    className="mt-2 justify-self-center text-[#667085]"
+                    className="mt-2 justify-self-center text-ink-muted"
                     size={17}
                   />
                   <div className="grid gap-2 sm:grid-cols-3">
-                    <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                    <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                       Notificacao
                       <input
-                        className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                        className="h-9 rounded-md border border-line bg-surface px-2 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                         min={0}
                         onChange={(event) =>
                           setNotificationMinutes(event.target.value)
@@ -639,10 +639,10 @@ export function ChronosCalendarEventEditorModal({
                         value={notificationMinutes}
                       />
                     </label>
-                    <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                    <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                       Agenda
                       <select
-                        className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                        className="h-9 rounded-md border border-line bg-surface px-2 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                         onChange={(event) =>
                           setAvailability(event.target.value as "busy" | "free")
                         }
@@ -652,10 +652,10 @@ export function ChronosCalendarEventEditorModal({
                         <option value="free">Livre</option>
                       </select>
                     </label>
-                    <label className="grid gap-1 text-[11px] font-bold uppercase text-[#667085]">
+                    <label className="grid gap-1 text-[11px] font-bold uppercase text-ink-muted">
                       Visibilidade
                       <select
-                        className="h-9 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                        className="h-9 rounded-md border border-line bg-surface px-2 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                         onChange={(event) =>
                           setVisibility(
                             event.target.value as "default" | "private" | "public",
@@ -674,10 +674,10 @@ export function ChronosCalendarEventEditorModal({
                 <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
                   <ShieldCheck
                     aria-hidden="true"
-                    className="mt-1 justify-self-center text-[#667085]"
+                    className="mt-1 justify-self-center text-ink-muted"
                     size={17}
                   />
-                  <div className="grid gap-2 text-sm font-semibold text-[#344054]">
+                  <div className="grid gap-2 text-sm font-semibold text-ink">
                     <label className="flex items-center gap-2">
                       <input
                         checked={guestCanModify}
@@ -713,15 +713,15 @@ export function ChronosCalendarEventEditorModal({
             ) : null}
           </div>
 
-          <aside className="grid content-start gap-4 rounded-lg border border-[#d9e0e7] bg-white p-5">
+          <aside className="grid content-start gap-4 rounded-lg border border-line bg-surface p-5">
             <div className="grid gap-2">
               <div className="flex items-center justify-between gap-3">
-                <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+                <p className="m-0 text-xs font-bold uppercase text-ink-muted">
                   Convidados ({selectedInvitees.length})
                 </p>
                 <UsersRound aria-hidden="true" className="text-[#A07C3B]" size={17} />
               </div>
-              <div className="inline-grid w-fit grid-cols-2 rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-0.5">
+              <div className="inline-grid w-fit grid-cols-2 rounded-md border border-line bg-subtle p-0.5">
                 {[
                   { id: "internal", label: "Interno" },
                   { id: "external", label: "Apolo" },
@@ -730,8 +730,8 @@ export function ChronosCalendarEventEditorModal({
                     aria-pressed={inviteeSource === option.id}
                     className={`h-8 rounded px-3 text-xs font-semibold transition ${
                       inviteeSource === option.id
-                        ? "bg-[#101820] text-white"
-                        : "text-[#667085] hover:bg-white hover:text-[#101820]"
+                        ? "bg-inverse text-brand-ink"
+                        : "text-ink-muted hover:bg-surface hover:text-ink"
                     }`}
                     key={option.id}
                     onClick={() => {
@@ -750,11 +750,11 @@ export function ChronosCalendarEventEditorModal({
               <div className="relative">
                 <Search
                   aria-hidden="true"
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[#98a2b3]"
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-ink-muted"
                   size={15}
                 />
                 <input
-                  className="h-9 w-full rounded-md border border-[#d9e0e7] bg-[#fafbfc] pl-9 pr-3 text-sm text-[#101820] outline-none placeholder:text-[#98a2b3] focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+                  className="h-9 w-full rounded-md border border-line bg-subtle pl-9 pr-3 text-sm text-ink outline-none placeholder:text-ink-muted focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                   onChange={(event) => setContactQuery(event.target.value)}
                   placeholder={
                     inviteeSource === "internal"
@@ -766,30 +766,30 @@ export function ChronosCalendarEventEditorModal({
                 />
               </div>
               {contactSearchStatus === "loading" ? (
-                <span className="text-xs font-semibold text-[#667085]">
+                <span className="text-xs font-semibold text-ink-muted">
                   {inviteeSource === "internal"
                     ? "Buscando cadastro interno..."
                     : "Buscando contatos reais do Apolo..."}
                 </span>
               ) : null}
               {contactSearchError ? (
-                <span className="text-xs font-semibold text-red-600">
+                <span className="text-xs font-semibold text-red-600 dark:text-red-300">
                   {contactSearchError}
                 </span>
               ) : null}
               {contactOptions.length > 0 ? (
-                <div className="grid max-h-44 overflow-auto rounded-md border border-[#edf0f4] bg-white p-1">
+                <div className="grid max-h-44 overflow-auto rounded-md border border-line bg-surface p-1">
                   {contactOptions.map((invitee) => (
                     <button
-                      className="grid gap-0.5 rounded px-2 py-2 text-left text-sm transition hover:bg-[#f8fafc] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                      className="grid gap-0.5 rounded px-2 py-2 text-left text-sm transition hover:bg-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                       key={getInviteeKey(invitee)}
                       onClick={() => addInvitee(invitee)}
                       type="button"
                     >
-                      <span className="font-semibold text-[#101820]">
+                      <span className="font-semibold text-ink">
                         {invitee.displayName}
                       </span>
-                      <span className="truncate text-xs text-[#667085]">
+                      <span className="truncate text-xs text-ink-muted">
                         {[
                           invitee.email,
                           invitee.organization ??
@@ -808,21 +808,21 @@ export function ChronosCalendarEventEditorModal({
               {selectedInvitees.length > 0 ? (
                 selectedInvitees.map((invitee) => (
                   <div
-                    className="flex items-center gap-2 rounded-md px-2 py-1.5 transition hover:bg-[#f8fafc]"
+                    className="flex items-center gap-2 rounded-md px-2 py-1.5 transition hover:bg-subtle"
                     key={getInviteeKey(invitee)}
                   >
                     <span
                       aria-hidden="true"
-                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#eaf3ff] text-xs font-bold uppercase text-[#0b66d8]"
+                      className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#eaf3ff] dark:bg-sky-500/12 text-xs font-bold uppercase text-[#0b66d8]"
                     >
                       {getInviteeInitials(invitee.displayName)}
                     </span>
-                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-[#344054]">
+                    <span className="min-w-0 flex-1 truncate text-sm font-medium text-ink">
                       {invitee.displayName}
                     </span>
                     <button
                       aria-label={`Remover ${invitee.displayName}`}
-                      className="grid h-7 w-7 place-items-center rounded-md text-[#667085] transition hover:bg-[#edf0f4] hover:text-[#101820]"
+                      className="grid h-7 w-7 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink"
                       onClick={() => removeInvitee(getInviteeKey(invitee))}
                       type="button"
                     >
@@ -831,24 +831,24 @@ export function ChronosCalendarEventEditorModal({
                   </div>
                 ))
               ) : (
-                <span className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-3 text-sm text-[#667085]">
+                <span className="rounded-md border border-dashed border-line bg-subtle p-3 text-sm text-ink-muted">
                   Nenhum convidado adicional registrado.
                 </span>
               )}
             </div>
 
-            <div className="border-t border-[#edf0f4] pt-4">
-              <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+            <div className="border-t border-line pt-4">
+              <p className="m-0 text-xs font-bold uppercase text-ink-muted">
                 Contexto
               </p>
               <dl className="mt-4 grid gap-3 text-sm">
                 <div>
-                  <dt className="font-semibold text-[#667085]">Protocolo</dt>
-                  <dd className="m-0 text-[#101820]">{meeting.protocol}</dd>
+                  <dt className="font-semibold text-ink-muted">Protocolo</dt>
+                  <dd className="m-0 text-ink">{meeting.protocol}</dd>
                 </div>
                 <div>
-                  <dt className="font-semibold text-[#667085]">Host</dt>
-                  <dd className="m-0 text-[#101820]">
+                  <dt className="font-semibold text-ink-muted">Host</dt>
+                  <dd className="m-0 text-ink">
                     {meeting.hostName ?? "Host Chronos"}
                   </dd>
                 </div>
@@ -858,19 +858,19 @@ export function ChronosCalendarEventEditorModal({
         </div>
       </div>
       {agendaAgentOpen ? (
-        <div className="fixed inset-0 z-50 grid place-items-center bg-[#101820]/35 px-4 backdrop-blur-sm">
-          <div className="grid max-h-[calc(100vh-4rem)] w-full max-w-5xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-[#d9e0e7] bg-white shadow-[0_24px_80px_rgb(16_24_32_/_0.28)]">
-            <div className="flex items-start justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
+        <div className="fixed inset-0 z-50 grid place-items-center bg-inverse/35 px-4 backdrop-blur-sm">
+          <div className="grid max-h-[calc(100vh-4rem)] w-full max-w-5xl grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-lg border border-line bg-surface shadow-[0_24px_80px_rgb(16_24_32_/_0.28)]">
+            <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
-                  <span className="grid h-9 w-9 place-items-center rounded-md border border-[#eadfce] bg-[#fff8ec] text-[#A07C3B]">
+                  <span className="grid h-9 w-9 place-items-center rounded-md border border-[#eadfce] bg-[#fff8ec] dark:bg-[#a07c3b]/10 text-[#A07C3B]">
                     <Bot aria-hidden="true" size={17} />
                   </span>
                   <div className="min-w-0">
-                    <p className="m-0 text-base font-semibold text-[#101820]">
+                    <p className="m-0 text-base font-semibold text-ink">
                       Athena
                     </p>
-                    <p className="m-0 text-xs font-semibold text-[#667085]">
+                    <p className="m-0 text-xs font-semibold text-ink-muted">
                       Converse, revise e valide a pauta antes de aplicar no evento.
                     </p>
                   </div>
@@ -878,7 +878,7 @@ export function ChronosCalendarEventEditorModal({
               </div>
               <button
                 aria-label="Fechar agente de pauta"
-                className="grid h-9 w-9 place-items-center rounded-md text-[#667085] transition hover:bg-[#f5f7fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-9 w-9 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 onClick={() => setAgendaAgentOpen(false)}
                 type="button"
               >
@@ -887,14 +887,14 @@ export function ChronosCalendarEventEditorModal({
             </div>
 
             <div className="grid min-h-0 gap-0 overflow-hidden md:grid-cols-[minmax(18rem,0.92fr)_minmax(22rem,1.25fr)]">
-              <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] border-r border-[#edf0f4] bg-[#fbfcfd]">
+              <div className="grid min-h-0 grid-rows-[minmax(0,1fr)_auto] border-r border-line bg-subtle">
                 <div className="grid content-start gap-3 overflow-y-auto px-5 py-4">
                   {agendaAgentMessages.map((message) => (
                     <div
                       className={`grid max-w-[92%] gap-1 rounded-lg px-3 py-2 text-sm leading-5 shadow-sm ${
                         message.role === "user"
-                          ? "justify-self-end bg-[#101820] text-white"
-                          : "justify-self-start border border-[#eadfce] bg-white text-[#344054]"
+                          ? "justify-self-end bg-inverse text-brand-ink"
+                          : "justify-self-start border border-[#eadfce] bg-surface text-ink"
                       }`}
                       key={message.id}
                     >
@@ -909,15 +909,15 @@ export function ChronosCalendarEventEditorModal({
                     </div>
                   ))}
                   {agendaAgentError ? (
-                    <span className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+                    <span className="rounded-md border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/12 px-3 py-2 text-xs font-semibold text-red-700 dark:text-red-300">
                       {agendaAgentError}
                     </span>
                   ) : null}
                 </div>
-                <div className="grid gap-2 border-t border-[#edf0f4] bg-white p-4">
+                <div className="grid gap-2 border-t border-line bg-surface p-4">
                   <textarea
                     aria-label="Mensagem para Athena"
-                    className="min-h-24 resize-none rounded-md border border-[#d9e0e7] bg-white px-3 py-2 text-sm leading-5 text-[#101820] outline-none transition placeholder:text-[#98a2b3] focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+                    className="min-h-24 resize-none rounded-md border border-line bg-surface px-3 py-2 text-sm leading-5 text-ink outline-none transition placeholder:text-ink-muted focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                     onChange={(event) => setAgendaBrief(event.target.value)}
                     onKeyDown={(event) => {
                       if ((event.ctrlKey || event.metaKey) && event.key === "Enter") {
@@ -930,14 +930,14 @@ export function ChronosCalendarEventEditorModal({
                   />
                   <div className="flex items-center justify-between gap-2">
                     <button
-                      className="h-9 rounded-md px-3 text-sm font-semibold text-[#526078] transition hover:bg-[#f5f7fa] hover:text-[#101820]"
+                      className="h-9 rounded-md px-3 text-sm font-semibold text-ink-muted transition hover:bg-subtle hover:text-ink"
                       onClick={() => setAgendaAgentOpen(false)}
                       type="button"
                     >
                       Cancelar
                     </button>
                     <button
-                      className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#344054] transition hover:bg-[#f8fafc] hover:text-[#101820] disabled:cursor-wait disabled:opacity-55"
+                      className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-subtle hover:text-ink disabled:cursor-wait disabled:opacity-55"
                       disabled={
                         agendaAgentLoading ||
                         saving ||
@@ -958,25 +958,25 @@ export function ChronosCalendarEventEditorModal({
                 </div>
               </div>
 
-              <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-white">
-                <div className="border-b border-[#edf0f4] px-5 py-4">
-                  <p className="m-0 text-sm font-semibold text-[#101820]">
+              <div className="grid min-h-0 grid-rows-[auto_minmax(0,1fr)_auto] bg-surface">
+                <div className="border-b border-line px-5 py-4">
+                  <p className="m-0 text-sm font-semibold text-ink">
                     Resultado da pauta
                   </p>
-                  <p className="m-0 mt-1 text-xs font-semibold text-[#667085]">
+                  <p className="m-0 mt-1 text-xs font-semibold text-ink-muted">
                     Valide o texto antes de aplicar no campo final.
                   </p>
                 </div>
                 <textarea
                   aria-label="Resultado da pauta Athena"
-                  className="min-h-0 resize-none border-0 bg-[#f8fafc] px-5 py-4 text-sm leading-6 text-[#101820] outline-none transition placeholder:text-[#98a2b3] focus:bg-white"
+                  className="min-h-0 resize-none border-0 bg-subtle px-5 py-4 text-sm leading-6 text-ink outline-none transition placeholder:text-ink-muted focus:bg-surface"
                   onChange={(event) => setAgendaAgentDraft(event.target.value)}
                   placeholder="A pauta gerada aparece aqui para revisao."
                   value={agendaAgentDraft}
                 />
-                <div className="flex justify-end border-t border-[#edf0f4] bg-white px-5 py-4">
+                <div className="flex justify-end border-t border-line bg-surface px-5 py-4">
                   <button
-                    className="h-9 rounded-md bg-[#101820] px-4 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:opacity-55"
+                    className="h-9 rounded-md bg-inverse px-4 text-sm font-semibold text-brand-ink transition hover:bg-inverse disabled:opacity-55"
                     disabled={!agendaAgentDraft.trim()}
                     onClick={() => {
                       setAgenda(agendaAgentDraft);
@@ -1165,15 +1165,15 @@ function ChronosAgendaTextPreview({
   items: ChronosAgendaTextPreviewItem[];
 }) {
   if (items.length === 0) {
-    return <span className="font-semibold text-[#98a2b3]">Adicionar pauta</span>;
+    return <span className="font-semibold text-ink-muted">Adicionar pauta</span>;
   }
 
   return (
-    <div className="grid gap-2 text-sm leading-6 text-[#344054]">
+    <div className="grid gap-2 text-sm leading-6 text-ink">
       {items.map((item) => {
         if (item.type === "heading") {
           return (
-            <p className="m-0 text-base font-semibold leading-6 text-[#101820]" key={item.id}>
+            <p className="m-0 text-base font-semibold leading-6 text-ink" key={item.id}>
               {renderAgendaInlineMarkdown(item.text)}
             </p>
           );
@@ -1181,7 +1181,7 @@ function ChronosAgendaTextPreview({
 
         if (item.type === "subheading") {
           return (
-            <p className="m-0 mt-2 text-xs font-bold uppercase tracking-[0.08em] text-[#101820]" key={item.id}>
+            <p className="m-0 mt-2 text-xs font-bold uppercase tracking-[0.08em] text-ink" key={item.id}>
               {renderAgendaInlineMarkdown(item.text)}
             </p>
           );
@@ -1189,7 +1189,7 @@ function ChronosAgendaTextPreview({
 
         if (item.type === "numbered") {
           return (
-            <p className="m-0 font-semibold text-[#101820]" key={item.id}>
+            <p className="m-0 font-semibold text-ink" key={item.id}>
               {renderAgendaInlineMarkdown(item.text)}
             </p>
           );
@@ -1228,7 +1228,7 @@ function renderAgendaInlineMarkdown(value: string) {
   return parts.map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong className="font-semibold text-[#101820]" key={`${part}-${index}`}>
+        <strong className="font-semibold text-ink" key={`${part}-${index}`}>
           {part.slice(2, -2)}
         </strong>
       );

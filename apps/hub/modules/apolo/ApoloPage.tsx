@@ -164,7 +164,7 @@ export function ApoloPage() {
 
   return (
     <div
-      className={`flex h-[calc(100dvh-3.25rem)] min-h-0 max-h-[calc(100dvh-3.25rem)] overflow-hidden bg-[#F8FAFC] text-slate-950 transition-[padding-left] duration-300 ease-out ${
+      className={`flex h-[calc(100dvh-3.25rem)] min-h-0 max-h-[calc(100dvh-3.25rem)] overflow-hidden bg-canvas text-ink transition-[padding-left] duration-300 ease-out ${
         sidebarCollapsed ? "lg:pl-[72px]" : "lg:pl-60"
       }`}
     >

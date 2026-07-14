@@ -530,13 +530,13 @@ export function CadastroFlow() {
   return (
     <section className="grid h-full min-h-0 gap-4 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-1 py-1 pb-20">
-        <div className="rounded-2xl border border-slate-200/70 bg-white px-6 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] print:hidden">
+        <div className="rounded-2xl border border-line bg-surface px-6 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] print:hidden">
           <div className="flex items-center justify-between gap-4">
-            <h1 className="text-lg font-semibold tracking-tight text-slate-800">
+            <h1 className="text-lg font-semibold tracking-tight text-ink">
               Cadastro de CAD
             </h1>
             <div className="flex items-center gap-2">
-              <span className="hidden items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-medium text-slate-600 sm:inline-flex">
+              <span className="hidden items-center gap-1.5 rounded-full border border-line bg-subtle px-3 py-1.5 text-xs font-medium text-ink-soft sm:inline-flex">
                 <ShieldCheck className="size-3.5 text-emerald-500" aria-hidden="true" />
                 Ambiente seguro
               </span>
@@ -544,18 +544,18 @@ export function CadastroFlow() {
                 href="/apolo"
                 aria-label="Sair do cadastro"
                 title="Sair do cadastro"
-                className="inline-flex size-8 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-slate-50 hover:text-slate-800"
+                className="inline-flex size-8 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
               >
                 <X className="size-4" aria-hidden="true" />
               </a>
             </div>
           </div>
-          <span className="mt-5 block text-[11px] font-semibold uppercase tracking-wide text-slate-400">
+          <span className="mt-5 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
             Etapa {activeIndex + 1} de {steps.length}
           </span>
-          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-slate-100">
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-subtle">
             <div
-              className="h-full rounded-full bg-[#0d141c] transition-all duration-500"
+              className="h-full rounded-full bg-inverse transition-all duration-500"
               style={{ width: `${pct}%` }}
             />
           </div>
@@ -691,8 +691,8 @@ function Stepper({
                 className={[
                   "flex size-7 items-center justify-center rounded-full border text-xs font-semibold transition-colors",
                   state === "todo"
-                    ? "border-slate-200 bg-white text-slate-400"
-                    : "border-[#0d141c] bg-[#0d141c] text-white",
+                    ? "border-line bg-surface text-ink-muted"
+                    : "border-line-strong bg-inverse text-brand-ink",
                 ].join(" ")}
               >
                 {state === "done" ? <Check className="size-3.5" aria-hidden="true" /> : index + 1}
@@ -700,7 +700,7 @@ function Stepper({
               <span
                 className={[
                   "hidden text-xs font-semibold sm:inline",
-                  state === "todo" ? "text-slate-400" : "text-slate-700",
+                  state === "todo" ? "text-ink-muted" : "text-ink",
                 ].join(" ")}
               >
                 {label}
@@ -708,7 +708,7 @@ function Stepper({
             </button>
             {index < steps.length - 1 ? (
               <div
-                className={`mx-2 h-px flex-1 ${index < step ? "bg-[#0d141c]/30" : "bg-slate-200"}`}
+                className={`mx-2 h-px flex-1 ${index < step ? "bg-inverse/30" : "bg-subtle"}`}
               />
             ) : null}
           </div>
@@ -773,30 +773,30 @@ function DocUploader({
         type="button"
         onClick={() => inputRef.current?.click()}
         disabled={working}
-        className="flex w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-7 text-center transition-colors hover:border-[#0d141c]/40 hover:bg-slate-50 disabled:cursor-wait"
+        className="flex w-full flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-line-strong bg-subtle px-4 py-7 text-center transition-colors hover:border-line-strong/40 hover:bg-subtle disabled:cursor-wait"
       >
         {working ? (
           <>
-            <Loader2 className="size-6 animate-spin text-[#0d141c]" aria-hidden="true" />
-            <span className="text-sm font-medium text-slate-700">
+            <Loader2 className="size-6 animate-spin text-ink" aria-hidden="true" />
+            <span className="text-sm font-medium text-ink">
               {loading ? "Lendo documento…" : "Consultando dados pelo CPF…"}
             </span>
-            <span className="text-xs text-slate-400">Aguarde um instante</span>
+            <span className="text-xs text-ink-muted">Aguarde um instante</span>
           </>
         ) : done ? (
           <>
             <CheckCircle2 className="size-6 text-emerald-500" aria-hidden="true" />
-            <span className="flex items-center gap-1.5 text-sm font-medium text-slate-700">
+            <span className="flex items-center gap-1.5 text-sm font-medium text-ink">
               <FileText className="size-3.5" aria-hidden="true" />
               {fileName}
             </span>
-            <span className="text-xs text-slate-400">Clique para trocar o documento</span>
+            <span className="text-xs text-ink-muted">Clique para trocar o documento</span>
           </>
         ) : (
           <>
-            <UploadCloud className="size-6 text-slate-400" aria-hidden="true" />
-            <span className="text-sm font-medium text-slate-600">{label}</span>
-            <span className="text-xs text-slate-400">{hint}</span>
+            <UploadCloud className="size-6 text-ink-muted" aria-hidden="true" />
+            <span className="text-sm font-medium text-ink-soft">{label}</span>
+            <span className="text-xs text-ink-muted">{hint}</span>
           </>
         )}
       </button>
@@ -815,7 +815,7 @@ function DocUploader({
         <ReadingBar text={loading ? "Lendo documento…" : "Consultando dados pelo CPF…"} />
       ) : null}
       {error ? (
-        <p className="mt-2 text-xs font-medium text-rose-600">{error}</p>
+        <p className="mt-2 text-xs font-medium text-rose-600 dark:text-rose-300">{error}</p>
       ) : null}
     </div>
   );
@@ -825,12 +825,12 @@ function DocUploader({
 function ReadingBar({ text }: { text: string }) {
   return (
     <div className="mt-3">
-      <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-slate-500">
+      <p className="mb-1 flex items-center gap-1.5 text-[11px] font-medium text-ink-muted">
         <ShieldCheck className="size-3 text-emerald-500" aria-hidden="true" />
         {text}
       </p>
-      <div className="h-1.5 overflow-hidden rounded-full bg-slate-100">
-        <div className="reading-bar h-full w-1/3 rounded-full bg-[#0d141c]" />
+      <div className="h-1.5 overflow-hidden rounded-full bg-subtle">
+        <div className="reading-bar h-full w-1/3 rounded-full bg-inverse" />
       </div>
       <style>{`
         @keyframes readingSlide { 0%{transform:translateX(-120%)} 100%{transform:translateX(320%)} }
@@ -844,8 +844,8 @@ function ReadingBar({ text }: { text: string }) {
 
 function StepCard({ children, title }: { children: ReactNode; title: string }) {
   return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <h2 className="text-base font-semibold text-slate-900">{title}</h2>
+    <div className="rounded-2xl border border-line bg-surface p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <h2 className="text-base font-semibold text-ink">{title}</h2>
       <div className="mt-4 grid gap-5">{children}</div>
     </div>
   );
@@ -854,7 +854,7 @@ function StepCard({ children, title }: { children: ReactNode; title: string }) {
 function Secao({ children, title }: { children: ReactNode; title: string }) {
   return (
     <div>
-      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#0d141c]">
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink">
         {title}
       </p>
       <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{children}</div>
@@ -879,7 +879,7 @@ function NavButtons({
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex h-9 items-center rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          className="inline-flex h-9 items-center rounded-lg border border-line px-4 text-sm font-medium text-ink-soft hover:bg-subtle"
         >
           Voltar
         </button>
@@ -890,7 +890,7 @@ function NavButtons({
         type="button"
         onClick={onNext}
         disabled={!canNext}
-        className="inline-flex h-9 items-center rounded-lg bg-[#0d141c] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0d141c]/90 disabled:cursor-not-allowed disabled:opacity-40"
+        className="inline-flex h-9 items-center rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
       >
         {nextLabel}
       </button>
@@ -1120,7 +1120,7 @@ function StepIdentificacao({
             </Secao>
           </>
         ) : (
-          <p className="text-xs text-slate-400">
+          <p className="text-xs text-ink-muted">
             Envie o cartão CNPJ para ler os dados da empresa.
           </p>
         )
@@ -1191,12 +1191,12 @@ function StepIdentificacao({
           </Secao>
 
           {temConjuge ? (
-            <div className="rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-              <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#0d141c]">
+            <div className="rounded-xl border border-line bg-subtle p-4">
+              <p className="mb-1 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink">
                 <UserRound className="size-3.5" aria-hidden="true" />
                 Cônjuge
               </p>
-              <p className="mb-3 text-xs text-slate-500">
+              <p className="mb-3 text-xs text-ink-muted">
                 Mesma ficha do titular. Envie o documento do cônjuge: leitura e
                 enriquecimento (sexo, telefone, renda) automáticos.
               </p>
@@ -1297,8 +1297,8 @@ function ComprovanteRecencia({ data }: { data: string }) {
     <div
       className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-medium ${
         atual
-          ? "border-emerald-200 bg-emerald-50 text-emerald-700"
-          : "border-amber-200 bg-amber-50 text-amber-700"
+          ? "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300"
+          : "border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"
       }`}
     >
       {atual ? (
@@ -1369,13 +1369,13 @@ function StepCertidao({
 
   return (
     <StepCard title="3. Certidão">
-      <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 print:hidden">
+      <p className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 print:hidden">
         Envie a <span className="font-semibold">{tituloMinusculo}</span>. O MOST
         verifica a autenticidade do documento.
       </p>
 
       <div>
-        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#0d141c]">
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink">
           {esperada.titulo}
         </p>
         <div className="print:hidden">
@@ -1388,12 +1388,12 @@ function StepCertidao({
         </div>
         {certidao ? (
           valida ? (
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs font-medium text-emerald-700">
+            <div className="mt-2 flex items-center gap-2 rounded-lg border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12 px-3 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-300">
               <CheckCircle2 className="size-4" aria-hidden="true" />
               Autenticidade confirmada pelo MOST ({mapCertidao(certidao.documentType)}).
             </div>
           ) : (
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700">
+            <div className="mt-2 flex items-center gap-2 rounded-lg border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-medium text-rose-700 dark:text-rose-300">
               <X className="size-4" aria-hidden="true" />
               Documento não reconhecido como certidão. Reenvie a certidão correta.
             </div>
@@ -1561,15 +1561,15 @@ function StepRevisao({
   }
 
   return (
-    <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex items-center justify-between gap-3 border-b border-slate-100 pb-4">
+    <div className="rounded-2xl border border-line bg-surface p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-center justify-between gap-3 border-b border-line pb-4">
         <div className="flex items-center gap-2.5">
-          <span className="flex size-9 items-center justify-center rounded-lg bg-[#0d141c] text-white">
+          <span className="flex size-9 items-center justify-center rounded-lg bg-inverse text-brand-ink">
             <UserRound className="size-5" aria-hidden="true" />
           </span>
           <div>
-            <h2 className="text-lg font-semibold text-slate-950">Cadastro de CAD</h2>
-            <p className="text-xs text-slate-500">
+            <h2 className="text-lg font-semibold text-ink">Cadastro de CAD</h2>
+            <p className="text-xs text-ink-muted">
               {nomeCliente} · registro {registro.completo}
             </p>
           </div>
@@ -1577,7 +1577,7 @@ function StepRevisao({
         <button
           type="button"
           onClick={gerarCad}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#0d141c] px-4 text-sm font-semibold text-white hover:bg-[#0d141c]/90"
+          className="inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink hover:bg-inverse/90"
         >
           <Download className="size-4" aria-hidden="true" />
           Baixar CAD (PDF)
@@ -1684,12 +1684,12 @@ function StepRevisao({
         <button
           type="button"
           onClick={onBack}
-          className="inline-flex h-9 items-center rounded-lg border border-slate-200 px-4 text-sm font-medium text-slate-600 hover:bg-slate-50"
+          className="inline-flex h-9 items-center rounded-lg border border-line px-4 text-sm font-medium text-ink-soft hover:bg-subtle"
         >
           Voltar
         </button>
         {enviado ? (
-          <span className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 ring-1 ring-emerald-200">
+          <span className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/12 px-4 text-sm font-semibold text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-500/25">
             <Check className="size-4" aria-hidden="true" />
             Cadastro enviado
           </span>
@@ -1697,7 +1697,7 @@ function StepRevisao({
           <button
             type="button"
             onClick={enviar}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-[#0d141c] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#0d141c]/90"
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90"
           >
             <Send className="size-4" aria-hidden="true" />
             Enviar
@@ -1721,16 +1721,16 @@ function ReadField({
 }) {
   return (
     <div
-      className={`rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2 ${
+      className={`rounded-lg border border-line bg-subtle px-3 py-2 ${
         span2 ? "sm:col-span-2" : ""
       }`}
     >
-      <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+      <div className="flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
         <Lock className="size-2.5" aria-hidden="true" />
         {label}
       </div>
-      <div className="mt-0.5 min-h-[1.25rem] break-words text-sm text-slate-800">
-        {value || <span className="text-slate-300">—</span>}
+      <div className="mt-0.5 min-h-[1.25rem] break-words text-sm text-ink">
+        {value || <span className="text-ink-muted">—</span>}
       </div>
     </div>
   );
@@ -1750,9 +1750,9 @@ function SelectField({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+    <div className="rounded-lg border border-line bg-surface px-3 py-2">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
           {label}
         </span>
         {hint ? <span className="text-[10px] text-[#A07C3B]">{hint}</span> : null}
@@ -1760,7 +1760,7 @@ function SelectField({
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-0.5 w-full bg-transparent text-sm text-slate-800 outline-none"
+        className="mt-0.5 w-full bg-transparent text-sm text-ink outline-none"
       >
         <option value="">Selecione…</option>
         {options.map((option) => (
@@ -1785,15 +1785,15 @@ function TextField({
   value: string;
 }) {
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+    <div className="rounded-lg border border-line bg-surface px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
         {label}
       </div>
       <input
         value={value}
         onChange={(event) => onChange(event.target.value)}
         placeholder={placeholder}
-        className="mt-0.5 w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
+        className="mt-0.5 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
       />
     </div>
   );
@@ -1823,8 +1823,8 @@ function SearchableSelect({
   ).slice(0, 60);
 
   return (
-    <div className="relative rounded-lg border border-slate-200 bg-white px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+    <div className="relative rounded-lg border border-line bg-surface px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
         {label}
       </div>
       <input
@@ -1835,7 +1835,7 @@ function SearchableSelect({
         }}
         onChange={(event) => setQuery(event.target.value)}
         placeholder={placeholder}
-        className="mt-0.5 w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
+        className="mt-0.5 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
       />
       {open ? (
         <>
@@ -1845,7 +1845,7 @@ function SearchableSelect({
             onClick={() => setOpen(false)}
             className="fixed inset-0 z-10 cursor-default"
           />
-          <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg">
             {filtered.length ? (
               filtered.map((option) => (
                 <button
@@ -1855,13 +1855,13 @@ function SearchableSelect({
                     onChange(option.id.toString());
                     setOpen(false);
                   }}
-                  className="block w-full px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+                  className="block w-full px-3 py-1.5 text-left text-sm text-ink hover:bg-subtle"
                 >
                   {titleCase(option.label)}
                 </button>
               ))
             ) : (
-              <p className="px-3 py-2 text-xs text-slate-400">Nenhuma opção</p>
+              <p className="px-3 py-2 text-xs text-ink-muted">Nenhuma opção</p>
             )}
           </div>
         </>
@@ -1891,12 +1891,12 @@ function PhoneField({
   const temEscolha = opcoes.length > 1;
 
   return (
-    <div className="relative rounded-lg border border-slate-200 bg-white px-3 py-2">
+    <div className="relative rounded-lg border border-line bg-surface px-3 py-2">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
           {label}
         </span>
-        <span className="flex items-center gap-1 text-[9px] font-medium text-slate-400">
+        <span className="flex items-center gap-1 text-[9px] font-medium text-ink-muted">
           <Pencil className="size-2.5" aria-hidden="true" />
           editável
         </span>
@@ -1908,12 +1908,12 @@ function PhoneField({
             setOpenPais((v) => !v);
             setOpenSug(false);
           }}
-          className="flex shrink-0 items-center gap-1 rounded-md px-1 py-0.5 hover:bg-slate-50"
+          className="flex shrink-0 items-center gap-1 rounded-md px-1 py-0.5 hover:bg-subtle"
           title={country.name}
         >
           <span className="text-sm leading-none">{country.flag}</span>
-          <span className="text-xs text-slate-500">+{country.dial}</span>
-          <ChevronDown className="size-3 text-slate-400" aria-hidden="true" />
+          <span className="text-xs text-ink-muted">+{country.dial}</span>
+          <ChevronDown className="size-3 text-ink-muted" aria-hidden="true" />
         </button>
         <input
           inputMode="tel"
@@ -1923,7 +1923,7 @@ function PhoneField({
           }
           onFocus={() => temEscolha && setOpenSug(true)}
           placeholder={country.mask.replace(/#/g, "0")}
-          className="w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
+          className="w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
         />
       </div>
 
@@ -1935,7 +1935,7 @@ function PhoneField({
             onClick={() => setOpenPais(false)}
             className="fixed inset-0 z-10 cursor-default"
           />
-          <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
+          <div className="absolute left-0 top-full z-20 mt-1 max-h-56 w-full overflow-y-auto rounded-lg border border-line bg-surface py-1 shadow-lg">
             {PHONE_COUNTRIES.map((c) => (
               <button
                 key={c.iso}
@@ -1944,11 +1944,11 @@ function PhoneField({
                   onChange(composePhone(c, national));
                   setOpenPais(false);
                 }}
-                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+                className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm text-ink hover:bg-subtle"
               >
                 <span className="leading-none">{c.flag}</span>
                 <span className="flex-1">{c.name}</span>
-                <span className="text-xs text-slate-400">+{c.dial}</span>
+                <span className="text-xs text-ink-muted">+{c.dial}</span>
               </button>
             ))}
           </div>
@@ -1963,8 +1963,8 @@ function PhoneField({
             onClick={() => setOpenSug(false)}
             className="fixed inset-0 z-10 cursor-default"
           />
-          <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-slate-200 bg-white py-1 shadow-lg">
-            <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+          <div className="absolute left-0 top-full z-20 mt-1 w-full rounded-lg border border-line bg-surface py-1 shadow-lg">
+            <p className="px-3 pb-1 pt-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
               Números encontrados
             </p>
             {opcoes.map((item) => (
@@ -1976,7 +1976,7 @@ function PhoneField({
                   onChange(composePhone(parsed.country, parsed.national));
                   setOpenSug(false);
                 }}
-                className="block w-full px-3 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-50"
+                className="block w-full px-3 py-1.5 text-left text-sm text-ink hover:bg-subtle"
               >
                 {item}
               </button>
@@ -2011,29 +2011,29 @@ function EmailField({
       ? bloqueioMsg ?? "E-mail já utilizado."
       : "Formato válido. Enviaremos um e-mail de confirmação.";
   return (
-    <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+    <div className="rounded-lg border border-line bg-surface px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
         E-mail
       </div>
       <div className="flex items-center gap-2">
-        <Mail className="size-3.5 shrink-0 text-slate-400" aria-hidden="true" />
+        <Mail className="size-3.5 shrink-0 text-ink-muted" aria-hidden="true" />
         <input
           type="email"
           value={value}
           onChange={(event) => onChange(event.target.value)}
           placeholder="email@dominio.com"
-          className="mt-0.5 w-full bg-transparent text-sm text-slate-800 outline-none placeholder:text-slate-300"
+          className="mt-0.5 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
         />
         {touched ? (
           valid ? (
-            <Check className="size-4 shrink-0 text-emerald-600" aria-hidden="true" />
+            <Check className="size-4 shrink-0 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
           ) : (
             <X className="size-4 shrink-0 text-rose-500" aria-hidden="true" />
           )
         ) : null}
       </div>
       {touched ? (
-        <p className={`mt-1 text-[11px] ${valid ? "text-emerald-600" : "text-rose-600"}`}>
+        <p className={`mt-1 text-[11px] ${valid ? "text-emerald-600 dark:text-emerald-300" : "text-rose-600 dark:text-rose-300"}`}>
           {mensagem}
         </p>
       ) : null}
@@ -2047,8 +2047,8 @@ function EnrichWarn({ enrich }: { enrich: Enrichment }) {
     <div
       className={`rounded-lg border px-3 py-2 text-xs print:hidden ${
         simulado
-          ? "border-amber-200 bg-amber-50 text-amber-700"
-          : "border-slate-200 bg-slate-50 text-slate-500"
+          ? "border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"
+          : "border-line bg-subtle text-ink-muted"
       }`}
     >
       <div className="flex items-center gap-2 font-medium">

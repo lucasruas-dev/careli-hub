@@ -38,23 +38,23 @@ function EntityColumn({
   onSelect: (entityId: string) => void;
 }) {
   return (
-    <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="shrink-0 border-b border-slate-100 px-5 py-4">
+    <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="shrink-0 border-b border-line px-5 py-4">
         <div className="flex items-start justify-between gap-3">
           <div>
-            <h2 className="m-0 text-base font-semibold text-slate-950">CRM 360</h2>
-            <p className="m-0 mt-1 text-xs font-medium text-slate-500">
+            <h2 className="m-0 text-base font-semibold text-ink">CRM 360</h2>
+            <p className="m-0 mt-1 text-xs font-medium text-ink-muted">
               Pessoas, empresas, carteira e responsaveis.
             </p>
           </div>
-          <span className="rounded-full bg-slate-50 px-2.5 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70">
+          <span className="rounded-full bg-subtle px-2.5 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line">
             {formatCount(entities.length)}/{formatCount(totalCount)}
           </span>
         </div>
-        <div className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200/70 bg-slate-50/80 px-3 py-2 text-slate-500">
+        <div className="mt-4 flex items-center gap-2 rounded-xl border border-line bg-subtle px-3 py-2 text-ink-muted">
           <Search className="size-4 shrink-0" aria-hidden="true" />
           <input
-            className="w-full bg-transparent text-sm font-medium text-slate-900 outline-none placeholder:text-slate-400"
+            className="w-full bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
             disabled={loading || Boolean(error)}
             onChange={(event) => onChangeQuery(event.target.value)}
             placeholder="Buscar nome, comprador, documento, unidade, e-mail ou responsavel"
@@ -70,7 +70,7 @@ function EntityColumn({
               className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[#A07C3B]"
             />
             <select
-              className="h-8 rounded-lg border border-slate-200/70 bg-white pl-8 pr-7 text-xs font-semibold text-slate-600 outline-none transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
+              className="h-8 rounded-lg border border-line bg-surface pl-8 pr-7 text-xs font-semibold text-ink-soft outline-none transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
               disabled={loading || Boolean(error)}
               onChange={(event) =>
                 onChangeProfileFilter(event.target.value as ApoloProfileFilter)
@@ -87,7 +87,7 @@ function EntityColumn({
           </label>
           {profileFilter !== "all" ? (
             <button
-              className="inline-flex h-7 items-center rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15"
+              className="inline-flex h-7 items-center rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15"
               onClick={() => onChangeProfileFilter("all")}
               type="button"
             >
@@ -137,8 +137,8 @@ function EntityEmptyState({
     <div
       className={`grid min-h-48 place-items-center rounded-lg border border-dashed p-4 text-center text-sm font-semibold ${
         tone === "error"
-          ? "border-rose-200 bg-rose-50 text-rose-700"
-          : "border-slate-200 text-slate-500"
+          ? "border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300"
+          : "border-line text-ink-muted"
       }`}
     >
       {message}
@@ -167,16 +167,16 @@ function EntityListItem({
       className={`rounded-xl border p-3 transition-all ${
         selected
           ? "border-[#A07C3B]/35 bg-[#A07C3B]/5 shadow-[0_10px_30px_rgba(160,124,59,0.08)]"
-          : "border-slate-100 bg-white hover:border-slate-200/80 hover:bg-slate-50/80"
+          : "border-line bg-surface hover:border-line hover:bg-subtle"
       }`}
     >
       <button className="w-full text-left" onClick={onSelect} type="button">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
-            <p className="m-0 truncate text-sm font-semibold text-slate-950">
+            <p className="m-0 truncate text-sm font-semibold text-ink">
               {title}
             </p>
-            <p className="m-0 mt-1 truncate text-xs text-slate-500">
+            <p className="m-0 mt-1 truncate text-xs text-ink-muted">
               {displayText(entity.locationLabel)}
             </p>
           </div>
@@ -191,19 +191,19 @@ function EntityListItem({
         <div className="mt-3 flex flex-wrap gap-1.5">
           {/* Pro cliente, o chip Comprador/Prospect (abaixo) já é o perfil — some o "Usuario". */}
           {!isUsuario ? (
-            <span className="rounded-full bg-[#A07C3B]/8 px-2 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+            <span className="rounded-full bg-[#A07C3B]/8 px-2 py-1 text-[11px] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
               {apoloProfileLabels[primaryProfile]}
             </span>
           ) : null}
-          <span className="rounded-full bg-slate-50 px-2 py-1 text-[11px] font-semibold text-slate-600 ring-1 ring-slate-200/70">
+          <span className="rounded-full bg-subtle px-2 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line">
             {kindLabel(entity.kind)}
           </span>
           {isUsuario ? (
             <span
               className={`rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ring-inset ${
                 buyerLabel === "Comprador"
-                  ? "bg-emerald-50 text-emerald-700 ring-emerald-100"
-                  : "bg-amber-50 text-amber-800 ring-amber-100"
+                  ? "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20"
+                  : "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20"
               }`}
             >
               {buyerLabel}
@@ -211,9 +211,9 @@ function EntityListItem({
           ) : null}
         </div>
         {isUsuario ? (
-          <div className="mt-3 rounded-lg border border-slate-100 bg-slate-50/60 px-3 py-2">
-            <p className="m-0 text-[11px] font-medium text-slate-500">Vinculo</p>
-            <p className="m-0 mt-1 truncate text-sm font-semibold text-slate-950">
+          <div className="mt-3 rounded-lg border border-line bg-subtle px-3 py-2">
+            <p className="m-0 text-[11px] font-medium text-ink-muted">Vinculo</p>
+            <p className="m-0 mt-1 truncate text-sm font-semibold text-ink">
               {primaryRelationship}
             </p>
           </div>

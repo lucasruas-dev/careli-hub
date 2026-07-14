@@ -152,13 +152,13 @@ export function buyerFinancialBadge(entity: ApoloEntity) {
 
   if (entity.financial.overdueInstallments > 0 || currencyLabelToNumber(entity.financial.overdueAmount) > 0) {
     return {
-      className: "bg-rose-50 text-rose-700 ring-rose-100",
+      className: "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/20",
       label: "Inadimplente",
     };
   }
 
   return {
-    className: "bg-emerald-50 text-emerald-700 ring-emerald-100",
+    className: "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20",
     label: "Adimplente",
   };
 }
@@ -605,24 +605,24 @@ export function uniqueText(values: string[]) {
 
 export function financialRecordTypeClass(type: ApoloFinancialRecordType) {
   if (type === "Acordo") {
-    return "bg-[#A07C3B]/8 text-[#7A5E2C] ring-[#A07C3B]/15";
+    return "bg-[#A07C3B]/8 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/15";
   }
 
-  return "bg-slate-50 text-slate-700 ring-slate-200";
+  return "bg-subtle text-ink ring-line";
 }
 
 export function financialRecordStatusClass(status: string) {
   const normalized = normalizeText(status);
 
   if (normalized.includes("bloqueado") || normalized.includes("quebrado")) {
-    return "bg-rose-50 text-rose-700 ring-rose-100";
+    return "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/20";
   }
 
   if (normalized.includes("acompanhar") || normalized.includes("negoci")) {
-    return "bg-amber-50 text-amber-700 ring-amber-100";
+    return "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20";
   }
 
-  return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+  return "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20";
 }
 
 export function portfolioKey(link: ApoloEntity["commercialLinks"][number] | undefined) {

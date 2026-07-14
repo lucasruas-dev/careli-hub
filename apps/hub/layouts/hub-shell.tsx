@@ -16,6 +16,7 @@ import {
   serializeDiagnosticError,
 } from "@/lib/supabase/client";
 import { useRealtime } from "@/providers/realtime-provider";
+import { useHubTheme } from "@/providers/theme-provider";
 import { usePanteonNotifications } from "@/providers/pulsex-notification-provider";
 import {
   ActionGroup,
@@ -134,6 +135,7 @@ export function HubShell({
     usePanteonNotifications();
   const pathname = usePathname();
   const router = useRouter();
+  const { mode } = useHubTheme();
   const [openModuleIds, setOpenModuleIds] = useState<string[]>([]);
   const panteonBrandIconSrc = isHomologationBrand
     ? "/panteon-mark-homolog.png"
@@ -615,7 +617,7 @@ export function HubShell({
                   )}
                 />
               }
-              user={<PanteonTopbarUser />}
+              user={<PanteonTopbarUser onDark={mode === "dark"} />}
             />
           )
         }

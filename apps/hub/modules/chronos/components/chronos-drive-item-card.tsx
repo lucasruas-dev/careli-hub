@@ -45,18 +45,18 @@ export function ChronosDriveItemCard({
     <button
       className={`grid min-w-0 gap-3 overflow-hidden rounded-md border p-3 text-left transition ${
         selected
-          ? "border-[#A07C3B] bg-[#fffaf0]"
-          : "border-[#edf0f4] bg-[#fafbfc] hover:border-[#d9e0e7] hover:bg-white"
+          ? "border-[#A07C3B] bg-[#fffaf0] dark:bg-[#a07c3b]/10"
+          : "border-line bg-subtle hover:border-line hover:bg-surface"
       }`}
       onClick={() => onSelectMeeting(meeting.id)}
       type="button"
     >
       <span className="flex min-w-0 items-start justify-between gap-2">
         <span className="min-w-0 flex-1">
-          <span className="block overflow-hidden text-sm font-semibold leading-5 text-[#101820] [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [overflow-wrap:anywhere]">
+          <span className="block overflow-hidden text-sm font-semibold leading-5 text-ink [display:-webkit-box] [-webkit-box-orient:vertical] [-webkit-line-clamp:2] [overflow-wrap:anywhere]">
             {meeting.title}
           </span>
-          <span className="mt-1 block text-xs text-[#667085]">
+          <span className="mt-1 block text-xs text-ink-muted">
             {meeting.room?.name ?? "Sala pendente"}
           </span>
         </span>
@@ -75,7 +75,7 @@ export function ChronosDriveItemCard({
             : chronosMinutesStatusLabels[safeMeeting.minutesStatus]}
         </Badge>
       </span>
-      <span className="grid gap-1 text-xs text-[#667085]">
+      <span className="grid gap-1 text-xs text-ink-muted">
         <span>Inicio: {formatChronosDateTime(meeting.startsAt)}</span>
         <span>Participantes: {checkedInParticipants.length}</span>
         <span className="truncate">Nomes: {participants || "-"}</span>

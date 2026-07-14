@@ -51,7 +51,7 @@ export function MeetingOverview({
       </div>
       <InfoBlock label="objetivo" value={meeting.objective || "-"} />
       <div className="grid gap-2">
-        <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+        <p className="m-0 text-xs font-bold uppercase text-ink-muted">
           Controle formal
         </p>
         <div className="grid grid-cols-2 gap-2 2xl:grid-cols-4">
@@ -106,10 +106,10 @@ export function MeetingOverview({
         </div>
       </div>
       <div className="grid gap-2">
-        <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+        <p className="m-0 text-xs font-bold uppercase text-ink-muted">
           Resumo executivo
         </p>
-        <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 text-sm leading-6 text-[#344054]">
+        <div className="rounded-md border border-line bg-subtle p-3 text-sm leading-6 text-ink">
           {meeting.executiveSummary || "-"}
         </div>
       </div>
@@ -119,7 +119,7 @@ export function MeetingOverview({
 
 function ChronosNextActionPanel({ action }: { action: ChronosNextAction }) {
   return (
-    <div className="rounded-md border border-[#d9e0e7] bg-[#101820] p-3 text-white">
+    <div className="rounded-md border border-line bg-inverse p-3 text-brand-ink">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="m-0 text-xs font-bold uppercase text-[#D6B56F]">
@@ -167,8 +167,8 @@ function ChronosGovernanceChecklist({ meeting }: { meeting: ChronosMeeting }) {
   ];
 
   return (
-    <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
-      <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+    <div className="rounded-md border border-line bg-subtle p-3">
+      <p className="m-0 text-xs font-bold uppercase text-ink-muted">
         Governanca da reuniao
       </p>
       <div className="mt-3 flex flex-wrap gap-1.5">

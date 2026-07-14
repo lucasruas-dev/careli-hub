@@ -149,11 +149,11 @@ export function ChronosDriveLibraryScreen({
       onChangeDriveView={handleChangeDriveView}
     >
       <section className="grid min-h-[42rem] gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(24rem,0.72fr)]">
-        <Surface bordered className="border-[#d9e0e7] bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] p-4">
+        <Surface bordered className="border-line bg-surface">
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line p-4">
             <PanelTitle eyebrow="Drive Chronos" title="Atas" />
             <select
-              className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#526078] outline-none focus:border-[#A07C3B]"
+              className="h-9 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink-muted outline-none focus:border-[#A07C3B]"
               onChange={(event) => {
                 setFocusedMinutesMeetingId("");
                 setRoomFilter(event.target.value);
@@ -169,7 +169,7 @@ export function ChronosDriveLibraryScreen({
             </select>
             {focusedMinutesMeetingId ? (
               <button
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#526078] transition hover:border-[#A07C3B] hover:text-[#101820]"
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink-muted transition hover:border-[#A07C3B] hover:text-ink"
                 onClick={() => setFocusedMinutesMeetingId("")}
                 type="button"
               >
@@ -212,7 +212,7 @@ export function ChronosDriveLibraryScreen({
             />
           </div>
         ) : (
-          <Surface bordered className="grid min-h-full place-items-center border-[#d9e0e7] bg-white p-5 text-sm text-[#667085]">
+          <Surface bordered className="grid min-h-full place-items-center border-line bg-surface p-5 text-sm text-ink-muted">
             Selecione um item do Drive.
           </Surface>
         )}
@@ -274,9 +274,9 @@ function ChronosRecordingFolderExplorer({
   }
 
   return (
-    <section className="grid min-h-[42rem] overflow-hidden rounded-md border border-[#d9e0e7] bg-white xl:grid-cols-[18rem_minmax(0,1fr)]">
-      <aside className="border-r border-[#edf0f4] bg-[#fbfcfe]">
-        <div className="border-b border-[#edf0f4] p-4">
+    <section className="grid min-h-[42rem] overflow-hidden rounded-md border border-line bg-surface xl:grid-cols-[18rem_minmax(0,1fr)]">
+      <aside className="border-r border-line bg-[#fbfcfe]">
+        <div className="border-b border-line p-4">
           <PanelTitle eyebrow="Drive Chronos" title="Pastas" />
         </div>
         <div className="grid gap-2 p-4">
@@ -288,8 +288,8 @@ function ChronosRecordingFolderExplorer({
               <button
                 className={`grid gap-2 rounded-md px-2.5 py-2 text-left transition ${
                   selected
-                    ? "bg-[#fffaf0] shadow-[inset_2px_0_0_#A07C3B]"
-                    : "hover:bg-white"
+                    ? "bg-[#fffaf0] dark:bg-[#a07c3b]/10 shadow-[inset_2px_0_0_#A07C3B]"
+                    : "hover:bg-surface"
                 }`}
                 key={folder.id}
                 onClick={() => setSelectedFolderId(folder.id)}
@@ -299,17 +299,17 @@ function ChronosRecordingFolderExplorer({
                   <span
                     className={`grid h-10 w-10 shrink-0 place-items-center rounded-md ${
                       selected
-                        ? "bg-[#101820] text-white"
-                        : "bg-white text-[#A07C3B]"
+                        ? "bg-inverse text-brand-ink"
+                        : "bg-surface text-[#A07C3B]"
                     }`}
                   >
                     <FolderIcon aria-hidden="true" size={18} />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-sm font-semibold text-[#101820]">
+                    <span className="block truncate text-sm font-semibold text-ink">
                       {folder.label}
                     </span>
-                    <span className="mt-1 block truncate text-xs text-[#667085]">
+                    <span className="mt-1 block truncate text-xs text-ink-muted">
                       {folder.subtitle}
                     </span>
                   </span>
@@ -331,61 +331,61 @@ function ChronosRecordingFolderExplorer({
         </div>
       </aside>
 
-      <div className="min-w-0 bg-white">
+      <div className="min-w-0 bg-surface">
         {selectedFolder ? (
           <>
-            <div className="grid gap-3 border-b border-[#edf0f4] p-4">
+            <div className="grid gap-3 border-b border-line p-4">
               <div className="flex flex-wrap items-start justify-between gap-3">
                 <PanelTitle eyebrow="Gravacoes" title={selectedFolder.label} />
-                <span className="text-xs font-semibold text-[#667085]">
+                <span className="text-xs font-semibold text-ink-muted">
                   {filteredMeetings.length} reunioes filtradas
                 </span>
               </div>
               <div className="grid gap-2 xl:grid-cols-[minmax(8rem,0.7fr)_minmax(8rem,0.7fr)_minmax(12rem,1fr)_minmax(12rem,1fr)_auto_auto]">
-                <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+                <label className="grid gap-1 text-xs font-bold uppercase text-ink-muted">
                   De
                   <input
-                    className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    className="h-9 rounded-md border border-line bg-surface px-3 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                     onChange={(event) => setDateFrom(event.target.value)}
                     type="date"
                     value={dateFrom}
                   />
                 </label>
-                <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+                <label className="grid gap-1 text-xs font-bold uppercase text-ink-muted">
                   Ate
                   <input
-                    className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                    className="h-9 rounded-md border border-line bg-surface px-3 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                     onChange={(event) => setDateTo(event.target.value)}
                     type="date"
                     value={dateTo}
                   />
                 </label>
-                <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+                <label className="grid gap-1 text-xs font-bold uppercase text-ink-muted">
                   Assunto
                   <span className="relative">
                     <Search
                       aria-hidden="true"
-                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8a95a6]"
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted"
                       size={14}
                     />
                     <input
-                      className="h-9 w-full rounded-md border border-[#d9e0e7] bg-white pl-8 pr-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                      className="h-9 w-full rounded-md border border-line bg-surface pl-8 pr-3 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                       onChange={(event) => setSubjectFilter(event.target.value)}
                       placeholder="Tema ou protocolo"
                       value={subjectFilter}
                     />
                   </span>
                 </label>
-                <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
+                <label className="grid gap-1 text-xs font-bold uppercase text-ink-muted">
                   Pessoas
                   <span className="relative">
                     <UsersRound
                       aria-hidden="true"
-                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[#8a95a6]"
+                      className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-ink-muted"
                       size={14}
                     />
                     <input
-                      className="h-9 w-full rounded-md border border-[#d9e0e7] bg-white pl-8 pr-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
+                      className="h-9 w-full rounded-md border border-line bg-surface pl-8 pr-3 text-sm normal-case text-ink outline-none focus:border-[#A07C3B]"
                       onChange={(event) => setPeopleFilter(event.target.value)}
                       placeholder="Nome, email ou empresa"
                       value={peopleFilter}
@@ -394,7 +394,7 @@ function ChronosRecordingFolderExplorer({
                 </label>
                 <div className="flex items-end">
                   <button
-                    className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#526078] transition hover:border-[#A07C3B] hover:text-[#101820] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink-muted transition hover:border-[#A07C3B] hover:text-ink disabled:cursor-not-allowed disabled:opacity-50"
                     disabled={!filtersActive}
                     onClick={clearFilters}
                     type="button"
@@ -404,7 +404,7 @@ function ChronosRecordingFolderExplorer({
                   </button>
                 </div>
                 <div className="flex items-end">
-                  <div className="inline-flex h-9 rounded-md border border-[#d9e0e7] bg-white p-1">
+                  <div className="inline-flex h-9 rounded-md border border-line bg-surface p-1">
                     {[
                       { icon: LayoutGrid, id: "grid" as const, label: "Grade" },
                       { icon: ListChecks, id: "list" as const, label: "Lista" },
@@ -417,8 +417,8 @@ function ChronosRecordingFolderExplorer({
                           aria-label={item.label}
                           className={`grid h-7 w-8 place-items-center rounded-md transition ${
                             active
-                              ? "bg-[#101820] text-white"
-                              : "text-[#667085] hover:bg-[#f3f6fa] hover:text-[#101820]"
+                              ? "bg-inverse text-brand-ink"
+                              : "text-ink-muted hover:bg-subtle hover:text-ink"
                           }`}
                           key={item.id}
                           onClick={() => setViewMode(item.id)}

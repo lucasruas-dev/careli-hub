@@ -125,10 +125,10 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 function confidenceTone(score: number | null): string {
-  if (score === null) return "text-slate-400";
-  if (score >= 0.9) return "text-emerald-600";
-  if (score >= 0.75) return "text-amber-600";
-  return "text-rose-600";
+  if (score === null) return "text-ink-muted";
+  if (score >= 0.9) return "text-emerald-600 dark:text-emerald-300";
+  if (score >= 0.75) return "text-amber-600 dark:text-amber-300";
+  return "text-rose-600 dark:text-rose-300";
 }
 
 export function MostqiTester() {
@@ -246,10 +246,10 @@ export function MostqiTester() {
           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-[#A07C3B]">
             Apolo · Integracao
           </p>
-          <h1 className="mt-1 text-2xl font-semibold text-slate-950">
+          <h1 className="mt-1 text-2xl font-semibold text-ink">
             MOSTQI · Teste de comunicacao
           </h1>
-          <p className="mt-1 max-w-2xl text-sm text-slate-500">
+          <p className="mt-1 max-w-2xl text-sm text-ink-muted">
             Valide o handshake (token temporario) e a leitura de documentos
             (iOCR). Nada e gravado: e so um sandbox para conferir a integracao.
           </p>
@@ -259,8 +259,8 @@ export function MostqiTester() {
             className={[
               "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold",
               isMock
-                ? "bg-amber-50 text-amber-700"
-                : "bg-emerald-50 text-emerald-700",
+                ? "bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300"
+                : "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
             ].join(" ")}
           >
             {isMock ? (
@@ -274,8 +274,8 @@ export function MostqiTester() {
       </header>
 
       {/* Conexao */}
-      <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+      <div className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="flex items-center gap-2 text-sm font-semibold text-ink">
           <KeyRound className="size-4 text-[#A07C3B]" aria-hidden="true" />
           Conexao
         </div>
@@ -293,7 +293,7 @@ export function MostqiTester() {
           <StatusTile label="Base URL" value={status?.baseUrl ?? "…"} mono />
         </div>
         {status ? (
-          <p className="mt-3 font-mono text-[11px] text-slate-400">
+          <p className="mt-3 font-mono text-[11px] text-ink-muted">
             POST {status.authPath} · POST {status.extractionPath}
           </p>
         ) : null}
@@ -316,7 +316,7 @@ export function MostqiTester() {
             <span
               className={[
                 "inline-flex items-center gap-1.5 text-sm font-medium",
-                authResult.ok ? "text-emerald-700" : "text-amber-700",
+                authResult.ok ? "text-emerald-700 dark:text-emerald-300" : "text-amber-700 dark:text-amber-300",
               ].join(" ")}
             >
               {authResult.ok ? (
@@ -338,8 +338,8 @@ export function MostqiTester() {
 
       {/* Upload + extracao */}
       <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
-        <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-          <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+        <div className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+          <div className="flex items-center gap-2 text-sm font-semibold text-ink">
             <ScanLine className="size-4 text-[#A07C3B]" aria-hidden="true" />
             Documento
           </div>
@@ -347,7 +347,7 @@ export function MostqiTester() {
           <button
             type="button"
             onClick={() => inputRef.current?.click()}
-            className="mt-4 flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-slate-300 bg-slate-50/60 px-4 py-8 text-center transition-colors hover:border-[#A07C3B]/50 hover:bg-[#A07C3B]/[0.03]"
+            className="mt-4 flex w-full flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-line-strong bg-subtle px-4 py-8 text-center transition-colors hover:border-[#A07C3B]/50 hover:bg-[#A07C3B]/[0.03]"
           >
             {previewUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
@@ -358,11 +358,11 @@ export function MostqiTester() {
               />
             ) : (
               <>
-                <UploadCloud className="size-7 text-slate-400" aria-hidden="true" />
-                <span className="text-sm font-medium text-slate-600">
+                <UploadCloud className="size-7 text-ink-muted" aria-hidden="true" />
+                <span className="text-sm font-medium text-ink-soft">
                   Clique para escolher RG, CNH ou comprovante
                 </span>
-                <span className="text-xs text-slate-400">
+                <span className="text-xs text-ink-muted">
                   Imagem ou PDF, ate 20MB
                 </span>
               </>
@@ -377,7 +377,7 @@ export function MostqiTester() {
           />
 
           {file ? (
-            <p className="mt-3 flex items-center gap-2 text-xs text-slate-500">
+            <p className="mt-3 flex items-center gap-2 text-xs text-ink-muted">
               <FileText className="size-3.5" aria-hidden="true" />
               {file.name} · {(file.size / 1024).toFixed(0)} KB
             </p>
@@ -387,7 +387,7 @@ export function MostqiTester() {
             type="button"
             onClick={runExtract}
             disabled={extractLoading || (!file && !isMock)}
-            className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:opacity-50"
+            className="mt-4 inline-flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse disabled:cursor-not-allowed disabled:opacity-50"
           >
             {extractLoading ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -397,21 +397,21 @@ export function MostqiTester() {
             {isMock && !file ? "Extrair exemplo (simulado)" : "Extrair documento"}
           </button>
           {isMock ? (
-            <p className="mt-2 text-center text-[11px] text-amber-600">
+            <p className="mt-2 text-center text-[11px] text-amber-600 dark:text-amber-300">
               Sem client key: a extracao devolve um exemplo para testar a tela.
             </p>
           ) : null}
         </div>
 
-        <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink">
               <FileText className="size-4 text-[#A07C3B]" aria-hidden="true" />
               Resultado
             </div>
             {extraction ? (
-              <span className="inline-flex items-center gap-2 text-xs text-slate-500">
-                <span className="rounded bg-slate-100 px-2 py-0.5 font-mono">
+              <span className="inline-flex items-center gap-2 text-xs text-ink-muted">
+                <span className="rounded bg-subtle px-2 py-0.5 font-mono">
                   {extraction.documentType}
                 </span>
                 {extraction.overallConfidence !== null ? (
@@ -422,10 +422,10 @@ export function MostqiTester() {
                 <button
                   type="button"
                   onClick={copyExtraction}
-                  className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+                  className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] font-semibold text-ink-soft hover:bg-subtle"
                 >
                   {copied ? (
-                    <ClipboardCheck className="size-3.5 text-emerald-600" aria-hidden="true" />
+                    <ClipboardCheck className="size-3.5 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
                   ) : (
                     <Copy className="size-3.5" aria-hidden="true" />
                   )}
@@ -436,20 +436,20 @@ export function MostqiTester() {
           </div>
 
           {!extraction ? (
-            <p className="mt-8 text-center text-sm text-slate-400">
+            <p className="mt-8 text-center text-sm text-ink-muted">
               O cadastro preenchido pela extracao aparece aqui.
             </p>
           ) : (
             <div className="mt-4 grid gap-4">
               <div className="grid gap-2 sm:grid-cols-2">
                 {CADASTRO_LABELS.map(({ key, label }) => (
-                  <div key={key} className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  <div key={key} className="rounded-lg border border-line bg-subtle px-3 py-2">
+                    <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
                       {label}
                     </div>
-                    <div className="mt-0.5 min-h-[1.25rem] text-sm text-slate-800">
+                    <div className="mt-0.5 min-h-[1.25rem] text-sm text-ink">
                       {extraction.cadastro[key] || (
-                        <span className="text-slate-300">—</span>
+                        <span className="text-ink-muted">—</span>
                       )}
                     </div>
                   </div>
@@ -457,7 +457,7 @@ export function MostqiTester() {
               </div>
 
               {extraction.warnings.length ? (
-                <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700">
+                <div className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">
                   {extraction.warnings.map((warning) => (
                     <div key={warning} className="flex items-start gap-1.5">
                       <AlertTriangle className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />
@@ -472,19 +472,19 @@ export function MostqiTester() {
       </div>
 
       {extraction ? (
-        <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+            <div className="flex items-center gap-2 text-sm font-semibold text-ink">
               <FileText className="size-4 text-[#A07C3B]" aria-hidden="true" />
               Todos os campos lidos ({extraction.fields.length})
             </div>
             <button
               type="button"
               onClick={copyExtraction}
-              className="inline-flex items-center gap-1 rounded-md border border-slate-200 px-2 py-1 text-[11px] font-semibold text-slate-600 hover:bg-slate-50"
+              className="inline-flex items-center gap-1 rounded-md border border-line px-2 py-1 text-[11px] font-semibold text-ink-soft hover:bg-subtle"
             >
               {copied ? (
-                <ClipboardCheck className="size-3.5 text-emerald-600" aria-hidden="true" />
+                <ClipboardCheck className="size-3.5 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
               ) : (
                 <Copy className="size-3.5" aria-hidden="true" />
               )}
@@ -496,10 +496,10 @@ export function MostqiTester() {
             {extraction.fields.map((field, index) => (
               <div
                 key={`${field.key}-${index}`}
-                className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2"
+                className="rounded-lg border border-line bg-subtle px-3 py-2"
               >
                 <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                  <span className="truncate text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
                     {field.label}
                   </span>
                   {field.confidence !== null ? (
@@ -510,8 +510,8 @@ export function MostqiTester() {
                     </span>
                   ) : null}
                 </div>
-                <div className="mt-0.5 break-words text-sm text-slate-800">
-                  {field.value || <span className="text-slate-300">—</span>}
+                <div className="mt-0.5 break-words text-sm text-ink">
+                  {field.value || <span className="text-ink-muted">—</span>}
                 </div>
               </div>
             ))}
@@ -527,7 +527,7 @@ export function MostqiTester() {
                 {showRaw ? "Ocultar" : "Ver"} JSON cru do MOSTQI
               </button>
               {showRaw ? (
-                <pre className="mt-2 max-h-80 overflow-auto rounded-lg bg-slate-950 p-3 font-mono text-[11px] leading-relaxed text-slate-100">
+                <pre className="mt-2 max-h-80 overflow-auto rounded-lg bg-[#101211] p-3 font-mono text-[11px] leading-relaxed text-slate-100">
                   {JSON.stringify(extraction.raw, null, 2)}
                 </pre>
               ) : null}
@@ -537,7 +537,7 @@ export function MostqiTester() {
       ) : null}
 
       {error ? (
-        <div className="flex items-center gap-2 rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm font-medium text-rose-700">
+        <div className="flex items-center gap-2 rounded-xl border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/12 px-4 py-3 text-sm font-medium text-rose-700 dark:text-rose-300">
           <XCircle className="size-4" aria-hidden="true" />
           {error}
         </div>
@@ -639,12 +639,12 @@ function EnrichmentProbe() {
   }
 
   return (
-    <div className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="flex items-center gap-2 text-sm font-semibold text-slate-800">
+    <div className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      <div className="flex items-center gap-2 text-sm font-semibold text-ink">
         <ShieldCheck className="size-4 text-[#A07C3B]" aria-hidden="true" />
         Probe do enriquecimento (PF_01 / PF_02 / PF_03 GOLD)
       </div>
-      <p className="mt-1 text-xs text-slate-500">
+      <p className="mt-1 text-xs text-ink-muted">
         Digite um CPF e rode cada query pra ver quais datasets voltam, o status de
         cada um, o tempo e a resposta crua completa (inclui o GOLD). É a tela pra
         avaliarmos tudo que o MOST devolve e mapear os campos.
@@ -655,7 +655,7 @@ function EnrichmentProbe() {
           onChange={(event) => setCpf(event.target.value)}
           placeholder="CPF (só números)"
           inputMode="numeric"
-          className="h-9 w-48 rounded-lg border border-slate-200 px-3 text-sm outline-none focus:border-[#A07C3B]/40"
+          className="h-9 w-48 rounded-lg border border-line px-3 text-sm outline-none focus:border-[#A07C3B]/40"
         />
         {PF_QUERIES.map((item) => (
           <button
@@ -663,7 +663,7 @@ function EnrichmentProbe() {
             type="button"
             onClick={() => run(item.label, { query: item.query })}
             disabled={loading !== null}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-slate-900 px-3 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-50"
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-3 text-sm font-semibold text-brand-ink hover:bg-inverse disabled:opacity-50"
           >
             {loading === item.label ? (
               <Loader2 className="size-4 animate-spin" aria-hidden="true" />
@@ -685,13 +685,13 @@ function EnrichmentProbe() {
       </div>
 
       {loading ? (
-        <p className="mt-3 text-xs text-slate-400">
+        <p className="mt-3 text-xs text-ink-muted">
           Consultando… (a completa pode levar mais de 100s)
         </p>
       ) : null}
 
       {error ? (
-        <p className="mt-3 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-xs text-rose-700">
+        <p className="mt-3 rounded-lg border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs text-rose-700 dark:text-rose-300">
           {error}
         </p>
       ) : null}
@@ -718,16 +718,16 @@ function EnrichmentProbe() {
             {result.datasets.map((dataset) => (
               <span
                 key={dataset.name}
-                className="flex items-center justify-between gap-2 rounded border border-slate-100 bg-slate-50/70 px-2 py-1 text-[11px]"
+                className="flex items-center justify-between gap-2 rounded border border-line bg-subtle px-2 py-1 text-[11px]"
               >
-                <span className="truncate font-mono text-slate-600">{dataset.name}</span>
+                <span className="truncate font-mono text-ink-soft">{dataset.name}</span>
                 <span
                   className={
                     dataset.status === "DONE"
-                      ? "text-emerald-600"
+                      ? "text-emerald-600 dark:text-emerald-300"
                       : dataset.status === "ERROR"
-                        ? "text-rose-600"
-                        : "text-slate-400"
+                        ? "text-rose-600 dark:text-rose-300"
+                        : "text-ink-muted"
                   }
                 >
                   {dataset.status}
@@ -744,7 +744,7 @@ function EnrichmentProbe() {
               {showRaw ? "Ocultar" : "Ver"} resposta crua
             </button>
             {showRaw ? (
-              <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-slate-950 p-3 font-mono text-[10px] leading-relaxed text-slate-100">
+              <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-[#101211] p-3 font-mono text-[10px] leading-relaxed text-slate-100">
                 {JSON.stringify(result.raw, null, 2)}
               </pre>
             ) : null}
@@ -768,13 +768,13 @@ function StatusTile({
 }) {
   const toneClass =
     tone === "good"
-      ? "text-emerald-700"
+      ? "text-emerald-700 dark:text-emerald-300"
       : tone === "warn"
-        ? "text-amber-700"
-        : "text-slate-800";
+        ? "text-amber-700 dark:text-amber-300"
+        : "text-ink";
   return (
-    <div className="rounded-lg border border-slate-100 bg-slate-50/70 px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+    <div className="rounded-lg border border-line bg-subtle px-3 py-2">
+      <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
         {label}
       </div>
       <div

@@ -111,7 +111,7 @@ export function StatusActionButton({
 }) {
   return (
     <button
-      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-2 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
+      className="inline-flex h-9 items-center justify-center gap-2 rounded-md border border-line bg-surface px-2 text-sm font-semibold text-ink transition hover:bg-subtle disabled:cursor-wait disabled:opacity-60"
       disabled={disabled}
       onClick={onClick}
       type="button"
@@ -124,9 +124,9 @@ export function StatusActionButton({
 
 export function InfoBlock({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3">
-      <p className="m-0 text-xs font-bold uppercase text-[#667085]">{label}</p>
-      <p className="m-0 mt-1 whitespace-pre-wrap text-sm font-semibold leading-6 text-[#101820]">
+    <div className="rounded-md border border-line bg-subtle p-3">
+      <p className="m-0 text-xs font-bold uppercase text-ink-muted">{label}</p>
+      <p className="m-0 mt-1 whitespace-pre-wrap text-sm font-semibold leading-6 text-ink">
         {value}
       </p>
     </div>
@@ -146,14 +146,14 @@ export function PanelTitle({
     <div className="min-w-0">
       <p
         className={`m-0 text-xs font-bold uppercase ${
-          dark ? "text-[#9aa5b5]" : "text-[#667085]"
+          dark ? "text-[#9aa5b5]" : "text-ink-muted"
         }`}
       >
         {eyebrow}
       </p>
       <h2
         className={`m-0 mt-1 truncate text-base font-semibold ${
-          dark ? "text-white" : "text-[#101820]"
+          dark ? "text-white" : "text-ink"
         }`}
       >
         {title}
@@ -164,7 +164,7 @@ export function PanelTitle({
 
 export function EmptyPanel({ text }: { text: string }) {
   return (
-    <div className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-4 text-sm text-[#667085]">
+    <div className="rounded-md border border-dashed border-line bg-subtle p-4 text-sm text-ink-muted">
       {text}
     </div>
   );

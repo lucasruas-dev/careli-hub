@@ -518,7 +518,7 @@ export function ChronosPage() {
   }, [activeView, driveView, selectedMeetingId]);
 
   return (
-    <div className="h-[100dvh] max-h-[100dvh] overflow-hidden bg-[#f3f6fa] text-[#101820]">
+    <div className="h-[100dvh] max-h-[100dvh] overflow-hidden bg-canvas text-ink">
       <div
         className={`grid h-full min-h-0 ${
           chronosSidebarCollapsed
@@ -539,7 +539,7 @@ export function ChronosPage() {
             <section className="grid gap-4">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
-            <h1 className="m-0 text-xl font-semibold tracking-normal text-[#101820]">
+            <h1 className="m-0 text-xl font-semibold tracking-normal text-ink">
               {activeView === "agenda"
                 ? "Agenda"
                 : activeView === "rooms"
@@ -550,7 +550,7 @@ export function ChronosPage() {
           <div className="flex items-center gap-2">
             <button
               aria-label="Recarregar Chronos"
-              className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              className="grid h-9 w-9 place-items-center rounded-md border border-line bg-surface text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               onClick={() => void reloadChronos()}
               type="button"
             >
@@ -564,13 +564,13 @@ export function ChronosPage() {
         </div>
 
         {error ? (
-          <Surface bordered className="border-amber-200 bg-amber-50 p-3 text-sm font-semibold text-amber-800">
+          <Surface bordered className="border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 p-3 text-sm font-semibold text-amber-800 dark:text-amber-300">
             {error}
           </Surface>
         ) : null}
 
         {snapshot.storage.message ? (
-          <Surface bordered className="border-[#d9e0e7] bg-[#fafbfc] p-3 text-xs font-semibold text-[#667085]">
+          <Surface bordered className="border-line bg-subtle p-3 text-xs font-semibold text-ink-muted">
             {snapshot.storage.message}
           </Surface>
         ) : null}
@@ -628,7 +628,7 @@ export function ChronosPage() {
           </WorkspaceLayout>
           {showInitialLoading ? (
             <PanteonLoadingState
-              className="z-50 rounded-none border-0 bg-[#f3f6fa]/72 backdrop-blur-sm"
+              className="z-50 rounded-none border-0 bg-subtle/72 backdrop-blur-sm"
               markSize="lg"
               title="Carregando Chronos"
               variant="overlay"

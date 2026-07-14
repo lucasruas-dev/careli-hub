@@ -70,14 +70,14 @@ function CrmSignalCard({
   value: string;
 }) {
   return (
-    <article className="rounded-lg border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <article className="rounded-lg border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="m-0 text-xs font-medium text-slate-500">{label}</p>
-          <p className="m-0 mt-2 text-xl font-semibold leading-none text-slate-950">{value}</p>
-          <p className="m-0 mt-2 truncate text-xs font-medium text-slate-500">{detail}</p>
+          <p className="m-0 text-xs font-medium text-ink-muted">{label}</p>
+          <p className="m-0 mt-2 text-xl font-semibold leading-none text-ink">{value}</p>
+          <p className="m-0 mt-2 truncate text-xs font-medium text-ink-muted">{detail}</p>
         </div>
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#7A5E2C] ring-1 ring-[#A07C3B]/15">
+        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-[#A07C3B]/5 text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
           <Icon className="size-4" aria-hidden="true" />
         </span>
       </div>

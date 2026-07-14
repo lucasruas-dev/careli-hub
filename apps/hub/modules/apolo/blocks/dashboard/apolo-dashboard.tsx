@@ -68,7 +68,7 @@ export function DashboardScreen({
         />
       </div>
       <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(20rem,0.8fr)]">
-        <section className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <section className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <PanelTitle eyebrow="Insights CRM" title="Leitura operacional da base" />
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             <InfoTile label="Perfis comerciais" value={formatCount(profileCount(dashboard, "incorporador") + profileCount(dashboard, "imobiliaria") + profileCount(dashboard, "corretor"))} />
@@ -76,7 +76,7 @@ export function DashboardScreen({
             <InfoTile label="Vinculos visiveis" value={formatCount(entities.reduce((total, entity) => total + entity.relationships.length, 0))} />
           </div>
         </section>
-        <section className="rounded-xl border border-slate-200/70 bg-white p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <section className="rounded-xl border border-line bg-surface p-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
           <PanelTitle eyebrow="Proximas acoes" title="Fila de saneamento" />
           <div className="mt-4 grid gap-2">
             <StatusLine label={`${formatCount(notBuyerUsers)} usuario(s) sem compra confirmada`} status={notBuyerUsers ? "attention" : "verified"} />
@@ -140,15 +140,15 @@ function MetricCard({
   value: number;
 }) {
   return (
-    <article className="min-h-20 rounded-lg border border-slate-200/70 bg-white p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+    <article className="min-h-20 rounded-lg border border-line bg-surface p-4 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="flex items-start justify-between gap-3">
         <div>
-          <p className="m-0 text-xs font-medium text-slate-500">{label}</p>
-          <p className="m-0 mt-2 text-xl font-semibold leading-none text-slate-950">
+          <p className="m-0 text-xs font-medium text-ink-muted">{label}</p>
+          <p className="m-0 mt-2 text-xl font-semibold leading-none text-ink">
             {loading ? "--" : formatCount(value)}
           </p>
         </div>
-        <span className="flex size-8 items-center justify-center rounded-lg bg-slate-50 text-[#A07C3B] ring-1 ring-slate-200/70">
+        <span className="flex size-8 items-center justify-center rounded-lg bg-subtle text-[#A07C3B] ring-1 ring-line">
           {icon}
         </span>
       </div>

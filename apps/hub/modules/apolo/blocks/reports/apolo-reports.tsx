@@ -36,11 +36,11 @@ export function ReportsScreen({
           helper="Eventos consolidados"
         />
       </div>
-      <section className="overflow-hidden rounded-xl border border-slate-200/70 bg-white shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-        <div className="border-b border-slate-100 px-5 py-4">
+      <section className="overflow-hidden rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+        <div className="border-b border-line px-5 py-4">
           <PanelTitle eyebrow="Relatorios" title="Consultas preparadas" />
         </div>
-        <div className="divide-y divide-slate-100">
+        <div className="divide-y divide-line">
           {[
             ["Base por perfil", "Quantidade de usuarios, incorporadores, imobiliarias, corretores e colaboradores."],
             ["Qualidade cadastral", "Documentos, contatos, enderecos e vinculos pendentes de revisao."],
@@ -48,8 +48,8 @@ export function ReportsScreen({
             ["Timeline operacional", "Eventos com protocolo e informativos por relacionamento."],
           ].map(([title, description]) => (
             <div className="grid gap-1 px-5 py-4" key={title}>
-              <p className="m-0 text-sm font-semibold text-slate-950">{title}</p>
-              <p className="m-0 text-sm font-medium text-slate-500">{description}</p>
+              <p className="m-0 text-sm font-semibold text-ink">{title}</p>
+              <p className="m-0 text-sm font-medium text-ink-muted">{description}</p>
             </div>
           ))}
         </div>

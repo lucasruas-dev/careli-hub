@@ -143,22 +143,22 @@ export function ChronosCalendarEventDetailsPopup({
   return (
     <section
       aria-label="Detalhes do evento Chronos"
-      className="relative z-10 grid max-h-[calc(100vh-7rem)] w-[min(34rem,calc(100vw-2rem))] max-w-full gap-4 overflow-y-auto overflow-x-hidden rounded-lg border border-[#d9e0e7] bg-white p-4 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]"
+      className="relative z-10 grid max-h-[calc(100vh-7rem)] w-[min(34rem,calc(100vw-2rem))] max-w-full gap-4 overflow-y-auto overflow-x-hidden rounded-lg border border-line bg-surface p-4 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]"
       onClick={(event) => event.stopPropagation()}
     >
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0 flex-1">
-          <h2 className="break-words text-xl font-semibold leading-6 text-[#101820]">
+          <h2 className="break-words text-xl font-semibold leading-6 text-ink">
             {meeting.title}
           </h2>
-          <p className="m-0 mt-1 break-words text-sm font-medium text-[#667085]">
+          <p className="m-0 mt-1 break-words text-sm font-medium text-ink-muted">
             {formatChronosEventDateRange(meeting.startsAt, meeting.endsAt)}
           </p>
         </div>
         <div className="flex shrink-0 items-center gap-1">
           <button
             aria-label="Criar convite para WhatsApp"
-            className="grid h-8 w-8 place-items-center rounded-md text-[#526078] transition hover:bg-[#f5f7fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            className="grid h-8 w-8 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             onClick={() => setInviteOpen(true)}
             type="button"
           >
@@ -166,7 +166,7 @@ export function ChronosCalendarEventDetailsPopup({
           </button>
           <button
             aria-label="Editar evento"
-            className="grid h-8 w-8 place-items-center rounded-md text-[#526078] transition hover:bg-[#f5f7fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            className="grid h-8 w-8 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             onClick={() => onEdit(meeting.id)}
             type="button"
           >
@@ -174,7 +174,7 @@ export function ChronosCalendarEventDetailsPopup({
           </button>
           <button
             aria-label="Excluir evento"
-            className="grid h-8 w-8 place-items-center rounded-md text-red-600 transition hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-200 disabled:cursor-wait disabled:opacity-55"
+            className="grid h-8 w-8 place-items-center rounded-md text-red-600 dark:text-red-300 transition hover:bg-red-50 dark:bg-red-500/12 focus-visible:ring-2 focus-visible:ring-red-200 dark:ring-red-500/25 disabled:cursor-wait disabled:opacity-55"
             disabled={saving}
             onClick={() => void requestDelete()}
             type="button"
@@ -183,7 +183,7 @@ export function ChronosCalendarEventDetailsPopup({
           </button>
           <button
             aria-label="Fechar detalhes"
-            className="grid h-8 w-8 place-items-center rounded-md text-[#667085] transition hover:bg-[#f5f7fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            className="grid h-8 w-8 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             onClick={onClose}
             type="button"
           >
@@ -195,8 +195,8 @@ export function ChronosCalendarEventDetailsPopup({
       <div className="grid gap-3">
         <DetailIconRow icon={<CalendarClock aria-hidden="true" size={17} />}>
           <div className="flex flex-wrap items-center gap-2 text-sm">
-            <span className="font-semibold text-[#101820]">{meetingProfile}</span>
-            <span className="rounded-full border border-[#d9e0e7] bg-[#f8fafc] px-2 py-0.5 text-xs font-bold text-[#526078]">
+            <span className="font-semibold text-ink">{meetingProfile}</span>
+            <span className="rounded-full border border-line bg-subtle px-2 py-0.5 text-xs font-bold text-ink-muted">
               {meeting.protocol}
             </span>
           </div>
@@ -204,10 +204,10 @@ export function ChronosCalendarEventDetailsPopup({
 
         <DetailIconRow icon={<MapPin aria-hidden="true" size={17} />}>
           <div className="grid gap-1 text-sm">
-            <span className="font-semibold text-[#101820]">
+            <span className="font-semibold text-ink">
               {getChronosMeetingLocationLabel(meeting)}
             </span>
-            <span className="text-[#667085]">
+            <span className="text-ink-muted">
               {meeting.hostName ?? "Host Chronos"}
             </span>
           </div>
@@ -218,12 +218,12 @@ export function ChronosCalendarEventDetailsPopup({
         <DetailIconRow icon={<Video aria-hidden="true" size={17} />}>
           <div className="grid gap-2">
             <div className="flex min-w-0 items-center gap-2 overflow-hidden">
-              <code className="min-w-0 flex-1 truncate rounded-md bg-[#f5f7fa] px-2 py-2 text-xs font-semibold text-[#344054]">
+              <code className="min-w-0 flex-1 truncate rounded-md bg-subtle px-2 py-2 text-xs font-semibold text-ink">
                 {roomUrl}
               </code>
               <button
                 aria-label="Copiar link da sala"
-                className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-9 w-9 place-items-center rounded-md border border-line text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 onClick={() => void copyRoomLink()}
                 type="button"
               >
@@ -231,11 +231,11 @@ export function ChronosCalendarEventDetailsPopup({
               </button>
             </div>
             <div className="flex min-w-0 items-center justify-between gap-2">
-              <span className="min-w-0 truncate text-xs font-semibold text-[#667085]">
+              <span className="min-w-0 truncate text-xs font-semibold text-ink-muted">
                 {copied ? "Link copiado." : "Disponivel para convidados externos."}
               </span>
               <a
-                className="inline-flex h-8 items-center justify-center rounded-md bg-[#101820] px-3 text-xs font-semibold text-white transition hover:bg-[#1f2937]"
+                className="inline-flex h-8 items-center justify-center rounded-md bg-inverse px-3 text-xs font-semibold text-brand-ink transition hover:bg-inverse"
                 href={roomPath ?? "#"}
                 rel="noreferrer"
                 target="_blank"
@@ -249,7 +249,7 @@ export function ChronosCalendarEventDetailsPopup({
 
       {meeting.objective ? (
         <DetailIconRow icon={<FileText aria-hidden="true" size={17} />}>
-          <p className="m-0 whitespace-pre-wrap text-sm leading-5 text-[#344054]">
+          <p className="m-0 whitespace-pre-wrap text-sm leading-5 text-ink">
             {meeting.objective}
           </p>
         </DetailIconRow>
@@ -258,10 +258,10 @@ export function ChronosCalendarEventDetailsPopup({
       {agendaItems.length > 0 ? (
         <DetailIconRow icon={<ListChecks aria-hidden="true" size={17} />}>
           <div className="grid gap-2">
-            <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+            <p className="m-0 text-xs font-bold uppercase text-ink-muted">
               Pauta
             </p>
-            <div className="max-h-[22rem] overflow-y-auto overflow-x-hidden rounded-md border border-[#edf0f4] bg-[#fbfcfd] px-3 py-3 pr-2">
+            <div className="max-h-[22rem] overflow-y-auto overflow-x-hidden rounded-md border border-line bg-subtle px-3 py-3 pr-2">
               <ChronosAgendaPreview items={agendaItems} />
             </div>
           </div>
@@ -269,8 +269,8 @@ export function ChronosCalendarEventDetailsPopup({
       ) : null}
 
       {canAnswerRsvp ? (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[#d9e0e7] bg-[#fafbfc] p-3">
-          <span className="text-sm font-semibold text-[#101820]">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-line bg-subtle p-3">
+          <span className="text-sm font-semibold text-ink">
             Vai participar?
           </span>
           <div className="flex items-center gap-1">
@@ -289,8 +289,8 @@ export function ChronosCalendarEventDetailsPopup({
                   aria-pressed={active}
                   className={`inline-flex h-8 items-center gap-1.5 rounded-md border px-3 text-xs font-semibold transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] disabled:cursor-wait disabled:opacity-55 ${
                     active
-                      ? "border-[#101820] bg-[#101820] text-white"
-                      : "border-[#d9e0e7] bg-white text-[#526078] hover:bg-[#f8fafc] hover:text-[#101820]"
+                      ? "border-line-strong bg-inverse text-brand-ink"
+                      : "border-line bg-surface text-ink-muted hover:bg-subtle hover:text-ink"
                   }`}
                   disabled={saving}
                   key={item.status}
@@ -309,7 +309,7 @@ export function ChronosCalendarEventDetailsPopup({
       <DetailIconRow icon={<UsersRound aria-hidden="true" size={17} />}>
       <div className="grid gap-2">
         <div className="flex min-w-0 items-center justify-between gap-2">
-          <p className="m-0 min-w-0 text-xs font-bold uppercase text-[#667085]">
+          <p className="m-0 min-w-0 text-xs font-bold uppercase text-ink-muted">
             Convidados ({participants.length})
           </p>
           {participants.length > 0 ? (
@@ -318,7 +318,7 @@ export function ChronosCalendarEventDetailsPopup({
               aria-label={
                 guestsExpanded ? "Ocultar convidados" : "Expandir convidados"
               }
-              className="grid h-8 w-8 place-items-center rounded-md border border-[#d9e0e7] text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              className="grid h-8 w-8 place-items-center rounded-md border border-line text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               onClick={() => setGuestsExpanded((current) => !current)}
               type="button"
             >
@@ -334,16 +334,16 @@ export function ChronosCalendarEventDetailsPopup({
           <div className="grid max-h-48 gap-1 overflow-y-auto overflow-x-hidden pr-1">
             {participants.map((participant) => (
               <div
-                className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 transition hover:bg-[#f8fafc]"
+                className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1.5 transition hover:bg-subtle"
                 key={participant.id}
               >
                 <span
                   aria-hidden="true"
-                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#eaf3ff] text-xs font-bold uppercase text-[#0b66d8]"
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-[#eaf3ff] dark:bg-sky-500/12 text-xs font-bold uppercase text-[#0b66d8]"
                 >
                   {getParticipantInitials(participant.displayName)}
                 </span>
-                <span className="min-w-0 truncate text-sm font-medium text-[#344054]">
+                <span className="min-w-0 truncate text-sm font-medium text-ink">
                   {getParticipantDisplayName(participant.displayName)}
                 </span>
                 <RsvpBadge status={getChronosParticipantRsvpStatus(participant)} />
@@ -352,7 +352,7 @@ export function ChronosCalendarEventDetailsPopup({
           </div>
         ) : null}
         {participants.length === 0 ? (
-          <span className="rounded-md border border-dashed border-[#d9e0e7] bg-[#fafbfc] p-3 text-sm text-[#667085]">
+          <span className="rounded-md border border-dashed border-line bg-subtle p-3 text-sm text-ink-muted">
             Nenhum convidado adicional registrado.
           </span>
         ) : null}
@@ -363,17 +363,17 @@ export function ChronosCalendarEventDetailsPopup({
         <div
           aria-label="Convite Chronos para WhatsApp"
           aria-modal="true"
-          className="fixed inset-0 z-50 grid place-items-center bg-[#101820]/55 px-4 py-6"
+          className="fixed inset-0 z-50 grid place-items-center bg-inverse/55 px-4 py-6"
           onClick={() => setInviteOpen(false)}
           role="dialog"
         >
           <div
-            className="grid max-h-[calc(100vh-3rem)] w-[min(38rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-[#d9e0e7] bg-white shadow-[0_28px_90px_rgb(16_24_32_/_0.28)]"
+            className="grid max-h-[calc(100vh-3rem)] w-[min(38rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-line bg-surface shadow-[0_28px_90px_rgb(16_24_32_/_0.28)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="flex items-start justify-between gap-3 border-b border-[#edf0f4] px-5 py-4">
+            <div className="flex items-start justify-between gap-3 border-b border-line px-5 py-4">
               <div className="flex min-w-0 items-center gap-3">
-                <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-md bg-[#101820]">
+                <span className="grid h-12 w-12 shrink-0 place-items-center overflow-hidden rounded-md bg-inverse">
                   <Image
                     alt="Careli"
                     className="h-10 w-10 object-contain"
@@ -386,14 +386,14 @@ export function ChronosCalendarEventDetailsPopup({
                   <p className="m-0 text-xs font-bold uppercase text-[#A07C3B]">
                     Careli
                   </p>
-                  <h3 className="m-0 truncate text-lg font-semibold text-[#101820]">
+                  <h3 className="m-0 truncate text-lg font-semibold text-ink">
                     Convite da reuniao
                   </h3>
                 </div>
               </div>
               <button
                 aria-label="Fechar convite"
-                className="grid h-8 w-8 place-items-center rounded-md text-[#667085] transition hover:bg-[#f5f7fa] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-8 w-8 place-items-center rounded-md text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 onClick={() => setInviteOpen(false)}
                 type="button"
               >
@@ -402,17 +402,17 @@ export function ChronosCalendarEventDetailsPopup({
             </div>
 
             <div className="grid gap-4 overflow-y-auto px-5 py-4">
-              <div className="rounded-md border border-[#d9e0e7] bg-[#fbfcfd] p-4">
-                <p className="m-0 text-sm font-semibold text-[#101820]">
+              <div className="rounded-md border border-line bg-subtle p-4">
+                <p className="m-0 text-sm font-semibold text-ink">
                   O time da Careli convida voce para uma reuniao de{" "}
                   <span className="text-[#A07C3B]">{meetingProfile}</span>.
                 </p>
-                <p className="m-0 mt-2 text-sm leading-5 text-[#526078]">
+                <p className="m-0 mt-2 text-sm leading-5 text-ink-muted">
                   Abaixo seguem os detalhes para participar.
                 </p>
               </div>
 
-              <div className="grid gap-3 rounded-md border border-[#edf0f4] p-4">
+              <div className="grid gap-3 rounded-md border border-line p-4">
                 <InviteDetail label="Assunto" value={meeting.title} />
                 <InviteDetail label="Host" value={meeting.hostName ?? "Host Chronos"} />
                 <InviteDetail
@@ -425,11 +425,11 @@ export function ChronosCalendarEventDetailsPopup({
                 />
                 {roomUrl ? (
                   <div className="flex min-w-0 items-center justify-between gap-3">
-                    <span className="text-xs font-bold uppercase text-[#667085]">
+                    <span className="text-xs font-bold uppercase text-ink-muted">
                       Sala online
                     </span>
                     <a
-                      className="inline-flex h-9 items-center justify-center rounded-md bg-[#101820] px-3 text-xs font-semibold text-white transition hover:bg-[#1f2937]"
+                      className="inline-flex h-9 items-center justify-center rounded-md bg-inverse px-3 text-xs font-semibold text-brand-ink transition hover:bg-inverse"
                       href={roomUrl}
                       rel="noreferrer"
                       target="_blank"
@@ -441,8 +441,8 @@ export function ChronosCalendarEventDetailsPopup({
               </div>
 
               {agendaItems.length > 0 ? (
-                <div className="grid gap-2 rounded-md border border-[#edf0f4] bg-[#fbfcfd] p-4">
-                  <p className="m-0 text-xs font-bold uppercase text-[#667085]">
+                <div className="grid gap-2 rounded-md border border-line bg-subtle p-4">
+                  <p className="m-0 text-xs font-bold uppercase text-ink-muted">
                     Pauta
                   </p>
                   <div className="max-h-56 overflow-y-auto pr-2">
@@ -452,20 +452,20 @@ export function ChronosCalendarEventDetailsPopup({
               ) : null}
 
               <label className="grid gap-2">
-                <span className="text-xs font-bold uppercase text-[#667085]">
+                <span className="text-xs font-bold uppercase text-ink-muted">
                   Texto para WhatsApp
                 </span>
                 <textarea
-                  className="min-h-56 resize-y rounded-md border border-[#d9e0e7] bg-white p-3 text-sm leading-5 text-[#344054] outline-none focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
+                  className="min-h-56 resize-y rounded-md border border-line bg-surface p-3 text-sm leading-5 text-ink outline-none focus:border-[#A07C3B] focus:ring-2 focus:ring-[#A07C3B]/20"
                   readOnly
                   value={inviteText}
                 />
               </label>
             </div>
 
-            <div className="flex flex-wrap justify-end gap-2 border-t border-[#edf0f4] px-5 py-4">
+            <div className="flex flex-wrap justify-end gap-2 border-t border-line px-5 py-4">
               <button
-                className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink-muted transition hover:bg-subtle hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 onClick={() => void copyInviteText()}
                 type="button"
               >
@@ -473,7 +473,7 @@ export function ChronosCalendarEventDetailsPopup({
                 {inviteCopied ? "Copiado" : "Copiar"}
               </button>
               <a
-                className="inline-flex h-9 items-center gap-2 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-[#1f2937] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="inline-flex h-9 items-center gap-2 rounded-md bg-inverse px-3 text-sm font-semibold text-brand-ink transition hover:bg-inverse focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 href={whatsAppShareUrl}
                 rel="noreferrer"
                 target="_blank"
@@ -728,11 +728,11 @@ function parseChronosAgendaPreview(meeting: ChronosMeeting): ChronosAgendaPrevie
 
 function ChronosAgendaPreview({ items }: { items: ChronosAgendaPreviewItem[] }) {
   return (
-    <div className="grid gap-2 text-sm leading-5 text-[#344054]">
+    <div className="grid gap-2 text-sm leading-5 text-ink">
       {items.map((item) => {
         if (item.type === "heading") {
           return (
-            <p className="m-0 text-base font-semibold leading-6 text-[#101820]" key={item.id}>
+            <p className="m-0 text-base font-semibold leading-6 text-ink" key={item.id}>
               {renderInlineMarkdown(item.text)}
             </p>
           );
@@ -741,7 +741,7 @@ function ChronosAgendaPreview({ items }: { items: ChronosAgendaPreviewItem[] }) 
         if (item.type === "subheading") {
           return (
             <p
-              className="m-0 mt-2 text-sm font-bold uppercase tracking-[0.02em] text-[#101820]"
+              className="m-0 mt-2 text-sm font-bold uppercase tracking-[0.02em] text-ink"
               key={item.id}
             >
               {renderInlineMarkdown(item.text)}
@@ -751,7 +751,7 @@ function ChronosAgendaPreview({ items }: { items: ChronosAgendaPreviewItem[] }) 
 
         if (item.type === "numbered") {
           return (
-            <p className="m-0 mt-1 font-semibold text-[#101820]" key={item.id}>
+            <p className="m-0 mt-1 font-semibold text-ink" key={item.id}>
               {renderInlineMarkdown(item.text)}
             </p>
           );
@@ -788,7 +788,7 @@ function renderInlineMarkdown(value: string) {
   return parts.map((part, index) => {
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong className="font-semibold text-[#101820]" key={`${part}-${index}`}>
+        <strong className="font-semibold text-ink" key={`${part}-${index}`}>
           {part.slice(2, -2)}
         </strong>
       );
@@ -801,8 +801,8 @@ function renderInlineMarkdown(value: string) {
 function InviteDetail({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid gap-1 sm:grid-cols-[7rem_minmax(0,1fr)] sm:items-start">
-      <span className="text-xs font-bold uppercase text-[#667085]">{label}</span>
-      <span className="min-w-0 break-words text-sm font-semibold text-[#101820]">
+      <span className="text-xs font-bold uppercase text-ink-muted">{label}</span>
+      <span className="min-w-0 break-words text-sm font-semibold text-ink">
         {value}
       </span>
     </div>
@@ -818,7 +818,7 @@ function DetailIconRow({
 }) {
   return (
     <div className="grid grid-cols-[1.75rem_minmax(0,1fr)] items-start gap-3">
-      <span className="mt-1 grid h-7 w-7 place-items-center text-[#667085]">
+      <span className="mt-1 grid h-7 w-7 place-items-center text-ink-muted">
         {icon}
       </span>
       <div className="min-w-0">{children}</div>
@@ -828,10 +828,10 @@ function DetailIconRow({
 
 function RsvpBadge({ status }: { status: ChronosRsvpStatus }) {
   const className = {
-    accepted: "border-emerald-200 bg-emerald-50 text-emerald-700",
-    declined: "border-red-200 bg-red-50 text-red-700",
-    pending: "border-[#d9e0e7] bg-[#f8fafc] text-[#667085]",
-    tentative: "border-amber-200 bg-amber-50 text-amber-700",
+    accepted: "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300",
+    declined: "border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/12 text-red-700 dark:text-red-300",
+    pending: "border-line bg-subtle text-ink-muted",
+    tentative: "border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 text-amber-700 dark:text-amber-300",
   } satisfies Record<ChronosRsvpStatus, string>;
 
   return (

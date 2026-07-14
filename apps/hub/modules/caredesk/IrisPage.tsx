@@ -3922,8 +3922,6 @@ function IrisConversationPanel({
           </div>
         ) : null}
 
-        {ticketIsEmail ? <IrisEmailThreadHeader ticket={ticket} /> : null}
-
         {/* Athena do Hades agora cobre tambem o atendimento (ver IrisAthenaPanel abaixo). */}
         {false ? (
           <IrisAttendantPanel
@@ -3945,6 +3943,9 @@ function IrisConversationPanel({
         ) : null}
 
         <IrisConversationMessagesTimeline
+          leadingContent={
+            ticketIsEmail ? <IrisEmailThreadHeader ticket={ticket} /> : null
+          }
           onTogglePreviousTickets={() =>
             setShowPreviousTickets((current) => !current)
           }
@@ -4679,7 +4680,7 @@ function IrisEmailThreadHeader({ ticket }: { ticket: IrisTicket }) {
     emailBoxLabel(ticket.channelLabel);
 
   return (
-    <div className="mx-4 mt-3">
+    <div>
       <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 px-4 py-3 dark:border-indigo-400/30 dark:bg-indigo-500/10">
         <div className="mb-2 flex items-center gap-2">
           <span className="flex size-6 items-center justify-center rounded-lg bg-indigo-500 text-white">

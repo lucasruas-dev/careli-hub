@@ -278,6 +278,7 @@ export function IrisConversationInboxSidebar({
 }
 
 export function IrisConversationMessagesTimeline({
+  leadingContent,
   onTogglePreviousTickets,
   previousTickets,
   renderers,
@@ -285,6 +286,9 @@ export function IrisConversationMessagesTimeline({
   ticket,
   viewportRef,
 }: {
+  // Conteúdo opcional no topo da área que ROLA (ex.: cabeçalho de e-mail De/Para), pra ficar
+  // colado ao fluxo e não criar um vão fixo entre o topo e o ticket.
+  leadingContent?: ReactNode;
   onTogglePreviousTickets: () => void;
   previousTickets: IrisConversationTicket[];
   renderers: IrisConversationReadOnlyRenderers;
@@ -298,6 +302,7 @@ export function IrisConversationMessagesTimeline({
       className="min-h-0 flex-1 overflow-x-hidden overflow-y-auto bg-subtle/40 px-3 py-4 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin] sm:px-4"
     >
       <div className="w-full min-w-0 space-y-5">
+        {leadingContent}
         {previousTickets.length > 0 ? (
           <div className="flex flex-col items-center gap-2">
             <button

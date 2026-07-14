@@ -56,7 +56,7 @@ export function RecordingsPanel({
   }
 
   return (
-    <Surface bordered className="min-h-full border-[#d9e0e7] bg-white p-4">
+    <Surface bordered className="min-h-full border-line bg-surface p-4">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <PanelTitle eyebrow="Gravacoes" title="Registro audiovisual" />
         <input
@@ -67,7 +67,7 @@ export function RecordingsPanel({
           type="file"
         />
         <button
-          className="inline-flex h-9 items-center gap-2 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
+          className="inline-flex h-9 items-center gap-2 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-subtle disabled:cursor-wait disabled:opacity-60"
           disabled={saving}
           onClick={() => uploadInputRef.current?.click()}
           type="button"
@@ -92,7 +92,7 @@ export function RecordingsPanel({
 
           return (
             <div
-              className="rounded-md border border-[#edf0f4] bg-[#fafbfc] p-3 text-sm text-[#101820] transition hover:border-[#d9e0e7] hover:bg-white"
+              className="rounded-md border border-line bg-subtle p-3 text-sm text-ink transition hover:border-line hover:bg-surface"
               key={recording.id}
             >
               <div className="flex items-center justify-between gap-3">
@@ -100,14 +100,14 @@ export function RecordingsPanel({
                   <strong className="block truncate text-sm font-semibold">
                     {recording.name}
                   </strong>
-                  <span className="text-xs font-semibold text-[#667085]">
+                  <span className="text-xs font-semibold text-ink-muted">
                     {formatChronosDuration(recording.durationSeconds)}
                   </span>
                 </div>
                 <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
                   {recording.url !== "#" ? (
                     <a
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:border-[#A07C3B]"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-semibold text-ink transition hover:border-[#A07C3B]"
                       href={recording.url}
                       rel="noreferrer"
                       target="_blank"
@@ -118,7 +118,7 @@ export function RecordingsPanel({
                   ) : null}
                   {downloadUrl && downloadUrl !== "#" ? (
                     <a
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#101820] bg-[#101820] px-2.5 text-xs font-semibold text-white transition hover:bg-black"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line-strong bg-inverse px-2.5 text-xs font-semibold text-brand-ink transition hover:bg-black"
                       download={recording.name}
                       href={downloadUrl}
                     >
@@ -128,7 +128,7 @@ export function RecordingsPanel({
                   ) : null}
                   {recording.blob ? (
                     <button
-                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-[#d9e0e7] bg-white px-2.5 text-xs font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:cursor-wait disabled:opacity-60"
+                      className="inline-flex h-8 items-center gap-1.5 rounded-md border border-line bg-surface px-2.5 text-xs font-semibold text-ink transition hover:bg-subtle disabled:cursor-wait disabled:opacity-60"
                       disabled={saving || Boolean(recording.transcribedAt)}
                       onClick={() =>
                         void onTranscribeRecording({
@@ -148,7 +148,7 @@ export function RecordingsPanel({
               </div>
               {recording.url !== "#" ? (
                 <video
-                  className="mt-3 aspect-video w-full rounded-md border border-[#d9e0e7] bg-black"
+                  className="mt-3 aspect-video w-full rounded-md border border-line bg-black"
                   controls
                   preload="metadata"
                   src={recording.url}

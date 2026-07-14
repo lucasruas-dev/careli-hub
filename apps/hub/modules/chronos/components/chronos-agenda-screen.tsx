@@ -375,11 +375,11 @@ export function ChronosAgendaScreen({
   }
 
   return (
-    <Surface bordered className="relative grid h-[calc(100dvh-5.5rem)] min-h-[34rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[28px] border-[#d9e0e7] bg-white shadow-[0_18px_60px_rgb(16_24_32_/_0.08)]">
-      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-[#edf0f4] px-5 py-4">
+    <Surface bordered className="relative grid h-[calc(100dvh-5.5rem)] min-h-[34rem] grid-rows-[auto_minmax(0,1fr)] overflow-hidden rounded-[28px] border-line bg-surface shadow-[0_18px_60px_rgb(16_24_32_/_0.08)]">
+      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line px-5 py-4">
         <div className="flex flex-wrap items-center gap-1.5">
           <button
-            className="h-9 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc]"
+            className="h-9 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-subtle"
             onClick={() => setCursorDate(startOfDay(new Date()))}
             type="button"
           >
@@ -387,7 +387,7 @@ export function ChronosAgendaScreen({
           </button>
           <button
             aria-label="Periodo anterior"
-            className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820]"
+            className="grid h-9 w-9 place-items-center rounded-md border border-line bg-surface text-ink-muted transition hover:bg-subtle hover:text-ink"
             onClick={() => moveCursor(-1)}
             type="button"
           >
@@ -395,23 +395,23 @@ export function ChronosAgendaScreen({
           </button>
           <button
             aria-label="Proximo periodo"
-            className="grid h-9 w-9 place-items-center rounded-md border border-[#d9e0e7] bg-white text-[#526078] transition hover:bg-[#f8fafc] hover:text-[#101820]"
+            className="grid h-9 w-9 place-items-center rounded-md border border-line bg-surface text-ink-muted transition hover:bg-subtle hover:text-ink"
             onClick={() => moveCursor(1)}
             type="button"
           >
             <span aria-hidden="true">{">"}</span>
           </button>
-          <span className="ml-1 text-base font-semibold text-[#101820]">
+          <span className="ml-1 text-base font-semibold text-ink">
             {formatCalendarPeriod(cursorDate, calendarView)}
           </span>
           {calendarView === "week" ? (
-            <span className="rounded-full border border-[#d6c29b] bg-[#fffaf0] px-2.5 py-1 text-xs font-bold text-[#8a682d]">
+            <span className="rounded-full border border-[#d6c29b] bg-[#fffaf0] dark:bg-[#a07c3b]/10 px-2.5 py-1 text-xs font-bold text-[#8a682d]">
               {formatChronosWeekOfYearLabel(cursorDate)}
             </span>
           ) : null}
         </div>
         <div className="flex flex-wrap items-center justify-end gap-2">
-          <div className="hidden flex-wrap items-center gap-2 text-[11px] font-semibold text-[#667085] xl:flex">
+          <div className="hidden flex-wrap items-center gap-2 text-[11px] font-semibold text-ink-muted xl:flex">
             {(["alignment", "results", "formal"] as const).map(
               (type) => {
                 const visual = chronosMeetingTypeVisuals[type];
@@ -428,14 +428,14 @@ export function ChronosAgendaScreen({
               },
             )}
           </div>
-          <div className="flex gap-1 overflow-x-auto rounded-md border border-[#d9e0e7] bg-[#f8fafc] p-1">
+          <div className="flex gap-1 overflow-x-auto rounded-md border border-line bg-subtle p-1">
             {calendarViewItems.map((item) => (
               <button
                 aria-pressed={calendarView === item.id}
                 className={`h-8 shrink-0 rounded-md px-3 text-sm font-semibold transition ${
                   calendarView === item.id
-                    ? "bg-[#101820] text-white"
-                    : "text-[#667085] hover:bg-white hover:text-[#101820]"
+                    ? "bg-inverse text-brand-ink"
+                    : "text-ink-muted hover:bg-surface hover:text-ink"
                 }`}
                 key={item.id}
                 onClick={() => setCalendarView(item.id)}
@@ -446,7 +446,7 @@ export function ChronosAgendaScreen({
             ))}
           </div>
           {googleCalendarSyncError || googleCalendarError ? (
-            <span className="max-w-64 truncate text-xs font-semibold text-amber-700">
+            <span className="max-w-64 truncate text-xs font-semibold text-amber-700 dark:text-amber-300">
               {googleCalendarSyncError ?? googleCalendarError}
             </span>
           ) : null}
@@ -458,8 +458,8 @@ export function ChronosAgendaScreen({
             }
             className={`grid h-9 w-9 place-items-center rounded-md border text-sm font-black transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
               googleCalendarStatus?.connection.connected
-                ? "border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
-                : "border-[#d9e0e7] bg-white text-[#526078] hover:bg-[#f8fafc] hover:text-[#101820]"
+                ? "border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:bg-emerald-500/15"
+                : "border-line bg-surface text-ink-muted hover:bg-subtle hover:text-ink"
             }`}
             disabled={googleCalendarSyncing}
             onClick={() => void handleGoogleCalendarSync()}
@@ -473,7 +473,7 @@ export function ChronosAgendaScreen({
           </button>
           <button
             aria-label="Criar evento"
-            className="grid h-9 w-9 place-items-center rounded-md bg-[#101820] text-white transition hover:bg-[#1f2937] disabled:cursor-not-allowed disabled:opacity-55"
+            className="grid h-9 w-9 place-items-center rounded-md bg-inverse text-brand-ink transition hover:bg-inverse disabled:cursor-not-allowed disabled:opacity-55"
             disabled={!canManage}
             onClick={() => openEventDraft(roundDateToNextHour(new Date()))}
             type="button"
@@ -483,8 +483,8 @@ export function ChronosAgendaScreen({
         </div>
       </div>
 
-      <div className="grid min-h-0 grid-cols-[16rem_minmax(0,1fr)] bg-white max-xl:grid-cols-1">
-        <aside className="min-h-0 border-r border-[#edf0f4] bg-[#fafbfc] p-3 max-xl:hidden">
+      <div className="grid min-h-0 grid-cols-[16rem_minmax(0,1fr)] bg-surface max-xl:grid-cols-1">
+        <aside className="min-h-0 border-r border-line bg-subtle p-3 max-xl:hidden">
           <MiniCalendar
             cursorDate={cursorDate}
             meetings={sortedMeetings}
@@ -579,7 +579,7 @@ export function ChronosAgendaScreen({
       ) : null}
 
       {editingMeeting ? (
-        <div className="absolute inset-0 z-50 bg-[#f3f6fa]">
+        <div className="absolute inset-0 z-50 bg-subtle">
           <ChronosCalendarEventEditorModal
             meeting={editingMeeting}
             onClose={() => setEditingMeetingId(null)}
@@ -653,16 +653,16 @@ export function ChronosAgendaScreen({
             onClick={() => setSeriesDeleteMeetingId(null)}
             type="button"
           />
-          <div className="relative z-10 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-[#d9e0e7] bg-white p-5 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]">
-            <h2 className="text-lg font-semibold text-[#101820]">
+          <div className="relative z-10 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-line bg-surface p-5 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]">
+            <h2 className="text-lg font-semibold text-ink">
               Excluir evento recorrente
             </h2>
-            <p className="mt-1 text-sm text-[#667085]">
+            <p className="mt-1 text-sm text-ink-muted">
               Este evento faz parte de uma serie. O que deseja excluir?
             </p>
             <div className="mt-4 grid gap-2">
               <button
-                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:opacity-55"
+                className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-subtle disabled:opacity-55"
                 disabled={saving}
                 onClick={async () => {
                   const meetingId = seriesDeleteMeetingId;
@@ -675,7 +675,7 @@ export function ChronosAgendaScreen({
                 Somente este evento
               </button>
               <button
-                className="h-10 rounded-md border border-red-200 bg-red-50 px-3 text-sm font-semibold text-red-700 transition hover:bg-red-100 disabled:opacity-55"
+                className="h-10 rounded-md border border-red-200 dark:border-red-500/30 bg-red-50 dark:bg-red-500/12 px-3 text-sm font-semibold text-red-700 dark:text-red-300 transition hover:bg-red-100 dark:bg-red-500/15 disabled:opacity-55"
                 disabled={saving}
                 onClick={async () => {
                   const target = sortedMeetings.find(
@@ -706,7 +706,7 @@ export function ChronosAgendaScreen({
                 Todos os eventos da serie
               </button>
               <button
-                className="h-10 rounded-md px-3 text-sm font-semibold text-[#526078] transition hover:bg-[#f8fafc]"
+                className="h-10 rounded-md px-3 text-sm font-semibold text-ink-muted transition hover:bg-subtle"
                 onClick={() => setSeriesDeleteMeetingId(null)}
                 type="button"
               >
@@ -724,16 +724,16 @@ export function ChronosAgendaScreen({
             onClick={() => setSeriesEditPending(null)}
             type="button"
           />
-          <div className="relative z-10 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-[#d9e0e7] bg-white p-5 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]">
-            <h2 className="text-lg font-semibold text-[#101820]">
+          <div className="relative z-10 w-[min(26rem,calc(100vw-2rem))] rounded-lg border border-line bg-surface p-5 shadow-[0_22px_70px_rgb(16_24_32_/_0.22)]">
+            <h2 className="text-lg font-semibold text-ink">
               Editar evento recorrente
             </h2>
-            <p className="mt-1 text-sm text-[#667085]">
+            <p className="mt-1 text-sm text-ink-muted">
               Aplicar as alteracoes a quais eventos da serie?
             </p>
             <div className="mt-4 grid gap-2">
               <button
-                className="h-10 rounded-md border border-[#d9e0e7] bg-white px-3 text-sm font-semibold text-[#101820] transition hover:bg-[#f8fafc] disabled:opacity-55"
+                className="h-10 rounded-md border border-line bg-surface px-3 text-sm font-semibold text-ink transition hover:bg-subtle disabled:opacity-55"
                 disabled={saving}
                 onClick={async () => {
                   const pending = seriesEditPending;
@@ -746,7 +746,7 @@ export function ChronosAgendaScreen({
                 Somente este evento
               </button>
               <button
-                className="h-10 rounded-md bg-[#101820] px-3 text-sm font-semibold text-white transition hover:bg-[#1f2937] disabled:opacity-55"
+                className="h-10 rounded-md bg-inverse px-3 text-sm font-semibold text-brand-ink transition hover:bg-inverse disabled:opacity-55"
                 disabled={saving}
                 onClick={async () => {
                   const pending = seriesEditPending;
@@ -791,7 +791,7 @@ export function ChronosAgendaScreen({
                 Todos os eventos da serie
               </button>
               <button
-                className="h-10 rounded-md px-3 text-sm font-semibold text-[#526078] transition hover:bg-[#f8fafc]"
+                className="h-10 rounded-md px-3 text-sm font-semibold text-ink-muted transition hover:bg-subtle"
                 onClick={() => setSeriesEditPending(null)}
                 type="button"
               >

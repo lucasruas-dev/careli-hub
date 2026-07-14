@@ -15,8 +15,8 @@ export function ChronosMinutesFormattedPreview({
   minutes,
 }: ChronosMinutesFormattedPreviewProps) {
   return (
-    <div className="rounded-md border border-[#d9e0e7] bg-[#eef2f6] p-3">
-      <div className="mb-3 grid gap-2 text-xs font-semibold text-[#526078] sm:grid-cols-3">
+    <div className="rounded-md border border-line bg-subtle p-3">
+      <div className="mb-3 grid gap-2 text-xs font-semibold text-ink-muted sm:grid-cols-3">
         <span>Inicio: {context.scheduledStartLabel}</span>
         <span>Fim real: {context.actualEndLabel}</span>
         <span>
@@ -25,7 +25,7 @@ export function ChronosMinutesFormattedPreview({
         </span>
       </div>
       <div
-        className="relative mx-auto min-h-[70rem] max-w-[52rem] overflow-hidden rounded-md bg-white px-10 pb-24 pt-36 shadow-sm"
+        className="relative mx-auto min-h-[70rem] max-w-[52rem] overflow-hidden rounded-md bg-surface px-10 pb-24 pt-36 shadow-sm"
         style={{
           fontFamily: '"Century Gothic", "Aptos", "Segoe UI", sans-serif',
           fontSize: "9pt",
@@ -70,16 +70,16 @@ export function ChronosMinutesFormattedPreview({
               <p className="m-0 text-[8pt] font-bold uppercase tracking-normal text-[#A07C3B]">
                 Chronos
               </p>
-              <h2 className="m-0 mt-1 text-[13pt] font-bold text-[#101820]">
+              <h2 className="m-0 mt-1 text-[13pt] font-bold text-ink">
                 Ata de reuniao
               </h2>
-              <p className="m-0 mt-1 text-[8pt] font-bold text-[#526078]">
+              <p className="m-0 mt-1 text-[8pt] font-bold text-ink-muted">
                 {meeting.protocol} | {meeting.title}
               </p>
             </div>
           </header>
           <div
-            className="chronos-minutes-body [&_h2]:mb-0 [&_h2]:mt-2.5 [&_h2]:text-[10pt] [&_h2]:font-bold [&_h2]:leading-[1.5] [&_li]:m-0 [&_li]:leading-[1.5] [&_p]:m-0 [&_p]:leading-[1.5] [&_strong]:font-bold [&_table]:mt-1 [&_table]:w-full [&_table]:border-collapse [&_table]:text-[9pt] [&_td]:border [&_td]:border-[#d9e0e7] [&_td]:p-1 [&_td]:align-top [&_td]:leading-[1.5] [&_th]:border [&_th]:border-[#d9e0e7] [&_th]:bg-[#f3f6fa] [&_th]:p-1 [&_th]:text-left [&_th]:font-bold [&_th]:leading-[1.5] [&_ul]:m-0 [&_ul]:pl-4"
+            className="chronos-minutes-body [&_h2]:mb-0 [&_h2]:mt-2.5 [&_h2]:text-[10pt] [&_h2]:font-bold [&_h2]:leading-[1.5] [&_li]:m-0 [&_li]:leading-[1.5] [&_p]:m-0 [&_p]:leading-[1.5] [&_strong]:font-bold [&_table]:mt-1 [&_table]:w-full [&_table]:border-collapse [&_table]:text-[9pt] [&_td]:border [&_td]:border-line [&_td]:p-1 [&_td]:align-top [&_td]:leading-[1.5] [&_th]:border [&_th]:border-line [&_th]:bg-subtle [&_th]:p-1 [&_th]:text-left [&_th]:font-bold [&_th]:leading-[1.5] [&_ul]:m-0 [&_ul]:pl-4"
             dangerouslySetInnerHTML={{
               __html: buildChronosMinutesBodyHtml(minutes),
             }}
