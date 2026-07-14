@@ -234,15 +234,24 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
   const primaryAddress = entity.addresses[0];
   const fullAddress = fullAddressLabel(primaryAddress);
   const isCompany = isCompanyEntity(entity);
-  const cadastroRows = [
-    ["Nome", displayHeaderName(entity)],
+  // O nome exibido é o FANTASIA (regra do Lucas). "Nome fantasia" era uma linha duplicada do
+  // "Nome" — saiu. A razão social só aparece quando REALMENTE difere do nome (o C2X costuma
+  // repetir o mesmo texto nos dois campos, e aí virava nome três vezes na tela).
+  const displayName = displayHeaderName(entity);
+  const legalName = isCompany ? summaryName(entity) : "";
+  const showLegalName = Boolean(
+    legalName && legalName.trim().toLowerCase() !== displayName.trim().toLowerCase(),
+  );
+  const cadastroRows: Array<readonly [string, string]> = [
+    ["Nome", displayName],
     ["CPF/CNPJ", entity.documentMasked],
-    ["Razao social", isCompany ? summaryName(entity) : "-"],
-    ["Nome fantasia", isCompany ? displayHeaderName(entity) : "-"],
+    ...(showLegalName
+      ? [["Razao social", legalName] as const]
+      : []),
     ["Telefone", primaryPhone?.value ?? "-"],
     ["E-mail", primaryEmail?.value ?? "-"],
     ["Endereco", fullAddress],
-  ] as const;
+  ];
   const detailRows = [
     ["Tipo pessoa", kindLabel(entity.kind)],
     ["RG", "-"],

@@ -19,6 +19,8 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+// Só TIPOS daqui: `empreendimentos.ts` é server-side (mysql2). Importar um valor arrastaria
+// o driver do MySQL pro bundle do browser.
 import type {
   ApoloEnterpriseCadastro,
   ApoloEnterprisePlayer,
@@ -27,8 +29,17 @@ import type {
   ApoloEnterpriseUnit,
   ApoloEnterprisesData,
 } from "@/lib/apolo/empreendimentos";
+import { toTitleCase } from "@/lib/format/name-case";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
+
+// O papel do player NESTE empreendimento (os demais papéis dele vivem na ficha da entidade).
+const playerRoleLabels: Record<ApoloEnterprisePlayer["relation"], string> = {
+  captador: "Captador",
+  coordenador_c2x: "Coordenador (C2X)",
+  coordenador_vendas: "Coordenador de Vendas",
+  incorporador: "Incorporador",
+};
 
 // Tela de Empreendimentos. Lista o cenário comercial (linha = produto consolidado pela regra
 // ENTERPRISE_GROUPS; o chevron abre as etapas) e, ao CLICAR na linha, abre a ficha do
@@ -72,18 +83,29 @@ const detailTabs = [
 
 type DetailTab = (typeof detailTabs)[number]["id"];
 
-// Perfil do C2X que a tela NÃO exibe (só a Careli tem coordenadora; o dado fica no cadastro
-// pra apontar no C2X quando houver escrita). Regra do Lucas.
-const hiddenRelations = new Set(["coordenador"]);
+// O `coordenador_id` do C2X está com dado ERRADO (o MESMO player nos 24 empreendimentos), então
+// a tela não o exibe — ele só viaja no payload, pro Lucas corrigir no C2X depois.
+const hiddenPlayerRelations = new Set<ApoloEnterprisePlayer["relation"]>([
+  "coordenador_c2x",
+]);
+
+function visiblePlayers(cadastro: ApoloEnterpriseCadastro): ApoloEnterprisePlayer[] {
+  return cadastro.players.filter(
+    (player) => !hiddenPlayerRelations.has(player.relation),
+  );
+}
 
 export function EmpreendimentosScreen({
   data,
   error,
   loading,
+  onOpenEntity,
 }: {
   data: ApoloEnterprisesData | null;
   error: string | null;
   loading: boolean;
+  // Abre o cadastro daquela entidade no CRM 360.
+  onOpenEntity: (name: string, entityId: string) => void;
 }) {
   // `detail` = ficha aberta (botão Ver mais). `selected` = linha marcada, que FILTRA os cards.
   const [detail, setDetail] = useState<ApoloEnterpriseRow | null>(null);
@@ -110,7 +132,13 @@ export function EmpreendimentosScreen({
   }
 
   if (detail) {
-    return <EnterpriseDetail row={detail} onBack={() => setDetail(null)} />;
+    return (
+      <EnterpriseDetail
+        onBack={() => setDetail(null)}
+        onOpenEntity={onOpenEntity}
+        row={detail}
+      />
+    );
   }
 
   const scenario = selected?.scenario ?? data.totals;
@@ -296,9 +324,11 @@ function VerMaisButton({ onClick }: { onClick: () => void }) {
 
 function EnterpriseDetail({
   onBack,
+  onOpenEntity,
   row,
 }: {
   onBack: () => void;
+  onOpenEntity: (name: string, entityId: string) => void;
   row: ApoloEnterpriseRow;
 }) {
   const [tab, setTab] = useState<DetailTab>("cadastro");
@@ -363,9 +393,12 @@ function EnterpriseDetail({
 
       <section className="min-h-0 flex-1 overflow-auto">
         {tab === "cadastro" ? <CadastroTab row={row} /> : null}
+        {tab === "relacionamentos" ? (
+          <RelacionamentosTab onOpenEntity={onOpenEntity} row={row} />
+        ) : null}
         {tab === "resumo" ? <ResumoTab row={row} /> : null}
         {tab === "unidades" ? <UnidadesTab row={row} /> : null}
-        {tab === "vendas" || tab === "financeiro" || tab === "relacionamentos" ? (
+        {tab === "vendas" || tab === "financeiro" ? (
           <PendingTab label={detailTabs.find((item) => item.id === tab)?.label ?? ""} />
         ) : null}
       </section>
@@ -382,42 +415,17 @@ function CadastroTab({ row }: { row: ApoloEnterpriseRow }) {
   useEffect(() => {
     let active = true;
 
-    async function load() {
-      try {
-        setError(null);
-
-        const accessToken = await getApoloAccessToken();
-        const response = await fetch(
-          `/api/apolo/empreendimentos/cadastro?codes=${encodeURIComponent(row.codes.join(","))}`,
-          {
-            cache: "no-store",
-            headers: { Authorization: `Bearer ${accessToken}` },
-          },
-        );
-        const payload = (await response.json()) as {
-          data?: { cadastros: ApoloEnterpriseCadastro[] };
-          error?: string;
-        };
-
-        if (!response.ok || !payload.data) {
-          throw new Error(payload.error ?? "Nao foi possivel carregar o cadastro.");
-        }
-
-        if (active) {
-          setCadastros(payload.data.cadastros);
-        }
-      } catch (loadError) {
-        if (active) {
-          setError(
-            loadError instanceof Error
-              ? loadError.message
-              : "Falha ao carregar o cadastro.",
-          );
-        }
+    void loadCadastros(row.codes).then((result) => {
+      if (!active) {
+        return;
       }
-    }
 
-    void load();
+      if (result.ok) {
+        setCadastros(result.cadastros);
+      } else {
+        setError(result.error);
+      }
+    });
 
     return () => {
       active = false;
@@ -445,109 +453,257 @@ function CadastroTab({ row }: { row: ApoloEnterpriseRow }) {
   );
 }
 
+// Cadastro = os CAMPOS, espelhando a aba "Dados gerais" do C2X (regra do Lucas).
 function CadastroCard({ cadastro }: { cadastro: ApoloEnterpriseCadastro }) {
-  const players = cadastro.players.filter(
-    (player) => !hiddenRelations.has(player.relation),
-  );
+  const playerField = (relation: ApoloEnterprisePlayer["relation"]) => {
+    const found = cadastro.players.find(
+      (player) => player.relation === relation,
+    );
+
+    return found ? toTitleCase(found.name) : "-";
+  };
 
   return (
     <div className="rounded-xl border border-line bg-surface p-4">
-      <div className="flex flex-wrap items-center gap-2">
-        <h3 className="m-0 text-sm font-semibold text-ink">{cadastro.name}</h3>
-        <span className="rounded-full border border-line bg-subtle px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
-          {cadastro.code}
-        </span>
-        {cadastro.kind ? (
-          <span className="rounded-full border border-[#A07C3B]/25 bg-[#A07C3B]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#7A5E2C] dark:text-[#d9b877]">
-            {cadastro.kind}
-          </span>
-        ) : null}
-      </div>
+      <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+        Dados gerais · {cadastro.code}
+      </p>
 
       <dl className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Fact
+        <Field label="Incorporador" value={playerField("incorporador")} />
+        <Field
+          label="Coordenador de Vendas"
+          value={playerField("coordenador_vendas")}
+        />
+        <Field label="Captador" value={playerField("captador")} />
+        <Field label="Nome" value={toTitleCase(cadastro.name)} />
+        <Field
           label="Nome de divulgação"
-          value={cadastro.divulgationName ?? "-"}
+          value={toTitleCase(cadastro.divulgationName) || "-"}
         />
-        <Fact
+        <Field label="Sigla" value={cadastro.code} />
+        <Field
           label="Localização"
-          value={[cadastro.city, cadastro.state].filter(Boolean).join("/") || "-"}
+          value={
+            [toTitleCase(cadastro.city), cadastro.state]
+              .filter(Boolean)
+              .join("/") || "-"
+          }
         />
-        <Fact
-          label="Entrega prevista"
+        <Field
+          label="Previsão de entrega"
           value={formatDate(cadastro.expectedDelivery)}
         />
-        <Fact
-          label="Valor do ato"
-          value={cadastro.actValue ? formatCurrency(cadastro.actValue) : "-"}
+        <Field
+          label="Tipo de empreendimento"
+          value={toTitleCase(cadastro.kind) || "-"}
+        />
+        <Field
+          label="Tipo de financiamento/tabela"
+          value={cadastro.tableKind ?? "-"}
         />
       </dl>
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1.4fr)_minmax(0,1fr)]">
-        <div className="rounded-lg border border-line bg-subtle/60 p-3">
-          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-            Players do empreendimento
-          </p>
-          <div className="mt-2 grid gap-2">
-            {players.length ? (
-              players.map((player) => (
-                <PlayerLine key={player.relation} player={player} />
-              ))
-            ) : (
-              <p className="m-0 text-sm font-medium text-ink-muted">
-                Nenhum player vinculado.
-              </p>
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-lg border border-line bg-subtle/60 p-3">
-          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-            Contato
-          </p>
-          {cadastro.focalName || cadastro.focalPhone || cadastro.focalEmail ? (
-            <div className="mt-2">
-              <p className="m-0 text-sm font-semibold text-ink">
-                {cadastro.focalName ?? "-"}
-              </p>
-              <p className="m-0 mt-0.5 text-xs text-ink-muted">
-                {cadastro.focalPhone ?? "-"}
-              </p>
-              <p className="m-0 truncate text-xs text-ink-muted">
-                {cadastro.focalEmail ?? "-"}
-              </p>
-            </div>
-          ) : (
-            <p className="m-0 mt-2 text-sm font-medium text-ink-muted">
-              Sem contato informado.
-            </p>
-          )}
-        </div>
-      </div>
     </div>
   );
 }
 
-// Uma linha de player: o nome + os PAPÉIS acumulados (perfil do C2X + função aqui).
-// Ex.: Luna Negócios = Imobiliária + Coordenador de Vendas.
-function PlayerLine({ player }: { player: ApoloEnterprisePlayer }) {
+// Campo de leitura no estilo formulário (é o que o Lucas pediu: "no cadastro quero os campos").
+function Field({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-line bg-surface px-3 py-2">
-      <p className="m-0 min-w-0 truncate text-sm font-semibold text-ink">
-        {player.name}
-      </p>
-      <div className="flex shrink-0 flex-wrap gap-1">
-        {player.roles.map((role) => (
-          <span
-            className="rounded-full border border-[#A07C3B]/25 bg-[#A07C3B]/10 px-2 py-0.5 text-[10px] font-semibold text-[#7A5E2C] dark:text-[#d9b877]"
-            key={role}
-          >
-            {role}
-          </span>
-        ))}
-      </div>
+    <div className="min-w-0">
+      <dt className="m-0 text-xs font-medium text-ink-muted">{label}</dt>
+      <dd className="m-0 mt-1 truncate rounded-lg border border-line bg-subtle px-3 py-2 text-sm font-semibold text-ink">
+        {value}
+      </dd>
     </div>
   );
+}
+
+// Relacionamentos: os dois grupos da regra do Lucas — TRABALHO (entre entidades) e CONTATO
+// (leve: nome/telefone/e-mail). Aqui moram os PAPÉIS ACUMULÁVEIS (perfil do C2X + a função no
+// empreendimento). Ex.: Luna = [Imobiliária] + [Gerente].
+function RelacionamentosTab({
+  onOpenEntity,
+  row,
+}: {
+  onOpenEntity: (name: string, entityId: string) => void;
+  row: ApoloEnterpriseRow;
+}) {
+  const [cadastros, setCadastros] = useState<ApoloEnterpriseCadastro[] | null>(
+    null,
+  );
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    void loadCadastros(row.codes)
+      .then((result) => {
+        if (!active) {
+          return;
+        }
+
+        if (result.ok) {
+          setCadastros(result.cadastros);
+        } else {
+          setError(result.error);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [row.codes]);
+
+  if (error) {
+    return (
+      <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+        {error}
+      </div>
+    );
+  }
+
+  if (!cadastros) {
+    return <div className="h-64 animate-pulse rounded-xl border border-line bg-subtle" />;
+  }
+
+  return (
+    <div className="grid gap-3">
+      {cadastros.map((cadastro) => (
+        <div
+          className="rounded-xl border border-line bg-surface p-4"
+          key={cadastro.code}
+        >
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+            {cadastro.code}
+          </p>
+
+          <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1.5fr)_minmax(0,1fr)]">
+            <div>
+              <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#7A5E2C] dark:text-[#d9b877]">
+                Trabalho
+              </p>
+              <div className="mt-2 grid gap-2">
+                {visiblePlayers(cadastro).length ? (
+                  visiblePlayers(cadastro).map((player) => (
+                    <PlayerCard
+                      key={player.relation}
+                      onOpenEntity={onOpenEntity}
+                      player={player}
+                    />
+                  ))
+                ) : (
+                  <p className="m-0 text-sm font-medium text-ink-muted">
+                    Nenhum vínculo de trabalho.
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <div>
+              <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-[#8a4526] dark:text-[#d59f7f]">
+                Contato
+              </p>
+              <div className="mt-2">
+                {cadastro.focalName || cadastro.focalPhone || cadastro.focalEmail ? (
+                  <div className="rounded-lg border border-line bg-subtle px-3 py-2">
+                    <p className="m-0 truncate text-sm font-semibold text-ink">
+                      {toTitleCase(cadastro.focalName) || "-"}
+                    </p>
+                    <p className="m-0 mt-0.5 text-xs text-ink-muted">
+                      {cadastro.focalPhone ?? "-"}
+                    </p>
+                    <p className="m-0 truncate text-xs text-ink-muted">
+                      {cadastro.focalEmail ?? "-"}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="m-0 text-sm font-medium text-ink-muted">
+                    Sem contato informado.
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// Card de player: mesmo formato do Contato (nome / telefone / e-mail) + SÓ o papel dele neste
+// empreendimento. Os demais papéis da entidade vivem na ficha dela — por isso o card leva pro
+// cadastro dela no CRM.
+function PlayerCard({
+  onOpenEntity,
+  player,
+}: {
+  onOpenEntity: (name: string, entityId: string) => void;
+  player: ApoloEnterprisePlayer;
+}) {
+  return (
+    <button
+      className="w-full rounded-lg border border-line bg-subtle px-3 py-2 text-left transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/8"
+      onClick={() => onOpenEntity(player.name, player.entityId)}
+      title="Abrir cadastro da entidade no CRM"
+      type="button"
+    >
+      <div className="flex items-start justify-between gap-2">
+        <p className="m-0 min-w-0 truncate text-sm font-semibold text-ink">
+          {toTitleCase(player.name)}
+        </p>
+        <span className="shrink-0 rounded-full border border-[#A07C3B]/25 bg-[#A07C3B]/10 px-2 py-0.5 text-[10px] font-semibold text-[#7A5E2C] dark:text-[#d9b877]">
+          {playerRoleLabels[player.relation]}
+        </span>
+      </div>
+      {player.document ? (
+        <p className="m-0 mt-0.5 text-xs font-medium text-ink-soft">
+          {player.document}
+        </p>
+      ) : null}
+      <p className="m-0 text-xs text-ink-muted">{player.phone ?? "-"}</p>
+      <p className="m-0 truncate text-xs text-ink-muted">{player.email ?? "-"}</p>
+      {player.address ? (
+        <p className="m-0 truncate text-xs text-ink-muted">
+          {toTitleCase(player.address)}
+        </p>
+      ) : null}
+    </button>
+  );
+}
+
+// Fetch compartilhado (Cadastro e Relacionamentos leem a mesma ficha do C2X).
+async function loadCadastros(
+  codes: string[],
+): Promise<
+  { cadastros: ApoloEnterpriseCadastro[]; ok: true } | { error: string; ok: false }
+> {
+  try {
+    const accessToken = await getApoloAccessToken();
+    const response = await fetch(
+      `/api/apolo/empreendimentos/cadastro?codes=${encodeURIComponent(codes.join(","))}`,
+      {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      },
+    );
+    const payload = (await response.json()) as {
+      data?: { cadastros: ApoloEnterpriseCadastro[] };
+      error?: string;
+    };
+
+    if (!response.ok || !payload.data) {
+      throw new Error(payload.error ?? "Nao foi possivel carregar o cadastro.");
+    }
+
+    return { cadastros: payload.data.cadastros, ok: true };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Falha ao carregar o cadastro.",
+      ok: false,
+    };
+  }
 }
 
 function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {

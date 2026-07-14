@@ -9,6 +9,7 @@
 // as bloqueadas estão como "Disponível" — por isso Disponível DESCONTA as bloqueadas.
 import type { RowDataPacket } from "mysql2";
 
+import { deterministicUuid } from "@/lib/apolo/server";
 import {
   ENTERPRISE_GROUPS,
   EXCLUDED_ENTERPRISE_CODES,
@@ -149,26 +150,45 @@ export async function loadApoloEnterprises(): Promise<
 //
 // Tradução de nome: no Apolo o `manager_id` do C2X chama-se COORDENADOR DE VENDAS (no C2X o
 // campo continua "gerente"). Nome de PJ mora em fantasy_name/social_name — daí o coalesce.
+// ⚠️ OS RÓTULOS DO C2X ESTÃO ERRADOS — não confiar neles (regra do Lucas):
+//   incorporador_id -> Incorporador            (C2X: "Incorporador")     ✔ exibe
+//   manager_id      -> COORDENADOR DE VENDAS   (C2X: "Gerente")          ✔ exibe
+//   captivator_id   -> Captador                (C2X: "Captador")         ✔ exibe
+//   coordenador_id  -> (dado errado no C2X: vem o MESMO player nos 24 empreendimentos)
+//                      NÃO exibe; fica no dado pro Lucas corrigir no C2X quando houver escrita.
 export type ApoloEnterprisePlayerRelation =
   | "captador"
-  | "coordenador"
+  | "coordenador_c2x"
   | "coordenador_vendas"
   | "incorporador";
 
 export type ApoloEnterprisePlayer = {
+  address: string | null;
+  document: string | null;
+  email: string | null;
+  // Id da entidade no Apolo, derivado do id do user no C2X. É por ele que a tela abre a ficha
+  // CERTA no CRM (buscar por nome casa homônimos e abre a pessoa errada).
+  entityId: string;
   name: string;
-  // Função DESTE player no empreendimento (a futura aresta do grafo).
+  phone: string | null;
+  // Função DESTE player no empreendimento (a aresta). Na tela do empreendimento só ESTE papel
+  // aparece; os demais papéis da entidade vivem na ficha dela, no CRM.
   relation: ApoloEnterprisePlayerRelation;
-  // Papéis acumulados (perfil do C2X + a função aqui), já deduplicados.
-  roles: string[];
 };
 
-const relationLabels: Record<ApoloEnterprisePlayerRelation, string> = {
+export const enterprisePlayerLabels: Record<
+  ApoloEnterprisePlayerRelation,
+  string
+> = {
   captador: "Captador",
-  coordenador: "Coordenador",
+  coordenador_c2x: "Coordenador (C2X)",
   coordenador_vendas: "Coordenador de Vendas",
   incorporador: "Incorporador",
 };
+
+// Não exibido na tela (dado errado no C2X; fica só no payload pra correção futura).
+export const HIDDEN_ENTERPRISE_PLAYER_RELATIONS: ApoloEnterprisePlayerRelation[] =
+  ["coordenador_c2x"];
 
 export type ApoloEnterpriseCadastro = {
   actValue: number | null;
@@ -184,37 +204,64 @@ export type ApoloEnterpriseCadastro = {
   name: string;
   players: ApoloEnterprisePlayer[];
   state: string | null;
+  // Tipo de financiamento/tabela (PRICE | SACOOC).
+  tableKind: string | null;
 };
 
-type CadastroQueryRow = RowDataPacket & {
-  act_value: string | number | null;
-  captador: string | null;
-  captador_perfil: string | null;
-  city: string | null;
-  code: string | null;
-  coordenador: string | null;
-  coordenador_perfil: string | null;
-  created_at: Date | string | null;
-  divulgation_name: string | null;
-  expected_delivery_date: Date | string | null;
-  focal_email: string | null;
-  focal_name: string | null;
-  focal_phone: string | null;
-  gerente: string | null;
-  gerente_perfil: string | null;
-  incorporador: string | null;
-  incorporador_perfil: string | null;
-  kind: string | null;
-  name: string | null;
-  state: string | null;
+type PlayerColumns<Alias extends string> = {
+  [K in
+    | Alias
+    | `${Alias}_address`
+    | `${Alias}_document`
+    | `${Alias}_email`
+    | `${Alias}_phone`]: string | null;
+} & {
+  [K in `${Alias}_user_id`]: number | string | null;
 };
+
+type CadastroQueryRow = RowDataPacket &
+  PlayerColumns<"captador"> &
+  PlayerColumns<"coordenador"> &
+  PlayerColumns<"gerente"> &
+  PlayerColumns<"incorporador"> & {
+    act_value: string | number | null;
+    city: string | null;
+    code: string | null;
+    created_at: Date | string | null;
+    divulgation_name: string | null;
+    expected_delivery_date: Date | string | null;
+    focal_email: string | null;
+    focal_name: string | null;
+    focal_phone: string | null;
+    kind: string | null;
+    name: string | null;
+    state: string | null;
+    table_kind: string | null;
+  };
 
 // Nome do player: PJ guarda em fantasy_name/social_name; PF em name.
 const PLAYER_NAME_SQL = `coalesce(nullif(trim(pu.name), ''), nullif(trim(pu.fantasy_name), ''), nullif(trim(pu.social_name), ''))`;
+const PLAYER_PHONE_SQL = `coalesce(nullif(trim(pu.cellphone), ''), nullif(trim(pu.phone), ''))`;
+const PLAYER_DOC_SQL = `coalesce(nullif(trim(pu.cpf), ''), nullif(trim(pu.cnpj), ''))`;
 
+// Enriquecimento vindo de `users` (+ `addresses`): telefone, e-mail, documento e endereço.
 function playerSelect(column: string, alias: string): string {
-  return `(select ${PLAYER_NAME_SQL} from users pu where pu.id = e.${column}) as ${alias},
-          (select pp.name from users pu join profiles pp on pp.id = pu.profile_id where pu.id = e.${column}) as ${alias}_perfil`;
+  return `e.${column} as ${alias}_user_id,
+          (select ${PLAYER_NAME_SQL} from users pu where pu.id = e.${column}) as ${alias},
+          (select ${PLAYER_PHONE_SQL} from users pu where pu.id = e.${column}) as ${alias}_phone,
+          (select nullif(trim(pu.email), '') from users pu where pu.id = e.${column}) as ${alias}_email,
+          (select ${PLAYER_DOC_SQL} from users pu where pu.id = e.${column}) as ${alias}_document,
+          (select concat_ws(', ',
+                    nullif(trim(pa.address), ''),
+                    nullif(trim(pa.number), ''),
+                    nullif(trim(pa.district), ''),
+                    nullif(trim(pac.name), ''),
+                    nullif(trim(pas.acronym), ''))
+             from addresses pa
+             left join cities pac on pac.id = pa.city_id
+             left join states pas on pas.id = pa.state_id
+            where pa.ownertable_type = 'User' and pa.ownertable_id = e.${column}
+            limit 1) as ${alias}_address`;
 }
 
 // Cadastro do empreendimento (uma ficha por CÓDIGO — o produto consolidado tem N).
@@ -244,6 +291,7 @@ export async function loadApoloEnterpriseCadastro(
   const [rows] = await poolResult.pool.query<CadastroQueryRow[]>(
     `select e.code, e.name, e.divulgation_name,
             et.name as kind,
+            etab.name as table_kind,
             ci.name as city, st.acronym as state,
             e.expected_delivery_date, e.act_value, e.created_at,
             e.focal_name, e.focal_phone, e.focal_email,
@@ -253,6 +301,7 @@ export async function loadApoloEnterpriseCadastro(
             ${playerSelect("coordenador_id", "coordenador")}
      from enterprises e
      left join enterprise_types et on et.id = e.enterprise_type_id
+     left join enterprise_tables etab on etab.id = e.enterprise_table_id
      left join cities ci on ci.id = e.city_id
      left join states st on st.id = ci.state_id
      where e.code in (${placeholders})
@@ -264,36 +313,72 @@ export async function loadApoloEnterpriseCadastro(
 }
 
 function mapCadastroRow(row: CadastroQueryRow): ApoloEnterpriseCadastro {
-  // Papéis = perfil do C2X + a função no empreendimento (acumulam, sem duplicar).
   const player = (
     relation: ApoloEnterprisePlayerRelation,
     name: string | null,
-    profile: string | null,
+    userId: number | string | null,
+    phone: string | null,
+    email: string | null,
+    document: string | null,
+    address: string | null,
   ): ApoloEnterprisePlayer | null => {
     const cleaned = cleanText(name);
 
-    if (!cleaned) {
+    if (!cleaned || !userId) {
       return null;
     }
 
-    const roles = Array.from(
-      new Set(
-        [cleanText(profile), relationLabels[relation]].filter(
-          (role): role is string => Boolean(role),
-        ),
-      ),
-    );
-
-    return { name: cleaned, relation, roles };
+    return {
+      address: cleanText(address),
+      document: cleanText(document),
+      email: cleanText(email),
+      // Mesma semente do sync (persistApoloEntityBatch) — aponta pra ficha certa no CRM.
+      entityId: deterministicUuid(`apolo:c2x:users:${userId}`),
+      name: cleaned,
+      phone: cleanText(phone),
+      relation,
+    };
   };
 
   const players = [
-    player("incorporador", row.incorporador, row.incorporador_perfil),
-    // C2X `manager_id` = "gerente"; no Apolo é o COORDENADOR DE VENDAS.
-    player("coordenador_vendas", row.gerente, row.gerente_perfil),
-    player("captador", row.captador, row.captador_perfil),
-    // Mantido no dado (o Lucas vai apontar no C2X quando houver escrita), mas a tela não exibe.
-    player("coordenador", row.coordenador, row.coordenador_perfil),
+    player(
+      "incorporador",
+      row.incorporador,
+      row.incorporador_user_id,
+      row.incorporador_phone,
+      row.incorporador_email,
+      row.incorporador_document,
+      row.incorporador_address,
+    ),
+    // C2X chama de "Gerente", mas na Careli é o COORDENADOR DE VENDAS.
+    player(
+      "coordenador_vendas",
+      row.gerente,
+      row.gerente_user_id,
+      row.gerente_phone,
+      row.gerente_email,
+      row.gerente_document,
+      row.gerente_address,
+    ),
+    player(
+      "captador",
+      row.captador,
+      row.captador_user_id,
+      row.captador_phone,
+      row.captador_email,
+      row.captador_document,
+      row.captador_address,
+    ),
+    // Dado errado no C2X (mesmo player nos 24) — vai no payload, mas a tela filtra.
+    player(
+      "coordenador_c2x",
+      row.coordenador,
+      row.coordenador_user_id,
+      row.coordenador_phone,
+      row.coordenador_email,
+      row.coordenador_document,
+      row.coordenador_address,
+    ),
   ].filter((entry): entry is ApoloEnterprisePlayer => Boolean(entry));
 
   return {
@@ -310,6 +395,7 @@ function mapCadastroRow(row: CadastroQueryRow): ApoloEnterpriseCadastro {
     name: cleanText(row.name) ?? "Empreendimento",
     players,
     state: cleanText(row.state),
+    tableKind: cleanText(row.table_kind),
   };
 }
 

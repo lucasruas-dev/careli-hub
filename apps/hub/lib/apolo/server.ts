@@ -4038,7 +4038,10 @@ function documentKind(value: string | null | undefined) {
   return null;
 }
 
-function deterministicUuid(seed: string) {
+// Exportado: o id da entidade no Apolo é DERIVÁVEL do id do user no C2X
+// (`apolo:c2x:users:<id>`). Isso permite navegar pra ficha certa por IDENTIDADE, em vez de
+// procurar por nome (que casa homônimos e abre a pessoa errada).
+export function deterministicUuid(seed: string) {
   const chars = createHash("sha1").update(seed).digest("hex").slice(0, 32).split("");
   chars[12] = "5";
   chars[16] = (8 + (Number.parseInt(chars[16] ?? "0", 16) % 4)).toString(16);

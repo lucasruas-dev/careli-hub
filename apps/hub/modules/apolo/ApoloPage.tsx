@@ -62,6 +62,9 @@ export function ApoloPage() {
   // `enterprisesLoading` estivesse nas deps, setá-lo re-rodaria o efeito, o cleanup marcaria
   // active=false e a resposta seria descartada — o loading nunca desligaria.
   const enterprisesRequestedRef = useRef(false);
+  // Entidade que o usuário pediu pra abrir (clique num player). Fica pendente até a busca
+  // trazer o resultado, aí a seleção cai NELA em vez de na primeira da lista.
+  const pendingEntityIdRef = useRef<string | null>(null);
 
   useEffect(() => {
     if (activeScreen !== "empreendimentos" || enterprisesRequestedRef.current) {
@@ -166,7 +169,21 @@ export function ApoloPage() {
 
         if (active) {
           setDashboard(payload.data);
-          setSelectedEntityId(payload.data.entities[0]?.id ?? "");
+
+          // Se veio de um clique numa entidade (ex.: player do empreendimento), seleciona
+          // ELA — não a primeira do resultado. Buscar por nome casa homônimos, e o reset
+          // cego pro primeiro item abria a ficha da pessoa errada.
+          const target = pendingEntityIdRef.current;
+          const matched = target
+            ? payload.data.entities.find((entity) => entity.id === target)
+            : null;
+
+          if (matched) {
+            pendingEntityIdRef.current = null;
+            setSelectedEntityId(matched.id);
+          } else {
+            setSelectedEntityId(payload.data.entities[0]?.id ?? "");
+          }
         }
       } catch (loadError) {
         if (active) {
@@ -220,6 +237,23 @@ export function ApoloPage() {
     }
   }, [activeTab, selectedEntity, setActiveTab]);
 
+  // Clicar num player do empreendimento leva ao CADASTRO dele no CRM 360 (regra do Lucas).
+  // A busca por nome só CARREGA os candidatos; quem escolhe a ficha certa é o `entityId`
+  // (derivado do id do C2X) — por isso ele fica pendente até o resultado chegar.
+  function openEntityInCrm(name: string, entityId: string) {
+    const normalized = name.trim();
+
+    if (!normalized) {
+      return;
+    }
+
+    pendingEntityIdRef.current = entityId;
+    setActiveScreen("crm");
+    setActiveTab("cadastro");
+    setProfileFilter("all");
+    setQuery(normalized);
+  }
+
   function openCommercialRelationship(label: string) {
     const normalizedLabel = label.trim();
 
@@ -260,6 +294,7 @@ export function ApoloPage() {
             data={enterprises}
             error={enterprisesError}
             loading={enterprisesLoading}
+            onOpenEntity={openEntityInCrm}
           />
         ) : null}
         {activeScreen === "crm" ? (

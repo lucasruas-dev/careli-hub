@@ -138,6 +138,33 @@ Prospect ──► Corretor ──► Imobiliária ──► Empreendimento
   rótulos legados de `apolo_relationships` (3.595 "Imobiliaria ou responsavel comercial")
   **não** viram aresta.
 
+### ⚠️ Os RÓTULOS do C2X mentem — a verdade é o Lucas
+
+O cadastro de empreendimento do C2X tem campos com nome **errado**. Não modelar pelo rótulo:
+
+| Coluna C2X | C2X chama de | O que É na Careli | Exibe? |
+|---|---|---|---|
+| `incorporador_id` | Incorporador | Incorporador | ✅ |
+| `manager_id` | ~~Gerente~~ | **Coordenador de Vendas** | ✅ |
+| `captivator_id` | Captador | Captador | ✅ |
+| `coordenador_id` | ~~Coordenadora de vendas~~ | **dado errado** (o MESMO player nos 24 empreendimentos) | ❌ — fica no payload pro Lucas corrigir no C2X quando houver escrita |
+
+Idem para os nomes: PJ guarda o nome em `fantasy_name`/`social_name` (o `name` vem **vazio**), e
+o C2X repete o mesmo texto em razão social e nome fantasia. **Regra de exibição:** o nome é o
+FANTASIA; razão social só aparece quando de fato difere.
+
+### Identidade: navegar por id, nunca por nome
+
+O id da entidade no Apolo é **determinístico**: `deterministicUuid("apolo:c2x:users:<id>")` —
+a mesma semente do sync. Para abrir a ficha certa a partir de qualquer lugar (ex.: um player do
+empreendimento), use o **entityId**; buscar por **nome** casa homônimos e abre a pessoa errada
+(bug real em 13/jul). A busca textual serve só pra carregar candidatos.
+
+### Regra global de exibição: Primeira Maiúscula
+
+Todo dado exibido no Hub segue "Primeira Maiúscula" (`lib/format/name-case.ts`). As fontes
+legadas vêm em CAIXA ALTA; a normalização é **na exibição**, nunca no dado.
+
 ### Achado no C2X (2026-07-13)
 
 - `acquisition_requests.corretor_id` **existe mas está 100% NULL** (0 de 4.181 propostas):
