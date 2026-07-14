@@ -839,9 +839,21 @@ export function IrisPage({
     // debounced da fila (que segue rodando para lista/previews). Era o "recebo
     // a notificacao mas a mensagem nao aparece" relatado pelo time (7/jul).
     const applyRealtimeMessageRow = (row: Record<string, unknown> | undefined) => {
-      const ticketId = typeof row?.ticket_id === "string" ? row.ticket_id : null;
+      // A conversa aberta pode ser um TICKET ou um GRUPO (grupo nao tem ticket:
+      // o id da conversa E o id do grupo). Sem isso, mensagem de grupo so
+      // aparecia com F5.
+      const conversationId =
+        typeof row?.ticket_id === "string"
+          ? row.ticket_id
+          : typeof row?.group_id === "string"
+            ? row.group_id
+            : null;
 
-      if (!row || !ticketId || ticketId !== selectedTicketIdRef.current) {
+      if (
+        !row ||
+        !conversationId ||
+        conversationId !== selectedTicketIdRef.current
+      ) {
         return;
       }
 
@@ -849,7 +861,7 @@ export function IrisPage({
 
       knownMessageIdsRef.current.add(message.id);
       setActiveThread((current) => {
-        if (!current || current.ticketId !== ticketId) {
+        if (!current || current.ticketId !== conversationId) {
           return current;
         }
 
@@ -1125,8 +1137,19 @@ export function IrisPage({
     }
   }, [initialAttendanceProtocol, irisData.tickets]);
 
+  // Métricas de atendimento (SLA, 1ª resposta, TDR...) NÃO contam grupos:
+  // grupo não é atendimento, não tem prazo nem encerramento.
   const snapshot = useMemo(
-    () => buildIrisSnapshot(irisData, onlineOperators),
+    () =>
+      buildIrisSnapshot(
+        {
+          ...irisData,
+          tickets: irisData.tickets.filter(
+            (ticket) => ticket.isGroup !== true,
+          ),
+        },
+        onlineOperators,
+      ),
     [irisData, onlineOperators],
   );
 
@@ -1481,14 +1504,16 @@ function ManagementView({
   onStartAttendance: (queueLabel?: string) => void;
 }) {
   // Board (kanban): abertos + encerrados HOJE (pra alimentar a coluna "Resolvido hoje").
-  // Grupos NAO entram: nao sao atendimento (nao abrem, nao encerram, nao tem SLA).
+  // Grupos ENTRAM (o Board e a porta de entrada do cockpit — sem eles o grupo fica
+  // inalcancavel) e caem na propria coluna de canal. Nao contaminam as METRICAS:
+  // o snapshot de SLA/1a resposta/TDR filtra grupos fora.
   const boardTickets = useMemo(
     () =>
       data.tickets.filter(
         (ticket) =>
-          ticket.isGroup !== true &&
-          (canSeeCacaQueue || !isCacaOwnedTicket(ticket)) &&
-          (!isClosedTicket(ticket) || isClosedToday(ticket)),
+          ticket.isGroup === true ||
+          ((canSeeCacaQueue || !isCacaOwnedTicket(ticket)) &&
+            (!isClosedTicket(ticket) || isClosedToday(ticket))),
       ),
     [canSeeCacaQueue, data.tickets],
   );
