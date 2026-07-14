@@ -2151,8 +2151,11 @@ function IrisConversationPanel({
   // Quando a Caca conduz o atendimento, o operador NAO pode atropelar (enviar):
   // so acompanha e direciona/transfere. O composer fica travado.
   const attendanceWithCaca = isCacaOwnedTicket(ticket);
+  // Grupo não tem janela de 24h do Meta — o envio depende só do ticket estar operável.
   const canSendFreeForm =
-    operationReady && customerServiceWindow.open && !attendanceWithCaca;
+    operationReady &&
+    (ticketIsGroup || customerServiceWindow.open) &&
+    !attendanceWithCaca;
   const composerReady = editingMessage
     ? operationReady && !attendanceWithCaca
     : canSendFreeForm;
@@ -2801,6 +2804,13 @@ function IrisConversationPanel({
       return;
     }
 
+    // Grupo: envia pelo gateway Evolution (número observador, membro do grupo).
+    // Não passa pelo Meta e não tem janela de 24h.
+    if (ticketIsGroup) {
+      await sendGroupReply(body);
+      return;
+    }
+
     if (!canSendFreeForm) {
       setFeedback(customerServiceWindow.label);
       return;
@@ -2885,6 +2895,82 @@ function IrisConversationPanel({
 
   // Responder um ticket de e-mail: o servidor envia pelo Gmail (caixa robô caca@),
   // no mesmo thread do cliente. Sem janela de 24h e sem WhatsApp.
+  // Envia para o grupo pelo gateway Evolution. A mensagem sai pelo número
+  // observador (que é membro do grupo), não pelo número do operador.
+  async function sendGroupReply(body: string) {
+    if (!body || sending || !operationReady) {
+      return;
+    }
+
+    setSending(true);
+    setFeedback("");
+
+    try {
+      const now = new Date().toISOString();
+      const optimisticMessage: IrisMessage = {
+        body,
+        createdAt: now,
+        deliveryStatus: "queued",
+        direction: "outbound",
+        id: `local-${now}`,
+        messageType: "text",
+        operatorAvatarUrl,
+        senderLabel: operatorLabel,
+        senderType: "operator",
+      };
+
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/group-messages", {
+        body: JSON.stringify({ body, ticketId: ticket.id }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: Record<string, unknown> | null;
+      } | null;
+
+      if (payload?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(payload.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          payload?.error ?? "Nao foi possivel enviar a mensagem ao grupo.",
+        );
+      }
+
+      if (!payload?.message) {
+        onMessageCreated(ticket.id, optimisticMessage);
+      }
+
+      setDraft("");
+      setReplyToMessage(null);
+      setEmojiPickerOpen(false);
+      setFeedback("Mensagem enviada ao grupo.");
+    } catch (error) {
+      console.error("[caredesk] nao foi possivel enviar ao grupo", error);
+      setFeedback(
+        error instanceof Error
+          ? error.message
+          : "Nao foi possivel enviar a mensagem ao grupo.",
+      );
+    } finally {
+      setSending(false);
+    }
+  }
+
   async function sendEmailReply(body: string) {
     if (!body || sending || !operationReady) {
       return;
