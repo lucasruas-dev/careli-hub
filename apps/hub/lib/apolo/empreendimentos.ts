@@ -23,6 +23,16 @@ const SALE_STATUS = {
   VENDIDO: 4,
 } as const;
 
+// Abas da ficha do empreendimento. O estado vive no ApoloPage (e não na tela) pra o "voltar"
+// do CRM devolver o usuário NA ABA em que ele estava.
+export type ApoloEnterpriseTab =
+  | "cadastro"
+  | "financeiro"
+  | "relacionamentos"
+  | "resumo"
+  | "unidades"
+  | "vendas";
+
 export type ApoloEnterpriseBucket =
   | "disponivel"
   | "reservado"
@@ -421,28 +431,59 @@ function toIsoDate(value: Date | string | null): string | null {
   return Number.isNaN(date.getTime()) ? null : date.toISOString();
 }
 
+// Parte envolvida na movimentação da unidade (comprador ou imobiliária). O `entityId` permite
+// abrir a ficha CERTA no CRM.
+export type ApoloUnitParty = {
+  code: string | null;
+  entityId: string;
+  name: string;
+};
+
+// A ÚLTIMA MOVIMENTAÇÃO da unidade (a proposta/venda mais recente). É o que amarra o
+// comprador e a imobiliária àquela unidade. O vínculo comprador→imobiliária vem de
+// `users.vinculed_by_id` — `imobiliaria_id` está ZERADO no C2X (0 de 3.595 clientes).
+export type ApoloUnitMovement = {
+  client: ApoloUnitParty | null;
+  imobiliaria: ApoloUnitParty | null;
+  stage: string | null;
+};
+
 export type ApoloEnterpriseUnit = {
   area: number | null;
   block: string | null;
   bucket: ApoloEnterpriseBucket;
+  // Código da unidade (ex.: LOU0101 = sigla + quadra + lote), mesmo padrão do Hades.
+  code: string;
   enterpriseCode: string;
   id: string;
+  // Unidade interna / externa.
+  kind: string | null;
   lot: string | null;
-  name: string | null;
+  movement: ApoloUnitMovement | null;
   price: number;
+  // Matrícula do registro.
+  registration: string | null;
   status: string;
 };
 
 type UnitQueryRow = RowDataPacket & {
   area: string | number | null;
   block: string | null;
+  client_code: string | null;
+  client_id: number | null;
+  client_name: string | null;
   enterprise_code: string | null;
   id: number;
+  imobiliaria_code: string | null;
+  imobiliaria_id: number | null;
+  imobiliaria_name: string | null;
+  kind: string | null;
   lot: string | null;
-  name: string | null;
   price: string | number | null;
+  registration: string | null;
   sale_blocked: number | null;
   sale_status_id: number | null;
+  stage: string | null;
   status: string | null;
 };
 
@@ -470,19 +511,61 @@ export async function loadApoloEnterpriseUnits(
   }
 
   const placeholders = validCodes.map(() => "?").join(", ");
+  const nameSql = (alias: string) =>
+    `coalesce(nullif(trim(${alias}.name), ''), nullif(trim(${alias}.fantasy_name), ''), nullif(trim(${alias}.social_name), ''))`;
+
+  // A "última movimentação" = a proposta/venda MAIS RECENTE daquela unidade. Dela saem o
+  // comprador (ar.client_id) e a imobiliária (users.vinculed_by_id do comprador).
   const [rows] = await poolResult.pool.query<UnitQueryRow[]>(
-    `select u.id, u.name, u.block, u.lot, u.area, u.price,
-            u.sale_status_id, u.sale_blocked,
-            ss.name as status, e.code as enterprise_code
-     from enterprise_unities u
-     join enterprises e on e.id = u.enterprise_id
-     left join sale_statuses ss on ss.id = u.sale_status_id
-     where e.code in (${placeholders})
-     order by e.code, u.block, u.lot, u.name`,
+    `select u.id, u.block, u.lot, u.area, u.price,
+            u.registration, u.sale_status_id, u.sale_blocked,
+            ut.name as kind,
+            ss.name as status,
+            e.code as enterprise_code,
+            st.name as stage,
+            cli.id as client_id, cli.user_code as client_code,
+            ${nameSql("cli")} as client_name,
+            imo.id as imobiliaria_id, imo.user_code as imobiliaria_code,
+            ${nameSql("imo")} as imobiliaria_name
+       from enterprise_unities u
+       join enterprises e on e.id = u.enterprise_id
+       left join enterprise_unity_types ut on ut.id = u.enterprise_unity_type_id
+       left join sale_statuses ss on ss.id = u.sale_status_id
+       left join acquisition_requests ar on ar.id = (
+              select ar2.id from acquisition_requests ar2
+               where ar2.enterprise_unity_id = u.id
+               order by ar2.created_at desc, ar2.id desc
+               limit 1)
+       left join acquisition_request_stages st on st.id = ar.acquisition_request_stage_id
+       left join users cli on cli.id = ar.client_id
+       left join users imo on imo.id = cli.vinculed_by_id
+      where e.code in (${placeholders})
+      order by e.code, u.block, u.lot`,
     validCodes,
   );
 
   return { ok: true, units: rows.map(mapUnitRow) };
+}
+
+// Código da unidade: sigla(3) + quadra + lote (ex.: LOU + 01 + 01 = LOU0101). Mesmo padrão do
+// Hades, pra a unidade ter o MESMO código nos dois módulos.
+function buildUnitCode(
+  enterpriseCode: string,
+  block: string | null,
+  lot: string | null,
+): string {
+  const prefix = enterpriseCode
+    .replace(/[^a-z0-9]/gi, "")
+    .toUpperCase()
+    .slice(0, 3)
+    .padEnd(3, "X");
+  const blockCode = (block ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+  const lotCode = (lot ?? "")
+    .replace(/[^a-z0-9]/gi, "")
+    .replace(/^L/i, "")
+    .toUpperCase();
+
+  return `${prefix}${blockCode}${lotCode}`;
 }
 
 function mapUnitRow(row: UnitQueryRow): ApoloEnterpriseUnit {
@@ -499,15 +582,45 @@ function mapUnitRow(row: UnitQueryRow): ApoloEnterpriseUnit {
             ? "bloqueado"
             : "disponivel";
 
+  const party = (
+    id: number | null,
+    code: string | null,
+    name: string | null,
+  ): ApoloUnitParty | null => {
+    const cleaned = cleanText(name);
+
+    return id && cleaned
+      ? {
+          code: cleanText(code),
+          entityId: deterministicUuid(`apolo:c2x:users:${id}`),
+          name: cleaned,
+        }
+      : null;
+  };
+
+  const client = party(row.client_id, row.client_code, row.client_name);
+  const imobiliaria = party(
+    row.imobiliaria_id,
+    row.imobiliaria_code,
+    row.imobiliaria_name,
+  );
+  const enterpriseCode = cleanText(row.enterprise_code) ?? "";
+
   return {
     area: row.area === null ? null : toNumber(row.area),
     block: cleanText(row.block),
     bucket,
-    enterpriseCode: cleanText(row.enterprise_code) ?? "",
+    code: buildUnitCode(enterpriseCode, row.block, row.lot),
+    enterpriseCode,
     id: String(row.id),
+    kind: cleanText(row.kind),
     lot: cleanText(row.lot),
-    name: cleanText(row.name),
+    movement:
+      client || imobiliaria
+        ? { client, imobiliaria, stage: cleanText(row.stage) }
+        : null,
     price: toNumber(row.price),
+    registration: cleanText(row.registration),
     // O status 5 nunca é usado no C2X; bloqueado vem do flag.
     status: blocked ? "Bloqueado" : (cleanText(row.status) ?? "Sem status"),
   };

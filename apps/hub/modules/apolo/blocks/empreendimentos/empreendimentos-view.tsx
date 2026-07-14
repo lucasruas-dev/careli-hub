@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import {
   ArrowLeft,
+  ArrowUpDown,
   BadgeDollarSign,
   Ban,
   ChevronRight,
@@ -13,6 +14,7 @@ import {
   Layers,
   MapPinned,
   Network,
+  Search,
   Tag,
   TrendingUp,
   X,
@@ -22,12 +24,16 @@ import type { LucideIcon } from "lucide-react";
 // Só TIPOS daqui: `empreendimentos.ts` é server-side (mysql2). Importar um valor arrastaria
 // o driver do MySQL pro bundle do browser.
 import type {
+  ApoloEnterpriseBucket,
   ApoloEnterpriseCadastro,
   ApoloEnterprisePlayer,
   ApoloEnterpriseRow,
   ApoloEnterpriseScenario,
+  ApoloEnterpriseTab,
   ApoloEnterpriseUnit,
   ApoloEnterprisesData,
+  ApoloUnitMovement,
+  ApoloUnitParty,
 } from "@/lib/apolo/empreendimentos";
 import { toTitleCase } from "@/lib/format/name-case";
 
@@ -82,7 +88,8 @@ const detailTabs = [
   { icon: Network, id: "relacionamentos", label: "Relacionamentos" },
 ] as const;
 
-type DetailTab = (typeof detailTabs)[number]["id"];
+// A aba é controlada pelo ApoloPage (o tipo canônico mora no lib).
+type DetailTab = ApoloEnterpriseTab;
 
 // O `coordenador_id` do C2X está com dado ERRADO (o MESMO player nos 24 empreendimentos), então
 // a tela não o exibe — ele só viaja no payload, pro Lucas corrigir no C2X depois.
@@ -103,16 +110,20 @@ export function EmpreendimentosScreen({
   loading,
   onDetailChange,
   onOpenEntity,
+  onTabChange,
+  tab,
 }: {
   data: ApoloEnterprisesData | null;
   // Ficha aberta (botão "Ver mais"). Vive no ApoloPage pra sobreviver à ida ao CRM — assim o
-  // "voltar" traz o usuário de volta pro empreendimento onde ele estava.
+  // "voltar" traz o usuário de volta pro empreendimento (e pra ABA) onde ele estava.
   detail: ApoloEnterpriseRow | null;
   error: string | null;
   loading: boolean;
   onDetailChange: (row: ApoloEnterpriseRow | null) => void;
   // Abre o cadastro daquela entidade no CRM 360.
   onOpenEntity: (name: string, entityId: string) => void;
+  onTabChange: (tab: DetailTab) => void;
+  tab: DetailTab;
 }) {
   // `selected` = linha marcada, que FILTRA os cards.
   const [selected, setSelected] = useState<ApoloEnterpriseRow | null>(null);
@@ -142,7 +153,9 @@ export function EmpreendimentosScreen({
       <EnterpriseDetail
         onBack={() => onDetailChange(null)}
         onOpenEntity={onOpenEntity}
+        onTabChange={onTabChange}
         row={detail}
+        tab={tab}
       />
     );
   }
@@ -235,6 +248,7 @@ function EnterpriseRows({
 
   return (
     <>
+      {/* 1 clique = seleciona (filtra os cards); 2 cliques = abre a ficha. */}
       <tr
         className={`cursor-pointer border-b border-line/70 transition-colors last:border-b-0 hover:bg-[#A07C3B]/8 ${
           selectedId === row.id
@@ -242,6 +256,7 @@ function EnterpriseRows({
             : ""
         }`}
         onClick={() => select(row)}
+        onDoubleClick={() => onOpen(row)}
       >
         <td className="px-4 py-2.5">
           <div className="flex items-center gap-2">
@@ -294,6 +309,7 @@ function EnterpriseRows({
               }`}
               key={stage.id}
               onClick={() => select(stage)}
+              onDoubleClick={() => onOpen(stage)}
             >
               <td className="px-4 py-2 pl-11">
                 <p className="m-0 text-sm font-semibold tracking-wide text-ink-soft">
@@ -331,13 +347,17 @@ function VerMaisButton({ onClick }: { onClick: () => void }) {
 function EnterpriseDetail({
   onBack,
   onOpenEntity,
+  onTabChange,
   row,
+  tab,
 }: {
   onBack: () => void;
   onOpenEntity: (name: string, entityId: string) => void;
+  onTabChange: (tab: DetailTab) => void;
   row: ApoloEnterpriseRow;
+  tab: DetailTab;
 }) {
-  const [tab, setTab] = useState<DetailTab>("resumo");
+  const setTab = onTabChange;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
@@ -397,13 +417,23 @@ function EnterpriseDetail({
         })}
       </nav>
 
-      <section className="min-h-0 flex-1 overflow-auto">
+      {/* Em Unidades quem rola é a PRÓPRIA tabela (pra o cabeçalho sticky grudar). Se este
+          <section> rolasse, o thead ficaria preso a um container que nunca rola. */}
+      <section
+        className={
+          tab === "unidades"
+            ? "flex min-h-0 flex-1 flex-col overflow-hidden"
+            : "min-h-0 flex-1 overflow-auto"
+        }
+      >
         {tab === "cadastro" ? <CadastroTab row={row} /> : null}
         {tab === "relacionamentos" ? (
           <RelacionamentosTab onOpenEntity={onOpenEntity} row={row} />
         ) : null}
         {tab === "resumo" ? <ResumoTab row={row} /> : null}
-        {tab === "unidades" ? <UnidadesTab row={row} /> : null}
+        {tab === "unidades" ? (
+          <UnidadesTab onOpenEntity={onOpenEntity} row={row} />
+        ) : null}
         {tab === "vendas" || tab === "financeiro" ? (
           <PendingTab label={detailTabs.find((item) => item.id === tab)?.label ?? ""} />
         ) : null}
@@ -765,9 +795,21 @@ function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {
   );
 }
 
-function UnidadesTab({ row }: { row: ApoloEnterpriseRow }) {
+function UnidadesTab({
+  onOpenEntity,
+  row,
+}: {
+  onOpenEntity: (name: string, entityId: string) => void;
+  row: ApoloEnterpriseRow;
+}) {
   const [units, setUnits] = useState<ApoloEnterpriseUnit[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<UnitFilter>("todos");
+  const [sort, setSort] = useState<UnitSort>({
+    column: "codigo",
+    direction: "asc",
+  });
 
   useEffect(() => {
     let active = true;
@@ -826,49 +868,289 @@ function UnidadesTab({ row }: { row: ApoloEnterpriseRow }) {
     return <div className="h-64 animate-pulse rounded-xl border border-line bg-subtle" />;
   }
 
+  const visible = sortUnits(filterUnits(units, search, statusFilter), sort);
+
   return (
-    <div className="overflow-hidden rounded-xl border border-line bg-surface">
-      <div className="overflow-x-auto">
-        <table className="w-full min-w-[640px] border-collapse text-sm">
-          <thead>
-            <tr className="border-b border-line bg-subtle text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-              <th className="px-4 py-2.5">Unidade</th>
-              <th className="px-3 py-2.5">Etapa</th>
-              <th className="px-3 py-2.5 text-right">Área</th>
-              <th className="px-3 py-2.5 text-right">Preço</th>
-              <th className="px-4 py-2.5">Status</th>
-            </tr>
-          </thead>
-          <tbody>
-            {units.map((unit) => (
-              <tr
-                className="border-b border-line/70 last:border-b-0 hover:bg-subtle/50"
-                key={unit.id}
-              >
-                <td className="px-4 py-2 font-medium text-ink">
-                  {unitLabel(unit)}
-                </td>
-                <td className="px-3 py-2 text-ink-muted">{unit.enterpriseCode}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-ink-soft">
-                  {unit.area ? `${unit.area.toLocaleString("pt-BR")} m²` : "-"}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums font-medium text-ink">
-                  {formatCurrency(unit.price)}
-                </td>
-                <td className="px-4 py-2">
-                  <UnitStatusPill unit={unit} />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+    <div className="flex min-h-0 flex-1 flex-col gap-2">
+      {/* Filtro + busca */}
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
+        <label className="flex h-9 min-w-[240px] flex-1 items-center gap-2 rounded-lg border border-line bg-surface px-3">
+          <Search aria-hidden="true" className="size-4 text-ink-muted" />
+          <input
+            className="min-w-0 flex-1 bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
+            onChange={(event) => setSearch(event.target.value)}
+            placeholder="Buscar código, quadra/lote, matrícula, cliente..."
+            value={search}
+          />
+        </label>
+        <select
+          className="h-9 rounded-lg border border-line bg-surface px-3 text-sm font-medium text-ink outline-none"
+          onChange={(event) => setStatusFilter(event.target.value as UnitFilter)}
+          value={statusFilter}
+        >
+          <option value="todos">Todos os status</option>
+          <option value="disponivel">Disponível</option>
+          <option value="reservado">Reservado</option>
+          <option value="negociacao">Em negociação</option>
+          <option value="vendido">Vendido</option>
+          <option value="bloqueado">Bloqueado</option>
+        </select>
+        <span className="text-xs font-medium text-ink-muted">
+          {visible.length} de {units.length}
+        </span>
       </div>
-      {units.length === 0 ? (
-        <p className="m-0 p-6 text-center text-sm font-medium text-ink-muted">
-          Nenhuma unidade cadastrada.
-        </p>
+
+      {/* Cabeçalho TRAVADO: só os dados rolam. */}
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-line bg-surface">
+        <div className="min-h-0 flex-1 overflow-auto">
+          <table className="w-full min-w-[980px] border-collapse text-sm">
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-line bg-subtle text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                <SortableHead
+                  column="codigo"
+                  label="Unidade"
+                  onSort={setSort}
+                  sort={sort}
+                />
+                <SortableHead
+                  column="quadra"
+                  label="Quadra / Lote"
+                  onSort={setSort}
+                  sort={sort}
+                />
+                <SortableHead
+                  column="matricula"
+                  label="Matrícula"
+                  onSort={setSort}
+                  sort={sort}
+                />
+                <SortableHead
+                  align="right"
+                  column="valor"
+                  label="Valor de tabela"
+                  onSort={setSort}
+                  sort={sort}
+                />
+                <SortableHead
+                  column="status"
+                  label="Status da venda"
+                  onSort={setSort}
+                  sort={sort}
+                />
+                <th className="px-4 py-2.5">Última movimentação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {visible.map((unit) => (
+                <tr
+                  className="border-b border-line/70 last:border-b-0 hover:bg-subtle/50"
+                  key={unit.id}
+                >
+                  {/* Código em destaque; o tipo vira o subtítulo. */}
+                  <td className="px-4 py-2">
+                    <p className="m-0 text-sm font-semibold tabular-nums text-ink">
+                      {unit.code}
+                    </p>
+                    <p className="m-0 text-xs text-ink-muted">
+                      {toTitleCase(unit.kind) || "Unidade"}
+                    </p>
+                  </td>
+                  <td className="px-3 py-2">
+                    <p className="m-0 text-sm font-semibold tabular-nums text-ink">
+                      {[unit.block, unit.lot].filter(Boolean).join(" / ") || "-"}
+                    </p>
+                    <p className="m-0 text-xs tabular-nums text-ink-muted">
+                      {unit.area
+                        ? `${unit.area.toLocaleString("pt-BR", { maximumFractionDigits: 2 })} m²`
+                        : "-"}
+                    </p>
+                  </td>
+                  <td className="px-3 py-2 tabular-nums text-ink-soft">
+                    {unit.registration ?? "-"}
+                  </td>
+                  <td className="px-3 py-2 text-right font-semibold tabular-nums text-ink">
+                    {formatCurrency(unit.price)}
+                  </td>
+                  <td className="px-3 py-2">
+                    <UnitStatusPill unit={unit} />
+                  </td>
+                  <td className="px-4 py-2">
+                    <UnitMovement
+                      movement={unit.movement}
+                      onOpenEntity={onOpenEntity}
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {visible.length === 0 ? (
+          <p className="m-0 p-6 text-center text-sm font-medium text-ink-muted">
+            Nenhuma unidade encontrada.
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+type UnitFilter = "todos" | ApoloEnterpriseBucket;
+type UnitSortColumn =
+  | "codigo"
+  | "matricula"
+  | "quadra"
+  | "status"
+  | "valor";
+type UnitSort = { column: UnitSortColumn; direction: "asc" | "desc" };
+
+function SortableHead({
+  align = "left",
+  column,
+  label,
+  onSort,
+  sort,
+}: {
+  align?: "left" | "right";
+  column: UnitSortColumn;
+  label: string;
+  onSort: (sort: UnitSort) => void;
+  sort: UnitSort;
+}) {
+  const active = sort.column === column;
+
+  return (
+    <th className={`px-3 py-2.5 ${align === "right" ? "text-right" : ""}`}>
+      <button
+        className={`inline-flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-ink ${
+          active ? "text-ink" : ""
+        }`}
+        onClick={() =>
+          onSort({
+            column,
+            direction:
+              active && sort.direction === "asc" ? "desc" : "asc",
+          })
+        }
+        type="button"
+      >
+        {label}
+        <ArrowUpDown
+          aria-hidden="true"
+          className={`size-3 ${active ? "text-[#A07C3B]" : "opacity-40"}`}
+        />
+      </button>
+    </th>
+  );
+}
+
+function filterUnits(
+  units: ApoloEnterpriseUnit[],
+  search: string,
+  status: UnitFilter,
+): ApoloEnterpriseUnit[] {
+  const query = search.trim().toLowerCase();
+
+  return units.filter((unit) => {
+    if (status !== "todos" && unit.bucket !== status) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    return [
+      unit.code,
+      unit.block,
+      unit.lot,
+      unit.registration,
+      unit.movement?.client?.name,
+      unit.movement?.client?.code,
+      unit.movement?.imobiliaria?.name,
+      unit.movement?.imobiliaria?.code,
+    ]
+      .filter(Boolean)
+      .join(" ")
+      .toLowerCase()
+      .includes(query);
+  });
+}
+
+function sortUnits(
+  units: ApoloEnterpriseUnit[],
+  sort: UnitSort,
+): ApoloEnterpriseUnit[] {
+  const factor = sort.direction === "asc" ? 1 : -1;
+
+  return [...units].sort((left, right) => {
+    if (sort.column === "valor") {
+      return (left.price - right.price) * factor;
+    }
+
+    const value = (unit: ApoloEnterpriseUnit) =>
+      sort.column === "codigo"
+        ? unit.code
+        : sort.column === "matricula"
+          ? (unit.registration ?? "")
+          : sort.column === "status"
+            ? unit.status
+            : `${unit.block ?? ""}/${unit.lot ?? ""}`;
+
+    return (
+      value(left).localeCompare(value(right), "pt-BR", { numeric: true }) * factor
+    );
+  });
+}
+
+// A última movimentação amarra COMPRADOR + IMOBILIÁRIA àquela unidade. Ambos são clicáveis:
+// levam à ficha da entidade no CRM (por identidade, não por nome).
+function UnitMovement({
+  movement,
+  onOpenEntity,
+}: {
+  movement: ApoloUnitMovement | null;
+  onOpenEntity: (name: string, entityId: string) => void;
+}) {
+  if (!movement?.client && !movement?.imobiliaria) {
+    return <span className="text-xs text-ink-muted">Sem movimentação</span>;
+  }
+
+  return (
+    <div className="min-w-0">
+      {movement.client ? (
+        <PartyLink onOpenEntity={onOpenEntity} party={movement.client} strong />
+      ) : null}
+      {movement.imobiliaria ? (
+        <PartyLink onOpenEntity={onOpenEntity} party={movement.imobiliaria} />
       ) : null}
     </div>
+  );
+}
+
+function PartyLink({
+  onOpenEntity,
+  party,
+  strong = false,
+}: {
+  onOpenEntity: (name: string, entityId: string) => void;
+  party: ApoloUnitParty;
+  strong?: boolean;
+}) {
+  return (
+    <button
+      className={`block max-w-[280px] truncate text-left text-xs transition-colors hover:underline ${
+        strong
+          ? "font-semibold text-[#7A5E2C] dark:text-[#d9b877]"
+          : "text-ink-muted hover:text-ink"
+      }`}
+      onClick={() => onOpenEntity(party.name, party.entityId)}
+      title="Abrir cadastro no CRM"
+      type="button"
+    >
+      {party.code ? `${party.code} · ` : ""}
+      {toTitleCase(party.name)}
+    </button>
   );
 }
 
@@ -1009,15 +1291,6 @@ function SkeletonScreen() {
       <div className="h-80 animate-pulse rounded-xl border border-line bg-subtle" />
     </div>
   );
-}
-
-function unitLabel(unit: ApoloEnterpriseUnit): string {
-  const parts = [
-    unit.block ? `Q${unit.block}` : null,
-    unit.lot ? `L${unit.lot}` : null,
-  ].filter(Boolean);
-
-  return parts.length ? parts.join(" · ") : (unit.name ?? `Unidade ${unit.id}`);
 }
 
 function locationLabel(row: ApoloEnterpriseRow): string {

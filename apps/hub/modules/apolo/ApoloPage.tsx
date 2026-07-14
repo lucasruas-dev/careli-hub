@@ -6,6 +6,7 @@ import { EmpreendimentosScreen } from "./blocks/empreendimentos/empreendimentos-
 import { ReportsScreen } from "./blocks/reports/apolo-reports";
 import type {
   ApoloEnterpriseRow,
+  ApoloEnterpriseTab,
   ApoloEnterprisesData,
 } from "@/lib/apolo/empreendimentos";
 import { toTitleCase } from "@/lib/format/name-case";
@@ -66,6 +67,9 @@ export function ApoloPage() {
   // é o que permite o "voltar" trazer o usuário de volta pro empreendimento onde ele estava.
   const [enterpriseDetail, setEnterpriseDetail] =
     useState<ApoloEnterpriseRow | null>(null);
+  // A ABA da ficha também vive aqui: sem isso, voltar do CRM remontava a ficha e caía no
+  // Resumo, em vez de devolver o usuário na aba onde ele estava (ex.: Unidades).
+  const [enterpriseTab, setEnterpriseTab] = useState<ApoloEnterpriseTab>("resumo");
   const [crmReturnTo, setCrmReturnTo] = useState<string | null>(null);
 
   // Carrega uma vez ao abrir a tela. O guard é um REF (não o estado de loading): se
@@ -315,6 +319,8 @@ export function ApoloPage() {
             loading={enterprisesLoading}
             onDetailChange={setEnterpriseDetail}
             onOpenEntity={openEntityInCrm}
+            onTabChange={setEnterpriseTab}
+            tab={enterpriseTab}
           />
         ) : null}
         {activeScreen === "crm" && crmReturnTo ? (
