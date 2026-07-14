@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-13-iris-fila-grupos-whatsapp",
+    deployedAt: "2026-07-13T18:10:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Nova fila Grupos: os grupos de WhatsApp monitorados pela CACÁ aparecem na Iris como conversas (cada grupo é uma conversa, somente leitura).",
+              "Cada mensagem do grupo mostra quem enviou (o participante), como no WhatsApp.",
+              "Filtro por canal no topo da fila (Tudo / WhatsApp / Grupo / E-mail) para separar as conversas por tipo.",
+              "Canal de grupo com identidade própria (cor âmbar) e sem a Janela de 24h do WhatsApp, que não se aplica a grupos.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 513599f4 (v1.33.1)",
+    technical: {
+      done: "Gateway Evolution API (instancia caca-observadora, numero dedicado, read-only) num VPS Lightsail; webhook messages.upsert -> POST /api/iris/evolution (gate central liberado, segredo compartilhado IRIS_EVOLUTION_WEBHOOK_SECRET) -> evolution-inbound-processor: 1 grupo = 1 ticket na fila Grupos (canal whatsapp-grupo, provider evolution, isolado das resolucoes Meta), contato sintetico = o grupo, dedup por external_message_id. Migration 0045 (canal+fila+caredesk_whatsapp_groups). UI: isGroup na camada de dados (source_entity_type), filtro de canal em icones na fila, badge de grupo, remetente por mensagem (provider_payload.groupParticipantName -> senderLabel), assunto=nome do grupo, esconde Janela WhatsApp, cor ambar (queueChipClasses). Nome do grupo via findGroupInfos (env EVOLUTION_API_URL/KEY).",
+      motivation:
+        "Lucas quer monitorar os grupos de WhatsApp dele pela Iris/CACÁ (ver o que e demanda, se esta tendo resposta), com pouca interacao do agente. A API oficial da Meta nao serve (Groups API so cria grupos proprios, max 8, exige OBA), entao gateway Evolution read-only. Fase 1 = recepcao + fila; classificacao/digest da CACÁ vem depois.",
+    },
+    title: "Iris: fila de grupos de WhatsApp (monitoramento pela CACÁ)",
+    type: "novidade",
+    version: "1.34.0",
+  },
+  {
     buildTag: "2026-07-13-iris-email-ajustes",
     deployedAt: "2026-07-13T16:20:00-03:00",
     internal: true,
