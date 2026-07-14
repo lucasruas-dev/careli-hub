@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-14-iris-grupo-anexo-audio-reacao",
+    deployedAt: "2026-07-14T16:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "No grupo de WhatsApp agora dá para enviar imagem, documento e áudio, além de reagir com emoji — antes só texto funcionava.",
+              "Corrigido: reagir ou anexar num grupo dava o erro 'Informe o telefone WhatsApp em formato internacional'.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit f516f0af (v1.35.0)",
+    technical: {
+      done: "O envio ao grupo (v1.35.0) so cobria TEXTO; os outros 5 caminhos de saida do cockpit (reagir, audio, anexo, editar, reenviar) seguiam chamando /api/iris/meta/messages, que valida telefone — e grupo nao tem contactPhone (confirmado nos logs: 400 no meta/messages e ZERO chamadas em /api/iris/group-messages). Agora: evolution-api ganha sendEvolutionGroupMedia (sendMedia), sendEvolutionGroupAudio (sendWhatsAppAudio) e sendEvolutionGroupReaction (sendReaction — usa a chave do provedor: remoteJid do grupo + external_message_id + fromMe); postEvolutionMessage centraliza as chamadas. /api/iris/group-messages aceita media {dataUrl,fileName,mimeType,type} (sobe pro Storage via uploadIrisMediaBuffer; a conversa le provider_payload.media.{url,type,fileName}, igual ao Meta) e action 'react' (toggle em provider_payload.reactions; tirar = reacao vazia no WhatsApp). IrisPage: sendGroupRequest centraliza a saida do grupo. Editar e reenviar-local seguem sem suporte em grupo (avisam).",
+      motivation:
+        "Lucas tentou reagir a uma mensagem no grupo e recebeu erro de telefone. A causa: entreguei o envio ao grupo pela metade (so texto), e os demais caminhos caiam no Meta.",
+    },
+    title: "Iris: anexo, áudio e reação nos grupos de WhatsApp",
+    type: "novidade",
+    version: "1.36.0",
+  },
+  {
     buildTag: "2026-07-14-iris-grupos-sem-ticket",
     deployedAt: "2026-07-14T14:20:00-03:00",
     modules: [
