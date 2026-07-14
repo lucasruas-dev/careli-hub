@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import { sendEvolutionGroupText } from "@/lib/iris/evolution-api";
 import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
+import { signWhatsAppBody } from "@/lib/iris/meta-whatsapp";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -68,12 +69,6 @@ export async function POST(request: NextRequest) {
 
   const groupJid = ticket.source_entity_id;
 
-  const sent = await sendEvolutionGroupText({ groupJid, text: body });
-
-  if (!sent.ok) {
-    return NextResponse.json({ error: sent.error }, { status: 502 });
-  }
-
   const { data: operator } = await client
     .from("hub_users")
     .select("display_name")
@@ -81,6 +76,19 @@ export async function POST(request: NextRequest) {
     .maybeSingle<{ display_name: string | null }>();
 
   const operatorLabel = operator?.display_name?.trim() || "Operador Iris";
+
+  // No grupo, quem fala é o número observador — então a mensagem vai assinada
+  // com o nome de quem escreveu (mesma convenção do atendimento 1:1). O corpo
+  // salvo na conversa fica SEM assinatura: o cockpit já mostra o autor no selo.
+  const sent = await sendEvolutionGroupText({
+    groupJid,
+    text: signWhatsAppBody(operatorLabel, body),
+  });
+
+  if (!sent.ok) {
+    return NextResponse.json({ error: sent.error }, { status: 502 });
+  }
+
   const now = new Date().toISOString();
 
   const { data: message, error } = await client
