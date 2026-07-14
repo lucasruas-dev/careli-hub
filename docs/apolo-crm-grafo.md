@@ -104,3 +104,45 @@ Duas superfícies do mesmo grafo:
 4. Contato leve = entidade mínima + aresta.
 5. Timeline como espinha.
 6. Auto quando o player cadastra, manual quando é colaborador.
+
+## Decisões de 2026-07-13 (Lucas) — a cadeia de trabalho
+
+### Trabalho x Contato (regra de criação)
+
+- **`trabalho`**: aresta **só entre ENTIDADES**. Os dois lados precisam existir como
+  entidade no Apolo. Ao criar, o usuário **seleciona uma entidade existente**.
+- **`contato`**: **não exige** entidade prévia. Abre um **formulário** com **Nome,
+  Telefone, E-mail e CPF (opcional)** — isso cria a **entidade leve** (sem papel de
+  negócio) e a aresta `contato`. É o "irmão que pede o boleto".
+
+### A cadeia (obrigatória)
+
+```
+Prospect ──► Corretor ──► Imobiliária ──► Empreendimento
+```
+
+- **Corretor exige Imobiliária**: não existe corretor solto. Para cadastrar um corretor,
+  a imobiliária tem que existir antes.
+- **Prospect exige Corretor**: e herda a imobiliária **por transitividade** (não se cria
+  aresta direta prospect→imobiliária).
+- ⚠️ **O vínculo corretor→imobiliária é POR EMPREENDIMENTO**: o mesmo corretor pode atuar
+  pela Imob A no Empreendimento 1 e pela Imob B no Empreendimento 2 — mas **uma só
+  imobiliária por empreendimento**. Logo a aresta de trabalho carrega o **escopo do
+  empreendimento**, e o empreendimento é **nó de primeira classe**.
+
+### Histórico e backfill
+
+- **Histórico**: ao trocar de imobiliária, a aresta antiga vira **inativa com data de fim**
+  e cria-se a nova. Preserva "quem era de quem" na época da venda (comissão/auditoria).
+- **Sem backfill**: o grafo começa **vazio** e só os cadastros novos criam aresta. Os
+  rótulos legados de `apolo_relationships` (3.595 "Imobiliaria ou responsavel comercial")
+  **não** viram aresta.
+
+### Achado no C2X (2026-07-13)
+
+- `acquisition_requests.corretor_id` **existe mas está 100% NULL** (0 de 4.181 propostas):
+  **o corretor não existe no legado**. Ele nasce no Apolo — não há o que migrar.
+- O que o C2X **tem**: `enterprises.incorporador_id` (incorporador→empreendimento, mas
+  quase vazio: 2 de 24), `users.imobiliaria_id` (player→imobiliária) e
+  `acquisition_requests.client_id` (comprador→unidade→empreendimento). Ou seja, a cadeia
+  legada é **empreendimento → imobiliária → comprador**; falta o corretor no meio.

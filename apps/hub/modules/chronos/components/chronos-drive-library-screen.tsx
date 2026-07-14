@@ -275,7 +275,7 @@ function ChronosRecordingFolderExplorer({
 
   return (
     <section className="grid min-h-[42rem] overflow-hidden rounded-md border border-line bg-surface xl:grid-cols-[18rem_minmax(0,1fr)]">
-      <aside className="border-r border-line bg-[#fbfcfe]">
+      <aside className="border-r border-line bg-subtle">
         <div className="border-b border-line p-4">
           <PanelTitle eyebrow="Drive Chronos" title="Pastas" />
         </div>

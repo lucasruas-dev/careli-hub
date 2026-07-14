@@ -20,6 +20,7 @@ import type { ApoloProfile } from "./types";
 export type ApoloScreen =
   | "dashboard"
   | "crm"
+  | "empreendimentos"
   | "relatorios";
 
 export type ApoloScreenItem = {
@@ -75,6 +76,13 @@ export const apoloScreens = [
     icon: ContactRound,
     id: "crm",
     label: "CRM 360",
+  },
+  {
+    description: "Cenario geral, unidades e relacionamentos por empreendimento.",
+    hidden: false,
+    icon: Building2,
+    id: "empreendimentos",
+    label: "Empreendimentos",
   },
   {
     description: "Insights executivos do cadastro mestre.",

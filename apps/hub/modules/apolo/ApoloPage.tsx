@@ -2,7 +2,9 @@
 
 import { type ApoloScreen } from "@/lib/apolo/catalog";
 import { DashboardScreen } from "./blocks/dashboard/apolo-dashboard";
+import { EmpreendimentosScreen } from "./blocks/empreendimentos/empreendimentos-view";
 import { ReportsScreen } from "./blocks/reports/apolo-reports";
+import type { ApoloEnterprisesData } from "@/lib/apolo/empreendimentos";
 import { ApoloHeader } from "./blocks/shell/apolo-shell";
 import { ApoloSidebar } from "./blocks/shell/apolo-sidebar";
 import { CrmCommandCenter } from "./blocks/crm/command-center";
@@ -49,6 +51,65 @@ export function ApoloPage() {
     "apolo.selectedEntityId",
     "",
   );
+  // Empreendimentos: cenário comercial (C2X). Carrega sob demanda ao abrir a tela.
+  const [enterprises, setEnterprises] = useState<ApoloEnterprisesData | null>(
+    null,
+  );
+  const [enterprisesError, setEnterprisesError] = useState<string | null>(null);
+  const [enterprisesLoading, setEnterprisesLoading] = useState(false);
+
+  useEffect(() => {
+    if (activeScreen !== "empreendimentos" || enterprises || enterprisesLoading) {
+      return;
+    }
+
+    let active = true;
+
+    async function loadEnterprises() {
+      try {
+        setEnterprisesLoading(true);
+        setEnterprisesError(null);
+
+        const accessToken = await getApoloAccessToken();
+        const response = await fetch("/api/apolo/empreendimentos", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        });
+        const payload = (await response.json()) as {
+          data?: ApoloEnterprisesData;
+          error?: string;
+        };
+
+        if (!response.ok || !payload.data) {
+          throw new Error(
+            payload.error ?? "Nao foi possivel carregar os empreendimentos.",
+          );
+        }
+
+        if (active) {
+          setEnterprises(payload.data);
+        }
+      } catch (loadError) {
+        if (active) {
+          setEnterprisesError(
+            loadError instanceof Error
+              ? loadError.message
+              : "Falha ao carregar os empreendimentos.",
+          );
+        }
+      } finally {
+        if (active) {
+          setEnterprisesLoading(false);
+        }
+      }
+    }
+
+    void loadEnterprises();
+
+    return () => {
+      active = false;
+    };
+  }, [activeScreen, enterprises, enterprisesLoading]);
 
   useEffect(() => {
     let active = true;
@@ -181,6 +242,13 @@ export function ApoloPage() {
         ) : null}
         {activeScreen === "relatorios" ? (
           <ReportsScreen dashboard={dashboard} entities={entities} loading={loading} />
+        ) : null}
+        {activeScreen === "empreendimentos" ? (
+          <EmpreendimentosScreen
+            data={enterprises}
+            error={enterprisesError}
+            loading={enterprisesLoading}
+          />
         ) : null}
         {activeScreen === "crm" ? (
           <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden">
