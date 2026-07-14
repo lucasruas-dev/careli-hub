@@ -39,17 +39,17 @@ export function ChronosModuleSidebar({
   }
 
   return (
-    <aside className="panteon-module-sidebar flex h-full min-h-0 flex-col overflow-hidden border-r text-[#ECECF1]">
+    <aside className="panteon-module-sidebar panteon-module-sidebar--themed flex h-full min-h-0 flex-col overflow-hidden border-r text-ink">
       <div className="panteon-module-sidebar__top">
         {collapsed ? (
           <div className="grid justify-items-center gap-2 pb-1 pt-0.5">
-            <span className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.035] text-[#d5dde8]">
+            <span className="grid h-10 w-10 place-items-center rounded-lg border border-[#A07C3B]/45 bg-[#101211] text-[#cba25a]">
               <CalendarClock aria-hidden="true" size={18} />
             </span>
             <Tooltip content="Expandir Chronos" placement="right">
               <button
                 aria-label="Expandir sidebar Chronos"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-ink-muted outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-muted outline-none transition hover:border-line-strong hover:bg-black/[0.05] hover:text-ink dark:border-white/[0.08] dark:hover:border-white/[0.16] dark:hover:bg-white/[0.07] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 onClick={onToggleCollapsed}
                 type="button"
               >
@@ -58,13 +58,13 @@ export function ChronosModuleSidebar({
             </Tooltip>
           </div>
         ) : (
-          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
-            <div className="flex min-w-0 items-center gap-2.5 text-[#d5dde8]">
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-inverse">
+          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl bg-black/[0.03] px-2.5 py-2 dark:bg-white/[0.035]">
+            <div className="flex min-w-0 items-center gap-2.5 text-ink-soft">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#A07C3B]/45 bg-[#101211] text-[#cba25a]">
                 <CalendarClock aria-hidden="true" size={18} />
               </span>
               <span className="grid min-w-0 gap-0.5">
-                <span className="min-w-0 truncate text-sm font-semibold leading-tight text-white">
+                <span className="min-w-0 truncate text-sm font-semibold leading-tight text-ink">
                   Chronos
                 </span>
               </span>
@@ -72,7 +72,7 @@ export function ChronosModuleSidebar({
             <Tooltip content="Recolher Chronos" placement="right">
               <button
                 aria-label="Recolher sidebar Chronos"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-ink-muted outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-muted outline-none transition hover:border-line-strong hover:bg-black/[0.05] hover:text-ink dark:border-white/[0.08] dark:hover:border-white/[0.16] dark:hover:bg-white/[0.07] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
                 onClick={onToggleCollapsed}
                 type="button"
               >
@@ -99,8 +99,8 @@ export function ChronosModuleSidebar({
                 aria-label={collapsed ? item.label : undefined}
                 className={`group relative flex h-10 w-full items-center gap-2 rounded-md px-2 text-left text-sm font-semibold outline-none transition focus-visible:ring-2 focus-visible:ring-[#A07C3B] ${
                   isActive
-                    ? "bg-[#2A2B32] text-white shadow-[inset_0_0_0_1px_rgb(160_124_59_/_0.22)]"
-                    : "text-[#ECECF1]/80 hover:bg-[#3f4048] hover:text-white"
+                    ? "border-transparent bg-black/[0.07] text-ink dark:bg-white/[0.08]"
+                    : "text-ink-soft hover:bg-black/[0.04] hover:text-ink dark:hover:bg-white/[0.05]"
                 } ${collapsed ? "justify-center" : ""}`}
                 onClick={() => onSelect(item.id)}
                 type="button"

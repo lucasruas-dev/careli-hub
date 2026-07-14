@@ -26,7 +26,7 @@ export function ApoloSidebar({
 }) {
   return (
     <aside
-      className={`panteon-module-sidebar fixed bottom-0 left-0 top-[3.25rem] z-30 hidden text-[#ECECF1] transition-[width] duration-300 ease-out lg:flex lg:flex-col ${
+      className={`panteon-module-sidebar panteon-module-sidebar--themed fixed bottom-0 left-0 top-[3.25rem] z-30 hidden text-ink transition-[width] duration-300 ease-out lg:flex lg:flex-col ${
         collapsed ? "w-[72px]" : "w-60"
       }`}
     >
@@ -37,7 +37,7 @@ export function ApoloSidebar({
               <Link
                 aria-label="Voltar ao Panteon"
                 href="/"
-                className="grid h-10 w-10 place-items-center rounded-lg border border-white/[0.08] bg-white/[0.035] text-[#d5dde8] outline-none transition hover:border-[#A07C3B]/45 hover:bg-white/[0.075] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-10 w-10 place-items-center rounded-lg border border-[#A07C3B]/55 bg-[#101211] text-[#cba25a] outline-none transition hover:border-[#A07C3B]/75 focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               >
                 <ContactRound className="size-[18px]" aria-hidden="true" />
               </Link>
@@ -47,24 +47,24 @@ export function ApoloSidebar({
                 type="button"
                 onClick={onToggle}
                 aria-label="Expandir sidebar"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-ink-muted outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-muted outline-none transition hover:border-line-strong hover:bg-black/[0.05] hover:text-ink dark:border-white/[0.08] dark:hover:border-white/[0.16] dark:hover:bg-white/[0.07] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               >
                 <PanelLeftOpen className="size-4" aria-hidden="true" />
               </button>
             </Tooltip>
           </div>
         ) : (
-          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl bg-white/[0.035] px-2.5 py-2">
+          <div className="grid min-h-12 grid-cols-[minmax(0,1fr)_2rem] items-center gap-2 rounded-xl bg-black/[0.03] px-2.5 py-2 dark:bg-white/[0.035]">
             <Link
               aria-label="Voltar ao Panteon"
               href="/"
-              className="flex min-w-0 items-center gap-2.5 text-[#d5dde8] outline-none transition hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              className="flex min-w-0 items-center gap-2.5 text-ink outline-none transition hover:text-ink focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
             >
-              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/[0.08] bg-inverse">
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#A07C3B]/45 bg-[#101211] text-[#cba25a]">
                 <ContactRound className="size-[18px]" aria-hidden="true" />
               </span>
               <span className="grid min-w-0 gap-0.5">
-                <span className="min-w-0 truncate text-sm font-semibold leading-tight text-white">
+                <span className="min-w-0 truncate text-sm font-semibold leading-tight text-ink">
                   Apolo
                 </span>
               </span>
@@ -74,7 +74,7 @@ export function ApoloSidebar({
                 type="button"
                 onClick={onToggle}
                 aria-label="Recolher sidebar"
-                className="grid h-8 w-8 place-items-center rounded-lg border border-white/[0.075] text-ink-muted outline-none transition hover:border-white/[0.16] hover:bg-white/[0.07] hover:text-white focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                className="grid h-8 w-8 place-items-center rounded-lg border border-line text-ink-muted outline-none transition hover:border-line-strong hover:bg-black/[0.05] hover:text-ink dark:border-white/[0.08] dark:hover:border-white/[0.16] dark:hover:bg-white/[0.07] focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
               >
                 <PanelLeftClose className="size-4" aria-hidden="true" />
               </button>
@@ -99,8 +99,8 @@ export function ApoloSidebar({
                   : "grid-cols-[2rem_minmax(0,1fr)] gap-x-3"
               } ${
                 isActive
-                  ? "border-[#A07C3B]/35 bg-[#171b23] text-white shadow-[inset_0_1px_0_rgb(255_255_255_/_0.04)]"
-                  : "border-transparent text-[#c9d1dc] hover:border-white/[0.08] hover:bg-white/[0.075] hover:text-white"
+                  ? "border-transparent bg-black/[0.07] text-ink dark:bg-white/[0.08]"
+                  : "border-transparent text-ink-soft hover:bg-black/[0.04] hover:text-ink dark:hover:bg-white/[0.05]"
               }`}
             >
               {isActive ? (
@@ -110,7 +110,7 @@ export function ApoloSidebar({
                 className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg ${
                   isActive
                     ? "panteon-module-sidebar__active-icon"
-                    : "bg-white/[0.055] text-[#d5dde8] group-hover:bg-white/[0.085] group-hover:text-white"
+                    : "text-ink-muted"
                 }`}
               >
                 <Icon className="size-[17px] stroke-[1.75]" aria-hidden="true" />

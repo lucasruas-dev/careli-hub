@@ -36,6 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-14-dark-sidebars-hotfix",
+    deployedAt: "2026-07-14T10:05:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A barra lateral (menu) ficou no grafite do tema, sem o tom azulado, e o botão de novo cadastro ganhou o dourado da marca.",
+            ],
+            screen: "Ajustes do tema escuro",
+          },
+        ],
+      },
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "A barra lateral também passou pro grafite do tema.",
+            ],
+            screen: "Ajustes do tema escuro",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 20becf94 (v1.34.1)",
+    technical: {
+      done: "Hotfix visual do tema escuro pos-v1.34.1: (1) sidebars de Apolo e Chronos migradas da classe base .panteon-module-sidebar (azulada fixa #232832, nao segue tema) para .panteon-module-sidebar--themed (grafite neutro no escuro, clara no claro), espelhando o Hades — cores internas convertidas pra theme-aware (item ativo #171b23/#2A2B32->bg-black/[0.07] dark:bg-white/[0.08], textos->tokens, tile da marca->dourado bg-[#101211]/border-[#A07C3B], icone inativo->text-ink-muted). (2) Botao '+' de novo cadastro (apolo-shell): bg-inverse (virava caixa clara no escuro) -> bg-[#A07C3B] (dourado da marca). (3) Blocos <pre> do MOSTQI tester: bg-inverse+text-slate-100 (claro-sobre-claro invisivel no escuro) -> bg-[#101211] fixo. Deploy via worktree sobre origin/main v1.34.1 (patch so dos 4 arquivos do hotfix). Typecheck limpo. LICAO: a regra #101820->bg-inverse do script de conversao e certa pra botoes de texto (invertem), mas errada pra sidebar sempre-escura, botoes so-icone e code blocks — esses precisam de dark fixo.",
+      motivation:
+        "Fechar os pontos claros/azulados que sobraram no tema escuro do Apolo e Chronos apos a v1.34.1 (menu lateral, botao novo, blocos de codigo).",
+    },
+    title: "Ajustes do tema escuro em Apolo e Chronos (menu lateral, botões)",
+    type: "correcao",
+    version: "1.34.2",
+  },
+  {
     buildTag: "2026-07-14-apolo-chronos-setup-escuro",
     deployedAt: "2026-07-14T09:20:00-03:00",
     modules: [

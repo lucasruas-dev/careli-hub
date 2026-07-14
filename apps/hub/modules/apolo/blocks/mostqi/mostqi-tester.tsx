@@ -527,7 +527,7 @@ export function MostqiTester() {
                 {showRaw ? "Ocultar" : "Ver"} JSON cru do MOSTQI
               </button>
               {showRaw ? (
-                <pre className="mt-2 max-h-80 overflow-auto rounded-lg bg-inverse p-3 font-mono text-[11px] leading-relaxed text-slate-100">
+                <pre className="mt-2 max-h-80 overflow-auto rounded-lg bg-[#101211] p-3 font-mono text-[11px] leading-relaxed text-slate-100">
                   {JSON.stringify(extraction.raw, null, 2)}
                 </pre>
               ) : null}
@@ -744,7 +744,7 @@ function EnrichmentProbe() {
               {showRaw ? "Ocultar" : "Ver"} resposta crua
             </button>
             {showRaw ? (
-              <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-inverse p-3 font-mono text-[10px] leading-relaxed text-slate-100">
+              <pre className="mt-2 max-h-72 overflow-auto rounded-lg bg-[#101211] p-3 font-mono text-[10px] leading-relaxed text-slate-100">
                 {JSON.stringify(result.raw, null, 2)}
               </pre>
             ) : null}

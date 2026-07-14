@@ -46,7 +46,7 @@ function NovoCadastroMenu() {
           aria-expanded={open}
           aria-haspopup="menu"
           aria-label="Novo cadastro de CAD"
-          className="inline-flex size-9 items-center justify-center rounded-lg bg-inverse text-brand-ink transition-colors hover:bg-inverse/90"
+          className="inline-flex size-9 items-center justify-center rounded-lg bg-[#A07C3B] text-white transition-colors hover:bg-[#8a682f]"
           onClick={() => setOpen((v) => !v)}
           type="button"
         >
