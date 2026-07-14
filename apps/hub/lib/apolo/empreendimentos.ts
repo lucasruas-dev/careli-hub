@@ -241,14 +241,26 @@ type CadastroQueryRow = RowDataPacket &
 
 // Nome do player: PJ guarda em fantasy_name/social_name; PF em name.
 const PLAYER_NAME_SQL = `coalesce(nullif(trim(pu.name), ''), nullif(trim(pu.fantasy_name), ''), nullif(trim(pu.social_name), ''))`;
-const PLAYER_PHONE_SQL = `coalesce(nullif(trim(pu.cellphone), ''), nullif(trim(pu.phone), ''))`;
 const PLAYER_DOC_SQL = `coalesce(nullif(trim(pu.cpf), ''), nullif(trim(pu.cnpj), ''))`;
+
+// ⚠️ O telefone NÃO mora em `users.phone/cellphone` (quase vazios: 93 de 4.128 users). A fonte
+// é a tabela polimórfica `phones` (ownertable_type='User'), preferindo o WhatsApp — a mesma
+// leitura que o sync do Apolo faz. Ler de `users` deixava quase todo player sem telefone.
+const playerPhoneSql = (column: string) => `(
+    select nullif(trim(ph.phone), '')
+      from phones ph
+     where ph.ownertable_type = 'User'
+       and ph.ownertable_id = e.${column}
+       and trim(coalesce(ph.phone, '')) <> ''
+     order by ph.is_whatsapp desc, ph.updated_at desc, ph.id desc
+     limit 1
+  )`;
 
 // Enriquecimento vindo de `users` (+ `addresses`): telefone, e-mail, documento e endereço.
 function playerSelect(column: string, alias: string): string {
   return `e.${column} as ${alias}_user_id,
           (select ${PLAYER_NAME_SQL} from users pu where pu.id = e.${column}) as ${alias},
-          (select ${PLAYER_PHONE_SQL} from users pu where pu.id = e.${column}) as ${alias}_phone,
+          ${playerPhoneSql(column)} as ${alias}_phone,
           (select nullif(trim(pu.email), '') from users pu where pu.id = e.${column}) as ${alias}_email,
           (select ${PLAYER_DOC_SQL} from users pu where pu.id = e.${column}) as ${alias}_document,
           (select concat_ws(', ',

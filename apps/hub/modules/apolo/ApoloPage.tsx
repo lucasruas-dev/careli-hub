@@ -4,7 +4,12 @@ import { type ApoloScreen } from "@/lib/apolo/catalog";
 import { DashboardScreen } from "./blocks/dashboard/apolo-dashboard";
 import { EmpreendimentosScreen } from "./blocks/empreendimentos/empreendimentos-view";
 import { ReportsScreen } from "./blocks/reports/apolo-reports";
-import type { ApoloEnterprisesData } from "@/lib/apolo/empreendimentos";
+import type {
+  ApoloEnterpriseRow,
+  ApoloEnterprisesData,
+} from "@/lib/apolo/empreendimentos";
+import { toTitleCase } from "@/lib/format/name-case";
+import { ArrowLeft } from "lucide-react";
 import { ApoloHeader } from "./blocks/shell/apolo-shell";
 import { ApoloSidebar } from "./blocks/shell/apolo-sidebar";
 import { CrmCommandCenter } from "./blocks/crm/command-center";
@@ -57,6 +62,11 @@ export function ApoloPage() {
   );
   const [enterprisesError, setEnterprisesError] = useState<string | null>(null);
   const [enterprisesLoading, setEnterprisesLoading] = useState(false);
+  // A ficha do empreendimento vive aqui (não dentro da tela) pra sobreviver à ida ao CRM:
+  // é o que permite o "voltar" trazer o usuário de volta pro empreendimento onde ele estava.
+  const [enterpriseDetail, setEnterpriseDetail] =
+    useState<ApoloEnterpriseRow | null>(null);
+  const [crmReturnTo, setCrmReturnTo] = useState<string | null>(null);
 
   // Carrega uma vez ao abrir a tela. O guard é um REF (não o estado de loading): se
   // `enterprisesLoading` estivesse nas deps, setá-lo re-rodaria o efeito, o cleanup marcaria
@@ -248,10 +258,18 @@ export function ApoloPage() {
     }
 
     pendingEntityIdRef.current = entityId;
+    // Guarda de onde viemos, pra oferecer o "voltar" no CRM.
+    setCrmReturnTo(enterpriseDetail?.name ?? null);
     setActiveScreen("crm");
     setActiveTab("cadastro");
     setProfileFilter("all");
     setQuery(normalized);
+  }
+
+  // Volta do CRM pro empreendimento onde o usuário estava (a ficha continua em memória).
+  function backToEnterprise() {
+    setCrmReturnTo(null);
+    setActiveScreen("empreendimentos");
   }
 
   function openCommercialRelationship(label: string) {
@@ -292,10 +310,22 @@ export function ApoloPage() {
         {activeScreen === "empreendimentos" ? (
           <EmpreendimentosScreen
             data={enterprises}
+            detail={enterpriseDetail}
             error={enterprisesError}
             loading={enterprisesLoading}
+            onDetailChange={setEnterpriseDetail}
             onOpenEntity={openEntityInCrm}
           />
+        ) : null}
+        {activeScreen === "crm" && crmReturnTo ? (
+          <button
+            className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/8 hover:text-[#7A5E2C] dark:hover:text-[#d9b877]"
+            onClick={backToEnterprise}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" className="size-3.5" />
+            Voltar para {toTitleCase(crmReturnTo)}
+          </button>
         ) : null}
         {activeScreen === "crm" ? (
           <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden">

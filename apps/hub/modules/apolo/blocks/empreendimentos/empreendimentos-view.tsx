@@ -72,9 +72,10 @@ const buckets: Array<{
   { icon: Ban, key: "bloqueado", label: "Bloqueado" },
 ];
 
+// Ordem definida pelo Lucas.
 const detailTabs = [
-  { icon: ContactRound, id: "cadastro", label: "Cadastro" },
   { icon: Layers, id: "resumo", label: "Resumo" },
+  { icon: ContactRound, id: "cadastro", label: "Cadastro" },
   { icon: MapPinned, id: "unidades", label: "Unidades" },
   { icon: TrendingUp, id: "vendas", label: "Vendas" },
   { icon: CircleDollarSign, id: "financeiro", label: "Financeiro" },
@@ -97,18 +98,23 @@ function visiblePlayers(cadastro: ApoloEnterpriseCadastro): ApoloEnterprisePlaye
 
 export function EmpreendimentosScreen({
   data,
+  detail,
   error,
   loading,
+  onDetailChange,
   onOpenEntity,
 }: {
   data: ApoloEnterprisesData | null;
+  // Ficha aberta (botão "Ver mais"). Vive no ApoloPage pra sobreviver à ida ao CRM — assim o
+  // "voltar" traz o usuário de volta pro empreendimento onde ele estava.
+  detail: ApoloEnterpriseRow | null;
   error: string | null;
   loading: boolean;
+  onDetailChange: (row: ApoloEnterpriseRow | null) => void;
   // Abre o cadastro daquela entidade no CRM 360.
   onOpenEntity: (name: string, entityId: string) => void;
 }) {
-  // `detail` = ficha aberta (botão Ver mais). `selected` = linha marcada, que FILTRA os cards.
-  const [detail, setDetail] = useState<ApoloEnterpriseRow | null>(null);
+  // `selected` = linha marcada, que FILTRA os cards.
   const [selected, setSelected] = useState<ApoloEnterpriseRow | null>(null);
 
   if (loading && !data) {
@@ -134,7 +140,7 @@ export function EmpreendimentosScreen({
   if (detail) {
     return (
       <EnterpriseDetail
-        onBack={() => setDetail(null)}
+        onBack={() => onDetailChange(null)}
         onOpenEntity={onOpenEntity}
         row={detail}
       />
@@ -165,7 +171,7 @@ export function EmpreendimentosScreen({
             onClick={() => setSelected(null)}
             type="button"
           >
-            {selected.name}
+            {toTitleCase(selected.name)}
             <X aria-hidden="true" className="size-3.5" />
           </button>
         ) : (
@@ -195,7 +201,7 @@ export function EmpreendimentosScreen({
               {data.rows.map((row) => (
                 <EnterpriseRows
                   key={row.id}
-                  onOpen={setDetail}
+                  onOpen={onDetailChange}
                   onSelect={setSelected}
                   row={row}
                   selectedId={selected?.id ?? null}
@@ -259,7 +265,7 @@ function EnterpriseRows({
             )}
             <div className="min-w-0">
               <p className="m-0 truncate text-sm font-semibold text-ink">
-                {row.name}
+                {toTitleCase(row.name)}
                 {hasStages ? (
                   <span className="ml-1.5 text-[11px] font-medium text-ink-muted">
                     ({row.stages.length} etapas)
@@ -331,7 +337,7 @@ function EnterpriseDetail({
   onOpenEntity: (name: string, entityId: string) => void;
   row: ApoloEnterpriseRow;
 }) {
-  const [tab, setTab] = useState<DetailTab>("cadastro");
+  const [tab, setTab] = useState<DetailTab>("resumo");
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-hidden">
@@ -346,10 +352,10 @@ function EnterpriseDetail({
         </button>
         <div className="min-w-0 flex-1">
           <h2 className="m-0 truncate text-base font-semibold text-ink">
-            {row.name}
+            {toTitleCase(row.name)}
           </h2>
           <p className="m-0 truncate text-xs text-ink-muted">
-            {[row.code, locationLabel(row), row.incorporador]
+            {[row.code, locationLabel(row), toTitleCase(row.incorporador)]
               .filter(Boolean)
               .join(" · ")}
           </p>
