@@ -1431,7 +1431,7 @@ async function fetchC2xCadastroByEntity(
       if (entityId && label) {
         pushRelationship(entityId, {
           label,
-          relation: "Empreendimento (vendeu)",
+          relation: "Empreendimento",
           status: "verified",
         });
       }

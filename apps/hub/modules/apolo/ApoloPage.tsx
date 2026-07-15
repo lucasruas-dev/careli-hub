@@ -285,22 +285,35 @@ export function ApoloPage() {
     setEnterpriseTab("cadastro");
   }
 
-  function findEnterpriseByName(name: string): ApoloEnterpriseRow | null {
-    const target = name.trim().toLowerCase();
-    if (!target) {
+  function normalizeEnterpriseName(value: string): string {
+    return value
+      .normalize("NFD")
+      .replace(new RegExp("[\\u0300-\\u036f]", "g"), "")
+      .toLowerCase()
+      .replace(/\s+/g, " ")
+      .trim();
+  }
+
+  function findEnterpriseInList(
+    list: ApoloEnterprisesData | null,
+    name: string,
+  ): ApoloEnterpriseRow | null {
+    const target = normalizeEnterpriseName(name);
+    if (!target || !list) {
       return null;
     }
-    for (const row of enterprises?.rows ?? []) {
-      if (row.name.trim().toLowerCase() === target) {
-        return row;
-      }
-      for (const stage of row.stages) {
-        if (stage.name.trim().toLowerCase() === target) {
-          return stage;
-        }
-      }
+    const candidates: ApoloEnterpriseRow[] = [];
+    for (const row of list.rows) {
+      candidates.push(row, ...row.stages);
     }
-    return null;
+    return (
+      candidates.find((row) => normalizeEnterpriseName(row.name) === target) ??
+      candidates.find((row) => {
+        const value = normalizeEnterpriseName(row.name);
+        return value.includes(target) || target.includes(value);
+      }) ??
+      null
+    );
   }
 
   // Empilha de onde estamos (ficha do CRM ou empreendimento) antes de navegar.
@@ -330,8 +343,26 @@ export function ApoloPage() {
   }
 
   // Abre a tela de cadastro do empreendimento pelo nome (relacionamento de trabalho).
-  function openEnterpriseByName(name: string) {
-    const row = findEnterpriseByName(name);
+  // Se a lista ainda não carregou, busca sob demanda antes de resolver.
+  async function openEnterpriseByName(name: string) {
+    let list = enterprises;
+    if (!list) {
+      try {
+        const token = await getApoloAccessToken();
+        const response = await fetch("/api/apolo/empreendimentos", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = (await response.json()) as { data?: ApoloEnterprisesData };
+        if (response.ok && payload.data) {
+          list = payload.data;
+          setEnterprises(payload.data);
+        }
+      } catch {
+        // silencioso: sem lista, não navega
+      }
+    }
+    const row = findEnterpriseInList(list, name);
     if (!row) {
       return;
     }
@@ -350,7 +381,7 @@ export function ApoloPage() {
       applyOpenEntity(previous.name, previous.id);
       setActiveTab("relacionamentos");
     } else {
-      const row = findEnterpriseByName(previous.name);
+      const row = findEnterpriseInList(enterprises, previous.name);
       if (row) {
         applyOpenEnterprise(row);
       }
