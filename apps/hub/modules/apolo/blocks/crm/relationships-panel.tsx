@@ -1,16 +1,26 @@
-import { ChevronRight, Mail, Phone, Plus } from "lucide-react";
-import { useState } from "react";
+import {
+  ArrowDownUp,
+  Briefcase,
+  Building2,
+  ChevronRight,
+  Contact,
+  Mail,
+  Phone,
+  Plus,
+  Search,
+  Users,
+  X,
+} from "lucide-react";
+import { useMemo, useState } from "react";
+import type { LucideIcon } from "lucide-react";
 
 import type { ApoloEntity, ApoloRelationship } from "@/lib/apolo/types";
 
-import { displayText } from "../../data/apolo-derive";
+import { normalizeText } from "../../data/apolo-derive";
 import { PanelTitle } from "../shared/apolo-ui";
 import { AddRelationshipModal } from "./add-relationship-modal";
 
-// Aba Relacionamentos (F1: lista). A rede visual (grafo navegável) entra no F3.
-// Dois tipos de vínculo: trabalho (imobiliária/responsável comercial, empreendimentos,
-// clientes vinculados) e contato (pessoas: cônjuge, representante legal, assinante,
-// familiar, sócio, indicação). Padrão de todo card: Nome · Telefone · E-mail · Nível.
+// Classificação dos relacionamentos em categorias (cada uma vira um card de resumo).
 function isContato(rel: ApoloRelationship): boolean {
   if (rel.kind === "contato") {
     return true;
@@ -20,15 +30,14 @@ function isContato(rel: ApoloRelationship): boolean {
   }
   return /familiar|c[ôo]njuge|indica|s[óo]ci|represent|assina/i.test(rel.relation);
 }
-
-// Clientes que a imobiliária cadastrou (vinculed_by_id). Viram um grupo próprio com
-// resumo (contagem) + lista, porque uma imob grande tem 100+.
 function isVinculado(rel: ApoloRelationship): boolean {
   return rel.relation === "Comprador vinculado" || rel.relation === "Prospect vinculado";
 }
+function isEmpreendimento(rel: ApoloRelationship): boolean {
+  return /empreendimento/i.test(rel.relation);
+}
 
-// Mesma pessoa em papéis diferentes (ex.: representante legal E assinante) vira UMA
-// linha, juntando os papéis. Preserva telefone/e-mail/entidade do primeiro registro.
+// Mesma pessoa em papéis diferentes vira UMA linha, juntando os papéis.
 function mergeByLabel(items: ApoloRelationship[]): ApoloRelationship[] {
   const byLabel = new Map<string, ApoloRelationship>();
   for (const rel of items) {
@@ -47,6 +56,16 @@ function mergeByLabel(items: ApoloRelationship[]): ApoloRelationship[] {
   return [...byLabel.values()];
 }
 
+type GroupKey = "empreendimentos" | "vinculados" | "trabalho" | "contatos";
+type Group = {
+  icon: LucideIcon;
+  items: ApoloRelationship[];
+  key: GroupKey;
+  label: string;
+  sub: string | null;
+  tone: "clay" | "gold";
+};
+
 export function RelationshipsPanel({
   entity,
   onCreated,
@@ -57,11 +76,67 @@ export function RelationshipsPanel({
   onOpenEntity: (label: string, entityId: string) => void;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
-  const contato = mergeByLabel(entity.relationships.filter(isContato));
-  const vinculados = entity.relationships.filter(isVinculado);
-  const trabalho = mergeByLabel(
-    entity.relationships.filter((rel) => !isContato(rel) && !isVinculado(rel)),
-  );
+  const [openGroup, setOpenGroup] = useState<GroupKey | null>(null);
+
+  const groups = useMemo<Group[]>(() => {
+    const rels = entity.relationships;
+    const empreendimentos = mergeByLabel(rels.filter(isEmpreendimento));
+    const vinculados = rels.filter(isVinculado);
+    const contatos = mergeByLabel(rels.filter(isContato));
+    const trabalho = mergeByLabel(
+      rels.filter(
+        (rel) => !isContato(rel) && !isVinculado(rel) && !isEmpreendimento(rel),
+      ),
+    );
+    const compradores = vinculados.filter(
+      (rel) => rel.relation === "Comprador vinculado",
+    ).length;
+    const prospects = vinculados.length - compradores;
+
+    return [
+      {
+        icon: Building2,
+        items: empreendimentos,
+        key: "empreendimentos",
+        label: "Empreendimentos",
+        sub: null,
+        tone: "gold",
+      },
+      {
+        icon: Users,
+        items: vinculados,
+        key: "vinculados",
+        label: "Clientes vinculados",
+        sub: [
+          compradores ? `${compradores} comprador${compradores === 1 ? "" : "es"}` : null,
+          prospects ? `${prospects} prospect${prospects === 1 ? "" : "s"}` : null,
+        ]
+          .filter(Boolean)
+          .join(" · "),
+        tone: "gold",
+      },
+      {
+        icon: Briefcase,
+        items: trabalho,
+        key: "trabalho",
+        label: "Vinculos comerciais",
+        sub: null,
+        tone: "gold",
+      },
+      {
+        icon: Contact,
+        items: contatos,
+        key: "contatos",
+        label: "Contatos",
+        sub: null,
+        tone: "clay",
+      },
+    ].filter((group) => group.items.length > 0) as Group[];
+  }, [entity.relationships]);
+
+  const trabalhoGroups = groups.filter((group) => group.tone === "gold");
+  const contatoGroups = groups.filter((group) => group.tone === "clay");
+  const active = groups.find((group) => group.key === openGroup) ?? null;
 
   return (
     <div className="grid gap-5">
@@ -77,19 +152,25 @@ export function RelationshipsPanel({
             Adicionar
           </button>
         </div>
-        <p className="m-0 mt-2 text-sm font-medium text-ink-muted">
-          A rede visual (grafo navegável) entra na próxima fase. Por enquanto, os
-          vínculos em lista, separados por tipo.
-        </p>
-        <RelGroup items={trabalho} onOpenEntity={onOpenEntity} tone="gold" />
-        <VinculadosGroup items={vinculados} onOpenEntity={onOpenEntity} />
-        <RelGroup items={contato} onOpenEntity={onOpenEntity} tone="clay" />
-        {entity.relationships.length === 0 ? (
+
+        {groups.length === 0 ? (
           <p className="m-0 mt-4 text-sm font-medium text-ink-muted">
             Nenhum relacionamento cadastrado ainda.
           </p>
         ) : null}
+
+        {trabalhoGroups.length ? (
+          <GroupBand
+            groups={trabalhoGroups}
+            onOpen={setOpenGroup}
+            title="Trabalho"
+          />
+        ) : null}
+        {contatoGroups.length ? (
+          <GroupBand groups={contatoGroups} onOpen={setOpenGroup} title="Contato" />
+        ) : null}
       </section>
+
       <AddRelationshipModal
         entityId={entity.id}
         onClose={() => setModalOpen(false)}
@@ -97,89 +178,197 @@ export function RelationshipsPanel({
         onOpenEntity={onOpenEntity}
         open={modalOpen}
       />
+
+      {active ? (
+        <RelationshipListModal
+          group={active}
+          onClose={() => setOpenGroup(null)}
+          onOpenEntity={onOpenEntity}
+        />
+      ) : null}
     </div>
   );
 }
 
-function VinculadosGroup({
-  items,
-  onOpenEntity,
+function GroupBand({
+  groups,
+  onOpen,
+  title,
 }: {
-  items: ApoloRelationship[];
-  onOpenEntity: (label: string, entityId: string) => void;
+  groups: Group[];
+  onOpen: (key: GroupKey) => void;
+  title: string;
 }) {
-  if (!items.length) {
-    return null;
-  }
-
-  const compradores = items.filter(
-    (rel) => rel.relation === "Comprador vinculado",
-  ).length;
-  const prospects = items.length - compradores;
-  const parts = [
-    compradores ? `${compradores} comprador${compradores === 1 ? "" : "es"}` : null,
-    prospects ? `${prospects} prospect${prospects === 1 ? "" : "s"}` : null,
-  ].filter(Boolean);
-
-  return (
-    <div className="mt-5">
-      <div className="flex items-baseline justify-between gap-3">
-        <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
-          Clientes vinculados
-        </p>
-        <p className="m-0 text-[11px] font-semibold text-ink-soft">
-          {items.length} vinculado{items.length === 1 ? "" : "s"}
-          {parts.length ? `: ${parts.join(", ")}` : ""}
-        </p>
-      </div>
-      <div className="mt-2 grid gap-2">
-        {items.map((rel) => (
-          <RelRow
-            key={`${rel.label}-${rel.relation}`}
-            onOpenEntity={onOpenEntity}
-            rel={rel}
-            tone="gold"
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function RelGroup({
-  items,
-  onOpenEntity,
-  tone,
-}: {
-  items: ApoloRelationship[];
-  onOpenEntity: (label: string, entityId: string) => void;
-  tone: "clay" | "gold";
-}) {
-  if (!items.length) {
-    return null;
-  }
-
   return (
     <div className="mt-5">
       <p className="m-0 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink-muted">
-        {tone === "gold" ? "Trabalho" : "Contato"}
+        {title}
       </p>
-      <div className="mt-2 grid gap-2">
-        {items.map((rel) => (
-          <RelRow
-            key={`${rel.label}-${rel.relation}`}
-            onOpenEntity={onOpenEntity}
-            rel={rel}
-            tone={tone}
-          />
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        {groups.map((group) => (
+          <SummaryCard group={group} key={group.key} onClick={() => onOpen(group.key)} />
         ))}
       </div>
     </div>
   );
 }
 
-// Card padrão: Nome (label) · Telefone · E-mail · Nível (relation). Clicável quando o
-// relacionamento é uma entidade Apolo (entityId) — abre o cadastro dela.
+function SummaryCard({ group, onClick }: { group: Group; onClick: () => void }) {
+  const Icon = group.icon;
+  const isGold = group.tone === "gold";
+
+  return (
+    <button
+      className="flex items-center gap-3 rounded-xl border border-line bg-subtle px-3.5 py-3 text-left transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
+      onClick={onClick}
+      type="button"
+    >
+      <span
+        className={`grid size-9 shrink-0 place-items-center rounded-lg ring-1 ${
+          isGold
+            ? "bg-[#A07C3B]/10 text-[#A07C3B] ring-[#A07C3B]/15"
+            : "bg-[#b5623a]/10 text-[#b5623a] ring-[#b5623a]/20"
+        }`}
+      >
+        <Icon className="size-4" />
+      </span>
+      <div className="min-w-0 flex-1">
+        <p className="m-0 truncate text-sm font-semibold text-ink">{group.label}</p>
+        <p className="m-0 text-xs text-ink-muted">
+          {group.items.length} {group.items.length === 1 ? "vinculo" : "vinculos"}
+          {group.sub ? ` · ${group.sub}` : ""}
+        </p>
+      </div>
+      <ChevronRight className="size-4 shrink-0 text-ink-muted" />
+    </button>
+  );
+}
+
+function RelationshipListModal({
+  group,
+  onClose,
+  onOpenEntity,
+}: {
+  group: Group;
+  onClose: () => void;
+  onOpenEntity: (label: string, entityId: string) => void;
+}) {
+  const [search, setSearch] = useState("");
+  const [asc, setAsc] = useState(true);
+  const [buyerFilter, setBuyerFilter] = useState<"all" | "comprador" | "prospect">("all");
+  const canBuyerFilter = group.key === "vinculados";
+
+  const items = useMemo(() => {
+    const term = normalizeText(search);
+    return group.items
+      .filter((rel) => {
+        if (canBuyerFilter && buyerFilter !== "all") {
+          const wanted =
+            buyerFilter === "comprador" ? "Comprador vinculado" : "Prospect vinculado";
+          if (rel.relation !== wanted) {
+            return false;
+          }
+        }
+        if (!term) {
+          return true;
+        }
+        return normalizeText(`${rel.label} ${rel.relation} ${rel.email ?? ""}`).includes(term);
+      })
+      .sort((a, b) =>
+        asc
+          ? a.label.localeCompare(b.label, "pt-BR")
+          : b.label.localeCompare(a.label, "pt-BR"),
+      );
+  }, [group.items, search, asc, buyerFilter, canBuyerFilter]);
+
+  return (
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+      <div
+        className="flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border border-line bg-surface shadow-[0_24px_64px_rgba(15,23,42,0.24)]"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-line px-5 py-4">
+          <div>
+            <h3 className="m-0 text-base font-semibold text-ink">{group.label}</h3>
+            <p className="m-0 text-xs text-ink-muted">
+              {group.items.length} no total
+              {group.sub ? ` · ${group.sub}` : ""}
+            </p>
+          </div>
+          <button
+            aria-label="Fechar"
+            className="rounded-lg p-1 text-ink-muted transition-colors hover:bg-subtle"
+            onClick={onClose}
+            type="button"
+          >
+            <X className="size-4" />
+          </button>
+        </div>
+
+        {/* Toolbar: filtro + ordenação */}
+        <div className="flex flex-wrap items-center gap-2 border-b border-line px-5 py-3">
+          <div className="flex min-w-40 flex-1 items-center gap-2 rounded-lg border border-line bg-subtle px-3 py-1.5 text-ink-muted">
+            <Search className="size-3.5 shrink-0" />
+            <input
+              className="w-full bg-transparent text-xs text-ink outline-none placeholder:text-ink-muted"
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Filtrar por nome"
+              value={search}
+            />
+          </div>
+          {canBuyerFilter ? (
+            <div className="flex items-center gap-1 rounded-lg border border-line bg-subtle p-0.5">
+              {(["all", "comprador", "prospect"] as const).map((option) => (
+                <button
+                  className={`rounded-md px-2 py-1 text-[11px] font-semibold transition-colors ${
+                    buyerFilter === option
+                      ? "bg-[#A07C3B]/12 text-[#7a5e2c] dark:text-[#d9b877]"
+                      : "text-ink-muted hover:text-ink"
+                  }`}
+                  key={option}
+                  onClick={() => setBuyerFilter(option)}
+                  type="button"
+                >
+                  {option === "all" ? "Todos" : option === "comprador" ? "Compradores" : "Prospects"}
+                </button>
+              ))}
+            </div>
+          ) : null}
+          <button
+            className="inline-flex items-center gap-1 rounded-lg border border-line bg-subtle px-2.5 py-1.5 text-[11px] font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/25"
+            onClick={() => setAsc((current) => !current)}
+            type="button"
+          >
+            <ArrowDownUp className="size-3.5" />
+            {asc ? "A-Z" : "Z-A"}
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
+          {items.length ? (
+            items.map((rel) => (
+              <RelRow
+                key={`${rel.label}-${rel.relation}`}
+                onOpenEntity={(label, entityId) => {
+                  onOpenEntity(label, entityId);
+                  onClose();
+                }}
+                rel={rel}
+                tone={group.tone}
+              />
+            ))
+          ) : (
+            <p className="m-0 py-6 text-center text-sm font-medium text-ink-muted">
+              Nada encontrado.
+            </p>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Card padrão: Nome · Telefone · E-mail · Nível. Clicável quando é uma entidade Apolo.
 function RelRow({
   onOpenEntity,
   rel,
@@ -211,7 +400,7 @@ function RelRow({
             {rel.phone ? (
               <span className="inline-flex items-center gap-1">
                 <Phone aria-hidden="true" className="size-3" />
-                {displayText(rel.phone)}
+                {rel.phone}
               </span>
             ) : null}
             {rel.email ? (
