@@ -27,7 +27,7 @@ const SALE_STATUS = {
 // do CRM devolver o usuário NA ABA em que ele estava.
 export type ApoloEnterpriseTab =
   | "cadastro"
-  | "financeiro"
+  | "carteira"
   | "relacionamentos"
   | "resumo"
   | "unidades"

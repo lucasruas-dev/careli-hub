@@ -82,7 +82,7 @@ export const apoloScreens = [
     hidden: false,
     icon: Building2,
     id: "empreendimentos",
-    label: "Empreendimentos",
+    label: "Empreendimento",
   },
   {
     description: "Insights executivos do cadastro mestre.",
