@@ -113,9 +113,22 @@ export type ApoloC2xCadastro = {
   sex: string | null;
   socialContractUpdatedAt: string | null;
   socialName: string | null;
+  spouse: ApoloC2xSpouse | null;
   state: string | null;
   street: string | null;
   zipcode: string | null;
+};
+
+// Cônjuge (tabela `spouses` do C2X). Além de aparecer no cadastro, o cônjuge
+// vira um relacionamento de "contato" na aba Relacionamentos.
+export type ApoloC2xSpouse = {
+  birthday: string | null;
+  cpf: string | null;
+  document: string | null;
+  email: string | null;
+  name: string | null;
+  phone: string | null;
+  profession: string | null;
 };
 
 export type ApoloServiceSignal = {

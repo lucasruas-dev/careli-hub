@@ -5,7 +5,9 @@ import { PanelTitle } from "../shared/apolo-ui";
 // Aba Relacionamentos (F1: lista). A rede visual (grafo navegável) entra no F3.
 // Dois tipos de vínculo: trabalho e contato.
 function isContato(rel: ApoloRelationship): boolean {
-  return /respons|familiar|contato|c[ôo]njuge|indica|s[óo]ci/i.test(rel.relation);
+  return /respons|familiar|contato|c[ôo]njuge|indica|s[óo]ci|represent|assina/i.test(
+    rel.relation,
+  );
 }
 
 export function RelationshipsPanel({ entity }: { entity: ApoloEntity }) {

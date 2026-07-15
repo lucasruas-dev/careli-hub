@@ -328,18 +328,19 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
           ))}
         </div>
       </section>
-      {/* Cônjuge: só PF casada (PJ e solteiro não têm). */}
-      {!isCompany && isMarried ? (
+      {/* Cônjuge: só PF casada (PJ e solteiro não têm). Vem do C2X (spouses) e
+          também aparece na aba Relacionamentos como contato. */}
+      {!isCompany && (isMarried || cad?.spouse) ? (
         <section className="rounded-xl border border-line bg-surface p-4">
           <PanelTitle eyebrow="Conjuge" title="Dados do conjuge" />
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <ReadonlyLine label="Conjuge" value="-" />
-            <ReadonlyLine label="CPF" value="-" />
-            <ReadonlyLine label="Telefone" value="-" />
-            <ReadonlyLine label="E-mail" value="-" />
-            <ReadonlyLine label="Nascimento" value="-" />
-            <ReadonlyLine label="Documento" value="-" />
-            <ReadonlyLine label="Profissao" value="-" />
+            <ReadonlyLine label="Conjuge" value={cad?.spouse?.name ?? "-"} />
+            <ReadonlyLine label="CPF" value={cad?.spouse?.cpf ?? "-"} />
+            <ReadonlyLine label="Telefone" value={cad?.spouse?.phone ?? "-"} />
+            <ReadonlyLine label="E-mail" value={cad?.spouse?.email ?? "-"} />
+            <ReadonlyLine label="Nascimento" value={cad?.spouse?.birthday ?? "-"} />
+            <ReadonlyLine label="Documento" value={cad?.spouse?.document ?? "-"} />
+            <ReadonlyLine label="Profissao" value={cad?.spouse?.profession ?? "-"} />
           </div>
         </section>
       ) : null}

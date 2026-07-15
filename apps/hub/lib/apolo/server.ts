@@ -944,7 +944,8 @@ async function loadApoloTablesDashboard(
     await fetchC2xDocumentLabelsByEntity(sourceLinks);
   const c2xPortfolioByEntity =
     await fetchC2xPortfolioByEntity(sourceLinks);
-  const c2xCadastroByEntity = await fetchC2xCadastroByEntity(sourceLinks);
+  const { cadastro: c2xCadastroByEntity, contatos: c2xContatosByEntity } =
+    await fetchC2xCadastroByEntity(sourceLinks);
   const identifierRows = await fetchRows<{
     entity_id: string;
     identifier_type: string;
@@ -981,7 +982,7 @@ async function loadApoloTablesDashboard(
       sourceLinks: groupRowsBy(sourceLinks, "entity_id").get(row.id) ?? [],
       timelineEvents: groupRowsBy(timelineEvents, "entity_id").get(row.id) ?? [],
     }, documentLabelsByEntity.get(row.id), c2xPortfolioByEntity.get(row.id),
-      c2xCadastroByEntity.get(row.id)),
+      c2xCadastroByEntity.get(row.id), c2xContatosByEntity.get(row.id)),
   );
 
   const collapsedEntities = collapseDuplicateApoloEntities(entities, docHashByEntityId);
@@ -1193,8 +1194,22 @@ type C2xCadastroRow = RowDataPacket & {
 // Ver [[project-apolo-empreendimento-tela]].
 async function fetchC2xCadastroByEntity(
   sourceLinks: ApoloSourceLinkRow[],
-): Promise<Map<string, ApoloC2xCadastro>> {
+): Promise<{
+  cadastro: Map<string, ApoloC2xCadastro>;
+  contatos: Map<string, ApoloRelationship[]>;
+}> {
   const result = new Map<string, ApoloC2xCadastro>();
+  const contatos = new Map<string, ApoloRelationship[]>();
+  const pushContato = (entityId: string, rel: ApoloRelationship) => {
+    const list = contatos.get(entityId) ?? [];
+    if (
+      rel.label &&
+      !list.some((item) => item.label === rel.label && item.relation === rel.relation)
+    ) {
+      list.push(rel);
+      contatos.set(entityId, list);
+    }
+  };
   const userIdToEntity = new Map<string, string>();
   for (const link of sourceLinks) {
     if (
@@ -1209,12 +1224,12 @@ async function fetchC2xCadastroByEntity(
 
   const userIds = [...userIdToEntity.keys()];
   if (!userIds.length) {
-    return result;
+    return { cadastro: result, contatos };
   }
 
   const poolResult = getHadesDbPool();
   if (!poolResult.ok) {
-    return result;
+    return { cadastro: result, contatos };
   }
 
   try {
@@ -1277,11 +1292,108 @@ async function fetchC2xCadastroByEntity(
       cadastro.street = text(row.vialabel);
       cadastro.zipcode = text(row.zipcode);
     }
+
+    const text = (value: unknown) =>
+      typeof value === "string" && value.trim() ? value.trim() : null;
+    const brDate = (value: unknown): string | null => {
+      if (!value) {
+        return null;
+      }
+      const date = value instanceof Date ? value : new Date(String(value));
+      return Number.isNaN(date.getTime())
+        ? null
+        : date.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+    };
+    const buildPhone = (code: unknown, phone: unknown) => {
+      const raw = `${text(code) ?? ""}${text(phone) ?? ""}`.trim();
+      return raw || null;
+    };
+
+    // Cônjuge (spouses): entra no cadastro E como relacionamento de "contato".
+    const [spouseRows] = await poolResult.pool.query<C2xSpouseRow[]>(
+      `select s.ownertable_id, s.name, s.cpf, s.cellphone, s.phone_code,
+              s.birthday, s.email, s.identification_number, pf.name as profession
+         from spouses s
+         left join professions pf on pf.id = s.profession_id
+        where s.ownertable_type = 'User' and s.ownertable_id in (${placeholders})
+        order by s.id desc`,
+      userIds,
+    );
+    const seenSpouse = new Set<string>();
+    for (const row of spouseRows) {
+      const uid = String(row.ownertable_id);
+      if (seenSpouse.has(uid)) {
+        continue;
+      }
+      seenSpouse.add(uid);
+      const entityId = userIdToEntity.get(uid);
+      if (!entityId) {
+        continue;
+      }
+      const spouse = {
+        birthday: brDate(row.birthday),
+        cpf: text(row.cpf),
+        document: text(row.identification_number),
+        email: text(row.email),
+        name: text(row.name),
+        phone: buildPhone(row.phone_code, row.cellphone),
+        profession: text(row.profession),
+      };
+      const cadastro = result.get(entityId);
+      if (cadastro) {
+        cadastro.spouse = spouse;
+      }
+      pushContato(entityId, {
+        label: spouse.name ?? "Conjuge",
+        relation: "Conjuge",
+        status: "verified",
+      });
+    }
+
+    // Representantes legais (legal_representatives, polimórfica em User).
+    const [repRows] = await poolResult.pool.query<C2xRepresentativeRow[]>(
+      `select ownertable_id, name
+         from legal_representatives
+        where ownertable_type = 'User' and ownertable_id in (${placeholders})
+        order by id desc`,
+      userIds,
+    );
+    for (const row of repRows) {
+      const entityId = userIdToEntity.get(String(row.ownertable_id));
+      const label = text(row.name);
+      if (entityId && label) {
+        pushContato(entityId, {
+          label,
+          relation: "Representante legal",
+          status: "verified",
+        });
+      }
+    }
+
+    // Assinantes cadastrados pelo titular (signers.user_id).
+    const [signerRows] = await poolResult.pool.query<C2xSignerRow[]>(
+      `select user_id, name
+         from signers
+        where user_id in (${placeholders})
+        order by id desc`,
+      userIds,
+    );
+    for (const row of signerRows) {
+      const entityId = userIdToEntity.get(String(row.user_id));
+      const label = text(row.name);
+      if (entityId && label) {
+        pushContato(entityId, {
+          label,
+          relation: "Assinante",
+          status: "verified",
+        });
+      }
+    }
   } catch (error) {
     console.error("[apolo] fetchC2xCadastroByEntity falhou", error);
   }
 
-  return result;
+  return { cadastro: result, contatos };
 }
 
 function mapC2xCadastroRow(row: C2xCadastroRow): ApoloC2xCadastro {
@@ -1341,6 +1453,7 @@ function mapC2xCadastroRow(row: C2xCadastroRow): ApoloC2xCadastro {
     sex: clean(row.sex),
     socialContractUpdatedAt: brDate(row.social_contract_updated_at),
     socialName: clean(row.social_name),
+    spouse: null,
     state: null,
     street: null,
     zipcode: null,
@@ -1356,6 +1469,28 @@ type C2xAddressRow = RowDataPacket & {
   uf: string | null;
   vialabel: string | null;
   zipcode: string | null;
+};
+
+type C2xSpouseRow = RowDataPacket & {
+  birthday: Date | string | null;
+  cellphone: string | null;
+  cpf: string | null;
+  email: string | null;
+  identification_number: string | null;
+  name: string | null;
+  ownertable_id: number | string;
+  phone_code: string | null;
+  profession: string | null;
+};
+
+type C2xRepresentativeRow = RowDataPacket & {
+  name: string | null;
+  ownertable_id: number | string;
+};
+
+type C2xSignerRow = RowDataPacket & {
+  name: string | null;
+  user_id: number | string;
 };
 
 async function fetchC2xDocumentLabelsByEntity(
@@ -2846,6 +2981,7 @@ function mapApoloEntityRow(
   documentDisplayValue?: string,
   c2xPortfolio?: C2xPortfolioHydration,
   c2xCadastro?: ApoloC2xCadastro,
+  c2xContatos?: ApoloRelationship[],
 ): ApoloEntity {
   const profiles = related.profiles
     .map((profile) => normalizeApoloProfile(profile.profile))
@@ -2876,7 +3012,10 @@ function mapApoloEntityRow(
     locationLabel: locationLabel(row.primary_city, row.primary_state),
     nextAction: row.next_action ?? "Revisar dados cadastrais",
     profiles: uniqueProfiles(profiles.length ? profiles : profilesFromEntityKind(row.entity_kind)),
-    relationships: related.relationships.map(mapApoloRelationshipRow),
+    relationships: [
+      ...related.relationships.map(mapApoloRelationshipRow),
+      ...(c2xContatos ?? []),
+    ],
     serviceSignals: related.serviceSignals.map(mapApoloServiceRow),
     status: normalizeEntityStatus(row.status),
     timeline: related.timelineEvents.map(mapApoloTimelineRow),
