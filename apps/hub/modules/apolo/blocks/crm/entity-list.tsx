@@ -35,6 +35,7 @@ function EntityColumn({
   selectedEntityId,
   onChangeProfileFilter,
   onChangeQuery,
+  onSubmitQuery,
   onSelect,
 }: {
   entities: readonly ApoloEntity[];
@@ -45,18 +46,34 @@ function EntityColumn({
   selectedEntityId: string;
   onChangeProfileFilter: (profile: ApoloProfileFilter) => void;
   onChangeQuery: (query: string) => void;
+  onSubmitQuery: () => void;
   onSelect: (entityId: string) => void;
 }) {
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="shrink-0 border-b border-line px-4 py-3">
+        {/* Busca só no Enter (ou clicando a lupa) — não filtra a cada tecla. */}
         <div className="flex items-center gap-2 rounded-xl border border-line bg-subtle px-3 py-2 text-ink-muted">
-          <Search className="size-4 shrink-0" aria-hidden="true" />
+          <button
+            aria-label="Buscar"
+            className="shrink-0 text-ink-muted transition-colors hover:text-[#A07C3B] disabled:cursor-default disabled:hover:text-ink-muted"
+            disabled={loading || Boolean(error)}
+            onClick={() => onSubmitQuery()}
+            type="button"
+          >
+            <Search className="size-4" aria-hidden="true" />
+          </button>
           <input
             className="w-full bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
             disabled={loading || Boolean(error)}
             onChange={(event) => onChangeQuery(event.target.value)}
-            placeholder="Buscar nome, comprador, documento, unidade, e-mail ou responsavel"
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.preventDefault();
+                onSubmitQuery();
+              }
+            }}
+            placeholder="Buscar e apertar Enter (nome, documento, unidade...)"
             type="search"
             value={query}
           />

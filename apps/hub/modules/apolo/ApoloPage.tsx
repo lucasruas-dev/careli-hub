@@ -49,7 +49,14 @@ export function ApoloPage() {
   const [dashboard, setDashboard] = useState<ApoloDashboardData | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
+  // A busca dispara só no Enter (não filtra a cada tecla). `queryInput` é o texto do
+  // campo; `query` é o termo efetivamente buscado. Deep-links que setam `query`
+  // programaticamente seguem buscando — o effect sincroniza o campo.
   const [query, setQuery] = usePersistedState("apolo.query", "");
+  const [queryInput, setQueryInput] = useState(query);
+  useEffect(() => {
+    setQueryInput(query);
+  }, [query]);
   const [profileFilter, setProfileFilter] =
     usePersistedState<ApoloProfileFilter>("apolo.profileFilter", "all");
   const [selectedEntityId, setSelectedEntityId] = usePersistedState(
@@ -346,10 +353,11 @@ export function ApoloPage() {
                 error={error}
                 loading={loading}
                 profileFilter={profileFilter}
-                query={query}
+                query={queryInput}
                 selectedEntityId={selectedEntity?.id ?? ""}
                 onChangeProfileFilter={setProfileFilter}
-                onChangeQuery={setQuery}
+                onChangeQuery={setQueryInput}
+                onSubmitQuery={() => setQuery(queryInput)}
                 onSelect={setSelectedEntityId}
               />
               <RecordWorkspace
