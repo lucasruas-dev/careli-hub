@@ -1,11 +1,14 @@
+import { ChevronRight, Mail, Phone } from "lucide-react";
+
 import type { ApoloEntity, ApoloRelationship } from "@/lib/apolo/types";
 
+import { displayText } from "../../data/apolo-derive";
 import { PanelTitle } from "../shared/apolo-ui";
 
 // Aba Relacionamentos (F1: lista). A rede visual (grafo navegável) entra no F3.
 // Dois tipos de vínculo: trabalho (imobiliária/responsável comercial, empreendimentos,
 // clientes vinculados) e contato (pessoas: cônjuge, representante legal, assinante,
-// familiar, sócio, indicação).
+// familiar, sócio, indicação). Padrão de todo card: Nome · Telefone · E-mail · Nível.
 function isContato(rel: ApoloRelationship): boolean {
   return /familiar|c[ôo]njuge|indica|s[óo]ci|represent|assina/i.test(rel.relation);
 }
@@ -17,7 +20,7 @@ function isVinculado(rel: ApoloRelationship): boolean {
 }
 
 // Mesma pessoa em papéis diferentes (ex.: representante legal E assinante) vira UMA
-// linha, juntando os papéis. Evita a mesma pessoa repetida na lista.
+// linha, juntando os papéis. Preserva telefone/e-mail/entidade do primeiro registro.
 function mergeByLabel(items: ApoloRelationship[]): ApoloRelationship[] {
   const byLabel = new Map<string, ApoloRelationship>();
   for (const rel of items) {
@@ -29,11 +32,20 @@ function mergeByLabel(items: ApoloRelationship[]): ApoloRelationship[] {
     if (!existing.relation.split(" · ").includes(rel.relation)) {
       existing.relation = `${existing.relation} · ${rel.relation}`;
     }
+    existing.phone = existing.phone ?? rel.phone;
+    existing.email = existing.email ?? rel.email;
+    existing.entityId = existing.entityId ?? rel.entityId;
   }
   return [...byLabel.values()];
 }
 
-export function RelationshipsPanel({ entity }: { entity: ApoloEntity }) {
+export function RelationshipsPanel({
+  entity,
+  onOpenEntity,
+}: {
+  entity: ApoloEntity;
+  onOpenEntity: (label: string, entityId: string) => void;
+}) {
   const contato = mergeByLabel(entity.relationships.filter(isContato));
   const vinculados = entity.relationships.filter(isVinculado);
   const trabalho = mergeByLabel(
@@ -48,9 +60,9 @@ export function RelationshipsPanel({ entity }: { entity: ApoloEntity }) {
           A rede visual (grafo navegável) entra na próxima fase. Por enquanto, os
           vínculos em lista, separados por tipo.
         </p>
-        <RelGroup items={trabalho} tone="gold" />
-        <VinculadosGroup items={vinculados} />
-        <RelGroup items={contato} tone="clay" />
+        <RelGroup items={trabalho} onOpenEntity={onOpenEntity} tone="gold" />
+        <VinculadosGroup items={vinculados} onOpenEntity={onOpenEntity} />
+        <RelGroup items={contato} onOpenEntity={onOpenEntity} tone="clay" />
         {entity.relationships.length === 0 ? (
           <p className="m-0 mt-4 text-sm font-medium text-ink-muted">
             Nenhum relacionamento cadastrado ainda.
@@ -61,7 +73,13 @@ export function RelationshipsPanel({ entity }: { entity: ApoloEntity }) {
   );
 }
 
-function VinculadosGroup({ items }: { items: ApoloRelationship[] }) {
+function VinculadosGroup({
+  items,
+  onOpenEntity,
+}: {
+  items: ApoloRelationship[];
+  onOpenEntity: (label: string, entityId: string) => void;
+}) {
   if (!items.length) {
     return null;
   }
@@ -88,7 +106,12 @@ function VinculadosGroup({ items }: { items: ApoloRelationship[] }) {
       </div>
       <div className="mt-2 grid gap-2">
         {items.map((rel) => (
-          <RelRow key={`${rel.label}-${rel.relation}`} rel={rel} tone="gold" />
+          <RelRow
+            key={`${rel.label}-${rel.relation}`}
+            onOpenEntity={onOpenEntity}
+            rel={rel}
+            tone="gold"
+          />
         ))}
       </div>
     </div>
@@ -97,9 +120,11 @@ function VinculadosGroup({ items }: { items: ApoloRelationship[] }) {
 
 function RelGroup({
   items,
+  onOpenEntity,
   tone,
 }: {
   items: ApoloRelationship[];
+  onOpenEntity: (label: string, entityId: string) => void;
   tone: "clay" | "gold";
 }) {
   if (!items.length) {
@@ -113,37 +138,84 @@ function RelGroup({
       </p>
       <div className="mt-2 grid gap-2">
         {items.map((rel) => (
-          <RelRow key={`${rel.label}-${rel.relation}`} rel={rel} tone={tone} />
+          <RelRow
+            key={`${rel.label}-${rel.relation}`}
+            onOpenEntity={onOpenEntity}
+            rel={rel}
+            tone={tone}
+          />
         ))}
       </div>
     </div>
   );
 }
 
+// Card padrão: Nome (label) · Telefone · E-mail · Nível (relation). Clicável quando o
+// relacionamento é uma entidade Apolo (entityId) — abre o cadastro dela.
 function RelRow({
+  onOpenEntity,
   rel,
   tone,
 }: {
+  onOpenEntity: (label: string, entityId: string) => void;
   rel: ApoloRelationship;
   tone: "clay" | "gold";
 }) {
   const isGold = tone === "gold";
+  const clickable = Boolean(rel.entityId);
+  const badgeClass = isGold
+    ? "bg-[#A07C3B]/8 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/15"
+    : "bg-[#b5623a]/10 text-[#8a4526] dark:text-[#e0a586] ring-[#b5623a]/20";
+
+  const content = (
+    <>
+      <div className="min-w-0">
+        <div className="flex items-center gap-2">
+          <p className="m-0 truncate text-sm font-semibold text-ink">{rel.label}</p>
+          <span
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${badgeClass}`}
+          >
+            {rel.relation}
+          </span>
+        </div>
+        {rel.phone || rel.email ? (
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-ink-muted">
+            {rel.phone ? (
+              <span className="inline-flex items-center gap-1">
+                <Phone aria-hidden="true" className="size-3" />
+                {displayText(rel.phone)}
+              </span>
+            ) : null}
+            {rel.email ? (
+              <span className="inline-flex min-w-0 items-center gap-1">
+                <Mail aria-hidden="true" className="size-3 shrink-0" />
+                <span className="truncate">{rel.email}</span>
+              </span>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+      {clickable ? (
+        <ChevronRight aria-hidden="true" className="size-4 shrink-0 text-ink-muted" />
+      ) : null}
+    </>
+  );
+
+  if (clickable && rel.entityId) {
+    return (
+      <button
+        className="flex w-full items-center justify-between gap-3 rounded-lg border border-line bg-subtle px-3 py-2.5 text-left transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
+        onClick={() => onOpenEntity(rel.label, rel.entityId as string)}
+        type="button"
+      >
+        {content}
+      </button>
+    );
+  }
 
   return (
     <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-subtle px-3 py-2.5">
-      <div className="min-w-0">
-        <p className="m-0 truncate text-sm font-semibold text-ink">{rel.label}</p>
-        <p className="m-0 text-xs text-ink-muted">{rel.relation}</p>
-      </div>
-      <span
-        className={`shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ${
-          isGold
-            ? "bg-[#A07C3B]/8 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/15"
-            : "bg-[#b5623a]/10 text-[#8a4526] ring-[#b5623a]/20"
-        }`}
-      >
-        {isGold ? "Trabalho" : "Contato"}
-      </span>
+      {content}
     </div>
   );
 }

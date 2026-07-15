@@ -366,6 +366,7 @@ export function ApoloPage() {
                 loading={loading}
                 onChangeTab={setActiveTab}
                 onOpenCommercialRelationship={openCommercialRelationship}
+                onOpenEntity={openEntityInCrm}
               />
             </section>
           </div>

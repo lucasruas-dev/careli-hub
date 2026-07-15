@@ -60,12 +60,14 @@ function RecordWorkspace({
   loading,
   onChangeTab,
   onOpenCommercialRelationship,
+  onOpenEntity,
 }: {
   activeTab: ApoloTab;
   entity: ApoloEntity | null;
   loading: boolean;
   onChangeTab: (tab: ApoloTab) => void;
   onOpenCommercialRelationship: (label: string) => void;
+  onOpenEntity: (label: string, entityId: string) => void;
 }) {
   if (entity && canUseHadesWorkspace()) {
     return <HadesRecordWorkspace entity={entity} />;
@@ -81,6 +83,7 @@ function RecordWorkspace({
             activeTab={activeTab}
             entity={entity}
             onOpenCommercialRelationship={onOpenCommercialRelationship}
+            onOpenEntity={onOpenEntity}
           />
         ) : (
           <div className="grid min-h-64 place-items-center rounded-lg border border-dashed border-line p-6 text-center text-sm font-semibold text-ink-muted">
@@ -548,17 +551,19 @@ function TabPanel({
   activeTab,
   entity,
   onOpenCommercialRelationship,
+  onOpenEntity,
 }: {
   activeTab: ApoloTab;
   entity: ApoloEntity;
   onOpenCommercialRelationship: (label: string) => void;
+  onOpenEntity: (label: string, entityId: string) => void;
 }) {
   if (activeTab === "cadastro") {
     return <RegistrationPanel entity={entity} />;
   }
 
   if (activeTab === "relacionamentos") {
-    return <RelationshipsPanel entity={entity} />;
+    return <RelationshipsPanel entity={entity} onOpenEntity={onOpenEntity} />;
   }
 
   if (activeTab === "carteira") {

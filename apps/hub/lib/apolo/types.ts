@@ -148,6 +148,11 @@ export type ApoloRelationship = {
   label: string;
   relation: string;
   status: "verified" | "pending" | "attention";
+  // Padrão do relacionamento: nome (label) · telefone · e-mail · nível (relation).
+  phone?: string | null;
+  email?: string | null;
+  // Quando o relacionamento é uma entidade Apolo, o card é clicável e leva pro cadastro.
+  entityId?: string | null;
 };
 
 export type ApoloTimelineEvent = {

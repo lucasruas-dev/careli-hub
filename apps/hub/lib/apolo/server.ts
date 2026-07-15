@@ -945,7 +945,7 @@ async function loadApoloTablesDashboard(
   const c2xPortfolioByEntity =
     await fetchC2xPortfolioByEntity(sourceLinks);
   const { cadastro: c2xCadastroByEntity, relationships: c2xRelationshipsByEntity } =
-    await fetchC2xCadastroByEntity(sourceLinks, carteira.buyerClientIds);
+    await fetchC2xCadastroByEntity(adminClient, sourceLinks, carteira.buyerClientIds);
   const identifierRows = await fetchRows<{
     entity_id: string;
     identifier_type: string;
@@ -1196,6 +1196,7 @@ type C2xCadastroRow = RowDataPacket & {
 // lookups) os campos do titular. Roda em PROD (o C2X é a fonte até o go-live).
 // Ver [[project-apolo-empreendimento-tela]].
 async function fetchC2xCadastroByEntity(
+  adminClient: ApoloSupabaseClient,
   sourceLinks: ApoloSourceLinkRow[],
   buyerClientIds: Set<number>,
 ): Promise<{
@@ -1351,12 +1352,14 @@ async function fetchC2xCadastroByEntity(
         label: spouse.name ?? "Conjuge",
         relation: "Conjuge",
         status: "verified",
+        phone: spouse.phone,
+        email: spouse.email,
       });
     }
 
     // Representantes legais (legal_representatives, polimórfica em User).
     const [repRows] = await poolResult.pool.query<C2xRepresentativeRow[]>(
-      `select ownertable_id, name
+      `select ownertable_id, name, cellphone, email
          from legal_representatives
         where ownertable_type = 'User' and ownertable_id in (${placeholders})
         order by id desc`,
@@ -1370,13 +1373,15 @@ async function fetchC2xCadastroByEntity(
           label,
           relation: "Representante legal",
           status: "verified",
+          phone: text(row.cellphone),
+          email: text(row.email),
         });
       }
     }
 
     // Assinantes cadastrados pelo titular (signers.user_id).
     const [signerRows] = await poolResult.pool.query<C2xSignerRow[]>(
-      `select user_id, name
+      `select user_id, name, email
          from signers
         where user_id in (${placeholders})
         order by id desc`,
@@ -1390,6 +1395,7 @@ async function fetchC2xCadastroByEntity(
           label,
           relation: "Assinante",
           status: "verified",
+          email: text(row.email),
         });
       }
     }
@@ -1426,14 +1432,28 @@ async function fetchC2xCadastroByEntity(
     const [clientRows] = await poolResult.pool.query<C2xImobClientRow[]>(
       `select u.vinculed_by_id as imob_id, u.id as client_id,
               coalesce(nullif(trim(u.name), ''), nullif(trim(u.fantasy_name), ''),
-                       nullif(trim(u.social_name), '')) as client_name
+                       nullif(trim(u.social_name), '')) as client_name,
+              coalesce(
+                (select nullif(trim(ph.phone), '')
+                   from phones ph
+                  where ph.ownertable_type = 'User' and ph.ownertable_id = u.id
+                    and trim(coalesce(ph.phone, '')) <> ''
+                  order by ph.is_whatsapp desc, ph.updated_at desc, ph.id desc
+                  limit 1),
+                nullif(trim(u.cellphone), ''), nullif(trim(u.phone), '')
+              ) as client_phone,
+              coalesce(nullif(trim(u.email), ''),
+                (select nullif(trim(em.email), '') from emails em
+                  where em.ownertable_type = 'User' and em.ownertable_id = u.id
+                    and trim(coalesce(em.email, '')) <> '' limit 1)
+              ) as client_email
          from users u
         where u.vinculed_by_id in (${placeholders})`,
       userIds,
     );
     const clientsByImob = new Map<
       string,
-      Array<{ isBuyer: boolean; name: string }>
+      Array<{ clientId: number; email: string | null; isBuyer: boolean; name: string; phone: string | null }>
     >();
     for (const row of clientRows) {
       const imobId = String(row.imob_id);
@@ -1445,9 +1465,20 @@ async function fetchC2xCadastroByEntity(
         continue;
       }
       const list = clientsByImob.get(imobId) ?? [];
-      list.push({ isBuyer: buyerClientIds.has(toNumber(row.client_id)), name });
+      list.push({
+        clientId: toNumber(row.client_id),
+        email: text(row.client_email),
+        isBuyer: buyerClientIds.has(toNumber(row.client_id)),
+        name,
+        phone: text(row.client_phone),
+      });
       clientsByImob.set(imobId, list);
     }
+    // Mapeia client_id -> entity_id (Apolo) pra o card do vinculado ser clicável.
+    const clientEntityByC2xId = await mapC2xUserIdsToEntityIds(
+      adminClient,
+      [...clientsByImob.values()].flat().map((client) => client.clientId),
+    );
     for (const [imobId, clients] of clientsByImob) {
       const entityId = userIdToEntity.get(imobId);
       if (!entityId) {
@@ -1465,6 +1496,9 @@ async function fetchC2xCadastroByEntity(
           label: client.name,
           relation: client.isBuyer ? "Comprador vinculado" : "Prospect vinculado",
           status: "verified",
+          phone: client.phone,
+          email: client.email,
+          entityId: clientEntityByC2xId.get(client.clientId) ?? null,
         });
       }
     }
@@ -1473,6 +1507,45 @@ async function fetchC2xCadastroByEntity(
   }
 
   return { cadastro: result, relationships };
+}
+
+// Mapeia ids de user do C2X -> id da entidade Apolo (via apolo_source_links), pra o
+// relacionamento poder abrir o cadastro daquela entidade ao clicar.
+async function mapC2xUserIdsToEntityIds(
+  adminClient: ApoloSupabaseClient,
+  userIds: number[],
+): Promise<Map<number, string>> {
+  const result = new Map<number, string>();
+  const unique = [
+    ...new Set(userIds.filter((id) => Number.isFinite(id) && id > 0)),
+  ].map(String);
+
+  if (!unique.length) {
+    return result;
+  }
+
+  const chunk = 300;
+  for (let index = 0; index < unique.length; index += chunk) {
+    const { data, error } = await adminClient
+      .from("apolo_source_links")
+      .select("source_id, entity_id")
+      .eq("source_table", "users")
+      .in("source_id", unique.slice(index, index + chunk))
+      .returns<Array<{ entity_id: string; source_id: string }>>();
+
+    if (error) {
+      break;
+    }
+
+    for (const row of data ?? []) {
+      const id = Number(row.source_id);
+      if (Number.isFinite(id) && !result.has(id)) {
+        result.set(id, row.entity_id);
+      }
+    }
+  }
+
+  return result;
 }
 
 function mapC2xCadastroRow(row: C2xCadastroRow): ApoloC2xCadastro {
@@ -1563,11 +1636,14 @@ type C2xSpouseRow = RowDataPacket & {
 };
 
 type C2xRepresentativeRow = RowDataPacket & {
+  cellphone: string | null;
+  email: string | null;
   name: string | null;
   ownertable_id: number | string;
 };
 
 type C2xSignerRow = RowDataPacket & {
+  email: string | null;
   name: string | null;
   user_id: number | string;
 };
@@ -1578,8 +1654,10 @@ type C2xImobEnterpriseRow = RowDataPacket & {
 };
 
 type C2xImobClientRow = RowDataPacket & {
+  client_email: string | null;
   client_id: number | string;
   client_name: string | null;
+  client_phone: string | null;
   imob_id: number | string;
 };
 
