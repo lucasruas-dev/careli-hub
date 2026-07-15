@@ -126,6 +126,9 @@ export type ApoloEntity = {
   documents: ApoloDocumentSignal[];
   documentMasked: string;
   hadesClientId?: string;
+  // True quando o cliente está na CARTEIRA do C2X (faturado vigente com pagamento) —
+  // a definição oficial de Comprador. Setado no loader; ausente = usar heurística.
+  isBuyer?: boolean;
   id: string;
   kind: ApoloEntityKind;
   legalName?: string;

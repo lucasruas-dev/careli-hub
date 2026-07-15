@@ -11,7 +11,6 @@ import type {
 } from "@/lib/apolo/empreendimentos";
 import { toTitleCase } from "@/lib/format/name-case";
 import { ArrowLeft } from "lucide-react";
-import { ApoloHeader } from "./blocks/shell/apolo-shell";
 import { ApoloSidebar } from "./blocks/shell/apolo-sidebar";
 import { CrmCommandCenter } from "./blocks/crm/command-center";
 import { EntityColumn } from "./blocks/crm/entity-list";
@@ -302,9 +301,7 @@ export function ApoloPage() {
         onToggle={() => setSidebarCollapsed((value) => !value)}
       />
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4">
-        {/* O header do Apolo só carrega o "+ novo cadastro" — faz sentido no CRM (onde o
-            cadastro vive), não nas demais telas (ficava uma faixa vazia). */}
-        {activeScreen === "crm" ? <ApoloHeader dashboard={dashboard} /> : null}
+        {/* O "+ novo cadastro" e os KPIs ficam no cabeçalho do CRM (CrmCommandCenter). */}
         {activeScreen === "dashboard" ? (
           <DashboardScreen dashboard={dashboard} entities={entities} loading={loading} />
         ) : null}
@@ -340,7 +337,6 @@ export function ApoloPage() {
               entities={entities}
               filteredCount={filteredEntities.length}
               loading={loading}
-              selectedEntity={selectedEntity}
             />
             <section
               className="grid min-h-0 gap-3 xl:grid-cols-[minmax(22rem,0.4fr)_minmax(0,1.6fr)]"
@@ -352,7 +348,6 @@ export function ApoloPage() {
                 profileFilter={profileFilter}
                 query={query}
                 selectedEntityId={selectedEntity?.id ?? ""}
-                totalCount={dashboard?.totalCount ?? entities.length}
                 onChangeProfileFilter={setProfileFilter}
                 onChangeQuery={setQuery}
                 onSelect={setSelectedEntityId}

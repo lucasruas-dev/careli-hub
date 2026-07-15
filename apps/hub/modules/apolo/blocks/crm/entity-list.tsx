@@ -4,14 +4,11 @@ import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { apoloProfileLabels, apoloProfileOptions } from "@/lib/apolo/catalog";
 import type { ApoloEntity } from "@/lib/apolo/types";
 
-import { formatCount } from "../shared/apolo-utils";
 import {
   buyerFinancialBadge,
   buyerStatusLabel,
   displayHeaderName,
   displayText,
-  kindLabel,
-  primaryBusinessProfile,
 } from "../../data/apolo-derive";
 import type { ApoloProfileFilter } from "../../types/apolo-local";
 function EntityColumn({
@@ -21,7 +18,6 @@ function EntityColumn({
   profileFilter,
   query,
   selectedEntityId,
-  totalCount,
   onChangeProfileFilter,
   onChangeQuery,
   onSelect,
@@ -32,26 +28,14 @@ function EntityColumn({
   profileFilter: ApoloProfileFilter;
   query: string;
   selectedEntityId: string;
-  totalCount: number;
   onChangeProfileFilter: (profile: ApoloProfileFilter) => void;
   onChangeQuery: (query: string) => void;
   onSelect: (entityId: string) => void;
 }) {
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
-      <div className="shrink-0 border-b border-line px-5 py-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="m-0 text-base font-semibold text-ink">CRM 360</h2>
-            <p className="m-0 mt-1 text-xs font-medium text-ink-muted">
-              Pessoas, empresas, carteira e responsaveis.
-            </p>
-          </div>
-          <span className="rounded-full bg-subtle px-2.5 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line">
-            {formatCount(entities.length)}/{formatCount(totalCount)}
-          </span>
-        </div>
-        <div className="mt-4 flex items-center gap-2 rounded-xl border border-line bg-subtle px-3 py-2 text-ink-muted">
+      <div className="shrink-0 border-b border-line px-4 py-3">
+        <div className="flex items-center gap-2 rounded-xl border border-line bg-subtle px-3 py-2 text-ink-muted">
           <Search className="size-4 shrink-0" aria-hidden="true" />
           <input
             className="w-full bg-transparent text-sm font-medium text-ink outline-none placeholder:text-ink-muted"
@@ -146,6 +130,14 @@ function EntityEmptyState({
   );
 }
 
+// Perfis que NÃO são papel de negócio (não viram chip no card).
+const NON_ROLE_PROFILES = new Set([
+  "acesso_incorporador",
+  "pessoa_fisica",
+  "pessoa_juridica",
+  "usuario",
+]);
+
 function EntityListItem({
   entity,
   onSelect,
@@ -155,12 +147,21 @@ function EntityListItem({
   onSelect: () => void;
   selected: boolean;
 }) {
-  const primaryProfile = primaryBusinessProfile(entity);
   const buyerLabel = buyerStatusLabel(entity);
   const financialBadge = buyerFinancialBadge(entity);
-  const primaryRelationship = displayText(entity.relationships[0]?.label ?? "Vinculo em revisao");
+  const primaryRelationship = displayText(entity.relationships[0]?.label ?? "Em revisao");
   const isUsuario = entity.profiles.includes("usuario");
   const title = displayHeaderName(entity);
+  // Papéis que a entidade exerce (acumuláveis) — não o PF/PJ.
+  const papeis = entity.profiles.filter((profile) => !NON_ROLE_PROFILES.has(profile));
+  // Comprador: a COR do chip diz a adimplência (verde = adimplente, vermelho =
+  // inadimplente), sem badge separado. Prospect fica âmbar.
+  const buyerChipClass =
+    buyerLabel === "Comprador"
+      ? financialBadge?.label === "Inadimplente"
+        ? "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/20"
+        : "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20"
+      : "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20";
 
   return (
     <article
@@ -171,40 +172,24 @@ function EntityListItem({
       }`}
     >
       <button className="w-full text-left" onClick={onSelect} type="button">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="m-0 truncate text-sm font-semibold text-ink">
-              {title}
-            </p>
-            <p className="m-0 mt-1 truncate text-xs text-ink-muted">
-              {displayText(entity.locationLabel)}
-            </p>
-          </div>
-          {financialBadge ? (
-            <span
-              className={`shrink-0 rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${financialBadge.className}`}
-            >
-              {financialBadge.label}
-            </span>
-          ) : null}
+        <div className="min-w-0">
+          <p className="m-0 truncate text-sm font-semibold text-ink">{title}</p>
+          <p className="m-0 mt-1 truncate text-xs text-ink-muted">
+            {displayText(entity.locationLabel)}
+          </p>
         </div>
         <div className="mt-3 flex flex-wrap gap-1.5">
-          {/* Pro cliente, o chip Comprador/Prospect (abaixo) já é o perfil — some o "Usuario". */}
-          {!isUsuario ? (
-            <span className="rounded-full bg-[#A07C3B]/8 px-2 py-1 text-[11px] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15">
-              {apoloProfileLabels[primaryProfile]}
+          {papeis.map((papel) => (
+            <span
+              className="rounded-full bg-[#A07C3B]/8 px-2 py-1 text-[11px] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15"
+              key={papel}
+            >
+              {apoloProfileLabels[papel]}
             </span>
-          ) : null}
-          <span className="rounded-full bg-subtle px-2 py-1 text-[11px] font-semibold text-ink-soft ring-1 ring-line">
-            {kindLabel(entity.kind)}
-          </span>
+          ))}
           {isUsuario ? (
             <span
-              className={`rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ring-inset ${
-                buyerLabel === "Comprador"
-                  ? "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20"
-                  : "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20"
-              }`}
+              className={`rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ring-inset ${buyerChipClass}`}
             >
               {buyerLabel}
             </span>
@@ -212,7 +197,7 @@ function EntityListItem({
         </div>
         {isUsuario ? (
           <div className="mt-3 rounded-lg border border-line bg-subtle px-3 py-2">
-            <p className="m-0 text-[11px] font-medium text-ink-muted">Vinculo</p>
+            <p className="m-0 text-[11px] font-medium text-ink-muted">Imobiliária</p>
             <p className="m-0 mt-1 truncate text-sm font-semibold text-ink">
               {primaryRelationship}
             </p>

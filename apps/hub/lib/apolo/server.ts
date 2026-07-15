@@ -3,6 +3,7 @@ import { createHash } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import type { RowDataPacket } from "mysql2";
 
+import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool, sanitizeHadesDbError } from "@/lib/guardian/db";
 import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
@@ -867,8 +868,6 @@ async function loadApoloTablesDashboard(
     profileSummaries,
     pendingReviewCount,
     linkedUsersCount,
-    buyerUsersCount,
-    portfolioUnitsCount,
   ] = await Promise.all([
     fetchRows<ApoloProfileRow>(adminClient, "apolo_entity_profiles", "entity_id,profile", entityIds),
     fetchRows<ApoloContactRow>(
@@ -934,9 +933,9 @@ async function loadApoloTablesDashboard(
     fetchProfileSummaryCounts(adminClient),
     countPendingApoloEntities(adminClient),
     countVerifiedApoloRelationships(adminClient),
-    countApoloBuyerEntities(adminClient),
-    countApoloBuyerCommercialLinks(adminClient),
   ]);
+  // Comprador/Carteira vêm do C2X ao vivo (o sync marcava comprador demais).
+  const carteira = await loadC2xCarteiraData();
 
   const hasStalePortfolio = hasStaleCommercialPortfolio(commercialLinks);
   const documentLabelsByEntity =
@@ -982,11 +981,19 @@ async function loadApoloTablesDashboard(
   );
 
   const collapsedEntities = collapseDuplicateApoloEntities(entities, docHashByEntityId);
+  // Marca Comprador de verdade = o cliente está na carteira do C2X (mesma base da KPI,
+  // pra cards e painel baterem). hadesClientId = "c2x-client-<id>".
+  for (const entity of collapsedEntities) {
+    const c2xId = entity.hadesClientId
+      ? Number(String(entity.hadesClientId).replace(/\D/g, ""))
+      : Number.NaN;
+    entity.isBuyer = Number.isFinite(c2xId) && carteira.buyerClientIds.has(c2xId);
+  }
   const usuarioCount = profileSummaries.find((summary) => summary.profile === "usuario")?.count ?? 0;
 
   return {
     data: {
-      buyerUsersCount,
+      buyerUsersCount: carteira.buyerClientIds.size,
       entities: collapsedEntities,
       linkedUsersCount,
       meta: {
@@ -997,10 +1004,10 @@ async function loadApoloTablesDashboard(
         source: "apolo",
         status: "ready",
       },
-      nonBuyerUsersCount: Math.max(usuarioCount - buyerUsersCount, 0),
+      nonBuyerUsersCount: Math.max(usuarioCount - carteira.buyerClientIds.size, 0),
       pendingReviewCount,
       portfolioPaymentsCount: 0,
-      portfolioUnitsCount,
+      portfolioUnitsCount: carteira.units,
       profileSummaries,
       totalCount: entityResult.totalCount,
     },
@@ -1993,6 +2000,66 @@ async function countApoloBuyerCommercialLinks(adminClient: ApoloSupabaseClient) 
   }
 
   return count ?? 0;
+}
+
+// Carteira ao vivo do C2X (fonte da verdade até o go-live do Apolo). Regra do Lucas:
+// só entra na CARTEIRA a unidade FATURADA vigente (última proposta da unidade = faturado;
+// se distratou, sai) COM pagamento gerado. Comprador = cliente ÚNICO dessas unidades.
+// Assim comprador <= unidades (a conta fecha). Estágios C2X: 4 Faturado, 6 Finalizado.
+// Devolve o CONJUNTO de client_ids em carteira pra KPI e cards usarem a mesma base.
+async function loadC2xCarteiraData(): Promise<{
+  buyerClientIds: Set<number>;
+  units: number;
+}> {
+  const poolResult = getHadesDbPool();
+
+  if (!poolResult.ok) {
+    return { buyerClientIds: new Set(), units: 0 };
+  }
+
+  const placeholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+
+  try {
+    const [rows] = await poolResult.pool.query<
+      (RowDataPacket & { client_id: number | string | null; unit_id: number | string })[]
+    >(
+      `with latest as (
+         select eu.id as unit_id, ar.id as ar_id, ar.client_id as client_id,
+                ar.acquisition_request_stage_id as stage
+           from enterprise_unities eu
+           join enterprises e on e.id = eu.enterprise_id
+           join acquisition_requests ar on ar.id = (
+             select a2.id from acquisition_requests a2
+              where a2.enterprise_unity_id = eu.id
+              order by a2.created_at desc, a2.id desc
+              limit 1)
+          where e.code not in (${placeholders}))
+       select l.unit_id, l.client_id
+         from latest l
+        where l.stage in (4, 6)
+          and exists (
+            select 1 from payments p
+             where p.acquisition_request_id = l.ar_id
+               and (p.payment_to_delete is null or p.payment_to_delete = 0))`,
+      [...EXCLUDED_ENTERPRISE_CODES],
+    );
+
+    const buyerClientIds = new Set<number>();
+    const unitIds = new Set<number>();
+    for (const row of rows) {
+      const clientId = toNumber(row.client_id);
+      if (clientId > 0) {
+        buyerClientIds.add(clientId);
+      }
+      unitIds.add(toNumber(row.unit_id));
+    }
+
+    return { buyerClientIds, units: unitIds.size };
+  } catch (error) {
+    console.error("[apolo] loadC2xCarteiraData falhou", error);
+
+    return { buyerClientIds: new Set(), units: 0 };
+  }
 }
 
 async function loadLiveC2xDashboard(

@@ -124,25 +124,19 @@ export function buyerStatusLabel(entity: ApoloEntity) {
     return "Nao aplicavel";
   }
 
-  const normalizedLinks = normalizeText(
-    entity.commercialLinks
-      .map((link) => `${link.role} ${link.stage} ${link.referenceLabel}`)
-      .join(" "),
-  );
+  // Comprador = cliente na CARTEIRA do C2X (faturado vigente COM pagamento). O loader
+  // marca entity.isBuyer com o MESMO conjunto da KPI, pra card e painel baterem. Quando
+  // isBuyer não vem (ex.: fallback live-c2x), cai na heurística do estágio "Faturado" do
+  // link. Antes classificava pelo papel "Usuario comprador" (over-count ~3.400). Ver
+  // [[project-apolo-empreendimento-tela]].
+  const isBuyer =
+    entity.isBuyer ??
+    entity.commercialLinks.some((link) => {
+      const stage = normalizeText(link.stage);
+      return stage.includes("faturado") || stage.includes("finalizado");
+    });
 
-  if (normalizedLinks.includes("sem compra")) {
-    return "Prospect";
-  }
-
-  if (entity.commercialLinks.some((link) => normalizeText(link.role) === "usuario comprador")) {
-    return "Comprador";
-  }
-
-  if (normalizedLinks.includes("jornada comercial") || normalizedLinks.includes("vinculo comercial")) {
-    return "Prospect";
-  }
-
-  return "Nao comprador";
+  return isBuyer ? "Comprador" : "Prospect";
 }
 
 export function buyerFinancialBadge(entity: ApoloEntity) {

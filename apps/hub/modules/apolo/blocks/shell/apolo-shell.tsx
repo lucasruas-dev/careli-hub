@@ -33,7 +33,7 @@ export function ApoloHeader({
 
 // Botão "+" que abre o seletor de tipo de cadastro (CAD). Só Prospect está
 // liberado; os demais aparecem como "em breve".
-function NovoCadastroMenu() {
+export function NovoCadastroMenu() {
   const [open, setOpen] = useState(false);
 
   return (
