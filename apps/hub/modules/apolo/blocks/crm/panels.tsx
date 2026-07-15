@@ -42,6 +42,7 @@ import {
   displayHeaderName,
   displayText,
   documentLabel,
+  entityC2xId,
   financialRecordStatusClass,
   financialRecordTypeClass,
   formatMoneyLabel,
@@ -56,10 +57,13 @@ import {
   primaryContact,
   primaryPhoneContact,
   relationshipSummary,
+  resolveCarteiraRoles,
   responsibleLabel,
   summaryName,
   uniqueText,
 } from "../../data/apolo-derive";
+import type { ApoloCarteiraRoleKind } from "../../data/apolo-derive";
+import { ScopedPortfolioPanel } from "./scoped-portfolio-panel";
 import { getApoloAccessToken } from "../../data/apolo-operations";
 import type {
   ApoloFinancialRecord,
@@ -348,7 +352,80 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
   );
 }
 
-function PortfolioPanel({ entity }: { entity: ApoloEntity }) {
+// Roteia a aba Carteira pelo PAPEL da entidade. Comprador puro = ficha detalhada (unidades).
+// Incorporador/imobiliária/corretor = carteira agregada com drill-down. Múltiplos papéis =
+// seletor pra alternar. Ver [[project-apolo-empreendimento-tela]].
+function PortfolioPanel({
+  entity,
+  onOpenEntity,
+}: {
+  entity: ApoloEntity;
+  onOpenEntity: (label: string, entityId: string) => void;
+}) {
+  const roles = useMemo(() => resolveCarteiraRoles(entity), [entity]);
+  const [activeKind, setActiveKind] = useState<ApoloCarteiraRoleKind | null>(
+    roles[0]?.kind ?? null,
+  );
+
+  useEffect(() => {
+    setActiveKind((current) =>
+      current && roles.some((role) => role.kind === current)
+        ? current
+        : (roles[0]?.kind ?? null),
+    );
+  }, [roles]);
+
+  if (!roles.length || !activeKind) {
+    return <EmptyPanel text="Nenhuma carteira disponivel para este relacionamento." />;
+  }
+
+  const selector =
+    roles.length > 1 ? (
+      <div className="inline-flex rounded-lg border border-line bg-subtle p-0.5">
+        {roles.map((role) => (
+          <button
+            className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-colors ${
+              role.kind === activeKind
+                ? "bg-surface text-ink shadow-sm ring-1 ring-line"
+                : "text-ink-muted hover:text-ink"
+            }`}
+            key={role.kind}
+            onClick={() => setActiveKind(role.kind)}
+            type="button"
+          >
+            {role.label}
+          </button>
+        ))}
+      </div>
+    ) : null;
+
+  if (activeKind === "comprador") {
+    return (
+      <div className="grid gap-4">
+        {selector ? <div className="flex justify-end">{selector}</div> : null}
+        <BuyerPortfolioPanel entity={entity} />
+      </div>
+    );
+  }
+
+  const c2xId = entityC2xId(entity);
+
+  if (c2xId == null) {
+    return <EmptyPanel text="Cadastro sem vinculo com o C2X para montar a carteira." />;
+  }
+
+  return (
+    <ScopedPortfolioPanel
+      c2xId={c2xId}
+      key={activeKind}
+      kind={activeKind}
+      onOpenEntity={onOpenEntity}
+      roleSelector={selector}
+    />
+  );
+}
+
+function BuyerPortfolioPanel({ entity }: { entity: ApoloEntity }) {
   const units = useMemo(() => buildPortfolioUnits(entity), [entity]);
   const [selectedUnitId, setSelectedUnitId] = useState(units[0]?.id ?? "");
   const [activeUnitSubtab, setActiveUnitSubtab] = useState<ApoloUnitSubtab>("summary");

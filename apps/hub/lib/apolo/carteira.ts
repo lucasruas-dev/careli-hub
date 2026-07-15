@@ -2,6 +2,7 @@
 // matemática (pra os números baterem), mas escopado a um empreendimento e com uma visão nova:
 // por UNIDADE (o Hades é centrado no comprador). Ver [[project-apolo-crm-grafo]].
 import type { RowDataPacket } from "mysql2";
+import type { Pool } from "mysql2/promise";
 
 import { deterministicUuid } from "@/lib/apolo/server";
 import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
@@ -37,6 +38,10 @@ export type ApoloCarteiraUnit = {
   block: string | null;
   client: ApoloCarteiraUnitParty | null;
   code: string;
+  // Empreendimento da unidade — dimensão do drill-down da carteira por papel. (Corretor NÃO
+  // entra: o C2X não liga corretor à venda; ver loadApoloCarteiraScoped.)
+  enterpriseCode: string;
+  enterpriseName: string | null;
   contractCode: string | null;
   // ID do documento no D4Sign (uuidDoc). O link salvo no C2X expira, entao usamos
   // esse ID pra pedir um PDF fresco pela API na hora de abrir. Ver [[project-apolo-crm-grafo]].
@@ -85,17 +90,83 @@ export async function loadApoloEnterpriseCarteira(
   }
 
   const inCodes = validCodes.map(() => "?").join(", ");
-  // Todas as queries partem de payments -> acquisition_requests -> enterprise_unities ->
-  // enterprises, escopadas ao(s) código(s) do empreendimento — o mesmo caminho do Hades.
+  const data = await runCarteiraQueries(
+    poolResult.pool,
+    `where e.code in (${inCodes})`,
+    validCodes,
+  );
+  return { data, ok: true };
+}
+
+export type ApoloCarteiraScope = {
+  c2xId: number;
+  kind: "comprador" | "corretor" | "imobiliaria" | "incorporador";
+};
+
+// Carteira escopada pelo PAPEL da entidade, reusando a MESMA matemática. As unidades vêm
+// com as dimensões que o C2X liga à venda (empreendimento/imobiliária/comprador) pro drill-down.
+export async function loadApoloCarteiraScoped(
+  scope: ApoloCarteiraScope,
+): Promise<
+  { data: ApoloCarteiraData; ok: true } | { error: string; ok: false }
+> {
+  if (!scope.c2xId || scope.c2xId <= 0) {
+    return { data: { summary: emptySummary(), units: [] }, ok: true };
+  }
+
+  const poolResult = getHadesDbPool();
+  if (!poolResult.ok) {
+    return {
+      error: `Configuracao C2X ausente: ${poolResult.missing.join(", ")}.`,
+      ok: false,
+    };
+  }
+
+  // Cada papel é um recorte diferente sobre o MESMO join (payments->ar->unity->enterprise):
+  //  - comprador: as vendas dele;
+  //  - imobiliária: as vendas dos compradores vinculados a ela (users.vinculed_by_id);
+  //  - incorporador: as vendas dos empreendimentos dele (enterprises.incorporador_id);
+  //  - corretor: as vendas dos empreendimentos em que ele atua. O C2X NÃO liga corretor à
+  //    venda (acquisition_requests.corretor_id é sempre nulo); o único vínculo é
+  //    corretor<->empreendimento em `corretores_enterprises`. Por isso o corretor NÃO é uma
+  //    camada por-comprador do drill-down — é um filtro de escopo por empreendimento.
+  const filterByKind: Record<ApoloCarteiraScope["kind"], string> = {
+    comprador: "ar.client_id = ?",
+    corretor:
+      "e.id in (select enterprise_id from corretores_enterprises where corretor_id = ?)",
+    imobiliaria: "ar.client_id in (select id from users where vinculed_by_id = ?)",
+    incorporador: "e.incorporador_id = ?",
+  };
+  const excluded = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+  const whereScope = `where ${filterByKind[scope.kind]} and e.code not in (${excluded})`;
+  const params: Array<number | string> = [scope.c2xId, ...EXCLUDED_ENTERPRISE_CODES];
+
+  try {
+    const data = await runCarteiraQueries(poolResult.pool, whereScope, params);
+    return { data, ok: true };
+  } catch {
+    return { error: "Nao foi possivel carregar a carteira.", ok: false };
+  }
+}
+
+// Roda as 3 queries da carteira (totais, contratos críticos, unidades) com o filtro
+// (whereScope) injetado — mesmo caminho do Hades: payments -> acquisition_requests ->
+// enterprise_unities -> enterprises. Reusado pela carteira do empreendimento E pela por papel.
+async function runCarteiraQueries(
+  pool: Pool,
+  whereScope: string,
+  params: Array<number | string>,
+): Promise<ApoloCarteiraData> {
   const fromJoins = `
     from payments p
     join acquisition_requests ar on ar.id = p.acquisition_request_id
     join enterprise_unities eu on eu.id = ar.enterprise_unity_id
     join enterprises e on e.id = eu.enterprise_id`;
-  const whereScope = `where e.code in (${inCodes})`;
   const scope = `${fromJoins} ${whereScope}`;
+  const nameSql = (a: string) =>
+    `coalesce(nullif(trim(${a}.name), ''), nullif(trim(${a}.fantasy_name), ''), nullif(trim(${a}.social_name), ''))`;
 
-  const [summaryRows] = await poolResult.pool.query<SummaryRow[]>(
+  const [summaryRows] = await pool.query<SummaryRow[]>(
     `select
        coalesce(sum(case when ${PORTFOLIO} then ${PRINCIPAL} else 0 end), 0) as total_portfolio,
        coalesce(sum(case when p.payment_status_id = 5 and ${ACTIVE} then ${PRINCIPAL} else 0 end), 0) as paid_amount,
@@ -110,27 +181,22 @@ export async function loadApoloEnterpriseCarteira(
              and p.payment_date < date_add(cast(date_format(curdate(), '%Y-%m-01') as date), interval 1 month)
            then coalesce(p.paid_value, 0) else 0 end), 0) as recovery_amount
      ${scope}`,
-    validCodes,
+    params,
   );
 
-  // Contratos críticos = com mais de 3 parcelas vencidas.
-  const [criticalRows] = await poolResult.pool.query<SummaryRow[]>(
+  const [criticalRows] = await pool.query<SummaryRow[]>(
     `select count(*) as critical from (
         select ar.id
         ${scope} and ${OVERDUE}
         group by ar.id
         having count(*) > 3
       ) t`,
-    validCodes,
+    params,
   );
 
-  // Visão por UNIDADE: agrega os pagamentos por unidade (a diferença pro Hades, que é por
-  // comprador). O vínculo imobiliária vem de users.vinculed_by_id (imobiliaria_id esta zerado).
-  const nameSql = (a: string) =>
-    `coalesce(nullif(trim(${a}.name), ''), nullif(trim(${a}.fantasy_name), ''), nullif(trim(${a}.social_name), ''))`;
-  const [unitRows] = await poolResult.pool.query<UnitRow[]>(
+  const [unitRows] = await pool.query<UnitRow[]>(
     `select
-       eu.id as unit_id, e.code as enterprise_code, eu.block, eu.lot,
+       eu.id as unit_id, e.code as enterprise_code, e.name as enterprise_name, eu.block, eu.lot,
        ar.id as ar_id, ar.code as contract_code,
        cli.id as client_id, ${nameSql("cli")} as client_name,
        imo.id as imobiliaria_id, ${nameSql("imo")} as imobiliaria_name,
@@ -153,15 +219,17 @@ export async function loadApoloEnterpriseCarteira(
      left join users cli on cli.id = ar.client_id
      left join users imo on imo.id = cli.vinculed_by_id
      ${whereScope}
-     group by eu.id, e.code, eu.block, eu.lot, ar.id, ar.code, cli.id, client_name, imo.id, imobiliaria_name
+     group by eu.id, e.code, e.name, eu.block, eu.lot, ar.id, ar.code,
+              cli.id, client_name, imo.id, imobiliaria_name
      having total_contract > 0 or overdue_amount > 0
      order by overdue_amount desc, eu.block, eu.lot`,
-    validCodes,
+    params,
   );
 
-  const summary = mapSummary(summaryRows[0], toNumber(criticalRows[0]?.critical));
-
-  return { data: { summary, units: unitRows.map(mapUnit) }, ok: true };
+  return {
+    summary: mapSummary(summaryRows[0], toNumber(criticalRows[0]?.critical)),
+    units: unitRows.map(mapUnit),
+  };
 }
 
 function mapSummary(
@@ -205,6 +273,8 @@ function mapUnit(row: UnitRow): ApoloCarteiraUnit {
     code: buildUnitCode(enterpriseCode, text(row.block), text(row.lot)),
     contractCode: text(row.contract_code),
     contractDocumentId: text(row.contract_doc),
+    enterpriseCode,
+    enterpriseName: text(row.enterprise_name),
     faturadoAt: dateOrNull(row.faturado_at),
     id: String(row.unit_id),
     imobiliaria: party(row.imobiliaria_id, text(row.imobiliaria_name)),

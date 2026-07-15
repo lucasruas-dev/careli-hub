@@ -47,11 +47,77 @@ export function isApoloTabUnavailableForEntity(tab: ApoloTab, entity: ApoloEntit
     return false;
   }
 
-  if (tab !== "carteira" && tab !== "financeiro") {
-    return false;
+  // Carteira: liberada pra QUALQUER papel com carteira (incorporador/imobiliária/corretor/
+  // comprador) — a aba se adapta ao papel. Antes só o comprador via. Ver [[project-apolo-empreendimento-tela]].
+  if (tab === "carteira") {
+    return resolveCarteiraRoles(entity).length === 0;
   }
 
-  return buyerStatusLabel(entity) !== "Comprador";
+  // Financeiro (acordos/promessas) segue sendo só do comprador.
+  if (tab === "financeiro") {
+    return buyerStatusLabel(entity) !== "Comprador";
+  }
+
+  return false;
+}
+
+export type ApoloCarteiraRoleKind =
+  | "comprador"
+  | "corretor"
+  | "imobiliaria"
+  | "incorporador";
+
+export type ApoloCarteiraRole = {
+  kind: ApoloCarteiraRoleKind;
+  label: string;
+};
+
+const CARTEIRA_ROLE_LABELS: Record<ApoloCarteiraRoleKind, string> = {
+  comprador: "Comprador",
+  corretor: "Corretor",
+  imobiliaria: "Imobiliária",
+  incorporador: "Incorporador",
+};
+
+// ID do usuário no C2X, extraído do hadesClientId ("c2x-client-<id>"). Todo papel (comprador/
+// imobiliária/corretor/incorporador) é um `users` no C2X, então o mesmo id serve pra escopar
+// a carteira. Pega os dígitos FINAIS (evita o bug do "c2x" virar "2"). Ver [[project-apolo-crm-grafo]].
+export function entityC2xId(entity: ApoloEntity | null): number | null {
+  const match = entity?.hadesClientId ? /(\d+)$/.exec(entity.hadesClientId)?.[1] : undefined;
+  const id = match ? Number(match) : Number.NaN;
+
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+// Papéis da entidade que têm carteira, do MAIOR escopo pro menor (incorporador > imobiliária >
+// corretor > comprador). O primeiro é o padrão; se houver mais de um, a aba mostra um seletor.
+export function resolveCarteiraRoles(entity: ApoloEntity | null): ApoloCarteiraRole[] {
+  if (!entity || entityC2xId(entity) == null) {
+    return [];
+  }
+
+  const roles: ApoloCarteiraRole[] = [];
+  const add = (kind: ApoloCarteiraRoleKind) => {
+    roles.push({ kind, label: CARTEIRA_ROLE_LABELS[kind] });
+  };
+
+  if (entity.profiles.includes("incorporador")) {
+    add("incorporador");
+  }
+
+  if (entity.profiles.includes("imobiliaria")) {
+    add("imobiliaria");
+  }
+
+  if (entity.profiles.includes("corretor")) {
+    add("corretor");
+  }
+
+  if (buyerStatusLabel(entity) === "Comprador") {
+    add("comprador");
+  }
+
+  return roles;
 }
 
 export function matchesApoloFilters(

@@ -600,7 +600,7 @@ function TabPanel({
   }
 
   if (activeTab === "carteira") {
-    return <PortfolioPanel entity={entity} />;
+    return <PortfolioPanel entity={entity} onOpenEntity={onOpenEntity} />;
   }
 
   if (activeTab === "financeiro") {
