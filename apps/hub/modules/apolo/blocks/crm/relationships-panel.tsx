@@ -369,6 +369,41 @@ function RelationshipListModal({
   );
 }
 
+// Badge do card. Comprador vinculado já se sabe que é comprador, então mostra só a
+// adimplência (verde adimplente / vermelho inadimplente); prospect fica âmbar; o resto
+// mostra o próprio nível na cor do grupo.
+function relationshipBadge(
+  rel: ApoloRelationship,
+  isGold: boolean,
+): { className: string; text: string } {
+  if (rel.relation === "Comprador vinculado") {
+    return rel.overdue
+      ? {
+          className:
+            "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/20",
+          text: "Inadimplente",
+        }
+      : {
+          className:
+            "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20",
+          text: "Adimplente",
+        };
+  }
+  if (rel.relation === "Prospect vinculado") {
+    return {
+      className:
+        "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20",
+      text: "Prospect",
+    };
+  }
+  return {
+    className: isGold
+      ? "bg-[#A07C3B]/8 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/15"
+      : "bg-[#b5623a]/10 text-[#8a4526] dark:text-[#e0a586] ring-[#b5623a]/20",
+    text: rel.relation,
+  };
+}
+
 // Card padrão: Nome · Telefone · E-mail · Nível. Clicável quando é uma entidade Apolo.
 function RelRow({
   onOpenEntity,
@@ -381,9 +416,7 @@ function RelRow({
 }) {
   const isGold = tone === "gold";
   const clickable = Boolean(rel.entityId);
-  const badgeClass = isGold
-    ? "bg-[#A07C3B]/8 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/15"
-    : "bg-[#b5623a]/10 text-[#8a4526] dark:text-[#e0a586] ring-[#b5623a]/20";
+  const badge = relationshipBadge(rel, isGold);
 
   const content = (
     <>
@@ -391,9 +424,9 @@ function RelRow({
         <div className="flex items-center gap-2">
           <p className="m-0 truncate text-sm font-semibold text-ink">{rel.label}</p>
           <span
-            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ${badgeClass}`}
+            className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold ring-1 ring-inset ${badge.className}`}
           >
-            {rel.relation}
+            {badge.text}
           </span>
         </div>
         {rel.phone || rel.email ? (

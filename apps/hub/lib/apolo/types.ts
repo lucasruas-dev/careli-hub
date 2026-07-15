@@ -156,6 +156,8 @@ export type ApoloRelationship = {
   // "trabalho" (edge) ou "contato" (pessoa leve). Preenchido no que é criado no Apolo;
   // no que vem do sync/C2X fica vazio e a classificação sai do texto do nível.
   kind?: "trabalho" | "contato" | null;
+  // Comprador vinculado: true = inadimplente (parcela vencida), false = adimplente.
+  overdue?: boolean | null;
 };
 
 export type ApoloTimelineEvent = {

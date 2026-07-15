@@ -947,7 +947,12 @@ async function loadApoloTablesDashboard(
   const c2xPortfolioByEntity =
     await fetchC2xPortfolioByEntity(sourceLinks);
   const { cadastro: c2xCadastroByEntity, relationships: c2xRelationshipsByEntity } =
-    await fetchC2xCadastroByEntity(adminClient, sourceLinks, carteira.buyerClientIds);
+    await fetchC2xCadastroByEntity(
+      adminClient,
+      sourceLinks,
+      carteira.buyerClientIds,
+      carteira.overdueClientIds,
+    );
   const identifierRows = await fetchRows<{
     entity_id: string;
     identifier_type: string;
@@ -1201,6 +1206,7 @@ async function fetchC2xCadastroByEntity(
   adminClient: ApoloSupabaseClient,
   sourceLinks: ApoloSourceLinkRow[],
   buyerClientIds: Set<number>,
+  overdueClientIds: Set<number>,
 ): Promise<{
   cadastro: Map<string, ApoloC2xCadastro>;
   relationships: Map<string, ApoloRelationship[]>;
@@ -1501,6 +1507,7 @@ async function fetchC2xCadastroByEntity(
           phone: client.phone,
           email: client.email,
           entityId: clientEntityByC2xId.get(client.clientId) ?? null,
+          overdue: client.isBuyer ? overdueClientIds.has(client.clientId) : null,
         });
       }
     }
@@ -2577,12 +2584,17 @@ async function countApoloBuyerCommercialLinks(adminClient: ApoloSupabaseClient) 
 // carteira muda devagar (faturamentos).
 const CARTEIRA_CACHE_TTL_MS = 60_000;
 let carteiraCache: {
-  data: { buyerClientIds: Set<number>; units: number };
+  data: {
+    buyerClientIds: Set<number>;
+    overdueClientIds: Set<number>;
+    units: number;
+  };
   expiresAt: number;
 } | null = null;
 
 async function loadC2xCarteiraData(): Promise<{
   buyerClientIds: Set<number>;
+  overdueClientIds: Set<number>;
   units: number;
 }> {
   if (carteiraCache && carteiraCache.expiresAt > Date.now()) {
@@ -2592,14 +2604,18 @@ async function loadC2xCarteiraData(): Promise<{
   const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
-    return { buyerClientIds: new Set(), units: 0 };
+    return { buyerClientIds: new Set(), overdueClientIds: new Set(), units: 0 };
   }
 
   const placeholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
 
   try {
     const [rows] = await poolResult.pool.query<
-      (RowDataPacket & { client_id: number | string | null; unit_id: number | string })[]
+      (RowDataPacket & {
+        client_id: number | string | null;
+        overdue: number | string | null;
+        unit_id: number | string;
+      })[]
     >(
       `with latest as (
          select eu.id as unit_id, ar.id as ar_id, ar.client_id as client_id,
@@ -2612,7 +2628,14 @@ async function loadC2xCarteiraData(): Promise<{
               order by a2.created_at desc, a2.id desc
               limit 1)
           where e.code not in (${placeholders}))
-       select l.unit_id, l.client_id
+       select l.unit_id, l.client_id,
+              exists (
+                select 1 from payments p
+                 where p.acquisition_request_id = l.ar_id
+                   and (p.payment_status_id = 7
+                        or (p.due_date < curdate() and p.payment_status_id not in (1, 2, 5)))
+                   and (p.payment_to_delete is null or p.payment_to_delete = 0)
+              ) as overdue
          from latest l
         where l.stage in (4, 6)
           and exists (
@@ -2623,23 +2646,27 @@ async function loadC2xCarteiraData(): Promise<{
     );
 
     const buyerClientIds = new Set<number>();
+    const overdueClientIds = new Set<number>();
     const unitIds = new Set<number>();
     for (const row of rows) {
       const clientId = toNumber(row.client_id);
       if (clientId > 0) {
         buyerClientIds.add(clientId);
+        if (toNumber(row.overdue) > 0) {
+          overdueClientIds.add(clientId);
+        }
       }
       unitIds.add(toNumber(row.unit_id));
     }
 
-    const data = { buyerClientIds, units: unitIds.size };
+    const data = { buyerClientIds, overdueClientIds, units: unitIds.size };
     carteiraCache = { data, expiresAt: Date.now() + CARTEIRA_CACHE_TTL_MS };
 
     return data;
   } catch (error) {
     console.error("[apolo] loadC2xCarteiraData falhou", error);
 
-    return { buyerClientIds: new Set(), units: 0 };
+    return { buyerClientIds: new Set(), overdueClientIds: new Set(), units: 0 };
   }
 }
 
