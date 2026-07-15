@@ -1,4 +1,6 @@
-import { Check, ChevronDown, Filter, Search } from "lucide-react";
+import { Check, ChevronDown, Filter, PanelLeftClose, Search } from "lucide-react";
+
+import { Tooltip } from "@repo/uix";
 import { useEffect, useRef, useState } from "react";
 
 import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
@@ -131,6 +133,7 @@ function EntityColumn({
   selectedEntityId,
   onChangeProfileFilter,
   onChangeQuery,
+  onCollapse,
   onSubmitQuery,
   onSelect,
 }: {
@@ -142,6 +145,7 @@ function EntityColumn({
   selectedEntityId: string;
   onChangeProfileFilter: (profile: ApoloProfileFilter) => void;
   onChangeQuery: (query: string) => void;
+  onCollapse?: () => void;
   onSubmitQuery: () => void;
   onSelect: (entityId: string) => void;
 }) {
@@ -149,7 +153,8 @@ function EntityColumn({
     <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <div className="shrink-0 border-b border-line px-4 py-3">
         {/* Busca só no Enter (ou clicando a lupa) — não filtra a cada tecla. */}
-        <div className="flex items-center gap-2 rounded-xl border border-line bg-subtle px-3 py-2 text-ink-muted">
+        <div className="flex items-center gap-2">
+          <div className="flex flex-1 items-center gap-2 rounded-xl border border-line bg-subtle px-3 py-2 text-ink-muted">
           <button
             aria-label="Buscar"
             className="shrink-0 text-ink-muted transition-colors hover:text-[#A07C3B] disabled:cursor-default disabled:hover:text-ink-muted"
@@ -173,6 +178,19 @@ function EntityColumn({
             type="search"
             value={query}
           />
+          </div>
+          {onCollapse ? (
+            <Tooltip content="Recolher lista">
+              <button
+                aria-label="Recolher lista"
+                className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-subtle text-ink-muted transition-colors hover:border-[#A07C3B]/40 hover:text-[#7a5e2c] dark:hover:text-[#d9b877]"
+                onClick={onCollapse}
+                type="button"
+              >
+                <PanelLeftClose className="size-4" aria-hidden="true" />
+              </button>
+            </Tooltip>
+          ) : null}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <ProfileFilterDropdown

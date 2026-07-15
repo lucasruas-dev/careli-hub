@@ -698,19 +698,23 @@ function ApoloInstallmentsPanel({
                       </div>
                     </div>
                     {boletoUrl ? (
-                      <a
-                        className="inline-flex h-9 shrink-0 items-center justify-center gap-2 rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 px-3 text-sm font-semibold text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
-                        href={boletoUrl}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        Abrir boleto
-                        <ExternalLink className="size-3.5" aria-hidden="true" />
-                      </a>
+                      <Tooltip content="Abrir boleto">
+                        <a
+                          aria-label="Abrir boleto"
+                          className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10"
+                          href={boletoUrl}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <ExternalLink className="size-4" aria-hidden="true" />
+                        </a>
+                      </Tooltip>
                     ) : (
-                      <span className="inline-flex h-9 shrink-0 items-center justify-center rounded-lg border border-line bg-subtle px-3 text-sm font-semibold text-ink-muted">
-                        Sem boleto
-                      </span>
+                      <Tooltip content="Sem boleto">
+                        <span className="inline-flex size-9 shrink-0 items-center justify-center rounded-lg border border-line bg-subtle text-ink-muted">
+                          <ExternalLink className="size-4 opacity-40" aria-hidden="true" />
+                        </span>
+                      </Tooltip>
                     )}
                   </div>
                 </article>

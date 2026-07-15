@@ -10,7 +10,7 @@ import type {
   ApoloEnterprisesData,
 } from "@/lib/apolo/empreendimentos";
 import { toTitleCase } from "@/lib/format/name-case";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, PanelLeftOpen } from "lucide-react";
 import { ApoloSidebar } from "./blocks/shell/apolo-sidebar";
 import { CrmCommandCenter } from "./blocks/crm/command-center";
 import { EntityColumn } from "./blocks/crm/entity-list";
@@ -40,6 +40,11 @@ export function ApoloPage() {
   );
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedState<boolean>(
     "apolo.sidebarCollapsed",
+    false,
+  );
+  // Recolhe a lista de entidades (cards ao lado) pra o cockpit ganhar tela.
+  const [entityListCollapsed, setEntityListCollapsed] = usePersistedState<boolean>(
+    "apolo.entityListCollapsed",
     false,
   );
   const [activeTab, setActiveTab] = usePersistedState<ApoloTab>(
@@ -468,20 +473,40 @@ export function ApoloPage() {
               loading={loading}
             />
             <section
-              className="grid min-h-0 gap-3 xl:grid-cols-[minmax(22rem,0.4fr)_minmax(0,1.6fr)]"
+              className={`grid min-h-0 gap-3 ${
+                entityListCollapsed
+                  ? "grid-cols-[auto_minmax(0,1fr)]"
+                  : "xl:grid-cols-[minmax(22rem,0.4fr)_minmax(0,1.6fr)]"
+              }`}
             >
-              <EntityColumn
-                entities={filteredEntities}
-                error={error}
-                loading={loading}
-                profileFilter={profileFilter}
-                query={queryInput}
-                selectedEntityId={selectedEntity?.id ?? ""}
-                onChangeProfileFilter={setProfileFilter}
-                onChangeQuery={setQueryInput}
-                onSubmitQuery={() => setQuery(queryInput)}
-                onSelect={setSelectedEntityId}
-              />
+              {entityListCollapsed ? (
+                <button
+                  aria-label="Expandir lista"
+                  className="group flex h-full w-10 shrink-0 flex-col items-center gap-2 rounded-xl border border-line bg-surface py-3 text-ink-muted transition-colors hover:border-[#A07C3B]/40 hover:text-[#7a5e2c] dark:hover:text-[#d9b877]"
+                  onClick={() => setEntityListCollapsed(false)}
+                  title="Expandir lista"
+                  type="button"
+                >
+                  <PanelLeftOpen className="size-4" aria-hidden="true" />
+                  <span className="text-[11px] font-semibold uppercase tracking-wide [writing-mode:vertical-rl]">
+                    Lista
+                  </span>
+                </button>
+              ) : (
+                <EntityColumn
+                  entities={filteredEntities}
+                  error={error}
+                  loading={loading}
+                  profileFilter={profileFilter}
+                  query={queryInput}
+                  selectedEntityId={selectedEntity?.id ?? ""}
+                  onChangeProfileFilter={setProfileFilter}
+                  onChangeQuery={setQueryInput}
+                  onCollapse={() => setEntityListCollapsed(true)}
+                  onSubmitQuery={() => setQuery(queryInput)}
+                  onSelect={setSelectedEntityId}
+                />
+              )}
               <RecordWorkspace
                 activeTab={activeTab}
                 backLabel={navStack.length > 0 ? navStack[navStack.length - 1]?.name ?? null : null}

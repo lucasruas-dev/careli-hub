@@ -4,6 +4,7 @@ import {
   Building2,
   ChevronRight,
   Loader2,
+  Search,
   Store,
   TriangleAlert,
   User,
@@ -47,9 +48,19 @@ function brl(value: number) {
   }).format(Number.isFinite(value) ? value : 0);
 }
 
+function normalizeSearch(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "")
+    .toLowerCase()
+    .trim();
+}
+
 function unitKey(unit: ApoloCarteiraUnit, dim: Dim): string {
   if (dim === "empreendimento") {
-    return unit.enterpriseCode || NONE_KEY;
+    // Agrupa por NOME (não por código): empreendimentos com códigos diferentes mas o mesmo
+    // nome (ex.: PDV + PVS = "PORTAL DOS VALES") viram um card só.
+    return (unit.enterpriseName || unit.enterpriseCode || "").trim().toUpperCase() || NONE_KEY;
   }
 
   if (dim === "imobiliaria") {
@@ -148,12 +159,20 @@ export function ScopedPortfolioPanel({
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [path, setPath] = useState<Crumb[]>([]);
+  const [filter, setFilter] = useState("");
+
+  // Navega um nível (drill ou breadcrumb) e limpa o filtro do nível anterior.
+  const goToPath = (next: Crumb[]) => {
+    setFilter("");
+    setPath(next);
+  };
 
   useEffect(() => {
     let active = true;
     setLoading(true);
     setError(null);
     setPath([]);
+    setFilter("");
 
     (async () => {
       try {
@@ -212,6 +231,16 @@ export function ScopedPortfolioPanel({
     [filteredUnits, currentDim],
   );
 
+  const visibleGroups = useMemo(() => {
+    const term = normalizeSearch(filter);
+
+    if (!term) {
+      return groups;
+    }
+
+    return groups.filter((group) => normalizeSearch(group.label).includes(term));
+  }, [groups, filter]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 rounded-xl border border-line bg-surface p-10 text-sm font-medium text-ink-muted">
@@ -233,13 +262,21 @@ export function ScopedPortfolioPanel({
   const summary = data?.summary;
   const isLeaf = currentDim === "comprador";
   const DimIcon = DIM_META[currentDim].icon;
+  const showToReceive = kind === "incorporador";
 
   return (
     <section className="grid gap-4">
       <header className="flex flex-col gap-3 rounded-xl border border-line bg-surface p-4 lg:flex-row lg:items-center lg:justify-between">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <div
+          className={`grid grid-cols-2 gap-3 ${
+            showToReceive ? "sm:grid-cols-4" : "sm:grid-cols-3"
+          }`}
+        >
           <Kpi label="Carteira" value={brl(summary?.totalPortfolio ?? 0)} />
-          <Kpi label="A receber" value={brl(summary?.toReceiveAmount ?? 0)} />
+          {/* "A receber" só faz sentido pra quem recebe (incorporador); imobiliária/corretor não. */}
+          {showToReceive ? (
+            <Kpi label="A receber" value={brl(summary?.toReceiveAmount ?? 0)} />
+          ) : null}
           <Kpi
             label="Vencido"
             tone={summary && summary.overdueAmount > 0 ? "danger" : "default"}
@@ -257,7 +294,7 @@ export function ScopedPortfolioPanel({
       <nav className="flex flex-wrap items-center gap-1 text-sm font-medium text-ink-muted">
         <button
           className="rounded-md px-2 py-1 font-semibold text-ink transition-colors hover:bg-subtle"
-          onClick={() => setPath([])}
+          onClick={() => goToPath([])}
           type="button"
         >
           Carteira
@@ -267,7 +304,7 @@ export function ScopedPortfolioPanel({
             <ChevronRight className="size-3.5 text-ink-muted/60" aria-hidden="true" />
             <button
               className="rounded-md px-2 py-1 transition-colors hover:bg-subtle hover:text-ink"
-              onClick={() => setPath((current) => current.slice(0, index + 1))}
+              onClick={() => goToPath(path.slice(0, index + 1))}
               type="button"
             >
               {crumb.label}
@@ -276,21 +313,36 @@ export function ScopedPortfolioPanel({
         ))}
       </nav>
 
-      <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
-        <DimIcon className="size-4 text-[#A07C3B]" aria-hidden="true" />
-        {DIM_META[currentDim].plural}
-        <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-muted">
-          {groups.length}
-        </span>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+          <DimIcon className="size-4 text-[#A07C3B]" aria-hidden="true" />
+          {DIM_META[currentDim].plural}
+          <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-muted">
+            {visibleGroups.length}
+          </span>
+        </div>
+        <div className="relative sm:w-64">
+          <Search
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
+            aria-hidden="true"
+          />
+          <input
+            className="h-9 w-full rounded-lg border border-line bg-surface pl-9 pr-3 text-sm text-ink outline-none placeholder:text-ink-muted focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+            onChange={(event) => setFilter(event.target.value)}
+            placeholder={`Buscar ${DIM_META[currentDim].singular.toLowerCase()}…`}
+            type="search"
+            value={filter}
+          />
+        </div>
       </div>
 
-      {groups.length === 0 ? (
+      {visibleGroups.length === 0 ? (
         <div className="rounded-xl border border-line bg-surface p-6 text-sm font-medium text-ink-muted">
-          Nenhuma carteira neste recorte.
+          {filter.trim() ? "Nada encontrado na busca." : "Nenhuma carteira neste recorte."}
         </div>
       ) : (
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {groups.map((group) => {
+          {visibleGroups.map((group) => {
             const clickable = isLeaf
               ? Boolean(group.entityId)
               : true;
@@ -304,10 +356,7 @@ export function ScopedPortfolioPanel({
                 return;
               }
 
-              setPath((current) => [
-                ...current,
-                { dim: currentDim, key: group.key, label: group.label },
-              ]);
+              goToPath([...path, { dim: currentDim, key: group.key, label: group.label }]);
             };
 
             return (
