@@ -30,7 +30,6 @@ import {
   displayHeaderName,
   displayText,
   documentLabel,
-  isApoloTabHiddenForEntity,
   isApoloTabUnavailableForEntity,
   isCompanyEntity,
   profileLabelList,
@@ -540,9 +539,7 @@ function TabStrip({
       className="shrink-0 overflow-x-auto border-b border-line px-3 py-2"
     >
       <div className="flex gap-1">
-        {apoloTabs
-          .filter((tab) => !isApoloTabHiddenForEntity(tab.id, entity))
-          .map((tab) => {
+        {apoloTabs.map((tab) => {
           const Icon = tab.icon;
           const active = activeTab === tab.id;
           const tabDisabled = disabled || isApoloTabUnavailableForEntity(tab.id, entity);

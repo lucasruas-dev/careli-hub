@@ -15,11 +15,7 @@ import { ApoloSidebar } from "./blocks/shell/apolo-sidebar";
 import { CrmCommandCenter } from "./blocks/crm/command-center";
 import { EntityColumn } from "./blocks/crm/entity-list";
 import { RecordWorkspace } from "./blocks/crm/record-workspace";
-import {
-  isApoloTabHiddenForEntity,
-  isApoloTabUnavailableForEntity,
-  matchesApoloFilters,
-} from "./data/apolo-derive";
+import { isApoloTabUnavailableForEntity, matchesApoloFilters } from "./data/apolo-derive";
 import { getApoloAccessToken } from "./data/apolo-operations";
 import type { ApoloProfileFilter, ApoloTab } from "./types/apolo-local";
 import type { ApoloDashboardData } from "@/lib/apolo/types";
@@ -267,11 +263,7 @@ export function ApoloPage() {
       return;
     }
 
-    if (
-      selectedEntity &&
-      (isApoloTabUnavailableForEntity(activeTab, selectedEntity) ||
-        isApoloTabHiddenForEntity(activeTab, selectedEntity))
-    ) {
+    if (selectedEntity && isApoloTabUnavailableForEntity(activeTab, selectedEntity)) {
       setActiveTab("resumo");
     }
   }, [activeTab, selectedEntity, setActiveTab]);

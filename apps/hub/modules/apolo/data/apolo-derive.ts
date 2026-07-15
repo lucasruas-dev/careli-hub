@@ -72,24 +72,6 @@ export function hasCommercialRole(entity: ApoloEntity | null): boolean {
   );
 }
 
-// Abas ESCONDIDAS por papel (não renderizadas, diferente de desabilitadas). Imobiliária e
-// corretor não mostram Relacionamentos/Timeline — essas trazem a vida do cliente; pra elas o
-// foco é Resumo/Cadastro/Carteira/Financeiro (extrato). Ver [[project-apolo-acessos-externos]].
-export function isApoloTabHiddenForEntity(tab: ApoloTab, entity: ApoloEntity | null) {
-  if (!entity) {
-    return false;
-  }
-
-  const isImobOrCorretor =
-    entity.profiles.includes("imobiliaria") || entity.profiles.includes("corretor");
-
-  if (!isImobOrCorretor) {
-    return false;
-  }
-
-  return tab === "relacionamentos" || tab === "timeline";
-}
-
 export type ApoloCarteiraRoleKind =
   | "comprador"
   | "corretor"
