@@ -1450,13 +1450,14 @@ async function fetchC2xCadastroByEntity(
       if (!entityId) {
         continue;
       }
-      // Compradores primeiro; teto pra não estourar a lista numa imob grande.
+      // Compradores primeiro. Teto de segurança alto (a maior imob real tem ~218);
+      // o painel mostra a contagem real no cabeçalho e lista abaixo.
       clients.sort(
         (a, b) =>
           Number(b.isBuyer) - Number(a.isBuyer) ||
           a.name.localeCompare(b.name, "pt-BR"),
       );
-      for (const client of clients.slice(0, 200)) {
+      for (const client of clients.slice(0, 500)) {
         pushRelationship(entityId, {
           label: client.name,
           relation: client.isBuyer ? "Comprador vinculado" : "Prospect vinculado",
