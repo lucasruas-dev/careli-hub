@@ -208,11 +208,7 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">{brl(row.netValue)}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-center">
                     {row.asaasId ? (
-                      <AsaasCell
-                        id={row.asaasId}
-                        receiptUrl={row.asaasInvoiceUrl}
-                        url={row.asaasUrl}
-                      />
+                      <AsaasCell id={row.asaasId} url={row.asaasUrl} />
                     ) : (
                       <span className="text-ink-muted">-</span>
                     )}
@@ -249,45 +245,24 @@ function Field({ children, label }: { children: React.ReactNode; label: string }
   );
 }
 
-// Célula do comprovante: ícone pro comprovante (PDF do Asaas) e pra abrir a cobrança. O código
-// pay_… fica no tooltip (não polui a tabela). Ver [[project-apolo-empreendimento-tela]].
-function AsaasCell({
-  id,
-  receiptUrl,
-  url,
-}: {
-  id: string;
-  receiptUrl: string | null;
-  url: string | null;
-}) {
+// Célula do comprovante: um ícone que abre a cobrança/comprovante no Asaas. O código pay_…
+// fica no tooltip (não polui a tabela). Ver [[project-apolo-empreendimento-tela]].
+function AsaasCell({ id, url }: { id: string; url: string | null }) {
+  if (!url) {
+    return <span className="text-ink-muted">-</span>;
+  }
+
   return (
-    <div className="flex items-center justify-center gap-1.5">
-      {receiptUrl ? (
-        <Tooltip content="Comprovante (PDF)">
-          <a
-            aria-label="Comprovante de pagamento"
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7a5e2c] transition-colors hover:bg-[#A07C3B]/10 dark:text-[#d9b877]"
-            href={receiptUrl}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <ReceiptText className="size-4" aria-hidden="true" />
-          </a>
-        </Tooltip>
-      ) : null}
-      {url ? (
-        <Tooltip content={`Abrir cobrança no Asaas (${id})`}>
-          <a
-            aria-label="Abrir cobrança no Asaas"
-            className="inline-flex size-8 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:border-[#A07C3B]/40 hover:text-[#7a5e2c] dark:hover:text-[#d9b877]"
-            href={url}
-            rel="noreferrer"
-            target="_blank"
-          >
-            <ExternalLink className="size-4" aria-hidden="true" />
-          </a>
-        </Tooltip>
-      ) : null}
-    </div>
+    <Tooltip content={`Comprovante no Asaas (${id})`}>
+      <a
+        aria-label="Abrir comprovante no Asaas"
+        className="inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7a5e2c] transition-colors hover:bg-[#A07C3B]/10 dark:text-[#d9b877]"
+        href={url}
+        rel="noreferrer"
+        target="_blank"
+      >
+        <ExternalLink className="size-4" aria-hidden="true" />
+      </a>
+    </Tooltip>
   );
 }
