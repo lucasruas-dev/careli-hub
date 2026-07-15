@@ -78,9 +78,11 @@ export function ApoloPage() {
   // A ABA da ficha também vive aqui: sem isso, voltar do CRM remontava a ficha e caía no
   // Resumo, em vez de devolver o usuário na aba onde ele estava (ex.: Unidades).
   const [enterpriseTab, setEnterpriseTab] = useState<ApoloEnterpriseTab>("resumo");
-  const [crmReturnTo, setCrmReturnTo] = useState<string | null>(null);
-  // Pilha de "voltar" ao navegar entre fichas (ficha A -> relacionamento -> ficha B).
-  const [entityStack, setEntityStack] = useState<Array<{ id: string; name: string }>>([]);
+  // Pilha de navegação pro "voltar": guarda de onde viemos (ficha do CRM OU
+  // empreendimento), pra o botão de voltar funcionar dos dois lados.
+  const [navStack, setNavStack] = useState<
+    Array<{ id: string; kind: "entity" | "enterprise"; name: string }>
+  >([]);
 
   // Carrega uma vez ao abrir a tela. O guard é um REF (não o estado de loading): se
   // `enterprisesLoading` estivesse nas deps, setá-lo re-rodaria o efeito, o cleanup marcaria
@@ -264,48 +266,93 @@ export function ApoloPage() {
   // Clicar num player do empreendimento leva ao CADASTRO dele no CRM 360 (regra do Lucas).
   // A busca por nome só CARREGA os candidatos; quem escolhe a ficha certa é o `entityId`
   // (derivado do id do C2X) — por isso ele fica pendente até o resultado chegar.
-  function openEntityInCrm(name: string, entityId: string) {
-    const normalized = name.trim();
-
-    if (!normalized) {
-      return;
-    }
-
-    // Navegando de uma ficha pra outra DENTRO do CRM (ex.: clicou num relacionamento):
-    // empilha a ficha atual pra oferecer o "voltar".
-    if (activeScreen === "crm" && selectedEntity && selectedEntity.id !== entityId) {
-      setEntityStack((stack) => [
-        ...stack,
-        { id: selectedEntity.id, name: selectedEntity.displayName },
-      ]);
-    }
-
+  // Navega pra uma ficha do CRM (sem empilhar). A busca por nome só CARREGA os
+  // candidatos; quem escolhe a ficha certa é o `entityId` (fica pendente até o resultado).
+  function applyOpenEntity(name: string, entityId: string) {
     pendingEntityIdRef.current = entityId;
-    // Guarda de onde viemos, pra oferecer o "voltar" no CRM.
-    setCrmReturnTo(enterpriseDetail?.name ?? null);
     setActiveScreen("crm");
     setActiveTab("cadastro");
     setProfileFilter("all");
-    setQuery(normalized);
+    setQuery(name);
   }
 
-  // Volta do CRM pro empreendimento onde o usuário estava (a ficha continua em memória).
-  function backToEnterprise() {
-    setCrmReturnTo(null);
+  // Navega pra a tela de cadastro de um empreendimento (sem empilhar).
+  function applyOpenEnterprise(row: ApoloEnterpriseRow) {
+    setEnterpriseDetail(row);
     setActiveScreen("empreendimentos");
+    setEnterpriseTab("cadastro");
   }
 
-  // Volta pra ficha anterior (desempilha), quando navegou entre fichas pelo relacionamento.
-  function backToEntity() {
-    const previous = entityStack[entityStack.length - 1];
+  function findEnterpriseByName(name: string): ApoloEnterpriseRow | null {
+    const target = name.trim().toLowerCase();
+    if (!target) {
+      return null;
+    }
+    for (const row of enterprises?.rows ?? []) {
+      if (row.name.trim().toLowerCase() === target) {
+        return row;
+      }
+      for (const stage of row.stages) {
+        if (stage.name.trim().toLowerCase() === target) {
+          return stage;
+        }
+      }
+    }
+    return null;
+  }
+
+  // Empilha de onde estamos (ficha do CRM ou empreendimento) antes de navegar.
+  function pushCurrentToNav() {
+    if (activeScreen === "crm" && selectedEntity) {
+      setNavStack((stack) => [
+        ...stack,
+        { id: selectedEntity.id, kind: "entity", name: selectedEntity.displayName },
+      ]);
+    } else if (activeScreen === "empreendimentos" && enterpriseDetail) {
+      setNavStack((stack) => [
+        ...stack,
+        { id: enterpriseDetail.id, kind: "enterprise", name: enterpriseDetail.name },
+      ]);
+    }
+  }
+
+  function openEntityInCrm(name: string, entityId: string) {
+    const normalized = name.trim();
+    if (!normalized) {
+      return;
+    }
+    if (!(activeScreen === "crm" && selectedEntity?.id === entityId)) {
+      pushCurrentToNav();
+    }
+    applyOpenEntity(normalized, entityId);
+  }
+
+  // Abre a tela de cadastro do empreendimento pelo nome (relacionamento de trabalho).
+  function openEnterpriseByName(name: string) {
+    const row = findEnterpriseByName(name);
+    if (!row) {
+      return;
+    }
+    pushCurrentToNav();
+    applyOpenEnterprise(row);
+  }
+
+  // Volta pra de onde viemos (desempilha), seja ficha do CRM ou empreendimento.
+  function goBack() {
+    const previous = navStack[navStack.length - 1];
     if (!previous) {
       return;
     }
-    setEntityStack((stack) => stack.slice(0, -1));
-    pendingEntityIdRef.current = previous.id;
-    setActiveTab("relacionamentos");
-    setProfileFilter("all");
-    setQuery(previous.name);
+    setNavStack((stack) => stack.slice(0, -1));
+    if (previous.kind === "entity") {
+      applyOpenEntity(previous.name, previous.id);
+      setActiveTab("relacionamentos");
+    } else {
+      const row = findEnterpriseByName(previous.name);
+      if (row) {
+        applyOpenEnterprise(row);
+      }
+    }
   }
 
   function openCommercialRelationship(label: string) {
@@ -330,10 +377,26 @@ export function ApoloPage() {
       <ApoloSidebar
         active={activeScreen}
         collapsed={sidebarCollapsed}
-        onSelect={setActiveScreen}
+        onSelect={(screen) => {
+          setNavStack([]);
+          setActiveScreen(screen);
+        }}
         onToggle={() => setSidebarCollapsed((value) => !value)}
       />
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4">
+        {/* Voltar pra de onde viemos (ficha do CRM ou empreendimento), sempre no topo. */}
+        {navStack.length > 0 ? (
+          <button
+            className="inline-flex w-fit max-w-full shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/8 hover:text-[#7A5E2C] dark:hover:text-[#d9b877]"
+            onClick={goBack}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" className="size-3.5 shrink-0" />
+            <span className="truncate">
+              Voltar para {toTitleCase(navStack[navStack.length - 1]?.name ?? "")}
+            </span>
+          </button>
+        ) : null}
         {/* O "+ novo cadastro" e os KPIs ficam no cabeçalho do CRM (CrmCommandCenter). */}
         {activeScreen === "dashboard" ? (
           <DashboardScreen dashboard={dashboard} entities={entities} loading={loading} />
@@ -352,27 +415,6 @@ export function ApoloPage() {
             onTabChange={setEnterpriseTab}
             tab={enterpriseTab}
           />
-        ) : null}
-        {activeScreen === "crm" && entityStack.length > 0 ? (
-          <button
-            className="inline-flex w-fit max-w-full shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/8 hover:text-[#7A5E2C] dark:hover:text-[#d9b877]"
-            onClick={backToEntity}
-            type="button"
-          >
-            <ArrowLeft aria-hidden="true" className="size-3.5 shrink-0" />
-            <span className="truncate">
-              Voltar para {toTitleCase(entityStack[entityStack.length - 1]?.name ?? "")}
-            </span>
-          </button>
-        ) : activeScreen === "crm" && crmReturnTo ? (
-          <button
-            className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/8 hover:text-[#7A5E2C] dark:hover:text-[#d9b877]"
-            onClick={backToEnterprise}
-            type="button"
-          >
-            <ArrowLeft aria-hidden="true" className="size-3.5" />
-            Voltar para {toTitleCase(crmReturnTo)}
-          </button>
         ) : null}
         {activeScreen === "crm" ? (
           <div className="grid min-h-0 flex-1 grid-rows-[auto_minmax(0,1fr)] gap-3 overflow-hidden">
@@ -403,6 +445,7 @@ export function ApoloPage() {
                 loading={loading}
                 onChangeTab={setActiveTab}
                 onOpenCommercialRelationship={openCommercialRelationship}
+                onOpenEnterprise={openEnterpriseByName}
                 onOpenEntity={openEntityInCrm}
                 onRelationshipCreated={() => setReloadKey((key) => key + 1)}
               />

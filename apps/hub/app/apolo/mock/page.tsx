@@ -21,6 +21,7 @@ export default function ApoloMockPage() {
         loading={false}
         onChangeTab={setTab}
         onOpenCommercialRelationship={() => {}}
+        onOpenEnterprise={() => {}}
         onOpenEntity={() => {}}
         onRelationshipCreated={() => {}}
       />

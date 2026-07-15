@@ -69,10 +69,12 @@ type Group = {
 export function RelationshipsPanel({
   entity,
   onCreated,
+  onOpenEnterprise,
   onOpenEntity,
 }: {
   entity: ApoloEntity;
   onCreated: () => void;
+  onOpenEnterprise: (name: string) => void;
   onOpenEntity: (label: string, entityId: string) => void;
 }) {
   const [modalOpen, setModalOpen] = useState(false);
@@ -183,6 +185,7 @@ export function RelationshipsPanel({
         <RelationshipListModal
           group={active}
           onClose={() => setOpenGroup(null)}
+          onOpenEnterprise={onOpenEnterprise}
           onOpenEntity={onOpenEntity}
         />
       ) : null}
@@ -248,10 +251,12 @@ function SummaryCard({ group, onClick }: { group: Group; onClick: () => void }) 
 function RelationshipListModal({
   group,
   onClose,
+  onOpenEnterprise,
   onOpenEntity,
 }: {
   group: Group;
   onClose: () => void;
+  onOpenEnterprise: (name: string) => void;
   onOpenEntity: (label: string, entityId: string) => void;
 }) {
   const [search, setSearch] = useState("");
@@ -350,6 +355,10 @@ function RelationshipListModal({
             items.map((rel) => (
               <RelRow
                 key={`${rel.label}-${rel.relation}`}
+                onOpenEnterprise={(name) => {
+                  onOpenEnterprise(name);
+                  onClose();
+                }}
                 onOpenEntity={(label, entityId) => {
                   onOpenEntity(label, entityId);
                   onClose();
@@ -406,16 +415,28 @@ function relationshipBadge(
 
 // Card padrão: Nome · Telefone · E-mail · Nível. Clicável quando é uma entidade Apolo.
 function RelRow({
+  onOpenEnterprise,
   onOpenEntity,
   rel,
   tone,
 }: {
+  onOpenEnterprise: (name: string) => void;
   onOpenEntity: (label: string, entityId: string) => void;
   rel: ApoloRelationship;
   tone: "clay" | "gold";
 }) {
   const isGold = tone === "gold";
-  const clickable = Boolean(rel.entityId);
+  const isEnterprise = isEmpreendimento(rel);
+  // Todo relacionamento de trabalho leva a um cadastro: entidade -> ficha; empreendimento
+  // -> tela do empreendimento. Contato (sem entidade) não é clicável.
+  const clickable = Boolean(rel.entityId) || isEnterprise;
+  const handleClick = () => {
+    if (rel.entityId) {
+      onOpenEntity(rel.label, rel.entityId);
+    } else if (isEnterprise) {
+      onOpenEnterprise(rel.label);
+    }
+  };
   const badge = relationshipBadge(rel, isGold);
 
   const content = (
@@ -452,11 +473,11 @@ function RelRow({
     </>
   );
 
-  if (clickable && rel.entityId) {
+  if (clickable) {
     return (
       <button
         className="flex w-full items-center justify-between gap-3 rounded-lg border border-line bg-subtle px-3 py-2.5 text-left transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
-        onClick={() => onOpenEntity(rel.label, rel.entityId as string)}
+        onClick={handleClick}
         type="button"
       >
         {content}

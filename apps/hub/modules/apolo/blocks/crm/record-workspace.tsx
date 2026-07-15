@@ -60,6 +60,7 @@ function RecordWorkspace({
   loading,
   onChangeTab,
   onOpenCommercialRelationship,
+  onOpenEnterprise,
   onOpenEntity,
   onRelationshipCreated,
 }: {
@@ -68,6 +69,7 @@ function RecordWorkspace({
   loading: boolean;
   onChangeTab: (tab: ApoloTab) => void;
   onOpenCommercialRelationship: (label: string) => void;
+  onOpenEnterprise: (name: string) => void;
   onOpenEntity: (label: string, entityId: string) => void;
   onRelationshipCreated: () => void;
 }) {
@@ -85,6 +87,7 @@ function RecordWorkspace({
             activeTab={activeTab}
             entity={entity}
             onOpenCommercialRelationship={onOpenCommercialRelationship}
+            onOpenEnterprise={onOpenEnterprise}
             onOpenEntity={onOpenEntity}
             onRelationshipCreated={onRelationshipCreated}
           />
@@ -554,12 +557,14 @@ function TabPanel({
   activeTab,
   entity,
   onOpenCommercialRelationship,
+  onOpenEnterprise,
   onOpenEntity,
   onRelationshipCreated,
 }: {
   activeTab: ApoloTab;
   entity: ApoloEntity;
   onOpenCommercialRelationship: (label: string) => void;
+  onOpenEnterprise: (name: string) => void;
   onOpenEntity: (label: string, entityId: string) => void;
   onRelationshipCreated: () => void;
 }) {
@@ -572,6 +577,7 @@ function TabPanel({
       <RelationshipsPanel
         entity={entity}
         onCreated={onRelationshipCreated}
+        onOpenEnterprise={onOpenEnterprise}
         onOpenEntity={onOpenEntity}
       />
     );
