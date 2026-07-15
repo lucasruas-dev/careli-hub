@@ -944,8 +944,8 @@ async function loadApoloTablesDashboard(
     await fetchC2xDocumentLabelsByEntity(sourceLinks);
   const c2xPortfolioByEntity =
     await fetchC2xPortfolioByEntity(sourceLinks);
-  const { cadastro: c2xCadastroByEntity, contatos: c2xContatosByEntity } =
-    await fetchC2xCadastroByEntity(sourceLinks);
+  const { cadastro: c2xCadastroByEntity, relationships: c2xRelationshipsByEntity } =
+    await fetchC2xCadastroByEntity(sourceLinks, carteira.buyerClientIds);
   const identifierRows = await fetchRows<{
     entity_id: string;
     identifier_type: string;
@@ -982,7 +982,7 @@ async function loadApoloTablesDashboard(
       sourceLinks: groupRowsBy(sourceLinks, "entity_id").get(row.id) ?? [],
       timelineEvents: groupRowsBy(timelineEvents, "entity_id").get(row.id) ?? [],
     }, documentLabelsByEntity.get(row.id), c2xPortfolioByEntity.get(row.id),
-      c2xCadastroByEntity.get(row.id), c2xContatosByEntity.get(row.id)),
+      c2xCadastroByEntity.get(row.id), c2xRelationshipsByEntity.get(row.id)),
   );
 
   const collapsedEntities = collapseDuplicateApoloEntities(entities, docHashByEntityId);
@@ -1194,20 +1194,21 @@ type C2xCadastroRow = RowDataPacket & {
 // Ver [[project-apolo-empreendimento-tela]].
 async function fetchC2xCadastroByEntity(
   sourceLinks: ApoloSourceLinkRow[],
+  buyerClientIds: Set<number>,
 ): Promise<{
   cadastro: Map<string, ApoloC2xCadastro>;
-  contatos: Map<string, ApoloRelationship[]>;
+  relationships: Map<string, ApoloRelationship[]>;
 }> {
   const result = new Map<string, ApoloC2xCadastro>();
-  const contatos = new Map<string, ApoloRelationship[]>();
-  const pushContato = (entityId: string, rel: ApoloRelationship) => {
-    const list = contatos.get(entityId) ?? [];
+  const relationships = new Map<string, ApoloRelationship[]>();
+  const pushRelationship = (entityId: string, rel: ApoloRelationship) => {
+    const list = relationships.get(entityId) ?? [];
     if (
       rel.label &&
       !list.some((item) => item.label === rel.label && item.relation === rel.relation)
     ) {
       list.push(rel);
-      contatos.set(entityId, list);
+      relationships.set(entityId, list);
     }
   };
   const userIdToEntity = new Map<string, string>();
@@ -1224,12 +1225,12 @@ async function fetchC2xCadastroByEntity(
 
   const userIds = [...userIdToEntity.keys()];
   if (!userIds.length) {
-    return { cadastro: result, contatos };
+    return { cadastro: result, relationships };
   }
 
   const poolResult = getHadesDbPool();
   if (!poolResult.ok) {
-    return { cadastro: result, contatos };
+    return { cadastro: result, relationships };
   }
 
   try {
@@ -1343,7 +1344,7 @@ async function fetchC2xCadastroByEntity(
       if (cadastro) {
         cadastro.spouse = spouse;
       }
-      pushContato(entityId, {
+      pushRelationship(entityId, {
         label: spouse.name ?? "Conjuge",
         relation: "Conjuge",
         status: "verified",
@@ -1362,7 +1363,7 @@ async function fetchC2xCadastroByEntity(
       const entityId = userIdToEntity.get(String(row.ownertable_id));
       const label = text(row.name);
       if (entityId && label) {
-        pushContato(entityId, {
+        pushRelationship(entityId, {
           label,
           relation: "Representante legal",
           status: "verified",
@@ -1382,9 +1383,83 @@ async function fetchC2xCadastroByEntity(
       const entityId = userIdToEntity.get(String(row.user_id));
       const label = text(row.name);
       if (entityId && label) {
-        pushContato(entityId, {
+        pushRelationship(entityId, {
           label,
           relation: "Assinante",
+          status: "verified",
+        });
+      }
+    }
+
+    // --- Grafo da imobiliária (Trabalho) ---
+    // Quando a entidade visível é uma imobiliária, ela vira o `vinculed_by_id` de
+    // outros users. Refletimos: (a) empreendimentos onde ela vendeu (faturado) e
+    // (b) os clientes vinculados a ela (comprador se na carteira, senão prospect).
+    const excludedPlaceholders = EXCLUDED_ENTERPRISE_CODES.map(() => "?").join(", ");
+
+    const [enterpriseRows] = await poolResult.pool.query<C2xImobEnterpriseRow[]>(
+      `select distinct u.vinculed_by_id as imob_id, e.name as ent_name
+         from users u
+         join acquisition_requests ar on ar.client_id = u.id
+         join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+         join enterprises e on e.id = eu.enterprise_id
+        where u.vinculed_by_id in (${placeholders})
+          and ar.acquisition_request_stage_id in (4, 6)
+          and e.code not in (${excludedPlaceholders})`,
+      [...userIds, ...EXCLUDED_ENTERPRISE_CODES],
+    );
+    for (const row of enterpriseRows) {
+      const entityId = userIdToEntity.get(String(row.imob_id));
+      const label = text(row.ent_name);
+      if (entityId && label) {
+        pushRelationship(entityId, {
+          label,
+          relation: "Empreendimento (vendeu)",
+          status: "verified",
+        });
+      }
+    }
+
+    const [clientRows] = await poolResult.pool.query<C2xImobClientRow[]>(
+      `select u.vinculed_by_id as imob_id, u.id as client_id,
+              coalesce(nullif(trim(u.name), ''), nullif(trim(u.fantasy_name), ''),
+                       nullif(trim(u.social_name), '')) as client_name
+         from users u
+        where u.vinculed_by_id in (${placeholders})`,
+      userIds,
+    );
+    const clientsByImob = new Map<
+      string,
+      Array<{ isBuyer: boolean; name: string }>
+    >();
+    for (const row of clientRows) {
+      const imobId = String(row.imob_id);
+      if (!userIdToEntity.has(imobId)) {
+        continue;
+      }
+      const name = text(row.client_name);
+      if (!name) {
+        continue;
+      }
+      const list = clientsByImob.get(imobId) ?? [];
+      list.push({ isBuyer: buyerClientIds.has(toNumber(row.client_id)), name });
+      clientsByImob.set(imobId, list);
+    }
+    for (const [imobId, clients] of clientsByImob) {
+      const entityId = userIdToEntity.get(imobId);
+      if (!entityId) {
+        continue;
+      }
+      // Compradores primeiro; teto pra não estourar a lista numa imob grande.
+      clients.sort(
+        (a, b) =>
+          Number(b.isBuyer) - Number(a.isBuyer) ||
+          a.name.localeCompare(b.name, "pt-BR"),
+      );
+      for (const client of clients.slice(0, 200)) {
+        pushRelationship(entityId, {
+          label: client.name,
+          relation: client.isBuyer ? "Comprador vinculado" : "Prospect vinculado",
           status: "verified",
         });
       }
@@ -1393,7 +1468,7 @@ async function fetchC2xCadastroByEntity(
     console.error("[apolo] fetchC2xCadastroByEntity falhou", error);
   }
 
-  return { cadastro: result, contatos };
+  return { cadastro: result, relationships };
 }
 
 function mapC2xCadastroRow(row: C2xCadastroRow): ApoloC2xCadastro {
@@ -1491,6 +1566,17 @@ type C2xRepresentativeRow = RowDataPacket & {
 type C2xSignerRow = RowDataPacket & {
   name: string | null;
   user_id: number | string;
+};
+
+type C2xImobEnterpriseRow = RowDataPacket & {
+  ent_name: string | null;
+  imob_id: number | string;
+};
+
+type C2xImobClientRow = RowDataPacket & {
+  client_id: number | string;
+  client_name: string | null;
+  imob_id: number | string;
 };
 
 async function fetchC2xDocumentLabelsByEntity(
@@ -3000,7 +3086,7 @@ function mapApoloEntityRow(
   documentDisplayValue?: string,
   c2xPortfolio?: C2xPortfolioHydration,
   c2xCadastro?: ApoloC2xCadastro,
-  c2xContatos?: ApoloRelationship[],
+  c2xRelationships?: ApoloRelationship[],
 ): ApoloEntity {
   const profiles = related.profiles
     .map((profile) => normalizeApoloProfile(profile.profile))
@@ -3031,9 +3117,13 @@ function mapApoloEntityRow(
     locationLabel: locationLabel(row.primary_city, row.primary_state),
     nextAction: row.next_action ?? "Revisar dados cadastrais",
     profiles: uniqueProfiles(profiles.length ? profiles : profilesFromEntityKind(row.entity_kind)),
+    // Stubs genéricos do sync ("Usuarios vinculados") saem: o grafo do C2X (clientes
+    // vinculados, empreendimentos, cônjuge, representante, assinante) resolve de verdade.
     relationships: [
-      ...related.relationships.map(mapApoloRelationshipRow),
-      ...(c2xContatos ?? []),
+      ...related.relationships
+        .map(mapApoloRelationshipRow)
+        .filter((rel) => rel.label !== "Usuarios vinculados"),
+      ...(c2xRelationships ?? []),
     ],
     serviceSignals: related.serviceSignals.map(mapApoloServiceRow),
     status: normalizeEntityStatus(row.status),
