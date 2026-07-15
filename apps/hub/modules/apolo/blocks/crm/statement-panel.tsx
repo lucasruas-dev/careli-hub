@@ -1,6 +1,6 @@
 "use client";
 
-import { ExternalLink, Loader2, ReceiptText, TriangleAlert } from "lucide-react";
+import { Check, Copy, ExternalLink, Loader2, ReceiptText, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Tooltip } from "@repo/uix";
@@ -185,7 +185,7 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
                 <th className="px-4 py-3 font-semibold">Papel</th>
                 <th className="px-4 py-3 text-right font-semibold">Recebido</th>
                 <th className="px-4 py-3 text-right font-semibold">Líquido</th>
-                <th className="px-4 py-3 text-center font-semibold">Asaas</th>
+                <th className="px-4 py-3 font-semibold">Cobrança (Asaas)</th>
               </tr>
             </thead>
             <tbody>
@@ -206,19 +206,9 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
                   <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.role}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">{brl(row.grossValue)}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">{brl(row.netValue)}</td>
-                  <td className="px-4 py-3 text-center">
-                    {row.asaasUrl ? (
-                      <Tooltip content={row.asaasId ? `Cobrança ${row.asaasId}` : "Abrir no Asaas"}>
-                        <a
-                          aria-label="Abrir cobrança no Asaas"
-                          className="inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7a5e2c] transition-colors hover:bg-[#A07C3B]/10 dark:text-[#d9b877]"
-                          href={row.asaasUrl}
-                          rel="noreferrer"
-                          target="_blank"
-                        >
-                          <ExternalLink className="size-4" aria-hidden="true" />
-                        </a>
-                      </Tooltip>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    {row.asaasId ? (
+                      <AsaasCell id={row.asaasId} url={row.asaasUrl} />
                     ) : (
                       <span className="text-ink-muted">-</span>
                     )}
@@ -252,5 +242,51 @@ function Field({ children, label }: { children: React.ReactNode; label: string }
       </span>
       {children}
     </label>
+  );
+}
+
+// Célula do rastreio no Asaas: o ID da cobrança (pay_…) visível pra copiar e buscar no painel
+// do Asaas, + botão de copiar e link pra abrir a cobrança direto.
+function AsaasCell({ id, url }: { id: string; url: string | null }) {
+  const [copied, setCopied] = useState(false);
+
+  const copy = () => {
+    navigator.clipboard?.writeText(id).then(() => {
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    });
+  };
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <code className="rounded bg-subtle px-2 py-1 text-xs text-ink-soft">{id}</code>
+      <Tooltip content={copied ? "Copiado!" : "Copiar código"}>
+        <button
+          aria-label="Copiar código do Asaas"
+          className="inline-flex size-7 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:border-[#A07C3B]/40 hover:text-[#7a5e2c] dark:hover:text-[#d9b877]"
+          onClick={copy}
+          type="button"
+        >
+          {copied ? (
+            <Check className="size-3.5 text-emerald-600 dark:text-emerald-400" aria-hidden="true" />
+          ) : (
+            <Copy className="size-3.5" aria-hidden="true" />
+          )}
+        </button>
+      </Tooltip>
+      {url ? (
+        <Tooltip content="Abrir cobrança no Asaas">
+          <a
+            aria-label="Abrir cobrança no Asaas"
+            className="inline-flex size-7 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7a5e2c] transition-colors hover:bg-[#A07C3B]/10 dark:text-[#d9b877]"
+            href={url}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <ExternalLink className="size-3.5" aria-hidden="true" />
+          </a>
+        </Tooltip>
+      ) : null}
+    </div>
   );
 }
