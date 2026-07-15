@@ -2553,7 +2553,6 @@ async function loadC2xCarteiraData(): Promise<{
       unitIds.add(toNumber(row.unit_id));
     }
 
-    console.log("[apolo][carteira] query ok size=%d rows=%d", buyerClientIds.size, rows.length);
     const data = { buyerClientIds, units: unitIds.size };
     carteiraCache = { data, expiresAt: Date.now() + CARTEIRA_CACHE_TTL_MS };
 

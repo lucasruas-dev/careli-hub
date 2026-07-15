@@ -36,6 +36,42 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-15-apolo-empreendimento-crm360",
+    deployedAt: "2026-07-15T18:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Nova tela por empreendimento com abas: Resumo, Cadastro, Unidades, Vendas, Carteira e Relacionamentos.",
+              "Vendas: funil por estagio em kanban com a movimentacao ao lado; o card mostra ha quanto tempo a unidade esta no estagio e, ao clicar, abre a proposta (plano comercial, parcelamento e historico).",
+              "Carteira: visao por unidade com filtro e ordenacao, coluna Faturado, selo de cobranca (promessa/acordo/negociacao) e o contrato que abre na hora pela D4Sign.",
+            ],
+            screen: "Empreendimento",
+          },
+          {
+            items: [
+              "A ficha do cliente puxa os dados cadastrais direto do C2X, com os campos certos conforme o perfil (pessoa fisica x juridica).",
+              "O cabecalho passa a mostrar Comprador ou Prospect e os papeis reais (imobiliaria, corretor...) no lugar do generico 'Usuario'.",
+              "Relacionamentos: conjuge, representante legal e assinante aparecem como contato; a ficha da imobiliaria mostra os clientes vinculados a ela (compradores e prospects) e os empreendimentos onde ela vendeu.",
+            ],
+            screen: "CRM 360",
+          },
+        ],
+      },
+    ],
+    rollback: "commit e7f86496 (v1.36.0)",
+    technical: {
+      done: "Deploy da branch feat/apolo-empreendimentos (merge da origin/main v1.36.0: dark mode + grupos da Iris; conflitos resolvidos: Chronos ficou com a versao de prod, Apolo com a reescrita funcional dark-aware). Tela de Empreendimento (Carteira/Vendas/Cobranca/Contrato) + CRM 360 com enricher read-time do C2X (fetchC2xCadastroByEntity em lib/apolo/server.ts: users+lookups+addresses+spouses+legal_representatives+signers+grafo da imobiliaria por vinculed_by_id). Carteira do C2X memoizada (loadC2xCarteiraData, TTL 60s) pra filtro/KPI/isBuyer saírem da mesma base. Tudo READ-ONLY sobre o C2X (fonte ate o go-live do Apolo).",
+      motivation:
+        "Colocar no ar a frente do Apolo (empreendimento + CRM 360 enriquecido) acumulada na branch. Filtro Comprador e validacao visual do dark mode ficam como pendencia pos-deploy (decisao do Lucas: subir o aprovado e validar depois).",
+    },
+    title: "Apolo: tela de Empreendimento + CRM 360 enriquecido pelo C2X",
+    type: "novidade",
+    version: "1.37.0",
+  },
+  {
     buildTag: "2026-07-14-iris-grupo-anexo-audio-reacao",
     deployedAt: "2026-07-14T16:30:00-03:00",
     modules: [
