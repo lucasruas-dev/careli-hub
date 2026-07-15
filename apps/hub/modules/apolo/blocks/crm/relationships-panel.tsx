@@ -3,11 +3,10 @@ import type { ApoloEntity, ApoloRelationship } from "@/lib/apolo/types";
 import { PanelTitle } from "../shared/apolo-ui";
 
 // Aba Relacionamentos (F1: lista). A rede visual (grafo navegável) entra no F3.
-// Dois tipos de vínculo: trabalho e contato.
+// Dois tipos de vínculo: trabalho (imobiliária/responsável comercial, vínculos) e
+// contato (pessoas: cônjuge, representante legal, assinante, familiar, sócio, indicação).
 function isContato(rel: ApoloRelationship): boolean {
-  return /respons|familiar|contato|c[ôo]njuge|indica|s[óo]ci|represent|assina/i.test(
-    rel.relation,
-  );
+  return /familiar|c[ôo]njuge|indica|s[óo]ci|represent|assina/i.test(rel.relation);
 }
 
 export function RelationshipsPanel({ entity }: { entity: ApoloEntity }) {

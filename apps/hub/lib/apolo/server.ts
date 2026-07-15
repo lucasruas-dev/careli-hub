@@ -2399,10 +2399,26 @@ async function countApoloBuyerCommercialLinks(adminClient: ApoloSupabaseClient) 
 // se distratou, sai) COM pagamento gerado. Comprador = cliente ÚNICO dessas unidades.
 // Assim comprador <= unidades (a conta fecha). Estágios C2X: 4 Faturado, 6 Finalizado.
 // Devolve o CONJUNTO de client_ids em carteira pra KPI e cards usarem a mesma base.
+// A query da carteira é pesada (~3s: subselect por unidade sobre enterprise_unities).
+// O dashboard a consome 2x por request (filtro comprador/prospect + KPI/isBuyer), e
+// antes cada consumo disparava a query de novo — deixava o request "comprador" lento a
+// ponto de voltar vazio enquanto a KPI (outra chamada) mostrava 618. Memo curto: uma
+// carga por janela, mesma base pra todo mundo (some a divergência). TTL baixo porque a
+// carteira muda devagar (faturamentos).
+const CARTEIRA_CACHE_TTL_MS = 60_000;
+let carteiraCache: {
+  data: { buyerClientIds: Set<number>; units: number };
+  expiresAt: number;
+} | null = null;
+
 async function loadC2xCarteiraData(): Promise<{
   buyerClientIds: Set<number>;
   units: number;
 }> {
+  if (carteiraCache && carteiraCache.expiresAt > Date.now()) {
+    return carteiraCache.data;
+  }
+
   const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
@@ -2446,7 +2462,10 @@ async function loadC2xCarteiraData(): Promise<{
       unitIds.add(toNumber(row.unit_id));
     }
 
-    return { buyerClientIds, units: unitIds.size };
+    const data = { buyerClientIds, units: unitIds.size };
+    carteiraCache = { data, expiresAt: Date.now() + CARTEIRA_CACHE_TTL_MS };
+
+    return data;
   } catch (error) {
     console.error("[apolo] loadC2xCarteiraData falhou", error);
 

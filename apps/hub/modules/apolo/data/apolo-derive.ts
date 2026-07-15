@@ -106,6 +106,20 @@ export function matchesApoloFilters(
   ).includes(normalizedQuery);
 }
 
+// Perfis que NÃO são papel de negócio: PF/PJ (natureza jurídica) e o genérico
+// "usuario"/"acesso_incorporador". Não viram chip de papel. Papel real = Comprador/
+// Prospect (derivado da carteira) + imobiliaria/corretor/incorporador/colaborador.
+export const NON_ROLE_PROFILES = new Set<ApoloProfile>([
+  "acesso_incorporador",
+  "pessoa_fisica",
+  "pessoa_juridica",
+  "usuario",
+]);
+
+export function businessRoleProfiles(entity: ApoloEntity): ApoloProfile[] {
+  return entity.profiles.filter((profile) => !NON_ROLE_PROFILES.has(profile));
+}
+
 export function primaryBusinessProfile(entity: ApoloEntity): ApoloProfile {
   const profilePriority = [
     "usuario",

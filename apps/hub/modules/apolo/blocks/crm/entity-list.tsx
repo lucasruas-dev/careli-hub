@@ -5,6 +5,7 @@ import { apoloProfileLabels } from "@/lib/apolo/catalog";
 import type { ApoloEntity } from "@/lib/apolo/types";
 
 import {
+  businessRoleProfiles,
   buyerFinancialBadge,
   buyerStatusLabel,
   displayHeaderName,
@@ -146,14 +147,6 @@ function EntityEmptyState({
   );
 }
 
-// Perfis que NÃO são papel de negócio (não viram chip no card).
-const NON_ROLE_PROFILES = new Set([
-  "acesso_incorporador",
-  "pessoa_fisica",
-  "pessoa_juridica",
-  "usuario",
-]);
-
 function EntityListItem({
   entity,
   onSelect,
@@ -169,7 +162,7 @@ function EntityListItem({
   const isUsuario = entity.profiles.includes("usuario");
   const title = displayHeaderName(entity);
   // Papéis que a entidade exerce (acumuláveis) — não o PF/PJ.
-  const papeis = entity.profiles.filter((profile) => !NON_ROLE_PROFILES.has(profile));
+  const papeis = businessRoleProfiles(entity);
   // Comprador: a COR do chip diz a adimplência (verde = adimplente, vermelho =
   // inadimplente), sem badge separado. Prospect fica âmbar.
   const buyerChipClass =

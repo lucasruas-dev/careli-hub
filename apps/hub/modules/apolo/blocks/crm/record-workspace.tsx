@@ -22,13 +22,14 @@ import type { ApoloEntity } from "@/lib/apolo/types";
 import { InfoTile, PanelTitle } from "../shared/apolo-ui";
 import {
   activeRegistrationLabel,
+  businessRoleProfiles,
+  buyerFinancialBadge,
   buyerStatusLabel,
   canUseHadesWorkspace,
   displayHeaderName,
   documentLabel,
   isApoloTabUnavailableForEntity,
   isCompanyEntity,
-  primaryBusinessProfile,
   profileLabelList,
   sanitizeOperationalMessage,
   summaryName,
@@ -406,11 +407,20 @@ function DisabledOperationCard({
 }
 
 function RecordHeader({ entity }: { entity: ApoloEntity }) {
-  const primaryProfile = primaryBusinessProfile(entity);
   const registrationLabel = activeRegistrationLabel(entity);
   const headerName = displayHeaderName(entity);
-  // Uma entidade, vários papéis: mostra todos os chips (primário primeiro).
-  const roleChips = Array.from(new Set([primaryProfile, ...entity.profiles]));
+  // Papéis reais (não o PF/PJ nem o genérico "usuario"). Comprador/Prospect é derivado
+  // da carteira e vira o primeiro chip quando a entidade é cliente.
+  const papeis = businessRoleProfiles(entity);
+  const buyerLabel = buyerStatusLabel(entity);
+  const showBuyerChip = buyerLabel !== "Nao aplicavel";
+  const financialBadge = buyerFinancialBadge(entity);
+  const buyerChipClass =
+    buyerLabel === "Comprador"
+      ? financialBadge?.label === "Inadimplente"
+        ? "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/20"
+        : "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20"
+      : "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20";
 
   return (
     <header className="shrink-0 border-b border-line px-4 py-3">
@@ -432,14 +442,17 @@ function RecordHeader({ entity }: { entity: ApoloEntity }) {
                 <span className="truncate text-ink-muted">
                   {entity.locationLabel}
                 </span>
-                {roleChips.map((role, index) => (
+                {showBuyerChip ? (
+                  <span
+                    className={`inline-flex shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ring-inset ${buyerChipClass}`}
+                  >
+                    {buyerLabel}
+                  </span>
+                ) : null}
+                {papeis.map((role) => (
                   <span
                     key={role}
-                    className={`inline-flex shrink-0 rounded-full px-2 py-1 text-[11px] font-semibold ring-1 ${
-                      index === 0
-                        ? "bg-[#A07C3B]/8 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/15"
-                        : "bg-subtle text-ink-soft ring-line"
-                    }`}
+                    className="inline-flex shrink-0 rounded-full bg-[#A07C3B]/8 px-2 py-1 text-[11px] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15"
                   >
                     {apoloProfileLabels[role] ?? role}
                   </span>
