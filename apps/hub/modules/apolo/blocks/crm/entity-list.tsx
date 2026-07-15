@@ -1,4 +1,5 @@
-import { Filter, Search } from "lucide-react";
+import { Check, ChevronDown, Filter, Search } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 
 import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
 import { apoloProfileLabels } from "@/lib/apolo/catalog";
@@ -26,6 +27,101 @@ const CRM_FILTERS: { label: string; value: ApoloProfileFilter }[] = [
   { label: "Colaborador", value: "colaborador" },
   { label: "Incorporador", value: "incorporador" },
 ];
+
+const FILTER_LABELS: Record<string, string> = {
+  all: "Todos",
+  ...Object.fromEntries(CRM_FILTERS.map((filter) => [filter.value, filter.label])),
+};
+
+// Dropdown custom (não o <select> nativo, que abre com fundo branco e quebra no dark).
+// Popover controlado, dark-aware, fecha ao clicar fora ou selecionar.
+function ProfileFilterDropdown({
+  disabled,
+  value,
+  onChange,
+}: {
+  disabled: boolean;
+  value: ApoloProfileFilter;
+  onChange: (value: ApoloProfileFilter) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    function onPointerDown(event: MouseEvent) {
+      if (ref.current && !ref.current.contains(event.target as Node)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", onPointerDown);
+    return () => document.removeEventListener("mousedown", onPointerDown);
+  }, [open]);
+
+  const options: { label: string; value: ApoloProfileFilter }[] = [
+    { label: "Todos", value: "all" },
+    ...CRM_FILTERS,
+  ];
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        aria-expanded={open}
+        aria-haspopup="listbox"
+        className={`inline-flex h-8 items-center gap-2 rounded-lg border px-2.5 text-xs font-semibold outline-none transition-colors ${
+          value !== "all"
+            ? "border-[#A07C3B]/35 bg-[#A07C3B]/8 text-[#7a5e2c] dark:text-[#d9b877]"
+            : "border-line bg-surface text-ink-soft hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5"
+        } disabled:cursor-default disabled:opacity-60`}
+        disabled={disabled}
+        onClick={() => setOpen((current) => !current)}
+        type="button"
+      >
+        <Filter aria-hidden="true" className="size-3.5 text-[#A07C3B]" />
+        {FILTER_LABELS[value] ?? "Filtros"}
+        <ChevronDown
+          aria-hidden="true"
+          className={`size-3.5 text-ink-muted transition-transform ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+      {open ? (
+        <div
+          className="absolute left-0 top-full z-30 mt-1 min-w-[11rem] overflow-hidden rounded-xl border border-line bg-surface p-1 shadow-[0_12px_32px_rgba(15,23,42,0.14)]"
+          role="listbox"
+        >
+          {options.map((option) => {
+            const active = option.value === value;
+            return (
+              <button
+                aria-selected={active}
+                className={`flex w-full items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 text-left text-xs font-semibold transition-colors ${
+                  active
+                    ? "bg-[#A07C3B]/10 text-[#7a5e2c] dark:text-[#d9b877]"
+                    : "text-ink-soft hover:bg-subtle"
+                }`}
+                key={option.value}
+                onClick={() => {
+                  onChange(option.value);
+                  setOpen(false);
+                }}
+                role="option"
+                type="button"
+              >
+                {option.label}
+                {active ? <Check aria-hidden="true" className="size-3.5" /> : null}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
 function EntityColumn({
   entities,
   error,
@@ -79,37 +175,19 @@ function EntityColumn({
           />
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <label className="relative">
-            <span className="sr-only">Filtrar perfil</span>
-            <Filter
-              aria-hidden="true"
-              className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[#A07C3B]"
-            />
-            <select
-              className="h-8 rounded-lg border border-line bg-surface pl-8 pr-7 text-xs font-semibold text-ink-soft outline-none transition-colors hover:border-[#A07C3B]/25 hover:bg-[#A07C3B]/5 focus:border-[#A07C3B]/35 focus:ring-2 focus:ring-[#A07C3B]/10"
-              disabled={loading || Boolean(error)}
-              onChange={(event) =>
-                onChangeProfileFilter(event.target.value as ApoloProfileFilter)
-              }
-              value={profileFilter}
-            >
-              <option value="all">Filtros</option>
-              {CRM_FILTERS.map((filter) => (
-                <option key={filter.value} value={filter.value}>
-                  {filter.label}
-                </option>
-              ))}
-            </select>
-          </label>
+          <ProfileFilterDropdown
+            disabled={loading || Boolean(error)}
+            onChange={onChangeProfileFilter}
+            value={profileFilter}
+          />
           {profileFilter !== "all" ? (
             <button
-              className="inline-flex h-7 items-center rounded-full bg-[#A07C3B]/5 px-2 text-[11px] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15"
+              className="inline-flex h-7 items-center gap-1 rounded-full bg-[#A07C3B]/8 px-2.5 text-[11px] font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/15 transition-colors hover:bg-[#A07C3B]/15"
               onClick={() => onChangeProfileFilter("all")}
               type="button"
             >
-              {CRM_FILTERS.find((filter) => filter.value === profileFilter)?.label ??
-                profileFilter}{" "}
-              x
+              {FILTER_LABELS[profileFilter] ?? profileFilter}
+              <span aria-hidden="true" className="text-ink-muted">×</span>
             </button>
           ) : null}
         </div>
