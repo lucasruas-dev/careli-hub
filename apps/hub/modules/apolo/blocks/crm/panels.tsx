@@ -252,29 +252,44 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
     ["E-mail", primaryEmail?.value ?? "-"],
     ["Endereco", fullAddress],
   ];
-  const detailRows = [
-    ["Tipo pessoa", kindLabel(entity.kind)],
-    ["RG", "-"],
-    ["Documento", `${documentLabel(entity)} ${entity.documentMasked}`],
-    ["Nascimento", "-"],
-    ["Idade", "-"],
-    ["Sexo", "-"],
-    ["Estado civil", civilStatusLabel(entity) || "-"],
-    ["Regime de bens", "-"],
-    ["Profissao", "-"],
-    ["Renda", "-"],
-    ["Escolaridade", "-"],
+  // Casado (ou união estável) libera regime de bens + a seção do cônjuge.
+  const isMarried = /casad|uni[aã]o est[aá]vel/i.test(civilStatusLabel(entity) ?? "");
+  const addressRows: Array<readonly [string, string]> = [
     ["Cidade", displayText(cityStateLabel(primaryAddress, entity.locationLabel))],
     ["CEP", primaryAddress?.postalCode ?? "-"],
     ["Bairro", primaryAddress?.district ?? "-"],
     ["Numero", primaryAddress?.number ?? "-"],
     ["Complemento", primaryAddress?.complement ?? "-"],
-    ["Naturalidade", "-"],
-    ["Nacionalidade", "-"],
-    ["Nome da mae", "-"],
-    ["Relacionamento", relationshipSummary(entity)],
-    ["Responsavel", isCompany ? responsibleLabel(entity) || "-" : "-"],
-  ] as const;
+  ];
+  // Campos POR PERFIL (regra do Lucas): PJ é empresa, não tem nascimento/idade/RG/
+  // sexo/estado civil/regime/profissão/cônjuge. Regime de bens só quando casado.
+  const detailRows: Array<readonly [string, string]> = isCompany
+    ? [
+        ["Tipo pessoa", kindLabel(entity.kind)],
+        ["Documento", `${documentLabel(entity)} ${entity.documentMasked}`],
+        ["Responsavel", responsibleLabel(entity) || "-"],
+        ["Faturamento", "-"],
+        ...addressRows,
+        ["Relacionamento", relationshipSummary(entity)],
+      ]
+    : [
+        ["Tipo pessoa", kindLabel(entity.kind)],
+        ["RG", "-"],
+        ["Documento", `${documentLabel(entity)} ${entity.documentMasked}`],
+        ["Nascimento", "-"],
+        ["Idade", "-"],
+        ["Sexo", "-"],
+        ["Estado civil", civilStatusLabel(entity) || "-"],
+        ...(isMarried ? [["Regime de bens", "-"] as const] : []),
+        ["Profissao", "-"],
+        ["Renda", "-"],
+        ["Escolaridade", "-"],
+        ["Naturalidade", "-"],
+        ["Nacionalidade", "-"],
+        ["Nome da mae", "-"],
+        ...addressRows,
+        ["Relacionamento", relationshipSummary(entity)],
+      ];
 
   return (
     <div className="grid gap-4">
@@ -294,24 +309,21 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
           ))}
         </div>
       </section>
-      <section className="rounded-xl border border-line bg-surface p-4">
-        <PanelTitle eyebrow="Conjuge e representantes" title="Dados complementares" />
-        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          <ReadonlyLine label="Conjuge" value="-" />
-          <ReadonlyLine label="CPF" value="-" />
-          <ReadonlyLine label="Telefone" value="-" />
-          <ReadonlyLine label="E-mail" value="-" />
-          <ReadonlyLine label="Nascimento" value="-" />
-          <ReadonlyLine label="Documento" value="-" />
-          <ReadonlyLine label="Profissao" value="-" />
-          <ReadonlyLine label="Naturalidade" value="-" />
-          <ReadonlyLine label="Nacionalidade" value="-" />
-          <ReadonlyLine
-            label={isCompany ? "Responsavel" : "Endereco"}
-            value={isCompany ? responsibleLabel(entity) || "-" : fullAddress}
-          />
-        </div>
-      </section>
+      {/* Cônjuge: só PF casada (PJ e solteiro não têm). */}
+      {!isCompany && isMarried ? (
+        <section className="rounded-xl border border-line bg-surface p-4">
+          <PanelTitle eyebrow="Conjuge" title="Dados do conjuge" />
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <ReadonlyLine label="Conjuge" value="-" />
+            <ReadonlyLine label="CPF" value="-" />
+            <ReadonlyLine label="Telefone" value="-" />
+            <ReadonlyLine label="E-mail" value="-" />
+            <ReadonlyLine label="Nascimento" value="-" />
+            <ReadonlyLine label="Documento" value="-" />
+            <ReadonlyLine label="Profissao" value="-" />
+          </div>
+        </section>
+      ) : null}
     </div>
   );
 }
