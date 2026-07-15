@@ -1,8 +1,9 @@
 "use client";
 
-import { Loader2, ReceiptText, TriangleAlert } from "lucide-react";
+import { ExternalLink, Loader2, ReceiptText, TriangleAlert } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
+import { Tooltip } from "@repo/uix";
 import type { ApoloStatementData } from "@/lib/apolo/extrato";
 import type { ApoloEntity } from "@/lib/apolo/types";
 
@@ -173,16 +174,18 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-          <table className="w-full min-w-[46rem] border-collapse text-sm">
+          <table className="w-full min-w-[56rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-line text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                 <th className="px-4 py-3 font-semibold">Pagamento</th>
                 <th className="px-4 py-3 font-semibold">Empreendimento</th>
+                <th className="px-4 py-3 font-semibold">Unidade</th>
                 <th className="px-4 py-3 font-semibold">Cliente</th>
                 <th className="px-4 py-3 font-semibold">Parcela</th>
                 <th className="px-4 py-3 font-semibold">Papel</th>
                 <th className="px-4 py-3 text-right font-semibold">Recebido</th>
                 <th className="px-4 py-3 text-right font-semibold">Líquido</th>
+                <th className="px-4 py-3 text-center font-semibold">Asaas</th>
               </tr>
             </thead>
             <tbody>
@@ -190,11 +193,36 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
                 <tr className="border-b border-line/60 last:border-0" key={row.id}>
                   <td className="whitespace-nowrap px-4 py-3 text-ink">{formatDate(row.paymentDate)}</td>
                   <td className="px-4 py-3 text-ink">{row.enterpriseName ?? row.enterpriseCode}</td>
+                  <td className="whitespace-nowrap px-4 py-3">
+                    <span className="font-semibold text-ink">{row.unitCode}</span>
+                    {row.unitBlock || row.unitLot ? (
+                      <span className="ml-2 text-xs text-ink-muted">
+                        Q{row.unitBlock ?? "-"}·L{row.unitLot ?? "-"}
+                      </span>
+                    ) : null}
+                  </td>
                   <td className="px-4 py-3 text-ink-soft">{row.clientName ?? "-"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.parcela}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.role}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">{brl(row.grossValue)}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">{brl(row.netValue)}</td>
+                  <td className="px-4 py-3 text-center">
+                    {row.asaasUrl ? (
+                      <Tooltip content={row.asaasId ? `Cobrança ${row.asaasId}` : "Abrir no Asaas"}>
+                        <a
+                          aria-label="Abrir cobrança no Asaas"
+                          className="inline-flex size-8 items-center justify-center rounded-lg border border-[#A07C3B]/20 bg-[#A07C3B]/5 text-[#7a5e2c] transition-colors hover:bg-[#A07C3B]/10 dark:text-[#d9b877]"
+                          href={row.asaasUrl}
+                          rel="noreferrer"
+                          target="_blank"
+                        >
+                          <ExternalLink className="size-4" aria-hidden="true" />
+                        </a>
+                      </Tooltip>
+                    ) : (
+                      <span className="text-ink-muted">-</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

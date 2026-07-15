@@ -9,6 +9,10 @@ import { EXCLUDED_ENTERPRISE_CODES } from "@/lib/guardian/c2x-analytics";
 import { getHadesDbPool } from "@/lib/guardian/db";
 
 export type ApoloStatementRow = {
+  // Rastreio no Asaas: id da cobrança + link da fatura (página) e do boleto (PDF).
+  asaasId: string | null;
+  asaasInvoiceUrl: string | null;
+  asaasUrl: string | null;
   clientName: string | null;
   enterpriseCode: string;
   enterpriseName: string | null;
@@ -19,6 +23,10 @@ export type ApoloStatementRow = {
   parcela: string;
   paymentDate: string;
   role: string;
+  // Unidade (lote) da venda.
+  unitBlock: string | null;
+  unitCode: string;
+  unitLot: string | null;
 };
 
 export type ApoloStatementSummary = {
@@ -47,6 +55,9 @@ export type ApoloStatementScope = {
 };
 
 type StatementRow = RowDataPacket & {
+  asaas_id: string | null;
+  asaas_invoice_url: string | null;
+  asaas_url: string | null;
   client_name: string | null;
   current_parcel: number | null;
   enterprise_code: string | null;
@@ -58,6 +69,8 @@ type StatementRow = RowDataPacket & {
   split_group_value_id: number;
   total_admin_fee: string | number | null;
   total_parcels: number | null;
+  unit_block: string | null;
+  unit_lot: string | null;
 };
 
 // Mapeia o tipo de parcela do pagamento (parcel_types) pro grupo de split (split_group_names).
@@ -135,11 +148,16 @@ export async function loadApoloParticipantStatement(
          e.code as enterprise_code,
          e.name as enterprise_name,
          ${nameSql("cli")} as client_name,
+         eu.block as unit_block,
+         eu.lot as unit_lot,
          p.current_total_parcel as current_parcel,
          p.total_parcels,
          sp.name as profile_name,
          p.paid_value * segv.percent / 100 as gross_value,
-         coalesce(paf.total_admin_fee, 0) as total_admin_fee
+         coalesce(paf.total_admin_fee, 0) as total_admin_fee,
+         nullif(trim(p.payment_asaas_id), '') as asaas_id,
+         nullif(trim(p.payment_asaas_url), '') as asaas_url,
+         nullif(trim(p.payment_asaas_invoice_url), '') as asaas_invoice_url
        ${fromWhere}
        order by p.payment_date desc, e.code, p.id
        limit 2000`,
@@ -172,10 +190,14 @@ function nameSql(alias: string) {
 function mapRow(row: StatementRow): ApoloStatementRow {
   const gross = toNumber(row.gross_value);
   const fees = toNumber(row.total_admin_fee);
+  const enterpriseCode = String(row.enterprise_code ?? "");
 
   return {
+    asaasId: text(row.asaas_id),
+    asaasInvoiceUrl: text(row.asaas_invoice_url),
+    asaasUrl: text(row.asaas_url),
     clientName: text(row.client_name),
-    enterpriseCode: String(row.enterprise_code ?? ""),
+    enterpriseCode,
     enterpriseName: text(row.enterprise_name),
     feeValue: fees,
     grossValue: gross,
@@ -184,7 +206,23 @@ function mapRow(row: StatementRow): ApoloStatementRow {
     parcela: `${row.current_parcel ?? "-"}/${row.total_parcels ?? "-"}`,
     paymentDate: dateOnly(row.payment_date),
     role: text(row.profile_name) ?? "-",
+    unitBlock: text(row.unit_block),
+    unitCode: buildUnitCode(enterpriseCode, text(row.unit_block), text(row.unit_lot)),
+    unitLot: text(row.unit_lot),
   };
+}
+
+// Código curto da unidade (ex.: VALH05) — mesmo formato da carteira. Ver [[project-apolo-crm-grafo]].
+function buildUnitCode(
+  enterpriseCode: string,
+  block: string | null,
+  lot: string | null,
+): string {
+  const prefix = enterpriseCode.replace(/[^a-z0-9]/gi, "").toUpperCase().slice(0, 3).padEnd(3, "X");
+  const blockCode = (block ?? "").replace(/[^a-z0-9]/gi, "").toUpperCase();
+  const lotCode = (lot ?? "").replace(/[^a-z0-9]/gi, "").replace(/^L/i, "").toUpperCase();
+
+  return `${prefix}${blockCode}${lotCode}`;
 }
 
 function uniqueEnterprises(rows: ApoloStatementRow[]): ApoloStatementEnterprise[] {
