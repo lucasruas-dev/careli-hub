@@ -60,7 +60,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     },
     title: "Iris: fila de grupos vira Relacionamento",
     type: "melhoria",
-    version: "1.37.0",
+    version: "1.38.0",
   },
   {
     buildTag: "2026-07-15-apolo-comprador-fix",
