@@ -93,24 +93,17 @@ export function ApoloPage() {
     Array<{ id: string; kind: "entity" | "enterprise"; name: string; tab?: ApoloTab }>
   >([]);
 
-  // Carrega uma vez ao abrir a tela. O guard é um REF (não o estado de loading): se
-  // `enterprisesLoading` estivesse nas deps, setá-lo re-rodaria o efeito, o cleanup marcaria
-  // active=false e a resposta seria descartada — o loading nunca desligaria.
-  const enterprisesRequestedRef = useRef(false);
   // Entidade que o usuário pediu pra abrir (clique num player). Fica pendente até a busca
   // trazer o resultado, aí a seleção cai NELA em vez de na primeira da lista.
   const pendingEntityIdRef = useRef<string | null>(null);
 
   // Carrega no mount (não só na tela de Empreendimentos): o CRM precisa da lista pra
   // resolver o clique num relacionamento de empreendimento -> abrir a tela dele.
+  // `cancelled` é POR EXECUÇÃO do efeito (não um ref global): no StrictMode/dev o efeito roda
+  // montar→desmontar→montar; a 1ª execução é cancelada e a 2ª (nova closure) seta o estado.
+  // Um ref-guard global bloqueava a 2ª e deixava a tela presa no skeleton.
   useEffect(() => {
-    if (enterprisesRequestedRef.current) {
-      return;
-    }
-
-    enterprisesRequestedRef.current = true;
-
-    let active = true;
+    let cancelled = false;
 
     async function loadEnterprises() {
       try {
@@ -127,20 +120,19 @@ export function ApoloPage() {
           error?: string;
         };
 
+        if (cancelled) {
+          return;
+        }
+
         if (!response.ok || !payload.data) {
           throw new Error(
             payload.error ?? "Nao foi possivel carregar os empreendimentos.",
           );
         }
 
-        if (active) {
-          setEnterprises(payload.data);
-        }
+        setEnterprises(payload.data);
       } catch (loadError) {
-        // Libera o guard pra permitir nova tentativa ao reabrir a tela.
-        enterprisesRequestedRef.current = false;
-
-        if (active) {
+        if (!cancelled) {
           setEnterprisesError(
             loadError instanceof Error
               ? loadError.message
@@ -148,7 +140,7 @@ export function ApoloPage() {
           );
         }
       } finally {
-        if (active) {
+        if (!cancelled) {
           setEnterprisesLoading(false);
         }
       }
@@ -157,7 +149,7 @@ export function ApoloPage() {
     void loadEnterprises();
 
     return () => {
-      active = false;
+      cancelled = true;
     };
   }, []);
 
