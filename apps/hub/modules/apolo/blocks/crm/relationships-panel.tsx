@@ -94,6 +94,7 @@ export function RelationshipsPanel({
         entityId={entity.id}
         onClose={() => setModalOpen(false)}
         onCreated={onCreated}
+        onOpenEntity={onOpenEntity}
         open={modalOpen}
       />
     </div>

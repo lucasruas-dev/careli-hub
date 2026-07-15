@@ -19,6 +19,7 @@ type CreateRelationshipPayload = {
   kind?: unknown;
   relationshipType?: unknown;
   label?: unknown;
+  cargo?: unknown;
   relatedEntityId?: unknown;
   email?: unknown;
   phone?: unknown;
@@ -68,6 +69,7 @@ export async function POST(request: Request) {
   const kind = payload.kind === "trabalho" || payload.kind === "contato" ? payload.kind : null;
   const relationshipType = asText(payload.relationshipType);
   const label = asText(payload.label);
+  const cargo = asText(payload.cargo);
 
   if (!entityId || !kind || !relationshipType || !label) {
     return NextResponse.json(
@@ -91,7 +93,7 @@ export async function POST(request: Request) {
       relationshipType,
       label,
       status: "verified",
-      metadata: baseMetadata(kind, authorization.userId),
+      metadata: { ...baseMetadata(kind, authorization.userId), ...(cargo ? { cargo } : {}) },
     });
 
     return inserted;
@@ -115,7 +117,13 @@ export async function POST(request: Request) {
     relationshipType,
     label,
     status: "verified",
-    metadata: { ...baseMetadata(kind, authorization.userId), email, phone, cpf },
+    metadata: {
+      ...baseMetadata(kind, authorization.userId),
+      email,
+      phone,
+      cpf,
+      ...(cargo ? { cargo } : {}),
+    },
   });
 
   return inserted;

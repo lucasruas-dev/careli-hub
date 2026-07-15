@@ -4268,10 +4268,11 @@ function mapApoloRelationshipRow(row: ApoloRelationshipRow): ApoloRelationship {
     metadata.kind === "trabalho" || metadata.kind === "contato"
       ? metadata.kind
       : null;
+  const cargo = text(metadata.cargo);
 
   return {
     label: row.label ?? row.relationship_type,
-    relation: row.relationship_type,
+    relation: cargo ? `${row.relationship_type} · ${cargo}` : row.relationship_type,
     status: normalizeSmallStatus(row.status),
     phone: text(metadata.phone),
     email: text(metadata.email),

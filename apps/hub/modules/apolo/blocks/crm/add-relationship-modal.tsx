@@ -1,48 +1,95 @@
-import { Briefcase, Check, Loader2, Search, UserPlus, X } from "lucide-react";
+import {
+  Briefcase,
+  Check,
+  ExternalLink,
+  Loader2,
+  Search,
+  UserPlus,
+  X,
+} from "lucide-react";
 import { useState } from "react";
+
+import { apoloProfileLabels } from "@/lib/apolo/catalog";
+import type { ApoloProfile } from "@/lib/apolo/types";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
 
-// Níveis de relacionamento por tipo. Trabalho = papel comercial; Contato = vínculo pessoal.
+// Níveis por tipo. Trabalho = papel comercial; Contato = vínculo pessoal.
 const TRABALHO_TIPOS = [
   "Comprador",
   "Prospect",
   "Corretor",
-  "Imobiliaria",
+  "Imobiliária",
   "Incorporador",
-  "Socio",
+  "Empreendimento",
+  "Sócio",
   "Parceiro",
   "Fornecedor",
+  "Funcionário",
 ];
 const CONTATO_TIPOS = [
-  "Mae",
+  "Mãe",
   "Pai",
-  "Conjuge",
+  "Cônjuge",
   "Filho(a)",
-  "Irmao(a)",
+  "Irmão(ã)",
   "Tio(a)",
-  "Avo(o)",
+  "Avô(ó)",
   "Amigo(a)",
-  "Funcionario(a)",
-  "Socio(a)",
+  "Funcionário(a)",
+  "Sócio(a)",
   "Outro",
 ];
+// Lista rica de cargos (aparece quando o nível é Funcionário).
+const CARGOS = [
+  "Corretor",
+  "Captador",
+  "Gerente comercial",
+  "Coordenador de vendas",
+  "Diretor",
+  "Sócio",
+  "Vendedor",
+  "Assistente administrativo",
+  "Auxiliar administrativo",
+  "Financeiro",
+  "Cobrança",
+  "Recepcionista",
+  "Secretária",
+  "Marketing",
+  "TI",
+  "RH",
+  "Jurídico",
+  "Contador",
+  "Analista",
+  "Estagiário",
+];
 
-type SearchEntity = { id: string; name: string };
+const NON_ROLE = new Set(["usuario", "pessoa_fisica", "pessoa_juridica", "acesso_incorporador"]);
+
+type SearchEntity = {
+  id: string;
+  name: string;
+  document: string;
+  location: string;
+  profiles: ApoloProfile[];
+};
 
 export function AddRelationshipModal({
   entityId,
   open,
   onClose,
   onCreated,
+  onOpenEntity,
 }: {
   entityId: string;
   open: boolean;
   onClose: () => void;
   onCreated: () => void;
+  onOpenEntity: (label: string, entityId: string) => void;
 }) {
   const [kind, setKind] = useState<"trabalho" | "contato" | null>(null);
   const [relType, setRelType] = useState("");
+  const [cargo, setCargo] = useState("");
   // trabalho
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<SearchEntity[]>([]);
@@ -61,9 +108,12 @@ export function AddRelationshipModal({
     return null;
   }
 
+  const isFuncionario = /funcion/i.test(relType);
+
   function reset() {
     setKind(null);
     setRelType("");
+    setCargo("");
     setQuery("");
     setResults([]);
     setSelected(null);
@@ -93,12 +143,26 @@ export function AddRelationshipModal({
         { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
       );
       const payload = (await response.json()) as {
-        data?: { entities?: Array<{ id: string; displayName: string }> };
+        data?: {
+          entities?: Array<{
+            id: string;
+            displayName: string;
+            documentMasked: string;
+            locationLabel: string;
+            profiles: ApoloProfile[];
+          }>;
+        };
       };
       const entities = (payload.data?.entities ?? [])
         .filter((entity) => entity.id !== entityId)
         .slice(0, 8)
-        .map((entity) => ({ id: entity.id, name: entity.displayName }));
+        .map((entity) => ({
+          id: entity.id,
+          name: entity.displayName,
+          document: entity.documentMasked,
+          location: entity.locationLabel,
+          profiles: entity.profiles,
+        }));
       setResults(entities);
     } catch {
       setError("Falha na busca. Tente de novo.");
@@ -109,18 +173,22 @@ export function AddRelationshipModal({
 
   async function save() {
     if (!kind || !relType.trim()) {
-      setError("Escolha o nivel de relacionamento.");
+      setError("Escolha o nível de relacionamento.");
       return;
     }
-    const label = kind === "trabalho" ? selected?.name : name.trim();
     if (kind === "trabalho" && !selected) {
       setError("Busque e selecione a entidade.");
       return;
     }
     if (kind === "contato" && (!name.trim() || !phone.trim() || !email.trim())) {
-      setError("Nome, telefone e e-mail sao obrigatorios.");
+      setError("Nome, telefone e e-mail são obrigatórios.");
       return;
     }
+    if (isFuncionario && !cargo.trim()) {
+      setError("Informe o cargo do funcionário.");
+      return;
+    }
+    const label = kind === "trabalho" ? selected?.name : name.trim();
     setSaving(true);
     setError(null);
     try {
@@ -137,6 +205,7 @@ export function AddRelationshipModal({
           kind,
           relationshipType: relType.trim(),
           label,
+          cargo: isFuncionario ? cargo.trim() : undefined,
           relatedEntityId: kind === "trabalho" ? selected?.id : undefined,
           email: kind === "contato" ? email.trim() : undefined,
           phone: kind === "contato" ? phone.trim() : undefined,
@@ -145,7 +214,7 @@ export function AddRelationshipModal({
       });
       if (!response.ok) {
         const payload = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(payload?.error ?? "Nao foi possivel salvar.");
+        throw new Error(payload?.error ?? "Não foi possível salvar.");
       }
       onCreated();
       close();
@@ -159,10 +228,7 @@ export function AddRelationshipModal({
   const tipos = kind === "trabalho" ? TRABALHO_TIPOS : CONTATO_TIPOS;
 
   return (
-    <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4"
-      onClick={close}
-    >
+    <div className="fixed inset-0 z-50 grid place-items-center bg-black/40 p-4" onClick={close}>
       <div
         className="w-full max-w-md rounded-2xl border border-line bg-surface p-5 shadow-[0_24px_64px_rgba(15,23,42,0.24)]"
         onClick={(event) => event.stopPropagation()}
@@ -183,27 +249,25 @@ export function AddRelationshipModal({
         {!kind ? (
           <div className="mt-5 grid grid-cols-2 gap-3">
             <button
-              className="flex flex-col items-start gap-2 rounded-xl border border-line bg-subtle p-4 text-left transition-colors hover:border-[#A07C3B]/35 hover:bg-[#A07C3B]/5"
+              className="flex flex-col items-center gap-2 rounded-xl border border-line bg-subtle p-5 transition-colors hover:border-[#A07C3B]/35 hover:bg-[#A07C3B]/5"
               onClick={() => setKind("trabalho")}
               type="button"
             >
-              <Briefcase className="size-5 text-[#A07C3B]" />
+              <Briefcase className="size-6 text-[#A07C3B]" />
               <span className="text-sm font-semibold text-ink">Trabalho</span>
-              <span className="text-xs text-ink-muted">Liga a uma entidade do Apolo</span>
             </button>
             <button
-              className="flex flex-col items-start gap-2 rounded-xl border border-line bg-subtle p-4 text-left transition-colors hover:border-[#b5623a]/35 hover:bg-[#b5623a]/5"
+              className="flex flex-col items-center gap-2 rounded-xl border border-line bg-subtle p-5 transition-colors hover:border-[#b5623a]/35 hover:bg-[#b5623a]/5"
               onClick={() => setKind("contato")}
               type="button"
             >
-              <UserPlus className="size-5 text-[#b5623a]" />
+              <UserPlus className="size-6 text-[#b5623a]" />
               <span className="text-sm font-semibold text-ink">Contato</span>
-              <span className="text-xs text-ink-muted">Pessoa (mae, tio, amigo...)</span>
             </button>
           </div>
         ) : null}
 
-        {/* Passo 2 - Trabalho: busca de entidade */}
+        {/* Passo 2 - Trabalho: busca de entidade (com perfis + abrir cadastro) */}
         {kind === "trabalho" ? (
           <div className="mt-5 grid gap-3">
             {selected ? (
@@ -236,16 +300,17 @@ export function AddRelationshipModal({
                   {searching ? <Loader2 className="size-4 animate-spin text-ink-muted" /> : null}
                 </div>
                 {results.length ? (
-                  <div className="grid max-h-44 gap-1 overflow-y-auto">
+                  <div className="grid max-h-56 gap-1 overflow-y-auto">
                     {results.map((entity) => (
-                      <button
-                        className="rounded-lg px-3 py-2 text-left text-sm font-medium text-ink-soft transition-colors hover:bg-subtle"
+                      <SearchResultRow
+                        entity={entity}
                         key={entity.id}
-                        onClick={() => setSelected(entity)}
-                        type="button"
-                      >
-                        {entity.name}
-                      </button>
+                        onOpen={() => {
+                          onOpenEntity(entity.name, entity.id);
+                          close();
+                        }}
+                        onSelect={() => setSelected(entity)}
+                      />
                     ))}
                   </div>
                 ) : null}
@@ -264,10 +329,12 @@ export function AddRelationshipModal({
           </div>
         ) : null}
 
-        {/* Nivel de relacionamento */}
+        {/* Nível de relacionamento (obrigatório) */}
         {kind ? (
           <div className="mt-4">
-            <label className="text-xs font-semibold text-ink-muted">Nivel de relacionamento</label>
+            <label className="text-xs font-semibold text-ink-muted">
+              Nível de relacionamento <span className="text-rose-500">*</span>
+            </label>
             <div className="mt-1.5 flex flex-wrap gap-1.5">
               {tipos.map((tipo) => (
                 <button
@@ -287,7 +354,32 @@ export function AddRelationshipModal({
           </div>
         ) : null}
 
-        {error ? <p className="m-0 mt-3 text-xs font-semibold text-rose-600 dark:text-rose-400">{error}</p> : null}
+        {/* Cargo (quando o nível é Funcionário) */}
+        {kind && isFuncionario ? (
+          <div className="mt-4">
+            <Field label="Cargo" onChange={setCargo} required value={cargo} />
+            <div className="mt-1.5 flex flex-wrap gap-1.5">
+              {CARGOS.map((option) => (
+                <button
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-medium ring-1 transition-colors ${
+                    cargo === option
+                      ? "bg-[#A07C3B]/12 text-[#7a5e2c] dark:text-[#d9b877] ring-[#A07C3B]/25"
+                      : "bg-subtle text-ink-muted ring-line hover:bg-[#A07C3B]/5"
+                  }`}
+                  key={option}
+                  onClick={() => setCargo(option)}
+                  type="button"
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
+        {error ? (
+          <p className="m-0 mt-3 text-xs font-semibold text-rose-600 dark:text-rose-400">{error}</p>
+        ) : null}
 
         {kind ? (
           <div className="mt-5 flex items-center justify-between">
@@ -296,6 +388,7 @@ export function AddRelationshipModal({
               onClick={() => {
                 setKind(null);
                 setRelType("");
+                setCargo("");
                 setError(null);
               }}
               type="button"
@@ -314,6 +407,42 @@ export function AddRelationshipModal({
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+function SearchResultRow({
+  entity,
+  onOpen,
+  onSelect,
+}: {
+  entity: SearchEntity;
+  onOpen: () => void;
+  onSelect: () => void;
+}) {
+  const papeis = entity.profiles
+    .filter((profile) => !NON_ROLE.has(profile))
+    .map((profile) => apoloProfileLabels[profile] ?? profile);
+  const sub = [entity.document, entity.location].filter((value) => value && value !== "-");
+
+  return (
+    <div className="flex items-center gap-2 rounded-lg border border-line px-3 py-2 transition-colors hover:bg-subtle">
+      <button className="min-w-0 flex-1 text-left" onClick={onSelect} type="button">
+        <p className="m-0 truncate text-sm font-semibold text-ink">{entity.name}</p>
+        <p className="m-0 mt-0.5 truncate text-[11px] text-ink-muted">
+          {sub.length ? sub.join(" · ") : "Sem documento"}
+          {papeis.length ? ` · ${papeis.join(", ")}` : ""}
+        </p>
+      </button>
+      <button
+        aria-label="Abrir cadastro"
+        className="shrink-0 rounded-md p-1.5 text-ink-muted transition-colors hover:bg-[#A07C3B]/10 hover:text-[#A07C3B]"
+        onClick={onOpen}
+        title="Abrir o cadastro desta entidade"
+        type="button"
+      >
+        <ExternalLink className="size-3.5" />
+      </button>
     </div>
   );
 }
