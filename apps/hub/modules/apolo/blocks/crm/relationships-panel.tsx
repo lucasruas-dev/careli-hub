@@ -106,7 +106,7 @@ export function RelationshipsPanel({
         icon: Users,
         items: vinculados,
         key: "vinculados",
-        label: "Clientes vinculados",
+        label: "Clientes",
         sub: [
           compradores ? `${compradores} comprador${compradores === 1 ? "" : "es"}` : null,
           prospects ? `${prospects} prospect${prospects === 1 ? "" : "s"}` : null,
@@ -235,7 +235,8 @@ function SummaryCard({ group, onClick }: { group: Group; onClick: () => void }) 
       <div className="min-w-0 flex-1">
         <p className="m-0 truncate text-sm font-semibold text-ink">{group.label}</p>
         <p className="m-0 text-xs text-ink-muted">
-          {group.items.length} {group.items.length === 1 ? "vinculo" : "vinculos"}
+          {group.items.length}{" "}
+          {group.items.length === 1 ? "relacionamento" : "relacionamentos"}
           {group.sub ? ` · ${group.sub}` : ""}
         </p>
       </div>
