@@ -67,8 +67,12 @@ export async function GET(request: Request) {
   return createApoloResponse(data, cacheKey ? "miss" : null);
 }
 
-function normalizeProfile(value: string | null): ApoloProfile | null {
-  const allowed = new Set<ApoloProfile>([
+function normalizeProfile(
+  value: string | null,
+): ApoloProfile | "comprador" | "prospect" | null {
+  const allowed = new Set<ApoloProfile | "comprador" | "prospect">([
+    "comprador",
+    "prospect",
     "usuario",
     "incorporador",
     "imobiliaria",
@@ -81,8 +85,9 @@ function normalizeProfile(value: string | null): ApoloProfile | null {
     "pessoa_juridica",
   ]);
 
-  return value && allowed.has(value as ApoloProfile)
-    ? (value as ApoloProfile)
+  return value &&
+    allowed.has(value as ApoloProfile | "comprador" | "prospect")
+    ? (value as ApoloProfile | "comprador" | "prospect")
     : null;
 }
 

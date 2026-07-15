@@ -38,7 +38,8 @@ type ApoloLoadResult =
 
 type ApoloDashboardOptions = {
   limit?: number;
-  profile?: ApoloProfile | null;
+  // "comprador"/"prospect" são derivados da carteira (não são profiles do banco).
+  profile?: ApoloProfile | "comprador" | "prospect" | null;
   query?: string | null;
 };
 
@@ -1646,9 +1647,13 @@ async function fetchApoloEntityRows(
     const searchedIds = normalizedQuery
       ? await fetchSearchEntityIds(adminClient, normalizedQuery)
       : null;
-    const profileIds = profile
-      ? await fetchProfileEntityIds(adminClient, profile)
-      : null;
+    const profileIds = !profile
+      ? null
+      : profile === "comprador"
+        ? await fetchCarteiraBuyerEntityIds(adminClient)
+        : profile === "prospect"
+          ? await fetchProspectEntityIds(adminClient)
+          : await fetchProfileEntityIds(adminClient, profile);
 
     if (searchedIds?.error || profileIds?.error) {
       const error = searchedIds?.error ?? profileIds?.error;
@@ -1800,6 +1805,59 @@ function broadApoloQueryLimit(normalizedQuery: string) {
   }
 
   return undefined;
+}
+
+// Entity ids dos COMPRADORES = clientes na carteira do C2X (mesma base da KPI/cards).
+// client_id do C2X -> entity_id via apolo_source_links (source_table=users).
+async function fetchCarteiraBuyerEntityIds(
+  adminClient: ApoloSupabaseClient,
+): Promise<{ error?: { code?: string; message?: string }; ids: string[] }> {
+  const carteira = await loadC2xCarteiraData();
+  const clientIds = [...carteira.buyerClientIds].map(String);
+
+  if (!clientIds.length) {
+    return { ids: [] };
+  }
+
+  const ids: string[] = [];
+  const chunk = 1000;
+  for (let index = 0; index < clientIds.length; index += chunk) {
+    const { data, error } = await adminClient
+      .from("apolo_source_links")
+      .select("entity_id")
+      .eq("source_table", "users")
+      .in("source_id", clientIds.slice(index, index + chunk))
+      .returns<Array<{ entity_id: string }>>();
+
+    if (error) {
+      return { error, ids: [] };
+    }
+
+    ids.push(...(data ?? []).map((row) => row.entity_id));
+  }
+
+  return { ids: uniqueStrings(ids) };
+}
+
+// Prospect = usuário que NÃO está na carteira (não é comprador).
+async function fetchProspectEntityIds(
+  adminClient: ApoloSupabaseClient,
+): Promise<{ error?: { code?: string; message?: string }; ids: string[] }> {
+  const [usuario, buyers] = await Promise.all([
+    fetchProfileEntityIds(adminClient, "usuario"),
+    fetchCarteiraBuyerEntityIds(adminClient),
+  ]);
+
+  if ("error" in usuario && usuario.error) {
+    return usuario;
+  }
+  if ("error" in buyers && buyers.error) {
+    return buyers;
+  }
+
+  const buyerSet = new Set(buyers.ids);
+
+  return { ids: usuario.ids.filter((id) => !buyerSet.has(id)) };
 }
 
 async function fetchProfileEntityIds(
@@ -3874,7 +3932,14 @@ function matchesDashboardOptions(
   entity: ApoloEntity,
   options: ApoloDashboardOptions,
 ) {
-  if (options.profile && !entity.profiles.includes(options.profile)) {
+  // comprador/prospect são derivados (não profiles); no fallback live-c2x eles não
+  // filtram (o caminho principal já resolve pela carteira).
+  if (
+    options.profile &&
+    options.profile !== "comprador" &&
+    options.profile !== "prospect" &&
+    !entity.profiles.includes(options.profile)
+  ) {
     return false;
   }
 

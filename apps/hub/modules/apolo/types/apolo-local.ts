@@ -18,7 +18,9 @@ export type ApoloTab =
   | "timeline"
   | "auditoria";
 
-export type ApoloProfileFilter = ApoloProfile | "all";
+// "comprador" e "prospect" não são profiles (são derivados da carteira do C2X),
+// mas entram como opções do filtro do CRM 360.
+export type ApoloProfileFilter = ApoloProfile | "all" | "comprador" | "prospect";
 
 export type ApoloTabItem = {
   icon: LucideIcon;

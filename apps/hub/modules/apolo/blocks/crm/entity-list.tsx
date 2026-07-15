@@ -1,7 +1,7 @@
 import { Filter, Search } from "lucide-react";
 
 import { PanteonLoadingState } from "@/components/panteon/panteon-loading";
-import { apoloProfileLabels, apoloProfileOptions } from "@/lib/apolo/catalog";
+import { apoloProfileLabels } from "@/lib/apolo/catalog";
 import type { ApoloEntity } from "@/lib/apolo/types";
 
 import {
@@ -11,6 +11,20 @@ import {
   displayText,
 } from "../../data/apolo-derive";
 import type { ApoloProfileFilter } from "../../types/apolo-local";
+
+// Opções do filtro do CRM 360 = papéis que importam (Comprador/Prospect são derivados
+// da carteira; os demais são profiles). Fora: Usuario/Pessoa física/jurídica/duplicados.
+// Captador, Coordenador de Vendas e Colaborador Interno/Temporário nascem no Apolo depois.
+const CRM_FILTERS: { label: string; value: ApoloProfileFilter }[] = [
+  { label: "Comprador", value: "comprador" },
+  { label: "Prospect", value: "prospect" },
+  { label: "Imobiliaria", value: "imobiliaria" },
+  { label: "Corretor", value: "corretor" },
+  { label: "Fornecedor", value: "fornecedor" },
+  { label: "Parceiro", value: "parceiro" },
+  { label: "Colaborador", value: "colaborador" },
+  { label: "Incorporador", value: "incorporador" },
+];
 function EntityColumn({
   entities,
   error,
@@ -62,9 +76,9 @@ function EntityColumn({
               value={profileFilter}
             >
               <option value="all">Filtros</option>
-              {apoloProfileOptions.map((profile) => (
-                <option key={profile} value={profile}>
-                  {apoloProfileLabels[profile]}
+              {CRM_FILTERS.map((filter) => (
+                <option key={filter.value} value={filter.value}>
+                  {filter.label}
                 </option>
               ))}
             </select>
@@ -75,7 +89,9 @@ function EntityColumn({
               onClick={() => onChangeProfileFilter("all")}
               type="button"
             >
-              {apoloProfileLabels[profileFilter]} x
+              {CRM_FILTERS.find((filter) => filter.value === profileFilter)?.label ??
+                profileFilter}{" "}
+              x
             </button>
           ) : null}
         </div>

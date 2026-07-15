@@ -59,7 +59,15 @@ export function matchesApoloFilters(
   query: string,
   profileFilter: ApoloProfileFilter,
 ) {
-  if (profileFilter !== "all" && !entity.profiles.includes(profileFilter)) {
+  if (profileFilter === "comprador") {
+    if (buyerStatusLabel(entity) !== "Comprador") {
+      return false;
+    }
+  } else if (profileFilter === "prospect") {
+    if (buyerStatusLabel(entity) !== "Prospect") {
+      return false;
+    }
+  } else if (profileFilter !== "all" && !entity.profiles.includes(profileFilter)) {
     return false;
   }
 
