@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import {
+  ArrowLeft,
   Building2,
   CalendarClock,
   Clock3,
@@ -27,6 +28,7 @@ import {
   buyerStatusLabel,
   canUseHadesWorkspace,
   displayHeaderName,
+  displayText,
   documentLabel,
   isApoloTabUnavailableForEntity,
   isCompanyEntity,
@@ -56,8 +58,10 @@ import { HeaderAction } from "../shell/apolo-shell";
 
 function RecordWorkspace({
   activeTab,
+  backLabel,
   entity,
   loading,
+  onBack,
   onChangeTab,
   onOpenCommercialRelationship,
   onOpenEnterprise,
@@ -65,8 +69,10 @@ function RecordWorkspace({
   onRelationshipCreated,
 }: {
   activeTab: ApoloTab;
+  backLabel: string | null;
   entity: ApoloEntity | null;
   loading: boolean;
+  onBack: () => void;
   onChangeTab: (tab: ApoloTab) => void;
   onOpenCommercialRelationship: (label: string) => void;
   onOpenEnterprise: (name: string) => void;
@@ -79,6 +85,16 @@ function RecordWorkspace({
 
   return (
     <section className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      {backLabel ? (
+        <button
+          className="flex w-full items-center gap-1.5 border-b border-line px-4 py-2 text-left text-xs font-semibold text-ink-soft transition-colors hover:bg-[#A07C3B]/5 hover:text-[#7A5E2C] dark:hover:text-[#d9b877]"
+          onClick={onBack}
+          type="button"
+        >
+          <ArrowLeft aria-hidden="true" className="size-3.5 shrink-0" />
+          <span className="truncate">Voltar para {displayText(backLabel)}</span>
+        </button>
+      ) : null}
       {entity ? <RecordHeader entity={entity} /> : <RecordHeaderEmpty loading={loading} />}
       <TabStrip activeTab={activeTab} disabled={!entity} entity={entity} onChangeTab={onChangeTab} />
       <div className="min-h-0 flex-1 overflow-y-auto p-4">

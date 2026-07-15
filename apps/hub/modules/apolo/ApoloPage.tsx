@@ -92,8 +92,10 @@ export function ApoloPage() {
   // trazer o resultado, aí a seleção cai NELA em vez de na primeira da lista.
   const pendingEntityIdRef = useRef<string | null>(null);
 
+  // Carrega no mount (não só na tela de Empreendimentos): o CRM precisa da lista pra
+  // resolver o clique num relacionamento de empreendimento -> abrir a tela dele.
   useEffect(() => {
-    if (activeScreen !== "empreendimentos" || enterprisesRequestedRef.current) {
+    if (enterprisesRequestedRef.current) {
       return;
     }
 
@@ -148,7 +150,7 @@ export function ApoloPage() {
     return () => {
       active = false;
     };
-  }, [activeScreen]);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -384,8 +386,9 @@ export function ApoloPage() {
         onToggle={() => setSidebarCollapsed((value) => !value)}
       />
       <main className="flex min-w-0 flex-1 flex-col gap-3 overflow-hidden p-3 sm:p-4">
-        {/* Voltar pra de onde viemos (ficha do CRM ou empreendimento), sempre no topo. */}
-        {navStack.length > 0 ? (
+        {/* Na tela de Empreendimento o "voltar" fica no topo; no CRM ele vai pro painel
+            da ficha (passado ao RecordWorkspace). */}
+        {navStack.length > 0 && activeScreen === "empreendimentos" ? (
           <button
             className="inline-flex w-fit max-w-full shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/8 hover:text-[#7A5E2C] dark:hover:text-[#d9b877]"
             onClick={goBack}
@@ -441,8 +444,10 @@ export function ApoloPage() {
               />
               <RecordWorkspace
                 activeTab={activeTab}
+                backLabel={navStack.length > 0 ? navStack[navStack.length - 1]?.name ?? null : null}
                 entity={selectedEntity}
                 loading={loading}
+                onBack={goBack}
                 onChangeTab={setActiveTab}
                 onOpenCommercialRelationship={openCommercialRelationship}
                 onOpenEnterprise={openEnterpriseByName}

@@ -17,8 +17,10 @@ export default function ApoloMockPage() {
     <div className="h-full min-h-0 p-4">
       <RecordWorkspace
         activeTab={tab}
+        backLabel={null}
         entity={entity}
         loading={false}
+        onBack={() => {}}
         onChangeTab={setTab}
         onOpenCommercialRelationship={() => {}}
         onOpenEnterprise={() => {}}
