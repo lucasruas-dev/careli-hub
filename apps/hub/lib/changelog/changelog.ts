@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-15-iris-relacionamento-direct",
+    deployedAt: "2026-07-15T17:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Novo canal Relacionamento (número 6566) com duas filas: Grupo (o monitoramento dos grupos) e Direct (as conversas 1:1).",
+              "Direct é atendimento normal — abre ticket, tem SLA, encerramento e transferência —, mas sem template pra iniciar e sem a janela de 24h (fala-se livremente a qualquer hora).",
+              "Filtro da fila agora tem cor por canal: WhatsApp (verde), Grupo (âmbar), Direct (ciano) e E-mail (índigo), pra distinguir de bate-olho.",
+              "As respostas que o time manda direto do celular do número de Relacionamento agora aparecem na conversa (antes eram ignoradas).",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit a49d4446 (v1.38.0)",
+    technical: {
+      done: "Estrutura (migration 0049): 'Relacionamento' vira o CANAL (slug whatsapp-grupo renomeado); a fila de grupos vira 'Grupo'; nova fila 'Direct' (slug relacionamento-direct). evolution-inbound-processor reescrito: @g.us->grupo (GRP-xxxx, sem ticket); @s.whatsapp.net->abre/reusa ticket na fila Direct (contato por telefone, SLA, source_entity_type whatsapp-direct); fromMe deixa de ser descartado e entra como SAÍDA (dedup por external_message_id cobre o eco dos envios via Iris). Saída: /api/iris/group-messages generalizada (resolve alvo grupo=group_jid/direct=telefone; dono group_id/ticket_id; grupo assina, direct vai limpo; texto/midia/audio/reacao; direct marca 1a resposta+waiting_customer). Cockpit: ticketIsDirect/ticketIsEvolution; direct = atendimento normal sem janela/template; canSendFreeForm nao exige janela; composer esconde a barra de 24h (isEvolutionChannel). UI: filtro de canal com chip Direct + cor por canal (icone sempre tingido + ativo preenchido); badge Direct (User ciano); isDirect na camada de dados; queueChipClasses direct=ciano. Board inclui grupos (fora das metricas) e direct (atendimento normal, conta metricas).",
+      motivation:
+        "Lucas: o numero 6566 (operacional, Evolution) precisa das 1:1 como atendimento de verdade (ticket/SLA/encerramento), mas sem template nem janela porque nao e Meta; e cor por canal pra ler a fila mais rapido.",
+    },
+    title: "Iris: canal Relacionamento com filas Grupo e Direct (1:1) + cor por canal",
+    type: "novidade",
+    version: "1.39.0",
+  },
+  {
     buildTag: "2026-07-15-iris-relacionamento",
     deployedAt: "2026-07-15T14:30:00-03:00",
     internal: true,
