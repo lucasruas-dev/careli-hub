@@ -2237,6 +2237,7 @@ async function fetchCarteiraBuyerEntityIds(
   const clientIds = [...carteira.buyerClientIds].map(String);
 
   if (!clientIds.length) {
+    console.log("[apolo][buyer-filter] clientIds=0 (carteira vazia)");
     return { ids: [] };
   }
 
@@ -2251,12 +2252,14 @@ async function fetchCarteiraBuyerEntityIds(
       .returns<Array<{ entity_id: string }>>();
 
     if (error) {
+      console.log("[apolo][buyer-filter] source_links erro:", error.code, error.message);
       return { error, ids: [] };
     }
 
     ids.push(...(data ?? []).map((row) => row.entity_id));
   }
 
+  console.log("[apolo][buyer-filter] clientIds=%d entityIds=%d", clientIds.length, uniqueStrings(ids).length);
   return { ids: uniqueStrings(ids) };
 }
 
@@ -2509,6 +2512,7 @@ async function loadC2xCarteiraData(): Promise<{
   const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
+    console.log("[apolo][carteira] pool NAO ok, missing:", poolResult.missing.join(","));
     return { buyerClientIds: new Set(), units: 0 };
   }
 
@@ -2549,6 +2553,7 @@ async function loadC2xCarteiraData(): Promise<{
       unitIds.add(toNumber(row.unit_id));
     }
 
+    console.log("[apolo][carteira] query ok size=%d rows=%d", buyerClientIds.size, rows.length);
     const data = { buyerClientIds, units: unitIds.size };
     carteiraCache = { data, expiresAt: Date.now() + CARTEIRA_CACHE_TTL_MS };
 

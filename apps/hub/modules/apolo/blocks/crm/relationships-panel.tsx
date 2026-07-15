@@ -16,11 +16,28 @@ function isVinculado(rel: ApoloRelationship): boolean {
   return rel.relation === "Comprador vinculado" || rel.relation === "Prospect vinculado";
 }
 
+// Mesma pessoa em papéis diferentes (ex.: representante legal E assinante) vira UMA
+// linha, juntando os papéis. Evita a mesma pessoa repetida na lista.
+function mergeByLabel(items: ApoloRelationship[]): ApoloRelationship[] {
+  const byLabel = new Map<string, ApoloRelationship>();
+  for (const rel of items) {
+    const existing = byLabel.get(rel.label);
+    if (!existing) {
+      byLabel.set(rel.label, { ...rel });
+      continue;
+    }
+    if (!existing.relation.split(" · ").includes(rel.relation)) {
+      existing.relation = `${existing.relation} · ${rel.relation}`;
+    }
+  }
+  return [...byLabel.values()];
+}
+
 export function RelationshipsPanel({ entity }: { entity: ApoloEntity }) {
-  const contato = entity.relationships.filter(isContato);
+  const contato = mergeByLabel(entity.relationships.filter(isContato));
   const vinculados = entity.relationships.filter(isVinculado);
-  const trabalho = entity.relationships.filter(
-    (rel) => !isContato(rel) && !isVinculado(rel),
+  const trabalho = mergeByLabel(
+    entity.relationships.filter((rel) => !isContato(rel) && !isVinculado(rel)),
   );
 
   return (
