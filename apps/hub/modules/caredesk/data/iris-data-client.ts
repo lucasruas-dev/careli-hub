@@ -355,14 +355,13 @@ async function loadGroupConversations({
   return groupRows.map((group: any) => {
     const messages = messagesByGroup.get(group.id as string) ?? [];
     const lastMessage = messages[messages.length - 1];
-    const title =
-      (group.subject as string | null)?.trim() || "Relacionamento sem nome";
+    const title = (group.subject as string | null)?.trim() || "Grupo sem nome";
 
     return {
-      assignedToLabel: "Relacionamento",
+      assignedToLabel: "Grupo monitorado",
       channelId: groupChannel?.id ?? null,
       channelKind: "whatsapp",
-      channelLabel: groupChannel?.name ?? "WhatsApp - Relacionamento",
+      channelLabel: groupChannel?.name ?? "Relacionamento",
       contactLabel: title,
       contactPhone: null,
       createdAt: (group.created_at as string) ?? new Date().toISOString(),
@@ -383,9 +382,9 @@ async function loadGroupConversations({
       },
       openedAt: (group.created_at as string) ?? new Date().toISOString(),
       priority: "medium",
-      profileLabel: "Relacionamento",
+      profileLabel: "Grupo",
       protocol: (group.code as string) ?? "GRP",
-      queueLabel: groupQueue?.name ?? "Relacionamento",
+      queueLabel: groupQueue?.name ?? "Grupo",
       queueSlug: groupQueue?.slug ?? GROUP_QUEUE_SLUG,
       sourceContext: {
         groupJid: group.group_jid,
@@ -619,6 +618,7 @@ function mapTicketRow(input: {
     channelKind: input.channel?.kind ?? null,
     channelLabel: input.channel?.name ?? "Canal nao definido",
     isGroup: input.row.source_entity_type === "whatsapp-group",
+    isDirect: input.row.source_entity_type === "whatsapp-direct",
     hasDeliveryError: hasTicketDeliveryError(input.messages),
     contactAvatarUrl: getContactAvatarUrl(input.contact),
     contactDocument: input.contact?.document ?? null,

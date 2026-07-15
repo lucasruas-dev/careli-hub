@@ -42,6 +42,8 @@ export type IrisBoardTicket = {
   crm360Registration?: unknown;
   // Conversa de grupo de WhatsApp (monitoramento CACÁ, read-only).
   isGroup?: boolean;
+  // Conversa 1:1 do canal Relacionamento (6566) via Evolution.
+  isDirect?: boolean;
   firstRespondedAt?: string | null;
   firstResponseDueAt?: string | null;
   hasDeliveryError?: boolean;
@@ -382,8 +384,11 @@ export function queueChipClasses(queueLabel: string): string {
   if (key.includes("atend")) {
     return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-400/30 dark:bg-sky-400/15 dark:text-sky-300";
   }
-  if (key.includes("grupo") || key.includes("relacionament")) {
+  if (key.includes("grupo")) {
     return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/15 dark:text-amber-300";
+  }
+  if (key.includes("direct") || key.includes("relacionament")) {
+    return "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-400/30 dark:bg-cyan-400/15 dark:text-cyan-300";
   }
 
   return "border-line bg-subtle text-ink-muted dark:border-white/10 dark:bg-white/[0.06] dark:text-ink-muted";
