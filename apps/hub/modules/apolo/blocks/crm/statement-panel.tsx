@@ -28,18 +28,17 @@ function formatDate(value: string) {
   return match ? `${match[3]}/${match[2]}/${match[1]}` : value;
 }
 
-function monthRange() {
-  const now = new Date();
-  const first = new Date(now.getFullYear(), now.getMonth(), 1);
-  const last = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-  const iso = (date: Date) =>
-    `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
-  return { end: iso(last), start: iso(first) };
+// Período default = ANO corrente. A comissão da imobiliária/corretor cai no ato/sinal (início
+// da venda), esporádica — um default de mês deixaria a tela vazia quase sempre. O incorporador
+// (mensal) tem todo mês, então o ano cobre bem os dois. O usuário ajusta De/Até se quiser.
+function defaultRange() {
+  const year = new Date().getFullYear();
+  return { end: `${year}-12-31`, start: `${year}-01-01` };
 }
 
 export function StatementPanel({ entity }: { entity: ApoloEntity }) {
   const c2xId = entityC2xId(entity);
-  const initialRange = useMemo(monthRange, []);
+  const initialRange = useMemo(defaultRange, []);
   const [start, setStart] = useState(initialRange.start);
   const [end, setEnd] = useState(initialRange.end);
   const [enterprise, setEnterprise] = useState("");
