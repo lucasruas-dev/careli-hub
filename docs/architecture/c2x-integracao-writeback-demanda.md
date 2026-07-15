@@ -1,81 +1,78 @@
-# Integração Apolo (CRM) → C2X — API de cadastro de cliente
+# Mensagem para a house do C2X (integração com o Panteon/Apolo)
 
-> Solicitação para a house que desenvolve/mantém o C2X. Objetivo: o **mínimo necessário**
-> para o CRM (Apolo) devolver ao C2X os dados de cadastro do cliente. Escopo enxuto de
-> propósito — o que não for essencial está marcado como opcional. Autor: engenharia do
-> Panteon / Careli Hub.
+> Rascunho no tom do Lucas para enviar ao Arthur (house que desenvolve o C2X). O objetivo
+> é abrir a conversa da integração: como o Apolo (nosso CRM) alimenta o C2X, e o que
+> precisamos deles para performance. Deixa eles proporem o caminho técnico e os campos.
+> Checklist técnico interno no final.
 
-## 1. Cenário
+---
 
-- O **Panteon (Careli Hub), pelo módulo Apolo, é o CRM oficial** da Careli. É lá que a
-  equipe **cadastra e edita** o cliente — é a **fonte da verdade do cadastro**.
-- O **C2X é o sistema operacional** (propostas, contratos, financeiro). Ele precisa
-  **receber** do CRM os dados de cadastro que usa para gerar proposta e contrato.
-- Hoje o Apolo **só lê** o C2X. Falta o caminho de **escrita** (Apolo → C2X).
-- A escrita é **automática, via API**: o C2X **valida e grava** na hora. **Não há tela nem
-  aprovação manual** — a validação é por regra (CPF, obrigatórios), não por pessoa.
+## Mensagem (copiar/adaptar e enviar)
 
-## 2. O que precisamos (fase 1 — o essencial e mais barato)
+Pessoal, tudo bem?
 
-Uma **API REST autenticada** no C2X para o CRM **criar e atualizar o cliente** e seus
-dados de contato. Dois endpoints resolvem:
+Complementando a conversa que tive com o Arthur na segunda: a gente tem uma frente aqui na
+Careli que é o desenvolvimento de um hub próprio, o **Panteon**. A ideia é a seguinte: o
+**C2X continua sendo o nosso módulo operacional**, o coração da operação, fazendo tudo que
+já faz hoje, cadastro de unidades, reserva, proposta, contrato e financeiro. Isso não muda.
+Os outros módulos que eu tinha no Odoo a gente está trazendo pra dentro, desenvolvendo
+internamente no Panteon.
 
-### `POST /api/apolo/clientes`  — cria um cliente
-- Corpo: os campos do `users` (PF ou PJ) + endereço, telefones e e-mails.
-- O C2X valida (CPF/CNPJ, obrigatórios, duplicidade), **grava direto** e **retorna o
-  `id` do user criado** no C2X.
+Um desses módulos é o nosso **CRM, o Apolo**. A partir de agora o cadastro do cliente vai
+acontecer nele. E aí entra o que eu preciso de vocês: pra não ter que cadastrar a mesma
+pessoa duas vezes (uma no CRM e outra no C2X), o **Apolo vai alimentar o C2X** com esses
+dados. Ou seja, quando eu cadastrar ou atualizar um cliente no Apolo, isso precisa chegar
+automaticamente no C2X.
 
-### `PATCH /api/apolo/clientes/:id`  — atualiza um cliente existente
-- Corpo: só os campos que mudaram (user e/ou endereço/telefone/e-mail).
-- O C2X valida, aplica e retorna OK (ou erro claro).
+Preciso que vocês me digam o **melhor caminho pra isso do lado de vocês**: se é API,
+webhook, o que for. E me passem o "contrato": o que eu preciso mandar e como mandar, pra eu
+construir a nossa parte aqui. Junto com isso, me digam também **quais campos vocês precisam
+receber pra cadastrar cada tipo de registro** no C2X, porque cada um tem sua regra:
+**imobiliária, corretor, cliente e incorporador**. (Um detalhe: no nosso CRM a gente
+trabalha com "prospect", mas sei que no C2X a pessoa só vira cliente quando tem proposta,
+então me orientem como vocês querem receber isso.)
 
-### Requisitos (simples, mas importantes)
-- **Autenticação**: um **token de serviço** para o Apolo (não usuário humano).
-- **Idempotência**: o Apolo manda um `external_ref` (id da operação no Apolo). Se a mesma
-  requisição chegar 2x (retry de rede), o C2X **não duplica** — devolve o mesmo resultado.
-- **Validação com erro claro**: se rejeitar (CPF inválido, campo obrigatório faltando,
-  duplicado), devolver **status + mensagem** dizendo o quê, para o Apolo mostrar ao operador.
-- **Sem tela de aprovação**: aplica direto após validar.
+A segunda parte é **performance**. Hoje vários módulos do Panteon são alimentados por dados
+do C2X, e a gente lê isso direto do banco de vocês. Pra deixar rápido e sem pesar na
+produção, eu preciso de:
 
-### Escopo dos campos (fase 1)
-- **`users`**: `name`, `person_type_id` (PF/PJ), `cpf`/`cnpj`, `rg`, `birthday`,
-  `civil_state_id`, `sex_id`, `profession_id`, `mother_name`; PJ: `social_name`,
-  `fantasy_name`.
-- **`addresses`**: logradouro, número, complemento, bairro, cidade, UF, CEP.
-- **`phones`**: telefone/celular (com flag WhatsApp).
-- **`emails`**: e-mail.
+1. Um jeito de vocês me **avisarem quando algo importante muda** no C2X (proposta faturada,
+   novo cliente, distrato, mudança de estágio), por webhook ou notificação. Hoje eu fico
+   varrendo o banco pra descobrir, e isso é lento e pesado.
+2. Um **acesso de leitura que não dispute com a produção** de vocês, uma réplica dedicada
+   ou uma API de leitura, porque do jeito que está eu concorro por conexão com o sistema de
+   vocês.
+3. Que vocês me **avisem antes de mexer na estrutura do banco** (renomear coluna, mudar
+   tabela), porque hoje qualquer mudança dessas quebra do nosso lado sem aviso.
 
-> Fora deste escopo (fica **só no Apolo**, o C2X nem precisa saber): relacionamentos de
-> contato (mãe, tio, cônjuge, amigo…), anotações e vínculos que o C2X não modela.
+Me falem o que precisam da minha parte pra tocar isso e um panorama de esforço e prazo.
+Qualquer coisa a gente marca uma call pra alinhar os detalhes técnicos.
 
-## 3. Opcional (fase 2 — só se couber no orçamento)
+Abraço.
 
-Não bloqueia a fase 1; são melhorias de eficiência:
+---
 
-- **Webhooks de eventos**: o C2X avisar o Apolo quando algo relevante muda no operacional
-  — proposta **faturada**, **novo cliente**, **distrato**. Hoje o Apolo descobre isso
-  varrendo o banco (polling); com webhook fica em tempo real e com menos carga.
-- **Aviso de mudança de schema**: enquanto a **leitura** do Apolo for direta no banco do
-  C2X, avisar antes de renomear/alterar colunas — hoje uma mudança dessas quebra o Apolo
-  sem aviso.
+## Checklist técnico (interno, para acompanhar a resposta da house)
 
-## 4. O que o Apolo faz do seu lado (não é pedido à house)
+O que estamos pedindo e o que esperamos receber de volta:
 
-- **Marca de origem**: todo cadastro criado/editado no Apolo fica marcado como nosso, para
-  o Apolo controlar o que enviar ao C2X e não se confundir com o que veio do C2X.
-- **Fila de envio + idempotência**: o Apolo guarda cada requisição e o `id` do C2X quando
-  aplicada; em caso de falha de rede, reenvia sem duplicar.
+### 1. Escrita Apolo → C2X (alimentar o C2X)
+- [ ] **Caminho técnico** (decisão deles): API REST, fila, ou outro. Queremos escrita
+      **automática** (sem tela/aprovação manual), com **idempotência** (retry não duplica)
+      e **erro claro** na validação.
+- [ ] **Contrato**: endpoints/payload para **criar** e **atualizar** cadastro.
+- [ ] **Campos obrigatórios por tipo** (eles informam): imobiliária, corretor, cliente,
+      incorporador. (Prospect é conceito do Apolo; no C2X vira cliente só com proposta.)
+- [ ] Retorno do **id do registro no C2X** (para casarmos de volta).
 
-## 5. Resumo do pedido (para orçar)
+### 2. Performance da comunicação (leitura/eventos)
+- [ ] **Webhooks/eventos** do C2X: faturado, novo cliente, distrato, mudança de estágio
+      (elimina o polling atual).
+- [ ] **Acesso de leitura dedicado**: read-replica ou API, para não disputar conexão com o
+      Rails de produção (o banco tem `max_connections` escasso).
+- [ ] **Aviso prévio de mudança de schema** enquanto a leitura for direta no banco.
 
-| # | Pedido | Fase |
-|---|--------|------|
-| 1 | `POST /api/apolo/clientes` — cria user (PF/PJ) + endereço/telefone/e-mail; retorna o id do C2X | 1 (essencial) |
-| 2 | `PATCH /api/apolo/clientes/:id` — atualiza os mesmos dados | 1 (essencial) |
-| 3 | Token de serviço + idempotência (`external_ref`) + validação com erro claro | 1 (essencial) |
-| 4 | Webhooks de eventos (faturado / novo cliente / distrato) | 2 (opcional) |
-| 5 | Aviso prévio de mudança de schema do banco | 2 (opcional) |
-
-**Essência**: só os itens 1–3 já destravam o CRM escrevendo no C2X. É o menor pacote
-possível — dois endpoints de CRUD de cliente, com token e validação. Sem fila de
-aprovação, sem tela, sem processo manual.
+### 3. Nosso lado (Apolo) — não depende da house
+- Marca de origem (`metadata.source = "apolo"`) em tudo que criamos/editamos, pra o sync do
+  C2X não sobrescrever e sabermos o que enviar.
+- Fila de envio + idempotência (guardar cada requisição e o id do C2X quando aplicada).
