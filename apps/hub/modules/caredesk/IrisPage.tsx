@@ -99,6 +99,7 @@ import {
   IrisConversationEmptyState,
   IrisConversationInboxSidebar,
   IrisConversationMessagesTimeline,
+  type IrisInboxChannelFilter,
   type IrisConversationReadOnlyHelpers,
   type IrisConversationReadOnlyRenderers,
   type IrisConversationWaitState,
@@ -838,9 +839,21 @@ export function IrisPage({
     // debounced da fila (que segue rodando para lista/previews). Era o "recebo
     // a notificacao mas a mensagem nao aparece" relatado pelo time (7/jul).
     const applyRealtimeMessageRow = (row: Record<string, unknown> | undefined) => {
-      const ticketId = typeof row?.ticket_id === "string" ? row.ticket_id : null;
+      // A conversa aberta pode ser um TICKET ou um GRUPO (grupo nao tem ticket:
+      // o id da conversa E o id do grupo). Sem isso, mensagem de grupo so
+      // aparecia com F5.
+      const conversationId =
+        typeof row?.ticket_id === "string"
+          ? row.ticket_id
+          : typeof row?.group_id === "string"
+            ? row.group_id
+            : null;
 
-      if (!row || !ticketId || ticketId !== selectedTicketIdRef.current) {
+      if (
+        !row ||
+        !conversationId ||
+        conversationId !== selectedTicketIdRef.current
+      ) {
         return;
       }
 
@@ -848,7 +861,7 @@ export function IrisPage({
 
       knownMessageIdsRef.current.add(message.id);
       setActiveThread((current) => {
-        if (!current || current.ticketId !== ticketId) {
+        if (!current || current.ticketId !== conversationId) {
           return current;
         }
 
@@ -1124,8 +1137,19 @@ export function IrisPage({
     }
   }, [initialAttendanceProtocol, irisData.tickets]);
 
+  // Métricas de atendimento (SLA, 1ª resposta, TDR...) NÃO contam grupos:
+  // grupo não é atendimento, não tem prazo nem encerramento.
   const snapshot = useMemo(
-    () => buildIrisSnapshot(irisData, onlineOperators),
+    () =>
+      buildIrisSnapshot(
+        {
+          ...irisData,
+          tickets: irisData.tickets.filter(
+            (ticket) => ticket.isGroup !== true,
+          ),
+        },
+        onlineOperators,
+      ),
     [irisData, onlineOperators],
   );
 
@@ -1480,12 +1504,16 @@ function ManagementView({
   onStartAttendance: (queueLabel?: string) => void;
 }) {
   // Board (kanban): abertos + encerrados HOJE (pra alimentar a coluna "Resolvido hoje").
+  // Grupos ENTRAM (o Board e a porta de entrada do cockpit — sem eles o grupo fica
+  // inalcancavel) e caem na propria coluna de canal. Nao contaminam as METRICAS:
+  // o snapshot de SLA/1a resposta/TDR filtra grupos fora.
   const boardTickets = useMemo(
     () =>
       data.tickets.filter(
         (ticket) =>
-          (canSeeCacaQueue || !isCacaOwnedTicket(ticket)) &&
-          (!isClosedTicket(ticket) || isClosedToday(ticket)),
+          ticket.isGroup === true ||
+          ((canSeeCacaQueue || !isCacaOwnedTicket(ticket)) &&
+            (!isClosedTicket(ticket) || isClosedToday(ticket))),
       ),
     [canSeeCacaQueue, data.tickets],
   );
@@ -1649,6 +1677,9 @@ function IrisConversationPanel({
   tickets: IrisTicket[];
 }) {
   const [conversationFilter, setConversationFilter] = useState("Abertas");
+  // Filtro por canal na fila (Tudo / WhatsApp / Grupo / E-mail).
+  const [conversationChannel, setConversationChannel] =
+    useState<IrisInboxChannelFilter>("all");
   const [draft, setDraft] = useState("");
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
@@ -1771,6 +1802,20 @@ function IrisConversationPanel({
           return false;
         }
 
+        // Filtro por canal (Tudo / WhatsApp / Grupo / E-mail).
+        if (conversationChannel === "email" && !isEmailTicket(item)) {
+          return false;
+        }
+        if (conversationChannel === "group" && item.isGroup !== true) {
+          return false;
+        }
+        if (
+          conversationChannel === "whatsapp" &&
+          (isEmailTicket(item) || item.isGroup === true)
+        ) {
+          return false;
+        }
+
         if (conversationFilter === "Pendentes") {
           return ["new", "waiting_operator", "pending", "open"].includes(
             effectiveIrisStatus(item),
@@ -1784,7 +1829,7 @@ function IrisConversationPanel({
         return !isClosedTicket(item);
       })
       .sort(sortIrisTickets);
-  }, [conversationFilter, search, tickets]);
+  }, [conversationChannel, conversationFilter, search, tickets]);
 
   const previousTickets = useMemo(() => {
     return tickets
@@ -2128,11 +2173,16 @@ function IrisConversationPanel({
       null)
     : null;
   const ticketIsEmail = isEmailTicket(ticket);
+  // Grupo de WhatsApp: conversa de monitoramento (read-only), sem janela de 24h.
+  const ticketIsGroup = ticket.isGroup === true;
   // Quando a Caca conduz o atendimento, o operador NAO pode atropelar (enviar):
   // so acompanha e direciona/transfere. O composer fica travado.
   const attendanceWithCaca = isCacaOwnedTicket(ticket);
+  // Grupo não tem janela de 24h do Meta — o envio depende só do ticket estar operável.
   const canSendFreeForm =
-    operationReady && customerServiceWindow.open && !attendanceWithCaca;
+    operationReady &&
+    (ticketIsGroup || customerServiceWindow.open) &&
+    !attendanceWithCaca;
   const composerReady = editingMessage
     ? operationReady && !attendanceWithCaca
     : canSendFreeForm;
@@ -2781,6 +2831,13 @@ function IrisConversationPanel({
       return;
     }
 
+    // Grupo: envia pelo gateway Evolution (número observador, membro do grupo).
+    // Não passa pelo Meta e não tem janela de 24h.
+    if (ticketIsGroup) {
+      await sendGroupReply(body);
+      return;
+    }
+
     if (!canSendFreeForm) {
       setFeedback(customerServiceWindow.label);
       return;
@@ -2865,6 +2922,76 @@ function IrisConversationPanel({
 
   // Responder um ticket de e-mail: o servidor envia pelo Gmail (caixa robô caca@),
   // no mesmo thread do cliente. Sem janela de 24h e sem WhatsApp.
+  // Toda saída do grupo (texto, imagem, documento, áudio, reação) passa por aqui:
+  // vai pelo gateway Evolution, saindo pelo número observador (membro do grupo).
+  // Grupo não é ticket — o id da conversa É o id do grupo.
+  async function sendGroupRequest(
+    payload: Record<string, unknown>,
+    errorFallback: string,
+  ): Promise<boolean> {
+    setSending(true);
+    setFeedback("");
+
+    try {
+      const accessToken = await getIrisAccessToken();
+      const response = await fetch("/api/iris/group-messages", {
+        body: JSON.stringify({ ...payload, groupId: ticket.id }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const data = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: Record<string, unknown> | null;
+      } | null;
+
+      if (data?.message) {
+        onMessageCreated(
+          ticket.id,
+          ensureOperatorIdentity(
+            mapMessageRow(data.message),
+            operatorLabel,
+            operatorAvatarUrl,
+          ),
+        );
+      }
+
+      if (!response.ok) {
+        throw new Error(data?.error ?? errorFallback);
+      }
+
+      return true;
+    } catch (error) {
+      console.error("[caredesk] falha na saida para o grupo", error);
+      setFeedback(error instanceof Error ? error.message : errorFallback);
+
+      return false;
+    } finally {
+      setSending(false);
+    }
+  }
+
+  async function sendGroupReply(body: string) {
+    if (!body || sending || !operationReady) {
+      return;
+    }
+
+    const ok = await sendGroupRequest(
+      { body },
+      "Nao foi possivel enviar a mensagem ao grupo.",
+    );
+
+    if (ok) {
+      setDraft("");
+      setReplyToMessage(null);
+      setEmojiPickerOpen(false);
+      setFeedback("Mensagem enviada ao grupo.");
+    }
+  }
+
   async function sendEmailReply(body: string) {
     if (!body || sending || !operationReady) {
       return;
@@ -3071,6 +3198,12 @@ function IrisConversationPanel({
       return;
     }
 
+    // Grupo sai pelo gateway Evolution: editar ainda nao passa por la.
+    if (ticketIsGroup) {
+      setFeedback("Em grupo ainda nao da para editar a mensagem pela Iris.");
+      return;
+    }
+
     setSending(true);
     setFeedback("");
 
@@ -3128,6 +3261,11 @@ function IrisConversationPanel({
   }
 
   async function sendExistingLocalMessage(message: IrisMessage) {
+    // Reparo de mensagem local so existe no caminho do Meta.
+    if (ticketIsGroup) {
+      return;
+    }
+
     repairingOutboundMessageIds.current.add(message.id);
     setSending(true);
     setFeedback("Sincronizando mensagem local com o WhatsApp.");
@@ -3192,6 +3330,15 @@ function IrisConversationPanel({
 
     // Reação é recurso do WhatsApp (Meta). E-mail não tem.
     if (isEmailTicket(ticket)) {
+      return;
+    }
+
+    // Grupo: reage pelo gateway Evolution, não pelo Meta.
+    if (ticketIsGroup) {
+      await sendGroupRequest(
+        { action: "react", emoji, messageId: message.id },
+        "Não foi possível reagir no grupo.",
+      );
       return;
     }
 
@@ -3444,7 +3591,8 @@ function IrisConversationPanel({
       return;
     }
 
-    if (!canSendFreeForm) {
+    // Grupo nao tem janela de 24h (o gate dela e do Meta).
+    if (!ticketIsGroup && !canSendFreeForm) {
       setFeedback(customerServiceWindow.label);
       return;
     }
@@ -3477,19 +3625,36 @@ function IrisConversationPanel({
         throw new Error("Audio muito grande para este recorte de homologacao.");
       }
 
+      const audioMedia = {
+        dataUrl,
+        durationMs,
+        fileName: `iris-audio-${Date.now()}.${outboundExt}`,
+        mimeType: outboundMime,
+        type: "audio" as const,
+      };
+
+      // Grupo: audio vai pelo gateway Evolution, nao pelo Meta.
+      if (ticketIsGroup) {
+        const ok = await sendGroupRequest(
+          { body: "", media: audioMedia },
+          "Nao foi possivel enviar o audio ao grupo.",
+        );
+
+        if (ok) {
+          setReplyToMessage(null);
+          setFeedback("Audio enviado ao grupo.");
+        }
+
+        return;
+      }
+
       const accessToken = await getIrisAccessToken();
       const response = await fetch("/api/iris/meta/messages", {
         body: JSON.stringify({
           body: "Audio WhatsApp",
           channelId: ticket.channelId ?? null,
           contactId: ticket.contactId ?? null,
-          media: {
-            dataUrl,
-            durationMs,
-            fileName: `iris-audio-${Date.now()}.${outboundExt}`,
-            mimeType: outboundMime,
-            type: "audio",
-          },
+          media: audioMedia,
           replyToMessageId: replyToMessage?.messageId ?? null,
           ticketId: ticket.id,
           to: ticket.contactPhone ?? "",
@@ -3658,6 +3823,25 @@ function IrisConversationPanel({
         throw new Error("Arquivo muito grande para enviar. Reduza o tamanho.");
       }
 
+      // Grupo: anexo vai pelo gateway Evolution, nao pelo Meta.
+      if (ticketIsGroup) {
+        const ok = await sendGroupRequest(
+          { body: caption, media: { dataUrl, fileName, mimeType, type: kind } },
+          "Nao foi possivel enviar o anexo ao grupo.",
+        );
+
+        if (ok) {
+          setReplyToMessage(null);
+          setFeedback(
+            kind === "image"
+              ? "Imagem enviada ao grupo."
+              : "Documento enviado ao grupo.",
+          );
+        }
+
+        return;
+      }
+
       const accessToken = await getIrisAccessToken();
       const response = await fetch("/api/iris/meta/messages", {
         body: JSON.stringify({
@@ -3744,11 +3928,13 @@ function IrisConversationPanel({
   return (
     <section className="relative flex h-full min-h-0 w-full overflow-hidden rounded-xl border border-line/70 bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
       <IrisConversationInboxSidebar
+        channelFilter={conversationChannel}
         cobrancaMode={cobrancaMode}
         collapsed={conversationListCollapsed}
         conversations={conversations}
         filter={conversationFilter}
         helpers={irisConversationReadOnlyHelpers}
+        onChannelFilterChange={setConversationChannel}
         onCollapseChange={setConversationListCollapsed}
         onFilterChange={setConversationFilter}
         onSearchChange={setSearch}
@@ -3773,8 +3959,13 @@ function IrisConversationPanel({
                 </h2>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-ink-muted">
                   <span>{ticket.protocol}</span>
-                  <span aria-hidden="true">-</span>
-                  <span>{statusLabel[ticketStatus]}</span>
+                  {/* Grupo nao tem status de atendimento (nao abre nem encerra). */}
+                  {!ticketIsGroup ? (
+                    <>
+                      <span aria-hidden="true">-</span>
+                      <span>{statusLabel[ticketStatus]}</span>
+                    </>
+                  ) : null}
                   <span aria-hidden="true">·</span>
                   {ticketIsEmail ? (
                     <EmailChannelChip
@@ -3851,55 +4042,63 @@ function IrisConversationPanel({
                   </button>
                 </Tooltip>
               ) : null}
-              <Tooltip content="Direcionar / transferir atendimento" placement="bottom">
-                <button
-                  type="button"
-                  onClick={() => setTransferModalOpen(true)}
-                  disabled={ticketClosed || transferring}
-                  aria-label="Direcionar / transferir atendimento"
-                  className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
-                >
-                  <Forward className="size-4" aria-hidden="true" />
-                </button>
-              </Tooltip>
-              <Tooltip
-                content={
-                  ticketClosed
-                    ? cobrancaMode
-                      ? "Atendimento encerrado"
-                      : "Chat encerrado"
-                    : closingTicket
-                      ? cobrancaMode
-                        ? "Encerrando atendimento..."
-                        : "Encerrando chat..."
-                      : cobrancaMode
-                        ? "Encerrar atendimento"
-                        : "Encerrar chat"
-                }
-                placement="bottom"
-              >
-                <button
-                  type="button"
-                  onClick={() => setCloseModalOpen(true)}
-                  disabled={ticketClosed || closingTicket}
-                  aria-label={
-                    ticketClosed
-                      ? cobrancaMode
-                        ? "Atendimento encerrado"
-                        : "Chat encerrado"
-                      : closingTicket
+              {/* Grupo não é atendimento: não se transfere nem se encerra. */}
+              {!ticketIsGroup ? (
+                <>
+                  <Tooltip
+                    content="Direcionar / transferir atendimento"
+                    placement="bottom"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setTransferModalOpen(true)}
+                      disabled={ticketClosed || transferring}
+                      aria-label="Direcionar / transferir atendimento"
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
+                    >
+                      <Forward className="size-4" aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                  <Tooltip
+                    content={
+                      ticketClosed
                         ? cobrancaMode
-                          ? "Encerrando atendimento"
-                          : "Encerrando chat"
-                        : cobrancaMode
-                          ? "Encerrar atendimento"
-                          : "Encerrar chat"
-                  }
-                  className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200/70 bg-rose-50/70 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
-                >
-                  <CircleStop className="h-4 w-4" aria-hidden="true" />
-                </button>
-              </Tooltip>
+                          ? "Atendimento encerrado"
+                          : "Chat encerrado"
+                        : closingTicket
+                          ? cobrancaMode
+                            ? "Encerrando atendimento..."
+                            : "Encerrando chat..."
+                          : cobrancaMode
+                            ? "Encerrar atendimento"
+                            : "Encerrar chat"
+                    }
+                    placement="bottom"
+                  >
+                    <button
+                      type="button"
+                      onClick={() => setCloseModalOpen(true)}
+                      disabled={ticketClosed || closingTicket}
+                      aria-label={
+                        ticketClosed
+                          ? cobrancaMode
+                            ? "Atendimento encerrado"
+                            : "Chat encerrado"
+                          : closingTicket
+                            ? cobrancaMode
+                              ? "Encerrando atendimento"
+                              : "Encerrando chat"
+                            : cobrancaMode
+                              ? "Encerrar atendimento"
+                              : "Encerrar chat"
+                      }
+                      className="inline-flex size-9 items-center justify-center rounded-lg border border-rose-200/70 bg-rose-50/70 text-rose-700 transition-colors hover:border-rose-300 hover:bg-rose-100 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
+                    >
+                      <CircleStop className="h-4 w-4" aria-hidden="true" />
+                    </button>
+                  </Tooltip>
+                </>
+              ) : null}
               <div className="flex w-fit items-center gap-1 rounded-lg border border-line/70 bg-surface p-1 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
                 <Tooltip content="Voltar" placement="bottom">
                   <button
@@ -3966,7 +4165,9 @@ function IrisConversationPanel({
           attendantOpen={attendantOpen}
           blockedTooltip={blockedTooltip}
           canSendFreeForm={canSendFreeForm}
-          channelKind={ticketIsEmail ? "email" : "whatsapp"}
+          channelKind={
+            ticketIsEmail ? "email" : ticketIsGroup ? "group" : "whatsapp"
+          }
           cobrancaMode={cobrancaMode}
           composerMode={effectiveComposerMode}
           composerReady={composerReadyForMode}
@@ -4099,7 +4300,25 @@ function IrisConversationPanel({
       ) : (
         <IrisCobrancaContextSidebar
           apoloEntity={apoloContextEntity}
-          clienteFields={[
+          clienteFields={
+            // Grupo nao tem cliente/CPF/operador: mostra o que e do grupo.
+            ticketIsGroup
+              ? [
+                  {
+                    label: "Grupo",
+                    value: ticket.subject?.trim() || ticket.contactLabel,
+                  },
+                  { label: "Código", value: ticket.protocol },
+                  {
+                    label: "Participantes",
+                    value:
+                      typeof ticket.metadata?.participantsCount === "number"
+                        ? String(ticket.metadata.participantsCount)
+                        : "-",
+                  },
+                  { label: "Canal", value: "WhatsApp · Grupo" },
+                ]
+              : [
             {
               label: "Cliente",
               value:
@@ -4153,8 +4372,15 @@ function IrisConversationPanel({
               label: "Origem",
               value: ticketOrigin(ticket) === "active" ? "Ativo" : "Passivo",
             },
-            { label: "Canal", value: ticketIsEmail ? "E-mail" : "WhatsApp" },
-            ...(ticketIsEmail
+            {
+              label: "Canal",
+              value: ticketIsEmail
+                ? "E-mail"
+                : ticketIsGroup
+                  ? "WhatsApp · Grupo"
+                  : "WhatsApp",
+            },
+            ...(ticketIsEmail || ticketIsGroup
               ? []
               : [
                   {
@@ -4162,7 +4388,8 @@ function IrisConversationPanel({
                     value: customerServiceWindow.contextLabel,
                   },
                 ]),
-          ]}
+                ]
+          }
           clientId={null}
           collapsed={contextCollapsed}
           currentTicketId={ticket.id}
@@ -4588,9 +4815,12 @@ function TicketSeparator({
 }) {
   const status = effectiveIrisStatus(ticket);
   const email = isEmailTicket(ticket);
-  const channelLine = email
-    ? `E-mail · ${emailBoxLabel(ticket.channelLabel)}`
-    : `WhatsApp · ${ticket.queueLabel}`;
+  const group = ticket.isGroup === true;
+  const channelLine = group
+    ? `Grupo · ${ticket.queueLabel}`
+    : email
+      ? `E-mail · ${emailBoxLabel(ticket.channelLabel)}`
+      : `WhatsApp · ${ticket.queueLabel}`;
   const subjectChoices = Array.from(
     new Set([subject, ...(subjectOptions ?? [])]),
   ).filter((value): value is string => Boolean(value && value.trim()));
@@ -4614,16 +4844,25 @@ function TicketSeparator({
         ].join(" ")}
       >
         <div className="flex flex-wrap items-center justify-center gap-2">
-          <span className="rounded-full bg-[#A07C3B]/12 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15 dark:bg-[#A07C3B]/15 dark:text-[#d9b877] dark:ring-[#A07C3B]/30">
-            Ticket {ticket.protocol}
+          {/* Grupo nao e ticket: mostra o codigo do grupo (GRP-xxxx), sem status. */}
+          <span
+            className={
+              group
+                ? "rounded-full bg-amber-50 px-2 py-0.5 text-[11px] font-semibold text-amber-700 ring-1 ring-amber-200 dark:bg-amber-400/15 dark:text-amber-300 dark:ring-amber-400/30"
+                : "rounded-full bg-[#A07C3B]/12 px-2 py-0.5 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/15 dark:bg-[#A07C3B]/15 dark:text-[#d9b877] dark:ring-[#A07C3B]/30"
+            }
+          >
+            {group ? ticket.protocol : `Ticket ${ticket.protocol}`}
           </span>
-          <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-soft ring-1 ring-slate-200 dark:ring-white/10">
-            {statusLabel[status]}
-          </span>
+          {!group ? (
+            <span className="rounded-full bg-subtle px-2 py-0.5 text-[11px] font-semibold text-ink-soft ring-1 ring-slate-200 dark:ring-white/10">
+              {statusLabel[status]}
+            </span>
+          ) : null}
         </div>
         {!compact ? (
           <>
-            {onSubjectChange && !email ? (
+            {onSubjectChange && !email && !group ? (
               <select
                 value={subject ?? ""}
                 onChange={(event) => onSubjectChange(event.target.value)}
@@ -4642,10 +4881,14 @@ function TicketSeparator({
                 ))}
               </select>
             ) : (
-              // E-mail já tem assunto próprio — mostra estático (sem catálogo do WhatsApp).
+              // E-mail e grupo já têm assunto próprio — mostra estático (sem catálogo do WhatsApp).
               <p className="mt-2 text-sm font-semibold text-ink [overflow-wrap:anywhere]">
                 {ticket.subject?.trim() ||
-                  (email ? "(sem assunto)" : ticketCrmSubtitle(ticket))}
+                  (group
+                    ? ticket.contactLabel
+                    : email
+                      ? "(sem assunto)"
+                      : ticketCrmSubtitle(ticket))}
               </p>
             )}
             <p className="mt-1 text-xs font-medium capitalize text-ink-muted">
@@ -4971,6 +5214,9 @@ function MessageBubble({
   const internal =
     message.direction === "internal" || message.senderType === "system";
   const canEdit = outbound && message.senderType === "operator";
+  // Em grupo, cada mensagem recebida é de um participante — mostra quem enviou.
+  const showGroupSender =
+    ticket.isGroup === true && !outbound && Boolean(message.senderLabel);
   const avatarLabel = outbound
     ? (message.senderLabel ?? "Operador Iris")
     : ticketContactLabel(ticket);
@@ -5061,6 +5307,13 @@ function MessageBubble({
             {outbound && message.senderLabel ? (
               <div className="mb-1.5 flex items-center justify-end gap-1.5">
                 <span className="rounded-full border border-[#c8ecd7] bg-surface/80 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-normal text-[#0f766e] dark:border-[#1f6b50]/60 dark:bg-white/[0.06] dark:text-[#9fd8bd]">
+                  {message.senderLabel}
+                </span>
+              </div>
+            ) : null}
+            {showGroupSender ? (
+              <div className="mb-1 flex items-center gap-1.5">
+                <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">
                   {message.senderLabel}
                 </span>
               </div>

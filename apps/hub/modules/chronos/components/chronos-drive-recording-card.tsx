@@ -334,10 +334,10 @@ function ChronosDriveArtifactChips({
 }
 
 const chronosDriveChipStateClasses: Record<ChronosDriveArtifactState, string> = {
-  failed: "border-[#f4c7c3] bg-[#fdecea] dark:bg-rose-500/12 text-[#a50e0e]",
-  none: "border-[#e4e8ee] bg-subtle text-ink-muted",
-  ok: "border-[#c9e7d4] bg-[#e6f4ea] dark:bg-emerald-500/12 text-[#188038]",
-  processing: "border-[#f0e0bb] bg-[#fdf7e7] dark:bg-[#a07c3b]/10 text-[#8a6d1d]",
+  failed: "border-[#f4c7c3] bg-[#fdecea] text-[#a50e0e]",
+  none: "border-[#e4e8ee] bg-[#f6f8fa] text-ink-muted",
+  ok: "border-[#c9e7d4] bg-[#e6f4ea] text-[#188038]",
+  processing: "border-[#f0e0bb] bg-[#fdf7e7] text-[#8a6d1d]",
 };
 
 function ChronosDriveArtifactChip({

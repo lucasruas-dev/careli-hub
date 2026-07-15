@@ -170,6 +170,8 @@ export function IrisConversationComposerActions({
     : "Respondendo";
   const noteMode = composerMode === "note";
   const isEmailChannel = channelKind === "email";
+  // Grupo de WhatsApp (monitoramento): sem a janela de 24h do Meta 1:1.
+  const isGroupChannel = channelKind === "group";
   const composerPlaceholder = noteMode
     ? "Mensagem assistida — nao vai pro cliente..."
     : composerReady
@@ -309,7 +311,7 @@ export function IrisConversationComposerActions({
         </div>
       ) : null}
 
-      {!ticketClosed && !noteMode && !lockedByCaca && !isEmailChannel ? (
+      {!ticketClosed && !noteMode && !lockedByCaca && !isEmailChannel && !isGroupChannel ? (
         <div
           className={[
             "mb-2 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2",

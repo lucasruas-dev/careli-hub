@@ -29,6 +29,9 @@ const PUBLIC_API_PREFIXES = [
   "/api/chronos/public", // videochamada Chronos (excecao da politica)
   "/api/iris/meta/webhook", // webhook Meta (validado por assinatura)
   "/api/caredesk/meta/webhook", // re-export do webhook Meta
+  // ⚠️ Libera por PREFIXO: /api/iris/evolution/* tambem fica publico. NAO criar
+  // rota de operador aqui dentro (o envio ao grupo mora em /api/iris/group-messages).
+  "/api/iris/evolution", // webhook Evolution grupos (validado por segredo compartilhado)
   "/api/guardian/sync/c2x", // cron (segredo proprio)
   "/api/hades/sync/c2x", // cron (re-export)
   "/api/guardian/lembretes/cron", // cron da regua de lembretes (segredo proprio)

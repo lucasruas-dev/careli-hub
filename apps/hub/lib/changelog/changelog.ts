@@ -36,6 +36,187 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-14-iris-grupo-anexo-audio-reacao",
+    deployedAt: "2026-07-14T16:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "No grupo de WhatsApp agora dá para enviar imagem, documento e áudio, além de reagir com emoji — antes só texto funcionava.",
+              "Corrigido: reagir ou anexar num grupo dava o erro 'Informe o telefone WhatsApp em formato internacional'.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit f516f0af (v1.35.0)",
+    technical: {
+      done: "O envio ao grupo (v1.35.0) so cobria TEXTO; os outros 5 caminhos de saida do cockpit (reagir, audio, anexo, editar, reenviar) seguiam chamando /api/iris/meta/messages, que valida telefone — e grupo nao tem contactPhone (confirmado nos logs: 400 no meta/messages e ZERO chamadas em /api/iris/group-messages). Agora: evolution-api ganha sendEvolutionGroupMedia (sendMedia), sendEvolutionGroupAudio (sendWhatsAppAudio) e sendEvolutionGroupReaction (sendReaction — usa a chave do provedor: remoteJid do grupo + external_message_id + fromMe); postEvolutionMessage centraliza as chamadas. /api/iris/group-messages aceita media {dataUrl,fileName,mimeType,type} (sobe pro Storage via uploadIrisMediaBuffer; a conversa le provider_payload.media.{url,type,fileName}, igual ao Meta) e action 'react' (toggle em provider_payload.reactions; tirar = reacao vazia no WhatsApp). IrisPage: sendGroupRequest centraliza a saida do grupo. Editar e reenviar-local seguem sem suporte em grupo (avisam).",
+      motivation:
+        "Lucas tentou reagir a uma mensagem no grupo e recebeu erro de telefone. A causa: entreguei o envio ao grupo pela metade (so texto), e os demais caminhos caiam no Meta.",
+    },
+    title: "Iris: anexo, áudio e reação nos grupos de WhatsApp",
+    type: "novidade",
+    version: "1.36.0",
+  },
+  {
+    buildTag: "2026-07-14-iris-grupos-sem-ticket",
+    deployedAt: "2026-07-14T14:20:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Agora dá para RESPONDER no grupo de WhatsApp direto pela Iris. A mensagem sai assinada com o nome de quem escreveu.",
+              "Grupo deixou de ser ticket: não tem mais encerramento, status nem SLA. Cada grupo tem um código próprio (GRP-0001) e a conversa é permanente.",
+              "As mensagens do grupo aparecem ao vivo, sem precisar de F5.",
+              "Indicadores do topo (SLA, 1ª resposta, TDR) não contam grupos — grupo não é atendimento.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit eaf0a699 (v1.34.2)",
+    technical: {
+      done: "REFACTOR: grupo sai da arquitetura de ticket. migration 0046: caredesk_messages.ticket_id vira nullable + coluna group_id (+ check: mensagem pertence a ticket OU grupo); caredesk_whatsapp_groups ganha codigo GRP-xxxx (sequence); tickets de grupo e contatos sinteticos apagados (mensagens movidas ao grupo ANTES — o FK ticket_id e ON DELETE CASCADE). migration 0047 CORRIGE a 0045, que habilitou RLS na tabela de grupos SEM policy: como loadIrisData roda no navegador, a tabela devolvia zero linhas e o grupo era invisivel. ENVIO: POST /api/iris/group-messages (sessao de operador; fica FORA de /api/iris/evolution porque o gate libera por prefixo) -> sendEvolutionGroupText (numero observador, membro do grupo), corpo assinado com signWhatsAppBody e salvo sem assinatura. loadGroupConversations monta cada grupo como conversa (formato IrisTicket, protocolo = GRP-xxxx). applyRealtimeMessageRow aceita ticket_id OU group_id. Board inclui grupos (unica porta de entrada do cockpit) mas o snapshot de metricas os exclui.",
+      motivation:
+        "Lucas, ao ver o grupo encerrado por engano: 'para os grupos, vamos tirar essa coisa de ticket, encerramento... podemos criar um ID para o grupo, pois la na frente, quando comecarmos a registrar as atividades, vamos precisar vincular a um ID que substituira o ticket'. O GRP-xxxx e a ancora: as ATIVIDADES detectadas no grupo (fase CACA) e que viram ticket, vinculadas ao grupo.",
+    },
+    title: "Iris: responder no grupo + grupo deixa de ser ticket (GRP-xxxx)",
+    type: "novidade",
+    version: "1.35.0",
+  },
+  {
+    buildTag: "2026-07-14-dark-sidebars-hotfix",
+    deployedAt: "2026-07-14T10:05:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A barra lateral (menu) ficou no grafite do tema, sem o tom azulado, e o botão de novo cadastro ganhou o dourado da marca.",
+            ],
+            screen: "Ajustes do tema escuro",
+          },
+        ],
+      },
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "A barra lateral também passou pro grafite do tema.",
+            ],
+            screen: "Ajustes do tema escuro",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 20becf94 (v1.34.1)",
+    technical: {
+      done: "Hotfix visual do tema escuro pos-v1.34.1: (1) sidebars de Apolo e Chronos migradas da classe base .panteon-module-sidebar (azulada fixa #232832, nao segue tema) para .panteon-module-sidebar--themed (grafite neutro no escuro, clara no claro), espelhando o Hades — cores internas convertidas pra theme-aware (item ativo #171b23/#2A2B32->bg-black/[0.07] dark:bg-white/[0.08], textos->tokens, tile da marca->dourado bg-[#101211]/border-[#A07C3B], icone inativo->text-ink-muted). (2) Botao '+' de novo cadastro (apolo-shell): bg-inverse (virava caixa clara no escuro) -> bg-[#A07C3B] (dourado da marca). (3) Blocos <pre> do MOSTQI tester: bg-inverse+text-slate-100 (claro-sobre-claro invisivel no escuro) -> bg-[#101211] fixo. Deploy via worktree sobre origin/main v1.34.1 (patch so dos 4 arquivos do hotfix). Typecheck limpo. LICAO: a regra #101820->bg-inverse do script de conversao e certa pra botoes de texto (invertem), mas errada pra sidebar sempre-escura, botoes so-icone e code blocks — esses precisam de dark fixo.",
+      motivation:
+        "Fechar os pontos claros/azulados que sobraram no tema escuro do Apolo e Chronos apos a v1.34.1 (menu lateral, botao novo, blocos de codigo).",
+    },
+    title: "Ajustes do tema escuro em Apolo e Chronos (menu lateral, botões)",
+    type: "correcao",
+    version: "1.34.2",
+  },
+  {
+    buildTag: "2026-07-14-apolo-chronos-setup-escuro",
+    deployedAt: "2026-07-14T09:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O Apolo (CRM 360, ficha do cliente e cadastro) ganhou o tema escuro.",
+            ],
+            screen: "Tema escuro",
+          },
+        ],
+      },
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "A agenda ficou no tema escuro, incluindo a grade do calendário (dia/semana/mês), os eventos e os detalhes ao clicar.",
+            ],
+            screen: "Tema escuro",
+          },
+        ],
+      },
+      {
+        module: "Setup",
+        screens: [
+          {
+            items: [
+              "As telas de Setup (usuários, departamentos, setores, módulos, permissões) ganharam o tema escuro.",
+            ],
+            screen: "Tema escuro",
+          },
+        ],
+      },
+      {
+        module: "Panteon",
+        screens: [
+          {
+            items: [
+              "Nas telas de página cheia (como o Setup), o seu nome e os ícones do topo voltaram a ficar legíveis no tema escuro.",
+            ],
+            screen: "Ajuste da barra de topo",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 8269f848 (v1.34.0)",
+    technical: {
+      done: "Conversao dark de Apolo (modules/apolo), Chronos (modules/chronos, exceto as paginas standalone de video ChronosExternalRoomPage/RecordingViewPage) e Setup (app/setup/page.tsx) via script de receita (~1.950 subst. em 47 arquivos): neutros hex+slate->tokens, fundo de pagina->bg-canvas, enfase escura (#101820/#0d141c/#1f2937 +text-white)->bg-inverse+text-brand-ink, intents e gold escuro com dark:. Chronos FullCalendar: override dark dedicado no <style> do chronos-calendar-canvas (scope :root[data-uix-theme=dark]) — grade grafite, bordas #2b2e2c, texto claro, eventos azul translucido, aneis brancos entre eventos->escuros. hub-shell: PanteonTopbarUser da topbar WorkspaceLayout (L618) agora recebe onDark={mode===dark} (useHubTheme) — corrige nome/icones apagados no escuro nas paginas de pagina cheia. Deploy feito de worktree isolado (branch local estava em feat/iris-email-ui, 8 commits atras da main com WIP de outra sessao); patch so das minhas mudancas aplicado sobre origin/main v1.34.0. Typecheck limpo.",
+      motivation:
+        "Estender o tema claro/escuro ao Apolo, Chronos e Setup (estagio 3), fechando mais tres modulos. Restam Agenda (Meu dia), Ares/Atlas e Mobile.",
+    },
+    title: "Tema escuro no Apolo, Chronos e Setup",
+    type: "melhoria",
+    version: "1.34.1",
+  },
+  {
+    buildTag: "2026-07-13-iris-fila-grupos-whatsapp",
+    deployedAt: "2026-07-13T18:10:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Nova fila Grupos: os grupos de WhatsApp monitorados pela CACÁ aparecem na Iris como conversas (cada grupo é uma conversa, somente leitura).",
+              "Cada mensagem do grupo mostra quem enviou (o participante), como no WhatsApp.",
+              "Filtro por canal no topo da fila (Tudo / WhatsApp / Grupo / E-mail) para separar as conversas por tipo.",
+              "Canal de grupo com identidade própria (cor âmbar) e sem a Janela de 24h do WhatsApp, que não se aplica a grupos.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 513599f4 (v1.33.1)",
+    technical: {
+      done: "Gateway Evolution API (instancia caca-observadora, numero dedicado, read-only) num VPS Lightsail; webhook messages.upsert -> POST /api/iris/evolution (gate central liberado, segredo compartilhado IRIS_EVOLUTION_WEBHOOK_SECRET) -> evolution-inbound-processor: 1 grupo = 1 ticket na fila Grupos (canal whatsapp-grupo, provider evolution, isolado das resolucoes Meta), contato sintetico = o grupo, dedup por external_message_id. Migration 0045 (canal+fila+caredesk_whatsapp_groups). UI: isGroup na camada de dados (source_entity_type), filtro de canal em icones na fila, badge de grupo, remetente por mensagem (provider_payload.groupParticipantName -> senderLabel), assunto=nome do grupo, esconde Janela WhatsApp, cor ambar (queueChipClasses). Nome do grupo via findGroupInfos (env EVOLUTION_API_URL/KEY).",
+      motivation:
+        "Lucas quer monitorar os grupos de WhatsApp dele pela Iris/CACÁ (ver o que e demanda, se esta tendo resposta), com pouca interacao do agente. A API oficial da Meta nao serve (Groups API so cria grupos proprios, max 8, exige OBA), entao gateway Evolution read-only. Fase 1 = recepcao + fila; classificacao/digest da CACÁ vem depois.",
+    },
+    title: "Iris: fila de grupos de WhatsApp (monitoramento pela CACÁ)",
+    type: "novidade",
+    version: "1.34.0",
+  },
+  {
     buildTag: "2026-07-13-iris-email-ajustes",
     deployedAt: "2026-07-13T16:20:00-03:00",
     internal: true,
