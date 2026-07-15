@@ -116,9 +116,8 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
   return (
     <section className="grid gap-4">
       <header className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4">
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-          <Kpi label="Recebido (bruto)" value={brl(summary?.gross ?? 0)} />
-          <Kpi label="Líquido" value={brl(summary?.net ?? 0)} />
+        <div className="grid grid-cols-2 gap-3">
+          <Kpi label="Recebido" value={brl(summary?.total ?? 0)} />
           <Kpi label="Lançamentos" value={String(summary?.count ?? 0)} />
         </div>
         <div className="flex flex-wrap items-end gap-3">
@@ -183,8 +182,7 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
                 <th className="px-4 py-3 font-semibold">Cliente</th>
                 <th className="px-4 py-3 font-semibold">Parcela</th>
                 <th className="px-4 py-3 font-semibold">Papel</th>
-                <th className="px-4 py-3 text-right font-semibold">Recebido</th>
-                <th className="px-4 py-3 text-right font-semibold">Líquido</th>
+                <th className="px-4 py-3 text-right font-semibold">Valor</th>
                 <th className="px-4 py-3 text-center font-semibold">Comprovante</th>
               </tr>
             </thead>
@@ -204,8 +202,7 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
                   <td className="px-4 py-3 text-ink-soft">{row.clientName ?? "-"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.parcela}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.role}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">{brl(row.grossValue)}</td>
-                  <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">{brl(row.netValue)}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">{brl(row.value)}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-center">
                     {row.asaasId ? (
                       <AsaasCell id={row.asaasId} url={row.asaasUrl} />

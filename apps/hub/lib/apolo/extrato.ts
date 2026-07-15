@@ -16,10 +16,7 @@ export type ApoloStatementRow = {
   clientName: string | null;
   enterpriseCode: string;
   enterpriseName: string | null;
-  feeValue: number;
-  grossValue: number;
   id: string;
-  netValue: number;
   parcela: string;
   paymentDate: string;
   role: string;
@@ -27,13 +24,14 @@ export type ApoloStatementRow = {
   unitBlock: string | null;
   unitCode: string;
   unitLot: string | null;
+  // Valor REAL do split pago ao participante (split_data.fixedValue do Asaas). Bate com o
+  // relatório de splits do Asaas. Fallback = cálculo por percentual quando não há split_data.
+  value: number;
 };
 
 export type ApoloStatementSummary = {
   count: number;
-  fees: number;
-  gross: number;
-  net: number;
+  total: number;
 };
 
 export type ApoloStatementEnterprise = {
@@ -66,11 +64,19 @@ type StatementRow = RowDataPacket & {
   payment_date: Date | string | null;
   payment_id: number;
   profile_name: string | null;
+  split_data: unknown;
   split_group_value_id: number;
-  total_admin_fee: string | number | null;
   total_parcels: number | null;
   unit_block: string | null;
   unit_lot: string | null;
+};
+
+// Um participante dentro do split_data (JSON) do pagamento no C2X.
+type SplitDataEntry = {
+  fixedValue?: number | string | null;
+  nome?: string | null;
+  perfil?: string | null;
+  walletId?: string | null;
 };
 
 // Mapeia o tipo de parcela do pagamento (parcel_types) pro grupo de split (split_group_names).
@@ -121,7 +127,6 @@ export async function loadApoloParticipantStatement(
 
   const fromWhere = `
     from payments p
-    left join payment_admin_fees paf on paf.payment_id = p.id
     join acquisition_requests ar on ar.id = p.acquisition_request_id
     join enterprise_unities eu on eu.id = ar.enterprise_unity_id
     join enterprises e on e.id = eu.enterprise_id
@@ -154,7 +159,7 @@ export async function loadApoloParticipantStatement(
          p.total_parcels,
          sp.name as profile_name,
          p.paid_value * segv.percent / 100 as gross_value,
-         coalesce(paf.total_admin_fee, 0) as total_admin_fee,
+         p.split_data,
          nullif(trim(p.payment_asaas_id), '') as asaas_id,
          nullif(trim(p.payment_asaas_url), '') as asaas_url,
          nullif(trim(p.payment_asaas_invoice_url), '') as asaas_invoice_url
@@ -169,11 +174,9 @@ export async function loadApoloParticipantStatement(
     const summary = statementRows.reduce<ApoloStatementSummary>(
       (acc, row) => ({
         count: acc.count + 1,
-        fees: acc.fees + row.feeValue,
-        gross: acc.gross + row.grossValue,
-        net: acc.net + row.netValue,
+        total: acc.total + row.value,
       }),
-      { count: 0, fees: 0, gross: 0, net: 0 },
+      { count: 0, total: 0 },
     );
 
     return { data: { enterprises, rows: statementRows, summary }, ok: true };
@@ -188,9 +191,11 @@ function nameSql(alias: string) {
 }
 
 function mapRow(row: StatementRow): ApoloStatementRow {
-  const gross = toNumber(row.gross_value);
-  const fees = toNumber(row.total_admin_fee);
   const enterpriseCode = String(row.enterprise_code ?? "");
+  const profileName = text(row.profile_name);
+  // Valor REAL pago ao participante (split_data do Asaas). Fallback = cálculo por percentual
+  // (pagamentos antigos, sem split_data). Ver [[project-apolo-acessos-externos]].
+  const realValue = splitValueFor(row.split_data, profileName);
 
   return {
     asaasId: text(row.asaas_id),
@@ -199,17 +204,59 @@ function mapRow(row: StatementRow): ApoloStatementRow {
     clientName: text(row.client_name),
     enterpriseCode,
     enterpriseName: text(row.enterprise_name),
-    feeValue: fees,
-    grossValue: gross,
     id: `${row.payment_id}:${row.split_group_value_id}`,
-    netValue: Math.max(gross - fees, 0),
     parcela: `${row.current_parcel ?? "-"}/${row.total_parcels ?? "-"}`,
     paymentDate: dateOnly(row.payment_date),
-    role: text(row.profile_name) ?? "-",
+    role: profileName ?? "-",
     unitBlock: text(row.unit_block),
     unitCode: buildUnitCode(enterpriseCode, text(row.unit_block), text(row.unit_lot)),
     unitLot: text(row.unit_lot),
+    value: realValue ?? toNumber(row.gross_value),
   };
+}
+
+// Extrai o valor real (fixedValue) que o participante recebeu, do split_data do pagamento,
+// casando pelo PERFIL (split_profiles.name == split_data.perfil). Retorna null quando não há
+// split_data (pagamentos anteriores à integração Asaas) — aí o chamador usa o fallback.
+function splitValueFor(splitData: unknown, profileName: string | null): number | null {
+  if (!profileName) {
+    return null;
+  }
+
+  const entries = parseSplitData(splitData);
+  if (!entries.length) {
+    return null;
+  }
+
+  const target = normalize(profileName);
+  const match = entries.find((entry) => normalize(entry.perfil ?? "") === target);
+
+  if (!match || match.fixedValue == null) {
+    return null;
+  }
+
+  const value = Number(match.fixedValue);
+  return Number.isFinite(value) ? value : null;
+}
+
+function parseSplitData(raw: unknown): SplitDataEntry[] {
+  let parsed = raw;
+  if (typeof raw === "string") {
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(parsed) ? (parsed as SplitDataEntry[]) : [];
+}
+
+function normalize(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "")
+    .toLowerCase()
+    .trim();
 }
 
 // Código curto da unidade (ex.: VALH05) — mesmo formato da carteira. Ver [[project-apolo-crm-grafo]].
@@ -236,7 +283,7 @@ function uniqueEnterprises(rows: ApoloStatementRow[]): ApoloStatementEnterprise[
 }
 
 function emptyData(): ApoloStatementData {
-  return { enterprises: [], rows: [], summary: { count: 0, fees: 0, gross: 0, net: 0 } };
+  return { enterprises: [], rows: [], summary: { count: 0, total: 0 } };
 }
 
 function toNumber(value: string | number | null | undefined): number {
