@@ -59,6 +59,7 @@ A integração Vercel↔GitHub está **LIGADA**. **Branch de produção = `main`
 
 ## Como o Lucas trabalha
 - Valida tudo **visualmente** (manda prints); itera rápido; pragmático; português (BR); direto ao ponto.
+- **Raciocine em português (PT-BR)** — o pensamento visível (o "pensando…"), não só a resposta final. Vale pro Zeus e pra TODO subagente. (Não é config, é instrução: o modelo às vezes escorrega pro inglês em raciocínio pesado; puxe de volta pro PT-BR.)
 - **Continuidade:** quer rodar o mesmo chat até saturar — você **avisa** quando perceber saturação e gera o **handoff** (prompt + diário) pro próximo Zeus.
 - Custo importa. Segurança importa.
 
