@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-15-apolo-comprador-fix",
+    deployedAt: "2026-07-15T19:15:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Corrigido: clientes que compraram apareciam como Prospect (e o filtro Comprador vinha vazio). Agora Comprador e Prospect batem com a carteira.",
+            ],
+            screen: "CRM 360",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 30f66e27 (v1.37.0)",
+    technical: {
+      done: "Bug no marcador isBuyer (loadApoloDashboard): o id do cliente saía de String(hadesClientId).replace(/\\D/g,'') sobre 'c2x-client-<id>' — o '2' de 'c2x' entrava nos digitos ('c2x-client-3789' -> 23789), entao carteira.buyerClientIds.has() nunca casava e TODO comprador virava prospect (e o matchesApoloFilters do filtro Comprador derrubava todos). Fix: extrair os digitos FINAIS via /(\\d+)$/. Removidos os logs de diagnostico [apolo][carteira]/[apolo][buyer-filter].",
+      motivation:
+        "Lucas viu a Rejane (2 lotes faturados no Vista Alegre, na carteira) marcada como Prospect. Mesma causa do filtro Comprador vazio.",
+    },
+    title: "Apolo: corrige Comprador aparecendo como Prospect",
+    type: "correcao",
+    version: "1.37.1",
+  },
+  {
     buildTag: "2026-07-15-apolo-empreendimento-crm360",
     deployedAt: "2026-07-15T18:30:00-03:00",
     modules: [

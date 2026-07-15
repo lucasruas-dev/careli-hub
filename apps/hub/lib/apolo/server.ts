@@ -987,11 +987,14 @@ async function loadApoloTablesDashboard(
 
   const collapsedEntities = collapseDuplicateApoloEntities(entities, docHashByEntityId);
   // Marca Comprador de verdade = o cliente está na carteira do C2X (mesma base da KPI,
-  // pra cards e painel baterem). hadesClientId = "c2x-client-<id>".
+  // pra cards e painel baterem). hadesClientId = "c2x-client-<id>"; pega os dígitos FINAIS
+  // (o id do user), não todos — senão o "2" de "c2x" contamina ("c2x-client-3789" -> 23789)
+  // e o has() nunca casa, deixando TODO comprador como prospect.
   for (const entity of collapsedEntities) {
-    const c2xId = entity.hadesClientId
-      ? Number(String(entity.hadesClientId).replace(/\D/g, ""))
-      : Number.NaN;
+    const idMatch = entity.hadesClientId
+      ? /(\d+)$/.exec(entity.hadesClientId)?.[1]
+      : undefined;
+    const c2xId = idMatch ? Number(idMatch) : Number.NaN;
     entity.isBuyer = Number.isFinite(c2xId) && carteira.buyerClientIds.has(c2xId);
   }
   const usuarioCount = profileSummaries.find((summary) => summary.profile === "usuario")?.count ?? 0;
@@ -2237,7 +2240,6 @@ async function fetchCarteiraBuyerEntityIds(
   const clientIds = [...carteira.buyerClientIds].map(String);
 
   if (!clientIds.length) {
-    console.log("[apolo][buyer-filter] clientIds=0 (carteira vazia)");
     return { ids: [] };
   }
 
@@ -2252,14 +2254,12 @@ async function fetchCarteiraBuyerEntityIds(
       .returns<Array<{ entity_id: string }>>();
 
     if (error) {
-      console.log("[apolo][buyer-filter] source_links erro:", error.code, error.message);
       return { error, ids: [] };
     }
 
     ids.push(...(data ?? []).map((row) => row.entity_id));
   }
 
-  console.log("[apolo][buyer-filter] clientIds=%d entityIds=%d", clientIds.length, uniqueStrings(ids).length);
   return { ids: uniqueStrings(ids) };
 }
 
@@ -2512,7 +2512,6 @@ async function loadC2xCarteiraData(): Promise<{
   const poolResult = getHadesDbPool();
 
   if (!poolResult.ok) {
-    console.log("[apolo][carteira] pool NAO ok, missing:", poolResult.missing.join(","));
     return { buyerClientIds: new Set(), units: 0 };
   }
 
