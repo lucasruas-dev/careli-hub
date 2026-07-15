@@ -95,6 +95,8 @@ type ApoloAddressRow = {
 type ApoloRelationshipRow = {
   entity_id: string;
   label: string | null;
+  metadata: unknown;
+  related_entity_id: string | null;
   relationship_type: string;
   status: string | null;
 };
@@ -887,7 +889,7 @@ async function loadApoloTablesDashboard(
     fetchRows<ApoloRelationshipRow>(
       adminClient,
       "apolo_relationships",
-      "entity_id,relationship_type,label,status",
+      "entity_id,relationship_type,label,status,metadata,related_entity_id",
       entityIds,
     ),
     fetchRows<ApoloCommercialLinkRow>(
@@ -4256,10 +4258,25 @@ function mapApoloAddressRow(row: ApoloAddressRow): ApoloAddress {
 }
 
 function mapApoloRelationshipRow(row: ApoloRelationshipRow): ApoloRelationship {
+  // Relacionamentos criados no Apolo guardam telefone/e-mail no metadata (contato) e o
+  // alvo em related_entity_id (trabalho, clicável). Os do sync não têm nada disso.
+  const metadata = metadataRecord(row.metadata);
+  const text = (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : null;
+
+  const kind =
+    metadata.kind === "trabalho" || metadata.kind === "contato"
+      ? metadata.kind
+      : null;
+
   return {
     label: row.label ?? row.relationship_type,
     relation: row.relationship_type,
     status: normalizeSmallStatus(row.status),
+    phone: text(metadata.phone),
+    email: text(metadata.email),
+    entityId: row.related_entity_id ?? null,
+    kind,
   };
 }
 

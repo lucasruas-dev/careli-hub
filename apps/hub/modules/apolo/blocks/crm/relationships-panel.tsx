@@ -1,15 +1,23 @@
-import { ChevronRight, Mail, Phone } from "lucide-react";
+import { ChevronRight, Mail, Phone, Plus } from "lucide-react";
+import { useState } from "react";
 
 import type { ApoloEntity, ApoloRelationship } from "@/lib/apolo/types";
 
 import { displayText } from "../../data/apolo-derive";
 import { PanelTitle } from "../shared/apolo-ui";
+import { AddRelationshipModal } from "./add-relationship-modal";
 
 // Aba Relacionamentos (F1: lista). A rede visual (grafo navegável) entra no F3.
 // Dois tipos de vínculo: trabalho (imobiliária/responsável comercial, empreendimentos,
 // clientes vinculados) e contato (pessoas: cônjuge, representante legal, assinante,
 // familiar, sócio, indicação). Padrão de todo card: Nome · Telefone · E-mail · Nível.
 function isContato(rel: ApoloRelationship): boolean {
+  if (rel.kind === "contato") {
+    return true;
+  }
+  if (rel.kind === "trabalho") {
+    return false;
+  }
   return /familiar|c[ôo]njuge|indica|s[óo]ci|represent|assina/i.test(rel.relation);
 }
 
@@ -41,11 +49,14 @@ function mergeByLabel(items: ApoloRelationship[]): ApoloRelationship[] {
 
 export function RelationshipsPanel({
   entity,
+  onCreated,
   onOpenEntity,
 }: {
   entity: ApoloEntity;
+  onCreated: () => void;
   onOpenEntity: (label: string, entityId: string) => void;
 }) {
+  const [modalOpen, setModalOpen] = useState(false);
   const contato = mergeByLabel(entity.relationships.filter(isContato));
   const vinculados = entity.relationships.filter(isVinculado);
   const trabalho = mergeByLabel(
@@ -55,7 +66,17 @@ export function RelationshipsPanel({
   return (
     <div className="grid gap-5">
       <section className="rounded-xl border border-line bg-surface p-5">
-        <PanelTitle eyebrow="Rede" title="Relacionamentos" />
+        <div className="flex items-start justify-between gap-3">
+          <PanelTitle eyebrow="Rede" title="Relacionamentos" />
+          <button
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-[#A07C3B]/30 bg-[#A07C3B]/8 px-3 py-1.5 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/15"
+            onClick={() => setModalOpen(true)}
+            type="button"
+          >
+            <Plus className="size-3.5" />
+            Adicionar
+          </button>
+        </div>
         <p className="m-0 mt-2 text-sm font-medium text-ink-muted">
           A rede visual (grafo navegável) entra na próxima fase. Por enquanto, os
           vínculos em lista, separados por tipo.
@@ -69,6 +90,12 @@ export function RelationshipsPanel({
           </p>
         ) : null}
       </section>
+      <AddRelationshipModal
+        entityId={entity.id}
+        onClose={() => setModalOpen(false)}
+        onCreated={onCreated}
+        open={modalOpen}
+      />
     </div>
   );
 }

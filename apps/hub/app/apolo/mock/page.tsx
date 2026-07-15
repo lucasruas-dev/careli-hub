@@ -22,6 +22,7 @@ export default function ApoloMockPage() {
         onChangeTab={setTab}
         onOpenCommercialRelationship={() => {}}
         onOpenEntity={() => {}}
+        onRelationshipCreated={() => {}}
       />
     </div>
   );

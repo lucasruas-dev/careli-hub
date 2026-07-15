@@ -57,6 +57,8 @@ export function ApoloPage() {
   useEffect(() => {
     setQueryInput(query);
   }, [query]);
+  // Recarrega o dashboard após criar/editar algo (ex.: novo relacionamento).
+  const [reloadKey, setReloadKey] = useState(0);
   const [profileFilter, setProfileFilter] =
     usePersistedState<ApoloProfileFilter>("apolo.profileFilter", "all");
   const [selectedEntityId, setSelectedEntityId] = usePersistedState(
@@ -226,7 +228,7 @@ export function ApoloPage() {
       controller.abort();
       window.clearTimeout(timeout);
     };
-  }, [profileFilter, query, setSelectedEntityId]);
+  }, [profileFilter, query, reloadKey, setSelectedEntityId]);
 
   const entities = useMemo(() => dashboard?.entities ?? [], [dashboard]);
   const filteredEntities = useMemo(
@@ -367,6 +369,7 @@ export function ApoloPage() {
                 onChangeTab={setActiveTab}
                 onOpenCommercialRelationship={openCommercialRelationship}
                 onOpenEntity={openEntityInCrm}
+                onRelationshipCreated={() => setReloadKey((key) => key + 1)}
               />
             </section>
           </div>

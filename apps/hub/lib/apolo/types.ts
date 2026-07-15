@@ -153,6 +153,9 @@ export type ApoloRelationship = {
   email?: string | null;
   // Quando o relacionamento é uma entidade Apolo, o card é clicável e leva pro cadastro.
   entityId?: string | null;
+  // "trabalho" (edge) ou "contato" (pessoa leve). Preenchido no que é criado no Apolo;
+  // no que vem do sync/C2X fica vazio e a classificação sai do texto do nível.
+  kind?: "trabalho" | "contato" | null;
 };
 
 export type ApoloTimelineEvent = {
