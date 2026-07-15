@@ -53,17 +53,28 @@ export function isApoloTabUnavailableForEntity(tab: ApoloTab, entity: ApoloEntit
     return resolveCarteiraRoles(entity).length === 0;
   }
 
-  // Financeiro (acordos/promessas) segue sendo só do comprador.
+  // Financeiro: comprador vê acordos/promessas; imobiliária/incorporador/corretor veem o
+  // extrato por participante (split). Indisponível só pra quem não é nenhum dos dois.
   if (tab === "financeiro") {
-    return buyerStatusLabel(entity) !== "Comprador";
+    return buyerStatusLabel(entity) !== "Comprador" && !hasCommercialRole(entity);
   }
 
   return false;
 }
 
+// Papel comercial no split: imobiliária, incorporador ou corretor. Define quem tem extrato.
+export function hasCommercialRole(entity: ApoloEntity | null): boolean {
+  return Boolean(
+    entity &&
+      (entity.profiles.includes("imobiliaria") ||
+        entity.profiles.includes("incorporador") ||
+        entity.profiles.includes("corretor")),
+  );
+}
+
 // Abas ESCONDIDAS por papel (não renderizadas, diferente de desabilitadas). Imobiliária e
-// corretor não mostram Relacionamentos/Financeiro/Timeline — essas trazem a vida do cliente;
-// pra elas o foco é Resumo/Cadastro/Carteira. Ver [[project-apolo-empreendimento-tela]].
+// corretor não mostram Relacionamentos/Timeline — essas trazem a vida do cliente; pra elas o
+// foco é Resumo/Cadastro/Carteira/Financeiro (extrato). Ver [[project-apolo-acessos-externos]].
 export function isApoloTabHiddenForEntity(tab: ApoloTab, entity: ApoloEntity | null) {
   if (!entity) {
     return false;
@@ -76,7 +87,7 @@ export function isApoloTabHiddenForEntity(tab: ApoloTab, entity: ApoloEntity | n
     return false;
   }
 
-  return tab === "relacionamentos" || tab === "financeiro" || tab === "timeline";
+  return tab === "relacionamentos" || tab === "timeline";
 }
 
 export type ApoloCarteiraRoleKind =

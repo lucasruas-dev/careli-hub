@@ -48,6 +48,7 @@ import {
   formatMoneyLabel,
   fullAddressLabel,
   getTimelineIcon,
+  hasCommercialRole,
   isCompanyEntity,
   kindLabel,
   monthYearLabel,
@@ -64,6 +65,7 @@ import {
 } from "../../data/apolo-derive";
 import type { ApoloCarteiraRoleKind } from "../../data/apolo-derive";
 import { ScopedPortfolioPanel } from "./scoped-portfolio-panel";
+import { StatementPanel } from "./statement-panel";
 import { getApoloAccessToken } from "../../data/apolo-operations";
 import type {
   ApoloFinancialRecord,
@@ -838,7 +840,17 @@ function CompactInfo({ label, value }: { label: string; value: string }) {
   );
 }
 
+// Roteia a aba Financeiro: papel comercial (imobiliária/incorporador/corretor) vê o extrato
+// por participante (split); comprador vê acordos e promessas. Ver [[project-apolo-acessos-externos]].
 function FinancialPanel({ entity }: { entity: ApoloEntity }) {
+  if (hasCommercialRole(entity)) {
+    return <StatementPanel entity={entity} />;
+  }
+
+  return <AgreementsFinancialPanel entity={entity} />;
+}
+
+function AgreementsFinancialPanel({ entity }: { entity: ApoloEntity }) {
   const [activeFinancialSubtab, setActiveFinancialSubtab] =
     useState<ApoloFinancialSubtab>("acordos");
   const [filtersExpanded, setFiltersExpanded] = useState(false);
