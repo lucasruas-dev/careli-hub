@@ -14,6 +14,7 @@ import {
 import type {
   ApoloAddress,
   ApoloAuditSignal,
+  ApoloC2xCadastro,
   ApoloCommercialLink,
   ApoloContactPoint,
   ApoloDashboardData,
@@ -943,6 +944,7 @@ async function loadApoloTablesDashboard(
     await fetchC2xDocumentLabelsByEntity(sourceLinks);
   const c2xPortfolioByEntity =
     await fetchC2xPortfolioByEntity(sourceLinks);
+  const c2xCadastroByEntity = await fetchC2xCadastroByEntity(sourceLinks);
   const identifierRows = await fetchRows<{
     entity_id: string;
     identifier_type: string;
@@ -978,7 +980,8 @@ async function loadApoloTablesDashboard(
       serviceSignals: groupRowsBy(serviceSignals, "entity_id").get(row.id) ?? [],
       sourceLinks: groupRowsBy(sourceLinks, "entity_id").get(row.id) ?? [],
       timelineEvents: groupRowsBy(timelineEvents, "entity_id").get(row.id) ?? [],
-    }, documentLabelsByEntity.get(row.id), c2xPortfolioByEntity.get(row.id)),
+    }, documentLabelsByEntity.get(row.id), c2xPortfolioByEntity.get(row.id),
+      c2xCadastroByEntity.get(row.id)),
   );
 
   const collapsedEntities = collapseDuplicateApoloEntities(entities, docHashByEntityId);
@@ -1158,6 +1161,202 @@ function hasStaleCommercialPortfolio(rows: ApoloCommercialLinkRow[]) {
     );
   });
 }
+
+type C2xCadastroRow = RowDataPacket & {
+  birthday: Date | string | null;
+  civil_state: string | null;
+  cnpj: string | null;
+  cpf: string | null;
+  creci_number: string | null;
+  creci_validate: Date | string | null;
+  fantasy_name: string | null;
+  id: number | string;
+  mother_name: string | null;
+  municipal_inscription: string | null;
+  nacionality: string | null;
+  naturalness: string | null;
+  open_company_date: Date | string | null;
+  person_type_id: number | string | null;
+  profession: string | null;
+  property_regime: string | null;
+  rg: string | null;
+  salary_range: string | null;
+  schooling: string | null;
+  sex: string | null;
+  social_contract_updated_at: Date | string | null;
+  social_name: string | null;
+  user_nire: string | null;
+};
+
+// Enricher da ficha cadastral: para as entidades VISÍVEIS, puxa do C2X (users +
+// lookups) os campos do titular. Roda em PROD (o C2X é a fonte até o go-live).
+// Ver [[project-apolo-empreendimento-tela]].
+async function fetchC2xCadastroByEntity(
+  sourceLinks: ApoloSourceLinkRow[],
+): Promise<Map<string, ApoloC2xCadastro>> {
+  const result = new Map<string, ApoloC2xCadastro>();
+  const userIdToEntity = new Map<string, string>();
+  for (const link of sourceLinks) {
+    if (
+      link.source_system === "c2x" &&
+      link.source_table === "users" &&
+      /^\d+$/.test(String(link.source_id ?? "")) &&
+      !userIdToEntity.has(String(link.source_id))
+    ) {
+      userIdToEntity.set(String(link.source_id), link.entity_id);
+    }
+  }
+
+  const userIds = [...userIdToEntity.keys()];
+  if (!userIds.length) {
+    return result;
+  }
+
+  const poolResult = getHadesDbPool();
+  if (!poolResult.ok) {
+    return result;
+  }
+
+  try {
+    const placeholders = userIds.map(() => "?").join(",");
+    const [rows] = await poolResult.pool.query<C2xCadastroRow[]>(
+      `select u.id, u.person_type_id, u.birthday, u.creci_number, u.creci_validate,
+              u.social_name, u.fantasy_name, u.cnpj, u.cpf, u.rg, u.user_nire,
+              u.municipal_inscription, u.open_company_date, u.social_contract_updated_at,
+              u.naturalness, u.nacionality, u.mother_name,
+              cs.name as civil_state, sx.name as sex, pr.name as property_regime,
+              pf.name as profession, sc.name as schooling, sr.name as salary_range
+         from users u
+         left join civil_states cs on cs.id = u.civil_state_id
+         left join sexes sx on sx.id = u.sex_id
+         left join property_regimes pr on pr.id = u.property_regime_id
+         left join professions pf on pf.id = u.profession_id
+         left join schoolings sc on sc.id = u.schooling_id
+         left join salary_ranges sr on sr.id = u.salary_range_id
+        where u.id in (${placeholders})`,
+      userIds,
+    );
+
+    for (const row of rows) {
+      const entityId = userIdToEntity.get(String(row.id));
+      if (entityId) {
+        result.set(entityId, mapC2xCadastroRow(row));
+      }
+    }
+
+    // Endereço: tabela `addresses` (polimórfica, ownertable_type='User'). Uma linha
+    // por user (a mais recente); UF via states.acronym, cidade via cities.name.
+    const [addressRows] = await poolResult.pool.query<C2xAddressRow[]>(
+      `select a.ownertable_id, a.zipcode, a.address as vialabel, a.district,
+              a.number, a.complement, s.acronym as uf, c.name as city
+         from addresses a
+         left join states s on s.id = a.state_id
+         left join cities c on c.id = a.city_id
+        where a.ownertable_type = 'User' and a.ownertable_id in (${placeholders})
+        order by a.id desc`,
+      userIds,
+    );
+    const seenAddress = new Set<string>();
+    for (const row of addressRows) {
+      const uid = String(row.ownertable_id);
+      if (seenAddress.has(uid)) {
+        continue;
+      }
+      seenAddress.add(uid);
+      const cadastro = result.get(userIdToEntity.get(uid) ?? "");
+      if (!cadastro) {
+        continue;
+      }
+      const text = (value: unknown) =>
+        typeof value === "string" && value.trim() ? value.trim() : null;
+      cadastro.city = text(row.city);
+      cadastro.complement = text(row.complement);
+      cadastro.district = text(row.district);
+      cadastro.number = text(row.number);
+      cadastro.state = text(row.uf);
+      cadastro.street = text(row.vialabel);
+      cadastro.zipcode = text(row.zipcode);
+    }
+  } catch (error) {
+    console.error("[apolo] fetchC2xCadastroByEntity falhou", error);
+  }
+
+  return result;
+}
+
+function mapC2xCadastroRow(row: C2xCadastroRow): ApoloC2xCadastro {
+  const clean = (value: unknown): string | null => {
+    const text = typeof value === "string" ? value.trim() : "";
+    return text || null;
+  };
+  const brDate = (value: unknown): string | null => {
+    if (!value) {
+      return null;
+    }
+    const date = value instanceof Date ? value : new Date(String(value));
+    return Number.isNaN(date.getTime())
+      ? null
+      : date.toLocaleDateString("pt-BR", { timeZone: "UTC" });
+  };
+  const birthdayDate = row.birthday
+    ? row.birthday instanceof Date
+      ? row.birthday
+      : new Date(String(row.birthday))
+    : null;
+  const age =
+    birthdayDate && !Number.isNaN(birthdayDate.getTime())
+      ? String(
+          Math.floor(
+            (Date.now() - birthdayDate.getTime()) /
+              (365.25 * 24 * 60 * 60 * 1000),
+          ),
+        )
+      : null;
+
+  return {
+    age,
+    birthday: brDate(row.birthday),
+    city: null,
+    civilState: clean(row.civil_state),
+    cnpj: clean(row.cnpj),
+    complement: null,
+    cpf: clean(row.cpf),
+    creciNumber: clean(row.creci_number),
+    creciValidate: brDate(row.creci_validate),
+    district: null,
+    fantasyName: clean(row.fantasy_name),
+    isCompany: toNumber(row.person_type_id) === 2,
+    motherName: clean(row.mother_name),
+    municipalInscription: clean(row.municipal_inscription),
+    nacionality: clean(row.nacionality),
+    naturalness: clean(row.naturalness),
+    nire: clean(row.user_nire),
+    number: null,
+    openCompanyDate: brDate(row.open_company_date),
+    profession: clean(row.profession),
+    propertyRegime: clean(row.property_regime),
+    rg: clean(row.rg),
+    salaryRange: clean(row.salary_range),
+    schooling: clean(row.schooling),
+    sex: clean(row.sex),
+    socialContractUpdatedAt: brDate(row.social_contract_updated_at),
+    socialName: clean(row.social_name),
+    state: null,
+    street: null,
+    zipcode: null,
+  };
+}
+
+type C2xAddressRow = RowDataPacket & {
+  city: string | null;
+  complement: string | null;
+  district: string | null;
+  number: string | null;
+  ownertable_id: number | string;
+  uf: string | null;
+  vialabel: string | null;
+  zipcode: string | null;
+};
 
 async function fetchC2xDocumentLabelsByEntity(
   sourceLinks: ApoloSourceLinkRow[],
@@ -2646,6 +2845,7 @@ function mapApoloEntityRow(
   },
   documentDisplayValue?: string,
   c2xPortfolio?: C2xPortfolioHydration,
+  c2xCadastro?: ApoloC2xCadastro,
 ): ApoloEntity {
   const profiles = related.profiles
     .map((profile) => normalizeApoloProfile(profile.profile))
@@ -2658,6 +2858,7 @@ function mapApoloEntityRow(
   return {
     addresses: related.addresses.map(mapApoloAddressRow),
     audit: related.audit.map(mapApoloAuditRow),
+    c2xCadastro,
     commercialLinks,
     confidenceScore: clampScore(row.quality_score ?? 0),
     contacts: related.contacts.map(mapApoloContactRow),

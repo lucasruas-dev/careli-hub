@@ -83,6 +83,41 @@ export type ApoloFinancialSnapshot = {
   totalPortfolio: string;
 };
 
+// Ficha cadastral vinda AO VIVO do C2X (enricher read-only). Valores já resolvidos
+// (lookups de sexo/estado civil/regime/profissão/etc.) e datas em DD/MM/AAAA.
+export type ApoloC2xCadastro = {
+  age: string | null;
+  birthday: string | null;
+  city: string | null;
+  civilState: string | null;
+  cnpj: string | null;
+  complement: string | null;
+  cpf: string | null;
+  creciNumber: string | null;
+  creciValidate: string | null;
+  district: string | null;
+  fantasyName: string | null;
+  isCompany: boolean;
+  motherName: string | null;
+  municipalInscription: string | null;
+  nacionality: string | null;
+  naturalness: string | null;
+  nire: string | null;
+  number: string | null;
+  openCompanyDate: string | null;
+  profession: string | null;
+  propertyRegime: string | null;
+  rg: string | null;
+  salaryRange: string | null;
+  schooling: string | null;
+  sex: string | null;
+  socialContractUpdatedAt: string | null;
+  socialName: string | null;
+  state: string | null;
+  street: string | null;
+  zipcode: string | null;
+};
+
 export type ApoloServiceSignal = {
   channel: string;
   lastEvent: string;
@@ -118,6 +153,8 @@ export type ApoloAuditSignal = {
 export type ApoloEntity = {
   addresses: ApoloAddress[];
   audit: ApoloAuditSignal[];
+  // Ficha cadastral ao vivo do C2X (enricher); ausente quando não pôde carregar.
+  c2xCadastro?: ApoloC2xCadastro;
   commercialLinks: ApoloCommercialLink[];
   confidenceScore: number;
   contacts: ApoloContactPoint[];

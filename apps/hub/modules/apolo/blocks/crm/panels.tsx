@@ -242,53 +242,72 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
   const showLegalName = Boolean(
     legalName && legalName.trim().toLowerCase() !== displayName.trim().toLowerCase(),
   );
+  // Ficha ao vivo do C2X (enricher).
+  const cad = entity.c2xCadastro;
+  // Endereço completo do C2X quando houver (logradouro, número · bairro · cidade-UF).
+  const cidadeUf = cad?.city
+    ? `${cad.city}${cad.state ? `-${cad.state}` : ""}`
+    : displayText(cityStateLabel(primaryAddress, entity.locationLabel));
+  const c2xFullAddress = cad?.street
+    ? [
+        `${cad.street}${cad.number ? `, ${cad.number}` : ""}`,
+        cad.district,
+        cidadeUf,
+      ]
+        .filter(Boolean)
+        .join(" · ")
+    : fullAddress;
   const cadastroRows: Array<readonly [string, string]> = [
     ["Nome", displayName],
     ["CPF/CNPJ", entity.documentMasked],
-    ...(showLegalName
-      ? [["Razao social", legalName] as const]
-      : []),
+    ...(showLegalName ? [["Razao social", legalName] as const] : []),
     ["Telefone", primaryPhone?.value ?? "-"],
     ["E-mail", primaryEmail?.value ?? "-"],
-    ["Endereco", fullAddress],
+    ["Endereco", c2xFullAddress],
   ];
-  // Casado (ou união estável) libera regime de bens + a seção do cônjuge.
-  const isMarried = /casad|uni[aã]o est[aá]vel/i.test(civilStatusLabel(entity) ?? "");
+  // Casado (ou união estável) libera regime + cônjuge.
+  const civilStatus = cad?.civilState ?? civilStatusLabel(entity);
+  const isMarried = /casad|uni[aã]o est[aá]vel/i.test(civilStatus ?? "");
+  // CRECI só faz sentido pra imobiliária/corretor.
+  const isRealtor =
+    entity.profiles.includes("imobiliaria") || entity.profiles.includes("corretor");
   const addressRows: Array<readonly [string, string]> = [
-    ["Cidade", displayText(cityStateLabel(primaryAddress, entity.locationLabel))],
-    ["CEP", primaryAddress?.postalCode ?? "-"],
-    ["Bairro", primaryAddress?.district ?? "-"],
-    ["Numero", primaryAddress?.number ?? "-"],
-    ["Complemento", primaryAddress?.complement ?? "-"],
+    ["Endereco", cad?.street ?? "-"],
+    ["Numero", cad?.number ?? primaryAddress?.number ?? "-"],
+    ["Bairro", cad?.district ?? primaryAddress?.district ?? "-"],
+    ["Complemento", cad?.complement ?? primaryAddress?.complement ?? "-"],
+    ["CEP", cad?.zipcode ?? primaryAddress?.postalCode ?? "-"],
+    ["Cidade", cidadeUf],
   ];
   // Campos POR PERFIL (regra do Lucas): PJ é empresa, não tem nascimento/idade/RG/
   // sexo/estado civil/regime/profissão/cônjuge. Regime de bens só quando casado.
+  // Relacionamento/responsável NÃO são campos aqui — vivem na aba Relacionamentos.
   const detailRows: Array<readonly [string, string]> = isCompany
     ? [
         ["Tipo pessoa", kindLabel(entity.kind)],
-        ["Documento", `${documentLabel(entity)} ${entity.documentMasked}`],
-        ["Responsavel", responsibleLabel(entity) || "-"],
-        ["Faturamento", "-"],
+        ...(isRealtor ? [["CRECI", cad?.creciNumber ?? "-"] as const] : []),
+        ["NIRE", cad?.nire ?? "-"],
+        ["Inscricao municipal", cad?.municipalInscription ?? "-"],
+        ["Data de abertura", cad?.openCompanyDate ?? "-"],
+        ["Atualizacao cadastral", cad?.socialContractUpdatedAt ?? "-"],
         ...addressRows,
-        ["Relacionamento", relationshipSummary(entity)],
       ]
     : [
         ["Tipo pessoa", kindLabel(entity.kind)],
-        ["RG", "-"],
-        ["Documento", `${documentLabel(entity)} ${entity.documentMasked}`],
-        ["Nascimento", "-"],
-        ["Idade", "-"],
-        ["Sexo", "-"],
-        ["Estado civil", civilStatusLabel(entity) || "-"],
-        ...(isMarried ? [["Regime de bens", "-"] as const] : []),
-        ["Profissao", "-"],
-        ["Renda", "-"],
-        ["Escolaridade", "-"],
-        ["Naturalidade", "-"],
-        ["Nacionalidade", "-"],
-        ["Nome da mae", "-"],
+        ["RG", cad?.rg ?? "-"],
+        ...(isRealtor ? [["CRECI", cad?.creciNumber ?? "-"] as const] : []),
+        ["Nascimento", cad?.birthday ?? "-"],
+        ["Idade", cad?.age ?? "-"],
+        ["Sexo", cad?.sex ?? "-"],
+        ["Estado civil", civilStatus || "-"],
+        ...(isMarried ? [["Regime de bens", cad?.propertyRegime ?? "-"] as const] : []),
+        ["Profissao", cad?.profession ?? "-"],
+        ["Renda", cad?.salaryRange ?? "-"],
+        ["Escolaridade", cad?.schooling ?? "-"],
+        ["Naturalidade", cad?.naturalness ?? "-"],
+        ["Nacionalidade", cad?.nacionality ?? "-"],
+        ["Nome da mae", cad?.motherName ?? "-"],
         ...addressRows,
-        ["Relacionamento", relationshipSummary(entity)],
       ];
 
   return (
