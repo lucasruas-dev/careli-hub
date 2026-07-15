@@ -208,7 +208,11 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">{brl(row.netValue)}</td>
                   <td className="whitespace-nowrap px-4 py-3">
                     {row.asaasId ? (
-                      <AsaasCell id={row.asaasId} url={row.asaasUrl} />
+                      <AsaasCell
+                        id={row.asaasId}
+                        receiptUrl={row.asaasInvoiceUrl}
+                        url={row.asaasUrl}
+                      />
                     ) : (
                       <span className="text-ink-muted">-</span>
                     )}
@@ -246,8 +250,16 @@ function Field({ children, label }: { children: React.ReactNode; label: string }
 }
 
 // Célula do rastreio no Asaas: o ID da cobrança (pay_…) visível pra copiar e buscar no painel
-// do Asaas, + botão de copiar e link pra abrir a cobrança direto.
-function AsaasCell({ id, url }: { id: string; url: string | null }) {
+// do Asaas, + copiar, comprovante (PDF) e link pra abrir a cobrança.
+function AsaasCell({
+  id,
+  receiptUrl,
+  url,
+}: {
+  id: string;
+  receiptUrl: string | null;
+  url: string | null;
+}) {
   const [copied, setCopied] = useState(false);
 
   const copy = () => {
@@ -274,6 +286,19 @@ function AsaasCell({ id, url }: { id: string; url: string | null }) {
           )}
         </button>
       </Tooltip>
+      {receiptUrl ? (
+        <Tooltip content="Comprovante (PDF)">
+          <a
+            aria-label="Comprovante de pagamento"
+            className="inline-flex size-7 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:border-[#A07C3B]/40 hover:text-[#7a5e2c] dark:hover:text-[#d9b877]"
+            href={receiptUrl}
+            rel="noreferrer"
+            target="_blank"
+          >
+            <ReceiptText className="size-3.5" aria-hidden="true" />
+          </a>
+        </Tooltip>
+      ) : null}
       {url ? (
         <Tooltip content="Abrir cobrança no Asaas">
           <a
