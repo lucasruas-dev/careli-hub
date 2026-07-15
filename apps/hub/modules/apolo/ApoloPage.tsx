@@ -79,6 +79,8 @@ export function ApoloPage() {
   // Resumo, em vez de devolver o usuário na aba onde ele estava (ex.: Unidades).
   const [enterpriseTab, setEnterpriseTab] = useState<ApoloEnterpriseTab>("resumo");
   const [crmReturnTo, setCrmReturnTo] = useState<string | null>(null);
+  // Pilha de "voltar" ao navegar entre fichas (ficha A -> relacionamento -> ficha B).
+  const [entityStack, setEntityStack] = useState<Array<{ id: string; name: string }>>([]);
 
   // Carrega uma vez ao abrir a tela. O guard é um REF (não o estado de loading): se
   // `enterprisesLoading` estivesse nas deps, setá-lo re-rodaria o efeito, o cleanup marcaria
@@ -269,6 +271,15 @@ export function ApoloPage() {
       return;
     }
 
+    // Navegando de uma ficha pra outra DENTRO do CRM (ex.: clicou num relacionamento):
+    // empilha a ficha atual pra oferecer o "voltar".
+    if (activeScreen === "crm" && selectedEntity && selectedEntity.id !== entityId) {
+      setEntityStack((stack) => [
+        ...stack,
+        { id: selectedEntity.id, name: selectedEntity.displayName },
+      ]);
+    }
+
     pendingEntityIdRef.current = entityId;
     // Guarda de onde viemos, pra oferecer o "voltar" no CRM.
     setCrmReturnTo(enterpriseDetail?.name ?? null);
@@ -282,6 +293,19 @@ export function ApoloPage() {
   function backToEnterprise() {
     setCrmReturnTo(null);
     setActiveScreen("empreendimentos");
+  }
+
+  // Volta pra ficha anterior (desempilha), quando navegou entre fichas pelo relacionamento.
+  function backToEntity() {
+    const previous = entityStack[entityStack.length - 1];
+    if (!previous) {
+      return;
+    }
+    setEntityStack((stack) => stack.slice(0, -1));
+    pendingEntityIdRef.current = previous.id;
+    setActiveTab("relacionamentos");
+    setProfileFilter("all");
+    setQuery(previous.name);
   }
 
   function openCommercialRelationship(label: string) {
@@ -329,7 +353,18 @@ export function ApoloPage() {
             tab={enterpriseTab}
           />
         ) : null}
-        {activeScreen === "crm" && crmReturnTo ? (
+        {activeScreen === "crm" && entityStack.length > 0 ? (
+          <button
+            className="inline-flex w-fit max-w-full shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/8 hover:text-[#7A5E2C] dark:hover:text-[#d9b877]"
+            onClick={backToEntity}
+            type="button"
+          >
+            <ArrowLeft aria-hidden="true" className="size-3.5 shrink-0" />
+            <span className="truncate">
+              Voltar para {toTitleCase(entityStack[entityStack.length - 1]?.name ?? "")}
+            </span>
+          </button>
+        ) : activeScreen === "crm" && crmReturnTo ? (
           <button
             className="inline-flex w-fit shrink-0 items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-semibold text-ink-soft transition-colors hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/8 hover:text-[#7A5E2C] dark:hover:text-[#d9b877]"
             onClick={backToEnterprise}
