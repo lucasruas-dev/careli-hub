@@ -2981,14 +2981,14 @@ function IrisConversationPanel({
 
     const ok = await sendGroupRequest(
       { body },
-      "Nao foi possivel enviar a mensagem ao grupo.",
+      "Nao foi possivel enviar a mensagem.",
     );
 
     if (ok) {
       setDraft("");
       setReplyToMessage(null);
       setEmojiPickerOpen(false);
-      setFeedback("Mensagem enviada ao grupo.");
+      setFeedback("Mensagem enviada.");
     }
   }
 
@@ -3637,12 +3637,12 @@ function IrisConversationPanel({
       if (ticketIsGroup) {
         const ok = await sendGroupRequest(
           { body: "", media: audioMedia },
-          "Nao foi possivel enviar o audio ao grupo.",
+          "Nao foi possivel enviar o audio.",
         );
 
         if (ok) {
           setReplyToMessage(null);
-          setFeedback("Audio enviado ao grupo.");
+          setFeedback("Audio enviado.");
         }
 
         return;
@@ -3827,15 +3827,13 @@ function IrisConversationPanel({
       if (ticketIsGroup) {
         const ok = await sendGroupRequest(
           { body: caption, media: { dataUrl, fileName, mimeType, type: kind } },
-          "Nao foi possivel enviar o anexo ao grupo.",
+          "Nao foi possivel enviar o anexo.",
         );
 
         if (ok) {
           setReplyToMessage(null);
           setFeedback(
-            kind === "image"
-              ? "Imagem enviada ao grupo."
-              : "Documento enviado ao grupo.",
+            kind === "image" ? "Imagem enviada." : "Documento enviado.",
           );
         }
 
@@ -4301,11 +4299,11 @@ function IrisConversationPanel({
         <IrisCobrancaContextSidebar
           apoloEntity={apoloContextEntity}
           clienteFields={
-            // Grupo nao tem cliente/CPF/operador: mostra o que e do grupo.
+            // Relacionamento nao tem cliente/CPF/operador: mostra o que e do grupo.
             ticketIsGroup
               ? [
                   {
-                    label: "Grupo",
+                    label: "Relacionamento",
                     value: ticket.subject?.trim() || ticket.contactLabel,
                   },
                   { label: "Código", value: ticket.protocol },
@@ -4316,7 +4314,7 @@ function IrisConversationPanel({
                         ? String(ticket.metadata.participantsCount)
                         : "-",
                   },
-                  { label: "Canal", value: "WhatsApp · Grupo" },
+                  { label: "Canal", value: "WhatsApp · Relacionamento" },
                 ]
               : [
             {
@@ -4377,7 +4375,7 @@ function IrisConversationPanel({
               value: ticketIsEmail
                 ? "E-mail"
                 : ticketIsGroup
-                  ? "WhatsApp · Grupo"
+                  ? "WhatsApp · Relacionamento"
                   : "WhatsApp",
             },
             ...(ticketIsEmail || ticketIsGroup
@@ -4817,7 +4815,7 @@ function TicketSeparator({
   const email = isEmailTicket(ticket);
   const group = ticket.isGroup === true;
   const channelLine = group
-    ? `Grupo · ${ticket.queueLabel}`
+    ? `WhatsApp · ${ticket.queueLabel}`
     : email
       ? `E-mail · ${emailBoxLabel(ticket.channelLabel)}`
       : `WhatsApp · ${ticket.queueLabel}`;

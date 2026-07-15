@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-15-iris-relacionamento",
+    deployedAt: "2026-07-15T14:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A fila de grupos de WhatsApp passou a se chamar Relacionamento (fila, filtro, canal e ficha da conversa).",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit f7cea2ef (v1.36.x)",
+    technical: {
+      done: "Renomeacao APENAS de rotulo (Grupos/Grupo -> Relacionamento). Slugs internos (grupos-whatsapp, whatsapp-grupo), source_entity_type e isGroup INALTERADOS. migration 0048: caredesk_queues.name e caredesk_channels.name. Codigo: IRIS_INBOX_CHANNEL_FILTERS, badge tooltip, painel de contexto, channelLine, loadGroupConversations labels, queueChipClasses passa a casar 'relacionament' pra manter a cor ambar. Toasts de envio perderam o sufixo 'ao grupo'. Interno (bump de versao sem entrar no painel).",
+      motivation:
+        "Lucas: 'dentro da Iris em vez de chamar grupo, vai chamar Relacionamento'.",
+    },
+    title: "Iris: fila de grupos vira Relacionamento",
+    type: "melhoria",
+    version: "1.37.0",
+  },
+  {
     buildTag: "2026-07-15-apolo-comprador-fix",
     deployedAt: "2026-07-15T19:15:00-03:00",
     modules: [

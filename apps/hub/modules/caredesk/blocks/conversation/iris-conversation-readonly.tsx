@@ -110,7 +110,7 @@ const IRIS_INBOX_CHANNEL_FILTERS: {
 }[] = [
   { key: "all", label: "Tudo", icon: Inbox },
   { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { key: "group", label: "Grupo", icon: Users },
+  { key: "group", label: "Relacionamento", icon: Users },
   { key: "email", label: "E-mail", icon: Mail },
 ];
 
@@ -278,8 +278,8 @@ export function IrisConversationInboxSidebar({
                       ) : conversation.isGroup ? (
                         <span
                           className="flex size-4 shrink-0 items-center justify-center rounded-md bg-amber-500 text-white dark:bg-amber-500/90"
-                          title="Grupo de WhatsApp"
-                          aria-label="Grupo de WhatsApp"
+                          title="Relacionamento"
+                          aria-label="Relacionamento"
                         >
                           <Users className="size-2.5" aria-hidden="true" />
                         </span>

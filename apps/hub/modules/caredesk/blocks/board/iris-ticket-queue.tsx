@@ -382,7 +382,7 @@ export function queueChipClasses(queueLabel: string): string {
   if (key.includes("atend")) {
     return "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-400/30 dark:bg-sky-400/15 dark:text-sky-300";
   }
-  if (key.includes("grupo")) {
+  if (key.includes("grupo") || key.includes("relacionament")) {
     return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/15 dark:text-amber-300";
   }
 
