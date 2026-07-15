@@ -12,6 +12,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { ApoloCarteiraData, ApoloCarteiraUnit } from "@/lib/apolo/carteira";
 import type { ApoloCarteiraRoleKind } from "../../data/apolo-derive";
+import { getApoloAccessToken } from "../../data/apolo-operations";
 
 // Carteira por PAPEL (incorporador/imobiliária/corretor). Drill-down navegável em camadas
 // terminando no comprador — que abre a ficha detalhada dele. O comprador puro usa o
@@ -153,8 +154,13 @@ export function ScopedPortfolioPanel({
     setError(null);
     setPath([]);
 
-    fetch(`/api/apolo/carteira?c2xId=${c2xId}&kind=${kind}`, { cache: "no-store" })
-      .then(async (response) => {
+    (async () => {
+      try {
+        const accessToken = await getApoloAccessToken();
+        const response = await fetch(
+          `/api/apolo/carteira?c2xId=${c2xId}&kind=${kind}`,
+          { cache: "no-store", headers: { Authorization: `Bearer ${accessToken}` } },
+        );
         const payload = (await response.json().catch(() => null)) as
           | { data?: ApoloCarteiraData; error?: string }
           | null;
@@ -170,18 +176,17 @@ export function ScopedPortfolioPanel({
         }
 
         setData(payload.data);
-      })
-      .catch(() => {
+      } catch {
         if (active) {
           setError("Não foi possível carregar a carteira.");
           setData(null);
         }
-      })
-      .finally(() => {
+      } finally {
         if (active) {
           setLoading(false);
         }
-      });
+      }
+    })();
 
     return () => {
       active = false;
