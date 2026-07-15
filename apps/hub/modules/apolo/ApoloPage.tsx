@@ -81,7 +81,7 @@ export function ApoloPage() {
   // Pilha de navegação pro "voltar": guarda de onde viemos (ficha do CRM OU
   // empreendimento), pra o botão de voltar funcionar dos dois lados.
   const [navStack, setNavStack] = useState<
-    Array<{ id: string; kind: "entity" | "enterprise"; name: string }>
+    Array<{ id: string; kind: "entity" | "enterprise"; name: string; tab?: ApoloTab }>
   >([]);
 
   // Carrega uma vez ao abrir a tela. O guard é um REF (não o estado de loading): se
@@ -260,6 +260,12 @@ export function ApoloPage() {
   }, [filteredEntities, selectedEntityId, setSelectedEntityId]);
 
   useEffect(() => {
+    // Navegação em curso (ex.: clicou num comprador na Carteira): espera a entidade certa
+    // resolver antes de decidir a aba, senão um render intermediário derruba a aba destino.
+    if (pendingEntityIdRef.current) {
+      return;
+    }
+
     if (selectedEntity && isApoloTabUnavailableForEntity(activeTab, selectedEntity)) {
       setActiveTab("resumo");
     }
@@ -270,10 +276,10 @@ export function ApoloPage() {
   // (derivado do id do C2X) — por isso ele fica pendente até o resultado chegar.
   // Navega pra uma ficha do CRM (sem empilhar). A busca por nome só CARREGA os
   // candidatos; quem escolhe a ficha certa é o `entityId` (fica pendente até o resultado).
-  function applyOpenEntity(name: string, entityId: string) {
+  function applyOpenEntity(name: string, entityId: string, tab: ApoloTab = "cadastro") {
     pendingEntityIdRef.current = entityId;
     setActiveScreen("crm");
-    setActiveTab("cadastro");
+    setActiveTab(tab);
     setProfileFilter("all");
     setQuery(name);
   }
@@ -316,12 +322,13 @@ export function ApoloPage() {
     );
   }
 
-  // Empilha de onde estamos (ficha do CRM ou empreendimento) antes de navegar.
+  // Empilha de onde estamos (ficha do CRM ou empreendimento) antes de navegar. Guarda a aba
+  // ativa pra que o "voltar" retorne exatamente pra ela (ex.: sair da Carteira e voltar pra Carteira).
   function pushCurrentToNav() {
     if (activeScreen === "crm" && selectedEntity) {
       setNavStack((stack) => [
         ...stack,
-        { id: selectedEntity.id, kind: "entity", name: selectedEntity.displayName },
+        { id: selectedEntity.id, kind: "entity", name: selectedEntity.displayName, tab: activeTab },
       ]);
     } else if (activeScreen === "empreendimentos" && enterpriseDetail) {
       setNavStack((stack) => [
@@ -331,7 +338,9 @@ export function ApoloPage() {
     }
   }
 
-  function openEntityInCrm(name: string, entityId: string) {
+  // `tab` = aba em que a ficha destino deve abrir (ex.: clicar num comprador na Carteira abre
+  // a Carteira dele). Default = cadastro (fluxo dos relacionamentos).
+  function openEntityInCrm(name: string, entityId: string, tab?: ApoloTab) {
     const normalized = name.trim();
     if (!normalized) {
       return;
@@ -339,7 +348,7 @@ export function ApoloPage() {
     if (!(activeScreen === "crm" && selectedEntity?.id === entityId)) {
       pushCurrentToNav();
     }
-    applyOpenEntity(normalized, entityId);
+    applyOpenEntity(normalized, entityId, tab);
   }
 
   // Abre a tela de cadastro do empreendimento pelo nome (relacionamento de trabalho).
@@ -378,8 +387,8 @@ export function ApoloPage() {
     }
     setNavStack((stack) => stack.slice(0, -1));
     if (previous.kind === "entity") {
-      applyOpenEntity(previous.name, previous.id);
-      setActiveTab("relacionamentos");
+      // Volta pra aba de onde saiu (guardada ao empilhar); fallback = relacionamentos.
+      applyOpenEntity(previous.name, previous.id, previous.tab ?? "relacionamentos");
     } else {
       const row = findEnterpriseInList(enterprises, previous.name);
       if (row) {

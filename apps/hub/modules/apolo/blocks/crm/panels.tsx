@@ -70,6 +70,7 @@ import type {
   ApoloFinancialRecordType,
   ApoloFinancialSubtab,
   ApoloPortfolioUnit,
+  ApoloTab,
   ApoloUnitSubtab,
 } from "../../types/apolo-local";import { apoloFinancialSubtabs, apoloUnitSubtabs } from "./crm-tabs";
 function SummaryPanel({
@@ -360,7 +361,7 @@ function PortfolioPanel({
   onOpenEntity,
 }: {
   entity: ApoloEntity;
-  onOpenEntity: (label: string, entityId: string) => void;
+  onOpenEntity: (label: string, entityId: string, tab?: ApoloTab) => void;
 }) {
   const roles = useMemo(() => resolveCarteiraRoles(entity), [entity]);
   const [activeKind, setActiveKind] = useState<ApoloCarteiraRoleKind | null>(

@@ -76,7 +76,7 @@ function RecordWorkspace({
   onChangeTab: (tab: ApoloTab) => void;
   onOpenCommercialRelationship: (label: string) => void;
   onOpenEnterprise: (name: string) => void;
-  onOpenEntity: (label: string, entityId: string) => void;
+  onOpenEntity: (label: string, entityId: string, tab?: ApoloTab) => void;
   onRelationshipCreated: () => void;
 }) {
   if (entity && canUseHadesWorkspace()) {
@@ -581,7 +581,7 @@ function TabPanel({
   entity: ApoloEntity;
   onOpenCommercialRelationship: (label: string) => void;
   onOpenEnterprise: (name: string) => void;
-  onOpenEntity: (label: string, entityId: string) => void;
+  onOpenEntity: (label: string, entityId: string, tab?: ApoloTab) => void;
   onRelationshipCreated: () => void;
 }) {
   if (activeTab === "cadastro") {

@@ -13,6 +13,7 @@ import { useEffect, useMemo, useState } from "react";
 import type { ApoloCarteiraData, ApoloCarteiraUnit } from "@/lib/apolo/carteira";
 import type { ApoloCarteiraRoleKind } from "../../data/apolo-derive";
 import { getApoloAccessToken } from "../../data/apolo-operations";
+import type { ApoloTab } from "../../types/apolo-local";
 
 // Carteira por PAPEL (incorporador/imobiliária/corretor). Drill-down navegável em camadas
 // terminando no comprador — que abre a ficha detalhada dele. O comprador puro usa o
@@ -140,7 +141,7 @@ export function ScopedPortfolioPanel({
 }: {
   c2xId: number;
   kind: ApoloCarteiraRoleKind;
-  onOpenEntity: (label: string, entityId: string) => void;
+  onOpenEntity: (label: string, entityId: string, tab?: ApoloTab) => void;
   roleSelector?: React.ReactNode;
 }) {
   const [data, setData] = useState<ApoloCarteiraData | null>(null);
@@ -296,8 +297,9 @@ export function ScopedPortfolioPanel({
 
             const onClick = () => {
               if (isLeaf) {
+                // Comprador: abre a ficha dele já na aba Carteira (a carteira detalhada dele).
                 if (group.entityId) {
-                  onOpenEntity(group.label, group.entityId);
+                  onOpenEntity(group.label, group.entityId, "carteira");
                 }
                 return;
               }
