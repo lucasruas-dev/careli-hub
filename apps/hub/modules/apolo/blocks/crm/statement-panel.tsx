@@ -60,7 +60,6 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
   // Filtros e ordenação client-side (sobre as linhas já carregadas — instantâneo).
   const [unitFilter, setUnitFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
-  const [competenceFilter, setCompetenceFilter] = useState("");
   const [sort, setSort] = useState<{ dir: "asc" | "desc"; key: SortKey }>({
     dir: "desc",
     key: "paymentDate",
@@ -76,7 +75,6 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
     setError(null);
     setUnitFilter("");
     setTypeFilter("");
-    setCompetenceFilter("");
 
     (async () => {
       try {
@@ -136,21 +134,16 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
     () => uniqueSorted(rows.map((row) => row.parcelType)),
     [rows],
   );
-  const competenceOptions = useMemo(
-    () => uniqueSorted(rows.map((row) => row.competence ?? "").filter(Boolean), "competence"),
-    [rows],
-  );
 
   const visibleRows = useMemo(() => {
     const filtered = rows.filter(
       (row) =>
         (!unitFilter || row.unitCode === unitFilter) &&
-        (!typeFilter || row.parcelType === typeFilter) &&
-        (!competenceFilter || row.competence === competenceFilter),
+        (!typeFilter || row.parcelType === typeFilter),
     );
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => dir * compareRows(a, b, sort.key));
-  }, [rows, unitFilter, typeFilter, competenceFilter, sort]);
+  }, [rows, unitFilter, typeFilter, sort]);
 
   const total = visibleRows.reduce((sum, row) => sum + row.value, 0);
 
@@ -159,8 +152,8 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
   }
 
   return (
-    <section className="grid gap-4">
-      <header className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4">
+    <section className="flex h-full min-h-0 flex-col gap-4">
+      <header className="flex shrink-0 flex-col gap-4 rounded-xl border border-line bg-surface p-4">
         <div className="grid grid-cols-2 gap-3">
           <Kpi label="Recebido" value={brl(total)} />
           <Kpi label="Lançamentos" value={String(visibleRows.length)} />
@@ -226,20 +219,6 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
               ))}
             </select>
           </Field>
-          <Field label="Competência">
-            <select
-              className="h-9 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-              onChange={(event) => setCompetenceFilter(event.target.value)}
-              value={competenceFilter}
-            >
-              <option value="">Todas</option>
-              {competenceOptions.map((comp) => (
-                <option key={comp} value={comp}>
-                  {comp}
-                </option>
-              ))}
-            </select>
-          </Field>
         </div>
       </header>
 
@@ -259,7 +238,7 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
           Nenhum recebimento no período.
         </div>
       ) : (
-        <div className="max-h-[34rem] overflow-auto rounded-xl border border-line bg-surface">
+        <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-line bg-surface">
           <table className="w-full min-w-[68rem] border-collapse text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-line bg-surface text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
