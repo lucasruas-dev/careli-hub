@@ -36,6 +36,56 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-15-apolo-crm360",
+    deployedAt: "2026-07-15T22:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Carteira agora se adapta ao papel: incorporador, imobiliária, corretor e comprador — cada um vê a carteira do seu ponto de vista.",
+              "Navegação em camadas (empreendimento → imobiliária → comprador) com adimplente/inadimplente por cliente; ao clicar no comprador abre a ficha dele.",
+            ],
+            screen: "Carteira",
+          },
+          {
+            items: [
+              "O Financeiro de imobiliária/incorporador/corretor vira o Extrato por participante — o split dos pagamentos pagos, batendo com o relatório do Asaas.",
+              "Traz unidade, tipo/parcela/competência, o valor real do split e o comprovante da cobrança no Asaas.",
+              "Busca livre + filtros de período/empreendimento/tipo, ordenação clicando na coluna e cabeçalho fixo ao rolar.",
+            ],
+            screen: "Financeiro",
+          },
+          {
+            items: [
+              "Nova aba Histórico: a ficha corrida da entidade — reúne num lugar só venda, pagamento, atendimento (Iris), negociação (Hades) e reunião (Chronos).",
+              "Linha do tempo agrupada por dia, com ícone e cor por tipo; hora real quando a fonte tem.",
+              "Botão Registrar pra lançar manualmente uma ação que o hub não capturou (ligação, visita, nota…).",
+            ],
+            screen: "Histórico",
+          },
+          {
+            items: [
+              "Correção: a tela de Empreendimentos às vezes não carregava (ficava no esqueleto) — resolvido.",
+              "Navegação entre fichas: o botão voltar retorna pra aba de onde você saiu; lista de entidades pode ser recolhida pra ganhar tela.",
+            ],
+            screen: "Empreendimentos e navegação",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 40100d11 (v1.39.0)",
+    technical: {
+      done: "CRM 360 (Apolo), leitura sobre C2X (read-only) + Supabase. Carteira: lib/apolo/carteira.ts loadApoloCarteiraScoped por papel (filterByKind: comprador=client_id, imobiliaria=vinculed_by_id, incorporador=incorporador_id, corretor=corretores_enterprises — acquisition_requests.corretor_id e sempre nulo); drill-down navegavel no ScopedPortfolioPanel; isApoloTabUnavailableForEntity liberado por papel. Extrato: lib/apolo/extrato.ts usa split_data.fixedValue (valor REAL pago pelo Asaas, casado por perfil) em vez do calculo por percentual; numeracao por tipo (Ato/Sinal via signal_parcels, Parcela via total_parcels) + competencia (reference_date); rota /api/apolo/extrato; filtros/ordenacao client-side + sticky header. Historico: lib/apolo/timeline.ts agrega pagamentos+vendas(C2X: payments/acquisition_request_historics, todos os estagios), Iris(caredesk_tickets via caredesk_contacts.c2x_user_id∪email∪phone), Hades(guardian_compromissos.client_c2x_id), Chronos(chronos_participants.email) e manuais(apolo_timeline_events, metadata.source=manual); identidade multi-chave (c2xId∪emails∪phones, inclui contatos dos relacionamentos); hora real do pagamento via updated_at quando cai no mesmo dia (webhook Asaas), senao dateOnly; fuso America/Sao_Paulo; rota GET/POST /api/apolo/timeline (POST grava evento manual com autor=operador). Fix: carregamento de empreendimentos trocou ref-guard global por cancelamento por-execucao (race que travava no skeleton com fetch lento).",
+      motivation:
+        "Lucas fechou a tela CRM 360 do Apolo: carteira e financeiro POR PAPEL/participante (o Apolo e o centro, C2X e uma das fontes), e o Historico como ficha corrida que absorve TODOS os modulos do Panteon num lugar so (premissa: registrar tudo).",
+    },
+    title: "Apolo: CRM 360 — Carteira por papel, Extrato por participante e Histórico (ficha corrida)",
+    type: "novidade",
+    version: "1.40.0",
+  },
+  {
     buildTag: "2026-07-15-iris-relacionamento-direct",
     deployedAt: "2026-07-15T17:30:00-03:00",
     modules: [
