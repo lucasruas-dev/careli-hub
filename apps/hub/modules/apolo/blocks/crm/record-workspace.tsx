@@ -45,13 +45,13 @@ import {
 } from "../../data/apolo-operations";
 import type { ApoloTab, ManualHadesOperations } from "../../types/apolo-local";
 import { apoloTabs } from "./crm-tabs";
+import { EntityTimelinePanel } from "./entity-timeline-panel";
 import {
   AuditPanel,
   FinancialPanel,
   PortfolioPanel,
   RegistrationPanel,
   SummaryPanel,
-  TimelinePanel,
 } from "./panels";
 import { RelationshipsPanel } from "./relationships-panel";
 import { HeaderAction } from "../shell/apolo-shell";
@@ -608,7 +608,7 @@ function TabPanel({
   }
 
   if (activeTab === "timeline") {
-    return <TimelinePanel events={entity.timeline} />;
+    return <EntityTimelinePanel entity={entity} />;
   }
 
   if (activeTab === "auditoria") {
