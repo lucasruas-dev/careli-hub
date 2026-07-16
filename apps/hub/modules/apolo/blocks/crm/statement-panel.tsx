@@ -59,7 +59,6 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   // Filtros e ordenação client-side (sobre as linhas já carregadas — instantâneo).
-  const [unitFilter, setUnitFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ dir: "asc" | "desc"; key: SortKey }>({
@@ -75,7 +74,6 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
     let active = true;
     setLoading(true);
     setError(null);
-    setUnitFilter("");
     setTypeFilter("");
     setSearch("");
 
@@ -129,10 +127,6 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
 
   const rows = data?.rows ?? [];
 
-  const unitOptions = useMemo(
-    () => uniqueSorted(rows.map((row) => row.unitCode)),
-    [rows],
-  );
   const typeOptions = useMemo(
     () => uniqueSorted(rows.map((row) => row.parcelType)),
     [rows],
@@ -141,9 +135,6 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
   const visibleRows = useMemo(() => {
     const term = normalizeSearch(search);
     const filtered = rows.filter((row) => {
-      if (unitFilter && row.unitCode !== unitFilter) {
-        return false;
-      }
       if (typeFilter && row.parcelType !== typeFilter) {
         return false;
       }
@@ -159,7 +150,7 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
     });
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => dir * compareRows(a, b, sort.key));
-  }, [rows, unitFilter, typeFilter, search, sort]);
+  }, [rows, typeFilter, search, sort]);
 
   const total = visibleRows.reduce((sum, row) => sum + row.value, 0);
 
@@ -218,20 +209,6 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
               {enterpriseOptions.map((item) => (
                 <option key={item.code} value={item.code}>
                   {item.name ?? item.code}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Unidade">
-            <select
-              className="h-9 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
-              onChange={(event) => setUnitFilter(event.target.value)}
-              value={unitFilter}
-            >
-              <option value="">Todas</option>
-              {unitOptions.map((code) => (
-                <option key={code} value={code}>
-                  {code}
                 </option>
               ))}
             </select>
