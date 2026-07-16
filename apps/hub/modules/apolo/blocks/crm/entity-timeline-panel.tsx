@@ -77,21 +77,24 @@ const MANUAL_CATEGORIES = [
   "Outro",
 ];
 
+const TZ = "America/Sao_Paulo";
+
+// Dia (YYYY-MM-DD) NO fuso de Brasília — en-CA formata como YYYY-MM-DD.
 function isoDay(value: string): string {
   const date = new Date(value);
-  return Number.isNaN(date.getTime()) ? "" : date.toISOString().slice(0, 10);
+  return Number.isNaN(date.getTime()) ? "" : date.toLocaleDateString("en-CA", { timeZone: TZ });
 }
 
 function formatTime(value: string): string {
   const date = new Date(value);
   return Number.isNaN(date.getTime())
     ? ""
-    : date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+    : date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", timeZone: TZ });
 }
 
 function dayLabel(day: string): string {
-  const today = new Date().toISOString().slice(0, 10);
-  const yesterday = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  const today = isoDay(new Date().toISOString());
+  const yesterday = isoDay(new Date(Date.now() - 86400000).toISOString());
   if (day === today) {
     return "Hoje";
   }
@@ -340,7 +343,9 @@ function TimelineRow({ entry }: { entry: ApoloTimelineEntry }) {
       <div className="min-w-0 flex-1">
         <div className="flex items-baseline justify-between gap-3">
           <p className="m-0 truncate text-sm font-semibold text-ink">{entry.title}</p>
-          <p className="m-0 shrink-0 text-xs font-medium text-ink-muted">{formatTime(entry.date)}</p>
+          {entry.dateOnly ? null : (
+            <p className="m-0 shrink-0 text-xs font-medium text-ink-muted">{formatTime(entry.date)}</p>
+          )}
         </div>
         <p className="m-0 mt-0.5 truncate text-xs font-medium text-ink-muted">
           {entry.description}

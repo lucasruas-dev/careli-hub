@@ -22,6 +22,9 @@ export type ApoloTimelineEntry = {
   // Autor, quando o registro tem responsável (manual = operador; automáticos = null).
   author: string | null;
   date: string; // ISO
+  // true quando a fonte só tem a DATA (sem hora real) — ex.: pagamento no C2X. A UI não mostra
+  // hora nesses (a "hora" seria artefato de fuso).
+  dateOnly: boolean;
   description: string;
   id: string;
   // true = adicionado manualmente (pode ser editado/removido pelo operador).
@@ -90,17 +93,19 @@ export async function loadApoloEntityTimeline(
 type PaymentRow = RowDataPacket & {
   current_parcel: number | null;
   current_signal: number | null;
-  due_date: Date | string | null;
+  due_day: string | null;
   enterprise_code: string | null;
   enterprise_name: string | null;
   initial_value: string | number | null;
   paid_value: string | number | null;
   parcel_type: string | null;
-  payment_date: Date | string | null;
+  payment_day: string | null;
   payment_id: number;
   status_id: number | null;
   total_parcels: number | null;
   total_signal: number | null;
+  updated_day: string | null;
+  updated_iso: string | null;
 };
 
 async function loadPagamentos(c2xId: number | null): Promise<ApoloTimelineEntry[]> {
@@ -116,7 +121,11 @@ async function loadPagamentos(c2xId: number | null): Promise<ApoloTimelineEntry[
   const [rows] = await poolResult.pool.query<PaymentRow[]>(
     `select
        p.id as payment_id,
-       p.payment_date, p.due_date, p.payment_status_id as status_id,
+       date_format(p.payment_date, '%Y-%m-%d') as payment_day,
+       date_format(p.due_date, '%Y-%m-%d') as due_day,
+       date_format(p.updated_at, '%Y-%m-%d') as updated_day,
+       date_format(p.updated_at, '%Y-%m-%dT%H:%i:%s-03:00') as updated_iso,
+       p.payment_status_id as status_id,
        p.paid_value, p.initial_value,
        pt.name as parcel_type,
        p.current_signal_parcel as current_signal, p.total_signal_parcels as total_signal,
@@ -142,10 +151,20 @@ async function loadPagamentos(c2xId: number | null): Promise<ApoloTimelineEntry[
     const enterprise = text(row.enterprise_name) ?? text(row.enterprise_code) ?? "Empreendimento";
     const detail = [text(row.parcel_type), parcela].filter(Boolean).join(" ");
 
+    const day = (paid ? row.payment_day : row.due_day) ?? row.due_day ?? row.payment_day;
+    // Hora REAL do pagamento = updated_at, MAS só quando ele cai no mesmo dia do pagamento
+    // (é a confirmação do webhook do Asaas). Fora disso o C2X só tem a data (meio-dia neutro).
+    const hasRealTime = paid && row.updated_iso != null && row.updated_day === row.payment_day;
+
     return {
       amount: toNumber(paid ? row.paid_value : row.initial_value),
       author: null,
-      date: iso(paid ? (row.payment_date ?? row.due_date) : row.due_date),
+      date: hasRealTime
+        ? (row.updated_iso as string)
+        : day
+          ? `${day}T12:00:00-03:00`
+          : "",
+      dateOnly: !hasRealTime,
       description: `${detail ? `${detail} · ` : ""}${enterprise}`,
       id: `pagamento:${row.payment_id}`,
       manual: false,
@@ -203,7 +222,7 @@ async function loadVendas(c2xId: number | null): Promise<ApoloTimelineEntry[]> {
   const [rows] = await poolResult.pool.query<VendaRow[]>(
     `select
        min(arh.id) as hist_id,
-       min(arh.created_at) as occurred_at,
+       date_format(min(arh.created_at), '%Y-%m-%dT%H:%i:%s-03:00') as occurred_at,
        arh.new_acquisition_request_stage_id as stage_id,
        s.name as stage_name,
        e.name as enterprise_name, e.code as enterprise_code,
@@ -231,6 +250,7 @@ async function loadVendas(c2xId: number | null): Promise<ApoloTimelineEntry[]> {
       amount: null,
       author: null,
       date: iso(row.occurred_at),
+      dateOnly: false,
       description: `${unit ? `${unit} · ` : ""}${enterprise}`,
       id: `venda:${row.hist_id}`,
       manual: false,
@@ -286,6 +306,7 @@ async function loadIris(scope: ApoloTimelineScope): Promise<ApoloTimelineEntry[]
       amount: null,
       author: null,
       date: iso((ticket.opened_at ?? ticket.created_at) as string | null),
+      dateOnly: false,
       description: `Atendimento · ${text(ticket.subject as string) ?? statusLabel(status)}`,
       id: `iris:${ticket.id}`,
       manual: false,
@@ -323,6 +344,7 @@ async function loadHades(
       amount: toNumber(item.total_amount as number),
       author: null,
       date: iso((item.created_at ?? item.promised_date) as string | null),
+      dateOnly: false,
       description: `Negociação · ${text(item.kind as string) ?? "acordo"} · ${statusLabel(status)}`,
       id: `hades:${item.id}`,
       manual: false,
@@ -368,6 +390,7 @@ async function loadChronos(
     amount: null,
     author: null,
     date: iso(meeting.starts_at as string | null),
+    dateOnly: false,
     description: `Reunião · ${text(meeting.meeting_type as string) ?? "encontro"} · ${statusLabel(String(meeting.status ?? ""))}`,
     id: `chronos:${meeting.id}`,
     manual: false,
@@ -406,6 +429,7 @@ async function loadManual(
       amount: null,
       author: text(meta.author) ?? "Operador",
       date: iso(row.occurred_at as string | null),
+      dateOnly: false,
       description:
         text(row.description as string) ?? text(meta.category) ?? "Registro manual",
       id: `manual:${row.id}`,
