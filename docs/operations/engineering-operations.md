@@ -38,6 +38,12 @@ Caminho legado de compatibilidade: `docs/codex/engineering-operations.md`.
 
 ## Pendencias criticas atuais
 
+### 2026-07-15 - Apolo CRM 360 (deploy v1.40.0) + inicio do CRUD/documentos
+- **DEPLOY v1.40.0 em prod** (c2x.app.br, commit `1e756c62`, rollback `40100d11`/v1.39.0): Apolo CRM 360 — Carteira por papel, Financeiro=Extrato por participante (split real do Asaas), Historico (ficha corrida agregando venda/pagamento/Iris/Hades/Chronos + manual), fixes de navegacao/empreendimentos. `lib/apolo/{carteira,extrato,timeline}.ts` + panels + rotas `/api/apolo/{carteira,extrato,timeline}`.
+- **Frente ATIVA (nao deployada): CRUD de cadastro no Apolo com MOST como motor.** Estrategia: finalizar o cadastro de PROSPECT (wizard `cadastro-flow.tsx` ja avancado, PF+PJ; `enviar()` e placeholder, nao persiste) e usa-lo como referencia. Banco pronto (`apolo_entities` gera id, aceita escrita via service role; sem triggers -> app popula `apolo_search_entries`/identificadores).
+- **Aba Documentos (em curso, branch `feat/apolo-documentos` commit `8befd997`):** INFRA JA APLICADA EM PROD (migration `0050`): bucket privado `apolo-documents` + tabela `apolo_enterprise_documents`. `lib/apolo/documentos.ts` (upload/list/signed-url/delete) pronto. FALTA: rotas `/api/apolo/documentos[/id]`, aba no CRM (`DocumentsPanel`+upload) e no Empreendimento; depois o salvamento (`createApoloEntity`) + MOST->docs.
+- **Handoff completo:** `docs/operations/apolo-cadastro-crud-handoff-startup-2026-07-15.md`.
+
 ### 2026-06-30 - Zeus - auditoria semanal read-only Vercel
 
 - Status: `OPERACIONAL COM ATENCAO / SEM ACAO MUTAVEL`.
