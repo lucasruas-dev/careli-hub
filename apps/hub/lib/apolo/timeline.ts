@@ -13,14 +13,19 @@ export type ApoloTimelineSource =
   | "chronos"
   | "hades"
   | "iris"
+  | "manual"
   | "pagamento"
   | "venda";
 
 export type ApoloTimelineEntry = {
   amount: number | null;
+  // Autor, quando o registro tem responsável (manual = operador; automáticos = null).
+  author: string | null;
   date: string; // ISO
   description: string;
   id: string;
+  // true = adicionado manualmente (pode ser editado/removido pelo operador).
+  manual: boolean;
   reference: string | null;
   source: ApoloTimelineSource;
   status: "attention" | "blocked" | "info" | "ok";
@@ -36,6 +41,7 @@ export type ApoloTimelineScope = {
   adminClient: AdminClient;
   c2xId: number | null;
   emails: string[];
+  entityId: string | null;
   phones: string[];
 };
 
@@ -45,22 +51,29 @@ export async function loadApoloEntityTimeline(
   { data: ApoloTimelineData; ok: true } | { error: string; ok: false }
 > {
   try {
-    const [pagamentos, vendas, iris, hades, chronos] = await Promise.all([
+    const [pagamentos, vendas, iris, hades, chronos, manuais] = await Promise.all([
       loadPagamentos(scope.c2xId),
       loadVendas(scope.c2xId),
       loadIris(scope),
       loadHades(scope.adminClient, scope.c2xId),
       loadChronos(scope.adminClient, scope.emails),
+      loadManual(scope.adminClient, scope.entityId),
     ]);
 
-    const entries = [...pagamentos, ...vendas, ...iris, ...hades, ...chronos].sort((a, b) =>
-      b.date.localeCompare(a.date),
-    );
+    const entries = [
+      ...pagamentos,
+      ...vendas,
+      ...iris,
+      ...hades,
+      ...chronos,
+      ...manuais,
+    ].sort((a, b) => b.date.localeCompare(a.date));
 
     const counts: Record<ApoloTimelineSource, number> = {
       chronos: chronos.length,
       hades: hades.length,
       iris: iris.length,
+      manual: manuais.length,
       pagamento: pagamentos.length,
       venda: vendas.length,
     };
@@ -131,9 +144,11 @@ async function loadPagamentos(c2xId: number | null): Promise<ApoloTimelineEntry[
 
     return {
       amount: toNumber(paid ? row.paid_value : row.initial_value),
+      author: null,
       date: iso(paid ? (row.payment_date ?? row.due_date) : row.due_date),
       description: `${detail ? `${detail} · ` : ""}${enterprise}`,
       id: `pagamento:${row.payment_id}`,
+      manual: false,
       reference: null,
       source: "pagamento",
       status: paid ? "ok" : "blocked",
@@ -214,9 +229,11 @@ async function loadVendas(c2xId: number | null): Promise<ApoloTimelineEntry[]> {
 
     return {
       amount: null,
+      author: null,
       date: iso(row.occurred_at),
       description: `${unit ? `${unit} · ` : ""}${enterprise}`,
       id: `venda:${row.hist_id}`,
+      manual: false,
       reference: null,
       source: "venda",
       status: VENDA_STAGE_BLOCKED.has(Number(row.stage_id)) ? "blocked" : "info",
@@ -267,9 +284,11 @@ async function loadIris(scope: ApoloTimelineScope): Promise<ApoloTimelineEntry[]
 
     return {
       amount: null,
+      author: null,
       date: iso((ticket.opened_at ?? ticket.created_at) as string | null),
       description: `Atendimento · ${text(ticket.subject as string) ?? statusLabel(status)}`,
       id: `iris:${ticket.id}`,
+      manual: false,
       reference: text(ticket.protocol as string),
       source: "iris",
       status: resolved ? "ok" : "attention",
@@ -302,9 +321,11 @@ async function loadHades(
 
     return {
       amount: toNumber(item.total_amount as number),
+      author: null,
       date: iso((item.created_at ?? item.promised_date) as string | null),
       description: `Negociação · ${text(item.kind as string) ?? "acordo"} · ${statusLabel(status)}`,
       id: `hades:${item.id}`,
+      manual: false,
       reference: text(item.protocol as string),
       source: "hades",
       status: broken ? "blocked" : fulfilled ? "ok" : "attention",
@@ -345,14 +366,56 @@ async function loadChronos(
 
   return (meetings ?? []).map((meeting) => ({
     amount: null,
+    author: null,
     date: iso(meeting.starts_at as string | null),
     description: `Reunião · ${text(meeting.meeting_type as string) ?? "encontro"} · ${statusLabel(String(meeting.status ?? ""))}`,
     id: `chronos:${meeting.id}`,
+    manual: false,
     reference: text(meeting.protocol as string),
     source: "chronos",
     status: /cancelad/i.test(String(meeting.status ?? "")) ? "blocked" : "info",
     title: text(meeting.title as string) ?? "Reunião",
   }));
+}
+
+// ---- Manuais (apolo_timeline_events / Supabase) --------------------------------------------
+
+// Eventos que o operador registra na mão (ação que o hub não capturou). Ficam em
+// apolo_timeline_events com metadata.source = "manual" (só esses; ignora eventuais eventos de
+// sync). Ver [[project_apolo_timeline]].
+async function loadManual(
+  adminClient: AdminClient,
+  entityId: string | null,
+): Promise<ApoloTimelineEntry[]> {
+  if (!entityId) {
+    return [];
+  }
+
+  const { data } = await adminClient
+    .from("apolo_timeline_events")
+    .select("id, event_type, title, description, occurred_at, metadata")
+    .eq("entity_id", entityId)
+    .eq("metadata->>source", "manual")
+    .order("occurred_at", { ascending: false })
+    .limit(200);
+
+  return (data ?? []).map((row) => {
+    const meta = (row.metadata ?? {}) as { author?: string | null; category?: string | null };
+
+    return {
+      amount: null,
+      author: text(meta.author) ?? "Operador",
+      date: iso(row.occurred_at as string | null),
+      description:
+        text(row.description as string) ?? text(meta.category) ?? "Registro manual",
+      id: `manual:${row.id}`,
+      manual: true,
+      reference: text(meta.category) ?? text(row.event_type as string),
+      source: "manual",
+      status: "info",
+      title: text(row.title as string) ?? "Registro manual",
+    };
+  });
 }
 
 // ---- helpers -------------------------------------------------------------------------------
