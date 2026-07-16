@@ -4,6 +4,7 @@ import {
   ContactRound,
   FileText,
   HandCoins,
+  History,
   LayoutDashboard,
   MapPinned,
   Network,
@@ -25,7 +26,7 @@ export const apoloTabs = [
   { icon: Network, id: "relacionamentos", label: "Relacionamentos" },
   { icon: MapPinned, id: "carteira", label: "Carteira" },
   { icon: CircleDollarSign, id: "financeiro", label: "Financeiro" },
-  { icon: Clock3, id: "timeline", label: "Timeline" },
+  { icon: History, id: "timeline", label: "Histórico" },
 ] as const satisfies readonly ApoloTabItem[];
 
 export const apoloUnitSubtabs = [

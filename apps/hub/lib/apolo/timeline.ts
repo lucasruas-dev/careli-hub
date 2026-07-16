@@ -9,7 +9,12 @@ import { getHadesDbPool } from "@/lib/guardian/db";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
-export type ApoloTimelineSource = "chronos" | "hades" | "iris" | "pagamento";
+export type ApoloTimelineSource =
+  | "chronos"
+  | "hades"
+  | "iris"
+  | "pagamento"
+  | "venda";
 
 export type ApoloTimelineEntry = {
   amount: number | null;
@@ -40,14 +45,15 @@ export async function loadApoloEntityTimeline(
   { data: ApoloTimelineData; ok: true } | { error: string; ok: false }
 > {
   try {
-    const [pagamentos, iris, hades, chronos] = await Promise.all([
+    const [pagamentos, vendas, iris, hades, chronos] = await Promise.all([
       loadPagamentos(scope.c2xId),
+      loadVendas(scope.c2xId),
       loadIris(scope),
       loadHades(scope.adminClient, scope.c2xId),
       loadChronos(scope.adminClient, scope.emails),
     ]);
 
-    const entries = [...pagamentos, ...iris, ...hades, ...chronos].sort((a, b) =>
+    const entries = [...pagamentos, ...vendas, ...iris, ...hades, ...chronos].sort((a, b) =>
       b.date.localeCompare(a.date),
     );
 
@@ -56,6 +62,7 @@ export async function loadApoloEntityTimeline(
       hades: hades.length,
       iris: iris.length,
       pagamento: pagamentos.length,
+      venda: vendas.length,
     };
 
     return { data: { counts, entries }, ok: true };
@@ -130,7 +137,9 @@ async function loadPagamentos(c2xId: number | null): Promise<ApoloTimelineEntry[
       reference: null,
       source: "pagamento",
       status: paid ? "ok" : "blocked",
-      title: paid ? "Pagamento recebido" : "Parcela vencida",
+      // Perspectiva da entidade: aqui ela é a COMPRADORA (ligada por client_id), então FOI ELA
+      // quem pagou -> "realizado". (Recebido seria a visão de quem recebe o split.)
+      title: paid ? "Pagamento realizado" : "Parcela vencida",
     };
   });
 }
@@ -144,6 +153,76 @@ function parcelaLabel(row: PaymentRow): string {
     return `${row.current_parcel ?? "-"}/${row.total_parcels ?? "-"}`;
   }
   return "";
+}
+
+// ---- Vendas (C2X / MySQL) ------------------------------------------------------------------
+
+// Venda é um GRUPO/funil — cada marco (Reservado, Proposta, Contrato gerado, Em assinatura,
+// Faturado, Finalizado, Cancelado, Distrato) é um evento datado, vindo do histórico de
+// estágios da proposta no C2X (acquisition_request_historics).
+type VendaRow = RowDataPacket & {
+  block: string | null;
+  enterprise_code: string | null;
+  enterprise_name: string | null;
+  hist_id: number;
+  lot: string | null;
+  occurred_at: Date | string | null;
+  stage_id: number | null;
+  stage_name: string | null;
+};
+
+// Estágios que sinalizam ruptura (viram status "blocked" — a UI hoje não usa cor de status,
+// mas mantemos pra referência e futuro).
+const VENDA_STAGE_BLOCKED = new Set([7, 8, 10, 11]);
+
+async function loadVendas(c2xId: number | null): Promise<ApoloTimelineEntry[]> {
+  if (!c2xId || c2xId <= 0) {
+    return [];
+  }
+
+  const poolResult = getHadesDbPool();
+  if (!poolResult.ok) {
+    return [];
+  }
+
+  const [rows] = await poolResult.pool.query<VendaRow[]>(
+    `select
+       min(arh.id) as hist_id,
+       min(arh.created_at) as occurred_at,
+       arh.new_acquisition_request_stage_id as stage_id,
+       s.name as stage_name,
+       e.name as enterprise_name, e.code as enterprise_code,
+       eu.block, eu.lot
+     from acquisition_request_historics arh
+     join acquisition_requests ar on ar.id = arh.acquisition_request_id
+     join enterprise_unities eu on eu.id = ar.enterprise_unity_id
+     join enterprises e on e.id = eu.enterprise_id
+     join acquisition_request_stages s on s.id = arh.new_acquisition_request_stage_id
+     where ar.client_id = ?
+     group by ar.id, arh.new_acquisition_request_stage_id, date(arh.created_at),
+              s.name, e.name, e.code, eu.block, eu.lot
+     order by occurred_at desc
+     limit 300`,
+    [c2xId],
+  );
+
+  return rows.map((row) => {
+    const enterprise = text(row.enterprise_name) ?? text(row.enterprise_code) ?? "Empreendimento";
+    const unit = [row.block ? `Q${row.block}` : null, row.lot ? `L${String(row.lot).replace(/^L/i, "")}` : null]
+      .filter(Boolean)
+      .join("·");
+
+    return {
+      amount: null,
+      date: iso(row.occurred_at),
+      description: `${unit ? `${unit} · ` : ""}${enterprise}`,
+      id: `venda:${row.hist_id}`,
+      reference: null,
+      source: "venda",
+      status: VENDA_STAGE_BLOCKED.has(Number(row.stage_id)) ? "blocked" : "info",
+      title: text(row.stage_name) ?? "Venda",
+    };
+  });
 }
 
 // ---- Iris (caredesk / Supabase) ------------------------------------------------------------
