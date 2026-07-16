@@ -263,20 +263,19 @@ async function sendToTarget({
   }
 
   if (target.ticketId) {
-    // Direct: a nossa resposta marca 1ª resposta e coloca em espera do cliente.
+    // Direct: TODA resposta nossa tira o ticket de "Pendente" (aguardando o
+    // cliente). Antes isso só rodava na 1ª resposta — da 2ª em diante o ticket
+    // voltava a parecer pendente mesmo respondido.
     await client
       .from("caredesk_tickets")
-      .update({
-        status: "waiting_customer",
-        first_responded_at: now,
-        updated_at: now,
-      })
+      .update({ status: "waiting_customer", updated_at: now })
+      .eq("id", target.ticketId);
+    // first_responded_at é da PRIMEIRA resposta: só grava se ainda não tem.
+    await client
+      .from("caredesk_tickets")
+      .update({ first_responded_at: now })
       .eq("id", target.ticketId)
       .is("first_responded_at", null);
-    await client
-      .from("caredesk_tickets")
-      .update({ updated_at: now })
-      .eq("id", target.ticketId);
   } else {
     await client
       .from("caredesk_whatsapp_groups")

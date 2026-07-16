@@ -357,6 +357,14 @@ async function loadGroupConversations({
     const lastMessage = messages[messages.length - 1];
     const title = (group.subject as string | null)?.trim() || "Grupo sem nome";
 
+    // Marcação de pendência (regra do Lucas): como TODO mundo responde pela Iris,
+    // "resposta nossa" = mensagem de SAÍDA. Última de entrada (alguém de fora)
+    // => não lida + Pendente. Última nossa => Espera (respondido).
+    // O status alimenta o conversationWaitState; antes era fixo em "open" e o
+    // grupo ficava eternamente "Pendente" mesmo depois de respondido.
+    const weAnswered = lastMessage?.direction === "outbound";
+    const groupStatus = weAnswered ? "waiting_customer" : "open";
+
     return {
       assignedToLabel: "Grupo monitorado",
       channelId: groupChannel?.id ?? null,
@@ -391,11 +399,11 @@ async function loadGroupConversations({
         provider: "evolution",
         readOnly: false,
       },
-      sourceLabel: "WhatsApp · Relacionamento",
-      status: "open",
+      sourceLabel: "WhatsApp · Grupo",
+      status: groupStatus,
       subject: title,
-      unread: false,
-      unreadCount: 0,
+      unread: Boolean(lastMessage && lastMessage.direction === "inbound"),
+      unreadCount: computeUnreadCount(messages, groupStatus),
     } satisfies IrisTicket;
   });
 }

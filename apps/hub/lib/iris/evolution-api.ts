@@ -149,6 +149,77 @@ async function postEvolutionMessage(
   }
 }
 
+export type EvolutionInboundMedia = {
+  base64: string;
+  mimeType: string | null;
+  fileName: string | null;
+};
+
+// Baixa o binário de uma mídia RECEBIDA (imagem/PDF/áudio/documento). O
+// messages.upsert não traz o arquivo — só a referência —, então buscamos pela
+// chave da mensagem. Sem isso o cockpit não tem o que abrir.
+export async function fetchEvolutionMediaBase64(
+  messageId: string,
+): Promise<EvolutionInboundMedia | null> {
+  const config = getEvolutionApiConfig();
+  if (!config) {
+    return null;
+  }
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 30000);
+
+    const response = await fetch(
+      `${config.url}/chat/getBase64FromMediaMessage/${encodeURIComponent(
+        config.instance,
+      )}`,
+      {
+        method: "POST",
+        headers: {
+          apikey: config.apiKey,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ message: { key: { id: messageId } } }),
+        signal: controller.signal,
+      },
+    ).finally(() => clearTimeout(timeout));
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const data = (await response.json()) as unknown;
+    if (!data || typeof data !== "object") {
+      return null;
+    }
+
+    const record = data as Record<string, unknown>;
+    const base64 = typeof record.base64 === "string" ? record.base64 : "";
+    if (!base64) {
+      return null;
+    }
+
+    return {
+      base64,
+      mimeType:
+        typeof record.mimetype === "string"
+          ? record.mimetype
+          : typeof record.mimeType === "string"
+            ? record.mimeType
+            : null,
+      fileName:
+        typeof record.fileName === "string"
+          ? record.fileName
+          : typeof record.filename === "string"
+            ? record.filename
+            : null,
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function fetchEvolutionGroupInfo(
   groupJid: string,
 ): Promise<EvolutionGroupInfo | null> {

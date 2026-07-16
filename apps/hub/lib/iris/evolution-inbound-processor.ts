@@ -1,6 +1,10 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
-import { fetchEvolutionGroupInfo } from "@/lib/iris/evolution-api";
+import {
+  fetchEvolutionGroupInfo,
+  fetchEvolutionMediaBase64,
+} from "@/lib/iris/evolution-api";
+import { uploadInboundMediaBuffer } from "@/lib/iris/meta-media-storage";
 
 // Ingestão de mensagens do número de Relacionamento (6566) via Evolution API.
 //
@@ -47,6 +51,9 @@ type NormalizedMessage = {
   senderName: string | null;
   body: string;
   messageType: string;
+  hasMedia: boolean;
+  mimeType: string | null;
+  fileName: string | null;
   sentAt: string;
   fromMe: boolean;
   raw: Record<string, unknown>;
@@ -153,6 +160,7 @@ async function ingestGroupMessage({
     groupParticipant: message.senderJid,
     groupParticipantName: message.senderName,
     evolutionMessageType: message.messageType,
+    media: await persistInboundMedia(client, message),
     raw: message.raw as Json,
   };
 
@@ -264,6 +272,7 @@ async function ingestDirectMessage({
     provider: "evolution",
     contactPhone: phone,
     evolutionMessageType: message.messageType,
+    media: await persistInboundMedia(client, message),
     raw: message.raw as Json,
   };
 
@@ -284,17 +293,23 @@ async function ingestDirectMessage({
     throw error;
   }
 
-  // Resposta (nossa) marca a primeira resposta; mensagem do cliente reabre.
-  const patch: Record<string, unknown> = {
-    updated_at: new Date().toISOString(),
-  };
+  // Resposta nossa => aguardando o cliente; mensagem do cliente => volta a pendente.
+  await client
+    .from("caredesk_tickets")
+    .update({
+      status: outbound ? "waiting_customer" : "open",
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", ticketId);
+
+  // first_responded_at é da PRIMEIRA resposta: só grava se ainda não tem.
   if (outbound) {
-    patch.status = "waiting_customer";
-    patch.first_responded_at = message.sentAt;
-  } else {
-    patch.status = "open";
+    await client
+      .from("caredesk_tickets")
+      .update({ first_responded_at: message.sentAt })
+      .eq("id", ticketId)
+      .is("first_responded_at", null);
   }
-  await client.from("caredesk_tickets").update(patch).eq("id", ticketId);
 }
 
 async function findOrCreateDirectContact({
@@ -471,7 +486,7 @@ function normalizeMessage(item: unknown): NormalizedMessage | null {
       ? item.pushName.trim()
       : null;
 
-  const { body, messageType } = extractMessageContent(item);
+  const content = extractMessageContent(item);
 
   return {
     isGroup,
@@ -480,55 +495,139 @@ function normalizeMessage(item: unknown): NormalizedMessage | null {
     messageId,
     senderJid,
     senderName,
-    body,
-    messageType,
+    body: content.body,
+    messageType: content.messageType,
+    hasMedia: content.hasMedia,
+    mimeType: content.mimeType,
+    fileName: content.fileName,
     sentAt: resolveTimestamp(item.messageTimestamp),
     fromMe,
     raw: item,
   };
 }
 
-function extractMessageContent(item: Record<string, unknown>): {
+// Baixa o arquivo recebido e guarda no Storage — é o que faz o PDF/PNG/áudio
+// ABRIR no cockpit (a conversa lê provider_payload.media.{url,type,fileName}).
+// Best-effort: se falhar, a mensagem entra mesmo assim (só sem o anexo).
+async function persistInboundMedia(
+  client: EvolutionClient,
+  message: NormalizedMessage,
+): Promise<Json> {
+  if (!message.hasMedia) {
+    return null;
+  }
+
+  try {
+    const downloaded = await fetchEvolutionMediaBase64(message.messageId);
+    if (!downloaded) {
+      return null;
+    }
+
+    const mimeType = downloaded.mimeType ?? message.mimeType;
+    const persisted = await uploadInboundMediaBuffer({
+      buffer: Buffer.from(downloaded.base64, "base64"),
+      client,
+      mediaId: message.messageId,
+      mimeType,
+    });
+
+    if (!persisted?.url) {
+      return null;
+    }
+
+    return {
+      fileName: downloaded.fileName ?? message.fileName,
+      mimeType: mimeType ?? null,
+      type: message.messageType,
+      url: persisted.url,
+    };
+  } catch (error) {
+    console.error("[iris] falha ao guardar midia recebida (evolution)", error);
+    return null;
+  }
+}
+
+type ExtractedContent = {
   body: string;
   messageType: string;
-} {
+  // Quando é mídia, guardamos o suficiente pra buscar e exibir o arquivo.
+  hasMedia: boolean;
+  mimeType: string | null;
+  fileName: string | null;
+};
+
+function extractMessageContent(item: Record<string, unknown>): ExtractedContent {
   const message = isRecord(item.message) ? item.message : null;
   const declaredType =
     typeof item.messageType === "string" ? item.messageType : "";
 
+  const text = (body: string, messageType: string): ExtractedContent => ({
+    body,
+    messageType,
+    hasMedia: false,
+    mimeType: null,
+    fileName: null,
+  });
+
+  const media = (
+    body: string,
+    messageType: string,
+    node: Record<string, unknown>,
+    fallbackName: string,
+  ): ExtractedContent => ({
+    body,
+    messageType,
+    hasMedia: true,
+    mimeType: typeof node.mimetype === "string" ? node.mimetype : null,
+    fileName:
+      typeof node.fileName === "string" && node.fileName.trim()
+        ? node.fileName.trim()
+        : fallbackName,
+  });
+
   if (message) {
     if (typeof message.conversation === "string") {
-      return { body: message.conversation, messageType: "text" };
+      return text(message.conversation, "text");
     }
     const extended = isRecord(message.extendedTextMessage)
       ? message.extendedTextMessage
       : null;
     if (extended && typeof extended.text === "string") {
-      return { body: extended.text, messageType: "text" };
+      return text(extended.text, "text");
     }
-    const imageCaption = captionOf(message.imageMessage);
-    if (imageCaption !== null) {
-      return { body: imageCaption || "[imagem]", messageType: "image" };
+    if (isRecord(message.imageMessage)) {
+      const caption = captionOf(message.imageMessage) || "";
+      return media(caption, "image", message.imageMessage, "imagem.jpg");
     }
-    const videoCaption = captionOf(message.videoMessage);
-    if (videoCaption !== null) {
-      return { body: videoCaption || "[vídeo]", messageType: "video" };
+    if (isRecord(message.videoMessage)) {
+      const caption = captionOf(message.videoMessage) || "";
+      return media(caption, "video", message.videoMessage, "video.mp4");
     }
     if (isRecord(message.audioMessage)) {
-      return { body: "[áudio]", messageType: "audio" };
+      return media("", "audio", message.audioMessage, "audio.ogg");
     }
     if (isRecord(message.documentMessage)) {
-      return { body: "[documento]", messageType: "document" };
+      const caption = captionOf(message.documentMessage) || "";
+      return media(caption, "document", message.documentMessage, "documento");
+    }
+    // documentWithCaptionMessage: PDF enviado com legenda (embrulha o document).
+    const wrapped = isRecord(message.documentWithCaptionMessage)
+      ? message.documentWithCaptionMessage
+      : null;
+    const wrappedInner =
+      wrapped && isRecord(wrapped.message) && isRecord(wrapped.message.documentMessage)
+        ? wrapped.message.documentMessage
+        : null;
+    if (wrappedInner) {
+      const caption = captionOf(wrappedInner) || "";
+      return media(caption, "document", wrappedInner, "documento");
     }
     if (isRecord(message.stickerMessage)) {
-      return { body: "[figurinha]", messageType: "sticker" };
+      return media("", "sticker", message.stickerMessage, "figurinha.webp");
     }
   }
 
-  return {
-    body: declaredType ? `[${declaredType}]` : "[mensagem]",
-    messageType: declaredType || "unknown",
-  };
+  return text(declaredType ? `[${declaredType}]` : "[mensagem]", declaredType || "unknown");
 }
 
 function captionOf(value: unknown): string | null {
