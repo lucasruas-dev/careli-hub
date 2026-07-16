@@ -173,14 +173,16 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
         </div>
       ) : (
         <div className="overflow-x-auto rounded-xl border border-line bg-surface">
-          <table className="w-full min-w-[56rem] border-collapse text-sm">
+          <table className="w-full min-w-[68rem] border-collapse text-sm">
             <thead>
               <tr className="border-b border-line text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
                 <th className="px-4 py-3 font-semibold">Pagamento</th>
                 <th className="px-4 py-3 font-semibold">Empreendimento</th>
                 <th className="px-4 py-3 font-semibold">Unidade</th>
                 <th className="px-4 py-3 font-semibold">Cliente</th>
+                <th className="px-4 py-3 font-semibold">Tipo</th>
                 <th className="px-4 py-3 font-semibold">Parcela</th>
+                <th className="px-4 py-3 font-semibold">Competência</th>
                 <th className="px-4 py-3 font-semibold">Papel</th>
                 <th className="px-4 py-3 text-right font-semibold">Valor</th>
                 <th className="px-4 py-3 text-center font-semibold">Comprovante</th>
@@ -200,7 +202,9 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
                     ) : null}
                   </td>
                   <td className="px-4 py-3 text-ink-soft">{row.clientName ?? "-"}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.parcelType}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.parcela}</td>
+                  <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.competence ?? "-"}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-ink-soft">{row.role}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-right font-semibold text-ink">{brl(row.value)}</td>
                   <td className="whitespace-nowrap px-4 py-3 text-center">

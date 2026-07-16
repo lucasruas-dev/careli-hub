@@ -14,10 +14,12 @@ export type ApoloStatementRow = {
   asaasInvoiceUrl: string | null;
   asaasUrl: string | null;
   clientName: string | null;
+  competence: string | null;
   enterpriseCode: string;
   enterpriseName: string | null;
   id: string;
   parcela: string;
+  parcelType: string;
   paymentDate: string;
   role: string;
   // Unidade (lote) da venda.
@@ -57,16 +59,20 @@ type StatementRow = RowDataPacket & {
   asaas_invoice_url: string | null;
   asaas_url: string | null;
   client_name: string | null;
+  competence: string | null;
   current_parcel: number | null;
+  current_signal: number | null;
   enterprise_code: string | null;
   enterprise_name: string | null;
   gross_value: string | number | null;
+  parcel_type: string | null;
   payment_date: Date | string | null;
   payment_id: number;
   profile_name: string | null;
   split_data: unknown;
   split_group_value_id: number;
   total_parcels: number | null;
+  total_signal: number | null;
   unit_block: string | null;
   unit_lot: string | null;
 };
@@ -155,8 +161,12 @@ export async function loadApoloParticipantStatement(
          ${nameSql("cli")} as client_name,
          eu.block as unit_block,
          eu.lot as unit_lot,
+         pt.name as parcel_type,
+         p.current_signal_parcel as current_signal,
+         p.total_signal_parcels as total_signal,
          p.current_total_parcel as current_parcel,
          p.total_parcels,
+         date_format(p.reference_date, '%m/%Y') as competence,
          sp.name as profile_name,
          p.paid_value * segv.percent / 100 as gross_value,
          p.split_data,
@@ -197,15 +207,19 @@ function mapRow(row: StatementRow): ApoloStatementRow {
   // (pagamentos antigos, sem split_data). Ver [[project-apolo-acessos-externos]].
   const realValue = splitValueFor(row.split_data, profileName);
 
+  const parcelType = text(row.parcel_type) ?? "-";
+
   return {
     asaasId: text(row.asaas_id),
     asaasInvoiceUrl: text(row.asaas_invoice_url),
     asaasUrl: text(row.asaas_url),
     clientName: text(row.client_name),
+    competence: text(row.competence),
     enterpriseCode,
     enterpriseName: text(row.enterprise_name),
     id: `${row.payment_id}:${row.split_group_value_id}`,
-    parcela: `${row.current_parcel ?? "-"}/${row.total_parcels ?? "-"}`,
+    parcela: buildParcelaLabel(parcelType, row),
+    parcelType,
     paymentDate: dateOnly(row.payment_date),
     role: profileName ?? "-",
     unitBlock: text(row.unit_block),
@@ -213,6 +227,23 @@ function mapRow(row: StatementRow): ApoloStatementRow {
     unitLot: text(row.unit_lot),
     value: realValue ?? toNumber(row.gross_value),
   };
+}
+
+// Numeração da parcela conforme o tipo (igual ao C2X): Ato não tem número; Sinal usa a
+// contagem do sinal (1/3); Parcela usa a do financiamento (1/120).
+function buildParcelaLabel(parcelType: string, row: StatementRow): string {
+  const normalized = normalize(parcelType);
+
+  if (normalized === "sinal") {
+    return `${row.current_signal ?? "-"}/${row.total_signal ?? "-"}`;
+  }
+
+  if (normalized === "parcela") {
+    return `${row.current_parcel ?? "-"}/${row.total_parcels ?? "-"}`;
+  }
+
+  // Ato / Avulso: pagamento único, sem numeração.
+  return "-";
 }
 
 // Extrai o valor real (fixedValue) que o participante recebeu, do split_data do pagamento,
