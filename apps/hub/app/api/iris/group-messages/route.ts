@@ -13,16 +13,18 @@ import { signWhatsAppBody } from "@/lib/iris/meta-whatsapp";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-// Saida do OPERADOR para um grupo de WhatsApp, pelo gateway Evolution (o numero
-// observador e membro do grupo). Cobre texto, imagem, documento, audio e reacao.
-// Grupo nao e ticket: a mensagem pendura direto no grupo (caredesk_messages.group_id).
+// Saída do OPERADOR pelo canal Relacionamento (6566), via gateway Evolution.
+// Serve os DOIS mundos:
+//  • GRUPO (groupId): mensagem pendura no grupo (group_id), sem ticket.
+//  • DIRECT (ticketId): mensagem pendura no ticket 1:1; assinada? NÃO — no 1:1
+//    quem fala já é o número, então vai limpo (diferente do grupo).
 //
-// ⚠️ Esta rota fica FORA de /api/iris/evolution de proposito: aquele prefixo esta
-// na allowlist do proxy.ts (webhook publico) e libera subcaminhos. Aqui exigimos
-// sessao do operador, como em qualquer rota /api/*.
+// ⚠️ FORA de /api/iris/evolution de propósito (aquele prefixo é público via gate).
 
 const MESSAGE_SELECT =
   "id,ticket_id,group_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id";
+
+const DIRECT_JID_SUFFIX = "@s.whatsapp.net";
 
 type OutboundMedia = {
   base64: string;
@@ -30,6 +32,16 @@ type OutboundMedia = {
   fileName: string;
   mimeType: string;
   type: "audio" | "document" | "image";
+};
+
+// Alvo resolvido: pra onde enviar (Evolution) e a quem pertence a mensagem.
+type SendTarget = {
+  sendNumber: string; // 'number' do Evolution: group_jid ou telefone
+  reactionJid: string; // remoteJid pra montar a chave da reação
+  ownerColumn: "group_id" | "ticket_id";
+  ownerId: string;
+  ticketId: string | null; // só direct: pra atualizar status/SLA
+  sign: boolean; // grupo assina com o nome; direct não
 };
 
 export async function POST(request: NextRequest) {
@@ -50,20 +62,17 @@ export async function POST(request: NextRequest) {
 
   const input = (payload ?? {}) as Record<string, unknown>;
   const groupId = typeof input.groupId === "string" ? input.groupId : "";
+  const ticketId = typeof input.ticketId === "string" ? input.ticketId : "";
 
-  if (!groupId) {
-    return NextResponse.json({ error: "Informe o grupo." }, { status: 400 });
-  }
+  const target = groupId
+    ? await resolveGroupTarget(client, groupId)
+    : ticketId
+      ? await resolveDirectTarget(client, ticketId)
+      : null;
 
-  const { data: group } = await client
-    .from("caredesk_whatsapp_groups")
-    .select("id,group_jid")
-    .eq("id", groupId)
-    .maybeSingle<{ id: string; group_jid: string }>();
-
-  if (!group) {
+  if (!target) {
     return NextResponse.json(
-      { error: "Grupo nao encontrado." },
+      { error: "Conversa (grupo ou direct) nao encontrada." },
       { status: 404 },
     );
   }
@@ -71,12 +80,12 @@ export async function POST(request: NextRequest) {
   const operatorLabel = await readOperatorLabel(client, user.id);
 
   if (input.action === "react") {
-    return reactInGroup({
+    return reactInConversation({
       client,
       emoji: typeof input.emoji === "string" ? input.emoji : "",
-      group,
       messageId: typeof input.messageId === "string" ? input.messageId : "",
       operatorLabel,
+      target,
       userId: user.id,
     });
   }
@@ -91,60 +100,122 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  return sendToGroup({
+  return sendToTarget({
     body,
     client,
-    group,
     media,
     operatorLabel,
+    target,
     userId: user.id,
   });
 }
 
-async function sendToGroup({
+async function resolveGroupTarget(
+  client: any,
+  groupId: string,
+): Promise<SendTarget | null> {
+  const { data } = await client
+    .from("caredesk_whatsapp_groups")
+    .select("id,group_jid")
+    .eq("id", groupId)
+    .maybeSingle();
+
+  if (!data) {
+    return null;
+  }
+
+  return {
+    sendNumber: data.group_jid,
+    reactionJid: data.group_jid,
+    ownerColumn: "group_id",
+    ownerId: data.id,
+    ticketId: null,
+    sign: true,
+  };
+}
+
+async function resolveDirectTarget(
+  client: any,
+  ticketId: string,
+): Promise<SendTarget | null> {
+  const { data: ticket } = await client
+    .from("caredesk_tickets")
+    .select("id,contact_id,source_entity_type,source_entity_id")
+    .eq("id", ticketId)
+    .maybeSingle();
+
+  if (!ticket || ticket.source_entity_type !== "whatsapp-direct") {
+    return null;
+  }
+
+  // O telefone é o source_entity_id; se faltar, busca no contato.
+  let phone: string | null =
+    typeof ticket.source_entity_id === "string" ? ticket.source_entity_id : null;
+
+  if (!phone && ticket.contact_id) {
+    const { data: contact } = await client
+      .from("caredesk_contacts")
+      .select("whatsapp_phone,phone")
+      .eq("id", ticket.contact_id)
+      .maybeSingle();
+    phone = contact?.whatsapp_phone ?? contact?.phone ?? null;
+  }
+
+  if (!phone) {
+    return null;
+  }
+
+  return {
+    sendNumber: phone,
+    reactionJid: `${phone}${DIRECT_JID_SUFFIX}`,
+    ownerColumn: "ticket_id",
+    ownerId: ticket.id,
+    ticketId: ticket.id,
+    sign: false,
+  };
+}
+
+async function sendToTarget({
   body,
   client,
-  group,
   media,
   operatorLabel,
+  target,
   userId,
 }: {
   body: string;
   client: any;
-  group: { id: string; group_jid: string };
   media: OutboundMedia | null;
   operatorLabel: string;
+  target: SendTarget;
   userId: string;
 }) {
-  // No grupo quem fala e o numero observador — a mensagem vai assinada com o nome
-  // de quem escreveu. O corpo salvo fica SEM assinatura: o cockpit mostra o autor.
-  const signed = signWhatsAppBody(operatorLabel, body);
+  // Grupo assina com o nome (quem fala é o número compartilhado); direct vai limpo.
+  const text = target.sign ? signWhatsAppBody(operatorLabel, body) : body;
 
   const sent = media
     ? media.type === "audio"
       ? await sendEvolutionGroupAudio({
           base64: media.base64,
-          groupJid: group.group_jid,
+          groupJid: target.sendNumber,
         })
       : await sendEvolutionGroupMedia({
           base64: media.base64,
-          caption: signed,
+          caption: text,
           fileName: media.fileName,
-          groupJid: group.group_jid,
+          groupJid: target.sendNumber,
           mediatype: media.type,
           mimeType: media.mimeType,
         })
     : await sendEvolutionGroupText({
-        groupJid: group.group_jid,
-        text: signed,
+        groupJid: target.sendNumber,
+        text,
       });
 
   if (!sent.ok) {
     return NextResponse.json({ error: sent.error }, { status: 502 });
   }
 
-  // Guarda a midia no Storage pra aparecer no cockpit (a conversa le
-  // provider_payload.media.{url,type,fileName}). Best-effort.
   const mediaPayload = media
     ? {
         durationMs: media.durationMs,
@@ -155,7 +226,7 @@ async function sendToGroup({
       }
     : null;
 
-  const channelId = await readGroupChannelId(client);
+  const channelId = await readRelacionamentoChannelId(client);
   const now = new Date().toISOString();
 
   const { data: message, error } = await client
@@ -166,10 +237,9 @@ async function sendToGroup({
       delivery_status: "sent",
       direction: "outbound",
       external_message_id: sent.providerMessageId,
-      group_id: group.id,
+      [target.ownerColumn]: target.ownerId,
       message_type: media?.type ?? "text",
       provider_payload: {
-        groupJid: group.group_jid,
         media: mediaPayload,
         operatorLabel,
         provider: "evolution",
@@ -178,26 +248,41 @@ async function sendToGroup({
       sender_type: "operator",
       sender_user_id: userId,
       sent_at: now,
-      ticket_id: null,
     })
     .select(MESSAGE_SELECT)
     .single();
 
   if (error) {
-    // A mensagem FOI para o grupo; so o registro local falhou.
     return NextResponse.json(
       {
         error:
-          "Mensagem enviada ao grupo, mas nao foi possivel registra-la na conversa.",
+          "Mensagem enviada, mas nao foi possivel registra-la na conversa.",
       },
       { status: 500 },
     );
   }
 
-  await client
-    .from("caredesk_whatsapp_groups")
-    .update({ last_message_at: now, updated_at: now })
-    .eq("id", group.id);
+  if (target.ticketId) {
+    // Direct: a nossa resposta marca 1ª resposta e coloca em espera do cliente.
+    await client
+      .from("caredesk_tickets")
+      .update({
+        status: "waiting_customer",
+        first_responded_at: now,
+        updated_at: now,
+      })
+      .eq("id", target.ticketId)
+      .is("first_responded_at", null);
+    await client
+      .from("caredesk_tickets")
+      .update({ updated_at: now })
+      .eq("id", target.ticketId);
+  } else {
+    await client
+      .from("caredesk_whatsapp_groups")
+      .update({ last_message_at: now, updated_at: now })
+      .eq("id", target.ownerId);
+  }
 
   return NextResponse.json(
     { ok: true, message },
@@ -205,21 +290,19 @@ async function sendToGroup({
   );
 }
 
-// Reacao = toggle na propria mensagem (provider_payload.reactions) + envio ao
-// WhatsApp usando a chave do provedor. Mesmo comportamento do 1:1.
-async function reactInGroup({
+async function reactInConversation({
   client,
   emoji,
-  group,
   messageId,
   operatorLabel,
+  target,
   userId,
 }: {
   client: any;
   emoji: string;
-  group: { id: string; group_jid: string };
   messageId: string;
   operatorLabel: string;
+  target: SendTarget;
   userId: string;
 }) {
   if (!emoji || !messageId) {
@@ -231,14 +314,14 @@ async function reactInGroup({
 
   const { data: existing } = await client
     .from("caredesk_messages")
-    .select("id,group_id,direction,external_message_id,provider_payload")
+    .select("id,direction,external_message_id,provider_payload")
     .eq("id", messageId)
-    .eq("group_id", group.id)
+    .eq(target.ownerColumn, target.ownerId)
     .maybeSingle();
 
   if (!existing) {
     return NextResponse.json(
-      { error: "Mensagem nao encontrada no grupo." },
+      { error: "Mensagem nao encontrada na conversa." },
       { status: 404 },
     );
   }
@@ -258,8 +341,7 @@ async function reactInGroup({
     : [];
 
   const alreadySame = currentReactions.some(
-    (reaction) =>
-      reaction.actorUserId === userId && reaction.emoji === emoji,
+    (reaction) => reaction.actorUserId === userId && reaction.emoji === emoji,
   );
   const withoutCurrentUser = currentReactions.filter(
     (reaction) => reaction.actorUserId !== userId,
@@ -277,12 +359,11 @@ async function reactInGroup({
         },
       ];
 
-  // Tirar a reacao no WhatsApp = enviar reacao vazia (protocolo do WhatsApp).
   if (existing.external_message_id) {
     const sent = await sendEvolutionGroupReaction({
       emoji: alreadySame ? "" : emoji,
       fromMe: existing.direction === "outbound",
-      groupJid: group.group_jid,
+      groupJid: target.reactionJid,
       providerMessageId: existing.external_message_id,
     });
 
@@ -293,9 +374,7 @@ async function reactInGroup({
 
   const { data: message, error } = await client
     .from("caredesk_messages")
-    .update({
-      provider_payload: { ...payload, reactions: nextReactions },
-    })
+    .update({ provider_payload: { ...payload, reactions: nextReactions } })
     .eq("id", existing.id)
     .select(MESSAGE_SELECT)
     .single();
@@ -327,7 +406,7 @@ async function readOperatorLabel(client: any, userId: string) {
     : "Operador Iris";
 }
 
-async function readGroupChannelId(client: any) {
+async function readRelacionamentoChannelId(client: any) {
   const { data } = await client
     .from("caredesk_channels")
     .select("id")
@@ -349,7 +428,7 @@ async function uploadOutboundMedia(client: any, media: OutboundMedia) {
 
     return persisted?.url ?? null;
   } catch (error) {
-    console.error("[iris] falha ao persistir midia enviada ao grupo", error);
+    console.error("[iris] falha ao persistir midia enviada (relacionamento)", error);
 
     return null;
   }

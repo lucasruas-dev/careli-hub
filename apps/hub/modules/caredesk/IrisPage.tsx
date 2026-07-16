@@ -1802,16 +1802,22 @@ function IrisConversationPanel({
           return false;
         }
 
-        // Filtro por canal (Tudo / WhatsApp / Grupo / E-mail).
+        // Filtro por canal (Tudo / WhatsApp / Grupo / Direct / E-mail).
         if (conversationChannel === "email" && !isEmailTicket(item)) {
           return false;
         }
         if (conversationChannel === "group" && item.isGroup !== true) {
           return false;
         }
+        if (conversationChannel === "direct" && item.isDirect !== true) {
+          return false;
+        }
+        // "WhatsApp" = só o 1:1 do Meta (4143): fora e-mail, grupo e direct.
         if (
           conversationChannel === "whatsapp" &&
-          (isEmailTicket(item) || item.isGroup === true)
+          (isEmailTicket(item) ||
+            item.isGroup === true ||
+            item.isDirect === true)
         ) {
           return false;
         }
@@ -2175,13 +2181,18 @@ function IrisConversationPanel({
   const ticketIsEmail = isEmailTicket(ticket);
   // Grupo de WhatsApp: conversa de monitoramento (read-only), sem janela de 24h.
   const ticketIsGroup = ticket.isGroup === true;
+  // Direct 1:1 do canal Relacionamento (6566, Evolution): atendimento normal, mas
+  // SEM janela de 24h nem template (não é Meta).
+  const ticketIsDirect = ticket.isDirect === true;
+  // Toda saída que sai pela Evolution (grupo ou direct).
+  const ticketIsEvolution = ticketIsGroup || ticketIsDirect;
   // Quando a Caca conduz o atendimento, o operador NAO pode atropelar (enviar):
   // so acompanha e direciona/transfere. O composer fica travado.
   const attendanceWithCaca = isCacaOwnedTicket(ticket);
-  // Grupo não tem janela de 24h do Meta — o envio depende só do ticket estar operável.
+  // Grupo/Direct não têm janela de 24h do Meta — envio depende só do ticket operável.
   const canSendFreeForm =
     operationReady &&
-    (ticketIsGroup || customerServiceWindow.open) &&
+    (ticketIsEvolution || customerServiceWindow.open) &&
     !attendanceWithCaca;
   const composerReady = editingMessage
     ? operationReady && !attendanceWithCaca
@@ -2833,7 +2844,7 @@ function IrisConversationPanel({
 
     // Grupo: envia pelo gateway Evolution (número observador, membro do grupo).
     // Não passa pelo Meta e não tem janela de 24h.
-    if (ticketIsGroup) {
+    if (ticketIsEvolution) {
       await sendGroupReply(body);
       return;
     }
@@ -2920,11 +2931,9 @@ function IrisConversationPanel({
     }
   }
 
-  // Responder um ticket de e-mail: o servidor envia pelo Gmail (caixa robô caca@),
-  // no mesmo thread do cliente. Sem janela de 24h e sem WhatsApp.
-  // Toda saída do grupo (texto, imagem, documento, áudio, reação) passa por aqui:
-  // vai pelo gateway Evolution, saindo pelo número observador (membro do grupo).
-  // Grupo não é ticket — o id da conversa É o id do grupo.
+  // Toda saída pela Evolution (grupo E direct) passa por aqui: texto, imagem,
+  // documento, áudio, reação. GRUPO manda groupId (o id da conversa É o do grupo);
+  // DIRECT manda ticketId (o servidor resolve o telefone do contato).
   async function sendGroupRequest(
     payload: Record<string, unknown>,
     errorFallback: string,
@@ -2933,9 +2942,12 @@ function IrisConversationPanel({
     setFeedback("");
 
     try {
+      const idPayload = ticketIsGroup
+        ? { groupId: ticket.id }
+        : { ticketId: ticket.id };
       const accessToken = await getIrisAccessToken();
       const response = await fetch("/api/iris/group-messages", {
-        body: JSON.stringify({ ...payload, groupId: ticket.id }),
+        body: JSON.stringify({ ...payload, ...idPayload }),
         cache: "no-store",
         headers: {
           Authorization: `Bearer ${accessToken}`,
@@ -2981,14 +2993,14 @@ function IrisConversationPanel({
 
     const ok = await sendGroupRequest(
       { body },
-      "Nao foi possivel enviar a mensagem ao grupo.",
+      "Nao foi possivel enviar a mensagem.",
     );
 
     if (ok) {
       setDraft("");
       setReplyToMessage(null);
       setEmojiPickerOpen(false);
-      setFeedback("Mensagem enviada ao grupo.");
+      setFeedback("Mensagem enviada.");
     }
   }
 
@@ -3199,7 +3211,7 @@ function IrisConversationPanel({
     }
 
     // Grupo sai pelo gateway Evolution: editar ainda nao passa por la.
-    if (ticketIsGroup) {
+    if (ticketIsEvolution) {
       setFeedback("Em grupo ainda nao da para editar a mensagem pela Iris.");
       return;
     }
@@ -3262,7 +3274,7 @@ function IrisConversationPanel({
 
   async function sendExistingLocalMessage(message: IrisMessage) {
     // Reparo de mensagem local so existe no caminho do Meta.
-    if (ticketIsGroup) {
+    if (ticketIsEvolution) {
       return;
     }
 
@@ -3334,7 +3346,7 @@ function IrisConversationPanel({
     }
 
     // Grupo: reage pelo gateway Evolution, não pelo Meta.
-    if (ticketIsGroup) {
+    if (ticketIsEvolution) {
       await sendGroupRequest(
         { action: "react", emoji, messageId: message.id },
         "Não foi possível reagir no grupo.",
@@ -3634,15 +3646,15 @@ function IrisConversationPanel({
       };
 
       // Grupo: audio vai pelo gateway Evolution, nao pelo Meta.
-      if (ticketIsGroup) {
+      if (ticketIsEvolution) {
         const ok = await sendGroupRequest(
           { body: "", media: audioMedia },
-          "Nao foi possivel enviar o audio ao grupo.",
+          "Nao foi possivel enviar o audio.",
         );
 
         if (ok) {
           setReplyToMessage(null);
-          setFeedback("Audio enviado ao grupo.");
+          setFeedback("Audio enviado.");
         }
 
         return;
@@ -3824,18 +3836,16 @@ function IrisConversationPanel({
       }
 
       // Grupo: anexo vai pelo gateway Evolution, nao pelo Meta.
-      if (ticketIsGroup) {
+      if (ticketIsEvolution) {
         const ok = await sendGroupRequest(
           { body: caption, media: { dataUrl, fileName, mimeType, type: kind } },
-          "Nao foi possivel enviar o anexo ao grupo.",
+          "Nao foi possivel enviar o anexo.",
         );
 
         if (ok) {
           setReplyToMessage(null);
           setFeedback(
-            kind === "image"
-              ? "Imagem enviada ao grupo."
-              : "Documento enviado ao grupo.",
+            kind === "image" ? "Imagem enviada." : "Documento enviado.",
           );
         }
 
@@ -4166,7 +4176,13 @@ function IrisConversationPanel({
           blockedTooltip={blockedTooltip}
           canSendFreeForm={canSendFreeForm}
           channelKind={
-            ticketIsEmail ? "email" : ticketIsGroup ? "group" : "whatsapp"
+            ticketIsEmail
+              ? "email"
+              : ticketIsGroup
+                ? "group"
+                : ticketIsDirect
+                  ? "direct"
+                  : "whatsapp"
           }
           cobrancaMode={cobrancaMode}
           composerMode={effectiveComposerMode}
@@ -4301,11 +4317,11 @@ function IrisConversationPanel({
         <IrisCobrancaContextSidebar
           apoloEntity={apoloContextEntity}
           clienteFields={
-            // Grupo nao tem cliente/CPF/operador: mostra o que e do grupo.
+            // Relacionamento nao tem cliente/CPF/operador: mostra o que e do grupo.
             ticketIsGroup
               ? [
                   {
-                    label: "Grupo",
+                    label: "Relacionamento",
                     value: ticket.subject?.trim() || ticket.contactLabel,
                   },
                   { label: "Código", value: ticket.protocol },
@@ -4316,7 +4332,7 @@ function IrisConversationPanel({
                         ? String(ticket.metadata.participantsCount)
                         : "-",
                   },
-                  { label: "Canal", value: "WhatsApp · Grupo" },
+                  { label: "Canal", value: "WhatsApp · Relacionamento" },
                 ]
               : [
             {
@@ -4377,10 +4393,13 @@ function IrisConversationPanel({
               value: ticketIsEmail
                 ? "E-mail"
                 : ticketIsGroup
-                  ? "WhatsApp · Grupo"
-                  : "WhatsApp",
+                  ? "Relacionamento · Grupo"
+                  : ticketIsDirect
+                    ? "Relacionamento · Direct"
+                    : "WhatsApp",
             },
-            ...(ticketIsEmail || ticketIsGroup
+            // Grupo e Direct (Evolution) não têm janela de 24h.
+            ...(ticketIsEmail || ticketIsEvolution
               ? []
               : [
                   {
@@ -4817,7 +4836,7 @@ function TicketSeparator({
   const email = isEmailTicket(ticket);
   const group = ticket.isGroup === true;
   const channelLine = group
-    ? `Grupo · ${ticket.queueLabel}`
+    ? `WhatsApp · ${ticket.queueLabel}`
     : email
       ? `E-mail · ${emailBoxLabel(ticket.channelLabel)}`
       : `WhatsApp · ${ticket.queueLabel}`;

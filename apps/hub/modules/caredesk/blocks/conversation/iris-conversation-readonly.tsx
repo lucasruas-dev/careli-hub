@@ -8,6 +8,7 @@ import {
   MessageSquareText,
   PanelLeftClose,
   PanelLeftOpen,
+  User,
   Users,
   type LucideIcon,
 } from "lucide-react";
@@ -101,17 +102,62 @@ export function IrisConversationEmptyState() {
   );
 }
 
-export type IrisInboxChannelFilter = "all" | "whatsapp" | "group" | "email";
+export type IrisInboxChannelFilter =
+  | "all"
+  | "whatsapp"
+  | "group"
+  | "direct"
+  | "email";
 
+// Cada canal tem a sua cor: ícone sempre tingido (pra distinguir de bate-olho) e
+// estado ativo preenchido na mesma cor.
 const IRIS_INBOX_CHANNEL_FILTERS: {
   key: IrisInboxChannelFilter;
   label: string;
   icon: LucideIcon;
+  active: string;
+  idle: string;
 }[] = [
-  { key: "all", label: "Tudo", icon: Inbox },
-  { key: "whatsapp", label: "WhatsApp", icon: MessageCircle },
-  { key: "group", label: "Grupo", icon: Users },
-  { key: "email", label: "E-mail", icon: Mail },
+  {
+    key: "all",
+    label: "Tudo",
+    icon: Inbox,
+    active:
+      "bg-[#A07C3B]/12 text-[#7A5E2C] ring-[#A07C3B]/30 dark:text-[#d9b877]",
+    idle: "text-ink-muted",
+  },
+  {
+    key: "whatsapp",
+    label: "WhatsApp",
+    icon: MessageCircle,
+    active:
+      "bg-emerald-50 text-emerald-700 ring-emerald-300 dark:bg-emerald-400/15 dark:text-emerald-300 dark:ring-emerald-400/40",
+    idle: "text-emerald-600 dark:text-emerald-400",
+  },
+  {
+    key: "group",
+    label: "Grupo",
+    icon: Users,
+    active:
+      "bg-amber-50 text-amber-700 ring-amber-300 dark:bg-amber-400/15 dark:text-amber-300 dark:ring-amber-400/40",
+    idle: "text-amber-600 dark:text-amber-400",
+  },
+  {
+    key: "direct",
+    label: "Direct",
+    icon: User,
+    active:
+      "bg-cyan-50 text-cyan-700 ring-cyan-300 dark:bg-cyan-400/15 dark:text-cyan-300 dark:ring-cyan-400/40",
+    idle: "text-cyan-600 dark:text-cyan-400",
+  },
+  {
+    key: "email",
+    label: "E-mail",
+    icon: Mail,
+    active:
+      "bg-indigo-50 text-indigo-700 ring-indigo-300 dark:bg-indigo-400/15 dark:text-indigo-300 dark:ring-indigo-400/40",
+    idle: "text-indigo-600 dark:text-indigo-400",
+  },
 ];
 
 export function IrisConversationInboxSidebar({
@@ -210,8 +256,8 @@ export function IrisConversationInboxSidebar({
                     className={[
                       "flex size-7 items-center justify-center rounded-full ring-1 transition-colors",
                       active
-                        ? "bg-[#A07C3B]/12 text-[#7A5E2C] ring-[#A07C3B]/25 dark:text-[#d9b877]"
-                        : "bg-surface text-ink-muted ring-line/70 hover:text-ink",
+                        ? option.active
+                        : `bg-surface ring-line/70 hover:bg-subtle/70 ${option.idle}`,
                     ].join(" ")}
                   >
                     <Icon className="size-3.5" aria-hidden="true" />
@@ -278,10 +324,18 @@ export function IrisConversationInboxSidebar({
                       ) : conversation.isGroup ? (
                         <span
                           className="flex size-4 shrink-0 items-center justify-center rounded-md bg-amber-500 text-white dark:bg-amber-500/90"
-                          title="Grupo de WhatsApp"
-                          aria-label="Grupo de WhatsApp"
+                          title="Grupo"
+                          aria-label="Grupo"
                         >
                           <Users className="size-2.5" aria-hidden="true" />
+                        </span>
+                      ) : conversation.isDirect ? (
+                        <span
+                          className="flex size-4 shrink-0 items-center justify-center rounded-md bg-cyan-600 text-white dark:bg-cyan-500/90"
+                          title="Direct"
+                          aria-label="Direct"
+                        >
+                          <User className="size-2.5" aria-hidden="true" />
                         </span>
                       ) : null}
                       <span
