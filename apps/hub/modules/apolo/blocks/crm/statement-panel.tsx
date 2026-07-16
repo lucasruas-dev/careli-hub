@@ -7,6 +7,7 @@ import {
   ExternalLink,
   Loader2,
   ReceiptText,
+  Search,
   TriangleAlert,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
@@ -60,6 +61,7 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
   // Filtros e ordenação client-side (sobre as linhas já carregadas — instantâneo).
   const [unitFilter, setUnitFilter] = useState("");
   const [typeFilter, setTypeFilter] = useState("");
+  const [search, setSearch] = useState("");
   const [sort, setSort] = useState<{ dir: "asc" | "desc"; key: SortKey }>({
     dir: "desc",
     key: "paymentDate",
@@ -75,6 +77,7 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
     setError(null);
     setUnitFilter("");
     setTypeFilter("");
+    setSearch("");
 
     (async () => {
       try {
@@ -136,14 +139,27 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
   );
 
   const visibleRows = useMemo(() => {
-    const filtered = rows.filter(
-      (row) =>
-        (!unitFilter || row.unitCode === unitFilter) &&
-        (!typeFilter || row.parcelType === typeFilter),
-    );
+    const term = normalizeSearch(search);
+    const filtered = rows.filter((row) => {
+      if (unitFilter && row.unitCode !== unitFilter) {
+        return false;
+      }
+      if (typeFilter && row.parcelType !== typeFilter) {
+        return false;
+      }
+      if (term) {
+        const haystack = normalizeSearch(
+          `${row.clientName ?? ""} ${row.unitCode} ${row.enterpriseName ?? row.enterpriseCode} ${row.role} ${row.competence ?? ""}`,
+        );
+        if (!haystack.includes(term)) {
+          return false;
+        }
+      }
+      return true;
+    });
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...filtered].sort((a, b) => dir * compareRows(a, b, sort.key));
-  }, [rows, unitFilter, typeFilter, sort]);
+  }, [rows, unitFilter, typeFilter, search, sort]);
 
   const total = visibleRows.reduce((sum, row) => sum + row.value, 0);
 
@@ -159,6 +175,21 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
           <Kpi label="Lançamentos" value={String(visibleRows.length)} />
         </div>
         <div className="flex flex-wrap items-end gap-3">
+          <Field label="Buscar">
+            <div className="relative sm:w-64">
+              <Search
+                className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-ink-muted"
+                aria-hidden="true"
+              />
+              <input
+                className="h-9 w-full rounded-lg border border-line bg-surface pl-9 pr-3 text-sm text-ink outline-none placeholder:text-ink-muted focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Cliente, unidade, empreendimento…"
+                type="search"
+                value={search}
+              />
+            </div>
+          </Field>
           <Field label="De">
             <input
               className="h-9 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
@@ -384,6 +415,14 @@ function rowText(row: ApoloStatementRow, key: SortKey): string {
 function competenceKey(value: string | null): number {
   const match = value ? /^(\d{2})\/(\d{4})$/.exec(value) : null;
   return match ? Number(match[2]) * 100 + Number(match[1]) : 0;
+}
+
+function normalizeSearch(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(new RegExp("[\\u0300-\\u036f]", "g"), "")
+    .toLowerCase()
+    .trim();
 }
 
 function uniqueSorted(values: string[], mode?: "competence"): string[] {
