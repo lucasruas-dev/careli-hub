@@ -1,10 +1,18 @@
 "use client";
 
-import { ExternalLink, Loader2, ReceiptText, TriangleAlert } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronsUpDown,
+  ChevronUp,
+  ExternalLink,
+  Loader2,
+  ReceiptText,
+  TriangleAlert,
+} from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 
 import { Tooltip } from "@repo/uix";
-import type { ApoloStatementData } from "@/lib/apolo/extrato";
+import type { ApoloStatementData, ApoloStatementRow } from "@/lib/apolo/extrato";
 import type { ApoloEntity } from "@/lib/apolo/types";
 
 import { entityC2xId } from "../../data/apolo-derive";
@@ -49,6 +57,14 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
   >([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  // Filtros e ordenação client-side (sobre as linhas já carregadas — instantâneo).
+  const [unitFilter, setUnitFilter] = useState("");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [competenceFilter, setCompetenceFilter] = useState("");
+  const [sort, setSort] = useState<{ dir: "asc" | "desc"; key: SortKey }>({
+    dir: "desc",
+    key: "paymentDate",
+  });
 
   useEffect(() => {
     if (c2xId == null) {
@@ -58,6 +74,9 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
     let active = true;
     setLoading(true);
     setError(null);
+    setUnitFilter("");
+    setTypeFilter("");
+    setCompetenceFilter("");
 
     (async () => {
       try {
@@ -107,18 +126,44 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
     };
   }, [c2xId, start, end, enterprise]);
 
+  const rows = data?.rows ?? [];
+
+  const unitOptions = useMemo(
+    () => uniqueSorted(rows.map((row) => row.unitCode)),
+    [rows],
+  );
+  const typeOptions = useMemo(
+    () => uniqueSorted(rows.map((row) => row.parcelType)),
+    [rows],
+  );
+  const competenceOptions = useMemo(
+    () => uniqueSorted(rows.map((row) => row.competence ?? "").filter(Boolean), "competence"),
+    [rows],
+  );
+
+  const visibleRows = useMemo(() => {
+    const filtered = rows.filter(
+      (row) =>
+        (!unitFilter || row.unitCode === unitFilter) &&
+        (!typeFilter || row.parcelType === typeFilter) &&
+        (!competenceFilter || row.competence === competenceFilter),
+    );
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...filtered].sort((a, b) => dir * compareRows(a, b, sort.key));
+  }, [rows, unitFilter, typeFilter, competenceFilter, sort]);
+
+  const total = visibleRows.reduce((sum, row) => sum + row.value, 0);
+
   if (c2xId == null) {
     return <EmptyPanel text="Cadastro sem vinculo com o C2X para montar o extrato." />;
   }
-
-  const summary = data?.summary;
 
   return (
     <section className="grid gap-4">
       <header className="flex flex-col gap-4 rounded-xl border border-line bg-surface p-4">
         <div className="grid grid-cols-2 gap-3">
-          <Kpi label="Recebido" value={brl(summary?.total ?? 0)} />
-          <Kpi label="Lançamentos" value={String(summary?.count ?? 0)} />
+          <Kpi label="Recebido" value={brl(total)} />
+          <Kpi label="Lançamentos" value={String(visibleRows.length)} />
         </div>
         <div className="flex flex-wrap items-end gap-3">
           <Field label="De">
@@ -153,6 +198,48 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
               ))}
             </select>
           </Field>
+          <Field label="Unidade">
+            <select
+              className="h-9 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onChange={(event) => setUnitFilter(event.target.value)}
+              value={unitFilter}
+            >
+              <option value="">Todas</option>
+              {unitOptions.map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Tipo">
+            <select
+              className="h-9 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onChange={(event) => setTypeFilter(event.target.value)}
+              value={typeFilter}
+            >
+              <option value="">Todos</option>
+              {typeOptions.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </select>
+          </Field>
+          <Field label="Competência">
+            <select
+              className="h-9 rounded-lg border border-line bg-surface px-3 text-sm text-ink outline-none focus-visible:ring-2 focus-visible:ring-[#A07C3B]"
+              onChange={(event) => setCompetenceFilter(event.target.value)}
+              value={competenceFilter}
+            >
+              <option value="">Todas</option>
+              {competenceOptions.map((comp) => (
+                <option key={comp} value={comp}>
+                  {comp}
+                </option>
+              ))}
+            </select>
+          </Field>
         </div>
       </header>
 
@@ -172,24 +259,31 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
           Nenhum recebimento no período.
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-line bg-surface">
+        <div className="max-h-[34rem] overflow-auto rounded-xl border border-line bg-surface">
           <table className="w-full min-w-[68rem] border-collapse text-sm">
-            <thead>
-              <tr className="border-b border-line text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                <th className="px-4 py-3 font-semibold">Pagamento</th>
-                <th className="px-4 py-3 font-semibold">Empreendimento</th>
-                <th className="px-4 py-3 font-semibold">Unidade</th>
-                <th className="px-4 py-3 font-semibold">Cliente</th>
-                <th className="px-4 py-3 font-semibold">Tipo</th>
-                <th className="px-4 py-3 font-semibold">Parcela</th>
-                <th className="px-4 py-3 font-semibold">Competência</th>
-                <th className="px-4 py-3 font-semibold">Papel</th>
-                <th className="px-4 py-3 text-right font-semibold">Valor</th>
-                <th className="px-4 py-3 text-center font-semibold">Comprovante</th>
+            <thead className="sticky top-0 z-10">
+              <tr className="border-b border-line bg-surface text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                <SortableTh label="Pagamento" onSort={setSort} sort={sort} sortKey="paymentDate" />
+                <SortableTh label="Empreendimento" onSort={setSort} sort={sort} sortKey="enterprise" />
+                <SortableTh label="Unidade" onSort={setSort} sort={sort} sortKey="unit" />
+                <SortableTh label="Cliente" onSort={setSort} sort={sort} sortKey="client" />
+                <SortableTh label="Tipo" onSort={setSort} sort={sort} sortKey="type" />
+                <SortableTh label="Parcela" onSort={setSort} sort={sort} sortKey="parcela" />
+                <SortableTh label="Competência" onSort={setSort} sort={sort} sortKey="competence" />
+                <SortableTh label="Papel" onSort={setSort} sort={sort} sortKey="role" />
+                <SortableTh align="right" label="Valor" onSort={setSort} sort={sort} sortKey="value" />
+                <th className="bg-surface px-4 py-3 text-center font-semibold">Comprovante</th>
               </tr>
             </thead>
             <tbody>
-              {data.rows.map((row) => (
+              {visibleRows.length === 0 ? (
+                <tr>
+                  <td className="px-4 py-6 text-center text-sm font-medium text-ink-muted" colSpan={10}>
+                    Nada encontrado nos filtros.
+                  </td>
+                </tr>
+              ) : null}
+              {visibleRows.map((row) => (
                 <tr className="border-b border-line/60 last:border-0" key={row.id}>
                   <td className="whitespace-nowrap px-4 py-3 text-ink">{formatDate(row.paymentDate)}</td>
                   <td className="px-4 py-3 text-ink">{row.enterpriseName ?? row.enterpriseCode}</td>
@@ -222,6 +316,103 @@ export function StatementPanel({ entity }: { entity: ApoloEntity }) {
       )}
     </section>
   );
+}
+
+type SortKey =
+  | "client"
+  | "competence"
+  | "enterprise"
+  | "parcela"
+  | "paymentDate"
+  | "role"
+  | "type"
+  | "unit"
+  | "value";
+
+type SortState = { dir: "asc" | "desc"; key: SortKey };
+
+function SortableTh({
+  align = "left",
+  label,
+  onSort,
+  sort,
+  sortKey,
+}: {
+  align?: "left" | "right";
+  label: string;
+  onSort: (value: SortState) => void;
+  sort: SortState;
+  sortKey: SortKey;
+}) {
+  const active = sort.key === sortKey;
+  const Icon = !active ? ChevronsUpDown : sort.dir === "asc" ? ChevronUp : ChevronDown;
+
+  return (
+    <th className={`bg-surface px-4 py-3 font-semibold ${align === "right" ? "text-right" : ""}`}>
+      <button
+        className={`inline-flex items-center gap-1 uppercase tracking-wide transition-colors hover:text-ink ${
+          align === "right" ? "flex-row-reverse" : ""
+        } ${active ? "text-ink" : ""}`}
+        onClick={() =>
+          onSort(
+            active
+              ? { dir: sort.dir === "asc" ? "desc" : "asc", key: sortKey }
+              : { dir: "asc", key: sortKey },
+          )
+        }
+        type="button"
+      >
+        {label}
+        <Icon className={`size-3.5 ${active ? "text-[#A07C3B]" : "text-ink-muted/50"}`} aria-hidden="true" />
+      </button>
+    </th>
+  );
+}
+
+function compareRows(a: ApoloStatementRow, b: ApoloStatementRow, key: SortKey): number {
+  if (key === "value") {
+    return a.value - b.value;
+  }
+  if (key === "competence") {
+    return competenceKey(a.competence) - competenceKey(b.competence);
+  }
+  if (key === "paymentDate") {
+    return a.paymentDate.localeCompare(b.paymentDate);
+  }
+  return rowText(a, key).localeCompare(rowText(b, key), "pt-BR", { numeric: true });
+}
+
+function rowText(row: ApoloStatementRow, key: SortKey): string {
+  switch (key) {
+    case "client":
+      return row.clientName ?? "";
+    case "enterprise":
+      return row.enterpriseName ?? row.enterpriseCode;
+    case "parcela":
+      return row.parcela;
+    case "role":
+      return row.role;
+    case "type":
+      return row.parcelType;
+    case "unit":
+      return row.unitCode;
+    default:
+      return "";
+  }
+}
+
+// "MM/YYYY" -> AAAAMM (número comparável). Vazio = 0.
+function competenceKey(value: string | null): number {
+  const match = value ? /^(\d{2})\/(\d{4})$/.exec(value) : null;
+  return match ? Number(match[2]) * 100 + Number(match[1]) : 0;
+}
+
+function uniqueSorted(values: string[], mode?: "competence"): string[] {
+  const unique = Array.from(new Set(values.filter(Boolean)));
+  if (mode === "competence") {
+    return unique.sort((a, b) => competenceKey(b) - competenceKey(a));
+  }
+  return unique.sort((a, b) => a.localeCompare(b, "pt-BR", { numeric: true }));
 }
 
 function Kpi({ label, value }: { label: string; value: string }) {
