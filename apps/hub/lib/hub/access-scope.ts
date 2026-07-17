@@ -1,16 +1,19 @@
 // Régua de acesso do hub (decisão do Lucas, 15/jul).
 //
 // Quem enxerga o quê sai do PERFIL do usuário logado (hub_users.operational_profile)
-// cruzado com os vínculos dele (hub_user_assignments: departamento + setor):
+// cruzado com os vínculos dele (hub_user_assignments: departamento + setor) e com
+// os vínculos do RECURSO (hoje: a fila da Iris — caredesk_queue_scopes).
 //
-//   op1 / op2 / op3 / ldr  -> só o que estiver vinculado ao SEU SETOR
-//   cdr                    -> tudo do SEU DEPARTAMENTO (todos os setores dele)
+//   op1 / op2 / op3 / ldr  -> vínculo do SEU SETOR, ou vínculo de DEPARTAMENTO
+//                             INTEIRO que seja um departamento seu
+//   cdr                    -> qualquer vínculo do SEU DEPARTAMENTO
 //   adm                    -> tudo
 //
 // Regras de borda decididas pelo Lucas:
-//   • Recurso SEM vínculo (sem setor e sem departamento) -> só adm.
+//   • Recurso SEM nenhum vínculo -> só adm.
 //   • Usuário com VÁRIOS vínculos ativos -> soma todos (não só o is_primary).
 //   • Fora do escopo = não existe (nem lista, nem métrica) — não é "vê sem responder".
+//   • O recurso pode ter VÁRIOS vínculos (ex.: Grupo/Direct = Operação + Relação).
 //
 // Isto é a régua da APLICAÇÃO. A segurança de verdade (impedir leitura direta no
 // banco) é a camada de RLS, tratada à parte.
@@ -23,10 +26,10 @@ export type HubUserScope = {
   sectorIds: string[];
 };
 
-// Recurso que carrega o vínculo (hoje: fila da Iris; amanhã: o que precisar).
-export type ScopedResource = {
-  departmentId?: string | null;
-  sectorId?: string | null;
+// Um vínculo do recurso. sectorId null = departamento inteiro.
+export type ResourceScope = {
+  departmentId: string | null;
+  sectorId: string | null;
 };
 
 export function isAdminProfile(profile: string | null | undefined): boolean {
@@ -38,42 +41,35 @@ export function seesByDepartment(profile: string | null | undefined): boolean {
   return profile === "cdr";
 }
 
-export function canSeeScopedResource(
-  scope: HubUserScope,
-  resource: ScopedResource,
+function matchesScope(user: HubUserScope, scope: ResourceScope): boolean {
+  const { departmentId, sectorId } = scope;
+
+  if (seesByDepartment(user.profile)) {
+    // cdr: basta o vínculo ser de um departamento dele (com ou sem setor).
+    return Boolean(departmentId && user.departmentIds.includes(departmentId));
+  }
+
+  // op1/op2/op3/ldr
+  if (sectorId) {
+    return user.sectorIds.includes(sectorId);
+  }
+
+  // Vínculo de departamento inteiro: vale pra quem é de qualquer setor dele.
+  return Boolean(departmentId && user.departmentIds.includes(departmentId));
+}
+
+export function canSeeResource(
+  user: HubUserScope,
+  scopes: ResourceScope[],
 ): boolean {
-  if (isAdminProfile(scope.profile)) {
+  if (isAdminProfile(user.profile)) {
     return true;
   }
 
-  const departmentId = resource.departmentId ?? null;
-  const sectorId = resource.sectorId ?? null;
-
   // Sem vínculo nenhum = só adm (que já retornou acima).
-  if (!departmentId && !sectorId) {
+  if (scopes.length === 0) {
     return false;
   }
 
-  if (seesByDepartment(scope.profile)) {
-    // cdr: pelo departamento do recurso; se o recurso só tem setor, aceita quando
-    // esse setor pertence a um departamento dele (o chamador resolve o de-para).
-    return Boolean(departmentId && scope.departmentIds.includes(departmentId));
-  }
-
-  // op1/op2/op3/ldr: só o próprio setor.
-  return Boolean(sectorId && scope.sectorIds.includes(sectorId));
-}
-
-// Resolve o de-para setor->departamento antes de aplicar a régua, pra o cdr
-// enxergar fila que só tem setor preenchido (o departamento vem do setor).
-export function resolveResourceScope(
-  resource: ScopedResource,
-  sectorToDepartment: Map<string, string | null>,
-): ScopedResource {
-  const sectorId = resource.sectorId ?? null;
-  const departmentId =
-    resource.departmentId ??
-    (sectorId ? (sectorToDepartment.get(sectorId) ?? null) : null);
-
-  return { departmentId, sectorId };
+  return scopes.some((scope) => matchesScope(user, scope));
 }

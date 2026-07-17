@@ -7394,9 +7394,6 @@ async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
     assignment_strategy: form.assignmentStrategy.trim() || "manual",
     color: /^#[0-9a-fA-F]{6}$/.test(form.color) ? form.color : "#A07C3B",
     default_priority: normalizePriority(form.defaultPriority),
-    // Níveis de acesso: dono da fila (quem enxerga). Sem vínculo = só admin.
-    department_id: form.departmentId.trim() || null,
-    sector_id: form.sectorId.trim() || null,
     // Vínculo fila→número (canal WhatsApp). metadata das filas só guarda isso hoje.
     metadata: { channelId: form.channelId.trim() || null },
     name: form.name.trim(),
@@ -7413,7 +7410,7 @@ async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
     status: setupStatusOptions.includes(form.status) ? form.status : "active",
   };
   const selectColumns =
-    "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata,department_id,sector_id";
+    "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata";
 
   const result = form.id
     ? await supabase
@@ -7430,6 +7427,38 @@ async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
 
   if (result.error || !result.data) {
     throw new Error(result.error?.message ?? "Nao foi possivel salvar a fila.");
+  }
+
+  // Vínculos de acesso: sincroniza a lista (apaga e regrava). São poucas linhas
+  // por fila, então trocar tudo é mais simples e seguro que diffar.
+  const queueId = (result.data as { id: string }).id;
+  const { error: clearError } = await supabase
+    .from("caredesk_queue_scopes")
+    .delete()
+    .eq("queue_id", queueId);
+
+  if (clearError) {
+    throw new Error(
+      clearError.message ?? "Nao foi possivel atualizar os vinculos da fila.",
+    );
+  }
+
+  if (form.scopes.length) {
+    const { error: insertError } = await supabase
+      .from("caredesk_queue_scopes")
+      .insert(
+        form.scopes.map((scope) => ({
+          department_id: scope.departmentId,
+          queue_id: queueId,
+          sector_id: scope.sectorId,
+        })),
+      );
+
+    if (insertError) {
+      throw new Error(
+        insertError.message ?? "Nao foi possivel salvar os vinculos da fila.",
+      );
+    }
   }
 
   return result.data;
@@ -7475,8 +7504,8 @@ function createQueueForm() {
     channelId: "",
     color: "#A07C3B",
     defaultPriority: "medium" as IrisPriority,
-    departmentId: "",
-    sectorId: "",
+    // Vínculos de acesso (N): a fila pode ser de mais de um departamento.
+    scopes: [] as IrisQueueScope[],
     id: "",
     name: "",
     routingStrategy: "manual",
@@ -7493,8 +7522,7 @@ function queueToForm(queue: IrisQueueConfig) {
     channelId: queue.channelId ?? "",
     color: queue.color || "#A07C3B",
     defaultPriority: queue.defaultPriority,
-    departmentId: queue.departmentId ?? "",
-    sectorId: queue.sectorId ?? "",
+    scopes: queue.scopes,
     id: queue.id,
     name: queue.name,
     routingStrategy: queue.routingStrategy,

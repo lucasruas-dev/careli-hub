@@ -2,9 +2,8 @@
 "use client";
 
 import {
-  canSeeScopedResource,
+  canSeeResource,
   isAdminProfile,
-  resolveResourceScope,
   type HubUserScope,
 } from "@/lib/hub/access-scope";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
@@ -15,6 +14,7 @@ import type {
   IrisMessageReaction,
   IrisPriority,
   IrisQueueConfig,
+  IrisQueueScope,
   IrisReplyPreview,
   IrisSnapshot,
   IrisStatus,
@@ -64,7 +64,7 @@ export async function loadIrisData({
   const queuesResult = await supabase
     .from("caredesk_queues")
     .select(
-      "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata,department_id,sector_id",
+      "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata",
     )
     .order("name", { ascending: true });
 
@@ -72,10 +72,8 @@ export async function loadIrisData({
     throw queuesResult.error;
   }
 
-  const allQueues = (queuesResult.data ?? []).map(mapQueueRow);
-
-  // Estrutura da empresa: alimenta o vínculo da fila (Setup) e a régua de acesso.
-  const [departmentsResult, sectorsResult] = await Promise.all([
+  // Estrutura da empresa + vínculos das filas: alimentam o Setup e a régua.
+  const [departmentsResult, sectorsResult, scopesResult] = await Promise.all([
     supabase
       .from("hub_departments")
       .select("id,name")
@@ -86,7 +84,25 @@ export async function loadIrisData({
       .select("id,name,department_id")
       .eq("status", "active")
       .order("name", { ascending: true }),
+    supabase
+      .from("caredesk_queue_scopes")
+      .select("queue_id,department_id,sector_id"),
   ]);
+
+  const scopesByQueue = new Map<string, IrisQueueScope[]>();
+  for (const row of (scopesResult.data ?? []) as any[]) {
+    const queueId = row.queue_id as string;
+    const list = scopesByQueue.get(queueId) ?? [];
+    list.push({
+      departmentId: row.department_id as string,
+      sectorId: (row.sector_id as string | null) ?? null,
+    });
+    scopesByQueue.set(queueId, list);
+  }
+
+  const allQueues = (queuesResult.data ?? []).map((row: any) =>
+    mapQueueRow(row, scopesByQueue.get(row.id) ?? []),
+  );
 
   const departments = (departmentsResult.data ?? []).map((row: any) => ({
     id: row.id as string,
@@ -99,22 +115,11 @@ export async function loadIrisData({
   }));
 
   // RÉGUA DE ACESSO: o perfil do usuário logado + os vínculos dele definem quais
-  // filas existem pra ele. op*/ldr = só o seu setor; cdr = todo o departamento;
-  // adm = tudo; fila sem vínculo = só adm.
+  // filas existem pra ele. op*/ldr = seu setor (ou departamento inteiro);
+  // cdr = todo o seu departamento; adm = tudo; fila sem vínculo = só adm.
   const viewerScope = await loadViewerScope(supabase, viewerUserId);
-  const sectorToDepartment = new Map(
-    sectors.map((sector) => [sector.id, sector.departmentId]),
-  );
   const queues = viewerScope
-    ? allQueues.filter((queue) =>
-        canSeeScopedResource(
-          viewerScope,
-          resolveResourceScope(
-            { departmentId: queue.departmentId, sectorId: queue.sectorId },
-            sectorToDepartment,
-          ),
-        ),
-      )
+    ? allQueues.filter((queue) => canSeeResource(viewerScope, queue.scopes))
     : allQueues;
   const scopedQueueIds = normalizedQueueSlugFilter
     ? queues
@@ -627,15 +632,17 @@ async function loadViewerScope(
   };
 }
 
-export function mapQueueRow(row: any): IrisQueueConfig {
+export function mapQueueRow(
+  row: any,
+  scopes: IrisQueueScope[] = [],
+): IrisQueueConfig {
   return {
     assignmentStrategy: row.assignment_strategy ?? "manual",
     channelId:
       typeof row.metadata?.channelId === "string" ? row.metadata.channelId : null,
     color: row.color ?? "#A07C3B",
     defaultPriority: normalizePriority(row.default_priority),
-    departmentId: typeof row.department_id === "string" ? row.department_id : null,
-    sectorId: typeof row.sector_id === "string" ? row.sector_id : null,
+    scopes,
     id: row.id,
     name: row.name,
     routingStrategy: row.routing_strategy ?? "manual",

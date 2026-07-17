@@ -131,10 +131,10 @@ export type IrisQueueConfig = {
   channelId: string | null;
   color: string;
   defaultPriority: IrisPriority;
-  // Níveis de acesso: dono da fila. op*/ldr veem as filas do SEU SETOR; cdr vê as
-  // do SEU DEPARTAMENTO; adm vê tudo; fila sem vínculo = só adm.
-  departmentId: string | null;
-  sectorId: string | null;
+  // Níveis de acesso: donos da fila. É uma LISTA porque a fila pode pertencer a
+  // mais de um departamento (Grupo/Direct = Operação + Relação).
+  // sectorId null = departamento inteiro. Sem vínculo nenhum = só adm.
+  scopes: IrisQueueScope[];
   id: string;
   name: string;
   routingStrategy: string;
@@ -199,6 +199,12 @@ export type IrisSector = {
   departmentId: string | null;
   id: string;
   name: string;
+};
+
+// Vínculo da fila com a estrutura. sectorId null = departamento inteiro.
+export type IrisQueueScope = {
+  departmentId: string;
+  sectorId: string | null;
 };
 
 export type IrisData = {
