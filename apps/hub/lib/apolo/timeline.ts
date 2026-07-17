@@ -48,20 +48,45 @@ export type ApoloTimelineScope = {
   phones: string[];
 };
 
+// E-mail de COLABORADOR nao identifica cliente. Quando o operador digita o proprio e-mail (ou
+// um e-mail de equipe) no cadastro, casar por ele traz a vida do colaborador pra ficha do
+// cliente: um prospect recem-criado apareceu com 200 reunioes internas de avaliacao de
+// desempenho e atendimentos de teste da Iris, so porque o e-mail era @careli.adm.br.
+const DOMINIO_INTERNO = /@careli\.adm\.br\s*$/i;
+
+function somenteEmailsDeCliente(emails: string[]): string[] {
+  return emails.filter((email) => email.trim() && !DOMINIO_INTERNO.test(email));
+}
+
+function agoraIso(): string {
+  return new Date().toISOString();
+}
+
 export async function loadApoloEntityTimeline(
   scope: ApoloTimelineScope,
 ): Promise<
   { data: ApoloTimelineData; ok: true } | { error: string; ok: false }
 > {
   try {
+    // A identidade que agrega o historico ignora e-mail interno (ver acima).
+    const escopo: ApoloTimelineScope = {
+      ...scope,
+      emails: somenteEmailsDeCliente(scope.emails),
+    };
+
     const [pagamentos, vendas, iris, hades, chronos, manuais] = await Promise.all([
-      loadPagamentos(scope.c2xId),
-      loadVendas(scope.c2xId),
-      loadIris(scope),
-      loadHades(scope.adminClient, scope.c2xId),
-      loadChronos(scope.adminClient, scope.emails),
-      loadManual(scope.adminClient, scope.entityId),
+      loadPagamentos(escopo.c2xId),
+      loadVendas(escopo.c2xId),
+      loadIris(escopo),
+      loadHades(escopo.adminClient, escopo.c2xId),
+      loadChronos(escopo.adminClient, escopo.emails),
+      loadManual(escopo.adminClient, escopo.entityId),
     ]);
+
+    // Historico = o que JA ACONTECEU. Evento futuro e agenda, nao ficha corrida: uma reuniao
+    // recorrente do Chronos chega a gerar ocorrencias ate 2087 e afogaria a ficha.
+    const jaAconteceu = (entry: ApoloTimelineEntry) =>
+      !entry.date || entry.date <= agoraIso();
 
     const entries = [
       ...pagamentos,
@@ -70,15 +95,17 @@ export async function loadApoloEntityTimeline(
       ...hades,
       ...chronos,
       ...manuais,
-    ].sort((a, b) => b.date.localeCompare(a.date));
+    ]
+      .filter(jaAconteceu)
+      .sort((a, b) => b.date.localeCompare(a.date));
 
     const counts: Record<ApoloTimelineSource, number> = {
-      chronos: chronos.length,
-      hades: hades.length,
-      iris: iris.length,
-      manual: manuais.length,
-      pagamento: pagamentos.length,
-      venda: vendas.length,
+      chronos: chronos.filter(jaAconteceu).length,
+      hades: hades.filter(jaAconteceu).length,
+      iris: iris.filter(jaAconteceu).length,
+      manual: manuais.filter(jaAconteceu).length,
+      pagamento: pagamentos.filter(jaAconteceu).length,
+      venda: vendas.filter(jaAconteceu).length,
     };
 
     return { data: { counts, entries }, ok: true };
