@@ -8,7 +8,10 @@ export type ApoloProfile =
   | "colaborador"
   | "acesso_incorporador"
   | "pessoa_fisica"
-  | "pessoa_juridica";
+  | "pessoa_juridica"
+  // Papel de nascimento de quem quer adquirir uma unidade (cadastro pelo formulário).
+  // Acumula com os outros: um corretor que resolve comprar vira "corretor + prospect".
+  | "prospect";
 
 export type ApoloEntityStatus =
   | "active"

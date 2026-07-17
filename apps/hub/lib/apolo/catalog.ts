@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   Store,
   UserRoundCog,
+  UserRoundSearch,
   UsersRound,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -43,11 +44,15 @@ export const apoloProfileLabels = {
   parceiro: "Parceiro",
   pessoa_fisica: "Pessoa fisica",
   pessoa_juridica: "Pessoa juridica",
+  prospect: "Prospect",
   usuario: "Usuario",
 } as const satisfies Record<ApoloProfile, string>;
 
+// Lista que VALIDA o papel vindo do banco (normalizeApoloProfile). Papel fora daqui e
+// descartado na leitura -- foi o que segurava o 'prospect' de aparecer na ficha.
 export const apoloProfileOptions = [
   "usuario",
+  "prospect",
   "incorporador",
   "imobiliaria",
   "corretor",
@@ -122,6 +127,7 @@ export function getApoloProfileIcon(profile: ApoloProfile): LucideIcon {
     parceiro: Handshake,
     pessoa_fisica: ContactRound,
     pessoa_juridica: Building2,
+    prospect: UserRoundSearch,
     usuario: UsersRound,
   } as const satisfies Record<ApoloProfile, LucideIcon>;
 

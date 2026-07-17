@@ -10,6 +10,7 @@ import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 import {
   apoloProfileCardOrder,
   apoloProfileLabels,
+  apoloProfileOptions,
 } from "./catalog";
 import type {
   ApoloAddress,
@@ -3898,18 +3899,10 @@ function normalizeApoloProfile(profile: string): ApoloProfile | null {
   return apoloProfileOptionsSet.has(profile) ? (profile as ApoloProfile) : null;
 }
 
-const apoloProfileOptionsSet = new Set<string>([
-  "usuario",
-  "incorporador",
-  "imobiliaria",
-  "corretor",
-  "fornecedor",
-  "parceiro",
-  "colaborador",
-  "acesso_incorporador",
-  "pessoa_fisica",
-  "pessoa_juridica",
-]);
+// Deriva do catalogo: esta lista era uma COPIA hardcoded e saiu de sincronia (o papel
+// 'prospect' entrou no catalogo e no banco, mas era descartado aqui -- a ficha nascia sem
+// papel nenhum). Fonte unica evita o proximo papel novo sumir do mesmo jeito.
+const apoloProfileOptionsSet = new Set<string>(apoloProfileOptions);
 
 function deriveC2xEntityKind(row: C2xUserRow): ApoloEntityKind {
   if (row.profile_id === 1 || row.profile_id === 5) {
@@ -4726,7 +4719,10 @@ function tradeNameFromC2x(row: C2xUserRow) {
   );
 }
 
-function hashIdentifier(type: string, value: string) {
+// Exportado: o cadastro manual (createApoloEntity) precisa gerar o MESMO value_hash do sync,
+// senao o dedup por documento (collapseDuplicateApoloEntities) nao casa a entidade nova com a
+// que ja veio do C2X pela mesma pessoa.
+export function hashIdentifier(type: string, value: string) {
   return createHash("sha256")
     .update(`apolo-identifier:${type}:${value.trim().toLowerCase()}`)
     .digest("hex");
