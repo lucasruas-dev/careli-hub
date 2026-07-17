@@ -48,6 +48,7 @@ import { apoloTabs } from "./crm-tabs";
 import { EntityTimelinePanel } from "./entity-timeline-panel";
 import {
   AuditPanel,
+  DocumentsPanel,
   FinancialPanel,
   PortfolioPanel,
   RegistrationPanel,
@@ -605,6 +606,10 @@ function TabPanel({
 
   if (activeTab === "financeiro") {
     return <FinancialPanel entity={entity} />;
+  }
+
+  if (activeTab === "documentos") {
+    return <DocumentsPanel entity={entity} />;
   }
 
   if (activeTab === "timeline") {

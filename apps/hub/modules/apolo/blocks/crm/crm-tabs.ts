@@ -3,6 +3,7 @@ import {
   Clock3,
   ContactRound,
   FileText,
+  Files,
   HandCoins,
   History,
   LayoutDashboard,
@@ -26,6 +27,7 @@ export const apoloTabs = [
   { icon: Network, id: "relacionamentos", label: "Relacionamentos" },
   { icon: MapPinned, id: "carteira", label: "Carteira" },
   { icon: CircleDollarSign, id: "financeiro", label: "Financeiro" },
+  { icon: Files, id: "documentos", label: "Documentos" },
   { icon: History, id: "timeline", label: "Histórico" },
 ] as const satisfies readonly ApoloTabItem[];
 

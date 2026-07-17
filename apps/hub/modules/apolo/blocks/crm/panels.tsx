@@ -1,25 +1,29 @@
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   CalendarClock,
   ChevronDown,
   ExternalLink,
+  FileText,
   Filter,
   Handshake,
+  Loader2,
   MapPinned,
   MessageCircle,
   PhoneCall,
   ReceiptText,
   Search,
   Sparkles,
+  Trash2,
+  UploadCloud,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
 import { Tooltip } from "@repo/uix";
 import { apoloProfileLabels } from "@/lib/apolo/catalog";
 import type { ApoloAuditSignal, ApoloEntity, ApoloInstallment, ApoloTimelineEvent } from "@/lib/apolo/types";
+import type { ApoloDocumentItem } from "@/lib/apolo/documentos";
 
 import {
-  DocumentPill,
   EmptyPanel,
   InfoButtonTile,
   InfoTile,
@@ -1187,23 +1191,243 @@ function ApoloFinancialRecordList({ records }: { records: ApoloFinancialRecord[]
   );
 }
 
+// Teto client-side do anexo (espelha o teto da rota). Docs de cadastro cabem folgado.
+const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
+
+function readFileAsDataUrl(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Nao foi possivel ler o arquivo."));
+    reader.onload = () => resolve(String(reader.result));
+    reader.readAsDataURL(file);
+  });
+}
+
+function formatAttachmentSize(bytes: number | null): string | null {
+  if (!bytes || bytes <= 0) {
+    return null;
+  }
+  if (bytes < 1024) {
+    return `${bytes} B`;
+  }
+  if (bytes < 1024 * 1024) {
+    return `${(bytes / 1024).toFixed(0)} KB`;
+  }
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function attachmentMeta(document: ApoloDocumentItem): string {
+  const date = new Date(document.createdAt);
+  const dateLabel = Number.isNaN(date.getTime())
+    ? null
+    : date.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+  const size = formatAttachmentSize(document.sizeBytes);
+
+  return [document.uploadedBy, dateLabel, size].filter(Boolean).join(" · ") || "Anexo";
+}
+
+function attachmentStatusLabel(status: string): string {
+  const map: Record<string, string> = {
+    archived: "Arquivado",
+    blocked: "Restrito",
+    pending_review: "Em revisao",
+    ready: "Pronto",
+  };
+  return map[status] ?? status;
+}
+
+function attachmentStatusClass(status: string): string {
+  if (status === "blocked") {
+    return "bg-rose-50 dark:bg-rose-500/12 text-rose-700 dark:text-rose-300 ring-rose-100 dark:ring-rose-500/20";
+  }
+  if (status === "pending_review") {
+    return "bg-amber-50 dark:bg-amber-500/12 text-amber-800 dark:text-amber-300 ring-amber-100 dark:ring-amber-500/20";
+  }
+  return "bg-emerald-50 dark:bg-emerald-500/12 text-emerald-700 dark:text-emerald-300 ring-emerald-100 dark:ring-emerald-500/20";
+}
+
 function DocumentsPanel({
   entity,
 }: {
   entity: ApoloEntity;
 }) {
+  const [attachments, setAttachments] = useState<ApoloDocumentItem[]>([]);
+  const [loadingAttachments, setLoadingAttachments] = useState(true);
+  const [uploading, setUploading] = useState(false);
+  const [dragActive, setDragActive] = useState(false);
   const [openingDocumentId, setOpeningDocumentId] = useState<string | null>(null);
+  const [deletingDocumentId, setDeletingDocumentId] = useState<string | null>(null);
   const [documentError, setDocumentError] = useState<string | null>(null);
   const contractDocuments = contractDocumentItems(entity);
-  const identityDocuments = entity.documents.map((document) => ({
-    detail: document.updatedAt,
-    id: `document-${document.label}`,
-    meta: "Documento cadastral",
-    status: document.status,
-    title: document.label,
-  }));
+  const entityId = entity.id;
 
-  async function openApoloDocument(documentUrl: string, documentId: string) {
+  const loadAttachments = useCallback(async () => {
+    setLoadingAttachments(true);
+
+    try {
+      const accessToken = await getApoloAccessToken();
+      const response = await fetch(
+        `/api/apolo/documentos?entityId=${encodeURIComponent(entityId)}`,
+        {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as
+        | { documents?: ApoloDocumentItem[]; error?: string }
+        | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Nao foi possivel carregar os documentos.");
+      }
+
+      setAttachments(payload?.documents ?? []);
+      setDocumentError(null);
+    } catch (error) {
+      setDocumentError(
+        error instanceof Error ? error.message : "Nao foi possivel carregar os documentos.",
+      );
+    } finally {
+      setLoadingAttachments(false);
+    }
+  }, [entityId]);
+
+  useEffect(() => {
+    void loadAttachments();
+  }, [loadAttachments]);
+
+  async function uploadFiles(fileList: FileList | File[]) {
+    const files = Array.from(fileList);
+
+    if (!files.length) {
+      return;
+    }
+
+    setUploading(true);
+    setDocumentError(null);
+
+    try {
+      const accessToken = await getApoloAccessToken();
+
+      for (const file of files) {
+        if (file.size > MAX_ATTACHMENT_BYTES) {
+          throw new Error(`"${file.name}" passa de 15 MB.`);
+        }
+
+        const fileBase64 = await readFileAsDataUrl(file);
+        const response = await fetch("/api/apolo/documentos", {
+          body: JSON.stringify({
+            entityId,
+            fileBase64,
+            fileName: file.name,
+            mimeType: file.type || null,
+          }),
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        });
+
+        if (!response.ok) {
+          const payload = (await response.json().catch(() => null)) as
+            | { error?: string }
+            | null;
+
+          throw new Error(payload?.error ?? "Nao foi possivel enviar o documento.");
+        }
+      }
+
+      await loadAttachments();
+    } catch (error) {
+      setDocumentError(
+        error instanceof Error ? error.message : "Nao foi possivel enviar o documento.",
+      );
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  async function openAttachment(documentId: string) {
+    const previewWindow = window.open("about:blank", "_blank");
+
+    if (previewWindow) {
+      previewWindow.opener = null;
+    }
+
+    try {
+      setOpeningDocumentId(documentId);
+      setDocumentError(null);
+
+      const accessToken = await getApoloAccessToken();
+      const response = await fetch(
+        `/api/apolo/documentos/${encodeURIComponent(documentId)}?scope=entidade`,
+        {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${accessToken}` },
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as
+        | { error?: string; url?: string }
+        | null;
+
+      if (!response.ok || !payload?.url) {
+        throw new Error(payload?.error ?? "Nao foi possivel abrir o documento.");
+      }
+
+      if (previewWindow) {
+        previewWindow.location.href = payload.url;
+      } else {
+        window.open(payload.url, "_blank", "noreferrer");
+      }
+    } catch (error) {
+      previewWindow?.close();
+      setDocumentError(
+        error instanceof Error ? error.message : "Nao foi possivel abrir o documento.",
+      );
+    } finally {
+      setOpeningDocumentId(null);
+    }
+  }
+
+  async function removeAttachment(documentId: string) {
+    if (!window.confirm("Remover este documento? Essa acao nao pode ser desfeita.")) {
+      return;
+    }
+
+    try {
+      setDeletingDocumentId(documentId);
+      setDocumentError(null);
+
+      const accessToken = await getApoloAccessToken();
+      const response = await fetch(
+        `/api/apolo/documentos/${encodeURIComponent(documentId)}?scope=entidade`,
+        {
+          headers: { Authorization: `Bearer ${accessToken}` },
+          method: "DELETE",
+        },
+      );
+
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+
+        throw new Error(payload?.error ?? "Nao foi possivel remover o documento.");
+      }
+
+      setAttachments((current) => current.filter((item) => item.id !== documentId));
+    } catch (error) {
+      setDocumentError(
+        error instanceof Error ? error.message : "Nao foi possivel remover o documento.",
+      );
+    } finally {
+      setDeletingDocumentId(null);
+    }
+  }
+
+  // Contrato do C2X (D4Sign) segue lido via blob autenticado -- e outro backend.
+  async function openContractDocument(documentUrl: string, documentId: string) {
     const previewWindow = window.open("about:blank", "_blank");
 
     if (previewWindow) {
@@ -1217,9 +1441,7 @@ function DocumentsPanel({
       const accessToken = await getApoloAccessToken();
       const response = await fetch(documentUrl, {
         cache: "no-store",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
 
       if (!response.ok) {
@@ -1245,9 +1467,7 @@ function DocumentsPanel({
     } catch (error) {
       previewWindow?.close();
       setDocumentError(
-        error instanceof Error
-          ? error.message
-          : "Nao foi possivel abrir o documento.",
+        error instanceof Error ? error.message : "Nao foi possivel abrir o documento.",
       );
     } finally {
       setOpeningDocumentId(null);
@@ -1261,87 +1481,185 @@ function DocumentsPanel({
           {documentError}
         </p>
       ) : null}
+
       <section className="rounded-xl border border-line bg-surface p-4">
-        <PanelTitle eyebrow="Documentos" title="Contrato" />
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {contractDocuments.map((document) => (
-            <article
-              className="rounded-xl border border-line bg-subtle p-4"
-              key={document.id}
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="m-0 truncate text-sm font-semibold text-ink">
-                    {document.title}
-                  </p>
-                  {document.href ? (
-                    <button
-                      className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-surface px-2 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-wait disabled:opacity-70"
-                      disabled={openingDocumentId === document.id}
-                      onClick={() => {
-                        if (document.href) {
-                          void openApoloDocument(document.href, document.id);
-                        }
-                      }}
-                      type="button"
-                    >
-                      <span className="truncate">{document.detail}</span>
-                      <ExternalLink className="size-3" aria-hidden="true" />
-                    </button>
-                  ) : (
-                    <p className="m-0 mt-1 truncate text-xs text-ink-muted">
-                      {document.detail}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <PanelTitle eyebrow="Documentos" title="Anexos do cadastro" />
+          <label
+            className={`inline-flex h-9 shrink-0 items-center gap-2 rounded-lg border px-3 text-xs font-semibold transition-colors ${
+              uploading
+                ? "cursor-wait border-line bg-subtle text-ink-muted"
+                : "cursor-pointer border-[#A07C3B]/25 bg-surface text-[#7a5e2c] dark:text-[#d9b877] hover:bg-[#A07C3B]/10"
+            }`}
+          >
+            {uploading ? (
+              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+            ) : (
+              <UploadCloud className="size-3.5" aria-hidden="true" />
+            )}
+            {uploading ? "Enviando" : "Enviar documento"}
+            <input
+              accept="image/*,application/pdf"
+              className="sr-only"
+              disabled={uploading}
+              multiple
+              onChange={(event) => {
+                if (event.target.files?.length) {
+                  void uploadFiles(event.target.files);
+                }
+                event.target.value = "";
+              }}
+              type="file"
+            />
+          </label>
+        </div>
+
+        <div
+          className={`mt-4 rounded-xl border border-dashed p-6 text-center transition-colors ${
+            dragActive ? "border-[#A07C3B] bg-[#A07C3B]/5" : "border-line bg-subtle"
+          }`}
+          onDragLeave={(event) => {
+            event.preventDefault();
+            setDragActive(false);
+          }}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragActive(true);
+          }}
+          onDrop={(event) => {
+            event.preventDefault();
+            setDragActive(false);
+            if (event.dataTransfer.files?.length) {
+              void uploadFiles(event.dataTransfer.files);
+            }
+          }}
+        >
+          <UploadCloud className="mx-auto size-6 text-ink-muted" aria-hidden="true" />
+          <p className="m-0 mt-2 text-sm font-semibold text-ink">
+            Arraste arquivos aqui ou use o botao acima
+          </p>
+          <p className="m-0 mt-1 text-xs text-ink-muted">
+            PDF ou imagem, ate 15 MB por arquivo
+          </p>
+        </div>
+
+        <div className="mt-4 grid gap-3">
+          {loadingAttachments ? (
+            <div className="flex items-center gap-2 rounded-lg border border-line bg-subtle px-3 py-3 text-xs font-semibold text-ink-muted">
+              <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+              Carregando documentos
+            </div>
+          ) : attachments.length ? (
+            attachments.map((document) => (
+              <article
+                className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-subtle p-4"
+                key={document.id}
+              >
+                <div className="flex min-w-0 items-start gap-3">
+                  <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-surface text-[#A07C3B] ring-1 ring-line">
+                    <FileText className="size-4" aria-hidden="true" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="m-0 truncate text-sm font-semibold text-ink">
+                      {document.label || document.fileName || "Documento"}
                     </p>
-                  )}
-                  <p className="m-0 mt-1 truncate text-xs font-medium text-ink-muted">
-                    {document.meta}
-                  </p>
+                    <p className="m-0 mt-1 truncate text-xs text-ink-muted">
+                      {attachmentMeta(document)}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex shrink-0 flex-col items-end gap-2">
-                  <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/20">
-                    {document.unitBadge}
+                <div className="flex shrink-0 items-center gap-2">
+                  <span
+                    className={`inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold ring-1 ring-inset ${attachmentStatusClass(document.status)}`}
+                  >
+                    {attachmentStatusLabel(document.status)}
                   </span>
-                  <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
-                    {document.status}
-                  </span>
+                  <button
+                    aria-label="Abrir documento"
+                    className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-soft transition-colors hover:bg-[#A07C3B]/10 hover:text-[#7a5e2c] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:text-[#d9b877]"
+                    disabled={!document.hasFile || openingDocumentId === document.id}
+                    onClick={() => void openAttachment(document.id)}
+                    type="button"
+                  >
+                    {openingDocumentId === document.id ? (
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <ExternalLink className="size-3.5" aria-hidden="true" />
+                    )}
+                  </button>
+                  <button
+                    aria-label="Remover documento"
+                    className="inline-flex size-8 items-center justify-center rounded-lg border border-line bg-surface text-ink-soft transition-colors hover:border-rose-200 hover:bg-rose-50 hover:text-rose-600 disabled:cursor-wait disabled:opacity-50 dark:hover:bg-rose-500/12 dark:hover:text-rose-300"
+                    disabled={deletingDocumentId === document.id}
+                    onClick={() => void removeAttachment(document.id)}
+                    type="button"
+                  >
+                    {deletingDocumentId === document.id ? (
+                      <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    ) : (
+                      <Trash2 className="size-3.5" aria-hidden="true" />
+                    )}
+                  </button>
                 </div>
-              </div>
-            </article>
-          ))}
-          {!contractDocuments.length ? (
-            <EmptyPanel text="Nenhum contrato localizado para este relacionamento." />
-          ) : null}
+              </article>
+            ))
+          ) : (
+            <EmptyPanel text="Nenhum documento anexado ainda. Arraste um arquivo ou use o botao acima." />
+          )}
         </div>
       </section>
-      <section className="rounded-xl border border-line bg-surface p-4">
-        <PanelTitle eyebrow="Documentos" title="Cadastro e anexos" />
-        <div className="mt-4 grid gap-3 md:grid-cols-2">
-          {identityDocuments.map((document) => (
-            <article
-              className="rounded-xl border border-line bg-subtle p-4"
-              key={document.id}
-            >
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <p className="m-0 text-sm font-semibold text-ink">
-                    {document.title}
-                  </p>
-                  <p className="m-0 mt-1 text-xs text-ink-muted">
-                    {document.detail}
-                  </p>
-                  <p className="m-0 mt-1 text-xs font-medium text-ink-muted">
-                    {document.meta}
-                  </p>
+
+      {contractDocuments.length ? (
+        <section className="rounded-xl border border-line bg-surface p-4">
+          <PanelTitle eyebrow="Documentos" title="Contrato" />
+          <div className="mt-4 grid gap-3 md:grid-cols-2">
+            {contractDocuments.map((document) => (
+              <article
+                className="rounded-xl border border-line bg-subtle p-4"
+                key={document.id}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="m-0 truncate text-sm font-semibold text-ink">
+                      {document.title}
+                    </p>
+                    {document.href ? (
+                      <button
+                        className="mt-1 inline-flex max-w-full items-center gap-1.5 rounded-lg border border-[#A07C3B]/20 bg-surface px-2 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-wait disabled:opacity-70"
+                        disabled={openingDocumentId === document.id}
+                        onClick={() => {
+                          if (document.href) {
+                            void openContractDocument(document.href, document.id);
+                          }
+                        }}
+                        type="button"
+                      >
+                        <span className="truncate">{document.detail}</span>
+                        <ExternalLink className="size-3" aria-hidden="true" />
+                      </button>
+                    ) : (
+                      <p className="m-0 mt-1 truncate text-xs text-ink-muted">
+                        {document.detail}
+                      </p>
+                    )}
+                    <p className="m-0 mt-1 truncate text-xs font-medium text-ink-muted">
+                      {document.meta}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-[#7a5e2c] dark:text-[#d9b877] ring-1 ring-[#A07C3B]/20">
+                      {document.unitBadge}
+                    </span>
+                    <span className="rounded-full bg-surface px-2.5 py-1 text-xs font-semibold text-ink-soft ring-1 ring-line">
+                      {document.status}
+                    </span>
+                  </div>
                 </div>
-                <DocumentPill status={document.status} />
-              </div>
-            </article>
-          ))}
-          {!identityDocuments.length ? (
-            <EmptyPanel text="Nenhum documento cadastral consolidado neste relacionamento." />
-          ) : null}
-        </div>
-      </section>
+              </article>
+            ))}
+          </div>
+        </section>
+      ) : null}
     </section>
   );
 }
