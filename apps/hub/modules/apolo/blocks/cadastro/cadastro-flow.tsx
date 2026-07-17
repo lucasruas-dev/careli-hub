@@ -3,6 +3,7 @@
 import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   AlertTriangle,
+  Camera,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -24,12 +25,14 @@ import {
   C2X_ESCOLARIDADE,
   C2X_ESTADO_CIVIL,
   C2X_FAIXA_RENDA,
+  C2X_REGIME_BENS,
   C2X_SEXO,
   calcIdade,
   formatDateBR,
   mapDocType,
   matchEstadoCivilId,
   matchFaixaRendaId,
+  matchRegimeBensId,
   matchSexoId,
   mesesDesde,
   normalizeSearch,
@@ -40,8 +43,8 @@ import { getHubSupabaseClient } from "@/lib/supabase/client";
 
 import {
   type CadCampo,
+  type CadDoc,
   type CadSecao,
-  gerarCadPdf,
 } from "./cad-pdf";
 
 // Wizard de cadastro de CAD (prospect). Etapas: Identificação -> Endereço ->
@@ -52,17 +55,14 @@ import {
 // do Apolo, como as imobiliárias vindas do read-model).
 type SelectOption = { id: number | string; label: string };
 
-// Fallback só do localhost (o endpoint real /api/apolo/imobiliarias usa a chave
-// de serviço, que não valida local). Em produção vem a lista real do Apolo.
-const IMOBILIARIAS_FALLBACK: SelectOption[] = [
-  { id: 1, label: "Careli Imóveis" },
-  { id: 2, label: "Vale do Ouro Imóveis" },
-  { id: 3, label: "Lagoa Bonita Imóveis" },
-];
-
 type CadastroDraft = Record<string, string>;
 type Extraction = {
   cadastro: CadastroDraft;
+  // Confiança do documento inteiro, dita pela MOST (result[].score) — é o porteiro.
+  confiancaDocumento?: number | null;
+  // Recorte tratado que a MOST devolve (endireitado, sem fundo). Vai pro drive no lugar da
+  // foto crua quando existir.
+  crop?: string;
   documentType: string;
   fields: { confidence: number | null; key: string; label: string; value: string }[];
   overallConfidence: number | null;
@@ -84,14 +84,43 @@ type Enrichment = {
   warnings: string[];
 };
 
+const ENRICH_VAZIO: Enrichment = {
+  available: false, conjuge: "", emails: [], estadoCivil: "", nomeMae: "",
+  nomePai: "", patrimonio: "", profissao: "", renda: "", sexo: "",
+  source: "", telefones: [], warnings: [],
+};
+
+// Sem RG: o número do RG está sendo extinto (decisão do Lucas 16/jul) — o cadastro se apoia
+// no CPF. Isso vale pro titular, pro cônjuge e pra CAD.
+// Espelha o CompanyEnrichment do mostqi (o wizard não importa o módulo server-side).
+type CompanyEnrichment = {
+  atividade: string;
+  available: boolean;
+  capitalSocial: string;
+  cnae: string;
+  dataAbertura: string;
+  emails: string[];
+  naturezaJuridica: string;
+  nomeFantasia: string;
+  porte: string;
+  razaoSocial: string;
+  situacaoCadastral: string;
+  socios: Array<{ nome: string; qualificacao: string }>;
+  source: string;
+  telefones: string[];
+  warnings: string[];
+};
+
 type Identidade = {
   cpf: string;
   dataNascimento: string;
+  // Vêm do próprio documento (a CNH devolve LOCAL_NASCIMENTO e NACIONALIDADE, ~98%).
+  nacionalidade: string;
+  naturalidade: string;
   nome: string;
   nomeMae: string;
   nomePai: string;
   orgaoEmissor: string;
-  rg: string;
   tipoDocumento: string;
 };
 type Endereco = {
@@ -112,6 +141,8 @@ type Perfil = {
   imobiliariaId: string;
   patrimonio: string;
   profissaoId: string;
+  // Regime de bens (só casado / união estável). Fonte = certidão de casamento.
+  regimeBensId: string;
   rendaEstimada: string;
   rendaId: string;
   sexoId: string;
@@ -126,25 +157,39 @@ type Conjuge = {
   documentoLido: boolean;
   email: string;
   escolaridadeId: string;
+  // Lidos do documento do próprio cônjuge (o RG dela traz naturalidade e nacionalidade).
+  nacionalidade: string;
+  naturalidade: string;
   nome: string;
   nomeMae: string;
   patrimonio: string;
   profissaoId: string;
   rendaId: string;
-  rg: string;
   sexoId: string;
   telefone: string;
 };
 
 const CONJUGE_VAZIO: Conjuge = {
   cpf: "", dataNascimento: "", documentoLido: false, email: "",
-  escolaridadeId: "", nome: "", nomeMae: "", patrimonio: "", profissaoId: "",
-  rendaId: "", rg: "", sexoId: "", telefone: "",
+  escolaridadeId: "", nacionalidade: "", naturalidade: "", nome: "", nomeMae: "",
+  patrimonio: "", profissaoId: "", rendaId: "", sexoId: "", telefone: "",
 };
 
 // Persona do cadastro, definida pelo documento: RG/CNH -> pessoa física (pf);
 // cartão CNPJ -> pessoa jurídica (pj).
 type Persona = "pf" | "pj";
+
+// Arquivo que o operador anexou. Fica retido no fluxo porque, no envio, o original vai pro
+// drive da entidade junto do CAD (decisão do Lucas: "Arquivos + CAD").
+type ArquivoAnexado = { fileBase64: string; fileName: string; mimeType: string };
+// Categoria do documento no drive (vira document_type no Apolo).
+type DocCategoria =
+  | "certidao"
+  | "comprovante_endereco"
+  | "identificacao"
+  | "identificacao_conjuge";
+// N arquivos por categoria: um documento pode ter frente + verso, ou varias paginas.
+type DocumentosAnexados = Partial<Record<DocCategoria, ArquivoAnexado[]>>;
 
 type Socio = { nome: string; qualificacao: string };
 // Pessoa jurídica: dados da empresa (cartão CNPJ + enriquecimento por CNPJ) +
@@ -178,6 +223,11 @@ async function accessToken() {
   const supabase = getHubSupabaseClient();
   const session = await supabase?.auth.getSession();
   return session?.data.session?.access_token ?? "";
+}
+
+// O recorte da MOST volta como imagem: o arquivo guardado deixa de ser o PDF/PNG original.
+function trocarExtensaoParaJpg(nome: string): string {
+  return `${nome.replace(/\.[^.]+$/, "")}.jpg`;
 }
 
 function fileToBase64(file: File): Promise<string> {
@@ -224,8 +274,9 @@ function mockIdentidadeExtraction(): Extraction {
     cadastro: {
       bairro: "", cep: "", cidade: "", complemento: "", cpf: "041.310.596-22",
       dataNascimento: "1980-05-02", logradouro: "", nome: "DANIELLE AGUIAR PACHECO DE OLIVEIRA",
+      nacionalidade: "BRASILEIRO A", naturalidade: "PARA DE MINAS / MG",
       nomeMae: "SUELI AGUIAR PACHECO GONCALVES", nomePai: "", numero: "",
-      orgaoEmissor: "SSP/MG", rg: "MG-12.345.678", uf: "",
+      orgaoEmissor: "SSP/MG", sexo: "F", uf: "",
     },
     documentType: "cnh",
     fields: [],
@@ -251,8 +302,9 @@ function mockConjugeExtraction(): Extraction {
   return {
     cadastro: {
       cpf: "058.183.866-19", dataNascimento: "1978-11-20",
+      nacionalidade: "BRASILEIRO A", naturalidade: "BELO HORIZONTE / MG",
       nome: "CARLOS EDUARDO PEREIRA", nomeMae: "MARIA APARECIDA PEREIRA",
-      rg: "MG-9.876.543",
+      sexo: "M",
     },
     documentType: "cnh",
     fields: [],
@@ -265,8 +317,8 @@ function mockConjugeEnrichment(): Enrichment {
     available: true, conjuge: "", emails: [], estadoCivil: "CASADO",
     nomeMae: "MARIA APARECIDA PEREIRA", nomePai: "",
     patrimonio: "R$ 250 mil a R$ 500 mil", profissao: "", raw: undefined,
-    renda: "3 a 6 salários mínimos", sexo: "M", source: "mock",
-    telefones: ["(31) 99123-4567"], warnings: [],
+    renda: "3 a 6 salários mínimos", sexo: "M",
+    source: "mock", telefones: ["(31) 99123-4567"], warnings: [],
   };
 }
 
@@ -376,9 +428,82 @@ function mockCertidaoExtraction(): Extraction {
   };
 }
 
+// Tenta achar o REGIME DE BENS na certidão lida pelo MOST. Best-effort de propósito: o
+// catálogo de enriquecimento do MOST não tem regime de bens (só estado civil), e não temos
+// confirmação de que o iOCR devolve esse campo na certidão. Então primeiro procuramos um campo
+// rotulado "regime"; se não houver, varremos os valores atrás do texto do regime. Não achando,
+// devolve "" e o operador escolhe na mão — nunca trava o fluxo.
+function acharRegimeCertidao(ext: Extraction): string {
+  for (const campo of ext.fields) {
+    if (/regime/i.test(campo.key) || /regime/i.test(campo.label)) {
+      const id = matchRegimeBensId(campo.value);
+      if (id) return id;
+    }
+  }
+  for (const campo of ext.fields) {
+    const id = matchRegimeBensId(campo.value);
+    if (id) return id;
+  }
+  return "";
+}
+
 // MOST valida se o documento e mesmo uma certidao (classificacao do tipo).
 function isCertidao(type: string): boolean {
   return /certid|casamento|nascimento|uniao|marriage|birth/i.test(type);
+}
+
+// Familia do documento, usando a MESMA classificacao do mapDocType (fonte unica). Serve pra
+// barrar documento trocado de etapa: o cadastro pede identificacao e o operador sobe o
+// comprovante, o iOCR "meio que le" e a ficha nasce com dado do documento errado.
+type FamiliaDoc = "certidao" | "cnpj" | "comprovante" | "identidade" | "outro";
+
+const LABELS_IDENTIDADE = ["RG", "CNH", "Passaporte"];
+const LABELS_COMPROVANTE = [
+  "Comprovante de endereço",
+  "Conta de gás",
+  "Conta de luz",
+  "Conta de telefone",
+  "Conta de água",
+  "Correspondência bancária",
+];
+
+function familiaDoc(type: string): FamiliaDoc {
+  if (isCnpjDoc(type)) return "cnpj";
+  if (isCertidao(type)) return "certidao";
+  const label = mapDocType(type);
+  if (LABELS_IDENTIDADE.includes(label)) return "identidade";
+  if (LABELS_COMPROVANTE.includes(label)) return "comprovante";
+  return "outro";
+}
+
+// Confiança MÍNIMA do documento (o score que a própria MOST dá pro documento inteiro).
+// 80% pra qualquer tipo (decisão do Lucas 16/jul): foto de documento na mão do cliente raramente
+// passa de 90, e recusar leitura boa custa mais que deixar o operador conferir.
+const CONFIANCA_MINIMA = 0.8;
+
+// Recusa o documento trocado. So barra quando a leitura reconheceu OUTRA familia com clareza —
+// tipo nao reconhecido ("outro") passa, pra nao travar documento legitimo mal classificado.
+function conferirDocumento(ext: Extraction, aceitas: FamiliaDoc[], pedido: string): void {
+  const familia = familiaDoc(ext.documentType);
+
+  if (familia !== "outro" && !aceitas.includes(familia)) {
+    const lido = mapDocType(ext.documentType);
+    throw new Error(
+      `Documento incorreto: parece ${lido ? `"${lido}"` : "de outro tipo"}. Envie ${pedido}.`,
+    );
+  }
+
+  // Qualidade do documento: usa o score que a PRÓPRIA MOST dá pro documento inteiro
+  // (result[].score). Não usar a média dos campos: ela afunda com QR code / código de segurança
+  // e reprovaria documento bom.
+  const confianca = ext.confiancaDocumento ?? null;
+  if (confianca !== null && confianca < CONFIANCA_MINIMA) {
+    throw new Error(
+      `A qualidade do documento está ruim (leitura de ${Math.round(confianca * 100)}%, ` +
+        `mínimo ${Math.round(CONFIANCA_MINIMA * 100)}%). Envie outra foto: documento inteiro ` +
+        "na imagem, sem reflexo e bem focado.",
+    );
+  }
 }
 
 function mapCertidao(type: string): string {
@@ -417,8 +542,8 @@ function mockEnrichmentData(): Enrichment {
     available: true, conjuge: "", emails: [], estadoCivil: "CASADO",
     nomeMae: "SUELI AGUIAR PACHECO GONCALVES", nomePai: "",
     patrimonio: "R$ 100 mil a R$ 250 mil", profissao: "", raw: undefined,
-    renda: "2 a 4 salários mínimos", sexo: "F", source: "mock",
-    telefones: ["(31) 98681-5697", "(31) 3466-5697"], warnings: [],
+    renda: "2 a 4 salários mínimos", sexo: "F",
+    source: "mock", telefones: ["(31) 98681-5697", "(31) 3466-5697"], warnings: [],
   };
 }
 
@@ -440,6 +565,61 @@ async function apiPost<T>(body: Record<string, unknown>): Promise<T> {
     throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
   }
   return json.data;
+}
+
+// Fecha o ciclo: cria a ENTIDADE (papel prospect) e salva os documentos + a CAD no drive.
+// Diferente do apiPost (que fala com a leitura documental), esta rota escreve no Apolo.
+// A CAD volta pronta do servidor (com o código de autenticação impresso).
+type SalvarResposta = {
+  autenticacao: string;
+  cadBase64: string | null;
+  entityId: string;
+  savedDocs: string[];
+  warnings: string[];
+};
+
+async function apiSalvarCadastro(body: Record<string, unknown>): Promise<SalvarResposta> {
+  const token = await accessToken();
+  const response = await fetch("/api/apolo/cadastro/salvar", {
+    body: JSON.stringify(body),
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    method: "POST",
+  });
+  const json = (await response.json().catch(() => null)) as
+    | (Partial<SalvarResposta> & { error?: string })
+    | null;
+  if (!response.ok || !json?.entityId) {
+    throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
+  }
+  return {
+    autenticacao: json.autenticacao ?? "",
+    cadBase64: json.cadBase64 ?? null,
+    entityId: json.entityId,
+    savedDocs: json.savedDocs ?? [],
+    warnings: json.warnings ?? [],
+  };
+}
+
+// Baixa a CAD que o SERVIDOR gerou (base64) — é o mesmo arquivo guardado no drive, com o
+// código de autenticação impresso.
+function baixarCadBase64(base64: string, nomeArquivo: string): void {
+  const binario = atob(base64);
+  const bytes = new Uint8Array(binario.length);
+  for (let index = 0; index < binario.length; index += 1) {
+    bytes[index] = binario.charCodeAt(index);
+  }
+  const url = URL.createObjectURL(new Blob([bytes], { type: "application/pdf" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = nomeArquivo.replace(/[\\/:*?"<>|]+/g, " ").trim();
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 4000);
 }
 
 async function apiGetImobiliarias(): Promise<SelectOption[]> {
@@ -479,8 +659,8 @@ export function CadastroFlow() {
   const [identidade, setIdentidade] = useState<Identidade | null>(null);
   const [perfil, setPerfil] = useState<Perfil>({
     email: "", escolaridadeId: "", estadoCivilId: "", imobiliariaId: "",
-    patrimonio: "", profissaoId: "", rendaEstimada: "", rendaId: "",
-    sexoId: "", telefone: "",
+    patrimonio: "", profissaoId: "", regimeBensId: "", rendaEstimada: "",
+    rendaId: "", sexoId: "", telefone: "",
   });
   const [enrich, setEnrich] = useState<Enrichment | null>(null);
   const [endereco, setEndereco] = useState<Endereco | null>(null);
@@ -488,20 +668,22 @@ export function CadastroFlow() {
   // Persona definida pelo documento (RG/CNH -> pf, cartão CNPJ -> pj).
   const [persona, setPersona] = useState<Persona>("pf");
   const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_VAZIA);
-  const [imobiliarias, setImobiliarias] = useState<SelectOption[]>(
-    LOCAL_MOCK ? IMOBILIARIAS_FALLBACK : [],
-  );
+  // Originais anexados em cada etapa; vao pro drive da entidade no envio.
+  const [documentos, setDocumentos] = useState<DocumentosAnexados>({});
+  const [imobiliarias, setImobiliarias] = useState<SelectOption[]>([]);
 
-  // Imobiliárias reais do Apolo (read-model). No localhost usa o fallback.
+  // Imobiliárias reais do Apolo (read-model), inclusive no localhost: a chave de serviço do
+  // .env.local valida contra o projeto de produção (verificado 16/jul), então o antigo gate de
+  // LOCAL_MOCK + placeholders só escondia a lista real -- e deixava vincular a CAD a uma
+  // imobiliária inexistente. Sem lista, o seletor fica vazio (nunca placeholder).
   useEffect(() => {
-    if (LOCAL_MOCK) return;
     let alive = true;
     void (async () => {
       try {
         const list = await apiGetImobiliarias();
         if (alive && list.length) setImobiliarias(list);
       } catch {
-        // sem lista: seletor fica vazio (sem placeholder em produção)
+        // sem lista: seletor fica vazio
       }
     })();
     return () => {
@@ -523,6 +705,9 @@ export function CadastroFlow() {
   function jump(target: number) {
     if (target <= step) setStep(target);
   }
+
+  const reterDocumento = (categoria: DocCategoria) => (arquivo: ArquivoAnexado) =>
+    setDocumentos((prev) => ({ ...prev, [categoria]: [...(prev[categoria] ?? []), arquivo] }));
 
   const activeIndex = Math.min(step, steps.length - 1);
   const pct = Math.round(((activeIndex + 1) / steps.length) * 100);
@@ -572,18 +757,26 @@ export function CadastroFlow() {
             perfil={perfil}
             persona={persona}
             onConjugeChange={(patch) => setConjuge((c) => ({ ...c, ...patch }))}
+            onDocumento={reterDocumento("identificacao")}
+            onDocumentoConjuge={reterDocumento("identificacao_conjuge")}
             onEmpresaChange={(patch) => setEmpresa((e) => ({ ...e, ...patch }))}
             onEmpresaExtract={(ext, emp) => {
               const c = ext.cadastro;
+              // Regra: o DOCUMENTO manda, o enriquecimento cobre o que ele não trouxe.
+              // (Antes era `c.campo ?? ""`, que apagava o valor do enriquecimento sempre que o
+              // cartão CNPJ não tinha o campo — ou seja, quase sempre.)
               setEmpresa((prev) => ({
                 ...prev,
                 ...emp,
-                cnpj: c.cnpj ?? "",
-                dataAbertura: c.dataAbertura ?? "",
+                atividade: c.atividade || emp.atividade || "",
+                cnae: c.cnae || emp.cnae || "",
+                cnpj: c.cnpj || emp.cnpj || "",
+                dataAbertura: c.dataAbertura || emp.dataAbertura || "",
                 documentoLido: true,
                 naturezaJuridica: c.naturezaJuridica || emp.naturezaJuridica || "",
-                nomeFantasia: c.nomeFantasia ?? "",
-                razaoSocial: c.razaoSocial ?? "",
+                nomeFantasia: c.nomeFantasia || emp.nomeFantasia || "",
+                porte: c.porte || emp.porte || "",
+                razaoSocial: c.razaoSocial || emp.razaoSocial || "",
                 situacaoCadastral: c.situacaoCadastral || emp.situacaoCadastral || "",
                 tipoDocumento: ext.documentType,
               }));
@@ -601,9 +794,11 @@ export function CadastroFlow() {
               const c = ext.cadastro;
               setIdentidade({
                 cpf: c.cpf ?? "", dataNascimento: c.dataNascimento ?? "",
+                nacionalidade: c.nacionalidade ?? "",
+                naturalidade: c.naturalidade ?? "",
                 nome: c.nome ?? "", nomeMae: c.nomeMae || enr.nomeMae,
                 nomePai: c.nomePai || enr.nomePai,
-                orgaoEmissor: c.orgaoEmissor ?? "", rg: c.rg ?? "",
+                orgaoEmissor: c.orgaoEmissor ?? "",
                 tipoDocumento: ext.documentType,
               });
               setPerfil((p) => ({
@@ -614,7 +809,11 @@ export function CadastroFlow() {
                 patrimonio: p.patrimonio || enr.patrimonio,
                 rendaEstimada: enr.renda || p.rendaEstimada,
                 rendaId: p.rendaId || matchFaixaRendaId(enr.renda),
-                sexoId: matchSexoId(enr.sexo)?.toString() || p.sexoId,
+                // Sexo: o documento manda (RG/CNH trazem impresso); o enriquecimento é a rede.
+                sexoId:
+                  matchSexoId(c.sexo ?? "")?.toString() ||
+                  matchSexoId(enr.sexo)?.toString() ||
+                  p.sexoId,
                 telefone: p.telefone || enr.telefones[0] || "",
               }));
               setEnrich(enr);
@@ -627,6 +826,7 @@ export function CadastroFlow() {
         {current === "Endereço" ? (
           <StepEndereco
             endereco={endereco}
+            onDocumento={reterDocumento("comprovante_endereco")}
             onExtract={(ext) => {
               const c = ext.cadastro;
               setEndereco({
@@ -645,13 +845,17 @@ export function CadastroFlow() {
           <StepCertidao
             estadoCivilId={perfil.estadoCivilId}
             onBack={() => setStep(step - 1)}
+            onDocumento={reterDocumento("certidao")}
             onNext={() => setStep(step + 1)}
+            onPerfilChange={(patch) => setPerfil((p) => ({ ...p, ...patch }))}
+            regimeBensId={perfil.regimeBensId}
           />
         ) : null}
 
         {current === "Revisão" ? (
           <StepRevisao
             conjuge={temConjuge ? conjuge : null}
+            documentos={documentos}
             empresa={empresa}
             endereco={endereco}
             identidade={identidade}
@@ -720,46 +924,113 @@ function Stepper({
 
 // ---------- uploader ----------
 
+// Um DOCUMENTO pode ter varios arquivos: RG antigo tem os dados partidos entre frente (foto,
+// nome, filiacao) e verso (CPF, nascimento, naturalidade), e contrato social tem N paginas.
+// Mesclamos o que cada face trouxe: o primeiro valor preenchido ganha, o score do conjunto e o
+// da PIOR face, e os campos crus sao concatenados.
+function mesclarExtracoes(extracoes: Extraction[]): Extraction {
+  const cadastro: CadastroDraft = {};
+  const fields: Extraction["fields"] = [];
+  const scores: number[] = [];
+  const tipos: string[] = [];
+  let crop = "";
+
+  for (const ext of extracoes) {
+    for (const [chave, valor] of Object.entries(ext.cadastro ?? {})) {
+      if (valor && !cadastro[chave]) cadastro[chave] = valor;
+    }
+    fields.push(...(ext.fields ?? []));
+    if (typeof ext.confiancaDocumento === "number") scores.push(ext.confiancaDocumento);
+    if (ext.documentType) tipos.push(ext.documentType);
+    if (!crop && ext.crop) crop = ext.crop;
+  }
+
+  const gerais = extracoes
+    .map((ext) => ext.overallConfidence)
+    .filter((valor): valor is number => typeof valor === "number");
+
+  return {
+    cadastro,
+    // Vale a PIOR face: um verso ilegivel nao pode passar escondido atras de uma frente boa.
+    confiancaDocumento: scores.length ? Math.min(...scores) : null,
+    crop,
+    // Junta os tipos: a familia do documento é reconhecida por qualquer uma das faces.
+    documentType: tipos.join(" "),
+    fields,
+    overallConfidence: gerais.length
+      ? gerais.reduce((total, valor) => total + valor, 0) / gerais.length
+      : null,
+  };
+}
+
+type ArquivoLido = { arquivo: ArquivoAnexado; ext: Extraction; nome: string };
+
 function DocUploader({
   busy,
   hint,
   label,
   mockData,
   onExtracted,
+  onFile,
+  rotuloAdicionar = "Adicionar outra página (verso)",
 }: {
   busy?: boolean;
   hint: string;
   label: string;
   mockData?: (file: File) => Extraction;
   onExtracted: (ext: Extraction) => void | Promise<void>;
+  onFile?: (arquivo: ArquivoAnexado) => void;
+  rotuloAdicionar?: string;
 }) {
-  const [fileName, setFileName] = useState<string | null>(null);
+  const [lidos, setLidos] = useState<ArquivoLido[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const working = loading || Boolean(busy);
+  const done = lidos.length > 0;
 
   // Ao importar, ja le automaticamente (sem botao).
-  async function processFile(file: File) {
-    setFileName(file.name);
-    setDone(false);
+  async function processFiles(files: File[]) {
+    if (!files.length) return;
     setError(null);
     setLoading(true);
     try {
-      let ext: Extraction;
-      if (LOCAL_MOCK && mockData) {
-        await delay(1600); // finge a leitura pra mostrar a barra
-        ext = mockData(file);
-      } else {
-        ext = await apiPost<Extraction>({
-          action: "extract",
-          fileBase64: await fileToBase64(file),
-          fileName: file.name,
+      const novos: ArquivoLido[] = [];
+
+      for (const file of files) {
+        // Sempre calculado (inclusive no LOCAL_MOCK): o original e retido pra ir pro drive no
+        // envio, nao so pra alimentar a leitura.
+        const fileBase64 = await fileToBase64(file);
+        let ext: Extraction;
+        if (LOCAL_MOCK && mockData) {
+          await delay(1200); // finge a leitura pra mostrar a barra
+          ext = mockData(file);
+        } else {
+          ext = await apiPost<Extraction>({
+            action: "extract",
+            fileBase64,
+            fileName: file.name,
+          });
+        }
+        const temCrop = Boolean(ext.crop);
+        novos.push({
+          arquivo: {
+            fileBase64: temCrop ? (ext.crop as string) : fileBase64,
+            fileName: temCrop ? trocarExtensaoParaJpg(file.name) : file.name,
+            mimeType: temCrop ? "image/jpeg" : file.type || "",
+          },
+          ext,
+          nome: file.name,
         });
       }
-      await onExtracted(ext);
-      setDone(true);
+
+      const todos = [...lidos, ...novos];
+      // Alimenta a ficha com TUDO que foi lido (frente + verso). onExtracted valida e LANCA se
+      // for o tipo errado / qualidade ruim; por isso os arquivos so sao retidos depois.
+      await onExtracted(mesclarExtracoes(todos.map((item) => item.ext)));
+      for (const novo of novos) onFile?.(novo.arquivo);
+      setLidos(todos);
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -786,11 +1057,12 @@ function DocUploader({
         ) : done ? (
           <>
             <CheckCircle2 className="size-6 text-emerald-500" aria-hidden="true" />
-            <span className="flex items-center gap-1.5 text-sm font-medium text-ink">
-              <FileText className="size-3.5" aria-hidden="true" />
-              {fileName}
+            <span className="text-sm font-medium text-ink">
+              {lidos.length === 1
+                ? "1 arquivo lido"
+                : `${lidos.length} arquivos lidos`}
             </span>
-            <span className="text-xs text-ink-muted">Clique para trocar o documento</span>
+            <span className="text-xs text-ink-muted">Clique para recomeçar o documento</span>
           </>
         ) : (
           <>
@@ -800,14 +1072,69 @@ function DocUploader({
           </>
         )}
       </button>
+
+      {/* Cada arquivo lido do documento (frente, verso, páginas do contrato). */}
+      {lidos.length ? (
+        <ul className="mt-2 grid gap-1">
+          {lidos.map((item, index) => (
+            <li
+              className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-1.5 text-xs text-ink-soft"
+              key={`${item.nome}-${index}`}
+            >
+              <FileText className="size-3.5 shrink-0 text-ink-muted" aria-hidden="true" />
+              <span className="min-w-0 flex-1 truncate">{item.nome}</span>
+              <CheckCircle2 className="size-3.5 shrink-0 text-emerald-500" aria-hidden="true" />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
+      {/* No PC dá pra escolher vários de uma vez; no celular a câmera tira uma foto por vez,
+          então o botão continua aqui pra anexar o verso / a próxima página. */}
+      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => cameraRef.current?.click()}
+          disabled={working}
+          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-soft transition-colors hover:bg-subtle disabled:cursor-wait disabled:opacity-60"
+        >
+          <Camera className="size-3.5" aria-hidden="true" />
+          Usar câmera do dispositivo
+        </button>
+        {done ? (
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={working}
+            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#A07C3B]/25 bg-surface px-3 py-2 text-xs font-semibold text-[#7a5e2c] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-wait disabled:opacity-60 dark:text-[#d9b877]"
+          >
+            <UploadCloud className="size-3.5" aria-hidden="true" />
+            {rotuloAdicionar}
+          </button>
+        ) : null}
+      </div>
+
       <input
         ref={inputRef}
         type="file"
         accept="image/*,application/pdf"
+        multiple
         className="hidden"
         onChange={(event) => {
-          const file = event.target.files?.[0];
-          if (file) void processFile(file);
+          const files = Array.from(event.target.files ?? []);
+          if (files.length) void processFiles(files);
+          event.target.value = "";
+        }}
+      />
+      <input
+        ref={cameraRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={(event) => {
+          const files = Array.from(event.target.files ?? []);
+          if (files.length) void processFiles(files);
           event.target.value = "";
         }}
       />
@@ -905,6 +1232,8 @@ function StepIdentificacao({
   identidade,
   imobiliarias,
   onConjugeChange,
+  onDocumento,
+  onDocumentoConjuge,
   onEmpresaChange,
   onEmpresaExtract,
   onExtract,
@@ -920,6 +1249,8 @@ function StepIdentificacao({
   identidade: Identidade | null;
   imobiliarias: SelectOption[];
   onConjugeChange: (patch: Partial<Conjuge>) => void;
+  onDocumento: (arquivo: ArquivoAnexado) => void;
+  onDocumentoConjuge: (arquivo: ArquivoAnexado) => void;
   onEmpresaChange: (patch: Partial<Empresa>) => void;
   onEmpresaExtract: (ext: Extraction, emp: Partial<Empresa>) => void;
   onExtract: (ext: Extraction, enr: Enrichment) => void;
@@ -956,13 +1287,28 @@ function StepIdentificacao({
   // Lê o documento do cônjuge e, em seguida, enriquece pelo CPF (sexo, telefone,
   // faixa de renda, patrimônio). Escolaridade e profissão continuam manuais.
   async function lerConjuge(ext: Extraction) {
+    conferirDocumento(
+      ext,
+      ["identidade"],
+      "o documento de identificação do cônjuge (RG, CNH ou passaporte)",
+    );
     const c = ext.cadastro;
+    // Barra o documento do PRÓPRIO titular subido no lugar do cônjuge: mesmo CPF (ou, sem
+    // CPF legível, mesmo nome) = documento repetido, e a ficha do cônjuge nasceria do titular.
+    const soDigitos = (valor: string) => valor.replace(/\D/g, "");
+    const mesmoCpf =
+      soDigitos(c.cpf ?? "") &&
+      soDigitos(c.cpf ?? "") === soDigitos(identidade?.cpf ?? "");
+    const mesmoNome =
+      normalizeSearch(c.nome ?? "") &&
+      normalizeSearch(c.nome ?? "") === normalizeSearch(identidade?.nome ?? "");
+    if (mesmoCpf || mesmoNome) {
+      throw new Error(
+        "Este é o documento do titular. Envie o documento de identificação do cônjuge.",
+      );
+    }
     setEnrichingConjuge(true);
-    let enr: Enrichment = {
-      available: false, conjuge: "", emails: [], estadoCivil: "",
-      nomeMae: "", nomePai: "", patrimonio: "", profissao: "", renda: "",
-      sexo: "", source: "", telefones: [], warnings: [],
-    };
+    let enr: Enrichment = ENRICH_VAZIO;
     try {
       if (LOCAL_MOCK) {
         await delay(1400);
@@ -979,12 +1325,17 @@ function StepIdentificacao({
       cpf: c.cpf ?? "",
       dataNascimento: c.dataNascimento ?? "",
       documentoLido: true,
+      nacionalidade: c.nacionalidade ?? "",
+      naturalidade: c.naturalidade ?? "",
       nome: c.nome ?? "",
       nomeMae: c.nomeMae || enr.nomeMae,
       patrimonio: conjuge.patrimonio || enr.patrimonio || perfil.patrimonio,
       rendaId: conjuge.rendaId || matchFaixaRendaId(enr.renda),
-      rg: c.rg ?? "",
-      sexoId: conjuge.sexoId || matchSexoId(enr.sexo)?.toString() || "",
+      sexoId:
+        conjuge.sexoId ||
+        matchSexoId(c.sexo ?? "")?.toString() ||
+        matchSexoId(enr.sexo)?.toString() ||
+        "",
       telefone: conjuge.telefone || enr.telefones[0] || "",
     });
   }
@@ -997,9 +1348,26 @@ function StepIdentificacao({
       if (LOCAL_MOCK) {
         await delay(1400);
         emp = mockPjEnrichment();
+      } else {
+        // O cartão CNPJ dá o número; razão social, fantasia, abertura, situação e o QSA vêm do
+        // enriquecimento por CNPJ (CARELI_PJ_01). Sem isto o fluxo PJ nascia todo vazio.
+        const cnpj = ext.cadastro.cnpj ?? "";
+        if (cnpj) {
+          const dados = await apiPost<CompanyEnrichment>({ action: "enrich-company", cnpj });
+          emp = {
+            dataAbertura: dados.dataAbertura,
+            email: dados.emails[0] ?? "",
+            nomeFantasia: dados.nomeFantasia,
+            porte: dados.porte,
+            razaoSocial: dados.razaoSocial,
+            situacaoCadastral: dados.situacaoCadastral,
+            socios: dados.socios,
+            telefone: dados.telefones[0] ?? "",
+          };
+        }
       }
-      // Em produção o enriquecimento PJ (query MOST por CNPJ) ainda não está
-      // provisionado; segue com o que o cartão CNPJ trouxe.
+    } catch {
+      // enriquecimento é best-effort: segue com o que o cartão CNPJ trouxe
     } finally {
       setEnriching(false);
     }
@@ -1042,7 +1410,14 @@ function StepIdentificacao({
           mockData={(file) =>
             /cnpj/i.test(file.name) ? mockPjExtraction() : mockIdentidadeExtraction()
           }
+          onFile={onDocumento}
           onExtracted={async (ext) => {
+            // Aqui só entra documento de identificação (PF) ou cartão CNPJ (PJ).
+            conferirDocumento(
+              ext,
+              ["identidade", "cnpj"],
+              "o documento de identificação (RG, CNH ou passaporte) ou o cartão CNPJ",
+            );
             if (isCnpjDoc(ext.documentType)) {
               onPersona("pj");
               await lerEmpresa(ext);
@@ -1050,11 +1425,7 @@ function StepIdentificacao({
             }
             onPersona("pf");
             setEnriching(true);
-            let enr: Enrichment = {
-              available: false, conjuge: "", emails: [], estadoCivil: "",
-              nomeMae: "", nomePai: "", patrimonio: "", profissao: "", renda: "",
-              sexo: "", source: "", telefones: [], warnings: [],
-            };
+            let enr: Enrichment = ENRICH_VAZIO;
             try {
               if (LOCAL_MOCK) {
                 await delay(1400);
@@ -1132,8 +1503,9 @@ function StepIdentificacao({
             <ReadField label="CPF" value={identidade.cpf} />
             <ReadField label="Nascimento" value={formatDateBR(identidade.dataNascimento)} />
             <ReadField label="Idade" value={calcIdade(identidade.dataNascimento)} />
-            <ReadField label="RG" value={identidade.rg} />
             <ReadField label="Nome da mãe" value={titleCase(identidade.nomeMae)} span2 />
+            <ReadField label="Naturalidade" value={titleCase(identidade.naturalidade)} />
+            <ReadField label="Nacionalidade" value={titleCase(identidade.nacionalidade)} />
           </Secao>
 
           <Secao title="Perfil">
@@ -1206,6 +1578,7 @@ function StepIdentificacao({
                   label="Documento do cônjuge"
                   hint="RG ou CNH · imagem ou PDF"
                   mockData={mockConjugeExtraction}
+                  onFile={onDocumentoConjuge}
                   onExtracted={lerConjuge}
                 />
               </div>
@@ -1217,8 +1590,9 @@ function StepIdentificacao({
                     <ReadField label="CPF" value={conjuge.cpf} />
                     <ReadField label="Nascimento" value={formatDateBR(conjuge.dataNascimento)} />
                     <ReadField label="Idade" value={calcIdade(conjuge.dataNascimento)} />
-                    <ReadField label="RG" value={conjuge.rg} />
                     <ReadField label="Nome da mãe" value={titleCase(conjuge.nomeMae)} span2 />
+                    <ReadField label="Naturalidade" value={titleCase(conjuge.naturalidade)} />
+                    <ReadField label="Nacionalidade" value={titleCase(conjuge.nacionalidade)} />
                   </Secao>
 
                   <Secao title="Perfil do cônjuge">
@@ -1314,11 +1688,13 @@ function ComprovanteRecencia({ data }: { data: string }) {
 function StepEndereco({
   endereco,
   onBack,
+  onDocumento,
   onExtract,
   onNext,
 }: {
   endereco: Endereco | null;
   onBack: () => void;
+  onDocumento: (arquivo: ArquivoAnexado) => void;
   onExtract: (ext: Extraction) => void;
   onNext: () => void;
 }) {
@@ -1329,7 +1705,25 @@ function StepEndereco({
           label="Adicionar comprovante de endereço"
           hint="Conta de luz, água, telefone · imagem ou PDF"
           mockData={mockEnderecoExtraction}
-          onExtracted={onExtract}
+          onFile={onDocumento}
+          onExtracted={(ext) => {
+            // Aqui só entra comprovante: RG/certidão/cartão CNPJ são recusados.
+            conferirDocumento(
+              ext,
+              ["comprovante"],
+              "um comprovante de endereço (conta de luz, água ou telefone)",
+            );
+            // Comprovante vence em 3 meses: acima disso não serve de prova de endereço.
+            const emissao = acharDataComprovante(ext.fields);
+            const meses = emissao ? mesesDesde(emissao) : null;
+            if (meses !== null && meses > 3) {
+              throw new Error(
+                `Comprovante vencido: emitido há ${meses} meses (${formatDateBR(emissao)}). ` +
+                  "Envie um comprovante com até 3 meses de emissão.",
+              );
+            }
+            onExtract(ext);
+          }}
         />
       </div>
       {endereco ? (
@@ -1356,22 +1750,31 @@ function StepEndereco({
 function StepCertidao({
   estadoCivilId,
   onBack,
+  onDocumento,
   onNext,
+  onPerfilChange,
+  regimeBensId,
 }: {
   estadoCivilId: string;
   onBack: () => void;
+  onDocumento: (arquivo: ArquivoAnexado) => void;
   onNext: () => void;
+  onPerfilChange: (patch: Partial<Perfil>) => void;
+  regimeBensId: string;
 }) {
   const [certidao, setCertidao] = useState<Extraction | null>(null);
+  const [regimeLido, setRegimeLido] = useState(false);
   const valida = certidao ? isCertidao(certidao.documentType) : null;
   const esperada = certidaoEsperada(estadoCivilId);
   const tituloMinusculo = esperada.titulo.toLowerCase();
+  // Regime de bens só existe em casamento / união estável (o C2X guarda em property_regimes).
+  const pedeRegime = ["2", "6"].includes(estadoCivilId);
 
   return (
     <StepCard title="3. Certidão">
       <p className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 print:hidden">
-        Envie a <span className="font-semibold">{tituloMinusculo}</span>. O MOST
-        verifica a autenticidade do documento.
+        Envie a <span className="font-semibold">{tituloMinusculo}</span>. A autenticidade do
+        documento é verificada automaticamente.
       </p>
 
       <div>
@@ -1383,14 +1786,27 @@ function StepCertidao({
             label={`Enviar ${tituloMinusculo}`}
             hint={`${esperada.hint} · imagem ou PDF`}
             mockData={mockCertidaoExtraction}
-            onExtracted={setCertidao}
+            onFile={onDocumento}
+            onExtracted={(ext) => {
+              conferirDocumento(ext, ["certidao"], `a ${tituloMinusculo}`);
+              setCertidao(ext);
+              if (!pedeRegime) {
+                return;
+              }
+              // Se o MOST reconheceu o regime na certidão, preenche; senão fica manual.
+              const id = acharRegimeCertidao(ext);
+              setRegimeLido(Boolean(id));
+              if (id) {
+                onPerfilChange({ regimeBensId: id });
+              }
+            }}
           />
         </div>
         {certidao ? (
           valida ? (
             <div className="mt-2 flex items-center gap-2 rounded-lg border border-emerald-200 dark:border-emerald-500/30 bg-emerald-50 dark:bg-emerald-500/12 px-3 py-2 text-xs font-medium text-emerald-700 dark:text-emerald-300">
               <CheckCircle2 className="size-4" aria-hidden="true" />
-              Autenticidade confirmada pelo MOST ({mapCertidao(certidao.documentType)}).
+              Autenticidade confirmada ({mapCertidao(certidao.documentType)}).
             </div>
           ) : (
             <div className="mt-2 flex items-center gap-2 rounded-lg border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-medium text-rose-700 dark:text-rose-300">
@@ -1401,8 +1817,39 @@ function StepCertidao({
         ) : null}
       </div>
 
+      {/* O regime só existe depois da certidão lida: antes disso não há o que mostrar (era o
+          campo aparecendo em branco, pedindo digitação, antes mesmo do documento). */}
+      {pedeRegime && certidao ? (
+        <Secao title="Regime de bens">
+          {/* Lido da certidão = read-only (o documento é a fonte, não a digitação). Só quando a
+              leitura não reconhece o regime é que o campo abre pra seleção manual. */}
+          {regimeLido ? (
+            <ReadField
+              label="Regime de casamento"
+              value={
+                C2X_REGIME_BENS.find((o) => o.id.toString() === regimeBensId)?.label ?? ""
+              }
+            />
+          ) : (
+            <>
+              <SelectField
+                label="Regime de casamento"
+                value={regimeBensId}
+                options={C2X_REGIME_BENS}
+                onChange={(v) => onPerfilChange({ regimeBensId: v })}
+              />
+              {certidao ? (
+                <p className="m-0 self-center text-xs text-ink-muted sm:col-span-2">
+                  Não foi possível ler o regime nesta certidão. Selecione conforme o documento.
+                </p>
+              ) : null}
+            </>
+          )}
+        </Secao>
+      ) : null}
+
       <NavButtons
-        canNext={Boolean(valida)}
+        canNext={Boolean(valida) && (!pedeRegime || Boolean(regimeBensId))}
         onBack={onBack}
         onNext={onNext}
         nextLabel="Avançar para revisão"
@@ -1413,6 +1860,7 @@ function StepCertidao({
 
 function StepRevisao({
   conjuge,
+  documentos,
   empresa,
   endereco,
   identidade,
@@ -1422,6 +1870,7 @@ function StepRevisao({
   persona,
 }: {
   conjuge: Conjuge | null;
+  documentos: DocumentosAnexados;
   empresa: Empresa;
   endereco: Endereco | null;
   identidade: Identidade | null;
@@ -1440,20 +1889,65 @@ function StepRevisao({
   const registro = formatRegistro(new Date());
   const cadTitulo = `CAD - ${nomeCliente} - ${registro.completo}`;
   const [enviado, setEnviado] = useState(false);
+  const [enviando, setEnviando] = useState(false);
+  const [erroEnvio, setErroEnvio] = useState<string | null>(null);
+  const [resultado, setResultado] = useState<SalvarResposta | null>(null);
 
   // Certidões, análise financeira (GOLD) e demais consultas sob demanda saíram
   // do cadastro (decisão do Lucas 11/jul): o cadastro/CAD mostra só o que é
   // automático; o sob demanda o operador roda depois, na ficha do Apolo.
-  function enviar() {
-    setEnviado(true);
+  // Envio = nascimento da ENTIDADE pelo papel Prospect: cria o cadastro no Apolo e sobe pro
+  // drive os documentos originais anexados + o CAD gerado aqui.
+  async function enviar() {
+    setEnviando(true);
+    setErroEnvio(null);
+    try {
+      const anexos = Object.entries(documentos).flatMap(([categoria, arquivos]) =>
+        (arquivos ?? []).map((arquivo) => ({
+          categoria,
+          fileBase64: arquivo.fileBase64,
+          fileName: arquivo.fileName,
+          mimeType: arquivo.mimeType,
+        })),
+      );
+
+      const salvo = await apiSalvarCadastro({
+        // Estrutura da CAD: o PDF é montado no servidor, com o código de autenticação.
+        cad: montarCadDoc(),
+        conjuge: conjuge
+          ? {
+              cpf: conjuge.cpf,
+              dataNascimento: conjuge.dataNascimento,
+              email: conjuge.email,
+              nome: conjuge.nome,
+              nomeMae: conjuge.nomeMae,
+              telefone: conjuge.telefone,
+            }
+          : null,
+        documentos: anexos,
+        empresa: isPj ? empresa : null,
+        endereco,
+        identidade,
+        perfil: { ...perfil, imobiliariaLabel: label(imobiliarias, perfil.imobiliariaId) },
+        persona,
+        role: "prospect",
+      });
+      setResultado(salvo);
+      setEnviado(true);
+    } catch (error) {
+      setErroEnvio((error as Error).message);
+    } finally {
+      setEnviando(false);
+    }
   }
 
-  function gerarCad() {
+  // Monta o CAD uma vez: serve tanto pro botao Baixar quanto pro arquivo salvo no drive.
+  function montarCadDoc(): CadDoc {
     const secoes: CadSecao[] = [];
     if (isPj) {
+      // Razão social / nome NÃO entram como campo: já vão em destaque no topo da ficha.
       secoes.push(
         cadSection("Dados da empresa", [
-          cadField("Razão social", nomeCliente, true),
           cadField("Nome fantasia", titleCase(empresa.nomeFantasia)),
           cadField("CNPJ", empresa.cnpj),
           cadField("Abertura", formatDateBR(empresa.dataAbertura)),
@@ -1492,16 +1986,21 @@ function StepRevisao({
         ]),
       );
     } else {
+      // O nome NÃO entra como campo: já vai em destaque no topo da ficha.
       secoes.push(
         cadSection("Identificação", [
-          cadField("Nome", nomeCliente, true),
           cadField("CPF", identidade?.cpf ?? ""),
-          cadField("RG", identidade?.rg ?? ""),
           cadField("Nascimento", formatDateBR(identidade?.dataNascimento ?? "")),
           cadField("Idade", calcIdade(identidade?.dataNascimento ?? "")),
           cadField("Nome da mãe", titleCase(identidade?.nomeMae ?? ""), true),
+          cadField("Naturalidade", titleCase(identidade?.naturalidade ?? "")),
+          cadField("Nacionalidade", titleCase(identidade?.nacionalidade ?? "")),
           cadField("Sexo", label(C2X_SEXO, perfil.sexoId)),
           cadField("Estado civil", label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)),
+          // Regime só entra quando existe (casado / união estável).
+          ...(perfil.regimeBensId
+            ? [cadField("Regime de bens", label(C2X_REGIME_BENS, perfil.regimeBensId))]
+            : []),
         ]),
       );
       secoes.push(
@@ -1534,11 +2033,17 @@ function StepRevisao({
           cadSection("Cônjuge", [
             cadField("Nome", titleCase(conjuge.nome), true),
             cadField("CPF", conjuge.cpf),
-            cadField("RG", conjuge.rg),
             cadField("Nascimento", formatDateBR(conjuge.dataNascimento)),
+            cadField("Idade", calcIdade(conjuge.dataNascimento)),
             cadField("Nome da mãe", titleCase(conjuge.nomeMae), true),
+            cadField("Naturalidade", titleCase(conjuge.naturalidade)),
+            cadField("Nacionalidade", titleCase(conjuge.nacionalidade)),
             cadField("Sexo", label(C2X_SEXO, conjuge.sexoId)),
             cadField("Estado civil", label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)),
+            // Regime é do CASAMENTO: o cônjuge herda o mesmo do titular.
+            ...(perfil.regimeBensId
+              ? [cadField("Regime de bens", label(C2X_REGIME_BENS, perfil.regimeBensId))]
+              : []),
             cadField("Escolaridade", label(C2X_ESCOLARIDADE, conjuge.escolaridadeId)),
             cadField("Faixa de renda", label(C2X_FAIXA_RENDA, conjuge.rendaId)),
             cadField("Patrimônio", conjuge.patrimonio),
@@ -1549,7 +2054,7 @@ function StepRevisao({
         );
       }
     }
-    void gerarCadPdf({
+    return {
       arquivo: cadTitulo,
       data: registro.data,
       hora: registro.hora,
@@ -1557,11 +2062,13 @@ function StepRevisao({
       papel: isPj ? "Pessoa jurídica" : "Prospect",
       secoes,
       vinculo: label(imobiliarias, perfil.imobiliariaId),
-    });
+    };
   }
 
   return (
     <div className="rounded-2xl border border-line bg-surface p-6 shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
+      {/* Sem "baixar" antes do envio: a CAD só existe depois de enviada, gerada no servidor e
+          autenticada. Assim não circula ficha sem código de autenticação. */}
       <div className="flex items-center justify-between gap-3 border-b border-line pb-4">
         <div className="flex items-center gap-2.5">
           <span className="flex size-9 items-center justify-center rounded-lg bg-inverse text-brand-ink">
@@ -1574,14 +2081,6 @@ function StepRevisao({
             </p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={gerarCad}
-          className="inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink hover:bg-inverse/90"
-        >
-          <Download className="size-4" aria-hidden="true" />
-          Baixar CAD (PDF)
-        </button>
       </div>
 
       {isPj ? (
@@ -1634,10 +2133,17 @@ function StepRevisao({
             <ReadField label="CPF" value={identidade?.cpf ?? ""} />
             <ReadField label="Nascimento" value={formatDateBR(identidade?.dataNascimento ?? "")} />
             <ReadField label="Idade" value={calcIdade(identidade?.dataNascimento ?? "")} />
-            <ReadField label="RG" value={identidade?.rg ?? ""} />
             <ReadField label="Nome da mãe" value={titleCase(identidade?.nomeMae ?? "")} span2 />
+            <ReadField label="Naturalidade" value={titleCase(identidade?.naturalidade ?? "")} />
+            <ReadField label="Nacionalidade" value={titleCase(identidade?.nacionalidade ?? "")} />
             <ReadField label="Sexo" value={label(C2X_SEXO, perfil.sexoId)} />
             <ReadField label="Estado civil" value={label(C2X_ESTADO_CIVIL, perfil.estadoCivilId)} />
+            {perfil.regimeBensId ? (
+              <ReadField
+                label="Regime de bens"
+                value={label(C2X_REGIME_BENS, perfil.regimeBensId)}
+              />
+            ) : null}
           </Secao>
 
           <Secao title="Perfil">
@@ -1666,7 +2172,6 @@ function StepRevisao({
             <Secao title="Cônjuge">
               <ReadField label="Nome" value={titleCase(conjuge.nome)} span2 />
               <ReadField label="CPF" value={conjuge.cpf} />
-              <ReadField label="RG" value={conjuge.rg} />
               <ReadField label="Nascimento" value={formatDateBR(conjuge.dataNascimento)} />
               <ReadField label="Sexo" value={label(C2X_SEXO, conjuge.sexoId)} />
               <ReadField label="Escolaridade" value={label(C2X_ESCOLARIDADE, conjuge.escolaridadeId)} />
@@ -1680,6 +2185,101 @@ function StepRevisao({
         </>
       )}
 
+      {erroEnvio ? (
+        <p className="mt-4 rounded-lg border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-medium text-rose-700 dark:text-rose-300">
+          {erroEnvio}
+        </p>
+      ) : null}
+
+      {/* Fecho do processo: popup sobre a ficha (fundo embaçado) confirmando o nascimento da
+          entidade e entregando a CAD na mão. Fechar volta pro Apolo. */}
+      {enviado ? (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+          role="dialog"
+        >
+          <div className="w-full max-w-md rounded-2xl border border-line bg-surface p-6 shadow-2xl">
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                  <Check className="size-5" aria-hidden="true" />
+                </span>
+                <div className="min-w-0">
+                  <h2 className="m-0 text-base font-semibold text-ink">
+                    CAD enviada com sucesso
+                  </h2>
+                  <p className="m-0 mt-0.5 text-xs text-ink-muted">
+                    {nomeCliente} · Prospect
+                  </p>
+                  <p className="m-0 text-xs text-ink-muted">
+                    Enviada em {registro.data} às {registro.hora}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                aria-label="Fechar"
+                onClick={() => {
+                  window.location.href = "/apolo";
+                }}
+                className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
+              >
+                <X className="size-4" aria-hidden="true" />
+              </button>
+            </div>
+
+            {resultado?.autenticacao ? (
+              <div className="mt-4 rounded-lg border border-line bg-subtle px-3 py-2">
+                <p className="m-0 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                  Código de autenticação
+                </p>
+                <p className="m-0 mt-0.5 font-mono text-sm font-semibold text-ink">
+                  {resultado.autenticacao}
+                </p>
+              </div>
+            ) : null}
+
+            {resultado?.savedDocs.length ? (
+              <p className="m-0 mt-2 rounded-lg bg-subtle px-3 py-2 text-xs text-ink-soft">
+                {resultado.savedDocs.length}{" "}
+                {resultado.savedDocs.length === 1 ? "arquivo salvo" : "arquivos salvos"} no
+                drive do cadastro.
+              </p>
+            ) : null}
+
+            {resultado?.warnings.length ? (
+              <p className="m-0 mt-2 rounded-lg bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                Revisar: {resultado.warnings.join(" · ")}
+              </p>
+            ) : null}
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              <button
+                type="button"
+                disabled={!resultado?.cadBase64}
+                onClick={() => {
+                  // Baixa exatamente o PDF que o servidor gerou e guardou (com o código).
+                  if (resultado?.cadBase64) {
+                    baixarCadBase64(resultado.cadBase64, `${cadTitulo}.pdf`);
+                  }
+                }}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:opacity-50"
+              >
+                <Download className="size-4" aria-hidden="true" />
+                Baixar CAD
+              </button>
+              <a
+                href="/apolo/cadastro"
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-semibold text-ink-soft transition-colors hover:bg-subtle"
+              >
+                Novo cadastro
+              </a>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div className="mt-6 flex items-center justify-between gap-2">
         <button
           type="button"
@@ -1688,19 +2288,19 @@ function StepRevisao({
         >
           Voltar
         </button>
-        {enviado ? (
-          <span className="inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-50 dark:bg-emerald-500/12 px-4 text-sm font-semibold text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-200 dark:ring-emerald-500/25">
-            <Check className="size-4" aria-hidden="true" />
-            Cadastro enviado
-          </span>
-        ) : (
+        {enviado ? null : (
           <button
             type="button"
-            onClick={enviar}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90"
+            disabled={enviando}
+            onClick={() => void enviar()}
+            className="inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-wait disabled:opacity-70"
           >
-            <Send className="size-4" aria-hidden="true" />
-            Enviar
+            {enviando ? (
+              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+            ) : (
+              <Send className="size-4" aria-hidden="true" />
+            )}
+            {enviando ? "Enviando" : "Enviar"}
           </button>
         )}
       </div>
@@ -1757,10 +2357,13 @@ function SelectField({
         </span>
         {hint ? <span className="text-[10px] text-[#A07C3B]">{hint}</span> : null}
       </div>
+      {/* O popup do <select> e desenhado pelo browser: com bg-transparent ele cai no branco
+          padrao e a <option> herda o text-ink claro do dark -> texto ilegivel. Por isso o
+          fundo e a cor das opcoes vao explicitos aqui (o color-scheme global cuida do resto). */}
       <select
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className="mt-0.5 w-full bg-transparent text-sm text-ink outline-none"
+        className="mt-0.5 w-full bg-surface text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
       >
         <option value="">Selecione…</option>
         {options.map((option) => (

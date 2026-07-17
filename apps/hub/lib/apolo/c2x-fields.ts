@@ -19,6 +19,17 @@ export const C2X_ESTADO_CIVIL: C2xOption[] = [
   { id: 6, label: "União Estável" },
 ];
 
+// Regime de bens (property_regimes do C2X, levantado 16/jul). So se aplica a casado /
+// uniao estavel; a fonte e a certidao de casamento.
+export const C2X_REGIME_BENS: C2xOption[] = [
+  { id: 1, label: "Comunhão parcial de bens" },
+  { id: 2, label: "Comunhão universal de bens" },
+  { id: 3, label: "Separação de bens" },
+  { id: 4, label: "Participação final nos aquestos" },
+  { id: 5, label: "Regime misto" },
+  { id: 6, label: "Pacto antenupcial" },
+];
+
 export const C2X_ESCOLARIDADE: C2xOption[] = [
   { id: 1, label: "Analfabeto" },
   { id: 2, label: "Fundamental Incompleto" },
@@ -69,6 +80,22 @@ export function matchEstadoCivilId(label: string): number | null {
   if (v.includes("VIUV")) return 5;
   if (v.includes("UNIAO") || v.includes("ESTAVEL")) return 6;
   return null;
+}
+
+// Casa o regime de bens lido da certidao (texto livre: "COMUNHAO PARCIAL DE BENS",
+// "SEPARACAO TOTAL"...) com o id do C2X. Devolve "" quando nao reconhece -- ai o operador
+// escolhe na mao. Ordem importa: "universal" antes de "parcial" nao colide, mas "pacto
+// antenupcial" costuma vir junto com o regime, entao vem por ultimo.
+export function matchRegimeBensId(text: string): string {
+  const v = normalize(text);
+  if (!v) return "";
+  if (v.includes("UNIVERSAL")) return "2";
+  if (v.includes("PARCIAL")) return "1";
+  if (v.includes("SEPARA")) return "3";
+  if (v.includes("AQUESTO") || v.includes("PARTICIPACAO FINAL")) return "4";
+  if (v.includes("MISTO")) return "5";
+  if (v.includes("ANTENUPCIAL")) return "6";
+  return "";
 }
 
 // Mapeia genero do enriquecimento (F/M) para o sexo do C2X.
