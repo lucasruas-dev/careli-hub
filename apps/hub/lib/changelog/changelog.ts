@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-17-iris-recupera-midia-antiga",
+    deployedAt: "2026-07-17T11:15:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Os áudios, imagens e PDFs recebidos nos grupos e no Direct ANTES de ontem à noite voltam a abrir (foram recuperados do WhatsApp).",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 844d06c4 (v1.41.0)",
+    technical: {
+      done: "O time nao ouvia audios: as midias anteriores ao conserto do download (corte 16/jul ~23h, v1.41.0) nunca tiveram o binario baixado — o processador so gravava '[audio]'/'[documento]' e provider_payload.media ficava null, entao nao havia audioUrl pro player. A Evolution AINDA guarda os binarios (verificado chamando chat/getBase64FromMediaMessage num audio 'falhado'), entao da pra preencher retroativamente: 35 pendentes (19 imagem, 9 audio, 4 doc, 2 sticker, 1 video). POST /api/iris/media-backfill (sessao de operador; FORA de /api/iris/evolution porque o gate libera aquele prefixo por PREFIXO): varre as msgs evolution sem media, busca, sobe pro Storage (uploadInboundMediaBuffer) e grava provider_payload.media.{url,type,fileName,mimeType}; roda em lote (limit 10, max 25) e e reentrante. Tambem: persistInboundMedia falhava MUDO (retornava null sem log) — o que cegou o diagnostico; agora loga messageId/tipo/chat.",
+      motivation:
+        "Lucas: 'estamos com problema de ouvir os audios no grupo e direct'. Diagnostico: nao era o player nem o formato (ogg/opus abre e o arquivo e servido certo) — era midia antiga sem arquivo nenhum.",
+    },
+    title: "Iris: recupera as mídias antigas dos grupos/Direct (áudio, imagem, PDF)",
+    type: "correcao",
+    version: "1.41.1",
+  },
+  {
     buildTag: "2026-07-15-iris-niveis-de-acesso",
     deployedAt: "2026-07-15T23:30:00-03:00",
     modules: [
