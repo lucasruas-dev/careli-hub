@@ -4,6 +4,7 @@ import { authorizeApoloRead } from "@/lib/apolo/auth";
 import {
   MostqiError,
   authenticateMostqi,
+  enrichCompany,
   enrichPerson,
   extractDocument,
   getMostqiStatus,
@@ -37,6 +38,7 @@ export async function POST(request: Request) {
 
   const body = (await request.json().catch(() => null)) as {
     action?: string;
+    cnpj?: string;
     cpf?: string;
     datasets?: string[];
     documento?: string;
@@ -109,6 +111,11 @@ export async function POST(request: Request) {
         fileBase64: stripDataUrl(body.fileBase64),
         fileName: body.fileName,
         includeRaw: true,
+        // Imagem TRATADA do documento (endireitada, sem fundo) -- vem em result[].image e e
+        // ela que vai pro drive no lugar da foto crua do operador.
+        // NAO pedimos returnCrops: confirmado no JSON cru que "crops" sao a foto 3x4 e a
+        // assinatura, nao o documento.
+        returnImage: true,
         tags: body.tags,
       });
       return NextResponse.json({ data: extraction }, { headers: noStore });
@@ -139,6 +146,21 @@ export async function POST(request: Request) {
     try {
       const enr = await enrichPerson(String(body.cpf ?? ""), {
         datasets: Array.isArray(body.datasets) ? body.datasets : undefined,
+        includeRaw: true,
+        query: typeof body.query === "string" ? body.query : undefined,
+      });
+      return NextResponse.json({ data: enr }, { headers: noStore });
+    } catch (error) {
+      return respondMostqiError(error);
+    }
+  }
+
+  // Enriquecimento da EMPRESA por CNPJ (query CARELI_PJ_01). Era o buraco do fluxo PJ: o
+  // cartao CNPJ so devolve o numero, e o resto (razao social, fantasia, abertura, situacao,
+  // socios) vem daqui.
+  if (body.action === "enrich-company") {
+    try {
+      const enr = await enrichCompany(String(body.cnpj ?? ""), {
         includeRaw: true,
         query: typeof body.query === "string" ? body.query : undefined,
       });

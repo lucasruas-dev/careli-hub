@@ -215,9 +215,23 @@ export type CadastroDraft = {
   bairro: string;
   cep: string;
   cidade: string;
+  // --- EMPRESA (cartao CNPJ) ---
+  // O cartao entrega tudo isto com ~99% de confianca; sem os campos aqui o dado era lido e
+  // jogado fora (o fluxo PJ nascia vazio). Capital social NAO vem no cartao.
+  atividade: string;
+  cnae: string;
+  cnpj: string;
+  dataAbertura: string;
+  naturezaJuridica: string;
+  nomeFantasia: string;
+  porte: string;
+  razaoSocial: string;
+  situacaoCadastral: string;
   cpf: string;
   dataNascimento: string;
   logradouro: string;
+  // Nacionalidade impressa no documento (a CNH devolve "BRASILEIRO A", ~98%).
+  nacionalidade: string;
   naturalidade: string;
   nome: string;
   nomeMae: string;
@@ -225,13 +239,23 @@ export type CadastroDraft = {
   numero: string;
   orgaoEmissor: string;
   rg: string;
+  // Sexo impresso no proprio documento (RG/CNH trazem). Antes so tentavamos pelo
+  // enriquecimento, que nem sempre tem o dado -- e o campo ficava vazio a toa.
+  sexo: string;
   uf: string;
 };
 
 export type DocumentExtraction = {
   cadastro: CadastroDraft;
+  // Confianca do DOCUMENTO INTEIRO, dita pela MOST (result[].score). E o porteiro: barra foto
+  // ruim. Nao confundir com overallConfidence (media dos campos), que engana nos dois sentidos.
+  confiancaDocumento: number | null;
+  // Imagem TRATADA do documento (result[].image, com returnImage): endireitada e sem fundo.
+  // Base64 puro. Vazio quando a MOST nao devolve.
+  crop: string;
   documentType: string;
   fields: CadastroField[];
+  // Media de TODOS os campos lidos. Fica pra diagnostico; NAO serve de porteiro.
   overallConfidence: number | null;
   raw?: unknown;
   source: "mock" | "mostqi";
@@ -239,14 +263,63 @@ export type DocumentExtraction = {
   warnings: string[];
 };
 
+// Imagem TRATADA do documento (endireitada, sem fundo): vem em result[].image, e so quando a
+// chamada pede returnImage.
+//
+// CUIDADO: NAO usar result[].crops -- confirmado no JSON cru (16/jul), crops sao recortes de
+// PEDACOS do documento ("foto" 3x4 do rosto, "assinatura", "assinado"). Pegar o primeiro deles
+// salvaria a foto 3x4 no lugar do documento.
+function acharImagemTratada(payload: unknown): string {
+  const root = asRecord(payload);
+  const lista = Array.isArray(root?.result) ? (root?.result as unknown[]) : [];
+
+  for (const item of lista) {
+    const valor = asRecord(item)?.image;
+    if (typeof valor === "string" && valor.length > 512) {
+      return valor.startsWith("data:") ? valor.slice(valor.indexOf(",") + 1) : valor;
+    }
+  }
+
+  return "";
+}
+
+// Confianca do DOCUMENTO INTEIRO, dita pela propria MOST em result[].score. E este o numero
+// que barra documento ruim -- nao a media dos campos (que afunda com QR code / codigo de
+// seguranca e reprova documento bom).
+function scoreDoDocumento(payload: unknown): number | null {
+  const root = asRecord(payload);
+  const lista = Array.isArray(root?.result) ? (root?.result as unknown[]) : [];
+  const scores: number[] = [];
+
+  for (const item of lista) {
+    const valor = asRecord(item)?.score;
+    if (typeof valor === "number") scores.push(valor);
+  }
+
+  if (!scores.length) return null;
+
+  // Documento de varias paginas/faces: vale a pior leitura.
+  return Math.min(...scores);
+}
+
 function emptyCadastro(): CadastroDraft {
   return {
     bairro: "",
+    atividade: "",
     cep: "",
     cidade: "",
+    cnae: "",
+    cnpj: "",
     cpf: "",
+    dataAbertura: "",
+    naturezaJuridica: "",
+    nomeFantasia: "",
+    porte: "",
+    razaoSocial: "",
+    situacaoCadastral: "",
     dataNascimento: "",
     logradouro: "",
+    nacionalidade: "",
     naturalidade: "",
     nome: "",
     nomeMae: "",
@@ -254,6 +327,7 @@ function emptyCadastro(): CadastroDraft {
     numero: "",
     orgaoEmissor: "",
     rg: "",
+    sexo: "",
     uf: "",
   };
 }
@@ -318,14 +392,30 @@ function collectFields(node: unknown, out: CadastroField[], seen: Set<unknown>) 
 // Dicionario de sinonimos: aponta cada campo do cadastro para os nomes que o
 // MOSTQI costuma usar (RG/CNH/comprovante). Casamos por "contem".
 const FIELD_MATCHERS: Array<{ target: keyof CadastroDraft; needles: string[] }> = [
-  { needles: ["nome-mae", "filiacao-mae", "mae"], target: "nomeMae" },
+  // "filiacao-1" e o rotulo real que a CNH devolve pra mae (o nome da mae vinha por acaso,
+  // do enriquecimento). O PAI fica de fora de proposito: nao entra no cadastro.
+  { needles: ["nome-mae", "filiacao-mae", "filiacao-1", "mae"], target: "nomeMae" },
   { needles: ["nome-pai", "filiacao-pai", "pai"], target: "nomePai" },
   { needles: ["nome-social", "nome-completo", "nome", "titular"], target: "nome" },
   { needles: ["cpf"], target: "cpf" },
+  { needles: ["cnpj"], target: "cnpj" },
+  // Cartao CNPJ: rotulos reais conferidos no JSON cru.
+  { needles: ["nome-empresarial", "nome-empresa", "razao-social"], target: "razaoSocial" },
+  { needles: ["nome-fantasia"], target: "nomeFantasia" },
+  { needles: ["data-registro", "data-inscricao", "data-abertura"], target: "dataAbertura" },
+  { needles: ["situacao-cadastral"], target: "situacaoCadastral" },
+  { needles: ["natureza-juridica"], target: "naturezaJuridica" },
+  { needles: ["porte"], target: "porte" },
+  { needles: ["codigo-atividade-economica", "cnae"], target: "cnae" },
+  { needles: ["descricao-codigo-servico", "atividade-principal"], target: "atividade" },
   { needles: ["registro-geral", "rg", "identidade", "doc-identidade"], target: "rg" },
   { needles: ["data-nascimento", "nascimento", "data-nasc", "dt-nascimento"], target: "dataNascimento" },
   { needles: ["orgao-emissor", "orgao-expedidor", "emissor", "expedidor"], target: "orgaoEmissor" },
-  { needles: ["naturalidade", "natural"], target: "naturalidade" },
+  { needles: ["sexo", "genero", "gender", "sex"], target: "sexo" },
+  // Rotulos reais: a CNH manda "local_nascimento" ("ESPINOSA / MG") e o RG manda partido em
+  // "naturalidade_cidade" + "naturalidade_uf" (a UF e juntada em juntarNaturalidade).
+  { needles: ["naturalidade-cidade", "local-nascimento", "naturalidade", "natural"], target: "naturalidade" },
+  { needles: ["nacionalidade", "nationality"], target: "nacionalidade" },
   { needles: ["logradouro", "endereco", "rua", "avenida"], target: "logradouro" },
   { needles: ["numero", "num", "nro"], target: "numero" },
   { needles: ["bairro"], target: "bairro" },
@@ -345,24 +435,106 @@ function keyScore(key: string, needle: string): number {
   return 0;
 }
 
+// Tipos de via: se o unico texto antes do numero for um destes, o numero faz parte do NOME
+// da via ("Rua 7 de Setembro") e nao e o numero da casa.
+const TIPOS_VIA =
+  /^(RUA|R|AV|AVENIDA|TRAVESSA|TV|ALAMEDA|AL|PRACA|PRAÇA|RODOVIA|ROD|ESTRADA|EST|LARGO|VIELA|BECO|SERVIDAO)$/i;
+
+// Separa "RIBEIRO 66 CS RECANTO DA LAGOA" em via="RIBEIRO" + numero="66". Pega o primeiro
+// numero cujo texto anterior NAO seja so um tipo de via (senao "Rua 7 de Setembro 123"
+// viraria via="Rua" + numero="7").
+function separarViaNumero(texto: string): { numero: string; via: string } {
+  const re = /(\d{1,6})(?!\d)/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = re.exec(texto))) {
+    const antes = texto.slice(0, match.index).trim().replace(/[,\s-]+$/, "");
+    if (!antes) continue;
+
+    const palavras = antes.split(/\s+/);
+    if (palavras.length === 1 && TIPOS_VIA.test(palavras[0] ?? "")) continue;
+
+    return { numero: match[1] ?? "", via: antes };
+  }
+
+  return { numero: "", via: texto.trim() };
+}
+
+// O comprovante (conta de luz/agua) costuma trazer o endereco INTEIRO num campo so
+// ("RIBEIRO 66 CS RECANTO DA LAGOA DE MINAS - MG : 35661093") e um "numero" que na verdade e
+// o codigo do cliente/instalacao da concessionaria (12 digitos). Aqui a gente descarta o
+// numero invalido e reduz o logradouro ao nome da via.
+function sanitizeEndereco(draft: CadastroDraft): void {
+  // Numero de casa nao tem 7+ digitos: isso e codigo de cliente, nao endereco.
+  if (draft.numero.replace(/\D/g, "").length > 6) {
+    draft.numero = "";
+  }
+
+  if (!draft.logradouro) return;
+
+  // Corta o rabo do endereco completo: " : 35661093" (CEP) e " - MG" (UF) no fim.
+  let via = draft.logradouro.split(/\s+[:|]\s+/)[0] ?? draft.logradouro;
+  via = via.replace(/\s*-\s*[A-Za-z]{2}\s*$/, "").trim();
+
+  const separado = separarViaNumero(via);
+  if (separado.numero) {
+    via = separado.via;
+    if (!draft.numero) draft.numero = separado.numero;
+  }
+
+  draft.logradouro = via.replace(/[,\s-]+$/, "").trim();
+}
+
+function acharMelhorCampo(fields: CadastroField[], needles: string[]): CadastroField | null {
+  let best: CadastroField | null = null;
+  let bestScore = 0;
+
+  for (const field of fields) {
+    if (!field.value) continue;
+    for (const needle of needles) {
+      const score = keyScore(field.key, needle);
+      if (score > bestScore) {
+        bestScore = score;
+        best = field;
+      }
+    }
+  }
+
+  return best;
+}
+
+// O RG manda a naturalidade partida (naturalidade_cidade + naturalidade_uf); a CNH manda
+// inteira ("ESPINOSA / MG"). Junta a UF quando ela veio separada.
+function juntarNaturalidade(fields: CadastroField[], draft: CadastroDraft): void {
+  if (!draft.naturalidade || draft.naturalidade.includes("/")) return;
+
+  const uf = acharMelhorCampo(fields, ["naturalidade-uf"]);
+  const sigla = (uf?.value ?? "").trim();
+  if (sigla && sigla.length <= 2) {
+    draft.naturalidade = `${draft.naturalidade} / ${sigla}`;
+  }
+}
+
+// "BRA" (RG) e "BRASILEIRO A" (CNH) viram a mesma coisa legivel na ficha.
+function normalizarNacionalidade(draft: CadastroDraft): void {
+  const valor = draft.nacionalidade.trim().toUpperCase();
+  if (!valor) return;
+  if (/^BRA(SIL|SILEIR)?/.test(valor)) {
+    draft.nacionalidade = "Brasileira";
+  }
+}
+
 function mapCadastro(fields: CadastroField[]): CadastroDraft {
   const draft = emptyCadastro();
 
   for (const matcher of FIELD_MATCHERS) {
-    let best: CadastroField | null = null;
-    let bestScore = 0;
-    for (const field of fields) {
-      if (!field.value) continue;
-      for (const needle of matcher.needles) {
-        const score = keyScore(field.key, needle);
-        if (score > bestScore) {
-          bestScore = score;
-          best = field;
-        }
-      }
-    }
+    const best = acharMelhorCampo(fields, matcher.needles);
     if (best) draft[matcher.target] = best.value;
   }
+
+  juntarNaturalidade(fields, draft);
+  normalizarNacionalidade(draft);
+  sanitizeEndereco(draft);
 
   return draft;
 }
@@ -406,6 +578,8 @@ export function normalizeExtraction(
 
   return {
     cadastro: mapCadastro(fields),
+    confiancaDocumento: scoreDoDocumento(payload),
+    crop: acharImagemTratada(payload),
     documentType,
     fields,
     overallConfidence,
@@ -518,6 +692,8 @@ export function mockExtraction(includeRaw = false): DocumentExtraction {
 
   return {
     cadastro: mapCadastro(fields),
+    confiancaDocumento: 0.97,
+    crop: "",
     documentType: "rg",
     fields,
     overallConfidence: 0.925,
@@ -588,6 +764,7 @@ function emptyEnrichment(
     warnings,
   };
 }
+
 
 // Helpers p/ ler a resposta do MOST (BigDataCorp): datasets[] -> data[0] -> obj.
 function str(value: unknown): string {
@@ -802,6 +979,181 @@ async function callEnrichment(
 
 // Enriquece por CPF. Best-effort: se a rota divergir ou o dataset nao estiver
 // contratado, NAO quebra o cadastro — devolve available:false + o motivo real.
+// ---------- enrichment PJ (dados da empresa por CNPJ) ----------
+
+export type CompanyEnrichment = {
+  atividade: string;
+  available: boolean;
+  capitalSocial: string;
+  cnae: string;
+  dataAbertura: string;
+  emails: string[];
+  naturezaJuridica: string;
+  nomeFantasia: string;
+  porte: string;
+  raw?: unknown;
+  razaoSocial: string;
+  situacaoCadastral: string;
+  socios: Array<{ nome: string; qualificacao: string }>;
+  source: "mock" | "mostqi" | "unavailable";
+  telefones: string[];
+  warnings: string[];
+};
+
+function emptyCompany(
+  source: CompanyEnrichment["source"],
+  warnings: string[],
+): CompanyEnrichment {
+  return {
+    atividade: "",
+    available: source === "mostqi" || source === "mock",
+    capitalSocial: "",
+    cnae: "",
+    dataAbertura: "",
+    emails: [],
+    naturezaJuridica: "",
+    nomeFantasia: "",
+    porte: "",
+    razaoSocial: "",
+    situacaoCadastral: "",
+    socios: [],
+    source,
+    telefones: [],
+    warnings,
+  };
+}
+
+function normalizeCompanyEnrichment(payload: unknown, includeRaw: boolean): CompanyEnrichment {
+  const result = emptyCompany("mostqi", []);
+  const root = asRecord(payload);
+  const resultObj = asRecord(root?.result);
+  const datasets = Array.isArray(resultObj?.datasets) ? (resultObj?.datasets as unknown[]) : [];
+
+  const basic = asRecord(datasetPayload(datasets, "basic_data")?.basicData);
+  if (basic) {
+    result.razaoSocial = str(basic.officialName);
+    result.nomeFantasia = str(basic.tradeName);
+    result.dataAbertura = str(basic.foundedDate);
+    result.situacaoCadastral = str(basic.taxIdStatus);
+  }
+
+  const indicadores = asRecord(
+    datasetPayload(datasets, "activity_indicators")?.activityIndicators,
+  );
+  if (indicadores) {
+    // A PJ_01 nao traz porte/natureza/CNAE/capital: o que da pra dizer do tamanho vem daqui.
+    result.porte = str(indicadores.employeesRange);
+  }
+
+  // QSA: os relacionamentos do tipo OWNER sao os socios.
+  const rel = datasetPayload(datasets, "relationships");
+  const lista = Array.isArray(rel?.relationships) ? (rel?.relationships as unknown[]) : [];
+  result.socios = lista
+    .map(asRecord)
+    .filter((item) => /OWNER|SOCIO|PARTNER/i.test(str(item?.relationshipType)))
+    .map((item) => ({
+      nome: str(item?.relatedEntityName),
+      qualificacao: str(item?.relationshipType) === "OWNER" ? "Sócio" : str(item?.relationshipType),
+    }))
+    .filter((socio) => socio.nome);
+
+  const phones = asRecord(datasetPayload(datasets, "phones_extended")?.extendedPhones);
+  const phoneList = Array.isArray(phones?.phones) ? (phones?.phones as unknown[]) : [];
+  result.telefones = phoneList
+    .slice(0, 3)
+    .map((item) => {
+      const phone = asRecord(item);
+      const area = str(phone?.areaCode);
+      const num = str(phone?.number);
+      return num ? (area ? `(${area}) ${num}` : num) : "";
+    })
+    .filter(Boolean);
+
+  const emails = asRecord(datasetPayload(datasets, "emails_extended")?.extendedEmails);
+  const emailList = Array.isArray(emails?.emails) ? (emails?.emails as unknown[]) : [];
+  result.emails = emailList
+    .slice(0, 3)
+    .map((item) => str(asRecord(item)?.emailAddress))
+    .filter(Boolean);
+
+  if (includeRaw) result.raw = payload;
+  return result;
+}
+
+// Enriquece a EMPRESA por CNPJ (query CARELI_PJ_01). Best-effort igual ao de pessoa: nunca
+// derruba o cadastro -- devolve available:false com o motivo.
+export async function enrichCompany(
+  cnpj: string,
+  opts: { includeRaw?: boolean; query?: string } = {},
+): Promise<CompanyEnrichment> {
+  const digits = (cnpj || "").replace(/\D/g, "");
+  if (!isMostqiConfigured()) return mockCompanyEnrichment(opts.includeRaw);
+  if (digits.length !== 14) {
+    return emptyCompany("unavailable", ["CNPJ ausente ou invalido para enriquecer."]);
+  }
+
+  const cfg = config();
+  const query = (opts.query || "").trim() || env("MOSTQI_ENRICHMENT_QUERY_PJ") || "CARELI_PJ_01";
+  let lastMsg = "";
+
+  try {
+    for (const path of enrichmentPathCandidates(cfg.enrichmentPath)) {
+      let token = await authenticateMostqi();
+      let response = await callEnrichment(token, path, { cnpj: digits }, query);
+      if (response.status === 401) {
+        token = await authenticateMostqi();
+        response = await callEnrichment(token, path, { cnpj: digits }, query);
+      }
+
+      const text = await response.text().catch(() => "");
+      if (isInvalidRoute(response.status, text)) {
+        lastMsg = `${path} -> HTTP ${response.status}`;
+        continue;
+      }
+
+      cachedEnrichmentPath = path;
+      let payload: unknown = text;
+      try {
+        payload = text ? JSON.parse(text) : null;
+      } catch {
+        payload = text;
+      }
+
+      if (!response.ok) {
+        const snippet = safeSnippet(text, cfg.clientKey);
+        return emptyCompany("unavailable", [
+          `Enrichment PJ recusou (HTTP ${response.status})${snippet ? `: ${snippet}` : ""}.`,
+        ]);
+      }
+
+      return normalizeCompanyEnrichment(payload, Boolean(opts.includeRaw));
+    }
+
+    return emptyCompany("unavailable", [
+      `Rota de enrichment nao encontrada (ultima: ${lastMsg}).`,
+    ]);
+  } catch (error) {
+    return emptyCompany("unavailable", [`Enrichment PJ falhou: ${(error as Error).message}`]);
+  }
+}
+
+export function mockCompanyEnrichment(includeRaw = false): CompanyEnrichment {
+  const result = emptyCompany("mock", ["Enriquecimento PJ simulado (sem MOSTQI_CLIENT_KEY)."]);
+  result.razaoSocial = "IMOBILIARIA BETA LTDA";
+  result.nomeFantasia = "BETA IMOVEIS";
+  result.dataAbertura = "2014-06-02";
+  result.situacaoCadastral = "ATIVA";
+  result.porte = "10 A 49";
+  result.socios = [
+    { nome: "CARLOS EDUARDO PACHECO", qualificacao: "Sócio" },
+    { nome: "ANA PAULA REIS", qualificacao: "Sócio" },
+  ];
+  result.telefones = ["(31) 32112233"];
+  result.emails = ["contato@betaimoveis.com.br"];
+  if (includeRaw) result.raw = { mock: true };
+  return result;
+}
+
 export async function enrichPerson(
   cpf: string,
   opts: { datasets?: string[]; includeRaw?: boolean; query?: string } = {},
