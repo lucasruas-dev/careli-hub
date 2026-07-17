@@ -675,7 +675,12 @@ export function IrisPage({
       try {
         const nextData = await enrichIrisDataWithCrm360(
           await withIrisTimeout(
-            loadIrisData({ operatorUserId, queueSlugFilter: scopedQueueSlug }),
+            loadIrisData({
+              operatorUserId,
+              queueSlugFilter: scopedQueueSlug,
+              // Régua de acesso: quem está logado define quais filas existem.
+              viewerUserId: hubUser?.id ?? null,
+            }),
             IRIS_QUEUE_LOAD_TIMEOUT_MS,
             "fila da Iris",
           ),
@@ -758,7 +763,12 @@ export function IrisPage({
       try {
         const nextData = await enrichIrisDataWithCrm360(
           await withIrisTimeout(
-            loadIrisData({ operatorUserId, queueSlugFilter: scopedQueueSlug }),
+            loadIrisData({
+              operatorUserId,
+              queueSlugFilter: scopedQueueSlug,
+              // Régua de acesso: quem está logado define quais filas existem.
+              viewerUserId: hubUser?.id ?? null,
+            }),
             IRIS_QUEUE_LOAD_TIMEOUT_MS,
             "fila da Iris",
           ),
@@ -7384,6 +7394,9 @@ async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
     assignment_strategy: form.assignmentStrategy.trim() || "manual",
     color: /^#[0-9a-fA-F]{6}$/.test(form.color) ? form.color : "#A07C3B",
     default_priority: normalizePriority(form.defaultPriority),
+    // Níveis de acesso: dono da fila (quem enxerga). Sem vínculo = só admin.
+    department_id: form.departmentId.trim() || null,
+    sector_id: form.sectorId.trim() || null,
     // Vínculo fila→número (canal WhatsApp). metadata das filas só guarda isso hoje.
     metadata: { channelId: form.channelId.trim() || null },
     name: form.name.trim(),
@@ -7400,7 +7413,7 @@ async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
     status: setupStatusOptions.includes(form.status) ? form.status : "active",
   };
   const selectColumns =
-    "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata";
+    "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata,department_id,sector_id";
 
   const result = form.id
     ? await supabase
@@ -7462,6 +7475,8 @@ function createQueueForm() {
     channelId: "",
     color: "#A07C3B",
     defaultPriority: "medium" as IrisPriority,
+    departmentId: "",
+    sectorId: "",
     id: "",
     name: "",
     routingStrategy: "manual",
@@ -7478,6 +7493,8 @@ function queueToForm(queue: IrisQueueConfig) {
     channelId: queue.channelId ?? "",
     color: queue.color || "#A07C3B",
     defaultPriority: queue.defaultPriority,
+    departmentId: queue.departmentId ?? "",
+    sectorId: queue.sectorId ?? "",
     id: queue.id,
     name: queue.name,
     routingStrategy: queue.routingStrategy,

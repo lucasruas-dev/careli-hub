@@ -131,6 +131,10 @@ export type IrisQueueConfig = {
   channelId: string | null;
   color: string;
   defaultPriority: IrisPriority;
+  // Níveis de acesso: dono da fila. op*/ldr veem as filas do SEU SETOR; cdr vê as
+  // do SEU DEPARTAMENTO; adm vê tudo; fila sem vínculo = só adm.
+  departmentId: string | null;
+  sectorId: string | null;
   id: string;
   name: string;
   routingStrategy: string;
@@ -184,11 +188,26 @@ export type IrisChannel = {
   status: string;
 };
 
+// Estrutura da empresa (hub_departments -> hub_sectors), usada pra vincular a
+// fila ao seu dono e resolver quem enxerga o quê.
+export type IrisDepartment = {
+  id: string;
+  name: string;
+};
+
+export type IrisSector = {
+  departmentId: string | null;
+  id: string;
+  name: string;
+};
+
 export type IrisData = {
   broadcasts: IrisBroadcast[];
   channels: IrisChannel[];
+  departments: IrisDepartment[];
   profiles: IrisTicketProfileConfig[];
   queues: IrisQueueConfig[];
+  sectors: IrisSector[];
   templates: IrisTemplate[];
   tickets: IrisTicket[];
 };

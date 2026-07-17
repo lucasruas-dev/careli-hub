@@ -1,6 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import {
+  canSeeScopedResource,
+  isAdminProfile,
+  resolveResourceScope,
+  type HubUserScope,
+} from "@/lib/hub/access-scope";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
   IrisCrm360Registration,
@@ -19,8 +25,10 @@ import type {
 export const emptyIrisData: IrisData = {
   broadcasts: [],
   channels: [],
+  departments: [],
   profiles: [],
   queues: [],
+  sectors: [],
   templates: [],
   tickets: [],
 };
@@ -38,9 +46,12 @@ const irisCrm360RegistrationCache = new Map<string, IrisCrm360Registration>();
 export async function loadIrisData({
   operatorUserId,
   queueSlugFilter,
+  viewerUserId,
 }: {
   operatorUserId?: string | null;
   queueSlugFilter?: string | null;
+  // Usuário logado: define O QUE ELE ENXERGA (perfil + setor/departamento).
+  viewerUserId?: string | null;
 } = {}): Promise<IrisData> {
   const supabase = getHubSupabaseClient();
 
@@ -53,7 +64,7 @@ export async function loadIrisData({
   const queuesResult = await supabase
     .from("caredesk_queues")
     .select(
-      "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata",
+      "id,name,slug,color,status,default_priority,sla_first_response_minutes,sla_resolution_minutes,routing_strategy,assignment_strategy,metadata,department_id,sector_id",
     )
     .order("name", { ascending: true });
 
@@ -61,7 +72,50 @@ export async function loadIrisData({
     throw queuesResult.error;
   }
 
-  const queues = (queuesResult.data ?? []).map(mapQueueRow);
+  const allQueues = (queuesResult.data ?? []).map(mapQueueRow);
+
+  // Estrutura da empresa: alimenta o vínculo da fila (Setup) e a régua de acesso.
+  const [departmentsResult, sectorsResult] = await Promise.all([
+    supabase
+      .from("hub_departments")
+      .select("id,name")
+      .eq("status", "active")
+      .order("name", { ascending: true }),
+    supabase
+      .from("hub_sectors")
+      .select("id,name,department_id")
+      .eq("status", "active")
+      .order("name", { ascending: true }),
+  ]);
+
+  const departments = (departmentsResult.data ?? []).map((row: any) => ({
+    id: row.id as string,
+    name: row.name as string,
+  }));
+  const sectors = (sectorsResult.data ?? []).map((row: any) => ({
+    departmentId: (row.department_id as string | null) ?? null,
+    id: row.id as string,
+    name: row.name as string,
+  }));
+
+  // RÉGUA DE ACESSO: o perfil do usuário logado + os vínculos dele definem quais
+  // filas existem pra ele. op*/ldr = só o seu setor; cdr = todo o departamento;
+  // adm = tudo; fila sem vínculo = só adm.
+  const viewerScope = await loadViewerScope(supabase, viewerUserId);
+  const sectorToDepartment = new Map(
+    sectors.map((sector) => [sector.id, sector.departmentId]),
+  );
+  const queues = viewerScope
+    ? allQueues.filter((queue) =>
+        canSeeScopedResource(
+          viewerScope,
+          resolveResourceScope(
+            { departmentId: queue.departmentId, sectorId: queue.sectorId },
+            sectorToDepartment,
+          ),
+        ),
+      )
+    : allQueues;
   const scopedQueueIds = normalizedQueueSlugFilter
     ? queues
         .filter((queue) =>
@@ -79,6 +133,16 @@ export async function loadIrisData({
 
   if (operatorUserId) {
     ticketsQuery = ticketsQuery.eq("assigned_to_user_id", operatorUserId);
+  }
+
+  // Régua de acesso nos TICKETS: só os das filas que o usuário enxerga — senão
+  // esconder a fila não adiantaria nada (o ticket dela apareceria assim mesmo).
+  // Ticket sem fila segue a mesma regra da fila sem vínculo: só adm.
+  if (viewerScope && !isAdminProfile(viewerScope.profile)) {
+    const visibleQueueIds = queues.map((queue) => queue.id);
+    ticketsQuery = visibleQueueIds.length
+      ? ticketsQuery.in("queue_id", visibleQueueIds)
+      : ticketsQuery.eq("queue_id", "__iris_sem_fila_visivel__");
   }
 
   if (normalizedQueueSlugFilter) {
@@ -248,7 +312,10 @@ export async function loadIrisData({
     includeGroups:
       !operatorUserId &&
       (!normalizedQueueSlugFilter ||
-        normalizedQueueSlugFilter === GROUP_QUEUE_SLUG),
+        normalizedQueueSlugFilter === GROUP_QUEUE_SLUG) &&
+      // Grupos vivem na fila "Grupo": se ela não é visível pro usuário, eles
+      // também não são (senão vazaria pela porta dos fundos).
+      queues.some((queue) => queue.slug === GROUP_QUEUE_SLUG),
     queues,
     supabase,
   });
@@ -256,8 +323,10 @@ export async function loadIrisData({
   return {
     broadcasts,
     channels,
+    departments,
     profiles,
     queues,
+    sectors,
     templates,
     tickets: [
       ...ticketsRows.map((ticket) =>
@@ -523,6 +592,41 @@ export async function withIrisTimeout<T>(
   }
 }
 
+// Escopo do usuário logado: perfil (op*/ldr/cdr/adm) + TODOS os vínculos ativos
+// (o Lucas decidiu somar, não usar só o is_primary).
+async function loadViewerScope(
+  supabase: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
+  viewerUserId?: string | null,
+): Promise<HubUserScope | null> {
+  if (!viewerUserId) {
+    return null;
+  }
+
+  const [userResult, assignmentsResult] = await Promise.all([
+    supabase
+      .from("hub_users")
+      .select("operational_profile")
+      .eq("id", viewerUserId)
+      .maybeSingle(),
+    supabase
+      .from("hub_user_assignments")
+      .select("department_id,sector_id")
+      .eq("user_id", viewerUserId)
+      .eq("status", "active"),
+  ]);
+
+  const profile = (userResult.data as any)?.operational_profile ?? null;
+  const rows = (assignmentsResult.data ?? []) as any[];
+
+  return {
+    departmentIds: unique(
+      rows.map((row) => row.department_id).filter(Boolean),
+    ) as string[],
+    profile: profile as HubUserScope["profile"],
+    sectorIds: unique(rows.map((row) => row.sector_id).filter(Boolean)) as string[],
+  };
+}
+
 export function mapQueueRow(row: any): IrisQueueConfig {
   return {
     assignmentStrategy: row.assignment_strategy ?? "manual",
@@ -530,6 +634,8 @@ export function mapQueueRow(row: any): IrisQueueConfig {
       typeof row.metadata?.channelId === "string" ? row.metadata.channelId : null,
     color: row.color ?? "#A07C3B",
     defaultPriority: normalizePriority(row.default_priority),
+    departmentId: typeof row.department_id === "string" ? row.department_id : null,
+    sectorId: typeof row.sector_id === "string" ? row.sector_id : null,
     id: row.id,
     name: row.name,
     routingStrategy: row.routing_strategy ?? "manual",

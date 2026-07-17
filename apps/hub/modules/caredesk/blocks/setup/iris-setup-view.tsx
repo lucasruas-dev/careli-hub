@@ -679,6 +679,53 @@ function SetupView({
                       ))}
                   </select>
                 </SetupField>
+                {/* Níveis de acesso: quem enxerga a fila sai daqui.
+                    op/ldr = só o setor; cdr = o departamento; adm = tudo.
+                    Sem vínculo, só o admin vê. */}
+                <SetupField label="Departamento — cdr enxerga todas as filas dele">
+                  <select
+                    value={queueForm.departmentId}
+                    onChange={(event) => {
+                      updateQueueForm("departmentId", event.target.value);
+                      // Trocar de departamento invalida o setor escolhido.
+                      updateQueueForm("sectorId", "");
+                    }}
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
+                  >
+                    <option value="">Sem vínculo (só admin vê)</option>
+                    {data.departments.map((department) => (
+                      <option key={department.id} value={department.id}>
+                        {department.name}
+                      </option>
+                    ))}
+                  </select>
+                </SetupField>
+                <SetupField label="Setor — op e ldr enxergam só o setor deles">
+                  <select
+                    value={queueForm.sectorId}
+                    onChange={(event) =>
+                      updateQueueForm("sectorId", event.target.value)
+                    }
+                    disabled={!queueForm.departmentId}
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted"
+                  >
+                    <option value="">
+                      {queueForm.departmentId
+                        ? "Todo o departamento (nenhum setor)"
+                        : "Escolha o departamento primeiro"}
+                    </option>
+                    {data.sectors
+                      .filter(
+                        (sector) =>
+                          sector.departmentId === queueForm.departmentId,
+                      )
+                      .map((sector) => (
+                        <option key={sector.id} value={sector.id}>
+                          {sector.name}
+                        </option>
+                      ))}
+                  </select>
+                </SetupField>
                 <div className="grid grid-cols-[minmax(0,1fr)_72px] gap-2">
                   <SetupField label="Slug">
                     <input
