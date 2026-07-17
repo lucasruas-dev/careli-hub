@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-17-iris-mencao-nos-grupos",
+    deployedAt: "2026-07-17T15:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Menção com @ nos grupos: digite @ no campo de mensagem e escolha um participante (ou @todos). A pessoa é notificada de verdade no WhatsApp — não é só um texto.",
+              "Quem já mandou mensagem no grupo aparece com o nome; quem nunca falou aparece pelo número (o WhatsApp não entrega o nome na lista) e o nome vai aparecendo conforme a pessoa fala.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit e1a9d59e (v1.41.1)",
+    technical: {
+      done: "Grupo tem que funcionar como grupo: @ pra mencionar. migration 0051: caredesk_whatsapp_group_participants (group_id, phone, display_name, is_admin) + RLS. O WhatsApp so devolve NUMERO na lista de participantes; o nome vem do pushName de quem fala — por isso display_name e opcional e vai sendo preenchido: cada msg de grupo faz upsert do participante (rememberGroupParticipant) e a criacao do grupo semeia via findGroupInfos (seedGroupParticipants). Rota POST /api/iris/group-participants-backfill (sessao) semeia os 17 grupos ja monitorados, reentrante. NOTIFICACAO REAL: nao basta escrever @fulano — a msg tem que sair com `mentioned`/`mentionsEveryOne`, senao vira texto morto. sendEvolutionGroupText/Media ganham mentions; /api/iris/group-messages aceita { everyone } (@todos) e { phones } (so em grupo; no direct nao aplica). UI: IrisMentionPicker no composer (participantes filtrados + @todos), inserindo @Nome e guardando o telefone; no envio, buildMentionsFromDraft monta os mentioned a partir do que ainda esta escrito. participantsByGroup viaja no metadata da conversa.",
+      motivation:
+        "Lucas: 'tem que ter a opcao de mencao, o famoso @'. E: 'tem que funcionar como se fosse um grupo de WhatsApp normal mesmo'.",
+    },
+    title: "Iris: menção @ nos grupos (participantes + @todos, notificando de verdade)",
+    type: "novidade",
+    version: "1.42.0",
+  },
+  {
     buildTag: "2026-07-17-iris-recupera-midia-antiga",
     deployedAt: "2026-07-17T11:15:00-03:00",
     internal: true,
