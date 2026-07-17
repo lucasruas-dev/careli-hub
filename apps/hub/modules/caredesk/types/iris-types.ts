@@ -207,6 +207,14 @@ export type IrisQueueScope = {
   sectorId: string | null;
 };
 
+// Participante de um grupo — alimenta o seletor de menção (@). O nome pode ser
+// null (só conhecemos quem já falou no grupo).
+export type IrisGroupParticipant = {
+  displayName: string | null;
+  isAdmin: boolean;
+  phone: string;
+};
+
 export type IrisData = {
   broadcasts: IrisBroadcast[];
   channels: IrisChannel[];

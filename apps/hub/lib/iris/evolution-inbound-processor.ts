@@ -153,6 +153,10 @@ async function ingestGroupMessage({
 }) {
   const groupId = await ensureGroup({ client, message, instance });
 
+  // Alimenta a lista de menção (@): quem fala vira participante conhecido, e é
+  // daqui que sai o NOME (o WhatsApp não devolve nome na lista de participantes).
+  await rememberGroupParticipant({ client, groupId, message });
+
   const outbound = message.fromMe;
   const providerPayload: Record<string, Json> = {
     provider: "evolution",
@@ -188,6 +192,88 @@ async function ingestGroupMessage({
       updated_at: new Date().toISOString(),
     })
     .eq("id", groupId);
+}
+
+// Participante do grupo: o número sai do JID de quem enviou; o nome, do pushName.
+// Só a mensagem tem nome — a lista de participantes do WhatsApp vem sem.
+// Best-effort: nunca derruba a ingestão da mensagem.
+async function rememberGroupParticipant({
+  client,
+  groupId,
+  message,
+}: {
+  client: EvolutionClient;
+  groupId: string;
+  message: NormalizedMessage;
+}) {
+  const phone = jidToPhone(message.senderJid);
+
+  if (!phone) {
+    return;
+  }
+
+  try {
+    const patch: Record<string, unknown> = {
+      group_id: groupId,
+      phone,
+      updated_at: new Date().toISOString(),
+    };
+
+    // Só sobrescreve o nome quando temos um (evita apagar nome já conhecido).
+    if (message.senderName) {
+      patch.display_name = message.senderName;
+    }
+
+    await client
+      .from("caredesk_whatsapp_group_participants")
+      .upsert(patch, { onConflict: "group_id,phone" });
+  } catch (error) {
+    console.error("[iris] falha ao registrar participante do grupo", error);
+  }
+}
+
+// "5531999998888@s.whatsapp.net" -> "5531999998888". Ignora @lid (id interno do
+// WhatsApp, que não serve pra mencionar).
+function jidToPhone(jid: string | null): string | null {
+  if (!jid || !jid.includes("@s.whatsapp.net")) {
+    return null;
+  }
+
+  const phone = jid.split("@")[0]?.replace(/\D/g, "") ?? "";
+
+  return phone || null;
+}
+
+// Semeia os participantes a partir da lista do WhatsApp (só números — o nome vem
+// depois, de quem falar). Best-effort.
+async function seedGroupParticipants({
+  client,
+  groupId,
+  participants,
+}: {
+  client: EvolutionClient;
+  groupId: string;
+  participants: { phoneNumber: string | null; admin: string | null }[];
+}) {
+  const rows = participants
+    .map((participant) => ({
+      group_id: groupId,
+      is_admin: Boolean(participant.admin),
+      phone: jidToPhone(participant.phoneNumber),
+    }))
+    .filter((row) => row.phone);
+
+  if (!rows.length) {
+    return;
+  }
+
+  try {
+    await client
+      .from("caredesk_whatsapp_group_participants")
+      .upsert(rows, { onConflict: "group_id,phone" });
+  } catch (error) {
+    console.error("[iris] falha ao semear participantes do grupo", error);
+  }
 }
 
 // O grupo é criado na primeira mensagem. O nome não vem no messages.upsert:
@@ -228,6 +314,16 @@ async function ensureGroup({
 
   if (inserted.error) {
     throw inserted.error;
+  }
+
+  // Semeia a lista de menção (@) com os participantes do grupo (só números; o
+  // nome vem depois, de quem falar).
+  if (info?.participants?.length) {
+    await seedGroupParticipants({
+      client,
+      groupId: inserted.data.id,
+      participants: info.participants,
+    });
   }
 
   return inserted.data.id;

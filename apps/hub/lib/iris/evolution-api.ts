@@ -6,6 +6,9 @@
 type EvolutionGroupInfo = {
   subject: string | null;
   size: number | null;
+  // A lista vem SEM nome — só número e se é admin. O nome a gente aprende do
+  // pushName de quem fala.
+  participants: { phoneNumber: string | null; admin: string | null }[];
 };
 
 function getEvolutionApiConfig() {
@@ -26,14 +29,46 @@ export type EvolutionSendResult =
 
 // Envia texto para um grupo pelo número observador (que é membro do grupo).
 // A mensagem aparece no grupo como vinda desse número, não do operador.
+// Menção: pra pessoa ser NOTIFICADA de verdade no celular, não basta escrever
+// "@fulano" no texto — a mensagem tem que sair com a lista de mencionados. Sem
+// isso vira texto morto. `mentionsEveryOne` é o @todos.
+export type EvolutionMentions = {
+  everyone?: boolean;
+  phones?: string[]; // dígitos, sem @s.whatsapp.net
+};
+
+function mentionsPayload(mentions?: EvolutionMentions | null) {
+  if (!mentions) {
+    return {};
+  }
+
+  if (mentions.everyone) {
+    return { mentionsEveryOne: true };
+  }
+
+  if (mentions.phones?.length) {
+    return {
+      mentioned: mentions.phones.map((phone) => `${phone}@s.whatsapp.net`),
+    };
+  }
+
+  return {};
+}
+
 export async function sendEvolutionGroupText({
   groupJid,
+  mentions,
   text,
 }: {
   groupJid: string;
+  mentions?: EvolutionMentions | null;
   text: string;
 }): Promise<EvolutionSendResult> {
-  return postEvolutionMessage("sendText", { number: groupJid, text });
+  return postEvolutionMessage("sendText", {
+    number: groupJid,
+    text,
+    ...mentionsPayload(mentions),
+  });
 }
 
 // Imagem / documento no grupo (Evolution: sendMedia).
@@ -43,6 +78,7 @@ export async function sendEvolutionGroupMedia({
   fileName,
   groupJid,
   mediatype,
+  mentions,
   mimeType,
 }: {
   base64: string;
@@ -50,6 +86,7 @@ export async function sendEvolutionGroupMedia({
   fileName: string;
   groupJid: string;
   mediatype: "document" | "image" | "video";
+  mentions?: EvolutionMentions | null;
   mimeType: string;
 }): Promise<EvolutionSendResult> {
   return postEvolutionMessage("sendMedia", {
@@ -59,6 +96,7 @@ export async function sendEvolutionGroupMedia({
     mediatype,
     mimetype: mimeType,
     number: groupJid,
+    ...mentionsPayload(mentions),
   });
 }
 
@@ -260,7 +298,30 @@ export async function fetchEvolutionGroupInfo(
         ? record.size
         : null;
 
-    return { subject, size };
+    const participants = Array.isArray(record.participants)
+      ? (record.participants as unknown[])
+          .map((item) => {
+            if (!item || typeof item !== "object") {
+              return null;
+            }
+            const p = item as Record<string, unknown>;
+            return {
+              admin: typeof p.admin === "string" ? p.admin : null,
+              phoneNumber:
+                typeof p.phoneNumber === "string"
+                  ? p.phoneNumber
+                  : typeof p.id === "string"
+                    ? p.id
+                    : null,
+            };
+          })
+          .filter(
+            (p): p is { phoneNumber: string | null; admin: string | null } =>
+              p !== null,
+          )
+      : [];
+
+    return { subject, size, participants };
   } catch {
     return null;
   }

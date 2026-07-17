@@ -14,6 +14,7 @@ import type {
   IrisMessageReaction,
   IrisPriority,
   IrisQueueConfig,
+  IrisGroupParticipant,
   IrisQueueScope,
   IrisReplyPreview,
   IrisSnapshot,
@@ -392,14 +393,42 @@ async function loadGroupConversations({
 
   const groupIds = groupRows.map((group: any) => group.id as string);
 
-  const groupMessagesResult = await supabase
-    .from("caredesk_messages")
-    .select(
-      "id,group_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
-    )
-    .in("group_id", groupIds)
-    .order("created_at", { ascending: false })
-    .limit(1000);
+  const [groupMessagesResult, participantsResult] = await Promise.all([
+    supabase
+      .from("caredesk_messages")
+      .select(
+        "id,group_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
+      )
+      .in("group_id", groupIds)
+      .order("created_at", { ascending: false })
+      .limit(1000),
+    // Participantes: alimentam o seletor de menção (@) de cada grupo.
+    supabase
+      .from("caredesk_whatsapp_group_participants")
+      .select("group_id,phone,display_name,is_admin")
+      .in("group_id", groupIds),
+  ]);
+
+  const participantsByGroup = new Map<string, IrisGroupParticipant[]>();
+  for (const row of (participantsResult.data ?? []) as any[]) {
+    const groupId = row.group_id as string;
+    const list = participantsByGroup.get(groupId) ?? [];
+    list.push({
+      displayName: (row.display_name as string | null) ?? null,
+      isAdmin: Boolean(row.is_admin),
+      phone: row.phone as string,
+    });
+    participantsByGroup.set(groupId, list);
+  }
+  // Nome primeiro (mais úteis pra mencionar), depois por número.
+  for (const list of participantsByGroup.values()) {
+    list.sort((a, b) => {
+      if (Boolean(a.displayName) !== Boolean(b.displayName)) {
+        return a.displayName ? -1 : 1;
+      }
+      return (a.displayName ?? a.phone).localeCompare(b.displayName ?? b.phone);
+    });
+  }
 
   const messagesByGroup = new Map<string, IrisMessage[]>();
   for (const row of groupMessagesResult.data ?? []) {
@@ -460,6 +489,7 @@ async function loadGroupConversations({
       metadata: {
         groupCode: group.code,
         groupJid: group.group_jid,
+        participants: participantsByGroup.get(group.id as string) ?? [],
         participantsCount: group.participants_count,
       },
       openedAt: (group.created_at as string) ?? new Date().toISOString(),
