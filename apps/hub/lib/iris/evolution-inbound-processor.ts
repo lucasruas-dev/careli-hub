@@ -520,6 +520,16 @@ async function persistInboundMedia(
   try {
     const downloaded = await fetchEvolutionMediaBase64(message.messageId);
     if (!downloaded) {
+      // NÃO ficar em silêncio: sem este log a falha é cega (foi o que atrasou o
+      // diagnóstico do "áudio não toca"). A mensagem entra mesmo assim, sem anexo.
+      console.error(
+        "[iris] evolution nao devolveu a midia",
+        JSON.stringify({
+          chatJid: message.chatJid,
+          messageId: message.messageId,
+          messageType: message.messageType,
+        }),
+      );
       return null;
     }
 
