@@ -4,6 +4,18 @@
    pra os utilitarios dark: responderem ao nosso tema (nao ao prefers-color-scheme). */
 @custom-variant dark (&:where([data-uix-theme="dark"], [data-uix-theme="dark"] *));
 
+/* Controles NATIVOS (popup do <select>/<option>, date picker, scrollbar) sao desenhados pelo
+   browser, nao pelo Tailwind: sem color-scheme ele usa o esquema claro (popup branco) enquanto
+   a <option> herda o text-ink do dark (claro) -> texto ilegivel, branco no branco. Amarrar o
+   color-scheme ao nosso tema resolve em todas as telas de uma vez. */
+:root[data-uix-theme="dark"] {
+  color-scheme: dark;
+}
+
+:root[data-uix-theme="light"] {
+  color-scheme: light;
+}
+
 /* Cores semanticas do tema (claro/escuro) — mapeiam os tokens do @repo/uix, que o
    ThemeProvider troca no :root. Usar estas em vez de cor fixa: bg-surface / bg-canvas /
    bg-subtle / bg-inverse / text-ink / text-ink-soft / text-ink-muted / border-line /
