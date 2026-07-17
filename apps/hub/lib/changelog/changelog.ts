@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-15-iris-niveis-de-acesso",
+    deployedAt: "2026-07-15T23:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Níveis de acesso: cada fila agora é vinculada a departamento/setor e você só enxerga as filas da sua área. Operador e líder veem o seu setor; coordenador vê todo o seu departamento; admin vê tudo.",
+              "PDF, imagem, áudio e arquivos recebidos nos grupos e no Direct agora ABREM (antes aparecia só o texto '[documento]' e não dava pra abrir).",
+              "Marcação de pendência corrigida: mensagem de alguém de fora marca a conversa como não-lida e Pendente; assim que a gente responde pela Iris, ela sai de pendente.",
+            ],
+            screen: "Atendimento e Setup",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 1e756c62 (v1.40.0)",
+    technical: {
+      done: "ACESSO: migration 0050 cria caredesk_queue_scopes (queue_id, department_id, sector_id; sector_id NULL = departamento inteiro) + unique parciais + RLS (leitura autenticado / escrita operador-lider-admin). E N:N porque Grupo/Direct pertencem a DOIS departamentos (Operacao+Relacao). Reaproveita o que ja existia: hub_departments/hub_sectors/hub_user_assignments/operational_profile (op1..adm). lib/hub/access-scope.ts = regua pura (canSeeResource), reusavel por Apolo/Hades. loadIrisData resolve o escopo do usuario logado (perfil + assignments ativos, somando todos) e filtra FILAS, TICKETS e GRUPOS. Setup>Filas ganhou editor de vinculos. Vinculos semeados: Atendimento/Gurgel/Suporte/Juridico->Operacao (dep. inteiro, pois o setor Atendimento nao tem ninguem alocado), Cobranca->Op-Cobranca, Contrato->Op-Contrato, Financeiro->Adm-Financeiro, Grupo/Direct->Operacao+Relacao; Comunicados arquivada. MIDIA: o processador Evolution nunca BAIXAVA o arquivo (o messages.upsert so traz a referencia) — agora busca via chat/getBase64FromMediaMessage, sobe pro Storage e grava provider_payload.media.{url,type,fileName}. PENDENCIA: loadGroupConversations tinha unread:false e status:'open' FIXOS (grupo nunca marcava e ficava eterno Pendente); agora status=waiting_customer quando a ultima e nossa. No Direct, o update de status so rodava na 1a resposta.",
+      motivation:
+        "Lucas: 'vamos precisar criar niveis de acesso na Iris, vincular as filas a setores e departamentos' + reclamacao do time: nao abriam PDF/PNG e a marcacao de novas mensagens/pendente nao funcionava.",
+    },
+    title: "Iris: níveis de acesso por setor + PDF/arquivos abrindo + pendência correta",
+    type: "novidade",
+    version: "1.41.0",
+  },
+  {
     buildTag: "2026-07-15-apolo-crm360",
     deployedAt: "2026-07-15T22:40:00-03:00",
     modules: [
