@@ -72,8 +72,11 @@
   .acts .primary{margin-left:auto;background:var(--text);color:var(--inverse);border-color:var(--text)}
   .acts button:disabled{opacity:.45;cursor:not-allowed}
 
-  /* ===== ETIQUETA TÉRMICA MONOCROMÁTICA (100mm x 50mm, só preto/branco) ===== */
-  .etq{width:100mm;height:50mm;background:#fff;color:#000;overflow:hidden;border:0.4mm solid #000;display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+  /* ===== ETIQUETA TÉRMICA MONOCROMÁTICA (100mm x 50mm, só preto/branco) =====
+     padding = margem de seguranca: a cabeca termica NAO imprime coladinho na
+     borda (a ~1-1.5mm de cada lado a tinta corta/borra). Sem barra preta na
+     extremidade, o print sai limpo. box-sizing:border-box mantem os 100x50. */
+  .etq{width:100mm;height:50mm;padding:1.4mm;background:#fff;color:#000;overflow:hidden;display:flex;flex-direction:column;font-family:Arial,Helvetica,sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   #prev .etq{transform:scale(1.9);box-shadow:0 16px 50px rgba(0,0,0,.25)} /* só o preview na tela, ampliado */
   .etq-top{background:#000;color:#fff;padding:1.6mm 3mm;display:flex;align-items:center;justify-content:space-between;gap:3mm;-webkit-print-color-adjust:exact;print-color-adjust:exact}
   .etq-top-l{min-width:0}
@@ -106,8 +109,9 @@
        pagina so no "Imprimir todas". */
     body > *{display:none !important}
     #print-area{display:block !important}
-    /* Cada etiqueta = exatamente uma pagina de 100x50mm; nao quebra no meio. */
-    .etq{width:100mm;height:50mm;margin:0;border:0.3mm solid #000;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
+    /* Cada etiqueta = exatamente uma pagina de 100x50mm; nao quebra no meio.
+       Sem borda: a borda cai na extremidade nao-imprimivel da cabeca termica. */
+    .etq{width:100mm;height:50mm;margin:0;border:0;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
     /* Sem quebra depois da ultima: evita a etiqueta em branco no fim do lote. */
     .etq:last-child{break-after:auto;page-break-after:auto}
     @page{size:100mm 50mm;margin:0}
