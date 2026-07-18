@@ -12,6 +12,15 @@ import {
   apoloProfileLabels,
   apoloProfileOptions,
 } from "./catalog";
+import {
+  C2X_ESCOLARIDADE,
+  C2X_ESTADO_CIVIL,
+  C2X_FAIXA_RENDA,
+  C2X_REGIME_BENS,
+  C2X_SEXO,
+  type C2xOption,
+} from "./c2x-fields";
+import { C2X_PROFISSOES } from "./c2x-professions";
 import type {
   ApoloAddress,
   ApoloAuditSignal,
@@ -57,6 +66,8 @@ type ApoloEntityRow = {
   display_name: string;
   id: string;
   legal_name: string | null;
+  // metadata.cadastro remonta a ficha da entidade nascida no Apolo (sem C2X ao vivo).
+  metadata: unknown;
   next_action: string | null;
   primary_city: string | null;
   primary_state: string | null;
@@ -2206,7 +2217,7 @@ async function fetchApoloEntityRows(
   const { data, error } = await adminClient
     .from("apolo_entities")
     .select(
-      "id,entity_kind,display_name,legal_name,trade_name,document_masked,status,quality_score,primary_city,primary_state,next_action,created_at,updated_at",
+      "id,entity_kind,display_name,legal_name,trade_name,document_masked,status,quality_score,primary_city,primary_state,next_action,created_at,updated_at,metadata",
     )
     .neq("status", "archived")
     .order("display_name", { ascending: true })
@@ -2416,7 +2427,7 @@ async function fetchEntityRowsByIds(
     const { data, error } = await adminClient
       .from("apolo_entities")
       .select(
-        "id,entity_kind,display_name,legal_name,trade_name,document_masked,status,quality_score,primary_city,primary_state,next_action,created_at,updated_at",
+        "id,entity_kind,display_name,legal_name,trade_name,document_masked,status,quality_score,primary_city,primary_state,next_action,created_at,updated_at,metadata",
       )
       .in("id", chunk)
       .neq("status", "archived")
@@ -3180,6 +3191,77 @@ export async function resolveC2xEntitiesByContact(input: {
   }
 }
 
+// Entidade nascida no Apolo (cadastro) não existe no C2X, então não tem c2xCadastro ao vivo — a
+// aba Cadastro ficava toda com "-". Aqui a ficha é remontada a partir da metadata que o cadastro
+// salvou (+ o endereço já normalizado), pro painel exibir sem precisar do C2X.
+function labelDoLookup(options: C2xOption[], id: unknown): string | null {
+  const n = Number(id);
+  if (!id || Number.isNaN(n)) return null;
+  return options.find((option) => option.id === n)?.label ?? null;
+}
+
+function dataParaBr(valor: unknown): string | null {
+  const texto = typeof valor === "string" ? valor.trim() : "";
+  if (!texto) return null;
+  if (/^\d{2}\/\d{2}\/\d{4}$/.test(texto)) return texto; // já em DD/MM/AAAA
+  const data = new Date(texto);
+  if (Number.isNaN(data.getTime())) return texto;
+  return new Intl.DateTimeFormat("pt-BR", {
+    day: "2-digit",
+    month: "2-digit",
+    timeZone: "UTC",
+    year: "numeric",
+  }).format(data);
+}
+
+function cadastroFromApoloMetadata(
+  row: ApoloEntityRow,
+  enderecos: ApoloAddress[],
+): ApoloC2xCadastro | undefined {
+  const meta = row.metadata as { cadastro?: Record<string, unknown>; source?: string } | null;
+  if (meta?.source !== "apolo" || !meta.cadastro) return undefined;
+
+  const c = meta.cadastro;
+  const isCompany = row.entity_kind === "pj";
+  const end = enderecos[0];
+  const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);
+
+  return {
+    age: null,
+    birthday: dataParaBr(c.dataNascimento),
+    city: end?.city ?? row.primary_city ?? null,
+    civilState: labelDoLookup(C2X_ESTADO_CIVIL, c.estadoCivilId),
+    cnpj: isCompany ? row.document_masked : null,
+    complement: end?.complement ?? null,
+    cpf: isCompany ? null : row.document_masked,
+    creciNumber: null,
+    creciValidate: null,
+    district: end?.district ?? null,
+    fantasyName: row.trade_name ?? null,
+    isCompany,
+    // Prospect PJ não informa NIRE nem inscrição municipal: vão "Isento" (decisão do Lucas).
+    motherName: str(c.nomeMae),
+    municipalInscription: isCompany ? "Isento" : null,
+    nacionality: str(c.nacionalidade),
+    naturalness: str(c.naturalidade),
+    nire: isCompany ? "Isento" : null,
+    number: end?.number ?? null,
+    openCompanyDate: dataParaBr(c.dataAbertura),
+    profession: labelDoLookup(C2X_PROFISSOES, c.profissaoId),
+    propertyRegime: labelDoLookup(C2X_REGIME_BENS, c.regimeBensId),
+    rg: null,
+    salaryRange: labelDoLookup(C2X_FAIXA_RENDA, c.rendaId),
+    schooling: labelDoLookup(C2X_ESCOLARIDADE, c.escolaridadeId),
+    sex: labelDoLookup(C2X_SEXO, c.sexoId),
+    socialContractUpdatedAt: dataParaBr(c.dataAtualizacaoCadastral),
+    socialName: null,
+    spouse: null,
+    state: end?.state ?? row.primary_state ?? null,
+    street: end?.value ?? null,
+    zipcode: end?.postalCode ?? null,
+  };
+}
+
 function mapApoloEntityRow(
   row: ApoloEntityRow,
   related: {
@@ -3208,10 +3290,14 @@ function mapApoloEntityRow(
       ? c2xPortfolio.commercialLinks
       : related.commercialLinks.map(mapApoloCommercialRow);
 
+  const enderecos = related.addresses.map(mapApoloAddressRow);
+  // C2X ao vivo tem prioridade; entidade nascida no Apolo cai no fallback da metadata.
+  const cadastro = c2xCadastro ?? cadastroFromApoloMetadata(row, enderecos);
+
   return {
-    addresses: related.addresses.map(mapApoloAddressRow),
+    addresses: enderecos,
     audit: related.audit.map(mapApoloAuditRow),
-    c2xCadastro,
+    c2xCadastro: cadastro,
     commercialLinks,
     confidenceScore: clampScore(row.quality_score ?? 0),
     contacts: related.contacts.map(mapApoloContactRow),

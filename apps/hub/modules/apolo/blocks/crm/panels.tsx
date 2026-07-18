@@ -20,6 +20,7 @@ import type { LucideIcon } from "lucide-react";
 
 import { Tooltip } from "@repo/uix";
 import { apoloProfileLabels } from "@/lib/apolo/catalog";
+import { arquivoParaDrive } from "../../lib/document-capture";
 import type { ApoloAuditSignal, ApoloEntity, ApoloInstallment, ApoloTimelineEvent } from "@/lib/apolo/types";
 import type { ApoloDocumentItem } from "@/lib/apolo/documentos";
 
@@ -1194,15 +1195,6 @@ function ApoloFinancialRecordList({ records }: { records: ApoloFinancialRecord[]
 // Teto client-side do anexo (espelha o teto da rota). Docs de cadastro cabem folgado.
 const MAX_ATTACHMENT_BYTES = 15 * 1024 * 1024;
 
-function readFileAsDataUrl(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error("Nao foi possivel ler o arquivo."));
-    reader.onload = () => resolve(String(reader.result));
-    reader.readAsDataURL(file);
-  });
-}
-
 function formatAttachmentSize(bytes: number | null): string | null {
   if (!bytes || bytes <= 0) {
     return null;
@@ -1314,13 +1306,14 @@ function DocumentsPanel({
           throw new Error(`"${file.name}" passa de 15 MB.`);
         }
 
-        const fileBase64 = await readFileAsDataUrl(file);
+        // Imagem comprimida pro drive (mesma regra do cadastro); PDF passa intacto.
+        const capturado = await arquivoParaDrive(file);
         const response = await fetch("/api/apolo/documentos", {
           body: JSON.stringify({
             entityId,
-            fileBase64,
-            fileName: file.name,
-            mimeType: file.type || null,
+            fileBase64: capturado.fileBase64,
+            fileName: capturado.fileName,
+            mimeType: capturado.mimeType,
           }),
           headers: {
             Authorization: `Bearer ${accessToken}`,
