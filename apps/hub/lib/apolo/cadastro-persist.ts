@@ -35,17 +35,43 @@ export type CreateApoloEntityInput = {
   } | null;
   empresa?: {
     atividade?: string;
-    capitalSocial?: string;
     cnae?: string;
     cnpj?: string;
     dataAbertura?: string;
+    dataAtualizacao?: string;
+    email?: string;
     naturezaJuridica?: string;
     nomeFantasia?: string;
     porte?: string;
     razaoSocial?: string;
     situacaoCadastral?: string;
     socios?: Array<{ nome: string; qualificacao: string }>;
+    telefone?: string;
   } | null;
+  // Socios CADASTRADOS (PJ): pessoas fisicas com ficha propria. Por ora ficam na metadata do
+  // cadastro (a ficha corrida registra quem sao); virar entidade PF vinculada e o modelo de
+  // grafo, decisao a parte.
+  socios?: Array<{
+    cpf?: string;
+    dataNascimento?: string;
+    email?: string;
+    estadoCivilId?: string;
+    nacionalidade?: string;
+    naturalidade?: string;
+    nome?: string;
+    nomeMae?: string;
+    representanteLegal?: boolean;
+    sexoId?: string;
+    telefone?: string;
+    endereco?: {
+      bairro?: string;
+      cep?: string;
+      cidade?: string;
+      logradouro?: string;
+      numero?: string;
+      uf?: string;
+    };
+  }>;
   perfil?: {
     email?: string;
     escolaridadeId?: string;
@@ -120,17 +146,19 @@ export async function createApoloEntity(
 
   const ownerUserId =
     input.ownerUserId && UUID_RE.test(input.ownerUserId) ? input.ownerUserId : null;
-  const email = text(perfil.email);
-  const telefone = text(perfil.telefone);
+  // No PJ o contato é da EMPRESA (empresa.email/telefone); no PF, do perfil. Sem isto o telefone
+  // e o e-mail digitados no PJ não viravam contato e a ficha mostrava "-".
+  const email = text(isPj ? empresa.email : perfil.email);
+  const telefone = text(isPj ? empresa.telefone : perfil.telefone);
   const location = { city: text(endereco.cidade), state: text(endereco.uf) };
 
   // Guarda o demografico/PJ que nao tem coluna propria no core do Apolo (o CAD detalhado vai
   // pro drive; aqui fica o essencial pra ficha e pro futuro write-back ao C2X).
   const cadastro = pruneEmpty({
     atividade: text(empresa.atividade),
-    capitalSocial: text(empresa.capitalSocial),
     cnae: text(empresa.cnae),
     dataAbertura: text(empresa.dataAbertura),
+    dataAtualizacaoCadastral: text(empresa.dataAtualizacao),
     dataNascimento: text(identidade.dataNascimento),
     escolaridadeId: text(perfil.escolaridadeId),
     estadoCivilId: text(perfil.estadoCivilId),
@@ -147,7 +175,32 @@ export async function createApoloEntity(
     rendaId: text(perfil.rendaId),
     sexoId: text(perfil.sexoId),
     situacaoCadastral: text(empresa.situacaoCadastral),
-    socios: (empresa.socios ?? []).filter((s) => text(s?.nome)),
+    // QSA lido do enriquecimento (informativo).
+    qsa: (empresa.socios ?? []).filter((s) => text(s?.nome)),
+    // Socios cadastrados de verdade (ficha + endereco + quem assina).
+    socios: (input.socios ?? [])
+      .filter((s) => text(s?.nome) || text(s?.cpf))
+      .map((s) => ({
+        cpf: text(s.cpf),
+        dataNascimento: text(s.dataNascimento),
+        email: text(s.email),
+        endereco: pruneEmpty({
+          bairro: text(s.endereco?.bairro),
+          cep: text(s.endereco?.cep),
+          cidade: text(s.endereco?.cidade),
+          logradouro: text(s.endereco?.logradouro),
+          numero: text(s.endereco?.numero),
+          uf: text(s.endereco?.uf),
+        }),
+        estadoCivilId: text(s.estadoCivilId),
+        nacionalidade: text(s.nacionalidade),
+        naturalidade: text(s.naturalidade),
+        nome: text(s.nome),
+        nomeMae: text(s.nomeMae),
+        representanteLegal: Boolean(s.representanteLegal),
+        sexoId: text(s.sexoId),
+        telefone: text(s.telefone),
+      })),
   });
 
   const entityRow = {
@@ -278,6 +331,29 @@ export async function createApoloEntity(
       status: "verified",
     });
   }
+  // Cada sócio (PJ) vira um relacionamento de CONTATO — aparece na aba Relacionamentos. Quem
+  // assina pela empresa é marcado no nível.
+  for (const socio of input.socios ?? []) {
+    const nome = text(socio.nome);
+    if (!nome) continue;
+    relationshipRows.push({
+      entity_id: entityId,
+      label: nome,
+      metadata: {
+        cpf: text(socio.cpf) || null,
+        createdBy: ownerUserId,
+        email: text(socio.email) || null,
+        kind: "contato",
+        phone: text(socio.telefone) || null,
+        role: socio.representanteLegal ? "representante legal" : "socio",
+        source: "apolo",
+      },
+      related_entity_id: null,
+      relationship_type: socio.representanteLegal ? "representante_legal" : "socio",
+      status: "verified",
+    });
+  }
+
   const imobiliariaId = text(perfil.imobiliariaId);
   const imobiliariaLabel = text(perfil.imobiliariaLabel);
   if (imobiliariaId || imobiliariaLabel) {

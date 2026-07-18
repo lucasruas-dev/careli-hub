@@ -21,9 +21,9 @@ export const maxDuration = 120;
 // So o processo do PROSPECT esta ligado; os demais papeis entram quando cada processo existir.
 const ENABLED_ROLES: ApoloBirthRole[] = ["prospect"];
 
-// Um documento pode ter varios arquivos (RG frente+verso, contrato social com N paginas):
-// identificacao(2) + conjuge(2) + comprovante + certidao + contrato social + CAD passa fácil de 8.
-const MAX_FILES = 20;
+// Um documento pode ter varios arquivos (RG frente+verso, contrato social com N paginas) e o PJ
+// ainda soma 2 documentos por socio -- uma empresa com 4 socios ja passa de 20.
+const MAX_FILES = 40;
 const MAX_BASE64_LENGTH = 28_000_000; // ~20MB por arquivo
 
 // Categoria (document_type) -> rotulo legivel usado na nomeacao "Nome + categoria".
@@ -31,11 +31,26 @@ const CATEGORIA_LABEL: Record<string, string> = {
   cad: "CAD",
   certidao: "Certidão",
   comprovante_endereco: "Comprovante de endereço",
+  contrato_social: "Contrato social",
   identificacao: "Identificação",
   identificacao_conjuge: "Identificação (cônjuge)",
   outros: "Outros",
   renda: "Renda",
 };
+
+// Documentos de socio carregam o indice na categoria ("identificacao_socio_2"): cada socio vira
+// UM arquivo no drive. Sem o indice, o agrupamento por categoria fundiria os documentos de
+// todos os socios num PDF so.
+const SOCIO_CATEGORIA_RE = /^(identificacao|comprovante)_socio_(\d+)$/;
+
+function rotuloCategoria(categoria: string): string {
+  const socio = SOCIO_CATEGORIA_RE.exec(categoria);
+  if (socio) {
+    const tipo = socio[1] === "identificacao" ? "Identificação" : "Comprovante de endereço";
+    return `${tipo} (sócio ${socio[2]})`;
+  }
+  return CATEGORIA_LABEL[categoria] ?? "Documento";
+}
 
 type IncomingDoc = {
   categoria?: string;
@@ -136,7 +151,7 @@ export async function POST(request: Request) {
   }
 
   for (const [categoria, arquivos] of porCategoria) {
-    const rotulo = `${nomeCliente} - ${CATEGORIA_LABEL[categoria] ?? "Documento"}`;
+    const rotulo = `${nomeCliente} - ${rotuloCategoria(categoria)}`;
     const varias = arquivos.length > 1;
 
     let fileBase64: string;
@@ -223,6 +238,7 @@ export async function POST(request: Request) {
 
 function normalizeCategoria(value: string | undefined): string {
   const key = (value ?? "").trim().toLowerCase();
+  if (SOCIO_CATEGORIA_RE.test(key)) return key;
   return key in CATEGORIA_LABEL && key !== "cad" ? key : "outros";
 }
 

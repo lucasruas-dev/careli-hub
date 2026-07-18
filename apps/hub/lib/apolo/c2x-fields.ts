@@ -187,6 +187,16 @@ export function mapDocType(type: string, stdType = ""): string {
   if (/BANC|EXTRATO|FATURA.*CARTAO|CARTAO.*FATURA|CORRESPONDENCIA/.test(v))
     return "Correspondência bancária";
   if (/COMPROVANTE|RESIDENCIA|ENDERECO/.test(v)) return "Comprovante de endereço";
+  // Empresa.
+  if (/\bCNPJ\b|PESSOA.?JUR|COMPROVANTE.*INSCRI/.test(v)) return "Cartão CNPJ";
+  if (/CONTRATO.?SOCIAL/.test(v)) return "Contrato social";
+
   const raw = String(type || stdType || "").trim();
-  return raw && !/desconhec|unknown/i.test(raw) ? titleCase(raw) : "Documento";
+  // O documentType chega como type+stdType+TAGS concatenados ("formulario form country=bra
+  // id=bra-cadastro-cnpj-1 person=legal ..."). Isso e diagnostico, nao rotulo -- jogar na tela
+  // despeja a string inteira no campo "Tipo".
+  const ehDiagnostico = raw.includes("=") || raw.length > 30;
+  return raw && !ehDiagnostico && !/desconhec|unknown/i.test(raw)
+    ? titleCase(raw)
+    : "Documento";
 }
