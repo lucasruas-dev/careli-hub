@@ -97,10 +97,19 @@
   #print-area{display:none}
 
   @media print{
-    body *{visibility:hidden}
-    #print-area, #print-area *{visibility:visible}
-    #print-area{display:block;position:absolute;inset:0}
-    .etq{border:0.3mm solid #000;margin:0;page-break-after:always}
+    /* Reset do documento: a tela do app (100vh, overflow hidden, padding) NAO
+       pode ditar a pagina da impressao termica. */
+    html,body{width:auto;height:auto;margin:0;padding:0;overflow:visible;background:#fff;display:block}
+    /* Esconde a UInão-imprimível TIRANDO do fluxo (display:none). O truque
+       antigo era visibility:hidden + #print-area absoluto: os elementos
+       invisiveis continuavam ocupando espaco e as etiquetas se empilhavam numa
+       pagina so no "Imprimir todas". */
+    body > *{display:none !important}
+    #print-area{display:block !important}
+    /* Cada etiqueta = exatamente uma pagina de 100x50mm; nao quebra no meio. */
+    .etq{width:100mm;height:50mm;margin:0;border:0.3mm solid #000;break-inside:avoid;page-break-inside:avoid;break-after:page;page-break-after:always}
+    /* Sem quebra depois da ultima: evita a etiqueta em branco no fim do lote. */
+    .etq:last-child{break-after:auto;page-break-after:auto}
     @page{size:100mm 50mm;margin:0}
   }
 </style>
