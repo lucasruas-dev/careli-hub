@@ -217,11 +217,14 @@ export type CadastroDraft = {
   cidade: string;
   // --- EMPRESA (cartao CNPJ) ---
   // O cartao entrega tudo isto com ~99% de confianca; sem os campos aqui o dado era lido e
-  // jogado fora (o fluxo PJ nascia vazio). Capital social NAO vem no cartao.
+  // jogado fora (o fluxo PJ nascia vazio). Capital social ficou de fora: nao vem no cartao
+  // CNPJ e o Lucas dispensou (17/jul).
   atividade: string;
   cnae: string;
   cnpj: string;
   dataAbertura: string;
+  // Data da situacao cadastral do cartao CNPJ (fallback pra atualizacao cadastral).
+  dataAtualizacao: string;
   naturezaJuridica: string;
   nomeFantasia: string;
   porte: string;
@@ -312,6 +315,7 @@ function emptyCadastro(): CadastroDraft {
     cnpj: "",
     cpf: "",
     dataAbertura: "",
+    dataAtualizacao: "",
     naturezaJuridica: "",
     nomeFantasia: "",
     porte: "",
@@ -403,6 +407,7 @@ const FIELD_MATCHERS: Array<{ target: keyof CadastroDraft; needles: string[] }> 
   { needles: ["nome-empresarial", "nome-empresa", "razao-social"], target: "razaoSocial" },
   { needles: ["nome-fantasia"], target: "nomeFantasia" },
   { needles: ["data-registro", "data-inscricao", "data-abertura"], target: "dataAbertura" },
+  { needles: ["data-situacao-cadastral", "data-cadastral"], target: "dataAtualizacao" },
   { needles: ["situacao-cadastral"], target: "situacaoCadastral" },
   { needles: ["natureza-juridica"], target: "naturezaJuridica" },
   { needles: ["porte"], target: "porte" },
@@ -515,11 +520,28 @@ function juntarNaturalidade(fields: CadastroField[], draft: CadastroDraft): void
   }
 }
 
-// "BRA" (RG) e "BRASILEIRO A" (CNH) viram a mesma coisa legivel na ficha.
+const UFS_BR = new Set([
+  "AC", "AL", "AP", "AM", "BA", "CE", "DF", "ES", "GO", "MA", "MT", "MS", "MG",
+  "PA", "PB", "PR", "PE", "PI", "RJ", "RN", "RS", "RO", "RR", "SC", "SP", "SE", "TO",
+]);
+
+// A naturalidade é uma cidade BR? Reconhece pela UF ("ESPINOSA / MG", "BELO HORIZONTE - MG",
+// ou terminando em " MG"). É o que permite deduzir a nacionalidade.
+function naturalidadeEhBrasileira(naturalidade: string): boolean {
+  const uf = naturalidade.trim().toUpperCase().split(/[\/\-,\s]+/).filter(Boolean).pop() ?? "";
+  return UFS_BR.has(uf);
+}
+
+// "BRA" (RG) e "BRASILEIRO A" (CNH) viram a mesma coisa legivel na ficha. E quando o documento
+// NÃO traz a nacionalidade, ela é deduzida da naturalidade: cidade brasileira -> Brasileira
+// (regra do Lucas 17/jul -- o país sai da cidade de nascimento).
 function normalizarNacionalidade(draft: CadastroDraft): void {
   const valor = draft.nacionalidade.trim().toUpperCase();
-  if (!valor) return;
   if (/^BRA(SIL|SILEIR)?/.test(valor)) {
+    draft.nacionalidade = "Brasileira";
+    return;
+  }
+  if (!valor && naturalidadeEhBrasileira(draft.naturalidade)) {
     draft.nacionalidade = "Brasileira";
   }
 }
@@ -984,7 +1006,6 @@ async function callEnrichment(
 export type CompanyEnrichment = {
   atividade: string;
   available: boolean;
-  capitalSocial: string;
   cnae: string;
   dataAbertura: string;
   emails: string[];
@@ -1007,7 +1028,6 @@ function emptyCompany(
   return {
     atividade: "",
     available: source === "mostqi" || source === "mock",
-    capitalSocial: "",
     cnae: "",
     dataAbertura: "",
     emails: [],
