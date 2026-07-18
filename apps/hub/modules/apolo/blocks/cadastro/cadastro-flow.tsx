@@ -15,6 +15,7 @@ import {
   Pencil,
   Send,
   ShieldCheck,
+  Trash2,
   UploadCloud,
   UserRound,
   X,
@@ -46,6 +47,13 @@ import {
   type CadDoc,
   type CadSecao,
 } from "./cad-pdf";
+import {
+  arquivoParaDrive,
+  arquivoParaLeitura,
+  ehPdf,
+  trocarExtensaoParaJpg,
+} from "../../lib/document-capture";
+import { buscarEnderecoPorCep, soDigitos } from "../../lib/cep";
 
 // Wizard de cadastro de CAD (prospect). Etapas: Identificação -> Endereço ->
 // (Cônjuge se casado) -> Revisão. Campos read-only vêm do documento/MOST;
@@ -96,7 +104,6 @@ const ENRICH_VAZIO: Enrichment = {
 type CompanyEnrichment = {
   atividade: string;
   available: boolean;
-  capitalSocial: string;
   cnae: string;
   dataAbertura: string;
   emails: string[];
@@ -186,20 +193,71 @@ type ArquivoAnexado = { fileBase64: string; fileName: string; mimeType: string }
 type DocCategoria =
   | "certidao"
   | "comprovante_endereco"
+  | "contrato_social"
   | "identificacao"
   | "identificacao_conjuge";
 // N arquivos por categoria: um documento pode ter frente + verso, ou varias paginas.
 type DocumentosAnexados = Partial<Record<DocCategoria, ArquivoAnexado[]>>;
 
+// QSA que vem do enriquecimento por CNPJ: informativo, read-only.
 type Socio = { nome: string; qualificacao: string };
+
+// Sócio CADASTRADO pelo operador — ficha própria, porque é pessoa física de verdade e é quem
+// responde/assina pela empresa. O comprovante de endereço nasce DENTRO do bloco do sócio
+// (decisão do Lucas 17/jul): em etapas separadas não dá pra saber qual comprovante é de quem.
+// Estado civil é manual e NÃO puxa cônjuge — no PJ o cônjuge não interessa ao negócio.
+type SocioCadastro = {
+  arquivosComprovante: ArquivoAnexado[];
+  arquivosIdentificacao: ArquivoAnexado[];
+  cpf: string;
+  dataNascimento: string;
+  documentoLido: boolean;
+  email: string;
+  endereco: Endereco;
+  estadoCivilId: string;
+  id: string;
+  nacionalidade: string;
+  naturalidade: string;
+  nome: string;
+  nomeMae: string;
+  // Quem assina pela empresa (o contrato social é que define). Sem isto a CAD não habilita
+  // contrato, que é o propósito dela.
+  representanteLegal: boolean;
+  sexoId: string;
+  telefone: string;
+};
+
+const SOCIO_VAZIO: Omit<SocioCadastro, "id"> = {
+  arquivosComprovante: [],
+  arquivosIdentificacao: [],
+  cpf: "",
+  dataNascimento: "",
+  documentoLido: false,
+  email: "",
+  endereco: {
+    bairro: "", cep: "", cidade: "", complemento: "", dataDocumento: "",
+    logradouro: "", numero: "", tipoDocumento: "", uf: "",
+  },
+  estadoCivilId: "",
+  nacionalidade: "",
+  naturalidade: "",
+  nome: "",
+  nomeMae: "",
+  representanteLegal: false,
+  sexoId: "",
+  telefone: "",
+};
 // Pessoa jurídica: dados da empresa (cartão CNPJ + enriquecimento por CNPJ) +
 // contato + vínculo. Sem sexo/estado civil/escolaridade (isso é PF).
 type Empresa = {
   atividade: string;
-  capitalSocial: string;
   cnae: string;
   cnpj: string;
   dataAbertura: string;
+  // Data da atualização cadastral. O C2X exige; a fonte é o contrato social (leitura), com
+  // fallback pra data de situação cadastral do cartão CNPJ. Prospect não informa NIRE nem
+  // inscrição municipal (vão "isento" no C2X) — decisão do Lucas 17/jul.
+  dataAtualizacao: string;
   documentoLido: boolean;
   email: string;
   naturezaJuridica: string;
@@ -213,7 +271,7 @@ type Empresa = {
 };
 
 const EMPRESA_VAZIA: Empresa = {
-  atividade: "", capitalSocial: "", cnae: "", cnpj: "", dataAbertura: "",
+  atividade: "", cnae: "", cnpj: "", dataAbertura: "", dataAtualizacao: "",
   documentoLido: false, email: "", naturezaJuridica: "",
   nomeFantasia: "", porte: "", razaoSocial: "", situacaoCadastral: "",
   socios: [], telefone: "", tipoDocumento: "",
@@ -225,19 +283,6 @@ async function accessToken() {
   return session?.data.session?.access_token ?? "";
 }
 
-// O recorte da MOST volta como imagem: o arquivo guardado deixa de ser o PDF/PNG original.
-function trocarExtensaoParaJpg(nome: string): string {
-  return `${nome.replace(/\.[^.]+$/, "")}.jpg`;
-}
-
-function fileToBase64(file: File): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(String(reader.result));
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(file);
-  });
-}
 
 // No localhost o token do servidor nao valida (chave de servico de homolog), e
 // pra iterar a UI a gente FINGE a leitura: dados de exemplo com um atraso pra
@@ -278,6 +323,31 @@ function mockIdentidadeExtraction(): Extraction {
       nomeMae: "SUELI AGUIAR PACHECO GONCALVES", nomePai: "", numero: "",
       orgaoEmissor: "SSP/MG", sexo: "F", uf: "",
     },
+    documentType: "cnh",
+    fields: [],
+    overallConfidence: 0.96,
+  };
+}
+
+// Anexo puro (contrato social): nada foi lido, entao nao ha campo, tipo nem score pra conferir.
+const EXTRACAO_VAZIA: Extraction = {
+  cadastro: {},
+  confiancaDocumento: null,
+  crop: "",
+  documentType: "",
+  fields: [],
+  overallConfidence: null,
+};
+
+function mockSocioExtraction(): Extraction {
+  return {
+    cadastro: {
+      cpf: "058.183.866-19", dataNascimento: "1978-11-20",
+      nacionalidade: "BRA", naturalidade: "BELO HORIZONTE",
+      nome: "CARLOS EDUARDO PACHECO", nomeMae: "MARIA APARECIDA PACHECO",
+      sexo: "M",
+    },
+    confiancaDocumento: 0.96,
     documentType: "cnh",
     fields: [],
     overallConfidence: 0.96,
@@ -350,7 +420,6 @@ function mockPjExtraction(): Extraction {
 function mockPjEnrichment(): Partial<Empresa> {
   return {
     atividade: "Incorporação de empreendimentos imobiliários",
-    capitalSocial: "R$ 500.000,00",
     cnae: "41.10-7-00",
     email: "contato@orionincorporadora.com.br",
     naturezaJuridica: "206-2 - Sociedade Empresária Limitada",
@@ -477,9 +546,16 @@ function familiaDoc(type: string): FamiliaDoc {
 }
 
 // Confiança MÍNIMA do documento (o score que a própria MOST dá pro documento inteiro).
-// 80% pra qualquer tipo (decisão do Lucas 16/jul): foto de documento na mão do cliente raramente
-// passa de 90, e recusar leitura boa custa mais que deixar o operador conferir.
-const CONFIANCA_MINIMA = 0.8;
+// Identificação (RG/CNH/cartão CNPJ) é padronizada: 80%. Comprovante e certidão são documentos
+// variados (conta de luz, certidão de cartório) que a MOST lê com menos confiança — 65% (decisão
+// do Lucas 17/jul), senão o corte barrava documento legítimo.
+const CONFIANCA_MINIMA: Record<FamiliaDoc, number> = {
+  certidao: 0.65,
+  cnpj: 0.8,
+  comprovante: 0.65,
+  identidade: 0.8,
+  outro: 0.65,
+};
 
 // Recusa o documento trocado. So barra quando a leitura reconheceu OUTRA familia com clareza —
 // tipo nao reconhecido ("outro") passa, pra nao travar documento legitimo mal classificado.
@@ -496,11 +572,12 @@ function conferirDocumento(ext: Extraction, aceitas: FamiliaDoc[], pedido: strin
   // Qualidade do documento: usa o score que a PRÓPRIA MOST dá pro documento inteiro
   // (result[].score). Não usar a média dos campos: ela afunda com QR code / código de segurança
   // e reprovaria documento bom.
+  const minima = CONFIANCA_MINIMA[familia];
   const confianca = ext.confiancaDocumento ?? null;
-  if (confianca !== null && confianca < CONFIANCA_MINIMA) {
+  if (confianca !== null && confianca < minima) {
     throw new Error(
       `A qualidade do documento está ruim (leitura de ${Math.round(confianca * 100)}%, ` +
-        `mínimo ${Math.round(CONFIANCA_MINIMA * 100)}%). Envie outra foto: documento inteiro ` +
+        `mínimo ${Math.round(minima * 100)}%). Envie outra foto: documento inteiro ` +
         "na imagem, sem reflexo e bem focado.",
     );
   }
@@ -670,6 +747,8 @@ export function CadastroFlow() {
   const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_VAZIA);
   // Originais anexados em cada etapa; vao pro drive da entidade no envio.
   const [documentos, setDocumentos] = useState<DocumentosAnexados>({});
+  // Sócios cadastrados (PJ). Cada um carrega os próprios arquivos.
+  const [socios, setSocios] = useState<SocioCadastro[]>([]);
   const [imobiliarias, setImobiliarias] = useState<SelectOption[]>([]);
 
   // Imobiliárias reais do Apolo (read-model), inclusive no localhost: a chave de serviço do
@@ -697,9 +776,14 @@ export function CadastroFlow() {
   const needsCertidao = !isPj && ["2", "3", "4", "6"].includes(perfil.estadoCivilId);
   // Cônjuge presente: casado ou união estável (só PF).
   const temConjuge = !isPj && ["2", "6"].includes(perfil.estadoCivilId);
-  const steps = needsCertidao
-    ? ["Identificação", "Endereço", "Certidão", "Revisão"]
-    : ["Identificação", "Endereço", "Revisão"];
+  // PJ tem jornada própria (Lucas 17/jul): o endereço da empresa já vem do cartão CNPJ, então
+  // não se pede comprovante dela — o que se pede é o contrato social e a ficha de cada sócio
+  // (com o comprovante DELE dentro do próprio bloco).
+  const steps = isPj
+    ? ["Identificação", "Contrato social", "Sócios", "Revisão"]
+    : needsCertidao
+      ? ["Identificação", "Endereço", "Certidão", "Revisão"]
+      : ["Identificação", "Endereço", "Revisão"];
   const current = steps[Math.min(step, steps.length - 1)];
 
   function jump(target: number) {
@@ -772,6 +856,9 @@ export function CadastroFlow() {
                 cnae: c.cnae || emp.cnae || "",
                 cnpj: c.cnpj || emp.cnpj || "",
                 dataAbertura: c.dataAbertura || emp.dataAbertura || "",
+                // Fallback do cartão pra atualização cadastral; a leitura do contrato social
+                // (a fonte preferida) e o aviso ao operador entram com a tela de validação.
+                dataAtualizacao: c.dataAtualizacao || "",
                 documentoLido: true,
                 naturezaJuridica: c.naturezaJuridica || emp.naturezaJuridica || "",
                 nomeFantasia: c.nomeFantasia || emp.nomeFantasia || "",
@@ -823,10 +910,56 @@ export function CadastroFlow() {
           />
         ) : null}
 
+        {current === "Contrato social" ? (
+          <StepContratoSocial
+            anexado={(documentos.contrato_social ?? []).length > 0}
+            onBack={() => setStep((v) => v - 1)}
+            onDocumento={reterDocumento("contrato_social")}
+            onNext={() => setStep((v) => v + 1)}
+          />
+        ) : null}
+
+        {current === "Sócios" ? (
+          <StepSocios
+            socios={socios}
+            onAdicionar={() =>
+              setSocios((lista) => [
+                ...lista,
+                { ...SOCIO_VAZIO, id: `socio-${Date.now()}-${lista.length}` },
+              ])
+            }
+            onBack={() => setStep((v) => v - 1)}
+            onAnexar={(id, campo, arquivo) =>
+              // Updater: acumula sobre o estado atual, então frente+verso subidos juntos ficam
+              // ambos (o closure sobrescrevia e salvava só o último).
+              setSocios((lista) =>
+                lista.map((socio) =>
+                  socio.id === id ? { ...socio, [campo]: [...socio[campo], arquivo] } : socio,
+                ),
+              )
+            }
+            onMudar={(id, patch) =>
+              setSocios((lista) =>
+                lista.map((socio) => (socio.id === id ? { ...socio, ...patch } : socio)),
+              )
+            }
+            onNext={() => setStep((v) => v + 1)}
+            onRemover={(id) => setSocios((lista) => lista.filter((socio) => socio.id !== id))}
+          />
+        ) : null}
+
         {current === "Endereço" ? (
           <StepEndereco
             endereco={endereco}
             onDocumento={reterDocumento("comprovante_endereco")}
+            onEnderecoChange={(patch) =>
+              setEndereco((atual) => ({
+                bairro: "", cep: "", cidade: "", complemento: "", dataDocumento: "",
+                logradouro: "", numero: "", tipoDocumento: "", uf: "",
+                ...atual,
+                ...patch,
+              }))
+            }
             onExtract={(ext) => {
               const c = ext.cadastro;
               setEndereco({
@@ -862,6 +995,7 @@ export function CadastroFlow() {
             imobiliarias={imobiliarias}
             perfil={perfil}
             persona={persona}
+            socios={socios}
             onBack={() => setStep(step - 1)}
           />
         ) : null}
@@ -972,7 +1106,9 @@ function DocUploader({
   mockData,
   onExtracted,
   onFile,
-  rotuloAdicionar = "Adicionar outra página (verso)",
+  // Documento que e SO anexo (contrato social): nao manda pra leitura. Cada arquivo lido e uma
+  // consulta cobrada -- um contrato de 8 paginas queimava 8 consultas sem usar nada.
+  semLeitura = false,
 }: {
   busy?: boolean;
   hint: string;
@@ -980,7 +1116,7 @@ function DocUploader({
   mockData?: (file: File) => Extraction;
   onExtracted: (ext: Extraction) => void | Promise<void>;
   onFile?: (arquivo: ArquivoAnexado) => void;
-  rotuloAdicionar?: string;
+  semLeitura?: boolean;
 }) {
   const [lidos, setLidos] = useState<ArquivoLido[]>([]);
   const [loading, setLoading] = useState(false);
@@ -999,30 +1135,46 @@ function DocUploader({
       const novos: ArquivoLido[] = [];
 
       for (const file of files) {
-        // Sempre calculado (inclusive no LOCAL_MOCK): o original e retido pra ir pro drive no
-        // envio, nao so pra alimentar a leitura.
-        const fileBase64 = await fileToBase64(file);
-        let ext: Extraction;
-        if (LOCAL_MOCK && mockData) {
+        let ext: Extraction = EXTRACAO_VAZIA;
+        // Rotação que a MOST reconheceu (0 = imagem já em pé, ou PDF, ou anexo puro).
+        let graus = 0;
+
+        if (semLeitura) {
+          // Anexo puro (contrato): nao le, entao nem gera a versao de alta qualidade.
+          ext = EXTRACAO_VAZIA;
+        } else if (LOCAL_MOCK && mockData) {
           await delay(1200); // finge a leitura pra mostrar a barra
           ext = mockData(file);
         } else {
-          ext = await apiPost<Extraction>({
-            action: "extract",
-            fileBase64,
-            fileName: file.name,
-          });
+          // Foto do WhatsApp costuma vir deitada e a MOST não gira sozinha (result vazio). Tenta
+          // em pé; se não reconhecer nada, gira e tenta de novo. PDF não gira. So paga consulta
+          // extra quando o documento veio vazio — documento bom lê na primeira.
+          const rotacoes = ehPdf(file) ? [0] : [0, 90, 270, 180];
+          for (const tentativa of rotacoes) {
+            const paraLeitura = await arquivoParaLeitura(file, tentativa);
+            ext = await apiPost<Extraction>({
+              action: "extract",
+              fileBase64: paraLeitura.fileBase64,
+              fileName: paraLeitura.fileName,
+            });
+            // Reconheceu = extraiu ao menos um campo. Não dá pra usar documentType: result vazio
+            // volta como "desconhecido" (truthy), o que faria parar sem girar.
+            if (ext.fields.length > 0) {
+              graus = tentativa;
+              break;
+            }
+          }
         }
-        const temCrop = Boolean(ext.crop);
-        novos.push({
-          arquivo: {
-            fileBase64: temCrop ? (ext.crop as string) : fileBase64,
-            fileName: temCrop ? trocarExtensaoParaJpg(file.name) : file.name,
-            mimeType: temCrop ? "image/jpeg" : file.type || "",
-          },
-          ext,
-          nome: file.name,
-        });
+        // Pro DRIVE: o recorte tratado da MOST (ja pequeno) se veio; senao, versao comprimida na
+        // MESMA rotação que a leitura reconheceu (pro arquivo guardado ficar em pé).
+        const arquivo: ArquivoAnexado = ext.crop
+          ? {
+              fileBase64: ext.crop,
+              fileName: trocarExtensaoParaJpg(file.name),
+              mimeType: "image/jpeg",
+            }
+          : await arquivoParaDrive(file, graus);
+        novos.push({ arquivo, ext, nome: file.name });
       }
 
       const todos = [...lidos, ...novos];
@@ -1058,11 +1210,11 @@ function DocUploader({
           <>
             <CheckCircle2 className="size-6 text-emerald-500" aria-hidden="true" />
             <span className="text-sm font-medium text-ink">
-              {lidos.length === 1
-                ? "1 arquivo lido"
-                : `${lidos.length} arquivos lidos`}
+              {lidos.length === 1 ? "1 arquivo anexado" : `${lidos.length} arquivos anexados`}
             </span>
-            <span className="text-xs text-ink-muted">Clique para recomeçar o documento</span>
+            <span className="text-xs text-ink-muted">
+              Clique para adicionar mais arquivos
+            </span>
           </>
         ) : (
           <>
@@ -1089,30 +1241,17 @@ function DocUploader({
         </ul>
       ) : null}
 
-      {/* No PC dá pra escolher vários de uma vez; no celular a câmera tira uma foto por vez,
-          então o botão continua aqui pra anexar o verso / a próxima página. */}
-      <div className="mt-2 grid gap-2 sm:grid-cols-2">
-        <button
-          type="button"
-          onClick={() => cameraRef.current?.click()}
-          disabled={working}
-          className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-soft transition-colors hover:bg-subtle disabled:cursor-wait disabled:opacity-60"
-        >
-          <Camera className="size-3.5" aria-hidden="true" />
-          Usar câmera do dispositivo
-        </button>
-        {done ? (
-          <button
-            type="button"
-            onClick={() => inputRef.current?.click()}
-            disabled={working}
-            className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-[#A07C3B]/25 bg-surface px-3 py-2 text-xs font-semibold text-[#7a5e2c] transition-colors hover:bg-[#A07C3B]/10 disabled:cursor-wait disabled:opacity-60 dark:text-[#d9b877]"
-          >
-            <UploadCloud className="size-3.5" aria-hidden="true" />
-            {rotuloAdicionar}
-          </button>
-        ) : null}
-      </div>
+      {/* No PC o seletor aceita varios de uma vez (e clicar de novo acumula); no celular a
+          camera tira uma foto por vez e cada foto se soma as anteriores. */}
+      <button
+        type="button"
+        onClick={() => cameraRef.current?.click()}
+        disabled={working}
+        className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-soft transition-colors hover:bg-subtle disabled:cursor-wait disabled:opacity-60"
+      >
+        <Camera className="size-3.5" aria-hidden="true" />
+        Usar câmera do dispositivo
+      </button>
 
       <input
         ref={inputRef}
@@ -1402,12 +1541,21 @@ function StepIdentificacao({
         />
       </Secao>
 
+      <p className="m-0 mb-3 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
+        Pessoa física: envie <span className="font-semibold">RG, CNH ou passaporte</span>.
+        Pessoa jurídica: envie o <span className="font-semibold">cartão CNPJ</span> — o tipo é
+        identificado pelo documento.
+      </p>
       <div className="print:hidden">
         <DocUploader
           busy={enriching}
           label="Adicionar documento do cliente"
           hint="RG / CNH (pessoa física) ou cartão CNPJ (empresa) · imagem ou PDF"
           mockData={(file) =>
+            // SÓ no localhost (sem MOST): o mock precisa de um palpite pra simular PF ou PJ, e
+            // usa o nome do arquivo. Em produção/preview NADA disso roda — o conteúdo vai pra
+            // MOST, que lê os pixels. O nome do arquivo (quase sempre vindo do WhatsApp) nunca
+            // decide o tipo do documento.
             /cnpj/i.test(file.name) ? mockPjExtraction() : mockIdentidadeExtraction()
           }
           onFile={onDocumento}
@@ -1458,9 +1606,8 @@ function StepIdentificacao({
               <ReadField label="Situação cadastral" value={empresa.situacaoCadastral} />
               <ReadField label="Natureza jurídica" value={empresa.naturezaJuridica} span2 />
               <ReadField label="Porte" value={empresa.porte} />
-              <ReadField label="CNAE" value={empresa.cnae} />
+              <ReadField label="CNAE" value={empresa.cnae} span2 />
               <ReadField label="Atividade principal" value={empresa.atividade} span2 />
-              <ReadField label="Capital social" value={empresa.capitalSocial} />
             </Secao>
 
             {empresa.socios.length ? (
@@ -1685,16 +1832,329 @@ function ComprovanteRecencia({ data }: { data: string }) {
   );
 }
 
+// Contrato social: documento livre (não é formulário padronizado como o cartão CNPJ), então
+// aqui ele é ANEXO — não tentamos ler campo dele. É de onde saem os sócios, que o operador
+// cadastra na etapa seguinte.
+function StepContratoSocial({
+  anexado,
+  onBack,
+  onDocumento,
+  onNext,
+}: {
+  anexado: boolean;
+  onBack: () => void;
+  onDocumento: (arquivo: ArquivoAnexado) => void;
+  onNext: () => void;
+}) {
+  return (
+    <StepCard title="2. Contrato social">
+      <p className="m-0 mb-3 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] dark:text-[#d9b877]">
+        Envie o <span className="font-semibold">contrato social</span> (ou a última alteração
+        consolidada). Pode anexar várias páginas de uma vez.
+      </p>
+      <div className="print:hidden">
+        <DocUploader
+          label="Adicionar contrato social"
+          hint="Todas as páginas · imagem ou PDF"
+          onFile={onDocumento}
+          // Anexo puro: documento livre (nao e formulario padronizado), nao ha campo a ler --
+          // e cada arquivo lido seria uma consulta cobrada a toa.
+          semLeitura
+          onExtracted={() => {}}
+        />
+      </div>
+      <NavButtons canNext={anexado} onBack={onBack} onNext={onNext} />
+    </StepCard>
+  );
+}
+
+// Um bloco por sócio: identificação + ficha + comprovante DELE, tudo junto. Em etapas separadas
+// não dá pra saber qual comprovante é de qual sócio.
+function BlocoSocio({
+  aoAnexar,
+  aoMudar,
+  aoRemover,
+  indice,
+  podeRemover,
+  socio,
+}: {
+  // Anexa via função updater (não pelo closure): subir frente+verso de uma vez chamava onFile
+  // 2x no mesmo render e o segundo sobrescrevia o primeiro — salvava só 1 dos 2 documentos.
+  aoAnexar: (campo: "arquivosComprovante" | "arquivosIdentificacao", arquivo: ArquivoAnexado) => void;
+  aoMudar: (patch: Partial<SocioCadastro>) => void;
+  aoRemover: () => void;
+  indice: number;
+  podeRemover: boolean;
+  socio: SocioCadastro;
+}) {
+  return (
+    <div className="rounded-xl border border-line bg-surface p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="m-0 text-sm font-semibold text-ink">
+          Sócio {indice + 1}
+          {socio.nome ? <span className="text-ink-muted"> · {titleCase(socio.nome)}</span> : null}
+        </h3>
+        {podeRemover ? (
+          <button
+            type="button"
+            onClick={aoRemover}
+            className="inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
+          >
+            <Trash2 className="size-3.5" aria-hidden="true" />
+            Remover
+          </button>
+        ) : null}
+      </div>
+
+      <DocUploader
+        label="Adicionar documento de identificação"
+        hint="RG, CNH ou passaporte · imagem ou PDF"
+        mockData={mockSocioExtraction}
+        onFile={(arquivo) =>
+          aoAnexar("arquivosIdentificacao", arquivo)
+        }
+        onExtracted={async (ext) => {
+          conferirDocumento(
+            ext,
+            ["identidade"],
+            "o documento de identificação do sócio (RG, CNH ou passaporte)",
+          );
+          const c = ext.cadastro;
+          // Enriquece o sócio por CPF, igual titular e cônjuge: sexo, telefone e nome da mãe.
+          // O await mantém o uploader em "consultando" até terminar.
+          let enr: Enrichment = ENRICH_VAZIO;
+          try {
+            if (LOCAL_MOCK) {
+              await delay(1200);
+              enr = mockConjugeEnrichment();
+            } else {
+              enr = await apiPost<Enrichment>({ action: "enrich", cpf: c.cpf ?? "" });
+            }
+          } catch {
+            // enriquecimento é best-effort: sem ele, os campos ficam manuais.
+          }
+          aoMudar({
+            cpf: c.cpf ?? "",
+            dataNascimento: c.dataNascimento ?? "",
+            documentoLido: true,
+            nacionalidade: c.nacionalidade ?? "",
+            naturalidade: c.naturalidade ?? "",
+            nome: c.nome ?? "",
+            nomeMae: c.nomeMae || enr.nomeMae || "",
+            // Documento manda; enriquecimento é a rede.
+            sexoId:
+              matchSexoId(c.sexo ?? "")?.toString() ||
+              matchSexoId(enr.sexo)?.toString() ||
+              socio.sexoId,
+            telefone: enr.telefones[0] ?? socio.telefone,
+          });
+        }}
+      />
+
+      {socio.documentoLido ? (
+        <>
+          <Secao title="Dados do sócio">
+            <ReadField label="Nome" value={titleCase(socio.nome)} span2 />
+            <ReadField label="CPF" value={socio.cpf} />
+            <ReadField label="Nascimento" value={formatDateBR(socio.dataNascimento)} />
+            <ReadField label="Nome da mãe" value={titleCase(socio.nomeMae)} span2 />
+            <ReadField label="Naturalidade" value={titleCase(socio.naturalidade)} />
+            <ReadField label="Nacionalidade" value={titleCase(socio.nacionalidade)} />
+          </Secao>
+
+          <Secao title="Perfil do sócio">
+            <SelectField
+              label="Sexo"
+              value={socio.sexoId}
+              options={C2X_SEXO}
+              onChange={(v) => aoMudar({ sexoId: v })}
+            />
+            {/* Estado civil é manual e NÃO puxa cônjuge: no PJ o cônjuge não interessa ao
+                negócio, só a informação (decisão do Lucas 17/jul). */}
+            <SelectField
+              label="Estado civil"
+              value={socio.estadoCivilId}
+              options={C2X_ESTADO_CIVIL}
+              onChange={(v) => aoMudar({ estadoCivilId: v })}
+            />
+          </Secao>
+
+          <Secao title="Contato do sócio">
+            <PhoneField
+              label="Telefone"
+              sugestoes={[]}
+              value={socio.telefone}
+              onChange={(v) => aoMudar({ telefone: v })}
+            />
+            <EmailField value={socio.email} onChange={(v) => aoMudar({ email: v })} />
+          </Secao>
+
+          <label className="mt-3 flex cursor-pointer items-start gap-2 rounded-lg border border-line bg-subtle px-3 py-2">
+            <input
+              type="checkbox"
+              checked={socio.representanteLegal}
+              onChange={(e) => aoMudar({ representanteLegal: e.target.checked })}
+              className="mt-0.5 size-4 accent-[#A07C3B]"
+            />
+            <span className="text-xs text-ink-soft">
+              <span className="font-semibold text-ink">Representante legal</span> — assina pela
+              empresa (conforme o contrato social).
+            </span>
+          </label>
+
+          <div className="mt-4">
+            <span className="mb-2 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+              Comprovante de endereço do sócio
+            </span>
+            <DocUploader
+              label="Adicionar comprovante de endereço"
+              hint="Conta de luz, água, telefone · imagem ou PDF"
+              mockData={mockEnderecoExtraction}
+              onFile={(arquivo) =>
+                aoAnexar("arquivosComprovante", arquivo)
+              }
+              onExtracted={(ext) => {
+                conferirDocumento(
+                  ext,
+                  ["comprovante"],
+                  "um comprovante de endereço (conta de luz, água ou telefone)",
+                );
+                const emissao = acharDataComprovante(ext.fields);
+                const meses = emissao ? mesesDesde(emissao) : null;
+                if (meses !== null && meses > 3) {
+                  throw new Error(
+                    `Comprovante vencido: emitido há ${meses} meses (${formatDateBR(emissao)}). ` +
+                      "Envie um comprovante com até 3 meses de emissão.",
+                  );
+                }
+                const c = ext.cadastro;
+                aoMudar({
+                  endereco: {
+                    bairro: c.bairro ?? "",
+                    cep: c.cep ?? "",
+                    cidade: c.cidade ?? "",
+                    complemento: "",
+                    dataDocumento: emissao ?? "",
+                    logradouro: c.logradouro ?? "",
+                    numero: c.numero ?? "",
+                    tipoDocumento: ext.documentType,
+                    uf: c.uf ?? "",
+                  },
+                });
+              }}
+            />
+            {/* Aviso quando a MOST não leu o comprovante (foto ruim/girada): o documento já ficou
+                salvo, e o operador reenvia ou preenche pelo CEP. */}
+            {socio.arquivosComprovante.length > 0 &&
+            !socio.endereco.logradouro &&
+            !socio.endereco.cidade ? (
+              <p className="m-0 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300">
+                Não consegui ler o endereço no comprovante. O documento foi salvo — envie a conta
+                inteira e bem enquadrada para tentar de novo, ou preencha pelo CEP abaixo.
+              </p>
+            ) : null}
+
+            {/* CEP-first: digitou o CEP, o endereço vem sozinho. Aparece após anexar o
+                comprovante (preenchido pela leitura quando a MOST lê). */}
+            {socio.arquivosComprovante.length > 0 ? (
+              <EnderecoEditavel
+                endereco={socio.endereco}
+                onChange={(patch) => aoMudar({ endereco: { ...socio.endereco, ...patch } })}
+              />
+            ) : null}
+          </div>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function StepSocios({
+  onAdicionar,
+  onAnexar,
+  onBack,
+  onMudar,
+  onNext,
+  onRemover,
+  socios,
+}: {
+  onAdicionar: () => void;
+  onAnexar: (
+    id: string,
+    campo: "arquivosComprovante" | "arquivosIdentificacao",
+    arquivo: ArquivoAnexado,
+  ) => void;
+  onBack: () => void;
+  onMudar: (id: string, patch: Partial<SocioCadastro>) => void;
+  onNext: () => void;
+  onRemover: (id: string) => void;
+  socios: SocioCadastro[];
+}) {
+  // Cada sócio precisa de documento lido, estado civil, sexo e comprovante; e alguém tem que
+  // assinar pela empresa, senão a CAD não habilita contrato.
+  const completos = socios.every(
+    (socio) =>
+      socio.documentoLido &&
+      socio.sexoId &&
+      socio.estadoCivilId &&
+      socio.arquivosComprovante.length > 0 &&
+      socio.endereco.logradouro.trim() &&
+      socio.endereco.cidade.trim(),
+  );
+  const temRepresentante = socios.some((socio) => socio.representanteLegal);
+
+  return (
+    <StepCard title="3. Sócios">
+      <div className="grid gap-4">
+        {socios.map((socio, index) => (
+          <BlocoSocio
+            aoAnexar={(campo, arquivo) => onAnexar(socio.id, campo, arquivo)}
+            aoMudar={(patch) => onMudar(socio.id, patch)}
+            aoRemover={() => onRemover(socio.id)}
+            indice={index}
+            key={socio.id}
+            podeRemover={socios.length > 1}
+            socio={socio}
+          />
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={onAdicionar}
+        className="mt-3 flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-line-strong bg-subtle px-3 py-2.5 text-xs font-semibold text-ink-soft transition-colors hover:bg-subtle/70"
+      >
+        <UserRound className="size-3.5" aria-hidden="true" />
+        Adicionar sócio
+      </button>
+
+      {socios.length && !temRepresentante ? (
+        <p className="m-0 mt-3 text-xs font-medium text-amber-700 dark:text-amber-300">
+          Marque quem é o representante legal (quem assina pela empresa).
+        </p>
+      ) : null}
+
+      <NavButtons
+        canNext={socios.length > 0 && completos && temRepresentante}
+        onBack={onBack}
+        onNext={onNext}
+      />
+    </StepCard>
+  );
+}
+
 function StepEndereco({
   endereco,
   onBack,
   onDocumento,
+  onEnderecoChange,
   onExtract,
   onNext,
 }: {
   endereco: Endereco | null;
   onBack: () => void;
   onDocumento: (arquivo: ArquivoAnexado) => void;
+  onEnderecoChange: (patch: Partial<Endereco>) => void;
   onExtract: (ext: Extraction) => void;
   onNext: () => void;
 }) {
@@ -1728,21 +2188,24 @@ function StepEndereco({
       </div>
       {endereco ? (
         <>
-          <Secao title="Endereço">
-            <ReadField label="Tipo" value={mapDocType(endereco.tipoDocumento)} />
-            <ReadField label="Logradouro" value={titleCase(endereco.logradouro)} span2 />
-            <ReadField label="Número" value={endereco.numero} />
-            <ReadField label="Bairro" value={titleCase(endereco.bairro)} />
-            <ReadField label="Cidade" value={titleCase(endereco.cidade)} />
-            <ReadField label="UF" value={endereco.uf} />
-            <ReadField label="CEP" value={endereco.cep} />
-          </Secao>
+          {/* Aviso quando a MOST não leu o comprovante: documento salvo, preenche pelo CEP. */}
+          {!endereco.logradouro && !endereco.cidade ? (
+            <p className="m-0 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300">
+              Não consegui ler o endereço no comprovante. O documento foi salvo — envie a conta
+              inteira e bem enquadrada para tentar de novo, ou preencha pelo CEP abaixo.
+            </p>
+          ) : null}
+          <EnderecoEditavel endereco={endereco} onChange={onEnderecoChange} />
           {endereco.dataDocumento ? (
             <ComprovanteRecencia data={endereco.dataDocumento} />
           ) : null}
         </>
       ) : null}
-      <NavButtons canNext={Boolean(endereco)} onBack={onBack} onNext={onNext} />
+      <NavButtons
+        canNext={Boolean(endereco?.logradouro && endereco?.cidade)}
+        onBack={onBack}
+        onNext={onNext}
+      />
     </StepCard>
   );
 }
@@ -1868,6 +2331,7 @@ function StepRevisao({
   onBack,
   perfil,
   persona,
+  socios,
 }: {
   conjuge: Conjuge | null;
   documentos: DocumentosAnexados;
@@ -1878,6 +2342,7 @@ function StepRevisao({
   onBack: () => void;
   perfil: Perfil;
   persona: Persona;
+  socios: SocioCadastro[];
 }) {
   const label = (options: SelectOption[], id: string) =>
     options.find((o) => o.id.toString() === id)?.label ?? "";
@@ -1911,6 +2376,23 @@ function StepRevisao({
         })),
       );
 
+      // A categoria carrega o índice do sócio ("identificacao_socio_1"): sem isso o servidor
+      // agruparia os documentos de TODOS os sócios num PDF só.
+      const anexosSocios = socios.flatMap((socio, index) => [
+        ...socio.arquivosIdentificacao.map((arquivo) => ({
+          categoria: `identificacao_socio_${index + 1}`,
+          fileBase64: arquivo.fileBase64,
+          fileName: arquivo.fileName,
+          mimeType: arquivo.mimeType,
+        })),
+        ...socio.arquivosComprovante.map((arquivo) => ({
+          categoria: `comprovante_socio_${index + 1}`,
+          fileBase64: arquivo.fileBase64,
+          fileName: arquivo.fileName,
+          mimeType: arquivo.mimeType,
+        })),
+      ]);
+
       const salvo = await apiSalvarCadastro({
         // Estrutura da CAD: o PDF é montado no servidor, com o código de autenticação.
         cad: montarCadDoc(),
@@ -1924,13 +2406,36 @@ function StepRevisao({
               telefone: conjuge.telefone,
             }
           : null,
-        documentos: anexos,
+        documentos: [...anexos, ...anexosSocios],
         empresa: isPj ? empresa : null,
         endereco,
         identidade,
         perfil: { ...perfil, imobiliariaLabel: label(imobiliarias, perfil.imobiliariaId) },
         persona,
         role: "prospect",
+        socios: isPj
+          ? socios.map((socio) => ({
+              cpf: socio.cpf,
+              dataNascimento: socio.dataNascimento,
+              email: socio.email,
+              endereco: {
+                bairro: socio.endereco.bairro,
+                cep: socio.endereco.cep,
+                cidade: socio.endereco.cidade,
+                logradouro: socio.endereco.logradouro,
+                numero: socio.endereco.numero,
+                uf: socio.endereco.uf,
+              },
+              estadoCivilId: socio.estadoCivilId,
+              nacionalidade: socio.nacionalidade,
+              naturalidade: socio.naturalidade,
+              nome: socio.nome,
+              nomeMae: socio.nomeMae,
+              representanteLegal: socio.representanteLegal,
+              sexoId: socio.sexoId,
+              telefone: socio.telefone,
+            }))
+          : undefined,
       });
       setResultado(salvo);
       setEnviado(true);
@@ -1950,13 +2455,13 @@ function StepRevisao({
         cadSection("Dados da empresa", [
           cadField("Nome fantasia", titleCase(empresa.nomeFantasia)),
           cadField("CNPJ", empresa.cnpj),
+          cadField("Porte", empresa.porte),
           cadField("Abertura", formatDateBR(empresa.dataAbertura)),
+          cadField("Atualização cadastral", formatDateBR(empresa.dataAtualizacao)),
           cadField("Situação cadastral", empresa.situacaoCadastral),
           cadField("Natureza jurídica", empresa.naturezaJuridica, true),
-          cadField("Porte", empresa.porte),
           cadField("CNAE", empresa.cnae),
           cadField("Atividade principal", empresa.atividade, true),
-          cadField("Capital social", empresa.capitalSocial),
         ]),
       );
       if (empresa.socios.length) {
@@ -1985,6 +2490,34 @@ function StepRevisao({
           cadField("E-mail", empresa.email),
         ]),
       );
+      for (const [index, socio] of socios.entries()) {
+        secoes.push(
+          cadSection(
+            `Sócio ${index + 1}${socio.representanteLegal ? " · representante legal" : ""}`,
+            [
+              cadField("Nome", titleCase(socio.nome), true),
+              cadField("CPF", socio.cpf),
+              cadField("Nascimento", formatDateBR(socio.dataNascimento)),
+              cadField("Sexo", label(C2X_SEXO, socio.sexoId)),
+              cadField("Estado civil", label(C2X_ESTADO_CIVIL, socio.estadoCivilId)),
+              cadField("Telefone", socio.telefone),
+              cadField("E-mail", socio.email, true),
+              cadField(
+                "Endereço",
+                [
+                  titleCase(socio.endereco.logradouro),
+                  socio.endereco.numero,
+                  titleCase(socio.endereco.cidade),
+                  socio.endereco.uf,
+                ]
+                  .filter(Boolean)
+                  .join(", "),
+                true,
+              ),
+            ],
+          ),
+        );
+      }
     } else {
       // O nome NÃO entra como campo: já vai em destaque no topo da ficha.
       secoes.push(
@@ -2089,13 +2622,16 @@ function StepRevisao({
             <ReadField label="Razão social" value={nomeCliente} span2 />
             <ReadField label="Nome fantasia" value={titleCase(empresa.nomeFantasia)} />
             <ReadField label="CNPJ" value={empresa.cnpj} />
+            <ReadField label="Porte" value={empresa.porte} />
             <ReadField label="Abertura" value={formatDateBR(empresa.dataAbertura)} />
+            <ReadField
+              label="Atualização cadastral"
+              value={formatDateBR(empresa.dataAtualizacao)}
+            />
             <ReadField label="Situação cadastral" value={empresa.situacaoCadastral} />
             <ReadField label="Natureza jurídica" value={empresa.naturezaJuridica} span2 />
-            <ReadField label="Porte" value={empresa.porte} />
-            <ReadField label="CNAE" value={empresa.cnae} />
+            <ReadField label="CNAE" value={empresa.cnae} span2 />
             <ReadField label="Atividade principal" value={empresa.atividade} span2 />
-            <ReadField label="Capital social" value={empresa.capitalSocial} />
           </Secao>
 
           {empresa.socios.length ? (
@@ -2125,6 +2661,33 @@ function StepRevisao({
             <ReadField label="E-mail" value={empresa.email} span2 />
             <ReadField label="Imobiliária" value={label(imobiliarias, perfil.imobiliariaId)} />
           </Secao>
+
+          {socios.map((socio, index) => (
+            <Secao
+              key={socio.id}
+              title={`Sócio ${index + 1}${socio.representanteLegal ? " · representante legal" : ""}`}
+            >
+              <ReadField label="Nome" value={titleCase(socio.nome)} span2 />
+              <ReadField label="CPF" value={socio.cpf} />
+              <ReadField label="Nascimento" value={formatDateBR(socio.dataNascimento)} />
+              <ReadField label="Sexo" value={label(C2X_SEXO, socio.sexoId)} />
+              <ReadField label="Estado civil" value={label(C2X_ESTADO_CIVIL, socio.estadoCivilId)} />
+              <ReadField label="Telefone" value={socio.telefone} />
+              <ReadField label="E-mail" value={socio.email} span2 />
+              <ReadField
+                label="Endereço"
+                value={[
+                  titleCase(socio.endereco.logradouro),
+                  socio.endereco.numero,
+                  titleCase(socio.endereco.cidade),
+                  socio.endereco.uf,
+                ]
+                  .filter(Boolean)
+                  .join(", ")}
+                span2
+              />
+            </Secao>
+          ))}
         </>
       ) : (
         <>
@@ -2399,6 +2962,69 @@ function TextField({
         className="mt-0.5 w-full bg-transparent text-sm text-ink outline-none placeholder:text-ink-muted"
       />
     </div>
+  );
+}
+
+// Endereço editável com CEP-first: o operador digita o CEP e logradouro/bairro/cidade/UF vêm do
+// ViaCEP. É o fallback pro comprovante que a MOST não leu (foto ruim/girada) — o documento fica
+// salvo e o endereço se completa na mão sem digitar tudo.
+function EnderecoEditavel({
+  endereco,
+  onChange,
+}: {
+  endereco: Endereco;
+  onChange: (patch: Partial<Endereco>) => void;
+}) {
+  const [buscando, setBuscando] = useState(false);
+
+  async function aoMudarCep(valor: string) {
+    onChange({ cep: valor });
+    if (soDigitos(valor).length !== 8) return;
+    setBuscando(true);
+    const achado = await buscarEnderecoPorCep(valor);
+    setBuscando(false);
+    if (achado) {
+      onChange({
+        bairro: achado.bairro || endereco.bairro,
+        cidade: achado.cidade || endereco.cidade,
+        logradouro: achado.logradouro || endereco.logradouro,
+        uf: achado.uf || endereco.uf,
+      });
+    }
+  }
+
+  return (
+    <Secao title="Endereço">
+      <div className="relative">
+        <TextField label="CEP" placeholder="00000-000" value={endereco.cep} onChange={aoMudarCep} />
+        {buscando ? (
+          <Loader2
+            className="absolute right-3 top-3 size-4 animate-spin text-ink-muted"
+            aria-hidden="true"
+          />
+        ) : null}
+      </div>
+      <TextField
+        label="Número"
+        value={endereco.numero}
+        onChange={(v) => onChange({ numero: v })}
+      />
+      <TextField
+        label="Complemento"
+        value={endereco.complemento}
+        onChange={(v) => onChange({ complemento: v })}
+      />
+      <div className="sm:col-span-2">
+        <TextField
+          label="Logradouro"
+          value={endereco.logradouro}
+          onChange={(v) => onChange({ logradouro: v })}
+        />
+      </div>
+      <TextField label="Bairro" value={endereco.bairro} onChange={(v) => onChange({ bairro: v })} />
+      <TextField label="Cidade" value={endereco.cidade} onChange={(v) => onChange({ cidade: v })} />
+      <TextField label="UF" value={endereco.uf} onChange={(v) => onChange({ uf: v })} />
+    </Secao>
   );
 }
 
