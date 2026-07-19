@@ -5,6 +5,7 @@ import {
   Check,
   CircleHelp,
   Loader2,
+  Paperclip,
   Search,
   UserCheck,
   UserX,
@@ -68,6 +69,14 @@ export function ImportarCads() {
   // Onde os itens entram na esteira. Padrão "credito": mesmo finalizadas no Asana, as CADs
   // ainda precisam passar pela análise de crédito no processo novo.
   const [etapa, setEtapa] = useState<"validacao" | "credito" | "credenciado">("credito");
+  // Progresso do envio de anexos, que roda em lotes.
+  const [docs, setDocs] = useState<{
+    baixados: number;
+    erros: number;
+    feitas: number;
+    rodando: boolean;
+    total: number;
+  } | null>(null);
 
   const escanear = useCallback(async () => {
     setCarregando(true);
@@ -173,6 +182,61 @@ export function ImportarCads() {
     setAplicando(false);
   }, [analistaId, escanear, etapa, itensParaAplicar]);
 
+  // Traz os anexos das CADs já vinculadas. Roda em lotes de 10 porque baixar centenas de
+  // arquivos não cabe numa requisição só; o dedup é por anexo, então repetir não duplica.
+  const subirDocumentos = useCallback(async () => {
+    if (!preview) return;
+
+    const gids = preview.jaImportados.map((i) => i.cad.gid);
+    if (gids.length === 0) return;
+
+    setDocs({ baixados: 0, erros: 0, feitas: 0, rodando: true, total: gids.length });
+    setErro(null);
+
+    const token = await getApoloAccessToken();
+    let baixados = 0;
+    let erros = 0;
+
+    for (let i = 0; i < gids.length; i += 10) {
+      const lote = gids.slice(i, i + 10);
+      try {
+        const resposta = await fetch("/api/apolo/asana/documentos", {
+          body: JSON.stringify({ gids: lote }),
+          headers: {
+            Authorization: `Bearer ${token}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        });
+        const corpo = (await resposta.json()) as {
+          data?: { baixados: number; erros: unknown[] };
+          error?: string;
+        };
+        if (!resposta.ok) {
+          setErro(corpo.error ?? `Falha (${resposta.status}).`);
+          erros += lote.length;
+        } else {
+          baixados += corpo.data?.baixados ?? 0;
+          erros += corpo.data?.erros?.length ?? 0;
+        }
+      } catch (e) {
+        setErro((e as Error).message);
+        erros += lote.length;
+      }
+
+      setDocs({
+        baixados,
+        erros,
+        feitas: Math.min(i + 10, gids.length),
+        rodando: true,
+        total: gids.length,
+      });
+    }
+
+    setDocs((atual) => (atual ? { ...atual, rodando: false } : null));
+    setAviso(`${baixados} documentos enviados para o Apolo.`);
+  }, [preview]);
+
   return (
     <div className="space-y-4">
       <section className="rounded-xl border border-black/[0.07] bg-surface p-4 dark:border-white/[0.08]">
@@ -270,6 +334,24 @@ export function ImportarCads() {
               </div>
             </section>
           ) : null}
+
+          {/* A conta explícita: CADs encontradas x pessoas. Sem isto, "127 no Asana" e "122 no
+              Board" parecem divergência, quando é a mesma pessoa com mais de uma CAD. */}
+          <p className="text-xs text-ink-soft">
+            <b className="text-ink">{preview.total} CADs</b> nessas seções
+            {preview.empreendimento ? ` do empreendimento ${preview.empreendimento}` : ""}.
+            {(() => {
+              const comEntidade = [
+                ...preview.casados,
+                ...preview.jaImportados,
+              ].filter((i) => i.candidatos.length === 1);
+              const pessoas = new Set(comEntidade.map((i) => i.candidatos[0]!.id)).size;
+              const repetidas = comEntidade.length - pessoas;
+              return repetidas > 0
+                ? ` ${repetidas} são segunda CAD de alguém que já está na lista, então viram ${pessoas} pessoas no Board.`
+                : "";
+            })()}
+          </p>
 
           <div className="flex flex-wrap gap-2">
             <Contador cor="#22a95b" label="Casaram" valor={preview.casados.length} />
@@ -438,6 +520,49 @@ export function ImportarCads() {
               icone={<Check size={16} />}
               titulo={`Já importados (${preview.jaImportados.length})`}
             >
+              {/* Anexos: baixa do Asana e guarda no Apolo. Não passa pela MOST, não custa. */}
+              <div className="mb-3 rounded-lg border border-black/[0.07] bg-canvas p-3 dark:border-white/[0.08]">
+                <div className="flex flex-wrap items-center gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-ink">
+                      Documentos anexados no Asana
+                    </p>
+                    <p className="text-xs text-ink-soft">
+                      Traz os arquivos para a ficha, para a validação ter o documento ao lado
+                      dos dados. Não lê nada, então não tem custo de consulta.
+                    </p>
+                  </div>
+                  <button
+                    className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-semibold text-ink hover:bg-black/[0.04] disabled:opacity-50 dark:border-white/10 dark:hover:bg-white/[0.06]"
+                    disabled={docs?.rodando}
+                    onClick={() => void subirDocumentos()}
+                    type="button"
+                  >
+                    {docs?.rodando ? (
+                      <Loader2 className="animate-spin" size={15} />
+                    ) : (
+                      <Paperclip size={15} />
+                    )}
+                    Subir documentos das {preview.jaImportados.length}
+                  </button>
+                </div>
+
+                {docs ? (
+                  <div className="mt-2.5">
+                    <div className="h-1.5 overflow-hidden rounded-full bg-black/[0.07] dark:bg-white/[0.1]">
+                      <div
+                        className="h-full rounded-full bg-[#A07C3B] transition-all"
+                        style={{ width: `${(docs.feitas / docs.total) * 100}%` }}
+                      />
+                    </div>
+                    <p className="mt-1.5 text-xs text-ink-muted">
+                      {docs.feitas} de {docs.total} CADs · {docs.baixados} documentos enviados
+                      {docs.erros > 0 ? ` · ${docs.erros} com erro` : ""}
+                    </p>
+                  </div>
+                ) : null}
+              </div>
+
               <button
                 className="mb-2 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
                 onClick={() => {

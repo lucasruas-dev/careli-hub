@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-documentos-asana",
+    deployedAt: "2026-07-20T07:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Os documentos anexados nas CADs do Asana agora podem ser trazidos para a ficha no Apolo, com barra de progresso.",
+              "E o arquivo que a validacao do Board mostra ao lado dos dados, para conferir cadastro contra documento.",
+              "Enviar de novo nao duplica: cada arquivo ja trazido e reconhecido e pulado.",
+              "A tela passou a explicar a conta de CADs e pessoas, porque a mesma pessoa pode ter mais de uma CAD no Asana.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.46.5",
+    technical: {
+      done: "lib/apolo/asana-documentos.ts baixa o anexo pelo download_url (link assinado do Asana, sem mandar o token para host de terceiro) e sobe via uploadApoloDocument para o bucket apolo-documents, ligado a entidade. uploadApoloDocument ganhou metadataExtra, usado para gravar asanaAnexoGid — a chave de dedup. A entidade sai do vinculo em apolo_source_links, nao de casamento por nome. Rota /api/apolo/asana/documentos processa lotes de ate 10 CADs (maxDuration 300) e a tela itera somando o progresso. Concorrencia de 4 downloads, mesmo numero ja usado no relatorio de performance do Asana; teto de 15MB por arquivo.",
+      motivation: "A validacao lado a lado do Board precisa do documento, e ate agora as CADs importadas tinham so os dados. Isto NAO passa pela MOST: baixar e guardar nao tem custo de consulta, diferente da leitura por iOCR, que fica como etapa separada.",
+    },
+    title: "Apolo: documentos das CADs do Asana no Board",
+    type: "novidade",
+    version: "1.47.0",
+  },
+  {
     buildTag: "2026-07-20-apolo-cad-etapa-data",
     deployedAt: "2026-07-20T06:00:00-03:00",
     internal: true,

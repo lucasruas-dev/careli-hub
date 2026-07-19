@@ -77,6 +77,9 @@ export async function uploadApoloDocument(input: {
   fileBase64: string;
   fileName: string;
   label: string;
+  // Campos extras no metadata do documento. Usado pela importação do Asana para guardar o
+  // gid do anexo, que é a chave de dedup: sem isso, reimportar subiria o arquivo de novo.
+  metadataExtra?: Record<string, unknown>;
   mimeType?: string | null;
   ownerId: string;
   scope: ApoloDocScope;
@@ -112,6 +115,7 @@ export async function uploadApoloDocument(input: {
       sizeBytes: bytes.byteLength,
       source: "apolo",
       uploadedByName: input.uploadedByName,
+      ...(input.metadataExtra ?? {}),
     },
   };
   // extracted_payload só existe na tabela de entidade (o iOCR do cadastro).
