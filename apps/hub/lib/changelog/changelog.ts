@@ -36,6 +36,38 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-19-prometeu-central-telacheia",
+    deployedAt: "2026-07-19T23:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Tela cheia na Central: some o menu e fica so o painel, para acompanhar de longe no dia.",
+              "Escala da tela em tres opcoes: notebook, monitor e TV (informando as polegadas). A escolha fica salva.",
+              "Sala Cancelados voltou ao Mapa do salao, e a Secretaria ganhou a faixa com aguardando chamada, espera media e atendimento medio.",
+              "Numeros corrigidos: Aguardando na espera contava quem ainda nem tinha chegado ao evento.",
+              "Presentes agora deixou de somar quem ja concluiu ou desistiu.",
+              "Tempo medio total parou de crescer sozinho com o relogio: agora mede da entrada ate a conclusao de verdade.",
+              "Fila da recepcao deixou de mostrar quem ja foi atendido.",
+              "Falha de conexao nao aparece mais como Nenhum lancamento cadastrado, e busca sem resultado nao diz mais que o evento esta vazio.",
+            ],
+            screen: "Central",
+          },
+        ],
+      },
+    ],
+    rollback: "1.44.1",
+    technical: {
+      done: "Tela cheia via requestFullscreen no container da Central (nao no documento, para a TV mostrar so o painel) com listener de fullscreenchange. Escala por zoom no container, presets 1 / 1.28 / TV pela formula calibrada 0.0175*pol+0.72, persistida em localStorage. Correcoes de calculo: porEtapa passa a exigir entrouEm (recepcao e o estado padrao de quem so esta habilitado); presentes exclui concluido e cancelado; tempo medio usa etapaDesde do concluido em vez do relogio; conversao sobre quem passou pelo evento; filaDaRecepcao exclui concluido e cancelado. Limite de gargalo unificado entre Painel e Mapa. Dois testes novos na fila (17 no total).",
+      motivation: "Revisao adversarial da Central (34 agentes, 30 achados, 21 confirmados) apontou que a aba Painel contava quem nunca tinha chegado ao evento — mostraria centenas aguardando com o salao vazio — e que o tempo medio inflava sozinho ao longo do dia. O Lucas pediu o modo tela cheia, que faltava do mockup aprovado.",
+    },
+    title: "Prometeu: tela cheia, escala por tela e correcao dos numeros da Central",
+    type: "correcao",
+    version: "1.44.2",
+  },
+  {
     buildTag: "2026-07-19-prometeu-central-completa",
     deployedAt: "2026-07-19T21:00:00-03:00",
     modules: [

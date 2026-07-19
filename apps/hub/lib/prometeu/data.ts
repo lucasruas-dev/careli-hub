@@ -548,7 +548,12 @@ export async function listCredenciados(
 export function filaDaRecepcao(
   credenciados: PrometeuCredenciado[],
 ): PrometeuCredenciado[] {
-  const presentes = credenciados.filter((c) => c.entrouEm !== null);
+  // Quem JÁ CHEGOU e ainda está no fluxo. Sem excluir concluido/cancelado, os primeiros
+  // pagantes do PIX — que são justamente os primeiros a serem atendidos — ficariam no topo da
+  // fila o dia inteiro, depois de já terem ido embora.
+  const presentes = credenciados.filter(
+    (c) => c.entrouEm !== null && c.etapa !== "concluido" && c.etapa !== "cancelado",
+  );
 
   return presentes.sort((a, b) => {
     const naJanelaA = a.credenciadoNaJanela === true;

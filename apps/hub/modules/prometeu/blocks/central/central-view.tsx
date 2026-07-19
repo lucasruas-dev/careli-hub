@@ -1,7 +1,18 @@
 "use client";
 
-import { Loader2, Plus, RefreshCw } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  Laptop,
+  Loader2,
+  Maximize,
+  Minimize,
+  Monitor,
+  Plus,
+  RefreshCw,
+  Tv,
+} from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+
+import { usePersistedState } from "@/hooks/use-persisted-state";
 
 import {
   PROMETEU_ETAPAS,
@@ -37,6 +48,11 @@ type VerPor = "cliente" | "imobiliaria" | "unidade";
 const FONTE_QR = "◉";
 const FONTE_DADO = "◈";
 
+// Acima disto a espera vira gargalo (destaque vermelho). Mesmo limite no Painel e no Mapa —
+// critérios diferentes fariam a mesma fila parecer saudável numa aba e crítica na outra.
+// TODO: passar a ler as metas do Setup (config.metas.filaRecepcao.alerta) por evento.
+const LIMITE_GARGALO_MIN = 20;
+
 const ETAPAS_EM_ATENDIMENTO: PrometeuEtapa[] = [
   "negociacao",
   "reserva",
@@ -45,10 +61,14 @@ const ETAPAS_EM_ATENDIMENTO: PrometeuEtapa[] = [
   "pagamento",
 ];
 
-function duracao(desde: string, agora: number): string {
-  const minutos = Math.max(0, Math.floor((agora - new Date(desde).getTime()) / 60000));
+function duracaoMs(ms: number): string {
+  const minutos = Math.max(0, Math.floor(ms / 60000));
   if (minutos < 60) return `${minutos} min`;
   return `${Math.floor(minutos / 60)}h${String(minutos % 60).padStart(2, "0")}`;
+}
+
+function duracao(desde: string, agora: number): string {
+  return duracaoMs(agora - new Date(desde).getTime());
 }
 
 function horaCurta(iso: string | null): string {
@@ -88,6 +108,53 @@ export function CentralView() {
   const [verPor, setVerPor] = useState<VerPor>("cliente");
   const [busca, setBusca] = useState("");
   const [agora, setAgora] = useState(() => Date.now());
+
+  // A Central roda em telas muito diferentes no dia: notebook do coordenador, monitor da sala
+  // e TV grande. A escala fica no localStorage porque a TV é calibrada UMA vez e tem que
+  // continuar assim depois de recarregar.
+  const raizRef = useRef<HTMLDivElement>(null);
+  const [escala, setEscala] = usePersistedState<number>(
+    "prometeu:central:escala",
+    1,
+    { backend: "local" },
+  );
+  const [emTelaCheia, setEmTelaCheia] = useState(false);
+
+  // O navegador também sai da tela cheia pelo Esc: o botão precisa acompanhar.
+  useEffect(() => {
+    const aoTrocar = () => setEmTelaCheia(Boolean(document.fullscreenElement));
+    document.addEventListener("fullscreenchange", aoTrocar);
+    return () => document.removeEventListener("fullscreenchange", aoTrocar);
+  }, []);
+
+  const alternarTelaCheia = useCallback(() => {
+    if (document.fullscreenElement) {
+      void document.exitFullscreen();
+      return;
+    }
+    // Tela cheia do container da Central (não da página): na TV some o menu do hub e sobra só
+    // o painel, que é o que o time quer ver de longe.
+    void raizRef.current?.requestFullscreen().catch(() => {
+      // Alguns navegadores recusam sem gesto direto; o botão é o gesto, então só ignoramos.
+    });
+  }, []);
+
+  // Calibrado no mockup: 16 pol -> 1,00 e 32 pol -> 1,28.
+  const escalaDaTv = useCallback((polegadas: number) => {
+    return Math.round((0.0175 * polegadas + 0.72) * 100) / 100;
+  }, []);
+
+  const perguntarPolegadas = useCallback(() => {
+    const atual = Math.round((escala - 0.72) / 0.0175);
+    const resposta = window.prompt(
+      "Tamanho da TV (polegadas)?",
+      String(atual >= 40 ? atual : 55),
+    );
+    if (resposta === null) return;
+    const polegadas = Number.parseFloat(resposta.replace(",", "."));
+    if (!Number.isFinite(polegadas) || polegadas <= 0) return;
+    setEscala(escalaDaTv(polegadas));
+  }, [escala, escalaDaTv, setEscala]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setAgora(Date.now()), 30000);
@@ -132,28 +199,41 @@ export function CentralView() {
     void carregarFila(eventoId);
   }, [carregarFila, eventoId]);
 
+  // ⚠️ Conta SÓ quem já fez check-in. Sem isto, "recepcao" — que é o estado padrão de quem
+  // está apenas habilitado (iniciarEventoReal zera todo mundo em recepcao com entrou_em nulo)
+  // — mostraria os 500 cadastrados como "aguardando na espera" com o salão vazio.
   const porEtapa = useCallback(
-    (etapa: PrometeuEtapa) => credenciados.filter((c) => c.etapa === etapa).length,
+    (etapa: PrometeuEtapa) =>
+      credenciados.filter((c) => c.etapa === etapa && c.entrouEm !== null).length,
     [credenciados],
   );
 
   const kpis = useMemo(() => {
-    const presentes = credenciados.filter((c) => c.entrouEm !== null);
-    const emAtendimento = credenciados.filter((c) =>
-      ETAPAS_EM_ATENDIMENTO.includes(c.etapa),
+    // "Presentes agora" = quem está no evento NESTE momento: quem concluiu ou desistiu já foi
+    // embora e não pode continuar somando.
+    const presentes = credenciados.filter(
+      (c) => c.entrouEm !== null && c.etapa !== "concluido" && c.etapa !== "cancelado",
+    );
+    const chegaram = credenciados.filter((c) => c.entrouEm !== null);
+    const emAtendimento = credenciados.filter(
+      (c) => c.entrouEm !== null && ETAPAS_EM_ATENDIMENTO.includes(c.etapa),
     ).length;
     const concluidos = credenciados.filter((c) => c.etapa === "concluido");
 
-    // Tempo médio: só de quem chegou ao fim, medido da entrada até agora (o carimbo de
-    // conclusão ainda não existe como coluna — por isso é aproximação e está rotulado assim).
+    // Entrada → conclusão. O carimbo da conclusão é o `etapaDesde` de quem está em "concluido"
+    // (moverEtapa reescreve etapa_desde na troca). Usar `agora` aqui faria o número INFLAR
+    // sozinho: uma venda de 1h viraria "8h" no fim do dia, sem ninguém se mover.
     const tempos = concluidos
       .filter((c) => c.entrouEm)
-      .map((c) => agora - new Date(c.entrouEm!).getTime());
+      .map((c) => new Date(c.etapaDesde).getTime() - new Date(c.entrouEm!).getTime())
+      .filter((ms) => ms >= 0);
     const medio = tempos.length
       ? tempos.reduce((soma, t) => soma + t, 0) / tempos.length
       : null;
 
-    const base = presentes.length;
+    // Conversão sobre quem PASSOU pelo evento (não sobre quem está lá agora), senão o número
+    // desabaria a cada leva de check-ins.
+    const base = chegaram.length;
     return {
       concluidos: concluidos.length,
       conversao: base > 0 ? Math.round((concluidos.length / base) * 100) : null,
@@ -162,7 +242,7 @@ export function CentralView() {
       tempoMedio: medio,
       total: credenciados.length,
     };
-  }, [agora, credenciados]);
+  }, [credenciados]);
 
   const mover = useCallback(
     async (credenciado: PrometeuCredenciado, etapa: PrometeuEtapa) => {
@@ -194,6 +274,26 @@ export function CentralView() {
     }
   }, []);
 
+  // Falha ao carregar NÃO é "não existe evento": oferecer "criar lançamento" depois de um erro
+  // de rede levaria o operador a criar um evento duplicado no meio do dia.
+  if (!carregando && eventos.length === 0 && erro) {
+    return (
+      <div className="grid h-full place-items-center bg-canvas p-8">
+        <div className="max-w-md text-center">
+          <h2 className="text-lg font-semibold text-ink">Não foi possível carregar</h2>
+          <p className="mt-2 text-sm text-ink-soft">{erro}</p>
+          <button
+            className="mt-5 inline-flex items-center gap-2 rounded-lg border border-black/10 px-4 py-2 text-sm font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10"
+            onClick={() => void carregarEventos()}
+            type="button"
+          >
+            <RefreshCw size={15} /> Tentar de novo
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (!carregando && eventos.length === 0) {
     return (
       <div className="grid h-full place-items-center bg-canvas p-8">
@@ -217,7 +317,13 @@ export function CentralView() {
   }
 
   return (
-    <div className="h-full min-h-0 overflow-y-auto bg-canvas">
+    <div
+      ref={raizRef}
+      className="h-full min-h-0 overflow-y-auto bg-canvas"
+      // `zoom` (e não transform) porque ele reflui o layout: na TV tudo cresce junto, sem
+      // cortar conteúdo nem criar barra horizontal.
+      style={escala === 1 ? undefined : { zoom: escala }}
+    >
       <header className="sticky top-0 z-10 border-b border-black/[0.07] bg-canvas/95 px-5 py-3 backdrop-blur dark:border-white/[0.08]">
         <div className="flex flex-wrap items-center gap-3">
           <select
@@ -257,18 +363,54 @@ export function CentralView() {
             ))}
           </nav>
 
-          <button
-            className="ml-auto grid h-8 w-8 place-items-center rounded-lg border border-black/10 text-ink-soft hover:text-ink dark:border-white/10"
-            onClick={() => void carregarFila(eventoId)}
-            title="Atualizar"
-            type="button"
-          >
-            {carregando ? (
-              <Loader2 className="animate-spin" size={15} />
-            ) : (
-              <RefreshCw size={15} />
-            )}
-          </button>
+          <div className="ml-auto flex items-center gap-2">
+            {/* Escala da tela: a Central é vista de perto no notebook e de longe na TV. */}
+            <div className="flex items-center gap-0.5 rounded-lg border border-black/10 p-0.5 dark:border-white/10">
+              <BotaoEscala
+                ativo={escala === 1}
+                onClick={() => setEscala(1)}
+                titulo="Notebook · ~16 pol."
+              >
+                <Laptop size={15} />
+              </BotaoEscala>
+              <BotaoEscala
+                ativo={escala === 1.28}
+                onClick={() => setEscala(1.28)}
+                titulo="Monitor · ~32 pol."
+              >
+                <Monitor size={15} />
+              </BotaoEscala>
+              <BotaoEscala
+                ativo={escala !== 1 && escala !== 1.28}
+                onClick={perguntarPolegadas}
+                titulo="TV · informe as polegadas"
+              >
+                <Tv size={15} />
+              </BotaoEscala>
+            </div>
+
+            <button
+              className="grid h-8 w-8 place-items-center rounded-lg border border-black/10 text-ink-soft hover:text-ink dark:border-white/10"
+              onClick={alternarTelaCheia}
+              title={emTelaCheia ? "Sair da tela cheia" : "Tela cheia"}
+              type="button"
+            >
+              {emTelaCheia ? <Minimize size={15} /> : <Maximize size={15} />}
+            </button>
+
+            <button
+              className="grid h-8 w-8 place-items-center rounded-lg border border-black/10 text-ink-soft hover:text-ink dark:border-white/10"
+              onClick={() => void carregarFila(eventoId)}
+              title="Atualizar"
+              type="button"
+            >
+              {carregando ? (
+                <Loader2 className="animate-spin" size={15} />
+              ) : (
+                <RefreshCw size={15} />
+              )}
+            </button>
+          </div>
         </div>
       </header>
 
@@ -300,14 +442,10 @@ export function CentralView() {
         <Kpi
           detalhe="entrada até conclusão"
           label="Tempo médio total"
-          valor={
-            kpis.tempoMedio === null
-              ? "—"
-              : duracao(new Date(agora - kpis.tempoMedio).toISOString(), agora)
-          }
+          valor={kpis.tempoMedio === null ? "—" : duracaoMs(kpis.tempoMedio)}
         />
         <Kpi
-          detalhe="presentes que fecharam"
+          detalhe="de quem passou pelo evento"
           label="Conversão"
           valor={kpis.conversao === null ? "—" : `${kpis.conversao}%`}
         />
@@ -345,6 +483,28 @@ export function CentralView() {
         )}
       </div>
     </div>
+  );
+}
+
+function BotaoEscala(props: {
+  ativo: boolean;
+  children: React.ReactNode;
+  onClick: () => void;
+  titulo: string;
+}) {
+  return (
+    <button
+      className={`grid h-7 w-7 place-items-center rounded-md transition-colors ${
+        props.ativo
+          ? "bg-black/[0.07] text-ink dark:bg-white/[0.1]"
+          : "text-ink-muted hover:text-ink"
+      }`}
+      onClick={props.onClick}
+      title={props.titulo}
+      type="button"
+    >
+      {props.children}
+    </button>
   );
 }
 
@@ -423,7 +583,7 @@ function Painel(props: {
                 : `espera média ${esperaRecepcao} min`
             }
             fonte="qr"
-            gargalo={esperaRecepcao !== null && esperaRecepcao > 20}
+            gargalo={esperaRecepcao !== null && esperaRecepcao > LIMITE_GARGALO_MIN}
             label="Aguardando na espera"
             valor={porEtapa("recepcao")}
           />
@@ -756,9 +916,31 @@ function MapaDoSalao(props: {
   mesas: PrometeuMesa[];
   porEtapa: (etapa: PrometeuEtapa) => number;
 }) {
-  const { porEtapa } = props;
+  const { agora, porEtapa } = props;
   const presentes = props.credenciados.filter((c) => c.entrouEm !== null).length;
   const mesasSecretaria = props.mesas.filter((m) => m.zona === "secretaria");
+
+  // Média de tempo de um grupo de etapas, em minutos. Alimenta a faixa da secretaria e o
+  // critério de gargalo — que é o MESMO do Painel (acima de LIMITE_GARGALO_MIN), e não
+  // "tem alguém na sala".
+  const mediaMinutos = useCallback(
+    (etapas: PrometeuEtapa[]) => {
+      const grupo = props.credenciados.filter(
+        (c) => etapas.includes(c.etapa) && c.entrouEm !== null,
+      );
+      if (grupo.length === 0) return null;
+      const soma = grupo.reduce(
+        (total, c) => total + (agora - new Date(c.etapaDesde).getTime()),
+        0,
+      );
+      return Math.round(soma / grupo.length / 60000);
+    },
+    [agora, props.credenciados],
+  );
+
+  const esperaRecepcao = mediaMinutos(["recepcao"]);
+  const esperaSecretaria = mediaMinutos(["secretaria"]);
+  const atendimentoMedio = mediaMinutos(["proposta", "pagamento"]);
 
   return (
     <div className="space-y-3">
@@ -769,10 +951,21 @@ function MapaDoSalao(props: {
 
         <Sala
           contagem={porEtapa("recepcao")}
-          quente={porEtapa("recepcao") > 0}
+          quente={esperaRecepcao !== null && esperaRecepcao > LIMITE_GARGALO_MIN}
           rotulo="aguardando"
           titulo="🪑 Área de espera"
         >
+          {esperaRecepcao !== null && esperaRecepcao > LIMITE_GARGALO_MIN ? (
+            <p className="mb-2 text-[0.66rem] font-bold text-red-600 dark:text-red-400">
+              Fila mais cheia · espera média {esperaRecepcao} min
+            </p>
+          ) : (
+            <p className="mb-2 text-[0.7rem] text-ink-muted">
+              {esperaRecepcao === null
+                ? "Ninguém aguardando"
+                : `Espera média ${esperaRecepcao} min`}
+            </p>
+          )}
           <Pontos cor="#9aa5b4" quantidade={porEtapa("recepcao")} />
         </Sala>
 
@@ -800,6 +993,18 @@ function MapaDoSalao(props: {
         </Sala>
 
         <Sala
+          contagem={porEtapa("cancelado")}
+          perigo
+          rotulo="no evento"
+          titulo="✕ Cancelados"
+        >
+          <p className="mb-2 text-[0.7rem] text-ink-muted">
+            Desistências antes do pagamento
+          </p>
+          <Pontos cor="#e0554a" quantidade={porEtapa("cancelado")} />
+        </Sala>
+
+        <Sala
           contagem={porEtapa("concluido")}
           rotulo="vendas"
           sucesso
@@ -824,6 +1029,21 @@ function MapaDoSalao(props: {
         <p className="mb-3 text-[0.7rem] text-ink-muted">
           Validação, proposta, contrato, ATO e pagamento, tudo na mesma mesa
         </p>
+
+        <div className="mb-3 flex flex-wrap gap-2">
+          <Estatistica
+            rotulo="aguardando chamada"
+            valor={String(porEtapa("secretaria"))}
+          />
+          <Estatistica
+            rotulo="espera média"
+            valor={esperaSecretaria === null ? "—" : `${esperaSecretaria} min`}
+          />
+          <Estatistica
+            rotulo="atendimento médio"
+            valor={atendimentoMedio === null ? "—" : `${atendimentoMedio} min`}
+          />
+        </div>
 
         {mesasSecretaria.length === 0 ? (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
@@ -872,6 +1092,7 @@ function MapaDoSalao(props: {
 function Sala(props: {
   children: React.ReactNode;
   contagem: number;
+  perigo?: boolean;
   quente?: boolean;
   rotulo: string;
   sucesso?: boolean;
@@ -882,13 +1103,20 @@ function Sala(props: {
       className={`flex flex-col rounded-xl border bg-surface p-3.5 ${
         props.quente
           ? "border-red-400/40"
-          : props.sucesso
-            ? "border-emerald-400/40"
-            : "border-black/[0.07] dark:border-white/[0.08]"
+          : props.perigo
+            ? "border-red-400/30"
+            : props.sucesso
+              ? "border-emerald-400/40"
+              : "border-black/[0.07] dark:border-white/[0.08]"
       }`}
     >
       <header className="mb-2 flex items-center justify-between gap-2">
-        <span className="text-[0.8rem] font-bold text-ink">{props.titulo}</span>
+        <span
+          className="text-[0.8rem] font-bold text-ink"
+          style={props.perigo ? { color: "#e0554a" } : undefined}
+        >
+          {props.titulo}
+        </span>
         <span className="shrink-0 text-[0.65rem] text-ink-muted">
           <b className="tabular-nums text-ink">{props.contagem}</b> {props.rotulo}
         </span>
@@ -913,6 +1141,15 @@ function Pontos(props: { cor: string; quantidade: number }) {
       {props.quantidade > teto ? (
         <span className="text-[0.6rem] text-ink-muted">+{props.quantidade - teto}</span>
       ) : null}
+    </div>
+  );
+}
+
+function Estatistica(props: { rotulo: string; valor: string }) {
+  return (
+    <div className="rounded-lg bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
+      <div className="text-sm font-bold tabular-nums text-ink">{props.valor}</div>
+      <div className="text-[0.62rem] text-ink-muted">{props.rotulo}</div>
     </div>
   );
 }
@@ -1011,7 +1248,13 @@ function Analitico(props: {
         </span>
       </div>
 
-      {props.subAba === "lista" ? (
+      {/* Busca sem resultado é diferente de evento vazio: dizer "ninguém no evento" quando há
+          200 pessoas e o filtro é que não bateu manda o operador procurar problema onde não há. */}
+      {filtrados.length === 0 && props.busca.trim() ? (
+        <p className="rounded-xl border border-black/[0.07] py-10 text-center text-sm text-ink-muted dark:border-white/[0.08]">
+          Nada encontrado para “{props.busca.trim()}”.
+        </p>
+      ) : props.subAba === "lista" ? (
         <Lista agora={props.agora} credenciados={filtrados} verPor={props.verPor} />
       ) : (
         <Kanban agora={props.agora} credenciados={filtrados} onMover={props.onMover} />

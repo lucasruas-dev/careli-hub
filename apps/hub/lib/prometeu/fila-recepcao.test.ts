@@ -12,6 +12,7 @@ import type { PrometeuCredenciado } from "./types";
 
 function credenciado(input: {
   entrouEm?: string | null;
+  etapa?: PrometeuCredenciado["etapa"];
   naJanela?: boolean | null;
   nome: string;
   posicao: number | null;
@@ -22,7 +23,7 @@ function credenciado(input: {
     documento: null,
     entityId: null,
     entrouEm: input.entrouEm ?? null,
-    etapa: "recepcao",
+    etapa: input.etapa ?? "recepcao",
     etapaDesde: "2026-08-01T11:00:00Z",
     etiquetaImpressaEm: null,
     eventoId: "evento-1",
@@ -101,6 +102,58 @@ describe("filaDaRecepcao", () => {
     ]);
 
     expect(nomes(fila)).toEqual(["Com PIX", "Sem PIX", "Atrasado"]);
+  });
+
+  // Quem já foi atendido não pode continuar ocupando o topo da fila. Como os primeiros
+  // pagantes do PIX são justamente os primeiros a serem chamados, sem este filtro o card
+  // "Fila da recepção" ficaria congelado neles o dia inteiro.
+  it("tira da fila quem já concluiu ou cancelou", () => {
+    const fila = filaDaRecepcao([
+      credenciado({
+        entrouEm: "2026-08-01T11:00:00Z",
+        etapa: "concluido",
+        naJanela: true,
+        nome: "Já fechou",
+        posicao: 1,
+      }),
+      credenciado({
+        entrouEm: "2026-08-01T11:05:00Z",
+        etapa: "cancelado",
+        naJanela: true,
+        nome: "Desistiu",
+        posicao: 2,
+      }),
+      credenciado({
+        entrouEm: "2026-08-01T11:10:00Z",
+        etapa: "recepcao",
+        naJanela: true,
+        nome: "Esperando de verdade",
+        posicao: 3,
+      }),
+    ]);
+
+    expect(nomes(fila)).toEqual(["Esperando de verdade"]);
+  });
+
+  it("mantém na fila quem está no meio do fluxo", () => {
+    const fila = filaDaRecepcao([
+      credenciado({
+        entrouEm: "2026-08-01T11:00:00Z",
+        etapa: "negociacao",
+        naJanela: true,
+        nome: "Com o corretor",
+        posicao: 1,
+      }),
+      credenciado({
+        entrouEm: "2026-08-01T11:05:00Z",
+        etapa: "secretaria",
+        naJanela: true,
+        nome: "Na secretaria",
+        posicao: 2,
+      }),
+    ]);
+
+    expect(nomes(fila)).toEqual(["Com o corretor", "Na secretaria"]);
   });
 
   // Cenario completo do dia, juntando as duas regras de uma vez.
