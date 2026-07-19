@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-cad-analista",
+    deployedAt: "2026-07-20T05:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Da para escolher o analista responsavel na hora de importar: ele ja vem preenchido com quem esta logado.",
+              "O analista de cada item passou a ser lido do banco no Board, em vez de sumir a cada carregamento.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.46.3",
+    technical: {
+      done: "aplicarVinculos grava analistaId em metadata.esteira; a rota de importacao devolve a lista de hub_users ativos e o id de quem esta logado, e a tela traz um seletor na barra de confirmacao. A rota do Board projeta analistaId e o board-view semeia analistaPorItem na carga, preservando o que o operador mexeu na sessao.",
+      motivation: "Os itens importados entravam todos como 'Sem analista' e alguem teria que atribuir um a um. O analistaPorItem era mais um estado local que nao persistia — mesmo padrao da etapa.",
+    },
+    title: "Apolo: analista responsavel na importacao das CADs",
+    type: "correcao",
+    version: "1.46.4",
+  },
+  {
     buildTag: "2026-07-20-apolo-cad-empreendimento",
     deployedAt: "2026-07-20T04:15:00-03:00",
     internal: true,

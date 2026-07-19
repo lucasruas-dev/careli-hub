@@ -25,6 +25,7 @@ type EntityRow = {
     cadastro?: { corretores?: unknown[]; empreendimentos?: unknown[]; socios?: unknown[] };
     // Onde o item está na esteira. Fica no metadata (jsonb livre) em vez de coluna própria.
     esteira?: {
+      analistaId?: string | null;
       atualizadoEm?: string;
       corretor?: string | null;
       empreendimento?: string | null;
@@ -116,6 +117,8 @@ export async function GET(request: Request) {
           : [];
 
     return {
+      // Responsável salvo. Sem isto o Board volta a mostrar "Sem analista" a cada carga.
+      analistaId: esteira?.analistaId ?? null,
       corretor: esteira?.corretor ?? null,
       corretores: conta(cadastro?.corretores),
       criadoEm: row.created_at,

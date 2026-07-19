@@ -35,8 +35,10 @@ type Diagnostico = {
   porSecao: Record<string, number>;
   valoresEmpreendimento: string[];
 };
+type Analista = { id: string; nome: string };
 type Preview = {
   ambiguos: Item[];
+  analistas: Analista[];
   casados: Item[];
   diagnostico: Diagnostico;
   empreendimento: string;
@@ -45,6 +47,7 @@ type Preview = {
   secoes: string[];
   secoesEncontradas: string[];
   total: number;
+  usuarioAtualId: string;
 };
 
 export function ImportarCads() {
@@ -59,6 +62,8 @@ export function ImportarCads() {
   const [selecionados, setSelecionados] = useState<Set<string>>(new Set());
   // Para os ambíguos, qual candidato a pessoa escolheu.
   const [escolhaAmbigua, setEscolhaAmbigua] = useState<Record<string, string>>({});
+  // Responsável pelos itens importados. Nasce com quem está logado.
+  const [analistaId, setAnalistaId] = useState("");
 
   const escanear = useCallback(async () => {
     setCarregando(true);
@@ -78,6 +83,8 @@ export function ImportarCads() {
         setPreview(corpo.data ?? null);
         setSelecionados(new Set((corpo.data?.casados ?? []).map((i) => i.cad.gid)));
         setEscolhaAmbigua({});
+        // Só na primeira busca: não sobrescreve a escolha se a pessoa já trocou o analista.
+        setAnalistaId((atual) => atual || (corpo.data?.usuarioAtualId ?? ""));
       }
     } catch (e) {
       setErro((e as Error).message);
@@ -124,6 +131,7 @@ export function ImportarCads() {
       const token = await getApoloAccessToken();
       const resposta = await fetch("/api/apolo/asana/importar", {
         body: JSON.stringify({
+          analistaId: analistaId || null,
           confirmado: true,
           etapa: "credenciado",
           itens: itensParaAplicar,
@@ -153,7 +161,7 @@ export function ImportarCads() {
       setErro((e as Error).message);
     }
     setAplicando(false);
-  }, [escanear, itensParaAplicar]);
+  }, [analistaId, escanear, itensParaAplicar]);
 
   return (
     <div className="space-y-4">
@@ -432,6 +440,22 @@ export function ImportarCads() {
                 <b className="text-ink">{itensParaAplicar.length} CADs</b> serão marcadas como
                 credenciadas e vinculadas às suas tasks no Asana. Nenhum documento é lido.
               </p>
+
+              <label className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-ink-soft">Analista</span>
+                <select
+                  className="rounded-lg border border-black/10 bg-canvas px-2.5 py-1.5 text-sm text-ink dark:border-white/10"
+                  onChange={(e) => setAnalistaId(e.target.value)}
+                  value={analistaId}
+                >
+                  <option value="">Sem analista</option>
+                  {preview.analistas.map((pessoa) => (
+                    <option key={pessoa.id} value={pessoa.id}>
+                      {pessoa.nome}
+                    </option>
+                  ))}
+                </select>
+              </label>
               <button
                 className="inline-flex items-center gap-2 rounded-lg bg-[#101820] px-4 py-2 text-sm font-semibold text-[#cba25a] hover:bg-[#1c2733] disabled:opacity-50"
                 disabled={aplicando}

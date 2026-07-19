@@ -52,10 +52,35 @@ export async function GET(request: Request) {
       empreendimento,
       secoes,
     });
-    const preview = await casarComApolo(client, cads);
+    const [preview, { data: usuarios }] = await Promise.all([
+      casarComApolo(client, cads),
+      // Para escolher quem fica responsável pelos itens já na importação.
+      client
+        .from("hub_users")
+        .select("id, display_name, email")
+        .eq("status", "active")
+        .order("display_name", { ascending: true })
+        .limit(200),
+    ]);
+
+    const analistas = (
+      (usuarios ?? []) as { display_name: string | null; email: string | null; id: string }[]
+    )
+      .map((row) => ({ id: row.id, nome: row.display_name || row.email || "" }))
+      .filter((row) => row.nome);
 
     return NextResponse.json(
-      { data: { ...preview, diagnostico, empreendimento, secoes, secoesEncontradas } },
+      {
+        data: {
+          ...preview,
+          analistas,
+          diagnostico,
+          empreendimento,
+          secoes,
+          secoesEncontradas,
+          usuarioAtualId: auth.userId,
+        },
+      },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {
@@ -73,6 +98,7 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json().catch(() => ({}))) as {
+    analistaId?: string | null;
     confirmado?: boolean;
     etapa?: "validacao" | "credenciado";
     itens?: {
@@ -100,6 +126,7 @@ export async function POST(request: Request) {
   const etapa = body.etapa === "validacao" ? "validacao" : "credenciado";
 
   const resultado = await aplicarVinculos({
+    analistaId: body.analistaId ?? null,
     client,
     etapa,
     itens,

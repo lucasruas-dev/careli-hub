@@ -46,6 +46,8 @@ import { getApoloAccessToken } from "../../data/apolo-operations";
 // Ver [[project_esteira_credenciamento_venda]].
 
 type ItemFila = {
+  // Analista responsável salvo no banco (metadata.esteira.analistaId).
+  analistaId?: string | null;
   // Corretor e imobiliária vindos da CAD importada (o cadastro do wizard usa outros campos).
   corretor?: string | null;
   corretores: number;
@@ -263,13 +265,21 @@ export function BoardView() {
           setAnalistas(payload.data?.analistas ?? []);
           setUsuarioAtual(payload.data?.usuarioAtual ?? null);
 
-          // Semeia o progresso com a etapa que veio do banco, preservando o que o operador já
-          // moveu nesta sessão (o que ele mexeu na tela ganha do que estava salvo).
+          // Semeia etapa e analista com o que veio do banco, preservando o que o operador já
+          // mexeu nesta sessão (o que ele fez na tela ganha do que estava salvo).
           setProgresso((atual) => {
             const semeado: Record<string, number> = {};
             for (const item of itensCarregados) {
               const indice = item.etapa ? INDICE_POR_ETAPA[item.etapa] : undefined;
               if (indice !== undefined) semeado[item.id] = indice;
+            }
+            return { ...semeado, ...atual };
+          });
+
+          setAnalistaPorItem((atual) => {
+            const semeado: Record<string, string> = {};
+            for (const item of itensCarregados) {
+              if (item.analistaId) semeado[item.id] = item.analistaId;
             }
             return { ...semeado, ...atual };
           });

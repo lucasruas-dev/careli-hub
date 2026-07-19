@@ -321,6 +321,9 @@ export type AplicacaoResultado = {
 // metadata: como a importação é disparada manualmente por uma pessoa e não concorre com o
 // wizard de cadastro, é seguro aqui; escrita concorrente exigiria jsonb_set no banco.
 export async function aplicarVinculos(input: {
+  // Quem fica responsável pelos itens importados. Sem isto todos entram "Sem analista" e
+  // alguém teria que atribuir um a um.
+  analistaId?: string | null;
   client: AdminClient;
   etapa: "validacao" | "credenciado";
   itens: {
@@ -369,6 +372,7 @@ export async function aplicarVinculos(input: {
         metadata: {
           ...metadata,
           esteira: {
+            analistaId: input.analistaId ?? null,
             atualizadoEm: agora,
             atualizadoPor: input.porUsuario ?? null,
             // O que veio da CAD do Asana. O Board mostra estes campos na fila: sem eles, a
