@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-importar-cads-concluidas",
+    deployedAt: "2026-07-20T02:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A busca de CADs deixou de ignorar as tarefas concluidas no Asana, que era o caso de toda a secao Finalizado.",
+              "Quando a busca nao encontra nada, a tela passa a mostrar o motivo: as secoes com a contagem de CADs e os valores de empreendimento que existem de verdade, clicaveis.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.46.0",
+    technical: {
+      done: "escanearCads e sondarCadsNoAsana pararam de filtrar task.completed. escanearCads passou a devolver diagnostico { porSecao, valoresEmpreendimento, descartadasPorEmpreendimento } e a tela mostra os valores como botoes que preenchem o filtro, mais a opcao de buscar sem filtro de empreendimento.",
+      motivation: "A busca em Finalizado voltava sempre zero: as tasks daquela secao estao marcadas como concluidas no Asana e o codigo descartava toda task completed — contradicao com o proprio recorte. Sem o diagnostico, a tela pedia para conferir a grafia sem dizer qual era o valor certo.",
+    },
+    title: "Apolo: importacao deixava de fora as CADs concluidas",
+    type: "correcao",
+    version: "1.46.1",
+  },
+  {
     buildTag: "2026-07-20-apolo-importar-cads-finalizado",
     deployedAt: "2026-07-20T01:30:00-03:00",
     modules: [
@@ -96,6 +123,9 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-07-19-prometeu-central-telacheia",
     deployedAt: "2026-07-19T23:30:00-03:00",
+    // Correcao: entra na versao e na aba Deploy do Zeus, mas fora do painel de Novidades
+    // (regra do Lucas 20/jul — o time so quer ver o que e novidade de verdade).
+    internal: true,
     modules: [
       {
         module: "Prometeu",
@@ -128,6 +158,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-07-19-prometeu-central-completa",
     deployedAt: "2026-07-19T21:00:00-03:00",
+    internal: true,
     modules: [
       {
         module: "Prometeu",

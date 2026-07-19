@@ -55,6 +55,17 @@ export type PreviewImportacao = {
   total: number;
 };
 
+// Diagnóstico da varredura: quando a busca volta vazia, é isto que diz POR QUÊ — em vez de
+// deixar a pessoa adivinhar a grafia.
+export type DiagnosticoVarredura = {
+  // Quantas tasks existem em cada seção (antes de qualquer filtro).
+  porSecao: Record<string, number>;
+  // Valores de empreendimento que realmente aparecem nas tasks das seções pedidas.
+  valoresEmpreendimento: string[];
+  // Quantas foram descartadas só pelo filtro de empreendimento.
+  descartadasPorEmpreendimento: number;
+};
+
 function token(): string {
   return process.env.ASANA_ACCESS_TOKEN?.trim() ?? "";
 }
@@ -118,15 +129,25 @@ function secaoDaTask(task: TaskAsana): string {
 
 // Varre o projeto inteiro (paginado) e devolve as CADs do empreendimento pedido.
 // READ-ONLY e sem custo: nenhuma leitura de documento acontece aqui.
+//
+// ⚠️ NÃO filtra task concluída. A seção "Finalizado" é justamente onde as tasks estão marcadas
+// como completed no Asana — descartá-las zerava o lote que mais interessa.
 export async function escanearCads(input: {
   empreendimento: string;
   secoes: string[];
-}): Promise<{ cads: CadDoAsana[]; secoesEncontradas: string[] }> {
+}): Promise<{
+  cads: CadDoAsana[];
+  diagnostico: DiagnosticoVarredura;
+  secoesEncontradas: string[];
+}> {
   const alvoEmpreendimento = normalizarNome(input.empreendimento);
   const alvoSecoes = input.secoes.map(normalizarSecao);
 
   const cads: CadDoAsana[] = [];
   const secoesEncontradas = new Set<string>();
+  const porSecao: Record<string, number> = {};
+  const valoresEmpreendimento = new Set<string>();
+  let descartadasPorEmpreendimento = 0;
   let offset: string | undefined;
 
   for (let pagina = 0; pagina < 40; pagina += 1) {
@@ -153,20 +174,29 @@ export async function escanearCads(input: {
     };
 
     for (const task of envelope.data ?? []) {
-      if (task.completed) continue;
-
       const secao = secaoDaTask(task);
-      if (secao) secoesEncontradas.add(secao);
+      if (secao) {
+        secoesEncontradas.add(secao);
+        porSecao[secao] = (porSecao[secao] ?? 0) + 1;
+      }
 
       const empreendimento = valorDoCampo(task, ["empreendimento"], "indica")
         ?? valorDoCampo(task, ["empreendimento"]);
 
-      const bateEmpreendimento =
-        !alvoEmpreendimento || normalizarNome(empreendimento).includes(alvoEmpreendimento);
       const bateSecao =
         alvoSecoes.length === 0 || alvoSecoes.includes(normalizarSecao(secao));
+      if (!bateSecao) continue;
 
-      if (!bateEmpreendimento || !bateSecao) continue;
+      // Dentro da seção pedida, guarda os valores que existem: é o que a tela mostra quando
+      // a busca volta vazia por causa da grafia do empreendimento.
+      if (empreendimento) valoresEmpreendimento.add(empreendimento);
+
+      const bateEmpreendimento =
+        !alvoEmpreendimento || normalizarNome(empreendimento).includes(alvoEmpreendimento);
+      if (!bateEmpreendimento) {
+        descartadasPorEmpreendimento += 1;
+        continue;
+      }
 
       cads.push({
         corretor: valorDoCampo(task, ["corretor"]),
@@ -183,7 +213,15 @@ export async function escanearCads(input: {
     if (!offset) break;
   }
 
-  return { cads, secoesEncontradas: [...secoesEncontradas].sort() };
+  return {
+    cads,
+    diagnostico: {
+      descartadasPorEmpreendimento,
+      porSecao,
+      valoresEmpreendimento: [...valoresEmpreendimento].sort(),
+    },
+    secoesEncontradas: [...secoesEncontradas].sort(),
+  };
 }
 
 // Casa cada CAD com as entidades do Apolo pelo nome normalizado.

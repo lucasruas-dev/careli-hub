@@ -112,7 +112,9 @@ export async function sondarCadsNoAsana(
         "name,completed,created_at,custom_fields.name,custom_fields.display_value",
     });
 
-    const abertas = tarefas.filter((t) => !t.completed);
+    // NÃO descartar concluída: a seção "Finalizado" é justamente onde as tasks estão marcadas
+    // como completed, e é o lote que mais interessa importar.
+    const abertas = tarefas;
     totalTarefasAbertas += abertas.length;
 
     // Catálogo de campos varre TODAS as tarefas da seção (é barato: já veio na resposta).

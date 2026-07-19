@@ -48,11 +48,14 @@ export async function GET(request: Request) {
     .filter(Boolean);
 
   try {
-    const { cads, secoesEncontradas } = await escanearCads({ empreendimento, secoes });
+    const { cads, diagnostico, secoesEncontradas } = await escanearCads({
+      empreendimento,
+      secoes,
+    });
     const preview = await casarComApolo(client, cads);
 
     return NextResponse.json(
-      { data: { ...preview, empreendimento, secoes, secoesEncontradas } },
+      { data: { ...preview, diagnostico, empreendimento, secoes, secoesEncontradas } },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (error) {

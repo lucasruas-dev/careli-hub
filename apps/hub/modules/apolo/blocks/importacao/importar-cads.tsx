@@ -30,9 +30,15 @@ type Cad = {
 };
 type Candidato = { documento: string | null; id: string; nome: string };
 type Item = { cad: Cad; candidatos: Candidato[]; jaImportado: boolean };
+type Diagnostico = {
+  descartadasPorEmpreendimento: number;
+  porSecao: Record<string, number>;
+  valoresEmpreendimento: string[];
+};
 type Preview = {
   ambiguos: Item[];
   casados: Item[];
+  diagnostico: Diagnostico;
   empreendimento: string;
   jaImportados: Item[];
   naoCasados: Item[];
@@ -199,8 +205,44 @@ export function ImportarCads() {
         <>
           {preview.secoesEncontradas.length > 0 ? (
             <p className="text-xs text-ink-muted">
-              Seções vistas no projeto: {preview.secoesEncontradas.join(" · ")}
+              Seções no projeto:{" "}
+              {preview.secoesEncontradas
+                .map((s) => `${s} (${preview.diagnostico.porSecao[s] ?? 0})`)
+                .join(" · ")}
             </p>
+          ) : null}
+
+          {/* Quando a busca volta vazia, mostrar POR QUÊ — em vez de deixar adivinhar a grafia. */}
+          {preview.total === 0 && preview.diagnostico.valoresEmpreendimento.length > 0 ? (
+            <section className="rounded-xl border border-amber-400/50 bg-amber-50/60 p-4 dark:bg-amber-950/25">
+              <p className="text-sm font-semibold text-ink">
+                A seção tem CADs, mas nenhuma com o empreendimento “{preview.empreendimento}”
+              </p>
+              <p className="mt-1 text-sm text-ink-soft">
+                {preview.diagnostico.descartadasPorEmpreendimento} CADs foram descartadas só
+                por esse filtro. Estes são os valores que existem nas CADs dessa seção — clique
+                em um para buscar por ele:
+              </p>
+              <div className="mt-2.5 flex flex-wrap gap-1.5">
+                {preview.diagnostico.valoresEmpreendimento.map((valor) => (
+                  <button
+                    key={valor}
+                    className="rounded-lg border border-black/10 bg-canvas px-2.5 py-1 text-xs font-medium text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
+                    onClick={() => setEmpreendimento(valor)}
+                    type="button"
+                  >
+                    {valor}
+                  </button>
+                ))}
+                <button
+                  className="rounded-lg border border-dashed border-black/20 px-2.5 py-1 text-xs font-medium text-ink-soft hover:text-ink dark:border-white/20"
+                  onClick={() => setEmpreendimento("")}
+                  type="button"
+                >
+                  Todos os empreendimentos
+                </button>
+              </div>
+            </section>
           ) : null}
 
           <div className="flex flex-wrap gap-2">
@@ -210,10 +252,9 @@ export function ImportarCads() {
             <Contador cor="#64748b" label="Já importados" valor={preview.jaImportados.length} />
           </div>
 
-          {preview.total === 0 ? (
+          {preview.total === 0 && preview.diagnostico.valoresEmpreendimento.length === 0 ? (
             <p className="rounded-xl border border-black/[0.07] py-10 text-center text-sm text-ink-muted dark:border-white/[0.08]">
-              Nenhuma CAD encontrada com esse empreendimento e essas seções. Confira a grafia
-              contra as seções listadas acima.
+              Nenhuma CAD nessas seções. Confira a grafia contra a lista de seções acima.
             </p>
           ) : null}
 
