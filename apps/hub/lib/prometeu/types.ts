@@ -126,6 +126,25 @@ export type PrometeuCredenciado = {
   unidades: PrometeuUnidade[];
 };
 
+// Card "Últimas chamadas" da Central: quem foi chamado, pra onde e quando.
+export type PrometeuChamada = {
+  chamadoEm: string;
+  id: string;
+  mesa: string | null;
+  nome: string;
+  zona: string | null;
+};
+
+// Feed "Atividade ao vivo": cada troca de etapa vira uma linha.
+export type PrometeuAtividade = {
+  deEtapa: string | null;
+  em: string;
+  id: string;
+  motivo: string | null;
+  nome: string;
+  paraEtapa: PrometeuEtapa;
+};
+
 export type PrometeuMesa = {
   atendenteUserId: string | null;
   credenciadoId: string | null;

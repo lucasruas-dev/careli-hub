@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-19-prometeu-central-completa",
+    deployedAt: "2026-07-19T21:00:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "As abas Painel e Mapa do salao voltaram: a versao anterior tinha so a parte de lista e kanban.",
+              "Painel: mapa da jornada por zona (recepcao, salao, secretaria e cancelados), com destaque automatico de gargalo quando a espera passa do limite.",
+              "Painel: fila da recepcao, funil de unidades, ultimas chamadas e atividade ao vivo, todos com dados do evento.",
+              "Mapa do salao: ocupacao de cada area e as mesas da secretaria coloridas por estado (livre, ocupada, em atendimento).",
+              "Analitico: busca e Ver por cliente, imobiliaria ou unidade; Lista e Kanban voltaram a ser sub-abas daqui.",
+            ],
+            screen: "Central",
+          },
+        ],
+      },
+    ],
+    rollback: "1.44.0",
+    technical: {
+      done: "Central reescrita seguindo a estrutura do mockup aprovado (public/prometeu/cockpit.html): KPIs no topo e abas Painel / Mapa do salao / Analitico, com Lista e Kanban como sub-abas do Analitico. Rotas de leitura estendidas com listChamadasRecentes e listAtividadeRecente. Onde nao ha fonte real o valor aparece como travessao em vez de numero inventado: o valor em R$ do funil depende das unidades no C2X, ainda nao ligadas ao evento.",
+      motivation: "Regressao introduzida na v1.44.0: ao trocar o mockup pela tela React foi portada apenas a aba Analitico, e Painel e Mapa do salao sumiram sem aviso. O Lucas percebeu a falta ao abrir o modulo em producao.",
+    },
+    title: "Prometeu: Painel e Mapa do salao de volta na Central",
+    type: "correcao",
+    version: "1.44.1",
+  },
+  {
     buildTag: "2026-07-19-prometeu-modulo-real",
     deployedAt: "2026-07-19T18:00:00-03:00",
     modules: [

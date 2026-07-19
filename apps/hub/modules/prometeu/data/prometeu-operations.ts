@@ -4,6 +4,8 @@
 // e chama a rota; a rota valida papel e fala com o banco.
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
+  PrometeuAtividade,
+  PrometeuChamada,
   PrometeuCredenciado,
   PrometeuEtapa,
   PrometeuEvento,
@@ -139,6 +141,10 @@ export async function salvarJanelaRemoto(input: {
 }
 
 export type FilaPayload = {
+  // Feed "Atividade ao vivo" do Painel: as últimas trocas de etapa.
+  atividade: PrometeuAtividade[];
+  // Card "Últimas chamadas" do Painel.
+  chamadas: PrometeuChamada[];
   // A fila do EVENTO: ordem do PIX (e os ajustes do admin). Todos os habilitados.
   credenciados: PrometeuCredenciado[];
   evento: PrometeuEvento;

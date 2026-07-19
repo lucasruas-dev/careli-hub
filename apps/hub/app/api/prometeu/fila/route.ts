@@ -5,6 +5,8 @@ import {
   createPrometeuClient,
   filaDaRecepcao,
   getEvento,
+  listAtividadeRecente,
+  listChamadasRecentes,
   listCredenciados,
   listMesas,
 } from "@/lib/prometeu/data";
@@ -33,9 +35,11 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Evento nao encontrado." }, { status: 404 });
   }
 
-  const [credenciados, mesas] = await Promise.all([
+  const [credenciados, mesas, chamadas, atividade] = await Promise.all([
     listCredenciados(client, eventoId),
     listMesas(client, eventoId),
+    listChamadasRecentes(client, eventoId),
+    listAtividadeRecente(client, eventoId),
   ]);
 
   // Duas ordens diferentes, de proposito:
@@ -46,6 +50,8 @@ export async function GET(request: Request) {
   return NextResponse.json(
     {
       data: {
+        atividade,
+        chamadas,
         credenciados,
         evento,
         filaRecepcao: filaDaRecepcao(credenciados),

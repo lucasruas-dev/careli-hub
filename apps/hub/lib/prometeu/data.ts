@@ -5,6 +5,8 @@
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 import {
+  type PrometeuAtividade,
+  type PrometeuChamada,
   type PrometeuCredenciado,
   type PrometeuEtapa,
   type PrometeuEvento,
@@ -850,6 +852,129 @@ export async function criarMesas(input: {
     .upsert(linhas, { ignoreDuplicates: true, onConflict: "evento_id,zona,numero" });
 
   return { criadas: error ? 0 : linhas.length };
+}
+
+// As ultimas chamadas do evento — alimenta o card "Ultimas chamadas" da Central.
+export async function listChamadasRecentes(
+  client: AdminClient,
+  eventoId: string,
+  limite = 8,
+): Promise<PrometeuChamada[]> {
+  const { data, error } = await client
+    .from("prometeu_chamadas")
+    .select("id, credenciado_id, zona, chamado_em, mesa_id")
+    .eq("evento_id", eventoId)
+    .order("chamado_em", { ascending: false })
+    .limit(limite);
+
+  if (error || !data) return [];
+
+  const linhas = data as {
+    chamado_em: string;
+    credenciado_id: string;
+    id: string;
+    mesa_id: string | null;
+    zona: string | null;
+  }[];
+
+  // Nome de quem foi chamado e numero da mesa: o card mostra "Fulano · Secretaria · Mesa 07".
+  const nomes = await mapaDeNomes(
+    client,
+    linhas.map((l) => l.credenciado_id),
+  );
+  const mesas = await mapaDeMesas(
+    client,
+    linhas.map((l) => l.mesa_id).filter(Boolean) as string[],
+  );
+
+  return linhas.map((row) => ({
+    chamadoEm: row.chamado_em,
+    id: row.id,
+    mesa: row.mesa_id ? (mesas[row.mesa_id] ?? null) : null,
+    nome: nomes[row.credenciado_id] ?? "(sem nome)",
+    zona: row.zona,
+  }));
+}
+
+// O feed "Atividade ao vivo": as ultimas trocas de etapa, com o nome de quem se moveu.
+export async function listAtividadeRecente(
+  client: AdminClient,
+  eventoId: string,
+  limite = 12,
+): Promise<PrometeuAtividade[]> {
+  // As movimentacoes nao tem evento_id (so credenciado_id), entao partimos dos credenciados.
+  const { ids } = await idsDoEvento(client, eventoId);
+  if (ids.length === 0) return [];
+
+  const { data, error } = await client
+    .from("prometeu_movimentacoes")
+    .select("id, credenciado_id, de_etapa, para_etapa, motivo, em")
+    .in("credenciado_id", ids.slice(0, 1000))
+    .order("em", { ascending: false })
+    .limit(limite);
+
+  if (error || !data) return [];
+
+  const linhas = data as {
+    credenciado_id: string;
+    de_etapa: string | null;
+    em: string;
+    id: string;
+    motivo: string | null;
+    para_etapa: string;
+  }[];
+
+  const nomes = await mapaDeNomes(
+    client,
+    linhas.map((l) => l.credenciado_id),
+  );
+
+  return linhas.map((row) => ({
+    deEtapa: row.de_etapa,
+    em: row.em,
+    id: row.id,
+    motivo: row.motivo,
+    nome: nomes[row.credenciado_id] ?? "(sem nome)",
+    paraEtapa: row.para_etapa as PrometeuEtapa,
+  }));
+}
+
+async function mapaDeNomes(
+  client: AdminClient,
+  ids: string[],
+): Promise<Record<string, string>> {
+  const unicos = [...new Set(ids)].filter(Boolean);
+  if (unicos.length === 0) return {};
+
+  const { data } = await client
+    .from("prometeu_credenciados")
+    .select("id, nome")
+    .in("id", unicos.slice(0, 200));
+
+  const out: Record<string, string> = {};
+  for (const row of ((data ?? []) as { id: string; nome: string }[])) {
+    out[row.id] = row.nome;
+  }
+  return out;
+}
+
+async function mapaDeMesas(
+  client: AdminClient,
+  ids: string[],
+): Promise<Record<string, string>> {
+  const unicos = [...new Set(ids)].filter(Boolean);
+  if (unicos.length === 0) return {};
+
+  const { data } = await client
+    .from("prometeu_mesas")
+    .select("id, numero")
+    .in("id", unicos.slice(0, 200));
+
+  const out: Record<string, string> = {};
+  for (const row of ((data ?? []) as { id: string; numero: string }[])) {
+    out[row.id] = row.numero;
+  }
+  return out;
 }
 
 // Chama o credenciado pra uma mesa: registra a chamada (telao/locutor leem daqui) e ocupa.
