@@ -131,6 +131,10 @@ export type IrisQueueConfig = {
   channelId: string | null;
   color: string;
   defaultPriority: IrisPriority;
+  // Níveis de acesso: donos da fila. É uma LISTA porque a fila pode pertencer a
+  // mais de um departamento (Grupo/Direct = Operação + Relação).
+  // sectorId null = departamento inteiro. Sem vínculo nenhum = só adm.
+  scopes: IrisQueueScope[];
   id: string;
   name: string;
   routingStrategy: string;
@@ -184,11 +188,40 @@ export type IrisChannel = {
   status: string;
 };
 
+// Estrutura da empresa (hub_departments -> hub_sectors), usada pra vincular a
+// fila ao seu dono e resolver quem enxerga o quê.
+export type IrisDepartment = {
+  id: string;
+  name: string;
+};
+
+export type IrisSector = {
+  departmentId: string | null;
+  id: string;
+  name: string;
+};
+
+// Vínculo da fila com a estrutura. sectorId null = departamento inteiro.
+export type IrisQueueScope = {
+  departmentId: string;
+  sectorId: string | null;
+};
+
+// Participante de um grupo — alimenta o seletor de menção (@). O nome pode ser
+// null (só conhecemos quem já falou no grupo).
+export type IrisGroupParticipant = {
+  displayName: string | null;
+  isAdmin: boolean;
+  phone: string;
+};
+
 export type IrisData = {
   broadcasts: IrisBroadcast[];
   channels: IrisChannel[];
+  departments: IrisDepartment[];
   profiles: IrisTicketProfileConfig[];
   queues: IrisQueueConfig[];
+  sectors: IrisSector[];
   templates: IrisTemplate[];
   tickets: IrisTicket[];
 };

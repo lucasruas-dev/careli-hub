@@ -128,6 +128,128 @@ export function IrisSetupView({
   return <SetupView {...props} />;
 }
 
+// Editor dos vínculos da fila. Cada vínculo = um departamento (+ setor opcional).
+// Sem setor = departamento inteiro. Vários vínculos = a fila é de mais de uma área
+// (foi o caso do Grupo/Direct: Operação + Relação).
+function IrisQueueScopesField({
+  departments,
+  onChange,
+  scopes,
+  sectors,
+}: {
+  departments: { id: string; name: string }[];
+  onChange: (scopes: { departmentId: string; sectorId: string | null }[]) => void;
+  scopes: { departmentId: string; sectorId: string | null }[];
+  sectors: { departmentId: string | null; id: string; name: string }[];
+}) {
+  const [draftDepartment, setDraftDepartment] = useState("");
+  const [draftSector, setDraftSector] = useState("");
+
+  const departmentName = (id: string) =>
+    departments.find((department) => department.id === id)?.name ?? "—";
+  const sectorName = (id: string) =>
+    sectors.find((sector) => sector.id === id)?.name ?? "—";
+
+  function addScope() {
+    if (!draftDepartment) {
+      return;
+    }
+
+    const next = {
+      departmentId: draftDepartment,
+      sectorId: draftSector || null,
+    };
+    const exists = scopes.some(
+      (scope) =>
+        scope.departmentId === next.departmentId &&
+        scope.sectorId === next.sectorId,
+    );
+
+    if (!exists) {
+      onChange([...scopes, next]);
+    }
+
+    setDraftDepartment("");
+    setDraftSector("");
+  }
+
+  return (
+    <div className="space-y-2">
+      {scopes.length ? (
+        <div className="flex flex-wrap gap-1.5">
+          {scopes.map((scope) => (
+            <span
+              key={`${scope.departmentId}:${scope.sectorId ?? "all"}`}
+              className="inline-flex items-center gap-1.5 rounded-full bg-[#A07C3B]/10 px-2.5 py-1 text-[11px] font-semibold text-[#7A5E2C] ring-1 ring-[#A07C3B]/20 dark:text-[#d9b877]"
+            >
+              {departmentName(scope.departmentId)}
+              {scope.sectorId ? (
+                <> · {sectorName(scope.sectorId)}</>
+              ) : (
+                <> · todo o departamento</>
+              )}
+              <button
+                type="button"
+                onClick={() =>
+                  onChange(scopes.filter((item) => item !== scope))
+                }
+                aria-label="Remover vínculo"
+                className="text-[#7A5E2C]/60 transition-colors hover:text-rose-600"
+              >
+                ×
+              </button>
+            </span>
+          ))}
+        </div>
+      ) : (
+        <p className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-1.5 text-[11px] font-semibold text-amber-700 dark:border-amber-400/30 dark:bg-amber-400/10 dark:text-amber-300">
+          Sem vínculo: só o admin enxerga esta fila.
+        </p>
+      )}
+      <div className="flex gap-1.5">
+        <select
+          value={draftDepartment}
+          onChange={(event) => {
+            setDraftDepartment(event.target.value);
+            setDraftSector("");
+          }}
+          className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-xs font-semibold text-ink outline-none"
+        >
+          <option value="">Departamento…</option>
+          {departments.map((department) => (
+            <option key={department.id} value={department.id}>
+              {department.name}
+            </option>
+          ))}
+        </select>
+        <select
+          value={draftSector}
+          onChange={(event) => setDraftSector(event.target.value)}
+          disabled={!draftDepartment}
+          className="h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface px-2 text-xs font-semibold text-ink outline-none disabled:cursor-not-allowed disabled:bg-subtle disabled:text-ink-muted"
+        >
+          <option value="">Todo o departamento</option>
+          {sectors
+            .filter((sector) => sector.departmentId === draftDepartment)
+            .map((sector) => (
+              <option key={sector.id} value={sector.id}>
+                {sector.name}
+              </option>
+            ))}
+        </select>
+        <button
+          type="button"
+          onClick={addScope}
+          disabled={!draftDepartment}
+          className="h-9 shrink-0 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 text-xs font-semibold text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/12 disabled:cursor-not-allowed disabled:border-line disabled:bg-subtle disabled:text-ink-muted"
+        >
+          Adicionar
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function IrisTemplateFeedbackBox(props: any) {
   const Component = setupHelpers.IrisTemplateFeedbackBox;
   return <Component {...props} />;
@@ -678,6 +800,19 @@ function SetupView({
                         </option>
                       ))}
                   </select>
+                </SetupField>
+                {/* Níveis de acesso: quem enxerga a fila sai daqui.
+                    op/ldr = seu setor (ou o departamento inteiro);
+                    cdr = todo o seu departamento; adm = tudo.
+                    A fila pode ter VÁRIOS vínculos (ex.: Grupo = Operação + Relação).
+                    Sem nenhum vínculo, só o admin vê. */}
+                <SetupField label="Quem enxerga esta fila (departamento / setor)">
+                  <IrisQueueScopesField
+                    departments={data.departments}
+                    onChange={(scopes) => updateQueueForm("scopes", scopes)}
+                    scopes={queueForm.scopes}
+                    sectors={data.sectors}
+                  />
                 </SetupField>
                 <div className="grid grid-cols-[minmax(0,1fr)_72px] gap-2">
                   <SetupField label="Slug">

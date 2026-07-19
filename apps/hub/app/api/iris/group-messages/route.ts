@@ -104,10 +104,35 @@ export async function POST(request: NextRequest) {
     body,
     client,
     media,
+    mentions: normalizeMentions(input.mentions),
     operatorLabel,
     target,
     userId: user.id,
   });
+}
+
+// Menção só faz sentido em grupo. { everyone } = @todos; { phones } = pessoas.
+function normalizeMentions(
+  value: unknown,
+): { everyone?: boolean; phones?: string[] } | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const record = value as Record<string, unknown>;
+
+  if (record.everyone === true) {
+    return { everyone: true };
+  }
+
+  const phones = Array.isArray(record.phones)
+    ? record.phones
+        .filter((phone): phone is string => typeof phone === "string")
+        .map((phone) => phone.replace(/\D/g, ""))
+        .filter(Boolean)
+    : [];
+
+  return phones.length ? { phones } : null;
 }
 
 async function resolveGroupTarget(
@@ -179,6 +204,7 @@ async function sendToTarget({
   body,
   client,
   media,
+  mentions,
   operatorLabel,
   target,
   userId,
@@ -186,12 +212,15 @@ async function sendToTarget({
   body: string;
   client: any;
   media: OutboundMedia | null;
+  mentions: { everyone?: boolean; phones?: string[] } | null;
   operatorLabel: string;
   target: SendTarget;
   userId: string;
 }) {
   // Grupo assina com o nome (quem fala é o número compartilhado); direct vai limpo.
   const text = target.sign ? signWhatsAppBody(operatorLabel, body) : body;
+  // Menção só em grupo (target.sign identifica grupo); no direct 1:1 não faz sentido.
+  const effectiveMentions = target.sign ? mentions : null;
 
   const sent = media
     ? media.type === "audio"
@@ -205,10 +234,12 @@ async function sendToTarget({
           fileName: media.fileName,
           groupJid: target.sendNumber,
           mediatype: media.type,
+          mentions: effectiveMentions,
           mimeType: media.mimeType,
         })
     : await sendEvolutionGroupText({
         groupJid: target.sendNumber,
+        mentions: effectiveMentions,
         text,
       });
 
@@ -263,20 +294,19 @@ async function sendToTarget({
   }
 
   if (target.ticketId) {
-    // Direct: a nossa resposta marca 1ª resposta e coloca em espera do cliente.
+    // Direct: TODA resposta nossa tira o ticket de "Pendente" (aguardando o
+    // cliente). Antes isso só rodava na 1ª resposta — da 2ª em diante o ticket
+    // voltava a parecer pendente mesmo respondido.
     await client
       .from("caredesk_tickets")
-      .update({
-        status: "waiting_customer",
-        first_responded_at: now,
-        updated_at: now,
-      })
+      .update({ status: "waiting_customer", updated_at: now })
+      .eq("id", target.ticketId);
+    // first_responded_at é da PRIMEIRA resposta: só grava se ainda não tem.
+    await client
+      .from("caredesk_tickets")
+      .update({ first_responded_at: now })
       .eq("id", target.ticketId)
       .is("first_responded_at", null);
-    await client
-      .from("caredesk_tickets")
-      .update({ updated_at: now })
-      .eq("id", target.ticketId);
   } else {
     await client
       .from("caredesk_whatsapp_groups")

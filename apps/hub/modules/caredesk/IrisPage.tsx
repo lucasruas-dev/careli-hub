@@ -54,6 +54,7 @@ import {
   TicketCheck,
   Trash2,
   Upload,
+  Users,
   Video,
   Workflow,
   X,
@@ -675,7 +676,12 @@ export function IrisPage({
       try {
         const nextData = await enrichIrisDataWithCrm360(
           await withIrisTimeout(
-            loadIrisData({ operatorUserId, queueSlugFilter: scopedQueueSlug }),
+            loadIrisData({
+              operatorUserId,
+              queueSlugFilter: scopedQueueSlug,
+              // Régua de acesso: quem está logado define quais filas existem.
+              viewerUserId: hubUser?.id ?? null,
+            }),
             IRIS_QUEUE_LOAD_TIMEOUT_MS,
             "fila da Iris",
           ),
@@ -758,7 +764,12 @@ export function IrisPage({
       try {
         const nextData = await enrichIrisDataWithCrm360(
           await withIrisTimeout(
-            loadIrisData({ operatorUserId, queueSlugFilter: scopedQueueSlug }),
+            loadIrisData({
+              operatorUserId,
+              queueSlugFilter: scopedQueueSlug,
+              // Régua de acesso: quem está logado define quais filas existem.
+              viewerUserId: hubUser?.id ?? null,
+            }),
             IRIS_QUEUE_LOAD_TIMEOUT_MS,
             "fila da Iris",
           ),
@@ -1681,6 +1692,10 @@ function IrisConversationPanel({
   const [conversationChannel, setConversationChannel] =
     useState<IrisInboxChannelFilter>("all");
   const [draft, setDraft] = useState("");
+  // Menção (@) em grupo: query ativa (o que veio depois do @) e o que foi escolhido.
+  const [mentionQuery, setMentionQuery] = useState<string | null>(null);
+  const mentionMapRef = useRef<Map<string, string>>(new Map()); // label -> phone
+  const mentionEveryoneRef = useRef(false);
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
   const [recordingAudio, setRecordingAudio] = useState(false);
@@ -2986,13 +3001,94 @@ function IrisConversationPanel({
     }
   }
 
+  // Participantes do grupo pra listar no @ (nome quando conhecido, senão número).
+  const groupParticipants = useMemo(() => {
+    if (!ticketIsGroup) {
+      return [] as { label: string; phone: string; isAdmin: boolean }[];
+    }
+    const raw = ticket.metadata?.participants;
+    if (!Array.isArray(raw)) {
+      return [];
+    }
+    return raw
+      .map((item: any) => ({
+        isAdmin: Boolean(item?.isAdmin),
+        label: (item?.displayName as string | null)?.trim() || String(item?.phone ?? ""),
+        phone: String(item?.phone ?? ""),
+      }))
+      .filter((p) => p.phone);
+  }, [ticket.metadata, ticketIsGroup]);
+
+  // Ao digitar, detecta um @token ativo no cursor (só grupo).
+  function handleComposerDraftChange(value: string) {
+    setDraft(value);
+
+    if (!ticketIsGroup) {
+      setMentionQuery(null);
+      return;
+    }
+
+    const caret = composerTextareaRef.current?.selectionStart ?? value.length;
+    const before = value.slice(0, caret);
+    const match = /(?:^|\s)@([^\s@]*)$/.exec(before);
+    setMentionQuery(match ? match[1] : null);
+  }
+
+  // Insere a menção escolhida no lugar do @token e guarda o telefone.
+  function insertGroupMention(label: string, phone: string | null) {
+    const el = composerTextareaRef.current;
+    const caret = el?.selectionStart ?? draft.length;
+    const before = draft.slice(0, caret);
+    const after = draft.slice(caret);
+    const replaced = before.replace(/(?:^|\s)@([^\s@]*)$/, (m) => {
+      const lead = m.startsWith("@") ? "" : m[0];
+      return `${lead}@${label} `;
+    });
+
+    if (phone) {
+      mentionMapRef.current.set(label, phone);
+    } else {
+      mentionEveryoneRef.current = true;
+    }
+
+    const next = replaced + after;
+    setDraft(next);
+    setMentionQuery(null);
+    window.requestAnimationFrame(() => {
+      composerTextareaRef.current?.focus();
+      const pos = replaced.length;
+      composerTextareaRef.current?.setSelectionRange(pos, pos);
+    });
+  }
+
+  // Monta os mencionados a partir do que ainda está escrito no texto.
+  function buildMentionsFromDraft(body: string) {
+    if (mentionEveryoneRef.current && /(?:^|\s)@todos\b/i.test(body)) {
+      return { everyone: true };
+    }
+    const phones: string[] = [];
+    for (const [label, phone] of mentionMapRef.current) {
+      if (body.includes(`@${label}`)) {
+        phones.push(phone);
+      }
+    }
+    return phones.length ? { phones } : undefined;
+  }
+
+  function resetMentions() {
+    mentionMapRef.current = new Map();
+    mentionEveryoneRef.current = false;
+    setMentionQuery(null);
+  }
+
   async function sendGroupReply(body: string) {
     if (!body || sending || !operationReady) {
       return;
     }
 
+    const mentions = buildMentionsFromDraft(body);
     const ok = await sendGroupRequest(
-      { body },
+      mentions ? { body, mentions } : { body },
       "Nao foi possivel enviar a mensagem.",
     );
 
@@ -3000,6 +3096,7 @@ function IrisConversationPanel({
       setDraft("");
       setReplyToMessage(null);
       setEmojiPickerOpen(false);
+      resetMentions();
       setFeedback("Mensagem enviada.");
     }
   }
@@ -4165,6 +4262,14 @@ function IrisConversationPanel({
           viewportRef={messagesViewportRef}
         />
 
+        {ticketIsGroup && mentionQuery !== null ? (
+          <IrisMentionPicker
+            onPick={insertGroupMention}
+            participants={groupParticipants}
+            query={mentionQuery}
+          />
+        ) : null}
+
         <IrisConversationComposerActions
           agendaContext={{
             clientC2xId: readTicketCobrancaC2xId(ticket.metadata),
@@ -4206,7 +4311,7 @@ function IrisConversationPanel({
           onOpenNotes={() => setNotesModalOpen(true)}
           onCancelComposerContext={cancelComposerContext}
           onComposerKeyDown={handleComposerKeyDown}
-          onDraftChange={setDraft}
+          onDraftChange={handleComposerDraftChange}
           onInsertEmoji={insertEmoji}
           onSendMessage={sendMessage}
           onStartAudioRecording={startAudioRecording}
@@ -5211,6 +5316,76 @@ function ContactAvatar({
     >
       {contactInitials(label)}
     </span>
+  );
+}
+
+// Dropdown do @ nos grupos: "@todos" no topo + participantes filtrados pela query.
+// Quem tem nome aparece com nome; quem nunca falou, só com número.
+function IrisMentionPicker({
+  onPick,
+  participants,
+  query,
+}: {
+  onPick: (label: string, phone: string | null) => void;
+  participants: { label: string; phone: string; isAdmin: boolean }[];
+  query: string;
+}) {
+  const q = query.trim().toLowerCase();
+  const filtered = participants
+    .filter(
+      (p) =>
+        !q ||
+        p.label.toLowerCase().includes(q) ||
+        p.phone.includes(q),
+    )
+    .slice(0, 8);
+
+  const showEveryone = !q || "todos".includes(q);
+
+  if (!showEveryone && filtered.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="absolute bottom-[92px] left-3 z-30 w-[300px] max-w-[calc(100%-1.5rem)] overflow-hidden rounded-xl border border-line bg-surface shadow-[0_8px_28px_rgba(15,23,42,0.16)]">
+      <div className="max-h-[240px] overflow-y-auto py-1">
+        {showEveryone ? (
+          <button
+            type="button"
+            onClick={() => onPick("todos", null)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[#A07C3B]/8"
+          >
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white">
+              <Users className="size-3.5" aria-hidden="true" />
+            </span>
+            <span className="font-semibold text-ink">Todos</span>
+            <span className="ml-auto text-[11px] text-ink-muted">
+              notifica o grupo
+            </span>
+          </button>
+        ) : null}
+        {filtered.map((participant) => (
+          <button
+            key={participant.phone}
+            type="button"
+            onClick={() => onPick(participant.label, participant.phone)}
+            className="flex w-full items-center gap-2 px-3 py-2 text-left text-sm transition-colors hover:bg-[#A07C3B]/8"
+          >
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-[#A07C3B]/12 text-[11px] font-semibold uppercase text-[#7A5E2C]">
+              {participant.label.slice(0, 2)}
+            </span>
+            <span className="min-w-0 truncate font-medium text-ink">
+              {participant.label}
+            </span>
+            {participant.isAdmin ? (
+              <span className="ml-auto rounded-full bg-subtle px-1.5 py-0.5 text-[10px] font-semibold text-ink-muted">
+                admin
+              </span>
+            ) : null}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -7419,6 +7594,38 @@ async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
     throw new Error(result.error?.message ?? "Nao foi possivel salvar a fila.");
   }
 
+  // Vínculos de acesso: sincroniza a lista (apaga e regrava). São poucas linhas
+  // por fila, então trocar tudo é mais simples e seguro que diffar.
+  const queueId = (result.data as { id: string }).id;
+  const { error: clearError } = await supabase
+    .from("caredesk_queue_scopes")
+    .delete()
+    .eq("queue_id", queueId);
+
+  if (clearError) {
+    throw new Error(
+      clearError.message ?? "Nao foi possivel atualizar os vinculos da fila.",
+    );
+  }
+
+  if (form.scopes.length) {
+    const { error: insertError } = await supabase
+      .from("caredesk_queue_scopes")
+      .insert(
+        form.scopes.map((scope) => ({
+          department_id: scope.departmentId,
+          queue_id: queueId,
+          sector_id: scope.sectorId,
+        })),
+      );
+
+    if (insertError) {
+      throw new Error(
+        insertError.message ?? "Nao foi possivel salvar os vinculos da fila.",
+      );
+    }
+  }
+
   return result.data;
 }
 
@@ -7462,6 +7669,8 @@ function createQueueForm() {
     channelId: "",
     color: "#A07C3B",
     defaultPriority: "medium" as IrisPriority,
+    // Vínculos de acesso (N): a fila pode ser de mais de um departamento.
+    scopes: [] as IrisQueueScope[],
     id: "",
     name: "",
     routingStrategy: "manual",
@@ -7478,6 +7687,7 @@ function queueToForm(queue: IrisQueueConfig) {
     channelId: queue.channelId ?? "",
     color: queue.color || "#A07C3B",
     defaultPriority: queue.defaultPriority,
+    scopes: queue.scopes,
     id: queue.id,
     name: queue.name,
     routingStrategy: queue.routingStrategy,

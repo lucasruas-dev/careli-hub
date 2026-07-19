@@ -46,7 +46,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
             items: [
               "Novo cadastro de Imobiliaria: mesmo fluxo do PJ, com CRECI Juridico, empreendimentos vinculados e uma etapa para os corretores (nome, CPF, telefone, e-mail e CRECI).",
               "O CRECI do corretor e buscado sozinho quando o CPF fica completo; se nao vier, o campo continua editavel.",
-              "E-mail passou a ser obrigatorio e unico em todos os formularios (socios e corretores) — ele sera a credencial de acesso.",
+              "E-mail passou a ser obrigatorio e unico em socios e corretores — ele sera a credencial de acesso.",
               "Na Revisao da ficha da um clique para voltar e corrigir qualquer etapa.",
             ],
             screen: "Cadastro",
@@ -82,18 +82,100 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
         ],
       },
     ],
-    rollback: "1.40.0 (2026-07-15-apolo-crm360)",
+    rollback: "1.42.0 (2026-07-17-iris-mencao-nos-grupos)",
     technical: {
       done:
-        "Apolo/cadastro: tipo 'imobiliaria' habilitado em cadastro-tipos + page lendo ?tipo -> prop no CadastroFlow (persona pj forcada, steps proprios, role dinamico no salvar). Empresa.creci, CorretorCadastro, MultiSelectField (empreendimentos ativos), StepCorretores com auto-busca de CRECI (query CARELI_PF_04) e e-mail unico; sociosnow exigem e-mail. cad-pdf: titulo dinamico e vinculo so quando existe. cadastro-persist: corretores -> relationship 'corretor' (contato) e empreendimentos -> 'empreendimento' (trabalho); ENABLED_ROLES += imobiliaria. mostqi: EnrichmentResult.creci + extractCreci (class_organization). " +
-        "Empreendimento: enterprise-logos.ts (bucket apolo-documents, prefixo enterprise-logos/{id}, signed URL) + enterprise-settings.ts (credenciamento_ativo) + rotas logo/settings; migration 0052_apolo_enterprise_settings aplicada. " +
+        "Apolo/cadastro: tipo 'imobiliaria' habilitado em cadastro-tipos + page lendo ?tipo -> prop no CadastroFlow (persona pj forcada, steps proprios, role dinamico no salvar). Empresa.creci, CorretorCadastro, MultiSelectField (empreendimentos ativos), StepCorretores com auto-busca de CRECI (query CARELI_PF_04) e e-mail unico; socios passam a exigir e-mail. cad-pdf: titulo dinamico e vinculo so quando existe. cadastro-persist: corretores -> relationship 'corretor' (contato) e empreendimentos -> 'empreendimento' (trabalho); ENABLED_ROLES += imobiliaria. mostqi: EnrichmentResult.creci + extractCreci (class_organization). " +
+        "Empreendimento: enterprise-logos.ts (bucket apolo-documents, prefixo enterprise-logos/{id}, signed URL) + enterprise-settings.ts (credenciamento_ativo) + rotas logo/settings; migration 0052_apolo_enterprise_settings ja aplicada em producao. " +
         "Credenciamento: /apolo/credenciamento + lib/apolo/credenciamento.ts (ativos com logo; consulta CNPJ casa vendas do C2X via vinculed_by_id UNIAO relationships do Apolo). " +
-        "Board: tela dentro do Apolo (apoloScreens + ApoloPage), rotas /api/apolo/board e /board/[id]; fila filtra metadata.source='apolo' (sem isso vinham ~512 entidades do sync). MOCKS REMOVIDOS do cadastro (LOCAL_MOCK + 10 funcoes): o localhost passa a ler documento de verdade. " +
-        "Asana: rota /api/apolo/asana/cads (sondagem read-only da central de CADs, sem custo).",
+        "Board: tela dentro do Apolo (apoloScreens + ApoloPage), rotas /api/apolo/board e /board/[id]; a fila filtra metadata.source='apolo' (sem isso vinham ~512 entidades do sync C2X). MOCKS REMOVIDOS do cadastro (LOCAL_MOCK + 10 funcoes): o localhost passa a ler documento de verdade — cada leitura vira consulta cobrada na MOST. " +
+        "Asana: rota read-only /api/apolo/asana/cads (sondagem da central de CADs, sem custo).",
       motivation:
         "Abrir o canal externo de credenciamento das imobiliarias e montar a esteira interna que valida imobiliaria, corretores e CADs ate o credenciamento do cliente.",
     },
     title: "Apolo: credenciamento de imobiliarias e Board de validacao",
+    type: "novidade",
+    version: "1.43.0",
+  },
+  {
+    buildTag: "2026-07-17-iris-mencao-nos-grupos",
+    deployedAt: "2026-07-17T15:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Menção com @ nos grupos: digite @ no campo de mensagem e escolha um participante (ou @todos). A pessoa é notificada de verdade no WhatsApp — não é só um texto.",
+              "Quem já mandou mensagem no grupo aparece com o nome; quem nunca falou aparece pelo número (o WhatsApp não entrega o nome na lista) e o nome vai aparecendo conforme a pessoa fala.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit e1a9d59e (v1.41.1)",
+    technical: {
+      done: "Grupo tem que funcionar como grupo: @ pra mencionar. migration 0051: caredesk_whatsapp_group_participants (group_id, phone, display_name, is_admin) + RLS. O WhatsApp so devolve NUMERO na lista de participantes; o nome vem do pushName de quem fala — por isso display_name e opcional e vai sendo preenchido: cada msg de grupo faz upsert do participante (rememberGroupParticipant) e a criacao do grupo semeia via findGroupInfos (seedGroupParticipants). Rota POST /api/iris/group-participants-backfill (sessao) semeia os 17 grupos ja monitorados, reentrante. NOTIFICACAO REAL: nao basta escrever @fulano — a msg tem que sair com `mentioned`/`mentionsEveryOne`, senao vira texto morto. sendEvolutionGroupText/Media ganham mentions; /api/iris/group-messages aceita { everyone } (@todos) e { phones } (so em grupo; no direct nao aplica). UI: IrisMentionPicker no composer (participantes filtrados + @todos), inserindo @Nome e guardando o telefone; no envio, buildMentionsFromDraft monta os mentioned a partir do que ainda esta escrito. participantsByGroup viaja no metadata da conversa.",
+      motivation:
+        "Lucas: 'tem que ter a opcao de mencao, o famoso @'. E: 'tem que funcionar como se fosse um grupo de WhatsApp normal mesmo'.",
+    },
+    title: "Iris: menção @ nos grupos (participantes + @todos, notificando de verdade)",
+    type: "novidade",
+    version: "1.42.0",
+  },
+  {
+    buildTag: "2026-07-17-iris-recupera-midia-antiga",
+    deployedAt: "2026-07-17T11:15:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Os áudios, imagens e PDFs recebidos nos grupos e no Direct ANTES de ontem à noite voltam a abrir (foram recuperados do WhatsApp).",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 844d06c4 (v1.41.0)",
+    technical: {
+      done: "O time nao ouvia audios: as midias anteriores ao conserto do download (corte 16/jul ~23h, v1.41.0) nunca tiveram o binario baixado — o processador so gravava '[audio]'/'[documento]' e provider_payload.media ficava null, entao nao havia audioUrl pro player. A Evolution AINDA guarda os binarios (verificado chamando chat/getBase64FromMediaMessage num audio 'falhado'), entao da pra preencher retroativamente: 35 pendentes (19 imagem, 9 audio, 4 doc, 2 sticker, 1 video). POST /api/iris/media-backfill (sessao de operador; FORA de /api/iris/evolution porque o gate libera aquele prefixo por PREFIXO): varre as msgs evolution sem media, busca, sobe pro Storage (uploadInboundMediaBuffer) e grava provider_payload.media.{url,type,fileName,mimeType}; roda em lote (limit 10, max 25) e e reentrante. Tambem: persistInboundMedia falhava MUDO (retornava null sem log) — o que cegou o diagnostico; agora loga messageId/tipo/chat.",
+      motivation:
+        "Lucas: 'estamos com problema de ouvir os audios no grupo e direct'. Diagnostico: nao era o player nem o formato (ogg/opus abre e o arquivo e servido certo) — era midia antiga sem arquivo nenhum.",
+    },
+    title: "Iris: recupera as mídias antigas dos grupos/Direct (áudio, imagem, PDF)",
+    type: "correcao",
+    version: "1.41.1",
+  },
+  {
+    buildTag: "2026-07-15-iris-niveis-de-acesso",
+    deployedAt: "2026-07-15T23:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Níveis de acesso: cada fila agora é vinculada a departamento/setor e você só enxerga as filas da sua área. Operador e líder veem o seu setor; coordenador vê todo o seu departamento; admin vê tudo.",
+              "PDF, imagem, áudio e arquivos recebidos nos grupos e no Direct agora ABREM (antes aparecia só o texto '[documento]' e não dava pra abrir).",
+              "Marcação de pendência corrigida: mensagem de alguém de fora marca a conversa como não-lida e Pendente; assim que a gente responde pela Iris, ela sai de pendente.",
+            ],
+            screen: "Atendimento e Setup",
+          },
+        ],
+      },
+    ],
+    rollback: "commit 1e756c62 (v1.40.0)",
+    technical: {
+      done: "ACESSO: migration 0050 cria caredesk_queue_scopes (queue_id, department_id, sector_id; sector_id NULL = departamento inteiro) + unique parciais + RLS (leitura autenticado / escrita operador-lider-admin). E N:N porque Grupo/Direct pertencem a DOIS departamentos (Operacao+Relacao). Reaproveita o que ja existia: hub_departments/hub_sectors/hub_user_assignments/operational_profile (op1..adm). lib/hub/access-scope.ts = regua pura (canSeeResource), reusavel por Apolo/Hades. loadIrisData resolve o escopo do usuario logado (perfil + assignments ativos, somando todos) e filtra FILAS, TICKETS e GRUPOS. Setup>Filas ganhou editor de vinculos. Vinculos semeados: Atendimento/Gurgel/Suporte/Juridico->Operacao (dep. inteiro, pois o setor Atendimento nao tem ninguem alocado), Cobranca->Op-Cobranca, Contrato->Op-Contrato, Financeiro->Adm-Financeiro, Grupo/Direct->Operacao+Relacao; Comunicados arquivada. MIDIA: o processador Evolution nunca BAIXAVA o arquivo (o messages.upsert so traz a referencia) — agora busca via chat/getBase64FromMediaMessage, sobe pro Storage e grava provider_payload.media.{url,type,fileName}. PENDENCIA: loadGroupConversations tinha unread:false e status:'open' FIXOS (grupo nunca marcava e ficava eterno Pendente); agora status=waiting_customer quando a ultima e nossa. No Direct, o update de status so rodava na 1a resposta.",
+      motivation:
+        "Lucas: 'vamos precisar criar niveis de acesso na Iris, vincular as filas a setores e departamentos' + reclamacao do time: nao abriam PDF/PNG e a marcacao de novas mensagens/pendente nao funcionava.",
+    },
+    title: "Iris: níveis de acesso por setor + PDF/arquivos abrindo + pendência correta",
     type: "novidade",
     version: "1.41.0",
   },

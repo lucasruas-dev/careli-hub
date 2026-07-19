@@ -1,6 +1,11 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 "use client";
 
+import {
+  canSeeResource,
+  isAdminProfile,
+  type HubUserScope,
+} from "@/lib/hub/access-scope";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import type {
   IrisCrm360Registration,
@@ -9,6 +14,8 @@ import type {
   IrisMessageReaction,
   IrisPriority,
   IrisQueueConfig,
+  IrisGroupParticipant,
+  IrisQueueScope,
   IrisReplyPreview,
   IrisSnapshot,
   IrisStatus,
@@ -19,8 +26,10 @@ import type {
 export const emptyIrisData: IrisData = {
   broadcasts: [],
   channels: [],
+  departments: [],
   profiles: [],
   queues: [],
+  sectors: [],
   templates: [],
   tickets: [],
 };
@@ -38,9 +47,12 @@ const irisCrm360RegistrationCache = new Map<string, IrisCrm360Registration>();
 export async function loadIrisData({
   operatorUserId,
   queueSlugFilter,
+  viewerUserId,
 }: {
   operatorUserId?: string | null;
   queueSlugFilter?: string | null;
+  // Usuário logado: define O QUE ELE ENXERGA (perfil + setor/departamento).
+  viewerUserId?: string | null;
 } = {}): Promise<IrisData> {
   const supabase = getHubSupabaseClient();
 
@@ -61,7 +73,55 @@ export async function loadIrisData({
     throw queuesResult.error;
   }
 
-  const queues = (queuesResult.data ?? []).map(mapQueueRow);
+  // Estrutura da empresa + vínculos das filas: alimentam o Setup e a régua.
+  const [departmentsResult, sectorsResult, scopesResult] = await Promise.all([
+    supabase
+      .from("hub_departments")
+      .select("id,name")
+      .eq("status", "active")
+      .order("name", { ascending: true }),
+    supabase
+      .from("hub_sectors")
+      .select("id,name,department_id")
+      .eq("status", "active")
+      .order("name", { ascending: true }),
+    supabase
+      .from("caredesk_queue_scopes")
+      .select("queue_id,department_id,sector_id"),
+  ]);
+
+  const scopesByQueue = new Map<string, IrisQueueScope[]>();
+  for (const row of (scopesResult.data ?? []) as any[]) {
+    const queueId = row.queue_id as string;
+    const list = scopesByQueue.get(queueId) ?? [];
+    list.push({
+      departmentId: row.department_id as string,
+      sectorId: (row.sector_id as string | null) ?? null,
+    });
+    scopesByQueue.set(queueId, list);
+  }
+
+  const allQueues = (queuesResult.data ?? []).map((row: any) =>
+    mapQueueRow(row, scopesByQueue.get(row.id) ?? []),
+  );
+
+  const departments = (departmentsResult.data ?? []).map((row: any) => ({
+    id: row.id as string,
+    name: row.name as string,
+  }));
+  const sectors = (sectorsResult.data ?? []).map((row: any) => ({
+    departmentId: (row.department_id as string | null) ?? null,
+    id: row.id as string,
+    name: row.name as string,
+  }));
+
+  // RÉGUA DE ACESSO: o perfil do usuário logado + os vínculos dele definem quais
+  // filas existem pra ele. op*/ldr = seu setor (ou departamento inteiro);
+  // cdr = todo o seu departamento; adm = tudo; fila sem vínculo = só adm.
+  const viewerScope = await loadViewerScope(supabase, viewerUserId);
+  const queues = viewerScope
+    ? allQueues.filter((queue) => canSeeResource(viewerScope, queue.scopes))
+    : allQueues;
   const scopedQueueIds = normalizedQueueSlugFilter
     ? queues
         .filter((queue) =>
@@ -79,6 +139,16 @@ export async function loadIrisData({
 
   if (operatorUserId) {
     ticketsQuery = ticketsQuery.eq("assigned_to_user_id", operatorUserId);
+  }
+
+  // Régua de acesso nos TICKETS: só os das filas que o usuário enxerga — senão
+  // esconder a fila não adiantaria nada (o ticket dela apareceria assim mesmo).
+  // Ticket sem fila segue a mesma regra da fila sem vínculo: só adm.
+  if (viewerScope && !isAdminProfile(viewerScope.profile)) {
+    const visibleQueueIds = queues.map((queue) => queue.id);
+    ticketsQuery = visibleQueueIds.length
+      ? ticketsQuery.in("queue_id", visibleQueueIds)
+      : ticketsQuery.eq("queue_id", "__iris_sem_fila_visivel__");
   }
 
   if (normalizedQueueSlugFilter) {
@@ -248,7 +318,10 @@ export async function loadIrisData({
     includeGroups:
       !operatorUserId &&
       (!normalizedQueueSlugFilter ||
-        normalizedQueueSlugFilter === GROUP_QUEUE_SLUG),
+        normalizedQueueSlugFilter === GROUP_QUEUE_SLUG) &&
+      // Grupos vivem na fila "Grupo": se ela não é visível pro usuário, eles
+      // também não são (senão vazaria pela porta dos fundos).
+      queues.some((queue) => queue.slug === GROUP_QUEUE_SLUG),
     queues,
     supabase,
   });
@@ -256,8 +329,10 @@ export async function loadIrisData({
   return {
     broadcasts,
     channels,
+    departments,
     profiles,
     queues,
+    sectors,
     templates,
     tickets: [
       ...ticketsRows.map((ticket) =>
@@ -318,14 +393,42 @@ async function loadGroupConversations({
 
   const groupIds = groupRows.map((group: any) => group.id as string);
 
-  const groupMessagesResult = await supabase
-    .from("caredesk_messages")
-    .select(
-      "id,group_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
-    )
-    .in("group_id", groupIds)
-    .order("created_at", { ascending: false })
-    .limit(1000);
+  const [groupMessagesResult, participantsResult] = await Promise.all([
+    supabase
+      .from("caredesk_messages")
+      .select(
+        "id,group_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
+      )
+      .in("group_id", groupIds)
+      .order("created_at", { ascending: false })
+      .limit(1000),
+    // Participantes: alimentam o seletor de menção (@) de cada grupo.
+    supabase
+      .from("caredesk_whatsapp_group_participants")
+      .select("group_id,phone,display_name,is_admin")
+      .in("group_id", groupIds),
+  ]);
+
+  const participantsByGroup = new Map<string, IrisGroupParticipant[]>();
+  for (const row of (participantsResult.data ?? []) as any[]) {
+    const groupId = row.group_id as string;
+    const list = participantsByGroup.get(groupId) ?? [];
+    list.push({
+      displayName: (row.display_name as string | null) ?? null,
+      isAdmin: Boolean(row.is_admin),
+      phone: row.phone as string,
+    });
+    participantsByGroup.set(groupId, list);
+  }
+  // Nome primeiro (mais úteis pra mencionar), depois por número.
+  for (const list of participantsByGroup.values()) {
+    list.sort((a, b) => {
+      if (Boolean(a.displayName) !== Boolean(b.displayName)) {
+        return a.displayName ? -1 : 1;
+      }
+      return (a.displayName ?? a.phone).localeCompare(b.displayName ?? b.phone);
+    });
+  }
 
   const messagesByGroup = new Map<string, IrisMessage[]>();
   for (const row of groupMessagesResult.data ?? []) {
@@ -357,6 +460,14 @@ async function loadGroupConversations({
     const lastMessage = messages[messages.length - 1];
     const title = (group.subject as string | null)?.trim() || "Grupo sem nome";
 
+    // Marcação de pendência (regra do Lucas): como TODO mundo responde pela Iris,
+    // "resposta nossa" = mensagem de SAÍDA. Última de entrada (alguém de fora)
+    // => não lida + Pendente. Última nossa => Espera (respondido).
+    // O status alimenta o conversationWaitState; antes era fixo em "open" e o
+    // grupo ficava eternamente "Pendente" mesmo depois de respondido.
+    const weAnswered = lastMessage?.direction === "outbound";
+    const groupStatus = weAnswered ? "waiting_customer" : "open";
+
     return {
       assignedToLabel: "Grupo monitorado",
       channelId: groupChannel?.id ?? null,
@@ -378,6 +489,7 @@ async function loadGroupConversations({
       metadata: {
         groupCode: group.code,
         groupJid: group.group_jid,
+        participants: participantsByGroup.get(group.id as string) ?? [],
         participantsCount: group.participants_count,
       },
       openedAt: (group.created_at as string) ?? new Date().toISOString(),
@@ -391,11 +503,11 @@ async function loadGroupConversations({
         provider: "evolution",
         readOnly: false,
       },
-      sourceLabel: "WhatsApp · Relacionamento",
-      status: "open",
+      sourceLabel: "WhatsApp · Grupo",
+      status: groupStatus,
       subject: title,
-      unread: false,
-      unreadCount: 0,
+      unread: Boolean(lastMessage && lastMessage.direction === "inbound"),
+      unreadCount: computeUnreadCount(messages, groupStatus),
     } satisfies IrisTicket;
   });
 }
@@ -515,13 +627,52 @@ export async function withIrisTimeout<T>(
   }
 }
 
-export function mapQueueRow(row: any): IrisQueueConfig {
+// Escopo do usuário logado: perfil (op*/ldr/cdr/adm) + TODOS os vínculos ativos
+// (o Lucas decidiu somar, não usar só o is_primary).
+async function loadViewerScope(
+  supabase: NonNullable<ReturnType<typeof getHubSupabaseClient>>,
+  viewerUserId?: string | null,
+): Promise<HubUserScope | null> {
+  if (!viewerUserId) {
+    return null;
+  }
+
+  const [userResult, assignmentsResult] = await Promise.all([
+    supabase
+      .from("hub_users")
+      .select("operational_profile")
+      .eq("id", viewerUserId)
+      .maybeSingle(),
+    supabase
+      .from("hub_user_assignments")
+      .select("department_id,sector_id")
+      .eq("user_id", viewerUserId)
+      .eq("status", "active"),
+  ]);
+
+  const profile = (userResult.data as any)?.operational_profile ?? null;
+  const rows = (assignmentsResult.data ?? []) as any[];
+
+  return {
+    departmentIds: unique(
+      rows.map((row) => row.department_id).filter(Boolean),
+    ) as string[],
+    profile: profile as HubUserScope["profile"],
+    sectorIds: unique(rows.map((row) => row.sector_id).filter(Boolean)) as string[],
+  };
+}
+
+export function mapQueueRow(
+  row: any,
+  scopes: IrisQueueScope[] = [],
+): IrisQueueConfig {
   return {
     assignmentStrategy: row.assignment_strategy ?? "manual",
     channelId:
       typeof row.metadata?.channelId === "string" ? row.metadata.channelId : null,
     color: row.color ?? "#A07C3B",
     defaultPriority: normalizePriority(row.default_priority),
+    scopes,
     id: row.id,
     name: row.name,
     routingStrategy: row.routing_strategy ?? "manual",
