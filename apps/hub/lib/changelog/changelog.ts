@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-cad-etapa-data",
+    deployedAt: "2026-07-20T06:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Da para escolher em que etapa as CADs entram: o padrao passou a ser Analise de credito, porque elas ainda precisam passar pelo Serasa.",
+              "Nomes com erro de digitacao ganharam a lista Quase casaram: mostra o nome no Asana e no Apolo lado a lado para voce confirmar qual e.",
+              "A data de chegada passou a ser a da CAD no Asana. Antes vinha da criacao do cadastro no Apolo, que para a maioria era o mesmo segundo do sync do C2X.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.46.4",
+    technical: {
+      done: "Sugestao por distancia de edicao (Levenshtein) com indice por primeiro nome, limiar 0,86, exposta como lista quaseCasados que NUNCA aplica sozinha. Etapa da importacao virou parametro (validacao/credito/credenciado, padrao credito) com seletor na barra de confirmacao. A data de criacao da task do Asana e gravada em metadata.esteira.chegouEm e a rota do Board usa ela no lugar do created_at da entidade. 14 testes, incluindo os tres erros de digitacao reais como regressao.",
+      motivation: "Tres CADs nao casaram por uma letra (Cristiana/Cristina, Higno/Higino, Feliphe/Felipe) e corrigir a mao resolveria hoje e voltaria na proxima importacao. A data de chegada estava errada: vinha do created_at da entidade, e 100 das 121 tinham o mesmo horario porque foram criadas em lote pelo sync do C2X — o que ainda ordenava a fila errado.",
+    },
+    title: "Apolo: etapa na importacao, sugestao de nome parecido e data de chegada correta",
+    type: "correcao",
+    version: "1.46.5",
+  },
+  {
     buildTag: "2026-07-20-apolo-cad-analista",
     deployedAt: "2026-07-20T05:00:00-03:00",
     internal: true,

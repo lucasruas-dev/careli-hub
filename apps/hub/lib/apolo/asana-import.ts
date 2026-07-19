@@ -51,9 +51,47 @@ export type PreviewImportacao = {
   casados: ItemCasado[];
   jaImportados: ItemCasado[];
   naoCasados: ItemCasado[];
+  // Nome quase igual (erro de digitação de uma ou duas letras). NUNCA aplicado sozinho:
+  // "Joao Silva" e "Joao Silvo" também são parecidos e são pessoas diferentes.
+  quaseCasados: ItemCasado[];
   secoesEncontradas: string[];
   total: number;
 };
+
+// Distância de edição (Levenshtein). Usada só para SUGERIR, nunca para decidir.
+function distanciaEdicao(a: string, b: string): number {
+  if (a === b) return 0;
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  let anterior = Array.from({ length: b.length + 1 }, (_, i) => i);
+
+  for (let i = 1; i <= a.length; i += 1) {
+    const atual = [i];
+    for (let j = 1; j <= b.length; j += 1) {
+      const custo = a[i - 1] === b[j - 1] ? 0 : 1;
+      atual[j] = Math.min(
+        (atual[j - 1] ?? 0) + 1,
+        (anterior[j] ?? 0) + 1,
+        (anterior[j - 1] ?? 0) + custo,
+      );
+    }
+    anterior = atual;
+  }
+
+  return anterior[b.length] ?? 0;
+}
+
+export function similaridade(a: string, b: string): number {
+  const maior = Math.max(a.length, b.length);
+  if (maior === 0) return 1;
+  return 1 - distanciaEdicao(a, b) / maior;
+}
+
+// Acima disto o nome é "quase igual" — erro de digitação, não pessoa diferente.
+// Calibrado nos casos reais: "cristiana"/"cristina", "higno"/"higino", "feliphe"/"felipe"
+// ficam todos acima de 0,90.
+const LIMIAR_SIMILARIDADE = 0.86;
 
 // Diagnóstico da varredura: quando a busca volta vazia, é isto que diz POR QUÊ — em vez de
 // deixar a pessoa adivinhar a grafia.
@@ -233,6 +271,9 @@ export async function casarComApolo(
   // Índice de nomes do Apolo. O volume é de milhares, então trazemos uma vez e casamos em
   // memória em vez de uma consulta por CAD.
   const porNome = new Map<string, EntidadeCandidata[]>();
+  // Bloco por PRIMEIRO nome: sem isto, sugerir por similaridade custaria comparar cada CAD
+  // com milhares de entidades. Erro de digitação quase nunca cai na primeira palavra.
+  const porPrimeiroNome = new Map<string, EntidadeCandidata[]>();
   const pagina = 1000;
 
   for (let inicio = 0; ; inicio += pagina) {
@@ -258,6 +299,14 @@ export async function casarComApolo(
       const chave = normalizarNome(candidato.nome);
       if (!chave) continue;
       porNome.set(chave, [...(porNome.get(chave) ?? []), candidato]);
+
+      const primeiro = chave.split(" ")[0] ?? "";
+      if (primeiro) {
+        porPrimeiroNome.set(primeiro, [
+          ...(porPrimeiroNome.get(primeiro) ?? []),
+          candidato,
+        ]);
+      }
     }
 
     if (linhas.length < pagina) break;
@@ -286,22 +335,52 @@ export async function casarComApolo(
     casados: [],
     jaImportados: [],
     naoCasados: [],
+    quaseCasados: [],
     secoesEncontradas: [],
     total: cads.length,
   };
 
   for (const cad of cads) {
-    const candidatos = porNome.get(normalizarNome(cad.nome)) ?? [];
+    const chave = normalizarNome(cad.nome);
+    const candidatos = porNome.get(chave) ?? [];
     const item: ItemCasado = {
       cad,
       candidatos,
       jaImportado: jaVinculados.has(cad.gid),
     };
 
-    if (item.jaImportado) preview.jaImportados.push(item);
-    else if (candidatos.length === 1) preview.casados.push(item);
-    else if (candidatos.length > 1) preview.ambiguos.push(item);
-    else preview.naoCasados.push(item);
+    if (item.jaImportado) {
+      preview.jaImportados.push(item);
+      continue;
+    }
+    if (candidatos.length === 1) {
+      preview.casados.push(item);
+      continue;
+    }
+    if (candidatos.length > 1) {
+      preview.ambiguos.push(item);
+      continue;
+    }
+
+    // Não casou exato: procura nome quase igual dentro do bloco do primeiro nome.
+    const primeiro = chave.split(" ")[0] ?? "";
+    const parecidos = (porPrimeiroNome.get(primeiro) ?? [])
+      .map((candidato) => ({
+        candidato,
+        score: similaridade(chave, normalizarNome(candidato.nome)),
+      }))
+      .filter((linha) => linha.score >= LIMIAR_SIMILARIDADE)
+      .sort((a, b) => b.score - a.score)
+      .slice(0, 3);
+
+    if (parecidos.length > 0) {
+      preview.quaseCasados.push({
+        ...item,
+        candidatos: parecidos.map((linha) => linha.candidato),
+      });
+    } else {
+      preview.naoCasados.push(item);
+    }
   }
 
   return preview;
@@ -320,14 +399,19 @@ export type AplicacaoResultado = {
 // Board já lê de lá — não precisa de coluna nova. O merge é feito lendo e reescrevendo o
 // metadata: como a importação é disparada manualmente por uma pessoa e não concorre com o
 // wizard de cadastro, é seguro aqui; escrita concorrente exigiria jsonb_set no banco.
+export type EtapaImportacao = "validacao" | "credito" | "credenciado";
+
 export async function aplicarVinculos(input: {
   // Quem fica responsável pelos itens importados. Sem isto todos entram "Sem analista" e
   // alguém teria que atribuir um a um.
   analistaId?: string | null;
   client: AdminClient;
-  etapa: "validacao" | "credenciado";
+  etapa: EtapaImportacao;
   itens: {
     corretor?: string | null;
+    // Quando a CAD foi criada no Asana. É a data de chegada DE VERDADE: o created_at da
+    // entidade no Apolo é quando o sync do C2X a criou, o que não diz nada sobre a CAD.
+    criadoEm?: string | null;
     empreendimento?: string | null;
     entityId: string;
     gid: string;
@@ -378,6 +462,9 @@ export async function aplicarVinculos(input: {
             // O que veio da CAD do Asana. O Board mostra estes campos na fila: sem eles, a
             // coluna Empreendimento fica vazia para quem foi importado (cadastro antigo não
             // tem metadata.cadastro).
+            // Data de chegada da CAD (Asana). O Board mostra esta em vez do created_at da
+            // entidade, que é quando o sync do C2X a criou.
+            chegouEm: item.criadoEm ?? null,
             corretor: item.corretor ?? null,
             empreendimento: item.empreendimento ?? null,
             etapa: input.etapa,

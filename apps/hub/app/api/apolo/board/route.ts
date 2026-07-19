@@ -27,6 +27,7 @@ type EntityRow = {
     esteira?: {
       analistaId?: string | null;
       atualizadoEm?: string;
+      chegouEm?: string | null;
       corretor?: string | null;
       empreendimento?: string | null;
       etapa?: string;
@@ -121,7 +122,10 @@ export async function GET(request: Request) {
       analistaId: esteira?.analistaId ?? null,
       corretor: esteira?.corretor ?? null,
       corretores: conta(cadastro?.corretores),
-      criadoEm: row.created_at,
+      // Quando a CAD chegou. Para o que veio do Asana é a data da própria CAD; o created_at
+      // da entidade seria a data do SYNC do C2X (100 das 121 no mesmo segundo), que não diz
+      // nada sobre a chegada e ainda ordenaria a fila errado.
+      criadoEm: esteira?.chegouEm ?? row.created_at,
       documento: row.document_masked ?? "",
       empreendimentos,
       imobiliaria: esteira?.imobiliaria ?? null,

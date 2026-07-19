@@ -5,6 +5,7 @@ import {
   asanaConfigurado,
   casarComApolo,
   escanearCads,
+  type EtapaImportacao,
 } from "@/lib/apolo/asana-import";
 import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
 import { createApoloAdminClient } from "@/lib/apolo/server";
@@ -100,9 +101,10 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     analistaId?: string | null;
     confirmado?: boolean;
-    etapa?: "validacao" | "credenciado";
+    etapa?: EtapaImportacao;
     itens?: {
       corretor?: string | null;
+      criadoEm?: string | null;
       empreendimento?: string | null;
       entityId: string;
       gid: string;
@@ -123,7 +125,12 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Nenhum item para importar." }, { status: 400 });
   }
 
-  const etapa = body.etapa === "validacao" ? "validacao" : "credenciado";
+  // A etapa vem da tela. Padrão "credito": as CADs finalizadas no Asana ainda precisam passar
+  // pela análise de crédito no processo novo (Serasa), então não nascem credenciadas.
+  const ETAPAS_VALIDAS: EtapaImportacao[] = ["validacao", "credito", "credenciado"];
+  const etapa = ETAPAS_VALIDAS.includes(body.etapa as EtapaImportacao)
+    ? (body.etapa as EtapaImportacao)
+    : "credito";
 
   const resultado = await aplicarVinculos({
     analistaId: body.analistaId ?? null,

@@ -44,6 +44,7 @@ type Preview = {
   empreendimento: string;
   jaImportados: Item[];
   naoCasados: Item[];
+  quaseCasados: Item[];
   secoes: string[];
   secoesEncontradas: string[];
   total: number;
@@ -64,6 +65,9 @@ export function ImportarCads() {
   const [escolhaAmbigua, setEscolhaAmbigua] = useState<Record<string, string>>({});
   // Responsável pelos itens importados. Nasce com quem está logado.
   const [analistaId, setAnalistaId] = useState("");
+  // Onde os itens entram na esteira. Padrão "credito": mesmo finalizadas no Asana, as CADs
+  // ainda precisam passar pela análise de crédito no processo novo.
+  const [etapa, setEtapa] = useState<"validacao" | "credito" | "credenciado">("credito");
 
   const escanear = useCallback(async () => {
     setCarregando(true);
@@ -100,6 +104,8 @@ export function ImportarCads() {
     // fila do Board (cadastro antigo não tem metadata.cadastro para o Board ler).
     const dados = (i: Item) => ({
       corretor: i.cad.corretor,
+      // Data de criação da CAD no Asana = a chegada de verdade.
+      criadoEm: i.cad.criadoEm,
       empreendimento: i.cad.empreendimento,
       gid: i.cad.gid,
       imobiliaria: i.cad.imobiliaria,
@@ -110,9 +116,13 @@ export function ImportarCads() {
       .filter((i) => selecionados.has(i.cad.gid))
       .map((i) => ({ ...dados(i), entityId: i.candidatos[0]!.id }));
 
-    const doAmbiguo = preview.ambiguos
+    // "Quase casaram" e "ambíguos" usam o mesmo mecanismo: só entram quando a pessoa
+    // escolheu explicitamente com qual cadastro é.
+    const comEscolha = [...preview.ambiguos, ...preview.quaseCasados]
       .filter((i) => escolhaAmbigua[i.cad.gid])
       .map((i) => ({ ...dados(i), entityId: escolhaAmbigua[i.cad.gid]! }));
+
+    const doAmbiguo = comEscolha;
 
     // Já importados marcados: reaplica só os DADOS (o vínculo não duplica). É como se completa
     // uma importação anterior que gravou menos campos.
@@ -133,7 +143,7 @@ export function ImportarCads() {
         body: JSON.stringify({
           analistaId: analistaId || null,
           confirmado: true,
-          etapa: "credenciado",
+          etapa,
           itens: itensParaAplicar,
         }),
         headers: {
@@ -161,7 +171,7 @@ export function ImportarCads() {
       setErro((e as Error).message);
     }
     setAplicando(false);
-  }, [analistaId, escanear, itensParaAplicar]);
+  }, [analistaId, escanear, etapa, itensParaAplicar]);
 
   return (
     <div className="space-y-4">
@@ -263,6 +273,11 @@ export function ImportarCads() {
 
           <div className="flex flex-wrap gap-2">
             <Contador cor="#22a95b" label="Casaram" valor={preview.casados.length} />
+            <Contador
+              cor="#0891b2"
+              label="Quase casaram"
+              valor={preview.quaseCasados.length}
+            />
             <Contador cor="#e0a52e" label="Ambíguos" valor={preview.ambiguos.length} />
             <Contador cor="#e0554a" label="Sem cadastro" valor={preview.naoCasados.length} />
             <Contador cor="#64748b" label="Já importados" valor={preview.jaImportados.length} />
@@ -310,6 +325,49 @@ export function ImportarCads() {
                     {item.candidatos[0]?.documento ?? "—"}
                   </span>
                 </label>
+              ))}
+            </Grupo>
+          ) : null}
+
+          {preview.quaseCasados.length > 0 ? (
+            <Grupo
+              cor="#0891b2"
+              descricao="O nome difere por pouquíssimas letras — normalmente erro de digitação. Confira os dois lados antes de escolher: nomes parecidos também podem ser pessoas diferentes."
+              icone={<Search size={16} />}
+              titulo={`Quase casaram (${preview.quaseCasados.length})`}
+            >
+              {preview.quaseCasados.map((item) => (
+                <div
+                  key={item.cad.gid}
+                  className="rounded-lg border border-cyan-500/40 bg-cyan-50/40 px-3 py-2 dark:bg-cyan-950/20"
+                >
+                  <div className="mb-2 flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                    <span className="text-[0.66rem] uppercase tracking-wide text-ink-muted">
+                      No Asana
+                    </span>
+                    <span className="text-sm font-medium text-ink">{item.cad.nome}</span>
+                  </div>
+                  <p className="mb-2 text-xs text-ink-muted">
+                    {item.cad.imobiliaria ?? "sem imobiliária"} · {item.cad.secao}
+                  </p>
+                  <select
+                    className="w-full rounded-md border border-black/10 bg-canvas px-2 py-1.5 text-sm text-ink dark:border-white/10"
+                    onChange={(e) =>
+                      setEscolhaAmbigua((atual) => ({
+                        ...atual,
+                        [item.cad.gid]: e.target.value,
+                      }))
+                    }
+                    value={escolhaAmbigua[item.cad.gid] ?? ""}
+                  >
+                    <option value="">Deixar de fora</option>
+                    {item.candidatos.map((candidato) => (
+                      <option key={candidato.id} value={candidato.id}>
+                        No Apolo: {candidato.nome} · {candidato.documento ?? "sem documento"}
+                      </option>
+                    ))}
+                  </select>
+                </div>
               ))}
             </Grupo>
           ) : null}
@@ -437,9 +495,24 @@ export function ImportarCads() {
             <div className="sticky bottom-0 flex flex-wrap items-center gap-3 rounded-xl border border-black/[0.07] bg-surface/95 p-4 backdrop-blur dark:border-white/[0.08]">
               <AlertTriangle className="shrink-0 text-amber-600" size={17} />
               <p className="min-w-0 flex-1 text-sm text-ink-soft">
-                <b className="text-ink">{itensParaAplicar.length} CADs</b> serão marcadas como
-                credenciadas e vinculadas às suas tasks no Asana. Nenhum documento é lido.
+                <b className="text-ink">{itensParaAplicar.length} CADs</b> entram no Board e
+                ficam vinculadas às suas tasks no Asana. Nenhum documento é lido.
               </p>
+
+              <label className="flex items-center gap-2">
+                <span className="text-xs font-semibold text-ink-soft">Entra em</span>
+                <select
+                  className="rounded-lg border border-black/10 bg-canvas px-2.5 py-1.5 text-sm text-ink dark:border-white/10"
+                  onChange={(e) =>
+                    setEtapa(e.target.value as "validacao" | "credito" | "credenciado")
+                  }
+                  value={etapa}
+                >
+                  <option value="credito">Análise de crédito</option>
+                  <option value="validacao">Validação</option>
+                  <option value="credenciado">Credenciado</option>
+                </select>
+              </label>
 
               <label className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-ink-soft">Analista</span>
