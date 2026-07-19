@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-ler-cads",
+    deployedAt: "2026-07-20T08:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Nova aba Ler documentos: cria os cadastros das CADs que ainda nao existem no Apolo, lendo o documento anexado.",
+              "Antes de qualquer coisa ela mostra o CUSTO em reais e so libera o botao depois que voce confirma que entende que a consulta e cobrada.",
+              "Enquanto roda, mostra o gasto real acontecendo — que costuma ficar abaixo do orcado.",
+              "Economias automaticas: CAD com CPF ja escrito no texto nao gasta consulta, planilha e zip nao sao enviados, e documento ja lido antes nao e cobrado de novo.",
+              "Cada cadastro criado entra em Validacao com os documentos ao lado, para o operador conferir e completar o que faltou.",
+              "CAD sem CPF legivel aparece numa lista de pendencias para cadastro manual.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.47.0",
+    technical: {
+      done: "Migration 0056 (apolo_ocr_reads) com file_sha256 unico: registro das leituras pagas, chave pelo HASH DO BYTE. lib/apolo/asana-ocr.ts com orcarLeitura (gratis) e lerDocumentosDoLote (pago, lotes de 5). Rota /api/apolo/asana/leitura: GET orca, POST exige confirmado e orquestra ler -> criarEntidadesDoLote -> aplicarVinculos (etapa validacao) -> trazerDocumentosDoLote. criarEntidadesDoLote faz dedup por document_hash NO CODIGO, porque a migration 0026 dropou o indice unico e createApoloEntity insere cego. cpfValido valida digito verificador (createApoloEntity so conta 11 digitos). Rotacao automatica de imagem DESLIGADA: no wizard ela reenvia em [0,90,270,180] e custaria ate 4x pelo mesmo arquivo. 12 testes nas funcoes que decidem custo e o que entra como CPF.",
+      motivation: "As secoes que faltam nao tem cadastro no Apolo: o CPF so existe dentro do documento anexado, e ler custa R$ 0,506 por imagem. Como nao havia log, cache nem dedup de consultas, reimportar pagaria tudo de novo — e ja se sabia de CAD repetida (5 pessoas com 2 CADs), que significa o mesmo documento cobrado duas vezes.",
+    },
+    title: "Apolo: ler documentos das CADs e criar os cadastros",
+    type: "novidade",
+    version: "1.48.0",
+  },
+  {
     buildTag: "2026-07-20-apolo-documentos-asana",
     deployedAt: "2026-07-20T07:00:00-03:00",
     modules: [

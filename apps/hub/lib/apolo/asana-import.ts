@@ -8,7 +8,8 @@
 // Nada aqui escreve sem confirmação explícita: `escanear` é read-only e devolve as três
 // listas (casou / ambíguo / não casou) para uma pessoa conferir. Casar nome errado significa
 // credencial impressa com o nome trocado no dia do evento.
-import type { createApoloAdminClient } from "@/lib/apolo/server";
+import { createApoloEntity } from "@/lib/apolo/cadastro-persist";
+import { hashIdentifier, type createApoloAdminClient } from "@/lib/apolo/server";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
@@ -30,6 +31,9 @@ export type CadDoAsana = {
   gid: string;
   imobiliaria: string | null;
   nome: string;
+  // Descrição da task + os campos preenchidos, concatenados. É onde se procura o CPF antes de
+  // pagar pela leitura do documento.
+  notas: string | null;
   secao: string;
 };
 
@@ -133,6 +137,7 @@ type TaskAsana = {
   created_at: string | null;
   custom_fields?: { display_value?: string | null; name?: string | null }[] | null;
   gid: string;
+  notes?: string | null;
   memberships?: {
     project?: { gid?: string | null } | null;
     section?: { name?: string | null } | null;
@@ -191,8 +196,10 @@ export async function escanearCads(input: {
   for (let pagina = 0; pagina < 40; pagina += 1) {
     const params: Record<string, string> = {
       limit: "100",
+      // `notes` = descrição da task. É onde o CPF costuma estar digitado, e achá-lo ali
+      // dispensa a leitura PAGA do documento daquela CAD.
       opt_fields:
-        "gid,name,completed,created_at,memberships.project.gid,memberships.section.name,custom_fields.name,custom_fields.display_value",
+        "gid,name,completed,created_at,notes,memberships.project.gid,memberships.section.name,custom_fields.name,custom_fields.display_value",
     };
     if (offset) params.offset = offset;
 
@@ -236,6 +243,13 @@ export async function escanearCads(input: {
         continue;
       }
 
+      // Junta descrição e TODOS os campos preenchidos: o CPF tanto pode estar escrito na
+      // descrição quanto num campo personalizado, e procurar nos dois é de graça.
+      const textoDosCampos = (task.custom_fields ?? [])
+        .map((campo) => campo.display_value ?? "")
+        .filter(Boolean)
+        .join(" ");
+
       cads.push({
         corretor: valorDoCampo(task, ["corretor"]),
         criadoEm: task.created_at,
@@ -243,6 +257,7 @@ export async function escanearCads(input: {
         gid: task.gid,
         imobiliaria: valorDoCampo(task, ["imobiliar"]),
         nome: task.name.trim(),
+        notas: [task.notes ?? "", textoDosCampos].join(" ").trim() || null,
         secao,
       });
     }
@@ -384,6 +399,83 @@ export async function casarComApolo(
   }
 
   return preview;
+}
+
+export type CriacaoResultado = {
+  criados: number;
+  erros: { cad: string; motivo: string }[];
+  // CPF já existia no Apolo: reaproveitamos a entidade em vez de criar outra.
+  reaproveitados: number;
+};
+
+// Cria as entidades das CADs que ainda NÃO existem no Apolo (é o caso da seção "Em Cadastro").
+//
+// ⚠️ DEDUP NO CÓDIGO, obrigatoriamente: a migration 0026 DROPOU o índice único de
+// `document_hash` (linha 57) e `createApoloEntity` insere cego. Sem esta checagem, o mesmo CPF
+// vira duas entidades, dois itens na fila do Board, dois códigos de credenciamento — e quebra
+// o `maybeSingle()` da consulta do portal.
+export async function criarEntidadesDoLote(input: {
+  client: AdminClient;
+  itens: {
+    cpf: string;
+    empreendimento?: string | null;
+    empreendimentoId?: string | null;
+    gid: string;
+    imobiliaria?: string | null;
+    nome: string;
+  }[];
+  ownerUserId?: string | null;
+}): Promise<{ entidadePorCad: Record<string, string>; resultado: CriacaoResultado }> {
+  const resultado: CriacaoResultado = { criados: 0, erros: [], reaproveitados: 0 };
+  const entidadePorCad: Record<string, string> = {};
+
+  for (const item of input.itens) {
+    const digitos = item.cpf.replace(/\D/g, "");
+    if (digitos.length !== 11) {
+      resultado.erros.push({ cad: item.nome, motivo: "CPF invalido" });
+      continue;
+    }
+
+    try {
+      // Já existe alguém com este CPF? Então é a mesma pessoa: vincula, não duplica.
+      const hash = hashIdentifier("cpf", digitos);
+      const { data: existente } = await input.client
+        .from("apolo_entities")
+        .select("id")
+        .eq("document_hash", hash)
+        .limit(1)
+        .maybeSingle();
+
+      if (existente) {
+        entidadePorCad[item.gid] = (existente as { id: string }).id;
+        resultado.reaproveitados += 1;
+        continue;
+      }
+
+      const criada = await createApoloEntity(input.client, {
+        empreendimentos: item.empreendimentoId
+          ? [{ id: item.empreendimentoId, label: item.empreendimento ?? "" }]
+          : [],
+        identidade: { cpf: digitos, nome: item.nome },
+        origem: "asana-cad",
+        ownerUserId: input.ownerUserId ?? null,
+        persona: "pf",
+        role: "prospect",
+      });
+
+      if (!criada.ok) {
+        resultado.erros.push({ cad: item.nome, motivo: criada.error });
+        continue;
+      }
+
+      entidadePorCad[item.gid] = criada.entityId;
+      resultado.criados += 1;
+    } catch (erro) {
+      resultado.erros.push({ cad: item.nome, motivo: (erro as Error).message });
+    }
+  }
+
+  return { entidadePorCad, resultado };
 }
 
 export type AplicacaoResultado = {

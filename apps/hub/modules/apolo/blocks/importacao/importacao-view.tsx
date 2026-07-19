@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getApoloAccessToken } from "../../data/apolo-operations";
 
 import { ImportarCads } from "./importar-cads";
+import { LerCads } from "./ler-cads";
 
 // Importar CADs do Asana — PASSO 1: enxergar o que existe lá.
 //
@@ -58,7 +59,7 @@ function pareceDocumento(nome: string): boolean {
 }
 
 export function ImportacaoView() {
-  const [aba, setAba] = useState<"importar" | "sondagem">("importar");
+  const [aba, setAba] = useState<"importar" | "ler" | "sondagem">("importar");
   const [sondagem, setSondagem] = useState<Sondagem | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -105,6 +106,7 @@ export function ImportacaoView() {
           {(
             [
               ["importar", "Importar"],
+              ["ler", "Ler documentos"],
               ["sondagem", "O que existe no Asana"],
             ] as const
           ).map(([id, label]) => (
@@ -143,6 +145,12 @@ export function ImportacaoView() {
       {aba === "importar" ? (
         <div className="p-5">
           <ImportarCads />
+        </div>
+      ) : null}
+
+      {aba === "ler" ? (
+        <div className="p-5">
+          <LerCads />
         </div>
       ) : null}
 
