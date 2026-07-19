@@ -1,4 +1,4 @@
-import { Check, ChevronDown, Filter, PanelLeftClose, Search } from "lucide-react";
+import { Check, ChevronDown, Filter, PanelLeftClose, Search, X } from "lucide-react";
 
 import { Tooltip } from "@repo/uix";
 import { useEffect, useRef, useState } from "react";
@@ -133,9 +133,11 @@ function EntityColumn({
   selectedEntityId,
   onChangeProfileFilter,
   onChangeQuery,
+  onClearFilters,
   onCollapse,
   onSubmitQuery,
   onSelect,
+  temFiltro,
 }: {
   entities: readonly ApoloEntity[];
   error: string | null;
@@ -145,9 +147,13 @@ function EntityColumn({
   selectedEntityId: string;
   onChangeProfileFilter: (profile: ApoloProfileFilter) => void;
   onChangeQuery: (query: string) => void;
+  onClearFilters: () => void;
   onCollapse?: () => void;
   onSubmitQuery: () => void;
   onSelect: (entityId: string) => void;
+  // Calculado no pai: considera a busca SUBMETIDA (não só o input), senão o botão sumia justo no
+  // caso do travamento — input vazio mas a busca ainda filtrando.
+  temFiltro: boolean;
 }) {
   return (
     <aside className="flex min-h-0 flex-col overflow-hidden rounded-xl border border-line bg-surface shadow-[0_1px_2px_rgba(15,23,42,0.04)]">
@@ -206,6 +212,18 @@ function EntityColumn({
             >
               {FILTER_LABELS[profileFilter] ?? profileFilter}
               <span aria-hidden="true" className="text-ink-muted">×</span>
+            </button>
+          ) : null}
+          {/* Limpa busca + papel de uma vez: a busca só re-executa no Enter, então apagar o
+              texto não destravava a lista sozinho (o filtro ainda fica persistido). */}
+          {temFiltro ? (
+            <button
+              className="ml-auto inline-flex h-7 items-center gap-1 rounded-full px-2.5 text-[11px] font-semibold text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
+              onClick={onClearFilters}
+              type="button"
+            >
+              <X className="size-3" aria-hidden="true" />
+              Limpar filtros
             </button>
           ) : null}
         </div>

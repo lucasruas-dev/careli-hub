@@ -19,7 +19,7 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 // So o processo do PROSPECT esta ligado; os demais papeis entram quando cada processo existir.
-const ENABLED_ROLES: ApoloBirthRole[] = ["prospect"];
+const ENABLED_ROLES: ApoloBirthRole[] = ["prospect", "imobiliaria"];
 
 // Um documento pode ter varios arquivos (RG frente+verso, contrato social com N paginas) e o PJ
 // ainda soma 2 documentos por socio -- uma empresa com 4 socios ja passa de 20.

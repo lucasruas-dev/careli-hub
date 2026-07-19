@@ -36,6 +36,68 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-19-apolo-credenciamento-board",
+    deployedAt: "2026-07-19T12:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Novo cadastro de Imobiliaria: mesmo fluxo do PJ, com CRECI Juridico, empreendimentos vinculados e uma etapa para os corretores (nome, CPF, telefone, e-mail e CRECI).",
+              "O CRECI do corretor e buscado sozinho quando o CPF fica completo; se nao vier, o campo continua editavel.",
+              "E-mail passou a ser obrigatorio e unico em todos os formularios (socios e corretores) — ele sera a credencial de acesso.",
+              "Na Revisao da ficha da um clique para voltar e corrigir qualquer etapa.",
+            ],
+            screen: "Cadastro",
+          },
+          {
+            items: [
+              "Portal de credenciamento para as imobiliarias: escolhe os empreendimentos (com as logos), informa o CNPJ e, se ja for cadastrada, pede habilitacao so nos que faltam.",
+              "CNPJ nao encontrado nao joga direto para o cadastro: da para conferir e tentar de novo.",
+            ],
+            screen: "Credenciamento",
+          },
+          {
+            items: [
+              "Nova tela Board: fila de validacao das imobiliarias e das CADs, em lista ou kanban.",
+              "Na validacao, os dados do cadastro aparecem lado a lado com os documentos originais, com zoom para conferir.",
+              "Cada tipo tem o seu funil: a CAD passa por credito e pre-venda; a imobiliaria vai de Validacao a Habilitada.",
+              "Chat interno e historico do processo em um popup, com registro desde a chegada.",
+              "Recusar ou mandar para correcao agora exige o motivo, que fica no historico.",
+            ],
+            screen: "Board",
+          },
+          {
+            items: [
+              "No cadastro do empreendimento da para enviar a logo e marcar se ele esta recebendo credenciamento.",
+              "So os empreendimentos ativos aparecem para as imobiliarias.",
+            ],
+            screen: "Empreendimento",
+          },
+          {
+            items: ["Botao para limpar os filtros da busca."],
+            screen: "CRM 360",
+          },
+        ],
+      },
+    ],
+    rollback: "1.40.0 (2026-07-15-apolo-crm360)",
+    technical: {
+      done:
+        "Apolo/cadastro: tipo 'imobiliaria' habilitado em cadastro-tipos + page lendo ?tipo -> prop no CadastroFlow (persona pj forcada, steps proprios, role dinamico no salvar). Empresa.creci, CorretorCadastro, MultiSelectField (empreendimentos ativos), StepCorretores com auto-busca de CRECI (query CARELI_PF_04) e e-mail unico; sociosnow exigem e-mail. cad-pdf: titulo dinamico e vinculo so quando existe. cadastro-persist: corretores -> relationship 'corretor' (contato) e empreendimentos -> 'empreendimento' (trabalho); ENABLED_ROLES += imobiliaria. mostqi: EnrichmentResult.creci + extractCreci (class_organization). " +
+        "Empreendimento: enterprise-logos.ts (bucket apolo-documents, prefixo enterprise-logos/{id}, signed URL) + enterprise-settings.ts (credenciamento_ativo) + rotas logo/settings; migration 0052_apolo_enterprise_settings aplicada. " +
+        "Credenciamento: /apolo/credenciamento + lib/apolo/credenciamento.ts (ativos com logo; consulta CNPJ casa vendas do C2X via vinculed_by_id UNIAO relationships do Apolo). " +
+        "Board: tela dentro do Apolo (apoloScreens + ApoloPage), rotas /api/apolo/board e /board/[id]; fila filtra metadata.source='apolo' (sem isso vinham ~512 entidades do sync). MOCKS REMOVIDOS do cadastro (LOCAL_MOCK + 10 funcoes): o localhost passa a ler documento de verdade. " +
+        "Asana: rota /api/apolo/asana/cads (sondagem read-only da central de CADs, sem custo).",
+      motivation:
+        "Abrir o canal externo de credenciamento das imobiliarias e montar a esteira interna que valida imobiliaria, corretores e CADs ate o credenciamento do cliente.",
+    },
+    title: "Apolo: credenciamento de imobiliarias e Board de validacao",
+    type: "novidade",
+    version: "1.41.0",
+  },
+  {
     buildTag: "2026-07-15-apolo-crm360",
     deployedAt: "2026-07-15T22:40:00-03:00",
     modules: [

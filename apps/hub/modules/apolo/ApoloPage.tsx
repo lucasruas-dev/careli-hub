@@ -2,6 +2,7 @@
 
 import { type ApoloScreen } from "@/lib/apolo/catalog";
 import { DashboardScreen } from "./blocks/dashboard/apolo-dashboard";
+import { BoardView } from "./blocks/board/board-view";
 import { EmpreendimentosScreen } from "./blocks/empreendimentos/empreendimentos-view";
 import { ReportsScreen } from "./blocks/reports/apolo-reports";
 import type {
@@ -438,6 +439,7 @@ export function ApoloPage() {
           </button>
         ) : null}
         {/* O "+ novo cadastro" e os KPIs ficam no cabeçalho do CRM (CrmCommandCenter). */}
+        {activeScreen === "board" ? <BoardView /> : null}
         {activeScreen === "dashboard" ? (
           <DashboardScreen dashboard={dashboard} entities={entities} loading={loading} />
         ) : null}
@@ -494,9 +496,20 @@ export function ApoloPage() {
                   selectedEntityId={selectedEntity?.id ?? ""}
                   onChangeProfileFilter={setProfileFilter}
                   onChangeQuery={setQueryInput}
+                  onClearFilters={() => {
+                    // Zera os três de uma vez: o input, a busca submetida (persistida) e o papel.
+                    setQueryInput("");
+                    setQuery("");
+                    setProfileFilter("all");
+                  }}
                   onCollapse={() => setEntityListCollapsed(true)}
                   onSubmitQuery={() => setQuery(queryInput)}
                   onSelect={setSelectedEntityId}
+                  temFiltro={
+                    query.trim().length > 0 ||
+                    queryInput.trim().length > 0 ||
+                    profileFilter !== "all"
+                  }
                 />
               )}
               <RecordWorkspace

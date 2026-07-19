@@ -25,7 +25,9 @@ export type CadDoc = {
   nome: string;
   papel: string; // "Prospect" etc.
   secoes: CadSecao[];
-  vinculo: string; // imobiliaria / corretor
+  // Titulo impresso no topo. Default "Cadastro de CAD"; a imobiliaria usa o proprio.
+  titulo?: string;
+  vinculo: string; // imobiliaria / corretor (vazio na imobiliaria: ela nao se vincula a outra)
 };
 
 // Paleta identica ao documento aprovado.
@@ -223,7 +225,7 @@ export async function montarCadPdf(cad: CadDoc): Promise<Uint8Array> {
     .filter((secao) => secao.fields.length > 0);
 
   // ---------- cabecalho ----------
-  ctx.page.drawText("Cadastro de CAD", {
+  ctx.page.drawText(cad.titulo || "Cadastro de CAD", {
     color: INK,
     font: bold,
     size: 14,
@@ -240,7 +242,10 @@ export async function montarCadPdf(cad: CadDoc): Promise<Uint8Array> {
     ctx.page.drawText(val, { color: TEXT, font: bold, size: 8.5, x: x + rotW, y: ctx.y - dy });
   };
   metaRight("Enviado em", `${cad.data} as ${cad.hora}`, 0);
-  metaRight("Imobiliaria / corretor", cad.vinculo || "-", 11);
+  // So imprime o vinculo quando existe (a ficha da imobiliaria nao tem esse campo).
+  if (cad.vinculo) {
+    metaRight("Imobiliaria / corretor", cad.vinculo, 11);
+  }
 
   ctx.y -= 20;
   ctx.page.drawLine({

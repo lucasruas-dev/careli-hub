@@ -747,6 +747,8 @@ export type EnrichmentResult = {
   available: boolean;
   certidoes: Certidao[];
   conjuge: string;
+  // CRECI do conselho de classe (dataset class_organization). Vazio se a query não trouxer.
+  creci: string;
   emails: string[];
   enderecos: string[];
   estadoCivil: string;
@@ -771,6 +773,7 @@ function emptyEnrichment(
     available: source === "mostqi" || source === "mock",
     certidoes: [],
     conjuge: "",
+    creci: "",
     emails: [],
     enderecos: [],
     estadoCivil: "",
@@ -944,9 +947,29 @@ function normalizeEnrichment(payload: unknown, includeRaw: boolean): EnrichmentR
   }
 
   result.certidoes = extractCertidoes(datasets);
+  result.creci = extractCreci(datasets);
 
   if (includeRaw) result.raw = payload;
   return result;
+}
+
+// CRECI do conselho de classe (class_organization.memberships). Pega a filiação cujo órgão
+// contém "CRECI" e devolve o número do registro. Só o cadastro de imobiliária/corretor roda a
+// query que traz esse dataset — no prospect ele nunca vem (decisão de custo).
+function extractCreci(datasets: unknown[]): string {
+  const org = datasetPayload(datasets, "class_organization");
+  const memberships = Array.isArray(org?.memberships)
+    ? (org?.memberships as unknown[])
+    : [];
+  for (const item of memberships) {
+    const m = asRecord(item);
+    const entity = str(m?.entity);
+    if (/creci/i.test(entity)) {
+      const numero = str(m?.registrationNumber);
+      if (numero) return numero;
+    }
+  }
+  return "";
 }
 
 // A rota sincrona do enrichment nao esta na doc publica (SPA). Tentamos os

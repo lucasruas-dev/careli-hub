@@ -37,6 +37,8 @@ export type CreateApoloEntityInput = {
     atividade?: string;
     cnae?: string;
     cnpj?: string;
+    // CRECI Jurídico (só imobiliária). Opcional.
+    creci?: string;
     dataAbertura?: string;
     dataAtualizacao?: string;
     email?: string;
@@ -48,6 +50,16 @@ export type CreateApoloEntityInput = {
     socios?: Array<{ nome: string; qualificacao: string }>;
     telefone?: string;
   } | null;
+  // Corretores da imobiliária (papel imobiliaria) → relacionamento de CONTATO. Cadastro simples.
+  corretores?: Array<{
+    cpf?: string;
+    creci?: string;
+    email?: string;
+    nome?: string;
+    telefone?: string;
+  }>;
+  // Empreendimentos vinculados à imobiliária → relacionamento de TRABALHO. id = enterprise do C2X.
+  empreendimentos?: Array<{ id?: string; label?: string }>;
   // Socios CADASTRADOS (PJ): pessoas fisicas com ficha propria. Por ora ficam na metadata do
   // cadastro (a ficha corrida registra quem sao); virar entidade PF vinculada e o modelo de
   // grafo, decisao a parte.
@@ -129,6 +141,11 @@ export async function createApoloEntity(
   const empresa = input.empresa ?? {};
   const perfil = input.perfil ?? {};
   const endereco = input.endereco ?? {};
+  // Imobiliária: corretores válidos (nome + CPF) e empreendimentos vinculados (id do C2X).
+  const corretores = (input.corretores ?? []).filter(
+    (c) => text(c?.nome) && onlyDigits(c?.cpf).length === 11,
+  );
+  const empreendimentos = (input.empreendimentos ?? []).filter((e) => text(e?.id));
 
   const rawDoc = isPj ? empresa.cnpj : identidade.cpf;
   const digits = onlyDigits(rawDoc);
@@ -157,6 +174,16 @@ export async function createApoloEntity(
   const cadastro = pruneEmpty({
     atividade: text(empresa.atividade),
     cnae: text(empresa.cnae),
+    // CRECI Jurídico (imobiliária). corretores/empreendimentos ficam na metadata pra ficha corrida.
+    creci: text(empresa.creci),
+    corretores: corretores.map((c) => ({
+      cpf: text(c.cpf),
+      creci: text(c.creci),
+      email: text(c.email),
+      nome: text(c.nome),
+      telefone: text(c.telefone),
+    })),
+    empreendimentos: empreendimentos.map((e) => ({ id: text(e.id), label: text(e.label) })),
     dataAbertura: text(empresa.dataAbertura),
     dataAtualizacaoCadastral: text(empresa.dataAtualizacao),
     dataNascimento: text(identidade.dataNascimento),
@@ -363,6 +390,46 @@ export async function createApoloEntity(
       metadata: { createdBy: ownerUserId, kind: "trabalho", role: "imobiliaria", source: "apolo" },
       related_entity_id: UUID_RE.test(imobiliariaId) ? imobiliariaId : null,
       relationship_type: "imobiliaria",
+      status: "verified",
+    });
+  }
+
+  // Cada corretor da imobiliária vira um relacionamento de CONTATO (aparece na aba Relacionamentos).
+  for (const corretor of corretores) {
+    relationshipRows.push({
+      entity_id: entityId,
+      label: text(corretor.nome),
+      metadata: {
+        cpf: text(corretor.cpf) || null,
+        createdBy: ownerUserId,
+        creci: text(corretor.creci) || null,
+        email: text(corretor.email) || null,
+        kind: "contato",
+        phone: text(corretor.telefone) || null,
+        role: "corretor",
+        source: "apolo",
+      },
+      related_entity_id: null,
+      relationship_type: "corretor",
+      status: "verified",
+    });
+  }
+
+  // Cada empreendimento vinculado vira um relacionamento de TRABALHO. O empreendimento é do C2X
+  // (não é entidade Apolo), então guardamos o id/rótulo na metadata e related_entity_id fica null.
+  for (const emp of empreendimentos) {
+    relationshipRows.push({
+      entity_id: entityId,
+      label: text(emp.label) || "Empreendimento",
+      metadata: {
+        createdBy: ownerUserId,
+        enterpriseId: text(emp.id) || null,
+        kind: "trabalho",
+        role: "empreendimento",
+        source: "apolo",
+      },
+      related_entity_id: null,
+      relationship_type: "empreendimento",
       status: "verified",
     });
   }

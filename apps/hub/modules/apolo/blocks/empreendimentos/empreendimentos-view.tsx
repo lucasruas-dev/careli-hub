@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowUpDown,
@@ -11,6 +11,7 @@ import {
   ExternalLink,
   FileText,
   Handshake,
+  ImagePlus,
   LandPlot,
   Layers,
   Loader2,
@@ -63,6 +64,7 @@ import type {
 import { toTitleCase } from "@/lib/format/name-case";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
+import { fileToBase64 } from "../../lib/document-capture";
 
 // O papel do player NESTE empreendimento (os demais papéis dele vivem na ficha da entidade).
 const playerRoleLabels: Record<ApoloEnterprisePlayer["relation"], string> = {
@@ -497,23 +499,23 @@ function CadastroTab({ row }: { row: ApoloEnterpriseRow }) {
     };
   }, [row.codes]);
 
-  if (error) {
-    return (
-      <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
-        {error}
-      </div>
-    );
-  }
-
-  if (!cadastros) {
-    return <div className="h-64 animate-pulse rounded-xl border border-line bg-subtle" />;
-  }
-
+  // A logo fica FORA do early-return do cadastro: o C2X às vezes cai/demora, e mesmo assim o
+  // operador precisa conseguir subir a imagem.
   return (
     <div className="grid gap-3">
-      {cadastros.map((cadastro) => (
-        <CadastroCard cadastro={cadastro} key={cadastro.code} />
-      ))}
+      <CredenciamentoCard code={row.code} enterpriseId={row.id} name={row.name} />
+
+      {error ? (
+        <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
+          {error}
+        </div>
+      ) : !cadastros ? (
+        <div className="h-64 animate-pulse rounded-xl border border-line bg-subtle" />
+      ) : (
+        cadastros.map((cadastro) => (
+          <CadastroCard cadastro={cadastro} key={cadastro.code} />
+        ))
+      )}
     </div>
   );
 }
@@ -769,6 +771,242 @@ async function loadCadastros(
       ok: false,
     };
   }
+}
+
+// --- Logos dos empreendimentos (subidas pelo operador; ficam no bucket do Apolo) ---
+
+async function fetchEnterpriseLogos(): Promise<Record<string, string>> {
+  try {
+    const accessToken = await getApoloAccessToken();
+    const response = await fetch("/api/apolo/empreendimentos/logo", {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const payload = (await response.json()) as { data?: { logos?: Record<string, string> } };
+    return payload.data?.logos ?? {};
+  } catch {
+    return {};
+  }
+}
+
+// Settings do empreendimento (hoje só o flag de credenciamento ativo).
+async function fetchEnterpriseAtivo(enterpriseId: string): Promise<boolean> {
+  try {
+    const accessToken = await getApoloAccessToken();
+    const response = await fetch("/api/apolo/empreendimentos/settings", {
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    const payload = (await response.json()) as {
+      data?: { settings?: Record<string, { credenciamentoAtivo?: boolean }> };
+    };
+    return Boolean(payload.data?.settings?.[enterpriseId]?.credenciamentoAtivo);
+  } catch {
+    return false;
+  }
+}
+
+async function postEnterpriseAtivo(
+  enterpriseId: string,
+  ativo: boolean,
+  code: string,
+): Promise<{ error?: string; ok: boolean }> {
+  try {
+    const accessToken = await getApoloAccessToken();
+    const response = await fetch("/api/apolo/empreendimentos/settings", {
+      body: JSON.stringify({ ativo, code, enterpriseId }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) return { error: payload.error ?? "Falha ao salvar.", ok: false };
+    return { ok: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao salvar.", ok: false };
+  }
+}
+
+async function uploadEnterpriseLogo(
+  enterpriseId: string,
+  file: File,
+): Promise<{ error?: string; ok: boolean; url?: string }> {
+  try {
+    const fileBase64 = await fileToBase64(file);
+    const accessToken = await getApoloAccessToken();
+    const response = await fetch("/api/apolo/empreendimentos/logo", {
+      body: JSON.stringify({ contentType: file.type || "image/png", enterpriseId, fileBase64 }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "POST",
+    });
+    const payload = (await response.json()) as { data?: { url?: string }; error?: string };
+    if (!response.ok) return { error: payload.error ?? "Falha ao enviar a logo.", ok: false };
+    return { ok: true, url: payload.data?.url };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao enviar a logo.", ok: false };
+  }
+}
+
+// Credenciamento de imobiliárias, DENTRO do cadastro do empreendimento (decisão do Lucas
+// 18/jul). Duas coisas moram aqui, porque as duas alimentam o portal enviado às imobiliárias:
+//  1) o flag "na ativa" (recebendo CAD/credenciamento) — o portal só oferece os ATIVOS;
+//  2) a logo — o C2X guarda em ActiveStorage (difícil de extrair read-only), então o operador
+//     sobe aqui. Uma logo por empreendimento (upsert).
+function CredenciamentoCard({
+  code,
+  enterpriseId,
+  name,
+}: {
+  code: string;
+  enterpriseId: string;
+  name: string;
+}) {
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [ativo, setAtivo] = useState(false);
+  const [salvandoAtivo, setSalvandoAtivo] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    let alive = true;
+    void fetchEnterpriseLogos().then((map) => {
+      if (alive) setLogoUrl(map[enterpriseId] ?? null);
+    });
+    void fetchEnterpriseAtivo(enterpriseId).then((value) => {
+      if (alive) setAtivo(value);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [enterpriseId]);
+
+  async function alternarAtivo() {
+    const proximo = !ativo;
+    setErro(null);
+    setSalvandoAtivo(true);
+    setAtivo(proximo); // otimista
+    const result = await postEnterpriseAtivo(enterpriseId, proximo, code);
+    setSalvandoAtivo(false);
+    if (!result.ok) {
+      setAtivo(!proximo); // desfaz
+      setErro(result.error ?? "Falha ao salvar.");
+    }
+  }
+
+  async function handleFile(file: File | undefined) {
+    if (!file) return;
+    setErro(null);
+    setBusy(true);
+    const result = await uploadEnterpriseLogo(enterpriseId, file);
+    setBusy(false);
+    if (result.ok && result.url) {
+      setLogoUrl(result.url);
+      return;
+    }
+    setErro(result.error ?? "Falha ao enviar a logo.");
+  }
+
+  return (
+    <div className="rounded-xl border border-line bg-surface p-4">
+      <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+        Credenciamento de imobiliárias
+      </p>
+
+      {/* Flag "na ativa": define se o empreendimento aparece no portal das imobiliárias. */}
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-subtle/50 px-3 py-2.5">
+        <div className="min-w-0">
+          <p className="m-0 text-sm font-medium text-ink">
+            Recebendo credenciamento
+            <span
+              className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+                ativo
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
+                  : "bg-subtle text-ink-muted"
+              }`}
+            >
+              {ativo ? "Na ativa" : "Encerrado"}
+            </span>
+          </p>
+          <p className="m-0 mt-0.5 text-xs text-ink-muted">
+            Ligado, este empreendimento aparece no portal para as imobiliárias solicitarem
+            habilitação e recebe novas CADs.
+          </p>
+        </div>
+        <button
+          aria-checked={ativo}
+          aria-label="Recebendo credenciamento"
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
+            ativo ? "bg-inverse" : "bg-line-strong"
+          }`}
+          disabled={salvandoAtivo}
+          onClick={() => void alternarAtivo()}
+          role="switch"
+          type="button"
+        >
+          <span
+            className={`inline-block size-4 rounded-full bg-white shadow transition-transform ${
+              ativo ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </button>
+      </div>
+
+      <p className="m-0 mt-4 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+        Logo do empreendimento
+      </p>
+
+      <div className="mt-2 flex flex-wrap items-center gap-4">
+        <div className="flex size-24 shrink-0 items-center justify-center overflow-hidden rounded-xl border border-dashed border-line-strong bg-subtle">
+          {busy ? (
+            <Loader2 aria-hidden="true" className="size-5 animate-spin text-ink-muted" />
+          ) : logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img alt={`Logo ${name}`} className="size-full object-contain p-2" src={logoUrl} />
+          ) : (
+            <ImagePlus aria-hidden="true" className="size-6 text-ink-muted" />
+          )}
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <p className="m-0 text-sm font-medium text-ink">
+            {logoUrl ? "Logo enviada" : "Nenhuma logo enviada"}
+          </p>
+          <p className="m-0 mt-0.5 text-xs text-ink-muted">
+            PNG, JPG, WEBP ou SVG, até 3MB. Usada no portal de credenciamento das imobiliárias.
+          </p>
+          <button
+            className="mt-2 inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={busy}
+            onClick={() => inputRef.current?.click()}
+            type="button"
+          >
+            <ImagePlus aria-hidden="true" className="size-3.5" />
+            {logoUrl ? "Trocar logo" : "Enviar logo"}
+          </button>
+          {erro ? (
+            <p className="m-0 mt-2 text-xs font-medium text-rose-600 dark:text-rose-300">{erro}</p>
+          ) : null}
+        </div>
+      </div>
+
+      <input
+        accept="image/png,image/jpeg,image/webp,image/svg+xml"
+        className="hidden"
+        onChange={(event) => {
+          void handleFile(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+        ref={inputRef}
+        type="file"
+      />
+    </div>
+  );
 }
 
 function ResumoTab({ row }: { row: ApoloEnterpriseRow }) {

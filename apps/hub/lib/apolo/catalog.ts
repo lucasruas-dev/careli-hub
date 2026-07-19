@@ -8,6 +8,7 @@ import {
   IdCard,
   Landmark,
   LayoutDashboard,
+  LayoutGrid,
   ShieldCheck,
   Store,
   UserRoundCog,
@@ -19,6 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import type { ApoloProfile } from "./types";
 
 export type ApoloScreen =
+  | "board"
   | "dashboard"
   | "crm"
   | "empreendimentos"
@@ -75,6 +77,13 @@ export const apoloProfileCardOrder = [
 ] as const satisfies readonly ApoloProfile[];
 
 export const apoloScreens = [
+  {
+    description: "Fila de validacao: imobiliarias, corretores e CADs ate o credenciamento.",
+    hidden: false,
+    icon: LayoutGrid,
+    id: "board",
+    label: "Board",
+  },
   {
     description: "Cadastro, consulta, carteira e timeline 360.",
     hidden: false,

@@ -13,6 +13,7 @@ import {
   Lock,
   Mail,
   Pencil,
+  RotateCcw,
   Send,
   ShieldCheck,
   Trash2,
@@ -78,6 +79,8 @@ type Extraction = {
 type Enrichment = {
   available: boolean;
   conjuge: string;
+  // CRECI do conselho de classe (class_organization). Best-effort — pode vir vazio. Ver mostqi.ts.
+  creci: string;
   emails: string[];
   estadoCivil: string;
   nomeMae: string;
@@ -93,7 +96,7 @@ type Enrichment = {
 };
 
 const ENRICH_VAZIO: Enrichment = {
-  available: false, conjuge: "", emails: [], estadoCivil: "", nomeMae: "",
+  available: false, conjuge: "", creci: "", emails: [], estadoCivil: "", nomeMae: "",
   nomePai: "", patrimonio: "", profissao: "", renda: "", sexo: "",
   source: "", telefones: [], warnings: [],
 };
@@ -155,6 +158,13 @@ type Perfil = {
   sexoId: string;
   telefone: string;
 };
+
+const PERFIL_VAZIO: Perfil = {
+  email: "", escolaridadeId: "", estadoCivilId: "", imobiliariaId: "",
+  patrimonio: "", profissaoId: "", regimeBensId: "", rendaEstimada: "",
+  rendaId: "", sexoId: "", telefone: "",
+};
+
 // Cônjuge: mesma ficha do titular. Documento (nome/cpf/rg/nascimento/mãe) +
 // enriquecimento próprio (sexo, telefone, faixa de renda, patrimônio) +
 // escolaridade/profissão manuais. Estado civil herda do titular.
@@ -253,6 +263,8 @@ type Empresa = {
   atividade: string;
   cnae: string;
   cnpj: string;
+  // CRECI Jurídico (só imobiliária). Best-effort pelo enriquecimento; editável; NÃO obrigatório.
+  creci: string;
   dataAbertura: string;
   // Data da atualização cadastral. O C2X exige; a fonte é o contrato social (leitura), com
   // fallback pra data de situação cadastral do cartão CNPJ. Prospect não informa NIRE nem
@@ -271,11 +283,31 @@ type Empresa = {
 };
 
 const EMPRESA_VAZIA: Empresa = {
-  atividade: "", cnae: "", cnpj: "", dataAbertura: "", dataAtualizacao: "",
+  atividade: "", cnae: "", cnpj: "", creci: "", dataAbertura: "", dataAtualizacao: "",
   documentoLido: false, email: "", naturezaJuridica: "",
   nomeFantasia: "", porte: "", razaoSocial: "", situacaoCadastral: "",
   socios: [], telefone: "", tipoDocumento: "",
 };
+
+// Corretor vinculado à imobiliária (só no cadastro de imobiliária). Cadastro SIMPLES, digitado —
+// nome, CPF, telefone, e-mail e CRECI. O CRECI tenta vir do enriquecimento por CPF; se não vier,
+// o operador digita. Nada além de nome/CPF é obrigatório. Cada corretor vira um relacionamento de
+// CONTATO da imobiliária (decisão do Lucas 18/jul).
+type CorretorCadastro = {
+  cpf: string;
+  creci: string;
+  // true = CRECI veio do enriquecimento (read-only); false = digitado à mão.
+  creciLido: boolean;
+  email: string;
+  id: string;
+  nome: string;
+  telefone: string;
+};
+
+function corretorVazio(): CorretorCadastro {
+  const id = `corretor-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
+  return { cpf: "", creci: "", creciLido: false, email: "", id, nome: "", telefone: "" };
+}
 
 async function accessToken() {
   const supabase = getHubSupabaseClient();
@@ -284,12 +316,8 @@ async function accessToken() {
 }
 
 
-// No localhost o token do servidor nao valida (chave de servico de homolog), e
-// pra iterar a UI a gente FINGE a leitura: dados de exemplo com um atraso pra
-// mostrar a barra de processamento. Em producao o fluxo real roda normal.
-const LOCAL_MOCK =
-  typeof window !== "undefined" &&
-  ["localhost", "127.0.0.1"].includes(window.location.hostname);
+// Sem mock: o localhost lê documento e enriquece de verdade, igual produção (Lucas 19/jul).
+// ⚠️ Cada leitura/enriquecimento aqui é uma consulta COBRADA na MOST.
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -314,20 +342,7 @@ function acharDataComprovante(fields: Extraction["fields"]): string {
   return "";
 }
 
-function mockIdentidadeExtraction(): Extraction {
-  return {
-    cadastro: {
-      bairro: "", cep: "", cidade: "", complemento: "", cpf: "041.310.596-22",
-      dataNascimento: "1980-05-02", logradouro: "", nome: "DANIELLE AGUIAR PACHECO DE OLIVEIRA",
-      nacionalidade: "BRASILEIRO A", naturalidade: "PARA DE MINAS / MG",
-      nomeMae: "SUELI AGUIAR PACHECO GONCALVES", nomePai: "", numero: "",
-      orgaoEmissor: "SSP/MG", sexo: "F", uf: "",
-    },
-    documentType: "cnh",
-    fields: [],
-    overallConfidence: 0.96,
-  };
-}
+
 
 // Anexo puro (contrato social): nada foi lido, entao nao ha campo, tipo nem score pra conferir.
 const EXTRACAO_VAZIA: Extraction = {
@@ -339,60 +354,14 @@ const EXTRACAO_VAZIA: Extraction = {
   overallConfidence: null,
 };
 
-function mockSocioExtraction(): Extraction {
-  return {
-    cadastro: {
-      cpf: "058.183.866-19", dataNascimento: "1978-11-20",
-      nacionalidade: "BRA", naturalidade: "BELO HORIZONTE",
-      nome: "CARLOS EDUARDO PACHECO", nomeMae: "MARIA APARECIDA PACHECO",
-      sexo: "M",
-    },
-    confiancaDocumento: 0.96,
-    documentType: "cnh",
-    fields: [],
-    overallConfidence: 0.96,
-  };
-}
 
-function mockEnderecoExtraction(): Extraction {
-  return {
-    cadastro: {
-      bairro: "PORTAL DO SOL", cep: "32183-788", cidade: "CONTAGEM",
-      logradouro: "RUA ERIDANO", numero: "56", uf: "MG",
-    },
-    documentType: "conta-de-luz-cemig",
-    fields: [
-      { confidence: 0.9, key: "data-emissao", label: "Data de emissão", value: "10/06/2026" },
-    ],
-    overallConfidence: 0.94,
-  };
-}
 
-function mockConjugeExtraction(): Extraction {
-  return {
-    cadastro: {
-      cpf: "058.183.866-19", dataNascimento: "1978-11-20",
-      nacionalidade: "BRASILEIRO A", naturalidade: "BELO HORIZONTE / MG",
-      nome: "CARLOS EDUARDO PEREIRA", nomeMae: "MARIA APARECIDA PEREIRA",
-      sexo: "M",
-    },
-    documentType: "cnh",
-    fields: [],
-    overallConfidence: 0.95,
-  };
-}
 
-function mockConjugeEnrichment(): Enrichment {
-  return {
-    available: true, conjuge: "", emails: [], estadoCivil: "CASADO",
-    nomeMae: "MARIA APARECIDA PEREIRA", nomePai: "",
-    patrimonio: "R$ 250 mil a R$ 500 mil", profissao: "", raw: undefined,
-    renda: "3 a 6 salários mínimos", sexo: "M",
-    source: "mock", telefones: ["(31) 99123-4567"], warnings: [],
-  };
-}
 
-// Certidão/consulta oficial devolvida pela análise (PF_02 certidões, PF_03 GOLD).
+
+
+
+
 // MOST classifica o documento. Cartão CNPJ / comprovante de inscrição -> PJ.
 function isCnpjDoc(type: string): boolean {
   return /cnpj|cartao.?cnpj|comprovante.*inscri|pessoa.?jur|company|business/i.test(
@@ -400,38 +369,7 @@ function isCnpjDoc(type: string): boolean {
   );
 }
 
-function mockPjExtraction(): Extraction {
-  return {
-    cadastro: {
-      bairro: "SAVASSI", cep: "30112-000", cidade: "BELO HORIZONTE",
-      cnpj: "12.345.678/0001-90", dataAbertura: "2015-03-12",
-      logradouro: "AVENIDA DO CONTORNO", naturezaJuridica: "206-2 - Sociedade Empresária Limitada",
-      nomeFantasia: "ORION INCORPORADORA", numero: "8000",
-      razaoSocial: "ORION EMPREENDIMENTOS IMOBILIARIOS LTDA",
-      situacaoCadastral: "ATIVA", uf: "MG",
-    },
-    documentType: "cartao-cnpj",
-    fields: [],
-    overallConfidence: 0.97,
-  };
-}
 
-// Enriquecimento por CNPJ (mock local): sócios, porte, CNAE, capital, contato.
-function mockPjEnrichment(): Partial<Empresa> {
-  return {
-    atividade: "Incorporação de empreendimentos imobiliários",
-    cnae: "41.10-7-00",
-    email: "contato@orionincorporadora.com.br",
-    naturezaJuridica: "206-2 - Sociedade Empresária Limitada",
-    porte: "Empresa de Pequeno Porte (EPP)",
-    situacaoCadastral: "ATIVA",
-    socios: [
-      { nome: "Roberto Andrade Lima", qualificacao: "Sócio-Administrador" },
-      { nome: "Fernanda Costa Andrade", qualificacao: "Sócia" },
-    ],
-    telefone: "(31) 3333-8000",
-  };
-}
 
 // ---------- telefone internacional (bandeira + formato por país) ----------
 
@@ -488,14 +426,7 @@ function composePhone(country: PhoneCountry, national: string): string {
   return nat ? `+${country.dial} ${nat}` : `+${country.dial}`;
 }
 
-function mockCertidaoExtraction(): Extraction {
-  return {
-    cadastro: {},
-    documentType: "certidao-casamento",
-    fields: [],
-    overallConfidence: 0.97,
-  };
-}
+
 
 // Tenta achar o REGIME DE BENS na certidão lida pelo MOST. Best-effort de propósito: o
 // catálogo de enriquecimento do MOST não tem regime de bens (só estado civil), e não temos
@@ -614,15 +545,7 @@ function certidaoEsperada(estadoCivilId: string): { hint: string; titulo: string
   }
 }
 
-function mockEnrichmentData(): Enrichment {
-  return {
-    available: true, conjuge: "", emails: [], estadoCivil: "CASADO",
-    nomeMae: "SUELI AGUIAR PACHECO GONCALVES", nomePai: "",
-    patrimonio: "R$ 100 mil a R$ 250 mil", profissao: "", raw: undefined,
-    renda: "2 a 4 salários mínimos", sexo: "F",
-    source: "mock", telefones: ["(31) 98681-5697", "(31) 3466-5697"], warnings: [],
-  };
-}
+
 
 async function apiPost<T>(body: Record<string, unknown>): Promise<T> {
   const token = await accessToken();
@@ -711,6 +634,22 @@ async function apiGetImobiliarias(): Promise<SelectOption[]> {
   return json?.data?.imobiliarias ?? [];
 }
 
+// Empreendimentos que o operador pode vincular: SÓ os marcados como "na ativa" (recebendo
+// credenciamento) — decisão do Lucas 18/jul. É a mesma lista que o portal oferece.
+async function apiGetEmpreendimentos(): Promise<SelectOption[]> {
+  const token = await accessToken();
+  const response = await fetch("/api/apolo/credenciamento", {
+    cache: "no-store",
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  const json = (await response.json().catch(() => null)) as
+    | { data?: { empreendimentos?: Array<{ id?: string; name?: string }> } }
+    | null;
+  return (json?.data?.empreendimentos ?? [])
+    .filter((row) => row?.id && row?.name)
+    .map((row) => ({ id: String(row.id), label: String(row.name) }));
+}
+
 // ---------- geração do documento CAD (PDF impresso) ----------
 
 type Registro = { completo: string; data: string; hora: string };
@@ -731,30 +670,52 @@ function cadSection(title: string, fields: CadCampo[]): CadSecao {
   return { fields, title };
 }
 
-export function CadastroFlow() {
+export function CadastroFlow({
+  aviso,
+  empreendimentosIniciais,
+  tipo = "prospect",
+}: {
+  // Faixa de contexto vinda do portal (ex.: "não encontramos seu CNPJ"). Só aparece na PRIMEIRA
+  // etapa: era pra ser uma explicação de entrada, não um aviso que persegue o usuário.
+  aviso?: ReactNode;
+  // Vem do portal de credenciamento: a imobiliária JÁ escolheu os empreendimentos no passo 1,
+  // então o seletor não se repete aqui (só aparece no credenciamento feito pelo nosso time).
+  empreendimentosIniciais?: string[];
+  tipo?: string;
+}) {
+  // Papel de nascimento da entidade (vem do menu "+" do Apolo). A imobiliária é SEMPRE PJ e tem
+  // duas peças a mais que o PJ do prospect: CRECI + vínculo de empreendimentos (na Identificação)
+  // e uma etapa de Corretores.
+  const isImobiliaria = tipo === "imobiliaria";
+  // Remontar tudo do zero: incrementar esta key recria o wizard (inclusive o estado interno dos
+  // uploaders, que guardam a lista de arquivos localmente) — é o "recomeçar cadastro".
+  const [resetKey, setResetKey] = useState(0);
   const [step, setStep] = useState(0);
   const [identidade, setIdentidade] = useState<Identidade | null>(null);
-  const [perfil, setPerfil] = useState<Perfil>({
-    email: "", escolaridadeId: "", estadoCivilId: "", imobiliariaId: "",
-    patrimonio: "", profissaoId: "", regimeBensId: "", rendaEstimada: "",
-    rendaId: "", sexoId: "", telefone: "",
-  });
+  const [perfil, setPerfil] = useState<Perfil>(PERFIL_VAZIO);
   const [enrich, setEnrich] = useState<Enrichment | null>(null);
   const [endereco, setEndereco] = useState<Endereco | null>(null);
   const [conjuge, setConjuge] = useState<Conjuge>(CONJUGE_VAZIO);
-  // Persona definida pelo documento (RG/CNH -> pf, cartão CNPJ -> pj).
-  const [persona, setPersona] = useState<Persona>("pf");
+  // Persona definida pelo documento (RG/CNH -> pf, cartão CNPJ -> pj). Imobiliária já nasce PJ.
+  const [persona, setPersona] = useState<Persona>(isImobiliaria ? "pj" : "pf");
   const [empresa, setEmpresa] = useState<Empresa>(EMPRESA_VAZIA);
   // Originais anexados em cada etapa; vao pro drive da entidade no envio.
   const [documentos, setDocumentos] = useState<DocumentosAnexados>({});
   // Sócios cadastrados (PJ). Cada um carrega os próprios arquivos.
   const [socios, setSocios] = useState<SocioCadastro[]>([]);
   const [imobiliarias, setImobiliarias] = useState<SelectOption[]>([]);
+  // Só imobiliária: empreendimentos ativos (vínculo de trabalho) e corretores (vínculo de contato).
+  const [empreendimentos, setEmpreendimentos] = useState<SelectOption[]>([]);
+  const [empreendimentosSel, setEmpreendimentosSel] = useState<string[]>(
+    empreendimentosIniciais ?? [],
+  );
+  // Seleção herdada do portal = não repete o seletor na Identificação.
+  const empreendimentosHerdados = Boolean(empreendimentosIniciais?.length);
+  const [corretores, setCorretores] = useState<CorretorCadastro[]>([]);
 
   // Imobiliárias reais do Apolo (read-model), inclusive no localhost: a chave de serviço do
-  // .env.local valida contra o projeto de produção (verificado 16/jul), então o antigo gate de
-  // LOCAL_MOCK + placeholders só escondia a lista real -- e deixava vincular a CAD a uma
-  // imobiliária inexistente. Sem lista, o seletor fica vazio (nunca placeholder).
+  // .env.local valida contra o projeto de produção (verificado 16/jul). Sem lista, o seletor
+  // fica vazio -- nunca placeholder, pra não vincular a CAD a uma imobiliária inexistente.
   useEffect(() => {
     let alive = true;
     void (async () => {
@@ -770,6 +731,23 @@ export function CadastroFlow() {
     };
   }, []);
 
+  // Empreendimentos ativos pro vínculo de trabalho da imobiliária (lê o C2X read-only).
+  useEffect(() => {
+    if (!isImobiliaria) return;
+    let alive = true;
+    void (async () => {
+      try {
+        const list = await apiGetEmpreendimentos();
+        if (alive && list.length) setEmpreendimentos(list);
+      } catch {
+        // sem lista: multi-select fica vazio
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isImobiliaria]);
+
   // PJ não tem certidão/cônjuge. PF: Casado(2), Divorciado(3), Separado(4) e
   // União Estável(6) exigem certidão (o MOST valida a autenticidade).
   const isPj = persona === "pj";
@@ -779,11 +757,13 @@ export function CadastroFlow() {
   // PJ tem jornada própria (Lucas 17/jul): o endereço da empresa já vem do cartão CNPJ, então
   // não se pede comprovante dela — o que se pede é o contrato social e a ficha de cada sócio
   // (com o comprovante DELE dentro do próprio bloco).
-  const steps = isPj
-    ? ["Identificação", "Contrato social", "Sócios", "Revisão"]
-    : needsCertidao
-      ? ["Identificação", "Endereço", "Certidão", "Revisão"]
-      : ["Identificação", "Endereço", "Revisão"];
+  const steps = isImobiliaria
+    ? ["Identificação", "Contrato social", "Sócios", "Corretores", "Revisão"]
+    : isPj
+      ? ["Identificação", "Contrato social", "Sócios", "Revisão"]
+      : needsCertidao
+        ? ["Identificação", "Endereço", "Certidão", "Revisão"]
+        : ["Identificação", "Endereço", "Revisão"];
   const current = steps[Math.min(step, steps.length - 1)];
 
   function jump(target: number) {
@@ -793,22 +773,58 @@ export function CadastroFlow() {
   const reterDocumento = (categoria: DocCategoria) => (arquivo: ArquivoAnexado) =>
     setDocumentos((prev) => ({ ...prev, [categoria]: [...(prev[categoria] ?? []), arquivo] }));
 
+  // Zera tudo pra começar outro cadastro do zero. Reseta os estados daqui E remonta os steps
+  // (resetKey) — os uploaders guardam a lista de arquivos internamente, então só limpar o estado
+  // do wizard não bastava.
+  function recomecar() {
+    if (!window.confirm("Recomeçar o cadastro? Todos os documentos e dados anexados serão descartados.")) {
+      return;
+    }
+    setStep(0);
+    setIdentidade(null);
+    setPerfil(PERFIL_VAZIO);
+    setEnrich(null);
+    setEndereco(null);
+    setConjuge(CONJUGE_VAZIO);
+    setPersona(isImobiliaria ? "pj" : "pf");
+    setEmpresa(EMPRESA_VAZIA);
+    setDocumentos({});
+    setSocios([]);
+    setEmpreendimentosSel([]);
+    setCorretores([]);
+    setResetKey((k) => k + 1);
+  }
+
   const activeIndex = Math.min(step, steps.length - 1);
   const pct = Math.round(((activeIndex + 1) / steps.length) * 100);
 
   return (
     <section className="grid h-full min-h-0 gap-4 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-1 py-1 pb-20">
+        {aviso && step === 0 ? (
+          <div className="rounded-xl border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-4 py-3 print:hidden">
+            {aviso}
+          </div>
+        ) : null}
         <div className="rounded-2xl border border-line bg-surface px-6 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] print:hidden">
           <div className="flex items-center justify-between gap-4">
             <h1 className="text-lg font-semibold tracking-tight text-ink">
-              Cadastro de CAD
+              {isImobiliaria ? "Cadastro de Imobiliária" : "Cadastro de CAD"}
             </h1>
             <div className="flex items-center gap-2">
               <span className="hidden items-center gap-1.5 rounded-full border border-line bg-subtle px-3 py-1.5 text-xs font-medium text-ink-soft sm:inline-flex">
                 <ShieldCheck className="size-3.5 text-emerald-500" aria-hidden="true" />
                 Ambiente seguro
               </span>
+              <button
+                type="button"
+                onClick={recomecar}
+                title="Recomeçar cadastro (descarta tudo)"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-medium text-ink-soft transition-colors hover:bg-subtle hover:text-ink"
+              >
+                <RotateCcw className="size-3.5" aria-hidden="true" />
+                Recomeçar
+              </button>
               <a
                 href="/apolo"
                 aria-label="Sair do cadastro"
@@ -831,16 +847,24 @@ export function CadastroFlow() {
           <Stepper steps={steps} step={step} onJump={jump} />
         </div>
 
+        {/* key={resetKey}: incrementar remonta todos os steps (e o estado interno dos uploaders,
+            que guardam a lista de arquivos localmente). `contents` = sem caixa, layout intacto. */}
+        <div key={resetKey} className="contents">
         {current === "Identificação" ? (
           <StepIdentificacao
             conjuge={conjuge}
+            empreendimentos={empreendimentos}
+            empreendimentosHerdados={empreendimentosHerdados}
+            empreendimentosSel={empreendimentosSel}
             empresa={empresa}
             enrich={enrich}
             identidade={identidade}
             imobiliarias={imobiliarias}
+            isImobiliaria={isImobiliaria}
             perfil={perfil}
             persona={persona}
             onConjugeChange={(patch) => setConjuge((c) => ({ ...c, ...patch }))}
+            onEmpreendimentosChange={setEmpreendimentosSel}
             onDocumento={reterDocumento("identificacao")}
             onDocumentoConjuge={reterDocumento("identificacao_conjuge")}
             onEmpresaChange={(patch) => setEmpresa((e) => ({ ...e, ...patch }))}
@@ -948,6 +972,21 @@ export function CadastroFlow() {
           />
         ) : null}
 
+        {current === "Corretores" ? (
+          <StepCorretores
+            corretores={corretores}
+            onAdicionar={() => setCorretores((lista) => [...lista, corretorVazio()])}
+            onBack={() => setStep((v) => v - 1)}
+            onMudar={(id, patch) =>
+              setCorretores((lista) =>
+                lista.map((c) => (c.id === id ? { ...c, ...patch } : c)),
+              )
+            }
+            onNext={() => setStep((v) => v + 1)}
+            onRemover={(id) => setCorretores((lista) => lista.filter((c) => c.id !== id))}
+          />
+        ) : null}
+
         {current === "Endereço" ? (
           <StepEndereco
             endereco={endereco}
@@ -988,17 +1027,25 @@ export function CadastroFlow() {
         {current === "Revisão" ? (
           <StepRevisao
             conjuge={temConjuge ? conjuge : null}
+            corretores={corretores}
             documentos={documentos}
+            empreendimentos={empreendimentos}
+            empreendimentosSel={empreendimentosSel}
             empresa={empresa}
             endereco={endereco}
             identidade={identidade}
             imobiliarias={imobiliarias}
+            isImobiliaria={isImobiliaria}
             perfil={perfil}
             persona={persona}
             socios={socios}
+            steps={steps}
+            tipo={tipo}
             onBack={() => setStep(step - 1)}
+            onEditar={(target) => setStep(target)}
           />
         ) : null}
+        </div>
       </div>
     </section>
   );
@@ -1103,7 +1150,6 @@ function DocUploader({
   busy,
   hint,
   label,
-  mockData,
   onExtracted,
   onFile,
   // Documento que e SO anexo (contrato social): nao manda pra leitura. Cada arquivo lido e uma
@@ -1113,7 +1159,6 @@ function DocUploader({
   busy?: boolean;
   hint: string;
   label: string;
-  mockData?: (file: File) => Extraction;
   onExtracted: (ext: Extraction) => void | Promise<void>;
   onFile?: (arquivo: ArquivoAnexado) => void;
   semLeitura?: boolean;
@@ -1142,9 +1187,6 @@ function DocUploader({
         if (semLeitura) {
           // Anexo puro (contrato): nao le, entao nem gera a versao de alta qualidade.
           ext = EXTRACAO_VAZIA;
-        } else if (LOCAL_MOCK && mockData) {
-          await delay(1200); // finge a leitura pra mostrar a barra
-          ext = mockData(file);
         } else {
           // Foto do WhatsApp costuma vir deitada e a MOST não gira sozinha (result vazio). Tenta
           // em pé; se não reconhecer nada, gira e tenta de novo. PDF não gira. So paga consulta
@@ -1366,13 +1408,18 @@ function NavButtons({
 
 function StepIdentificacao({
   conjuge,
+  empreendimentos,
+  empreendimentosHerdados,
+  empreendimentosSel,
   empresa,
   enrich,
   identidade,
   imobiliarias,
+  isImobiliaria,
   onConjugeChange,
   onDocumento,
   onDocumentoConjuge,
+  onEmpreendimentosChange,
   onEmpresaChange,
   onEmpresaExtract,
   onExtract,
@@ -1383,13 +1430,18 @@ function StepIdentificacao({
   persona,
 }: {
   conjuge: Conjuge;
+  empreendimentos: SelectOption[];
+  empreendimentosHerdados: boolean;
+  empreendimentosSel: string[];
   empresa: Empresa;
   enrich: Enrichment | null;
   identidade: Identidade | null;
   imobiliarias: SelectOption[];
+  isImobiliaria: boolean;
   onConjugeChange: (patch: Partial<Conjuge>) => void;
   onDocumento: (arquivo: ArquivoAnexado) => void;
   onDocumentoConjuge: (arquivo: ArquivoAnexado) => void;
+  onEmpreendimentosChange: (ids: string[]) => void;
   onEmpresaChange: (patch: Partial<Empresa>) => void;
   onEmpresaExtract: (ext: Extraction, emp: Partial<Empresa>) => void;
   onExtract: (ext: Extraction, enr: Enrichment) => void;
@@ -1449,12 +1501,7 @@ function StepIdentificacao({
     setEnrichingConjuge(true);
     let enr: Enrichment = ENRICH_VAZIO;
     try {
-      if (LOCAL_MOCK) {
-        await delay(1400);
-        enr = mockConjugeEnrichment();
-      } else {
-        enr = await apiPost<Enrichment>({ action: "enrich", cpf: c.cpf ?? "" });
-      }
+      enr = await apiPost<Enrichment>({ action: "enrich", cpf: c.cpf ?? "" });
     } catch {
       // enriquecimento é best-effort; segue com o que o documento trouxe
     } finally {
@@ -1484,10 +1531,7 @@ function StepIdentificacao({
     let emp: Partial<Empresa> = {};
     setEnriching(true);
     try {
-      if (LOCAL_MOCK) {
-        await delay(1400);
-        emp = mockPjEnrichment();
-      } else {
+      {
         // O cartão CNPJ dá o número; razão social, fantasia, abertura, situação e o QSA vêm do
         // enriquecimento por CNPJ (CARELI_PJ_01). Sem isto o fluxo PJ nascia todo vazio.
         const cnpj = ext.cadastro.cnpj ?? "";
@@ -1524,47 +1568,61 @@ function StepIdentificacao({
       emailValido &&
       conjugeOk,
   );
+  // Imobiliária: não se vincula a outra imobiliária (a Seção "Vínculo" some); em troca, exige ao
+  // menos um empreendimento (vínculo de trabalho). CRECI é opcional.
   const podeAvancarPj = Boolean(
-    empresa.documentoLido && perfil.imobiliariaId && emailRegex.test(empresa.email),
+    isImobiliaria
+      ? empresa.documentoLido && emailRegex.test(empresa.email) && empreendimentosSel.length > 0
+      : empresa.documentoLido && perfil.imobiliariaId && emailRegex.test(empresa.email),
   );
   const podeAvancar = isPj ? podeAvancarPj : podeAvancarPf;
 
   return (
     <StepCard title="1. Identificação">
-      <Secao title="Vínculo">
-        <SearchableSelect
-          label="Imobiliária / corretor"
-          value={perfil.imobiliariaId}
-          options={imobiliarias}
-          placeholder="Buscar imobiliária ou corretor…"
-          onChange={(v) => onPerfilChange({ imobiliariaId: v })}
-        />
-      </Secao>
+      {isImobiliaria ? null : (
+        <Secao title="Vínculo">
+          <SearchableSelect
+            label="Imobiliária / corretor"
+            value={perfil.imobiliariaId}
+            options={imobiliarias}
+            placeholder="Buscar imobiliária ou corretor…"
+            onChange={(v) => onPerfilChange({ imobiliariaId: v })}
+          />
+        </Secao>
+      )}
 
       <p className="m-0 mb-3 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
-        Pessoa física: envie <span className="font-semibold">RG, CNH ou passaporte</span>.
-        Pessoa jurídica: envie o <span className="font-semibold">cartão CNPJ</span> — o tipo é
-        identificado pelo documento.
+        {isImobiliaria ? (
+          <>
+            Envie o <span className="font-semibold">cartão CNPJ</span> da imobiliária — os dados são
+            lidos do documento.
+          </>
+        ) : (
+          <>
+            Pessoa física: envie <span className="font-semibold">RG, CNH ou passaporte</span>.
+            Pessoa jurídica: envie o <span className="font-semibold">cartão CNPJ</span> — o tipo é
+            identificado pelo documento.
+          </>
+        )}
       </p>
       <div className="print:hidden">
         <DocUploader
           busy={enriching}
-          label="Adicionar documento do cliente"
-          hint="RG / CNH (pessoa física) ou cartão CNPJ (empresa) · imagem ou PDF"
-          mockData={(file) =>
-            // SÓ no localhost (sem MOST): o mock precisa de um palpite pra simular PF ou PJ, e
-            // usa o nome do arquivo. Em produção/preview NADA disso roda — o conteúdo vai pra
-            // MOST, que lê os pixels. O nome do arquivo (quase sempre vindo do WhatsApp) nunca
-            // decide o tipo do documento.
-            /cnpj/i.test(file.name) ? mockPjExtraction() : mockIdentidadeExtraction()
+          label={isImobiliaria ? "Adicionar cartão CNPJ da imobiliária" : "Adicionar documento do cliente"}
+          hint={
+            isImobiliaria
+              ? "Cartão CNPJ · imagem ou PDF"
+              : "RG / CNH (pessoa física) ou cartão CNPJ (empresa) · imagem ou PDF"
           }
           onFile={onDocumento}
           onExtracted={async (ext) => {
-            // Aqui só entra documento de identificação (PF) ou cartão CNPJ (PJ).
+            // No prospect entra identidade (PF) ou cartão CNPJ (PJ); na imobiliária, só o cartão.
             conferirDocumento(
               ext,
-              ["identidade", "cnpj"],
-              "o documento de identificação (RG, CNH ou passaporte) ou o cartão CNPJ",
+              isImobiliaria ? ["cnpj"] : ["identidade", "cnpj"],
+              isImobiliaria
+                ? "o cartão CNPJ da imobiliária"
+                : "o documento de identificação (RG, CNH ou passaporte) ou o cartão CNPJ",
             );
             if (isCnpjDoc(ext.documentType)) {
               onPersona("pj");
@@ -1575,15 +1633,10 @@ function StepIdentificacao({
             setEnriching(true);
             let enr: Enrichment = ENRICH_VAZIO;
             try {
-              if (LOCAL_MOCK) {
-                await delay(1400);
-                enr = mockEnrichmentData();
-              } else {
-                enr = await apiPost<Enrichment>({
-                  action: "enrich",
-                  cpf: ext.cadastro.cpf ?? "",
-                });
-              }
+              enr = await apiPost<Enrichment>({
+                action: "enrich",
+                cpf: ext.cadastro.cpf ?? "",
+              });
             } catch (err) {
               enr.warnings = [`Enriquecimento falhou: ${(err as Error).message}`];
             } finally {
@@ -1636,6 +1689,31 @@ function StepIdentificacao({
                 />
               </div>
             </Secao>
+
+            {isImobiliaria ? (
+              <>
+                <Secao title="CRECI">
+                  <TextField
+                    editavel
+                    label="CRECI Jurídico"
+                    value={empresa.creci}
+                    onChange={(v) => onEmpresaChange({ creci: v })}
+                  />
+                </Secao>
+
+                {/* Vindo do portal, a imobiliária já escolheu no passo 1 — não repete aqui. */}
+                {empreendimentosHerdados ? null : (
+                  <MultiSelectField
+                    title="Empreendimentos"
+                    hint="Vínculo de trabalho — selecione um ou mais"
+                    options={empreendimentos}
+                    selected={empreendimentosSel}
+                    emptyLabel="Nenhum empreendimento com credenciamento aberto."
+                    onChange={onEmpreendimentosChange}
+                  />
+                )}
+              </>
+            ) : null}
           </>
         ) : (
           <p className="text-xs text-ink-muted">
@@ -1724,7 +1802,6 @@ function StepIdentificacao({
                   busy={enrichingConjuge}
                   label="Documento do cônjuge"
                   hint="RG ou CNH · imagem ou PDF"
-                  mockData={mockConjugeExtraction}
                   onFile={onDocumentoConjuge}
                   onExtracted={lerConjuge}
                 />
@@ -1909,7 +1986,6 @@ function BlocoSocio({
       <DocUploader
         label="Adicionar documento de identificação"
         hint="RG, CNH ou passaporte · imagem ou PDF"
-        mockData={mockSocioExtraction}
         onFile={(arquivo) =>
           aoAnexar("arquivosIdentificacao", arquivo)
         }
@@ -1924,12 +2000,7 @@ function BlocoSocio({
           // O await mantém o uploader em "consultando" até terminar.
           let enr: Enrichment = ENRICH_VAZIO;
           try {
-            if (LOCAL_MOCK) {
-              await delay(1200);
-              enr = mockConjugeEnrichment();
-            } else {
-              enr = await apiPost<Enrichment>({ action: "enrich", cpf: c.cpf ?? "" });
-            }
+            enr = await apiPost<Enrichment>({ action: "enrich", cpf: c.cpf ?? "" });
           } catch {
             // enriquecimento é best-effort: sem ele, os campos ficam manuais.
           }
@@ -2009,7 +2080,6 @@ function BlocoSocio({
             <DocUploader
               label="Adicionar comprovante de endereço"
               hint="Conta de luz, água, telefone · imagem ou PDF"
-              mockData={mockEnderecoExtraction}
               onFile={(arquivo) =>
                 aoAnexar("arquivosComprovante", arquivo)
               }
@@ -2090,17 +2160,22 @@ function StepSocios({
   onRemover: (id: string) => void;
   socios: SocioCadastro[];
 }) {
-  // Cada sócio precisa de documento lido, estado civil, sexo e comprovante; e alguém tem que
-  // assinar pela empresa, senão a CAD não habilita contrato.
+  // Cada sócio precisa de documento lido, estado civil, sexo, e-mail e comprovante; e alguém tem
+  // que assinar pela empresa, senão a CAD não habilita contrato. O e-mail é obrigatório em todo
+  // formulário (é a futura credencial de acesso ao Panteon) e não pode repetir.
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
   const completos = socios.every(
     (socio) =>
       socio.documentoLido &&
       socio.sexoId &&
       socio.estadoCivilId &&
+      emailRegex.test(socio.email) &&
       socio.arquivosComprovante.length > 0 &&
       socio.endereco.logradouro.trim() &&
       socio.endereco.cidade.trim(),
   );
+  const emails = socios.map((s) => s.email.trim().toLowerCase()).filter(Boolean);
+  const emailDuplicado = emails.length !== new Set(emails).size;
   const temRepresentante = socios.some((socio) => socio.representanteLegal);
 
   return (
@@ -2134,12 +2209,295 @@ function StepSocios({
         </p>
       ) : null}
 
+      {emailDuplicado ? (
+        <p className="m-0 text-xs font-medium text-rose-600 dark:text-rose-300">
+          Há sócios com o mesmo e-mail. O e-mail é a credencial de acesso e precisa ser único.
+        </p>
+      ) : null}
+
       <NavButtons
-        canNext={socios.length > 0 && completos && temRepresentante}
+        canNext={socios.length > 0 && completos && temRepresentante && !emailDuplicado}
         onBack={onBack}
         onNext={onNext}
       />
     </StepCard>
+  );
+}
+
+// Query do enriquecimento que traz o conselho de classe (CRECI). CARELI_PF_04 inclui o dataset
+// class_organization. ATENÇÃO custo: essa query roda vários datasets — trocar por uma query
+// enxuta só-conselho quando o MOST criar. Só dispara quando o operador clica "Buscar dados".
+const QUERY_ENRICH_CRECI = "CARELI_PF_04";
+
+// Etapa Corretores (só imobiliária): cadastro SIMPLES e digitado. Cada corretor vira um
+// relacionamento de contato. Pode avançar sem nenhum (cadastra depois); os adicionados precisam
+// de nome + CPF. O CRECI tenta vir do enriquecimento por CPF; senão, é digitado. Nada além disso
+// é obrigatório.
+function StepCorretores({
+  corretores,
+  onAdicionar,
+  onBack,
+  onMudar,
+  onNext,
+  onRemover,
+}: {
+  corretores: CorretorCadastro[];
+  onAdicionar: () => void;
+  onBack: () => void;
+  onMudar: (id: string, patch: Partial<CorretorCadastro>) => void;
+  onNext: () => void;
+  onRemover: (id: string) => void;
+}) {
+  // Tudo obrigatório menos o CRECI. O e-mail é a futura credencial de acesso ao Panteon, então
+  // não pode repetir entre corretores.
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+  const emails = corretores.map((c) => c.email.trim().toLowerCase()).filter(Boolean);
+  const emailDuplicado = emails.length !== new Set(emails).size;
+  const completos = corretores.every(
+    (c) =>
+      c.nome.trim().length > 0 &&
+      soDigitos(c.cpf).length === 11 &&
+      soDigitos(c.telefone).length >= 10 &&
+      emailRegex.test(c.email),
+  );
+
+  return (
+    <StepCard title="4. Corretores">
+      <p className="rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
+        Corretores da imobiliária. Pode avançar sem nenhum e cadastrar depois.
+      </p>
+
+      <div className="grid gap-4">
+        {corretores.map((corretor, index) => (
+          <BlocoCorretor
+            aoMudar={(patch) => onMudar(corretor.id, patch)}
+            aoRemover={() => onRemover(corretor.id)}
+            corretor={corretor}
+            indice={index}
+            key={corretor.id}
+          />
+        ))}
+      </div>
+
+      <button
+        type="button"
+        onClick={onAdicionar}
+        className="flex w-full items-center justify-center gap-1.5 rounded-lg border border-dashed border-line-strong bg-subtle px-3 py-2.5 text-xs font-semibold text-ink-soft transition-colors hover:bg-subtle/70"
+      >
+        <UserRound className="size-3.5" aria-hidden="true" />
+        Adicionar corretor
+      </button>
+
+      {emailDuplicado ? (
+        <p className="m-0 text-xs font-medium text-rose-600 dark:text-rose-300">
+          Há corretores com o mesmo e-mail. O e-mail é a credencial de acesso e precisa ser único.
+        </p>
+      ) : null}
+
+      <NavButtons canNext={completos && !emailDuplicado} onBack={onBack} onNext={onNext} />
+    </StepCard>
+  );
+}
+
+function BlocoCorretor({
+  aoMudar,
+  aoRemover,
+  corretor,
+  indice,
+}: {
+  aoMudar: (patch: Partial<CorretorCadastro>) => void;
+  aoRemover: () => void;
+  corretor: CorretorCadastro;
+  indice: number;
+}) {
+  const [buscando, setBuscando] = useState(false);
+  const cpfOk = soDigitos(corretor.cpf).length === 11;
+  // Último CPF consultado: a busca dispara sozinha ao completar o CPF, e este ref garante UMA
+  // consulta por CPF (cada consulta é cobrada).
+  const cpfBuscado = useRef("");
+
+  useEffect(() => {
+    const digitos = soDigitos(corretor.cpf);
+    if (digitos.length !== 11 || cpfBuscado.current === digitos) return;
+    cpfBuscado.current = digitos;
+    void buscar();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [corretor.cpf]);
+
+  // Enriquece pelo CPF: telefone, e-mail e o CRECI (conselho de classe). Best-effort — se não
+  // vier, os campos ficam manuais.
+  async function buscar() {
+    setBuscando(true);
+    let enr: Enrichment = ENRICH_VAZIO;
+    try {
+      enr = await apiPost<Enrichment>({
+        action: "enrich",
+        cpf: corretor.cpf,
+        query: QUERY_ENRICH_CRECI,
+      });
+    } catch {
+      // best-effort: sem enriquecimento, o operador digita CRECI/telefone/e-mail
+    } finally {
+      setBuscando(false);
+    }
+    aoMudar({
+      creci: corretor.creci || enr.creci,
+      creciLido: Boolean(enr.creci) || corretor.creciLido,
+      email: corretor.email || enr.emails[0] || "",
+      telefone: corretor.telefone || enr.telefones[0] || "",
+    });
+  }
+
+  return (
+    <div className="rounded-xl border border-line bg-surface p-4">
+      <div className="mb-3 flex items-center justify-between gap-3">
+        <h3 className="m-0 text-sm font-semibold text-ink">
+          Corretor {indice + 1}
+          {corretor.nome ? (
+            <span className="text-ink-muted"> · {titleCase(corretor.nome)}</span>
+          ) : null}
+        </h3>
+        <button
+          type="button"
+          onClick={aoRemover}
+          className="inline-flex items-center gap-1 rounded-lg border border-line px-2 py-1 text-xs font-medium text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
+        >
+          <Trash2 className="size-3.5" aria-hidden="true" />
+          Remover
+        </button>
+      </div>
+
+      <Secao title="Dados do corretor">
+        <div className="sm:col-span-2">
+          <TextField
+            label="Nome completo"
+            value={corretor.nome}
+            placeholder="Nome do corretor"
+            onChange={(v) => aoMudar({ nome: v })}
+          />
+        </div>
+        <TextField
+          label="CPF"
+          value={corretor.cpf}
+          placeholder="000.000.000-00"
+          onChange={(v) => aoMudar({ cpf: v })}
+        />
+        <PhoneField
+          value={corretor.telefone}
+          sugestoes={[]}
+          onChange={(v) => aoMudar({ telefone: v })}
+        />
+        <div className="sm:col-span-2">
+          <EmailField value={corretor.email} onChange={(v) => aoMudar({ email: v })} />
+        </div>
+        {/* O CRECI é buscado sozinho quando o CPF fica completo; se não vier, o campo é digitável. */}
+        {buscando ? (
+          <div className="flex items-center gap-2 rounded-lg border border-line bg-surface px-3 py-2 text-xs text-ink-muted">
+            <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+            Buscando CRECI…
+          </div>
+        ) : corretor.creciLido ? (
+          <ReadField label="CRECI" value={corretor.creci} />
+        ) : (
+          <TextField
+            editavel
+            label="CRECI"
+            value={corretor.creci}
+            onChange={(v) => aoMudar({ creci: v })}
+          />
+        )}
+      </Secao>
+    </div>
+  );
+}
+
+// Multi-seleção com busca (usada nos empreendimentos da imobiliária). Chips dos selecionados +
+// lista com checkbox. Clicar no chip remove; clicar na linha alterna.
+function MultiSelectField({
+  emptyLabel,
+  hint,
+  onChange,
+  options,
+  selected,
+  title,
+}: {
+  emptyLabel?: string;
+  hint?: string;
+  onChange: (ids: string[]) => void;
+  options: SelectOption[];
+  selected: string[];
+  title: string;
+}) {
+  const [busca, setBusca] = useState("");
+  const alvo = normalizeSearch(busca);
+  const filtradas = alvo
+    ? options.filter((o) => normalizeSearch(o.label).includes(alvo))
+    : options;
+  const selecionadas = options.filter((o) => selected.includes(String(o.id)));
+
+  function toggle(id: string) {
+    onChange(selected.includes(id) ? selected.filter((s) => s !== id) : [...selected, id]);
+  }
+
+  return (
+    <div>
+      <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink">{title}</p>
+      {hint ? <p className="mb-2 text-xs text-ink-muted">{hint}</p> : null}
+
+      {selecionadas.length ? (
+        <div className="mb-2 flex flex-wrap gap-1.5">
+          {selecionadas.map((o) => (
+            <button
+              key={o.id}
+              type="button"
+              onClick={() => toggle(String(o.id))}
+              className="inline-flex items-center gap-1 rounded-full border border-[#A07C3B]/30 bg-[#A07C3B]/10 px-2.5 py-1 text-xs font-medium text-[#7a5e2c] transition-colors hover:bg-[#A07C3B]/20 dark:text-[#d9b877]"
+            >
+              {o.label}
+              <X className="size-3" aria-hidden="true" />
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {options.length ? (
+        <>
+          <input
+            value={busca}
+            onChange={(event) => setBusca(event.target.value)}
+            placeholder="Buscar empreendimento…"
+            className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted"
+          />
+          <div className="mt-1 max-h-56 overflow-y-auto rounded-lg border border-line">
+            {filtradas.map((o) => {
+              const on = selected.includes(String(o.id));
+              return (
+                <button
+                  key={o.id}
+                  type="button"
+                  onClick={() => toggle(String(o.id))}
+                  className="flex w-full items-center gap-2 border-b border-line px-3 py-2 text-left text-sm transition-colors last:border-b-0 hover:bg-subtle"
+                >
+                  <span
+                    className={`flex size-4 shrink-0 items-center justify-center rounded border ${
+                      on ? "border-[#A07C3B] bg-[#A07C3B] text-white" : "border-line-strong"
+                    }`}
+                  >
+                    {on ? <Check className="size-3" aria-hidden="true" /> : null}
+                  </span>
+                  <span className="flex-1 text-ink">{o.label}</span>
+                </button>
+              );
+            })}
+            {filtradas.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-ink-muted">Nada encontrado.</p>
+            ) : null}
+          </div>
+        </>
+      ) : (
+        <p className="text-xs text-ink-muted">{emptyLabel ?? "Nenhuma opção disponível."}</p>
+      )}
+    </div>
   );
 }
 
@@ -2164,7 +2522,6 @@ function StepEndereco({
         <DocUploader
           label="Adicionar comprovante de endereço"
           hint="Conta de luz, água, telefone · imagem ou PDF"
-          mockData={mockEnderecoExtraction}
           onFile={onDocumento}
           onExtracted={(ext) => {
             // Aqui só entra comprovante: RG/certidão/cartão CNPJ são recusados.
@@ -2248,7 +2605,6 @@ function StepCertidao({
           <DocUploader
             label={`Enviar ${tituloMinusculo}`}
             hint={`${esperada.hint} · imagem ou PDF`}
-            mockData={mockCertidaoExtraction}
             onFile={onDocumento}
             onExtracted={(ext) => {
               conferirDocumento(ext, ["certidao"], `a ${tituloMinusculo}`);
@@ -2323,36 +2679,58 @@ function StepCertidao({
 
 function StepRevisao({
   conjuge,
+  corretores,
   documentos,
+  empreendimentos,
+  empreendimentosSel,
   empresa,
   endereco,
   identidade,
   imobiliarias,
+  isImobiliaria,
   onBack,
+  onEditar,
   perfil,
   persona,
   socios,
+  steps,
+  tipo,
 }: {
   conjuge: Conjuge | null;
+  corretores: CorretorCadastro[];
   documentos: DocumentosAnexados;
+  empreendimentos: SelectOption[];
+  empreendimentosSel: string[];
   empresa: Empresa;
   endereco: Endereco | null;
   identidade: Identidade | null;
   imobiliarias: SelectOption[];
+  isImobiliaria: boolean;
   onBack: () => void;
+  // Revisão só é revisão se der pra CORRIGIR: cada etapa vira um atalho de volta (Lucas 18/jul).
+  onEditar: (step: number) => void;
   perfil: Perfil;
   persona: Persona;
   socios: SocioCadastro[];
+  steps: string[];
+  tipo: string;
 }) {
   const label = (options: SelectOption[], id: string) =>
     options.find((o) => o.id.toString() === id)?.label ?? "";
+
+  // Empreendimentos vinculados (só imobiliária): resolve os ids selecionados pros rótulos.
+  const empreendimentosLabels = empreendimentosSel
+    .map((id) => label(empreendimentos, id))
+    .filter(Boolean);
 
   const isPj = persona === "pj";
   const nomeCliente = isPj
     ? titleCase(empresa.razaoSocial || "Empresa")
     : titleCase(identidade?.nome ?? "Cliente");
   const registro = formatRegistro(new Date());
-  const cadTitulo = `CAD - ${nomeCliente} - ${registro.completo}`;
+  // O documento da imobiliária é "Imobiliaria - ...", não CAD (a CAD é do prospect).
+  const rotuloDoc = isImobiliaria ? "Imobiliaria" : "CAD";
+  const cadTitulo = `${rotuloDoc} - ${nomeCliente} - ${registro.completo}`;
   const [enviado, setEnviado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
@@ -2406,13 +2784,29 @@ function StepRevisao({
               telefone: conjuge.telefone,
             }
           : null,
+        // Corretores da imobiliária → relacionamentos de contato (só ids/dados; sem documento).
+        corretores: isImobiliaria
+          ? corretores
+              .filter((c) => c.nome.trim() && soDigitos(c.cpf).length === 11)
+              .map((c) => ({
+                cpf: c.cpf,
+                creci: c.creci,
+                email: c.email,
+                nome: c.nome,
+                telefone: c.telefone,
+              }))
+          : undefined,
         documentos: [...anexos, ...anexosSocios],
+        // Empreendimentos vinculados (só imobiliária) → relacionamentos de trabalho.
+        empreendimentos: isImobiliaria
+          ? empreendimentosSel.map((id) => ({ id, label: label(empreendimentos, id) }))
+          : undefined,
         empresa: isPj ? empresa : null,
         endereco,
         identidade,
         perfil: { ...perfil, imobiliariaLabel: label(imobiliarias, perfil.imobiliariaId) },
         persona,
-        role: "prospect",
+        role: tipo,
         socios: isPj
           ? socios.map((socio) => ({
               cpf: socio.cpf,
@@ -2462,6 +2856,10 @@ function StepRevisao({
           cadField("Natureza jurídica", empresa.naturezaJuridica, true),
           cadField("CNAE", empresa.cnae),
           cadField("Atividade principal", empresa.atividade, true),
+          // CRECI Jurídico: só entra na ficha da imobiliária (e só se preenchido).
+          ...(isImobiliaria && empresa.creci.trim()
+            ? [cadField("CRECI Jurídico", empresa.creci)]
+            : []),
         ]),
       );
       if (empresa.socios.length) {
@@ -2517,6 +2915,33 @@ function StepRevisao({
             ],
           ),
         );
+      }
+      // Imobiliária: empreendimentos vinculados (trabalho) e corretores (contato).
+      if (isImobiliaria && empreendimentosLabels.length) {
+        secoes.push(
+          cadSection(
+            "Empreendimentos vinculados",
+            empreendimentosLabels.map((nome, i) =>
+              cadField(`Empreendimento ${i + 1}`, titleCase(nome), true),
+            ),
+          ),
+        );
+      }
+      if (isImobiliaria) {
+        const corretoresValidos = corretores.filter(
+          (c) => c.nome.trim() && soDigitos(c.cpf).length === 11,
+        );
+        for (const [index, corretor] of corretoresValidos.entries()) {
+          secoes.push(
+            cadSection(`Corretor ${index + 1}`, [
+              cadField("Nome", titleCase(corretor.nome), true),
+              cadField("CPF", corretor.cpf),
+              cadField("CRECI", corretor.creci),
+              cadField("Telefone", corretor.telefone),
+              cadField("E-mail", corretor.email, true),
+            ]),
+          );
+        }
       }
     } else {
       // O nome NÃO entra como campo: já vai em destaque no topo da ficha.
@@ -2592,9 +3017,11 @@ function StepRevisao({
       data: registro.data,
       hora: registro.hora,
       nome: nomeCliente,
-      papel: isPj ? "Pessoa jurídica" : "Prospect",
+      papel: isImobiliaria ? "Imobiliária" : isPj ? "Pessoa jurídica" : "Prospect",
       secoes,
-      vinculo: label(imobiliarias, perfil.imobiliariaId),
+      // A imobiliária não se vincula a outra imobiliária: o campo sai do topo da ficha dela.
+      titulo: isImobiliaria ? "Cadastro de Imobiliária" : "Cadastro de CAD",
+      vinculo: isImobiliaria ? "" : label(imobiliarias, perfil.imobiliariaId),
     };
   }
 
@@ -2608,13 +3035,33 @@ function StepRevisao({
             <UserRound className="size-5" aria-hidden="true" />
           </span>
           <div>
-            <h2 className="text-lg font-semibold text-ink">Cadastro de CAD</h2>
+            <h2 className="text-lg font-semibold text-ink">
+              {isImobiliaria ? "Cadastro de Imobiliária" : "Cadastro de CAD"}
+            </h2>
             <p className="text-xs text-ink-muted">
               {nomeCliente} · registro {registro.completo}
             </p>
           </div>
         </div>
       </div>
+
+      {/* Achou erro? volta direto na etapa, sem precisar clicar "Voltar" várias vezes. */}
+      {enviado ? null : (
+        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-subtle/50 px-3 py-2.5 print:hidden">
+          <span className="text-xs font-medium text-ink-soft">Precisa corrigir algo?</span>
+          {steps.slice(0, -1).map((nome, index) => (
+            <button
+              className="inline-flex items-center gap-1 rounded-lg border border-line bg-surface px-2.5 py-1 text-xs font-medium text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
+              key={nome}
+              onClick={() => onEditar(index)}
+              type="button"
+            >
+              <Pencil aria-hidden="true" className="size-3" />
+              {nome}
+            </button>
+          ))}
+        </div>
+      )}
 
       {isPj ? (
         <>
@@ -2770,13 +3217,13 @@ function StepRevisao({
                 </span>
                 <div className="min-w-0">
                   <h2 className="m-0 text-base font-semibold text-ink">
-                    CAD enviada com sucesso
+                    {isImobiliaria ? "Cadastro enviado com sucesso" : "CAD enviada com sucesso"}
                   </h2>
                   <p className="m-0 mt-0.5 text-xs text-ink-muted">
-                    {nomeCliente} · Prospect
+                    {nomeCliente} · {isImobiliaria ? "Imobiliária" : "Prospect"}
                   </p>
                   <p className="m-0 text-xs text-ink-muted">
-                    Enviada em {registro.data} às {registro.hora}
+                    Enviado em {registro.data} às {registro.hora}
                   </p>
                 </div>
               </div>
@@ -2830,7 +3277,7 @@ function StepRevisao({
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:opacity-50"
               >
                 <Download className="size-4" aria-hidden="true" />
-                Baixar CAD
+                {isImobiliaria ? "Baixar cadastro" : "Baixar CAD"}
               </button>
               <a
                 href="/apolo/cadastro"
@@ -2940,11 +3387,14 @@ function SelectField({
 }
 
 function TextField({
+  editavel,
   label,
   onChange,
   placeholder,
   value,
 }: {
+  // Mostra o selo "editável" (lápis), o mesmo do telefone: sinaliza campo que o operador digita.
+  editavel?: boolean;
   label: string;
   onChange: (value: string) => void;
   placeholder?: string;
@@ -2952,8 +3402,16 @@ function TextField({
 }) {
   return (
     <div className="rounded-lg border border-line bg-surface px-3 py-2">
-      <div className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
-        {label}
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+          {label}
+        </span>
+        {editavel ? (
+          <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#A07C3B]">
+            <Pencil aria-hidden="true" className="size-2.5" />
+            editável
+          </span>
+        ) : null}
       </div>
       <input
         value={value}

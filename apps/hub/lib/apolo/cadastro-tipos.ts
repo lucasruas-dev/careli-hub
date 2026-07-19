@@ -16,7 +16,7 @@ const CADASTRO_PROSPECT: CadastroTipo = {
 
 export const CADASTRO_TIPOS: CadastroTipo[] = [
   CADASTRO_PROSPECT,
-  { descricao: "Parceiro imobiliário", disponivel: false, label: "Imobiliária", slug: "imobiliaria" },
+  { descricao: "Parceiro imobiliário", disponivel: true, label: "Imobiliária", slug: "imobiliaria" },
   { descricao: "Equipe interna", disponivel: false, label: "Colaborador", slug: "colaborador" },
   { descricao: "Prestador ou fornecedor", disponivel: false, label: "Fornecedor", slug: "fornecedor" },
   { descricao: "Parceiro de negócio", disponivel: false, label: "Parceiro", slug: "parceiro" },
