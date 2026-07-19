@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-19-apolo-importar-cads-sondagem",
+    deployedAt: "2026-07-20T00:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Nova tela Importar CADs: mostra o que existe na central de CAD do Asana antes de trazer qualquer coisa.",
+              "Lista as secoes com a quantidade de CADs em cada uma e os tipos de arquivo anexados.",
+              "Mostra todos os campos preenchidos nas CADs, com exemplos, e destaca se existe campo de CPF.",
+              "Etapa de leitura apenas: nada e criado no Apolo e nenhum documento e lido nesta tela.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.44.2",
+    technical: {
+      done: "sondarCadsNoAsana estendida: alem de secoes e anexos, monta o catalogo de custom fields do projeto (nome, quantos preenchidos, ate 3 valores distintos) e uma amostra de tasks com gid e campos. Nova tela apolo/blocks/importacao consumindo /api/apolo/asana/cads, entrada 'importacao' no catalogo do Apolo. Read-only: sem escrita e sem iOCR.",
+      motivation: "Dois bloqueios apareceram ao montar a importacao das CADs: createApoloEntity exige CPF/CNPJ valido (se as CADs nao trouxerem documento em campo, ele teria que sair dos anexos por iOCR, que e consulta cobrada na MOST) e o Board nao persiste etapa alguma (a fila e derivada de apolo_entities com status review, entao Finalizado->Credenciado nao tem onde ser gravado). O token do Asana so existe em producao, entao sem uma tela nao havia como enxergar os dados para decidir o mapeamento e o custo.",
+    },
+    title: "Apolo: sondagem das CADs do Asana",
+    type: "novidade",
+    version: "1.45.0",
+  },
+  {
     buildTag: "2026-07-19-prometeu-central-telacheia",
     deployedAt: "2026-07-19T23:30:00-03:00",
     modules: [

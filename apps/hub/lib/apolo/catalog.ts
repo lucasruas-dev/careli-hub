@@ -3,6 +3,7 @@ import {
   BriefcaseBusiness,
   Building2,
   ContactRound,
+  DownloadCloud,
   FileSpreadsheet,
   Handshake,
   IdCard,
@@ -24,6 +25,7 @@ export type ApoloScreen =
   | "dashboard"
   | "crm"
   | "empreendimentos"
+  | "importacao"
   | "relatorios";
 
 export type ApoloScreenItem = {
@@ -97,6 +99,13 @@ export const apoloScreens = [
     icon: Building2,
     id: "empreendimentos",
     label: "Empreendimento",
+  },
+  {
+    description: "Traz as CADs da central do Asana para o Board.",
+    hidden: false,
+    icon: DownloadCloud,
+    id: "importacao",
+    label: "Importar CADs",
   },
   {
     description: "Insights executivos do cadastro mestre.",

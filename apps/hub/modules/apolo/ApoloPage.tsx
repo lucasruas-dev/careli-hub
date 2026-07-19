@@ -3,6 +3,7 @@
 import { type ApoloScreen } from "@/lib/apolo/catalog";
 import { DashboardScreen } from "./blocks/dashboard/apolo-dashboard";
 import { BoardView } from "./blocks/board/board-view";
+import { ImportacaoView } from "./blocks/importacao/importacao-view";
 import { EmpreendimentosScreen } from "./blocks/empreendimentos/empreendimentos-view";
 import { ReportsScreen } from "./blocks/reports/apolo-reports";
 import type {
@@ -440,6 +441,7 @@ export function ApoloPage() {
         ) : null}
         {/* O "+ novo cadastro" e os KPIs ficam no cabeçalho do CRM (CrmCommandCenter). */}
         {activeScreen === "board" ? <BoardView /> : null}
+        {activeScreen === "importacao" ? <ImportacaoView /> : null}
         {activeScreen === "dashboard" ? (
           <DashboardScreen dashboard={dashboard} entities={entities} loading={loading} />
         ) : null}
