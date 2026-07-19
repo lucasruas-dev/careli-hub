@@ -36,6 +36,45 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-19-prometeu-modulo-real",
+    deployedAt: "2026-07-19T18:00:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O Setup agora salva de verdade: empreendimento (puxado dos ativos do Apolo), construtora, local, mesas da secretaria e as metas de tempo.",
+              "As mesas da secretaria sao criadas junto, numeradas, quando voce salva.",
+              "Janelas de credenciamento por dia: e o horario que decide como a fila do dia se organiza.",
+              "Botao Ativar lancamento libera a fase de preparacao (subir CAD, imprimir etiqueta, montar a fila).",
+              "Botao Iniciar evento real zera o que veio dos testes e comeca o dia limpo, preservando os credenciados, a fila e as etiquetas ja impressas.",
+              "Encerrar o dia fecha a operacao: quem concluiu fica para a analise de desempenho, quem parou no meio sai da fila (e continua no historico).",
+            ],
+            screen: "Setup",
+          },
+          {
+            items: [
+              "A Central deixou de ser demonstracao e passou a ler os dados reais do lancamento.",
+              "Kanban por etapa e visao em lista, com quanto tempo cada pessoa esta no evento e no estagio atual.",
+              "Nova aba Recepcao: a ordem de chamada do dia, mostrando em cada pessoa por que ela esta naquela posicao.",
+              "A fila nasce da hora do pagamento do PIX; quem for credenciado depois do horario entra por ordem de chegada.",
+            ],
+            screen: "Central",
+          },
+        ],
+      },
+    ],
+    rollback: "1.43.0",
+    technical: {
+      done: "Migrations 0053/0054/0055 (prometeu_eventos, credenciados, unidades, mesas, chamadas, movimentacoes, janelas_credenciamento) com RLS. Camada lib/prometeu (types/data/auth) + rotas /api/prometeu/{eventos,eventos/status,fila,credenciados,janelas,empreendimentos}. Telas Central e Setup em React substituindo os mockups HTML. Ordem da fila por chave numerica (ordem_fila) derivando a posicao na leitura, permitindo ajuste manual do admin sem recalculo em massa. Acoes irreversiveis (reset e encerramento) restritas ao dono do evento por e-mail verificado no token, e reset bloqueado em definitivo apos o inicio. 15 testes cobrindo as regras da fila, o fuso de Brasilia e a trava do reset.",
+      motivation: "O Prometeu era 100% mockup e o lancamento acontece em ~2 semanas. Passou a ter banco e telas reais. Revisao adversarial antes do deploy encontrou 28 defeitos confirmados; os tres graves (reset forcavel no meio do evento, regra da fila implementada mas desconectada da tela, e limpeza que falhava em silencio marcando o evento como iniciado) foram corrigidos antes de subir.",
+    },
+    title: "Prometeu: modulo real do dia do lancamento",
+    type: "novidade",
+    version: "1.44.0",
+  },
+  {
     buildTag: "2026-07-19-apolo-credenciamento-board",
     deployedAt: "2026-07-19T12:00:00-03:00",
     modules: [

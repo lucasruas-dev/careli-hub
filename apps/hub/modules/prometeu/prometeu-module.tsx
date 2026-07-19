@@ -16,11 +16,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import { useHubTheme } from "@/providers/theme-provider";
 
-// Prometeu no hub (mockup embutido). Segue o padrao dos outros modulos: rail escuro de
-// telas a esquerda (mesmo visual do Iris) + conteudo a direita. Cada tela e um HTML
-// servido de /public/prometeu. Proximo passo real = telas React + tabelas prometeu_*.
+import { CentralView } from "./blocks/central/central-view";
+import { SetupView } from "./blocks/setup/setup-view";
+
+// Prometeu no hub: rail escuro de telas a esquerda (mesmo visual do Iris) + conteudo a direita.
+//
+// A migracao mockup -> real esta EM CURSO. Telas com `component` ja leem as tabelas prometeu_*;
+// as demais ainda sao o HTML de /public/prometeu (o desenho aprovado), e vao caindo uma a uma.
 
 type PrometeuScreen = {
+  // Tela React de verdade. Quando presente, ganha do `file`.
+  component?: () => React.JSX.Element;
   file: string;
   icon: LucideIcon;
   id: string;
@@ -30,12 +36,24 @@ type PrometeuScreen = {
 };
 
 const ALL_SCREENS: readonly PrometeuScreen[] = [
-  { file: "cockpit.html", icon: LayoutDashboard, id: "central", label: "Central" },
+  {
+    component: CentralView,
+    file: "cockpit.html",
+    icon: LayoutDashboard,
+    id: "central",
+    label: "Central",
+  },
   { file: "atendente.html", icon: TabletSmartphone, id: "atendente", label: "Atendente" },
   { file: "etiqueta.html", icon: Tag, id: "etiqueta", label: "Etiqueta" },
   { file: "telao.html", icon: Tv, id: "telao", label: "Telão", newTab: true },
   { file: "locutor.html", icon: Mic, id: "locutor", label: "Locutor" },
-  { file: "setup.html", icon: Settings, id: "setup", label: "Setup" },
+  {
+    component: SetupView,
+    file: "setup.html",
+    icon: Settings,
+    id: "setup",
+    label: "Setup",
+  },
 ];
 
 export function PrometeuModule() {
@@ -146,14 +164,18 @@ export function PrometeuModule() {
       </aside>
 
       <main className="min-w-0 flex-1 bg-canvas">
-        <iframe
-          key={active.id}
-          ref={iframeRef}
-          onLoad={applyIframeTheme}
-          className="block h-full w-full border-0"
-          src={`/prometeu/${active.file}`}
-          title={`Prometeu · ${active.label}`}
-        />
+        {active.component ? (
+          <active.component />
+        ) : (
+          <iframe
+            key={active.id}
+            ref={iframeRef}
+            onLoad={applyIframeTheme}
+            className="block h-full w-full border-0"
+            src={`/prometeu/${active.file}`}
+            title={`Prometeu · ${active.label}`}
+          />
+        )}
       </main>
     </div>
   );
