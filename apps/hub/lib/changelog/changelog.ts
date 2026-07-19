@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-cad-empreendimento",
+    deployedAt: "2026-07-20T04:15:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "As CADs importadas passam a guardar o empreendimento, a imobiliaria e o corretor da ficha do Asana.",
+              "No Board, a coluna Empreendimento deixa de aparecer vazia para quem veio da importacao, e a imobiliaria aparece embaixo do nome.",
+              "A lista Ja importados virou selecionavel: marcar ali nao duplica, so completa os dados de uma importacao anterior.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.46.2",
+    technical: {
+      done: "aplicarVinculos passou a gravar empreendimento, imobiliaria e corretor em metadata.esteira, e a ATUALIZAR os dados mesmo quando o vinculo ja existe (o insert em apolo_source_links continua sendo a trava de duplicacao: no 23505 o link nao repete mas o metadata e reescrito). A rota do Board usa o empreendimento do cadastro quando existe e cai para o da esteira quando nao — cadastro antigo nao tem metadata.cadastro. A tela envia os dados da CAD junto e permite marcar os ja importados para reaplicar.",
+      motivation: "Depois da importacao das 121 CADs a coluna Empreendimento ficou vazia: eu tinha o dado em maos durante a importacao (era o proprio filtro da busca) e nao gravei na entidade. Sem poder reaplicar nos ja importados, a unica saida seria mexer no banco a mao.",
+    },
+    title: "Apolo: CAD importada leva empreendimento, imobiliaria e corretor",
+    type: "correcao",
+    version: "1.46.3",
+  },
+  {
     buildTag: "2026-07-20-apolo-board-etapa-persistida",
     deployedAt: "2026-07-20T03:30:00-03:00",
     internal: true,

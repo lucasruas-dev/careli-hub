@@ -323,7 +323,14 @@ export type AplicacaoResultado = {
 export async function aplicarVinculos(input: {
   client: AdminClient;
   etapa: "validacao" | "credenciado";
-  itens: { entityId: string; gid: string; secao: string }[];
+  itens: {
+    corretor?: string | null;
+    empreendimento?: string | null;
+    entityId: string;
+    gid: string;
+    imobiliaria?: string | null;
+    secao: string;
+  }[];
   porUsuario?: string | null;
 }): Promise<AplicacaoResultado> {
   const resultado: AplicacaoResultado = { erros: [], ignorados: 0, vinculados: 0 };
@@ -338,12 +345,11 @@ export async function aplicarVinculos(input: {
       source_table: "cad_task",
     });
 
-    if (erroLink) {
-      // 23505 = índice único: esta task já tinha sido importada antes.
-      if (erroLink.code === "23505") {
-        resultado.ignorados += 1;
-        continue;
-      }
+    // 23505 = índice único: a task já tinha sido importada. O vínculo não se repete, mas os
+    // DADOS são atualizados assim mesmo — é o que permite completar o que ficou faltando numa
+    // importação anterior (foi o caso do empreendimento) sem ter que apagar nada.
+    const jaVinculado = erroLink?.code === "23505";
+    if (erroLink && !jaVinculado) {
       resultado.erros.push({ gid: item.gid, motivo: erroLink.message });
       continue;
     }
@@ -365,7 +371,13 @@ export async function aplicarVinculos(input: {
           esteira: {
             atualizadoEm: agora,
             atualizadoPor: input.porUsuario ?? null,
+            // O que veio da CAD do Asana. O Board mostra estes campos na fila: sem eles, a
+            // coluna Empreendimento fica vazia para quem foi importado (cadastro antigo não
+            // tem metadata.cadastro).
+            corretor: item.corretor ?? null,
+            empreendimento: item.empreendimento ?? null,
             etapa: input.etapa,
+            imobiliaria: item.imobiliaria ?? null,
             origem: "asana",
           },
         },
@@ -377,7 +389,8 @@ export async function aplicarVinculos(input: {
       continue;
     }
 
-    resultado.vinculados += 1;
+    if (jaVinculado) resultado.ignorados += 1;
+    else resultado.vinculados += 1;
   }
 
   return resultado;

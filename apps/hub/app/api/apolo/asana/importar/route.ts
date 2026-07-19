@@ -75,7 +75,14 @@ export async function POST(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     confirmado?: boolean;
     etapa?: "validacao" | "credenciado";
-    itens?: { entityId: string; gid: string; secao: string }[];
+    itens?: {
+      corretor?: string | null;
+      empreendimento?: string | null;
+      entityId: string;
+      gid: string;
+      imobiliaria?: string | null;
+      secao: string;
+    }[];
   };
 
   if (!body.confirmado) {

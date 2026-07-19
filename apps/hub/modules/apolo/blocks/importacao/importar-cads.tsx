@@ -89,23 +89,31 @@ export function ImportarCads() {
   const itensParaAplicar = useMemo(() => {
     if (!preview) return [];
 
+    // Os dados da CAD vão junto: é o que preenche empreendimento, imobiliária e corretor na
+    // fila do Board (cadastro antigo não tem metadata.cadastro para o Board ler).
+    const dados = (i: Item) => ({
+      corretor: i.cad.corretor,
+      empreendimento: i.cad.empreendimento,
+      gid: i.cad.gid,
+      imobiliaria: i.cad.imobiliaria,
+      secao: i.cad.secao,
+    });
+
     const doCasado = preview.casados
       .filter((i) => selecionados.has(i.cad.gid))
-      .map((i) => ({
-        entityId: i.candidatos[0]!.id,
-        gid: i.cad.gid,
-        secao: i.cad.secao,
-      }));
+      .map((i) => ({ ...dados(i), entityId: i.candidatos[0]!.id }));
 
     const doAmbiguo = preview.ambiguos
       .filter((i) => escolhaAmbigua[i.cad.gid])
-      .map((i) => ({
-        entityId: escolhaAmbigua[i.cad.gid]!,
-        gid: i.cad.gid,
-        secao: i.cad.secao,
-      }));
+      .map((i) => ({ ...dados(i), entityId: escolhaAmbigua[i.cad.gid]! }));
 
-    return [...doCasado, ...doAmbiguo];
+    // Já importados marcados: reaplica só os DADOS (o vínculo não duplica). É como se completa
+    // uma importação anterior que gravou menos campos.
+    const doJaImportado = preview.jaImportados
+      .filter((i) => selecionados.has(i.cad.gid) && i.candidatos.length === 1)
+      .map((i) => ({ ...dados(i), entityId: i.candidatos[0]!.id }));
+
+    return [...doCasado, ...doAmbiguo, ...doJaImportado];
   }, [escolhaAmbigua, preview, selecionados]);
 
   const aplicar = useCallback(async () => {
@@ -360,18 +368,58 @@ export function ImportarCads() {
           {preview.jaImportados.length > 0 ? (
             <Grupo
               cor="#64748b"
-              descricao="Já foram vinculadas antes. Rodar de novo não duplica."
+              descricao="Já vinculadas antes. Marcar aqui NÃO duplica: só reescreve os dados (empreendimento, imobiliária, corretor) na ficha, para completar uma importação anterior."
               icone={<Check size={16} />}
               titulo={`Já importados (${preview.jaImportados.length})`}
             >
-              <div className="flex flex-wrap gap-1.5">
+              <button
+                className="mb-2 rounded-lg border border-black/10 px-2.5 py-1 text-xs font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
+                onClick={() => {
+                  const gids = preview.jaImportados
+                    .filter((i) => i.candidatos.length === 1)
+                    .map((i) => i.cad.gid);
+                  setSelecionados((atual) => {
+                    const novo = new Set(atual);
+                    const todosMarcados = gids.every((g) => novo.has(g));
+                    for (const g of gids) {
+                      if (todosMarcados) novo.delete(g);
+                      else novo.add(g);
+                    }
+                    return novo;
+                  });
+                }}
+                type="button"
+              >
+                Marcar/desmarcar todos para atualizar
+              </button>
+              <div className="space-y-1">
                 {preview.jaImportados.map((item) => (
-                  <span
+                  <label
                     key={item.cad.gid}
-                    className="rounded bg-black/[0.05] px-2 py-1 text-xs text-ink-muted dark:bg-white/[0.07]"
+                    className={`flex items-center gap-2.5 rounded-lg border border-black/[0.06] px-3 py-1.5 dark:border-white/[0.07] ${
+                      item.candidatos.length === 1 ? "cursor-pointer" : "opacity-60"
+                    }`}
                   >
-                    {item.cad.nome}
-                  </span>
+                    <input
+                      checked={selecionados.has(item.cad.gid)}
+                      disabled={item.candidatos.length !== 1}
+                      onChange={(e) => {
+                        setSelecionados((atual) => {
+                          const novo = new Set(atual);
+                          if (e.target.checked) novo.add(item.cad.gid);
+                          else novo.delete(item.cad.gid);
+                          return novo;
+                        });
+                      }}
+                      type="checkbox"
+                    />
+                    <span className="min-w-0 flex-1 truncate text-xs text-ink-soft">
+                      {item.cad.nome}
+                    </span>
+                    <span className="shrink-0 text-[0.66rem] text-ink-muted">
+                      {item.cad.empreendimento ?? "sem empreendimento"}
+                    </span>
+                  </label>
                 ))}
               </div>
             </Grupo>

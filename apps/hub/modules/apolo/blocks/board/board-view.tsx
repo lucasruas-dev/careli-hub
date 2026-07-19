@@ -46,9 +46,12 @@ import { getApoloAccessToken } from "../../data/apolo-operations";
 // Ver [[project_esteira_credenciamento_venda]].
 
 type ItemFila = {
+  // Corretor e imobiliária vindos da CAD importada (o cadastro do wizard usa outros campos).
+  corretor?: string | null;
   corretores: number;
   criadoEm: string;
   documento: string;
+  imobiliaria?: string | null;
   // Nomes dos empreendimentos a que o item se refere (eixo de filtro/ordenação do Board).
   empreendimentos: string[];
   // Etapa PERSISTIDA (metadata.esteira.etapa). É o ponto de partida do item na tela: quem foi
@@ -618,8 +621,10 @@ export function BoardView() {
                           <p className="m-0 truncate text-sm font-semibold text-ink">
                             {toTitleCase(item.nome)}
                           </p>
-                          <p className="m-0 text-[11px] text-ink-muted">
+                          <p className="m-0 truncate text-[11px] text-ink-muted">
                             {imob ? "Imobiliária" : "CAD · prospect"}
+                            {/* Quem indicou a CAD: vem da importação do Asana. */}
+                            {item.imobiliaria ? ` · ${item.imobiliaria}` : ""}
                           </p>
                         </div>
                       </div>

@@ -24,7 +24,14 @@ type EntityRow = {
     bornRole?: string;
     cadastro?: { corretores?: unknown[]; empreendimentos?: unknown[]; socios?: unknown[] };
     // Onde o item está na esteira. Fica no metadata (jsonb livre) em vez de coluna própria.
-    esteira?: { atualizadoEm?: string; etapa?: string; origem?: string };
+    esteira?: {
+      atualizadoEm?: string;
+      corretor?: string | null;
+      empreendimento?: string | null;
+      etapa?: string;
+      imobiliaria?: string | null;
+      origem?: string;
+    };
   } | null;
   primary_city: string | null;
   primary_state: string | null;
@@ -96,11 +103,25 @@ export async function GET(request: Request) {
 
   const itens = data.map((row) => {
     const cadastro = row.metadata?.cadastro;
+    const esteira = row.metadata?.esteira;
+
+    // O empreendimento vem do cadastro (quem nasceu no wizard) OU da esteira (quem foi
+    // importado do Asana, que é cadastro antigo e não tem metadata.cadastro).
+    const doCadastro = nomesEmpreendimentos(cadastro?.empreendimentos);
+    const empreendimentos =
+      doCadastro.length > 0
+        ? doCadastro
+        : esteira?.empreendimento
+          ? [esteira.empreendimento]
+          : [];
+
     return {
+      corretor: esteira?.corretor ?? null,
       corretores: conta(cadastro?.corretores),
       criadoEm: row.created_at,
       documento: row.document_masked ?? "",
-      empreendimentos: nomesEmpreendimentos(cadastro?.empreendimentos),
+      empreendimentos,
+      imobiliaria: esteira?.imobiliaria ?? null,
       // A etapa salva no banco. A tela usa isto como ponto de partida do item; sem ele, tudo
       // voltava para "Validação" a cada carregamento porque a etapa só existia em memória.
       etapa: row.metadata?.esteira?.etapa ?? null,
