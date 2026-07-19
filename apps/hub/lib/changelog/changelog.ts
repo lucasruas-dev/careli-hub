@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-board-etapa-persistida",
+    deployedAt: "2026-07-20T03:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "As CADs importadas do Asana agora aparecem na coluna Credenciado, como deviam.",
+              "A etapa de cada item passou a vir do banco: antes ela existia so na tela e voltava para Validacao a cada carregamento.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.46.1",
+    technical: {
+      done: "A rota do Board passou a buscar em duas frentes e deduplicar: a fila normal (status review + source apolo) e quem tem metadata.esteira preenchido. Sem a segunda, as CADs importadas ficavam de fora: sao cadastros antigos, com status 'active' e sem source. O item devolvido ganhou o campo etapa (metadata.esteira.etapa) e o board-view semeia o progresso a partir dele, preservando o que o operador moveu na sessao (INDICE_POR_ETAPA faz a ponte texto->indice de ETAPAS_CAD).",
+      motivation: "A importacao das CADs gravou 124 vinculos e 121 entidades marcadas como credenciado, mas o Board continuava vazio: a escrita da etapa tinha sido implementada e a leitura nao. O progresso era useState local, e o filtro da fila excluia justamente as entidades importadas.",
+    },
+    title: "Apolo: Board passou a ler a etapa salva no banco",
+    type: "correcao",
+    version: "1.46.2",
+  },
+  {
     buildTag: "2026-07-20-apolo-importar-cads-concluidas",
     deployedAt: "2026-07-20T02:30:00-03:00",
     internal: true,

@@ -51,10 +51,22 @@ type ItemFila = {
   documento: string;
   // Nomes dos empreendimentos a que o item se refere (eixo de filtro/ordenação do Board).
   empreendimentos: string[];
+  // Etapa PERSISTIDA (metadata.esteira.etapa). É o ponto de partida do item na tela: quem foi
+  // importado do Asana como credenciado precisa nascer na coluna certa, não em Validação.
+  etapa?: string | null;
   id: string;
   nome: string;
   papel: string;
   socios: number;
+};
+
+// A etapa salva é texto; o Board trabalha com índice em ETAPAS_CAD. Esta é a ponte.
+const INDICE_POR_ETAPA: Record<string, number> = {
+  cadastro: 0,
+  credenciado: 3,
+  credito: 1,
+  prevenda: 2,
+  validacao: 0,
 };
 
 // Data e hora de chegada: é o carimbo que ordena a fila de trabalho.
@@ -243,9 +255,21 @@ export function BoardView() {
           data?: { analistas?: Analista[]; itens?: ItemFila[]; usuarioAtual?: Analista | null };
         };
         if (alive) {
-          setItens(payload.data?.itens ?? []);
+          const itensCarregados = payload.data?.itens ?? [];
+          setItens(itensCarregados);
           setAnalistas(payload.data?.analistas ?? []);
           setUsuarioAtual(payload.data?.usuarioAtual ?? null);
+
+          // Semeia o progresso com a etapa que veio do banco, preservando o que o operador já
+          // moveu nesta sessão (o que ele mexeu na tela ganha do que estava salvo).
+          setProgresso((atual) => {
+            const semeado: Record<string, number> = {};
+            for (const item of itensCarregados) {
+              const indice = item.etapa ? INDICE_POR_ETAPA[item.etapa] : undefined;
+              if (indice !== undefined) semeado[item.id] = indice;
+            }
+            return { ...semeado, ...atual };
+          });
         }
       } catch {
         // fila vazia
