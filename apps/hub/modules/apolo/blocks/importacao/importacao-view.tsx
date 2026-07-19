@@ -12,6 +12,8 @@ import { useCallback, useEffect, useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
 
+import { ImportarCads } from "./importar-cads";
+
 // Importar CADs do Asana — PASSO 1: enxergar o que existe lá.
 //
 // Esta tela é read-only e não custa nada: não baixa arquivo, não lê documento e não chama a
@@ -56,6 +58,7 @@ function pareceDocumento(nome: string): boolean {
 }
 
 export function ImportacaoView() {
+  const [aba, setAba] = useState<"importar" | "sondagem">("importar");
   const [sondagem, setSondagem] = useState<Sondagem | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -81,9 +84,11 @@ export function ImportacaoView() {
     setCarregando(false);
   }, []);
 
+  // A sondagem só roda quando a aba dela é aberta: é uma varredura no Asana, não precisa
+  // acontecer toda vez que alguém entra na tela para importar.
   useEffect(() => {
-    void sondar();
-  }, [sondar]);
+    if (aba === "sondagem" && !sondagem && !erro) void sondar();
+  }, [aba, erro, sondagem, sondar]);
 
   const campoDocumento = sondagem?.campos.find((c) => pareceDocumento(c.nome));
 
@@ -96,28 +101,58 @@ export function ImportacaoView() {
             Leitura apenas. Nada é criado no Apolo e nenhum documento é lido nesta etapa.
           </p>
         </div>
-        <button
-          className="ml-auto inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
-          disabled={carregando}
-          onClick={() => void sondar()}
-          type="button"
-        >
-          {carregando ? (
-            <Loader2 className="animate-spin" size={15} />
-          ) : (
-            <RefreshCw size={15} />
-          )}
-          Sondar de novo
-        </button>
+        <nav className="ml-auto flex items-center gap-1 rounded-lg bg-black/[0.05] p-1 dark:bg-white/[0.07]">
+          {(
+            [
+              ["importar", "Importar"],
+              ["sondagem", "O que existe no Asana"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={`rounded-md px-3 py-1.5 text-[0.8rem] font-bold transition-colors ${
+                aba === id
+                  ? "bg-surface text-[#A07C3B] shadow-sm"
+                  : "text-ink-muted hover:text-ink"
+              }`}
+              onClick={() => setAba(id)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+
+        {aba === "sondagem" ? (
+          <button
+            className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-1.5 text-sm font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
+            disabled={carregando}
+            onClick={() => void sondar()}
+            type="button"
+          >
+            {carregando ? (
+              <Loader2 className="animate-spin" size={15} />
+            ) : (
+              <RefreshCw size={15} />
+            )}
+            Sondar de novo
+          </button>
+        ) : null}
       </header>
 
-      {carregando && !sondagem ? (
+      {aba === "importar" ? (
+        <div className="p-5">
+          <ImportarCads />
+        </div>
+      ) : null}
+
+      {aba === "sondagem" && carregando && !sondagem ? (
         <div className="grid place-items-center py-20">
           <Loader2 className="animate-spin text-ink-muted" size={22} />
         </div>
       ) : null}
 
-      {erro ? (
+      {aba === "sondagem" && erro ? (
         <div className="m-5 rounded-xl border border-red-300/50 bg-red-50 p-4 dark:bg-red-950/30">
           <p className="text-sm font-semibold text-red-800 dark:text-red-300">
             Não foi possível ler o Asana
@@ -129,7 +164,7 @@ export function ImportacaoView() {
         </div>
       ) : null}
 
-      {sondagem ? (
+      {aba === "sondagem" && sondagem ? (
         <div className="space-y-4 p-5">
           <div className="flex flex-wrap gap-3">
             <Indicador

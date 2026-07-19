@@ -19,6 +19,9 @@ const APOLO_READ_ROLES: HubUserRole[] = [
   "viewer",
 ];
 
+// Quem pode ESCREVER (importar CADs, mexer na esteira). `viewer` só olha.
+const APOLO_WRITE_ROLES: HubUserRole[] = ["admin", "leader", "operator"];
+
 function getBearerToken(request: Request) {
   const header = request.headers.get("authorization") ?? "";
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -32,6 +35,20 @@ function getBearerToken(request: Request) {
 // server-side, o client e nulo e liberamos (nao ha sessao real para checar).
 export async function authorizeApoloRead(
   request: Request,
+): Promise<ApoloAuthResult> {
+  return authorizeApolo(request, APOLO_READ_ROLES);
+}
+
+// Mesmo contrato, recorte de papel menor: usado por quem GRAVA no Apolo.
+export async function authorizeApoloWrite(
+  request: Request,
+): Promise<ApoloAuthResult> {
+  return authorizeApolo(request, APOLO_WRITE_ROLES);
+}
+
+async function authorizeApolo(
+  request: Request,
+  papeis: HubUserRole[],
 ): Promise<ApoloAuthResult> {
   const token = getBearerToken(request);
 
@@ -73,7 +90,7 @@ export async function authorizeApoloRead(
     userError ||
     !user ||
     user.status !== "active" ||
-    !APOLO_READ_ROLES.includes(user.role)
+    !papeis.includes(user.role)
   ) {
     return {
       ok: false,

@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-importar-cads-finalizado",
+    deployedAt: "2026-07-20T01:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Importar CADs agora traz de verdade: busca as CADs de um empreendimento no Asana e compara com os cadastros do Apolo.",
+              "O resultado vem em quatro listas: casaram, ambiguos, sem cadastro e ja importados.",
+              "As que casaram vem marcadas e podem ser desmarcadas; nos ambiguos voce escolhe qual cadastro e o certo.",
+              "Nada e gravado ate voce clicar em Importar, e o botao mostra quantas serao afetadas.",
+              "Rodar a importacao de novo nao duplica: cada CAD fica vinculada a sua tarefa no Asana.",
+              "Este primeiro lote nao le nenhum documento, entao nao tem custo de consulta.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.45.0",
+    technical: {
+      done: "lib/apolo/asana-import.ts: escanearCads pagina o projeto do Asana e filtra por empreendimento e secao; casarComApolo indexa apolo_entities por nome normalizado (acento, caixa, espaco, pontuacao) e separa em casados/ambiguos/naoCasados/jaImportados; aplicarVinculos grava apolo_source_links (unique source_system+source_table+source_id = trava de reimportacao) e a etapa em metadata.esteira. Rota /api/apolo/asana/importar (GET preview read-only, POST exige confirmado e a lista explicita de itens). authorizeApoloWrite novo: escrita exclui o papel viewer. 10 testes na normalizacao de nome e no mapa de secoes.",
+      motivation: "Primeiro lote da migracao das CADs do Asana, escolhido pelo Lucas: a secao Finalizado do Vale do Ouro ja tem cadastro no Apolo, entao casa por nome e marca como credenciado sem gastar iOCR (R$ 0,506 por imagem). Serve de ensaio da mecanica antes das secoes que exigem leitura paga. A etapa nao precisou de migration: apolo_entities.metadata e jsonb livre e o Board ja le de la.",
+    },
+    title: "Apolo: importar as CADs finalizadas do Asana",
+    type: "novidade",
+    version: "1.46.0",
+  },
+  {
     buildTag: "2026-07-19-apolo-importar-cads-sondagem",
     deployedAt: "2026-07-20T00:30:00-03:00",
     modules: [
