@@ -53,10 +53,18 @@ export async function GET(request: Request) {
     const { cads } = await escanearCads({ empreendimento, secoes });
     const { itens, orcamento } = await orcarLeitura({
       cads: cads.map((cad) => ({
+        conjuge: cad.conjuge,
+        email: cad.email,
+        escolaridade: cad.escolaridade,
+        estadoCivil: cad.estadoCivil,
         gid: cad.gid,
         imobiliaria: cad.imobiliaria,
-        nome: cad.nome,
+        // O nome do PROPONENTE é o do cliente; o título da task é digitado à mão.
+        nome: cad.nomeProponente || cad.nome,
         notas: cad.notas,
+        profissao: cad.profissao,
+        renda: cad.renda,
+        telefone: cad.telefone,
       })),
       client,
     });
@@ -125,11 +133,19 @@ export async function POST(request: Request) {
       return {
         // Tudo que o OCR entregou vai para a ficha: foi pago, tem que ser aproveitado.
         cidade: lido.cidade,
+        // Da DESCRIÇÃO da CAD (grátis): cônjuge, escolaridade, estado civil, profissão e
+        // renda. É o que evita pagar enriquecimento para descobrir o mesmo.
+        conjuge: item.conjuge,
         cpf: lido.cpf,
         dataNascimento: lido.dataNascimento,
+        email: item.email,
         empreendimento: body.empreendimento ?? null,
+        escolaridade: item.escolaridade,
+        estadoCivil: item.estadoCivil,
         gid: item.gid,
         imobiliaria: item.imobiliaria,
+        profissao: item.profissao,
+        renda: item.renda,
         nacionalidade: lido.nacionalidade,
         naturalidade: lido.naturalidade,
         nome: item.nome,
@@ -138,6 +154,7 @@ export async function POST(request: Request) {
         nomePai: lido.nomePai,
         orgaoEmissor: lido.orgaoEmissor,
         rg: lido.rg,
+        telefone: item.telefone,
         uf: lido.uf,
       };
     });

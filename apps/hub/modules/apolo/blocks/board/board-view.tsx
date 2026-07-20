@@ -13,7 +13,6 @@ import {
   ListOrdered,
   Loader2,
   MessageSquare,
-  PanelRightClose,
   QrCode,
   Search,
   Send,
@@ -172,6 +171,14 @@ export function BoardView() {
   const [busca, setBusca] = useState("");
   const [empreendimento, setEmpreendimento] = useState("todos");
   const [ordem, setOrdem] = useState<"antigos" | "nome" | "recentes">("antigos");
+  // Filtro por etapa: com centenas de itens na fila, ver só uma coluna por vez é o que torna
+  // a lista utilizável.
+  const [etapaFiltro, setEtapaFiltro] = useState("todas");
+  // Ordenação clicando no cabeçalho. `null` = usa a ordem escolhida no seletor.
+  const [colunaOrdem, setColunaOrdem] = useState<{
+    campo: "chegada" | "documento" | "empreendimento" | "etapa" | "nome";
+    desc: boolean;
+  } | null>(null);
   // Só no esqueleto: guarda em que etapa o operador "avançou" cada item (não persiste).
   const [progresso, setProgresso] = useState<Record<string, number>>({});
   // Popup do chat/histórico: nasce fechado, abre pelo botão.
@@ -317,7 +324,58 @@ export function BoardView() {
         ? `${item.nome} ${item.documento}`.toLowerCase().includes(alvoBusca)
         : true,
     )
+    .filter((item) =>
+      etapaFiltro === "todas"
+        ? true
+        : colunaDoItem(
+            item,
+            progresso[item.id] ?? 0,
+            Boolean(indeferidos[item.id]),
+            Boolean(emRevisao[item.id]),
+            Boolean(emCorrecao[item.id]),
+          ) === etapaFiltro,
+    )
     .sort((a, b) => {
+      // Clique no cabeçalho manda; o seletor é o padrão quando não há coluna escolhida.
+      if (colunaOrdem) {
+        const sinal = colunaOrdem.desc ? -1 : 1;
+        const texto = (valor: string) => valor.toLocaleLowerCase("pt-BR");
+
+        if (colunaOrdem.campo === "nome") {
+          return sinal * a.nome.localeCompare(b.nome, "pt-BR");
+        }
+        if (colunaOrdem.campo === "documento") {
+          return sinal * texto(a.documento).localeCompare(texto(b.documento), "pt-BR");
+        }
+        if (colunaOrdem.campo === "empreendimento") {
+          return (
+            sinal *
+            texto(a.empreendimentos.join(", ")).localeCompare(
+              texto(b.empreendimentos.join(", ")),
+              "pt-BR",
+            )
+          );
+        }
+        if (colunaOrdem.campo === "etapa") {
+          const posicao = (item: ItemFila) =>
+            colunasDoTipo(item.papel === "imobiliaria").findIndex(
+              (coluna) =>
+                coluna.id ===
+                colunaDoItem(
+                  item,
+                  progresso[item.id] ?? 0,
+                  Boolean(indeferidos[item.id]),
+                  Boolean(emRevisao[item.id]),
+                  Boolean(emCorrecao[item.id]),
+                ),
+            );
+          return sinal * (posicao(a) - posicao(b));
+        }
+        return (
+          sinal * (new Date(a.criadoEm).getTime() - new Date(b.criadoEm).getTime())
+        );
+      }
+
       if (ordem === "nome") return a.nome.localeCompare(b.nome, "pt-BR");
       const ta = new Date(a.criadoEm).getTime();
       const tb = new Date(b.criadoEm).getTime();
@@ -562,9 +620,39 @@ export function BoardView() {
             ))}
           </select>
 
+          {/* Filtro por etapa: mostra a contagem junto, para saber onde a fila está parada
+              sem precisar abrir o kanban. */}
           <select
             className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
-            onChange={(event) => setOrdem(event.target.value as typeof ordem)}
+            onChange={(event) => setEtapaFiltro(event.target.value)}
+            value={etapaFiltro}
+          >
+            <option value="todas">Todas as etapas</option>
+            {colunasDoTipo(filtro === "imobiliaria").map((coluna) => {
+              const quantos = itens.filter(
+                (item) =>
+                  colunaDoItem(
+                    item,
+                    progresso[item.id] ?? 0,
+                    Boolean(indeferidos[item.id]),
+                    Boolean(emRevisao[item.id]),
+                    Boolean(emCorrecao[item.id]),
+                  ) === coluna.id,
+              ).length;
+              return (
+                <option key={coluna.id} value={coluna.id}>
+                  {coluna.label} ({quantos})
+                </option>
+              );
+            })}
+          </select>
+
+          <select
+            className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
+            onChange={(event) => {
+              setColunaOrdem(null);
+              setOrdem(event.target.value as typeof ordem);
+            }}
             value={ordem}
           >
             <option value="antigos">Mais antigos primeiro</option>
@@ -600,12 +688,35 @@ export function BoardView() {
           <table className="w-full min-w-[880px] border-collapse text-sm">
             <thead className="sticky top-0 z-10">
               <tr className="border-b border-line bg-subtle text-left text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
-                <th className="px-4 py-2.5">Quem</th>
-                <th className="px-3 py-2.5">Etapa</th>
+                <ThOrdenavel
+                  campo="nome"
+                  className="px-4 py-2.5"
+                  estado={colunaOrdem}
+                  onOrdenar={setColunaOrdem}
+                >
+                  Quem
+                </ThOrdenavel>
+                <ThOrdenavel campo="etapa" estado={colunaOrdem} onOrdenar={setColunaOrdem}>
+                  Etapa
+                </ThOrdenavel>
                 <th className="px-3 py-2.5">Analista</th>
-                <th className="px-3 py-2.5">Documento</th>
-                <th className="px-3 py-2.5">Empreendimento</th>
-                <th className="px-3 py-2.5">Chegou em</th>
+                <ThOrdenavel
+                  campo="documento"
+                  estado={colunaOrdem}
+                  onOrdenar={setColunaOrdem}
+                >
+                  Documento
+                </ThOrdenavel>
+                <ThOrdenavel
+                  campo="empreendimento"
+                  estado={colunaOrdem}
+                  onOrdenar={setColunaOrdem}
+                >
+                  Empreendimento
+                </ThOrdenavel>
+                <ThOrdenavel campo="chegada" estado={colunaOrdem} onOrdenar={setColunaOrdem}>
+                  Chegou em
+                </ThOrdenavel>
                 <th className="px-4 py-2.5" />
               </tr>
             </thead>
@@ -762,6 +873,42 @@ function colunaDoItem(
   if (etapa === 1) return "credito";
   if (etapa === 2) return "prevenda";
   return "credenciado";
+}
+
+type CampoOrdem = "chegada" | "documento" | "empreendimento" | "etapa" | "nome";
+type EstadoOrdem = { campo: CampoOrdem; desc: boolean } | null;
+
+// Cabeçalho que ordena ao clique: 1º clique ascendente, 2º descendente, 3º volta ao padrão.
+// A seta mostra o estado — sem ela o operador clica no escuro.
+function ThOrdenavel(props: {
+  campo: CampoOrdem;
+  children: React.ReactNode;
+  className?: string;
+  estado: EstadoOrdem;
+  onOrdenar: (estado: EstadoOrdem) => void;
+}) {
+  const ativo = props.estado?.campo === props.campo;
+
+  return (
+    <th className={props.className ?? "px-3 py-2.5"}>
+      <button
+        className={`flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide transition-colors ${
+          ativo ? "text-ink" : "text-ink-muted hover:text-ink"
+        }`}
+        onClick={() => {
+          if (!ativo) props.onOrdenar({ campo: props.campo, desc: false });
+          else if (!props.estado?.desc) props.onOrdenar({ campo: props.campo, desc: true });
+          else props.onOrdenar(null);
+        }}
+        type="button"
+      >
+        {props.children}
+        <span aria-hidden="true" className="text-[9px]">
+          {ativo ? (props.estado?.desc ? "▼" : "▲") : "↕"}
+        </span>
+      </button>
+    </th>
+  );
 }
 
 // Onde o item está no workflow — o mesmo vocabulário visual do kanban, dentro da lista.
@@ -1478,11 +1625,12 @@ function acaoDaEtapa(id: string): string {
 function PainelEtapa({
   entityId,
   etapa,
-  imob,
 }: {
   entityId: string;
   etapa: Etapa;
-  imob: boolean;
+  // `imob` continua no contrato porque quem chama passa, mas o painel não distingue os dois
+  // fluxos hoje. Fica declarado e não desestruturado, em vez de sumir da assinatura.
+  imob?: boolean;
 }) {
   const Icon = etapa.icon;
   return (

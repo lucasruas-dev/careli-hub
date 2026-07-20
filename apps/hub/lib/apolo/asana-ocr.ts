@@ -80,12 +80,28 @@ export type AnexoCandidato = {
   tamanho: number | null;
 };
 
+// Tudo que veio da CAD do Asana (campos + descrição do formulário). Viaja junto do orçamento
+// até a criação da entidade: é dado de graça que não pode se perder no caminho.
 export type CadParaLeitura = {
   anexos: AnexoCandidato[];
+  conjuge?: {
+    email?: string;
+    escolaridade?: string;
+    nome?: string;
+    profissao?: string;
+    renda?: string;
+    telefone?: string;
+  };
   cpfNoTexto: string | null;
+  email: string | null;
+  escolaridade?: string | null;
+  estadoCivil?: string | null;
   gid: string;
   imobiliaria: string | null;
   nome: string;
+  profissao?: string | null;
+  renda?: string | null;
+  telefone: string | null;
 };
 
 export type Orcamento = {
@@ -126,7 +142,7 @@ async function listarAnexos(taskGid: string): Promise<AnexoCandidato[]> {
 
 // ORÇAMENTO — read-only e sem custo. Nenhuma chamada à MOST acontece aqui.
 export async function orcarLeitura(input: {
-  cads: { gid: string; imobiliaria: string | null; nome: string; notas: string | null }[];
+  cads: (Omit<CadParaLeitura, "anexos" | "cpfNoTexto"> & { notas: string | null })[];
   client: AdminClient;
 }): Promise<{ itens: CadParaLeitura[]; orcamento: Orcamento }> {
   const custoPorImagem = custoOcrImagem();
@@ -150,13 +166,8 @@ export async function orcarLeitura(input: {
       }
     }
 
-    itens.push({
-      anexos,
-      cpfNoTexto,
-      gid: cad.gid,
-      imobiliaria: cad.imobiliaria,
-      nome: cad.nome,
-    });
+    // Repassa a CAD inteira: só `anexos` e `cpfNoTexto` são descobertos aqui.
+    itens.push({ ...cad, anexos, cpfNoTexto });
   }
 
   // Economia (b): o que já foi lido antes não será cobrado. Só dá para saber com certeza

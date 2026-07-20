@@ -36,6 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-cad-formulario-completo",
+    deployedAt: "2026-07-20T11:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A importacao passou a ler o formulario inteiro da CAD: profissao, renda, estado civil, escolaridade, telefone e e-mail do cliente.",
+              "O conjuge vem junto, com nome, contato, profissao e renda — igual ao cadastro feito a mao.",
+              "Profissao, escolaridade, estado civil e renda sao convertidos para as listas padronizadas do sistema, mesmo vindo escritos a mao no Asana.",
+              "O que nao for reconhecido com seguranca fica em branco para o operador escolher, em vez de entrar errado.",
+              "Nada disso tem custo: e informacao que ja estava na CAD.",
+            ],
+            screen: "Importar CADs",
+          },
+          {
+            items: [
+              "A lista ganhou filtro por etapa, com a contagem de cada uma.",
+              "Da para ordenar clicando no cabecalho: nome, etapa, documento, empreendimento e data de chegada.",
+              "O CPF aparece completo, como ja acontecia nas CADs vindas do C2X.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.48.2",
+    technical: {
+      done: "asana-descricao.ts faz o parse do corpo do formulario (rotulo/valor, aceitando valor na mesma linha ou na seguinte) e separa proponente, conjuge e corretor — os tres tem e-mail e telefone, e confundi-los gravaria o contato do corretor como do cliente. c2x-match.ts casa texto livre com as listas fechadas do C2X: profissao por similaridade contra 234 opcoes (limiar alto: Pedreiro nao pode virar Padeiro), escolaridade por sinonimos (2 grau, faculdade, cursando), renda convertendo reais para faixa de salarios. matchEstadoCivilId ja existia e foi reusado. Board: filtro por etapa com contagem, ThOrdenavel com 3 estados por coluna, e CPF completo (272 registros corrigidos no banco). 54 testes.",
+      motivation: "A descricao da CAD tinha profissao, renda, estado civil, escolaridade e o conjuge inteiro, e estava sendo ignorada — enquanto o plano era pagar enriquecimento (R$ 1,06 por CPF, R$ 292 nos 275) para descobrir parte do mesmo. O Lucas apontou tambem que a profissao do Asana e escrita livre e a do C2X e lista fechada, o que exigia a ponte entre as duas.",
+    },
+    title: "Apolo: importacao le o formulario completo da CAD",
+    type: "novidade",
+    version: "1.49.0",
+  },
+  {
     buildTag: "2026-07-20-apolo-board-etapa-telefone",
     deployedAt: "2026-07-20T10:30:00-03:00",
     internal: true,

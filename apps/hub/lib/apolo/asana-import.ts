@@ -8,7 +8,14 @@
 // Nada aqui escreve sem confirmação explícita: `escanear` é read-only e devolve as três
 // listas (casou / ambíguo / não casou) para uma pessoa conferir. Casar nome errado significa
 // credencial impressa com o nome trocado no dia do evento.
+import { extrairDaDescricao, type DadosDaDescricao } from "@/lib/apolo/asana-descricao";
 import { createApoloEntity } from "@/lib/apolo/cadastro-persist";
+import { matchEstadoCivilId } from "@/lib/apolo/c2x-fields";
+import {
+  matchEscolaridadeId,
+  matchFaixaRendaId,
+  matchProfissaoId,
+} from "@/lib/apolo/c2x-match";
 import { hashIdentifier, type createApoloAdminClient } from "@/lib/apolo/server";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
@@ -25,12 +32,28 @@ export const DESTINO_POR_SECAO: Record<string, "validacao" | "credenciado"> = {
 };
 
 export type CadDoAsana = {
+  // Código da CAD no Asana (GCAD-7808): é como o time se refere a ela.
+  codigo: string | null;
+  // Cônjuge, lido da DESCRIÇÃO do formulário. Para casado isso entra no contrato, então vem
+  // junto — e vem de graça.
+  conjuge: DadosDaDescricao["conjuge"];
   corretor: string | null;
   criadoEm: string | null;
+  email: string | null;
   empreendimento: string | null;
+  // Escolaridade, estado civil, profissão e renda: TUDO isso está na descrição da CAD, em
+  // texto livre. É o que evita pagar enriquecimento para descobrir o mesmo.
+  escolaridade: string | null;
+  estadoCivil: string | null;
   gid: string;
   imobiliaria: string | null;
   nome: string;
+  // Nome do PROPONENTE = o cliente. O título da task costuma ser o mesmo, mas o campo é o
+  // que o corretor preencheu de propósito.
+  nomeProponente: string | null;
+  profissao: string | null;
+  renda: string | null;
+  telefone: string | null;
   // Descrição da task + os campos preenchidos, concatenados. É onde se procura o CPF antes de
   // pagar pela leitura do documento.
   notas: string | null;
@@ -250,15 +273,41 @@ export async function escanearCads(input: {
         .filter(Boolean)
         .join(" ");
 
+      // ⚠️ A DESCRIÇÃO da CAD é a fonte mais rica que temos: o formulário "CAD - Vale do
+      // Ouro" pergunta profissão, renda, estado civil, escolaridade e os dados do cônjuge.
+      // Tudo isso chegava aqui e era ignorado, enquanto o plano era PAGAR enriquecimento
+      // (R$ 1,06 por CPF) para descobrir parte do mesmo.
+      const daDescricao = extrairDaDescricao(task.notes);
+
+      // Cuidado com "Solicitante" e "Corretor": os dois também têm e-mail e telefone. O
+      // campo do proponente é buscado primeiro; o parser da descrição já exclui os outros.
+      const telefone =
+        valorDoCampo(task, ["contato", "telefone", "celular"], "proponente") ??
+        daDescricao.proponente.telefone ??
+        null;
+      const email =
+        valorDoCampo(task, ["mail"], "proponente") ?? daDescricao.proponente.email ?? null;
+      const nomeProponente =
+        valorDoCampo(task, ["nome"], "proponente") ?? daDescricao.proponente.nome ?? null;
+
       cads.push({
-        corretor: valorDoCampo(task, ["corretor"]),
+        codigo: valorDoCampo(task, ["gcad", "codigo"]),
+        conjuge: daDescricao.conjuge,
+        corretor: valorDoCampo(task, ["corretor"]) ?? daDescricao.corretor ?? null,
         criadoEm: task.created_at,
+        email,
         empreendimento,
+        escolaridade: daDescricao.proponente.escolaridade ?? null,
+        estadoCivil: daDescricao.proponente.estadoCivil ?? null,
         gid: task.gid,
-        imobiliaria: valorDoCampo(task, ["imobiliar"]),
+        imobiliaria: valorDoCampo(task, ["imobiliar"]) ?? daDescricao.imobiliaria ?? null,
         nome: task.name.trim(),
+        nomeProponente,
         notas: [task.notes ?? "", textoDosCampos].join(" ").trim() || null,
+        profissao: daDescricao.proponente.profissao ?? null,
+        renda: daDescricao.proponente.renda ?? null,
         secao,
+        telefone,
       });
     }
 
@@ -401,6 +450,12 @@ export async function casarComApolo(
   return preview;
 }
 
+// Os ids das listas do C2X viajam como texto no cadastro (é o que o wizard manda). Null vira
+// string vazia, que é como o formulário representa "não escolhido".
+function textoDoId(id: number | null): string {
+  return id === null ? "" : String(id);
+}
+
 export type CriacaoResultado = {
   criados: number;
   erros: { cad: string; motivo: string }[];
@@ -422,6 +477,9 @@ export async function criarEntidadesDoLote(input: {
     cidade?: string;
     cpf: string;
     dataNascimento?: string;
+    // Contato que o corretor preencheu na CAD do Asana. Vem de graça e evita pagar
+    // enriquecimento para descobrir telefone e e-mail que já estavam ali.
+    email?: string | null;
     empreendimento?: string | null;
     empreendimentoId?: string | null;
     gid: string;
@@ -435,7 +493,14 @@ export async function criarEntidadesDoLote(input: {
     nomePai?: string;
     orgaoEmissor?: string;
     rg?: string;
+    telefone?: string | null;
     uf?: string;
+    // Vindos da DESCRIÇÃO da CAD (texto livre do formulário).
+    conjuge?: DadosDaDescricao["conjuge"];
+    escolaridade?: string | null;
+    estadoCivil?: string | null;
+    profissao?: string | null;
+    renda?: string | null;
   }[];
   ownerUserId?: string | null;
 }): Promise<{ entidadePorCad: Record<string, string>; resultado: CriacaoResultado }> {
@@ -482,9 +547,28 @@ export async function criarEntidadesDoLote(input: {
           nomePai: item.nomePai,
           orgaoEmissor: item.orgaoEmissor,
         },
+        // O cônjuge vira relacionamento de contato, como no wizard. Para casado isso entra
+        // no contrato, então não pode ficar de fora.
+        conjuge: item.conjuge?.nome
+          ? {
+              email: item.conjuge.email,
+              nome: item.conjuge.nome,
+              telefone: item.conjuge.telefone,
+            }
+          : null,
         origem: "asana-cad",
         ownerUserId: input.ownerUserId ?? null,
         persona: "pf",
+        // Texto livre do formulário convertido para os ids das listas do C2X. O que não casa
+        // com confiança fica vazio, para o operador escolher — melhor branco que errado.
+        perfil: {
+          email: item.email ?? "",
+          escolaridadeId: textoDoId(matchEscolaridadeId(item.escolaridade)),
+          estadoCivilId: textoDoId(matchEstadoCivilId(item.estadoCivil ?? "")),
+          profissaoId: textoDoId(matchProfissaoId(item.profissao)),
+          rendaId: textoDoId(matchFaixaRendaId(item.renda)),
+          telefone: item.telefone ?? "",
+        },
         role: "prospect",
       });
 
@@ -492,6 +576,23 @@ export async function criarEntidadesDoLote(input: {
         resultado.erros.push({ cad: item.nome, motivo: criada.error });
         continue;
       }
+
+      // O CPF fica VISÍVEL na ficha, no mesmo formato que o sync do C2X usa.
+      //
+      // `createApoloEntity` grava `document_masked` mascarado (***.***.***-39) e a tabela de
+      // identificadores só guarda hash — ou seja, o número completo não é persistido em lugar
+      // nenhum. Só que o Board é tela INTERNA de validação: o operador precisa conferir o CPF
+      // contra o documento, e conferir com dois dígitos não dá. O sync do C2X já grava
+      // completo, então mascarar aqui deixava metade da fila num formato e metade noutro.
+      await input.client
+        .from("apolo_entities")
+        .update({
+          document_masked: digitos.replace(
+            /(\d{3})(\d{3})(\d{3})(\d{2})/,
+            "$1.$2.$3-$4",
+          ),
+        })
+        .eq("id", criada.entityId);
 
       entidadePorCad[item.gid] = criada.entityId;
       resultado.criados += 1;
@@ -552,11 +653,15 @@ export async function aplicarVinculos(input: {
     // Quando a CAD foi criada no Asana. É a data de chegada DE VERDADE: o created_at da
     // entidade no Apolo é quando o sync do C2X a criou, o que não diz nada sobre a CAD.
     criadoEm?: string | null;
+    // Contato preenchido pelo corretor na CAD. Reaplicar a importação completa isto em quem
+    // já foi importado sem custo nenhum — é dado que sempre esteve no Asana.
+    email?: string | null;
     empreendimento?: string | null;
     entityId: string;
     gid: string;
     imobiliaria?: string | null;
     secao: string;
+    telefone?: string | null;
   }[];
   porUsuario?: string | null;
 }): Promise<AplicacaoResultado> {
