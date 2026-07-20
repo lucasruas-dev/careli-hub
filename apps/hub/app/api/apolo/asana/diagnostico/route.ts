@@ -78,13 +78,17 @@ export async function POST(request: Request) {
 
     // Nome atual no Apolo + estado civil da ficha + cônjuge já registrado.
     const nomePorEntidade = new Map<string, string>();
+    const tipoPorEntidade = new Map<string, string>();
     const casadoPorEntidade = new Map<string, boolean>();
     const conjugePorEntidade = new Map<string, string>();
 
     for (let i = 0; i < entityIds.length; i += 200) {
       const bloco = entityIds.slice(i, i + 200);
       const [{ data: entidades }, { data: esteiras }, { data: relacoes }] = await Promise.all([
-        client.from("apolo_entities").select("id, display_name, legal_name").in("id", bloco),
+        client
+          .from("apolo_entities")
+          .select("id, display_name, legal_name, entity_kind")
+          .in("id", bloco),
         client.from("apolo_esteira").select("entity_id, ficha").in("entity_id", bloco),
         client
           .from("apolo_relationships")
@@ -95,10 +99,12 @@ export async function POST(request: Request) {
 
       for (const e of (entidades ?? []) as {
         display_name: string;
+        entity_kind: string;
         id: string;
         legal_name: string | null;
       }[]) {
         nomePorEntidade.set(e.id, e.legal_name || e.display_name);
+        tipoPorEntidade.set(e.id, e.entity_kind);
       }
       for (const s of (esteiras ?? []) as {
         entity_id: string;
@@ -122,6 +128,9 @@ export async function POST(request: Request) {
       trocado: 0,
     };
     const linhas: Record<string, unknown>[] = [];
+    // O Asana diz PF ou PJ no campo "Perfil" (custom field, com a descrição de reforço). A JFL
+    // entrou como pessoa física com o CPF do representante porque isso nunca era conferido.
+    let tipoDivergente = 0;
 
     for (const cad of cads) {
       const entityId = entidadePorGid.get(cad.gid);
@@ -136,6 +145,13 @@ export async function POST(request: Request) {
         tituloApolo,
       });
 
+      // "Pessoa Jurídica" -> pj. Qualquer outra coisa (ou vazio) fica como pf.
+      const perfil = (cad.perfilAsana ?? "").toLowerCase();
+      const tipoNoAsana = perfil.includes("jurid") ? "pj" : perfil.includes("fisic") ? "pf" : null;
+      const tipoNoApolo = tipoPorEntidade.get(entityId) ?? null;
+      const divergeTipo = Boolean(tipoNoAsana && tipoNoApolo && tipoNoAsana !== tipoNoApolo);
+      if (divergeTipo) tipoDivergente += 1;
+
       resumo[diag.veredito] += 1;
       linhas.push({
         action: "diagnostico_cad",
@@ -147,7 +163,11 @@ export async function POST(request: Request) {
           conjugeRegistrado: conjugePorEntidade.get(entityId) ?? null,
           detalhe: diag.detalhe,
           gid: cad.gid,
+          divergeTipo,
+          perfilAsana: cad.perfilAsana ?? null,
           proponenteAsana: cad.nomeProponente || cad.nome || null,
+          tipoNoApolo,
+          tipoNoAsana,
           similaridade: Number(diag.similaridade.toFixed(3)),
           tituloApolo,
           veredito: diag.veredito,
@@ -173,6 +193,7 @@ export async function POST(request: Request) {
         gravadas,
         resumo,
         semVinculo: cads.length - linhas.length,
+        tipoDivergente,
       },
     });
   } catch (error) {

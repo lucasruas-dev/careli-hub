@@ -306,7 +306,11 @@ export async function escanearCads(input: {
         imobiliaria: valorDoCampo(task, ["imobiliar"]) ?? daDescricao.imobiliaria ?? null,
         nome: task.name.trim(),
         nomeProponente,
-        perfilAsana: daDescricao.proponente.perfil ?? null,
+        // ⚠️ O projeto tem DOIS campos "Perfil" (um por empreendimento), e só um costuma
+        // estar preenchido. `valorDoCampo` pula os vazios, então pega o que vale. O custom
+        // field vem primeiro por ser o campo estruturado; a descrição é o reforço.
+        perfilAsana:
+          valorDoCampo(task, ["perfil"]) ?? daDescricao.proponente.perfil ?? null,
         notas: [task.notes ?? "", textoDosCampos].join(" ").trim() || null,
         profissao: daDescricao.proponente.profissao ?? null,
         renda: daDescricao.proponente.renda ?? null,

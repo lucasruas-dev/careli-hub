@@ -27,6 +27,7 @@ export function CompletarDados() {
   const [diagnostico, setDiagnostico] = useState<{
     analisadas: number;
     resumo: { conferir: number; falta_conjuge: number; ok: number; trocado: number };
+    tipoDivergente: number;
   } | null>(null);
 
   // DIAGNÓSTICO: descobre de quem é cada ficha comparando com o Asana, que é quem sabe dizer
@@ -49,6 +50,7 @@ export function CompletarDados() {
         data?: {
           analisadas: number;
           resumo: { conferir: number; falta_conjuge: number; ok: number; trocado: number };
+          tipoDivergente: number;
         };
         error?: string;
       };
@@ -227,12 +229,13 @@ export function CompletarDados() {
         ) : null}
 
         {diagnostico ? (
-          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          <div className="mt-4 grid gap-3 sm:grid-cols-5">
             {[
               ["Fichas corretas", diagnostico.resumo.ok],
               ["Com o cônjuge no lugar", diagnostico.resumo.trocado],
               ["Falta o cônjuge", diagnostico.resumo.falta_conjuge],
               ["Conferir à mão", diagnostico.resumo.conferir],
+              ["PF/PJ divergente", diagnostico.tipoDivergente],
             ].map(([label, valor]) => (
               <div className="rounded-lg border border-line bg-subtle/40 px-3 py-2" key={label}>
                 <p className="m-0 text-lg font-bold text-ink">{valor}</p>
