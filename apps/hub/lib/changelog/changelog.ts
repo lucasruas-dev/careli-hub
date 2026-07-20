@@ -36,6 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-apolo-validacao-espelha-formulario",
+    deployedAt: "2026-07-21T08:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A ficha de validacao passou a mostrar exatamente os campos da revisao do formulario: Identificacao, Perfil, Endereco, Contato e Conjuge.",
+              "Idade aparece de novo, calculada a partir da data de nascimento.",
+              "Endereco aparece mesmo quando esta vazio — antes a secao sumia justamente nas CADs que precisavam do preenchimento.",
+              "Nome do pai, RG e orgao emissor sairam: nao fazem parte da revisao do formulario.",
+              "Corrigida a lista suspensa que abria branca no modo escuro e ficava ilegivel.",
+            ],
+            screen: "Board · Validacao",
+          },
+          {
+            items: [
+              "A data que aparece na fila voltou a ser a da CAD no Asana, e nao a hora em que a importacao rodou.",
+              "Nova aba Completar dados: rele o formulario do Asana e preenche o que faltou nas CADs ja importadas, sem custo.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.50.0",
+    technical: {
+      done: "board-view: montarSecoes espelha o montarCadDoc do wizard (mesmas secoes, ordem e rotulos), com calcIdade e regime de bens condicionado a casado/uniao estavel (ids 2 e 6). Endereco deixou de ser condicional e le ficha -> apolo_addresses. O <select> voltou a bg-surface: o popup e desenhado pelo browser com a cor COMPUTADA do elemento, e bg-transparent resolvia para branco enquanto a option herdava text-ink claro. chegou_em: criadoEm agora atravessa escanearCads -> orcamento -> tela -> aplicarVinculos (a rota mandava null cravado). gravarChegadaDoLote faz o backfill so onde esta null.",
+      motivation: "O Lucas abriu a validacao e faltava metade: sem endereco, sem idade, com campos que a revisao do formulario nao tem, lista ilegivel no dark e a fila inteira marcada com a mesma data (392 registros as 01:58). A regra que ele fixou: a validacao confere o que aparece na revisao ao final do formulario, PF e PJ.",
+    },
+    title: "Apolo: validacao espelha a revisao do formulario",
+    type: "correcao",
+    internal: true,
+    version: "1.50.1",
+  },
+  {
     buildTag: "2026-07-20-apolo-validacao-editavel",
     deployedAt: "2026-07-20T14:00:00-03:00",
     modules: [

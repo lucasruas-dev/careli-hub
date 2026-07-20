@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
 
+import { CompletarDados } from "./completar-dados";
 import { ImportarCads } from "./importar-cads";
 import { LerCads } from "./ler-cads";
 
@@ -59,7 +60,7 @@ function pareceDocumento(nome: string): boolean {
 }
 
 export function ImportacaoView() {
-  const [aba, setAba] = useState<"importar" | "ler" | "sondagem">("importar");
+  const [aba, setAba] = useState<"completar" | "importar" | "ler" | "sondagem">("importar");
   // Filtro que a aba Importar repassa quando manda o operador para a leitura.
   const [filtroDaLeitura, setFiltroDaLeitura] = useState({
     empreendimento: "Vale do Ouro",
@@ -112,6 +113,7 @@ export function ImportacaoView() {
             [
               ["importar", "Importar"],
               ["ler", "Ler documentos"],
+              ["completar", "Completar dados"],
               ["sondagem", "O que existe no Asana"],
             ] as const
           ).map(([id, label]) => (
@@ -146,6 +148,12 @@ export function ImportacaoView() {
           </button>
         ) : null}
       </header>
+
+      {aba === "completar" ? (
+        <div className="p-5">
+          <CompletarDados />
+        </div>
+      ) : null}
 
       {aba === "importar" ? (
         <div className="p-5">
