@@ -36,6 +36,40 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-apolo-serasa-motor-e-tela",
+    deployedAt: "2026-07-21T15:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A etapa Analise de credito ganhou a tela de consulta ao Serasa.",
+              "Enquanto a integracao nao estiver liberada pelo Serasa, a tela informa o que falta em vez de oferecer um botao que nao funciona.",
+              "O ambiente fica sempre visivel: resultado de homologacao aparece marcado como teste, para nao ser confundido com consulta real.",
+              "Consulta anterior do mesmo CPF e reaproveitada; para consultar de novo, o aviso de nova cobranca e explicito.",
+            ],
+            screen: "Board · Analise de credito",
+          },
+          {
+            items: [
+              "Ficha ja corrigida ou editada a mao nao e mais reprocessada pela correcao de titulares.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.54.0",
+    technical: {
+      done: "Migration 0059 (serasa_consultas): uma linha por chamada, inclusive as que falham, com ambiente OBRIGATORIO e sem default. lib/serasa/{config,auth,client,resumo}.ts, 23 testes. Hosts, credenciais e ambiente 100% por env: a documentacao do Serasa publica TRES hosts (uat-api, sandbox-api, api) e DOIS caminhos de token, entao nada fica cravado no codigo. `ambienteConfere` recusa a consulta quando o ambiente declarado nao bate com o host — o cenario caro e URL de producao rodando com rotulo de teste. Documento sempre em header (X-Document-Id), nunca em query string; X-Retailer-Document-Id sempre enviado, senao a documentacao diz que a cobranca vai para o cliente distribuidor. Teto de 150/dia em homologacao (o Serasa bloqueia o IP acima de 200) e reaproveitamento de consulta em 30 dias. O resumo do relatorio e heuristico e assumidamente provisorio: o schema da resposta nao esta documentado, entao o cru fica salvo inteiro.",
+      motivation: "Proximo passo da esteira: a analise de credito das 122 CADs e manual hoje. Decisao do Lucas: montar tela, resultado, ligacao com o cadastro e comprovante ANTES de comecar a consultar. As perguntas que travam o codigo (endpoint de token, host de homologacao, grafia dos reportName) foram enviadas ao Serasa em 21/jul.",
+    },
+    title: "Apolo: analise de credito com Serasa (motor e tela)",
+    type: "novidade",
+    version: "1.55.0",
+  },
+  {
     buildTag: "2026-07-21-apolo-historico-ficha",
     deployedAt: "2026-07-21T14:00:00-03:00",
     modules: [
