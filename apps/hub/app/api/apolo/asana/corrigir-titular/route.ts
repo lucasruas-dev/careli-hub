@@ -41,6 +41,24 @@ async function laudos(
     .order("created_at", { ascending: false })
     .limit(2000);
 
+  // Fichas que JÁ foram corrigidas ou editadas à mão saem da lista.
+  //
+  // ⚠️ O laudo do diagnóstico continua dizendo "trocado" depois da correção, porque ele é um
+  // retrato do momento em que rodou. Sem esta trava, um segundo clique em "Corrigir titulares"
+  // reprocessaria as mesmas fichas e SOBRESCREVERIA a identidade — apagando o que o operador
+  // digitou (nascimento e filiação que o documento não traz voltariam a ficar vazios).
+  const { data: mexidas } = await client
+    .from("apolo_audit_events")
+    .select("entity_id")
+    .in("action", ["edit_identity", "edit_ficha"])
+    .limit(5000);
+
+  const naoTocar = new Set(
+    ((mexidas ?? []) as { entity_id: string | null }[])
+      .map((m) => m.entity_id)
+      .filter(Boolean) as string[],
+  );
+
   const vistos = new Set<string>();
   const saida: Laudo[] = [];
   for (const linha of (data ?? []) as {
@@ -49,6 +67,7 @@ async function laudos(
   }[]) {
     if (!linha.entity_id || vistos.has(linha.entity_id)) continue;
     vistos.add(linha.entity_id);
+    if (naoTocar.has(linha.entity_id)) continue;
     if (String(linha.metadata?.veredito ?? "") !== veredito) continue;
     saida.push({
       conjugeAsana: (linha.metadata?.conjugeAsana as string) ?? null,
