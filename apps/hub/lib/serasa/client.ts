@@ -35,8 +35,21 @@ function soDigitos(valor: string): string {
   return String(valor ?? "").replace(/\D/g, "");
 }
 
-// Mensagem por código, em português, dizendo o que fazer. Os códigos vêm do swagger dos
-// relatórios (200, 400, 401, 403, 404, 412, 429, 500).
+// Detecta o 500 que na verdade é problema de AUTENTICAÇÃO.
+//
+// Medido contra a homologação em 21/jul: token inválido NÃO devolve 401. Devolve **500** com
+// um fault do gateway deles ("Execution of Auth-Header-Validator failed... auth-header-validator.js").
+// Tratar isso como "erro do Serasa" faria a integração desistir de um caso que se resolve
+// renovando o token.
+export function pareceTokenInvalido(status: number, corpo: string): boolean {
+  if (status !== 500) return false;
+  return /auth-header-validator|faultstring|Auth-Header/i.test(corpo);
+}
+
+// Mensagem por código, em português, dizendo o que fazer.
+//
+// ⚠️ Os textos abaixo foram calibrados contra o comportamento REAL da homologação, que difere
+// do swagger em pontos importantes (ver docs/architecture/serasa-credito-integracao.md).
 function explicar(status: number, corpo: string): string {
   const resumo = corpo.slice(0, 200);
   switch (status) {
@@ -47,13 +60,23 @@ function explicar(status: number, corpo: string): string {
     case 403:
       return `Sem permissao (403). O relatorio pode nao estar no contrato. ${resumo}`;
     case 404:
-      return `Documento nao encontrado (404). ${resumo}`;
+      // ⚠️ AMBÍGUO de propósito. Medido em 21/jul: reportName INEXISTENTE devolve o MESMO
+      // "DOCUMENT_NOT_FOUND" de um CPF que não está na base. Dizer ao operador "este CPF não
+      // existe" seria afirmar mais do que a API permite saber.
+      return (
+        `Nao encontrado (404). Pode ser o documento que nao esta na base OU o relatorio ` +
+        `configurado nao estar ativo para a nossa credencial — a API devolve o mesmo erro ` +
+        `para os dois casos. ${resumo}`
+      );
     case 412:
       return `Pre-condicao nao atendida (412). Falta parametro obrigatorio. ${resumo}`;
     case 429:
       // Em homologação são 200/dia por IP, e estourar BLOQUEIA o IP.
       return `Limite de chamadas atingido (429). PARE as consultas. ${resumo}`;
     case 500:
+      if (pareceTokenInvalido(status, corpo)) {
+        return `Falha de autenticacao devolvida como 500 pelo gateway do Serasa. ${resumo}`;
+      }
       return `Erro no Serasa (500). ${resumo}`;
     default:
       return `Resposta inesperada (${status}). ${resumo}`;
@@ -110,10 +133,31 @@ async function consultar(
   if (config.costCenter) headers["X-Cost-Center"] = config.costCenter;
 
   try {
-    const resposta = await fetch(url.toString(), { cache: "no-store", headers, method: "GET" });
+    let resposta = await fetch(url.toString(), { cache: "no-store", headers, method: "GET" });
 
     if (!resposta.ok) {
-      const corpo = await resposta.text().catch(() => "");
+      let corpo = await resposta.text().catch(() => "");
+
+      // UMA retentativa, e só para token inválido disfarçado de 500. O token vale 60 minutos e
+      // fica em cache: se expirar entre duas consultas, sem isto o operador veria "erro no
+      // Serasa" e não teria o que fazer. Retentar UMA vez, nunca em laço — o teto de chamadas
+      // é o que protege o IP de bloqueio.
+      if (pareceTokenInvalido(resposta.status, corpo)) {
+        const novo = await obterToken(config, { forcarNovo: true });
+        if (novo.ok) {
+          resposta = await fetch(url.toString(), {
+            cache: "no-store",
+            headers: { ...headers, Authorization: `Bearer ${novo.token}` },
+            method: "GET",
+          });
+          if (resposta.ok) {
+            const corpoOk = await resposta.json().catch(() => null);
+            return { corpo: corpoOk, httpStatus: resposta.status, ok: true, url: url.toString() };
+          }
+          corpo = await resposta.text().catch(() => "");
+        }
+      }
+
       return {
         erro: explicar(resposta.status, corpo),
         httpStatus: resposta.status,

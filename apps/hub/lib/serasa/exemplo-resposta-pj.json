@@ -1,0 +1,178 @@
+{
+  "reports": [
+    {
+      "reportName": "RELATORIO_BASICO_PJ_PME",
+      "registration": {
+        "companyDocument": "00000000000191",
+        "companyName": "SKUFX SI NICPWL G/K",
+        "foundationDate": "1966-08-01",
+        "statusRegistration": "SITUACAO DO CNPJ EM 10/01/2026: ATIVA"
+      },
+      "score": {
+        "scoreModel": "H4PJ",
+        "codeMessage": 836,
+        "message": "SCORE NAO CALCULADO - INSUFICIENCIA INFORMACOES BASE DE DADOS SERASA EXPERIAN",
+        "billing": false
+      },
+      "negativeData": {
+        "pefin": {
+          "pefinResponse": [
+            {
+              "occurrenceDate": "2024-11-16",
+              "inclusionDate": "2024-06-04",
+              "legalNatureId": "FD",
+              "legalNature": "FD",
+              "contractId": "teste 8",
+              "creditorName": "teste 18",
+              "amount": 101360.0,
+              "principal": false,
+              "dispute": {
+                "disputeIndicativeFlag": false,
+                "trialDate": "2024-06-09",
+                "civilCourtId": "1",
+                "trialSquareId": "SPO",
+                "trialId": "teste 24",
+                "disputeMessagePt": "teste 25"
+              },
+              "cadus": "QYHKRX0000"
+            },
+            {
+              "occurrenceDate": "2024-11-16",
+              "inclusionDate": "2024-06-04",
+              "legalNatureId": "FD",
+              "legalNature": "FD",
+              "contractId": "teste 8",
+              "creditorName": "teste 18",
+              "amount": 84422.75,
+              "principal": false,
+              "dispute": {
+                "disputeIndicativeFlag": false,
+                "trialDate": "2024-06-09",
+                "civilCourtId": "1",
+                "trialSquareId": "SPO",
+                "trialId": "teste 24",
+                "disputeMessagePt": "teste 25"
+              },
+              "cadus": "QTIMJK0000"
+            }
+          ]
+        },
+        "refin": {
+          "refinResponse": [
+            {
+              "occurrenceDate": "2024-11-16",
+              "inclusionDate": "2024-06-04",
+              "legalNatureId": "FD",
+              "legalNature": "FD",
+              "contractId": "teste 8",
+              "creditorName": "teste 18",
+              "amount": 11239.67,
+              "principal": false,
+              "cadus": "IDDSOV0000"
+            },
+            {
+              "occurrenceDate": "2024-11-16",
+              "inclusionDate": "2024-06-04",
+              "legalNatureId": "FD",
+              "legalNature": "FD",
+              "contractId": "teste 8",
+              "creditorName": "teste 18",
+              "amount": 54968.86,
+              "principal": false,
+              "cadus": "FMDAVE0000"
+            }
+          ]
+        },
+        "collectionRecords": {
+          "collectionRecordsResponse": [
+            {
+              "occurrenceDate": "2024-11-16",
+              "inclusionDate": "2024-06-04",
+              "legalNatureId": "FD",
+              "legalNature": "FD",
+              "contractId": "teste 8",
+              "creditorName": "teste 18",
+              "amount": 96183.98,
+              "principal": false,
+              "dispute": {
+                "disputeIndicativeFlag": false,
+                "trialDate": "2024-06-09",
+                "civilCourtId": "1",
+                "trialSquareId": "SPO",
+                "trialId": "teste 24",
+                "disputeMessagePt": "teste 25"
+              },
+              "cadus": "VBZYYZ0000"
+            },
+            {
+              "occurrenceDate": "2024-11-16",
+              "inclusionDate": "2024-06-04",
+              "legalNatureId": "FD",
+              "legalNature": "FD",
+              "contractId": "teste 8",
+              "creditorName": "teste 18",
+              "amount": 59875.63,
+              "principal": false,
+              "dispute": {
+                "disputeIndicativeFlag": false,
+                "trialDate": "2024-06-09",
+                "civilCourtId": "1",
+                "trialSquareId": "SPO",
+                "trialId": "teste 24",
+                "disputeMessagePt": "teste 25"
+              },
+              "cadus": "MURQKM0000"
+            }
+          ]
+        },
+        "check": {
+          "checkResponse": [
+            {
+              "occurrenceDate": "2024-11-16",
+              "inclusionDate": "2024-06-04",
+              "alinea": 0,
+              "bankId": 30,
+              "bankName": "PARAIBAN",
+              "bankAgencyId": 40,
+              "checkNumber": "CCF-BB",
+              "checkCount": 20,
+              "cadus": "UMQDQW0000"
+            },
+            {
+              "occurrenceDate": "2024-11-16",
+              "inclusionDate": "2024-06-04",
+              "alinea": 0,
+              "bankId": 30,
+              "bankName": "PARAIBAN",
+              "bankAgencyId": 40,
+              "checkNumber": "CCF-BB",
+              "checkCount": 20,
+              "cadus": "RZDTLA0000"
+            }
+          ]
+        },
+        "notary": {
+          "summary": {
+            "count": 0,
+            "balance": 0.0
+          }
+        }
+      },
+      "facts": {
+        "inquiryCompanyResponse": {
+          "quantity": {
+            "actual": 0,
+            "bankActual": 0,
+            "historical": [
+              {
+                "inquiryDate": "2026-06",
+                "occurrences": 0,
+                "bankOccurrences": 0
+              }
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

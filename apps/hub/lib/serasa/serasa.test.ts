@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { limparCacheToken, obterToken } from "./auth";
 import { consultarPF, consultarPJ } from "./client";
 import { ambienteConfere, lerConfigSerasa, type ConfigSerasa } from "./config";
+import exemploPj from "./exemplo-resposta-pj.json";
 import { resumirRelatorio } from "./resumo";
 
 const CONFIG_TESTE: ConfigSerasa = {
@@ -289,38 +290,48 @@ describe("consultarPF / consultarPJ", () => {
 });
 
 describe("resumirRelatorio", () => {
-  // O schema real não está documentado: o resumo é heurístico e o cru fica salvo. Estes testes
-  // travam o COMPORTAMENTO (não quebrar, não inventar), não o formato do Serasa.
-  it("acha score e faixa em estrutura aninhada", () => {
+  // ⚠️ FIXTURE REAL: resposta capturada da homologação do Serasa em 21/jul (CNPJ público
+  // 00000000000191, RELATORIO_BASICO_PJ_PME). Antes destes dados o parser era um chute que
+  // varria a árvore procurando chaves plausíveis. Se o Serasa mudar o schema, é aqui que
+  // aparece primeiro.
+  it("lê a resposta REAL de PJ da homologação", () => {
+    const r = resumirRelatorio(exemploPj);
+
+    expect(r.nome).toBe("SKUFX SI NICPWL G/K");
+    expect(r.situacao).toContain("ATIVA");
+    // `billing` é a própria API dizendo se ESTA consulta foi cobrada.
+    expect(r.cobrado).toBe(false);
+    // Quando o Serasa não consegue calcular, vem a mensagem em vez do número.
+    expect(r.score).toBeUndefined();
+    expect(r.mensagemScore).toContain("SCORE NAO CALCULADO");
+    // Negativações contadas em pefin + refin + collectionRecords + check.
+    expect(r.negativacoes).toBeGreaterThan(0);
+    // Cartório traz contagem pronta, não lista.
+    expect(r.protestos).toBe(0);
+    expect(r.consultasAnteriores).toBe(0);
+  });
+
+  it("lê o score quando o Serasa consegue calcular", () => {
     const r = resumirRelatorio({
-      reports: [{ scoring: { score: 742, riskLevel: "BAIXO RISCO" } }],
+      reports: [{ score: { billing: true, score: 742, scoreModel: "H4PJ" } }],
     });
     expect(r.score).toBe(742);
-    expect(r.faixa).toBe("BAIXO RISCO");
-    expect(r.origemScore).toContain("score");
+    expect(r.cobrado).toBe(true);
+    expect(r.origemScore).toContain("reports[0].score");
   });
 
-  it("conta negativações pela lista", () => {
-    const r = resumirRelatorio({ negativacoes: [{ valor: 1 }, { valor: 2 }, { valor: 3 }] });
-    expect(r.negativacoes).toBe(3);
+  // O schema de PF ainda NÃO foi capturado (a base de homologação não devolveu CPF nosso).
+  // A varredura fica como rede de segurança até vermos uma resposta de PF de verdade.
+  it("ainda acha score em estrutura desconhecida (rede de segurança para PF)", () => {
+    const r = resumirRelatorio({ resultado: { credito: { score: 615 } } });
+    expect(r.score).toBe(615);
   });
 
-  // Score fora de 0–1000 provavelmente é outro campo com nome parecido.
-  it("ignora número fora da faixa de score", () => {
-    expect(resumirRelatorio({ score: 99999 }).score).toBeUndefined();
-  });
-
-  it("devolve vazio em vez de inventar quando não reconhece nada", () => {
-    expect(resumirRelatorio({ qualquer: { coisa: "x" } })).toEqual({});
+  it("devolve vazio em vez de inventar, e não quebra", () => {
     expect(resumirRelatorio(null)).toEqual({});
     expect(resumirRelatorio("texto")).toEqual({});
-  });
-
-  // Um resumo que explode não pode derrubar a gravação de uma consulta JÁ PAGA.
-  it("não quebra com estrutura circular", () => {
-    const circular: Record<string, unknown> = { score: 500 };
+    const circular: Record<string, unknown> = { reports: [] };
     circular.eu = circular;
     expect(() => resumirRelatorio(circular)).not.toThrow();
-    expect(resumirRelatorio(circular).score).toBe(500);
   });
 });
