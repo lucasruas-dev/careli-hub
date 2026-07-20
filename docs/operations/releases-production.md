@@ -4765,3 +4765,25 @@ Conclusao:
   - Nova aba "Completar dados" na tela de Importacao, chamando `POST /api/apolo/asana/ficha` (custo ZERO): rele o formulario do Asana e preenche ficha + data das CADs ja importadas. A rota existia desde 20/jul mas NENHUMA tela a chamava — feature sem porta de entrada.
 - Validacoes: `tsc --noEmit` limpo; 59 testes do Apolo PASS. Verificacao visual: NAO feita por mim (o dev local para no /login e quem clica e o Lucas).
 - Pendente: rodar "Completar dados" em producao (preenche os 4 campos do formulario nas 122 em credito + `chegou_em` nas 392).
+
+## 2026-07-21 - Apolo: diagnostico de titular das CADs (v1.50.2) - EM PRODUCAO
+
+- Modulo: Apolo (Importacao · Completar dados + Board/Validacao). Autorizacao: Lucas ("pode seguir"), 2026-07-21.
+- Branch: `feat/apolo-documentos` -> `main` (ff); commits `df2b29f4` (CEP) + `894f7efb` (diagnostico + changelog).
+- Versao v1.50.2 (`internal: true`). Rollback: v1.50.1 (`careli-hub-hub-i2bs-iyhkv5tsx`).
+- PROBLEMA QUE ORIGINOU: `lerDocumentosDoLote` para no primeiro anexo com CPF valido. No PDF do casal esse costuma ser o documento do CONJUGE, entao a ficha nasce com a identidade da pessoa errada — enquanto telefone, profissao e renda vem do formulario e sao do PROPONENTE. A ficha vira costura de duas pessoas. Caso real (print do Lucas): CAD do Mateus Lazaro (proponente) com Karla (conjuge); ficha ficou com nome/CPF/mae da Karla e telefone/profissao/renda do Mateus.
+- ⚠️ EU ERREI O DIAGNOSTICO ANTES: olhei o documento lido (era da Karla, nome da mae batendo) e declarei a ficha correta. So o ASANA sabe quem e proponente e quem e conjuge — o documento diz os DADOS, o Asana diz o LUGAR. Dai a regra: laudo com ancora no Asana ANTES de corrigir.
+- Escopo:
+  - `lib/apolo/cad-diagnostico.ts`: `classificarCad` puro, 4 vereditos (ok / trocado / falta_conjuge / conferir). 9 testes sobre casos reais.
+  - Similaridade TOKEN A TOKEN: a distancia de edicao sobre a string inteira dava 0,81 para "JOAO MARCOS REZENDE COELHO" lido como "JOAO MARCUS REZENDE COMO" e reprovaria um caso real.
+  - Decisao RELATIVA entre os dois candidatos da CAD, com vantagem minima de 0,25; empate fica com o PROPONENTE (trocar identidade por engano e pior que mandar para conferencia).
+  - `POST /api/apolo/asana/diagnostico`: grava o laudo em `apolo_audit_events` (action `diagnostico_cad`, status mapped/pending/blocked), NUNCA no cadastro. Custo zero.
+  - Botao "Diagnosticar titulares" na aba Completar dados.
+  - CEP preenche logradouro/bairro/cidade/UF na validacao (ViaCEP, helper que ja existia no wizard).
+- BASE DO WORKFLOW DE MAPEAMENTO (51 agentes, 3,2M tokens) — achados que mudaram o plano:
+  - As 270 em `validacao` sao 100% NATIVAS do Apolo (editaveis). As 122 em `credito` sao 100% espelho do C2X: id determinstico e o resync completo (`20 */6 * * *`) reescreve display_name, legal_name, entity_kind, document_* e metadata. Corrigir identidade nelas e perda garantida — a tela tem que TRAVAR e mandar corrigir no legado.
+  - `apolo_esteira` NAO e tocada pelo sync (zero referencias em lib/apolo/server.ts) — a ficha jsonb esta a salvo, inclusive nas 122.
+  - Trocar CPF exige DELETE + INSERT em `apolo_entity_identifiers`: o upsert usa `(entity_id, tipo, value_hash)` como chave e NAO apaga o antigo — a pessoa ficaria com dois CPFs is_primary, e a CACA (`lookupApoloByDocument`) passaria a atender a pessoa errada.
+  - Trocar nome exige recalcular `normalized_text` em `apolo_search_entries`, senao a ficha some da busca do Apolo/Iris/CACA.
+- Validacoes: `tsc --noEmit` limpo; 68 testes do Apolo PASS.
+- Pendente: rodar "Diagnosticar titulares" em producao e conferir o laudo por SQL antes de qualquer correcao.
