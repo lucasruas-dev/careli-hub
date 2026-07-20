@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, CreditCard, Loader2, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, CreditCard, Loader2, RefreshCw, ShieldCheck, Wrench } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
@@ -58,6 +58,78 @@ export function CreditoSerasa({ entityId }: { entityId: string }) {
     void carregar();
   }, [carregar]);
 
+  // BANCADA: as combinações que a documentação do Serasa deixa em aberto. São poucas — dá
+  // para descobrir a certa em menos de dez chamadas, bem abaixo do teto diário.
+  const COMBINACOES = [
+    {
+      authUrl: "https://uat-api.serasaexperian.com.br/security/iam/v1/client-identities/login",
+      clientIdNaQuery: false,
+      nome: "uat-api · client-identities",
+    },
+    {
+      authUrl: "https://uat-api.serasaexperian.com.br/security/iam/v1/user-identities/login",
+      clientIdNaQuery: true,
+      nome: "uat-api · user-identities?clientId=",
+    },
+    {
+      authUrl: "https://sandbox-api.serasaexperian.com.br/security/iam/v1/client-identities/login",
+      clientIdNaQuery: false,
+      nome: "sandbox-api · client-identities",
+    },
+    {
+      authUrl: "https://sandbox-api.serasaexperian.com.br/security/iam/v1/user-identities/login",
+      clientIdNaQuery: true,
+      nome: "sandbox-api · user-identities?clientId=",
+    },
+  ];
+
+  const [testando, setTestando] = useState<string | null>(null);
+  const [resultados, setResultados] = useState<
+    { camposDaResposta: string[]; httpStatus: number | null; nome: string; respostaCrua: string | null; sucesso: boolean; temToken: boolean }[]
+  >([]);
+
+  const testar = async (combinacao: (typeof COMBINACOES)[number]) => {
+    setTestando(combinacao.nome);
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/serasa/bancada", {
+        body: JSON.stringify({
+          authUrl: combinacao.authUrl,
+          clientIdNaQuery: combinacao.clientIdNaQuery,
+        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const corpo = (await resposta.json()) as {
+        data?: {
+          camposDaResposta: string[];
+          httpStatus: number | null;
+          respostaCrua: string | null;
+          sucesso: boolean;
+          temToken: boolean;
+        };
+        error?: string;
+      };
+      if (!resposta.ok || !corpo.data) {
+        setResultados((r) => [
+          ...r,
+          {
+            camposDaResposta: [],
+            httpStatus: resposta.status,
+            nome: combinacao.nome,
+            respostaCrua: corpo.error ?? null,
+            sucesso: false,
+            temToken: false,
+          },
+        ]);
+        return;
+      }
+      setResultados((r) => [...r, { ...corpo.data!, nome: combinacao.nome }]);
+    } finally {
+      setTestando(null);
+    }
+  };
+
   const consultar = async (forcar: boolean) => {
     setConsultando(true);
     setErro(null);
@@ -106,6 +178,13 @@ export function CreditoSerasa({ entityId }: { entityId: string }) {
           grafia dos relatórios contratados. Assim que chegarem, basta preencher as variáveis de
           ambiente: nenhuma alteração de código é necessária.
         </p>
+        <BancadaTeste
+          combinacoes={COMBINACOES}
+          resultados={resultados}
+          testando={testando}
+          testar={testar}
+        />
+
         {situacao?.faltando?.length ? (
           <ul className="m-0 mt-2 list-none p-0 text-[11px] text-ink-muted">
             {situacao.faltando.map((f) => (
@@ -228,6 +307,99 @@ export function CreditoSerasa({ entityId }: { entityId: string }) {
           </p>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+// BANCADA — descobrir por tentativa o que a documentação do Serasa não responde.
+//
+// UMA chamada por clique, sem retry e sem lote. O risco em homologação não é a tentativa
+// consciente (são poucas), é o laço automático: passar de 200 chamadas no dia bloqueia o IP,
+// e a liberação exige formalização com eles.
+//
+// A resposta de SUCESSO não é exibida inteira porque carrega o token; o que interessa é a
+// ESTRUTURA (quais campos vieram). Já a de ERRO aparece crua, que é onde está o diagnóstico.
+function BancadaTeste({
+  combinacoes,
+  resultados,
+  testando,
+  testar,
+}: {
+  combinacoes: { authUrl: string; clientIdNaQuery: boolean; nome: string }[];
+  resultados: {
+    camposDaResposta: string[];
+    httpStatus: number | null;
+    nome: string;
+    respostaCrua: string | null;
+    sucesso: boolean;
+    temToken: boolean;
+  }[];
+  testando: string | null;
+  testar: (c: { authUrl: string; clientIdNaQuery: boolean; nome: string }) => Promise<void>;
+}) {
+  return (
+    <div className="mt-4 rounded-lg border border-line bg-subtle/30 p-3">
+      <p className="m-0 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-ink">
+        <Wrench aria-hidden="true" className="size-3.5" />
+        Bancada de teste da autenticação
+      </p>
+      <p className="m-0 mt-1 text-xs text-ink-soft">
+        A documentação do Serasa publica dois caminhos de token e dois hosts de teste, sem dizer
+        qual vale para a nossa credencial. Cada botão faz <b>uma</b> chamada e mostra o que
+        voltou. Sem repetição automática: o limite diário deles bloqueia o IP.
+      </p>
+
+      <div className="mt-3 grid gap-1.5">
+        {combinacoes.map((c) => {
+          const feito = resultados.find((r) => r.nome === c.nome);
+          return (
+            <div className="flex flex-wrap items-center gap-2" key={c.nome}>
+              <button
+                className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1 text-[11px] font-semibold text-ink hover:bg-subtle disabled:opacity-60"
+                disabled={Boolean(testando)}
+                onClick={() => void testar(c)}
+                type="button"
+              >
+                {testando === c.nome ? (
+                  <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+                ) : null}
+                {c.nome}
+              </button>
+
+              {feito ? (
+                <span
+                  className={`text-[11px] font-semibold ${
+                    feito.sucesso ? "text-emerald-600" : "text-ink-muted"
+                  }`}
+                >
+                  {feito.sucesso ? "✓ autenticou" : "✕"} HTTP {feito.httpStatus ?? "—"}
+                  {feito.temToken ? " · token recebido" : ""}
+                  {feito.camposDaResposta.length
+                    ? ` · campos: ${feito.camposDaResposta.join(", ")}`
+                    : ""}
+                </span>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+
+      {resultados.some((r) => r.respostaCrua) ? (
+        <div className="mt-3 grid gap-2">
+          {resultados
+            .filter((r) => r.respostaCrua)
+            .map((r, i) => (
+              <div key={`${r.nome}-${i}`}>
+                <p className="m-0 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                  {r.nome}
+                </p>
+                <pre className="m-0 max-h-40 overflow-auto rounded bg-canvas p-2 text-[10px] text-ink-soft">
+                  {r.respostaCrua}
+                </pre>
+              </div>
+            ))}
+        </div>
+      ) : null}
     </div>
   );
 }
