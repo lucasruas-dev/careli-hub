@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Check, Loader2, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Search, Sparkles } from "lucide-react";
 import { useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
@@ -23,6 +23,43 @@ export function CompletarDados() {
     datasPreenchidas: number;
     semVinculo: number;
   } | null>(null);
+  const [diagnosticando, setDiagnosticando] = useState(false);
+  const [diagnostico, setDiagnostico] = useState<{
+    analisadas: number;
+    resumo: { conferir: number; falta_conjuge: number; ok: number; trocado: number };
+  } | null>(null);
+
+  // DIAGNÓSTICO: descobre de quem é cada ficha comparando com o Asana, que é quem sabe dizer
+  // proponente x cônjuge. Não altera cadastro nenhum — só grava o laudo para conferência.
+  const diagnosticar = async () => {
+    setDiagnosticando(true);
+    setErro(null);
+    setDiagnostico(null);
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/asana/diagnostico", {
+        body: JSON.stringify({
+          empreendimento: "Vale do Ouro",
+          secoes: ["Finalizado", "Em Cadastro"],
+        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const corpo = (await resposta.json()) as {
+        data?: {
+          analisadas: number;
+          resumo: { conferir: number; falta_conjuge: number; ok: number; trocado: number };
+        };
+        error?: string;
+      };
+      if (!resposta.ok || !corpo.data) throw new Error(corpo.error ?? `Falha (${resposta.status}).`);
+      setDiagnostico(corpo.data);
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setDiagnosticando(false);
+    }
+  };
 
   const rodar = async () => {
     setRodando(true);
@@ -95,11 +132,39 @@ export function CompletarDados() {
           {rodando ? "Completando…" : "Completar dados"}
         </button>
 
+        <button
+          className="mt-4 ml-2 inline-flex items-center gap-2 rounded-lg border border-line px-3.5 py-2 text-sm font-bold text-ink hover:bg-subtle disabled:opacity-60"
+          disabled={diagnosticando}
+          onClick={() => void diagnosticar()}
+          type="button"
+        >
+          {diagnosticando ? <Loader2 className="animate-spin" size={15} /> : <Search size={15} />}
+          {diagnosticando ? "Analisando…" : "Diagnosticar titulares"}
+        </button>
+
         {erro ? (
           <p className="m-0 mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <AlertTriangle className="shrink-0" size={14} />
             {erro}
           </p>
+        ) : null}
+
+        {diagnostico ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-4">
+            {[
+              ["Fichas corretas", diagnostico.resumo.ok],
+              ["Com o cônjuge no lugar", diagnostico.resumo.trocado],
+              ["Falta o cônjuge", diagnostico.resumo.falta_conjuge],
+              ["Conferir à mão", diagnostico.resumo.conferir],
+            ].map(([label, valor]) => (
+              <div className="rounded-lg border border-line bg-subtle/40 px-3 py-2" key={label}>
+                <p className="m-0 text-lg font-bold text-ink">{valor}</p>
+                <p className="m-0 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                  {label}
+                </p>
+              </div>
+            ))}
+          </div>
         ) : null}
 
         {resultado ? (
