@@ -148,7 +148,9 @@ export function CreditoSerasa({ entityId }: { entityId: string }) {
         method: "POST",
       });
       const corpo = (await resposta.json()) as { data?: unknown; error?: string };
-      if (!resposta.ok) throw new Error(corpo.error ?? `Falha (${resposta.status}).`);
+      if (!resposta.ok) setErro(corpo.error ?? `Falha (${resposta.status}).`);
+      // Recarrega SEMPRE, inclusive no erro: a tentativa que falhou também conta no teto
+      // diário do Serasa, e o contador da tela precisa refletir isso.
       await carregar();
     } catch (e) {
       setErro((e as Error).message);
