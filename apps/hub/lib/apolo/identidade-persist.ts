@@ -175,13 +175,17 @@ export async function atualizarIdentidade(input: {
   // (entity_id, identifier_type, value_hash), então um upsert com o CPF novo NÃO apaga o
   // antigo: a pessoa ficaria com dois CPFs, ambos is_primary. E a CACÁ procura cliente por
   // essa tabela (lookupApoloByDocument) — ela passaria a atender a pessoa errada.
-  await input.client
+  const { error: erroDelete } = await input.client
     .from("apolo_entity_identifiers")
     .delete()
     .eq("entity_id", input.entityId)
     .in("identifier_type", ["cpf", "cnpj"]);
 
-  await input.client.from("apolo_entity_identifiers").insert({
+  if (erroDelete) {
+    return { erro: `Falha ao limpar o documento antigo: ${erroDelete.message}`, motivo: "invalido", ok: false };
+  }
+
+  const { error: erroInsert } = await input.client.from("apolo_entity_identifiers").insert({
     confidence_score: 100,
     entity_id: input.entityId,
     identifier_type: tipoDoc,
@@ -193,22 +197,59 @@ export async function atualizarIdentidade(input: {
     verified_at: new Date().toISOString(),
   });
 
+  // Sem identificador a pessoa fica invisível para o dedup e para a busca da CACÁ — e o
+  // antigo já foi apagado. Não dá para seguir como se tivesse dado certo.
+  if (erroInsert) {
+    return { erro: `Falha ao gravar o documento novo: ${erroInsert.message}`, motivo: "invalido", ok: false };
+  }
+
   // (7) ÍNDICE DE BUSCA. Sem recalcular `normalized_text`, a ficha continua indexada pelo nome
   // ANTIGO: o Apolo, a Iris e a CACÁ fazem ilike nesse campo. O cliente existiria e ninguém
   // conseguiria achar.
-  await input.client.from("apolo_search_entries").upsert(
-    {
-      display_name: nome,
-      document_masked: documentoCompleto,
+  //
+  // ⚠️ UPDATE, não upsert. `apolo_search_entries.status` é NOT NULL SEM DEFAULT: o upsert do
+  // PostgREST monta um INSERT ... ON CONFLICT, e o INSERT viola a restrição antes de chegar ao
+  // conflito. Foi o que aconteceu em 21/jul — 11 fichas corrigidas ficaram indexadas pelo nome
+  // antigo porque o upsert falhou EM SILÊNCIO (o erro não era checado).
+  const busca = {
+    display_name: nome,
+    document_masked: documentoCompleto,
+    entity_kind: input.tipo,
+    last_synced_at: new Date().toISOString(),
+    normalized_text: normalizarBusca(
+      [nome, ehPj ? input.nomeFantasia : null, documentoCompleto].filter(Boolean).join(" "),
+    ),
+  };
+
+  const { data: indexada, error: erroBusca } = await input.client
+    .from("apolo_search_entries")
+    .update(busca)
+    .eq("entity_id", input.entityId)
+    .select("entity_id");
+
+  if (erroBusca) {
+    return {
+      erro: `Identidade gravada, mas o indice de busca falhou: ${erroBusca.message}`,
+      motivo: "invalido",
+      ok: false,
+    };
+  }
+
+  // Entidade sem linha de busca ainda: aí sim insere, com os obrigatórios.
+  if (!indexada || indexada.length === 0) {
+    const { error: erroInsert } = await input.client.from("apolo_search_entries").insert({
+      ...busca,
       entity_id: input.entityId,
-      entity_kind: input.tipo,
-      last_synced_at: new Date().toISOString(),
-      normalized_text: normalizarBusca(
-        [nome, ehPj ? input.nomeFantasia : null, documentoCompleto].filter(Boolean).join(" "),
-      ),
-    },
-    { onConflict: "entity_id" },
-  );
+      status: "active",
+    });
+    if (erroInsert) {
+      return {
+        erro: `Identidade gravada, mas o indice de busca falhou: ${erroInsert.message}`,
+        motivo: "invalido",
+        ok: false,
+      };
+    }
+  }
 
   // (8) AUDITORIA. `insert` puro — id determinístico seria sobrescrito pelo sync, que usa
   // esse padrão para os eventos dele. O documento vai MASCARADO no registro: auditoria não é
