@@ -90,6 +90,44 @@ describe("classificarCad", () => {
     expect(r.veredito).toBe("conferir");
   });
 
+  // BUG REAL encontrado ao conferir o laudo em produção (21/jul): a CAD da "Angelica Maria da
+  // Silva" apontava para a ficha do "IGOR JUNIO DA SILVA" — duas pessoas diferentes. O "da" e
+  // o "silva" em comum levavam a média a exatamente 0,60 e a ficha passava como correta.
+  it("não confunde pessoas que só dividem preposição e sobrenome", () => {
+    const r = classificarCad({
+      casado: true,
+      conjugeAsana: null,
+      conjugeRegistrado: null,
+      proponenteAsana: "Angelica Maria da Silva",
+      tituloApolo: "IGOR JUNIO DA SILVA",
+    });
+    expect(r.veredito).toBe("conferir");
+  });
+
+  // Mesma família, primeiro nome diferente: é parente, não a mesma pessoa.
+  it("não trata pai e filho como a mesma pessoa", () => {
+    const r = classificarCad({
+      casado: false,
+      conjugeAsana: null,
+      conjugeRegistrado: null,
+      proponenteAsana: "Leandro Pereira Melgaço",
+      tituloApolo: "JOSE EUSTAQUIO MELGACO",
+    });
+    expect(r.veredito).toBe("conferir");
+  });
+
+  // A JFL é PJ e entrou como PF, com o nome e o CPF do representante.
+  it("manda para conferência a empresa que virou pessoa física", () => {
+    const r = classificarCad({
+      casado: false,
+      conjugeAsana: null,
+      conjugeRegistrado: null,
+      proponenteAsana: "Jfl industria e Agro ltda",
+      tituloApolo: "GIANI SILVIO GALVAO AGUIAR",
+    });
+    expect(r.veredito).toBe("conferir");
+  });
+
   it("manda para conferência quando a CAD não informa o proponente", () => {
     const r = classificarCad({
       casado: false,

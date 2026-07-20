@@ -39,6 +39,11 @@ const LIMIAR_MINIMO = 0.6;
 // nomes de família parecidos (mesmo sobrenome) decidiriam a troca no fio do bigode.
 const VANTAGEM_MINIMA = 0.25;
 
+// Preposições não identificam ninguém e, contadas como token, inflam a semelhança entre
+// pessoas diferentes. Caso real: "IGOR JUNIO DA SILVA" x "Angelica Maria DA SILVA" batia
+// "da" e "silva" e chegava a 0,60 — o suficiente para o sistema tratar como a mesma pessoa.
+const PREPOSICOES = new Set(["da", "das", "de", "do", "dos", "e"]);
+
 // Similaridade nome a nome, comparando TOKEN A TOKEN. A distância de edição sobre a string
 // inteira é enganosa aqui: "joao marcos rezende coelho" x "joao marcus rezende como" tem 3 de
 // 4 tokens praticamente idênticos e mesmo assim cai para ~0,81 por causa do último sobrenome.
@@ -48,9 +53,13 @@ function parecido(a: string, b: string): number {
   if (!na || !nb) return 0;
   if (na === nb) return 1;
 
-  const ta = na.split(" ").filter(Boolean);
-  const tb = nb.split(" ").filter(Boolean);
+  const ta = na.split(" ").filter((t) => t && !PREPOSICOES.has(t));
+  const tb = nb.split(" ").filter((t) => t && !PREPOSICOES.has(t));
   if (ta.length === 0 || tb.length === 0) return 0;
+
+  // O PRIMEIRO NOME é o token mais discriminante: irmãos e cônjuges dividem sobrenome, não o
+  // primeiro nome. Ele entra com peso 2 para que sobrenome em comum não decida sozinho.
+  const primeiro = similaridade(ta[0]!, tb[0]!);
 
   // Cada token do nome mais curto procura seu melhor par no outro. A média resultante tolera
   // um sobrenome lido errado sem tolerar duas pessoas diferentes.
@@ -59,7 +68,9 @@ function parecido(a: string, b: string): number {
     (acc, token) => acc + Math.max(...maior.map((outro) => similaridade(token, outro))),
     0,
   );
-  return soma / menor.length;
+  const media = soma / menor.length;
+
+  return (media * menor.length + primeiro * 2) / (menor.length + 2);
 }
 
 // Decide de quem é a ficha, comparando o nome que está no Apolo com os DOIS nomes que o
