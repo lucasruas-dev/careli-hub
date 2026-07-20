@@ -51,6 +51,9 @@ export type CadDoAsana = {
   // Nome do PROPONENTE = o cliente. O título da task costuma ser o mesmo, mas o campo é o
   // que o corretor preencheu de propósito.
   nomeProponente: string | null;
+  // "Pessoa Física" / "Pessoa Jurídica" do formulário. É o que diz se a CAD é PF ou PJ — a
+  // JFL entrou como pessoa física com o CPF do representante porque isto se perdia aqui.
+  perfilAsana: string | null;
   profissao: string | null;
   renda: string | null;
   telefone: string | null;
@@ -303,6 +306,7 @@ export async function escanearCads(input: {
         imobiliaria: valorDoCampo(task, ["imobiliar"]) ?? daDescricao.imobiliaria ?? null,
         nome: task.name.trim(),
         nomeProponente,
+        perfilAsana: daDescricao.proponente.perfil ?? null,
         notas: [task.notes ?? "", textoDosCampos].join(" ").trim() || null,
         profissao: daDescricao.proponente.profissao ?? null,
         renda: daDescricao.proponente.renda ?? null,
