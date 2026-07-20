@@ -36,6 +36,32 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-apolo-fix-carregamento-validacao",
+    deployedAt: "2026-07-21T12:45:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A ficha voltou a carregar: a tela ficava presa em Carregando documentos.",
+            ],
+            screen: "Board · Validacao",
+          },
+        ],
+      },
+    ],
+    rollback: "1.52.0",
+    technical: {
+      done: "Restaurado o useEffect que busca /api/apolo/documentos e /api/apolo/board/[id] e desliga o estado `carregando`. Ele foi APAGADO por engano na v1.52.0, quando a substituicao do autosave pelo modo de edicao recortou um bloco de texto grande demais e levou o efeito junto.",
+      motivation: "Sem o efeito nenhum fetch era disparado e `carregando` nunca virava false — spinner eterno, com a validacao inutilizavel. O typecheck passou porque o codigo seguia VALIDO sem o efeito: type-check nao cobre 'faltou uma peca'. Licao: em arquivo de 2 mil linhas, substituir bloco por recorte de texto e fragil; usar ancoras menores e conferir o que ficou entre elas. E rodar o build (que tambem passou aqui) nao substitui abrir a tela.",
+    },
+    title: "Apolo: ficha da validacao voltou a carregar",
+    type: "correcao",
+    version: "1.52.1",
+  },
+  {
     buildTag: "2026-07-21-apolo-modo-edicao-validacao",
     deployedAt: "2026-07-21T12:15:00-03:00",
     modules: [
