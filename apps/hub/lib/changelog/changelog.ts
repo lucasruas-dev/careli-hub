@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-apolo-modo-edicao-validacao",
+    deployedAt: "2026-07-21T12:15:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A ficha ganhou modo de edicao: confira em leitura, clique em Editar ficha, altere o que precisar e salve de uma vez.",
+              "TODOS os campos ficam editaveis, inclusive nome, documento e o tipo Pessoa Fisica / Juridica. A idade continua vindo da data de nascimento.",
+              "Cliente casado abre os campos do conjuge: nome, CPF, nascimento, mae, telefone e e-mail.",
+              "Toda alteracao fica registrada: o campo, o valor anterior, o novo valor e quem alterou.",
+              "Um aviso aponta quando a ficha diverge do formulario do Asana — proponente diferente ou Pessoa Fisica x Juridica.",
+            ],
+            screen: "Board · Validacao",
+          },
+        ],
+      },
+    ],
+    rollback: "1.51.1",
+    technical: {
+      done: "board-view: estado `editando` + `rascunho` (so o que foi mexido). Salvar separa identidade (nome/documento/tipo, chaves __) da ficha: a identidade vai para POST /api/apolo/board/[id]/identidade e ABORTA o salvamento se falhar; o resto vai no PATCH. Recarrega do servidor depois, porque a identidade muda em outra tabela. PATCH passou a gravar UMA LINHA POR CAMPO em apolo_audit_events (action edit_ficha, com de/para/autor) — antes so existia ficha_editada_por, que guarda apenas o ultimo editor. Diagnostico le o Perfil dos custom_fields do Asana (o projeto tem dois campos Perfil; pega o preenchido) e marca divergencia de PF/PJ. GET devolve o conjuge de apolo_relationships e o laudo do Asana.",
+      motivation: "Regra do Lucas: o operador vai olhar CAD por CAD e alterar o que perceber errado, e e obrigatorio saber depois o que mudou, para qual valor e por quem. O autosave campo a campo nao dava trilha coerente e permitia gravacao sem querer. Nas PJ nada e preenchido automaticamente (o Asana nao traz CNPJ): o sistema aponta e o operador resolve.",
+    },
+    title: "Apolo: modo de edicao na validacao da CAD",
+    type: "melhoria",
+    version: "1.52.0",
+  },
+  {
     buildTag: "2026-07-21-apolo-indice-busca-identidade",
     deployedAt: "2026-07-21T11:45:00-03:00",
     internal: true,
