@@ -44,3 +44,6 @@ yarn-error.log*
 .codex-artifacts/
 .codex-deploy/
 .codex-tmp/
+
+# Permissoes locais do Claude Code (nao versionar)
+.claude/settings.local.json
