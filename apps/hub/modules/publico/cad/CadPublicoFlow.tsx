@@ -1,5 +1,6 @@
 "use client";
 
+import { Sparkles, X } from "lucide-react";
 import dynamicImport from "next/dynamic";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -747,6 +748,7 @@ export function CadPublicoFlow({ whatsappCentral }: { whatsappCentral: string })
           aria-label="Falar com a assistente"
           onClick={() => setChatAberto((a) => !a)}
           style={{
+            alignItems: "center",
             // Preto, não dourado: o destaque do Panteon é o preto (Lucas, 20/jul).
             background: C.text,
             border: "none",
@@ -755,8 +757,9 @@ export function CadPublicoFlow({ whatsappCentral }: { whatsappCentral: string })
             boxShadow: "0 6px 20px rgba(0,0,0,.18)",
             color: "#FFFFFF",
             cursor: "pointer",
-            fontSize: 22,
+            display: "flex",
             height: 56,
+            justifyContent: "center",
             position: "fixed",
             right: 16,
             width: 56,
@@ -764,7 +767,9 @@ export function CadPublicoFlow({ whatsappCentral }: { whatsappCentral: string })
           }}
           type="button"
         >
-          {chatAberto ? "×" : "?"}
+          {/* Ícone de IA (Sparkles), o mesmo que o Apolo usa para inteligência. Fechado = abrir
+              a assistente; aberto = X para fechar. */}
+          {chatAberto ? <X size={24} aria-hidden /> : <Sparkles size={24} aria-hidden />}
         </button>
       ) : null}
 

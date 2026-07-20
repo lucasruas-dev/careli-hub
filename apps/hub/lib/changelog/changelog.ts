@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-portal-publico-cad-ajustes",
+    deployedAt: "2026-07-21T19:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Corrige o layout do formulario no celular: o conteudo escapava para a direita e ficava cortado.",
+              "O botao da assistente ganha o icone de IA (Sparkles) no lugar do '?'.",
+            ],
+            screen: "Cadastro publico (corretor)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.57.0",
+    technical: {
+      done: "globals.css tem `html { min-width: 1024px }` (o hub e desktop), que fazia o card centralizar num espaco de 1024px e deslocar para a direita no celular. Adicionada a excecao `html:has(.publico-shell) { min-width: 0; overflow-x: hidden }` (mesmo padrao do app /m com .panteon-mobile-root) e a classe `publico-shell` no container raiz da CascaPublica. Botao flutuante da CACA: icone Sparkles (lucide-react, o mesmo que o Apolo usa para IA) no estado fechado; X no aberto.",
+      motivation: "O portal e mobile-first e o corretor abre no celular. O min-width de desktop quebrava a tela no dispositivo real (visto num Android em 20/jul).",
+    },
+    title: "Portal publico: ajuste de layout no celular e icone da assistente",
+    type: "correcao",
+    version: "1.57.1",
+  },
+  {
     buildTag: "2026-07-21-portal-publico-cad",
     deployedAt: "2026-07-21T18:00:00-03:00",
     modules: [

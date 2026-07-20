@@ -57,6 +57,16 @@ body:has(.panteon-mobile-root) {
   overflow-x: hidden;
 }
 
+/* Telas públicas (/publico/cad e /publico/imobiliaria): o corretor abre no celular,
+   então o min-width de 1024px de desktop faz o card centralizar num espaço largo demais
+   e "escapar" para a direita, cortado (bug visto em 20/jul num Android real). Mesma
+   neutralização do app mobile. */
+html:has(.publico-shell),
+body:has(.publico-shell) {
+  min-width: 0;
+  overflow-x: hidden;
+}
+
 body {
   margin: 0;
   color: var(--uix-text-primary);

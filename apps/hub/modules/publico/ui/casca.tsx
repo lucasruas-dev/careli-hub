@@ -28,6 +28,11 @@ export function CascaPublica({
 }) {
   return (
     <div
+      // ⚠️ A classe `publico-shell` NÃO é decorativa: o globals.css tem `html { min-width: 1024px }`
+      // (o hub é desktop) e essa regra fazia o card centralizar num espaço de 1024px e escapar
+      // para a direita no celular. A classe dispara a exceção `html:has(.publico-shell)` que zera
+      // o min-width e liga overflow-x hidden. Ver styles/globals.css.
+      className="publico-shell"
       style={{
         background: C.page,
         color: C.text,
@@ -37,6 +42,7 @@ export function CascaPublica({
         // 100dvh e não 100vh: com 100vh o iOS conta a barra de endereço e a tela "estoura".
         minHeight: "100dvh",
         paddingTop: "env(safe-area-inset-top)",
+        width: "100%",
       }}
     >
       <div
