@@ -97,10 +97,47 @@ export async function consultarImobiliariaPorCnpj(
   const digits = onlyDigits(cnpj);
   if (digits.length !== 14) return vazio;
 
+  const hash = hashIdentifier("cnpj", digits);
+
+  // ⚠️ PROCURA EM DOIS LUGARES, e a ordem importa.
+  //
+  // `apolo_entities.document_hash` só é preenchido por quem NASCE no Apolo (o wizard). As 412
+  // imobiliárias que vieram do sync do C2X têm esse campo NULO: o CNPJ delas mora em
+  // `apolo_entity_identifiers.value_hash`. Medido em 20/jul: 0 de 412 com document_hash, 395 com
+  // identificador de CNPJ.
+  //
+  // Buscar só por document_hash reprovava TODA imobiliária real. Foi o que aconteceu no primeiro
+  // teste do Lucas: ele digitou o CNPJ da RAIANE IMOBILIARIA, que está cadastrada e tem CAD
+  // nossa, e o portal respondeu "não credenciada".
+  const { data: porIdentificador, error: erroIdent } = await adminClient
+    .from("apolo_entity_identifiers")
+    .select("entity_id")
+    .eq("identifier_type", "cnpj")
+    .eq("value_hash", hash)
+    .limit(1)
+    .maybeSingle<{ entity_id: string }>();
+
+  // Erro de leitura não pode virar "não credenciada": isso barraria um parceiro legítimo por
+  // falha nossa. Melhor devolver vazio e deixar o chamador tratar como indisponibilidade.
+  if (erroIdent && erroIdent.code !== "PGRST116") return vazio;
+
+  let entityId = porIdentificador?.entity_id ?? null;
+
+  if (!entityId) {
+    const { data: porDocumento } = await adminClient
+      .from("apolo_entities")
+      .select("id")
+      .eq("document_hash", hash)
+      .maybeSingle<{ id: string }>();
+    entityId = porDocumento?.id ?? null;
+  }
+
+  if (!entityId) return vazio;
+
   const { data: entity } = await adminClient
     .from("apolo_entities")
     .select("id, display_name, legal_name")
-    .eq("document_hash", hashIdentifier("cnpj", digits))
+    .eq("id", entityId)
     .maybeSingle<{ display_name: string | null; id: string; legal_name: string | null }>();
 
   if (!entity?.id) return vazio;

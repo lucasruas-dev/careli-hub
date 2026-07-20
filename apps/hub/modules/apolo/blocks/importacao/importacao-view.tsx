@@ -13,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { getApoloAccessToken } from "../../data/apolo-operations";
 
 import { CompletarDados } from "./completar-dados";
+import { CompletarVinculos } from "./completar-vinculos";
 import { ImportarCads } from "./importar-cads";
 import { LerCads } from "./ler-cads";
 
@@ -163,6 +164,8 @@ export function ImportacaoView() {
               setAba("ler");
             }}
           />
+          {/* Backfill dos vínculos que a importação deixou vazios (corretor 0 de 392). */}
+          <CompletarVinculos />
         </div>
       ) : null}
 

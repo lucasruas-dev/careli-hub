@@ -752,8 +752,10 @@ export function BoardView() {
                           </p>
                           <p className="m-0 truncate text-[11px] text-ink-muted">
                             {imob ? "Imobiliária" : "CAD · prospect"}
-                            {/* Quem indicou a CAD: vem da importação do Asana. */}
+                            {/* Quem indicou a CAD: vem da importação do Asana. O corretor é o
+                                nome que o formulário trouxe, às vezes só o primeiro nome. */}
                             {item.imobiliaria ? ` · ${item.imobiliaria}` : ""}
+                            {item.corretor ? ` · ${item.corretor}` : ""}
                           </p>
                         </div>
                       </div>

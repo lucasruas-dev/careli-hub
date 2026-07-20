@@ -109,6 +109,9 @@ export function AddRelationshipModal({
   }
 
   const isFuncionario = /funcion/i.test(relType);
+  // Empreendimento NÃO é entidade do Apolo: vive no C2X. A busca por entidade nunca o acha, então
+  // este nível procura na lista de empreendimentos e salva o vínculo por id no metadata.
+  const isEmpreendimento = /empreendimento/i.test(relType);
 
   function reset() {
     setKind(null);
@@ -129,13 +132,56 @@ export function AddRelationshipModal({
     onClose();
   }
 
-  async function runSearch() {
+  function runSearch() {
+    return runSearchPara(relType);
+  }
+
+  // Recebe o nível por PARÂMETRO: quando o usuário clica num chip, o `relType` do estado ainda
+  // é o anterior (setState não é síncrono), e a busca sairia pela fonte errada.
+  async function runSearchPara(tipo: string) {
     const term = query.trim();
     if (!term) {
       return;
     }
     setSearching(true);
     setError(null);
+
+    // Empreendimento tem fonte própria (C2X), não a busca de entidades.
+    if (/empreendimento/i.test(tipo)) {
+      try {
+        const token = await getApoloAccessToken();
+        const response = await fetch("/api/apolo/empreendimentos", {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const payload = (await response.json()) as {
+          data?: { rows?: Array<{ code: string; id: string; name: string }> };
+        };
+        const alvo = term.toLowerCase();
+        setResults(
+          (payload.data?.rows ?? [])
+            .filter(
+              (row) =>
+                row.name?.toLowerCase().includes(alvo) ||
+                row.code?.toLowerCase().includes(alvo),
+            )
+            .slice(0, 8)
+            .map((row) => ({
+              id: row.id,
+              name: row.name || row.code,
+              document: row.code ?? "",
+              location: "",
+              profiles: [],
+            })),
+        );
+      } catch {
+        setError("Falha ao buscar empreendimentos. Tente de novo.");
+      } finally {
+        setSearching(false);
+      }
+      return;
+    }
+
     try {
       const token = await getApoloAccessToken();
       const response = await fetch(
@@ -206,7 +252,10 @@ export function AddRelationshipModal({
           relationshipType: relType.trim(),
           label,
           cargo: isFuncionario ? cargo.trim() : undefined,
-          relatedEntityId: kind === "trabalho" ? selected?.id : undefined,
+          // Empreendimento vai por enterpriseId (não tem entidade Apolo); o resto por entidade.
+          relatedEntityId:
+            kind === "trabalho" && !isEmpreendimento ? selected?.id : undefined,
+          enterpriseId: isEmpreendimento ? selected?.id : undefined,
           email: kind === "contato" ? email.trim() : undefined,
           phone: kind === "contato" ? phone.trim() : undefined,
           cpf: kind === "contato" ? cpf.trim() : undefined,
@@ -344,7 +393,18 @@ export function AddRelationshipModal({
                       : "bg-subtle text-ink-soft ring-line hover:bg-[#A07C3B]/5"
                   }`}
                   key={tipo}
-                  onClick={() => setRelType(tipo)}
+                  onClick={() => {
+                    setRelType(tipo);
+                    // Trocar o nível troca a FONTE da busca (empreendimento vem do C2X, o resto
+                    // de apolo_entities). Quem já digitou antes de escolher o nível ficaria com
+                    // resultado da fonte errada — ou com nenhum. Refaz a busca e limpa o que
+                    // estava selecionado, que pode não pertencer à nova fonte.
+                    setSelected(null);
+                    setResults([]);
+                    if (query.trim()) {
+                      void runSearchPara(tipo);
+                    }
+                  }}
                   type="button"
                 >
                   {tipo}

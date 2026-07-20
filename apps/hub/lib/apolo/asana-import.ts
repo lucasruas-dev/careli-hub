@@ -38,7 +38,15 @@ export type CadDoAsana = {
   // junto — e vem de graça.
   conjuge: DadosDaDescricao["conjuge"];
   corretor: string | null;
+  // E-mail do corretor. É a chave de desempate REAL: o formulário aceita só o primeiro nome
+  // ("Henrique"), e dois Henriques de imobiliárias diferentes viram o mesmo texto. O e-mail é
+  // o que permitirá, depois, casar a CAD com o corretor credenciado de verdade.
+  corretorEmail: string | null;
   criadoEm: string | null;
+  // Os custom fields CRUS da task. Ficam aqui para quem precisa decidir olhando o conjunto
+  // (ex.: qual "Imobiliárias Credenciadas - <X>" pertence ao empreendimento da CAD) sem ter
+  // que paginar o projeto do Asana de novo. É dado que já veio no mesmo fetch: custo zero.
+  customFields: { display_value?: string | null; name?: string | null }[];
   email: string | null;
   empreendimento: string | null;
   // Escolaridade, estado civil, profissão e renda: TUDO isso está na descrição da CAD, em
@@ -189,6 +197,115 @@ function valorDoCampo(
   return null;
 }
 
+// Só os custom fields, para as funções puras abaixo poderem ser testadas sem uma task inteira.
+export type TaskComCampos = Pick<TaskAsana, "custom_fields">;
+
+// Como `valorDoCampo`, mas devolve TODOS os campos preenchidos que casam — não o primeiro.
+//
+// POR QUÊ: `valorDoCampo` retorna no primeiro match e cala. Para a imobiliária isso é perigoso,
+// porque existe um campo "Imobiliárias Credenciadas - <Empreendimento>" POR EMPREENDIMENTO e o
+// código é cego para qual deles pertence ao empreendimento da CAD. Enxergar todos é o que
+// permite detectar ambiguidade em vez de escolher no escuro.
+export function camposPreenchidos(
+  task: TaskComCampos,
+  contem: string[],
+): { nome: string; nomeBruto: string; valor: string }[] {
+  const achados: { nome: string; nomeBruto: string; valor: string }[] = [];
+
+  for (const campo of task.custom_fields ?? []) {
+    const nome = normalizarNome(campo.name);
+    const valor = (campo.display_value ?? "").trim();
+    // Campo vazio não é dado: é o esquema "um campo por empreendimento" em repouso.
+    if (!valor) continue;
+    if (!contem.some((pedaco) => nome.includes(pedaco))) continue;
+    // `nomeBruto` é preservado porque a ancoragem precisa do SEPARADOR ("Credenciadas - Vale do
+    // Ouro"), e `normalizarNome` troca pontuação por espaço — perdendo justamente a fronteira
+    // entre o rótulo do campo e o nome do empreendimento.
+    achados.push({ nome, nomeBruto: String(campo.name ?? ""), valor });
+  }
+
+  return achados;
+}
+
+// Qual imobiliária pertence ao empreendimento ALVO, com confiança declarada.
+//
+// A regra existe porque gravar a imobiliária errada é permanente na prática: nada no sistema
+// sobrescreve `apolo_esteira.imobiliaria` depois (o upsert da importação é coalesce-preservador).
+// Então, na dúvida, NÃO grava — devolve `ambiguo` e a pessoa resolve à mão.
+//
+//   1 campo cujo NOME contém o empreendimento alvo  → `ancorado`   (o caso certo)
+//   0 ancorados e exatamente 1 campo preenchido     → `campo_unico` (compatível com as 279 já
+//                                                     gravadas, que vieram desse acidente feliz)
+//   qualquer outra combinação                       → `ambiguo`, valor null
+// O nome do campo do Asana é "Imobiliárias Credenciadas - <Empreendimento>". Esta função separa
+// o RÓTULO do EMPREENDIMENTO usando o separador, porque é a única forma de comparar o
+// empreendimento por igualdade.
+//
+// ⚠️ POR QUE NÃO `includes`: "imobiliarias credenciadas vale do ouro ii".includes("vale do ouro")
+// é `true`. Ancorar por substring gravaria a imobiliária do Vale do Ouro II na CAD do Vale do
+// Ouro, com confiança "ancorado" e sem cair na lista de ambíguos — erro permanente e invisível.
+//
+// `rotulado` = o campo declara a qual empreendimento pertence. Campo SEM rótulo é o genérico
+// ("Imobiliária Credenciada"), que é de onde vieram as 279 já gravadas.
+export function empreendimentoDoCampo(nomeBruto: string): {
+  empreendimento: string;
+  rotulado: boolean;
+} {
+  const separador = /[-–—:]/g;
+  const partes = String(nomeBruto ?? "").split(separador);
+
+  if (partes.length > 1) {
+    return { empreendimento: normalizarNome(partes[partes.length - 1]), rotulado: true };
+  }
+
+  return { empreendimento: normalizarNome(nomeBruto), rotulado: false };
+}
+
+// O campo pertence ao empreendimento alvo?
+//
+// Campo rotulado: igualdade estrita do trecho após o separador.
+// Campo sem rótulo: só casa se o nome TERMINAR no alvo em fronteira de palavra — "…vale do ouro"
+// casa, "…vale do ouro ii" não. Nunca por substring no meio.
+function campoEhDoAlvo(nomeBruto: string, alvoNormalizado: string): boolean {
+  if (!alvoNormalizado) return false;
+
+  const { empreendimento, rotulado } = empreendimentoDoCampo(nomeBruto);
+  if (empreendimento === alvoNormalizado) return true;
+  if (rotulado) return false;
+
+  return normalizarNome(nomeBruto).endsWith(` ${alvoNormalizado}`);
+}
+
+export function imobiliariaAncorada(
+  task: TaskComCampos,
+  alvoNormalizado: string,
+): {
+  candidatos: string[];
+  confianca: "ambiguo" | "ancorado" | "campo_unico";
+  valor: string | null;
+} {
+  const todos = camposPreenchidos(task, ["imobiliar"]);
+  const candidatos = todos.map((campo) => campo.valor);
+
+  const ancorados = todos.filter((campo) => campoEhDoAlvo(campo.nomeBruto, alvoNormalizado));
+
+  if (ancorados.length === 1) {
+    return { candidatos, confianca: "ancorado", valor: ancorados[0]!.valor };
+  }
+  // 2+ ancorados = dois campos do MESMO empreendimento preenchidos. Não há como escolher.
+  if (ancorados.length > 1) {
+    return { candidatos, confianca: "ambiguo", valor: null };
+  }
+  // ⚠️ O fallback de campo único vale SÓ para o campo genérico (sem rótulo de empreendimento).
+  // Se o único campo preenchido é rotulado para OUTRO empreendimento, ele não é um fallback: é
+  // uma discordância. Gravá-lo poria a imobiliária do Alto da Boa Vista na CAD do Vale do Ouro.
+  if (todos.length === 1 && !empreendimentoDoCampo(todos[0]!.nomeBruto).rotulado) {
+    return { candidatos, confianca: "campo_unico", valor: todos[0]!.valor };
+  }
+
+  return { candidatos, confianca: "ambiguo", valor: null };
+}
+
 function secaoDaTask(task: TaskAsana): string {
   const daqui = (task.memberships ?? []).find(
     (m) => m.project?.gid === PROJETO_CADS,
@@ -297,7 +414,12 @@ export async function escanearCads(input: {
         codigo: valorDoCampo(task, ["gcad", "codigo"]),
         conjuge: daDescricao.conjuge,
         corretor: valorDoCampo(task, ["corretor"]) ?? daDescricao.corretor ?? null,
+        // ⚠️ `precisaConter` é o AND; `contem` é OR. Buscar ["mail","corretor"] casaria
+        // "E-mail do Proponente" — por isso o pedaço obrigatório é "mail" sobre "corretor".
+        corretorEmail:
+          valorDoCampo(task, ["corretor"], "mail") ?? daDescricao.corretorEmail ?? null,
         criadoEm: task.created_at,
+        customFields: task.custom_fields ?? [],
         email,
         empreendimento,
         escolaridade: daDescricao.proponente.escolaridade ?? null,

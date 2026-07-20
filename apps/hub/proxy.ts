@@ -54,6 +54,13 @@ const PUBLIC_API_PREFIXES = [
   "/api/iris/gmail/callback", // OAuth setup do Gmail (redirect do Google, sem Bearer)
   "/api/iris/gmail/status", // diagnostico da caixa Gmail (guardado por GMAIL_OAUTH_SETUP_KEY)
   "/api/iris/gmail/poll", // cron de ingestao de e-mail da Iris (x-vercel-cron / CRON_SECRET)
+  // ⚠️ ZONA HOSTIL: libera por PREFIXO — tudo abaixo destes caminhos fica acessivel sem
+  // sessao, ao mundo. NUNCA criar rota de operador aqui dentro.
+  // A autorizacao e por POSSE DE DADO (CPF cadastrado + CNPJ credenciado), nao por papel, e
+  // cada rota valida por dentro a sessao assinada (lib/publico/cad/sessao.ts).
+  // Ver [[project_esteira_credenciamento_venda]].
+  "/api/publico/cad", // formulario publico de CAD do corretor (sem login, por desenho)
+  "/api/publico/imobiliaria", // auto-cadastro de imobiliaria (sem login, por desenho)
 ];
 
 function isPublicApi(pathname: string) {

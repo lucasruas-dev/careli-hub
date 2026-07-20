@@ -11,6 +11,8 @@ import {
   rgb,
 } from "pdf-lib";
 
+import { C2X_LOGO_PNG_BASE64 } from "@/modules/apolo/blocks/cadastro/cad-logo";
+
 export type CadCampo = { full?: boolean; label: string; value: string };
 export type CadSecao = { fields: CadCampo[]; title: string };
 
@@ -20,14 +22,22 @@ export type CadDoc = {
   // Codigo de autenticacao gerado no SERVIDOR e registrado na entidade. Vai impresso no
   // rodape: e por ele que se confere se a ficha e legitima ou forjada.
   autenticacao?: string;
+  // Nome do CORRETOR que enviou a CAD. Pedido do Lucas (20/jul): "teremos a imobiliaria e o
+  // nome do corretor". Campo proprio, e nao concatenado dentro de `vinculo` -- foi justamente
+  // a concatenacao que fez so a imobiliaria chegar ate aqui.
+  corretor?: string;
   data: string; // dd/mm/aaaa
   hora: string; // HH:MM
+  imobiliaria?: string;
   nome: string;
   papel: string; // "Prospect" etc.
   secoes: CadSecao[];
   // Titulo impresso no topo. Default "Cadastro de CAD"; a imobiliaria usa o proprio.
   titulo?: string;
-  vinculo: string; // imobiliaria / corretor (vazio na imobiliaria: ela nao se vincula a outra)
+  // LEGADO: o wizard interno ainda manda o vinculo pronto numa string so. Mantido opcional
+  // por uma release para nao quebrar quem ja chama; quando `imobiliaria` vier preenchido,
+  // ele tem precedencia.
+  vinculo?: string;
 };
 
 // Paleta identica ao documento aprovado.
@@ -225,11 +235,33 @@ export async function montarCadPdf(cad: CadDoc): Promise<Uint8Array> {
     .filter((secao) => secao.fields.length > 0);
 
   // ---------- cabecalho ----------
+  // Logo do C2X (a empresa dona do Panteon) assinando o documento. Best-effort de proposito:
+  // se o PNG embutido falhar por algum motivo, a CAD sai sem logo em vez de nao sair.
+  let tituloX = MARGIN;
+  // Altura que a logo ocupa abaixo do topo. Entra no calculo da regua horizontal: sem isso o
+  // traco encosta na base da logo (conferido no render).
+  let alturaLogo = 0;
+  try {
+    const logo = await doc.embedPng(Buffer.from(C2X_LOGO_PNG_BASE64, "base64"));
+    const larguraLogo = 58;
+    alturaLogo = (logo.height / logo.width) * larguraLogo;
+    ctx.page.drawImage(logo, {
+      height: alturaLogo,
+      width: larguraLogo,
+      x: MARGIN,
+      y: ctx.y - alturaLogo + 3,
+    });
+    tituloX = MARGIN + larguraLogo + 14;
+  } catch {
+    alturaLogo = 0;
+    tituloX = MARGIN;
+  }
+
   ctx.page.drawText(cad.titulo || "Cadastro de CAD", {
     color: INK,
     font: bold,
     size: 14,
-    x: MARGIN,
+    x: tituloX,
     y: ctx.y - 3,
   });
   // meta a direita (duas linhas).
@@ -242,12 +274,25 @@ export async function montarCadPdf(cad: CadDoc): Promise<Uint8Array> {
     ctx.page.drawText(val, { color: TEXT, font: bold, size: 8.5, x: x + rotW, y: ctx.y - dy });
   };
   metaRight("Enviado em", `${cad.data} as ${cad.hora}`, 0);
-  // So imprime o vinculo quando existe (a ficha da imobiliaria nao tem esse campo).
-  if (cad.vinculo) {
-    metaRight("Imobiliaria / corretor", cad.vinculo, 11);
+
+  // Imobiliaria e corretor em DUAS linhas, cada uma impressa so quando tem valor. A ficha da
+  // IMOBILIARIA nao tem nenhuma das duas (ela nao se vincula a outra) e continua sem imprimir
+  // -- e o comportamento que existia e precisa ser preservado.
+  let linhasMeta = 0;
+  const imobiliaria = cad.imobiliaria || cad.vinculo || "";
+  if (imobiliaria) {
+    linhasMeta += 1;
+    metaRight("Imobiliaria", imobiliaria, 11 * linhasMeta);
+  }
+  if (cad.corretor) {
+    linhasMeta += 1;
+    metaRight("Corretor", cad.corretor, 11 * linhasMeta);
   }
 
-  ctx.y -= 20;
+  // A regua horizontal fica abaixo do MAIS ALTO dos tres blocos do cabecalho: a logo (a
+  // esquerda), o titulo e as linhas de meta (a direita). Antes era um decremento fixo de 20,
+  // que bastava para uma linha de meta sem logo e encostava nos outros casos.
+  ctx.y -= Math.max(20 + Math.max(0, linhasMeta - 1) * 11, alturaLogo + 8);
   ctx.page.drawLine({
     color: INK,
     end: { x: A4.w - MARGIN, y: ctx.y },
@@ -281,7 +326,7 @@ export async function montarCadPdf(cad: CadDoc): Promise<Uint8Array> {
       start: { x: MARGIN, y: MARGIN - 8 },
       thickness: 0.7,
     });
-    p.drawText("Ficha gerada automaticamente", {
+    p.drawText("Documento emitido por C2X - ficha gerada automaticamente", {
       color: MUTE,
       font,
       size: 7.5,

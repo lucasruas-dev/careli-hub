@@ -21,6 +21,9 @@ type CreateRelationshipPayload = {
   label?: unknown;
   cargo?: unknown;
   relatedEntityId?: unknown;
+  // Id do empreendimento no C2X. Só para o nível "Empreendimento", que não tem entidade Apolo
+  // para apontar — o vínculo vai por este id dentro do metadata.
+  enterpriseId?: unknown;
   email?: unknown;
   phone?: unknown;
   cpf?: unknown;
@@ -79,6 +82,35 @@ export async function POST(request: Request) {
   }
 
   if (kind === "trabalho") {
+    // EMPREENDIMENTO É A EXCEÇÃO: ele NÃO é entidade do Apolo (vive no C2X e em
+    // apolo_enterprise_settings), então não existe `relatedEntityId` para apontar. O vínculo vai
+    // pelo id do empreendimento dentro do metadata.
+    //
+    // Sem este ramo o nível "Empreendimento" do modal era impossível de salvar: a busca procura
+    // em apolo_entities, onde empreendimento nunca esteve, e a tela travava em "Busque e
+    // selecione a entidade". O Lucas bateu nisso em 20/jul tentando ligar o Vale do Ouro à
+    // Raiane Imobiliária.
+    //
+    // `metadata.enterpriseId` é o formato que os leitores JÁ esperam:
+    // lib/apolo/credenciamento.ts (empreendimentosPorCredenciamento) e o portal público
+    // (lib/publico/cad/dados.ts) leem exatamente esta chave.
+    const enterpriseId = asText(payload.enterpriseId);
+    if (enterpriseId) {
+      return insertRelationship(adminClient, {
+        entityId,
+        // Fixo: os leitores filtram por este valor exato, não pelo rótulo digitado.
+        relationshipType: "empreendimento",
+        relatedEntityId: null,
+        label,
+        status: "verified",
+        metadata: {
+          ...baseMetadata(kind, authorization.userId),
+          enterpriseId,
+          enterpriseLabel: label,
+        },
+      });
+    }
+
     const relatedEntityId = asText(payload.relatedEntityId);
     if (!relatedEntityId) {
       return NextResponse.json(

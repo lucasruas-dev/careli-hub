@@ -752,6 +752,10 @@ export type EnrichmentResult = {
   emails: string[];
   enderecos: string[];
   estadoCivil: string;
+  // Nome completo do titular (dataset basic_data, campo `name`). Vem da CARELI_PF_01.
+  // Existe para o portal público: o corretor digita SÓ o CPF e o nome chega preenchido,
+  // em vez de ele digitar (Lucas, 20/jul: "o corretor digita o cpf, a most traz o nome completo").
+  nome: string;
   nomeMae: string;
   nomePai: string;
   obito: boolean;
@@ -777,6 +781,7 @@ function emptyEnrichment(
     emails: [],
     enderecos: [],
     estadoCivil: "",
+    nome: "",
     nomeMae: "",
     nomePai: "",
     obito: false,
@@ -880,6 +885,8 @@ function normalizeEnrichment(payload: unknown, includeRaw: boolean): EnrichmentR
   // Dados cadastrais basicos: nome mae/pai, estado civil, sexo, obito.
   const basic = asRecord(datasetPayload(datasets, "basic_data")?.basicData);
   if (basic) {
+    // `name` é o nome completo do titular. É o que faz o portal público pedir só o CPF.
+    result.nome = str(basic.name);
     result.nomeMae = str(basic.motherName);
     result.nomePai = str(basic.fatherName);
     result.estadoCivil = str(asRecord(basic.maritalStatusData)?.maritalStatus);
@@ -1715,6 +1722,10 @@ export function mockEnrichment(includeRaw = false): EnrichmentResult {
   result.conjuge = "CARLOS EDUARDO PACHECO";
   result.profissao = "ADVOGADA";
   result.renda = "R$ 8.000,00 a R$ 12.000,00 (estimada)";
+  // ⚠️ TEM QUE PARECER FALSO. Em 20/jul este campo saiu como "MARIA APARECIDA DE SOUZA" e o
+  // Lucas digitou o CPF dele achando que era consulta real. Dado simulado que parece verdadeiro
+  // é pior que dado ausente: leva a decidir errado. O mock se anuncia.
+  result.nome = "SIMULADO (MOST NAO CONFIGURADA)";
   result.nomeMae = "JOANA MARIA DA SILVA";
   result.telefones = ["(31) 99999-0000", "(31) 3333-0000"];
   result.emails = ["cliente@exemplo.com.br"];

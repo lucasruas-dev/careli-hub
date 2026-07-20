@@ -1,0 +1,42 @@
+-- ⚠️ NÃO APLICADA. Aguarda OK explícito do Lucas (operação sensível de banco).
+--
+-- E-MAIL DO CORRETOR ganha coluna própria em `apolo_esteira`.
+--
+-- POR QUÊ: o formulário do Asana aceita só o primeiro nome do corretor ("Henrique"). Dois
+-- Henriques de imobiliárias diferentes viram o MESMO texto na coluna `corretor` — o nome não
+-- serve como chave. O e-mail é o desempate real, e é contra ele que a trava de "corretor
+-- credenciado" vai comparar quando existir.
+--
+-- ONDE O DADO ESTÁ HOJE (fase 1, já no ar sem migration): em
+-- `apolo_source_links.metadata.corretorEmail`, da linha source_system='asana' /
+-- source_table='cad_task'. Aquilo é o lugar semanticamente certo para "o que a task dizia",
+-- mas NÃO é indexável nem legível pelo Board.
+--
+-- POR QUE NÃO EM `apolo_esteira.ficha` (jsonb, que não exigiria migration): porque
+-- `app/api/apolo/board/[id]/route.ts` grava a ficha inteira com o que a tela mandar. Na
+-- primeira vez que o operador salvasse a ficha, a tela — que não conhece a chave — apagaria o
+-- e-mail. Perda silenciosa. `ficha` é "o que o operador digitou"; dado de origem não mora ali.
+--
+-- POR QUE NÃO EM `apolo_entities.metadata`: o sync do C2X faz upsert SUBSTITUINDO o metadata
+-- inteiro (incidente 20/jul, 122 CADs perderam etapa e analista). Estado operacional vive em
+-- tabela própria — foi exatamente para isso que a 0057 existe.
+--
+-- SEGURANÇA DESTA MIGRATION: puramente aditiva. Coluna nova, nullable, sem default, sem
+-- backfill, sem índice único. Não toca em linha existente e não pode apagar nada.
+
+alter table public.apolo_esteira
+  add column if not exists corretor_email text;
+
+-- FASE 2 (depois de aplicada): a rota /api/apolo/asana/completar-vinculos ganha um modo que
+-- copia `apolo_source_links.metadata->>'corretorEmail'` para esta coluna SEM reler o Asana —
+-- custo zero e offline. O comando abaixo fica COMENTADO de propósito: promover dado é escrita
+-- em produção e passa pelo mesmo rito de confirmação, não pela migration.
+--
+-- update public.apolo_esteira es
+-- set corretor_email = sl.metadata->>'corretorEmail'
+-- from public.apolo_source_links sl
+-- where sl.entity_id = es.entity_id
+--   and sl.source_system = 'asana'
+--   and sl.source_table = 'cad_task'
+--   and es.corretor_email is null
+--   and nullif(sl.metadata->>'corretorEmail', '') is not null;

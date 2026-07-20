@@ -199,7 +199,22 @@ export async function POST(request: Request) {
 
   if (cad) {
     try {
-      const bytes = await montarCadPdf({ ...cad, autenticacao: result.autenticacao });
+      // ⚠️ A imobiliaria impressa e RESOLVIDA AQUI, sobrescrevendo o que veio no payload. O
+      // `cad` inteiro (inclusive `vinculo`) e montado no BROWSER e a rota so repassava: quem
+      // envia ditava o que sai impresso na propria CAD. Agora o nome sai do id que o operador
+      // autenticado escolheu (perfil.imobiliariaId).
+      // O `corretor` fica vazio no fluxo interno: o wizard de operador nao coleta corretor
+      // hoje. Quem preenche os dois e o formulario publico (/api/publico/cad/enviar).
+      const imobiliariaNome = await nomeDaImobiliaria(
+        adminClient,
+        payload.perfil?.imobiliariaId,
+        payload.perfil?.imobiliariaLabel,
+      );
+      const bytes = await montarCadPdf({
+        ...cad,
+        autenticacao: result.autenticacao,
+        imobiliaria: imobiliariaNome || cad.vinculo || "",
+      });
       cadBase64 = Buffer.from(bytes).toString("base64");
 
       const upload = await uploadApoloDocument({
@@ -235,6 +250,28 @@ export async function POST(request: Request) {
     { status: 201 },
   );
 }
+
+// Nome da imobiliaria a partir do ID escolhido pelo operador. Cai no rotulo que o wizard
+// mandou quando o id nao for um uuid (o seletor permite texto livre em imobiliaria nova).
+async function nomeDaImobiliaria(
+  adminClient: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  imobiliariaId: string | undefined,
+  imobiliariaLabel: string | undefined,
+): Promise<string> {
+  const id = (imobiliariaId ?? "").trim();
+  if (!UUID_RE.test(id)) return (imobiliariaLabel ?? "").trim();
+
+  const { data, error } = await adminClient
+    .from("apolo_entities")
+    .select("display_name, legal_name")
+    .eq("id", id)
+    .maybeSingle<{ display_name: string | null; legal_name: string | null }>();
+
+  if (error || !data) return (imobiliariaLabel ?? "").trim();
+  return data.legal_name || data.display_name || (imobiliariaLabel ?? "").trim();
+}
+
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function normalizeCategoria(value: string | undefined): string {
   const key = (value ?? "").trim().toLowerCase();
