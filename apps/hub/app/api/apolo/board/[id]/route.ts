@@ -81,7 +81,13 @@ export async function GET(
         cadastro: entity.metadata?.cadastro ?? {},
         contato: {
           email: lista.find((c) => c.contact_type === "email")?.value ?? "",
-          telefone: lista.find((c) => c.contact_type === "phone")?.value ?? "",
+          // ⚠️ O C2X grava o telefone como 'whatsapp' (4.064 registros) e quase nunca como
+          // 'phone' (248). Procurar só por 'phone' deixava 94% das fichas sem telefone na
+          // validação — o operador via um traço e ia atrás de um dado que já estava no banco.
+          telefone:
+            lista.find((c) => c.contact_type === "whatsapp")?.value ??
+            lista.find((c) => c.contact_type === "phone")?.value ??
+            "",
         },
         endereco: endereco
           ? {

@@ -160,7 +160,10 @@ export async function GET(request: Request) {
       imobiliaria: esteira?.imobiliaria ?? null,
       // A etapa salva no banco. A tela usa isto como ponto de partida do item; sem ele, tudo
       // voltava para "Validação" a cada carregamento porque a etapa só existia em memória.
-      etapa: row.metadata?.esteira?.etapa ?? null,
+      // Da TABELA, não do metadata: para as CADs vindas do C2X o metadata é apagado pelo
+      // sync, e era exatamente por ler daqui que a coluna "Análise de crédito" aparecia
+      // zerada mesmo com 122 registros corretos no banco.
+      etapa: esteira?.etapa ?? null,
       id: row.id,
       nome: row.legal_name || row.display_name,
       papel: row.metadata?.bornRole ?? (row.entity_kind === "pj" ? "imobiliaria" : "prospect"),

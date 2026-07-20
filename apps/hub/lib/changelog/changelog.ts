@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-board-etapa-telefone",
+    deployedAt: "2026-07-20T10:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "As 122 CADs voltaram a aparecer na coluna Analise de credito.",
+              "O telefone voltou a aparecer na ficha de validacao: quase todas mostravam um traco mesmo com o numero salvo.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.48.1",
+    technical: {
+      done: "A rota do Board lia esteira?.etapa da tabela nova em quase tudo, menos na propria linha da etapa, que continuava em row.metadata.esteira.etapa — vazio para as entidades vindas do C2X. Varredura confirmou que nao sobrou nenhuma outra leitura do metadata. A ficha de validacao passou a aceitar contact_type 'whatsapp' alem de 'phone'.",
+      motivation: "O Board mostrava 275 itens em Validacao e zero em Analise de credito, com o banco tendo 153 e 122 corretos. E o telefone aparecia vazio em 94% das fichas: o C2X grava 4.064 contatos como 'whatsapp' e so 248 como 'phone', mas a ficha procurava apenas por 'phone'.",
+    },
+    title: "Apolo: etapa e telefone na ficha de validacao",
+    type: "correcao",
+    version: "1.48.2",
+  },
+  {
     buildTag: "2026-07-20-apolo-esteira-tabela",
     deployedAt: "2026-07-20T09:30:00-03:00",
     internal: true,
