@@ -740,3 +740,93 @@ export async function aplicarVinculos(input: {
 
   return resultado;
 }
+
+// Monta os campos da ficha a partir do que foi importado: o que o OCR leu do documento e o
+// que o formulário do Asana trouxe, já convertido para os ids das listas do C2X.
+//
+// Mesma conversão que `criarEntidadesDoLote` aplica ao metadata — feita aqui uma vez só para
+// as duas fontes não divergirem (o operador veria um valor na ficha e outro no cadastro).
+export function camposDaFicha(item: {
+  dataNascimento?: string | null;
+  escolaridade?: string | null;
+  estadoCivil?: string | null;
+  nacionalidade?: string | null;
+  naturalidade?: string | null;
+  nomeMae?: string | null;
+  nomePai?: string | null;
+  orgaoEmissor?: string | null;
+  profissao?: string | null;
+  renda?: string | null;
+  rg?: string | null;
+}): Record<string, string | null | undefined> {
+  return {
+    dataNascimento: item.dataNascimento,
+    escolaridadeId: textoDoId(matchEscolaridadeId(item.escolaridade ?? null)),
+    estadoCivilId: textoDoId(matchEstadoCivilId(item.estadoCivil ?? "")),
+    nacionalidade: item.nacionalidade,
+    naturalidade: item.naturalidade,
+    nomeMae: item.nomeMae,
+    nomePai: item.nomePai,
+    orgaoEmissor: item.orgaoEmissor,
+    profissaoId: textoDoId(matchProfissaoId(item.profissao ?? null)),
+    rendaId: textoDoId(matchFaixaRendaId(item.renda ?? null)),
+    rg: item.rg,
+  };
+}
+
+// Copia o cadastro importado para `apolo_esteira.ficha` — a fonte que a validação lê.
+//
+// Sem isto o dado do formulário do Asana fica SÓ em `apolo_entities.metadata`, e para quem
+// existe no C2X o sync noturno substitui o metadata inteiro e apaga tudo (foi o que aconteceu
+// com a esteira em 20/jul). A ficha tem tabela própria justamente para sobreviver a isso.
+//
+// ⚠️ Só preenche chave AUSENTE: o que o operador digitou na validação sempre ganha da
+// importação. Reimportar não pode desfazer trabalho humano.
+export async function gravarFichaDoLote(input: {
+  client: AdminClient;
+  itens: {
+    campos: Record<string, string | null | undefined>;
+    entityId: string;
+  }[];
+}): Promise<{ atualizados: number; erros: string[] }> {
+  const resultado = { atualizados: 0, erros: [] as string[] };
+
+  for (const item of input.itens) {
+    const preencher = Object.entries(item.campos).filter(
+      ([, valor]) => typeof valor === "string" && valor.trim() !== "",
+    );
+    if (preencher.length === 0) continue;
+
+    const { data: atual } = await input.client
+      .from("apolo_esteira")
+      .select("ficha")
+      .eq("entity_id", item.entityId)
+      .maybeSingle();
+
+    // Linha ausente = vínculo não aplicado; sem esteira não há ficha para preencher.
+    if (!atual) continue;
+
+    const ficha = ((atual as { ficha: Record<string, unknown> | null }).ficha ?? {}) as Record<
+      string,
+      unknown
+    >;
+    let mudou = false;
+    for (const [chave, valor] of preencher) {
+      if (ficha[chave] === undefined || ficha[chave] === null || ficha[chave] === "") {
+        ficha[chave] = valor;
+        mudou = true;
+      }
+    }
+    if (!mudou) continue;
+
+    const { error } = await input.client
+      .from("apolo_esteira")
+      .update({ ficha })
+      .eq("entity_id", item.entityId);
+
+    if (error) resultado.erros.push(`${item.entityId}: ${error.message}`);
+    else resultado.atualizados += 1;
+  }
+
+  return resultado;
+}

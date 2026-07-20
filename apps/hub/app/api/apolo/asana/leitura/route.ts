@@ -4,8 +4,10 @@ import { trazerDocumentosDoLote } from "@/lib/apolo/asana-documentos";
 import {
   aplicarVinculos,
   asanaConfigurado,
+  camposDaFicha,
   criarEntidadesDoLote,
   escanearCads,
+  gravarFichaDoLote,
 } from "@/lib/apolo/asana-import";
 import { lerDocumentosDoLote, orcarLeitura } from "@/lib/apolo/asana-ocr";
 import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
@@ -189,7 +191,20 @@ export async function POST(request: Request) {
       })
     : { erros: [], ignorados: 0, vinculados: 0 };
 
-  // 4) ANEXOS para o Apolo (grátis) — é o que a validação mostra ao lado dos dados.
+  // 4) FICHA: copia o cadastro para `apolo_esteira.ficha`, que é de onde a tela de validação
+  //    lê. Sem este passo o dado fica só no metadata da entidade, e para quem existe no C2X o
+  //    sync noturno apaga o metadata inteiro — a leitura paga e o formulário iriam junto.
+  const ficha = paraVincular.length
+    ? await gravarFichaDoLote({
+        client,
+        itens: paraVincular.map((alvo) => ({
+          campos: camposDaFicha(comCpf.find((c) => c.gid === alvo.gid)!),
+          entityId: alvo.entityId,
+        })),
+      })
+    : { atualizados: 0, erros: [] };
+
+  // 5) ANEXOS para o Apolo (grátis) — é o que a validação mostra ao lado dos dados.
   const documentos = paraVincular.length
     ? await trazerDocumentosDoLote({
         client,
@@ -210,6 +225,7 @@ export async function POST(request: Request) {
     data: {
       criacao,
       documentos,
+      ficha,
       leitura: resultado,
       pendentes,
       vinculo,

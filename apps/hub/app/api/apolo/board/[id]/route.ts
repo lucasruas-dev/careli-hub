@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { authorizeApoloRead } from "@/lib/apolo/auth";
+import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // Ficha COMPLETA de um item da esteira, pro operador validar com o documento ao lado. Devolve os
@@ -75,10 +75,24 @@ export async function GET(
   const endereco = ((enderecos ?? []) as AddressRow[])[0] ?? null;
   const lista = (contatos ?? []) as ContactRow[];
 
+  // A ficha vive em `apolo_esteira.ficha` (tabela própria) — o que o OCR leu, o que veio do
+  // formulário do Asana e o que o OPERADOR digitou. Não pode ficar no metadata da entidade:
+  // o sync do C2X substitui o metadata inteiro a cada rodada e apagaria o trabalho dele.
+  const { data: esteiraRow } = await adminClient
+    .from("apolo_esteira")
+    .select("ficha, ficha_editada_em")
+    .eq("entity_id", id)
+    .maybeSingle();
+
+  const daEsteira = ((esteiraRow as { ficha: Record<string, unknown> } | null)?.ficha ??
+    {}) as Record<string, unknown>;
+  // O que o operador editou GANHA do que veio da importação.
+  const cadastro = { ...(entity.metadata?.cadastro ?? {}), ...daEsteira };
+
   return NextResponse.json(
     {
       data: {
-        cadastro: entity.metadata?.cadastro ?? {},
+        cadastro,
         contato: {
           email: lista.find((c) => c.contact_type === "email")?.value ?? "",
           // ⚠️ O C2X grava o telefone como 'whatsapp' (4.064 registros) e quase nunca como
@@ -112,4 +126,67 @@ export async function GET(
     },
     { headers: { "Cache-Control": "no-store" } },
   );
+}
+
+// Salva o que o OPERADOR completou na validação.
+//
+// Grava em `apolo_esteira.ficha`, não no metadata da entidade: o sync do C2X substitui o
+// metadata inteiro a cada rodada e apagaria o trabalho dele — foi o que aconteceu com a
+// esteira em 20/jul. Aqui o prejuízo seria pior, porque é digitação humana.
+//
+// Faz MERGE, nunca replace: o operador salva um campo por vez e não pode zerar o resto.
+export async function PATCH(
+  request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  const auth = await authorizeApoloWrite(request);
+  if (!auth.ok) return auth.response;
+
+  const adminClient = createApoloAdminClient();
+  if (!adminClient) {
+    return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
+  }
+
+  const { id } = await context.params;
+  const body = (await request.json().catch(() => ({}))) as {
+    campos?: Record<string, unknown>;
+  };
+
+  const campos = body.campos ?? {};
+  if (Object.keys(campos).length === 0) {
+    return NextResponse.json({ error: "Nada para salvar." }, { status: 400 });
+  }
+
+  const { data: atual } = await adminClient
+    .from("apolo_esteira")
+    .select("ficha")
+    .eq("entity_id", id)
+    .maybeSingle();
+
+  const fichaAtual = ((atual as { ficha: Record<string, unknown> } | null)?.ficha ??
+    {}) as Record<string, unknown>;
+
+  // Campo apagado pelo operador (string vazia) some da ficha, em vez de virar "" — assim ele
+  // consegue LIMPAR um dado que o OCR leu errado.
+  const mesclada: Record<string, unknown> = { ...fichaAtual };
+  for (const [chave, valor] of Object.entries(campos)) {
+    if (valor === "" || valor === null) delete mesclada[chave];
+    else mesclada[chave] = valor;
+  }
+
+  const { error } = await adminClient.from("apolo_esteira").upsert(
+    {
+      entity_id: id,
+      ficha: mesclada,
+      ficha_editada_em: new Date().toISOString(),
+      ficha_editada_por: auth.userId,
+    },
+    { onConflict: "entity_id" },
+  );
+
+  if (error) {
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
+
+  return NextResponse.json({ data: { ficha: mesclada, ok: true } });
 }

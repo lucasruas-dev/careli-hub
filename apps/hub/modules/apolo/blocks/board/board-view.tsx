@@ -1675,7 +1675,19 @@ type Ficha = {
   };
 };
 
-type Campo = { full?: boolean; label: string; valor: string };
+// `chave` = nome do campo em `apolo_esteira.ficha`. Campo COM chave é editável pelo operador;
+// campo sem chave é só leitura (identidade da entidade, endereço e contato têm tabela própria).
+// Regra do Lucas: "liberar os campos que a MOST não conseguiu nos devolver para que o operador
+// possa completar o cadastro" — por isso o que é editável não depende do que veio preenchido.
+type Campo = {
+  chave?: string;
+  full?: boolean;
+  label: string;
+  opcoes?: { id: number | string; label: string }[];
+  tipo?: "data" | "select" | "texto";
+  valor: string;
+  valorCru?: string;
+};
 type SecaoFicha = { campos: Campo[]; titulo: string };
 
 const texto = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v));
@@ -1708,20 +1720,51 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
       titulo: "Dados da empresa",
     });
   } else {
+    const livre = (chave: string, label: string, full = false): Campo => ({
+      chave,
+      full,
+      label,
+      tipo: "texto",
+      valor: texto(c[chave]),
+      valorCru: texto(c[chave]),
+    });
+    const lista = (
+      chave: string,
+      label: string,
+      opcoes: { id: number | string; label: string }[],
+    ): Campo => ({
+      chave,
+      label,
+      opcoes,
+      tipo: "select",
+      valor: opcao(opcoes, c[chave]),
+      valorCru: texto(c[chave]),
+    });
+
     secoes.push({
       campos: [
         { full: true, label: "Nome", valor: titleCase(ficha.entidade.nome) },
         { label: "CPF", valor: ficha.entidade.documento },
-        { label: "Nascimento", valor: formatDateBR(texto(c.dataNascimento)) },
-        { full: true, label: "Nome da mãe", valor: titleCase(texto(c.nomeMae)) },
-        { label: "Naturalidade", valor: titleCase(texto(c.naturalidade)) },
-        { label: "Nacionalidade", valor: titleCase(texto(c.nacionalidade)) },
-        { label: "Sexo", valor: opcao(C2X_SEXO, c.sexoId) },
-        { label: "Estado civil", valor: opcao(C2X_ESTADO_CIVIL, c.estadoCivilId) },
-        { label: "Escolaridade", valor: opcao(C2X_ESCOLARIDADE, c.escolaridadeId) },
-        { label: "Faixa de renda", valor: opcao(C2X_FAIXA_RENDA, c.rendaId) },
-        { label: "Profissão", valor: opcao(C2X_PROFISSOES, c.profissaoId) },
-        { label: "Patrimônio", valor: texto(c.patrimonio) },
+        {
+          chave: "dataNascimento",
+          label: "Nascimento",
+          tipo: "data",
+          valor: formatDateBR(texto(c.dataNascimento)),
+          valorCru: texto(c.dataNascimento).slice(0, 10),
+        },
+        livre("nomeMae", "Nome da mãe", true),
+        livre("nomePai", "Nome do pai", true),
+        // O OCR lê RG e órgão emissor e a ficha não mostrava — dado pago que ficava invisível.
+        livre("rg", "RG"),
+        livre("orgaoEmissor", "Órgão emissor"),
+        livre("naturalidade", "Naturalidade"),
+        livre("nacionalidade", "Nacionalidade"),
+        lista("sexoId", "Sexo", C2X_SEXO),
+        lista("estadoCivilId", "Estado civil", C2X_ESTADO_CIVIL),
+        lista("escolaridadeId", "Escolaridade", C2X_ESCOLARIDADE),
+        lista("rendaId", "Faixa de renda", C2X_FAIXA_RENDA),
+        lista("profissaoId", "Profissão", C2X_PROFISSOES),
+        livre("patrimonio", "Patrimônio"),
       ],
       titulo: "Identificação",
     });
@@ -1819,6 +1862,44 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
   const [abrindo, setAbrindo] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [ficha, setFicha] = useState<Ficha | null>(null);
+  const [pendentes, setPendentes] = useState<Set<string>>(new Set());
+  const [salvos, setSalvos] = useState<Set<string>>(new Set());
+  const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+
+  // Salva UM campo por vez, no blur (texto) ou no change (lista). Sem botão "salvar": o operador
+  // passa o dia nesta tela e um botão único perde trabalho se a aba fechar no meio.
+  const salvar = async (chave: string, valor: string) => {
+    setErroSalvar(null);
+    setPendentes((atual) => new Set(atual).add(chave));
+    try {
+      const accessToken = await getApoloAccessToken();
+      const response = await fetch(`/api/apolo/board/${entityId}`, {
+        body: JSON.stringify({ campos: { [chave]: valor } }),
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => ({}))) as { error?: string };
+        throw new Error(payload.error ?? "Não foi possível salvar.");
+      }
+      // Reflete na ficha em memória para o select mostrar o novo rótulo na hora.
+      setFicha((atual) =>
+        atual ? { ...atual, cadastro: { ...atual.cadastro, [chave]: valor } } : atual,
+      );
+      setSalvos((atual) => new Set(atual).add(chave));
+    } catch (error) {
+      setErroSalvar((error as Error).message);
+    } finally {
+      setPendentes((atual) => {
+        const proximo = new Set(atual);
+        proximo.delete(chave);
+        return proximo;
+      });
+    }
+  };
 
   useEffect(() => {
     let alive = true;
@@ -1903,6 +1984,12 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
           </p>
         ) : (
           <div className="grid gap-5">
+            {erroSalvar ? (
+              <p className="m-0 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
+                {erroSalvar}
+              </p>
+            ) : null}
             {montarSecoes(ficha).map((secao) => (
               <div key={secao.titulo}>
                 <p className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink">
@@ -1911,15 +1998,49 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
                 <div className="grid gap-2 sm:grid-cols-2">
                   {secao.campos.map((campo) => (
                     <div
-                      className={`rounded-lg border border-line bg-subtle/40 px-3 py-2 ${
-                        campo.full ? "sm:col-span-2" : ""
-                      }`}
+                      className={`rounded-lg border px-3 py-2 ${
+                        campo.chave ? "border-line bg-surface" : "border-line bg-subtle/40"
+                      } ${campo.full ? "sm:col-span-2" : ""}`}
                       key={`${secao.titulo}-${campo.label}`}
                     >
-                      <p className="m-0 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                      <p className="m-0 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
                         {campo.label}
+                        {pendentes.has(campo.chave ?? "") ? (
+                          <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+                        ) : salvos.has(campo.chave ?? "") ? (
+                          <Check aria-hidden="true" className="size-3 text-emerald-600" />
+                        ) : null}
                       </p>
-                      <p className="m-0 mt-0.5 text-sm text-ink">{campo.valor || "—"}</p>
+
+                      {!campo.chave ? (
+                        <p className="m-0 mt-0.5 text-sm text-ink">{campo.valor || "—"}</p>
+                      ) : campo.tipo === "select" ? (
+                        <select
+                          className="mt-0.5 w-full border-0 bg-transparent p-0 text-sm text-ink outline-none focus:ring-0"
+                          onChange={(event) => void salvar(campo.chave!, event.target.value)}
+                          value={campo.valorCru ?? ""}
+                        >
+                          <option value="">—</option>
+                          {(campo.opcoes ?? []).map((o) => (
+                            <option key={o.id} value={o.id.toString()}>
+                              {o.label}
+                            </option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          className="mt-0.5 w-full border-0 bg-transparent p-0 text-sm text-ink outline-none placeholder:text-ink-muted focus:ring-0"
+                          defaultValue={campo.valorCru ?? ""}
+                          key={`${campo.chave}-${campo.valorCru ?? ""}`}
+                          onBlur={(event) => {
+                            if (event.target.value !== (campo.valorCru ?? "")) {
+                              void salvar(campo.chave!, event.target.value);
+                            }
+                          }}
+                          placeholder="—"
+                          type={campo.tipo === "data" ? "date" : "text"}
+                        />
+                      )}
                     </div>
                   ))}
                 </div>
