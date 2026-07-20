@@ -36,6 +36,42 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-portal-publico-cad",
+    deployedAt: "2026-07-21T18:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Link publico para o corretor enviar a CAD do cliente, sem login, direto do celular.",
+              "O corretor informa o CPF: se ja tem cadastro, segue direto; se nao, a propria tela faz o cadastro na hora.",
+              "Nome e CRECI vem preenchidos pelo CPF; o corretor so confere.",
+              "So aparecem os empreendimentos que a imobiliaria dele esta habilitada a trabalhar. Com um so, ja segue para a ficha.",
+              "Link publico para a imobiliaria se cadastrar e escolher os empreendimentos que quer trabalhar.",
+              "A CAD gerada leva a logo do C2X e o nome do corretor e da imobiliaria.",
+            ],
+            screen: "Cadastro publico (corretor e imobiliaria)",
+          },
+          {
+            items: [
+              "Vinculo de empreendimento na aba Relacionamentos: agora e possivel ligar uma imobiliaria a um empreendimento.",
+            ],
+            screen: "Ficha · Relacionamentos",
+          },
+        ],
+      },
+    ],
+    rollback: "1.56.0",
+    technical: {
+      done: "Rotas publicas em /publico/cad e /publico/imobiliaria (fora do HubShell, allowlist no proxy). Fluxo do corretor por maquina de estados: CPF -> CNPJ (prova credenciamento) -> dados (nome/CRECI da MOST via CARELI_PF_01 + CARELI_PF_06) -> empreendimento -> CAD. Sessao assinada (SESSAO_CAD_SECRET): a imobiliaria e os empreendimentos habilitados vem do token, nunca do corpo, entao o anonimo nao escolhe a que imobiliaria se vincula. Toda CAD nasce com corretor_entity_id + imobiliaria_entity_id + enterprise_id, com CHECK no banco (migration 0061) que impede CAD publica sem vinculo. Teto por IP em publico_rate_limit (0062). Correcoes: busca de CNPJ agora olha apolo_entity_identifiers (as 412 imobiliarias nao tem document_hash); nivel Empreendimento do modal de relacionamento grava metadata.enterpriseId (empreendimento nao e entidade Apolo); CRECI migrou de CARELI_PF_04 (9 datasets) para CARELI_PF_06 (so class_organization, R$ 0,177). Inclui tambem melhorias do Serasa que estavam na branch (parser lendo a resposta real, contador que atualiza no erro).",
+      motivation: "Levar a captura de CAD para fora do hub: o corretor sobe a ficha do cliente pelo celular, por um link enviado no WhatsApp, sem depender de operador nem de login. O CPF do corretor cadastrado e a trava de custo (so quem esta credenciado dispara OCR/enriquecimento). Fase 1 do acesso externo — o app com login proprio vem depois.",
+    },
+    title: "Portal publico: CAD do corretor e cadastro de imobiliaria",
+    type: "melhoria",
+    version: "1.57.0",
+  },
+  {
     buildTag: "2026-07-21-serasa-bancada-teste",
     deployedAt: "2026-07-21T16:00:00-03:00",
     internal: true,
