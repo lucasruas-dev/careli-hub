@@ -33,6 +33,8 @@ type AddressRow = {
 
 type ContactRow = { contact_type: string; value: string };
 
+const texto = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
+
 export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -101,6 +103,21 @@ export async function GET(
 
   const laudo = ((laudoRow as { metadata: Record<string, unknown> } | null)?.metadata ??
     null) as Record<string, unknown> | null;
+
+  // CÔNJUGE: vive em `apolo_relationships` (label = nome, metadata = cpf/nascimento/contato).
+  // A tela precisa dele para o contrato — casado sem cônjuge não fecha venda.
+  const { data: relConjuge } = await adminClient
+    .from("apolo_relationships")
+    .select("label, metadata")
+    .eq("entity_id", id)
+    .eq("relationship_type", "conjuge")
+    .limit(1)
+    .maybeSingle();
+
+  const doRelacionamento = (relConjuge ?? null) as {
+    label: string | null;
+    metadata: Record<string, unknown> | null;
+  } | null;
   // O que o operador editou GANHA do que veio da importação.
   const cadastro = { ...(entity.metadata?.cadastro ?? {}), ...daEsteira };
 
@@ -140,6 +157,18 @@ export async function GET(
               veredito: (laudo.veredito as string) ?? null,
             }
           : null,
+        // O que o operador editou na ficha GANHA do que veio do relacionamento.
+        conjuge: {
+          cpf: texto(daEsteira.conjugeCpf) || texto(doRelacionamento?.metadata?.cpf),
+          dataNascimento:
+            texto(daEsteira.conjugeNascimento) ||
+            texto(doRelacionamento?.metadata?.dataNascimento),
+          email: texto(daEsteira.conjugeEmail) || texto(doRelacionamento?.metadata?.email),
+          nome: texto(daEsteira.conjugeNome) || (doRelacionamento?.label ?? ""),
+          nomeMae: texto(daEsteira.conjugeMae) || texto(doRelacionamento?.metadata?.nomeMae),
+          telefone:
+            texto(daEsteira.conjugeTelefone) || texto(doRelacionamento?.metadata?.phone),
+        },
         entidade: {
           criadoEm: entity.created_at,
           documento: entity.document_masked ?? "",

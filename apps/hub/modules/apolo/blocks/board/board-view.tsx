@@ -1677,6 +1677,14 @@ type Ficha = {
     veredito: string | null;
   } | null;
   cadastro: Record<string, unknown>;
+  conjuge: {
+    cpf: string;
+    dataNascimento: string;
+    email: string;
+    nome: string;
+    nomeMae: string;
+    telefone: string;
+  };
   contato: { email: string; telefone: string };
   endereco: Record<string, string> | null;
   entidade: {
@@ -1715,6 +1723,9 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
   const e = ficha.endereco;
   const pj = ficha.entidade.tipo === "pj";
   const secoes: SecaoFicha[] = [];
+  // 2 = Casado, 6 = União Estável (ids do C2X, ver C2X_ESTADO_CIVIL). Decide o regime de bens
+  // na Identificação E a existência da seção Cônjuge.
+  const casado = ["2", "6"].includes(texto(c.estadoCivilId));
 
   if (pj) {
     secoes.push({
@@ -1760,9 +1771,6 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
     // mesma ordem, mesmos rótulos. Ver `montarCadDoc` em blocks/cadastro/cadastro-flow.tsx.
     // Por isso NÃO há nome do pai, RG nem órgão emissor: o formulário não os revisa (o dado
     // lido do documento continua salvo, só não é conferido aqui).
-    // 2 = Casado, 6 = União Estável (ids do C2X, ver C2X_ESTADO_CIVIL).
-    const casado = ["2", "6"].includes(texto(c.estadoCivilId));
-
     secoes.push({
       campos: [
         { full: true, label: "Nome", valor: titleCase(ficha.entidade.nome) },
@@ -1851,17 +1859,45 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
 
   // CÔNJUGE — a revisão do formulário mostra a ficha inteira dele quando casado, e é
   // material de contrato. Aqui é read-only: o cônjuge é entidade própria, com ficha própria.
-  const conjuge = (c.conjuge ?? null) as Record<string, unknown> | null;
-  if (conjuge && texto(conjuge.nome)) {
+  // CÔNJUGE — aparece SEMPRE que o estado civil é casado/união estável, mesmo vazio, e é
+  // EDITÁVEL (Lucas 21/jul: "se o cliente for casado, temos que ter os dados do cônjuge; o
+  // ideal é vir do documento, mas se não tiver jeito, habilita para o operador preencher").
+  // Sem cônjuge não se fecha contrato de casado.
+  const conj = ficha.conjuge;
+  const campoConjuge = (
+    chave: string,
+    label: string,
+    valor: string,
+    full = false,
+  ): Campo => ({
+    chave,
+    full,
+    label,
+    tipo: "texto",
+    // O que o operador digitou na ficha ganha do que veio do relacionamento.
+    valor: texto(c[chave]) || valor,
+    valorCru: texto(c[chave]) || valor,
+  });
+
+  if (casado) {
     secoes.push({
       campos: [
-        { full: true, label: "Nome", valor: titleCase(texto(conjuge.nome)) },
-        { label: "CPF", valor: texto(conjuge.cpf) },
-        { label: "Nascimento", valor: formatDateBR(texto(conjuge.dataNascimento)) },
-        { label: "Idade", valor: calcIdade(texto(conjuge.dataNascimento)) },
-        { full: true, label: "Nome da mãe", valor: titleCase(texto(conjuge.nomeMae)) },
-        { label: "Telefone", valor: texto(conjuge.telefone) },
-        { full: true, label: "E-mail", valor: texto(conjuge.email) },
+        campoConjuge("conjugeNome", "Nome", titleCase(conj.nome), true),
+        campoConjuge("conjugeCpf", "CPF", conj.cpf),
+        {
+          chave: "conjugeNascimento",
+          label: "Nascimento",
+          tipo: "data",
+          valor: formatDateBR(texto(c.conjugeNascimento) || conj.dataNascimento),
+          valorCru: (texto(c.conjugeNascimento) || conj.dataNascimento).slice(0, 10),
+        },
+        {
+          label: "Idade",
+          valor: calcIdade(texto(c.conjugeNascimento) || conj.dataNascimento),
+        },
+        campoConjuge("conjugeMae", "Nome da mãe", titleCase(conj.nomeMae), true),
+        campoConjuge("conjugeTelefone", "Telefone", conj.telefone),
+        campoConjuge("conjugeEmail", "E-mail", conj.email, true),
       ],
       titulo: "Cônjuge",
     });

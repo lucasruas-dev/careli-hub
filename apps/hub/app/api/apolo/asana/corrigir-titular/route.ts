@@ -207,13 +207,17 @@ export async function POST(request: Request) {
     const fichaAtual = ((esteira as { ficha: Record<string, unknown> } | null)?.ficha ??
       {}) as Record<string, unknown>;
 
-    // Os campos de IDENTIDADE da ficha eram do cônjuge e passam a ser do proponente. Mas só
-    // se o documento dele trouxe o campo: `?? null` apagaria o que estava lá quando o OCR não
-    // lesse, por exemplo, a filiação — e o operador perderia dado bom sem saber.
+    // Os campos de IDENTIDADE da ficha eram do CÔNJUGE e passam a ser do proponente.
     //
-    // O resto da ficha (profissão, renda, escolaridade, telefone, o que o operador digitou)
-    // NÃO é tocado aqui: veio do formulário e já era do proponente desde o início.
-    const daIdentidade: Record<string, unknown> = {};
+    // ⚠️ Aqui o campo que o documento novo NÃO trouxe tem que ficar VAZIO, não preservado.
+    // Preservar seria manter nascimento e nome da mãe de OUTRA PESSOA numa ficha que agora é
+    // do proponente — foi o que aconteceu com o Mateus, que ficou com a data e a mãe da Karla
+    // porque a CNH dele não devolveu esses campos. Campo em branco o operador preenche; campo
+    // com o dado de outra pessoa ele não tem como desconfiar.
+    //
+    // O resto da ficha (profissão, renda, escolaridade, telefone) NÃO é tocado: veio do
+    // formulário e já era do proponente desde o início.
+    const ficha: Record<string, unknown> = { ...fichaAtual };
     for (const [chave, valor] of Object.entries({
       dataNascimento: doProponente.dataNascimento,
       nacionalidade: doProponente.nacionalidade,
@@ -221,13 +225,11 @@ export async function POST(request: Request) {
       nomeMae: doProponente.nomeMae,
       rg: doProponente.rg,
     })) {
-      if (valor) daIdentidade[chave] = valor;
+      if (valor) ficha[chave] = valor;
+      else delete ficha[chave];
     }
 
-    await client
-      .from("apolo_esteira")
-      .update({ ficha: { ...fichaAtual, ...daIdentidade } })
-      .eq("entity_id", entityId);
+    await client.from("apolo_esteira").update({ ficha }).eq("entity_id", entityId);
 
     // O cônjuge ganha os dados do documento DELE, quando encontrado.
     if (laudo.conjugeAsana) {
