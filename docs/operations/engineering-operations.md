@@ -41240,3 +41240,34 @@ o nome. Verificar tambem se `mesclarCadastros` chegou a misturar campos de dois 
 
 ⚠️ LICAO: a regra "nome e CPF vem do documento" aplicada SOZINHA foi o que produziu a troca de
 titular. O alerta foi dado antes de rodar e se confirmou.
+
+## 2026-07-21 - INCIDENTE: quebrei a validacao do Apolo em producao (v1.52.0 -> hotfix v1.52.1)
+
+O QUE ACONTECEU
+A tela de validacao ficou presa em "Carregando documentos..." logo apos o deploy da v1.52.0.
+Causa: ao substituir o autosave campo a campo pelo modo de edicao, usei um recorte de texto por
+indice (`s.index(inicio)` ate `s.index(fim)`) num arquivo de ~2.400 linhas. O recorte engoliu o
+`useEffect` que busca `/api/apolo/documentos` e `/api/apolo/board/[id]` e desliga o estado
+`carregando`. Sem ele: nenhum fetch, `carregando` eterno.
+
+COMO DIAGNOSTIQUEI (serve de roteiro)
+1. `get_runtime_logs` de producao: ZERO erro nas rotas do Apolo. Logo, nao era falha de servidor.
+2. Nos logs aparecia `GET /api/apolo/board` (a lista) mas NENHUM `GET /api/apolo/board/[id]`.
+   Requisicao que nao chega ao servidor = problema no cliente, antes do fetch.
+3. Li o componente na ordem de execucao e o efeito simplesmente nao existia mais.
+
+⚠️ O QUE FALHOU NA MINHA VERIFICACAO
+- `tsc --noEmit` passou. E passaria mesmo: o codigo continua VALIDO sem o efeito. Type-check
+  pega tipo errado, nao pega PECA FALTANDO.
+- O `npm run build` completo tambem passou, pelo mesmo motivo.
+- Quatro deploys seguidos hoje sairam so com typecheck. A unica verificacao que pegaria isso
+  era ABRIR A TELA — e eu nao consigo (o dev local para no /login, e quem clica e o Lucas).
+
+REGRAS QUE FICAM
+1. Em arquivo grande, NAO substituir bloco por recorte de texto entre dois indices. Usar
+   ancoras pequenas (Edit com old_string curto e unico) e, depois, CONFERIR o que ficou entre
+   elas — `grep -c "useEffect(() => {"` antes e depois, por exemplo.
+2. Mudanca estrutural em componente = contar as pecas antes e depois (efeitos, handlers,
+   estados). Se o numero mudou sem eu ter pedido, e regressao.
+3. Quando a verificacao visual e impossivel para mim, DIZER isso ao Lucas antes do deploy, e
+   nao tratar typecheck verde como "validado".
