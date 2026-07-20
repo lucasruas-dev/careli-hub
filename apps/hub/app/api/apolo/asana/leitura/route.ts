@@ -56,6 +56,9 @@ export async function GET(request: Request) {
     const { itens, orcamento } = await orcarLeitura({
       cads: cads.map((cad) => ({
         conjuge: cad.conjuge,
+        // Data de criação da CAD no Asana: precisa atravessar orçamento -> tela -> POST,
+        // senão a esteira nasce sem data de chegada.
+        criadoEm: cad.criadoEm,
         email: cad.email,
         escolaridade: cad.escolaridade,
         estadoCivil: cad.estadoCivil,
@@ -139,6 +142,7 @@ export async function POST(request: Request) {
         // renda. É o que evita pagar enriquecimento para descobrir o mesmo.
         conjuge: item.conjuge,
         cpf: lido.cpf,
+        criadoEm: item.criadoEm ?? null,
         dataNascimento: lido.dataNascimento,
         email: item.email,
         empreendimento: body.empreendimento ?? null,
@@ -173,7 +177,9 @@ export async function POST(request: Request) {
     .filter((item) => entidadePorCad[item.gid])
     .map((item) => ({
       corretor: null,
-      criadoEm: null,
+      // ⚠️ Já foi `null` aqui, e o efeito era a fila inteira com o horário da importação
+      // (392 registros com a mesma data). A data de chegada vem da task do Asana.
+      criadoEm: item.criadoEm ?? null,
       empreendimento: body.empreendimento ?? null,
       entityId: entidadePorCad[item.gid]!,
       gid: item.gid,

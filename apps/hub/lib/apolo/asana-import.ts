@@ -856,3 +856,32 @@ export async function gravarFichaDoLote(input: {
 
   return resultado;
 }
+
+// Preenche a DATA DE CHEGADA que faltou: `apolo_esteira.chegou_em` = created_at da task.
+//
+// Sem ela o Board cai no `created_at` da ENTIDADE, que é a hora da importação — e a fila
+// inteira aparece com o mesmo horário (392 registros marcados "20/07/2026 01:58"), o que
+// destrói a ordem de chegada das CADs.
+//
+// Só escreve onde está NULL: se alguém já ajustou a data à mão, não mexemos.
+export async function gravarChegadaDoLote(input: {
+  client: AdminClient;
+  itens: { criadoEm: string | null; entityId: string }[];
+}): Promise<{ atualizados: number; erros: string[] }> {
+  const resultado = { atualizados: 0, erros: [] as string[] };
+
+  for (const item of input.itens) {
+    if (!item.criadoEm) continue;
+
+    const { error, count } = await input.client
+      .from("apolo_esteira")
+      .update({ chegou_em: item.criadoEm }, { count: "exact" })
+      .eq("entity_id", item.entityId)
+      .is("chegou_em", null);
+
+    if (error) resultado.erros.push(`${item.entityId}: ${error.message}`);
+    else resultado.atualizados += count ?? 0;
+  }
+
+  return resultado;
+}

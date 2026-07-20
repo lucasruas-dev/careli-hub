@@ -84,6 +84,9 @@ export type AnexoCandidato = {
 // até a criação da entidade: é dado de graça que não pode se perder no caminho.
 export type CadParaLeitura = {
   anexos: AnexoCandidato[];
+  // Quando a CAD foi criada NO ASANA. É a data de chegada de verdade; sem ela o Board mostra
+  // a data da importação e a fila inteira fica com o mesmo horário.
+  criadoEm?: string | null;
   conjuge?: {
     email?: string;
     escolaridade?: string;

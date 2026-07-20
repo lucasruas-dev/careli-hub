@@ -4,6 +4,7 @@ import {
   asanaConfigurado,
   camposDaFicha,
   escanearCads,
+  gravarChegadaDoLote,
   gravarFichaDoLote,
 } from "@/lib/apolo/asana-import";
 import { authorizeApoloWrite } from "@/lib/apolo/auth";
@@ -81,10 +82,23 @@ export async function POST(request: Request) {
 
     const resultado = await gravarFichaDoLote({ client, itens });
 
+    // DATA DE CHEGADA: a esteira nasceu sem `chegou_em` e o Board mostrava a hora da
+    // importação para todo mundo. O created_at da task é a chegada de verdade.
+    const chegada = await gravarChegadaDoLote({
+      client,
+      itens: cads
+        .filter((cad) => entidadePorGid.has(cad.gid))
+        .map((cad) => ({
+          criadoEm: cad.criadoEm,
+          entityId: entidadePorGid.get(cad.gid)!,
+        })),
+    });
+
     return NextResponse.json({
       data: {
         atualizados: resultado.atualizados,
         cads: cads.length,
+        datasPreenchidas: chegada.atualizados,
         erros: resultado.erros,
         semVinculo: cads.length - itens.length,
       },
