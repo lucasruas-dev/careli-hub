@@ -417,12 +417,25 @@ export type CriacaoResultado = {
 export async function criarEntidadesDoLote(input: {
   client: AdminClient;
   itens: {
+    // Tudo que o OCR leu — cada campo aqui JÁ FOI PAGO. Gravar só o CPF significaria pagar a
+    // leitura e deixar o operador redigitando o que a máquina já tinha entendido.
+    cidade?: string;
     cpf: string;
+    dataNascimento?: string;
     empreendimento?: string | null;
     empreendimentoId?: string | null;
     gid: string;
     imobiliaria?: string | null;
+    nacionalidade?: string;
+    naturalidade?: string;
     nome: string;
+    // Nome como veio NO DOCUMENTO. Vale mais que o título da task, que é digitado à mão.
+    nomeDoDocumento?: string;
+    nomeMae?: string;
+    nomePai?: string;
+    orgaoEmissor?: string;
+    rg?: string;
+    uf?: string;
   }[];
   ownerUserId?: string | null;
 }): Promise<{ entidadePorCad: Record<string, string>; resultado: CriacaoResultado }> {
@@ -456,7 +469,19 @@ export async function criarEntidadesDoLote(input: {
         empreendimentos: item.empreendimentoId
           ? [{ id: item.empreendimentoId, label: item.empreendimento ?? "" }]
           : [],
-        identidade: { cpf: digitos, nome: item.nome },
+        // A ficha nasce com TUDO que o documento entregou. O nome do documento ganha do
+        // título da task quando existe: o título é digitado à mão e é onde estão os erros
+        // de grafia que já nos custaram tempo.
+        identidade: {
+          cpf: digitos,
+          dataNascimento: item.dataNascimento,
+          nacionalidade: item.nacionalidade,
+          naturalidade: item.naturalidade ?? item.cidade,
+          nome: item.nomeDoDocumento || item.nome,
+          nomeMae: item.nomeMae,
+          nomePai: item.nomePai,
+          orgaoEmissor: item.orgaoEmissor,
+        },
         origem: "asana-cad",
         ownerUserId: input.ownerUserId ?? null,
         persona: "pf",
@@ -492,6 +517,29 @@ export type AplicacaoResultado = {
 // metadata: como a importação é disparada manualmente por uma pessoa e não concorre com o
 // wizard de cadastro, é seguro aqui; escrita concorrente exigiria jsonb_set no banco.
 export type EtapaImportacao = "validacao" | "credito" | "credenciado";
+
+// Ordem da esteira. Serve para uma regra só, mas essencial: a importação NUNCA REBAIXA quem já
+// avançou.
+//
+// Foi exatamente isto que faltou em 20/jul: ao ler as CADs de "Em Cadastro", o dedup por CPF
+// reaproveitou 122 entidades que já estavam em ANÁLISE DE CRÉDITO (vindas do "Finalizado") e
+// regravou "validacao" por cima — o Lucas viu a coluna inteira sumir do Board. Um lote de
+// importação não pode desfazer o trabalho que já andou.
+const ORDEM_ETAPA: Record<string, number> = {
+  credenciado: 3,
+  credito: 1,
+  prevenda: 2,
+  validacao: 0,
+};
+
+export function etapaMaisAvancada(
+  atual: string | null | undefined,
+  nova: EtapaImportacao,
+): EtapaImportacao | string {
+  const pesoAtual = ORDEM_ETAPA[atual ?? ""] ?? -1;
+  const pesoNovo = ORDEM_ETAPA[nova] ?? -1;
+  return pesoAtual > pesoNovo ? (atual as string) : nova;
+}
 
 export async function aplicarVinculos(input: {
   // Quem fica responsável pelos itens importados. Sem isto todos entram "Sem analista" e
@@ -533,39 +581,48 @@ export async function aplicarVinculos(input: {
       continue;
     }
 
-    const { data: atual } = await input.client
-      .from("apolo_entities")
-      .select("metadata")
-      .eq("id", item.entityId)
+    // ⚠️ A esteira vive em TABELA PRÓPRIA (`apolo_esteira`), não no metadata da entidade.
+    // Motivo (incidente 20/jul): o sync do C2X faz upsert com metadata montado do zero e
+    // SUBSTITUI o objeto inteiro — 122 CADs perderam etapa e analista na primeira rodada
+    // depois da importação. Tabela separada é imune a isso.
+    const { data: esteiraLinha } = await input.client
+      .from("apolo_esteira")
+      .select("etapa, analista_id, chegou_em, corretor, empreendimento, imobiliaria")
+      .eq("entity_id", item.entityId)
       .maybeSingle();
 
-    const metadata = ((atual as { metadata: Record<string, unknown> } | null)?.metadata ??
-      {}) as Record<string, unknown>;
+    const esteiraAtual = (esteiraLinha ?? {}) as {
+      analista_id?: string | null;
+      chegou_em?: string | null;
+      corretor?: string | null;
+      empreendimento?: string | null;
+      etapa?: string | null;
+      imobiliaria?: string | null;
+    };
 
-    const { error: erroEtapa } = await input.client
-      .from("apolo_entities")
-      .update({
-        metadata: {
-          ...metadata,
-          esteira: {
-            analistaId: input.analistaId ?? null,
-            atualizadoEm: agora,
-            atualizadoPor: input.porUsuario ?? null,
-            // O que veio da CAD do Asana. O Board mostra estes campos na fila: sem eles, a
-            // coluna Empreendimento fica vazia para quem foi importado (cadastro antigo não
-            // tem metadata.cadastro).
-            // Data de chegada da CAD (Asana). O Board mostra esta em vez do created_at da
-            // entidade, que é quando o sync do C2X a criou.
-            chegouEm: item.criadoEm ?? null,
-            corretor: item.corretor ?? null,
-            empreendimento: item.empreendimento ?? null,
-            etapa: input.etapa,
-            imobiliaria: item.imobiliaria ?? null,
-            origem: "asana",
-          },
-        },
-      })
-      .eq("id", item.entityId);
+    // NUNCA rebaixar quem já avançou na esteira.
+    const etapaFinal = etapaMaisAvancada(esteiraAtual.etapa, input.etapa);
+
+    // Campos da CAD só preenchem o que está VAZIO: reimportar completa a ficha, nunca apaga o
+    // que o operador já corrigiu à mão. O analista idem — reimportar não rouba o item de quem
+    // já estava cuidando dele.
+    const { error: erroEtapa } = await input.client.from("apolo_esteira").upsert(
+      {
+        analista_id: esteiraAtual.analista_id ?? input.analistaId ?? null,
+        atualizado_em: agora,
+        atualizado_por: input.porUsuario ?? null,
+        // Data de chegada da CAD no Asana — não o created_at da entidade, que é quando o
+        // sync do C2X a criou (100 das 122 no mesmo segundo).
+        chegou_em: esteiraAtual.chegou_em ?? item.criadoEm ?? null,
+        corretor: esteiraAtual.corretor ?? item.corretor ?? null,
+        empreendimento: esteiraAtual.empreendimento ?? item.empreendimento ?? null,
+        entity_id: item.entityId,
+        etapa: etapaFinal,
+        imobiliaria: esteiraAtual.imobiliaria ?? item.imobiliaria ?? null,
+        origem: "asana",
+      },
+      { onConflict: "entity_id" },
+    );
 
     if (erroEtapa) {
       resultado.erros.push({ gid: item.gid, motivo: erroEtapa.message });

@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import { DESTINO_POR_SECAO, normalizarNome, similaridade } from "./asana-import";
+import {
+  DESTINO_POR_SECAO,
+  etapaMaisAvancada,
+  normalizarNome,
+  similaridade,
+} from "./asana-import";
 
 // O casamento entre a CAD do Asana e a entidade do Apolo é feito por NOME normalizado. Os dois
 // foram digitados por pessoas diferentes, em momentos diferentes, então a normalização é o que
@@ -71,6 +76,41 @@ describe("similaridade — sugestão de nome quase igual", () => {
   it("não sugere quando os nomes são realmente diferentes", () => {
     expect(sim("Ana Paula Souza", "Carlos Eduardo Lima")).toBeLessThan(LIMIAR);
     expect(sim("Maria Santos", "Maria Fernanda Rodrigues")).toBeLessThan(LIMIAR);
+  });
+});
+
+// ⚠️ REGRESSÃO REAL (20/jul): ao ler as CADs de "Em Cadastro", o dedup por CPF reaproveitou
+// 122 entidades que já estavam em ANÁLISE DE CRÉDITO e a importação regravou "validacao" por
+// cima. A coluna inteira sumiu do Board do Lucas. Um lote de importação não pode desfazer o
+// trabalho que já andou.
+describe("etapaMaisAvancada — importação nunca rebaixa", () => {
+  it("mantém análise de crédito quando a importação tentaria voltar para validação", () => {
+    expect(etapaMaisAvancada("credito", "validacao")).toBe("credito");
+  });
+
+  it("mantém credenciado contra qualquer etapa anterior", () => {
+    expect(etapaMaisAvancada("credenciado", "validacao")).toBe("credenciado");
+    expect(etapaMaisAvancada("credenciado", "credito")).toBe("credenciado");
+  });
+
+  it("mantém pré-venda contra validação e crédito", () => {
+    expect(etapaMaisAvancada("prevenda", "validacao")).toBe("prevenda");
+    expect(etapaMaisAvancada("prevenda", "credito")).toBe("prevenda");
+  });
+
+  it("AVANÇA normalmente quando a nova etapa é mais adiante", () => {
+    expect(etapaMaisAvancada("validacao", "credito")).toBe("credito");
+    expect(etapaMaisAvancada("credito", "credenciado")).toBe("credenciado");
+  });
+
+  it("usa a etapa nova quando não havia nenhuma", () => {
+    expect(etapaMaisAvancada(null, "credito")).toBe("credito");
+    expect(etapaMaisAvancada(undefined, "validacao")).toBe("validacao");
+    expect(etapaMaisAvancada("", "credenciado")).toBe("credenciado");
+  });
+
+  it("não se perde com etapa desconhecida vinda do banco", () => {
+    expect(etapaMaisAvancada("etapa_que_nao_existe", "credito")).toBe("credito");
   });
 });
 

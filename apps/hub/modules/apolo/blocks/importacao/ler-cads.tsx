@@ -56,9 +56,15 @@ const TAMANHO_LOTE = 5;
 const reais = (valor: number) =>
   valor.toLocaleString("pt-BR", { currency: "BRL", style: "currency" });
 
-export function LerCads() {
-  const [empreendimento, setEmpreendimento] = useState("Vale do Ouro");
-  const [secoes, setSecoes] = useState("Em Cadastro");
+export function LerCads(props: {
+  // Vem preenchido quando o operador chega pela lista "sem cadastro" da aba Importar.
+  empreendimentoInicial?: string;
+  secoesIniciais?: string;
+}) {
+  const [empreendimento, setEmpreendimento] = useState(
+    props.empreendimentoInicial || "Vale do Ouro",
+  );
+  const [secoes, setSecoes] = useState(props.secoesIniciais || "Em Cadastro");
   const [previa, setPrevia] = useState<Previa | null>(null);
   const [orcando, setOrcando] = useState(false);
   const [lendo, setLendo] = useState(false);

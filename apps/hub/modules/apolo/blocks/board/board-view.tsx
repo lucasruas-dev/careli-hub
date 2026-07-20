@@ -1686,9 +1686,15 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
           }),
           fetch(`/api/apolo/board/${entityId}`, { cache: "no-store", headers }),
         ]);
-        const payloadDocs = (await resDocs.json()) as { data?: { documents?: DocItem[] } };
+        // ⚠️ /api/apolo/documentos devolve { documents } na RAIZ, sem envelope `data` —
+        // diferente de /api/apolo/board/[id], que usa { data }. Ler data.documents aqui fazia
+        // a lista vir SEMPRE vazia: a validação nunca mostrou documento nenhum, e só dava para
+        // perceber depois que passou a existir documento para mostrar.
+        const payloadDocs = (await resDocs.json()) as {
+          documents?: DocItem[];
+        };
         const payloadFicha = (await resFicha.json()) as { data?: Ficha };
-        const lista = (payloadDocs.data?.documents ?? []).filter((doc) => doc.hasFile);
+        const lista = (payloadDocs.documents ?? []).filter((doc) => doc.hasFile);
         if (!alive) return;
         setDocs(lista);
         setAtivo(lista[0] ?? null);

@@ -2,6 +2,7 @@
 
 import {
   AlertTriangle,
+  ArrowRight,
   Check,
   CircleHelp,
   Loader2,
@@ -52,7 +53,11 @@ type Preview = {
   usuarioAtualId: string;
 };
 
-export function ImportarCads() {
+export function ImportarCads(props: {
+  // Leva o operador para a aba de leitura já com o mesmo filtro: a lista "sem cadastro" não
+  // pode ser um beco sem saída — é justamente lá que está a ação para esses nomes.
+  onIrParaLeitura?: (empreendimento: string, secoes: string) => void;
+}) {
   const [empreendimento, setEmpreendimento] = useState("Vale do Ouro");
   const [secoes, setSecoes] = useState("Finalizado");
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -495,10 +500,32 @@ export function ImportarCads() {
           {preview.naoCasados.length > 0 ? (
             <Grupo
               cor="#e0554a"
-              descricao="Não existe cadastro com esse nome no Apolo. Estas precisam do cadastro completo (e aí sim leitura de documento)."
+              descricao="Não existe cadastro com esse nome no Apolo. Como o CPF só está dentro do documento anexado, estas precisam da leitura para o cadastro ser criado."
               icone={<UserX size={16} />}
               titulo={`Sem cadastro no Apolo (${preview.naoCasados.length})`}
             >
+              {props.onIrParaLeitura ? (
+                <div className="mb-3 flex flex-wrap items-center gap-3 rounded-lg border border-black/[0.07] bg-canvas p-3 dark:border-white/[0.08]">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-ink">
+                      É aqui que a leitura de documento entra
+                    </p>
+                    <p className="text-xs text-ink-soft">
+                      A aba <b>Ler documentos</b> cria o cadastro destes a partir do documento
+                      anexado, sobe os arquivos e deixa em Validação. Ela mostra o custo antes
+                      de gastar.
+                    </p>
+                  </div>
+                  <button
+                    className="inline-flex shrink-0 items-center gap-2 rounded-lg bg-[#101820] px-3.5 py-2 text-sm font-semibold text-[#cba25a] hover:bg-[#1c2733]"
+                    onClick={() => props.onIrParaLeitura?.(empreendimento, secoes)}
+                    type="button"
+                  >
+                    <ArrowRight size={15} /> Ver o custo da leitura
+                  </button>
+                </div>
+              ) : null}
+
               <div className="flex flex-wrap gap-1.5">
                 {preview.naoCasados.map((item) => (
                   <span

@@ -60,6 +60,11 @@ function pareceDocumento(nome: string): boolean {
 
 export function ImportacaoView() {
   const [aba, setAba] = useState<"importar" | "ler" | "sondagem">("importar");
+  // Filtro que a aba Importar repassa quando manda o operador para a leitura.
+  const [filtroDaLeitura, setFiltroDaLeitura] = useState({
+    empreendimento: "Vale do Ouro",
+    secoes: "Em Cadastro",
+  });
   const [sondagem, setSondagem] = useState<Sondagem | null>(null);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -144,13 +149,24 @@ export function ImportacaoView() {
 
       {aba === "importar" ? (
         <div className="p-5">
-          <ImportarCads />
+          <ImportarCads
+            onIrParaLeitura={(empreendimento, secoes) => {
+              setFiltroDaLeitura({ empreendimento, secoes });
+              setAba("ler");
+            }}
+          />
         </div>
       ) : null}
 
       {aba === "ler" ? (
         <div className="p-5">
-          <LerCads />
+          <LerCads
+            // `key` remonta a aba quando o filtro muda: sem isso o estado inicial ficaria
+            // preso no primeiro valor e o operador veria a busca antiga.
+            key={`${filtroDaLeitura.empreendimento}|${filtroDaLeitura.secoes}`}
+            empreendimentoInicial={filtroDaLeitura.empreendimento}
+            secoesIniciais={filtroDaLeitura.secoes}
+          />
         </div>
       ) : null}
 

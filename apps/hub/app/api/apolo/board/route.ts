@@ -13,6 +13,18 @@ export const runtime = "nodejs";
 
 type HubUserRow = { display_name: string | null; email: string | null; id: string };
 
+// Estado do item na esteira do Board. Mora em tabela própria justamente para sobreviver ao
+// sync do C2X, que substitui o metadata da entidade a cada rodada.
+type EsteiraRow = {
+  analista_id: string | null;
+  chegou_em: string | null;
+  corretor: string | null;
+  empreendimento: string | null;
+  entity_id: string;
+  etapa: string | null;
+  imobiliaria: string | null;
+};
+
 type EntityRow = {
   created_at: string;
   display_name: string;
@@ -59,6 +71,21 @@ export async function GET(request: Request) {
   // (b) o que já foi COLOCADO na esteira — hoje, as CADs importadas do Asana. Essas são
   //     cadastros antigos: status 'active' e sem source, então o filtro (a) as excluiria e a
   //     coluna Credenciado ficaria vazia mesmo com a importação tendo funcionado.
+  // A esteira vive em `apolo_esteira` (tabela própria). Ela NÃO pode morar no metadata da
+  // entidade: o sync do C2X faz upsert substituindo o metadata inteiro, e em 20/jul isso
+  // apagou etapa e analista de 122 CADs importadas.
+  const { data: esteiraRows } = await adminClient
+    .from("apolo_esteira")
+    .select(
+      "entity_id, etapa, analista_id, chegou_em, corretor, empreendimento, imobiliaria",
+    )
+    .limit(2000);
+
+  const esteiraPorEntidade = new Map(
+    ((esteiraRows ?? []) as EsteiraRow[]).map((row) => [row.entity_id, row]),
+  );
+  const idsNaEsteira = [...esteiraPorEntidade.keys()];
+
   const [daFila, naEsteira] = await Promise.all([
     adminClient
       .from("apolo_entities")
@@ -67,12 +94,14 @@ export async function GET(request: Request) {
       .eq("metadata->>source", "apolo")
       .order("created_at", { ascending: true })
       .limit(200),
-    adminClient
-      .from("apolo_entities")
-      .select(CAMPOS)
-      .not("metadata->esteira", "is", null)
-      .order("created_at", { ascending: true })
-      .limit(500),
+    idsNaEsteira.length > 0
+      ? adminClient
+          .from("apolo_entities")
+          .select(CAMPOS)
+          .in("id", idsNaEsteira.slice(0, 1000))
+          .order("created_at", { ascending: true })
+          .limit(1000)
+      : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (daFila.error && naEsteira.error) {
@@ -105,7 +134,7 @@ export async function GET(request: Request) {
 
   const itens = data.map((row) => {
     const cadastro = row.metadata?.cadastro;
-    const esteira = row.metadata?.esteira;
+    const esteira = esteiraPorEntidade.get(row.id);
 
     // O empreendimento vem do cadastro (quem nasceu no wizard) OU da esteira (quem foi
     // importado do Asana, que é cadastro antigo e não tem metadata.cadastro).
@@ -119,13 +148,13 @@ export async function GET(request: Request) {
 
     return {
       // Responsável salvo. Sem isto o Board volta a mostrar "Sem analista" a cada carga.
-      analistaId: esteira?.analistaId ?? null,
+      analistaId: esteira?.analista_id ?? null,
       corretor: esteira?.corretor ?? null,
       corretores: conta(cadastro?.corretores),
       // Quando a CAD chegou. Para o que veio do Asana é a data da própria CAD; o created_at
-      // da entidade seria a data do SYNC do C2X (100 das 121 no mesmo segundo), que não diz
+      // da entidade seria a data do SYNC do C2X (100 das 122 no mesmo segundo), que não diz
       // nada sobre a chegada e ainda ordenaria a fila errado.
-      criadoEm: esteira?.chegouEm ?? row.created_at,
+      criadoEm: esteira?.chegou_em ?? row.created_at,
       documento: row.document_masked ?? "",
       empreendimentos,
       imobiliaria: esteira?.imobiliaria ?? null,

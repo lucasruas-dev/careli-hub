@@ -120,13 +120,27 @@ export async function POST(request: Request) {
   //    Essas voltam na lista de pendências para o operador cadastrar à mão.
   const comCpf = itens
     .filter((item) => porCad[item.gid])
-    .map((item) => ({
-      cpf: porCad[item.gid]!,
-      empreendimento: body.empreendimento ?? null,
-      gid: item.gid,
-      imobiliaria: item.imobiliaria,
-      nome: item.nome,
-    }));
+    .map((item) => {
+      const lido = porCad[item.gid]!;
+      return {
+        // Tudo que o OCR entregou vai para a ficha: foi pago, tem que ser aproveitado.
+        cidade: lido.cidade,
+        cpf: lido.cpf,
+        dataNascimento: lido.dataNascimento,
+        empreendimento: body.empreendimento ?? null,
+        gid: item.gid,
+        imobiliaria: item.imobiliaria,
+        nacionalidade: lido.nacionalidade,
+        naturalidade: lido.naturalidade,
+        nome: item.nome,
+        nomeDoDocumento: lido.nome,
+        nomeMae: lido.nomeMae,
+        nomePai: lido.nomePai,
+        orgaoEmissor: lido.orgaoEmissor,
+        rg: lido.rg,
+        uf: lido.uf,
+      };
+    });
 
   const { entidadePorCad, resultado: criacao } = await criarEntidadesDoLote({
     client,

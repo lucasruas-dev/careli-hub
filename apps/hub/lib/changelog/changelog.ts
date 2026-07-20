@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-esteira-tabela",
+    deployedAt: "2026-07-20T09:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A etapa de cada CAD parou de sumir sozinha: ela saiu do cadastro da pessoa e ganhou lugar proprio, fora do alcance da sincronizacao com o C2X.",
+              "As 122 CADs que sumiram da coluna Analise de credito voltaram.",
+              "Os documentos anexados voltaram a aparecer na tela de validacao.",
+              "A ficha agora nasce com o que foi lido do documento: nome, nascimento, RG, orgao emissor e filiacao — antes so o CPF era aproveitado.",
+              "Reimportar deixou de rebaixar quem ja avancou na esteira e de trocar o analista de quem ja estava cuidando do caso.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.48.0",
+    technical: {
+      done: "Migration 0057 cria apolo_esteira (entity_id PK) e migra o que restava em metadata.esteira; a rota do Board le dela e a importacao escreve nela. Correcao de dados: 122 entidades do Finalizado restauradas para credito, e 150 fichas preenchidas a partir do que ja estava salvo em apolo_ocr_reads (custo zero). extrairCadastro/mesclarCadastros aproveitam a extracao inteira e o nome do documento ganha do titulo da task. etapaMaisAvancada impede rebaixamento (6 testes). Board passou a ler { documents } na raiz: lia data.documents numa rota que nao tem envelope, entao a validacao NUNCA exibiu documento.",
+      motivation: "As 122 CADs perderam etapa e analista as 02:56, muito depois da importacao: o sync do C2X monta a entidade com metadata proprio e faz upsert, SUBSTITUINDO o metadata inteiro. Guardar a esteira ali significava perde-la a cada rodada do sync. A correcao mais segura foi tabela separada, sem tocar no caminho que sincroniza ~4 mil entidades do legado.",
+    },
+    title: "Apolo: esteira em tabela propria, imune ao sync do C2X",
+    type: "correcao",
+    version: "1.48.1",
+  },
+  {
     buildTag: "2026-07-20-apolo-ler-cads",
     deployedAt: "2026-07-20T08:30:00-03:00",
     modules: [

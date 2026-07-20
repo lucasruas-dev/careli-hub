@@ -188,12 +188,75 @@ export type ResultadoLeitura = {
   semCpf: number;
 };
 
+// TUDO que a MOST devolveu e serve para preencher a ficha — não só o CPF.
+// Cada campo aqui é algo que já foi PAGO: descartar qualquer um deles é jogar dinheiro fora e
+// deixar o operador digitando à mão o que a máquina já tinha lido.
+export type CadastroExtraido = {
+  cidade?: string;
+  cpf: string;
+  dataNascimento?: string;
+  nacionalidade?: string;
+  naturalidade?: string;
+  nome?: string;
+  nomeMae?: string;
+  nomePai?: string;
+  orgaoEmissor?: string;
+  rg?: string;
+  uf?: string;
+};
+
+// Aproveita o que veio preenchido, ignorando string vazia (a MOST devolve "" para o que não
+// achou). O `undefined` é o que faz o campo NÃO sobrescrever dado bom que já exista na ficha.
+export function extrairCadastro(
+  bruto: Record<string, unknown> | null | undefined,
+  cpf: string,
+): CadastroExtraido {
+  const texto = (chave: string): string | undefined => {
+    const valor = String((bruto ?? {})[chave] ?? "").trim();
+    return valor || undefined;
+  };
+
+  return {
+    cidade: texto("cidade"),
+    cpf,
+    dataNascimento: texto("dataNascimento"),
+    nacionalidade: texto("nacionalidade"),
+    naturalidade: texto("naturalidade"),
+    nome: texto("nome"),
+    nomeMae: texto("nomeMae"),
+    nomePai: texto("nomePai"),
+    orgaoEmissor: texto("orgaoEmissor"),
+    rg: texto("rg"),
+    uf: texto("uf"),
+  };
+}
+
+// Junta o que veio de VÁRIOS documentos da mesma pessoa: o RG traz filiação, a CNH traz órgão
+// emissor, o comprovante traz cidade. O primeiro valor preenchido ganha.
+export function mesclarCadastros(lista: CadastroExtraido[]): CadastroExtraido | null {
+  const comCpf = lista.filter((item) => item.cpf);
+  if (comCpf.length === 0) return null;
+
+  const saida: CadastroExtraido = { cpf: comCpf[0]!.cpf };
+  for (const item of comCpf) {
+    for (const [chave, valor] of Object.entries(item)) {
+      if (valor && !saida[chave as keyof CadastroExtraido]) {
+        (saida as Record<string, unknown>)[chave] = valor;
+      }
+    }
+  }
+  return saida;
+}
+
 // LEITURA PAGA. Só rode depois de confirmação explícita.
 export async function lerDocumentosDoLote(input: {
   client: AdminClient;
   itens: CadParaLeitura[];
   lidoPor?: string | null;
-}): Promise<{ porCad: Record<string, string>; resultado: ResultadoLeitura }> {
+}): Promise<{
+  porCad: Record<string, CadastroExtraido>;
+  resultado: ResultadoLeitura;
+}> {
   const custoPorImagem = custoOcrImagem();
   const resultado: ResultadoLeitura = {
     cpfsAchados: 0,
@@ -203,18 +266,21 @@ export async function lerDocumentosDoLote(input: {
     reaproveitados: 0,
     semCpf: 0,
   };
-  // gid da CAD -> CPF encontrado.
-  const porCad: Record<string, string> = {};
+  // gid da CAD -> TUDO que foi lido dela (não só o CPF: cada campo aqui já foi pago).
+  const porCad: Record<string, CadastroExtraido> = {};
 
   for (const item of input.itens) {
-    // Economia (a): CPF no texto, custo zero.
+    // Economia (a): CPF no texto, custo zero. Aqui só temos o CPF mesmo.
     if (item.cpfNoTexto) {
-      porCad[item.gid] = item.cpfNoTexto;
+      porCad[item.gid] = { cpf: item.cpfNoTexto };
       resultado.cpfsAchados += 1;
       continue;
     }
 
     let cpfDaCad: string | null = null;
+    // Guarda o que cada documento devolveu: o RG traz filiação, a CNH traz órgão emissor.
+    // Todos já foram pagos, então todos entram na ficha.
+    const extraidos: CadastroExtraido[] = [];
 
     for (const anexo of item.anexos) {
       if (cpfDaCad) break;
@@ -237,9 +303,16 @@ export async function lerDocumentosDoLote(input: {
           .maybeSingle();
 
         if (jaLido) {
-          const extracao = (jaLido as { extracao: { cpf?: string } }).extracao;
+          const extracao = (jaLido as {
+            extracao: { cadastro?: Record<string, unknown>; cpf?: string };
+          }).extracao;
           resultado.reaproveitados += 1;
-          if (extracao?.cpf && cpfValido(extracao.cpf)) cpfDaCad = extracao.cpf;
+
+          if (extracao?.cpf && cpfValido(extracao.cpf)) {
+            cpfDaCad = extracao.cpf;
+            // Reaproveita a ficha inteira, não só o CPF: já foi pago uma vez.
+            extraidos.push(extrairCadastro(extracao.cadastro, extracao.cpf));
+          }
           continue;
         }
 
@@ -257,7 +330,17 @@ export async function lerDocumentosDoLote(input: {
 
         const cpfBruto = String(extracao.cadastro?.cpf ?? "").replace(/\D/g, "");
         const cpfOk = cpfValido(cpfBruto) ? cpfBruto : null;
-        if (cpfOk) cpfDaCad = cpfOk;
+        if (cpfOk) {
+          cpfDaCad = cpfOk;
+          // TUDO que veio no documento vai para a ficha — nome, nascimento, RG, órgão
+          // emissor, cidade, UF. Guardar só o CPF seria pagar pelo resto e descartar.
+          extraidos.push(
+            extrairCadastro(
+              extracao.cadastro as unknown as Record<string, unknown>,
+              cpfOk,
+            ),
+          );
+        }
 
         // Registra SEMPRE, inclusive leitura ruim: ela também foi cobrada, e guardar evita
         // repagar a mesma foto ilegível numa reimportação.
@@ -283,8 +366,12 @@ export async function lerDocumentosDoLote(input: {
       }
     }
 
-    if (cpfDaCad) {
-      porCad[item.gid] = cpfDaCad;
+    const mesclado = mesclarCadastros(extraidos);
+    if (mesclado) {
+      porCad[item.gid] = mesclado;
+      resultado.cpfsAchados += 1;
+    } else if (cpfDaCad) {
+      porCad[item.gid] = { cpf: cpfDaCad };
       resultado.cpfsAchados += 1;
     } else {
       resultado.semCpf += 1;
