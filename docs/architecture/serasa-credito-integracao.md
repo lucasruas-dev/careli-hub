@@ -1133,3 +1133,72 @@ Documento de desenho. Tudo que estÃ¡ marcado **[DOC]** foi lido na documentaÃ
   "totalTokens": 1655109,
   "totalToolCalls": 331
 }
+---
+
+# ✅ TESTES REAIS CONTRA A HOMOLOGAÇÃO (21/jul, ~15 chamadas)
+
+Tudo abaixo foi MEDIDO, não lido. Substitui as suposições das seções anteriores.
+
+## O que funciona (confirmado)
+- **Autenticação**: `POST https://uat-api.serasaexperian.com.br/security/iam/v1/client-identities/login`
+  com `Authorization: Basic <base64 clientId:clientSecret>`.
+  **Devolve HTTP 201** (não 200) e o campo **`accessToken`**.
+  ⚠️ Implementação que testa `status === 200` quebra aqui.
+- **PF**: `/credit-services/person-information-report/v1/creditreport`
+- **PJ**: `/credit-services/business-information-report/v1/reports`
+- Headers `X-Document-Id` e `X-Retailer-Document-Id` aceitos. Documento com OU sem pontuação
+  funciona igual; com menos de 11 dígitos volta 412.
+- `reportName` aceitos sem erro de contrato: `RELATORIO_BASICO_PF_PME`,
+  `RELATORIO_AVANCADO_TOP_SCORE_PF_PME`, `RELATORIO_BASICO_PJ_PME`.
+
+## A base de homologação é REAL, mas parcial
+| documento | resultado |
+|---|---|
+| CNPJ Banco do Brasil (00000000000191) | **200 com relatório completo** |
+| CNPJ Magazine Luiza (47960950000121) | **200 com relatório completo** |
+| CNPJ da própria Careli | 404 |
+| 5 CPFs reais de clientes (com/sem pontuação, 5 reportNames, com federalUnit) | 404 |
+
+Os textos vêm **ofuscados** (`companyName: "SKUFX SI NICPWL G/K"`), mas a estrutura é real e as
+datas são coerentes. Ou seja: massa de teste montada sobre documentos reais de grandes
+empresas. **Falta a massa de PF — é a única pergunta aberta com o Serasa.**
+
+## Comportamento de ERRO (difere do swagger)
+| situação | HTTP | corpo |
+|---|---|---|
+| documento não está na base **OU** reportName inexistente | **404** | `[ERROR][DOCUMENT_NOT_FOUND]` |
+| sem `reportName` | 412 | "informe um [Nome de relatório] válido" |
+| documento com formato inválido | 412 | "informe o documento a ser consultado válido em: [X-Document-Id]" |
+| **sem** header `X-Document-Id` | **500** | `Internal Server Error` |
+| **token inválido** | **500** | fault do gateway: `Auth-Header-Validator ... auth-header-validator.js` |
+| chamadas rápidas em sequência | **503** | `{"message":"SpikeArrest engaged"}` |
+
+**Três consequências que viraram código:**
+1. O **404 é ambíguo** — não dá para dizer ao operador "este CPF não existe", porque relatório
+   errado devolve o mesmo erro. A mensagem na tela diz as duas possibilidades.
+2. **Token inválido volta 500, não 401.** `pareceTokenInvalido()` detecta o fault do gateway e
+   refaz o token UMA vez (nunca em laço: o teto de chamadas protege o IP).
+3. **Existe limite de VELOCIDADE** (`SpikeArrest`), além do teto diário. Lote precisa de pausa
+   entre chamadas.
+
+## Schema da resposta (capturado, PJ)
+```
+reports[0].reportName
+reports[0].registration.{companyDocument, companyName, foundationDate, statusRegistration, address}
+reports[0].score.{scoreModel, codeMessage, message, billing}
+reports[0].negativeData.pefin.pefinResponse[]                       → pendências
+reports[0].negativeData.refin.refinResponse[]
+reports[0].negativeData.collectionRecords.collectionRecordsResponse[]
+reports[0].negativeData.check.checkResponse[]                       → cheques
+reports[0].negativeData.notary.summary.{count, balance}             → protestos (contagem pronta)
+reports[0].facts.inquiryCompanyResponse.quantity.{actual, bankActual, historical[]}
+```
+- **`score.billing` (boolean) diz se ESTA consulta foi cobrada** — melhor que qualquer
+  estimativa nossa de custo.
+- Quando o Serasa não calcula: `score.message = "SCORE NAO CALCULADO - INSUFICIENCIA INFORMACOES"`
+  e **não há campo numérico**.
+- Amostra real guardada em `apps/hub/lib/serasa/exemplo-resposta-pj.json` e usada como fixture
+  de teste: se o schema mudar, o teste quebra.
+
+⚠️ **O schema de PF ainda NÃO foi visto.** O parser lê a estrutura de PJ e mantém uma varredura
+de fallback justamente por isso.
