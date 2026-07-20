@@ -36,6 +36,41 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-20-apolo-validacao-editavel",
+    deployedAt: "2026-07-20T14:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A ficha da validacao virou formulario: o operador completa o que faltou com o documento aberto do lado.",
+              "Cada campo salva sozinho, ao sair dele — nao existe botao de salvar para esquecer de apertar.",
+              "Sexo, estado civil, escolaridade, faixa de renda e profissao usam as listas padronizadas do sistema.",
+              "RG e orgao emissor passaram a aparecer: ja vinham sendo lidos do documento e ficavam escondidos.",
+              "O que o operador digita nunca mais e apagado por uma nova importacao.",
+            ],
+            screen: "Board · Validacao",
+          },
+          {
+            items: [
+              "Reimportar uma CAD de quem ja e cliente deixou de criar um segundo cadastro da mesma pessoa.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.49.0",
+    technical: {
+      done: "Migration 0058 (apolo_esteira.ficha jsonb) + PATCH em /api/apolo/board/[id] gravando campo a campo com merge. A tela le metadata.cadastro mesclado com a ficha, e a ficha ganha. gravarFichaDoLote passa a copiar o cadastro importado para a ficha preenchendo SO campo vazio, para reimportar nunca desfazer digitacao humana. acharPorCpf consulta apolo_entity_identifiers.value_hash alem de apolo_entities.document_hash: o sync do C2X grava document_hash null e deixava 4.133 das 4.286 entidades invisiveis ao dedup. 59 testes no Apolo.",
+      motivation: "A ficha vivia em apolo_entities.metadata, que o sync do C2X substitui inteiro a cada rodada — o mesmo mecanismo que apagou a esteira de 122 CADs em 20/jul. Com o operador digitando na tela o dia todo, o prejuizo passaria a ser trabalho humano. O dedup cego ja tinha duplicado um cliente real (RAFAEL GONCALVES LEITE).",
+    },
+    title: "Apolo: validacao editavel pelo operador",
+    type: "melhoria",
+    version: "1.50.0",
+  },
+  {
     buildTag: "2026-07-20-apolo-cad-formulario-completo",
     deployedAt: "2026-07-20T11:30:00-03:00",
     modules: [
