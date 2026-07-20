@@ -86,6 +86,21 @@ export async function GET(
 
   const daEsteira = ((esteiraRow as { ficha: Record<string, unknown> } | null)?.ficha ??
     {}) as Record<string, unknown>;
+
+  // O que o FORMULÁRIO do Asana diz sobre esta CAD (último laudo do diagnóstico). É a
+  // referência que o operador usa para decidir: o Asana separa proponente de cônjuge e diz
+  // se é PF ou PJ. Sem isso na tela, ele teria que abrir o Asana a cada ficha.
+  const { data: laudoRow } = await adminClient
+    .from("apolo_audit_events")
+    .select("metadata, created_at")
+    .eq("entity_id", id)
+    .eq("action", "diagnostico_cad")
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  const laudo = ((laudoRow as { metadata: Record<string, unknown> } | null)?.metadata ??
+    null) as Record<string, unknown> | null;
   // O que o operador editou GANHA do que veio da importação.
   const cadastro = { ...(entity.metadata?.cadastro ?? {}), ...daEsteira };
 
@@ -112,6 +127,17 @@ export async function GET(
               logradouro: endereco.street ?? "",
               numero: endereco.number ?? "",
               uf: endereco.state ?? "",
+            }
+          : null,
+        // Referência do Asana + divergências, para a tela avisar em vez de o operador adivinhar.
+        asana: laudo
+          ? {
+              conjuge: (laudo.conjugeAsana as string) ?? null,
+              perfil: (laudo.perfilAsana as string) ?? null,
+              proponente: (laudo.proponenteAsana as string) ?? null,
+              tipoDiverge: Boolean(laudo.divergeTipo),
+              tipoNoAsana: (laudo.tipoNoAsana as string) ?? null,
+              veredito: (laudo.veredito as string) ?? null,
             }
           : null,
         entidade: {

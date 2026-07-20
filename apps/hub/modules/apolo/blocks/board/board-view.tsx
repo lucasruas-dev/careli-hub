@@ -1666,6 +1666,16 @@ type DocItem = {
 };
 
 type Ficha = {
+  // O que o formulário do Asana diz sobre esta CAD. Referência para o operador decidir — ele
+  // separa proponente de cônjuge e informa se é PF ou PJ.
+  asana: {
+    conjuge: string | null;
+    perfil: string | null;
+    proponente: string | null;
+    tipoDiverge: boolean;
+    tipoNoAsana: string | null;
+    veredito: string | null;
+  } | null;
   cadastro: Record<string, unknown>;
   contato: { email: string; telefone: string };
   endereco: Record<string, string> | null;
@@ -2075,6 +2085,40 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
           </p>
         ) : (
           <div className="grid gap-5">
+            {/* O que o FORMULÁRIO do Asana diz. Só aparece quando diverge do que está na
+                ficha: aviso que aparece sempre vira paisagem e ninguém lê. A correção é
+                MANUAL de propósito (decisão do Lucas, 21/jul) — trocar identidade de cliente
+                não é coisa para a máquina decidir sozinha. */}
+            {ficha.asana && (ficha.asana.veredito === "trocado" || ficha.asana.tipoDiverge) ? (
+              <div className="rounded-lg border border-amber-400 bg-amber-50/70 px-3 py-2 dark:bg-amber-950/25">
+                <p className="m-0 flex items-center gap-2 text-[11px] font-bold uppercase tracking-wide text-amber-900 dark:text-amber-300">
+                  <AlertTriangle className="shrink-0" size={13} />
+                  Diverge do formulário do Asana
+                </p>
+                {ficha.asana.veredito === "trocado" ? (
+                  <p className="m-0 mt-1 text-xs text-ink">
+                    O proponente da CAD é <b>{ficha.asana.proponente}</b>
+                    {ficha.asana.conjuge ? (
+                      <>
+                        {" "}
+                        e o cônjuge é <b>{ficha.asana.conjuge}</b>
+                      </>
+                    ) : null}
+                    . Esta ficha está no nome de <b>{titleCase(ficha.entidade.nome)}</b>.
+                  </p>
+                ) : null}
+                {ficha.asana.tipoDiverge ? (
+                  <p className="m-0 mt-1 text-xs text-ink">
+                    O Asana marca esta CAD como <b>{ficha.asana.perfil}</b>, e a ficha está como{" "}
+                    <b>{ficha.entidade.tipo === "pj" ? "Pessoa Jurídica" : "Pessoa Física"}</b>.
+                    {ficha.asana.tipoNoAsana === "pj"
+                      ? " O CNPJ não vem do formulário: preencha à mão."
+                      : null}
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
             {erroSalvar ? (
               <p className="m-0 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
                 <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
