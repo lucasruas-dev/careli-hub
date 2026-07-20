@@ -4802,3 +4802,21 @@ Conclusao:
 - Escopo tecnico: `documento.ts` (validacao CPF/CNPJ — CNPJ nao existia no repo), `identidade-persist.ts`, `corrigir-titular.ts`, rota com GET de orcamento e POST confirmado em lotes de 5, botao com lista nominal antes de gastar.
 - Validacoes: `tsc --noEmit` limpo; 84 testes do Apolo PASS; conferencia pos-execucao por SQL (nome, CPF, identificadores, indice de busca).
 - Pendente: 3 fichas sem documento do proponente (conferencia manual); 7 do veredito "conferir" (inclui a JFL, que precisa virar PJ com CNPJ — o formulario nao traz o CNPJ); 17 sem conjuge cadastrado.
+
+## 2026-07-21 - Apolo: modo de edicao na validacao da CAD (v1.52.0) - EM PRODUCAO
+
+- Modulo: Apolo (Board/Validacao + Importacao). Autorizacao: Lucas ("Pode subir essa alteracao que vc pediu autorizacao"), 2026-07-21.
+- Deployment `careli-hub-hub-i2bs-cdbw01k6d`. Rollback: v1.51.1 (`lxoesbktp`).
+- REGRA DO LUCAS que originou: "vamos deixar todos os campos editaveis (a idade vem da data de nascimento) e o operador na hora do check altera o que perceber... a unica coisa que temos que garantir e que se for sinalizado casado tem que abrir os campos para o conjuge... e que as alteracoes sejam registradas, o que mudou, para qual valor e quem, para caso eu precise validar depois."
+- Escopo:
+  - Modo LEITURA -> botao "Editar ficha" -> altera -> "Salvar alteracoes" (uma gravacao so). Antes era autosave campo a campo, que nao dava trilha coerente e permitia gravacao sem querer.
+  - TODOS os campos editaveis, inclusive nome, documento e tipo PF/PJ. Idade continua derivada do nascimento.
+  - Conjuge abre SEMPRE que estado civil e casado/uniao estavel, mesmo vazio. Antes a secao lia de `metadata.cadastro.conjuge` (vazio) enquanto o dado vivia em `apolo_relationships` — por isso nunca aparecia.
+  - 🔴 AUDITORIA POR CAMPO: o PATCH passou a gravar UMA LINHA em `apolo_audit_events` por campo alterado (action `edit_ficha`, metadata `{de, para, origem}`, `actor_user_id`). Antes so existia `ficha_editada_por`, que guarda apenas o ULTIMO editor e apaga a historia — nao atendia o pedido.
+  - Identidade (nome/documento/tipo) viaja por chaves `__` e vai para a rota propria, que valida CPF/CNPJ, recusa documento de outra ficha, troca o identificador e refaz o indice de busca. Se falhar, o salvamento inteiro ABORTA (nada de meia ficha). A tela recarrega do servidor depois, porque identidade vive em outra tabela.
+  - Diagnostico le o "Perfil" dos `custom_fields` do Asana (o projeto tem DOIS campos Perfil, um por empreendimento; pega o preenchido) e marca divergencia PF/PJ. Nas PJ nada e preenchido automaticamente: o Asana nao traz CNPJ, entao o sistema aponta e o operador resolve (decisao do Lucas).
+  - Aviso "Diverge do formulario do Asana" na ficha, so quando ha divergencia.
+- 🔴 BUG CORRIGIDO no mesmo lote: na troca de titular, campo que o documento novo NAO trazia era PRESERVADO — e o valor preservado era do CONJUGE. A ficha do MATEUS ficou com nascimento e mae da KARLA. Agora campo ausente e APAGADO (o operador nota o vazio; nao tem como desconfiar de um dado plausivel de outra pessoa). Ficha do Mateus limpa por SQL.
+  - Conferidas as outras 10: filiacao coerente. UM SUSPEITO deixado para conferencia humana: FELIPE JONATAS RODRIGUES com mae "REGINA FERNANDES MOREIRA TEIXEIRA" (sobrenome da conjuge Pauliana).
+- Validacoes: `tsc --noEmit` limpo; 84 testes do Apolo PASS.
+- Pendente: promover ficha -> apolo_addresses/apolo_contacts (endereco e contato do operador ainda nao saem do jsonb); 3 fichas sem documento do proponente; 7 do veredito "conferir" (inclui a JFL); 17 sem conjuge.
