@@ -1703,6 +1703,12 @@ type Ficha = {
 // campo sem chave é só leitura (identidade da entidade, endereço e contato têm tabela própria).
 // Regra do Lucas: "liberar os campos que a MOST não conseguiu nos devolver para que o operador
 // possa completar o cadastro" — por isso o que é editável não depende do que veio preenchido.
+type Edicao = {
+  alteracoes: { campo: string; de: string; para: string }[];
+  autor: string;
+  quando: string;
+};
+
 type Campo = {
   chave?: string;
   full?: boolean;
@@ -2016,6 +2022,32 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
   const [salvando, setSalvando] = useState(false);
   // Só o que o operador MEXEU. Campo intocado não vai no PATCH e não vira linha de auditoria.
   const [rascunho, setRascunho] = useState<Record<string, string>>({});
+  // HISTÓRICO: o que mudou, para qual valor e quem. Carregado sob demanda — a maioria das
+  // fichas nunca foi editada, e buscar isso em toda abertura seria consulta à toa.
+  const [historico, setHistorico] = useState<Edicao[] | null>(null);
+  const [abrindoHistorico, setAbrindoHistorico] = useState(false);
+  const [edicaoAberta, setEdicaoAberta] = useState<number | null>(null);
+
+  const verHistorico = async () => {
+    if (historico) {
+      setHistorico(null);
+      return;
+    }
+    setAbrindoHistorico(true);
+    try {
+      const accessToken = await getApoloAccessToken();
+      const resposta = await fetch(`/api/apolo/board/${entityId}/historico`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const corpo = (await resposta.json()) as { data?: { edicoes: Edicao[] } };
+      setHistorico(corpo.data?.edicoes ?? []);
+    } catch {
+      setHistorico([]);
+    } finally {
+      setAbrindoHistorico(false);
+    }
+  };
 
   // Valor corrente de um campo: o que o operador digitou nesta edição, senão o que veio do banco.
   const valorDe = (chave: string, original: string) => rascunho[chave] ?? original;
@@ -2242,16 +2274,78 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
                   ) : null}
                 </>
               ) : (
-                <button
-                  className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-bold text-ink hover:bg-subtle"
-                  onClick={() => setEditando(true)}
-                  type="button"
-                >
-                  <UserRound aria-hidden="true" className="size-3.5" />
-                  Editar ficha
-                </button>
+                <>
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-bold text-ink hover:bg-subtle"
+                    onClick={() => setEditando(true)}
+                    type="button"
+                  >
+                    <UserRound aria-hidden="true" className="size-3.5" />
+                    Editar ficha
+                  </button>
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink-soft hover:bg-subtle"
+                    onClick={() => void verHistorico()}
+                    type="button"
+                  >
+                    {abrindoHistorico ? (
+                      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                    ) : (
+                      <ListOrdered aria-hidden="true" className="size-3.5" />
+                    )}
+                    {historico ? "Fechar histórico" : "Histórico"}
+                  </button>
+                </>
               )}
             </div>
+
+            {historico ? (
+              <div className="rounded-lg border border-line bg-subtle/30 p-3">
+                <p className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+                  Histórico de alterações
+                </p>
+                {historico.length === 0 ? (
+                  <p className="m-0 text-xs text-ink-muted">Esta ficha ainda não foi editada.</p>
+                ) : (
+                  <ul className="m-0 grid list-none gap-1 p-0">
+                    {historico.map((edicao, i) => (
+                      <li key={`${edicao.quando}-${i}`}>
+                        {/* Clicar abre o que mudou naquela edição. */}
+                        <button
+                          className="flex w-full items-center justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-subtle"
+                          onClick={() => setEdicaoAberta(edicaoAberta === i ? null : i)}
+                          type="button"
+                        >
+                          <span className="text-ink">
+                            <b>{edicao.autor}</b> alterou {edicao.alteracoes.length} campo(s)
+                          </span>
+                          <span className="shrink-0 text-ink-muted">
+                            {new Date(edicao.quando).toLocaleString("pt-BR", {
+                              day: "2-digit",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                              month: "2-digit",
+                            })}
+                          </span>
+                        </button>
+
+                        {edicaoAberta === i ? (
+                          <div className="mb-1 ml-2 grid gap-1 border-l border-line pl-3">
+                            {edicao.alteracoes.map((alt, j) => (
+                              <p className="m-0 text-xs text-ink-soft" key={`${alt.campo}-${j}`}>
+                                <b className="text-ink">{alt.campo}</b>: {alt.de}{" "}
+                                <span className="text-ink-muted">→</span>{" "}
+                                <b className="text-ink">{alt.para}</b>
+                              </p>
+                            ))}
+                          </div>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            ) : null}
 
             {/* O que o FORMULÁRIO do Asana diz. Só aparece quando diverge do que está na
                 ficha: aviso que aparece sempre vira paisagem e ninguém lê. A correção é
