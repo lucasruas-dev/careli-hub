@@ -4837,3 +4837,22 @@ Conclusao:
 - VALIDACAO REAL (edicao do Lucas na ficha do Mateus, 11:34): 13 campos gravados e conferidos por SQL — nascimento, mae, naturalidade, nacionalidade, endereco completo, telefone, sexo, regime de bens e escolaridade. A trilha registrou de/para/autor/horario em cada um.
 - Verificacao: `tsc --noEmit` limpo, build completo OK, 135 testes PASS, e contagem de pecas do componente (3 efeitos / 38 estados) — o check que faltou na v1.52.0 e deixou passar a regressao.
 - Pendente: promover ficha -> `apolo_addresses`/`apolo_contacts` (endereco e contato ainda nao saem do jsonb); backfill de telefone; 3 fichas sem documento do proponente; 7 do veredito "conferir" (inclui a JFL, que precisa de CNPJ digitado); 17 sem conjuge.
+
+## 2026-07-21 - Apolo: analise de credito com Serasa, motor e tela (v1.55.0) - EM PRODUCAO
+
+- Modulo: Apolo (Board · Analise de credito + Importacao). Autorizacao: Lucas ("pode subir"), 2026-07-21.
+- Rollback: v1.54.0 (`careli-hub-hub-i2bs-ja50uegq2`).
+- DECISAO DO LUCAS que definiu o escopo: *"nao vamos disparar essas 122, vamos primeiro criar a tela que faz a consulta, ve os resultados, como vamos levar isso para cadastro, como vamos guardar com o comprovante na pasta"*. Montar a maquina inteira ANTES de consultar.
+- MIGRATION 0059 `serasa_consultas` (APLICADA): uma linha por chamada, INCLUSIVE as que falham (a consulta pode ser cobrada mesmo com erro; sem registro nao se reconcilia a fatura). `ambiente` e NOT NULL SEM DEFAULT de proposito — score de homologacao confundido com real levaria a aprovar credito com dado de teste.
+- `lib/serasa/{config,auth,client,resumo}.ts` — 23 testes:
+  - Hosts, credenciais e ambiente 100% por env. A documentacao do Serasa publica TRES hosts (`uat-api` no FAQ, `sandbox-api` no swagger, `api` em producao) e DOIS caminhos de token (`client-identities/login` e `user-identities/login?clientId=`). Cravar no codigo poderia, no pior caso, disparar consulta PAGA em producao achando que era teste.
+  - `ambienteConfere`: recusa a consulta quando o ambiente declarado nao bate com o host configurado.
+  - Token com cache de 55min (a doc diz 60 e pede reuso; a margem existe porque o nome do campo de expiracao NAO esta confirmado).
+  - PF e PJ sao servicos DIFERENTES (`/person-information-report/v1/creditreport` x `/business-information-report/v1/reports`) — duas funcoes, nao uma generica.
+  - Documento sempre em HEADER (`X-Document-Id`), nunca em query string. `X-Retailer-Document-Id` sempre enviado: sem ele a doc diz que a contabilizacao vai para o "cliente distribuidor", ou seja, nossa consulta cobrada de outra empresa.
+  - Teto de 150 consultas/dia em homologacao (o Serasa bloqueia o IP acima de 200, e saimos por IP compartilhado) + reaproveitamento de consulta do mesmo documento em 30 dias.
+- ⚠️ `resumirRelatorio` e HEURISTICO e assumidamente provisorio: o schema da resposta nao esta documentado campo a campo. Ele varre a arvore procurando chaves plausiveis, devolve vazio em vez de inventar, e o relatorio CRU fica salvo inteiro em `serasa_consultas.resposta`. Na primeira consulta real, trocar o palpite por leitura direta dos campos.
+- Tela na etapa Analise de credito: sem configuracao, DIZ o que falta (em vez de botao morto); com configuracao, mostra ambiente em destaque, contador do dia e a consulta anterior antes de oferecer nova.
+- Junto no mesmo deploy: `corrigir-titular` deixou de reprocessar ficha que ja tem registro de edicao (o laudo continua dizendo "trocado" depois da correcao; um segundo clique apagaria o que o operador digitou).
+- Verificacao: `tsc --noEmit` limpo, build completo OK, 158 testes PASS, contagem de pecas do board-view (3 efeitos).
+- PENDENTE ANTES DA PRIMEIRA CONSULTA: respostas do Serasa (endpoint de token, host de homologacao, grafia dos 4 reportName, `federalUnit`, schema da resposta, preco por consulta) — e-mail enviado pelo Lucas em 21/jul. Env vars a configurar na Vercel. Comprovante: aguarda saber se a API devolve PDF; decisao do Lucas e que ele leve NOSSAS referencias.
