@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-apolo-indice-busca-identidade",
+    deployedAt: "2026-07-21T11:45:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Ficha com titular corrigido volta a aparecer na busca pelo nome novo.",
+              "Se alguma parte da correcao falhar, a tela avisa em vez de dar como concluida.",
+            ],
+            screen: "Board · Validacao",
+          },
+        ],
+      },
+    ],
+    rollback: "1.51.0",
+    technical: {
+      done: "apolo_search_entries.status e NOT NULL SEM DEFAULT: o upsert do PostgREST monta INSERT ... ON CONFLICT e o INSERT viola a restricao antes de chegar ao conflito. Como o erro nao era checado, as 11 fichas corrigidas ficaram indexadas pelo nome ANTIGO. Trocado por UPDATE (a linha sempre existe para entidade existente) com insert de fallback informando status. Erro de delete e insert de identificador tambem passaram a abortar: se o insert falhasse apos o delete, a pessoa ficaria sem documento e invisivel ao dedup. Os 11 indices ja afetados foram corrigidos por SQL.",
+      motivation: "As 11 correcoes de titular gravaram certo em apolo_entities mas a busca continuou devolvendo o nome antigo — a ficha do Mateus indexada como Karla. O comentario do codigo dizia 'sem isso a ficha some da busca' e a implementacao falhava em silencio.",
+    },
+    title: "Apolo: indice de busca na troca de identidade",
+    type: "correcao",
+    version: "1.51.1",
+  },
+  {
     buildTag: "2026-07-21-apolo-corrigir-titular",
     deployedAt: "2026-07-21T11:00:00-03:00",
     internal: true,
