@@ -463,6 +463,37 @@ export type CriacaoResultado = {
   reaproveitados: number;
 };
 
+// Procura a entidade dona deste CPF em DUAS fontes — e as duas são obrigatórias.
+//
+// ⚠️ `apolo_entities.document_hash` só existe para quem o Apolo criou: são 153 de 4.286. O sync
+// do C2X grava `document_hash: null` de propósito (lib/apolo/server.ts:3415) e guarda o CPF em
+// `apolo_entity_identifiers.value_hash`. Procurar só na primeira coluna é ser CEGO para 96% da
+// base: a pessoa já existe, o dedup não a enxerga, e nasce um cadastro duplicado.
+//
+// Foi exatamente o que aconteceu com RAFAEL GONÇALVES LEITE (CPF 132.619.696-01), que ficou com
+// duas entidades — uma vinda do C2X em "credito", outra criada pela importação em "validacao".
+// O `hashIdentifier("cpf", digitos)` é o MESMO nas duas tabelas, então basta olhar as duas.
+async function acharPorCpf(client: AdminClient, hash: string): Promise<string | null> {
+  const { data: porColuna } = await client
+    .from("apolo_entities")
+    .select("id")
+    .eq("document_hash", hash)
+    .limit(1)
+    .maybeSingle();
+
+  if (porColuna) return (porColuna as { id: string }).id;
+
+  const { data: porIdentificador } = await client
+    .from("apolo_entity_identifiers")
+    .select("entity_id")
+    .in("identifier_type", ["cpf", "cnpj"])
+    .eq("value_hash", hash)
+    .limit(1)
+    .maybeSingle();
+
+  return porIdentificador ? (porIdentificador as { entity_id: string }).entity_id : null;
+}
+
 // Cria as entidades das CADs que ainda NÃO existem no Apolo (é o caso da seção "Em Cadastro").
 //
 // ⚠️ DEDUP NO CÓDIGO, obrigatoriamente: a migration 0026 DROPOU o índice único de
@@ -517,15 +548,10 @@ export async function criarEntidadesDoLote(input: {
     try {
       // Já existe alguém com este CPF? Então é a mesma pessoa: vincula, não duplica.
       const hash = hashIdentifier("cpf", digitos);
-      const { data: existente } = await input.client
-        .from("apolo_entities")
-        .select("id")
-        .eq("document_hash", hash)
-        .limit(1)
-        .maybeSingle();
+      const entidadeExistente = await acharPorCpf(input.client, hash);
 
-      if (existente) {
-        entidadePorCad[item.gid] = (existente as { id: string }).id;
+      if (entidadeExistente) {
+        entidadePorCad[item.gid] = entidadeExistente;
         resultado.reaproveitados += 1;
         continue;
       }
