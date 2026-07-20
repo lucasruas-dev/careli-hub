@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-apolo-historico-ficha",
+    deployedAt: "2026-07-21T14:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Novo botao Historico na ficha: mostra quem editou, quando e quantos campos mudaram.",
+              "Clicando na edicao, abre o detalhe campo a campo com o valor anterior e o novo.",
+              "A correcao de titular tambem aparece no historico, com o documento mascarado.",
+            ],
+            screen: "Board · Validacao",
+          },
+        ],
+      },
+    ],
+    rollback: "1.53.0",
+    technical: {
+      done: "GET /api/apolo/board/[id]/historico le apolo_audit_events (edit_ficha + edit_identity) e AGRUPA por autor+minuto: um Salvar alteracoes com 13 campos e UM evento com 13 alteracoes, nao 13 eventos. Rotulos legiveis (escolaridadeId -> Escolaridade). Nome do autor resolvido em uma consulta so a hub_users. Carregado sob demanda no clique — a maioria das fichas nunca foi editada e buscar em toda abertura seria consulta a toa com 270 na fila.",
+      motivation: "Fechando o pedido do Lucas de 21/jul: as alteracoes ja eram registradas (o que mudou, para qual valor e quem), mas so davam para ler por SQL. Agora ele valida pela propria tela.",
+    },
+    title: "Apolo: historico de alteracoes na ficha",
+    type: "novidade",
+    version: "1.54.0",
+  },
+  {
     buildTag: "2026-07-21-apolo-padrao-idade-telefone",
     deployedAt: "2026-07-21T13:15:00-03:00",
     modules: [
