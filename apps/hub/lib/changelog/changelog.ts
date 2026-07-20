@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-serasa-bancada-teste",
+    deployedAt: "2026-07-21T16:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Bancada de teste da autenticacao do Serasa: quatro botoes, um para cada combinacao de host e endpoint que a documentacao deixa em aberto.",
+              "Cada clique faz UMA chamada e mostra o que voltou. Sem repeticao automatica.",
+              "So aparece em homologacao; em producao a bancada nao existe.",
+            ],
+            screen: "Board · Analise de credito",
+          },
+        ],
+      },
+    ],
+    rollback: "1.55.0",
+    technical: {
+      done: "POST /api/apolo/serasa/bancada: uma chamada de autenticacao por requisicao, sem retry e sem lote. Teto proprio de 40 tentativas/dia (o Serasa bloqueia o IP acima de 200 e a liberacao exige formalizacao). Recusa rodar quando SERASA_AMBIENTE != homologacao. Cada tentativa e registrada em serasa_consultas com finalidade 'bancada-descoberta-endpoint', entao entra na conta do teto e deixa historico. A resposta de SUCESSO nao volta inteira para a tela (carrega o token): volta so a lista de campos; a de ERRO volta crua, que e onde esta o diagnostico. As 7 env vars foram configuradas em producao (homologacao).",
+      motivation: "A documentacao do Serasa publica DOIS caminhos de token e DOIS hosts de teste sem dizer qual vale para a nossa credencial, e a resposta do time deles pode demorar. Decisao do Lucas: descobrir por tentativa e erro. Sao 4 combinacoes — menos de dez chamadas contra um teto de 200/dia.",
+    },
+    title: "Serasa: bancada de teste da autenticacao",
+    type: "melhoria",
+    version: "1.56.0",
+  },
+  {
     buildTag: "2026-07-21-apolo-serasa-motor-e-tela",
     deployedAt: "2026-07-21T15:00:00-03:00",
     modules: [
