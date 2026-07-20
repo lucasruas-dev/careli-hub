@@ -35,6 +35,8 @@ import {
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import { toTitleCase } from "@/lib/format/name-case";
 
+import { buscarEnderecoPorCep } from "../../lib/cep";
+
 import { getApoloAccessToken } from "../../data/apolo-operations";
 
 // Tela de trabalho do operador: a ESTEIRA de credenciamento (Lucas 18/jul).
@@ -1928,15 +1930,38 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
   const [salvos, setSalvos] = useState<Set<string>>(new Set());
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
 
+  // CEP digitado -> traz o resto do endereço (ViaCEP), igual ao wizard de cadastro. A busca
+  // nunca lança: CEP inválido ou serviço fora do ar apenas salva o CEP e o operador completa
+  // na mão. Só preenche campo VAZIO, para não apagar o que ele já tenha corrigido.
+  const salvarCep = async (valor: string) => {
+    const achado = await buscarEnderecoPorCep(valor);
+    if (!achado) {
+      await salvar("cep", valor);
+      return;
+    }
+    const atual = (ficha?.cadastro ?? {}) as Record<string, unknown>;
+    const extras: Record<string, string> = {};
+    for (const [campo, vindo] of Object.entries({
+      bairro: achado.bairro,
+      cidade: achado.cidade,
+      logradouro: achado.logradouro,
+      uf: achado.uf,
+    })) {
+      if (vindo && !texto(atual[campo])) extras[campo] = vindo;
+    }
+    await salvar("cep", valor, extras);
+  };
+
   // Salva UM campo por vez, no blur (texto) ou no change (lista). Sem botão "salvar": o operador
   // passa o dia nesta tela e um botão único perde trabalho se a aba fechar no meio.
-  const salvar = async (chave: string, valor: string) => {
+  const salvar = async (chave: string, valor: string, extras?: Record<string, string>) => {
     setErroSalvar(null);
     setPendentes((atual) => new Set(atual).add(chave));
+    const campos = { [chave]: valor, ...(extras ?? {}) };
     try {
       const accessToken = await getApoloAccessToken();
       const response = await fetch(`/api/apolo/board/${entityId}`, {
-        body: JSON.stringify({ campos: { [chave]: valor } }),
+        body: JSON.stringify({ campos }),
         headers: {
           Authorization: `Bearer ${accessToken}`,
           "Content-Type": "application/json",
@@ -1949,9 +1974,13 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
       }
       // Reflete na ficha em memória para o select mostrar o novo rótulo na hora.
       setFicha((atual) =>
-        atual ? { ...atual, cadastro: { ...atual.cadastro, [chave]: valor } } : atual,
+        atual ? { ...atual, cadastro: { ...atual.cadastro, ...campos } } : atual,
       );
-      setSalvos((atual) => new Set(atual).add(chave));
+      setSalvos((atual) => {
+        const proximo = new Set(atual);
+        for (const c of Object.keys(campos)) proximo.add(c);
+        return proximo;
+      });
     } catch (error) {
       setErroSalvar((error as Error).message);
     } finally {
@@ -2102,7 +2131,8 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
                           key={`${campo.chave}-${campo.valorCru ?? ""}`}
                           onBlur={(event) => {
                             if (event.target.value !== (campo.valorCru ?? "")) {
-                              void salvar(campo.chave!, event.target.value);
+                              if (campo.chave === "cep") void salvarCep(event.target.value);
+                              else void salvar(campo.chave!, event.target.value);
                             }
                           }}
                           placeholder="—"
