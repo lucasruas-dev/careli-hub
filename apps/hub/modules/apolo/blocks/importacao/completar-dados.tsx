@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, Check, Loader2, Search, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, Loader2, Search, Sparkles, UserCog } from "lucide-react";
 import { useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
@@ -58,6 +58,74 @@ export function CompletarDados() {
       setErro((e as Error).message);
     } finally {
       setDiagnosticando(false);
+    }
+  };
+
+  // CORRIGIR TITULARES — o único caminho aqui que CUSTA: lê o documento do proponente para
+  // trazer o CPF dele. Orça primeiro (grátis) e só executa depois de confirmar na tela.
+  const [orcamento, setOrcamento] = useState<{
+    custoTeto: number;
+    documentos: number;
+    fichas: number;
+    itens: { entityId: string; estaComo: string; proponente: string }[];
+  } | null>(null);
+  const [corrigindo, setCorrigindo] = useState(false);
+  const [correcao, setCorrecao] = useState<{
+    corrigidas: number;
+    custoBrl: number;
+    pendentes: number;
+  } | null>(null);
+
+  const orcarCorrecao = async () => {
+    setErro(null);
+    setCorrecao(null);
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/asana/corrigir-titular?veredito=trocado", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const corpo = (await resposta.json()) as { data?: typeof orcamento; error?: string };
+      if (!resposta.ok || !corpo.data) throw new Error(corpo.error ?? `Falha (${resposta.status}).`);
+      setOrcamento(corpo.data);
+    } catch (e) {
+      setErro((e as Error).message);
+    }
+  };
+
+  // Roda em lotes de 5, como a leitura de documentos: o gasto vai aparecendo aos poucos em
+  // vez de uma chamada longa que pode estourar no meio já tendo pago.
+  const corrigir = async () => {
+    if (!orcamento) return;
+    setCorrigindo(true);
+    setErro(null);
+    const acumulado = { corrigidas: 0, custoBrl: 0, pendentes: 0 };
+    try {
+      const token = await getApoloAccessToken();
+      const ids = orcamento.itens.map((i) => i.entityId);
+      for (let i = 0; i < ids.length; i += 5) {
+        const resposta = await fetch("/api/apolo/asana/corrigir-titular", {
+          body: JSON.stringify({ confirmado: true, entityIds: ids.slice(i, i + 5) }),
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const corpo = (await resposta.json()) as {
+          data?: { corrigidas: number; custoBrl: number; pendentes: number };
+          error?: string;
+        };
+        if (!resposta.ok || !corpo.data) {
+          setErro(corpo.error ?? `Falha (${resposta.status}).`);
+          break;
+        }
+        acumulado.corrigidas += corpo.data.corrigidas;
+        acumulado.custoBrl += corpo.data.custoBrl;
+        acumulado.pendentes += corpo.data.pendentes;
+        setCorrecao({ ...acumulado, custoBrl: Number(acumulado.custoBrl.toFixed(2)) });
+      }
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setCorrigindo(false);
     }
   };
 
@@ -142,6 +210,15 @@ export function CompletarDados() {
           {diagnosticando ? "Analisando…" : "Diagnosticar titulares"}
         </button>
 
+        <button
+          className="mt-4 ml-2 inline-flex items-center gap-2 rounded-lg border border-line px-3.5 py-2 text-sm font-bold text-ink hover:bg-subtle"
+          onClick={() => void orcarCorrecao()}
+          type="button"
+        >
+          <UserCog size={15} />
+          Corrigir titulares…
+        </button>
+
         {erro ? (
           <p className="m-0 mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
             <AlertTriangle className="shrink-0" size={14} />
@@ -156,6 +233,52 @@ export function CompletarDados() {
               ["Com o cônjuge no lugar", diagnostico.resumo.trocado],
               ["Falta o cônjuge", diagnostico.resumo.falta_conjuge],
               ["Conferir à mão", diagnostico.resumo.conferir],
+            ].map(([label, valor]) => (
+              <div className="rounded-lg border border-line bg-subtle/40 px-3 py-2" key={label}>
+                <p className="m-0 text-lg font-bold text-ink">{valor}</p>
+                <p className="m-0 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                  {label}
+                </p>
+              </div>
+            ))}
+          </div>
+        ) : null}
+
+        {orcamento ? (
+          <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50/60 p-3 dark:bg-amber-950/20">
+            <p className="m-0 text-xs font-bold text-ink">
+              {orcamento.fichas} fichas estao com o conjuge no lugar do titular
+            </p>
+            <p className="m-0 mt-1 text-xs text-ink-soft">
+              Teto de R$ {orcamento.custoTeto.toFixed(2)} ({orcamento.documentos} documentos).
+              O real fica bem abaixo: a leitura para no documento do proponente e o que ja foi
+              lido nao e cobrado de novo.
+            </p>
+            <ul className="m-0 mt-2 max-h-40 overflow-y-auto pl-4 text-xs text-ink-soft">
+              {orcamento.itens.map((i) => (
+                <li key={i.entityId}>
+                  <b className="text-ink">{i.proponente}</b> — hoje esta como {i.estaComo}
+                </li>
+              ))}
+            </ul>
+            <button
+              className="mt-3 inline-flex items-center gap-2 rounded-lg bg-inverse px-3 py-1.5 text-xs font-bold text-brand-ink disabled:opacity-60"
+              disabled={corrigindo}
+              onClick={() => void corrigir()}
+              type="button"
+            >
+              {corrigindo ? <Loader2 className="animate-spin" size={14} /> : <Check size={14} />}
+              {corrigindo ? "Corrigindo…" : "Confirmo, pode ler e corrigir"}
+            </button>
+          </div>
+        ) : null}
+
+        {correcao ? (
+          <div className="mt-4 grid gap-3 sm:grid-cols-3">
+            {[
+              ["Fichas corrigidas", correcao.corrigidas],
+              ["Pendentes de conferencia", correcao.pendentes],
+              ["Gasto", `R$ ${correcao.custoBrl.toFixed(2)}`],
             ].map(([label, valor]) => (
               <div className="rounded-lg border border-line bg-subtle/40 px-3 py-2" key={label}>
                 <p className="m-0 text-lg font-bold text-ink">{valor}</p>

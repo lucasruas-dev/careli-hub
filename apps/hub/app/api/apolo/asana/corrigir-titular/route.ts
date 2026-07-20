@@ -207,43 +207,79 @@ export async function POST(request: Request) {
     const fichaAtual = ((esteira as { ficha: Record<string, unknown> } | null)?.ficha ??
       {}) as Record<string, unknown>;
 
+    // Os campos de IDENTIDADE da ficha eram do cônjuge e passam a ser do proponente. Mas só
+    // se o documento dele trouxe o campo: `?? null` apagaria o que estava lá quando o OCR não
+    // lesse, por exemplo, a filiação — e o operador perderia dado bom sem saber.
+    //
+    // O resto da ficha (profissão, renda, escolaridade, telefone, o que o operador digitou)
+    // NÃO é tocado aqui: veio do formulário e já era do proponente desde o início.
+    const daIdentidade: Record<string, unknown> = {};
+    for (const [chave, valor] of Object.entries({
+      dataNascimento: doProponente.dataNascimento,
+      nacionalidade: doProponente.nacionalidade,
+      naturalidade: doProponente.naturalidade,
+      nomeMae: doProponente.nomeMae,
+      rg: doProponente.rg,
+    })) {
+      if (valor) daIdentidade[chave] = valor;
+    }
+
     await client
       .from("apolo_esteira")
-      .update({
-        ficha: {
-          ...fichaAtual,
-          dataNascimento: doProponente.dataNascimento ?? null,
-          nacionalidade: doProponente.nacionalidade ?? null,
-          naturalidade: doProponente.naturalidade ?? null,
-          nomeMae: doProponente.nomeMae ?? null,
-          rg: doProponente.rg ?? null,
-        },
-      })
+      .update({ ficha: { ...fichaAtual, ...daIdentidade } })
       .eq("entity_id", entityId);
 
-    // O cônjuge fica com os dados do documento DELE, quando encontrado.
+    // O cônjuge ganha os dados do documento DELE, quando encontrado.
     if (laudo.conjugeAsana) {
       const doConjuge = achado.conjugeEncontrado;
-      await client
-        .from("apolo_relationships")
-        .delete()
-        .eq("entity_id", entityId)
-        .eq("relationship_type", "conjuge");
 
-      await client.from("apolo_relationships").insert({
-        entity_id: entityId,
+      // ⚠️ O relacionamento atual guarda e-mail e telefone do cônjuge, que vieram do
+      // formulário do Asana e NÃO são relidos aqui. Um delete+insert cru os jogaria fora.
+      // Por isso lemos o metadata antigo e mesclamos por cima.
+      const { data: relAtual } = await client
+        .from("apolo_relationships")
+        .select("id, metadata")
+        .eq("entity_id", entityId)
+        .eq("relationship_type", "conjuge")
+        .limit(1)
+        .maybeSingle();
+
+      const metadataAntigo = ((relAtual as { metadata: Record<string, unknown> } | null)
+        ?.metadata ?? {}) as Record<string, unknown>;
+
+      const doDocumento: Record<string, unknown> = {};
+      for (const [chave, valor] of Object.entries({
+        cpf: doConjuge?.cpf,
+        dataNascimento: doConjuge?.dataNascimento,
+        nomeMae: doConjuge?.nomeMae,
+      })) {
+        if (valor) doDocumento[chave] = valor;
+      }
+
+      const conteudo = {
         label: doConjuge?.nome ?? laudo.conjugeAsana,
         metadata: {
-          cpf: doConjuge?.cpf ?? null,
-          dataNascimento: doConjuge?.dataNascimento ?? null,
+          ...metadataAntigo,
+          ...doDocumento,
           kind: "contato",
-          nomeMae: doConjuge?.nomeMae ?? null,
           origem: "correcao-titular",
           source: "apolo",
         },
-        relationship_type: "conjuge",
-        status: "active",
-      });
+      };
+
+      if (relAtual) {
+        await client
+          .from("apolo_relationships")
+          .update(conteudo)
+          .eq("id", (relAtual as { id: string }).id);
+      } else {
+        await client.from("apolo_relationships").insert({
+          ...conteudo,
+          entity_id: entityId,
+          relationship_type: "conjuge",
+          status: "active",
+        });
+      }
     }
 
     resultado.corrigidas += 1;
