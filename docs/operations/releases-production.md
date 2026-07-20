@@ -4787,3 +4787,18 @@ Conclusao:
   - Trocar nome exige recalcular `normalized_text` em `apolo_search_entries`, senao a ficha some da busca do Apolo/Iris/CACA.
 - Validacoes: `tsc --noEmit` limpo; 68 testes do Apolo PASS.
 - Pendente: rodar "Diagnosticar titulares" em producao e conferir o laudo por SQL antes de qualquer correcao.
+
+## 2026-07-21 - Apolo: correcao de titular das CADs (v1.51.0 + v1.51.1) - EM PRODUCAO
+
+- Modulo: Apolo (Importacao · Completar dados + Board/Validacao). Autorizacao: Lucas ("tem o meu ok" e "pode subir"), 2026-07-21.
+- v1.51.0 deployment `careli-hub-hub-i2bs-gdaeazl5v` (rollback v1.50.2 `ned1wqxgu`); v1.51.1 na sequencia.
+- RESULTADO DA EXECUCAO (rodada pelo Lucas): **11 fichas corrigidas, 3 pendentes, R$ 9,62** (teto exibido era R$ 31,37 — o reaproveitamento por SHA-256 e a parada no documento do proponente derrubaram a conta).
+  - Karla Rodrigues Lopes -> MATEUS LAZARO DUARTE DOS SANTOS; Helio Geraldo -> MARCIA APARECIDA DE PAULA SOUZA; Ana Paula de Oliveira -> LEONILDO APARECIDO DA SILVA; Jhonatan -> JESSICA LORRAINE FARIA; Elizabeth -> AGRACIELIO RIBEIRO SANTANA; e mais 6.
+  - Cada ficha ficou com UM identificador (o CPF do conjuge foi removido) — era o risco de a CACA atender a pessoa errada.
+- 🔴 DEFEITO MEU, PEGO NA CONFERENCIA POS-EXECUCAO: as 11 gravaram certo em `apolo_entities` mas ficaram INDEXADAS PELO NOME ANTIGO. Causa: `apolo_search_entries.status` e NOT NULL SEM DEFAULT; o upsert do PostgREST monta `INSERT ... ON CONFLICT` e o INSERT viola a restricao ANTES de chegar ao conflito. Como eu nao checava o erro, falhou EM SILENCIO nas 11 — e o comentario que eu mesmo escrevi no codigo dizia "sem isso a ficha some da busca".
+  - Correcao: UPDATE (a linha sempre existe para entidade existente) + insert de fallback com `status: 'active'`, e **abortar** em vez de seguir. Delete/insert de identificador tambem passaram a checar erro: se o insert falhasse apos o delete, a pessoa ficaria SEM documento e invisivel ao dedup.
+  - Os 11 indices ja afetados foram corrigidos por SQL. Conferido: 11/11 com `busca_confere = true` e 1 identificador cada.
+- ⚠️ LICAO PARA A PROXIMA TABELA: no PostgREST, `upsert` numa tabela com coluna NOT NULL sem default FALHA mesmo quando a linha ja existe. E toda escrita cuja ausencia quebra outra coisa (busca, dedup) precisa checar `error` — "gravou e ninguem viu" e pior que erro na cara.
+- Escopo tecnico: `documento.ts` (validacao CPF/CNPJ — CNPJ nao existia no repo), `identidade-persist.ts`, `corrigir-titular.ts`, rota com GET de orcamento e POST confirmado em lotes de 5, botao com lista nominal antes de gastar.
+- Validacoes: `tsc --noEmit` limpo; 84 testes do Apolo PASS; conferencia pos-execucao por SQL (nome, CPF, identificadores, indice de busca).
+- Pendente: 3 fichas sem documento do proponente (conferencia manual); 7 do veredito "conferir" (inclui a JFL, que precisa virar PJ com CNPJ — o formulario nao traz o CNPJ); 17 sem conjuge cadastrado.
