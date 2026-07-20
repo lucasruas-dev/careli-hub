@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 
 import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
+import { formatarTelefoneBR } from "@/lib/format/phone-br";
+import { toTitleCase } from "@/lib/format/name-case";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // Ficha COMPLETA de um item da esteira, pro operador validar com o documento ao lado. Devolve os
@@ -37,6 +39,27 @@ const texto = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
 // `authorizeApoloWrite` devolve "local-hub-user" quando não há Supabase server-side; gravar
 // isso em coluna uuid quebra o insert inteiro.
+// Campos que são NOME de gente ou de lugar: vão para "Primeira Maiúscula".
+const CAMPOS_DE_NOME = new Set([
+  "bairro",
+  "cidade",
+  "complemento",
+  "conjugeMae",
+  "conjugeNome",
+  "logradouro",
+  "nacionalidade",
+  "naturalidade",
+  "nomeMae",
+  "nomePai",
+]);
+
+function padronizar(chave: string, valor: unknown): unknown {
+  if (typeof valor !== "string") return valor;
+  if (chave.toLowerCase().includes("telefone")) return formatarTelefoneBR(valor);
+  if (CAMPOS_DE_NOME.has(chave)) return toTitleCase(valor);
+  return valor;
+}
+
 const ehUuid = (valor: string): boolean =>
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(valor);
 
@@ -228,10 +251,18 @@ export async function PATCH(
 
   // Campo apagado pelo operador (string vazia) some da ficha, em vez de virar "" — assim ele
   // consegue LIMPAR um dado que o OCR leu errado.
+  //
+  // PADRONIZAÇÃO no servidor, não só na tela: o mesmo dado entra por aqui pela digitação do
+  // operador E pela importação do Asana, e tem que sair igual dos dois lados (regra do Lucas,
+  // 21/jul). Nome em "Primeira Maiúscula" (regra global do Hub, 13/jul) e telefone no padrão
+  // (37) 99956-9096 — as CADs trouxeram "37999569096", "(37)998256365", "+55 37 99860-2317".
   const mesclada: Record<string, unknown> = { ...fichaAtual };
   for (const [chave, valor] of Object.entries(campos)) {
-    if (valor === "" || valor === null) delete mesclada[chave];
-    else mesclada[chave] = valor;
+    if (valor === "" || valor === null) {
+      delete mesclada[chave];
+      continue;
+    }
+    mesclada[chave] = padronizar(chave, valor);
   }
 
   const { error } = await adminClient.from("apolo_esteira").upsert(

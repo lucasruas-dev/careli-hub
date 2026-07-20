@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-apolo-padrao-idade-telefone",
+    deployedAt: "2026-07-21T13:15:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A idade passou a acompanhar a data de nascimento enquanto voce digita.",
+              "A secao Conjuge aparece assim que voce marca Casado, sem precisar salvar antes.",
+              "Nomes, filiacao, naturalidade e endereco seguem o padrao Primeira Maiuscula.",
+              "Telefone ganha o formato (37) 99956-9096 enquanto voce digita — e os que vieram importados aparecem no mesmo padrao.",
+            ],
+            screen: "Board · Validacao",
+          },
+        ],
+      },
+    ],
+    rollback: "1.52.1",
+    technical: {
+      done: "montarSecoes passou a receber o `rascunho` e mescla por cima do cadastro, entao tudo que e DERIVADO acompanha a digitacao (idade via calcIdade, e o `casado` que decide a secao Conjuge e o regime de bens). lib/format/phone-br.ts (novo, 9 testes) com mascara progressiva e normalizacao dos formatos que vieram do Asana: 37999569096, (37)998256365, +55 37 99860-2317, 0379991251532 e dois numeros separados por barra. Guarda: numero que comeca com 55 e ja tem tamanho nacional NAO perde os dois primeiros digitos. Padronizacao aplicada na exibicao E no PATCH do servidor, porque o mesmo campo entra pela digitacao e pela importacao. Nomes usam o toTitleCase que ja e a regra global do Hub.",
+      motivation: "Lucas editou a ficha do Mateus e apontou: idade nao atualizava ao trocar a data, faltava o padrao de Primeira Maiuscula e os telefones precisavam sair todos no formato do Apolo, tanto o digitado quanto o importado.",
+    },
+    title: "Apolo: idade ao vivo, Primeira Maiuscula e telefone padronizado",
+    type: "melhoria",
+    version: "1.53.0",
+  },
+  {
     buildTag: "2026-07-21-apolo-fix-carregamento-validacao",
     deployedAt: "2026-07-21T12:45:00-03:00",
     internal: true,

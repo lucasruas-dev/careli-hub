@@ -35,6 +35,8 @@ import {
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import { toTitleCase } from "@/lib/format/name-case";
 
+import { formatarTelefoneBR } from "@/lib/format/phone-br";
+
 import { buscarEnderecoPorCep } from "../../lib/cep";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
@@ -1718,8 +1720,12 @@ const opcao = (lista: { id: number | string; label: string }[], id: unknown): st
 
 // Monta a ficha completa igual à REVISÃO do cadastro (decisão do Lucas: é essa tela que o
 // operador quer ver na validação, com os dados de verdade, e não uma lista de rótulos).
-function montarSecoes(ficha: Ficha): SecaoFicha[] {
-  const c = ficha.cadastro;
+// `rascunho` = o que o operador está digitando AGORA, ainda não salvo. Entra por cima do
+// cadastro para que tudo que é DERIVADO acompanhe na hora: a idade recalcula ao trocar a data
+// de nascimento, e a seção Cônjuge aparece assim que ele marca "Casado" — em vez de só depois
+// de salvar e recarregar.
+function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): SecaoFicha[] {
+  const c = { ...ficha.cadastro, ...rascunho };
   const e = ficha.endereco;
   const pj = ficha.entidade.tipo === "pj";
   const secoes: SecaoFicha[] = [];
@@ -1745,14 +1751,22 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
       titulo: "Dados da empresa",
     });
   } else {
-    const livre = (chave: string, label: string, full = false): Campo => ({
-      chave,
-      full,
-      label,
-      tipo: "texto",
-      valor: texto(c[chave]),
-      valorCru: texto(c[chave]),
-    });
+    // A EXIBIÇÃO já sai padronizada, mesmo para o que foi importado antes da regra existir:
+    // nome em "Primeira Maiúscula" e telefone em (37) 99956-9096. Assim o operador vê o padrão
+    // sem precisar reescrever 392 fichas — e o que ele salvar já vai padronizado do servidor.
+    const livre = (chave: string, label: string, full = false): Campo => {
+      const bruto = texto(c[chave]);
+      const ehNome = /nome|naturalidade|nacionalidade|logradouro|bairro|cidade/i.test(chave);
+      const ehTelefone = /telefone/i.test(chave);
+      return {
+        chave,
+        full,
+        label,
+        tipo: "texto",
+        valor: ehTelefone ? formatarTelefoneBR(bruto) : ehNome ? titleCase(bruto) : bruto,
+        valorCru: ehTelefone ? formatarTelefoneBR(bruto) : bruto,
+      };
+    };
     const lista = (
       chave: string,
       label: string,
@@ -1837,16 +1851,12 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
   // operador não tinha onde preencher justamente o que falta. O valor mostrado vem da ficha
   // quando o operador já editou, senão do endereço cadastrado.
   const endCampo = (chave: string, label: string, full = false): Campo => {
-    const daFicha = texto(c[chave]);
-    const doCadastro = texto(e?.[chave] ?? "");
-    return {
-      chave,
-      full,
-      label,
-      tipo: "texto",
-      valor: daFicha || doCadastro,
-      valorCru: daFicha || doCadastro,
-    };
+    const bruto = texto(c[chave]) || texto(e?.[chave] ?? "");
+    // Logradouro, bairro e cidade vêm em CAIXA ALTA do C2X e do OCR.
+    const valor = /logradouro|bairro|cidade|complemento/i.test(chave)
+      ? titleCase(bruto)
+      : bruto;
+    return { chave, full, label, tipo: "texto", valor, valorCru: valor };
   };
 
   secoes.push({
@@ -1868,8 +1878,8 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
         chave: "telefone",
         label: "Telefone",
         tipo: "texto",
-        valor: texto(c.telefone) || ficha.contato.telefone,
-        valorCru: texto(c.telefone) || ficha.contato.telefone,
+        valor: formatarTelefoneBR(texto(c.telefone) || ficha.contato.telefone),
+        valorCru: formatarTelefoneBR(texto(c.telefone) || ficha.contato.telefone),
       },
       {
         chave: "email",
@@ -1922,7 +1932,7 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
           valor: calcIdade(texto(c.conjugeNascimento) || conj.dataNascimento),
         },
         campoConjuge("conjugeMae", "Nome da mãe", titleCase(conj.nomeMae), true),
-        campoConjuge("conjugeTelefone", "Telefone", conj.telefone),
+        campoConjuge("conjugeTelefone", "Telefone", formatarTelefoneBR(conj.telefone)),
         campoConjuge("conjugeEmail", "E-mail", conj.email, true),
       ],
       titulo: "Cônjuge",
@@ -2283,7 +2293,7 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
                 {erroSalvar}
               </p>
             ) : null}
-            {montarSecoes(ficha).map((secao) => (
+            {montarSecoes(ficha, rascunho).map((secao) => (
               <div key={secao.titulo}>
                 <p className="m-0 mb-2 text-[11px] font-semibold uppercase tracking-[0.1em] text-ink">
                   {secao.titulo}
@@ -2328,11 +2338,13 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
                       ) : (
                         <input
                           className="mt-0.5 w-full rounded border border-line bg-surface px-1.5 py-1 text-sm text-ink outline-none placeholder:text-ink-muted"
-                          onChange={(event) =>
-                            campo.chave === "cep"
-                              ? void preencherPorCep(event.target.value)
-                              : mexer(campo.chave!, event.target.value)
-                          }
+                          onChange={(event) => {
+                            const bruto = event.target.value;
+                            if (campo.chave === "cep") return void preencherPorCep(bruto);
+                            // Telefone ganha a máscara do Apolo enquanto se digita.
+                            const ehTelefone = campo.chave!.toLowerCase().includes("telefone");
+                            mexer(campo.chave!, ehTelefone ? formatarTelefoneBR(bruto) : bruto);
+                          }}
                           placeholder="—"
                           type={campo.tipo === "data" ? "date" : "text"}
                           value={valorDe(campo.chave, campo.valorCru ?? "")}
