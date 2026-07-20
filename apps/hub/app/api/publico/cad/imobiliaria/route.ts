@@ -43,7 +43,11 @@ export async function POST(request: Request) {
       inicio,
       json({ credenciada: true, nome: consulta.nome, preSessao: pre.token }),
     );
-  } catch {
+  } catch (e) {
+    // O visitante recebe a mensagem genérica (não damos pista de infraestrutura a anônimo), mas
+    // NÓS precisamos saber o que quebrou: sem este log o 500 vira mistério, que foi exatamente
+    // o que aconteceu no primeiro teste em preview (20/jul).
+    console.error("[publico][cad][imobiliaria] falha", e);
     return responder(inicio, erro(undefined, 500));
   }
 }
