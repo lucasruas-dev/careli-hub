@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-apolo-corrigir-titular",
+    deployedAt: "2026-07-21T11:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Novo Corrigir titulares: poe cada pessoa no seu lugar nas fichas que ficaram com o conjuge no lugar do proponente.",
+              "Mostra o orcamento e a lista nome a nome ANTES de gastar; so le documento depois da confirmacao.",
+              "Traz o CPF do proponente do documento dele, e o conjuge fica com o documento dele.",
+              "Ficha sem documento do proponente nao e alterada: entra como pendente de conferencia.",
+            ],
+            screen: "Importar CADs · Completar dados",
+          },
+        ],
+      },
+    ],
+    rollback: "1.50.2",
+    technical: {
+      done: "lib/apolo/documento.ts (validacao de CPF e CNPJ — CNPJ nao existia no repo, e por isso a JFL entrou como PF com o CPF do socio). lib/apolo/identidade-persist.ts grava identidade com quatro protecoes que a auditoria do codigo apontou: recusa ficha espelho do C2X (resync de 6/6h reescreveria), recusa documento que ja pertence a outra ficha, DELETE+INSERT do identificador (upsert deixaria dois CPFs is_primary e a CACA atenderia a pessoa errada) e recalculo do normalized_text (senao a ficha some da busca). lib/apolo/corrigir-titular.ts le os anexos ate achar o documento do proponente, reaproveitando o que ja foi lido por SHA-256. Rota com GET de orcamento e POST confirmado, em lotes de 5.",
+      motivation: "A leitura parava no primeiro anexo com CPF valido; no PDF do casal esse costuma ser o do CONJUGE. O diagnostico com ancora no formulario do Asana achou 15 fichas assim. Regra do Lucas: se o formulario aponta o Mateus, o CPF tem que ser o do Mateus.",
+    },
+    title: "Apolo: corrigir titular das CADs",
+    type: "melhoria",
+    version: "1.51.0",
+  },
+  {
     buildTag: "2026-07-21-apolo-diagnostico-titular",
     deployedAt: "2026-07-21T10:15:00-03:00",
     internal: true,
