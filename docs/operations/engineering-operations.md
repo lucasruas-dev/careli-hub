@@ -41206,3 +41206,37 @@ PÓS-DEPLOY: resetar tentativas das gravações presas (egressAttempts) p/ o cro
 **⚠️ RISCOS MAPEADOS a tratar antes das seções pagas:** `apolo_entities` **perdeu o índice único de document_hash na 0026** e `createApoloEntity` insere cego → mesmo CPF 2x = 2 entidades, 2 itens na fila e quebra o `maybeSingle()` de `credenciamento.ts:103`; o **CPF do OCR não tem validação de DV** (só conta 11 dígitos) → lixo entra como CPF; a rota `/api/apolo/cadastro` grava `overallConfidence` (média, diagnóstico) onde deveria gravar `confiancaDocumento` (MIN, o porteiro real); e a ponte anexo-do-Asana → `extractDocument` **ainda não existe** (baixar server-side, não via `fileUrl`, por causa do proxy de IP fixo).
 
 **LIMITAÇÃO CONHECIDA:** os nomes das seções foram **inferidos** (o token do Asana só existe em produção), por isso o campo de seções é editável na tela e a aba de sondagem lista as seções reais.
+
+## 2026-07-20 (madrugada) - Apolo: reimportacao concluida e a DIVIDA que fica para 21/jul
+
+Reimportacao das CADs "Em Cadastro" do Vale do Ouro rodou ate o fim (Lucas clicou; a tela
+percorre os lotes sozinha, e trocar de aba NAO interrompe — o loop vive no JS da pagina, so
+a barra de progresso, que e estado do componente, some).
+
+RESULTADO
+- 392 na esteira: 270 em `validacao` + 122 em `credito`.
+- Gasto REAL R$ 90,57 (teto exibido na tela: R$ 406,82). O teto e `imagens x custo` sem
+  desconto; o real e menor porque a leitura PARA no primeiro documento com CPF valido e
+  porque o dedup por sha256 reaproveita o que ja foi lido. Acumulado: R$ 202,91.
+- Campos que estavam ZERADOS nas 275 agora vem preenchidos: telefone 270/270, e-mail 270/270,
+  renda 268, estado civil 268, escolaridade 226, profissao 193 (a mais baixa de proposito: o
+  limiar alto impede "Pedreiro" virar "Padeiro"; o resto fica em branco para o operador).
+- 0 CPF duplicado: o `acharPorCpf` novo (que consulta apolo_entity_identifiers) segurou.
+
+DIVIDA — PRIMEIRA TAREFA DE 21/jul (ordem do Lucas)
+~19 das 270 fichas estao com a pessoa ERRADA. `lerDocumentosDoLote` para no primeiro documento
+com CPF valido; no PDF do casal esse documento costuma ser o do CONJUGE, e ai a ficha INTEIRA
+sai dele: CPF, RG, nascimento, naturalidade e NOME DA MAE. O Lucas apontou o nome da mae por
+conta propria e estava certo.
+
+Medido contra o backup pre-limpeza: das 152 comparaveis, 31 mudaram de nome — 18 so acento
+(melhoria: o documento e a fonte oficial) e 13 mudaram de pessoa. Um caso nao e nem pessoa:
+"Edvania Domingos da Silva" virou "DE EDUCACAO BASICA II" (o OCR leu um diploma).
+
+Plano fechado, custo zero: comparar o nome do proponente no Asana com o nome de CADA documento
+lido (ja salvo em apolo_ocr_reads), ficar com o que casa com o titular, mandar o outro para
+conjuge, e quem nao casar com nenhum vai para lista de conferencia. Depois VALIDAR TUDO, nao so
+o nome. Verificar tambem se `mesclarCadastros` chegou a misturar campos de dois documentos.
+
+⚠️ LICAO: a regra "nome e CPF vem do documento" aplicada SOZINHA foi o que produziu a troca de
+titular. O alerta foi dado antes de rodar e se confirmou.
