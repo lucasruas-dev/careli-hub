@@ -26,7 +26,9 @@ import {
   C2X_ESCOLARIDADE,
   C2X_ESTADO_CIVIL,
   C2X_FAIXA_RENDA,
+  C2X_REGIME_BENS,
   C2X_SEXO,
+  calcIdade,
   formatDateBR,
   titleCase,
 } from "@/lib/apolo/c2x-fields";
@@ -1741,6 +1743,14 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
       valorCru: texto(c[chave]),
     });
 
+    // ESPELHO DA REVISÃO DO FORMULÁRIO (decisão do Lucas 21/jul): a validação confere
+    // exatamente os campos que a revisão do wizard mostra ao fim do cadastro — mesmas seções,
+    // mesma ordem, mesmos rótulos. Ver `montarCadDoc` em blocks/cadastro/cadastro-flow.tsx.
+    // Por isso NÃO há nome do pai, RG nem órgão emissor: o formulário não os revisa (o dado
+    // lido do documento continua salvo, só não é conferido aqui).
+    // 2 = Casado, 6 = União Estável (ids do C2X, ver C2X_ESTADO_CIVIL).
+    const casado = ["2", "6"].includes(texto(c.estadoCivilId));
+
     secoes.push({
       campos: [
         { full: true, label: "Nome", valor: titleCase(ficha.entidade.nome) },
@@ -1752,46 +1762,98 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
           valor: formatDateBR(texto(c.dataNascimento)),
           valorCru: texto(c.dataNascimento).slice(0, 10),
         },
+        // Derivada do nascimento, como na revisão: não se digita idade, se digita a data.
+        { label: "Idade", valor: calcIdade(texto(c.dataNascimento)) },
         livre("nomeMae", "Nome da mãe", true),
-        livre("nomePai", "Nome do pai", true),
-        // O OCR lê RG e órgão emissor e a ficha não mostrava — dado pago que ficava invisível.
-        livre("rg", "RG"),
-        livre("orgaoEmissor", "Órgão emissor"),
         livre("naturalidade", "Naturalidade"),
         livre("nacionalidade", "Nacionalidade"),
         lista("sexoId", "Sexo", C2X_SEXO),
         lista("estadoCivilId", "Estado civil", C2X_ESTADO_CIVIL),
-        lista("escolaridadeId", "Escolaridade", C2X_ESCOLARIDADE),
-        lista("rendaId", "Faixa de renda", C2X_FAIXA_RENDA),
-        lista("profissaoId", "Profissão", C2X_PROFISSOES),
-        livre("patrimonio", "Patrimônio"),
+        // Regime de bens só existe casado/união estável — igual à revisão.
+        ...(casado ? [lista("regimeBensId", "Regime de bens", C2X_REGIME_BENS)] : []),
       ],
       titulo: "Identificação",
     });
-  }
 
-  if (e) {
     secoes.push({
       campos: [
-        { full: true, label: "Logradouro", valor: titleCase(e.logradouro ?? "") },
-        { label: "Número", valor: e.numero ?? "" },
-        { label: "Complemento", valor: e.complemento ?? "" },
-        { label: "Bairro", valor: titleCase(e.bairro ?? "") },
-        { label: "CEP", valor: e.cep ?? "" },
-        { label: "Cidade", valor: titleCase(e.cidade ?? "") },
-        { label: "UF", valor: e.uf ?? "" },
+        lista("escolaridadeId", "Escolaridade", C2X_ESCOLARIDADE),
+        lista("rendaId", "Faixa de renda", C2X_FAIXA_RENDA),
+        livre("patrimonio", "Patrimônio"),
+        lista("profissaoId", "Profissão", C2X_PROFISSOES),
       ],
-      titulo: "Endereço",
+      titulo: "Perfil",
     });
   }
 
+  // ENDEREÇO SEMPRE VISÍVEL, mesmo vazio (Lucas 21/jul: "não vi a parte de endereço").
+  // As CADs importadas do Asana não trazem endereço, e a seção simplesmente sumia — o
+  // operador não tinha onde preencher justamente o que falta. O valor mostrado vem da ficha
+  // quando o operador já editou, senão do endereço cadastrado.
+  const endCampo = (chave: string, label: string, full = false): Campo => {
+    const daFicha = texto(c[chave]);
+    const doCadastro = texto(e?.[chave] ?? "");
+    return {
+      chave,
+      full,
+      label,
+      tipo: "texto",
+      valor: daFicha || doCadastro,
+      valorCru: daFicha || doCadastro,
+    };
+  };
+
   secoes.push({
     campos: [
-      { label: "Telefone", valor: ficha.contato.telefone },
-      { full: true, label: "E-mail", valor: ficha.contato.email },
+      endCampo("logradouro", "Logradouro", true),
+      endCampo("numero", "Número"),
+      endCampo("complemento", "Complemento"),
+      endCampo("bairro", "Bairro"),
+      endCampo("cep", "CEP"),
+      endCampo("cidade", "Cidade"),
+      endCampo("uf", "UF"),
+    ],
+    titulo: "Endereço",
+  });
+
+  secoes.push({
+    campos: [
+      {
+        chave: "telefone",
+        label: "Telefone",
+        tipo: "texto",
+        valor: texto(c.telefone) || ficha.contato.telefone,
+        valorCru: texto(c.telefone) || ficha.contato.telefone,
+      },
+      {
+        chave: "email",
+        full: true,
+        label: "E-mail",
+        tipo: "texto",
+        valor: texto(c.email) || ficha.contato.email,
+        valorCru: texto(c.email) || ficha.contato.email,
+      },
     ],
     titulo: "Contato",
   });
+
+  // CÔNJUGE — a revisão do formulário mostra a ficha inteira dele quando casado, e é
+  // material de contrato. Aqui é read-only: o cônjuge é entidade própria, com ficha própria.
+  const conjuge = (c.conjuge ?? null) as Record<string, unknown> | null;
+  if (conjuge && texto(conjuge.nome)) {
+    secoes.push({
+      campos: [
+        { full: true, label: "Nome", valor: titleCase(texto(conjuge.nome)) },
+        { label: "CPF", valor: texto(conjuge.cpf) },
+        { label: "Nascimento", valor: formatDateBR(texto(conjuge.dataNascimento)) },
+        { label: "Idade", valor: calcIdade(texto(conjuge.dataNascimento)) },
+        { full: true, label: "Nome da mãe", valor: titleCase(texto(conjuge.nomeMae)) },
+        { label: "Telefone", valor: texto(conjuge.telefone) },
+        { full: true, label: "E-mail", valor: texto(conjuge.email) },
+      ],
+      titulo: "Cônjuge",
+    });
+  }
 
   // Sócios cadastrados (ficha própria de cada um).
   const socios = Array.isArray(c.socios) ? (c.socios as Record<string, unknown>[]) : [];
@@ -2015,8 +2077,14 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
                       {!campo.chave ? (
                         <p className="m-0 mt-0.5 text-sm text-ink">{campo.valor || "—"}</p>
                       ) : campo.tipo === "select" ? (
+                        /* ⚠️ NÃO trocar por `bg-transparent`. O popup do <select> é desenhado
+                           pelo browser usando a cor de fundo COMPUTADA do elemento, e
+                           `transparent` resolve para BRANCO — enquanto a <option> herda o
+                           `text-ink` claro do dark. Dá branco no branco, ilegível (bug visto
+                           em 21/jul). O globals.css já amarra `color-scheme` ao tema, mas um
+                           background explícito no select passa por cima disso. */
                         <select
-                          className="mt-0.5 w-full border-0 bg-transparent p-0 text-sm text-ink outline-none focus:ring-0"
+                          className="mt-0.5 w-full border-0 bg-surface p-0 text-sm text-ink outline-none focus:ring-0 [&>option]:bg-surface [&>option]:text-ink"
                           onChange={(event) => void salvar(campo.chave!, event.target.value)}
                           value={campo.valorCru ?? ""}
                         >
