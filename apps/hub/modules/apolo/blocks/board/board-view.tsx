@@ -2117,6 +2117,45 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
   };
 
   useEffect(() => {
+    let alive = true;
+    setCarregando(true);
+    void (async () => {
+      try {
+        const accessToken = await getApoloAccessToken();
+        const headers = { Authorization: `Bearer ${accessToken}` };
+        const [resDocs, resFicha] = await Promise.all([
+          fetch(`/api/apolo/documentos?entityId=${encodeURIComponent(entityId)}`, {
+            cache: "no-store",
+            headers,
+          }),
+          fetch(`/api/apolo/board/${entityId}`, { cache: "no-store", headers }),
+        ]);
+        // ⚠️ /api/apolo/documentos devolve { documents } na RAIZ, sem envelope `data` —
+        // diferente de /api/apolo/board/[id], que usa { data }. Ler data.documents aqui fazia
+        // a lista vir SEMPRE vazia: a validação nunca mostrou documento nenhum, e só dava para
+        // perceber depois que passou a existir documento para mostrar.
+        const payloadDocs = (await resDocs.json()) as {
+          documents?: DocItem[];
+        };
+        const payloadFicha = (await resFicha.json()) as { data?: Ficha };
+        const lista = (payloadDocs.documents ?? []).filter((doc) => doc.hasFile);
+        if (!alive) return;
+        setDocs(lista);
+        setAtivo(lista[0] ?? null);
+        setFicha(payloadFicha.data ?? null);
+      } catch {
+        // sem documentos/ficha
+      } finally {
+        if (alive) setCarregando(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [entityId]);
+
+  // Cada arquivo é servido por URL assinada (bucket privado).
+  useEffect(() => {
     if (!ativo) {
       setUrl(null);
       return;
