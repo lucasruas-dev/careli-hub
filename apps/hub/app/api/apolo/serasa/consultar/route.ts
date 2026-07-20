@@ -63,8 +63,20 @@ export async function GET(request: Request) {
   const client = createApoloAdminClient();
   if (!client) return NextResponse.json({ error: "Supabase indisponivel." }, { status: 503 });
 
+  // Recebe a FICHA, não o documento: o CPF sai do cadastro, nunca da query string (não vaza
+  // em log de proxy, e ninguém consulta um documento arbitrário por esta rota).
   const url = new URL(request.url);
-  const documento = (url.searchParams.get("documento") ?? "").replace(/\D/g, "");
+  const entityId = url.searchParams.get("entityId") ?? "";
+
+  let documento = "";
+  if (entityId) {
+    const { data: entidade } = await client
+      .from("apolo_entities")
+      .select("document_masked")
+      .eq("id", entityId)
+      .maybeSingle<{ document_masked: string | null }>();
+    documento = (entidade?.document_masked ?? "").replace(/\D/g, "");
+  }
 
   const cfg = lerConfigSerasa();
   if (!cfg.ok) {

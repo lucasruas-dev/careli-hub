@@ -39,6 +39,8 @@ import { formatarTelefoneBR } from "@/lib/format/phone-br";
 
 import { buscarEnderecoPorCep } from "../../lib/cep";
 
+import { CreditoSerasa } from "./credito-serasa";
+
 import { getApoloAccessToken } from "../../data/apolo-operations";
 
 // Tela de trabalho do operador: a ESTEIRA de credenciamento (Lucas 18/jul).
@@ -1655,6 +1657,7 @@ function PainelEtapa({
           documento à vista o operador estaria conferindo no escuro. As demais etapas ficam vazias
           até a lógica ser ligada — nada de dado de mentira na tela. */}
       {etapa.id === "cadastro" ? <ValidacaoLadoALado entityId={entityId} /> : null}
+      {etapa.id === "credito" ? <CreditoSerasa entityId={entityId} /> : null}
     </div>
   );
 }
