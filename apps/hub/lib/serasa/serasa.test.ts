@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { limparCacheToken, obterToken } from "./auth";
 import { consultarPF, consultarPJ } from "./client";
 import { ambienteConfere, lerConfigSerasa, type ConfigSerasa } from "./config";
+import { resumirRelatorio } from "./resumo";
 
 const CONFIG_TESTE: ConfigSerasa = {
   ambiente: "homologacao",
@@ -284,5 +285,42 @@ describe("consultarPF / consultarPJ", () => {
     );
     expect(r.ok).toBe(false);
     expect(chamou).toBe(false);
+  });
+});
+
+describe("resumirRelatorio", () => {
+  // O schema real não está documentado: o resumo é heurístico e o cru fica salvo. Estes testes
+  // travam o COMPORTAMENTO (não quebrar, não inventar), não o formato do Serasa.
+  it("acha score e faixa em estrutura aninhada", () => {
+    const r = resumirRelatorio({
+      reports: [{ scoring: { score: 742, riskLevel: "BAIXO RISCO" } }],
+    });
+    expect(r.score).toBe(742);
+    expect(r.faixa).toBe("BAIXO RISCO");
+    expect(r.origemScore).toContain("score");
+  });
+
+  it("conta negativações pela lista", () => {
+    const r = resumirRelatorio({ negativacoes: [{ valor: 1 }, { valor: 2 }, { valor: 3 }] });
+    expect(r.negativacoes).toBe(3);
+  });
+
+  // Score fora de 0–1000 provavelmente é outro campo com nome parecido.
+  it("ignora número fora da faixa de score", () => {
+    expect(resumirRelatorio({ score: 99999 }).score).toBeUndefined();
+  });
+
+  it("devolve vazio em vez de inventar quando não reconhece nada", () => {
+    expect(resumirRelatorio({ qualquer: { coisa: "x" } })).toEqual({});
+    expect(resumirRelatorio(null)).toEqual({});
+    expect(resumirRelatorio("texto")).toEqual({});
+  });
+
+  // Um resumo que explode não pode derrubar a gravação de uma consulta JÁ PAGA.
+  it("não quebra com estrutura circular", () => {
+    const circular: Record<string, unknown> = { score: 500 };
+    circular.eu = circular;
+    expect(() => resumirRelatorio(circular)).not.toThrow();
+    expect(resumirRelatorio(circular).score).toBe(500);
   });
 });
