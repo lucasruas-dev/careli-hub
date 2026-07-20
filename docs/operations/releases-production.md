@@ -4729,3 +4729,22 @@ Conclusao:
 - Validacoes: turbo check-types PASS; lint 0 warnings (8 exhaustive-deps pre-existentes zerados); 25 testes PASS.
 - Pos-deploy: resetar sync_token PAGE da conexao Nivea; conferir 1a execucao do sync-cron; validacao visual do Lucas em prod.
 - Follow-ups: RLS policies chronos_google_* (migration-registro 0045); faxina Whereby 49,7GB (gravacoes mar-jun pre-Drive); fetch por range do calendario; bloco "Reunioes do cliente" no Apolo (backlog estrategico).
+
+## 2026-07-20 - Apolo: validacao editavel pelo operador + dedup de CPF (v1.50.0) - EM PRODUCAO
+
+- Modulo: Apolo (Board/Validacao + Importacao de CADs). Status: `EM PRODUCAO`. Autorizacao: Lucas ("tem o meu ok"), 2026-07-20.
+- Branch: `feat/apolo-documentos` -> `main` (ff); commits `b0d5eeb7` (ficha editavel) + `da29aaae` (dedup) + `4acbd922` (changelog).
+- Versao v1.50.0, build `2026-07-20-apolo-validacao-editavel`.
+- Deployment: `careli-hub-hub-i2bs-jrkt1zrhj` (dpl_13sybzFPGVYKGBPAs9DPMDPv7yKL), READY em 105s, alias `c2x.app.br`.
+- Rollback: `careli-hub-hub-i2bs-qdknktawd` (commit `f4813793`, v1.49.0).
+- Escopo:
+  - Migration 0058 (`apolo_esteira.ficha` jsonb + ficha_editada_em/por), APLICADA. 275 registros migrados, 146 com ficha.
+  - Tela de validacao virou formulario: salva campo a campo (blur/change), sem botao unico. Selects com os catalogos do C2X. RG e orgao emissor passaram a aparecer (eram dado pago invisivel).
+  - PATCH `/api/apolo/board/[id]` grava em `apolo_esteira.ficha` com MERGE; string vazia REMOVE a chave (operador consegue limpar OCR errado).
+  - `gravarFichaDoLote` copia o cadastro importado para a ficha preenchendo SO campo vazio -> reimportar nunca desfaz digitacao humana. Coberto por teste.
+  - `acharPorCpf` consulta `apolo_entity_identifiers.value_hash` alem de `apolo_entities.document_hash`.
+  - Rota nova `POST /api/apolo/asana/ficha` (backfill do formulario, custo ZERO). NAO executada.
+- Banco (executado 20/jul, autorizado por "vamos apagar validacao e subir denovo"): 153 entidades em `validacao` APAGADAS (cascata). Todas `origem='asana'`, `ficha_editada_em IS NULL` e sem registro c2x — nenhum trabalho humano perdido. Backup em `scratchpad/backup-validacao-153-2026-07-20.json`. As 122 em `credito` PRESERVADAS. `apolo_ocr_reads` (222 leituras, R$ 112,33) PRESERVADA: nao cascateia, e o dedup por sha256 roda ANTES da chamada paga -> reimportar custa R$ 0.
+- Validacoes: `tsc --noEmit` exit 0; 59 testes do Apolo PASS (101 no repo); PROD `c2x.app.br` 200.
+- ACHADO NAO RESOLVIDO: 21 de 147 fichas com nome de uma pessoa e CPF/RG/mae de OUTRA (PDF do casal; o OCR leu o documento do conjuge). Estao entre as 122 em `credito`. Correcao e gratis (nome lido salvo em `apolo_ocr_reads`), mas a regra "nome vem do documento" aplicada literalmente RENOMEIA a titular para o conjuge — decisao do Lucas pendente. Ver memoria `reference_apolo_cad_pessoa_trocada`.
+- Follow-ups: reimportar "Em Cadastro" pela tela (Lucas clica; custo R$ 0); 459 arquivos orfaos no bucket `apolo-documents` (limpeza bloqueada pelo classificador de permissoes); as 135 CADs restantes de "Em Cadastro" nunca lidas.
