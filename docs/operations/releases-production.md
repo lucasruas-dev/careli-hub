@@ -4820,3 +4820,20 @@ Conclusao:
   - Conferidas as outras 10: filiacao coerente. UM SUSPEITO deixado para conferencia humana: FELIPE JONATAS RODRIGUES com mae "REGINA FERNANDES MOREIRA TEIXEIRA" (sobrenome da conjuge Pauliana).
 - Validacoes: `tsc --noEmit` limpo; 84 testes do Apolo PASS.
 - Pendente: promover ficha -> apolo_addresses/apolo_contacts (endereco e contato do operador ainda nao saem do jsonb); 3 fichas sem documento do proponente; 7 do veredito "conferir" (inclui a JFL); 17 sem conjuge.
+
+## 2026-07-21 - Apolo: padrao de dados + historico da ficha (v1.53.0 e v1.54.0) - EM PRODUCAO
+
+- Modulo: Apolo (Board/Validacao). Autorizacao: Lucas ("pode subir" / "tem o meu ok"), 2026-07-21.
+- v1.53.0 deployment `careli-hub-hub-i2bs-pt5cp6lz0`; v1.54.0 deployment `careli-hub-hub-i2bs-ja50uegq2` (rollback v1.53.0).
+- ORIGEM: o Lucas editou a ficha do MATEUS em producao e apontou 3 coisas — idade nao atualizava ao trocar a data, faltava o padrao "Primeira Maiuscula" e os telefones precisavam sair no formato do Apolo (o digitado E o importado).
+- v1.53.0:
+  - `montarSecoes` passou a receber o `rascunho` e mesclar por cima do cadastro. Assim TUDO que e derivado acompanha a digitacao: idade (calcIdade) e o `casado` que decide a secao Conjuge e o regime de bens.
+  - `lib/format/phone-br.ts` (novo, 9 testes): mascara progressiva + normalizacao dos formatos reais que vieram do Asana — `37999569096`, `(37)998256365`, `+55 37 99860-2317`, `0379991251532`, e dois numeros separados por barra (fica o primeiro). Guarda travada por teste: numero que comeca com 55 e ja tem tamanho nacional NAO perde os dois primeiros digitos.
+  - Padronizacao aplicada na EXIBICAO e no PATCH do servidor — o mesmo campo entra pela digitacao e pela importacao, entao tem que sair igual dos dois lados. Nomes usam o `toTitleCase`, que ja e a regra global do Hub (13/jul).
+  - ⚠️ Os telefones no BANCO seguem como vieram; a normalizacao so grava quando alguem salva a ficha. Backfill dos 392 nao foi feito (o Lucas nao pediu).
+- v1.54.0:
+  - `GET /api/apolo/board/[id]/historico`: le `apolo_audit_events` (edit_ficha + edit_identity) e AGRUPA por autor+minuto — um "Salvar alteracoes" com 13 campos e UM evento com 13 alteracoes, nao 13 eventos. Rotulos legiveis (`escolaridadeId` -> "Escolaridade"). Carregado sob demanda no clique.
+  - Botao "Historico" na ficha; clicar na edicao abre o detalhe campo a campo (de -> para).
+- VALIDACAO REAL (edicao do Lucas na ficha do Mateus, 11:34): 13 campos gravados e conferidos por SQL — nascimento, mae, naturalidade, nacionalidade, endereco completo, telefone, sexo, regime de bens e escolaridade. A trilha registrou de/para/autor/horario em cada um.
+- Verificacao: `tsc --noEmit` limpo, build completo OK, 135 testes PASS, e contagem de pecas do componente (3 efeitos / 38 estados) — o check que faltou na v1.52.0 e deixou passar a regressao.
+- Pendente: promover ficha -> `apolo_addresses`/`apolo_contacts` (endereco e contato ainda nao saem do jsonb); backfill de telefone; 3 fichas sem documento do proponente; 7 do veredito "conferir" (inclui a JFL, que precisa de CNPJ digitado); 17 sem conjuge.
