@@ -35,6 +35,11 @@ type ContactRow = { contact_type: string; value: string };
 
 const texto = (v: unknown): string => (typeof v === "string" ? v.trim() : "");
 
+// `authorizeApoloWrite` devolve "local-hub-user" quando não há Supabase server-side; gravar
+// isso em coluna uuid quebra o insert inteiro.
+const ehUuid = (valor: string): boolean =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(valor);
+
 export async function GET(
   request: Request,
   context: { params: Promise<{ id: string }> },
@@ -239,9 +244,42 @@ export async function PATCH(
     { onConflict: "entity_id" },
   );
 
+  // TRILHA DE AUDITORIA por campo (exigência do Lucas, 21/jul): "o que mudou, para qual valor
+  // e quem — para caso eu precise validar depois". Uma linha POR CAMPO, com o valor de antes
+  // e o de agora. `ficha_editada_por` sozinho só guarda o ÚLTIMO editor e não conta a história.
+  //
+  // Gravada DEPOIS do salvamento e sem travar a resposta: falha de auditoria não pode fazer o
+  // operador perder o que digitou. Mas o erro é reportado no corpo, para não sumir calado.
+  const trilha = Object.entries(campos)
+    .filter(([chave, valor]) => {
+      const antes = fichaAtual[chave] ?? "";
+      const agora = valor ?? "";
+      return String(antes) !== String(agora);
+    })
+    .map(([chave, valor]) => ({
+      action: "edit_ficha",
+      actor_user_id: ehUuid(auth.userId) ? auth.userId : null,
+      entity_id: id,
+      field_name: chave,
+      metadata: {
+        de: fichaAtual[chave] ?? null,
+        origem: "board-validacao",
+        para: valor === "" || valor === null ? null : valor,
+      },
+      status: "mapped",
+    }));
+
+  let auditoria: string | null = null;
+  if (trilha.length > 0) {
+    const { error: erroAuditoria } = await adminClient
+      .from("apolo_audit_events")
+      .insert(trilha);
+    if (erroAuditoria) auditoria = erroAuditoria.message;
+  }
+
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  return NextResponse.json({ data: { ficha: mesclada, ok: true } });
+  return NextResponse.json({ data: { auditoria, ficha: mesclada, ok: true } });
 }

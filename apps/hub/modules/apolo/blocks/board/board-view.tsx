@@ -1773,8 +1773,34 @@ function montarSecoes(ficha: Ficha): SecaoFicha[] {
     // lido do documento continua salvo, só não é conferido aqui).
     secoes.push({
       campos: [
-        { full: true, label: "Nome", valor: titleCase(ficha.entidade.nome) },
-        { label: "CPF", valor: ficha.entidade.documento },
+        // As chaves "__" não são da ficha: viajam para a rota de IDENTIDADE, que valida o
+        // documento, recusa duplicado, troca o identificador e refaz o índice de busca.
+        {
+          chave: "__nome",
+          full: true,
+          label: "Nome",
+          tipo: "texto",
+          valor: titleCase(ficha.entidade.nome),
+          valorCru: ficha.entidade.nome,
+        },
+        {
+          chave: "__documento",
+          label: "CPF",
+          tipo: "texto",
+          valor: ficha.entidade.documento,
+          valorCru: ficha.entidade.documento,
+        },
+        {
+          chave: "__tipo",
+          label: "Tipo",
+          opcoes: [
+            { id: "pf", label: "Pessoa Física" },
+            { id: "pj", label: "Pessoa Jurídica" },
+          ],
+          tipo: "select",
+          valor: ficha.entidade.tipo === "pj" ? "Pessoa Jurídica" : "Pessoa Física",
+          valorCru: ficha.entidade.tipo,
+        },
         {
           chave: "dataNascimento",
           label: "Nascimento",
@@ -1972,111 +1998,124 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
   const [abrindo, setAbrindo] = useState(false);
   const [zoom, setZoom] = useState(1);
   const [ficha, setFicha] = useState<Ficha | null>(null);
-  const [pendentes, setPendentes] = useState<Set<string>>(new Set());
-  const [salvos, setSalvos] = useState<Set<string>>(new Set());
   const [erroSalvar, setErroSalvar] = useState<string | null>(null);
+  // MODO DE EDIÇÃO explícito (Lucas 21/jul): o operador confere a ficha em leitura, clica em
+  // Editar, mexe no que precisa e salva UMA vez. Melhor que salvar campo a campo — a trilha
+  // de auditoria fica coerente ("nesta edição mudou X, Y e Z") e não há gravação sem querer.
+  const [editando, setEditando] = useState(false);
+  const [salvando, setSalvando] = useState(false);
+  // Só o que o operador MEXEU. Campo intocado não vai no PATCH e não vira linha de auditoria.
+  const [rascunho, setRascunho] = useState<Record<string, string>>({});
 
-  // CEP digitado -> traz o resto do endereço (ViaCEP), igual ao wizard de cadastro. A busca
-  // nunca lança: CEP inválido ou serviço fora do ar apenas salva o CEP e o operador completa
-  // na mão. Só preenche campo VAZIO, para não apagar o que ele já tenha corrigido.
-  const salvarCep = async (valor: string) => {
+  // Valor corrente de um campo: o que o operador digitou nesta edição, senão o que veio do banco.
+  const valorDe = (chave: string, original: string) => rascunho[chave] ?? original;
+
+  const mexer = (chave: string, valor: string) =>
+    setRascunho((atual) => ({ ...atual, [chave]: valor }));
+
+  // CEP digitado -> traz o resto do endereço (ViaCEP), igual ao wizard. Preenche só o que
+  // estiver vazio, para não apagar o que o operador já corrigiu à mão.
+  const preencherPorCep = async (valor: string) => {
+    mexer("cep", valor);
     const achado = await buscarEnderecoPorCep(valor);
-    if (!achado) {
-      await salvar("cep", valor);
-      return;
-    }
+    if (!achado) return;
     const atual = (ficha?.cadastro ?? {}) as Record<string, unknown>;
-    const extras: Record<string, string> = {};
-    for (const [campo, vindo] of Object.entries({
-      bairro: achado.bairro,
-      cidade: achado.cidade,
-      logradouro: achado.logradouro,
-      uf: achado.uf,
-    })) {
-      if (vindo && !texto(atual[campo])) extras[campo] = vindo;
-    }
-    await salvar("cep", valor, extras);
+    setRascunho((rasc) => {
+      const proximo = { ...rasc };
+      for (const [campo, vindo] of Object.entries({
+        bairro: achado.bairro,
+        cidade: achado.cidade,
+        logradouro: achado.logradouro,
+        uf: achado.uf,
+      })) {
+        if (vindo && !(proximo[campo] ?? texto(atual[campo]))) proximo[campo] = vindo;
+      }
+      return proximo;
+    });
   };
 
-  // Salva UM campo por vez, no blur (texto) ou no change (lista). Sem botão "salvar": o operador
-  // passa o dia nesta tela e um botão único perde trabalho se a aba fechar no meio.
-  const salvar = async (chave: string, valor: string, extras?: Record<string, string>) => {
+  const cancelarEdicao = () => {
+    setRascunho({});
+    setEditando(false);
     setErroSalvar(null);
-    setPendentes((atual) => new Set(atual).add(chave));
-    const campos = { [chave]: valor, ...(extras ?? {}) };
+  };
+
+  // SALVA TUDO de uma vez, ao fim da edição.
+  //
+  // São dois destinos, e a ordem importa: identidade (nome/documento/tipo) vai para a rota
+  // própria, que valida CPF/CNPJ, recusa documento repetido, troca o identificador e refaz o
+  // índice de busca. Se ela falhar, PARA — não faz sentido gravar o resto de uma ficha cuja
+  // identidade não pôde ser corrigida.
+  const salvarTudo = async () => {
+    if (!ficha) return;
+    setSalvando(true);
+    setErroSalvar(null);
+
     try {
       const accessToken = await getApoloAccessToken();
-      const response = await fetch(`/api/apolo/board/${entityId}`, {
-        body: JSON.stringify({ campos }),
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        method: "PATCH",
-      });
-      if (!response.ok) {
-        const payload = (await response.json().catch(() => ({}))) as { error?: string };
-        throw new Error(payload.error ?? "Não foi possível salvar.");
+      const headers = {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      };
+
+      const nomeNovo = rascunho.__nome;
+      const docNovo = rascunho.__documento;
+      const tipoNovo = rascunho.__tipo;
+      const mexeuNaIdentidade =
+        nomeNovo !== undefined || docNovo !== undefined || tipoNovo !== undefined;
+
+      if (mexeuNaIdentidade) {
+        const resposta = await fetch(`/api/apolo/board/${entityId}/identidade`, {
+          body: JSON.stringify({
+            documento: docNovo ?? ficha.entidade.documento,
+            motivo: "Correcao na validacao da CAD",
+            nome: nomeNovo ?? ficha.entidade.nome,
+            tipo: tipoNovo ?? ficha.entidade.tipo,
+          }),
+          headers,
+          method: "POST",
+        });
+        if (!resposta.ok) {
+          const payload = (await resposta.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error ?? "Não foi possível salvar a identidade.");
+        }
       }
-      // Reflete na ficha em memória para o select mostrar o novo rótulo na hora.
-      setFicha((atual) =>
-        atual ? { ...atual, cadastro: { ...atual.cadastro, ...campos } } : atual,
+
+      // O resto vai para a ficha. As chaves com "__" são da identidade e não entram aqui.
+      const campos = Object.fromEntries(
+        Object.entries(rascunho).filter(([chave]) => !chave.startsWith("__")),
       );
-      setSalvos((atual) => {
-        const proximo = new Set(atual);
-        for (const c of Object.keys(campos)) proximo.add(c);
-        return proximo;
+
+      if (Object.keys(campos).length > 0) {
+        const resposta = await fetch(`/api/apolo/board/${entityId}`, {
+          body: JSON.stringify({ campos }),
+          headers,
+          method: "PATCH",
+        });
+        if (!resposta.ok) {
+          const payload = (await resposta.json().catch(() => ({}))) as { error?: string };
+          throw new Error(payload.error ?? "Não foi possível salvar.");
+        }
+      }
+
+      // Recarrega do servidor: a identidade mudou em outra tabela, e refletir só o rascunho
+      // mostraria a tela "certa" com o banco em outro estado.
+      const recarregada = await fetch(`/api/apolo/board/${entityId}`, {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${accessToken}` },
       });
+      const payload = (await recarregada.json()) as { data?: Ficha };
+      if (payload.data) setFicha(payload.data);
+
+      setRascunho({});
+      setEditando(false);
     } catch (error) {
       setErroSalvar((error as Error).message);
     } finally {
-      setPendentes((atual) => {
-        const proximo = new Set(atual);
-        proximo.delete(chave);
-        return proximo;
-      });
+      setSalvando(false);
     }
   };
 
-  useEffect(() => {
-    let alive = true;
-    setCarregando(true);
-    void (async () => {
-      try {
-        const accessToken = await getApoloAccessToken();
-        const headers = { Authorization: `Bearer ${accessToken}` };
-        const [resDocs, resFicha] = await Promise.all([
-          fetch(`/api/apolo/documentos?entityId=${encodeURIComponent(entityId)}`, {
-            cache: "no-store",
-            headers,
-          }),
-          fetch(`/api/apolo/board/${entityId}`, { cache: "no-store", headers }),
-        ]);
-        // ⚠️ /api/apolo/documentos devolve { documents } na RAIZ, sem envelope `data` —
-        // diferente de /api/apolo/board/[id], que usa { data }. Ler data.documents aqui fazia
-        // a lista vir SEMPRE vazia: a validação nunca mostrou documento nenhum, e só dava para
-        // perceber depois que passou a existir documento para mostrar.
-        const payloadDocs = (await resDocs.json()) as {
-          documents?: DocItem[];
-        };
-        const payloadFicha = (await resFicha.json()) as { data?: Ficha };
-        const lista = (payloadDocs.documents ?? []).filter((doc) => doc.hasFile);
-        if (!alive) return;
-        setDocs(lista);
-        setAtivo(lista[0] ?? null);
-        setFicha(payloadFicha.data ?? null);
-      } catch {
-        // sem documentos/ficha
-      } finally {
-        if (alive) setCarregando(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [entityId]);
-
-  // Cada arquivo é servido por URL assinada (bucket privado).
   useEffect(() => {
     if (!ativo) {
       setUrl(null);
@@ -2121,6 +2160,50 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
           </p>
         ) : (
           <div className="grid gap-5">
+            {/* Barra de edição: leitura -> Editar -> mexe -> Salvar. Uma gravação só, com uma
+                trilha de auditoria coerente do que mudou naquela passada. */}
+            <div className="flex items-center gap-2">
+              {editando ? (
+                <>
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-inverse px-3 py-1.5 text-xs font-bold text-brand-ink disabled:opacity-60"
+                    disabled={salvando}
+                    onClick={() => void salvarTudo()}
+                    type="button"
+                  >
+                    {salvando ? (
+                      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                    ) : (
+                      <Check aria-hidden="true" className="size-3.5" />
+                    )}
+                    {salvando ? "Salvando…" : "Salvar alterações"}
+                  </button>
+                  <button
+                    className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink-soft hover:bg-subtle disabled:opacity-60"
+                    disabled={salvando}
+                    onClick={cancelarEdicao}
+                    type="button"
+                  >
+                    Cancelar
+                  </button>
+                  {Object.keys(rascunho).length > 0 ? (
+                    <span className="text-[11px] text-ink-muted">
+                      {Object.keys(rascunho).length} campo(s) alterado(s)
+                    </span>
+                  ) : null}
+                </>
+              ) : (
+                <button
+                  className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-bold text-ink hover:bg-subtle"
+                  onClick={() => setEditando(true)}
+                  type="button"
+                >
+                  <UserRound aria-hidden="true" className="size-3.5" />
+                  Editar ficha
+                </button>
+              )}
+            </div>
+
             {/* O que o FORMULÁRIO do Asana diz. Só aparece quando diverge do que está na
                 ficha: aviso que aparece sempre vira paisagem e ninguém lê. A correção é
                 MANUAL de propósito (decisão do Lucas, 21/jul) — trocar identidade de cliente
@@ -2174,17 +2257,16 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
                       } ${campo.full ? "sm:col-span-2" : ""}`}
                       key={`${secao.titulo}-${campo.label}`}
                     >
-                      <p className="m-0 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
+                      <p className="m-0 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
                         {campo.label}
-                        {pendentes.has(campo.chave ?? "") ? (
-                          <Loader2 aria-hidden="true" className="size-3 animate-spin" />
-                        ) : salvos.has(campo.chave ?? "") ? (
-                          <Check aria-hidden="true" className="size-3 text-emerald-600" />
-                        ) : null}
                       </p>
 
-                      {!campo.chave ? (
-                        <p className="m-0 mt-0.5 text-sm text-ink">{campo.valor || "—"}</p>
+                      {/* Fora do modo de edição TUDO é leitura, inclusive o que é editável:
+                          o operador confere primeiro e só mexe depois de clicar em Editar. */}
+                      {!editando || !campo.chave ? (
+                        <p className="m-0 mt-0.5 text-sm text-ink">
+                          {(campo.chave ? valorDe(campo.chave, campo.valor) : campo.valor) || "—"}
+                        </p>
                       ) : campo.tipo === "select" ? (
                         /* ⚠️ NÃO trocar por `bg-transparent`. O popup do <select> é desenhado
                            pelo browser usando a cor de fundo COMPUTADA do elemento, e
@@ -2193,9 +2275,9 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
                            em 21/jul). O globals.css já amarra `color-scheme` ao tema, mas um
                            background explícito no select passa por cima disso. */
                         <select
-                          className="mt-0.5 w-full border-0 bg-surface p-0 text-sm text-ink outline-none focus:ring-0 [&>option]:bg-surface [&>option]:text-ink"
-                          onChange={(event) => void salvar(campo.chave!, event.target.value)}
-                          value={campo.valorCru ?? ""}
+                          className="mt-0.5 w-full rounded border border-line bg-surface px-1.5 py-1 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
+                          onChange={(event) => mexer(campo.chave!, event.target.value)}
+                          value={valorDe(campo.chave, campo.valorCru ?? "")}
                         >
                           <option value="">—</option>
                           {(campo.opcoes ?? []).map((o) => (
@@ -2206,17 +2288,15 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
                         </select>
                       ) : (
                         <input
-                          className="mt-0.5 w-full border-0 bg-transparent p-0 text-sm text-ink outline-none placeholder:text-ink-muted focus:ring-0"
-                          defaultValue={campo.valorCru ?? ""}
-                          key={`${campo.chave}-${campo.valorCru ?? ""}`}
-                          onBlur={(event) => {
-                            if (event.target.value !== (campo.valorCru ?? "")) {
-                              if (campo.chave === "cep") void salvarCep(event.target.value);
-                              else void salvar(campo.chave!, event.target.value);
-                            }
-                          }}
+                          className="mt-0.5 w-full rounded border border-line bg-surface px-1.5 py-1 text-sm text-ink outline-none placeholder:text-ink-muted"
+                          onChange={(event) =>
+                            campo.chave === "cep"
+                              ? void preencherPorCep(event.target.value)
+                              : mexer(campo.chave!, event.target.value)
+                          }
                           placeholder="—"
                           type={campo.tipo === "data" ? "date" : "text"}
+                          value={valorDe(campo.chave, campo.valorCru ?? "")}
                         />
                       )}
                     </div>
