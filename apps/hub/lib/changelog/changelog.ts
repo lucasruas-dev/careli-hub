@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-apolo-diagnostico-titular",
+    deployedAt: "2026-07-21T10:15:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Novo Diagnosticar titulares: compara cada CAD com o formulario do Asana e diz de quem e a ficha.",
+              "Aponta as fichas que ficaram com o conjuge no lugar do proponente, as que estao sem conjuge e as que precisam de conferencia.",
+              "Nao altera cadastro nenhum e nao tem custo: so grava o laudo para conferencia.",
+              "O CEP passou a preencher logradouro, bairro, cidade e UF na validacao.",
+            ],
+            screen: "Importar CADs · Completar dados",
+          },
+        ],
+      },
+    ],
+    rollback: "1.50.1",
+    technical: {
+      done: "lib/apolo/cad-diagnostico.ts com classificarCad puro e 9 testes sobre casos reais (Mateus x Karla, Marcia x Helio, Maria Eduarda x Joao Marcus, diploma lido como nome). Similaridade token a token, porque a distancia de edicao sobre a string inteira reprovava 'JOAO MARCOS REZENDE COELHO' lido como 'JOAO MARCUS REZENDE COMO'. Decisao RELATIVA entre os dois candidatos da CAD (proponente x conjuge) com vantagem minima de 0,25; empate fica com o proponente. POST /api/apolo/asana/diagnostico grava o laudo em apolo_audit_events (action diagnostico_cad), nunca no cadastro.",
+      motivation: "A leitura de documentos para no primeiro anexo com CPF valido; no PDF do casal esse costuma ser o do CONJUGE, e a ficha nasce com a identidade da pessoa errada enquanto telefone, profissao e renda vem do formulario e sao do proponente. So o Asana sabe quem e proponente e quem e conjuge. Eu mesmo errei o diagnostico da ficha da Karla olhando so o documento — dai a necessidade de laudo antes de corrigir.",
+    },
+    title: "Apolo: diagnostico de titular das CADs",
+    type: "melhoria",
+    version: "1.50.2",
+  },
+  {
     buildTag: "2026-07-21-apolo-validacao-espelha-formulario",
     deployedAt: "2026-07-21T08:10:00-03:00",
     modules: [
