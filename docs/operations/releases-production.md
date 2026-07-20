@@ -4748,3 +4748,20 @@ Conclusao:
 - Validacoes: `tsc --noEmit` exit 0; 59 testes do Apolo PASS (101 no repo); PROD `c2x.app.br` 200.
 - ACHADO NAO RESOLVIDO: 21 de 147 fichas com nome de uma pessoa e CPF/RG/mae de OUTRA (PDF do casal; o OCR leu o documento do conjuge). Estao entre as 122 em `credito`. Correcao e gratis (nome lido salvo em `apolo_ocr_reads`), mas a regra "nome vem do documento" aplicada literalmente RENOMEIA a titular para o conjuge — decisao do Lucas pendente. Ver memoria `reference_apolo_cad_pessoa_trocada`.
 - Follow-ups: reimportar "Em Cadastro" pela tela (Lucas clica; custo R$ 0); 459 arquivos orfaos no bucket `apolo-documents` (limpeza bloqueada pelo classificador de permissoes); as 135 CADs restantes de "Em Cadastro" nunca lidas.
+
+## 2026-07-21 - Apolo: validacao espelha a revisao do formulario (v1.50.1) - EM PRODUCAO
+
+- Modulo: Apolo (Board/Validacao + Importacao). Status: `EM PRODUCAO`. Autorizacao: Lucas ("entao faz"), 2026-07-21.
+- Branch: `feat/apolo-documentos` -> `main` (ff); commits `77666fdc` (espelho + dark) + `74b14ebc` (data de chegada) + `7f937c67` (aba Completar dados + changelog).
+- Versao v1.50.1 (`internal: true` — e correcao, nao entra no painel de Novidades). Rollback: v1.50.0 (`careli-hub-hub-i2bs-jrkt1zrhj`).
+- Escopo:
+  - `montarSecoes` do board-view passou a espelhar `montarCadDoc` do wizard: Identificacao / Perfil / Endereco / Contato / Conjuge, mesmos rotulos e ordem. Regra fixada pelo Lucas: a validacao confere o que aparece na REVISAO ao final do formulario (PF e PJ).
+  - Idade de volta (calcIdade, derivada do nascimento, nao digitavel). Regime de bens so em casado/uniao estavel (ids 2 e 6).
+  - Nome do pai, RG e orgao emissor REMOVIDOS da tela (nao estao na revisao; o dado lido continua no banco).
+  - Endereco deixou de ser condicional: aparece sempre, editavel, lendo ficha -> apolo_addresses.
+  - DARK MODE: o `<select>` voltou a `bg-surface`. O popup e desenhado pelo browser com a cor COMPUTADA do elemento; `bg-transparent` (que EU introduzi em 20/jul) resolvia para BRANCO enquanto a `option` herdava `text-ink` claro -> ilegivel. O globals.css ja amarra `color-scheme` ao tema, mas background explicito passa por cima. Comentario-aviso deixado no codigo.
+  - DATA DE CHEGADA: `criadoEm` agora atravessa `escanearCads` -> orcamento -> tela -> `aplicarVinculos`. A rota de leitura mandava `criadoEm: null` cravado, e por isso 392 de 392 registros estavam com `chegou_em` NULL — o Board caia no `created_at` da entidade e a fila inteira aparecia com "20/07/2026 01:58". Escrevi a leitura e nao liguei a escrita: MESMO erro de metade do caminho da esteira e da etapa.
+  - `gravarChegadaDoLote` faz o backfill apenas onde `chegou_em IS NULL`.
+  - Nova aba "Completar dados" na tela de Importacao, chamando `POST /api/apolo/asana/ficha` (custo ZERO): rele o formulario do Asana e preenche ficha + data das CADs ja importadas. A rota existia desde 20/jul mas NENHUMA tela a chamava — feature sem porta de entrada.
+- Validacoes: `tsc --noEmit` limpo; 59 testes do Apolo PASS. Verificacao visual: NAO feita por mim (o dev local para no /login e quem clica e o Lucas).
+- Pendente: rodar "Completar dados" em producao (preenche os 4 campos do formulario nas 122 em credito + `chegou_em` nas 392).
