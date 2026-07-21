@@ -140,9 +140,12 @@ export function CreditoSerasa({ entityId }: { entityId: string }) {
           confirmado: true,
           entityId,
           forcar,
-          // O relatório sai de variável de ambiente: os nomes exatos ainda estão sendo
-          // confirmados com o Serasa, então não ficam cravados na tela.
-          reportName: process.env.NEXT_PUBLIC_SERASA_REPORT_PF ?? "RELATORIO_BASICO_PF_PME",
+          // ⚠️ RELATORIO_AVANCADO_TOP_SCORE_PF_PME é o ÚNICO PF autorizado na nossa credencial
+          // (testado 21/jul com a massa do Serasa): o BASICO_PF_PME devolve 412 USER-NOT-AUTHORIZED
+          // [BPCB]. O avançado é o mais completo (traz o score em attributes). Ainda por env para
+          // permitir troca sem deploy quando o contrato de produção definir outro.
+          reportName:
+            process.env.NEXT_PUBLIC_SERASA_REPORT_PF ?? "RELATORIO_AVANCADO_TOP_SCORE_PF_PME",
         }),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "POST",

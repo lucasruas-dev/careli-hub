@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { limparCacheToken, obterToken } from "./auth";
 import { consultarPF, consultarPJ } from "./client";
 import { ambienteConfere, lerConfigSerasa, type ConfigSerasa } from "./config";
+import exemploPf from "./exemplo-resposta-pf.json";
 import exemploPj from "./exemplo-resposta-pj.json";
 import { resumirRelatorio } from "./resumo";
 
@@ -320,9 +321,26 @@ describe("resumirRelatorio", () => {
     expect(r.origemScore).toContain("reports[0].score");
   });
 
-  // O schema de PF ainda NÃO foi capturado (a base de homologação não devolveu CPF nosso).
-  // A varredura fica como rede de segurança até vermos uma resposta de PF de verdade.
-  it("ainda acha score em estrutura desconhecida (rede de segurança para PF)", () => {
+  // ⚠️ FIXTURE REAL de PF: RELATORIO_AVANCADO_TOP_SCORE_PF_PME, capturado da MASSA DE TESTE do
+  // Serasa em 21/jul. Pegou os dois bugs do parser antigo: o score fica em
+  // attributes.attributesResponse[].scoring (o bloco `score` veio 404), e as negativações estão
+  // em summary.count (as listas vêm vazias).
+  it("lê a resposta REAL de PF (score em attributes, negativações em summary)", () => {
+    const r = resumirRelatorio(exemploPf);
+
+    expect(r.nome).toBe("CLIENTE TESTE ABCCDA");
+    expect(r.situacao).toBe("REGULAR");
+    // Score vem de attributes (scoring 663, modelo HRP4), não do bloco `score`.
+    expect(r.score).toBe(663);
+    expect(r.origemScore).toContain("attributes");
+    expect(r.faixa).toBe("HRP4");
+    // refin 1 + check 3 + collectionRecords 4 = 8; pefin 0. Cartório (notary) 0.
+    expect(r.negativacoes).toBe(8);
+    expect(r.protestos).toBe(0);
+    expect(r.consultasAnteriores).toBe(0);
+  });
+
+  it("ainda acha score em estrutura desconhecida (rede de segurança)", () => {
     const r = resumirRelatorio({ resultado: { credito: { score: 615 } } });
     expect(r.score).toBe(615);
   });

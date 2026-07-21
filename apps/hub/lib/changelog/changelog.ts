@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-serasa-preview-validacao",
+    deployedAt: "2026-07-21T22:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Tela de preview da analise de credito (/apolo/serasa-preview): escolhe um CPF da massa de teste, consulta o Serasa e mostra score, situacao, dados cadastrais e restricoes detalhadas.",
+              "Serve para validar o que a integracao traz antes de ligar no cadastro.",
+            ],
+            screen: "Analise de credito (preview)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.58.1",
+    technical: {
+      done: "Com a massa de teste do Serasa (21/jul), a integracao PF foi finalizada. Descobertas: (1) o PF autorizado e RELATORIO_AVANCADO_TOP_SCORE_PF_PME (o basico da 412 USER-NOT-AUTHORIZED [BPCB]); trocado o default. (2) Schema real de PF capturado (fixture exemplo-resposta-pf.json): o parser antigo lia o score do lugar errado (fica em attributes.attributesResponse[].scoring, nao em score.score) e as negativacoes das listas (que vem vazias; a contagem esta em summary.count). resumo.ts reescrito lidando com os dois schemas (PF por summary.count, PJ por listas); 23 testes verdes. Nova rota POST /api/apolo/serasa/preview (consulta ao vivo sem amarrar a um CAD, grava com finalidade 'preview-validacao', devolve resumo + cru). Tela PreviewSerasa com os 23 CPFs da massa. PJ ainda sem reportName autorizado — perguntar ao Serasa.",
+      motivation: "O Lucas pediu uma tela para validar as informacoes que a analise de credito traz antes de cravar o que vai pro cadastro. E a massa de teste destravou o teste real da integracao PF.",
+    },
+    title: "Serasa: tela de preview + PF finalizado com a massa de teste",
+    type: "melhoria",
+    version: "1.59.0",
+  },
+  {
     buildTag: "2026-07-21-imobiliaria-publica-comeca-empreendimento",
     deployedAt: "2026-07-21T21:15:00-03:00",
     modules: [

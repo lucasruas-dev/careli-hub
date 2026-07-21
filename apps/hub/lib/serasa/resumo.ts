@@ -1,23 +1,24 @@
-// Extrai o resumo do relatório do Serasa: score, negativações e se a consulta foi cobrada.
+// Extrai o resumo do relatório do Serasa: score, negativações, protestos, nome e situação.
 //
-// ⚠️ ESTE MÓDULO FOI REESCRITO EM 21/jul, depois de capturarmos uma RESPOSTA REAL da
-// homologação. Antes era uma heurística que varria a árvore procurando chaves plausíveis,
-// porque a documentação não descreve o schema. Agora lê os campos de verdade.
+// ⚠️ REESCRITO 21/jul com o SCHEMA REAL de PF (RELATORIO_AVANCADO_TOP_SCORE_PF_PME), capturado
+// da MASSA DE TESTE que o Serasa liberou. O parser antigo errava DOIS campos, e o erro só
+// apareceria na primeira consulta real (dava score e negativação errados, silenciosamente):
 //
-// Estrutura confirmada (RELATORIO_BASICO_PJ_PME, CNPJ 00000000000191, UAT):
-//   reports[0].registration.{companyDocument, companyName, foundationDate, statusRegistration}
-//   reports[0].score.{scoreModel, codeMessage, message, billing}
-//   reports[0].negativeData.pefin.pefinResponse[]              → pendências financeiras
-//   reports[0].negativeData.refin.refinResponse[]              → refin
-//   reports[0].negativeData.collectionRecords.collectionRecordsResponse[]
-//   reports[0].negativeData.check.checkResponse[]              → cheques sem fundo
-//   reports[0].negativeData.notary.summary.{count, balance}    → protestos em cartório
-//   reports[0].facts.inquiryCompanyResponse.quantity.{actual, bankActual}
+//   1. O SCORE não está em `score.score`. Nesse relatório o bloco `score` veio com
+//      codeMessage 404 "Score not found"; o score de verdade está em
+//      `attributes.attributesResponse[0].scoring` (ex.: 663, attributeModel "HRP4").
+//   2. As NEGATIVAÇÕES não estão nas listas. `pefinResponse[]`, `checkResponse[]` etc vêm
+//      VAZIAS mesmo quando há ocorrências; a contagem real está em
+//      `negativeData.<bloco>.summary.count` (no fixture: refin 1, check 3, collectionRecords 4).
 //
-// A heurística de varredura CONTINUA como último recurso: o schema de PF ainda não foi
-// capturado (a base de homologação não devolveu nenhum CPF nosso), e os nomes podem diferir.
-// Se a leitura direta não achar nada, ela tenta a varredura antes de desistir.
+// Schema PF confirmado (reports[0]):
+//   registration.{documentNumber, consumerName, motherName, birthDate, statusRegistration}
+//   negativeData.{pefin,refin,notary,check,collectionRecords}.summary.{count, balance}
+//   attributes.attributesResponse[].{scoring, attributeModel, message}   ← o score
+//   facts.inquirySummary.inquiryQuantity.actual                          ← consultas anteriores
 //
+// Compatível com PJ (registration.companyName; mesmo negativeData.summary; fallback score.score).
+// Fixture real em apps/hub/lib/serasa/exemplo-resposta-pf.json.
 // Nunca lança: um resumo que falha não pode derrubar a gravação de uma consulta JÁ PAGA.
 
 export type ResumoRelatorio = {
@@ -25,7 +26,7 @@ export type ResumoRelatorio = {
   cobrado?: boolean;
   consultasAnteriores?: number;
   faixa?: string;
-  // Mensagem do Serasa quando o score não pôde ser calculado ("INSUFICIENCIA INFORMACOES").
+  // Mensagem do Serasa quando o score não pôde ser calculado ("Score not found", etc).
   mensagemScore?: string;
   negativacoes?: number;
   nome?: string;
@@ -43,8 +44,15 @@ function comoLista(v: unknown): unknown[] {
   return Array.isArray(v) ? v : [];
 }
 
-// Conta as ocorrências de cada tipo de negativação. As listas vêm com nome próprio dentro de
-// cada bloco (pefin → pefinResponse), então a busca é pela primeira lista encontrada.
+function comoRegistro(v: unknown): Record<string, unknown> | undefined {
+  return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
+}
+
+// Conta as negativações lidando com os DOIS schemas que já vimos:
+//   · PF (AVANCADO_TOP_SCORE): a contagem está em `summary.count` e as listas vêm VAZIAS.
+//   · PJ (BASICO): `summary.count` não existe e a contagem está no tamanho das listas.
+// Regra: se houver `summary.count`, ele manda; senão, conta as listas. Cartório (notary) é
+// protesto; o resto é negativação.
 function contarNegativacoes(negativeData: Record<string, unknown> | undefined): {
   negativacoes: number;
   protestos: number;
@@ -54,28 +62,50 @@ function contarNegativacoes(negativeData: Record<string, unknown> | undefined): 
   if (!negativeData) return { negativacoes, protestos };
 
   for (const [bloco, conteudo] of Object.entries(negativeData)) {
-    if (!conteudo || typeof conteudo !== "object") continue;
-    const dentro = conteudo as Record<string, unknown>;
+    const dentro = comoRegistro(conteudo);
+    if (!dentro) continue;
 
-    // Cartório traz contagem pronta em vez de lista.
-    if (bloco === "notary") {
-      const resumo = dentro.summary as Record<string, unknown> | undefined;
-      const count = Number(resumo?.count ?? 0);
-      if (Number.isFinite(count)) protestos += count;
-      continue;
+    const count = comoRegistro(dentro.summary)?.count;
+    let ocorrencias: number;
+    if (count !== undefined && count !== null && Number.isFinite(Number(count))) {
+      ocorrencias = Number(count);
+    } else {
+      ocorrencias = 0;
+      for (const valor of Object.values(dentro)) ocorrencias += comoLista(valor).length;
     }
+    if (ocorrencias <= 0) continue;
 
-    for (const valor of Object.values(dentro)) {
-      const lista = comoLista(valor);
-      if (lista.length) negativacoes += lista.length;
-    }
+    if (bloco === "notary") protestos += ocorrencias;
+    else negativacoes += ocorrencias;
   }
 
   return { negativacoes, protestos };
 }
 
-// Último recurso: varre a árvore atrás de um número que pareça score. Fica porque o schema de
-// PF ainda não foi visto — quando for, esta função provavelmente sai.
+// Score do bloco `attributes` (é onde o RELATORIO_AVANCADO_TOP_SCORE_PF entrega). Devolve o
+// primeiro `scoring` válido e o modelo (attributeModel).
+function scoreDosAtributos(relatorio: Record<string, unknown>): {
+  faixa?: string;
+  origem?: string;
+  valor?: number;
+} {
+  const lista = comoLista(comoRegistro(relatorio.attributes)?.attributesResponse);
+  for (const item of lista) {
+    const attr = comoRegistro(item);
+    const n = Number(attr?.scoring);
+    if (Number.isFinite(n) && n > 0 && n <= 1000) {
+      return {
+        faixa: comoTexto(attr?.attributeModel),
+        origem: "reports[0].attributes.attributesResponse[].scoring",
+        valor: n,
+      };
+    }
+  }
+  return {};
+}
+
+// Último recurso: varre a árvore atrás de um número que pareça score. Fica como rede de
+// segurança para variações de schema que ainda não vimos.
 function procurarScoreSolto(corpo: unknown): { origem?: string; valor?: number } {
   const achado: { origem?: string; valor?: number } = {};
   const visitar = (o: unknown, caminho: string, prof: number): void => {
@@ -86,7 +116,7 @@ function procurarScoreSolto(corpo: unknown): { origem?: string; valor?: number }
     }
     for (const [k, v] of Object.entries(o as Record<string, unknown>)) {
       const atual = caminho ? `${caminho}.${k}` : k;
-      if (/^(score|scoreValue|pontuacao|creditScore)$/i.test(k)) {
+      if (/^(scoring|score|scoreValue|pontuacao|creditScore)$/i.test(k)) {
         const n = typeof v === "number" ? v : Number(v);
         if (Number.isFinite(n) && n >= 0 && n <= 1000) {
           achado.origem = atual;
@@ -111,43 +141,60 @@ export function resumirRelatorio(corpo: unknown): ResumoRelatorio {
 
   try {
     const raiz = corpo as Record<string, unknown>;
-    const relatorio = (comoLista(raiz.reports)[0] ?? {}) as Record<string, unknown>;
+    const relatorio = comoRegistro(comoLista(raiz.reports)[0]) ?? {};
 
-    const registro = relatorio.registration as Record<string, unknown> | undefined;
-    resumo.nome = comoTexto(registro?.companyName) ?? comoTexto(registro?.name);
+    const registro = comoRegistro(relatorio.registration);
+    // PF usa consumerName; PJ usa companyName. `name` fica de reserva.
+    resumo.nome =
+      comoTexto(registro?.consumerName) ??
+      comoTexto(registro?.companyName) ??
+      comoTexto(registro?.name);
     resumo.situacao = comoTexto(registro?.statusRegistration);
 
-    const score = relatorio.score as Record<string, unknown> | undefined;
+    // Score: primeiro em `attributes` (onde o TOP_SCORE entrega), depois no bloco `score`.
+    const dosAtributos = scoreDosAtributos(relatorio);
+    if (dosAtributos.valor !== undefined) {
+      resumo.score = dosAtributos.valor;
+      resumo.origemScore = dosAtributos.origem;
+      resumo.faixa = dosAtributos.faixa;
+    }
+
+    const score = comoRegistro(relatorio.score);
     if (score) {
-      // Quando o Serasa calcula, o valor vem num campo numérico; quando não, vem só a
-      // mensagem ("SCORE NAO CALCULADO - INSUFICIENCIA INFORMACOES").
-      for (const chave of ["score", "scoreValue", "value", "pontuacao"]) {
-        const n = Number(score[chave]);
-        if (Number.isFinite(n) && n > 0 && n <= 1000) {
-          resumo.score = n;
-          resumo.origemScore = `reports[0].score.${chave}`;
-          break;
+      if (resumo.score === undefined) {
+        for (const chave of ["score", "scoreValue", "value", "pontuacao"]) {
+          const n = Number(score[chave]);
+          if (Number.isFinite(n) && n > 0 && n <= 1000) {
+            resumo.score = n;
+            resumo.origemScore = `reports[0].score.${chave}`;
+            break;
+          }
         }
+        resumo.faixa = resumo.faixa ?? comoTexto(score.scoreModel);
       }
-      resumo.mensagemScore = comoTexto(score.message);
-      resumo.faixa = comoTexto(score.scoreModel);
+      // A mensagem do bloco score explica quando o score não pôde ser calculado.
+      if (resumo.score === undefined) resumo.mensagemScore = comoTexto(score.message);
       // `billing` diz se ESTA consulta foi cobrada — melhor que qualquer estimativa nossa.
       if (typeof score.billing === "boolean") resumo.cobrado = score.billing;
     }
 
-    const { negativacoes, protestos } = contarNegativacoes(
-      relatorio.negativeData as Record<string, unknown> | undefined,
-    );
+    const { negativacoes, protestos } = contarNegativacoes(comoRegistro(relatorio.negativeData));
     resumo.negativacoes = negativacoes;
     resumo.protestos = protestos;
 
-    const consultas = (relatorio.facts as Record<string, unknown> | undefined)
-      ?.inquiryCompanyResponse as Record<string, unknown> | undefined;
-    const quantidade = consultas?.quantity as Record<string, unknown> | undefined;
-    const atual = Number(quantidade?.actual);
-    if (Number.isFinite(atual)) resumo.consultasAnteriores = atual;
+    // Consultas anteriores: PF em facts.inquirySummary.inquiryQuantity.actual; PJ em
+    // facts.inquiryCompanyResponse.quantity.actual. Tenta os dois caminhos.
+    const facts = comoRegistro(relatorio.facts);
+    const atualPf = Number(
+      comoRegistro(comoRegistro(facts?.inquirySummary)?.inquiryQuantity)?.actual,
+    );
+    const atualPj = Number(
+      comoRegistro(comoRegistro(facts?.inquiryCompanyResponse)?.quantity)?.actual,
+    );
+    if (Number.isFinite(atualPf)) resumo.consultasAnteriores = atualPf;
+    else if (Number.isFinite(atualPj)) resumo.consultasAnteriores = atualPj;
 
-    // Schema diferente do esperado (provável em PF, ainda não capturado): tenta a varredura.
+    // Rede de segurança: schema inesperado sem score direto.
     if (resumo.score === undefined) {
       const solto = procurarScoreSolto(corpo);
       if (solto.valor !== undefined) {
