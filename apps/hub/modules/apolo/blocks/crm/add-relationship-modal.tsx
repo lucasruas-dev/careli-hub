@@ -7,7 +7,7 @@ import {
   UserPlus,
   X,
 } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { apoloProfileLabels } from "@/lib/apolo/catalog";
 import type { ApoloProfile } from "@/lib/apolo/types";
@@ -135,6 +135,19 @@ export function AddRelationshipModal({
   function runSearch() {
     return runSearchPara(relType);
   }
+
+  // Busca AUTOMÁTICA enquanto digita (debounce). Antes a busca só disparava no Enter, e o Lucas
+  // bateu nisso tentando ligar o Vale do Ouro à Raiane: digitava o nome, nada aparecia (faltava
+  // apertar Enter), e ao salvar vinha "Busque e selecione a entidade". Com nível escolhido e ao
+  // menos 2 letras, busca sozinho.
+  useEffect(() => {
+    if (!kind || !relType.trim() || query.trim().length < 2) return;
+    const id = setTimeout(() => {
+      void runSearchPara(relType);
+    }, 350);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [query, relType, kind]);
 
   // Recebe o nível por PARÂMETRO: quando o usuário clica num chip, o `relType` do estado ainda
   // é o anterior (setState não é síncrono), e a busca sairia pela fonte errada.
@@ -343,7 +356,7 @@ export function AddRelationshipModal({
                         void runSearch();
                       }
                     }}
-                    placeholder="Buscar entidade e apertar Enter"
+                    placeholder="Digite para buscar"
                     value={query}
                   />
                   {searching ? <Loader2 className="size-4 animate-spin text-ink-muted" /> : null}

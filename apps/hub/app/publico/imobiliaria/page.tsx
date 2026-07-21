@@ -3,7 +3,7 @@ import type { Metadata, Viewport } from "next";
 import { listEmpreendimentosAtivos } from "@/lib/apolo/credenciamento";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import type { EmpreendimentoPublico } from "@/lib/publico/cad/regras";
-import { ImobiliariaPublicoFlow } from "@/modules/publico/imobiliaria/ImobiliariaPublicoFlow";
+import { ImobiliariaPublicoPortal } from "@/modules/publico/imobiliaria/ImobiliariaPublicoPortal";
 
 // Página PÚBLICA do auto-cadastro de imobiliária (o segundo link).
 //
@@ -37,5 +37,5 @@ export default async function ImobiliariaPublicoRoute() {
     }
   }
 
-  return <ImobiliariaPublicoFlow empreendimentos={empreendimentos} />;
+  return <ImobiliariaPublicoPortal empreendimentos={empreendimentos} />;
 }

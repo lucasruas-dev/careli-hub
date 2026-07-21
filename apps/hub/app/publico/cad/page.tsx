@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 
-import { CadPublicoFlow } from "@/modules/publico/cad/CadPublicoFlow";
+import { CadPublicoPortal } from "@/modules/publico/cad/CadPublicoPortal";
 
 // Página PÚBLICA do formulário de CAD do corretor. Link enviável por WhatsApp, sem login.
 //
@@ -31,5 +31,5 @@ export default function CadPublicoRoute() {
   const numero = (process.env.PUBLICO_CENTRAL_WHATSAPP ?? "").replace(/\D/g, "");
   const whatsappCentral = numero ? `https://wa.me/${numero}` : "https://wa.me/";
 
-  return <CadPublicoFlow whatsappCentral={whatsappCentral} />;
+  return <CadPublicoPortal whatsappCentral={whatsappCentral} />;
 }

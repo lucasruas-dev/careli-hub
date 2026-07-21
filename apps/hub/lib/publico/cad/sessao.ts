@@ -205,6 +205,84 @@ export function preSessaoDoRequest(request: Request): VerificarPreResultado {
   return verificarPreSessao(request.headers.get("x-cad-pre-sessao"));
 }
 
+// ---------------------------------------------------------------------------
+// Pré-sessão da IMOBILIÁRIA: o CNPJ foi conferido na antessala, a imobiliária ainda NÃO existe
+// ---------------------------------------------------------------------------
+//
+// POR QUE UMA PRÉ-SESSÃO PRÓPRIA: o auto-cadastro público de imobiliária reusa o CadastroFlow
+// completo, que faz OCR do cartão CNPJ e `enrich-company` — DUAS torneiras PAGAS. A regra de
+// ouro exige sessão para qualquer torneira paga, então antes de abrir o wizard a antessala
+// confere o CNPJ (formato + que ele NÃO está já credenciado) e emite este token. Ele carrega
+// SÓ o CNPJ conferido: a rota de salvamento rejeita se o `empresa.cnpj` do corpo divergir
+// (anti-troca), e o OCR só roda com este token no header `x-cad-pre-sessao-imob`.
+//
+// O discriminante `preImob` impede que este token seja aceito onde se espera uma sessão de
+// corretor (que carrega o vínculo) ou a pré-sessão do corretor (que carrega a imobiliária dele).
+export type PreSessaoImob = {
+  // Só dígitos do CNPJ conferido na antessala. É a chave anti-troca do /cadastro.
+  cnpj: string;
+};
+
+type PreImobPayload = PreSessaoImob & { exp: number; preImob: true };
+
+export function assinarPreSessaoImob(pre: PreSessaoImob): EmitirResultado {
+  const chave = segredo();
+  if (!chave) return { error: "Assinatura de sessão indisponível.", ok: false };
+
+  const payload: PreImobPayload = {
+    ...pre,
+    exp: Math.floor(Date.now() / 1000) + SESSAO_TTL_SEGUNDOS,
+    preImob: true,
+  };
+  const cabecalho = b64url(Buffer.from(JSON.stringify({ alg: "HS256", typ: "JWT" })));
+  const corpo = b64url(Buffer.from(JSON.stringify(payload)));
+  const conteudo = `${cabecalho}.${corpo}`;
+  return { ok: true, token: `${conteudo}.${assinar(conteudo, chave)}` };
+}
+
+export type VerificarPreImobResultado =
+  | { ok: false; error: string }
+  | { ok: true; pre: PreSessaoImob };
+
+export function verificarPreSessaoImob(
+  token: string | null | undefined,
+): VerificarPreImobResultado {
+  const chave = segredo();
+  if (!chave) return { error: "Assinatura de sessão indisponível.", ok: false };
+
+  const partes = String(token ?? "").trim().split(".");
+  if (partes.length !== 3) return { error: "Sessão inválida.", ok: false };
+
+  const [cabecalho, corpo, assinatura] = partes as [string, string, string];
+  const a = Buffer.from(assinatura);
+  const b = Buffer.from(assinar(`${cabecalho}.${corpo}`, chave));
+  if (a.length !== b.length || !timingSafeEqual(a, b)) {
+    return { error: "Sessão inválida.", ok: false };
+  }
+
+  let payload: PreImobPayload;
+  try {
+    payload = JSON.parse(Buffer.from(corpo, "base64url").toString("utf8")) as PreImobPayload;
+  } catch {
+    return { error: "Sessão inválida.", ok: false };
+  }
+
+  // `preImob` isola este token dos outros dois: sessão de corretor e pré-sessão do corretor
+  // NUNCA valem aqui, e vice-versa.
+  if (payload?.preImob !== true) return { error: "Sessão inválida.", ok: false };
+  if (!payload.exp || payload.exp < Math.floor(Date.now() / 1000)) {
+    return { error: "Sessão expirada.", ok: false };
+  }
+  const cnpj = String(payload.cnpj ?? "").replace(/\D/g, "");
+  if (cnpj.length !== 14) return { error: "Sessão inválida.", ok: false };
+
+  return { ok: true, pre: { cnpj } };
+}
+
+export function preSessaoImobDoRequest(request: Request): VerificarPreImobResultado {
+  return verificarPreSessaoImob(request.headers.get("x-cad-pre-sessao-imob"));
+}
+
 // Reemite a sessão com o empreendimento escolhido. O corretor pode enviar várias CADs na
 // mesma sessão, trocando só esta parte.
 export function comEmpreendimento(sessao: SessaoCad, enterpriseId: string): EmitirResultado {

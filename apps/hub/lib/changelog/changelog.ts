@@ -36,6 +36,39 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-cad-publico-formulario-completo",
+    deployedAt: "2026-07-21T20:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O link publico de CAD passa a usar o FORMULARIO COMPLETO, o mesmo do hub: documento, foto pelo celular, leitura automatica, ficha e revisao.",
+              "O corretor so entra no formulario depois de se identificar: informa o CPF, se nao tiver cadastro faz na hora (CNPJ da imobiliaria, dados, CRECI) e escolhe o empreendimento.",
+              "O cadastro publico de imobiliaria tambem passa a usar o formulario completo.",
+            ],
+            screen: "Cadastro publico (corretor e imobiliaria)",
+          },
+          {
+            items: [
+              "Vincular empreendimento a uma imobiliaria na aba Relacionamentos: a busca agora acha o empreendimento enquanto voce digita, sem precisar apertar Enter.",
+            ],
+            screen: "Ficha - Relacionamentos",
+          },
+        ],
+      },
+    ],
+    rollback: "1.57.1",
+    technical: {
+      done: "CadastroFlow ganhou um modo publico via prop `publico` (React Context com adapter dos 4 fetches; default = comportamento interno atual, byte a byte). Interno intacto (revisado + 176 testes). Telas publicas: PortaoCorretor (CPF -> CNPJ -> dados -> CRECI -> empreendimento, sessao assinada) entrega ao CadastroFlow tipo=prospect; PortaoImobiliaria idem para tipo=imobiliaria. Rotas publicas novas: /api/publico/cad/salvar, /api/publico/imobiliaria/{iniciar,cadastro}; ocr virou multiplexer (extract/enrich/enrich-company) exigindo sessao do corretor (trava de custo). Descartados os flows simplificados CadPublicoFlow e ImobiliariaPublicoFlow. Modal de relacionamento: busca com debounce (350ms) ao digitar, alem do Enter. Confirmado: loadApoloEnterprises traz o Vale do Ouro (VLO/id 35, VALE DO OURO; VDO/19 e VEREDAS DO OURO).",
+      motivation: "O Lucas: 'tenho ele dentro do hub para quem e interno e tenho ele publico para os corretores enviarem sem login, e o mesmo processo'. Antes o publico era um formulario simplificado paralelo; agora reusa o completo. E o vinculo empreendimento-imobiliaria (pre-requisito para o corretor chegar no formulario) travava porque a busca so disparava no Enter.",
+    },
+    title: "CAD publico: formulario completo e vinculo de empreendimento",
+    type: "melhoria",
+    version: "1.58.0",
+  },
+  {
     buildTag: "2026-07-21-portal-publico-cad-ajustes",
     deployedAt: "2026-07-21T19:00:00-03:00",
     internal: true,

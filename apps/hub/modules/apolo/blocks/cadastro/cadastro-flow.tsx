@@ -1,6 +1,14 @@
 "use client";
 
-import { type ReactNode, useEffect, useRef, useState } from "react";
+import {
+  type ReactNode,
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   AlertTriangle,
   Camera,
@@ -650,6 +658,136 @@ async function apiGetEmpreendimentos(): Promise<SelectOption[]> {
     .map((row) => ({ id: String(row.id), label: String(row.name) }));
 }
 
+// ---------------------------------------------------------------------------
+// Adapter de I/O: interno (Bearer) x público (token de sessão do corretor).
+//
+// POR QUE UM ADAPTER: o wizard é o MESMO nos dois modos (é o pedido do Lucas: "é o mesmo
+// processo"). Todo o acoplamento com login mora nos 4 helpers acima, que passam pela
+// `accessToken()` (Bearer). Em vez de reescrever o componente, injetamos um adapter: no modo
+// interno ele É exatamente os 4 helpers de hoje (default = comportamento atual, byte a byte);
+// no público ele fala com /api/publico/cad/* levando o token assinado no HEADER, nunca Bearer.
+// `accessToken()` NÃO é chamada em modo público — o adapter público jamais a invoca.
+export type PublicoConfig = {
+  // Token HS256 emitido pela antessala: sessão do corretor (CAD) OU pré-sessão da imobiliária.
+  sessao: string;
+  // Header em que o token viaja. CAD do corretor = x-cad-sessao (default); imobiliária =
+  // x-cad-pre-sessao-imob. O vínculo sai SEMPRE de dentro do token, no servidor.
+  header?: string;
+  // Rota de salvamento. CAD = /api/publico/cad/salvar (default); imobiliária =
+  // /api/publico/imobiliaria/cadastro. Ambos os modos leem o OCR de /api/publico/cad/ocr.
+  salvarUrl?: string;
+  // Só para o cabeçalho "CAD para X" (informativo).
+  empreendimentoNome?: string;
+  // Vitrine de empreendimentos ATIVOS (só imobiliária pública): alimenta o multi-select e a
+  // resolução de rótulos, já que NÃO há rota pública que os liste. Vem do server component.
+  empreendimentos?: SelectOption[];
+};
+
+export type ApiCadastro = {
+  ocr: <T>(body: Record<string, unknown>) => Promise<T>;
+  salvar: (body: Record<string, unknown>) => Promise<SalvarResposta>;
+  imobiliarias: () => Promise<SelectOption[]>;
+  empreendimentos: () => Promise<SelectOption[]>;
+};
+
+// Espelho público de `apiPost`: mesma forma (desembrulha `{ data }`), troca Bearer por o header
+// de sessão. A rota /api/publico/cad/ocr é um multiplexer por `action`, igual /api/apolo/mostqi.
+async function postPublico<T>(
+  url: string,
+  body: Record<string, unknown>,
+  headers: Record<string, string>,
+): Promise<T> {
+  const response = await fetch(url, {
+    body: JSON.stringify(body),
+    cache: "no-store",
+    headers,
+    method: "POST",
+  });
+  const json = (await response.json().catch(() => null)) as
+    | { data?: T; error?: string }
+    | null;
+  if (!response.ok || !json?.data) {
+    throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
+  }
+  return json.data;
+}
+
+// Espelho público de `apiSalvarCadastro`: mesmo shape de resposta (`entityId`/`autenticacao`/
+// `cadBase64`/`savedDocs`/`warnings`), para o modal de sucesso do wizard funcionar sem mudar.
+async function salvarPublico(
+  url: string,
+  body: Record<string, unknown>,
+  headers: Record<string, string>,
+): Promise<SalvarResposta> {
+  const response = await fetch(url, {
+    body: JSON.stringify(body),
+    cache: "no-store",
+    headers,
+    method: "POST",
+  });
+  const json = (await response.json().catch(() => null)) as
+    | (Partial<SalvarResposta> & { error?: string })
+    | null;
+  if (!response.ok || !json?.entityId) {
+    throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
+  }
+  return {
+    autenticacao: json.autenticacao ?? "",
+    cadBase64: json.cadBase64 ?? null,
+    entityId: json.entityId,
+    savedDocs: json.savedDocs ?? [],
+    warnings: json.warnings ?? [],
+  };
+}
+
+// INTERNO: os 4 helpers de hoje, sem mudança. PÚBLICO: mesmas formas, outra rota + outro header.
+// No público a imobiliária e o empreendimento vêm FIXOS do token (antessala), então as listas
+// devolvem `[]` e os seletores somem — não há rota pública para enumerar parceiros.
+function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
+  if (!publico) {
+    return {
+      empreendimentos: apiGetEmpreendimentos,
+      imobiliarias: apiGetImobiliarias,
+      ocr: apiPost,
+      salvar: apiSalvarCadastro,
+    };
+  }
+  const header = publico.header ?? "x-cad-sessao";
+  const salvarUrl = publico.salvarUrl ?? "/api/publico/cad/salvar";
+  const headers = (): Record<string, string> => ({
+    "Content-Type": "application/json",
+    [header]: publico.sessao,
+  });
+  return {
+    // Imobiliária pública: a vitrine de ativos vem do token/prop, não de rede (não há rota que
+    // liste). CAD do corretor: `[]` — imobiliária e empreendimento já vêm FIXOS do token.
+    empreendimentos: async () => publico.empreendimentos ?? [],
+    imobiliarias: async () => [],
+    ocr: <T,>(body: Record<string, unknown>) =>
+      postPublico<T>("/api/publico/cad/ocr", body, headers()),
+    salvar: (body: Record<string, unknown>) => salvarPublico(salvarUrl, body, headers()),
+  };
+}
+
+// Contexto que entrega o adapter (e o flag `modoPublico`) aos steps-filhos, que é onde os
+// fetches acontecem (DocUploader, StepIdentificacao, BlocoSocio, BlocoCorretor, StepRevisao).
+// O DEFAULT é o modo interno: um filho fora do provider (não acontece) ainda funciona igual hoje.
+type CadastroCtx = { api: ApiCadastro; modoPublico: boolean };
+
+const ApiCadastroContext = createContext<CadastroCtx>({
+  api: {
+    empreendimentos: apiGetEmpreendimentos,
+    imobiliarias: apiGetImobiliarias,
+    ocr: apiPost,
+    salvar: apiSalvarCadastro,
+  },
+  modoPublico: false,
+});
+
+function useCadastroCtx(): CadastroCtx {
+  return useContext(ApiCadastroContext);
+}
+
 // ---------- geração do documento CAD (PDF impresso) ----------
 
 type Registro = { completo: string; data: string; hora: string };
@@ -673,6 +811,7 @@ function cadSection(title: string, fields: CadCampo[]): CadSecao {
 export function CadastroFlow({
   aviso,
   empreendimentosIniciais,
+  publico,
   tipo = "prospect",
 }: {
   // Faixa de contexto vinda do portal (ex.: "não encontramos seu CNPJ"). Só aparece na PRIMEIRA
@@ -681,12 +820,23 @@ export function CadastroFlow({
   // Vem do portal de credenciamento: a imobiliária JÁ escolheu os empreendimentos no passo 1,
   // então o seletor não se repete aqui (só aparece no credenciamento feito pelo nosso time).
   empreendimentosIniciais?: string[];
+  // Presente = modo PÚBLICO (link sem login): troca os 4 fetches por /api/publico/cad/*. Ausente
+  // = modo INTERNO (default), comportamento de produção intacto.
+  publico?: PublicoConfig;
   tipo?: string;
 }) {
   // Papel de nascimento da entidade (vem do menu "+" do Apolo). A imobiliária é SEMPRE PJ e tem
   // duas peças a mais que o PJ do prospect: CRECI + vínculo de empreendimentos (na Identificação)
   // e uma etapa de Corretores.
   const isImobiliaria = tipo === "imobiliaria";
+  // Adapter de I/O do wizard. No interno é `undefined` → os 4 helpers de hoje; no público troca a
+  // origem sem tocar em mais nada. Vai por contexto porque os fetches moram nos steps-filhos.
+  const modoPublico = Boolean(publico);
+  const ctx = useMemo<CadastroCtx>(
+    () => ({ api: criarApiCadastro(publico), modoPublico: Boolean(publico) }),
+    [publico],
+  );
+  const { api } = ctx;
   // Remontar tudo do zero: incrementar esta key recria o wizard (inclusive o estado interno dos
   // uploaders, que guardam a lista de arquivos localmente) — é o "recomeçar cadastro".
   const [resetKey, setResetKey] = useState(0);
@@ -717,10 +867,12 @@ export function CadastroFlow({
   // .env.local valida contra o projeto de produção (verificado 16/jul). Sem lista, o seletor
   // fica vazio -- nunca placeholder, pra não vincular a CAD a uma imobiliária inexistente.
   useEffect(() => {
+    // No público a imobiliária vem FIXA do token (antessala): não há seletor nem rota para listar.
+    if (modoPublico) return;
     let alive = true;
     void (async () => {
       try {
-        const list = await apiGetImobiliarias();
+        const list = await api.imobiliarias();
         if (alive && list.length) setImobiliarias(list);
       } catch {
         // sem lista: seletor fica vazio
@@ -729,15 +881,17 @@ export function CadastroFlow({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [api, modoPublico]);
 
-  // Empreendimentos ativos pro vínculo de trabalho da imobiliária (lê o C2X read-only).
+  // Empreendimentos ativos pro vínculo de trabalho da imobiliária. Interno lê o C2X read-only;
+  // na imobiliária PÚBLICA o adapter devolve a vitrine que veio do token/prop (sem rede). Só a
+  // imobiliária usa isto — no CAD do corretor `isImobiliaria` é false e o efeito nem roda.
   useEffect(() => {
     if (!isImobiliaria) return;
     let alive = true;
     void (async () => {
       try {
-        const list = await apiGetEmpreendimentos();
+        const list = await api.empreendimentos();
         if (alive && list.length) setEmpreendimentos(list);
       } catch {
         // sem lista: multi-select fica vazio
@@ -746,7 +900,7 @@ export function CadastroFlow({
     return () => {
       alive = false;
     };
-  }, [isImobiliaria]);
+  }, [api, isImobiliaria, modoPublico]);
 
   // PJ não tem certidão/cônjuge. PF: Casado(2), Divorciado(3), Separado(4) e
   // União Estável(6) exigem certidão (o MOST valida a autenticidade).
@@ -799,6 +953,7 @@ export function CadastroFlow({
   const pct = Math.round(((activeIndex + 1) / steps.length) * 100);
 
   return (
+    <ApiCadastroContext.Provider value={ctx}>
     <section className="grid h-full min-h-0 gap-4 overflow-y-auto">
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-4 px-1 py-1 pb-20">
         {aviso && step === 0 ? (
@@ -825,14 +980,18 @@ export function CadastroFlow({
                 <RotateCcw className="size-3.5" aria-hidden="true" />
                 Recomeçar
               </button>
-              <a
-                href="/apolo"
-                aria-label="Sair do cadastro"
-                title="Sair do cadastro"
-                className="inline-flex size-8 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
-              >
-                <X className="size-4" aria-hidden="true" />
-              </a>
+              {/* Sair para o Apolo só faz sentido no modo interno (logado). No público não há
+                  app para onde voltar: o "Recomeçar" já zera tudo. */}
+              {modoPublico ? null : (
+                <a
+                  href="/apolo"
+                  aria-label="Sair do cadastro"
+                  title="Sair do cadastro"
+                  className="inline-flex size-8 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
+                >
+                  <X className="size-4" aria-hidden="true" />
+                </a>
+              )}
             </div>
           </div>
           <span className="mt-5 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
@@ -1048,6 +1207,7 @@ export function CadastroFlow({
         </div>
       </div>
     </section>
+    </ApiCadastroContext.Provider>
   );
 }
 
@@ -1163,6 +1323,8 @@ function DocUploader({
   onFile?: (arquivo: ArquivoAnexado) => void;
   semLeitura?: boolean;
 }) {
+  // Adapter de leitura: interno fala com /api/apolo/mostqi; público com /api/publico/cad/ocr.
+  const { api, modoPublico } = useCadastroCtx();
   const [lidos, setLidos] = useState<ArquivoLido[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1191,10 +1353,12 @@ function DocUploader({
           // Foto do WhatsApp costuma vir deitada e a MOST não gira sozinha (result vazio). Tenta
           // em pé; se não reconhecer nada, gira e tenta de novo. PDF não gira. So paga consulta
           // extra quando o documento veio vazio — documento bom lê na primeira.
-          const rotacoes = ehPdf(file) ? [0] : [0, 90, 270, 180];
+          // No público cada rotação é uma consulta COBRADA e o teto do balde `ocr` é apertado:
+          // paramos em [0, 90] (a tela orienta a fotografar na horizontal). Interno mantém as 4.
+          const rotacoes = ehPdf(file) ? [0] : modoPublico ? [0, 90] : [0, 90, 270, 180];
           for (const tentativa of rotacoes) {
             const paraLeitura = await arquivoParaLeitura(file, tentativa);
-            ext = await apiPost<Extraction>({
+            ext = await api.ocr<Extraction>({
               action: "extract",
               fileBase64: paraLeitura.fileBase64,
               fileName: paraLeitura.fileName,
@@ -1451,6 +1615,9 @@ function StepIdentificacao({
   perfil: Perfil;
   persona: Persona;
 }) {
+  // Adapter de leitura/enriquecimento + flag público (esconde o seletor de imobiliária e
+  // dispensa `imobiliariaId`, que no público vem do token).
+  const { api, modoPublico } = useCadastroCtx();
   const [enriching, setEnriching] = useState(false);
   const [enrichingConjuge, setEnrichingConjuge] = useState(false);
   const isPj = persona === "pj";
@@ -1501,7 +1668,7 @@ function StepIdentificacao({
     setEnrichingConjuge(true);
     let enr: Enrichment = ENRICH_VAZIO;
     try {
-      enr = await apiPost<Enrichment>({ action: "enrich", cpf: c.cpf ?? "" });
+      enr = await api.ocr<Enrichment>({ action: "enrich", cpf: c.cpf ?? "" });
     } catch {
       // enriquecimento é best-effort; segue com o que o documento trouxe
     } finally {
@@ -1536,7 +1703,7 @@ function StepIdentificacao({
         // enriquecimento por CNPJ (CARELI_PJ_01). Sem isto o fluxo PJ nascia todo vazio.
         const cnpj = ext.cadastro.cnpj ?? "";
         if (cnpj) {
-          const dados = await apiPost<CompanyEnrichment>({ action: "enrich-company", cnpj });
+          const dados = await api.ocr<CompanyEnrichment>({ action: "enrich-company", cnpj });
           emp = {
             dataAbertura: dados.dataAbertura,
             email: dados.emails[0] ?? "",
@@ -1564,7 +1731,8 @@ function StepIdentificacao({
       perfil.escolaridadeId &&
       perfil.rendaId &&
       perfil.profissaoId &&
-      perfil.imobiliariaId &&
+      // No público a imobiliária vem do token (o servidor a força); o browser não a preenche.
+      (modoPublico || perfil.imobiliariaId) &&
       emailValido &&
       conjugeOk,
   );
@@ -1579,7 +1747,7 @@ function StepIdentificacao({
 
   return (
     <StepCard title="1. Identificação">
-      {isImobiliaria ? null : (
+      {isImobiliaria || modoPublico ? null : (
         <Secao title="Vínculo">
           <SearchableSelect
             label="Imobiliária / corretor"
@@ -1633,7 +1801,7 @@ function StepIdentificacao({
             setEnriching(true);
             let enr: Enrichment = ENRICH_VAZIO;
             try {
-              enr = await apiPost<Enrichment>({
+              enr = await api.ocr<Enrichment>({
                 action: "enrich",
                 cpf: ext.cadastro.cpf ?? "",
               });
@@ -1964,6 +2132,8 @@ function BlocoSocio({
   podeRemover: boolean;
   socio: SocioCadastro;
 }) {
+  // Enriquecimento do sócio pelo CPF (interno: /api/apolo/mostqi; público: /api/publico/cad/ocr).
+  const { api } = useCadastroCtx();
   return (
     <div className="rounded-xl border border-line bg-surface p-4">
       <div className="mb-3 flex items-center justify-between gap-3">
@@ -2000,7 +2170,7 @@ function BlocoSocio({
           // O await mantém o uploader em "consultando" até terminar.
           let enr: Enrichment = ENRICH_VAZIO;
           try {
-            enr = await apiPost<Enrichment>({ action: "enrich", cpf: c.cpf ?? "" });
+            enr = await api.ocr<Enrichment>({ action: "enrich", cpf: c.cpf ?? "" });
           } catch {
             // enriquecimento é best-effort: sem ele, os campos ficam manuais.
           }
@@ -2310,6 +2480,8 @@ function BlocoCorretor({
   corretor: CorretorCadastro;
   indice: number;
 }) {
+  // Enriquecimento do CRECI pelo CPF (interno x público).
+  const { api } = useCadastroCtx();
   const [buscando, setBuscando] = useState(false);
   const cpfOk = soDigitos(corretor.cpf).length === 11;
   // Último CPF consultado: a busca dispara sozinha ao completar o CPF, e este ref garante UMA
@@ -2330,7 +2502,7 @@ function BlocoCorretor({
     setBuscando(true);
     let enr: Enrichment = ENRICH_VAZIO;
     try {
-      enr = await apiPost<Enrichment>({
+      enr = await api.ocr<Enrichment>({
         action: "enrich",
         cpf: corretor.cpf,
         query: QUERY_ENRICH_CRECI,
@@ -2715,6 +2887,9 @@ function StepRevisao({
   steps: string[];
   tipo: string;
 }) {
+  // Adapter de salvamento (interno: /api/apolo/cadastro/salvar; público: rota gated do modo) +
+  // flag público, que redireciona os "sair/novo cadastro" para recarregar em vez de ir ao /apolo.
+  const { api, modoPublico } = useCadastroCtx();
   const label = (options: SelectOption[], id: string) =>
     options.find((o) => o.id.toString() === id)?.label ?? "";
 
@@ -2771,7 +2946,7 @@ function StepRevisao({
         })),
       ]);
 
-      const salvo = await apiSalvarCadastro({
+      const salvo = await api.salvar({
         // Estrutura da CAD: o PDF é montado no servidor, com o código de autenticação.
         cad: montarCadDoc(),
         conjuge: conjuge
@@ -3231,7 +3406,9 @@ function StepRevisao({
                 type="button"
                 aria-label="Fechar"
                 onClick={() => {
-                  window.location.href = "/apolo";
+                  // No público não há /apolo (sem login): recarrega para reiniciar o mesmo link.
+                  if (modoPublico) window.location.reload();
+                  else window.location.href = "/apolo";
                 }}
                 className="inline-flex size-8 shrink-0 items-center justify-center rounded-lg border border-line text-ink-muted transition-colors hover:bg-subtle hover:text-ink"
               >
@@ -3280,8 +3457,17 @@ function StepRevisao({
                 {isImobiliaria ? "Baixar cadastro" : "Baixar CAD"}
               </button>
               <a
-                href="/apolo/cadastro"
-                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-semibold text-ink-soft transition-colors hover:bg-subtle"
+                href={modoPublico ? undefined : "/apolo/cadastro"}
+                onClick={
+                  // Público: "Novo cadastro" recarrega o mesmo link (não existe /apolo sem login).
+                  modoPublico
+                    ? (event) => {
+                        event.preventDefault();
+                        window.location.reload();
+                      }
+                    : undefined
+                }
+                className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-semibold text-ink-soft transition-colors hover:bg-subtle"
               >
                 Novo cadastro
               </a>

@@ -1,10 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import {
+  assinarPreSessaoImob,
   comEmpreendimento,
   emitirPreSessao,
   emitirSessao,
   verificarPreSessao,
+  verificarPreSessaoImob,
   verificarSessao,
   type SessaoCad,
 } from "@/lib/publico/cad/sessao";
@@ -123,5 +125,51 @@ describe("pré-sessão", () => {
     const sessao = emitirSessao(BASE);
     if (!sessao.ok) throw new Error("não emitiu");
     expect(verificarPreSessao(sessao.token).ok).toBe(false);
+  });
+});
+
+describe("pré-sessão da imobiliária (auto-cadastro)", () => {
+  const CNPJ = "12345678000199";
+
+  it("emite e lê de volta o CNPJ conferido", () => {
+    const pre = assinarPreSessaoImob({ cnpj: CNPJ });
+    expect(pre.ok).toBe(true);
+    if (!pre.ok) return;
+    const lida = verificarPreSessaoImob(pre.token);
+    expect(lida.ok).toBe(true);
+    if (lida.ok) expect(lida.pre.cnpj).toBe(CNPJ);
+  });
+
+  it("recusa CNPJ com tamanho inválido no corpo do token", () => {
+    // Adultera o corpo com um CNPJ curto: a verificação exige 14 dígitos (e a assinatura já
+    // quebraria antes, mas o teste garante a dupla trava).
+    const pre = assinarPreSessaoImob({ cnpj: CNPJ });
+    if (!pre.ok) throw new Error("não emitiu");
+    const [cabecalho, , assinatura] = pre.token.split(".");
+    const corpoFalso = Buffer.from(
+      JSON.stringify({ cnpj: "123", exp: 9_999_999_999, preImob: true }),
+    ).toString("base64url");
+    expect(verificarPreSessaoImob(`${cabecalho}.${corpoFalso}.${assinatura}`).ok).toBe(false);
+  });
+
+  it("NÃO cruza com os outros dois tokens: cada um só vale no seu verificador", () => {
+    const preImob = assinarPreSessaoImob({ cnpj: CNPJ });
+    const sessao = emitirSessao(BASE);
+    const preCorretor = emitirPreSessao({ imobiliariaEntityId: "imob-1", imobiliariaNome: "Alfa" });
+    if (!preImob.ok || !sessao.ok || !preCorretor.ok) throw new Error("não emitiu");
+
+    // A pré-sessão da imobiliária não vale como sessão de corretor nem como pré-sessão do corretor.
+    expect(verificarSessao(preImob.token).ok).toBe(false);
+    expect(verificarPreSessao(preImob.token).ok).toBe(false);
+    // E os outros dois não valem como pré-sessão da imobiliária.
+    expect(verificarPreSessaoImob(sessao.token).ok).toBe(false);
+    expect(verificarPreSessaoImob(preCorretor.token).ok).toBe(false);
+  });
+
+  it("recusa token assinado com outro segredo", () => {
+    const pre = assinarPreSessaoImob({ cnpj: CNPJ });
+    if (!pre.ok) throw new Error("não emitiu");
+    process.env.SESSAO_CAD_SECRET = "outro-segredo";
+    expect(verificarPreSessaoImob(pre.token).ok).toBe(false);
   });
 });
