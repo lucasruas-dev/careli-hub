@@ -36,6 +36,31 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-imobiliaria-publica-comeca-empreendimento",
+    deployedAt: "2026-07-21T21:15:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O cadastro publico de imobiliaria agora COMECA pela escolha do empreendimento ('Quais empreendimentos voce quer trabalhar?'), depois o CNPJ e o cadastro completo, com os empreendimentos ja marcados.",
+            ],
+            screen: "Cadastro publico de imobiliaria",
+          },
+        ],
+      },
+    ],
+    rollback: "1.58.0",
+    technical: {
+      done: "ImobiliariaPublicoPortal ganhou o passo de escolha de empreendimento (vitrine multi-select dos ativos) ANTES do CNPJ, espelhando o CredenciamentoFlow interno. Os escolhidos vao ao CadastroFlow via empreendimentosIniciais (empreendimentosHerdados = true -> o wizard nao repete o seletor na Identificacao). Antes o publico comecava pelo CNPJ.",
+      motivation: "Lucas: 'o da imobiliaria comeca escolhendo o empreendimento a qual ela quer se habilitar, eu quero o mesmo fluxo' (o mesmo do credenciamento interno).",
+    },
+    title: "Imobiliaria publica: comeca pela escolha do empreendimento",
+    type: "melhoria",
+    version: "1.58.1",
+  },
+  {
     buildTag: "2026-07-21-cad-publico-formulario-completo",
     deployedAt: "2026-07-21T20:30:00-03:00",
     modules: [
