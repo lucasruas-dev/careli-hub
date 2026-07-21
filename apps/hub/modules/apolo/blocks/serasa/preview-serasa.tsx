@@ -46,7 +46,7 @@ function restricoes(cru: unknown): Array<{ balance: number; count: number; rotul
   const nd = rep?.negativeData ?? {};
   const rotulos: Record<string, string> = {
     check: "Cheques sem fundo",
-    collectionRecords: "Registros de cobranca",
+    collectionRecords: "Dividas vencidas",
     notary: "Protestos (cartorio)",
     pefin: "Pendencias financeiras (Pefin)",
     refin: "Refin",

@@ -33,13 +33,14 @@ export function totalRestricoes(cru: unknown): number {
 }
 
 export type Veredito = {
+  // APROVADO (true) x REPROVADO (false).
   aprovado: boolean;
   limite: number;
   motivo: string;
   total: number;
 };
 
-// Aprova quando o total das restrições NÃO passa do limite. `limite` vem do empreendimento
+// APROVA quando o total das restrições NÃO passa do limite. `limite` vem do empreendimento
 // (default R$ 1.000, o do Vale do Ouro).
 export function avaliarCredito(cru: unknown, limite: number = LIMITE_PADRAO_BRL): Veredito {
   const total = totalRestricoes(cru);
