@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloWrite } from "@/lib/apolo/auth";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { avaliarCredito } from "@/lib/serasa/avaliacao";
 import { consultarPF, consultarPJ } from "@/lib/serasa/client";
 import { ambienteConfere, lerConfigSerasa } from "@/lib/serasa/config";
 import { resumirRelatorio } from "@/lib/serasa/resumo";
@@ -48,6 +49,8 @@ export async function POST(request: Request) {
 
   const corpo = (await request.json().catch(() => ({}))) as {
     documento?: string;
+    // Limite de restrições do empreendimento (Vale do Ouro = R$ 1.000). Default na avaliação.
+    limiteRestricao?: number;
     reportName?: string;
   };
   const documento = soDigitos(corpo.documento ?? "");
@@ -102,7 +105,14 @@ export async function POST(request: Request) {
     );
   }
 
+  const veredito = avaliarCredito(
+    resposta.corpo,
+    typeof corpo.limiteRestricao === "number" && corpo.limiteRestricao > 0
+      ? corpo.limiteRestricao
+      : undefined,
+  );
+
   return NextResponse.json({
-    data: { cru: resposta.corpo, reportName, resumo, tipo: ehPj ? "pj" : "pf" },
+    data: { cru: resposta.corpo, reportName, resumo, tipo: ehPj ? "pj" : "pf", veredito },
   });
 }

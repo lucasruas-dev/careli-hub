@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-07-21-serasa-veredito-aprovado-reprovado",
+    deployedAt: "2026-07-21T22:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A tela de preview de credito passa a mostrar APROVADO ou REPROVADO em destaque, com o motivo.",
+              "Regra do Vale do Ouro: reprovado quando o total das restricoes passa de R$ 1.000 (o limite e por empreendimento).",
+            ],
+            screen: "Analise de credito (preview)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.59.0",
+    technical: {
+      done: "lib/serasa/avaliacao.ts: totalRestricoes (soma o balance de todos os blocos de negativeData) + avaliarCredito(cru, limite) — aprovado se total <= limite (default R$ 1.000, do Vale do Ouro; parametrizavel por empreendimento). Rota /preview devolve o veredito; a tela mostra em verde/vermelho. 27 testes verdes (fixture real: 5.499,77 de restricao reprova no limite de 1.000).",
+      motivation: "O Lucas: 'ter um campo que vai falar se esta aprovado ou reprovado; para o Vale do Ouro, restricao acima de 1000 reais reprova'.",
+    },
+    title: "Serasa: veredito aprovado/reprovado por limite de restricao",
+    type: "melhoria",
+    version: "1.59.1",
+  },
+  {
     buildTag: "2026-07-21-serasa-preview-validacao",
     deployedAt: "2026-07-21T22:00:00-03:00",
     internal: true,

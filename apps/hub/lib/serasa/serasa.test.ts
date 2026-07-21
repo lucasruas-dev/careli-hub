@@ -3,6 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { limparCacheToken, obterToken } from "./auth";
 import { consultarPF, consultarPJ } from "./client";
 import { ambienteConfere, lerConfigSerasa, type ConfigSerasa } from "./config";
+import { avaliarCredito, totalRestricoes } from "./avaliacao";
 import exemploPf from "./exemplo-resposta-pf.json";
 import exemploPj from "./exemplo-resposta-pj.json";
 import { resumirRelatorio } from "./resumo";
@@ -345,11 +346,37 @@ describe("resumirRelatorio", () => {
     expect(r.score).toBe(615);
   });
 
-  it("devolve vazio em vez de inventar, e não quebra", () => {
+  it("devolve vazio em vez de inventar, e não quebra (resumir)", () => {
     expect(resumirRelatorio(null)).toEqual({});
     expect(resumirRelatorio("texto")).toEqual({});
     const circular: Record<string, unknown> = { reports: [] };
     circular.eu = circular;
     expect(() => resumirRelatorio(circular)).not.toThrow();
+  });
+});
+
+describe("avaliarCredito (regra do Vale do Ouro: restrição > R$ 1.000 reprova)", () => {
+  it("soma o valor das restrições do fixture real de PF", () => {
+    // refin 964,89 + collectionRecords 4.534,88 = 5.499,77.
+    expect(totalRestricoes(exemploPf)).toBe(5499.77);
+  });
+
+  it("REPROVA o cliente com R$ 5.499,77 de restrição no limite de R$ 1.000", () => {
+    const v = avaliarCredito(exemploPf, 1000);
+    expect(v.aprovado).toBe(false);
+    expect(v.total).toBe(5499.77);
+    expect(v.limite).toBe(1000);
+  });
+
+  it("APROVA quando não há restrição", () => {
+    const v = avaliarCredito({ reports: [{ negativeData: {} }] }, 1000);
+    expect(v.aprovado).toBe(true);
+    expect(v.total).toBe(0);
+  });
+
+  it("default do limite é R$ 1.000 e não quebra com lixo", () => {
+    expect(avaliarCredito(exemploPf).limite).toBe(1000);
+    expect(() => avaliarCredito(null)).not.toThrow();
+    expect(totalRestricoes("texto")).toBe(0);
   });
 });

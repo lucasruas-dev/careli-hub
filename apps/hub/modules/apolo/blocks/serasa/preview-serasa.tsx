@@ -27,7 +27,8 @@ type Resumo = {
   situacao?: string;
 };
 
-type Resultado = { cru: unknown; reportName: string; resumo: Resumo; tipo: string };
+type Veredito = { aprovado: boolean; limite: number; motivo: string; total: number };
+type Resultado = { cru: unknown; reportName: string; resumo: Resumo; tipo: string; veredito: Veredito };
 
 function mascararCpf(v: string): string {
   return v.length === 11 ? `${v.slice(0, 3)}.${v.slice(3, 6)}.${v.slice(6, 9)}-${v.slice(9)}` : v;
@@ -146,6 +147,31 @@ export function PreviewSerasa() {
 
       {res ? (
         <div className="mt-6 space-y-4">
+          {/* Veredito: aprovado x reprovado (regra do empreendimento) */}
+          <div
+            className={`flex items-center justify-between rounded-xl border p-5 ${
+              res.veredito.aprovado
+                ? "border-emerald-200 bg-emerald-50 dark:border-emerald-500/30 dark:bg-emerald-500/10"
+                : "border-rose-200 bg-rose-50 dark:border-rose-500/30 dark:bg-rose-500/10"
+            }`}
+          >
+            <div>
+              <p className="m-0 text-xs font-semibold uppercase tracking-wide text-ink-muted">
+                Resultado
+              </p>
+              <p
+                className={`m-0 text-2xl font-bold ${
+                  res.veredito.aprovado
+                    ? "text-emerald-700 dark:text-emerald-300"
+                    : "text-rose-700 dark:text-rose-300"
+                }`}
+              >
+                {res.veredito.aprovado ? "APROVADO" : "REPROVADO"}
+              </p>
+              <p className="m-0 mt-1 text-xs text-ink-soft">{res.veredito.motivo}</p>
+            </div>
+          </div>
+
           {/* Score + situacao em destaque */}
           <div className="flex items-center justify-between rounded-xl border border-line bg-surface p-5">
             <div>
