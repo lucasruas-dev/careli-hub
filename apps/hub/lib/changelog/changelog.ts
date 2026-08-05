@@ -36,6 +36,4526 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-05-cad-aceita-20mb-e-completa-endereco",
+    deployedAt: "2026-08-05T11:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Documento da CAD agora aceita até 20MB por arquivo: contrato social escaneado em PDF passa direto, sem precisar trocar por foto",
+              "O arquivo grande sobe direto para o armazenamento, sem passar pelo formulário; o pequeno continua indo como sempre",
+              "Frente e verso do mesmo documento continuam virando um PDF único, como antes",
+              "Quando o documento passa de 20MB, a mensagem diz o tamanho real do arquivo e o que fazer, e nada do que foi preenchido se perde",
+            ],
+            screen: "Cadastro e portal de CAD",
+          },
+          {
+            items: [
+              "Endereço lido de comprovante agora é completado pelo CEP: antes, quando a leitura vinha ruim, o campo de rua ficava com o texto errado do documento",
+              "Naturalidade e nacionalidade do sócio abrem para digitar quando a leitura não traz (a CNH não tem naturalidade impressa, então isso acontece bastante)",
+            ],
+            screen: "Sócios e endereço",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "UPLOAD EM DOIS CAMINHOS (estratégia definida pelo Lucas: 'se for um arquivo grande ele vai direto, se não segue o fluxo'). O documento que cabe no corpo continua viajando em base64 no JSON, byte a byte como antes; o que não cabe sobe por signed upload URL (mesmo padrão já em produção no Prometeu PA e nos anexos do Hermes) e viaja como referência (storagePath + sizeBytes). A escolha é POR CATEGORIA (categoriasParaUploadDireto soma o base64 da categoria), então RG frente+verso vão sempre pelo mesmo caminho e o agrupamento em PDF único é preservado: quando a categoria vai pelo caminho direto, o servidor baixa do Storage e junta com o mesmo juntarEmPdf; acima de 24MB somados vira arquivo por página COM aviso na tela, nunca em silêncio. Novas rotas /api/apolo/cadastro/upload-url e /api/publico/cad/upload-url só ASSINAM (não recebem arquivo); o caminho é montado no servidor a partir do dono da sessão (prefixoUploadDireto + uuid + nome sanitizado), nunca do que o cliente manda, e as TRÊS rotas de salvar validam com caminhoUploadDiretoValido. A pública exige a sessão assinada (x-cad-sessao) e ganhou balde de rate-limit próprio. uploadApoloDocument confere o tamanho REAL com .info() e move do staging para a pasta da entidade antes de criar a linha: se o arquivo não estiver lá, não nasce documento com link quebrado. validarDocumentosObrigatorios passou a aceitar as DUAS formas de anexo (fileBase64 OU storagePath) e continua recusando quando não há nenhuma. Bundle antigo em cache segue funcionando. Também: useEffect que dispara a busca de CEP quando o endereço vem do OCR (antes só rodava se o operador digitasse), e CampoDoDocumento aplicado à naturalidade/nacionalidade do sócio. 267 testes.",
+      motivation:
+        "Lucas, 05/08, cadastrando a Vovo Braga pelo link público: o contrato social em PDF somava 3,8MB e o envio barrava em 3,2MB, obrigando a trocar o PDF por foto. Pedido dele: 'deixa o padrão 20MB para documentos'. Só aumentar o número faria o envio estourar o limite de corpo da Vercel e virar erro seco no fim do cadastro, daí os dois caminhos. No mesmo cadastro, o comprovante do sócio foi lido com 58% de confiança e trouxe 'CPF/CNPJ:.' no lugar da rua, e a naturalidade do sócio ficou travada sem como preencher.",
+    },
+    title: "CAD aceita documento de 20MB e completa o endereço pelo CEP",
+    type: "melhoria",
+    version: "1.114.0",
+  },
+  {
+    buildTag: "2026-08-05-cad-chega-no-c2x-e-avisa-quando-falha",
+    deployedAt: "2026-08-05T08:50:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A CAD credenciada pelo PIX agora sobe sozinha para o C2X: antes só subia quando a etapa era movida pelo Board, e quem era credenciado pelo pagamento ficava de fora sem ninguém perceber",
+              "Novo aviso na CAD que não conseguiu subir para o C2X: um ícone no card mostra o motivo (falta escolaridade, regime de bens, cliente sem imobiliária e por aí vai)",
+              "O ícone também avisa quando o C2X respondeu que deu certo mas o cadastro não apareceu lá, que é o caso mais traiçoeiro porque parece sucesso",
+            ],
+            screen: "Board e envio para o C2X",
+          },
+          {
+            items: [
+              "Naturalidade virou campo obrigatório: sem ela o C2X recusa o cadastro, e a nacionalidade é preenchida sozinha a partir da cidade",
+              "Quando a leitura do documento não traz a naturalidade, o campo abre para digitar e continua digitável enquanto se escreve",
+              "Cadastro de empresa (PJ) pelo link público do corretor volta a avançar: o botão Confirmar e avançar ficava travado esperando a imobiliária, que no link já vem do próprio corretor",
+            ],
+            screen: "Cadastro e portal de CAD",
+          },
+          {
+            items: [
+              "Só quem tem permissão de edição altera os ajustes do empreendimento (pré-venda, análise de crédito, limite e valor do PIX); antes quem tinha acesso apenas de leitura conseguia mudar",
+            ],
+            screen: "Empreendimentos",
+          },
+        ],
+      },
+      {
+        module: "Chronos",
+        screens: [
+          {
+            items: [
+              "Se o preparo da sala falhar, aparece a mensagem do erro em vez de deixar a tela carregando para sempre",
+            ],
+            screen: "Sala de vídeo",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "1) SEGURANÇA: as sondas /api/apolo/c2x-sync/obrigatorios e /unidades-sonda aceitavam `host` no CORPO e usavam esse host como destino do fetch que leva o token de escrita do C2X nos headers — sessão admin comprometida extraía a credencial de produção. Agora o destino sai da env e o corpo só pode PEDIR um host de uma allowlist (resolverHostSonda em lib/apolo/c2x-integracao.ts), que devolve a constante canônica, nunca o texto do corpo; host não permitido = 400 ANTES de qualquer fetch. 3 testes de regressão cobrem usuário embutido na URL, sufixo, porta trocada e downgrade para http. 2) PIX→C2X: aoEnviarPixPrevenda e aoConfirmarPagamentoPrevenda gravavam etapa='credenciado' por escrita direta, fora de atualizarEtapa, então o gancho subirParaC2xAoCredenciar nunca rodava (mesma classe do furo que já haviam remendado só para a fila do Prometeu). Passaram a chamar o envio best-effort, e no webhook do Asaas ele roda DEPOIS da fila e cobre também a saída antecipada de 'sem evento ativo' — o webhook tem teto de 30s e não reprocessa, então o lugar na fila pela hora do pagamento vem primeiro. 3) ALERTA: /api/apolo/board lê apolo_c2x_sync por STATUS (não por .in() com centenas de ids, que estoura a URL do PostgREST) e o Board ganhou o selo SeloC2x; motivoLegivel() troca o `<br>` do Rails por '; ' (13 das 41 falhas em produção vinham com a tag crua). 4) Naturalidade obrigatória em validarCamposMinimos (servidor, as duas rotas) e em podeAvancarPf; novo CampoDoDocumento decide ReadField x TextField UMA VEZ na montagem — o ternário por valor travava o input na primeira letra digitada e criava beco sem saída. 5) PATCH/POST de empreendimentos/settings passaram de authorizeApoloRead (que inclui viewer) para authorizeApoloWrite. 6) Chronos: gate do host passou a depender do isHost RESPONDIDO pelo servidor, não do Bearer enviado, e a falha no preparo sai do loader mostrando o erro. Migration 0082 (apolo_credito_overrides) aplicada. 265 testes passando.",
+      motivation:
+        "Lucas, 05/08: não conseguia avançar o cadastro da Vovo Braga (PJ) pelo link público, e pediu um alerta visual para quando uma CAD não subir para o C2X. A investigação mostrou que o problema era maior: 36 CADs com erro e 5 aceitas sem confirmação estavam gravadas em apolo_c2x_sync sem ninguém ver, o fluxo principal do negócio (PIX pago credencia) nunca chamava o envio ao C2X, e as sondas de diagnóstico entregavam o token de produção para qualquer host informado no corpo.",
+    },
+    title: "CAD credenciada chega ao C2X, e avisa na tela quando não chega",
+    type: "correcao",
+    version: "1.113.0",
+  },
+  {
+    buildTag: "2026-08-04-cad-exige-obrigatorios",
+    deployedAt: "2026-08-04T16:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A CAD não sobe mais sem os documentos e dados obrigatórios: se faltar identificação, comprovante de endereço ou algum campo, o envio é barrado na hora",
+              "O botão de enviar mostra o que está faltando, em vez de deixar submeter e cair em correção depois",
+              "A leitura automática do documento continua como era: se não ler, os campos abrem para preencher à mão — o que trava é documento ou dado faltando, nunca a leitura",
+              "Vale para o link público do corretor e para o cadastro manual interno",
+            ],
+            screen: "Cadastro e portal de CAD",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Novo módulo lib/apolo/cadastro-obrigatorios.ts como fonte única da regra (requisitosDocumentos, validarDocumentosObrigatorios, validarCamposMinimos), espelhando o que o wizard já exigia para avançar: PF = identificacao + comprovante_endereco, mais certidao/identificacao_conjuge conforme estado civil; PJ = cartão CNPJ + contrato_social + documento de sócio. A trava roda no SERVIDOR (400 antes de criar a entidade) em /api/publico/cad/salvar e /api/apolo/cadastro/salvar — as duas tinham o mesmo furo, validavam só tamanho e quantidade. No cliente, o botão Enviar ganhou disabled + lista do que falta. A validação conta o ARQUIVO anexado (fileBase64 presente), nunca o sucesso do OCR nem score de qualidade — preserva a regra do v1.105.0 (MOST não trava). 20 testes novos, 244 no total.",
+      motivation:
+        "Em 04/08, 12 clientes subiram CAD pelo link só com o PDF do formulário, sem identificação e sem comprovante — o portal aceitava e marcava correção depois. Willian Jones Pereira foi o caso que o Lucas apontou. Regra dele: não pode subir sem todos os dados obrigatórios preenchidos.",
+    },
+    title: "CAD não sobe mais sem documento e sem dado",
+    type: "correcao",
+    version: "1.112.0",
+  },
+  {
+    buildTag: "2026-08-04-apolo-dono-do-cadastro",
+    deployedAt: "2026-08-04T13:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O cadastro feito no Apolo para de ser desfeito pela sincronização do C2X: o que a equipe preenche e corrige aqui fica",
+              "A carteira, o financeiro e as vendas continuam vindo do C2X normalmente, atualizados como sempre",
+              "Fichas de cliente, imobiliária e corretor que existem só no C2X continuam nascendo aqui, para nenhuma carteira ficar sem dono",
+            ],
+            screen: "CRM 360 e cadastro",
+          },
+          {
+            items: [
+              "A mensagem de CAD já existente agora diz em qual empreendimento ela está",
+              "Saiu o texto que afirmava que o cliente já estava apto",
+            ],
+            screen: "Portal de CAD (corretor)",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "persistApoloEntityBatch (lib/apolo/server.ts:3401) passou a usar ON CONFLICT DO NOTHING (ignoreDuplicates do postgrest-js, confirmado no dist que roda) nas 8 tabelas de identidade — apolo_entities, entity_profiles, source_links, entity_identifiers, contacts, addresses, relationships e search_entries —, mantendo upsert normal nas 6 de carteira (commercial_links, financial_snapshots, documents, timeline_events, audit_events, module_records). Cria quem não existe, nunca sobrescreve quem existe: sem isso a carteira de um cliente novo ficaria órfã por violação de FK. Aplicado a todos os perfis, sem filtro, para não conviverem dois comportamentos na mesma função. Novo teste sync-c2x-identidade.test.ts com banco fake que imita as duas cláusulas do Postgres. Junto: dedup de CAD passou a comparar enterprise_id (cadastro-persist.ts) e a mensagem parou de afirmar aptidão.",
+      motivation:
+        "O sync montava o metadata do zero e o upsert substituía a coluna jsonb inteira, então cada rodada apagava metadata.cadastro e o que o operador tinha corrigido. Em 20/jul isso custou a etapa e o analista de 122 CADs numa única passada. Decisão do Lucas em 04/08: o Apolo é dono do cadastro, o C2X é dono do dinheiro.",
+    },
+    title: "O Apolo passa a ser dono do cadastro",
+    type: "correcao",
+    version: "1.111.0",
+  },
+  {
+    buildTag: "2026-08-03-dossie-juridico",
+    deployedAt: "2026-08-03T18:10:00-03:00",
+    modules: [
+      {
+        module: "Hades",
+        screens: [
+          {
+            items: [
+              "Novo botão Dossiê jurídico na aba Propostas do cliente: gera o relatório executivo para encaminhar ao jurídico",
+              "O documento sai pronto com identificação, dashboard, classificação de risco, contrato, memória de cálculo parcela a parcela, histórico das tratativas, documentos e campo de aprovações",
+              "A multa e os juros saem do contrato do próprio cliente, com a cláusula citada dentro do documento",
+              "O histórico traz tudo o que foi feito pelo cliente: acordos, promessas, ligações, WhatsApp e as análises internas",
+              "Na hora de gerar, o operador escolhe o motivo do encaminhamento e a recomendação operacional",
+              "A correção monetária é um campo para preencher à mão; em branco, o documento declara que ela é devida e está pendente de apuração",
+              "O dossiê fica anexado nos documentos do cliente e abre em uma aba nova",
+            ],
+            screen: "Cliente > Propostas",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "lib/hades/dossie/: encargos.ts extrai multa/juros/índice do texto do contrato (acquisition_request_contracts.complete_text), reconhecendo as duas minutas em uso (Vale do Ouro e Lavra do Ouro, esta com ordem invertida) — 10/10 contratos reais com cláusula citável, 12 testes. dados.ts agrega o C2X separando DÍVIDA VENCIDA de SALDO TOTAL. tratativas.ts junta guardian_compromissos + guardian_compromisso_comments + caredesk_ticket_events (estes com ticket_id NULL, ligados só por metadata.client_id). pdf.ts monta as 13 seções com pdf-lib. Rota POST /api/guardian/dossie (authorizeHadesWrite, que é o único que devolve o nome do usuário para a capa) → uploadApoloDocument em apolo_documents, sem substituir dossiês anteriores (série histórica). Correção monetária entra por percentual digitado, em coluna própria da memória de cálculo.",
+      motivation:
+        "O encaminhamento ao jurídico era montado à mão a cada caso, juntando print de tela, extrato e conversa. Agora sai um documento só, com cada número tendo origem citável no contrato — que é o que se pode levar para os autos.",
+    },
+    title: "Dossiê jurídico do cliente em um clique",
+    type: "novidade",
+    version: "1.110.0",
+  },
+  {
+    buildTag: "2026-08-03-vigia-grupos-whatsapp",
+    deployedAt: "2026-08-03T15:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Se a conexão dos grupos de WhatsApp cair, os administradores recebem aviso na central de notificações em até 5 minutos",
+              "Quando a conexão volta, chega o aviso de normalização",
+              "A PA fotografada no bip da secretaria passa a entrar automaticamente nos documentos do cliente",
+            ],
+            screen: "Grupos de WhatsApp",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Vigia da instância Evolution: lib/iris/evolution-saude.ts consulta connectionState e avisa APENAS na virada (caiu/voltou), usando a própria hub_notifications como memória de estado (context.vigia/situacao) — sem tabela nova. Rota /api/iris/evolution/saude (GET com CRON_SECRET dispara o aviso; sem credencial devolve só o estado, servindo de health check) + cron de 5 min. Junto: gancho registrarPa → apolo_documents no registrarPa (lib/prometeu/pa.ts), best-effort, com backfill já aplicado nas 118 PAs do lançamento.",
+      motivation:
+        "Em 03/08 a sessão do WhatsApp dos grupos caiu às 7h57 e só foi descoberta às 14h41 pela operadora tentando responder um cliente: ~7h de grupos mudos sem ninguém saber.",
+    },
+    title: "Aviso automático quando os grupos de WhatsApp caem",
+    type: "novidade",
+    version: "1.109.0",
+  },
+  {
+    buildTag: "2026-08-03-espelho-masterplan",
+    deployedAt: "2026-08-03T14:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O masterplan do Vale do Ouro passa a refletir as vendas das duas carteiras em até 1 minuto",
+              "O corretor continua vendo um mapa só, com a disponibilidade sempre atual",
+            ],
+            screen: "Masterplan (mapa do corretor)",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Espelho do masterplan: lib/apolo/espelho-masterplan.ts casa as 298 unidades do VLO(35) com as gêmeas de VOC(37)/VOL(36) por (quadra, lote) e copia sale_status_id/sale_blocked apenas quando divergem. Rota /api/apolo/masterplan/espelho (GET por cron, POST manual com sessão admin) + cron de 1 minuto no vercel.json. Minuto sem movimento = 1 SELECT que volta vazio (~300ms, zero escrita); log só quando muda. Testado contra produção: divergência simulada em VLO0101 detectada e corrigida na execução seguinte.",
+      motivation:
+        "O corretor oferece lote pela cor do mapa (show_map/35) e a venda acontece no VOC/VOL: cor atrasada = lote vendido oferecido de novo = venda perdida (Lucas, 03/08).",
+    },
+    title: "Masterplan reflete as duas carteiras quase em tempo real",
+    type: "novidade",
+    version: "1.108.0",
+  },
+  {
+    buildTag: "2026-08-03-divisao-vale-do-ouro",
+    deployedAt: "2026-08-03T12:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Logos dos empreendimentos padronizadas: mesma caixa, logo inteira (sem corte) e selo com o código quando a imagem não carrega",
+            ],
+            screen: "Cadastro de imobiliária e portal do corretor",
+          },
+        ],
+      },
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O BI do Vale do Ouro passa a somar os três empreendimentos da família (master + Cecílio + Lino) — o placar continua o do lançamento inteiro",
+              "O comparativo de carteiras agora vem da divisão real por empreendimento",
+            ],
+            screen: "BI Vale do Ouro",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Divisão VLO(35) → VOC(37, Cecílio) + VOL(36, Lino) executada no C2X: 298 unidades replicadas pela API oficial, 280 propostas migradas por (quadra, lote) com backup, VLO aposentado (sale_blocked). BI: constantes ENTERPRISES [35,36,37] para propostas e LISTA_UNIDADES_VIVAS (36,37) para contagem de unidades (evita dobrar o empreendimento); duelo por enterprise_id. Novo componente LogoEmpreendimento (contain + fallback onError) usado no portal de imobiliária e no portão do corretor. Lançamento encerrado (evento status=encerrado, 118 concluídos).",
+      motivation:
+        "Cada unidade pertence a uma empresa diferente (pedido do Lucas): separação por empreendimento a partir da unidade, com o trabalho do corretor centralizado no master.",
+    },
+    title: "Vale do Ouro dividido em duas carteiras + logos padronizadas",
+    type: "melhoria",
+    version: "1.107.0",
+  },
+  {
+    buildTag: "2026-08-03-cad-sem-gargalo",
+    deployedAt: "2026-08-03T09:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Limites de uso recalibrados para escritório inteiro no mesmo Wi-Fi (OCR 400/dia, envio 60/h, identificação 40/10min por IP)",
+              "Sessão do corretor vale 4 horas (era 45 min) — a CAD com calma não morre mais no Enviar",
+              "CPF que já está na base SEM CAD não é mais recusado: a CAD anexa na ficha existente (destrava ~3.900 CPFs do sync/backfill)",
+              "Documentos grandes: aviso claro ANTES do envio apontando o arquivo a trocar (em vez do erro 413 sem saída)",
+              "Bloqueio de limite e sessão expirada agora aparecem com a mensagem real (não mais como 'leitura falhou')",
+              "Assistente CACÁ do portal exige identificação (endpoint pago não fica mais aberto a anônimos)",
+            ],
+            screen: "Portal público de CAD",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Revisão de 4 lentes + refutação (37 agentes, 30 achados confirmados) na véspera da carga dos corretores. Corrigidos os 7 críticos de código: tetos em rate-limit.ts; SESSAO_TTL_SEGUNDOS 45min→4h; modo anexo no cadastro-persist (dedup distingue ficha de CAD via apolo_esteira, merge de metadata preservando source/c2xSynced); guard de tamanho total no enviar() com mensagem acionável; catch do OCR diferenciando 429/401; 401 no assistente sem sessão/pré-sessão; rota do 409 repassa a mensagem verdadeira. Dado: credenciamento do VOC(37) desativado nos settings (CAD 100% no master VLO, decisão do Lucas). Backlog registrado: aprovação de imobiliária (review→active INEXISTE — paliativo manual), upload por signed URL, sliding session, notificação de CAD nova, timeout MOST, teto global de gasto.",
+      motivation:
+        "Pedido do Lucas 03/08: revisar o fluxo de CAD e imobiliária antes do dia de trabalho em massa dos corretores; garantir zero gargalo.",
+    },
+    title: "Portal de CAD sem gargalos para a carga dos corretores",
+    type: "melhoria",
+    version: "1.106.0",
+  },
+  {
+    buildTag: "2026-08-02-telao-tv-independente",
+    deployedAt: "2026-08-02T15:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "TV independente: o telão abre por um link com token próprio, sem operador logado e sem sessão para vencer no meio do evento",
+              "Os links das TVs (salão e secretaria) ficam no Setup → aba Telões, com botão copiar",
+              "O link vale enquanto o lançamento durar; evento novo pede link novo",
+            ],
+            screen: "Telão",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Token HMAC do telão (lib/prometeu/link-do-telao.ts, mesmo desenho do link da fila, SESSAO_CAD_SECRET, sem exp — revoga pelo ciclo do evento); rota /api/prometeu/telao aceita ?tv= como terceira via e valida o evento do token contra o operável; rota liberada no proxy (valida por dentro); telao.html anexa o token e pula a sessão do hub; GET /api/prometeu/palco devolve linksTv atrás do login; botões de copiar na aba Telões do Setup.",
+      motivation:
+        "TV logada com cookie de operador (TTL 14h) expirava no meio do evento e o telão morria mudo (401 em loop na tarde de 02/08). Pedido do Lucas: tirar o operador da TV.",
+    },
+    title: "Telão: TV independente por link com token",
+    type: "melhoria",
+    version: "1.105.2",
+  },
+  {
+    buildTag: "2026-08-02-fechamento-dia-1",
+    deployedAt: "2026-08-02T11:00:00-03:00",
+    // Interna: página de fechamento para a diretoria, sem anúncio no painel do time.
+    internal: true,
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Relatório de fechamento do atendimento do dia 1 publicado em /bi/fechamento-01-08.html",
+            ],
+            screen: "BI Vale do Ouro",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Dia 01/08 encerrado via encerrarDia (108 concluídos guardados, 499 arquivados com motivo, mesas liberadas, evento segue em andamento para o dia 2). Página estática de fechamento no padrão do BI: funil do dia, curvas de check-in×conclusão, placar das mesas e resumo do arquivamento.",
+      motivation:
+        "Pedido do Lucas 02/08: encerrar o dia de ontem (guardar atendimentos, arquivar não-finalizados) e gerar relatório de fechamento no padrão do BI de vendas.",
+    },
+    title: "Fechamento do dia 1 do lançamento",
+    type: "novidade",
+    version: "1.105.1",
+  },
+  {
+    buildTag: "2026-08-02-cadastro-sem-trava-most",
+    deployedAt: "2026-08-02T10:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A leitura automática (MOST) não trava mais nenhum documento: certidão, RG/CNH, cartão CNPJ e comprovante seguem mesmo quando a leitura falha ou desconfia do tipo",
+              "O arquivo enviado é SEMPRE salvo, leia a MOST ou não",
+              "Quando a leitura falha, os campos abrem para preenchimento manual (aviso âmbar no lugar do bloqueio vermelho)",
+              "Vale para o wizard interno e para o portal público de CAD",
+            ],
+            screen: "Cadastro (wizard e portal do corretor)",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "conferirDocumento não lança mais (tipo trocado e baixa confiança viram avisos em ext.avisoQualidade); DocUploader retém o arquivo ANTES da validação e trata falha do OCR por arquivo (extração vazia + aviso, em vez de descartar); StepCertidao com canNext por documento enviado (não mais leitura reconhecida) e banner âmbar. Travas de NEGÓCIO (ex.: documento do titular no lugar do cônjuge) continuam.",
+      motivation:
+        "Pedido do Lucas 02/08: a MOST recusava certidão de casamento legítima e trancava o cadastro; quando não ler, abre manual e salva o arquivo imputado.",
+    },
+    title: "Cadastro: leitura MOST não trava mais documento",
+    type: "melhoria",
+    version: "1.105.0",
+  },
+  {
+    buildTag: "2026-08-01-bi-vale-do-ouro",
+    deployedAt: "2026-08-01T19:30:00-03:00",
+    // Interna: página pública de BI para a diretoria; não precisa anunciar no painel do time.
+    internal: true,
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "BI de Vendas do lançamento publicado em /bi/vale-do-ouro.html (link público, sem login)",
+            ],
+            screen: "BI Vale do Ouro",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "BI REALTIME em /bi/vale-do-ouro.html: página estática (fora do gate, como o telão) que consome /api/publico/bi/vale-do-ouro (rota nova, liberada UMA A UMA no proxy, só agregados, CDN s-maxage=60 — N espectadores = 1 consulta MySQL/min). Motor em lib/prometeu/bi-vale-do-ouro.ts (vendas, VGV, lotes Cecílio×Lino, ranking, planos, entrada, contratos, cobranças, investidores, perfil, cidades por endereço). Poll de 60s com guard sem-payload. Sem nomes de compradores.",
+      motivation:
+        "Lucas pediu o BI com link público no nosso domínio (sem moldura do claude.ai) e com dados realtime do C2X.",
+    },
+    title: "BI público do Vale do Ouro (realtime)",
+    type: "novidade",
+    version: "1.104.1",
+  },
+  {
+    buildTag: "2026-08-01-fila-secretaria-definitiva",
+    deployedAt: "2026-08-01T14:10:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Voltaram os botões Compareceu, Não veio e Rechamar ao chamar um cliente",
+              "Quem já está sentado numa mesa sai da fila das outras mesas e não pode ser chamado de novo",
+              "Cliente chamado não some mais da fila quando o fluxo anda por outro caminho",
+              "Finalizar com a tela desatualizada não conclui mais a pessoa errada",
+              "Sair da mesa com cliente pede confirmação, e a mesa volta a aceitar o atendente",
+            ],
+            screen: "Mesa da secretaria",
+          },
+          {
+            items: [
+              "Rechamar agora sempre anuncia no telão (antes ficava mudo minutos depois da 1ª chamada)",
+              "Duas chamadas seguidas não se atropelam: o telão anuncia uma por vez",
+              "A lista de Próximos não mostra mais quem já foi chamado ou já está em atendimento",
+              "Se a TV perder a conexão, aparece a faixa vermelha TELÃO DESCONECTADO",
+            ],
+            screen: "Telão",
+          },
+          {
+            items: [
+              "Falha de rede não apaga mais a fila da tela (mantém o que está na tela e tenta de novo)",
+              "O leitor de QR pausa enquanto a foto da PA está aberta (não bipa o próximo da fila sem querer)",
+              "Chamar de volta quem constava como Não veio na secretaria devolve a pessoa à fila dela (não abre mais chamada do salão)",
+            ],
+            screen: "Check-in / organizador",
+          },
+          {
+            items: [
+              "Nova aba Telões: o maestro muda a música/vídeo de fundo de TODAS as TVs de uma vez (tocar, pausar, volume e cortar áudio)",
+              "As chamadas de cada telão continuam independentes; TV que ligar depois entra no mesmo fundo",
+            ],
+            screen: "Setup",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Revisão completa do fluxo da fila da secretaria (32 agentes, 27 achados confirmados) e correção em lote: emTransitoTodos no payload da fila (regressão do overlay do atendente); filtro de sentados nas 3 filas e no telão; fechamento de chamadas órfãs em moverEtapa/liberarMesa/bipDaSecretaria; trava anti-corrida e anti-roubo no chamarCredenciado; validação do ocupante real no liberarMesa; marcarEmAtendimento com contagem de linhas; guard de payload no checkin-view; fila de anúncios + ?alvo= + watchdog + aviso de desconexão no telão; telefones da fila em lotes de 300; log de falha do WhatsApp de chamado. Maestro dos telões (rota /api/prometeu/palco + broadcast 'palco' + aba Telões no Setup). Cron do relatório diário das imobiliárias (18h) REMOVIDO do vercel.json a pedido do Lucas (01/08) — para religar, devolver a entrada e deployar.",
+      motivation:
+        "Dia do lançamento Vale do Ouro: mesas travando ao chamar, clientes sumindo da fila, telão mudo em rechamadas. Pedido do Lucas: revisar tudo e dar solução definitiva.",
+    },
+    title: "Fila da secretaria: solução definitiva",
+    type: "correcao",
+    version: "1.104.0",
+  },
+  {
+    buildTag: "2026-08-01-apolo-c2x-ficha-completa",
+    deployedAt: "2026-08-01T07:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "As CADs prontas para subir ao C2X saltaram de 200 para mais de 350. O dado não estava faltando: sexo, regime de bens, RG e o endereço já estavam preenchidos na ficha, e a integração só olhava a importação. Agora ela lê as duas, com a ficha do operador valendo mais — a mesma regra da CAD que o cliente assina.",
+              "Coluna nova 'Conferir': fichas em que o nome da mãe ou a data de nascimento não batem entre a importação e a ficha ficam de fora do envio automático, para alguém olhar. Esses campos vão no contrato.",
+              "Botão novo 'Ver o que falta no MOST': mostra quem ainda precisa de consulta paga e quanto custa, ANTES de gastar. Só depois aparece o botão que consulta, e ele preenche apenas campo vazio — nunca sobrescreve o que já estava lá.",
+              "O botão de enviar ao C2X agora pergunta antes. Ele criava os cadastros direto no clique, sem confirmação.",
+            ],
+            screen: "Apolo · Subir cadastros para o C2X",
+          },
+          {
+            items: [
+              "Corrigir o telefone na edição do cadastro agora grava de verdade. Antes a tela dizia 'salvo', mas o número novo não entrava — e a cobrança do PIX continuava indo para o antigo. Se a gravação falhar, a tela agora avisa em vez de fingir que deu certo.",
+            ],
+            screen: "Apolo · CRM · Editar cadastro",
+          },
+        ],
+      },
+    ],
+    rollback: "1.101.0",
+    technical: {
+      done: "A ficha de uma pessoa nascida no Apolo vive em DUAS fontes (apolo_entities.metadata.cadastro, da importação do Asana, e apolo_esteira.ficha, do operador) e montarDados (c2x-write-server) lia só a primeira — por isso o diagnóstico acusava sexo faltando em 335 de 343, regime em 343 e endereço em 333, com o dado presente na ficha o tempo todo. Novo lib/apolo/cadastro-cascata.ts (29 testes) com unirCadastroEFicha / unirEndereco / unirConjuge, na MESMA ordem da CAD assinada (cad-de-entidade.ts:6): ficha ganha, CAMPO A CAMPO. Também: RG saía fixo como null; nacionalidade agora é derivada da naturalidade (UF sufixada, ou a tabela cities do C2X, casando sem acento nas duas pontas); fichas carregadas em blocos de 100 no lote (limite de URL do PostgREST); novo status 'conferir' em ItemLote. Revisão adversarial (3 lentes + refutação) derrubou 4 defeitos, todos corrigidos antes do deploy: (1) o cônjuge ia com o label antigo do relacionamento em vez do que o operador corrigiu na ficha, e casado com cônjuge só na ficha subiria sem assinante; (2) o endereço escolhia a fonte inteira enquanto a CAD escolhe campo a campo; (3) cidadesBrasileiras comparava 'PARÁ DE MINAS' contra 'PARA DE MINAS'; (4) o gate de divergência não pega CAD com a pessoa trocada, porque a importação copia o cadastro para a ficha e as duas nascem idênticas — documentado no código, a checagem forte segue sendo classificarCad (cad-diagnostico.ts), com a âncora do proponente no Asana. Enriquecimento MOST: enrichPerson passou a devolver birthDate (era pago na PF_01 e descartado na leitura) e nova rota /api/apolo/c2x-sync/enriquecer com dryRun por padrão, ondas de 4 e gravação via gravarFichaDoLote (só preenche chave vazia). ARMADILHA registrada: existem duas matchFaixaRendaId (c2x-match casa por similaridade e devolve null para 'DE 2 A 4 SALARIOS MINIMOS'; c2x-fields lê o limite inferior e é a do MOST) — usar a errada gravava renda vazia depois de pagar a consulta. tsc limpo, 189 testes verdes no lib/apolo.",
+      motivation:
+        "Lucas: 'mas eu quero preencher tudo, quero enviar completinha' e 'pode rodar de uma vez o enriquecimento das informações'. A investigação mostrou que o enriquecimento era quase todo de graça: faltava ler a fonte certa, não comprar dado.",
+    },
+    title: "Apolo: a integração com o C2X passou a ler a ficha inteira",
+    type: "melhoria",
+    version: "1.103.0",
+  },
+  {
+    buildTag: "2026-07-31-prometeu-telao-rechamar",
+    deployedAt: "2026-07-31T16:40:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Correção: o Rechamar agora anuncia de novo no telão. Antes, chamar a mesma pessoa outra vez não repetia o anúncio (o telão achava que já tinha falado).",
+              "Se você rechamar alguém que não foi o último chamado, o telão anuncia a pessoa certa — e não repete o nome de quem já passou.",
+            ],
+            screen: "Prometeu · Telão",
+          },
+        ],
+      },
+    ],
+    rollback: "1.101.0",
+    technical: {
+      done: "BUGFIX do Rechamar no telão. Causa: rechamar REAPROVEITA a linha de prometeu_chamadas (mesmo id, e chamado_em intocado — decisão do Lucas 27/07 pra não zerar o cronômetro de espera), e o telao.html decidia anunciar comparando o id da chamada: id igual = 'já anunciei'. Fix em duas partes: (1) o endpoint /api/prometeu/telao passou a devolver credenciadoId em cada card; (2) o telao.html usa o payload do broadcast ({c: credenciadoId}, que dispara em TODA chamada, inclusive rechamada) como gatilho — procura o alvo entre atual+jaChamados do canal e anuncia ELE. Sutileza tratada: rechamar alguém que não é o topo (chamei Ana, depois Bruno, rechamo Ana) anunciava o Bruno; agora `lastChamadaId` acompanha SEMPRE o topo (independente de quem foi anunciado), então o poll de 20s não reanuncia o topo depois de uma rechamada. Alvo de outro canal é ignorado. 8 cenários provados em teste (carga inicial muda, chamada nova, poll sem novidade, rechamada fora do topo, poll pós-rechamada, rechamada dupla, alvo de outro canal, chamada nova após rechamadas). Telão independente (TV sem login) foi DESCARTADO pelo Lucas para este empreendimento. tsc limpo.",
+      motivation:
+        "Lucas, testando o telão: 'o rechamar não funcionou'. E hoje: 'para esse empreendimento não vamos ter o telão independente, então faça a correção do rechamar'.",
+    },
+    title: "Prometeu: correção do Rechamar no telão",
+    type: "correcao",
+    version: "1.102.0",
+  },
+  {
+    buildTag: "2026-07-31-prometeu-operador-telas-por-perfil",
+    deployedAt: "2026-07-31T15:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A equipe do evento agora entra por uma tela própria do lançamento (c2x.app.br/evento), com o nome do empreendimento, funcionando no celular e no computador. É por aqui que entra quem não tem login do hub.",
+              "Cada pessoa cai direto no seu posto: organizador no check-in, atendente na tela de atendimento e gestor no painel de gestão. Antes, atendente e gestor viam 'tela em construção'.",
+              "O atendente não precisa mais escolher a mesa: entra direto na mesa que o Setup definiu para ele. Ao sair, a mesa é liberada sozinha.",
+              "No Setup, o Gestor não pede mais posto (aparece 'Toda a operação') e os gestores ficam numa faixa separada, fora das colunas de posto.",
+            ],
+            screen: "Prometeu · Acesso da equipe",
+          },
+        ],
+      },
+    ],
+    rollback: "1.100.0",
+    technical: {
+      done: "Área /evento passou a rotear por PERFIL (evento-app.tsx): organizador->CheckinView, atendente->AtendenteView, gestor->GestaoMobile (com max-w-2xl no PC). Login (login-operador.tsx) reescrito: identidade do lançamento via nova rota pública GET /api/publico/prometeu/evento (devolve SÓ o nome; liberada uma a uma no proxy.ts) + 1 coluna no celular / 2 colunas no lg. Setup: perfil gestor esconde o seletor de Posto e ganha faixa própria; central-view e porZona excluem gestor das listas de posto. CORREÇÕES DA REVISÃO ADVERSARIAL (30 agentes, 22 achados confirmados, 10 únicos): (1) SEGURANÇA — novo autorizarOperacaoDeEscrita (authorizePrometeuWrite na via do hub) para chamar/atender/liberar: sem ele um VIEWER do hub passaria a operar mesa e disparar WhatsApp real; restaura também chamado_por/por (auditoria gravava null). (2) SEGURANÇA — na via do cookie do operador, etapa/moverPara só passam se a mesa informada estiver ocupada por AQUELE credenciado: sem isso liberar/chamar viravam a ação 'mover' (restrita ao hub) e concluíam qualquer um dos 431. (3) app/evento/layout.tsx ganhou .panteon-mobile-root + viewport: a área herdava html{min-width:1024px} e escapava no celular (armadilha recorrente). (4) novo lib/prometeu/evento-do-dia.ts espelha eventoOperavelId (em_andamento > ativo) nas 3 telas: elas buscavam só 'ativo' e cairiam no fallback lista[0] ao INICIAR o evento. (5) GestaoMobile: 'if (data?.credenciados)' no lugar de '?? []' — blip de rede no poll zerava a tela (armadilha do Hermes). (6) botão de no-show DEFINITIVO só com hubUser (a ação excluir é restrita ao hub; o freela levaria 'Sessão ausente'). (7) atendente entra direto na mesa do cadastro (operador.mesaId) — a escolha lia 'em uso' pelo CLIENTE, não pelo colega, e dois atendentes pegavam a mesma mesa. (8) Sair solta a mesa e limpa o storage (o aparelho roda entre pessoas no turno). tsc limpo.",
+      motivation:
+        "Lucas, montando a equipe na véspera: 'gestor não precisa de local' e, ao descobrir que atendente/gestor não tinham tela no /evento, definiu o modelo — 'todos os externos acessam pelo login do Vale do Ouro, faz uma tela para mobile e pc; os internos acessam o hub'.",
+    },
+    title: "Prometeu: acesso da equipe do evento (cada perfil na sua tela, celular e PC)",
+    type: "novidade",
+    version: "1.101.0",
+  },
+  {
+    buildTag: "2026-07-30-apolo-cancelar-pix-prazo",
+    deployedAt: "2026-07-30T17:55:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Ferramenta admin: cancelar os PIX de pré-venda não pagos quando o prazo fecha (conferir antes, depois cancelar com confirmação; os pagos ficam intactos).",
+            ],
+            screen: "Apolo · Imobiliárias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.99.0",
+    technical: {
+      done: "Cancelamento em lote dos PIX não pagos da conta Gurgel (pré-venda), pro fim do prazo (18h). lib/apolo/asaas-prevenda.ts ganhou listarCobrancas(status,paginado) e cancelarCobranca (DELETE /v3/payments/{id} — o Asaas recusa deletar paga). Rota GET /api/apolo/asaas/cancelar-pendentes (authorizeApoloAdmin, maxDuration 300): lista PENDING+OVERDUE (paginado, teto 50pg); dryRun por padrão (só resumo total/valor/porStatus/amostra); confirmar=1 deleta cada, com trava dupla (pula status fora de [PENDING,OVERDUE], nunca toca pago). Botão em vincular-imobiliarias.tsx: 'Conferir o que seria cancelado' (dryRun) → mostra total+valor → 'Cancelar N PIX' (window.confirm) → resultado. Interno.",
+      motivation:
+        "Lucas: 'o prazo do PIX é hoje até 18h, depois não podemos receber. tem como cancelar todos os pix?'. Feito às 17:47 pra disparar às 18h; só os não pagos.",
+    },
+    title: "Apolo: cancelar PIX de pré-venda não pagos (fim do prazo)",
+    type: "novidade",
+    version: "1.100.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-telao-auth-fix",
+    deployedAt: "2026-07-30T17:20:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Correção: o telão não estava chamando ninguém porque a busca de dados dava erro de autenticação. Agora funciona.",
+            ],
+            screen: "Prometeu · Telão",
+          },
+        ],
+      },
+    ],
+    rollback: "1.98.0",
+    technical: {
+      done: "BUGFIX do telão (v1.97 não funcionava): o endpoint /api/prometeu/telao usa authorizePrometeuRead, que EXIGE Bearer da sessão Supabase; o telao.html (HTML estático) fazia fetch SEM Authorization → 401 sempre (mesmo logado), então buscarTelao retornava null e nem os dados carregavam nem o realtime conectava. Fix: tokenDoHub() lê o access_token da sessão no localStorage (chave sb-<ref>-auth-token, mesma origem) e o buscarTelao passa Authorization: Bearer + credentials:'same-origin' (o cookie do operador do evento cobre o outro caso). O teste no preview dava 401 e foi lido como 'esperado sem login', mascarando que dá 401 sempre. Lucas pegou ao vivo: chamou pro salão e o telão não anunciou (a chamada ESTAVA no banco com zona=salao).",
+      motivation:
+        "Lucas testando: 'chamei uma pessoa para o salão e o telão não chamou'. Causa: 401 no endpoint por falta do Bearer.",
+    },
+    title: "Prometeu: correção do telão (autenticação do endpoint)",
+    type: "correcao",
+    version: "1.99.0",
+  },
+  {
+    buildTag: "2026-07-30-apolo-relatorio-disparo-manual",
+    deployedAt: "2026-07-30T16:45:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Botão 'Disparar agora para TODAS (real)' na tela de Imobiliárias: dispara o relatório (e-mail + WhatsApp) na hora, com confirmação obrigatória.",
+            ],
+            screen: "Apolo · Imobiliárias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.97.0",
+    technical: {
+      done: "Botão de disparo manual do relatório diário das imobiliárias em vincular-imobiliarias.tsx: dispararGeral() chama GET /api/apolo/imobiliarias/relatorio-diario SEM params (mesmo caminho do cron das 18h) com o Bearer do admin Apolo, atrás de window.confirm (é outward + custo de WhatsApp). Mostra enviados + OK de e-mail/WhatsApp. Interno (ferramenta admin, não vai ao painel de novidades). Motivo: Lucas quis disparar o relatório fora do horário e não havia botão de disparo geral (só teste e reenvio).",
+      motivation:
+        "Lucas: 'consegue fazer um disparo agora?' — disparo real pra todas, ciente de que o cron das 18h também roda hoje (recebem 2x).",
+    },
+    title: "Apolo: botão de disparo manual do relatório das imobiliárias",
+    type: "melhoria",
+    version: "1.98.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-telao-real",
+    deployedAt: "2026-07-30T18:40:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O Telão agora funciona de verdade: quando alguém é chamado no salão ou na secretaria, o telão daquela TV mostra o nome e o destino (mesa ou salão) e a CACÁ anuncia por voz, em tempo real.",
+              "Cada TV escolhe o setor ao abrir (Salão de vendas ou Secretaria) e mostra só as chamadas dele, com as listas de 'já chamados' e 'próximos'.",
+            ],
+            screen: "Prometeu · Telão",
+          },
+        ],
+      },
+    ],
+    rollback: "1.96.0",
+    technical: {
+      done: "Telão real (escopo: chamada + voz). NOVO endpoint GET /api/prometeu/telao?canal=salao|secretaria (autorizarOperacao; descobre o evento ativo; cruza prometeu_chamadas por zona com listCredenciados p/ nome+imob+corretor e prometeu_mesas p/ número; devolve atual+jaChamados+proximos via filaDoSalao/filaDaSecretaria + config pública do Realtime {url, publishable key, topico}). telao.html PORTADO (visual/áudio/voz do mockup INTACTOS, feedback mockup=spec): trocado o BroadcastChannel (mesma origem) + dados fake pelo broadcast prometeu:fila:<eventoId> (supabase-js via esm.sh) + fetch ao endpoint; ao receber, aplicarDados anuncia só se atual.id mudou; 1ª carga não re-anuncia; poll de 20s como rede de segurança; controles de demo (.ctrl) escondidos; removido o poll do locutor (localhost:5180). Preview validado: estrutura idêntica, endpoint 401 sem auth, canal aplica, esm.sh carrega, console limpo. Comemoração de venda e locutor ao vivo ficam pra fase futura. tsc limpo.",
+      motivation:
+        "Lucas: 'quando chamar no salão e na secretaria tem que chamar no telão' + 'tem que ser igual o que eu aprovei no mockup'. Escopo escolhido: só a chamada, com a voz da CACÁ.",
+    },
+    title: "Prometeu: telão ligado de verdade (chamada em tempo real + voz da CACÁ)",
+    type: "novidade",
+    version: "1.97.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-fila-posicao-realtime",
+    deployedAt: "2026-07-30T18:05:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Na tela do cliente, a posição na fila agora atualiza em tempo real: quando alguém é chamado e a fila anda, o número de todo mundo que está esperando muda na hora (antes levava até 15 segundos).",
+            ],
+            screen: "Prometeu · Tela do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.95.0",
+    technical: {
+      done: "AcompanharFila.tsx: o handler de broadcast do canal prometeu:fila:<eventoId> passou a atualizar a posição de TODOS os clientes na fila (não só o chamado). Quem é o alvo (payload.c === meuId) faz buscar() imediato (alerta na hora); os demais fazem buscar() com jitter aleatório de até 1,2s (Math.random) pra espalhar o burst de N celulares, protegidos pelo snapshot de 4s do servidor. Guarda `vivo` evita refresh após desmontar. DIAGNÓSTICO desta sessão: o broadcast do servidor FUNCIONA em prod (capturado ao vivo via listener no canal do evento, payload {c}); o 'delay' relatado era descasamento de teste (link de uma pessoa, chamado em outra) — só o chamado reagia na hora, por design. Lucas pediu tempo real pra todos.",
+      motivation:
+        "Lucas escolheu 'tempo real' quando perguntei se a posição dos que esperam devia atualizar na hora (item 2) ou seguir no poll de 15s. O alerta de 'é a sua vez' (item 1) já era instantâneo.",
+    },
+    title: "Prometeu: posição na fila em tempo real pra quem espera",
+    type: "melhoria",
+    version: "1.96.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-chamado-whatsapp",
+    deployedAt: "2026-07-30T15:20:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Reforço do alerta: quando o cliente é chamado, ele também recebe um WhatsApp 'É a sua vez' com um botão pra abrir a tela da fila. Isso avisa em qualquer celular, com a tela bloqueada ou o app fechado (o alarme da tela só funciona com a aba aberta).",
+              "No Setup do evento tem o novo botão 'Criar template de chamado' e o interruptor 'Avisar por WhatsApp ao chamar' (liga/desliga por evento).",
+            ],
+            screen: "Prometeu · Setup e chamado",
+          },
+        ],
+      },
+    ],
+    rollback: "1.94.0",
+    technical: {
+      done: "Reforço do chamado por WhatsApp (template 'prometeu_chamado', UTILITY, SEM header de imagem — corpo {{1}}=nome, {{2}}=destino + botão URL pro link da fila). Novos: lib/prometeu/chamado-template.ts, app/api/prometeu/chamado-template/route.ts (cria o template), lib/prometeu/chamado-disparo.ts (enviarChamadoPorWhatsApp, best-effort, gate config.avisarChamadoPorWhatsapp default true, modo teste reusa PROMETEU_WELCOME_TEST_PHONE, destino por zona via descreverDestinoChamado). Plugado nas ações 'chamar' e 'chamar-do-salao' da rota credenciados via after() (junto do broadcast realtime). Setup: toggle avisarChamado + botão criar template (criarTemplateChamadoRemoto). Broadcast ganhou timeout de 3s (AbortController) pra não segurar o after(). tsc limpo. IMPORTANTE: só dispara depois que o template for aprovado pela Meta (criar pelo Setup e aguardar).",
+      motivation:
+        "Lucas escolheu montar o reforço WhatsApp como o canal confiável pra iPhone/tela bloqueada, já que o alarme da tela (Fase 1) só vale com a aba aberta.",
+    },
+    title: "Prometeu: reforço do chamado por WhatsApp (É a sua vez)",
+    type: "novidade",
+    version: "1.95.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-tela-cliente-alerta-chamado",
+    deployedAt: "2026-07-30T14:40:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Quando o cliente é chamado, o celular dele agora avisa na hora: toca um alarme, vibra e mostra uma notificação. O aviso chega em tempo real (sem o atraso de antes).",
+              "A tela do cliente ganhou o botão 'Tocar um alarme quando for a minha vez'. Ao tocar nele, o cliente autoriza o som, a vibração e a notificação (o navegador exige esse toque).",
+              "O número da posição na fila ficou com o 'º' grudado no numeral (1º, 2º), em vez do símbolo solto ao lado.",
+            ],
+            screen: "Prometeu · Tela do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.93.0",
+    technical: {
+      done: "Fase 1 do alerta em realtime na tela do cliente (AcompanharFila.tsx). SERVIDOR: novo lib/prometeu/realtime-fila.ts (avisarFilaEmRealtime) faz broadcast HTTP no endpoint /realtime/v1/api/broadcast (best-effort, service role), disparado via after() nas ações 'chamar' e 'chamar-do-salao' da rota credenciados; payload mínimo { c: credenciadoId } (só o UUID do chamado reage, os demais seguem no poll de 15s — custo mínimo). Tópico compartilhado em lib/prometeu/fila-topic.ts (prometeu:fila:<eventoId>). CLIENTE: subscribe anon via getHubSupabaseClient().channel com rejoin/backoff (padrão IrisPage); ao receber, buscar() imediato. O ALERTA (alerta.mp3 + navigator.vibrate + Notification via ServiceWorkerRegistration.showNotification, com fallback new Notification) nasce da TRANSIÇÃO de estado para 'chamado', então dispara mesmo se o broadcast falhar (poll cobre). Botão 'ativar avisos' desbloqueia áudio + pede permissão no gesto. Numeral: 'º' grudado (removido ml-1, tom #c9b892). tsc limpo. LIMITES: vale com a aba aberta; iOS não vibra e só notifica via PWA instalado; Fase 2 (Web Push) cobre tela bloqueada.",
+      motivation:
+        "Lucas: 'na hora que chamar tem que ser em realtime' (o chamado tinha ~10s de atraso do poll) e 'não tem como colocar um som quando o cliente é chamado e fazer o telefone dele vibrar?' + 'garantir que o cliente veja que foi chamado'. E o ajuste do 'º' no numeral.",
+    },
+    title: "Prometeu: alerta em tempo real quando o cliente é chamado (som + vibração + notificação)",
+    type: "novidade",
+    version: "1.94.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-tela-cliente-nome-posicao",
+    deployedAt: "2026-07-30T10:36:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Ajustes na tela do cliente: o nome do cliente agora aparece em destaque (bem maior) no topo, e o bloco da posição ficou mais limpo (só o número na fila, sem o texto embaixo).",
+            ],
+            screen: "Prometeu · Tela do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.92.0",
+    technical: {
+      done: "Ajustes visuais em AcompanharFila.tsx (estado na_fila): (1) nome do cliente promovido a destaque (Bem-vindo pequeno + nome em text-[26px] font-black); (2) removido o texto de status abaixo do anel ('Você é o próximo' / 'N pessoas na frente') — Lucas quer só a posição. Mantido o chip de perspectiva (ETA). tsc limpo. Próximo: realtime no chamado + vibração/som/notificação (em investigação).",
+      motivation:
+        "Lucas, após validar o fix de layout: 'nome do cliente pequeno, aumenta' e 'tirar o texto abaixo da posição, deixar só a posição na fila'.",
+    },
+    title: "Prometeu: tela do cliente com nome em destaque e posição mais limpa",
+    type: "melhoria",
+    version: "1.93.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-tela-cliente-mobile-fix",
+    deployedAt: "2026-07-30T10:14:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Corrigida a tela do cliente no celular: o conteúdo estava aparecendo deslocado e cortado (escapando para a direita). Agora abre certo, centralizado, tanto no navegador do WhatsApp quanto no Chrome.",
+            ],
+            screen: "Prometeu · Tela do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.91.0",
+    technical: {
+      done: "Fix do layout quebrado da tela pública do cliente (/publico/fila) no celular. Causa: globals.css tem `html { min-width: 1024px }` (o hub é desktop) e o AcompanharFila.tsx (reescrito na v1.89) NÃO tinha a classe que neutraliza isso — então a página renderizava a 1024px num viewport de ~375px (html.clientWidth=375 mas body.width=1024) e o conteúdo escapava pra direita, cortado. FIX: classe `publico-shell` no <main> (mesma regra `html:has(.publico-shell){min-width:0;overflow-x:hidden}` que /publico/cad já usa). Diagnóstico e correção provados no browser (dpr 2, viewport 375): com a classe, min-width 1024→0 e body 1024→375. Registrado em memória (reference_html_minwidth_quebra_mobile) como armadilha recorrente. tsc limpo.",
+      motivation:
+        "Lucas testou o link no celular (WhatsApp e fora dele) e a tela veio 'quebrada, aquele mesmo erro de disposição'. É o mesmo bug do /publico/cad de 20/jul.",
+    },
+    title: "Prometeu: corrige a tela do cliente escapando pra direita no celular",
+    type: "correcao",
+    version: "1.92.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-gestao-painel-analitico",
+    deployedAt: "2026-07-30T07:06:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A Gestão no celular ganhou um Painel mais completo: o Bipar credencial no topo, os tempos do evento (tempo médio no evento e de atendimento) e o fluxo do dia por fase (Recepção → Salão → Secretaria) com quantos estão em cada uma e o tempo médio da fase.",
+              "Nova aba Analítico: a lista de quem está no evento agora, com busca e filtros por etapa, imobiliária e corretor (ex.: quem está em negociação da RR Soluções). Toca no cliente e abre a jornada dele.",
+              "O 'Voltar' pra escolher entre Operação e Gestão ficou explícito no topo.",
+            ],
+            screen: "Prometeu · Celular · Gestão",
+          },
+        ],
+      },
+    ],
+    rollback: "1.90.0",
+    technical: {
+      done: "Gestão mobile enriquecida (modules/prometeu/blocks/gestao/gestao-mobile.tsx). Painel: bip no topo; bloco Tempos (tempoEvento = kpis.tempoMedio; tempoAtendimento = tempoMedioMin das etapas de atendimento); bloco Fluxo por fase (componente Fluxo: 3 fases, contagem por etapa + tempo médio de permanência ATUAL da fase, ignorando concluído/cancelado). Nova aba Analítico (componente Analitico): lista de presentes (entrouEm!=null) com busca + chips de etapa + selects imob/corretor (opções sempre incluem o valor filtrado, pra não travar vazio no polling), toca abre a JornadaDrawer. Header com Voltar explícito (onTrocarModo). TabBar com 3 abas. Os tempos por fase são de PERMANÊNCIA ATUAL (ao vivo, onde a fila trava), não histórico de movimentações — barato e sem query nova. Revisão adversarial (3 achados corrigidos, 2 de alta): o Fluxo e os tempos passaram a operar sobre PRESENTES (entrouEm!=null), não sobre credenciados cru — senão os centenas de pré-cadastros (etapa 'recepcao' sem check-in) inflavam a 'Aguardando' e faziam o tempo da Recepção somar a hora do CADASTRO; e o rótulo do Analítico virou neutro ('no evento') + chip Cancelado, pra não contradizer o KPI 'Presentes agora'. tsc limpo; 113 testes verdes.",
+      motivation:
+        "Lucas (frente Gestão): indicadores por fase + tempos no Painel, Analítico no celular com filtro por etapa+imobiliária ('quem está em negociação da imobiliária X'), e o Voltar mais óbvio. Mockup aprovado.",
+    },
+    title: "Prometeu: Gestão no celular com fluxo, tempos e Analítico filtrável",
+    type: "novidade",
+    version: "1.91.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-boas-vindas-checkin",
+    deployedAt: "2026-07-30T06:23:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "No check-in, o cliente passa a receber automaticamente um WhatsApp de boas-vindas com a logo do C2X, a posição dele na fila e um botão que abre a tela de acompanhamento. Liga/desliga pelo Setup ('Enviar pelo WhatsApp').",
+              "No Setup há um botão 'Criar template de boas-vindas' para submeter o modelo à Meta (a aprovação fica com a Meta).",
+            ],
+            screen: "Prometeu · Boas-vindas no check-in",
+          },
+        ],
+      },
+    ],
+    rollback: "1.89.0",
+    technical: {
+      done: "Entrega 2 da tela do cliente: disparo automático da boas-vindas no check-in via template Meta (ver memória project_prometeu_tela_cliente). (1) sendMetaWhatsAppTemplateMessage (lib/iris/meta-whatsapp.ts) ganhou param OPCIONAL urlButtonParameter → adiciona o componente button sub_type=url no envio (aditivo; sem ele o envio segue idêntico, não afeta o convite nem o resto da Iris). (2) lib/prometeu/boas-vindas-template.ts: definição do template prometeu_boas_vindas (UTILITY, pt_BR, header IMAGE logo C2X, body {{1}}nome {{2}}lançamento {{3}}posição, botão URL /publico/fila?t={{1}}). (3) app/api/prometeu/boas-vindas-template (POST): cria/submete à Meta no 4143, baixa a logo por URL, trata duplicata 2388023 — disparado pelo botão do Setup. (4) lib/prometeu/boas-vindas-disparo.ts: enviarBoasVindasDoCheckIn BEST-EFFORT (try/catch, nunca derruba o check-in), gate config.senhaPorWhatsapp, posição via filaDaRecepcao (mesma que o cliente vê), token do link assinado como parâmetro do botão. MODO TESTE: env PROMETEU_WELCOME_TEST_PHONE redireciona TODO check-in pra um número (o do Lucas nos testes). ⚠️ só entrega com o template APROVADO pela Meta; até lá devolve o motivo sem afetar o check-in. Revisão adversarial (6 achados corrigidos): o disparo roda via after() FORA do caminho crítico (não segura o organizador na porta esperando a Meta); telefone normalizado por comprimento (não colide com DDD 55/RS); fallbacks não-vazios pra lançamento/posição (a Meta recusa parâmetro vazio); maxDuration=60 na rota; e de quebra listUnidades passou a fatiar o .in em lotes (evitava um 400 silencioso da URL em evento grande). tsc limpo; 113 testes verdes.",
+      motivation:
+        "Lucas: no check-in, mandar a boas-vindas com a logo C2X e a posição, levando à tela do cliente. Para teste, 'todo check-in deve cair no meu celular' (modo teste). Decisão: automático via template (revoga o wa.me manual), submeter à Meta já.",
+    },
+    title: "Prometeu: boas-vindas automática no check-in (template + link da fila)",
+    type: "novidade",
+    version: "1.90.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-tela-cliente",
+    deployedAt: "2026-07-30T00:58:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A tela que o cliente vê no celular ganhou visual novo: logo do C2X, a posição na fila em destaque, a perspectiva de atendimento (faixa de tempo, ex.: '20 a 35 min') e um mini-fluxo do circuito (Recepção → Salão → Secretaria) mostrando onde ele está e pra onde vai.",
+            ],
+            screen: "Prometeu · Tela do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.88.0",
+    technical: {
+      done: "Redesenho da tela pública do cliente (modules/publico/prometeu/AcompanharFila.tsx, /publico/fila?t=token) + perspectiva de atendimento (ver memória project_prometeu_tela_cliente). Toda a cadeia de dados foi REUSADA sem mexer (derivarAcompanhamento, snapshot cache 4s, poll 15s com visibilitychange, token assinado, barreira de privacidade). Novidades: (1) UI nova em Tailwind (logo /c2x-logo-branca.png, posição num anel SVG, pessoas na frente, mini-fluxo recepção→salão→secretaria via passoAtual derivado de estado/zona); (2) ETA como FAIXA (decisão do Lucas): campo etaMinutos {de,ate}|null no AcompanhamentoDaFila, calculado no server = pessoasNaFrente × (tempoMedioAtendimento do config ou 10min ÷ capacidade de mesas), faixa ±30%, só quando há gente na frente — número derivado, sem furar a barreira de privacidade. 3 testes novos + teste de privacidade atualizado; 113 testes verdes; tsc limpo. AINDA MANUAL o disparo (wa.me); o template automático de boas-vindas é a próxima entrega.",
+      motivation:
+        "Lucas: tela do cliente 'moderna, de impressionar', com posição, perspectiva de atendimento e mini-fluxo. Mockup aprovado ('ficou do jeito que eu queria').",
+    },
+    title: "Prometeu: tela do cliente na fila com posição, perspectiva e mini-fluxo",
+    type: "melhoria",
+    version: "1.89.0",
+  },
+  {
+    buildTag: "2026-07-30-prometeu-gestao-mobile",
+    deployedAt: "2026-07-30T00:21:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "No celular, ao abrir o Prometeu agora aparece a escolha Operação ou Gestão. Operação é o de sempre (escolher posto e bipar a fila); Gestão abre uma tela feita pra mão.",
+              "Gestão no celular: indicadores do evento no topo, botão 'Bipar credencial' (lê o QR e abre a jornada do cliente) e a lista de reservas seguradas com corretor, imobiliária e tempo (vermelho acima de 30 min), com filtros.",
+            ],
+            screen: "Prometeu · Celular · Gestão",
+          },
+        ],
+      },
+    ],
+    rollback: "1.87.0",
+    technical: {
+      done: "Partes A (bifurcação) e B (Gestão) do perfil GESTÃO no MOBILE (ver memória project_prometeu_perfil_gestao). app/m/prometeu passou a renderizar EntradaGestorMobile (escolha Operação|Gestão) — todo login do hub que chega no /m é gestor, então a escolha aparece pra todos ali; freela entra por /evento (ainda não tocado). Operação → SeletorDePosto (inalterado). Gestão → GestaoMobile (nova, Tailwind, não usa o cockpit que não é responsivo): fetchFila+polling 10s, KPIs via nova função pura lib/prometeu/kpis.ts (calcularKpisDoEvento, extraída da CentralView pra Central e Gestão não divergirem), bip (usarLeitorQr) que abre a jornada em drawer (fetchJornada), e a aba Reservas (etapa 'reserva' parada, alerta 30min, filtros imob/corretor com set.add do valor filtrado pra não travar vazio). PENDENTE: freela gestor no /evento e a Gestão no PC (Central sem o Mapa). tsc limpo; 110 testes verdes; revisão adversarial.",
+      motivation:
+        "Lucas atualizou no celular e não via a Gestão: o bip e as reservas (v1.87) viviam só na Central do PC. Esta é a porta de entrada + a tela mobile. Mockup aprovado (menos texto). Acesso: login do hub = gestor (não só admin).",
+    },
+    title: "Prometeu: Gestão no celular (escolha Operação/Gestão + KPIs, bip e reservas)",
+    type: "novidade",
+    version: "1.88.0",
+  },
+  {
+    buildTag: "2026-07-29-prometeu-gestao-bip-reservas",
+    deployedAt: "2026-07-29T23:38:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Novo botão 'Bipar credencial' na Central: aponte a câmera para o QR do crachá e abre direto a jornada daquele cliente (check-in, salão, secretaria, tempos).",
+            ],
+            screen: "Prometeu · Central",
+          },
+          {
+            items: [
+              "Nova aba 'Reservas' na Central: lista quem está com a reserva parada (reservou e não seguiu pra secretaria), com corretor, imobiliária e tempo. Fica vermelho passando de 30 minutos. Filtros por imobiliária, corretor e 'só em alerta' pra o coordenador cobrar quem está segurando unidade.",
+            ],
+            screen: "Prometeu · Central · Reservas",
+          },
+        ],
+      },
+    ],
+    rollback: "1.86.0",
+    technical: {
+      done: "Primeiras 2 das 4 partes do perfil GESTÃO do Prometeu (ver memória project_prometeu_perfil_gestao). (C) BIP DO GESTOR: botão no header da CentralView abre overlay de câmera reusando o hook usarLeitorQr (blocks/checkin); ehIdDeCredencial valida o QR (id cru); acha o cliente na lista já em memória e abre o mesmo modal de jornada dos cards (setModal tipo jornada) — sem rota nova, sem efeito no banco. (D) RESERVAS SEGURADAS: nova aba 'reservas' + subcomponente Reservas que filtra presentesTodos por etapa==='reserva' && !noShow, tabela Cliente/Corretor/Imobiliária/Tempo ordenada por etapaDesde asc, alerta (vermelho + chip) a partir de 30min (LIMITE_RESERVA_MS), filtros de imobiliária/corretor/só-alerta client-side. Base = ETAPA reserva (prometeu_unidades não é escrita hoje). Reusa .ltable/.ana-bar/NomeNaTabela/duracao. Ainda SEM a bifurcação de perfil (A) e a Gestão enxuta (B) — por ora bip e reservas vivem na Central do time. tsc limpo; 110 testes verdes; revisão adversarial.",
+      motivation:
+        "Lucas: escalada do perfil Gestão. 'função de bip para o gestor... abre a tela da jornada dele'; e a tela de reservas para o coordenador pegar corretor/imobiliária que reserva unidade e não devolve ('guardando'). Decisões: reserva=etapa parada, alerta 30min, ordem bip→reservas→bifurcação→gestão.",
+    },
+    title: "Prometeu: bip do gestor (abre a jornada) e aba de reservas seguradas",
+    type: "novidade",
+    version: "1.87.0",
+  },
+  {
+    buildTag: "2026-07-29-prometeu-noshow-mapa-pip",
+    deployedAt: "2026-07-29T22:27:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Quando o organizador do salão marca 'não veio', a pessoa passa a ficar na aba 'Não vieram' do PRÓPRIO salão, não mais na tela da recepção.",
+            ],
+            screen: "Prometeu · Organizador do salão",
+          },
+          {
+            items: [
+              "Os cards das mesas da secretaria agora mostram o NOME COMPLETO do cliente que está sendo atendido.",
+              "Removida a legenda de cores do rodapé do Mapa do salão.",
+            ],
+            screen: "Prometeu · Central · Mapa do salão",
+          },
+          {
+            items: [
+              "A janela flutuante (picture-in-picture) do atendimento parou de cortar o conteúdo: nome, contexto e botões voltam a caber inteiros.",
+            ],
+            screen: "Prometeu · Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "1.85.0",
+    technical: {
+      done: "Três ajustes no Prometeu. (1) NO-SHOW POR POSTO: o 'não veio' do salão vazava para a tela da recepção porque a aba 'Não vieram' filtrava por etapa (salão->'negociacao'), mas a etapa NÃO muda no no-show e o salão chama de quem está em 'recepcao'. Fix: marcarNoShow grava metadata.noShow.zona (o posto que marcou); PrometeuCredenciado ganhou noShowZona (via lerNoShowZona no map de listCredenciados); a rota /credenciados e marcarNoShowRemoto repassam zona; checkin-view filtra a aba por c.noShowZona === posto (fallback pela etapa só p/ no-show antigo, que some no reset). (2) MAPA DO SALÃO: card da mesa mostra sentado.nome completo (era iniciais + 1º nome) num bloco .atd-cliente com ellipsis + tempo; removida a legenda .maplegend (exclusiva dessa aba, não afeta o Painel). (3) PIP: o card saía cortado ~197px à esquerda — a regra .pat.em-atendimento:not(.pip-out) #atendimento (especificidade maior) impunha transform:translateX(-50%)+width:min(720px,94vw) dentro do PiP, vencendo .pat.pip-solo. Fix: +:not(.pip-solo) na regra da aba, então dentro do PiP só a regra pip-solo (static, 100%, transform:none) vale. tsc limpo; 110 testes do Prometeu verdes.",
+      motivation:
+        "Lucas, sobre a operação do dia (lançamento 01/08): 'quando ele fala que o cliente não veio, a fila do aguardando tem que ser na tela dele, está indo para o checkin'; 'no mapa do salão dá pra colocar o nome do cliente, tirar essa legenda'; 'a tela do picture in picture ainda continua quebrado'.",
+    },
+    title: "Prometeu: no-show por posto, nome do cliente no mapa do salão e PiP consertado",
+    type: "correcao",
+    version: "1.86.0",
+  },
+  {
+    buildTag: "2026-07-29-apolo-board-nome-imob-padronizado",
+    deployedAt: "2026-07-29T22:08:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "No Board da esteira, cada imobiliária agora aparece com um nome só. Antes a mesma imobiliária vinha escrita de formas diferentes nos cards ('RR Soluções' e 'RR Soluções Imobiliárias LTDA', 'Mais Lotes' e 'Mais Lotes Negócios Imobiliários LTDA'); agora todos os cards dela mostram a grafia mais usada.",
+            ],
+            screen: "Apolo · Board da esteira",
+          },
+        ],
+      },
+    ],
+    rollback: "1.84.0",
+    technical: {
+      done: "app/api/apolo/board/route.ts: o card exibia o texto cru de apolo_esteira.imobiliaria (grafias variadas para a mesma imobiliária). Agora agrupa as CADs pela ENTIDADE da imobiliária (imobiliariaEntityIdEmLote por vínculo em apolo_relationships + fallback no de-para apolo_imobiliaria_match por texto normalizado) e exibe, para todas as CADs de uma imobiliária, a grafia MAIS FREQUENTE (empate: mais curta, depois alfabética). Preserva a grafia original (acentos e siglas como J&F/L&I), sem forçar caixa, e evita os display_name feios da entidade (nomes PF com CPF). Só leitura, sem migration, sem tocar no front (ItemFila inalterado). Vale do Ouro: 50+ grafias colapsam em ~28 imobiliárias (RR Soluções 134, Mais Lotes 62, J&F 43...). Validado por SQL replicando a heurística. tsc limpo. Decisão do Lucas: 'unificar já, apelido depois' — o apelido curador curto (ex.: Rômulo Siqueira, Avança) fica para um passo seguinte.",
+      motivation:
+        "Lucas, sobre um print do Board: 'temos que padronizar esses nomes'. A mesma imobiliária aparecia com grafias diferentes entre os cards. Mesma raiz já corrigida em etiquetas do Prometeu e no relatório das imobiliárias.",
+    },
+    title: "Apolo: Board mostra um nome só por imobiliária",
+    type: "melhoria",
+    version: "1.85.0",
+  },
+  {
+    buildTag: "2026-07-29-prometeu-fila-congela-por-fase",
+    deployedAt: "2026-07-29T21:26:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A fila da recepção agora CONGELA a posição de quem já fez check-in: ligar ou desligar a janela de check-in não reordena mais quem já está na fila. O novo regime (com a janela aberta, a prioridade do PIX; com ela fechada, a ordem de chegada) passa a valer só para quem bipar dali pra frente.",
+              "Com a janela aberta, quem ainda não pagou o PIX passa a ser chamado na ordem de chegada física (hora do check-in), não mais pela data do cadastro.",
+            ],
+            screen: "Prometeu · Fila da recepção",
+          },
+        ],
+      },
+    ],
+    rollback: "1.83.0",
+    technical: {
+      done: "filaDaRecepcao (lib/prometeu/data.ts) reordenava a fila DINAMICAMENTE pelo estado ATUAL do flag global checkinHabilitado, então togglar re-embaralhava a fila inteira retroativamente. Fix por modelo de FASES congeladas (sem migration): (1) config.checkinFase = contador que sobe +1 a cada virada do flag, calculado em atualizarEvento comparando o valor gravado vs o novo (salvar o Setup por outro motivo não mexe na fase); (2) fazerCheckIn carimba em metadata.recepcao={fase,ligado} o regime vigente no momento do check-in (merge, sem apagar noShow/pa); (3) filaDaRecepcao ordena pela chave congelada — fase asc, depois PIX-first só se o regime congelado estava ligado, depois ordem do PIX, depois chegada; fallback pra quem não tem regime (check-in pré-fix). Reset de ensaio limpa metadata.recepcao. SEGUNDO fix no mesmo ponto (bug pré-existente, pego por revisão adversarial multi-agente antes de subir): o discriminador de 'pagou PIX' era c.posicao != null, mas posicao é DERIVADA (indice+1) e vem preenchida pra todos — então no regime ligado todo não-pagante caía no grupo do PIX e era ordenado pela DATA DA CAD (chegou_em) em vez da chegada física. Trocado por c.ordemFila != null (a chave real da fila do evento). Teste de mutação confirma que os testes de desempate entre não-pagantes agora pegam a regressão. 3 testes novos de congelamento + fixtures dos testes tornados realistas (posicao sempre não-nula); 110 testes do Prometeu verdes; tsc limpo.",
+      motivation:
+        "Lucas relatou (29/07): bipou pagantes com a janela aberta, desligou (pagantes novos foram pro fim, ok), religou e a fila TODA reordenou pelo PIX. Esperado: 'na hora da mudança o que já foi registrado não mexe, somente nos novos'. É o coração do dia do lançamento (01/08).",
+    },
+    title: "Prometeu: fila da recepção congela ao ligar/desligar o check-in",
+    type: "correcao",
+    version: "1.84.0",
+  },
+  {
+    buildTag: "2026-07-29-relatorio-imob-por-texto",
+    deployedAt: "2026-07-29T22:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O relatório das imobiliárias agora inclui também as CADs cuja imobiliária estava só como texto de apelido (ex.: 'Mais Lotes', 'RR Soluções'), não só as que tinham vínculo por entidade. A seção 'Crédito em Revisão' e as demais voltam a mostrar todo mundo.",
+            ],
+            screen: "Apolo · Relatório das imobiliárias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.82.0",
+    technical: {
+      done: "Complemento do fix do relatório: 458 das 566 fichas do Vale do Ouro tinham a imobiliária só como TEXTO curto ('rr solucoes' 117, 'mais lotes' 46, 'moura' 39...) e o de-para (apolo_imobiliaria_match) só cobria as grafias longas, então caíam fora (ex.: 145 em revisão, quase todas some). (1) Backfill: gravei 25 grafias curtas → entidade no apolo_imobiliaria_match (resolução 1-a-1 por nome, inequívoca; ambíguas 'alves'/'romulo siqueira'/'bora comprar'/'varp' ficaram de fora p/ revisão do Lucas). (2) relatorio-imobiliaria.ts: fallback pelo TEXTO da esteira → apolo_imobiliaria_match quando não há vínculo por entidade. Validado: fichas que resolvem 534→567/570; em revisão 145/145. Prometeu também melhora (já lê o match). tsc limpo.",
+      motivation:
+        "Lucas: 'os crédito em revisão também estão faltando'. Andreza Carvalho (Mais Lotes) e ~140 outros em revisão sumiam por terem a imobiliária só como texto de apelido.",
+    },
+    title: "Apolo: relatório inclui CADs com imobiliária só em texto (de-para de apelidos)",
+    type: "correcao",
+    version: "1.83.0",
+  },
+  {
+    buildTag: "2026-07-29-prometeu-etiqueta-imob-por-entidade",
+    deployedAt: "2026-07-29T21:10:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Nas etiquetas, as imobiliárias agora vêm agrupadas pela ENTIDADE cadastrada no Apolo, não pelo texto. Antes, a mesma imobiliária aparecia em caixas separadas por causa de grafias diferentes (ex.: 'Mais Lotes' e 'MAIS LOTES NEGOCIOS IMOBILIARIOS LTDA'), e credenciados com vínculo mas sem texto caíam em 'sem imobiliária'.",
+            ],
+            screen: "Prometeu · Etiquetas",
+          },
+        ],
+      },
+    ],
+    rollback: "1.81.0",
+    technical: {
+      done: "listCredenciados (lib/prometeu/data.ts) passou a resolver a imobiliária de cada credenciado pela ENTIDADE: 1) vínculo do cliente no Apolo (imobiliariaEntityIdEmLote, ilike 'imobili%' + related_entity_id, mais recente); 2) reforço pelo de-para de texto apolo_imobiliaria_match. Sobrescreve o campo 'imobiliaria' com o nome canônico da entidade + novo campo imobiliariaEntityId (tipo PrometeuCredenciado). Resolução em LEITURA, sem backfill de dados. A tela de etiquetas agrupa pelo nome (agora canônico), então unifica sozinha. Simulação no evento: 3 grafias (RR+Mais Lotes) viraram 2 caixas (RR SOLUCOES 91, MAIS LOTES 45), zero grafia solta. Fixtures de teste atualizados. tsc limpo.",
+      motivation:
+        "Lucas: nas etiquetas tem que vir agrupado pela entidade que cadastramos no Apolo. Grafias de texto duplicavam a imobiliária e escondiam a Dionata sozinha e o Antonio sem imobiliária.",
+    },
+    title: "Prometeu: etiquetas agrupam a imobiliária pela entidade do Apolo",
+    type: "correcao",
+    version: "1.82.0",
+  },
+  {
+    buildTag: "2026-07-29-apolo-relatorio-vinculo-imobiliaria",
+    deployedAt: "2026-07-29T20:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Corrigido um erro grave no relatório das imobiliárias: clientes que estavam vinculados a uma imobiliária não apareciam no relatório dela. Agora todo cliente com imobiliária vinculada aparece, independentemente de como o vínculo foi criado.",
+            ],
+            screen: "Apolo · Relatório das imobiliárias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.80.0",
+    technical: {
+      done: "Causa: o relatório (relatorio-imobiliaria.ts), os avisos (disparo-imobiliaria.ts) e o write-back C2X (c2x-write-server.ts) resolviam a imobiliária do cliente filtrando SÓ relationship_type='Imobiliaria da CAD' (o tipo legado do Asana). Vínculos criados pelo fluxo atual têm tipo 'imobiliaria' (minúsculo) e eram ignorados — o cliente sumia do relatório (ex.: Antonio Carlos→Paulo Oliveira, Dionata→Mais Lotes). Fix: NOVO lib/apolo/imobiliaria-do-cliente.ts (imobiliariaEntityIdDoCliente + imobiliariaEntityIdEmLote) casa qualquer vínculo de imobiliária por entidade (ilike 'imobili%' + related_entity_id not null + status!=archived, mais recente vence) e é usado nos 3 lugares. Sem migration. tsc limpo. FALTA (Parte 2): etiquetas do Prometeu agrupam por texto (3 grafias de Mais Lotes) — backfill de-para texto→entidade + agrupar por entidade.",
+      motivation:
+        "Lucas apontou como extremamente grave: CADs vinculadas somindo do relatório da imobiliária. Descompasso entre o tipo de vínculo legado e o novo.",
+    },
+    title: "Apolo: relatório volta a mostrar todo cliente com imobiliária vinculada",
+    type: "correcao",
+    version: "1.81.0",
+  },
+  {
+    buildTag: "2026-07-29-apolo-excluir-vinculo",
+    deployedAt: "2026-07-29T19:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Agora dá pra EXCLUIR um relacionamento direto na lista (abra o grupo em Relacionamentos, cada vínculo tem um botão de lixeira). O vínculo sai da lista e fica registrado no Histórico.",
+              "Para TROCAR a imobiliária de um cliente: exclua o vínculo atual e adicione a nova pelo '+ Adicionar'. Tudo no mesmo lugar, sem card separado.",
+            ],
+            screen: "Apolo · Ficha do cliente · Relacionamentos",
+          },
+        ],
+      },
+    ],
+    rollback: "1.79.0",
+    technical: {
+      done: "Ajuste do fluxo de trocar imobiliária conforme o Lucas: removido o card 'Imobiliária de trabalho' (duplicava o lugar) + arquivos órfãos (imobiliaria-da-cad-card, lib/apolo/imobiliaria-vinculo, rota entities/[id]/imobiliaria). NOVA rota POST /api/apolo/relationships/archive (arquiva por related_entity_id ou label + timeline 'relacionamento_excluido'). relationships-panel.tsx: botão de excluir em cada RelRow (dentro do modal do grupo), chama a rota e recarrega. Revertido o mapeamento 'Imobiliária'->'Imobiliaria da CAD' no create (aquele tipo era só artefato do import do Asana; o vínculo normal é 'Imobiliária'). tsc limpo.",
+      motivation:
+        "Lucas: dois lugares pra imobiliária confundiam. Um lugar só (a lista de Relacionamentos), com excluir + adicionar. E 'esquece o Imobiliaria da CAD', era específico do Asana.",
+    },
+    title: "Apolo: excluir vínculo na lista de relacionamentos",
+    type: "melhoria",
+    version: "1.80.0",
+  },
+  {
+    buildTag: "2026-07-29-apolo-busca-por-papel",
+    deployedAt: "2026-07-29T18:55:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Corrigida a busca ao adicionar/trocar relacionamento: ao escolher o nível (ex.: Imobiliária), a busca agora traz SÓ entidades daquele tipo. Antes, procurar uma imobiliária pelo nome trazia junto todos os clientes captados por ela e a imobiliária sumia no meio da lista.",
+            ],
+            screen: "Apolo · Relacionamentos",
+          },
+        ],
+      },
+    ],
+    rollback: "1.78.0",
+    technical: {
+      done: "Bug: apolo_search_entries.normalized_text agrega a imobiliária de cada cliente, então q='rr soluc' retornava ~90 (a imobiliária + os clientes dela), e o modal mostra só os 8 primeiros (ordem alfabética) — a imobiliária ficava fora. A rota GET /api/apolo/relationships já aceitava ?profile= mas o modal não enviava. Fix: add-relationship-modal.tsx mapeia o nível→papel (PERFIL_POR_NIVEL: Comprador/Prospect/Corretor/Imobiliária/Incorporador/Parceiro/Fornecedor) e passa &profile= na busca; imobiliaria-da-cad-card.tsx também busca com &profile=imobiliaria. tsc limpo.",
+      motivation:
+        "Lucas tentando vincular a imobiliária RR Soluções: escolhia 'Imobiliária', buscava e vinham só pessoas físicas (os clientes dela). O filtro de tipo não era aplicado na busca.",
+    },
+    title: "Apolo: busca de relacionamento filtra pelo tipo escolhido",
+    type: "correcao",
+    version: "1.79.0",
+  },
+  {
+    buildTag: "2026-07-29-apolo-trocar-imobiliaria",
+    deployedAt: "2026-07-29T18:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Na ficha do cliente, aba Relacionamentos, agora dá pra TROCAR a imobiliária de trabalho: um card mostra a imobiliária atual e o botão 'Trocar' abre a busca pra escolher outra.",
+              "A imobiliária antiga fica arquivada (mantém o histórico da troca) e a nova passa a valer nos relatórios, disparos e na carteira que a imobiliária vê.",
+              "A troca vale no Apolo na hora; no C2X (sistema de vendas) precisa ser ajustada à mão, então o card mostra um aviso 'pendente de refletir no C2X' até isso ser feito.",
+            ],
+            screen: "Apolo · Ficha do cliente · Relacionamentos",
+          },
+        ],
+      },
+    ],
+    rollback: "1.77.0",
+    technical: {
+      done: "Troca da imobiliária do cliente (vínculo apolo_relationships tipo 'Imobiliaria da CAD', que é o que relatório/disparo/c2x-write leem — não o 'Imobiliária' solto do modal). lib/apolo/imobiliaria-vinculo.ts (lerImobiliariaDaCad + trocarImobiliariaDaCad: arquiva o vínculo atual com metadata.arquivado*, cria o novo com pendenteC2x=true, grava timeline 'imobiliaria_trocada'). Rota app/api/apolo/entities/[id]/imobiliaria (GET atual + PATCH troca, authorizeApoloRead/Write). UI: modules/apolo/blocks/crm/imobiliaria-da-cad-card.tsx no topo da aba Relacionamentos (busca reusa GET /api/apolo/relationships?q= filtrando profile 'imobiliaria'; selo 'pendente no C2X'). Sem migration (tabela já existe). C2X manual: a API de escrita só cria usuário (POST /users), não atualiza vinculed_by_id de quem já existe. tsc limpo.",
+      motivation:
+        "Demandas de trocar a imobiliária de clientes (excluir uma, incluir outra) e não havia como fazer no Apolo. Decisão do Lucas: Apolo automático, C2X manual, arquivar o antigo, na ficha do cliente.",
+    },
+    title: "Apolo: trocar a imobiliária do cliente na ficha",
+    type: "novidade",
+    version: "1.78.0",
+  },
+  {
+    buildTag: "2026-07-29-acao-backfill-atendimentos",
+    deployedAt: "2026-07-29T16:10:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Os convites que já tinham sido disparados antes viraram atendimentos na aba Ações (sem reenviar nada pro cliente): cada um ganhou seu card com protocolo e a conversa. Quem já tinha respondido aparece com a resposta na conversa.",
+            ],
+            screen: "Iris · Board · Ações",
+          },
+        ],
+      },
+    ],
+    rollback: "1.76.0",
+    technical: {
+      done: "lib/apolo/acao-backfill.ts (backfillAtendimentosDaAcao): itera os alvos com disparo_wa_message_id e chama abrirAtendimentoDaAcao REUSANDO o wa_message_id existente (não fala com a Meta, não reenvia); insere a resposta já capturada na conversa (inbound button) quando houver e reabre o ticket. abrirAtendimentoDaAcao ganhou idempotência de mensagem (não duplica se já existe caredesk_messages com aquele external_message_id). Exposto via op:'backfill' na rota pública /api/publico/acao (protegido pela sessão da campanha). tsc limpo.",
+      motivation:
+        "13 credenciados receberam o convite antes de o disparo passar a abrir atendimento (v1.76). Backfill traz esses disparos para a aba Ações como atendimentos, sem reenviar mensagem.",
+    },
+    title: "Ações: disparos antigos viram atendimentos (sem reenvio)",
+    type: "correcao",
+    version: "1.77.0",
+  },
+  {
+    buildTag: "2026-07-29-acao-vira-atendimento",
+    deployedAt: "2026-07-29T15:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A aba Ações agora mostra ATENDIMENTOS de verdade: disparar o convite abre um atendimento com protocolo (AT-...), igual a qualquer outro, e ao clicar no card abre a tela de atendimento com a conversa (o convite enviado e a resposta do cliente).",
+              "Esses atendimentos moram só na aba Ações, não poluem a fila de atendimento geral. A Cacá não responde sozinha (é contato ativo), o time atende. As unidades que o cliente escolhe no botão continuam sendo registradas na campanha.",
+            ],
+            screen: "Iris · Board · Ações",
+          },
+        ],
+      },
+    ],
+    rollback: "1.75.0",
+    technical: {
+      done: "Ação de contato passou a se comportar como atendimento normal, segregado na aba Ações. NOVO lib/apolo/acao-atendimento.ts (abrirAtendimentoDaAcao): cria/reusa contato + ticket (protocolo via next_caredesk_ticket_protocol, metadata.acaoId/alvoId, activeContactConsent=awaiting_customer_reply, contactOrigin=active, subject=nome da ação) + mensagem outbound (external_message_id=wa_message_id) + ref no canal 4143 (whatsapp-careli). acao-disparo.ts chama isso após o envio (best-effort). acao-template.ts compartilha TXT/botões + renderConvitePreview (texto na conversa). meta-inbound-processor.ts: removido o early-return — registrarRespostaDeAcao vira efeito colateral (grava unidades no alvo) e a resposta segue o fluxo normal, casando o ticket do disparo por findTicketByReplyContextMessageId; gate isActiveContactTicket mantém a Cacá fora. Board: IrisTicket/IrisBoardTicket ganharam isAcao (derivado de metadata.acaoId em mapTicketRow); ticketsDaAba e naoLidasPorAba roteiam isAcao→aba acoes; a aba usa o kanban normal (AcoesBoard descartado). Clique abre a conversa de graça (ticket real). tsc limpo.",
+      motivation:
+        "Lucas: a ação tem que se comportar como um atendimento normal (mesmo layout, mesmo protocolo, clicar no card abre a tela de atendimento), só que na aba Ações. Reusa o fluxo de contato ativo que a Iris já tem.",
+    },
+    title: "Iris: ação de contato vira atendimento de verdade (aba Ações)",
+    type: "novidade",
+    version: "1.76.0",
+  },
+  {
+    buildTag: "2026-07-29-board-aba-acoes",
+    deployedAt: "2026-07-29T14:10:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "NOVA aba 'Ações' no Board, ao lado de Grupos: mostra a campanha de contato em massa com a MESMA cara do quadro de atendimento (cards em colunas), mas com os cards e os números só da ação.",
+              "Cada card é um credenciado e anda pelas 5 colunas: Erro de envio (disparo falhou), Com a Cacá (WhatsApp enviado esperando a resposta do botão), Pendente (ninguém contatou), Aguardando cliente (falou por telefone, falta fechar as unidades) e Resolvido hoje (respondeu ou telefônico já com unidades). No topo, os números da ação: total, contatados, telefônico, WhatsApp, respostas e falhas.",
+            ],
+            screen: "Iris · Board · Ações",
+          },
+        ],
+      },
+    ],
+    rollback: "1.74.0",
+    technical: {
+      done: "Aba 'acoes' em iris-board-kanban.tsx (ABAS_DO_BOARD + AbaDoBoard). Quando ativa, troca o miolo (indicadores+filtros+kanban de tickets) pelo componente novo AcoesBoard (modules/caredesk/blocks/acoes/acoes-board.tsx): read-only, busca /api/apolo/acoes[/id], KPIs do resumo + 5 colunas reusando o STATUS_FLOW (cores/rótulos), mapeadas por colunaDoAlvo (erro=disparo falhou; resolvido=respondeu||telefônico c/ unidades; caca=whatsapp enviado; aguardando=telefônico s/ unidades; pendente=sem contato). Cards com selos (canal/status/PIX/respondeu) + resposta/erro. A OPERAÇÃO (marcar/disparar) segue na AcoesView (tabela) em /iris/acoes e na tela pública. tsc limpo.",
+      motivation:
+        "Lucas quer acompanhar os disparos como cards no Board, no mesmo formato do atendimento, só que com os números da ação. A ação não vira ticket na fila, então a aba lê direto a campanha.",
+    },
+    title: "Iris: aba Ações no Board (cards da campanha)",
+    type: "novidade",
+    version: "1.75.0",
+  },
+  {
+    buildTag: "2026-07-29-acao-resposta-caca",
+    deployedAt: "2026-07-29T13:20:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Quando o cliente responde o convite tocando num botão (1 unidade / 2 a 3 / acima de 3), a resposta cai direto na Ação: aparece 'Respondeu' e as unidades já marcadas como veio do cliente. NÃO abre atendimento na fila e a Cacá não responde, é só o registro.",
+              "Na lista da Ação, o disparo por WhatsApp agora mostra o status: 'enviado' quando deu certo e 'falhou' com o motivo do erro logo abaixo, pra saber por que não foi.",
+            ],
+            screen: "Iris · Ações",
+          },
+        ],
+      },
+    ],
+    rollback: "1.73.0",
+    technical: {
+      done: "Fase 3 da Ação de Contato (captura da resposta + status). lib/apolo/acao-resposta.ts: registrarRespostaDeAcao casa o inbound pelo context.id do reply = apolo_acao_alvos.disparo_wa_message_id, grava resposta_em/resposta_texto e deriva unidades do texto do botão (derivarUnidades, unidades_origem='cliente'). Gancho no meta-inbound-processor.ts logo após extractInboundMessageDetail: se registrado, marca o webhook processed e RETORNA antes de criar contato/ticket (não polui a fila, não aciona a Cacá); custo extra só quando há replyContextMessageId (índice idx_apolo_acao_alvos_wamid). lib/apolo/acoes.ts: listarAlvos passou a trazer disparo_erro + resposta_texto (tipo AcaoAlvo). acoes-view: badge do disparo com 'enviado'/'falhou' + motivo do erro, selo 'Respondeu' e o texto/opção do cliente. Teste acao-resposta.test.ts (3) verde. tsc limpo.",
+      motivation:
+        "Fechar o ciclo: disparo → cliente toca o botão → resposta na ação, sem virar 397 tickets na fila (regra do Lucas). E dar visibilidade de sucesso/erro do envio na própria tela.",
+    },
+    title: "Ações: Cacá registra a resposta do convite + status do disparo",
+    type: "novidade",
+    version: "1.74.0",
+  },
+  {
+    buildTag: "2026-07-29-acao-tela-publica",
+    deployedAt: "2026-07-29T11:45:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Ação de contato agora tem uma TELA PÚBLICA com senha: a equipe (inclusive freela sem conta do sistema) abre pelo link da campanha e entra só com a senha, sem login.",
+              "A tela pública mostra a mesma lista da aba interna (marcar Telefônico com perfil e unidades, ou WhatsApp), sem o botão de criar template (esse fica só no interno).",
+            ],
+            screen: "Iris · Ações",
+          },
+        ],
+      },
+    ],
+    rollback: "1.72.0",
+    technical: {
+      done: "Fase 1b da Ação de Contato: tela pública com portão de senha. app/publico/acao/[slug]/page.tsx + modules/publico/acao/AcaoPublicoPortal.tsx (portão + reusa a AcoesView em modo público via prop tokenPublico). Sessão HMAC (lib/apolo/acao-sessao.ts, header x-acao-sessao, TTL 8h, reusa SESSAO_CAD_SECRET). Rotas /api/publico/acao/sessao (senha→token) e /api/publico/acao (GET dados + POST contato/disparar, confere alvo∈ação), liberadas no proxy.ts (PUBLIC_API_PREFIXES). AcoesView ganhou o modo tokenPublico (fetch por x-acao-sessao em vez do Bearer do hub; botão de template escondido). Migration 0078 (imagem_path) aplicada. Slug 'vale-do-ouro' + hash da senha gravados. tsc limpo.",
+      motivation:
+        "Lucas: a tela da ação pedia login; o time (com freelas) precisa acessar por link público com senha, como o portal de CAD.",
+    },
+    title: "Ações: tela pública com senha para a equipe",
+    type: "novidade",
+    version: "1.73.0",
+  },
+  {
+    buildTag: "2026-07-29-acao-template-convite",
+    deployedAt: "2026-07-29T10:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Na aba Ações, botão 'Criar template do convite': escolhe a arte e cria o template do WhatsApp na Meta prontinho (com a imagem no topo e os 3 botões de resposta 1 / 2-3 / acima de 3), igual ao 'Criar templates' da imobiliária. A Meta aprova, e aí liberamos o disparo.",
+            ],
+            screen: "Iris · Ações",
+          },
+        ],
+      },
+    ],
+    rollback: "1.71.0",
+    technical: {
+      done: "Rota POST /api/apolo/acoes/[acaoId]/template (multipart): recebe a arte, uploadMetaWhatsAppTemplateHeaderMedia → handle, createMetaWhatsAppMessageTemplate (MARKETING, pt_BR, HEADER IMAGE + BODY {{1}} + BUTTONS 3 quick-reply), grava template_meta_name='convite_vale_ouro' na ação (mesmo se já existir na Meta). Número 4143 (PHONE_4143). Botão na acoes-view (input file escondido). Texto do convite fixo no servidor (aprovado pelo Lucas, sem menção a documentos). tsc limpo.",
+      motivation:
+        "Lucas quer o padrão 'um clique cria o template pronto' (como os 4 da imobiliária), não preencher a bancada à mão. O gargalo é a aprovação da Meta, então subir isso já pra ele submeter.",
+    },
+    title: "Ações: botão que cria o template do convite na Meta",
+    type: "novidade",
+    version: "1.72.0",
+  },
+  {
+    buildTag: "2026-07-29-iris-acoes-contato",
+    deployedAt: "2026-07-29T09:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "NOVA aba Ações (contato em massa), separada da fila de atendimento: a primeira ação é o 'Convite Vale do Ouro' com os 397 credenciados.",
+              "O operador desce a lista (com filtros de não contatados / pagou PIX / busca) e marca o contato de cada cliente: Telefônico (falou → preenche perfil Moradia/Investimento + unidades 1 / 2-3 / acima de 3) ou WhatsApp (não conseguiu falar).",
+            ],
+            screen: "Iris · Ações",
+          },
+        ],
+      },
+    ],
+    rollback: "1.70.0",
+    technical: {
+      done: "Fase 1 da Ação de Contato. Migration 0077 (apolo_acoes + apolo_acao_alvos, RLS deny-all) APLICADA + seed da ação 'Convite Vale do Ouro' com 397 alvos (dos prometeu_credenciados + telefone do apolo_contacts). lib/apolo/acoes.ts (ler ação, listarAlvos com PIX ao vivo, salvarContato pelos 2 canais, resumo, hash de senha scrypt da tela pública). Rotas /api/apolo/acoes (lista) e /api/apolo/acoes/[acaoId] (GET detalhe + PATCH contato), authorizeApoloWrite. Tela: modules/caredesk/blocks/acoes/acoes-view.tsx (lista corrida + filtros + fluxo telefônico inline) em /iris/acoes. FALTA: link no menu, tela pública com senha, template Meta + disparo pelo 4143, Cacá gravar a resposta. tsc limpo.",
+      motivation:
+        "Lucas: ação em massa não pode ficar no atendimento (viraria 397 tickets). Aba própria pra gerenciar o disparo e o retorno. Telefone é o canal prioritário; WhatsApp (template) só quando não fala.",
+    },
+    title: "Iris: aba Ações (contato em massa) + Convite Vale do Ouro",
+    type: "novidade",
+    version: "1.71.0",
+  },
+  {
+    buildTag: "2026-07-29-prometeu-reset-reintegra",
+    deployedAt: "2026-07-29T08:05:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O 'Iniciar evento real' agora REINTEGRA quem foi retirado da operacao durante os testes (o 'No-show definitivo'). Antes, um credenciado tirado num ensaio sumia do evento REAL mesmo depois do reset.",
+            ],
+            screen: "Prometeu · Iniciar evento real",
+          },
+        ],
+      },
+    ],
+    rollback: "1.69.0",
+    technical: {
+      done: "iniciarEventoReal (data.ts): o update de reset dos credenciados passou a zerar encerrado_em + encerrado_motivo junto com etapa/entrou_em. Descoberto ao conferir os números: o Vale do Ouro batia 397/95 no Apolo e 396/94 no Prometeu — a diferença era 1 credenciado (EMANUEL FERNANDO DA SILVA, que PAGOU o PIX) retirado por um teste de 'No-show definitivo' em 28/jul. Emanuel reintegrado à mão (UPDATE encerrado_em=null) e o reset corrigido para não repetir. tsc limpo, reset-bloqueado.test.ts (6) verde. O reset roda 1x na virada ensaio->real e depois trava, então todo encerrado_em ali só pode ser lixo de teste.",
+      motivation:
+        "Um credenciado real não pode sumir do evento por causa de um teste. Blindagem para o dia 01/08.",
+    },
+    title: "Prometeu: o reset reintegra quem foi excluído no ensaio",
+    type: "correcao",
+    version: "1.70.0",
+  },
+  {
+    buildTag: "2026-07-28-prometeu-jornada-circuito",
+    deployedAt: "2026-07-28T20:45:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A jornada do cliente (na Central e na ficha do Atendimento) agora mostra a passagem pelo CIRCUITO do evento: Check-in → Negociacao → Reserva (com as unidades) → Secretaria (check-in e atendimento) → Proposta → Finalizado.",
+              "Os no-shows (quando a pessoa foi chamada e nao veio) aparecem na jornada.",
+              "'Etiqueta impressa' saiu da jornada: e um detalhe operacional, nao um passo da jornada de venda.",
+            ],
+            screen: "Prometeu · Jornada do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.68.0",
+    technical: {
+      done: "Nova PrometeuPassoJornada + jornadaDoCredenciado(data.ts): reconstitui a jornada do HISTORICO — entrou_em (check-in) + prometeu_movimentacoes (cada para_etapa vira um passo, LABEL_DA_JORNADA) + a chamada da secretaria atendida (Secretaria · atendimento) + metadata.noShow (Nao veio) + unidades no passo Reserva — ordenado pelo relogio (passos sem carimbo vao ao fim). Rota GET /api/prometeu/jornada?credenciadoId (autorizarOperacao; buscada SO ao abrir o modal, fora do polling). fetchJornada. central-view: componente Jornada virou async (useEffect + fetchJornada). atendente-view: a ficha (cli-modal) busca a MESMA jornada (passosDaFicha). Removidos labelDaEtapa e PROMETEU_ETAPAS orfaos do atendente-view. tsc limpo, 107 testes verdes, lint sem erros novos.",
+      motivation:
+        "Lucas (Parte 2 de 2): a jornada mostrava a etapa atual + etiqueta, nao o caminho pelo circuito. A gestao precisa ver por onde o cliente passou (negociacao, reserva com unidades, secretaria, proposta) e os no-shows. Sem migration.",
+    },
+    title: "Prometeu: jornada do cliente reformulada (circuito do evento + no-shows)",
+    type: "novidade",
+    version: "1.69.0",
+  },
+  {
+    buildTag: "2026-07-28-prometeu-mapa-atendente-indicadores",
+    deployedAt: "2026-07-28T20:00:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "No Mapa do salao da Central, cada mesa da secretaria agora mostra QUEM esta atendendo nela (o operador que entrou na mesa). Antes aparecia sempre 'sem atendente'.",
+              "Cada mesa mostra os INDICADORES do atendente para a gestao: atendimentos fechados (AT), unidades vendidas nesses atendimentos (UN), tempo medio e tempo total na cadeira.",
+            ],
+            screen: "Central · Mapa do salao",
+          },
+        ],
+      },
+    ],
+    rollback: "1.67.0",
+    technical: {
+      done: "Migration 0076: prometeu_mesas.atendente_nome (texto; quem atende e' OPERADOR do evento OU admin testando, guardar o nome direto evita join — atendente_user_id nao serve pro operador). data.ts: listMesas devolve atendenteNome; sentarNaMesa/sairDaMesa; resumoDeTodasAsMesas (por mesa: atendimentos fechados, unidades somadas, tempoMedioMs, tempoTotalMs — mesma derivacao do resumoDaMesa: atendimento fecha na 1a movimentacao depois de sentar). Rota nova /api/prometeu/mesa (PATCH sentar/sair, autorizarOperacao aceita hub OU operador). Rota /fila: param resumoMesas=1 devolve resumoDeMesas (so a Central pede, o Atendente/Telao nao pagam). atendente-view: ao escolher a mesa grava o atendente (operador?.nome ?? hubUser?.name via useAuth), ao Sair da mesa limpa. central-view: card da mesa mostra atendenteNome (fallback no operador cadastrado) + os 4 indicadores. tsc limpo, 107 testes verdes.",
+      motivation:
+        "Lucas testando o Mapa do salao: as mesas mostravam 'sem atendente' porque a escolha da mesa vivia so no localStorage; e faltavam os indicadores por mesa que a gestao acompanha no dia. Parte 1 de 2 — a jornada reformulada (etapas do circuito + no-shows) vem em seguida.",
+    },
+    title: "Prometeu: Mapa do salao mostra o atendente e os indicadores por mesa",
+    type: "novidade",
+    version: "1.68.0",
+  },
+  {
+    buildTag: "2026-07-28-prometeu-finalizar-e-menu",
+    deployedAt: "2026-07-28T18:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O botao Finalizar agora ENCERRA o atendimento de verdade: conclui o cliente E libera a mesa para chamar o proximo. Antes o cliente ia para concluido mas a mesa ficava presa, sem poder chamar outro. O mesmo valia para o Direcionar e o Nao veio.",
+              "A tela passou a se chamar Atendimento tambem no menu lateral (era Atendente).",
+              "Novo botao para RECOLHER o menu lateral: encolhe para so os icones e da mais tela para o atendimento. Clicar de novo expande.",
+              "A jornada do cliente (na ficha e no Analitico da Central) agora COMECA no check-in: CAD recebida e pre-venda paga eram pre-evento e saiam fora de ordem na linha do tempo — a jornada do dia comeca quando a pessoa chega.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "1.66.0",
+    technical: {
+      done: "BUG do Finalizar (causa-raiz): o PATCH /api/prometeu/credenciados valida `credenciadoId` logo na entrada, mas finalizarAtendimento/confirmarDirecionamento/naoVeio chamavam a acao 'liberar' SO com mesaId -> 400, e o front NAO checava o retorno -> a mesa ficava presa com o cliente ja movido (etapa=concluido, mesa=atendimento). Fix: Finalizar e Direcionar viraram UM request atomico (liberarMesaRemoto com credenciadoId + etapa; o liberarMesa ja avanca a etapa via moverPara) e checam o erro; naoVeio passa credenciadoId (sem etapa, so solta a mesa) e checa o erro. Guard do endpoint mantido (todas as acoes exigem credenciadoId). Removido o moverCredenciado orfao do import. Mesa 02 do ensaio destravada por SQL. prometeu-module.tsx: label 'Atendente'->'Atendimento' (id inalterado); sidebar colapsavel (estado menuRecolhido; aside w-232<->w-64 com transition; header e labels somem, nome do posto vira tooltip; botao PanelLeftClose/Open). Jornada (central-view Jornada + atendente-view ficha): removidos os passos 'CAD recebida' (chegouEm) e 'Pre-venda paga' (pagoEm); a timeline comeca em 'Check-in confirmado' (entrouEm). tsc limpo, 107 testes verdes.",
+      motivation:
+        "Lucas testando o ensaio: clicava Finalizar e o atendimento nao encerrava nem liberava a mesa — o defeito mais critico da operacao do dia (mesa travada = fila parada). Mais a faxina de nomenclatura (Atendimento) e o menu recolhivel para ganhar area de trabalho.",
+    },
+    title: "Prometeu: Finalizar encerra e libera a mesa + menu recolhivel",
+    type: "correcao",
+    version: "1.67.0",
+  },
+  {
+    buildTag: "2026-07-28-prometeu-tela-atendimento",
+    deployedAt: "2026-07-28T15:40:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A tela passou a se chamar Atendimento e ficou mais limpa: saiu o titulo Central Atendente e as abas Recepcao/Salao/Secretaria do topo (a separacao ja vem do login do operador).",
+              "O atendente deixou de ver o painel Fila do salao: a tela dele e a fila da secretaria.",
+              "Saiu o botao de WhatsApp na fila do atendente: quem chega aqui ja esta na ultima etapa, nao faz sentido reenviar o link da fila.",
+              "O Aguardando retorno (nao veio) agora aparece so na fila onde foi marcado: quem deu nao veio na secretaria nao aparece mais no salao nem na recepcao, e vice-versa. Cada posto ve so o seu.",
+              "A janela flutuante do atendimento voltou a responder: Pausar, Direcionar e Finalizar agora funcionam dentro dela.",
+            ],
+            screen: "Atendente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.65.0",
+    technical: {
+      done: "atendente-view.tsx: header renomeado (Atendimento), removidos o bloco .postos e o card .negociacao-card (fila do salao) + as pecas orfas (state filaSalao, cronometroDesde, CSS .negociacao-card); botao .wpp-btn removido da fila (mantido na ficha). No-show por fila: a rota devolve o no-show global, e cada tela filtra pela etapa da sua zona (atendente = secretaria; checkin-view do organizador: recepcao->recepcao, salao->negociacao, secretaria->secretaria) — a etapa nao muda no no-show, entao ela diz de qual fila a pessoa e. PiP: a janela flutuante ganhou root React proprio (PipHost com createRoot no document dela) no lugar do createPortal — com portal, o React escutava os eventos no root da aba principal e clique numa window separada nao chegava la, por isso Finalizar/Pausar/Direcionar nao respondiam. data.ts iniciarEventoReal: nova helper limparMarcasDeEnsaio remove metadata.noShow e metadata.pa de todos os credenciados no reset (merge por linha, licao da 0057) — antes o no-show e a PA de teste sobreviviam ao reset. 107 testes verdes.",
+      motivation:
+        "Ajustes da tela de atendimento apontados pelo Lucas testando o ensaio: a tela e so da secretaria, entao cabecalho e paineis de outras zonas saem; o no-show tem que respeitar a fila de origem; a janela flutuante estava com os botoes mortos; e o reset tem que zerar tudo do ensaio, inclusive no-show e PA.",
+    },
+    title: "Prometeu: faxina na tela de Atendimento + no-show por fila + PiP e reset",
+    type: "correcao",
+    version: "1.66.0",
+  },
+  {
+    buildTag: "2026-07-28-apolo-c2x-cadastros",
+    deployedAt: "2026-07-28T13:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Nova tela Subir cadastros para o C2X: diz quantas CADs estao PRONTAS pra subir e o que falta em cada uma das demais (falta nacionalidade, falta regime de bens, etc.), pra o time saber onde ir.",
+              "Um botao envia as CADs prontas pro C2X de uma vez, com o cadastro completo: dados pessoais, endereco, telefone, pessoas para assinatura e conjuge (os dois assinam quando casado).",
+              "A imobiliaria da CAD virou o vinculo do cliente no C2X automaticamente.",
+            ],
+            screen: "Subir cadastros para o C2X",
+          },
+          {
+            items: [
+              "A ficha do Cadastro no CRM agora pode ser EDITADA: botao Editar na aba Cadastro deixa o time preencher o que faltou (regime de bens, escolaridade, naturalidade...) com os campos certos.",
+              "O conjuge voltou a aparecer na aba Cadastro (estava cadastrado, mas a tela nao mostrava).",
+            ],
+            screen: "CRM / Cadastro",
+          },
+        ],
+      },
+    ],
+    rollback: "1.64.0",
+    technical: {
+      done: "Integracao de ESCRITA Apolo->C2X (POST /api/v1/users). lib/apolo/c2x-write.ts (montagem+transporte, 11 testes) + c2x-write-server.ts (orquestracao: le a ficha, resolve o vinculed_by_id pela cadeia relacionamento 'Imobiliaria da CAD'->CNPJ->id no C2X, envia, le o id por CPF no banco de prod, grava a fila apolo_c2x_sync, carimba c2xSynced). Nested attributes materializados: addresses_attributes (state_id/city_id resolvidos via states/cities), phones_attributes (+55/whatsapp), signers_attributes (titular+conjuge), spouse_attributes. Camada de lote processarLoteC2x (dryRun diagnostica, envia as prontas) + tela /apolo/sync-c2x. Edicao do cadastro: lib/apolo/cadastro-editar.ts (merge do metadata, nao substitui) + rota /api/apolo/cadastro/[entityId] + aba Cadastro editavel. Migration 0074_apolo_c2x_sync. Dry-run: 164 prontas / 243 faltando. ⚠️ Env de escrita aponta pro AMBIENTE DE TESTE do C2X (teste.careli.adm.br) ate a URL de producao; o envio real do lote so quando o Lucas clicar.",
+      motivation:
+        "O C2X ganha os cadastros do Apolo sem digitacao manual. A API e enxuta (so /users), entao o de-para inteiro foi resolvido pelo banco. 91/93 casados estavam sem regime de bens (barra no C2X) -> o time preenche pela edicao no CRM em vez de um default automatico (decisao do Lucas).",
+    },
+    title: "Apolo: subir cadastros para o C2X + editar a ficha no CRM",
+    type: "novidade",
+    version: "1.65.0",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-telas-do-mockup-com-motor",
+    deployedAt: "2026-07-27T21:00:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A Central e a tela do Atendente agora usam o MESMO codigo visual dos layouts aprovados, com os numeros reais por tras.",
+              "Na Central, clicar em qualquer card mostra QUEM esta ali: a lista abre com nome, imobiliaria e ha quanto tempo a pessoa espera, e da para ver por imobiliaria.",
+              "Clicar numa linha do Analitico (ou numa mesa do Mapa do salao) abre a jornada do cliente no evento: CAD, PIX, check-in, etiqueta, unidades, PA e a etapa atual.",
+              "Relogio ao vivo e o selo AO VIVO voltaram ao topo da Central.",
+              "O Mapa do salao mostra o nome do atendente sentado em cada mesa e quem esta sendo atendido nela.",
+              "No Atendente, a tela de atendimento pode sair para uma JANELA FLUTUANTE: da para usar o C2X em tela cheia sem perder o cronometro nem os botoes. Fechar a janela nao encerra o atendimento.",
+              "Voltou a ficha do cliente ao clicar no nome, com CPF, telefone, imobiliaria, corretor, unidades e a jornada no evento.",
+              "O botao de WhatsApp na fila reenvia para o cliente o link de acompanhamento da propria posicao.",
+            ],
+            screen: "Central e Atendente",
+          },
+          {
+            items: [
+              "Nova pagina para o CLIENTE acompanhar a fila pelo celular, sem login: mostra o lancamento, o nome dele, a posicao e avisa em destaque quando ele for chamado.",
+            ],
+            screen: "Fila do cliente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.63.2",
+    technical: {
+      done: "Novo metodo de porte: scripts/prometeu/escopar-css-do-mockup.mjs extrai o <style> do mockup e o escopa num wrapper (.pcx / .pat), traduzindo :root/body para o wrapper, body.dark para [data-uix-theme=dark] e movendo o estado do <body> (can-atender, em-atendimento, data-posto, pip-out) para o wrapper; markup e classes copiados do mockup; so a origem do dado muda. scripts/prometeu/conferir-classes-do-porte.mjs confere as classes do JSX contra o CSS. Revisao adversarial (5 lentes, 21 achados, 11 confirmados) corrigiu: guard de payload em carregar() — um blip de rede zerava as mesas e trocava a tela do atendimento pela escolha de mesa; naoVeio/finalizar/rechamar passaram a checar o erro antes de liberar a mesa; dedupe de @keyframes no escopador (pat-pat-pulse nao existia); ids #cli-modal/#cli-unids/#ana-lista/#ana-kanban devolvidos ao JSX; reset do <body> na janela do Document PiP; modal da Central passou a guardar as ETAPAS e derivar a lista, acompanhando o polling. Pagina do cliente: token HS256 (credenciadoId+eventoId, sem PII) na mesma SESSAO_CAD_SECRET do comprovante do Serasa, snapshot com cache de 4s por evento para ~390 celulares nao virarem incidente de fatura. 107 testes no modulo.",
+      motivation:
+        "O Lucas cortou a tela do Atendente tres vezes e fechou a questao: 'pega o codigo do mockado e habilita motor'. Portar deixou de ser reimplementar em Tailwind seguindo uma lista e passou a ser reusar o CSS e o markup do mockup. O evento e em 01/08.",
+    },
+    title: "Prometeu: Central e Atendente com o layout aprovado e os motores ligados",
+    type: "novidade",
+    version: "1.64.0",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-atendente-porte-completo",
+    deployedAt: "2026-07-27T19:45:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A tela do Atendente foi portada do layout aprovado: os 4 indicadores no topo (Atendimentos hoje, Tempo medio, Em espera, Maior espera), todos com numero real.",
+              "Fila com foto/iniciais, imobiliaria e corretor, o proximo em destaque e o tempo em VERMELHO a partir de 45 minutos de espera.",
+              "Abas Fila e Aguardando retorno: quem nao veio fica separado, com botao Rechamar.",
+              "Coluna direita com Minha mesa (Disponivel / Aguardando cliente / Em atendimento), Fila do salao em negociacao e Ultimas chamadas.",
+              "Chamar proximo e Ocupado no rodape da fila, como no layout aprovado.",
+              "O painel de atendimento toma a tela, com cronometro que comeca na hora exata em que a pessoa sentou, e ganhou Pausar, Direcionar e Finalizar.",
+            ],
+            screen: "Atendente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.63.1",
+    technical: {
+      done: "Porte item a item de public/prometeu/atendente.html seguindo docs/operations/prometeu-atendente-spec-do-mockup.md, em 4 lotes. Novo `derivarResumoDaMesa`/`resumoDaMesa` em lib/prometeu/data.ts deriva atendimentosHoje e tempoMedio de prometeu_chamadas.atendido_em + a movimentacao de saida, SEM migration; `mesaId` virou parametro OPCIONAL de /api/prometeu/fila para a Central/Telao/Fila nao pagarem as consultas extras no polling de 10s. `emAtendimentoDesde` do servidor eliminou a dependencia do relogio local no cronometro. 5 testes novos (67 no modulo).",
+      motivation:
+        "O Lucas cortou TRES versoes por falta de fidelidade ao mockup aprovado. Desta vez o mockup foi inventariado item a item numa spec versionada no repo, e o porte seguiu a lista — nao a interpretacao.",
+    },
+    title: "Prometeu: tela do Atendente igual ao layout aprovado",
+    type: "novidade",
+    version: "1.63.2",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-chamada-do-mockup",
+    deployedAt: "2026-07-27T18:20:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A chamada no Atendente voltou a ser a tela aprovada: fundo escurecido, nome em letra grande, a mesa em destaque e os botoes Rechamar, Nao veio e Compareceu.",
+              "A PA abre DENTRO da tela, nao mais em outra aba do navegador.",
+              "Topo da Secretaria mostra quantos estao no SALAO (era o numero da propria fila com o rotulo do salao: dizia 1 quando havia 5 em negociacao).",
+            ],
+            screen: "Atendente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.63.0",
+    technical: {
+      done: "Modal de chamada portado de public/prometeu/atendente.html (overlay rgba(8,11,17,.62)+blur 7px, card 26px/760px, nome clamp(48px,7vw,80px), pilula do destino, 3 acoes). Visualizador da PA em overlay com a URL assinada, no lugar de window.open. Contador do topo passou a ler filaRecepcao/filaSalao (o posto ANTERIOR) em vez de filaDoPosto.",
+      motivation:
+        "Lucas: 'era para seguir o que ja estava construido' — eu inventei layout onde havia mockup aprovado. Reincidencia da licao de 19/jul.",
+    },
+    title: "Prometeu: chamada segue o mockup e PA abre na tela",
+    type: "correcao",
+    version: "1.63.1",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-aba-noshow",
+    deployedAt: "2026-07-27T18:15:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Rechamar e Nao veio viraram botoes separados, com caixa e area de toque propria. Estavam colados e dava pra marcar no-show sem querer.",
+              "Rechamar avisa que funcionou: o botao vira Chamado! por 2 segundos.",
+              "Quem nao veio ganhou ABA PROPRIA (Nao vieram, com o total), em vez de ficar misturado no fim da fila.",
+            ],
+            screen: "App do organizador (celular)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.99",
+    technical: {
+      done: "PainelEmTransito: botoes com borda/fundo e gap; estado `rechamado` da o retorno visual por 2s. `aba` ganhou o valor noshow e `listaNoShow` saiu de dentro de listaFila. A barra de abas aparece no salao apenas quando ha no-show, sem o botao Ler QR (la a camera abre pelo painel).",
+      motivation:
+        "Lucas testando no celular: os dois textos colados, rechamar sem retorno nenhum, e o pedido de separar as filas.",
+    },
+    title: "Prometeu: aba de no-show e botoes separados",
+    type: "melhoria",
+    version: "1.63.0",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-atendente-real",
+    deployedAt: "2026-07-27T17:55:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A tela de Atendente SAIU DO MOCKUP: agora mostra a fila real da secretaria, com os clientes do lancamento.",
+              "Ao entrar, o atendente escolhe A MESA em que vai sentar. Mesa em uso por outro aparece bloqueada. A escolha fica guardada no computador, com Sair da mesa no topo.",
+              "Chamar proximo reserva a mesa; quando a pessoa senta, Chegou na mesa abre o atendimento; se nao aparecer, Nao veio manda pro no-show e libera a mesa.",
+              "A PA do cliente abre direto da mesa. Quem esta sem PA aparece marcado, na mesa e na fila.",
+              "Sumiu o seletor Organizador/Atendente: esta tela e exclusiva do atendimento da secretaria.",
+            ],
+            screen: "Atendente",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.98",
+    technical: {
+      done: "Novo blocks/atendente/atendente-view.tsx (React) no lugar do iframe atendente.html. Escolha de mesa em localStorage (prometeu:mesa-do-atendente), mesa nao-livre bloqueada. Le filaSecretaria/mesas/credenciados/emTransito de /api/prometeu/fila com refresh de 10s e gate de visibilityState. Reusa chamarCredenciadoRemoto (com mesaId), atenderRemoto, liberarMesaRemoto, marcarNoShowRemoto, moverCredenciado e urlDaPaRemoto. O cliente da mesa vem do BANCO (mesa.credenciadoId), nao de estado local: recarregar a pagina nao perde o atendimento.",
+      motivation:
+        "Lucas: 'a tela de atendimento continua a mesma coisa' — era iframe de mockup com nomes ficticios. Ele tambem pediu a selecao de mesa e a remocao do seletor de perfil.",
+    },
+    title: "Prometeu: tela do atendente com a fila real e escolha de mesa",
+    type: "novidade",
+    version: "1.62.99",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-no-show",
+    deployedAt: "2026-07-27T17:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "NOVO: botao Nao veio no painel de chamados. Chamou, rechamou e ninguem apareceu? Marca e a pessoa sai da tela — sem isso o chamado ficava preso pra sempre, porque so o bip do QR o fechava.",
+              "Quem nao veio aparece no FIM da fila com um traco no lugar do numero. Se reaparecer, e so Chamar de novo e ele volta ao fluxo normal.",
+              "Rechamar NAO reinicia mais o cronometro: o tempo conta desde a PRIMEIRA chamada, que e o que diz quando desistir.",
+              "O topo do Salao mostra Recepcao e o da Secretaria mostra Salao de vendas, em vez de esperando na recepcao.",
+            ],
+            screen: "App do organizador (celular)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.97",
+    technical: {
+      done: "marcarNoShow/limparNoShow/estaEmNoShow em metadata.noShow (jsonb, SEM migration): fecha a chamada aberta e tira das 3 filas. `chamarCredenciado` limpa o no-show sozinho (reaparecer = voltar ao fluxo) e parou de reescrever `chamado_em` na rechamada. Acao `no-show` na rota, aberta ao operador. `noShow` entrou em PrometeuCredenciado e no payload da fila; a lista mostra os faltantes no fim com posicao 0.",
+      motivation:
+        "Lucas testando: 'pode acontecer que o cliente nao apareceu, eu ja rechamei, se eu nao tirar da tela vai ficar preso'. E o rechamar zerando o cronometro escondia justamente o caso que vira no-show.",
+    },
+    title: "Prometeu: no-show e cronometro que nao reinicia",
+    type: "novidade",
+    version: "1.62.98",
+  },
+  {
+    buildTag: "2026-07-27-iris-nomes-dos-participantes",
+    deployedAt: "2026-07-27T17:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A mencao (@) nos grupos passa a mostrar o NOME dos participantes, puxado da agenda do WhatsApp espelhado, e nao so o numero.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.96",
+    technical: {
+      done: "`fetchEvolutionContatos` (POST /chat/findContacts) le a agenda da instancia, preferindo `name` (agenda) a `pushName` (perfil) e descartando grupos/broadcast. Rota /api/iris/group-participants-names casa por numero pelos ULTIMOS 8 DIGITOS (o 9o digito varia entre agenda e grupo) e preenche display_name; `dryRun` por padrao, so grava com dryRun:false.",
+      motivation:
+        "O backfill de participantes semeou so os numeros porque findGroupInfos nao devolve nome. O Lucas apontou que a instancia espelha um WhatsApp com os contatos salvos — e estava certo: a agenda estava disponivel e nunca tinha sido lida.",
+    },
+    title: "Iris: mencao de grupo mostra o nome do participante",
+    type: "melhoria",
+    version: "1.62.97",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-pa-da-secretaria",
+    deployedAt: "2026-07-27T16:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "NOVO: no bip da secretaria da para fotografar a PA (a folha A4 com a proposta feita no salao). E o que o atendimento REMOTO precisa para lancar a proposta de quem nao esta no evento.",
+              "A PA nao trava a fila: se a foto falhar, o botao Seguir sem a PA deixa o cliente passar normalmente.",
+              "A fila da secretaria mostra um selo verde em quem ja tem PA e SEM PA em quem falta, pro organizador voltar depois.",
+              "Quem esta sem PA segue no atendimento presencial, mas nao pode ir para o atendimento remoto.",
+            ],
+            screen: "App do organizador (celular)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.95",
+    technical: {
+      done: "Bucket privado prometeu-pa (15MB, so imagem). lib/prometeu/pa.ts: lerPa/podeAtenderRemoto/criarUrlDeUploadDaPa/registrarPa/urlParaVerPa — caminho em metadata.pa (jsonb, SEM migration), com MERGE do metadata e recusa de PA sem path. Rota /api/prometeu/pa (POST assina, PATCH carimba, GET assina leitura) com autorizarOperacao. enviarPaRemoto sobe DIRETO pro Storage e so grava o path DEPOIS do upload confirmar. CapturaDaPa (camera nativa, capture=environment) + SeloDaPa. `paPath` entrou em PrometeuCredenciado. 7 testes novos (62 no modulo).",
+      motivation:
+        "Lucas: parte do atendimento e REMOTO e quem atende de fora nao tem o papel na mao. Regra dele: o bip PASSA sem PA (a fila nao para), mas sem PA nao ha encaminhamento remoto. O cuidado com o path vem do incidente do Zeus hoje — 20 anexos orfaos por perder o caminho do arquivo.",
+    },
+    title: "Prometeu: registrar a PA no bip da secretaria",
+    type: "novidade",
+    version: "1.62.96",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-analitico-so-quem-chegou",
+    deployedAt: "2026-07-27T16:00:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O Analitico passou a mostrar SO quem ja fez check-in. Antes listava os 396 credenciados como se estivessem na Recepcao, mesmo sem terem chegado.",
+              "Os tempos absurdos (98h) sumiram junto: o cronometro contava desde o cadastro, nao desde a chegada.",
+            ],
+            screen: "Central",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.94",
+    technical: {
+      done: "central-view.tsx: `filtrados` passou a exigir `entrouEm !== null` antes da busca. Vale para Lista e Kanban, que consomem a mesma lista.",
+      motivation:
+        "Lucas: 'a recepcao e quando o cliente faz o check-in e nao os que estao na fila principal'. Mesma armadilha ja vista no Painel: recepcao e o estado PADRAO de quem so esta habilitado.",
+    },
+    title: "Prometeu: Analitico reflete a fila, nao o cadastro",
+    type: "correcao",
+    version: "1.62.95",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-bip-limpo-e-fila-secretaria",
+    deployedAt: "2026-07-27T15:45:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Ao tocar em Bipar, o leitor de QR abre DIRETO. Antes aparecia primeiro a confirmacao do bip anterior e era preciso fechar pra so entao ler o proximo.",
+              "A SECRETARIA passou a ver a fila DELA: quem ela mesma bipou na chegada e espera atendimento, em vez da fila do salao.",
+            ],
+            screen: "App do organizador (celular)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.93",
+    technical: {
+      done: "onIrParaCamera limpa `resultado` antes de trocar de aba (o resultado ficava pendurado e a tela de confirmacao reaparecia). Nova `filaDaSecretaria` (etapa secretaria, ordem por etapaDesde) exposta na rota; CheckinView usa filaSecretaria no posto secretaria.",
+      motivation:
+        "Lucas testando: o fluxo do bip mostrava a tela do cliente anterior; e a fila da secretaria e formada pelos bips DELA, nao herdada do salao.",
+    },
+    title: "Prometeu: bip abre limpo e secretaria ve a fila dela",
+    type: "correcao",
+    version: "1.62.94",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-chamado-sai-da-fila",
+    deployedAt: "2026-07-27T15:25:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Chamou, saiu da fila: a pessoa passa para o painel 'Aguardando chegar' e nao aparece mais na lista de espera. Assim ninguem chama o mesmo cliente duas vezes sem querer.",
+              "Rechamar deixou de abrir uma chamada nova. Antes cada toque criava uma linha e o mesmo cliente aparecia varias vezes no painel; agora so' reinicia o cronometro dele.",
+              "O painel de chamados cresce com a tela: com 5 chamados nao corta mais ninguem.",
+              "Fila vazia deixou de dizer 'nada encontrado para a busca' quando ninguem buscou nada.",
+            ],
+            screen: "App do organizador (celular)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.92",
+    technical: {
+      done: "chamarCredenciado passou a procurar chamada em aberto do credenciado: se existe, faz UPDATE do chamado_em (rechamada) em vez de INSERT — a origem do cliente duplicado no painel. Rota /api/prometeu/fila remove `idsEmTransito` de filaRecepcao e filaSalao. PainelEmTransito com max-h em vh no lugar de rem. Mensagem de lista vazia passou a olhar a busca, nao o total do evento. 2 testes novos (9 no arquivo).",
+      motivation:
+        "Lucas testando: 'consegui bipar o cliente mais de uma vez', 'chamei 5 e comecou a cortar', 'quando eu chamar ele tem que sair da fila e ir pro transito'. O terceiro pedido resolve o primeiro: fora da fila, nao ha botao para chamar de novo.",
+    },
+    title: "Prometeu: chamou sai da fila e rechamar nao duplica",
+    type: "correcao",
+    version: "1.62.93",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-em-transito-e-cronometro",
+    deployedAt: "2026-07-27T15:10:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "DA PARA CHAMAR VARIOS AO MESMO TEMPO: o painel 'Chamando' virou lista e mostra todos os que foram chamados e ainda nao apareceram, com o tempo de cada um. Quem bipar primeiro e' confirmado primeiro.",
+              "O que foi chamado num celular aparece nos outros: a lista vem do banco, nao do ultimo toque da tela.",
+              "A tela atualiza sozinha a cada 10 segundos (so' com o app aberto na frente).",
+              "A fila mostra o CRONOMETRO de espera de cada pessoa, com a hora do check-in em letra menor embaixo.",
+              "A numeracao da fila ficou em destaque laranja em todos, nao so' no primeiro.",
+              "O painel de chamada ficou bem mais visivel: moldura dourada, contador e botao verde de bipar.",
+            ],
+            screen: "App do organizador (celular)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.91",
+    technical: {
+      done: "Nova `listEmTransito` (chamadas com atendido_em null) exposta em /api/prometeu/fila. CheckinView: estado `chamando` unico substituido por `emTransito` do servidor + `chamadosEmTransito` cruzando com credenciados; PainelEmTransito (lista, contador, backdrop-blur, cronometro por linha) no lugar do CartaoChamando; `useRelogio`/`tempoDesde` compartilhados; polling de 10s com gate de visibilityState e recarga silenciosa (nao acende Carregando nem limpa erro); chamar/bipar disparam carregar(true); posicao da fila em laranja solido; carregar entrou nas deps do registrar.",
+      motivation:
+        "Lucas testando no celular: 'eu posso ter uma menina chamando 5 pessoas' — o estado local so' guardava o ultimo chamado e nao atravessava aparelhos. Tambem pediu cronometro no lugar da hora, numeracao em destaque, atualizacao automatica e o painel de chamada mais forte ('esta muito discreto').",
+    },
+    title: "Prometeu: varios chamados ao mesmo tempo, cronometro e auto-refresh",
+    type: "melhoria",
+    version: "1.62.92",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-circuito-e-fila-por-posto",
+    deployedAt: "2026-07-27T14:35:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O cliente ANDA no circuito: ao ser confirmado no salao, ele SAI da fila da recepcao. Antes continuava aparecendo na espera mesmo ja' sendo atendido.",
+              "Cada posto ve a fila do posto ANTERIOR: o salao ve quem espera na recepcao, a secretaria ve quem esta no salao. O contador do topo passou a ser do posto, nao do evento inteiro.",
+              "O alerta do salao diz a verdade: quem JA' passou pelo salao ouve 'ja' passou por aqui e esta em Negociacao', em vez de 'nao foi chamado'.",
+              "O salao nao tem mais aba de check-in: a tela dele so' chama e bipa.",
+              "Check-in nao pede mais toque no 'Proximo': bipou, mostrou, a camera volta sozinha.",
+              "A fila mostra a imobiliaria E o corretor de cada pessoa.",
+              "Saiu o texto de dentro/fora da janela e as bolinhas verdes viraram laranja.",
+            ],
+            screen: "App do organizador (celular)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.90",
+    technical: {
+      done: "filaDaRecepcao passou a filtrar `etapa === 'recepcao'` (antes so' excluia concluido/cancelado). Nova `filaDoSalao` (etapa negociacao, ordem por etapaDesde) exposta em /api/prometeu/fila. bipDoSalao separa 'nao foi chamado' de 'ja' passou por aqui e esta em X' pela etapa atual. CheckinView: `filaDoPosto` escolhe a fila por posto, contador do header por posto, abas escondidas no salao (com botao Fila no rodape da camera), botao Proximo removido no sucesso, texto de janela removido, corretor no item/cartao/confirmacao, posicao em laranja. 2 testes atualizados + 1 novo (53 no modulo).",
+      motivation:
+        "Rodada de correcoes do Lucas testando no celular. A mais importante: 'quando o cliente vai para outra fila ele tem que sair da que ele estava, ele tem que andar no circuito' — sem isso o organizador chamava gente que ja' estava sendo atendida. O alerta errado apareceu num caso real: ele chamou uma pessoa, bipou outra que ja' estava no salao, e a tela disse que ela nunca fora chamada.",
+    },
+    title: "Prometeu: cliente anda no circuito e cada posto ve a sua fila",
+    type: "correcao",
+    version: "1.62.91",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-fila-ordem-e-salao-chama",
+    deployedAt: "2026-07-27T14:10:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A aba Fila mostra a POSICAO de cada um (01, 02, 03...), com o proximo em dourado. Antes a lista vinha do bip mais recente para o mais antigo, que e' o oposto da ordem de chamada.",
+              "Buscar por nome nao muda as posicoes: continuam sendo as da fila inteira.",
+              "SALAO agora abre na FILA, com botao Chamar em cada pessoa.",
+              "Ao chamar, sobe o cartao CHAMANDO com o nome e o relogio andando. Nao existe mais botao 'Compareceu': quem confirma e' o QR. Rechamar e Nao veio continuam.",
+              "Confirmado o bip, o cartao some e a tela volta para a fila, pronta para o proximo.",
+            ],
+            screen: "App do organizador (celular)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.89",
+    technical: {
+      done: "CheckinView: aba Fila passou a usar `filaRecepcao` (vem ordenada do servidor) no lugar de ordenar por entrouEm desc; AbaFila recebe {credenciado, posicao} e mostra a posicao no lugar do icone de check. Salao: aba inicial `fila`, prop onChamar, estado `chamando`/`chamandoDesde`, componente CartaoChamando (relogio de 1s, Rechamar/Nao veio/Bipar) e limpeza do cartao quando o bip confirma. Rota nova `chamar-do-salao` com autorizarOperacao e zona travada em 'salao', sem mesa e sem moverPara.",
+      motivation:
+        "Correcoes do Lucas testando em producao: (1) a fila nao mostrava ordem e vinha na sequencia errada; (2) o organizador do salao trabalha OLHANDO a fila e chamando, nao bipando o tempo todo — e a confirmacao tem que ser o QR, nao um clique, senao nao ha conferencia de quem apareceu. Bloqueio no caminho: `chamar` exigia login do hub e o organizador do salao e' freela.",
+    },
+    title: "Prometeu: fila com posicao e salao chamando pela fila",
+    type: "melhoria",
+    version: "1.62.90",
+  },
+  {
+    buildTag: "2026-07-27-prometeu-postos-do-organizador",
+    deployedAt: "2026-07-27T13:45:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O app do organizador abre perguntando o posto: Recepcao, Salao ou Secretaria. A escolha fica guardada no aparelho, com 'Trocar de posto' no rodape.",
+              "SALAO: o QR confirma a chamada. Bipar quem NAO foi chamado nao move ninguem — a tela mostra o nome e avisa para a pessoa aguardar a chamada.",
+              "SECRETARIA: o QR registra a chegada de quem foi por conta propria e fecha a etapa anterior sozinho, sem ninguem apertar nada.",
+              "Passar o mesmo QR duas vezes na secretaria nao acusa erro: e' o organizador conferindo.",
+            ],
+            screen: "App do organizador (celular)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.87",
+    technical: {
+      done: "lib/prometeu/data.ts: bipDoSalao (exige chamada em aberto, marca atendido_em com filtro de corrida, move para negociacao) e bipDaSecretaria (sem chamada previa, idempotente se ja esta na etapa). Rota credenciados PATCH ganhou bip-salao/bip-secretaria ANTES do gate de escrita do hub, com autorizarOperacao — cada uma so move pro seu destino. `chamar()` passou a devolver `status` para a tela separar recusa por regra (409) de erro tecnico. CheckinView ganhou prop `posto` (3 textos, ramifica a acao, `posto` na dep do useCallback) + resultado `recusado` em ambar. Novo seletor-de-posto.tsx com persistencia em localStorage. 6 testes novos (52 no modulo).",
+      motivation:
+        "Faltavam 2 dos 3 pontos de QR do trilho fisico a 5 dias do lancamento. Bloqueio achado no caminho: SO o check-in aceitava o operador do evento; salao e secretaria teriam falhado na mao do freela, que e' quem opera no dia.",
+    },
+    title: "Prometeu: organizador escolhe o posto (recepcao, salao, secretaria)",
+    type: "novidade",
+    version: "1.62.88",
+  },
+  {
+    buildTag: "2026-07-27-zeus-migracao-gravacoes",
+    deployedAt: "2026-07-27T13:10:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "As gravacoes de tela antigas voltaram a migrar para o Storage: o sistema dizia que o arquivo estava invalido, mas o arquivo estava inteiro.",
+            ],
+            screen: "HelpDesk",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.86",
+    technical: {
+      done: "`decodeDataUrl` passou de `^data:([^;,]+);base64,` para `^data:(.*?);base64,`. O `[^;,]+` parava no primeiro `;`, entao `data:video/webm;codecs=vp8;base64,...` nunca casava. 4 testes novos (9 no arquivo).",
+      motivation:
+        "Mesmo `;codecs=` que ja tinha derrubado a lista branca do bucket, agora no parser. O sintoma era pior: a tela acusava 'data-URL invalido', como se o anexo estivesse corrompido — e nao estava, o base64 completo estava no banco.",
+    },
+    title: "Zeus: gravacoes de tela migram para o Storage",
+    type: "correcao",
+    version: "1.62.87",
+  },
+  {
+    buildTag: "2026-07-27-zeus-migracao-anexos-tipo",
+    deployedAt: "2026-07-27T12:25:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "A migracao dos anexos antigos para o Storage voltou a rodar: gravacao de tela, planilha e CSV estavam sendo recusadas pelo tipo do arquivo.",
+              "Quando um anexo falha, a tela passa a mostrar o motivo em vez de so 'upload falhou'.",
+            ],
+            screen: "HelpDesk",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.84",
+    technical: {
+      done: "`tipoAceitoPeloBucket` corta o parametro depois do `;` (video/webm;codecs=vp8 -> video/webm) e cai para application/octet-stream quando o tipo nao esta na lista branca do bucket. Erro do Storage passa a ser propagado na mensagem de falha. 5 testes.",
+      motivation:
+        "O bucket hub-it-ticket-attachments compara o content-type inteiro contra a lista branca. 22 dos 47 anexos legados nao migravam: 17 gravacoes de tela (sufixo de codec), 4 planilhas e 1 CSV. A mensagem generica 'upload falhou' escondia a causa.",
+    },
+    title: "Zeus: migracao de anexos aceita gravacao e planilha",
+    type: "correcao",
+    version: "1.62.86",
+  },
+  {
+    buildTag: "2026-07-27-iris-reabrir-conversa-parametros",
+    deployedAt: "2026-07-27T12:35:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Reabrir conversa depois das 24h voltou a funcionar. Dava 'Nao foi possivel reabrir a conversa' em qualquer cliente.",
+              "A mensagem sai preenchida com nome do cliente, quem esta atendendo, protocolo e assunto.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.84",
+    technical: {
+      done: "O botao mandava `bodyParameters: []` fixo. Agora a rota /api/iris/meta/messages preenche os parametros no SERVIDOR quando o chamador nao manda nenhum, resolvendo por CHAVE a partir de `variables` do template (mesma regra de /api/iris/tickets). Assunto cai pro perfil do ticket, depois fila, depois 'seu atendimento' — nunca vazio, que a Meta tambem recusa.",
+      motivation:
+        "Regressao introduzida em 26/07 no proprio botao de reabrir: a Meta recusa quando a quantidade de parametros nao bate com o template aprovado, e o modelo de devolutiva declara quatro. Ficou no servidor porque e' onde existem ticket, contato e operador, e assim protege qualquer chamador.",
+    },
+    title: "Iris: reabrir conversa voltou a funcionar",
+    type: "correcao",
+    version: "1.62.85",
+  },
+  {
+    buildTag: "2026-07-27-zeus-layout-anexo",
+    deployedAt: "2026-07-27T12:05:00-03:00",
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "Anexar uma evidencia na devolutiva nao empurra mais os botoes pra fora da tela: o de mandar pra validacao aparecia cortado.",
+              "Nome de arquivo comprido agora e' encurtado com reticencias, em vez de esticar a coluna inteira.",
+            ],
+            screen: "HelpDesk",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.83",
+    technical: {
+      done: "min-w-0 nas duas colunas do detalhe do chamado (grid item nasce com min-width:auto e nao encolhe abaixo do conteudo) + flex-wrap no rodape de acoes da devolutiva.",
+      motivation:
+        "Bastava um nome como 'Captura de tela 2026-07-27 113434.png' pra coluna inchar e o rodape vazar pra fora do modal. A lista de anexos ja' tinha `truncate` no nome, mas truncate nao faz nada enquanto ninguem permite o encolhimento — a protecao estava la' e era inofensiva.",
+    },
+    title: "Zeus: layout do chamado nao quebra com anexo",
+    type: "correcao",
+    version: "1.62.84",
+  },
+  {
+    buildTag: "2026-07-27-anexo-aparece-na-tela",
+    deployedAt: "2026-07-27T15:10:00-03:00",
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "Print e video do chamado voltaram a APARECER: a miniatura carrega e a tela cheia abre.",
+              "Vale tambem para os anexos antigos que ja tinham sido movidos para o Storage e apareciam como quadrado cinza.",
+            ],
+            screen: "Helpdesk",
+          },
+          {
+            items: [
+              "Quem abriu o chamado volta a ver a propria evidencia anexada no historico do HelpDesk.",
+            ],
+            screen: "Meus chamados",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.82",
+    technical: {
+      done: "helpdesk-board e hub-user-tickets-panel liam SO' `attachment.dataUrl` (base64 legado) e ignoravam `attachment.url`, a URL assinada do Storage que o servidor ja' devolvia. Criada a fonte unica `url ?? dataUrl` e aplicada nos 14 pontos das duas telas (card, tela cheia, video, audio, arquivo e os guards de exibicao).",
+      motivation:
+        "Depois de religar os 20 anexos orfaos (1.62.82) a evidencia continuou sem aparecer: o defeito estava na LEITURA da tela, nao no dado. Como o guard do visualizador era `expandedAttachment?.dataUrl`, anexo do Storage nem abria em tela cheia. Isso alcanca tambem os 43 anexos migrados em julho, que estavam invisiveis desde entao.",
+    },
+    title: "Anexo do chamado agora aparece na tela",
+    type: "correcao",
+    version: "1.62.83",
+  },
+  {
+    buildTag: "2026-07-27-anexo-do-chamado-nao-abria",
+    deployedAt: "2026-07-27T14:30:00-03:00",
+    modules: [
+      {
+        module: "Zeus",
+        screens: [
+          {
+            items: [
+              "Print e video anexados no chamado voltaram a abrir. Desde 14/07 o arquivo subia mas o chamado nao guardava onde ele ficou, entao a evidencia nao aparecia para ninguem.",
+              "Os 20 anexos afetados (14/07 a 27/07) foram recuperados: os arquivos estavam salvos e voltaram a ficar visiveis nos chamados.",
+              "Anexo sem arquivo nao e mais aceito em silencio: se o envio falhar, o usuario e avisado na hora em vez de descobrir depois que a evidencia sumiu.",
+            ],
+            screen: "Helpdesk",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.81",
+    technical: {
+      done: "normalizeAttachments (lib/hub-it-tickets/server.ts) remonta o anexo campo a campo e nao copiava `storagePath` — o campo morria entre o navegador e o insert. Passou a copiar (sanitizado) e a descartar anexo sem storagePath E sem dataUrl, que so gerava linha fantasma. Backfill: 20 linhas religadas aos objetos do bucket por (usuario + tamanho + janela de 15 min), 20/20 com casamento unico.",
+      motivation:
+        "O upload direto ao Storage foi ligado em 14/07 e a partir dali o cliente parou de mandar base64 quando o upload dava certo. Como o `storagePath` era descartado no servidor, a linha nascia sem storage_path E sem content_data_url: 20 anexos gravados sem lugar nenhum de onde ler o arquivo. Campo OPCIONAL esquecido num remonte nao quebra typecheck — passou verde por 13 dias.",
+    },
+    title: "Anexo do chamado nao abria",
+    type: "correcao",
+    version: "1.62.82",
+  },
+  {
+    buildTag: "2026-07-27-credito-do-conjuge",
+    deployedAt: "2026-07-27T12:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cliente casado ou em uniao estavel ganhou o botao Consultar credito do conjuge, na etapa de credito.",
+              "Titular reprovado manda a ficha para Credito em revisao, como sempre. Se o conjuge for aprovado, a ficha e liberada e o credenciamento segue.",
+              "Conjuge reprovado nao mexe em nada: nao derruba quem tem credito nem avisa o coordenador.",
+              "Sem o CPF do conjuge na ficha, o sistema avisa onde preencher em vez de deixar o botao sem resposta.",
+            ],
+            screen: "Board · Analise de credito",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.80",
+    technical: {
+      done: "POST /apolo/serasa/consultar aceita `alvo: titular|conjuge`. Para conjuge o CPF sai de apolo_esteira.ficha.conjugeCpf (nunca do corpo), a consulta e sempre PF, grava com finalidade `analise-credito-conjuge` e o registro fica no entity_id do titular. `transicao` virou nullable: conjuge reprovado nao chama atualizarEtapa nem dispara aviso. O GET passou a devolver `conjuge:{nome,temCpf,temConjuge}` (o CPF em si nao trafega) para a tela decidir o botao.",
+      motivation:
+        "Compra em casal e comum e a renda que sustenta a compra pode ser a do conjuge, mas nao havia como consultar o credito dele: o conjuge nao e entidade no Apolo, e o motor so aceitava o documento da ficha. Sem isso, ficha reprovada no titular morria em revisao mesmo com o casal tendo credito.",
+    },
+    title: "Credito do conjuge resgata a ficha",
+    type: "novidade",
+    version: "1.62.81",
+  },
+  {
+    buildTag: "2026-07-27-apolo-nome-no-card-e-entrada-manual",
+    deployedAt: "2026-07-27T10:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Corrigiu o nome do cliente na validacao da CAD? O card, a lista e o titulo da tela passam a mostrar o nome novo na hora, sem precisar de F5.",
+            ],
+            screen: "Board",
+          },
+          {
+            items: [
+              "Quando a leitura do documento nao traz um dado (ou traz errado), o campo abre para o operador digitar em vez de travar o cadastro.",
+              "Vale para nome, CPF, nome da mae, naturalidade e nacionalidade.",
+              "Um aviso diz exatamente o que faltou na leitura.",
+              "Nao da mais para avancar sem nome e sem um CPF valido: o erro aparece na etapa, e nao so' no fim do cadastro.",
+            ],
+            screen: "Cadastro de prospect",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.79",
+    technical: {
+      done: "board-view: `onIdentidadeSalva` atravessa ValidacaoLadoALado -> PainelEtapa -> DetalheBoard -> BoardView e dispara carregarFila so' quando a identidade muda; carregarFila passou a ressincronizar `selecionado` por id (o titulo lia de estado proprio). cadastro-flow: campos da identidade alternam ReadField/TextField, com o CPF usando `cpfValido` (nao `vazio`) como criterio; `podeAvancarPf` exige nome e CPF valido.",
+      motivation:
+        "O nome ia certo pro banco (39 edicoes registradas, nenhuma recusada) mas a fila era carregada uma vez so' e ninguem a avisava. No cadastro, o caso real da Katia Duarte mostrou os dois lados: contracheque e conta de luz nao tem CPF, e o contracheque ainda devolve texto solto (\"Ferias Vencidas\") no campo de CPF — criterio de campo vazio deixaria esse lixo travado na tela.",
+    },
+    title: "Apolo: nome atualiza no card e cadastro aceita digitacao",
+    type: "correcao",
+    version: "1.62.80",
+  },
+  {
+    buildTag: "2026-07-27-direct-dono-padrao",
+    deployedAt: "2026-07-27T01:10:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Conversa nova no numero de Relacionamento (Direct) ja' nasce com responsavel, em vez de cair em Sem responsavel.",
+              "Quem responde pelo Direct e' configuravel: sai do cadastro da fila, sem depender de atualizacao do sistema.",
+              "O fechamento automatico de 4h continua valendo para o Direct enquanto ninguem tiver assumido a conversa.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.78",
+    technical: {
+      done: "getDirectQueue passa a ler `metadata`; o insert do ticket Direct aplica `metadata.defaultAssigneeUserId` da fila. fechar-sem-interacao inclui os Direct cujo dono ainda e' o padrao (trava de corrida vira eq no dono lido, no lugar de is null). saveIrisQueue passou a fazer MERGE do metadata da fila em vez de substituir o objeto inteiro.",
+      motivation:
+        "Dos 106 tickets que a fila Direct ja' recebeu, os 106 nasceram sem dono e nenhum foi atribuido a ninguem: Sem responsavel virou a maior coluna do Board. Sem o ajuste no cron, porem, dar dono desligaria o fechamento automatico dessa fila (22 dos 148 fechamentos ate hoje).",
+    },
+    title: "Direct nasce com responsavel",
+    type: "melhoria",
+    version: "1.62.79",
+  },
+  {
+    buildTag: "2026-07-27-board-tag-status-no-card",
+    deployedAt: "2026-07-27T00:40:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Quando voce agrupa o Board por operador, canal ou fila, o card passa a mostrar a etiqueta de status (Pendente, Aguardando cliente, Com a Caca...).",
+              "Agrupando por status a etiqueta some, porque a propria coluna ja diz.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.77",
+    technical: {
+      done: "BoardCard e BoardColumnView recebem `agrupadoPor`. Chip de status reusa statusColumnKey + STATUS_FLOW (mesma classificacao e mesma cor do cabecalho da coluna) e so renderiza quando o agrupamento nao e por status.",
+      motivation:
+        "Agrupado por operador o quadro dizia de quem era o atendimento, mas nao em que pe estava: o operador tinha que abrir o card pra saber. A regra e o card mostrar o que a coluna nao diz, sem repetir a mesma informacao em dois lugares.",
+    },
+    title: "Board: etiqueta de status no card",
+    type: "melhoria",
+    version: "1.62.78",
+  },
+  {
+    buildTag: "2026-07-27-board-filtros-combinaveis",
+    deployedAt: "2026-07-27T00:05:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O Board ganhou filtros que se combinam: dá para ver, por exemplo, só os atendimentos da Cinthia que estão pendentes no WhatsApp. Cada pessoa monta a visão que precisa.",
+              "Dentro de um mesmo filtro é possível marcar mais de um valor, como duas operadoras ao mesmo tempo.",
+              "Com filtro ligado, a tela mostra quantos atendimentos estão aparecendo do total, e um botão para limpar tudo de uma vez.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.76",
+    technical: {
+      done: "iris-board-kanban.tsx: nova função exportada valorDaDimensao(dimensao, ticket, helpers) — a MESMA usada pelo agrupamento e pelos filtros, para coluna e filtro nunca discordarem. Estado `filtros` (Record<GroupMode, string[]>, persistido em iris.board.filtros): dentro da dimensão os valores somam (OU), entre dimensões restringem (E). O seletor só oferece valores que existem na aba atual. O contador 'mostrando X de Y' evita o clássico filtro esquecido ligado. Antes o Board só tinha AGRUPAMENTO (muda colunas, não esconde nada), então a barra parecia filtro e não filtrava.",
+      motivation: "Lucas: 'dar a oportunidade de colocar mais de 1 filtro, operador e status, operador status canal, temos que dar oportunidade do operador montar a visão dele'.",
+    },
+    title: "Iris: filtros combináveis no Board",
+    type: "melhoria",
+    version: "1.62.77",
+  },
+  {
+    buildTag: "2026-07-26-painel-abas-so-icone",
+    deployedAt: "2026-07-26T23:55:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "As abas do painel do cliente voltaram a mostrar apenas o ícone, com o nome no tooltip.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.75",
+    technical: {
+      done: "iris-cobranca-context.tsx: removido o rótulo de texto das abas do painel. Com 5 abas em 340px não cabe, e o texto sobrepunha o ícone tanto na versão com rótulo em todas quanto na versão só na aba ativa (confirmado por print do Lucas nas duas tentativas). Se um dia quisermos rótulo aqui, o caminho é reduzir o número de abas, não espremer texto.",
+      motivation: "Lucas: 'pode deixar somente o ícone mesmo'. A tentativa de resolver a queixa dos ícones sem nome quebrou o layout duas vezes.",
+    },
+    title: "Iris: abas do painel voltam a ser só ícone",
+    type: "correcao",
+    version: "1.62.76",
+  },
+  {
+    buildTag: "2026-07-26-board-abas-atendimento-email-grupos",
+    deployedAt: "2026-07-26T23:45:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O Board ganhou abas: Atendimento, E-mail e Grupos. Cada aba mostra só o que é dela e traz o número de conversas sem ler.",
+              "Os indicadores passaram a contar apenas a aba aberta. Antes os grupos entravam na conta e inflavam o total: o Board dizia 137 abertos quando havia 98 atendimentos, porque somava 39 grupos que nunca são finalizados.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.74",
+    technical: {
+      done: "iris-board-kanban.tsx: novo estado abaAtiva (persistido em iris.board.aba) e ticketsDaAba, que separa por natureza — ticket.isGroup vai para Grupos, isEmailBoardTicket para E-mail, o resto para Atendimento. O filtro entra ANTES dos indicadores e do visibleTickets, então cada aba recalcula os próprios números. naoLidasPorAba conta ticket.unread por natureza e alimenta o badge. É separação de APRESENTAÇÃO: a origem dos dados (iris-data-client, onde os grupos entram na mesma lista via ...groupConversations) segue intacta, o que mantém a conversa de grupo funcionando como está.",
+      motivation: "Lucas: os grupos poluem os indicadores e não têm como ser finalizados. A opção por abas dentro do Board (em vez de tela separada) foi escolha dele, e é também o caminho de menor risco.",
+    },
+    title: "Iris: Board com abas de Atendimento, E-mail e Grupos",
+    type: "melhoria",
+    version: "1.62.75",
+  },
+  {
+    buildTag: "2026-07-26-iris-abas-cronometro-no-card",
+    deployedAt: "2026-07-26T23:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Correção: as abas do painel do cliente estavam com o texto sobrepondo os ícones. Agora só a aba aberta mostra o nome, e as outras seguem com o ícone.",
+              "O cronômetro de espera passou a aparecer também no card do Board, e não só dentro da conversa. É no quadro que se escolhe quem atender.",
+              "O cronômetro agora conta o tempo real que passou, mesmo de madrugada e no fim de semana. A cor de alerta continua contando só o horário comercial, para não acusar ninguém por mensagem que chegou às 23h.",
+            ],
+            screen: "Atendimento e Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.73",
+    technical: {
+      done: "(1) iris-cobranca-context.tsx: o rótulo das abas virou exclusivo da aba ativa (a versão anterior punha texto nas 5 e estourava os 340px do painel, sobrepondo ícone e texto em produção). (2) iris-board-kanban.tsx: o rodapé do card passou a exibir helpers.slaLabel (que já devolve 'esperando 2h14' / 'Aguardando cliente') com ícone de relógio, no lugar de 'vencido · data'; a data foi para o title. (3) lib/espera.ts ganhou minutosCorridos: o TEXTO usa relógio de parede e a COR usa minutos úteis — sem isso, à noite tudo exibia 'esperando agora' e o cronômetro parecia quebrado (o Lucas testou às 23h e não viu). 14 testes.",
+      motivation: "Lucas viu a tela quebrada nas abas e pediu o cronômetro também no card. O 'não vi o cronômetro' foi consequência do relógio pausar fora do expediente.",
+    },
+    title: "Iris: conserto das abas e cronômetro no card do Board",
+    type: "correcao",
+    version: "1.62.74",
+  },
+  {
+    buildTag: "2026-07-26-iris-reabrir-conversa-e-cronometro",
+    deployedAt: "2026-07-26T23:15:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Quando passa de 24h desde a última mensagem do cliente, o atendimento deixa de ficar sem saída: aparece uma faixa no rodapé com os modelos aprovados e o botão Reabrir conversa, que envia no mesmo protocolo. Antes o campo de texto ficava desabilitado e não havia nenhum caminho, então o pedido do cliente ficava sem resposta.",
+              "O cabeçalho da conversa passou a mostrar um cronômetro ao vivo com o tempo que o cliente está esperando resposta. Ele conta só quando a bola está com a gente e só em horário comercial, e some assim que respondemos.",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.72",
+    technical: {
+      done: "REABRIR CONVERSA: /api/iris/meta/messages passou a aceitar `template: {name, language, bodyParameters}` e enviar via sendMetaWhatsAppTemplateMessage no protocolo atual. Três travas foram derrubadas para o template ser alcançável: o 409 da janela fechada (agora só vale para texto livre), a exigência de body (template puro passa, e o histórico guarda o texto renderizado) e a ausência do ramo de envio. UI em iris-composer-actions.tsx (faixa âmbar com seletor, prévia e botão), alimentada por irisData.templates → AttendanceView → IrisConversationPanel → composer (cadeia conferida por grep, não só por typecheck). CRONÔMETRO: blocks/conversation/iris-cronometro-espera.tsx, atualiza a cada 30s, reusa modules/caredesk/lib/espera (12 testes).",
+      motivation: "A auditoria da tela mostrou que 80 dos 98 atendimentos abertos estavam com a janela da Meta fechada, 61 deles com a bola conosco: o operador lia o pedido e não tinha o que clicar, e o '+ Novo atendimento' recusava com 409 mandando abrir o atendimento existente, que é justamente onde ele não podia escrever. O cronômetro foi pedido do Lucas para enxergar o tempo sem interação.",
+    },
+    title: "Iris: dá para responder quem está fora da janela de 24h, e o cronômetro mostra a espera",
+    type: "melhoria",
+    version: "1.62.73",
+  },
+  {
+    buildTag: "2026-07-26-iris-onda1-fila-e-relogio",
+    deployedAt: "2026-07-26T22:20:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A fila voltou a mostrar a última mensagem de cada atendimento. Antes a maioria dos itens aparecia como 'Sem mensagens registradas' e era preciso abrir um por um só para descobrir o que o cliente queria.",
+              "O relógio de espera parou de marcar quem não está esperando: quem já foi respondido e não voltou não conta mais como atrasado, e o tempo não corre de madrugada nem no fim de semana. Antes quase todos os cards ficavam vermelhos, inclusive os que aguardavam o cliente.",
+              "No lugar de 'Vencido', o card mostra há quanto tempo o cliente espera de fato (ex.: 'esperando 2h14'), com destaque só a partir de 2 horas e alerta a partir de 8.",
+              "Ao encerrar um atendimento em que o cliente falou por último, a tela mostra a mensagem que ficaria sem resposta antes de confirmar. O motivo já vem preenchido como Finalizado.",
+              "As abas do painel do cliente (Cliente, Carteira, Financeiro, Timeline, Tickets) agora aparecem com nome, não só com o ícone.",
+            ],
+            screen: "Atendimento e Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.71",
+    technical: {
+      done: "Onda 1 do redesenho da Iris. (1) iris-data-client: segunda passada auto-corretiva para a prévia da fila — a leitura em lote pedia 300 msgs para 100 tickets e conversas longas consumiam o orçamento, deixando 60 de 100 itens sem preview (no banco, ZERO abertos estão sem mensagem); agora quem ficou de fora é buscado em lotes de 20 com 5 msgs por ticket. (2) modules/caredesk/lib/espera.ts (novo, 12 testes): relógio conta só quando a bola é nossa e só em horário comercial (seg-sex 8h-18h), faixas 2h/8h; isSlaCritical/slaLabel/slaClasses passaram a usá-la mantendo a assinatura, e a cópia da regra em iris-data-client (que alimenta o contador do topo) foi alinhada — estavam divergindo. (3) IrisCobrancaCloseModal recebe pendenciaDoCliente e o motivo nasce 'Finalizado'; a função closeTicket() do IrisPage era CÓDIGO MORTO (nunca chamada, o botão abre o modal direto) e foi removida. (4) Abas do painel com rótulo visível. Sobe junto o Lote 2 da CACÁ (memória de identidade, 11 testes; mural de avisos inerte até a migration 0073).",
+      motivation: "O time reportou que a Iris está confusa e difícil de trabalhar. A auditoria da tela mostrou que 96 de 98 abertos apareciam em vermelho (inclusive 19 de 19 que aguardavam o cliente), que a fila não mostrava o assunto e que o aviso de encerramento construído para evitar os 136 fechamentos indevidos nunca executava.",
+    },
+    title: "Iris: a fila mostra o assunto e o relógio para de marcar quem não espera",
+    type: "melhoria",
+    version: "1.62.72",
+  },
+  {
+    buildTag: "2026-07-26-relatorio-nome-exibicao",
+    deployedAt: "2026-07-26T19:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O relatório da imobiliária passa a ser endereçado ao NOME DE EXIBIÇÃO dela, e não à razão social. Antes a Diimóveis recebia como 'EDMILSON LINO DA SILVA', a FR Freitas como 'L A DE FREITAS' e a Trindade Imóveis como 'RTRINDADE EMPREENDIMENTOS LTDA', nomes que o parceiro não reconhece.",
+            ],
+            screen: "Imobiliárias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.70",
+    technical: {
+      done: "disparo-imobiliaria.ts (contatoDaEntidadeImobiliaria): a resolução do nome passou de `legal_name || display_name` para `display_name || trade_name || legal_name`. Afeta o cabeçalho e o assunto do relatório diário e do reenvio. O nome do CLIENTE segue vindo de legal_name (para pessoa física é o nome completo, que é o correto).",
+      motivation: "Lucas viu o relatório da Trindade chegar como 'RTRINDADE EMPREENDIMENTOS LTDA' e questionou. Investigando, a razão social do cadastro tem um typo ('RTRINDADE') e em outras imobiliárias ela é o nome da pessoa física por trás do CNPJ. Decisão dele: usar o nome de exibição.",
+    },
+    title: "Apolo: relatório vai no nome que a imobiliária conhece",
+    type: "correcao",
+    version: "1.62.71",
+  },
+  {
+    buildTag: "2026-07-26-relatorio-reenvio-limpo",
+    deployedAt: "2026-07-26T19:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O reenvio do relatório para uma imobiliária agora sai igual ao original. O aviso de retificação (o texto que pede para desconsiderar o e-mail anterior) só entra quando é realmente uma correção, e não em todo reenvio.",
+            ],
+            screen: "Imobiliárias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.69",
+    technical: {
+      done: "relatorio-diario/route.ts: o banner AVISO_RETIFICACAO virou opt-in por `retificacao=1` (antes vinha grudado em todo `reenvio=1`). Sobe junto, sem efeito visível: memória de identidade da CACÁ (identidade-lembrada.ts, 11 testes — o número que já validou um cadastro por CPF não revalida por 30 dias, com reconfirmação leve do nome) e o mural de avisos operacionais (avisos-operacionais.ts, 8 testes), que fica INERTE porque a migration 0073 ainda não foi aplicada (a leitura devolve lista vazia e a CACÁ responde sem esse contexto).",
+      motivation: "Em 26/07 o refresh token do Gmail da caixa da Cacá expirou e as 25 imobiliárias não receberam o relatório das 18h por e-mail (o aviso de WhatsApp saiu). No reenvio, o banner de retificação afirmaria algo falso: não houve e-mail anterior nem erro de atribuição. Lucas: 'quero o relatório normal, sem mensagem'.",
+    },
+    title: "Apolo: reenvio de relatório sai limpo, sem aviso de retificação",
+    type: "correcao",
+    version: "1.62.70",
+  },
+  {
+    buildTag: "2026-07-26-caca-lote1-turno-e-falha",
+    deployedAt: "2026-07-26T13:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Cacá não responde mais duas vezes quando o cliente manda mensagens seguidas: ela espera o cliente terminar e responde uma vez só, considerando tudo que ele escreveu.",
+              "Quando a assistente tem um problema técnico, ela agora avisa com honestidade e encaminha para uma pessoa do time, em vez de mandar uma resposta genérica que ignorava o que o cliente acabou de pedir.",
+              "Parcela vencida deixou de ser tratada como acusação: se o pagamento pode estar em processamento, a Cacá diz o que consta e pede o comprovante, em vez de afirmar que o cliente está em atraso.",
+              "Ao encerrar um atendimento em que a última mensagem é do cliente, o sistema avisa e mostra o que ficaria sem resposta, para o atendimento não morrer com a pendência do nosso lado.",
+            ],
+            screen: "Atendimento e assistente virtual",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.68",
+    technical: {
+      done: "Lote 1 da Cacá, a partir da auditoria de 1.091 atendimentos. (1) NOVO lib/iris/caca/guarda-de-turno.ts (+7 testes): decidirTurno() cala a execução quando há inbound mais recente (rajada, quem responde é a execução da última mensagem, que lê o histórico inteiro) ou quando já existe outbound posterior à inbound processada (corrida). Aplicado 2x no meta-inbound-processor: antes de chamar o modelo (economiza token) e imediatamente antes do envio, que é onde a janela real de corrida mora. (2) Fim do fallback para o motor determinístico como resposta ao cliente: agora 1 retry do Claude e, na segunda falha, montarTurnoDeFalha() devolve handoff.required=true com texto honesto e o motivo técnico na razão do handoff. O motor legado segue apenas para CACA_ENGINE != claude (desligado de propósito). (3) persona.ts: regra ATRASO É HIPÓTESE. (4) IrisPage.closeTicket: confirmação mostra a última mensagem do cliente quando a direção é inbound.",
+      motivation: "Auditoria da central (26/jul): o Claude falhou 26 vezes em 14 atendimentos e caía num motor legado sem memória que tratava o cliente pelo apelido do WhatsApp (AT-000923: 6 dessas na conversa de uma cliente idosa, que depois ameaçou a Defensoria). No mesmo ticket houve prova de corrida: resposta do legado às 12:52:28 e do Claude às 12:52:36. A falha era invisível (só console.error). Além disso 136 atendimentos foram fechados como Finalizado com o cliente falando por último, e a Cacá afirmou atraso de 13 dias num valor pago no mesmo dia (AT-000168).",
+    },
+    title: "Iris: a Cacá para de repetir resposta e assume quando falha",
+    type: "correcao",
+    version: "1.62.69",
+  },
+  {
+    buildTag: "2026-07-26-cockpit-privacidade-telefone",
+    deployedAt: "2026-07-26T11:00:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O cockpit do atendimento passou a exibir a carteira e o financeiro do cliente somente quando o telefone do contato confirma a identidade no Apolo, evitando mostrar dados de um cliente com o mesmo nome.",
+            ],
+            screen: "Cockpit de atendimento",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.66",
+    technical: {
+      done: "Correção de privacidade no cockpit: pickIrisApoloEntityForTicket retorna null (não pega entities[0] por nome); loadApoloContext só consulta o Apolo por documento (>=3 dígitos), sem cair no telefone solto nem no nome do contato; mesmo ajuste no mobile (apolo-context.ts). Sobe junto, interna da CACÁ e sem painel: tool registrar_chave_pix, o cliente responde a chave PIX de devolução no recibo e a Cacá grava em apolo_esteira (migration 0072 já aplicada).",
+      motivation: "Incidente: um contato de WhatsApp (Ana Paula) com o mesmo primeiro nome de uma compradora do Lavra viu a carteira dela no cockpit, sem o telefone bater. Regra: telefone é o único gatilho do match.",
+    },
+    title: "Iris: cockpit só mostra o cliente quando o telefone confirma a identidade",
+    type: "correcao",
+    version: "1.62.68",
+  },
+  {
+    buildTag: "2026-07-25-pix-vale-do-ouro-remetente-contato",
+    deployedAt: "2026-07-25T20:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Os e-mails de pré-venda (cobrança e recibo do PIX) do empreendimento Vale do Ouro passam a sair de contato@careli.adm.br; os demais empreendimentos seguem saindo da caixa da Cacá.",
+            ],
+            screen: "Pré-venda (PIX)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.66",
+    technical: {
+      done: "cobranca-prevenda.ts: helper remetentePrevenda(empreendimento) — Vale do Ouro (nome contém 'vale do ouro' ou code 'vlo') → 'Careli - C2X <contato@careli.adm.br>'; senão getCacaSender (caca@). enviarEmailPrevenda ganhou o param `from`. Aplicado nos 3 caminhos de disparo: lib cobranca-prevenda/recibo-prevenda (usados por gerar-pix + disparo-lote) e a CÓPIA da bancada/route.ts (cobrança + recibo). Fallback preservado: se o Send-As de contato@ não estiver liberado na conta caca@, o Gmail recusa e reenvia pela caixa padrão (caca@).",
+      motivation: "Lucas: voltar o remetente do PIX pro contato@careli.adm.br, mas SÓ no Vale do Ouro (os outros seguem na Cacá). Sem anúncio no painel de novidades.",
+    },
+    title: "Apolo: PIX do Vale do Ouro sai do contato@ (demais seguem na Cacá)",
+    type: "melhoria",
+    version: "1.62.67",
+  },
+  {
+    buildTag: "2026-07-25-apolo-setup-empreendimento-e-fila-toggle",
+    deployedAt: "2026-07-25T19:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O empreendimento ganhou uma aba própria de Setup: os controles de Recebendo CAD, Análise de Crédito, Pré-venda e a logo saíram de dentro do Cadastro e agora ficam todos numa aba só, mais fácil de achar.",
+              "Com a Análise de Crédito desligada no empreendimento, a esteira não consulta mais o Serasa — a ficha aprovada avança direto (pré-venda se ligada, senão credenciado).",
+              "Antes de consultar o Serasa, o sistema confere o dígito verificador do CPF: CPF inválido é barrado com aviso, sem gastar a consulta (que é paga).",
+            ],
+            screen: "Empreendimento e Cadastro de CAD",
+          },
+          {
+            items: [
+              "Board, esteira e a ficha do cliente agora se atualizam sozinhos quando você volta pra aba — sem precisar dar F5 pra ver um PIX pago, uma correção de CPF ou uma troca de etapa.",
+            ],
+            screen: "Board / Esteira",
+          },
+        ],
+      },
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O Setup do lançamento agora tem duas abas: Configurações e Equipe.",
+              "O check-in virou um liga/desliga (no lugar da janela de data e hora). Ligado, quem pagou o PIX tem prioridade na fila; desligado, a fila ordena pela hora de chegada (o check-in físico) e o PIX perde a vez.",
+              "Ao escolher o empreendimento, a Construtora já vem preenchida com o Incorporador — e continua editável se precisar ajustar.",
+            ],
+            screen: "Setup do lançamento",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.65",
+    technical: {
+      done: "APOLO: empreendimentos-view.tsx ganhou a aba 'setup' (ApoloEnterpriseTab += 'setup'); o CredenciamentoCard (toggles credenciamento_ativo/analise_credito_habilitada/prevenda_habilitada + limite + valor PIX + logo) foi movido do CadastroTab para a aba Setup. serasa/consultar/route.ts: guard de resolverAnaliseHabilitada (análise off → atualizarEtapa direto pra prevenda/credenciado, sem consultar) + cpfValido antes da consulta (412 sem gastar). Auto-refresh: hook use-refetch-on-focus (visibilitychange+focus, debounce 10s) em board-view.tsx e ApoloPage.tsx. PROMETEU: filaDaRecepcao(credenciados, checkinHabilitado) — troca o credenciadoNaJanela pelo flag config.checkinHabilitado do evento (ligado=ordem do PIX; desligado=ordem de chegada); fila-recepcao.test.ts reescrito (9 testes verdes). setup-view.tsx: 2 abas + CheckinCard (switch grava config.checkinHabilitado, some a janela data/hora) + construtora herda incorporador (só quando vazia); incorporador propagado por PrometeuEmpreendimento/listEmpreendimentosAtivos/rota empreendimentos.",
+      motivation: "Lucas: lista de pendências Apolo+Prometeu 'em paralelo'. A aba Setup nasceu de 'não achei a aba de setup do empreendimento' (os toggles estavam soterrados no Cadastro). O check-in liga/desliga substitui a janela data/hora, com a regra de fila validada por ele (25/jul).",
+    },
+    title: "Apolo: aba Setup do empreendimento + Análise/CPF no crédito; Prometeu: check-in liga/desliga e Setup em abas",
+    type: "melhoria",
+    version: "1.62.66",
+  },
+  {
+    buildTag: "2026-07-25-comprovante-nao-trava-pdf-rasterizado",
+    deployedAt: "2026-07-25T18:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Comprovante de endereço (e documentos genéricos) não travam mais o cadastro por qualidade. Quando a leitura vem com baixa confiança, aparece um aviso âmbar e o cadastro segue — o operador confere os dados na validação. RG/CNH/passaporte e cartão CNPJ continuam exigindo boa leitura.",
+              "PDF passou a ser convertido em imagem de alta resolução antes de ir pra leitura. Um comprovante em PDF tirado de portal (nítido) reprovava porque a leitora rasterizava em baixa resolução; agora a conversão é feita no navegador, em alta, e a leitura melhora.",
+            ],
+            screen: "Cadastro de CAD",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.64",
+    technical: {
+      done: "cadastro-flow.tsx: o gate de qualidade (conferirDocumento) só LANÇA para famílias padronizadas (BLOQUEIA_POR_QUALIDADE = {identidade, cnpj}); comprovante/certidão/'outro' com score < mínimo viram `ext.avisoQualidade` (não-bloqueante), mostrado em âmbar no DocUploader (novo estado `aviso`, lido de `merged.avisoQualidade` após onExtracted). document-capture.ts: arquivoParaLeitura rasteriza a 1ª página do PDF via pdfjs-dist (import DINÂMICO) num JPEG 2600px@0.9 (worker servido de /public/pdf.worker.min.mjs), com FALLBACK pro PDF cru se o pdf.js falhar. Dep nova: pdfjs-dist ^6.1.200.",
+      motivation: "Comprovante em PDF de portal (fatura Vero, legível) reprovava por 'qualidade inferior' e o print do mesmo passava. A MOST não mede legibilidade e sim confiança de LEITURA; o PDF cru era rasterizado por ELA em DPI baixo. Decisão do Lucas 25/jul: comprovante não trava (vira aviso) + rasterizar o PDF em alta do nosso lado.",
+    },
+    title: "Apolo: comprovante em PDF não trava mais o cadastro; leitura de PDF melhorada",
+    type: "correcao",
+    version: "1.62.65",
+  },
+  {
+    buildTag: "2026-07-25-cads-publico-validacao-recebidas",
+    deployedAt: "2026-07-25T17:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Dashboard público de CADs: Validação voltou a contar só o Asana (o 'validacao' do Apolo saiu da soma). Recebidas voltou a ser o total de CADs recebidas do Asana, como era antes.",
+            ],
+            screen: "Central de CADs (público)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.63",
+    technical: {
+      done: "CadPublicDashboard.tsx: mValidacao = counts.validacao (removido o `+ apolo?.validacao`). mRecebidas = base.length (era a soma dos cards mValidacao+mAnalise+mRevisao+mPrevenda+mCredenciado+mDuplicados+mIncorretas); pctDoTotal volta a ter base.length como denominador.",
+      motivation: "Lucas: 'tira o validação do apolo na somatória no card de validação e volta o recebidas como estava antes'.",
+    },
+    title: "Apolo: dashboard de CADs — Validação só do Asana, Recebidas como antes",
+    type: "correcao",
+    version: "1.62.64",
+  },
+  {
+    buildTag: "2026-07-25-cads-publico-fontes",
+    deployedAt: "2026-07-25T16:20:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Dashboard público de CADs: cada número agora vem da fonte certa. Validação, Duplicados e CAD's Incorretas do Asana; Análise de Crédito, Crédito em Revisão, Pré-venda, Credenciado e PIX do Apolo (a esteira real).",
+              "A Validação soma as seções do Asana ainda em processamento (Recepção, Análise de Documento, Em Cadastro, Análise de Crédito); as que já avançaram (Crédito Reprovado, Emissão Pix, Finalizados) não entram — o funil delas é o Apolo.",
+              "A % do Crédito em Revisão passou a ser sobre credenciado + crédito em revisão (o que foi analisado), não sobre revisão + pré-venda.",
+              "Validação = Asana + Apolo (soma as duas fontes). CAD's Incorretas conta só a seção exata (as Resolvidas ficam de fora). Recebidas passou a ser a soma dos cards (sem o PIX, que já está no Credenciado), então o total bate com o funil.",
+            ],
+            screen: "Central de CADs (público)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.62",
+    technical: {
+      done: "CadPublicDashboard.tsx: os cards Análise de Crédito/Crédito em Revisão/Pré-venda deixaram de contar os records do Asana (counts) e passaram a usar apolo.analiseCredito/creditoRevisao/prevenda (etapas credito/revisao/prevenda da apolo_esteira), junto de Credenciado/PIX que já eram do Apolo; ficam DENTRO do guard `apolo ? ...`. Clicabilidade: carregarListasCredenciamento estendida para as listas do Apolo de credito/revisao/prevenda. FIX DA DIFERENÇA DE 44: o canonical() (mapa seção Asana -> card) foi simplificado — só Duplicados e Incorretas têm balde próprio; TODO o resto do Asana cai em Validação (antes 'Análise de Crédito'/'Crédito Reprovado'/'Emissão Pix' do Asana caíam nos cards de crédito, que agora mostram o Apolo, virando registros órfãos fora de qualquer card). Agora Validação+Duplicados+Incorretas fecham o total Recebidas.",
+      motivation: "Lucas: 'somente validação, duplicados, cads incorretas vamos trazer do asana; análise de crédito, crédito em revisão, pré-venda, credenciado e pix vamos trazer do apolo'. E depois: 'deu uma diferença de 44, soma para validação as seções do asana Análise de Crédito, em cadastro'.",
+    },
+    title: "Apolo: dashboard público de CADs com a fonte certa por card",
+    type: "correcao",
+    version: "1.62.63",
+  },
+  {
+    buildTag: "2026-07-25-empreendimento-fluxo-configuravel",
+    deployedAt: "2026-07-25T15:50:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A tela do empreendimento agora liga/desliga cada etapa da esteira: Recebendo CAD (master), Análise de Crédito (com o limite) e Pré-venda (com o valor do PIX).",
+              "Com a Pré-venda DESLIGADA, o cadastro aprovado no crédito vai DIRETO para credenciado, sem gerar PIX — é o 'encerrar os PIX mas continuar cadastrando'.",
+              "Os valores de limite e PIX agora são digitados em formato de moeda (R$ 1.000,00).",
+            ],
+            screen: "Empreendimento · Credenciamento",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.58",
+    technical: {
+      done: "Migration 0071: apolo_enterprise_settings ganhou analise_credito_habilitada e prevenda_habilitada (bool, default true — preserva o fluxo de hoje). empreendimentos-view.tsx: seção de credenciamento reorganizada em hierarquia (master credenciamento_ativo trava os dois blocos quando OFF; Análise de Crédito exige limite; Pré-venda exige valor do PIX; máscara de moeda; trava 'não salva ON sem valor' no cliente E no servidor). enterprise-settings.ts + settings/route.ts: leem/gravam as 2 flags. FLUXO: lib/apolo/limite-credito.ts ganhou resolverPrevendaHabilitada (resolve o empreendimento da ficha, default true); serasa/consultar/route.ts usa isso — crédito aprovado vai para 'prevenda' se ligada, senão DIRETO para 'credenciado'. REVERTIDO no mesmo deploy: os campos editáveis do cadastro (Lucas não quer editável no wizard, corrige na Validação). FALTA (próxima leva): Análise de Crédito OFF pular a consulta do Serasa; hoje o toggle grava mas o fluxo ainda passa pelo crédito.",
+      motivation: "Lucas (25/jul): o PIX tem prazo (monta a fila); chega a quinta, encerra os PIX mas continua cadastrando — o crédito aprovado precisa ir direto pra credenciado sem PIX. Cada empreendimento controla seu fluxo.",
+    },
+    title: "Apolo: fluxo da esteira configurável por empreendimento (liga/desliga crédito e PIX)",
+    type: "novidade",
+    version: "1.62.59",
+  },
+  {
+    buildTag: "2026-07-24-prometeu-acesso-operador",
+    deployedAt: "2026-07-24T22:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "NOVA área do evento em c2x.app.br/evento: a equipe do dia (organizador, atendente, gestor) loga com usuário e senha próprios — não precisa de conta do hub e só enxerga o Prometeu.",
+              "Ao entrar, a pessoa cai direto no posto dela: o organizador da recepção já abre no check-in.",
+              "No Setup do Prometeu você cadastra cada operador: nome, usuário (nome.sobrenome), senha, perfil e posto.",
+            ],
+            screen: "Acesso do operador",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.57",
+    technical: {
+      done: "AUTH PRÓPRIA do operador do evento (não é hub_user). Migration 0070 prometeu_operadores (username, senha_hash scrypt, perfil, zona, mesa_id). lib/prometeu/operador-auth.ts (scrypt + token HMAC assinado com PROMETEU_SESSION_SECRET, TTL 14h, 10 testes de segurança) + operadores.ts (CRUD) + operador-server.ts (lerOperadorDaSessao/autorizarOperacao). Rotas /api/prometeu/operador/{login,logout,eu} públicas (allowlist do proxy, cada uma se valida por dentro; login com rate limit 8/5min, cookie httpOnly+secure assinado) + /operadores admin (só hub). ÁREA /evento: layout limpo sem MobileViewport; /evento na allowlist do auth-provider (o operador não tem sessão do hub); evento-app decide login vs posto por perfil; login-operador. GATE: proxy.ts deixa /api/prometeu/* passar quando há cookie prometeu_op (a rota valida por dentro); credenciados PATCH checkin aceita operador OU hub via autorizarOperacao, TODAS as demais ações (mover/pagamento/chamar/etc) seguem authorizePrometeuWrite (só hub); fila e eventos GET aceitam operador. Setup: equipe-conteudo.tsx reescrito para cadastrar operadores. Removido o modelo antigo hub_users (prometeu_equipe/listEquipe/meuPosto). Typecheck limpo, 48 testes prometeu verdes.",
+      motivation: "Lucas (24/jul): a equipe do evento loga com nome.sobrenome + senha, só vê o Prometeu, cai no posto. FASE 1 (login) da operação do dia; faltam as telas de salão/secretaria/atendente e o trilho comercial do C2X — próximo chat.",
+    },
+    title: "Prometeu: acesso próprio da equipe do evento (login por posto)",
+    type: "novidade",
+    version: "1.62.58",
+  },
+  {
+    buildTag: "2026-07-24-prometeu-checkin-aba-fila",
+    deployedAt: "2026-07-24T20:15:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O check-in do organizador ganhou a aba FILA: mostra só quem JÁ fez check-in (não o cadastro inteiro), com a hora de entrada, o marcador de PIX pago e busca — o organizador confere na hora se a pessoa entrou.",
+              "Corrigido: ler o QR antes da lista carregar não acusa mais 'não é deste lançamento'. Agora avisa que a lista está carregando e pede para tentar de novo.",
+              "O termo 'crachá' virou 'credenciamento' nas mensagens.",
+            ],
+            screen: "Check-in (celular)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.55",
+    technical: {
+      done: "checkin-view.tsx: duas abas (checkin/fila) num toggle; a camera (usarLeitorQr) so roda com aba==='checkin' (economiza bateria e nao le QR na fila). AbaFila lista os credenciados ordenados (quem entrou primeiro, por hora do check-in desc; depois os que faltam, alfabetico) com busca, badge verde/relogio por status e o icone de PIX pago. GUARD: identificar() agora bloqueia com mensagem clara quando carregando|credenciados.length===0 — antes, ler o QR durante o carregamento da lista (0 credenciados) caia direto em 'nao e deste lancamento', que foi o que o Lucas viu (evento Vale do Ouro estava configurado e com 348 credenciados; era so timing). Rotas /api/prometeu/eventos e /fila respondem em <0.3s, nao havia travamento. Textos 'cracha' -> 'credenciamento'.",
+      motivation: "Lucas testou no celular: bipou e deu 'este cracha nao e deste lancamento' com '0 na fila'. Era a lista ainda carregando. E pediu: aba de fila para o organizador ver se a pessoa realmente entrou, e trocar 'cracha' por 'credenciamento'.",
+    },
+    title: "Prometeu: aba de fila no check-in + fim do falso 'não é deste lançamento'",
+    type: "melhoria",
+    version: "1.62.57",
+  },
+  {
+    buildTag: "2026-07-24-prometeu-aba-mobile",
+    deployedAt: "2026-07-24T19:45:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O app no celular ganhou a aba PROMETEU, ao lado de Hermes e Iris. É por ela que o organizador chega no check-in do evento.",
+              "Antes a tela existia mas só pela URL direta; como o app abre em tela cheia (sem barra de endereço), não havia como chegar nela pelo celular.",
+            ],
+            screen: "App mobile",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.54",
+    technical: {
+      done: "mobile-top-bar.tsx: terceira aba (ListOrdered, /m/prometeu) ao lado de Hermes/Iris; texto e gaps reduzidos (12.5px, gap-1, icone 15) para as tres caberem na largura do celular. A tela /m/prometeu (check-in por QR) ja existia desde a 1.62.49 mas nao tinha ponto de entrada no app standalone. Quando a frente de equipe/postos fechar, esta mesma aba passa a abrir no posto atribuido a pessoa logada.",
+      motivation: "Lucas, no celular: 'ele abre full eu nao tenho como ir para o prometeu'. A PWA abre em standalone, sem barra de URL, entao sem uma aba no menu nao havia como acessar o check-in.",
+    },
+    title: "Prometeu: aba no app do celular para chegar no check-in",
+    type: "melhoria",
+    version: "1.62.55",
+  },
+  {
+    buildTag: "2026-07-24-reenvio-retificacao-relatorio-v2",
+    deployedAt: "2026-07-24T19:20:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Botão de reenvio do relatório com retificação para as imobiliárias afetadas (banner 'desconsidere o e-mail anterior').",
+            ],
+            screen: "Imobiliárias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.52",
+    technical: {
+      done: "O relatorio das 18h disparou as 18:00:52 (cron), 4 minutos ANTES de a correcao das imobiliarias terminar (18:05:21) — a trava do envio nao ficou no ar a tempo do cron. 7 imobiliarias receberam com cliente errado (J&F, LM, Romulo, Paulo Oliveira, Flat com cliente a mais; RR e Mais Lotes sem clientes que sao delas). Como o banco ja esta correto, um reenvio sai certo. montarRelatorioImobiliaria ganhou `avisoRetificacao` (banner ambar no topo + prefixo [Correcao] no assunto + linha no texto). relatorio-diario/route.ts ganhou modo `?reenvio=1&imobiliarias=a|b|c` que envia SO por e-mail (real da imobiliaria), SO para as listadas, com o banner. Botao de reenvio em vincular-imobiliarias.tsx aciona com o Bearer da sessao. O 1o reenvio pegou so 6 de 7: o filtro casa o NOME DO RELATORIO (legal_name||display_name), e a LM Imoveis aparece como 'ODAIR RODRIGUES TEIXEIRA' (o titular do CNPJ), entao 'LM IMOVEIS' nao casava. O campo de termos virou EDITAVEL (pre-preenchido com 'ODAIR RODRIGUES TEIXEIRA' para completar a LM que faltou), o que tambem evita novo ciclo se algum nome de imobiliaria divergir do esperado.",
+      motivation: "Lucas: 'vamos enviar para 7 e colocar uma mensagem falando para desconsiderar o e-mail anterior'.",
+    },
+    title: "Apolo: reenvio do relatório com retificação para as 7 afetadas",
+    type: "correcao",
+    version: "1.62.54",
+  },
+  {
+    buildTag: "2026-07-24-relatorio-imob-religado",
+    deployedAt: "2026-07-24T18:20:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Relatório das imobiliárias religado: as 9 CADs do Vale do Ouro com imobiliária errada foram corrigidas e o envio voltou ao normal.",
+            ],
+            screen: "Relatório das imobiliárias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.51",
+    technical: {
+      done: "relatorio-diario/route.ts: ENVIO_RELATORIO_PAUSADO volta a false, religando o cron das 18h e o disparo manual. A flag fica no codigo como kill-switch reutilizavel. Correcao de dados concluida em producao: 8 CADs re-vinculadas do Asana errado para a imobiliaria do C2X (5 -> RR Solucoes, 3 -> Mais Lotes), tanto no vinculo 'Imobiliaria da CAD' (escopo do relatorio) quanto no texto da esteira; VALERIA DO NASCIMENTO FERREIRA mantida como RR (unico caso de cadastro C2X de outro empreendimento, confirmado por varredura). 472 fichas do Vale do Ouro intactas.",
+      motivation: "Lucas autorizou destravar apos a correcao das imobiliarias.",
+    },
+    title: "Apolo: relatório das imobiliárias religado após a correção",
+    type: "correcao",
+    version: "1.62.52",
+  },
+  {
+    buildTag: "2026-07-24-etiqueta-tamanho-certo",
+    deployedAt: "2026-07-24T17:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "CORRECAO: a etiqueta saia PEQUENA num canto da folha. Agora imprime no tamanho cheio, 100x50mm, ocupando a etiqueta inteira.",
+            ],
+            screen: "Etiqueta",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.49",
+    technical: {
+      done: "A impressao deixou de sair da pagina do hub e passou a sair de um DOCUMENTO ISOLADO (iframe), exatamente como o mockup public/prometeu/etiqueta.html que ja tinha sido validado na Honeywell. Causa do 'pequeno': window.print() na pagina inteira do app fazia o CSS global do hub e o preset de papel do driver ('Prometeu') competirem com o @page{size:100mm 50mm}, e o Chrome encolhia a etiqueta num canto de uma folha maior. imprimir-etiquetas.ts monta um iframe oculto, escreve um documento so com as etiquetas + ETIQUETA_PRINT_DOC_CSS (visual + @page + break-after) e chama iframe.contentWindow.print(); espera doc.images carregarem antes (QR e data URL, mas o logo vem da rede) e remove o iframe no afterprint. etiqueta-css.ts foi partido em ETIQUETA_TELA_CSS (preview React) e ETIQUETA_PRINT_DOC_CSS (documento de impressao); o hack antigo de #print-area + portal + body>*{display:none} foi removido, nao e mais necessario. VALIDADO no navegador: a .etq no iframe mede 378x189px = 100x50mm exatos e o stylesheet tem @page size 100mm 50mm.",
+      motivation: "Lucas, testando na Honeywell depois do fix da folha branca: 'saiu bem pequena'. A raiz era imprimir a pagina do app em vez de um documento isolado como o mockup fazia.",
+    },
+    title: "Prometeu: etiqueta imprime no tamanho certo (100x50mm)",
+    type: "correcao",
+    version: "1.62.50",
+  },
+  {
+    buildTag: "2026-07-24-prometeu-checkin-qr",
+    deployedAt: "2026-07-24T16:35:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "NOVA TELA para o organizador que fica na porta da fila: abre no celular em c2x.app.br/m/prometeu, aponta a camera para o QR do cracha e o check-in esta feito.",
+              "O retorno toma a tela inteira: VERDE quando entrou, AMBAR quando a pessoa ja tinha entrado, VERMELHO quando o cracha e de outro lancamento. Mostra o nome grande e avisa quando o cliente ja pagou o PIX de R$ 1.000.",
+              "Sem camera ou sem permissao, da para digitar o codigo do cracha. Se o codigo servir para mais de uma pessoa, a tela pergunta qual delas em vez de escolher sozinha.",
+              "Os atendentes seguem no notebook, na tela normal do Prometeu. Esta tela e so para quem esta em pe na fila.",
+            ],
+            screen: "Check-in (celular)",
+          },
+          {
+            items: [
+              "CORRECAO: a etiqueta imprimia em BRANCO. Ja sai com o conteudo na Honeywell.",
+            ],
+            screen: "Etiqueta",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.48",
+    technical: {
+      done: "CHECK-IN: app/m/prometeu (nova rota, dentro do /m para herdar sessao, login e PWA) + modules/prometeu/blocks/checkin/. usar-leitor-qr.ts tenta BarcodeDetector (nativo, sem custo de CPU) e cai para jsQR (dependencia nova, ^1.4.0, JS puro) quando nao existe: BarcodeDetector NAO existe no Safari do iPhone nem no Firefox, entao so com ele o organizador de iPhone ficaria sem check-in na porta do evento. facingMode environment forca a camera traseira (sem isso abre a frontal). Trava anti-repeticao de 2,5s por valor lido: a camera le o mesmo cracha dezenas de vezes por segundo enquanto ele esta na frente dela. O componente guarda o callback numa ref para nao remontar a camera a cada render. QR de outro lancamento e recusado por comparacao com a lista do evento; codigo curto ambiguo abre escolha manual (ver credencial.ts). Reusa fazerCheckInRemoto e a acao 'checkin'. h-full em vez de min-h-dvh: o MobileViewport ja trava 100dvh. CORRECAO DA IMPRESSAO EM BRANCO (a 1.62.48 subiu com esse bug): no mockup HTML o #print-area era filho direto do <body>, entao o @media print body>*{display:none} + #print-area{display:block} funcionava. Portado para React, o #print-area ficou enterrado na arvore do HubShell — body>*{display:none} escondia o container inteiro e a etiqueta ia junto (folha em branco). FIX: etiqueta-view.tsx monta o #print-area via createPortal(document.body), voltando a ser filho direto do body, e o CSS ganhou #print-area{display:none} de base para esconde-lo na tela fora da impressao. Validado no navegador: fora do print display=none e filho direto do body; no print o app some (body>*) e o #print-area vence por especificidade de ID e reaparece com o conteudo.",
+      motivation: "Lucas: 'os organizadores irao ficar somente com o celular ou um tablet nas filas que tem o check-in.' E, testando a etiqueta da 1.62.48 na Honeywell: 'ta imprimindo branco' — a armadilha classica do porte mockup->React da impressao.",
+    },
+    title: "Prometeu: check-in pelo celular + etiqueta que imprime de verdade",
+    type: "novidade",
+    version: "1.62.49",
+  },
+  {
+    buildTag: "2026-07-24-prometeu-etiqueta-real",
+    deployedAt: "2026-07-24T16:20:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A tela de Etiqueta saiu do mockup: agora lista os credenciados DE VERDADE do lançamento (348 hoje), no lugar dos 13 clientes de exemplo.",
+              "Todo credenciado do lançamento esta apto a imprimir. A lista nasce da fila, do que o Apolo entrega, e o empreendimento vem do evento — nao ha mais escolha de empreendimento na propria tela, que era o que gerava etiqueta do lançamento errado.",
+              "O QR passou a ser de VERDADE. O do mockup era um desenho, nenhum leitor conseguiria ler.",
+              "Cliente que ja pagou o PIX de R$ 1.000 sai com um icone na etiqueta, sem texto: e sinal para o time interno saber que ha valor a abater.",
+              "A tela marca quem ja teve etiqueta impressa, entao da para ver quem falta em vez de reimprimir o lote inteiro.",
+            ],
+            screen: "Etiqueta",
+          },
+          {
+            items: [
+              "O termo 'bipar' saiu de todas as telas do modulo: o nome do processo e CHECK-IN. As 'Janelas de credenciamento' agora sao 'Janelas de check-in'.",
+            ],
+            screen: "Setup, Fila e Central",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.47",
+    technical: {
+      done: "modules/prometeu/blocks/etiqueta/ (novo): etiqueta-view.tsx le prometeu_credenciados via fetchFila (a mesma fonte da Fila, sem lista paralela) e etiqueta-css.ts traz o CSS de impressao COPIADO LITERALMENTE de public/prometeu/etiqueta.html. O CSS nao foi reescrito em Tailwind de proposito: cada medida em mm e cada break-after foi descoberto contra a Honeywell PC42t real e esta documentado em [[reference-prometeu-etiqueta-termica]] (lote empilhado numa pagina so, etiqueta em branco no fim, corte na borda a ~1,5mm). lib/prometeu/credencial.ts (novo, 11 testes): o QR carrega o ID COMPLETO do credenciado — encurtar nao traz ganho (a camera le qualquer tamanho) e traria risco real, porque um codigo de 6 digitos tem ~0,4% de chance de colidir entre 348 pessoas, o que no dia seria check-in na pessoa ERRADA; o codigo curto APL-XXXXXX continua impresso apenas como plano B para digitar quando o QR nao le, e quem busca por ele TEM que tratar mais de um resultado. O QR nao carrega URL: o cracha fica exposto o evento inteiro e qualquer um fotografa. QR gerado com a lib qrcode que ja existia (comprovante do Serasa). marcarEtiquetaImpressaRemoto carimba no evento afterprint, nunca antes: carimbar no clique marcaria como impressa a etiqueta de quem cancelou o dialogo. Backend nao precisou de nada novo — marcarEtiquetaImpressa e a acao 'etiqueta' ja existiam. Terminologia: bipar/bipou/bipagem/janela de credenciamento trocados em types, data, central, fila, setup, operations e rotas; public/prometeu/atendente.html ficou de fora por ser mockup a ser substituido.",
+      motivation: "Lucas, sobre a tela de etiquetas: 'estao com dados mockados ainda, e nao tem nenhum cliente do Vale do Ouro que esta credenciado que esteja pronto para ser emitido as etiquetas. Hoje essa tela faz o vinculo errado com o empreendimento. os clientes tem que nascer da fila, do que o apolo entrega'. E sobre o PIX: 'nao pode ser escrito, e so um icone para referenciar para o time interno que aquele cliente pagou o pix, pois precisamos abater esse valor'. Evento real em 01/08.",
+    },
+    title: "Prometeu: etiqueta de verdade, com QR que lê e marca de PIX pago",
+    type: "novidade",
+    version: "1.62.48",
+  },
+  {
+    buildTag: "2026-07-24-prometeu-lancamento-na-tela",
+    deployedAt: "2026-07-24T15:20:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A Fila agora mostra DE QUAL LANCAMENTO ela e, com o nome do empreendimento e a data ao lado do titulo.",
+              "Se o evento ainda nao estiver ligado a um empreendimento, a tela avisa e aponta o Setup, em vez de deixar a duvida no ar.",
+              "O termo 'bipar' saiu das telas: o nome do processo e CHECK-IN.",
+            ],
+            screen: "Fila",
+          },
+          {
+            items: [
+              "Ao escolher o empreendimento do evento, o nome por extenso passa a ser guardado junto, e e ele que aparece nas outras telas.",
+            ],
+            screen: "Setup",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.46",
+    technical: {
+      done: "lib/prometeu/lancamento.ts (novo): nomeDoLancamento (config.enterpriseNome -> enterpriseCode -> nome do evento, degrade honesto, nunca inventa empreendimento), lancamentoSemEmpreendimento e dataDoLancamento. ARMADILHA COBERTA POR TESTE: data_evento e timestamptz e o Setup grava so o dia ('2026-08-01'), que o Postgres guarda como meia-noite UTC — formatar via Date no fuso de Brasilia devolveria 31/07 e o evento apareceria com a data errada em TODA tela; por isso a data e lida como texto puro (regex nos 10 primeiros chars), sem passar por Date. O nome do empreendimento so existe no C2X (MySQL legado) e buscar la a cada leitura sairia caro, entao PrometeuEventoConfig ganhou enterpriseNome e o Setup grava junto (ele ja tem a lista carregada) — sem migration, usando o config que existe justamente para 'o que o Setup preenche e ainda nao merece coluna propria'. fila-view.tsx: chip com Building2 + aviso ambar quando falta vinculo. Terminologia: 'bipar/bipou/bipagem' trocado por check-in em types.ts, central-view, fila-view, setup-view (texto visivel) e prometeu-operations; public/prometeu/atendente.html ficou de fora de proposito, e mockup a ser substituido. 10 testes em lancamento.test.ts.",
+      motivation: "Lucas, abrindo a frente do Prometeu: 'me incomoda o fato de eu nao saber de qual empreendimento (lancamento) e essa fila, tinha que ter alguma coisa vinculando ao Vale do Ouro'. O evento em producao estava com enterprise_id, enterprise_code e data_evento nulos, embora o Setup ja tivesse os campos. Tambem e a fundacao da etiqueta real: sem saber o empreendimento, a etiqueta nao tem de quem nascer.",
+    },
+    title: "Prometeu: a fila diz de qual lancamento ela e",
+    type: "melhoria",
+    version: "1.62.47",
+  },
+  {
+    buildTag: "2026-07-24-pix-pago-credencia",
+    deployedAt: "2026-07-24T14:05:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cliente que PAGA o PIX vai para Credenciado com a tag PIX PAGO, mesmo quando o envio do link falhou e o time mandou o link na mao pela central.",
+              "Antes ele pagava e continuava parado em Pre-venda no Board, parecendo cliente travado com o dinheiro ja na conta.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.45",
+    technical: {
+      done: "prevenda-fluxo.ts, aoConfirmarPagamentoPrevenda: alem de carimbar pago_em/pagamento_ref e mexer na fila, passa a mover a etapa prevenda -> credenciado (update com eq('etapa','prevenda'), mesma trava do envio: nunca puxa ninguem para tras). Quem credenciava era so o aoEnviarPixPrevenda, ou seja o ENVIO do link; quando o disparo falhava, o pagamento nao consertava a etapa. A fila do Prometeu ja estava correta nesse cenario (o ramo 'pagou e nao estava na fila' insere com a hora do pagamento): caso real 23/07, VICENTINA LUZIA DE PAULO entrou na posicao 66, entre quem pagou 19:25 e quem pagou 21:40. Varredura da base: 73 pagaram, 72 ja credenciados, 1 presa (a Vicentina). NAO mexi no significado de 'credenciado' (documentos validos + credito ok + PIX gerado): confirmado pelo Lucas que os 275 credenciados sem pagamento sao o desenho correto.",
+      motivation: "Lucas: 'a Vicentina nao recebeu o link e o sistema entendeu que ela ficou presa no pre-venda, mas meu time mandou via central o link e ela pagou'. Pagamento confirmado tem que credenciar, tenha o aviso saido ou nao.",
+    },
+    title: "Apolo: PIX pago credencia o cliente mesmo se o link falhou",
+    type: "correcao",
+    version: "1.62.46",
+  },
+  {
+    buildTag: "2026-07-24-iris-atendimento-nao-some-v2",
+    deployedAt: "2026-07-24T12:15:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "CORRECAO CRITICA: atendimento ABERTO nao some mais do Board. A tela carregava so os 200 tickets mais recentes, entao os antigos ficavam invisiveis para o time — mas continuavam bloqueando novo atendimento do mesmo cliente, que ficava mandando mensagem sem ninguem ver.",
+              "O Historico agora enxerga TODOS os atendimentos encerrados (antes mostrava 53 de 775), entao buscar um protocolo antigo passa a funcionar.",
+            ],
+            screen: "Board e Historico",
+          },
+          {
+            items: [
+              "O cliente da carteira aparece com o NOME DO APOLO, nao com o apelido do WhatsApp. Quem estava listado como 'beteapa70' volta a ser 'Elizabete Aparecida das Dores'. So os 100 primeiros telefones da fila eram cruzados com o Apolo; do 101 em diante ficava o apelido.",
+            ],
+            screen: "Nome do cliente",
+          },
+          {
+            items: [
+              "Atendimento que morreu na mao da CACA agora fecha sozinho: se ela respondeu e o cliente nao voltou em 4 horas, o ticket encerra com o motivo 'Sem interação - Assistente Virtual'.",
+              "Isso libera o cliente para o time chamar de novo: enquanto o ticket ficava aberto, qualquer tentativa de iniciar conversa dava 'cliente ja esta em atendimento'.",
+              "Atendimento com operador responsavel NUNCA e fechado pela automacao, mesmo parado.",
+            ],
+            screen: "Encerramento automatico",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.43",
+    technical: {
+      done: "iris-data-client.ts: a leitura unica com .limit(200) ordenada por opened_at desc virou DUAS com a mesma regua de acesso (montarQueryTickets): abertos (neq status closed, sem janela de data) + encerrados (eq closed, order closed_at desc, limit 400). ticketsRows concatena as duas. A trava de 'cliente ja em atendimento' consulta o BANCO, por isso ticket fora da janela bloqueava sem aparecer. Incidente 24/jul: AT-000033 (Leticia, 29/06) e AT-001045 (Elizabete) presos com uma operadora que nao os via. ARMADILHA (a 1.62.44 subiu e foi revertida por isso): os ids dos tickets viajam na URL do PostgREST em .in('ticket_id', ids) — com 200 tickets a URL tinha 8k chars e passava, com ~1.000 foi a 27k e o Supabase respondeu 400 Bad Request, derrubando a tela inteira com 'nao foi possivel carregar a operacao'. Medido contra o banco real: 300 ids = 12k chars = 200 OK; 700 ids = 27k chars = 400. Agora contatos, mensagens e usuarios sao lidos pelo helper lerEmLotes (100 ids por requisicao, ~4k chars, 3x de folga), com os ABERTOS na frente da lista para que o corte por lote so afete preview de encerrado antigo. " +
+        "NOME DO APOLO: /api/iris/apolo/phone-match ja resolvia as variantes de 9o digito (a Elizabete casa por 31980208670 vindo de 553180208670), mas normalizePhoneInput corta a lista em .slice(0,100) — com a fila acima disso, o excedente voltava 'missing' e ticketContactLabel caia no display_name do contato (apelido do WhatsApp). enrichTicketsWithCrm360 passou a mandar em lotes de 100 e a so consultar quem nao tem resposta em cache (registrado = nunca reconsulta; missing = TTL de 10min), senao a janela maior de tickets multiplicaria o custo do refresh de 90s — ver [[project-hermes-cost]]. FECHAMENTO AUTOMATICO: lib/iris/fechar-sem-interacao.ts + cron horario /api/iris/tickets/fechar-sem-interacao (x-vercel-cron ou CRON_SECRET, allowlist do proxy). Fecha quando a ULTIMA mensagem e da CACA (outbound + sender_type operator + sender_user_id NULL) ha mais de 4h; ignora ticket com assigned_to_user_id e reconfirma o filtro no proprio UPDATE (corrida com o operador). closed_at = hora da ultima mensagem, nao a do cron, para o historico e os relatorios de tempo nao mentirem. A leitura das mensagens pagina por .range() ate esgotar: com corte por limit, os tickets MAIS parados (mensagens antigas) seriam os primeiros a escapar. ?simulacao=1 conta sem tocar. Regra coberta por 9 testes em fechar-sem-interacao.test.ts. Backlog medido em 24/jul: 104 candidatos, todos sem operador, o mais antigo parado desde 14/jul.",
+      motivation:
+        "Time relatou 'cliente em atendimento' para clientes que nao apareciam no Board, e Historico mostrando 53 encerrados de 775. As duas coisas eram o mesmo limite de 200. Na mesma varredura: 104 tickets zumbis presos na CACA e cliente da carteira exibido com o apelido do WhatsApp.",
+    },
+    title: "Iris: atendimento aberto nao some mais do Board (e o Historico ve tudo)",
+    type: "correcao",
+    version: "1.62.45",
+  },
+  {
+    buildTag: "2026-07-24-comparativo-asana-fecha-conta",
+    deployedAt: "2026-07-24T10:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O comparativo Asana x Board passou a reconhecer quem JA esta na esteira mesmo sem o vinculo da task (CAD cadastrada a mao ou pelo portal). Antes essas apareciam como 'falta importar' e os numeros do Asana e do Board nunca fechavam.",
+              "A linha de cada secao agora mostra 'no Board' com o total real e, entre parenteses, quantas estao sem vinculo da task.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.42",
+    technical: {
+      done: "comparativo/route.ts: monta um Set com os nomes normalizados das fichas da esteira do empreendimento; CAD sem apolo_source_links cujo nome bate vira noBoardSemVinculo (por secao e no resumo) em vez de faltante. resumo.faltamImportar = validas - importadas - noBoardSemVinculo, entao naAsanaValidas = importadas + noBoardSemVinculo + faltamImportar. comparativo.tsx: 'faltam' desconta noBoardSemVinculo e o 'no Board' soma os dois, com o detalhe entre parenteses. Bloco 4 do plano das duplicatas. NAO mexi no mapeamento secao->etapa (Credito Reprovado -> revisao): reetiquetaria em massa, fica para decisao a parte.",
+      motivation: "Lucas: 'no asana eu tenho um numero em credito reprovado, no apolo eu tenho outro'. A Thais, cadastrada a mao, existia no Board mas contava como faltante por nao ter vinculo de task.",
+    },
+    title: "Comparativo Asana x Board: os numeros passam a fechar",
+    type: "correcao",
+    version: "1.62.43",
+  },
+  {
+    buildTag: "2026-07-24-leitura-asana-antiduplicata",
+    deployedAt: "2026-07-24T10:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Ler os documentos de uma CAD que JA foi importada nao cria mais uma segunda ficha da mesma pessoa: o sistema reconhece a CAD pelo vinculo com a task do Asana e reaproveita a ficha existente.",
+              "Nova trava: se ja existe ficha com o MESMO NOME no mesmo empreendimento (em outro cadastro), a CAD vai para CONFERENCIA em vez de entrar duplicada. Pega o caso do CPF lido do documento errado (o do conjuge).",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.41",
+    technical: {
+      done: "criarEntidadesDoLote (asana-import.ts): antes de qualquer coisa consulta apolo_source_links pelo gid — task ja vinculada reusa aquele entity_id e conta como reaproveitada, em vez de cair no dedup por CPF e criar entidade nova. separarPorConflito: quando a entidade e nova, roda fichaDeHomonimo (nome normalizado igual em OUTRA entidade + mesmo empreendimento na esteira) e devolve conflito para conferencia. Bloco 2 do plano das duplicatas. 256 testes passando.",
+      motivation: "GUILHERME e WELINTON viraram duas fichas: a leitura releu a task ja credenciada e, como o OCR trouxe o CPF do conjuge (CPFs '379...'), o dedup por CPF nao casou e criou a segunda ficha.",
+    },
+    title: "Importar CADs: nao duplica mais ficha ao reler documento",
+    type: "correcao",
+    version: "1.62.42",
+  },
+  {
+    buildTag: "2026-07-24-templates-imob-diagnostico",
+    deployedAt: "2026-07-24T09:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Ao criar os templates na Meta, a tela agora mostra o MOTIVO real da recusa (o que a Meta reclamou), em vez do generico 'Invalid parameter'.",
+            ],
+            screen: "Mensagens do WhatsApp (Meta)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.40",
+    technical: {
+      done: "templates/route.ts: o catch passou a extrair error_user_title/error_user_msg/error_subcode de MetaWhatsAppSendError.details e devolver em `detalhe`; vincular-imobiliarias.tsx exibe esse detalhe abaixo do status de cada template. Os 4 textos ja tinham sido corrigidos (v1.62.38) para nao terminarem numa variavel, que era a causa do 'Invalid parameter'.",
+      motivation: "A criacao dos 4 templates falhou com 'Invalid parameter', que sozinho nao diz nada — sem o detalhe da Meta, corrigir template vira adivinhacao.",
+    },
+    title: "Templates da imobiliaria: mostrar o motivo real da recusa da Meta",
+    type: "melhoria",
+    version: "1.62.41",
+  },
+  {
+    buildTag: "2026-07-24-cadastro-manual-dedup-fluxo",
+    deployedAt: "2026-07-24T09:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cadastro de CAD (prospect): depois de escolher a imobiliária, o operador escolhe o EMPREENDIMENTO dela (se ela trabalha mais de um; se só um, já vem preenchido) e o CORRETOR. A CAD entra na esteira já com empreendimento — não nasce mais 'órfã'.",
+              "DEDUP por CPF/CNPJ: se a pessoa já tem ficha, o cadastro NÃO cria uma segunda — avisa que já existe. Fecha a causa dos cadastros duplicados no mesmo empreendimento (os 'dois Pedro Alexandro').",
+            ],
+            screen: "Cadastro de CAD",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.39",
+    technical: {
+      done: "createApoloEntity ganhou dedup por documento OPT-IN (input.dedupPorDocumento) que casa document_hash + apolo_entity_identifiers; ligado só nos fluxos de PROSPECT (rota /api/apolo/cadastro/salvar e /api/publico/cad/salvar), retornando entityIdExistente (409) em vez de inserir cego — os fluxos de imobiliária/corretor ficam intactos (têm dedup por papel). A rota do cadastro manual passou a gravar apolo_esteira (empreendimento/imobiliaria/corretor, etapa validacao, origem 'cadastro-manual') a partir do novo campo payload.vinculo. Novas rotas GET /api/apolo/imobiliarias/[id]/empreendimentos e /corretores (lib/apolo/imobiliaria-cadastro.ts, reusando empreendimentosHabilitados do portal). Wizard cadastro-flow.tsx: no prospect interno, seletor de empreendimento (0=aviso,1=read-only,>1=select) + corretor, exigidos para avançar; vinculo no payload. Bloco 1 do plano de correção das duplicatas.",
+      motivation: "Incidente: o cadastro manual criava fichas duplicadas (sem dedup) e sem empreendimento (nasciam órfãs, quebrando aviso ao coordenador e relatórios). Lucas pediu o fluxo imobiliária->empreendimento->corretor + dedup.",
+    },
+    title: "Cadastro manual: fluxo imobiliária→empreendimento→corretor + dedup",
+    type: "correcao",
+    version: "1.62.40",
+  },
+  {
+    buildTag: "2026-07-24-backfill-empreendimento-asana",
+    deployedAt: "2026-07-24T08:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Nova varredura 'Empreendimento faltando': acha as fichas que entraram na esteira sem empreendimento, procura cada uma no Asana pelo nome e preenche. Tem Simular (só mostra) antes de Preencher.",
+            ],
+            screen: "Vincular imobiliárias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.38",
+    technical: {
+      done: "backfill-empreendimento.ts + rota /api/apolo/esteira/backfill-empreendimento (GET simula, POST aplica; authorizeApoloWrite, só com ASANA_ACCESS_TOKEN = producao). Reusa escanearCads (todas as CADs, cada uma com empreendimento) + casarComApolo (casa por nome, mesma regra do import). Só grava quando o casamento é exato (1 candidato) e consistente (mesma pessoa, mesmo empreendimento em todas as CADs); homonimos/divergentes viram lista de conferencia. So preenche campo VAZIO (is null), nunca sobrescreve. Botao Simular/Preencher em vincular-imobiliarias.",
+      motivation: "Fichas de cadastro manual entravam sem empreendimento e quebravam o aviso ao coordenador + sumiam dos relatorios. Rede pra pescar as orfas (e as futuras) a partir do Asana, que e a fonte das CADs.",
+    },
+    title: "Varredura para preencher empreendimento faltando pelo Asana",
+    type: "melhoria",
+    version: "1.62.39",
+  },
+  {
+    buildTag: "2026-07-24-aviso-coordenador-empreendimento",
+    deployedAt: "2026-07-24T07:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Quando o aviso de reprovacao ao coordenador falha por a ficha estar SEM empreendimento, a mensagem agora diz isso claramente, em vez de culpar o telefone do coordenador.",
+            ],
+            screen: "Analise de credito",
+          },
+          {
+            items: [
+              "Corrigidos os textos dos 4 templates de aviso a imobiliaria: a Meta recusava ('Invalid parameter') porque terminavam numa variavel; agora tem texto depois e passam na aprovacao.",
+            ],
+            screen: "Mensagens do WhatsApp (Meta)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.37",
+    technical: {
+      done: "disparo-reprovacao.ts: quando nao ha telefone do coordenador, a mensagem distingue os casos (ficha sem empreendimento / empreendimento nao mapeado no C2X / sem coordenador de vendas / coordenador sem telefone) em vez do generico 'coordenador sem telefone'. A causa mais comum era ficha com apolo_esteira.empreendimento NULL (3 fichas do cadastro manual, corrigidas no banco para 'Vale do Ouro'). templates/route.ts: os 4 textos foram reescritos para nao terminar numa {{n}} (regra da Meta UTILITY).",
+      motivation: "Incidente: aviso de reprovacao da Thais falhava com 'Coordenador sem telefone', mas a causa real era a ficha sem empreendimento. E os templates da imobiliaria davam 'Invalid parameter' na criacao.",
+    },
+    title: "Aviso ao coordenador: mensagem honesta + templates da imobiliaria corrigidos",
+    type: "correcao",
+    version: "1.62.38",
+  },
+  {
+    buildTag: "2026-07-24-templates-imob-meta",
+    deployedAt: "2026-07-24T06:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Botao para criar na Meta os 4 templates de aviso a imobiliaria (credito reprovado, PIX enviado, PIX pago e relatorio) e conferir o status de aprovacao, na tela de vincular imobiliarias.",
+            ],
+            screen: "Mensagens do WhatsApp (Meta)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.36",
+    technical: {
+      done: "Bloco 'Mensagens do WhatsApp (Meta)' em vincular-imobiliarias.tsx: POST /api/apolo/imobiliarias/templates cria os 4 templates UTILITY pt_BR (texto, sem midia) no numero 4143; GET mostra o status (APPROVED/PENDING/REJECTED). A rota exige sessao (authorizeApoloWrite), por isso o acionamento e por botao na tela — nao da para disparar via CLI. Textos aprovados pelo Lucas; template do relatorio ficou so texto (avisa que foi por e-mail).",
+      motivation: "Lucas: criar as mensagens para disparar os relatorios; decidiu manter tudo em texto (sem a imagem dos cards).",
+    },
+    title: "Criar os templates de aviso a imobiliaria na Meta",
+    type: "melhoria",
+    version: "1.62.37",
+  },
+  {
+    buildTag: "2026-07-24-emails-da-caca",
+    deployedAt: "2026-07-24T05:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Todos os e-mails automaticos (cobranca e recibo do PIX, avisos e relatorio das imobiliarias) passam a sair da CAIXA DA CACA, com o nome 'Caca - C2X' no remetente, no lugar do 'contato@' generico.",
+            ],
+            screen: "E-mails da Caca",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.35",
+    technical: {
+      done: "Novo getCacaSender() em lib/iris/gmail (nome 'Caca - C2X' + caixa robo caca@ via getGmailIngestMailbox). Os 5 pontos de disparo transacional (disparo-imobiliaria, recibo-prevenda, cobranca-prevenda, bancada Asaas, relatorio-diario) passaram a usar getCacaSender no lugar de PREVENDA_EMAIL_FROM/contato@. sendGmailMessage ganhou formatFromHeader: display name acentuado vai em RFC 2047 (senao 'Caca' quebra o header). Enviar da propria caca@ (caixa autenticada) dispensa alias/Send-As. A resposta de threads da Iris (email-reply) fica intacta (usa o alias do grupo quando existe).",
+      motivation: "Lucas: o e-mail de teste chegou de 'contato@careli.adm.br'; todos os e-mails devem sair da caixa da Caca.",
+    },
+    title: "Todos os e-mails saem da caixa da Caca",
+    type: "correcao",
+    version: "1.62.36",
+  },
+  {
+    buildTag: "2026-07-24-relatorio-imob-titlecase",
+    deployedAt: "2026-07-24T04:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "No relatorio das imobiliarias, os nomes de cliente e corretor agora seguem o padrao do Hub (Primeira Maiuscula), em vez de sair em CAIXA ALTA como estavam no banco.",
+            ],
+            screen: "Relatorio das imobiliarias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.34",
+    technical: {
+      done: "relatorio-imobiliaria.ts passou a aplicar toTitleCase (lib/format/name-case) em nomeCliente, corretor e nos nomes vindos do Asana (duplicadas/incorretas). Fonte legada (OCR/esteira) vem em caixa alta; normalizacao so na exibicao, nunca no dado. Nome da imobiliaria fica como o cadastro (razao social pode ter sigla).",
+      motivation: "Lucas: na previa os nomes vinham em Primeira Maiuscula, mas no e-mail real vinham em caixa alta (cliente) e caixa trocada (corretor 'Caio silva'). Seguir o padrao do Hub.",
+    },
+    title: "Relatorio das imobiliarias: nomes em Primeira Maiuscula",
+    type: "correcao",
+    version: "1.62.35",
+  },
+  {
+    buildTag: "2026-07-24-relatorio-imob-dashboard",
+    deployedAt: "2026-07-24T03:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O relatorio diario das imobiliarias virou um dashboard: header com a marca C2X, 6 cards (CADs, Credenciados, PIX pagos, Em revisao, Duplicadas, Incorretas) e uma quebra por status.",
+              "Traz Duplicadas e CADs Incorretas (com o MOTIVO, direto do Asana), o valor recebido nos credenciados, e uma secao de erro no envio do PIX (cliente + o que aconteceu).",
+              "Botao 'Testar o relatorio' na tela de vincular imobiliarias: manda o relatorio de uma imobiliaria (dados reais) para um e-mail, so pra conferir antes do disparo.",
+            ],
+            screen: "Relatorio das imobiliarias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.33",
+    technical: {
+      done: "relatorio-imobiliaria.ts junta 3 fontes por imobiliaria (vinculo 'Imobiliaria da CAD'): esteira (credenciados/revisao/validacao/credito + PIX so DATA), Asana via escanearCads (secoes 'duplic'/'incorret', motivo do custom field 'Motivo da reprovacao'), apolo_disparos falhados (erro do PIX traduzido). emails-imobiliaria.ts montarRelatorioImobiliaria reescrito: header escuro + logo branca c2x-logo-branca.png (nova em public/), 6 cards e-mail-safe (total = soma sem PIX pago), secoes, rodape Caca + botao WhatsApp 553199264143. Rota relatorio-diario ganhou modo ?teste=email&imobiliaria=nome (admin) que envia so por e-mail. Botao na tela vincular-imobiliarias.",
+      motivation: "Iteracao com o Lucas sobre o formato: dashboard com 6 cards somando o total, marca C2X (logo branca), motivo das incorretas do Asana, PIX so data, e um jeito de ele receber o teste antes de ligar o disparo real.",
+    },
+    title: "Relatorio das imobiliarias vira dashboard (C2X, Asana, teste)",
+    type: "melhoria",
+    version: "1.62.34",
+  },
+  {
+    buildTag: "2026-07-24-avisos-imobiliaria",
+    deployedAt: "2026-07-24T01:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "As IMOBILIARIAS passam a ser avisadas automaticamente sobre as CADs dos clientes delas, por WhatsApp e e-mail: quando o credito e reprovado, quando o PIX e enviado ao cliente e quando o PIX e pago.",
+              "Nos avisos de PIX, a imobiliaria ve o STATUS de envio ao cliente: WhatsApp e e-mail enviados (com a hora) ou o erro, ja traduzido.",
+              "RELATORIO DIARIO as 18h: cada imobiliaria recebe por e-mail o relatorio de performance dos seus clientes (situacao, credito e PIX de cada um) e um aviso no WhatsApp de que foi enviado.",
+              "SEGURANCA: o resultado da analise de credito (valores) NUNCA vai para a imobiliaria — so o status Aprovado / Reprovado / Em analise.",
+            ],
+            screen: "Avisos as imobiliarias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.32",
+    technical: {
+      done: "Vinculo de trabalho: 457 relationships 'Imobiliaria da CAD' (prospect -> entidade da imobiliaria), a prova do sync. lib/apolo/disparo-imobiliaria.ts (resolve contato pela entidade, dispara WA template + e-mail, best-effort, celular BR obrigatorio), emails-imobiliaria.ts (avisos + relatorio HTML, so status de credito), relatorio-imobiliaria.ts (agrupa por imob via vinculo). Ganchos best-effort: serasa/consultar (reprovado), cobranca-prevenda enviarCobrancaPrevenda (pix enviado, com statusEnvioAoCliente), webhook Asaas (pix pago, respeita a trava de reentrega). Cron 0 21 * * * (18h BRT) em /api/apolo/imobiliarias/relatorio-diario (allowlist proxy + x-vercel-cron/CRON_SECRET). Rota /api/apolo/imobiliarias/templates cria os 4 templates Meta — pendente aprovacao (ate la, WhatsApp falha e so o e-mail sai).",
+      motivation: "Pedido do Lucas: em vez de tela com login, avisar as imobiliarias automaticamente do andamento das CADs e mandar um relatorio de performance diario. Sem redisparo, so daqui pra frente.",
+    },
+    title: "Avisos automaticos e relatorio diario as imobiliarias",
+    type: "novidade",
+    version: "1.62.33",
+  },
+  {
+    buildTag: "2026-07-23-vincular-imobiliarias-cads",
+    deployedAt: "2026-07-24T00:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Nova ferramenta interna: VINCULAR IMOBILIARIAS DAS CADS. Lista cada imobiliaria que aparece nas CADs (por nome) e deixa casar com o cadastro (entidade) dela no Apolo.",
+              "E o primeiro passo para o vinculo por ENTIDADE (hoje a imobiliaria e so texto): a base do acompanhamento que as imobiliarias vao ter dos seus clientes.",
+            ],
+            screen: "Vincular imobiliarias",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.31",
+    technical: {
+      done: "Nova pagina /apolo/imobiliarias + rota GET/POST /api/apolo/imobiliarias/vinculo + lib imobiliaria-match.ts. GET agrupa apolo_esteira.imobiliaria por nome normalizado (sem acento/caixa/espaco), com contagem de CADs e o match atual. O seletor de entidade reusa /api/apolo/imobiliarias (loadApoloImobiliarias, papel 'imobiliaria', ~413 opcoes, todas com contato), filtrado no front. POST salva o de-para em apolo_imobiliaria_match (migration 0068, chave nome_normalizado unico). PROXIMO PASSO (nao neste deploy): propagar o match para imobiliaria_entity_id na esteira e para o related_entity_id dos relacionamentos comerciais (hoje NULL, so label texto), e alimentar a Central de CADs escopada por entidade.",
+      motivation: "As imobiliarias das CADs vivem so como TEXTO (apolo_esteira.imobiliaria e apolo_relationships.label com related_entity_id NULL). So 124 de 457 prospects do Vale do Ouro tem vinculo de entidade. As entidades existem (vieram do C2X) mas o nome nao casa exato, entao o Lucas casa manualmente. Fundacao da Central de CADs das imobiliarias.",
+    },
+    title: "Vincular imobiliarias das CADs ao cadastro do Apolo",
+    type: "novidade",
+    version: "1.62.32",
+  },
+  {
+    buildTag: "2026-07-23-cads-publico-ordem-refugo",
+    deployedAt: "2026-07-23T23:40:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Central de CADs: os cards Duplicados e CAD's Incorretas passaram para DEPOIS do PIX Compensado — o refugo fecha a fileira, na sequencia do funil.",
+            ],
+            screen: "Central de CADs (publica)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.30",
+    technical: {
+      done: "CadPublicDashboard: cards 'duplicados' e 'incorretas' movidos no JSX para depois do bloco do Apolo (credenciado/pago). Sem mudanca de dados nem de logica.",
+      motivation: "Pedido do Lucas: refugo (duplicadas/incorretas) por ultimo, depois do PIX recebido.",
+    },
+    title: "Central de CADs: refugo depois do PIX Compensado",
+    type: "melhoria",
+    version: "1.62.31",
+  },
+  {
+    buildTag: "2026-07-23-cads-publico-cards-clicaveis",
+    deployedAt: "2026-07-23T23:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Na Central de CADs publica, os cards CREDENCIADO e PIX COMPENSADO agora sao CLICAVEIS como os outros: ao clicar, a lista de baixo mostra quem esta em cada um (nome, imobiliaria e data), vindo do Apolo.",
+              "O card PIX COMPENSADO passa a mostrar o percentual de quem JA PAGOU sobre os CREDENCIADOS (a conversao da pre-venda), alem do valor recebido.",
+            ],
+            screen: "Central de CADs (publica)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.29",
+    technical: {
+      done: "Nova funcao carregarListasCredenciamento(empreendimento) em cads-publico-resumo.ts: lista credenciados (etapa=credenciado) e pagos (pago_em not null) do Apolo com nome (apolo_entities), imobiliaria e data. A page passa apoloListas ao dashboard. CadPublicDashboard: novos Status 'credenciado'/'pago', os dois kpiInfo viraram kpiCard clicaveis; `shown` usa as listas do Apolo (filtradas por imob/busca) quando o status e credenciado/pago, sem entrar no `base`/'Recebidas' (que segue sendo o total do Asana); kanban ganha a coluna correspondente. PIX Compensado: sub = pctDe(pagos, credenciados) + valor.",
+      motivation: "Pedido do Lucas: os cards do fim do funil (Credenciado e PIX Compensado) nao eram clicaveis como os demais, e faltava o % de pagos sobre os credenciados.",
+    },
+    title: "Central de CADs: cards Credenciado e PIX Compensado clicaveis + % de pagos",
+    type: "melhoria",
+    version: "1.62.30",
+  },
+  {
+    buildTag: "2026-07-23-caca-consolidado-cads",
+    deployedAt: "2026-07-23T22:45:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A CACA passa a trazer o CONSOLIDADO das CADs de um empreendimento — SO PARA A GESTAO (numeros verificados da direcao): total de fichas, quantas em cada etapa, quantos ja pagaram o PIX e o valor total recebido.",
+              "Cliente, corretor e imobiliaria continuam vendo so a PROPRIA ficha pelo CPF — o numero somado do empreendimento nao aparece pra eles.",
+            ],
+            screen: "CACA",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.28",
+    technical: {
+      done: "Nova tool consultar_consolidado_cads na CACA, registrada DENTRO do bloco assistantMode (so numeros de gestao/direcao a recebem) — reusa carregarResumoApolo(empreendimento), o mesmo resumo do dashboard publico de CADs: conta por etapa em apolo_esteira e soma o valor pago deduplicando PAYMENT_CONFIRMED/RECEIVED em apolo_asaas_eventos. Orientacao no bloco de persona do MODO ASSISTENTE (nao na persona geral), deixando claro que e numero de gestao. Sem CPF; default Vale do Ouro.",
+      motivation: "A CACA respondia a direcao que nao conseguia trazer o total das CADs do Vale do Ouro, so caso a caso. Faltava dar a ferramenta de resumo — restrita a gestao, porque o consolidado nao pode vazar pra cliente/corretor/imobiliaria.",
+    },
+    title: "CACA traz o consolidado das CADs (so para gestao)",
+    type: "melhoria",
+    version: "1.62.29",
+  },
+  {
+    buildTag: "2026-07-23-serasa-credito-pj",
+    deployedAt: "2026-07-23T22:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Analise de credito agora roda para PJ (CNPJ), nao so para PF. O sistema ja detectava o CNPJ, mas mandava o relatorio de PF pro Serasa e dava erro 'report not found'.",
+              "O relatorio passa a ser escolhido pelo TIPO da ficha: PF usa o relatorio PF, PJ usa o relatorio PJ (RELATORIO_BASICO_PJ_PME). Uma PJ nunca mais recebe o relatorio errado.",
+            ],
+            screen: "Board · Analise de credito",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.27",
+    technical: {
+      done: "serasa/consultar/route.ts: o reportName passou a ser resolvido no SERVIDOR pelo entity_kind (nao mais exigido/confiado do corpo). PF = SERASA_REPORT_PF || corpo || 'RELATORIO_BASICO_PF_PME' (comportamento inalterado). PJ = SERASA_REPORT_PJ (env nova, gravada como RELATORIO_BASICO_PJ_PME via CLI) || override da tela se nao for nome de PF; sem isso, erro 412 claro pedindo a env. consultarPJ ja existia (endpoint business-information-report, valida 14 digitos). PENDENTE: avaliarCredito le a estrutura de negativeData do relatorio PF; a resposta PJ tem shape diferente, entao o veredito automatico (aprovado/reprovado) de PJ sera calibrado com a primeira resposta real.",
+      motivation: "Caso real do Lucas: ficha PJ (loja simbolica, CNPJ) travada na analise de credito com 'RELATORIO_BASICO_PF_PME not found'. O nome do relatorio PJ (basico) foi confirmado empiricamente no levantamento (docs/architecture/serasa-credito-integracao.md: 200 completo pra CNPJs reais em homologacao).",
+    },
+    title: "Analise de credito de PJ (relatorio por tipo de ficha)",
+    type: "melhoria",
+    version: "1.62.28",
+  },
+  {
+    buildTag: "2026-07-23-esconde-disparo-massa",
+    deployedAt: "2026-07-23T21:15:00-03:00",
+    // Interno: mudanca operacional (esconder uma tela), nao anuncia no painel de novidades.
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Tela de disparo em massa do PIX escondida: o processo passou a ser ficha a ficha, pelo botao Gerar PIX da pre-venda. A URL antiga redireciona pro Apolo.",
+            ],
+            screen: "Disparo do PIX",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.26",
+    technical: {
+      done: "app/apolo/disparo-pix/page.tsx passou a redirect('/apolo'). O componente disparo-massa.tsx e a rota api/apolo/asaas/disparo-lote seguem no codigo (reversivel), so a pagina foi desconectada.",
+      motivation: "Decisao do Lucas (23/jul): nao havera mais disparo em massa; esconder a tela evita acionamento por engano agora que o fluxo e individual.",
+    },
+    title: "Esconder a tela de disparo em massa do PIX",
+    type: "correcao",
+    version: "1.62.27",
+  },
+  {
+    buildTag: "2026-07-23-gerar-pix-na-ficha",
+    deployedAt: "2026-07-23T20:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O botao GERAR PIX da etapa de pre-venda agora FUNCIONA: num clique emite a cobranca e ja dispara no WhatsApp e no e-mail do cliente, com a ficha (CAD) anexada. O ciclo gerou -> enviou aparece na hora, na propria ficha.",
+              "Nao cobra duas vezes: se a ficha ja tem PIX emitido, ja pagou, ou nao esta na etapa de pre-venda, o botao avisa e nao cria cobranca.",
+              "O botao antigo do rodape (que so pulava a etapa sem gerar nada) saiu da pre-venda pra nao confundir.",
+            ],
+            screen: "Board · Pre-venda",
+          },
+          {
+            items: [
+              "Novo campo VALOR DO PIX DE CREDENCIAMENTO por empreendimento, na aba Cadastro do empreendimento (ao lado do limite de credito).",
+              "Com mais de um empreendimento ativo, o botao Gerar PIX da ficha usa o valor certo pelo empreendimento dela. Vazio = padrao R$ 1.000.",
+            ],
+            screen: "Empreendimento · Cadastro",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.25",
+    technical: {
+      done: "Nova rota POST api/apolo/board/[id]/gerar-pix: le apolo_esteira (409 se pago; GUARD de etapa!=prevenda; devolve o existente se pagamento_ref real; reserva antiga >90s e retomavel), resolve nome+documento (document_masked -> identifiers), reserva com update condicional (is null OU eq da reserva antiga), emitirCobrancaPix(valor por empreendimento) + enviarCobrancaPrevenda dentro de try/catch que NAO libera a reserva em erro ambiguo (evita cobranca dupla). emitirCobrancaPix passou a devolver paymentId tambem no ramo de erro sem-link, pra o chamador gravar em vez de reemitir. Botao movido pra dentro de status-pix.tsx; rodape esconde o generico em prevenda. VALOR POR EMPREENDIMENTO: migration 0067 (coluna valor_pix nullable em apolo_enterprise_settings) PENDENTE DE OK; getValorPix/setEnterpriseValorPix resilientes a coluna ausente (fallback R$ 1.000); PATCH de settings aceita valorPix; UI na aba Cadastro do empreendimento.",
+      motivation: "O botao Gerar PIX do rodape so incrementava a etapa localmente: parecia funcionar mas nao emitia cobranca. Uma auditoria adversarial da rota nova apontou 3 furos (sem guard de etapa, reserva presa pra sempre, cobranca orfa virando dupla), corrigidos antes de subir. Pedido do Lucas: valor do PIX por empreendimento como referencia quando houver mais de um ativo.",
+    },
+    title: "Gerar PIX da ficha (com travas anti-duplicidade) e valor do PIX por empreendimento",
+    type: "correcao",
+    version: "1.62.26",
+  },
+  {
+    buildTag: "2026-07-23-comparativo-asana-board",
+    deployedAt: "2026-07-23T19:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Nova aba ASANA x BOARD: mostra de um lado quantas CADs existem no Asana e do outro quantas ja estao no Board, e quantas FALTAM subir.",
+              "Duplicadas e CAD incorreta ficam FORA da conta dos dois lados (aparecem so como refugo), porque nao sao trabalho pendente.",
+              "Quebra secao por secao e ABRE A LISTA DE NOMES de quem ainda nao subiu, cada um com um seletor: marque so quem quer subir, ou deixe tudo desmarcado pra importar a secao inteira.",
+              "IMPORTA DALI MESMO num clique, lendo os documentos pela MOST (o formulario do Asana nao tem CPF, esse dado so existe dentro do documento). O progresso e o gasto real aparecem enquanto roda.",
+              "Tambem aponta quem existe so no Board e nao tem task no Asana (cadastro manual ou portal publico).",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.24",
+    technical: {
+      done: "Nova rota GET api/apolo/asana/comparativo: escanearCads com secoes vazias (varre o projeto inteiro do empreendimento), exclui secoes cujo nome normalizado contem 'duplic'/'incorret', cruza os gids com apolo_source_links (asana/cad_task) pra saber quem ja subiu, le a etapa de cada entidade em apolo_esteira, devolve os FALTANTES {gid,nome} por secao e lista quem esta na esteira do empreendimento SEM task. UI: comparativo.tsx como primeira aba de importacao-view (que passa a abrir nela); cada secao expande a lista com checkbox por CAD (marcar todos/limpar) e um unico botao Importar que roda o orcamento internamente e filtra pelos gids marcados (vazio = secao inteira), lendo em lotes de 5 em asana/leitura com barra de progresso e gasto acumulado. Sem passo separado de 'calcular custo'.",
+      motivation: "Nao havia como saber o tamanho da diferenca entre o Asana e o Board sem contar na mao, e a importacao vivia em outra aba exigindo digitar o nome exato da secao.",
+    },
+    title: "Comparativo Asana x Board, com importacao na mesma tela",
+    type: "novidade",
+    version: "1.62.25",
+  },
+  {
+    buildTag: "2026-07-23-pix-na-mao-do-time-e-da-caca",
+    deployedAt: "2026-07-23T18:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A etapa de pre-venda agora entrega o PIX na mao: copiar o link de pagamento, copiar o codigo copia-e-cola e baixar o QR Code, pra reenviar por fora quando o cliente pede.",
+              "E sempre a MESMA cobranca ja emitida: reenviar nao cobra de novo. Quem ja pagou nao mostra mais o PIX, pra ninguem pagar duas vezes.",
+            ],
+            screen: "Board · Pre-venda",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A CACA agora ENTENDE O BOARD DO APOLO: sabe a esteira inteira (validacao, analise de credito, pre-venda, revisao, credenciado), o que acontece em cada etapa e como funciona a fila do evento (ordenada pela hora do pagamento).",
+              "RAIO-X DA FICHA no atendimento: pelo CPF ela responde em que etapa a CAD esta, qual imobiliaria e corretor, SE O CLIENTE PAGOU e quando, se o PIX foi enviado, PARA QUAL TELEFONE e PARA QUAL E-MAIL, se foi entregue, se foi lido e SE DEU ERRO, com o motivo em portugues.",
+              "Ela ENCAMINHA o PIX do credenciamento na conversa: cliente, corretor ou imobiliaria pede ('nao recebi', 'me manda de novo', 'manda o PIX do fulano'), ela pede o CPF e manda o link na hora, sem transferir pro time.",
+              "Ela tambem ENCAMINHA A FICHA (CAD) em PDF quando pedirem, com link de 1 hora e os dados atuais do cadastro.",
+              "Travas de seguranca: nao manda link de pagamento pra quem JA PAGOU (evita pagamento em duplicidade), so entrega a ficha ao titular ou ao corretor/imobiliaria daquela CAD, e os contatos aparecem mascarados o suficiente pra conferir sem expor.",
+              "CORRECAO de contexto: ela ainda dizia que 'o PIX chega amanha ao meio-dia' e falava em 'confirmar participacao'. O PIX ja foi enviado, e o enquadramento correto e etapa da ficha de cadastro.",
+            ],
+            screen: "CACA",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.23",
+    technical: {
+      done: "api/apolo/board/[id]/pix passa a devolver `pix` (invoiceUrl + payload copia-e-cola + QR base64 + vencimento) consultando o Asaas sob demanda, so quando pagamento_ref existe, nao e reserva e pago_em e null. status-pix.tsx ganhou a caixa 'Reenviar este PIX' com copiar/baixar. CACA: 3 tools novas — enviar_pix_credenciamento (CPF -> esteira -> consultarCobranca/obterQrCodePix), consultar_ficha_credenciamento (raio-x juntando apolo_esteira + apolo_disparos com traducao de erro e contato mascarado) e enviar_ficha_cad (montarFichaCad -> signed URL 1h) — mais o bloco 'BOARD DO APOLO' na persona com a esteira, a fila do evento e as regras de entrega.",
+      motivation: "Pedido do Lucas apos o disparo dos 296: o disparo em massa acabou e a operacao volta ao fluxo normal de atendimento. A CACA precisa resolver na central, sem transferir — e para isso precisa do mesmo contexto que um atendente tem abrindo o Board.",
+    },
+    title: "CACA entende o Board do Apolo e resolve o credenciamento no atendimento",
+    type: "novidade",
+    version: "1.62.24",
+  },
+  {
+    buildTag: "2026-07-23-fila-data-da-cad",
+    deployedAt: "2026-07-23T17:55:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "CORRECAO: a fila mostrava a hora do DISPARO para quem entrou por CAD (todo mundo com o mesmo horario de hoje). Agora mostra a data em que a CAD chegou de verdade, que e a data da task no Asana.",
+              "A ordem entre quem ainda nao pagou passa a ser a da chegada da CAD, e nao a ordem em que o sistema processou o lote.",
+            ],
+            screen: "Fila",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.22",
+    technical: {
+      done: "lib/prometeu/data.ts: chegadaDasFichas() le apolo_esteira.chegou_em pelos entity_ids e injeta chegou_em em CredenciadoRow ANTES de ordenarFilaDoEvento, que passa a desempatar por (chegou_em ?? created_at). Novo campo chegouEm em PrometeuCredenciado; fila-view usa chegouEm ?? etapaDesde. Sem migration: o dado ja existia na esteira (267 dos 268 da fila tem, de 30/05 a 16/07).",
+      motivation: "No disparo em massa todos entram na fila no mesmo minuto, entao created_at/etapa_desde viravam a hora do laco. A fila do lancamento e ordenada por merito (hora do PIX; na falta dele, chegada da CAD), e mostrar a hora do disparo apagava esse criterio.",
+    },
+    title: "Fila do evento: data real da CAD",
+    type: "correcao",
+    version: "1.62.23",
+  },
+  {
+    buildTag: "2026-07-23-disparo-massa-pix",
+    deployedAt: "2026-07-23T17:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Disparo em massa do PIX da pre-venda: emite a cobranca e manda a mensagem com a ficha (CAD) anexada por WhatsApp e por e-mail, lote a lote, com botao de PARAR no meio.",
+              "Ninguem e cobrado duas vezes: a ficha e reservada antes de criar a cobranca no Asaas, e quem ja tem PIX emitido nunca volta pro lote.",
+              "CORRECAO IMPORTANTE: celular no formato antigo (sem o 9o digito) ia quebrado pra Meta e a pessoa nao recebia nada. Sao 12 das 296 fichas.",
+              "SEGURANCA: telefone que nao e celular brasileiro nao recebe mais WhatsApp. A mensagem leva a ficha com CPF, RG e filiacao anexada, e um numero estrangeiro prefixado com 55 pode cair na mao de outra pessoa. Esses vao so por e-mail e aparecem na lista de falhas.",
+              "Quem nao recebeu por NENHUM canal fica na coluna de pre-venda em vez de sumir pra fila do evento como se tivesse sido avisado.",
+              "Quem pagar sem estar na fila do lancamento passa a entrar nela automaticamente, com a hora do pagamento.",
+            ],
+            screen: "Disparo do PIX",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.21",
+    technical: {
+      done: "Novo: app/api/apolo/asaas/disparo-lote (GET previa custo zero + POST lote com confirmado), lib/apolo/cobranca-prevenda.ts (caminho de envio extraido da bancada) e modules/apolo/blocks/asaas/disparo-massa.tsx em /apolo/disparo-pix. Travas: (1) reserva otimista em apolo_esteira.pagamento_ref com update condicional is('pagamento_ref', null) antes do Asaas, liberada se a emissao falhar; (2) filtro por pagamento_ref IS NULL em vez de etapa; (3) parada automatica por erro de conta/template/limite da Meta (131031, 130429, 132001, 132000, 190) e do Asaas. normalizarTelefone agora usa fixLegacyBrazilianMobileNumber e exige o padrao de celular BR (55+DDD+9+8), com o comprimento decidindo o DDI (DDD 55 do RS era confundido com o DDI). aoEnviarPixPrevenda so roda se algum canal saiu. aoConfirmarPagamentoPrevenda passa a inserir na fila quem pagou sem estar nela.",
+      motivation: "Sao 296 cobrancas de R$ 1.000 em clientes reais. Uma auditoria em 45 agentes sobre o fluxo apontou 3 defeitos com vitima concreta na base: 12 celulares no formato antigo, 5 telefones fora do padrao BR (risco de entregar a CAD a terceiro) e a esteira avancando mesmo sem ninguem receber.",
+    },
+    title: "Disparo em massa do PIX da pre-venda",
+    type: "novidade",
+    version: "1.62.22",
+  },
+  {
+    buildTag: "2026-07-23-leitura-com-as-mesmas-regras",
+    deployedAt: "2026-07-23T15:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A leitura de documentos (MOST) passa a seguir as MESMAS regras do import por CPF: quem ja tem ficha nao entra por cima da que existe, e o conflito aparece na tela com a imobiliaria atual e a nova.",
+              "CORRECAO: o corretor nao subia na leitura. A ficha nascia com a imobiliaria preenchida e o corretor em branco; agora vem junto, igual ao import.",
+              "ECONOMIA: CAD que ja esta no Board sai do lote e do orcamento. Antes, mover a CAD de secao no Asana fazia pagar a leitura de novo — agora o card 'Fora do lote' mostra quantas foram poupadas.",
+              "Quem foi lido mas ficou de fora aparece separado das CADs sem CPF: o documento lido fica salvo e a releitura nao e cobrada de novo.",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.20",
+    technical: {
+      done: "separarPorConflito extraida para lib/apolo/asana-import.ts e usada pelas DUAS portas de entrada (importar-secao e leitura), com campo vazio na ficha atual tratado como complemento e nao como divergencia (a base tem 3 fichas sem imobiliaria e 2 sem empreendimento, que virariam falso conflito). leitura/route.ts: corretor propagado no orcamento -> tela -> POST (CadParaLeitura ganhou o campo), email/telefone no vinculo e conflitos na resposta. orcarLeitura: nova economia (c) por apolo_source_links (asana/cad_task) — pula quem ja foi importado antes de listar anexos; totalCads passa a ser o do lote.",
+      motivation: "A leitura era a outra porta de entrada da esteira e nao tinha a regra de duplicidade: seria o buraco por onde a mesma pessoa entraria duas vezes no mesmo empreendimento. E o formulario do Asana nao tem CPF, entao a importacao da secao Analise de Credito depende dela.",
+    },
+    title: "Leitura de documentos com as mesmas regras do import (e sem pagar duas vezes)",
+    type: "melhoria",
+    version: "1.62.21",
+  },
+  {
+    buildTag: "2026-07-23-import-secao-por-cpf",
+    deployedAt: "2026-07-23T14:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Novo canal: importar a SECAO INTEIRA do Asana usando o CPF escrito na propria CAD, sem depender de o nome bater com o cadastro.",
+              "Comprador que volta a comprar em outro lancamento entra como prospect do novo empreendimento REAPROVEITANDO o cadastro — a pessoa nao duplica, o que muda e o vinculo (imobiliaria, corretor, empreendimento).",
+              "BLOQUEIA a mesma pessoa entrando duas vezes no mesmo empreendimento por imobiliarias diferentes: em vez de sobrescrever, lista o conflito com a imobiliaria atual e a nova, pra o negocio decidir de quem e o cliente.",
+              "Simula antes de gravar: mostra quantas entram, quantas conflitam e quantas nao tem CPF na CAD (essas continuam dependendo da leitura do documento).",
+            ],
+            screen: "Importar CADs",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.19",
+    technical: {
+      done: "app/api/apolo/asana/importar-secao (novo): escanearCads -> acharCpfNoTexto (custo zero) -> lookupApoloByDocument (resolve identidade sem criar, inclusive no dry-run, senao a simulacao nao teria como mostrar conflito) -> criarEntidadesDoLote (reaproveita quem ja tem o CPF) -> aplicarVinculos. Conflito e detectado comparando empreendimento e imobiliaria da ficha atual, normalizados. UI: bloco novo em importar-cads.tsx com simular/aplicar e lista de conflitos.",
+      motivation: "Caso real (Danilo): comprador do C2X virando prospect do Vale do Ouro por outra imobiliaria. A tela antiga casava por nome e a esteira tem PK por entity_id, entao o caso nao subia direito.",
+    },
+    title: "Importar secao inteira por CPF, sem duplicar pessoa",
+    type: "melhoria",
+    version: "1.62.20",
+  },
+  {
+    buildTag: "2026-07-23-contatos-e-falhas-visiveis",
+    deployedAt: "2026-07-23T13:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "CORRECAO: corrigir o telefone ou o e-mail na bancada nao tinha efeito — o envio continuava indo pro contato antigo. O contato informado agora e gravado e passa a ser o PRINCIPAL.",
+              "CORRECAO: ficha sem telefone (ou sem e-mail) nao registrava nada. Agora conta como FALHA de envio, marca o card e aparece na auditoria — antes sumia em silencio.",
+            ],
+            screen: "Pre-venda",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.18",
+    technical: {
+      done: "prevenda-fluxo.ts/plantarFichaPrevenda: `status` gravava 'active', que viola o CHECK de apolo_contacts ('verified'|'pending'|'attention'|'blocked'), e o erro do insert NAO era checado — falha silenciosa classica. Agora grava 'pending', checa o error e devolve o motivo; alem disso desmarca is_primary dos demais do mesmo tipo, senao o envio continuava lendo o contato antigo. bancada/route.ts e recibo-prevenda.ts: o registro em apolo_disparos passou pra FORA do if de telefone e os casos 'sem telefone/sem e-mail' viraram erro.",
+      motivation: "Teste de erro do Lucas: ele digitou telefone e e-mail invalidos e o envio saiu normalmente para os contatos corretos antigos.",
+    },
+    title: "Contato informado passa a valer + falha de envio deixa de sumir",
+    type: "correcao",
+    version: "1.62.19",
+  },
+  {
+    buildTag: "2026-07-23-prometeu-tela-fila",
+    deployedAt: "2026-07-23T12:40:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Tela FILA (nova): a fila do evento antes do check-in, com nome, CPF, telefone, imobiliaria, corretor e a data/hora que define a posicao (PIX ou cadastro).",
+              "O organizador pode furar a fila (subir/descer) — com MOTIVO obrigatorio, registrado com quem mudou e quando.",
+              "Quem faz check-in sai da fila do evento e passa para a recepcao; a tela mostra quantos ja entraram.",
+            ],
+            screen: "Fila",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Falha no envio da cobranca ou do recibo marca o card em vermelho, e um filtro isola quem falhou. So aparece quando existe erro — sem erro, sem ruido na tela.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.17",
+    technical: {
+      done: "modules/prometeu/blocks/fila/fila-view.tsx (novo) + entrada no menu. Reusa o que ja existia no backend: fetchFila (credenciados x filaRecepcao), ajustarOrdem (furar fila com motivo auditado) e fazerCheckIn. /api/prometeu/fila passa a enriquecer com TELEFONE vindo de apolo_contacts (nao existe coluna em prometeu_credenciados). board/route.ts devolve erroEnvio (apolo_disparos com status 'falhou'); board-view marca card, linha e ganha filtro condicional.",
+      motivation: "Lucas: precisa ver e reordenar a fila antes do evento, e enxergar rapidamente quais envios falharam sem poluir a tela.",
+    },
+    title: "Prometeu: tela de Fila com reordenacao + marcacao de erro de envio",
+    type: "melhoria",
+    version: "1.62.18",
+  },
+  {
+    buildTag: "2026-07-23-esteira-sem-regressao",
+    deployedAt: "2026-07-23T11:50:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "CORRECAO CRITICA: a esteira nao regride mais. Reconsultar o Serasa de uma ficha que ja estava em pre-venda ou credenciada devolvia ela para revisao — desfazendo a aprovacao do coordenador e ate o pagamento ja feito.",
+              "A aprovacao do coordenador passa a valer: uma reconsulta reprovada nao derruba mais quem ele liberou.",
+              "O aviso de reprovacao nao e mais reenviado quando a ficha esta protegida (evita avisar o coordenador de que um cliente que ja pagou foi reprovado).",
+              "Credenciado e o ultimo estagio: a ficha entra como CONCLUIDA, com todas as etapas verdes, selo de Credenciado e sem botao de avancar.",
+              "Etapa Pre-venda mostra agora o ciclo do PIX: gerado, enviado (WhatsApp e e-mail, com entregue/lido) e recebido — com os erros em destaque.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.16",
+    technical: {
+      done: "lib/apolo/esteira.ts: atualizarEtapa ganhou `automatico` — gatilho de maquina nao move quem ja esta em ordem >= prevenda (nem promove, nem rebaixa) e devolve `mantida`. `nuncaRebaixar` sozinho nao resolvia: revisao/correcao/indeferido ficam fora da ORDEM e venciam qualquer comparacao. serasa/consultar: passa automatico e so dispara o aviso se a transicao NAO foi mantida. board-view: INDICE_POR_ETAPA.credenciado 3 -> 4 (concluida => verdes + selo + sem botao). status-pix.tsx (novo) + /api/apolo/board/[id]/pix: junta apolo_esteira, apolo_disparos e apolo_asaas_eventos.",
+      motivation: "Lucas testou: estava em credenciado (ja pago), reconsultou o credito e a ficha voltou para analise; e a aprovacao dele como coordenador nao se sustentava.",
+    },
+    title: "Esteira sem regressao + status do PIX na ficha",
+    type: "correcao",
+    version: "1.62.17",
+  },
+  {
+    buildTag: "2026-07-23-central-cads-funil",
+    deployedAt: "2026-07-23T11:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cards refeitos na ordem da esteira: Validacao (Recepcao + Analise de Documento), Analise de Credito, Credito em Revisao, Pre-Venda, Duplicados e CAD's Incorretas.",
+              "CORRECAO: 'Em cadastro' mostrava 244 somando Analise de Documento com Analise de Credito, enquanto a secao 'Em Cadastro' do Asana tinha ZERO.",
+              "Credito em Revisao passa a mostrar o % sobre o que ja passou pelo credito (revisao + pre-venda), nao sobre o total.",
+              "Dois cards novos vindos do Apolo: Credenciado e PIX Compensado (com a quantidade e o VALOR ja recebido).",
+            ],
+            screen: "Central de CADs (publica)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.15",
+    technical: {
+      done: "CadPublicDashboard: canonical() reescrito com a ordem certa (o especifico antes do generico, senao 'Analise de Documento' e 'Analise de Credito' caem no mesmo balde); cards fixos do funil + os nao-mapeados renderizados com nome cru pra soma sempre fechar com Recebidas; kpiInfo (nao clicavel) pros numeros do Apolo. lib/apolo/cads-publico-resumo.ts (novo): le apolo_esteira por empreendimento e soma o valor pago via apolo_asaas_eventos, deduplicando CONFIRMED/RECEIVED do mesmo pagamento.",
+      motivation: "Os cards nao refletiam a esteira: agrupavam etapas diferentes e nao mostravam o que acontece depois da emissao do PIX.",
+    },
+    title: "Central de CADs: cards na ordem da esteira + Credenciado e PIX Compensado",
+    type: "melhoria",
+    version: "1.62.16",
+  },
+  {
+    buildTag: "2026-07-23-prevenda-caminho-unico-da-ficha",
+    deployedAt: "2026-07-23T10:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "CORRECAO: o recibo do PIX nao chegava. A cobranca usava os contatos da tela e o recibo ia busca-los no cadastro do Asaas, que nasce so com nome e CPF. Agora os dois leem a MESMA fonte: a ficha da pessoa.",
+              "O pagamento passa a se identificar sozinho: a cobranca leva o id da ficha na referencia e o webhook le de volta, sem consultar o Asaas.",
+              "Todo envio fica registrado (canal, destinatario, template, resultado) e a entrega/leitura e atualizada automaticamente pela Meta.",
+            ],
+            screen: "Pre-venda",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.14",
+    technical: {
+      done: "prevenda-fluxo.ts: contatosDaFicha (le apolo_contacts; considera 'whatsapp' E 'phone' — o C2X grava 4.067 como whatsapp e so 520 como phone), plantarFichaPrevenda (bancada grava contatos + ficha em prevenda, idempotente) e registrarDisparoPrevenda (apolo_disparos, que o meta-inbound-processor ja atualiza por wa_message_id). bancada/route.ts: externalReference = entity_id; cobranca e recibo leem da ficha; montarFichaCad recebe entityId. recibo-prevenda.ts reescrito: entityId em vez de customerId, sem ida ao Asaas. webhook: externalReference -> entityId.",
+      motivation: "Teste real do Lucas: cobranca chegou, recibo nao. Causa: dois caminhos diferentes pra mesma pessoa.",
+    },
+    title: "Pre-venda: cobranca e recibo pelo mesmo caminho (a ficha)",
+    type: "correcao",
+    version: "1.62.15",
+  },
+  {
+    buildTag: "2026-07-23-emitiu-pix-cobra-na-hora",
+    deployedAt: "2026-07-23T01:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Emitir o PIX ja dispara a cobranca no WhatsApp e no e-mail, num clique so (era preciso um segundo clique).",
+              "O retorno mostra o que aconteceu em CADA canal, mais a etapa e a fila — da pra auditar cada envio.",
+            ],
+            screen: "Bancada Asaas",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.13",
+    technical: {
+      done: "bancada/route.ts: disparo da cobranca extraido para enviarCobrancaPrevenda() (ficha gerada UMA vez -> signed URL no WhatsApp + bytes no e-mail -> aoEnviarPixPrevenda), reusada pelo botao manual e pela acao gerar-pix com o flag enviarCobranca. Falha de um canal NAO derruba o outro nem a emissao do PIX: cada um devolve seu status. UI: checkbox 'ao gerar, ja enviar' (ligado por padrao) e resumo por canal.",
+      motivation: "Ensaiar o fluxo real do lancamento ponta a ponta: emitiu -> cliente recebe a cobranca; pagou -> recebe o recibo.",
+    },
+    title: "Emitiu o PIX, a cobranca sai na hora",
+    type: "melhoria",
+    version: "1.62.14",
+  },
+  {
+    buildTag: "2026-07-23-prevenda-texto-10-dias-uteis",
+    deployedAt: "2026-07-23T00:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Mensagens do PIX: o prazo de restituicao passa de 15 dias para 10 DIAS UTEIS (WhatsApp e e-mail, cobranca e recibo).",
+              "As mensagens agora avisam que a ficha de cadastro vai junto, pro cliente validar as informacoes.",
+            ],
+            screen: "Pre-venda",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "CACA (interna): alinhada ao texto novo — o PIX e etapa da ficha (nao 'confirmacao de participacao') e o prazo e de 10 dias uteis.",
+            ],
+            screen: "CACA",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.12",
+    technical: {
+      done: "Texto trocado nos 6 pontos (2 templates WhatsApp + 4 trechos dos e-mails). Templates renomeados para cad_pix_cobranca_v2 / cad_pix_recibo_v2 em bancada/route.ts e recibo-prevenda.ts: os cad_pix_* ja estavam ATIVOS na Meta com o texto antigo e template aprovado nao se edita livremente. Os antigos seguem ativos ate o v2 aprovar, sem buraco no envio. persona.ts: bloco da acao corrigido (dizia 'confirmar a participacao') e ganhou o prazo.",
+      motivation: "Pedido do time: 15 dias -> 10 dias uteis, e avisar que a CAD vai junto pro cliente validar.",
+    },
+    title: "PIX: prazo de 10 dias uteis e aviso da ficha em anexo",
+    type: "melhoria",
+    version: "1.62.13",
+  },
+  {
+    buildTag: "2026-07-23-prevenda-fila-prometeu",
+    deployedAt: "2026-07-23T00:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O Board agora abre no KANBAN (a tabela continua a um clique, no alternador do cabecalho).",
+              "Enviou o PIX: a ficha sai de Pre-venda e vira Credenciado automaticamente, e a pessoa ja entra na fila do Prometeu.",
+              "Selo PIX PAGO no card e na lista (passe o mouse pra ver a hora), com filtro de PIX pago / pendente.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "A fila se monta sozinha: quem pagou vai pra frente pela HORA do pagamento; quem ainda nao pagou fica no fim, por ordem de chegada da CAD.",
+            ],
+            screen: "Fila do evento",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.11",
+    technical: {
+      done: "Migration apolo_esteira_pagamento_prevenda: colunas pago_em e pagamento_ref + indice. lib/apolo/prevenda-fluxo.ts (novo): aoEnviarPixPrevenda (prevenda->credenciado + adicionarCredenciado no evento ativo, origem 'prevenda' com indice unico anti-duplicata) e aoConfirmarPagamentoPrevenda (carimba a esteira com `is null` pra ser idempotente + registrarPagamento no Prometeu). Webhook e disparo da bancada ligados nos dois. board/route.ts devolve pagoEm; board-view.tsx ganhou selo e filtro.",
+      motivation: "Dentro de Credenciado convivem quem pagou e quem so recebeu a cobranca; faltava marcar, filtrar e alimentar a fila do lancamento.",
+    },
+    title: "PIX enviado vira Credenciado e alimenta a fila do Prometeu",
+    type: "melhoria",
+    version: "1.62.12",
+  },
+  {
+    buildTag: "2026-07-22-webhook-fecha-recibo",
+    deployedAt: "2026-07-22T14:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Ciclo do PIX fechado: quando o pagamento e confirmado, o RECIBO sai automaticamente pro cliente (WhatsApp + e-mail), sem ninguem apertar nada.",
+              "Protecao contra reentrega do Asaas: o recibo sai UMA vez so, mesmo se o mesmo evento chegar repetido.",
+            ],
+            screen: "Pre-venda (webhook Asaas)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.10",
+    technical: {
+      done: "lib/apolo/recibo-prevenda.ts (novo): consulta o cliente no Asaas pelo customerId (o evento so traz o id), acha a ficha no Apolo pelo CPF pra pegar nome e empreendimento, e dispara o recibo nos dois canais; nunca lanca, cada canal devolve seu status. asaas-prevenda.ts: consultarClienteAsaas. webhook/route.ts: detecta PAYMENT_RECEIVED/CONFIRMED, checa reentrega ANTES do insert (se ja houve evento de confirmacao pro mesmo payment_id, nao redispara) e chama o recibo; maxDuration 30.",
+      motivation: "O webhook so registrava o evento. Com o pagamento de teste confirmado, faltava fechar o ciclo: pagou -> recibo.",
+    },
+    title: "Pagou o PIX, recibo sai sozinho (webhook)",
+    type: "melhoria",
+    version: "1.62.11",
+  },
+  {
+    buildTag: "2026-07-22-prevenda-email-remetente",
+    deployedAt: "2026-07-22T14:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Os e-mails da pre-venda passam a sair como contato@careli.adm.br (antes saiam da caixa robo caca@).",
+            ],
+            screen: "Bancada Asaas",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.9",
+    technical: {
+      done: "bancada/route.ts: remetente em PREVENDA_EMAIL_FROM (default contato@careli.adm.br), passado no `from` do sendGmailMessage. Se o Gmail recusar o remetente (alias nao liberado em 'Enviar e-mail como' na conta caca@), reenvia pela caixa padrao e avisa no retorno, em vez de perder a mensagem.",
+      motivation: "O primeiro teste chegou como caca@; pro cliente quem fala e o contato@.",
+    },
+    title: "E-mails da pre-venda saem do contato@",
+    type: "melhoria",
+    version: "1.62.10",
+  },
+  {
+    buildTag: "2026-07-22-prevenda-email",
+    deployedAt: "2026-07-22T13:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "As mensagens do PIX (cobranca e recibo) passam a sair TAMBEM por e-mail, junto com o WhatsApp.",
+              "O e-mail da cobranca leva a ficha (CAD) em PDF anexada de verdade, e tem versao HTML com botao de pagamento.",
+            ],
+            screen: "Bancada Asaas",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O envio de e-mail da Iris passa a suportar ANEXO (multipart/mixed). Sem anexo, o envio continua igual.",
+            ],
+            screen: "E-mail",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.8",
+    technical: {
+      done: "lib/iris/gmail.ts: sendGmailMessage ganhou `attachments` (corpo vira parte de um multipart/mixed; caminho sem anexo intacto). lib/apolo/emails-prevenda.ts (novo): monta assunto/texto/HTML da cobranca e do recibo. bancada/route.ts: montarFichaCad gera o PDF UMA vez (signed URL pro WhatsApp, bytes pro e-mail) e o disparo envia nos dois canais, reportando o status de cada um; falha de e-mail nao derruba o WhatsApp.",
+      motivation: "Lucas: mandar as mensagens do PIX tambem por e-mail, sempre junto com o WhatsApp. O Gmail da Iris (caixa caca@) ja enviava, mas nao suportava anexo.",
+    },
+    title: "Pre-venda: PIX e recibo tambem por e-mail (com a ficha anexada)",
+    type: "melhoria",
+    version: "1.62.9",
+  },
+  {
+    buildTag: "2026-07-22-cad-pix-templates-ficha",
+    deployedAt: "2026-07-22T13:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Board: removido o aviso de 'previa de layout' — as acoes gravam de verdade.",
+            ],
+            screen: "Board",
+          },
+          {
+            items: [
+              "Mensagens do PIX refeitas: o pagamento deixa de ser 'confirmacao de participacao' e passa a ser ETAPA DA FICHA DE CADASTRO (CAD).",
+              "A ficha (CAD em PDF) agora vai ANEXADA na mensagem de cobranca, pro cliente conferir os proprios dados.",
+            ],
+            screen: "Bancada Asaas",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.7",
+    technical: {
+      done: "bancada/route.ts: novos templates cad_pix_cobranca (header DOCUMENT + amostra via uploadMetaWhatsAppTemplateHeaderMedia) e cad_pix_recibo, com texto reposicionado; disparo da cobranca monta o anexo (lookupApoloByDocument -> montarCadDeEntidade -> montarCadPdf -> signed URL do bucket privado). board-view.tsx: removido o badge de previa.",
+      motivation: "O texto antigo dizia 'confirme sua participacao', o que esta errado: quem nao paga tambem pode comprar e ir ao evento. O PIX e etapa da ficha de cadastro. Os templates antigos (prevenda_pix_*) foram preservados; subimos nomes novos pra nao derrubar o que ja esta aprovado.",
+    },
+    title: "PIX como etapa da ficha (CAD) + ficha anexada na cobranca",
+    type: "melhoria",
+    version: "1.62.8",
+  },
+  {
+    buildTag: "2026-07-22-caca-cad-envio-asana",
+    deployedAt: "2026-07-22T11:00:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "CACA (interna): nesta acao, o envio das CADs e feito pelo time via Asana. A CACA NAO divulga link de formulario; se um corretor perguntar como enviar, orienta falar com o contato na Careli / encaminha pro time.",
+            ],
+            screen: "CACA",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.6",
+    technical: {
+      done: "persona.ts: bloco da acao de lancamento passa a instruir que o ENVIO e via Asana (time) e a NAO divulgar link de formulario de CAD nesta acao.",
+      motivation: "Lucas: nao divulgar o link do formulario para o Vale do Ouro, pois as CADs entram pelo Asana.",
+    },
+    title: "CACA: envio de CAD via Asana (sem divulgar formulario)",
+    type: "melhoria",
+    version: "1.62.7",
+  },
+  {
+    buildTag: "2026-07-22-caca-status-cad",
+    deployedAt: "2026-07-22T10:40:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "CACA (interna): novo contexto do processo de CAD da acao de lancamento + ferramenta consultar_status_cad, que informa pelo CPF se a CAD esta em validacao, com credito aprovado (recebe o PIX amanha) ou reprovada.",
+            ],
+            screen: "CACA",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.5",
+    technical: {
+      done: "lib/iris/caca/tools.ts + executors.ts: tool consultar_status_cad (por CPF -> lookupApoloByDocument -> etapa da apolo_esteira: prevenda=aprovado, revisao=reprovado, validacao/sem-esteira=em validacao; fallback so trata como CAD nova quem e review+source apolo). Disponivel no atendimento normal (nao so admin). persona.ts: bloco TEMPORARIO da acao de lancamento (cronograma validacao ate 12h / PIX amanha ao meio-dia) e como responder por status.",
+      motivation: "Enxurrada de duvidas de clientes e corretores sobre o andamento da CAD na acao de lancamento; a CACA so sabia consultar em massa, nao responder o status de uma pessoa.",
+    },
+    title: "CACA: status da CAD por CPF + contexto da acao de lancamento",
+    type: "melhoria",
+    version: "1.62.6",
+  },
+  {
+    buildTag: "2026-07-22-bancada-asaas-templates",
+    deployedAt: "2026-07-22T10:20:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Bancada Asaas (interna): verificar o status de aprovacao dos templates da pre-venda na Meta e disparar cobranca/recibo de teste pro WhatsApp.",
+            ],
+            screen: "Bancada Asaas",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.4",
+    technical: {
+      done: "app/api/apolo/asaas/bancada/route.ts: acoes status-templates (listMetaWhatsAppMessageTemplates dos 2 templates), disparar-cobranca e disparar-recibo (sendMetaWhatsAppTemplateMessage pelo 4143). UI preview-asaas.tsx: badge de status + telefone de teste + botoes de disparo.",
+      motivation: "Validar ao vivo as comunicacoes da pre-venda (quais templates a Meta aprovou e como a mensagem chega).",
+    },
+    title: "Bancada Asaas: status dos templates + disparo de teste",
+    type: "melhoria",
+    version: "1.62.5",
+  },
+  {
+    buildTag: "2026-07-22-relacionamento-modal-hooks",
+    deployedAt: "2026-07-22T09:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Corrigido: a tela da ficha quebrava (tela branca) ao clicar em Adicionar na aba Relacionamentos. Agora o cadastro de vinculo abre normalmente.",
+            ],
+            screen: "CRM 360 - Relacionamentos",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.3",
+    technical: {
+      done: "modules/apolo/blocks/crm/add-relationship-modal.tsx: o useEffect do debounce de busca ficava DEPOIS do early-return `if (!open) return null`. Com o modal fechado rodavam so os useState; ao abrir, entrava tambem o useEffect -> a contagem de hooks mudava e o React derrubava a arvore (erro minificado #310). useEffect movido para antes do early-return, com guarda `!open`.",
+      motivation: "React #310 (rendered more hooks than during the previous render) ao abrir o modal de adicionar relacionamento.",
+    },
+    title: "Relacionamentos: modal de adicionar quebrava a ficha",
+    type: "correcao",
+    version: "1.62.4",
+  },
+  {
+    buildTag: "2026-07-22-cad-cpf-legivel",
+    deployedAt: "2026-07-22T09:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Corrigido: CADs enviadas pelo portal/wizard guardavam o CPF/CNPJ mascarado (so os 2 ultimos digitos). Agora nascem com o documento completo, legivel na validacao e pronto para a consulta ao Serasa.",
+            ],
+            screen: "Board - Validacao / Cadastro",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.2",
+    technical: {
+      done: "lib/apolo/cadastro-persist.ts: createApoloEntity gravava document_masked/value_masked mascarados (maskDocument). Trocado por formatDocument (numero completo), alinhando com o sync do C2X, o import do Asana e o identidade-persist, que sempre gravaram completo. Era a unica porta que mascarava, e travava a analise de credito ('A ficha nao tem CPF completo'). Backfill manual da unica CAD real afetada (Poliana), CPF confirmado por hash.",
+      motivation: "Documento mascarado na CAD travava a consulta ao Serasa e a esteira inteira (incidente 22/jul).",
+    },
+    title: "CAD: CPF/CNPJ completo e legivel na validacao",
+    type: "correcao",
+    version: "1.62.3",
+  },
+  {
+    buildTag: "2026-07-22-board-fila-limite",
+    deployedAt: "2026-07-22T09:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Corrigido: CADs novas que nao apareciam no Board. A fila de validacao estava limitada a 200 itens (as mais antigas), escondendo as CADs recentes acima disso.",
+            ],
+            screen: "Board - Validacao",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.1",
+    technical: {
+      done: "app/api/apolo/board/route.ts: teto da origem review+apolo de 200 -> 2000 (ordem ascending cortava as CADs recentes; ha 272 em validacao, a 'Poliana' 272a nao aparecia).",
+      motivation: "CAD enviada nao aparecia no Board (incidente reportado pelo Lucas).",
+    },
+    title: "Board: CADs novas sumindo da fila de validacao",
+    type: "correcao",
+    version: "1.62.2",
+  },
+  {
+    buildTag: "2026-07-22-templates-prevenda",
+    deployedAt: "2026-07-22T04:40:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: ["Bancada Asaas: botao para criar na Meta os 2 templates da pre-venda (cobranca + recibo)."],
+            screen: "Asaas preview (interno)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.1",
+    technical: {
+      done: "Rota bancada acao 'criar-templates': cria prevenda_pix_cobranca (nome/emp/valor/link) e prevenda_pix_recibo (nome/valor/emp) via createMetaWhatsAppMessageTemplate (UTILITY, pt_BR, phone 4143), idempotente. Botao na tela (roda na Vercel, credenciais Meta completas).",
+      motivation: "Submeter os templates da pre-venda a aprovacao da Meta.",
+    },
+    title: "Templates da pre-venda (cobranca + recibo)",
+    type: "melhoria",
+    version: "1.62.2",
+  },
+  {
+    buildTag: "2026-07-22-bancada-asaas-ajustes",
+    deployedAt: "2026-07-22T04:10:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Bancada Asaas: descricao da cobranca 'Pré-venda - CAD <codigo>, Empreendimento <nome>' + aviso de que o pagamento nao reserva unidade; vencimento e codigo da CAD configuraveis.",
+            ],
+            screen: "Asaas preview (interno)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.62.0",
+    technical: {
+      done: "Rota bancada: descricao = 'Pré-venda - CAD <cadCodigo>, Empreendimento <emp>. Este pagamento nao garante reserva de unidades...'; externalReference = cadCodigo (casa no webhook); vencimento padrao 2026-07-30. UI com campos empreendimento/codigo CAD/vencimento.",
+      motivation: "Ajustes do Lucas na cobranca de teste da pre-venda.",
+    },
+    title: "Bancada Asaas: descricao com codigo da CAD + aviso",
+    type: "melhoria",
+    version: "1.62.1",
+  },
+  {
+    buildTag: "2026-07-22-bancada-asaas",
+    deployedAt: "2026-07-22T03:30:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Bancada de teste do Asaas (pre-venda): testar comunicacao, gerar PIX real, ver QR/expiracao e os eventos do webhook.",
+            ],
+            screen: "Asaas preview (interno)",
+          },
+        ],
+      },
+    ],
+    rollback: "1.61.4",
+    technical: {
+      done: "Conta Gurgel (ASAAS_GURGEL_API_KEY, separada da Careli/Hades). lib/apolo/asaas-prevenda.ts (myAccount, criar cliente, criar PIX, QR, status). Rota /api/apolo/asaas/bancada (testar/gerar-pix/status + GET eventos). Webhook /api/publico/asaas/webhook grava apolo_asaas_eventos (migration 0066) com recebido_em (clock_timestamp, com hora) + headers crus (descobrir a auth do webhook); valida asaas-access-token se ASAAS_WEBHOOK_TOKEN setado. Tela /apolo/asaas-preview.",
+      motivation: "Validar ao vivo a integracao Asaas da pre-venda: comunicacao, geracao de PIX e os dois bloqueadores (expiracao do QR sem chave PIX propria; webhook sem hora do pagamento).",
+    },
+    title: "Bancada de teste do Asaas (pre-venda)",
+    type: "novidade",
+    version: "1.62.0",
+  },
+  {
+    buildTag: "2026-07-22-verificacao-ajustes-crm",
+    deployedAt: "2026-07-22T02:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Data e hora agora no horario de Brasilia.",
+              "Campos mais limpos: fonte 'Serasa Experian' no lugar do codigo do relatorio, 'Finalidade: CAD - <empreendimento>', e sem o campo Ambiente.",
+              "Corrigida a quebra de layout no celular.",
+            ],
+            screen: "Verificacao publica do comprovante",
+          },
+          {
+            items: [
+              "Botao 'Abrir no CRM' no detalhe da ficha: abre o cadastro do cliente no CRM sem precisar copiar e pesquisar.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.61.3",
+    technical: {
+      done: "comprovante.ts dataBR com timeZone America/Sao_Paulo (afeta pagina e PDF). VerificarComprovante: removidos relatorio(codigo)/ambiente, add 'Base consultada: Serasa Experian' e 'Finalidade: CAD - <empreendimento>' (empreendimento vem do read-model, variavel); dd com break-words + viewport meta na page. BoardView recebe onOpenEntity=openEntityInCrm (ApoloPage) e mostra botao 'Abrir no CRM' no header do detalhe.",
+      motivation: "Ajustes do Lucas na tela de verificacao (hora BR, nomes, responsivo) + atalho pro CRM a partir do Board.",
+    },
+    title: "Verificacao do comprovante: ajustes + atalho pro CRM no Board",
+    type: "melhoria",
+    version: "1.61.4",
+  },
+  {
+    buildTag: "2026-07-22-qr-comprovante-fix",
+    deployedAt: "2026-07-22T02:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Corrigido o QR do comprovante: o endereço de verificação agora é sempre o do site (c2x.app.br), garantindo que a leitura do QR abra a página certa.",
+            ],
+            screen: "Comprovante de credito",
+          },
+        ],
+      },
+    ],
+    rollback: "1.61.2",
+    technical: {
+      done: "comprovante.ts: BASE_URL do QR fixado em https://c2x.app.br (nao usa mais NEXT_PUBLIC_APP_URL, que vinha errada no .env.local apontando pra URL do Supabase). 11 comprovantes gerados no backfill local (QR apontava pra URL errada) foram regenerados com o dominio correto; os 111 de producao ja estavam corretos.",
+      motivation: "Lucas reportou erro ao ler o QR de um comprovante (era um dos gerados no backfill local, com dominio errado no QR).",
+    },
+    title: "Correcao do QR do comprovante de credito",
+    type: "correcao",
+    version: "1.61.3",
+  },
+  {
+    buildTag: "2026-07-22-card-corretor",
+    deployedAt: "2026-07-22T01:45:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "No card do quadro, o corretor agora aparece EMBAIXO da imobiliaria, em duas linhas, sem cortar o texto.",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.61.1",
+    technical: {
+      done: "board-view.tsx CardBoard: imobiliaria e corretor em duas linhas (cada uma truncate) em vez de concatenadas numa linha so.",
+      motivation: "Lucas: o corretor estava sendo cortado ao ficar na mesma linha da imobiliaria.",
+    },
+    title: "Card do Board: corretor embaixo da imobiliaria",
+    type: "melhoria",
+    version: "1.61.2",
+  },
+  {
+    buildTag: "2026-07-22-cad-viva",
+    deployedAt: "2026-07-22T01:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A CAD do cliente agora e salva automaticamente nos documentos e ATUALIZADA a cada etapa do processo, trazendo sempre as informacoes mais recentes.",
+              "Na etapa de credito, os botoes viram 'Baixar comprovante' e 'Baixar CAD' (o salvamento e automatico).",
+            ],
+            screen: "Board",
+          },
+        ],
+      },
+    ],
+    rollback: "1.61.0",
+    technical: {
+      done: "lib/apolo/salvar-cad.ts (gerarESalvarCad: montarCadDeEntidade -> montarCadPdf -> uploadApoloDocument tipo 'cad', idempotente por origem 'automatico', substitui a anterior). Gatilho em toda transicao de etapa: /serasa/consultar (na consulta) e board/[id]/etapa (movimento manual), best-effort. Rota board/[id]/salvar-cad reusa a CAD existente (gera se nao ha). maxDuration=30 na rota de etapa.",
+      motivation: "Lucas: a CAD e um documento vivo, atualizado a cada etapa com as novas informacoes, salvo automaticamente.",
+    },
+    title: "CAD viva: salva e atualizada a cada etapa",
+    type: "melhoria",
+    version: "1.61.1",
+  },
+  {
+    buildTag: "2026-07-21-comprovante-verificacao",
+    deployedAt: "2026-07-22T00:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Toda consulta de credito gera um COMPROVANTE em PDF (score, dividas vencidas e veredito), salvo automaticamente nos documentos do cliente.",
+              "Botoes para baixar o comprovante e para salvar a CAD nos documentos, na etapa de credito do Board.",
+            ],
+            screen: "Board - Analise de credito",
+          },
+          {
+            items: [
+              "O comprovante traz um QR code que abre uma pagina publica de verificacao (c2x.app.br/publico/verificar), sem login.",
+              "A pagina confirma que o documento e autentico e mostra os dados tecnicos da consulta: data, quem solicitou, relatorio usado e ambiente. Os valores de credito ficam so no PDF.",
+            ],
+            screen: "Verificacao publica do comprovante",
+          },
+        ],
+      },
+    ],
+    rollback: "1.60.0",
+    technical: {
+      done: "Comprovante de credito: lib/serasa/comprovante-pdf.ts (pdf-lib + qrcode, logo C2X, valores + QR), comprovante.ts (monta dados da serasa_consultas, fingerprint sha256 dos valores, gera+salva em apolo_documents tipo 'comprovante-credito', idempotente por consulta), comprovante-token.ts (HMAC HS256 reusando SESSAO_CAD_SECRET, falha-fechada). Gatilho best-effort no /serasa/consultar apos gravar. Rotas board/[id]/comprovante (baixar) e board/[id]/salvar-cad. Pagina publica app/publico/verificar (server component, sem login, mostra autenticidade + dados tecnicos da consulta: data/operador/relatorio/ambiente; score/dividas ficam so no PDF; sem senha). Dep nova: qrcode. Migration 0064 apolo_disparos (frente anterior) e 0065 (coluna comprovante_senha_hash, ficou orfa apos decisao de nao usar senha).",
+      motivation: "Guardar o comprovante da consulta na pasta do cliente e permitir verificar a autenticidade pelo QR, com transparencia dos dados tecnicos da consulta ao Serasa.",
+    },
+    title: "Comprovante de credito com QR de verificacao",
+    type: "novidade",
+    version: "1.61.0",
+  },
+  {
+    buildTag: "2026-07-21-credito-esteira-cad",
+    deployedAt: "2026-07-21T23:55:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Analise de credito no Serasa, em producao: consulta por cliente na etapa de credito, com resultado APROVADO ou REPROVADO, score, dados cadastrais e restricoes (dividas vencidas, refin, protestos, cheques, pefin).",
+              "Credito aprovado avanca sozinho para Pre-venda; reprovado vai para Credito em revisao.",
+            ],
+            screen: "Board - Analise de credito",
+          },
+          {
+            items: [
+              "A Validacao agora traz a ficha completa dos CADs que vieram do C2X (nascimento, nome da mae, sexo, naturalidade, endereco).",
+              "Imobiliaria e corretor (do Asana) aparecem na fila, no card do quadro e nas CADs em PDF.",
+            ],
+            screen: "Board - Validacao",
+          },
+          {
+            items: [
+              "Limite de credito por empreendimento: restricoes acima do valor reprovam o cliente (vazio = R$ 1.000).",
+            ],
+            screen: "Empreendimento - Cadastro",
+          },
+          {
+            items: [
+              "Credito reprovado avisa automaticamente o coordenador do empreendimento pela Iris, com a CAD do cliente anexa (e o corretor tambem, quando tem telefone cadastrado).",
+              "Cada aviso mostra a devolutiva de entrega (enviado, entregue, lido) e fica registrado no historico da ficha.",
+              "Botao de reenviar o aviso ao coordenador ou ao corretor, so para o perfil admin.",
+            ],
+            screen: "Board - Aviso de reprovacao",
+          },
+        ],
+      },
+    ],
+    rollback: "1.59.1",
+    technical: {
+      done: "Serasa em producao (relatorio basico PF, 7 env). Esteira persiste em apolo_esteira: rota PATCH /board/[id]/etapa + gatilho no /serasa/consultar (aprovado->prevenda, reprovado->revisao, sem rebaixar). Limite por empreendimento em apolo_enterprise_settings.limite_credito (migration 0063). Validacao le o c2xCadastro ao vivo (fetchC2xCadastroByEntity) e mescla metadata < c2x < esteira.ficha. montarCadDeEntidade gera a CAD real (logo C2X centralizada, imobiliaria/corretor da coluna apolo_esteira, autenticacao sempre via gerarCodigoAutenticacao). Backfill imobiliaria/corretor do Asana (completar-vinculos): 379 corretores + 391 imobiliarias. Disparo de reprovacao (lib/apolo/disparo-reprovacao.ts): coordenador do empreendimento (manager_id do C2X, com telefone) sempre + corretor se tiver telefone; templates Meta reprovacao_de_credito e reprovacao_de_credito_corretor pelo numero 4143, com a CAD anexa. Gatilho automatico ao reprovar + reenvio manual so-admin (POST /serasa/reenviar-reprovacao, authorizeApoloAdmin). Registro em apolo_audit_events (historico) + apolo_disparos (migration 0064) com devolutiva de entrega que o meta-inbound-processor casa por wa_message_id.",
+      motivation: "Ligar a analise de credito na esteira de credenciamento: consulta, decisao aprovado/reprovado, ficha completa, vinculos de imobiliaria/corretor e o aviso automatico ao coordenador quando reprova.",
+    },
+    title: "Analise de credito Serasa e esteira de credenciamento",
+    type: "novidade",
+    version: "1.60.0",
+  },
+  {
     buildTag: "2026-07-21-serasa-veredito-aprovado-reprovado",
     deployedAt: "2026-07-21T22:30:00-03:00",
     internal: true,

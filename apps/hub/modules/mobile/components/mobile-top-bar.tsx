@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Bell, Headphones, MessageSquareText } from "lucide-react";
+import { Bell, Headphones, ListOrdered, MessageSquareText } from "lucide-react";
 
 import { useAuth } from "@/providers/auth-provider";
 import { usePanteonNotifications } from "@/providers/pulsex-notification-provider";
 import { MobileAvatar } from "@/modules/mobile/components/mobile-ui";
 
 // Barra superior do app mobile (padrão "sidebar no topo" pedido pelo Lucas):
-// avatar à esquerda, abas Hermes/Iris no meio, sino de notificações à direita.
+// avatar à esquerda, abas Hermes/Iris/Prometeu no meio, sino de notificações à direita.
+// A aba Prometeu é o check-in/operação do evento no celular (só a URL não bastava: o app abre
+// em tela cheia, sem barra de endereço, então sem esta aba não havia como chegar lá).
 // As notificações abrem em tela cheia (/m/notificacoes).
 export function MobileTopBar() {
   const pathname = usePathname() ?? "";
@@ -18,6 +20,7 @@ export function MobileTopBar() {
 
   const onIris = pathname.startsWith("/m/iris");
   const onHermes = pathname.startsWith("/m/hermes");
+  const onPrometeu = pathname.startsWith("/m/prometeu");
 
   return (
     <header className="flex items-center gap-2 bg-[#101820] px-3 pb-3 pt-[max(0.85rem,env(safe-area-inset-top))] text-white">
@@ -25,22 +28,31 @@ export function MobileTopBar() {
 
       <div className="flex flex-1 rounded-full bg-[#1d2734] p-[3px]">
         <Link
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-1.5 text-[13px] font-medium transition ${
+          className={`flex flex-1 items-center justify-center gap-1 rounded-full py-1.5 text-[12.5px] font-medium transition ${
             onHermes ? "bg-[#A07C3B] text-white" : "text-[#9fb0c2]"
           }`}
           href="/m/hermes"
         >
-          <MessageSquareText aria-hidden="true" size={16} />
+          <MessageSquareText aria-hidden="true" size={15} />
           Hermes
         </Link>
         <Link
-          className={`flex flex-1 items-center justify-center gap-1.5 rounded-full py-1.5 text-[13px] font-medium transition ${
+          className={`flex flex-1 items-center justify-center gap-1 rounded-full py-1.5 text-[12.5px] font-medium transition ${
             onIris ? "bg-[#A07C3B] text-white" : "text-[#9fb0c2]"
           }`}
           href="/m/iris"
         >
-          <Headphones aria-hidden="true" size={16} />
+          <Headphones aria-hidden="true" size={15} />
           Iris
+        </Link>
+        <Link
+          className={`flex flex-1 items-center justify-center gap-1 rounded-full py-1.5 text-[12.5px] font-medium transition ${
+            onPrometeu ? "bg-[#A07C3B] text-white" : "text-[#9fb0c2]"
+          }`}
+          href="/m/prometeu"
+        >
+          <ListOrdered aria-hidden="true" size={15} />
+          Prometeu
         </Link>
       </div>
 

@@ -277,6 +277,12 @@ export async function atualizarIdentidade(input: {
   });
 
   // (9) A esteira guarda o motivo, para a fila mostrar por que a ficha foi mexida.
+  //
+  // ⚠️ SEM ESCOPO DE EMPREENDIMENTO, DE PROPÓSITO. Corrigir a IDENTIDADE (nome, CPF, PF/PJ) é uma
+  // correção da PESSOA, não de uma CAD: se o CPF estava trocado, ele estava trocado em todas as
+  // CADs dela. O motivo tem que aparecer em todas as filas onde essa pessoa está, senão o
+  // operador do outro empreendimento vê a ficha mudar e não sabe por quê. É o único update em
+  // lote que continua valendo para todas as CADs — e é assim que tem que ser.
   await input.client
     .from("apolo_esteira")
     .update({ motivo })

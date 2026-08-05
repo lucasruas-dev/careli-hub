@@ -2,6 +2,10 @@ import type { Metadata } from "next";
 
 import { loadCadRecords } from "@/lib/analytics/cad-source";
 import {
+  carregarListasCredenciamento,
+  carregarResumoApolo,
+} from "@/lib/apolo/cads-publico-resumo";
+import {
   CadPublicDashboard,
   type CadPublicItem,
 } from "@/modules/cads/CadPublicDashboard";
@@ -62,8 +66,19 @@ export default async function CadPublicRoute({
     imobiliaria: record.imobiliaria?.trim() || "Sem imobiliária",
   }));
 
+  // Divisão das fontes do funil: o ASANA manda em Recebidas/Validação/Duplicados/Incorretas; o
+  // APOLO manda em Análise de Crédito/Crédito em Revisão/Pré-Venda/Credenciado/PIX Compensado. As
+  // listas do Apolo (por etapa) vêm junto para esses cards serem clicáveis e o número bater com a
+  // lista aberta.
+  const [apolo, apoloListas] = await Promise.all([
+    carregarResumoApolo(label),
+    carregarListasCredenciamento(label),
+  ]);
+
   return (
     <CadPublicDashboard
+      apolo={apolo}
+      apoloListas={apoloListas}
       disponivel={disponivel}
       empreendimento={label}
       records={records}

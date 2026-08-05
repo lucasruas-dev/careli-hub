@@ -53,6 +53,8 @@ export type LinhaPlano = {
   candidatosImobiliaria: string[];
   empreendimentoAsana: string | null;
   empreendimentoBanco: string | null;
+  // Metade da chave da CAD (0080). É o que prende a escrita na CAD deste empreendimento.
+  enterpriseId: string | null;
   entityId: string;
   gid: string;
   imobiliaria: string | null;
@@ -208,6 +210,7 @@ export function mesclarMetadataEmail(
 type LinhaEsteira = {
   corretor: string | null;
   empreendimento: string | null;
+  enterprise_id: string | null;
   entity_id: string;
   imobiliaria: string | null;
 };
@@ -261,17 +264,25 @@ export async function levantarCompletaveis(
 
   // Estado ATUAL da esteira. Só as 4 colunas necessárias: ler `ficha` aqui seria trazer
   // dado de cadastro sem motivo.
+  //
+  // ⚠️ UMA LINHA POR CAD, NÃO POR PESSOA (0080). Este plano é SEMPRE de um empreendimento só (as
+  // duas guardas de escopo abaixo), então o mapa por entidade guarda a CAD **deste**
+  // empreendimento — nunca a que a pessoa tem em outro loteamento. Sem esse filtro, uma pessoa
+  // com CAD em dois lugares entraria no plano com o corretor/imobiliária do lugar errado.
   const porEntidade = new Map<string, LinhaEsteira>();
   for (const bloco of emBlocos(entityIds, 200)) {
     const { data, error } = await client
       .from("apolo_esteira")
-      .select("entity_id, corretor, imobiliaria, empreendimento")
+      .select("entity_id, enterprise_id, corretor, imobiliaria, empreendimento")
       .in("entity_id", bloco);
 
     if (error) {
       throw new Error(`Falha ao ler a esteira: ${error.message}`);
     }
-    for (const linha of (data ?? []) as LinhaEsteira[]) porEntidade.set(linha.entity_id, linha);
+    for (const linha of (data ?? []) as LinhaEsteira[]) {
+      if (!noEscopo(linha.empreendimento)) continue;
+      porEntidade.set(linha.entity_id, linha);
+    }
   }
 
   const grafiasNoBanco = new Set<string>();
@@ -335,6 +346,7 @@ export async function levantarCompletaveis(
       corretorEmail: cad.corretorEmail,
       empreendimentoAsana: cad.empreendimento,
       empreendimentoBanco: esteira?.empreendimento ?? null,
+      enterpriseId: esteira?.enterprise_id ?? null,
       entityId: link.entity_id,
       gid: cad.gid,
       imobiliaria: ancora.valor,
@@ -483,6 +495,9 @@ async function atualizarColuna(
   coluna: "corretor" | "imobiliaria",
   linhas: { entityId: string; valor: string | null }[],
   resultado: ResultadoCompletar,
+  // Empreendimentos do plano (sempre um, na prática). Prende a escrita nas CADs deste
+  // lançamento. Vazio = sem escopo, comportamento antigo (bancos ainda não migrados).
+  enterpriseIds: string[] = [],
 ): Promise<boolean> {
   const grupos = agruparPorValor(linhas);
 
@@ -496,12 +511,17 @@ async function atualizarColuna(
       // ⚠️ `is.null` SOZINHO não casaria uma linha com string vazia, mas `classificarCampo` trata
       // `''` como vazia e a promete na tela. Sem o `eq.` a linha seria prometida e silenciosamente
       // virava "pulado" — código e banco discordando sobre o que é "vazio".
-      const { data, error } = await client
+      // ⚠️ `.eq("empreendimento", ...)` NÃO daria: a mesma grafia varia no banco. O escopo aqui é
+      // o `enterprise_id` das linhas que o plano selecionou — sem ele, o backfill escreveria o
+      // corretor deste lançamento na CAD que a pessoa tem em OUTRO loteamento.
+      let query = client
         .from("apolo_esteira")
         .update({ [coluna]: valor })
         .in("entity_id", bloco)
-        .or(`${coluna}.is.null,${coluna}.eq.`)
-        .select("entity_id");
+        .or(`${coluna}.is.null,${coluna}.eq.`);
+      if (enterpriseIds.length) query = query.in("enterprise_id", enterpriseIds);
+
+      const { data, error } = await query.select("entity_id");
 
       if (error) {
         resultado.erros.push(`${coluna}: ${error.message}`);
@@ -541,12 +561,24 @@ export async function aplicarCompletar(
     ? new Set(input.apenas)
     : new Set<"corretor" | "email" | "imobiliaria">(["corretor", "email", "imobiliaria"]);
 
+  // Empreendimentos das CADs do plano (na prática, um só — as duas guardas de escopo garantem).
+  // Vai junto de todo UPDATE para a escrita não escapar para a CAD de outro loteamento.
+  const enterpriseIds = [
+    ...new Set(
+      input.plano.linhas
+        .map((l) => (l.enterpriseId ?? "").trim())
+        .filter((id): id is string => id !== ""),
+    ),
+  ];
+
   if (querem.has("corretor")) {
     const alvos = input.plano.linhas
       .filter((l) => l.situacaoCorretor === "completar")
       .map((l) => ({ entityId: l.entityId, valor: l.corretor }));
 
-    if (!(await atualizarColuna(client, "corretor", alvos, resultado))) return resultado;
+    if (!(await atualizarColuna(client, "corretor", alvos, resultado, enterpriseIds))) {
+      return resultado;
+    }
   }
 
   if (querem.has("imobiliaria")) {
@@ -555,7 +587,9 @@ export async function aplicarCompletar(
       .filter((l) => l.situacaoImobiliaria === "completar")
       .map((l) => ({ entityId: l.entityId, valor: l.imobiliaria }));
 
-    if (!(await atualizarColuna(client, "imobiliaria", alvos, resultado))) return resultado;
+    if (!(await atualizarColuna(client, "imobiliaria", alvos, resultado, enterpriseIds))) {
+      return resultado;
+    }
   }
 
   if (querem.has("email")) {

@@ -6,6 +6,7 @@ import type { EmpreendimentoPublico } from "@/lib/publico/cad/regras";
 import { CadastroFlow } from "@/modules/apolo/blocks/cadastro/cadastro-flow";
 import { PortaoImobiliaria } from "@/modules/publico/imobiliaria/PortaoImobiliaria";
 import { BotaoPrimario, Cabecalho } from "@/modules/publico/ui/campos";
+import { LogoEmpreendimento } from "@/modules/publico/logo-empreendimento";
 import { CascaPublica } from "@/modules/publico/ui/casca";
 import { C, GOLD } from "@/modules/publico/ui/tokens";
 
@@ -115,30 +116,11 @@ function EscolhaEmpreendimentos({
                 }}
                 type="button"
               >
-                <span
-                  aria-hidden
-                  style={{
-                    alignItems: "center",
-                    background: C.soft,
-                    borderRadius: 8,
-                    color: GOLD,
-                    display: "flex",
-                    flexShrink: 0,
-                    fontSize: 13,
-                    fontWeight: 700,
-                    height: 40,
-                    justifyContent: "center",
-                    overflow: "hidden",
-                    width: 56,
-                  }}
-                >
-                  {emp.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img alt="" src={emp.logoUrl} style={{ height: "100%", objectFit: "cover", width: "100%" }} />
-                  ) : (
-                    emp.code || emp.name.slice(0, 3).toUpperCase()
-                  )}
-                </span>
+                <LogoEmpreendimento
+                  code={emp.code}
+                  logoUrl={emp.logoUrl}
+                  name={emp.name}
+                />
                 <span style={{ color: C.text, flex: 1, fontSize: 16, fontWeight: 600 }}>
                   {emp.name}
                 </span>

@@ -666,6 +666,7 @@ export async function sendMetaWhatsAppTemplateMessage({
   language,
   name,
   to,
+  urlButtonParameter,
 }: {
   bodyParameters?: string[];
   config?: MetaWhatsAppOutboundConfig;
@@ -673,6 +674,10 @@ export async function sendMetaWhatsAppTemplateMessage({
   language: string;
   name: string;
   to: string;
+  // Sufixo dinamico de um BOTAO URL do template (ex.: o `{{1}}` de
+  // `.../publico/fila?t={{1}}`). So' preenchido quando o template tem esse botao; ausente, o envio
+  // segue igual ao de antes. O Graph exige o componente button separado no envio (sub_type url).
+  urlButtonParameter?: string;
 }): Promise<MetaWhatsAppSendMessageResult> {
   const accessToken = readEnvValue(config.accessToken);
   const graphVersion = normalizeGraphVersion(config.graphVersion);
@@ -692,6 +697,16 @@ export async function sendMetaWhatsAppTemplateMessage({
           {
             parameters: bodyParameters.map((text) => ({ text, type: "text" })),
             type: "body",
+          },
+        ]
+      : []),
+    ...(urlButtonParameter
+      ? [
+          {
+            index: "0",
+            parameters: [{ text: urlButtonParameter, type: "text" }],
+            sub_type: "url",
+            type: "button",
           },
         ]
       : []),

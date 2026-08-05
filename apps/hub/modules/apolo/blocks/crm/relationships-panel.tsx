@@ -4,10 +4,12 @@ import {
   Building2,
   ChevronRight,
   Contact,
+  Loader2,
   Mail,
   Phone,
   Plus,
   Search,
+  Trash2,
   Users,
   X,
 } from "lucide-react";
@@ -17,6 +19,7 @@ import type { LucideIcon } from "lucide-react";
 import type { ApoloEntity, ApoloRelationship } from "@/lib/apolo/types";
 
 import { normalizeText } from "../../data/apolo-derive";
+import { getApoloAccessToken } from "../../data/apolo-operations";
 import { PanelTitle } from "../shared/apolo-ui";
 import { AddRelationshipModal } from "./add-relationship-modal";
 
@@ -79,6 +82,7 @@ export function RelationshipsPanel({
 }) {
   const [modalOpen, setModalOpen] = useState(false);
   const [openGroup, setOpenGroup] = useState<GroupKey | null>(null);
+  const [excluindo, setExcluindo] = useState<string | null>(null);
 
   const groups = useMemo<Group[]>(() => {
     const rels = entity.relationships;
@@ -140,6 +144,39 @@ export function RelationshipsPanel({
   const contatoGroups = groups.filter((group) => group.tone === "clay");
   const active = groups.find((group) => group.key === openGroup) ?? null;
 
+  // Exclui (arquiva) um vínculo. Some da lista, fica no histórico. Para TROCAR: exclui o antigo aqui
+  // e usa o "Adicionar" para o novo. Identifica pela entidade (ou pelo nome, no contato leve).
+  async function excluir(rel: ApoloRelationship) {
+    const chave = rel.entityId ?? rel.label;
+    if (!chave) return;
+    if (
+      !window.confirm(
+        `Excluir o vínculo com ${rel.label}? Ele sai da lista e fica registrado no histórico.`,
+      )
+    ) {
+      return;
+    }
+    setExcluindo(chave);
+    try {
+      const token = await getApoloAccessToken();
+      const resp = await fetch("/api/apolo/relationships/archive", {
+        body: JSON.stringify({
+          entityId: entity.id,
+          label: rel.label,
+          relatedEntityId: rel.entityId ?? null,
+        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      if (resp.ok) {
+        setOpenGroup(null);
+        onCreated();
+      }
+    } finally {
+      setExcluindo(null);
+    }
+  }
+
   return (
     <div className="grid gap-5">
       <section className="rounded-xl border border-line bg-surface p-5">
@@ -183,8 +220,10 @@ export function RelationshipsPanel({
 
       {active ? (
         <RelationshipListModal
+          excluindo={excluindo}
           group={active}
           onClose={() => setOpenGroup(null)}
+          onExcluir={excluir}
           onOpenEnterprise={onOpenEnterprise}
           onOpenEntity={onOpenEntity}
         />
@@ -249,13 +288,17 @@ function SummaryCard({ group, onClick }: { group: Group; onClick: () => void }) 
 }
 
 function RelationshipListModal({
+  excluindo,
   group,
   onClose,
+  onExcluir,
   onOpenEnterprise,
   onOpenEntity,
 }: {
+  excluindo: string | null;
   group: Group;
   onClose: () => void;
+  onExcluir: (rel: ApoloRelationship) => void;
   onOpenEnterprise: (name: string) => void;
   onOpenEntity: (label: string, entityId: string) => void;
 }) {
@@ -354,7 +397,9 @@ function RelationshipListModal({
           {items.length ? (
             items.map((rel) => (
               <RelRow
+                excluindo={excluindo === (rel.entityId ?? rel.label)}
                 key={`${rel.label}-${rel.relation}`}
+                onExcluir={() => onExcluir(rel)}
                 onOpenEnterprise={(name) => {
                   onOpenEnterprise(name);
                   onClose();
@@ -415,11 +460,15 @@ function relationshipBadge(
 
 // Card padrão: Nome · Telefone · E-mail · Nível. Clicável quando é uma entidade Apolo.
 function RelRow({
+  excluindo,
+  onExcluir,
   onOpenEnterprise,
   onOpenEntity,
   rel,
   tone,
 }: {
+  excluindo: boolean;
+  onExcluir: () => void;
   onOpenEnterprise: (name: string) => void;
   onOpenEntity: (label: string, entityId: string) => void;
   rel: ApoloRelationship;
@@ -473,21 +522,44 @@ function RelRow({
     </>
   );
 
+  const botaoExcluir = (
+    <button
+      aria-label="Excluir vínculo"
+      className="shrink-0 rounded-md p-1.5 text-ink-muted transition-colors hover:bg-rose-50 hover:text-rose-600 disabled:opacity-50 dark:hover:bg-rose-500/10"
+      disabled={excluindo}
+      onClick={onExcluir}
+      title="Excluir vínculo"
+      type="button"
+    >
+      {excluindo ? (
+        <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+      ) : (
+        <Trash2 aria-hidden="true" className="size-3.5" />
+      )}
+    </button>
+  );
+
   if (clickable) {
     return (
-      <button
-        className="flex w-full items-center justify-between gap-3 rounded-lg border border-line bg-subtle px-3 py-2.5 text-left transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5"
-        onClick={handleClick}
-        type="button"
-      >
-        {content}
-      </button>
+      <div className="flex items-center gap-1 rounded-lg border border-line bg-subtle pr-1.5 transition-colors hover:border-[#A07C3B]/30 hover:bg-[#A07C3B]/5">
+        <button
+          className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2.5 text-left"
+          onClick={handleClick}
+          type="button"
+        >
+          {content}
+        </button>
+        {botaoExcluir}
+      </div>
     );
   }
 
   return (
-    <div className="flex items-center justify-between gap-3 rounded-lg border border-line bg-subtle px-3 py-2.5">
-      {content}
+    <div className="flex items-center gap-1 rounded-lg border border-line bg-subtle pr-1.5">
+      <div className="flex min-w-0 flex-1 items-center justify-between gap-3 px-3 py-2.5">
+        {content}
+      </div>
+      {botaoExcluir}
     </div>
   );
 }

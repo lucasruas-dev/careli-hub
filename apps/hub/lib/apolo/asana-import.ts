@@ -16,9 +16,31 @@ import {
   matchFaixaRendaId,
   matchProfissaoId,
 } from "@/lib/apolo/c2x-match";
+import {
+  lerCadDaEsteira,
+  lerCadsDaEsteira,
+  normalizarEnterpriseId,
+} from "@/lib/apolo/esteira-cad";
+import { resolverEnterpriseIdPorNome } from "@/lib/apolo/limite-credito";
 import { hashIdentifier, type createApoloAdminClient } from "@/lib/apolo/server";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
+
+// NOME do empreendimento -> id do C2X, com cache por lote.
+//
+// A esteira exige `enterprise_id` desde a 0080 (é metade da chave), e a importação do Asana só
+// conhece o NOME ("Vale do Ouro"). A tradução passa pelo C2X, que é caro de consultar: um lote de
+// 300 CADs do mesmo lançamento resolveria o mesmo nome 300 vezes. O cache vive por processo.
+const enterpriseIdPorNome = new Map<string, null | string>();
+
+async function idDoEmpreendimento(nome: null | string | undefined): Promise<null | string> {
+  const chave = semAcento(nome);
+  if (!chave) return null;
+  if (enterpriseIdPorNome.has(chave)) return enterpriseIdPorNome.get(chave) ?? null;
+  const id = await resolverEnterpriseIdPorNome(nome ?? null);
+  enterpriseIdPorNome.set(chave, id);
+  return id;
+}
 
 const ASANA_API = "https://app.asana.com/api/1.0";
 const PROJETO_CADS = process.env.ASANA_CAD_PROJECT_GID?.trim() || "1209726796886414";
@@ -669,6 +691,25 @@ export async function criarEntidadesDoLote(input: {
   const entidadePorCad: Record<string, string> = {};
 
   for (const item of input.itens) {
+    // A TASK JÁ TEM DONA? Se este gid já foi importado, a ficha existe: reusa a entidade vinculada
+    // e NÃO cria outra. Sem isto, reler uma CAD já importada cria uma SEGUNDA ficha da mesma pessoa
+    // sempre que o CPF lido divergir do da ficha antiga — foi o que duplicou GUILHERME e WELINTON
+    // (o OCR leu o documento do CÔNJUGE no PDF do casal e trouxe o CPF dele).
+    const { data: jaVinculada } = await input.client
+      .from("apolo_source_links")
+      .select("entity_id")
+      .eq("source_system", "asana")
+      .eq("source_table", "cad_task")
+      .eq("source_id", item.gid)
+      .limit(1)
+      .maybeSingle<{ entity_id: string }>();
+
+    if (jaVinculada?.entity_id) {
+      entidadePorCad[item.gid] = jaVinculada.entity_id;
+      resultado.reaproveitados += 1;
+      continue;
+    }
+
     const digitos = item.cpf.replace(/\D/g, "");
     if (digitos.length !== 11) {
       resultado.erros.push({ cad: item.nome, motivo: "CPF invalido" });
@@ -798,6 +839,230 @@ export function etapaMaisAvancada(
   return pesoAtual > pesoNovo ? (atual as string) : nova;
 }
 
+export type ConflitoEsteira = {
+  cad: string;
+  empreendimentoAtual: string | null;
+  gid: string;
+  imobiliariaAtual: string | null;
+  imobiliariaNova: string | null;
+  motivo: string;
+};
+
+function semAcento(v: string | null | undefined): string {
+  return (v ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+}
+
+// REGRA DE NEGÓCIO (Lucas, 23/jul): a mesma pessoa NÃO pode ser prospect duas vezes no mesmo
+// empreendimento — ainda mais por imobiliárias diferentes, que é disputa de comissão. Quem já tem
+// ficha aqui por outra imobiliária fica de fora e é reportado: decidir de quem é o cliente é do
+// negócio, não do importador.
+//
+// ✅ TER FICHA EM OUTRO EMPREENDIMENTO DEIXOU DE SER CONFLITO (migration 0080): a esteira aceita
+// uma CAD por pessoa POR EMPREENDIMENTO, então importar a CAD do loteamento B não sobrescreve
+// mais a do loteamento A. A comparação passou a ser sempre DENTRO do mesmo empreendimento.
+//
+// Usada pelo import por CPF e pela leitura de documentos: as duas portas de entrada da esteira
+// precisam da mesma regra, senão uma delas vira o buraco por onde a duplicata passa.
+// Procura, na esteira do MESMO empreendimento, alguém com o MESMO nome normalizado em OUTRA
+// entidade. É a rede para o CPF lido errado (documento do cônjuge), que atravessa o dedup por CPF.
+// Só sugere conflito para conferência humana — nunca decide sozinho.
+async function fichaDeHomonimo(
+  client: AdminClient,
+  item: { empreendimento?: string | null; entityId: string; nome: string },
+  enterpriseId: null | string,
+): Promise<{ empreendimento: string | null; imobiliaria: string | null } | null> {
+  const alvoNome = semAcento(item.nome);
+  const alvoEmpreendimento = semAcento(item.empreendimento);
+  if (!alvoNome || (!alvoEmpreendimento && !enterpriseId)) return null;
+
+  const { data: candidatos } = await client
+    .from("apolo_entities")
+    .select("id, display_name, legal_name")
+    .ilike("display_name", item.nome)
+    .limit(20);
+
+  const ids = (
+    (candidatos ?? []) as Array<{
+      display_name: string | null;
+      id: string;
+      legal_name: string | null;
+    }>
+  )
+    .filter(
+      (e) => e.id !== item.entityId && semAcento(e.legal_name || e.display_name) === alvoNome,
+    )
+    .map((e) => e.id);
+  if (!ids.length) return null;
+
+  // ⚠️ Este `.in()` agora devolve VÁRIAS linhas por entidade (uma por empreendimento). Não é
+  // problema aqui porque a resposta é a PRIMEIRA linha que casa com o empreendimento alvo — e o
+  // casamento passou a ser pelo `enterprise_id`, não pelo texto do nome (que a base escreve de
+  // formas diferentes: "VALE DO OURO", "Vale do Ouro", "Vale do Ouro - VLO").
+  const { data: fichas } = await client
+    .from("apolo_esteira")
+    .select("empreendimento, enterprise_id, imobiliaria")
+    .in("entity_id", ids);
+
+  return (
+    (
+      (fichas ?? []) as Array<{
+        empreendimento: string | null;
+        enterprise_id: string | null;
+        imobiliaria: string | null;
+      }>
+    ).find((f) =>
+      enterpriseId
+        ? normalizarEnterpriseId(f.enterprise_id) === enterpriseId
+        : semAcento(f.empreendimento) === alvoEmpreendimento,
+    ) ?? null
+  );
+}
+
+export async function separarPorConflito(input: {
+  client: AdminClient;
+  itens: {
+    empreendimento?: string | null;
+    entityId: string;
+    gid: string;
+    imobiliaria?: string | null;
+    nome: string;
+  }[];
+}): Promise<{ conflitos: ConflitoEsteira[]; liberados: Set<string> }> {
+  const conflitos: ConflitoEsteira[] = [];
+  const liberados = new Set<string>();
+
+  for (const item of input.itens) {
+    // A pergunta deixou de ser "esta pessoa já está na esteira?" e passou a ser "esta pessoa já
+    // tem CAD NESTE EMPREENDIMENTO?". É o que destrava quem já comprou em outro loteamento.
+    const enterpriseId = await idDoEmpreendimento(item.empreendimento);
+    const ficha = await cadDoEmpreendimento(
+      input.client,
+      item.entityId,
+      enterpriseId,
+      item.empreendimento,
+    );
+
+    if (!ficha) {
+      // Entidade nova. Mas a MESMA PESSOA já pode estar na esteira por OUTRA ficha: o dedup por
+      // CPF não pega quando o OCR leu o documento errado (o do cônjuge, no PDF do casal) e a ficha
+      // nasceu com outro CPF — foi assim que GUILHERME e WELINTON viraram duas fichas. Barra por
+      // NOME + EMPREENDIMENTO para uma pessoa conferir, em vez de duplicar em silêncio.
+      const homonimo = await fichaDeHomonimo(input.client, item, enterpriseId);
+      if (homonimo) {
+        conflitos.push({
+          cad: item.nome,
+          empreendimentoAtual: homonimo.empreendimento,
+          gid: item.gid,
+          imobiliariaAtual: homonimo.imobiliaria,
+          imobiliariaNova: item.imobiliaria ?? null,
+          motivo:
+            "Já existe ficha com este NOME neste empreendimento, em outro cadastro. Pode ser a mesma pessoa com o CPF lido errado (documento do cônjuge). Confira antes de importar.",
+        });
+        continue;
+      }
+      liberados.add(item.gid);
+      continue;
+    }
+
+    // Campo em branco na ficha atual NÃO é divergência: é buraco a preencher. A base tem fichas
+    // antigas sem imobiliária; tratá-las como conflito barraria justamente a reimportação que vem
+    // completar o que falta.
+    const mesmaImobiliaria =
+      !semAcento(ficha.imobiliaria) ||
+      semAcento(ficha.imobiliaria) === semAcento(item.imobiliaria);
+
+    if (mesmaImobiliaria) {
+      // Mesma pessoa, mesmo empreendimento, mesma imobiliária: é a MESMA CAD. Deixa passar —
+      // `aplicarVinculos` só completa o que estiver vazio, então isso é reimportação, não duplicata.
+      liberados.add(item.gid);
+      continue;
+    }
+
+    // Sobra UM conflito só: mesma pessoa, MESMO empreendimento, imobiliária diferente — que é
+    // disputa de comissão e decisão do negócio. O antigo "já tem ficha em outro empreendimento"
+    // sumiu daqui: com a chave por CAD, isso virou o caso normal.
+    conflitos.push({
+      cad: item.nome,
+      empreendimentoAtual: ficha.empreendimento,
+      gid: item.gid,
+      imobiliariaAtual: ficha.imobiliaria,
+      imobiliariaNova: item.imobiliaria ?? null,
+      motivo:
+        "Já é prospect deste empreendimento por OUTRA imobiliária. Decidir de quem é o cliente antes de importar.",
+    });
+  }
+
+  return { conflitos, liberados };
+}
+
+// A CAD desta pessoa NESTE empreendimento, ou null.
+//
+// Casa pelo `enterprise_id` quando ele foi resolvido (o certo) e cai no NOME normalizado quando
+// não foi — que é o que sobra num banco ainda não migrado ou com o C2X fora do ar. Nunca devolve
+// a CAD de outro loteamento: é justamente essa confusão que a chave nova acabou.
+async function cadDoEmpreendimento(
+  client: AdminClient,
+  entityId: string,
+  enterpriseId: null | string,
+  empreendimento: null | string | undefined,
+): Promise<null | { empreendimento: string | null; imobiliaria: string | null }> {
+  if (enterpriseId) {
+    return await lerCadDaEsteira<{ empreendimento: string | null; imobiliaria: string | null }>(
+      client,
+      entityId,
+      "empreendimento, imobiliaria",
+      { enterpriseId },
+    );
+  }
+
+  const alvo = semAcento(empreendimento);
+  const cads = await lerCadsDaEsteira<{
+    empreendimento: string | null;
+    imobiliaria: string | null;
+  }>(client, entityId, "empreendimento, imobiliaria");
+
+  // Sem empreendimento no item não há como escolher: a CAD mais recente é a resposta menos pior,
+  // e mantém o comportamento antigo (uma ficha por pessoa) para quem importa sem informar nada.
+  if (!alvo) return cads[0] ?? null;
+  return cads.find((c) => semAcento(c.empreendimento) === alvo) ?? null;
+}
+
+// Igual ao `cadDoEmpreendimento`, com as colunas que `aplicarVinculos` precisa preservar.
+async function lerCadDaEsteiraDoItem(
+  client: AdminClient,
+  entityId: string,
+  enterpriseId: null | string,
+  empreendimento: null | string | undefined,
+): Promise<null | LinhaEsteiraDoImport> {
+  const COLUNAS =
+    "etapa, analista_id, chegou_em, corretor, empreendimento, enterprise_id, imobiliaria";
+
+  if (enterpriseId) {
+    return await lerCadDaEsteira<LinhaEsteiraDoImport>(client, entityId, COLUNAS, {
+      enterpriseId,
+    });
+  }
+
+  const alvo = semAcento(empreendimento);
+  const cads = await lerCadsDaEsteira<LinhaEsteiraDoImport>(client, entityId, COLUNAS);
+  if (!alvo) return cads[0] ?? null;
+  return cads.find((c) => semAcento(c.empreendimento) === alvo) ?? cads[0] ?? null;
+}
+
+type LinhaEsteiraDoImport = {
+  analista_id: string | null;
+  chegou_em: string | null;
+  corretor: string | null;
+  empreendimento: string | null;
+  enterprise_id: string | null;
+  etapa: string | null;
+  imobiliaria: string | null;
+};
+
 export async function aplicarVinculos(input: {
   // Quem fica responsável pelos itens importados. Sem isto todos entram "Sem analista" e
   // alguém teria que atribuir um a um.
@@ -813,6 +1078,9 @@ export async function aplicarVinculos(input: {
     // já foi importado sem custo nenhum — é dado que sempre esteve no Asana.
     email?: string | null;
     empreendimento?: string | null;
+    // Id do empreendimento no C2X. Opcional: quem tiver o id passa (é o caminho exato); quem só
+    // tiver o nome deixa a tradução para cá.
+    enterpriseId?: null | number | string;
     entityId: string;
     gid: string;
     imobiliaria?: string | null;
@@ -846,20 +1114,46 @@ export async function aplicarVinculos(input: {
     // Motivo (incidente 20/jul): o sync do C2X faz upsert com metadata montado do zero e
     // SUBSTITUI o objeto inteiro — 122 CADs perderam etapa e analista na primeira rodada
     // depois da importação. Tabela separada é imune a isso.
-    const { data: esteiraLinha } = await input.client
-      .from("apolo_esteira")
-      .select("etapa, analista_id, chegou_em, corretor, empreendimento, imobiliaria")
-      .eq("entity_id", item.entityId)
-      .maybeSingle();
+    //
+    // A LINHA ALVO É A DO EMPREENDIMENTO DO ITEM. A importação do Asana só conhece o NOME, e a
+    // chave da esteira exige o id do C2X — daí a tradução. Este era o ÚNICO fluxo que nunca
+    // gravou `enterprise_id`: era ele que segurava a coluna como nullable.
+    const enterpriseId =
+      normalizarEnterpriseId(item.enterpriseId) ??
+      (await idDoEmpreendimento(item.empreendimento));
+
+    const esteiraLinha = await lerCadDaEsteiraDoItem(
+      input.client,
+      item.entityId,
+      enterpriseId,
+      item.empreendimento,
+    );
 
     const esteiraAtual = (esteiraLinha ?? {}) as {
       analista_id?: string | null;
       chegou_em?: string | null;
       corretor?: string | null;
       empreendimento?: string | null;
+      enterprise_id?: string | null;
       etapa?: string | null;
       imobiliaria?: string | null;
     };
+
+    // Empreendimento da GRAVAÇÃO: o traduzido, ou (reimportação) o que a linha já tinha.
+    const enterpriseIdAlvo = enterpriseId ?? normalizarEnterpriseId(esteiraAtual.enterprise_id);
+
+    // SEM EMPREENDIMENTO NÃO NASCE CAD. Antes este upsert criava a linha sem `enterprise_id`, em
+    // silêncio; agora a coluna é NOT NULL e faz parte da chave. Recusar com motivo legível é
+    // melhor que devolver o erro cru do Postgres para o operador da importação.
+    if (!enterpriseIdAlvo) {
+      resultado.erros.push({
+        gid: item.gid,
+        motivo: item.empreendimento
+          ? `empreendimento "${item.empreendimento}" não foi encontrado no C2X — a esteira precisa do id`
+          : "sem empreendimento: a CAD é por empreendimento e não dá para criar a linha sem ele",
+      });
+      continue;
+    }
 
     // NUNCA rebaixar quem já avançou na esteira.
     const etapaFinal = etapaMaisAvancada(esteiraAtual.etapa, input.etapa);
@@ -877,17 +1171,35 @@ export async function aplicarVinculos(input: {
         chegou_em: esteiraAtual.chegou_em ?? item.criadoEm ?? null,
         corretor: esteiraAtual.corretor ?? item.corretor ?? null,
         empreendimento: esteiraAtual.empreendimento ?? item.empreendimento ?? null,
+        enterprise_id: enterpriseIdAlvo,
         entity_id: item.entityId,
         etapa: etapaFinal,
         imobiliaria: esteiraAtual.imobiliaria ?? item.imobiliaria ?? null,
         origem: "asana",
       },
-      { onConflict: "entity_id" },
+      { onConflict: "entity_id,enterprise_id" },
     );
 
     if (erroEtapa) {
       resultado.erros.push({ gid: item.gid, motivo: erroEtapa.message });
       continue;
+    }
+
+    // CHEGOU EM "CREDENCIADO" → ESTÁ NA FILA DO LANÇAMENTO (regra do Lucas, 01/08). Este upsert
+    // grava a etapa DIRETO, sem passar por `atualizarEtapa`, então o gancho de lá não roda aqui:
+    // importar a seção "Finalizado" do Asana (ou escolher "Credenciado" na tela de importação)
+    // deixava as pessoas credenciadas no Board e invisíveis na fila e na impressão de etiqueta.
+    //
+    // Roda também quando `etapaMaisAvancada` MANTEVE o credenciado que já existia: uma
+    // reimportação é a chance de consertar quem ficou de fora antes. `garantirNaFilaDoLancamento`
+    // é idempotente — quem já está na fila não duplica.
+    //
+    // Best-effort e por último: falha aqui não invalida o vínculo, que já foi gravado.
+    if (etapaFinal === "credenciado") {
+      const { garantirNaFilaDoLancamento } = await import("./credenciado-para-fila");
+      await garantirNaFilaDoLancamento(input.client, item.entityId, {
+        enterpriseId: enterpriseIdAlvo,
+      });
     }
 
     if (jaVinculado) resultado.ignorados += 1;
@@ -942,6 +1254,12 @@ export async function gravarFichaDoLote(input: {
   client: AdminClient;
   itens: {
     campos: Record<string, string | null | undefined>;
+    // Empreendimento da CAD a preencher (id do C2X ou nome, que é traduzido aqui). Sem ele, a
+    // ficha vai para a CAD MAIS RECENTE da pessoa — decisão explícita: quem importa por lote
+    // (rota /asana/ficha) só tem o gid da task e o entityId, e a CAD mais recente é a que aquela
+    // leitura acabou de alimentar.
+    empreendimento?: null | string;
+    enterpriseId?: null | number | string;
     entityId: string;
   }[];
 }): Promise<{ atualizados: number; erros: string[] }> {
@@ -953,19 +1271,18 @@ export async function gravarFichaDoLote(input: {
     );
     if (preencher.length === 0) continue;
 
-    const { data: atual } = await input.client
-      .from("apolo_esteira")
-      .select("ficha")
-      .eq("entity_id", item.entityId)
-      .maybeSingle();
+    const enterpriseId =
+      normalizarEnterpriseId(item.enterpriseId) ??
+      (item.empreendimento ? await idDoEmpreendimento(item.empreendimento) : null);
+    const atual = await lerCadDaEsteira<{
+      enterprise_id: string | null;
+      ficha: Record<string, unknown> | null;
+    }>(input.client, item.entityId, "enterprise_id, ficha", { enterpriseId });
 
     // Linha ausente = vínculo não aplicado; sem esteira não há ficha para preencher.
     if (!atual) continue;
 
-    const ficha = ((atual as { ficha: Record<string, unknown> | null }).ficha ?? {}) as Record<
-      string,
-      unknown
-    >;
+    const ficha = (atual.ficha ?? {}) as Record<string, unknown>;
     let mudou = false;
     for (const [chave, valor] of preencher) {
       if (ficha[chave] === undefined || ficha[chave] === null || ficha[chave] === "") {
@@ -975,10 +1292,13 @@ export async function gravarFichaDoLote(input: {
     }
     if (!mudou) continue;
 
-    const { error } = await input.client
-      .from("apolo_esteira")
-      .update({ ficha })
-      .eq("entity_id", item.entityId);
+    // ⚠️ O update é preso na CAD que acabou de ser lida. Sem o `enterprise_id` no filtro, a ficha
+    // deste empreendimento seria escrita por cima da ficha de TODAS as CADs da pessoa.
+    let query = input.client.from("apolo_esteira").update({ ficha }).eq("entity_id", item.entityId);
+    const alvo = enterpriseId ?? normalizarEnterpriseId(atual.enterprise_id);
+    if (alvo) query = query.eq("enterprise_id", alvo);
+
+    const { error } = await query;
 
     if (error) resultado.erros.push(`${item.entityId}: ${error.message}`);
     else resultado.atualizados += 1;
@@ -996,18 +1316,26 @@ export async function gravarFichaDoLote(input: {
 // Só escreve onde está NULL: se alguém já ajustou a data à mão, não mexemos.
 export async function gravarChegadaDoLote(input: {
   client: AdminClient;
-  itens: { criadoEm: string | null; entityId: string }[];
+  // `enterpriseId` prende o backfill numa CAD só. Sem ele o update vale para TODAS as CADs da
+  // pessoa que ainda estão sem `chegou_em` — o que aqui é aceitável de propósito: `is null` já
+  // limita a quem não tem data nenhuma, e a data da task do Asana é melhor que vazio em qualquer
+  // uma delas. É o único update em lote que segue sem escopo, e por essa razão.
+  itens: { criadoEm: string | null; enterpriseId?: null | number | string; entityId: string }[];
 }): Promise<{ atualizados: number; erros: string[] }> {
   const resultado = { atualizados: 0, erros: [] as string[] };
 
   for (const item of input.itens) {
     if (!item.criadoEm) continue;
 
-    const { error, count } = await input.client
+    let query = input.client
       .from("apolo_esteira")
       .update({ chegou_em: item.criadoEm }, { count: "exact" })
       .eq("entity_id", item.entityId)
       .is("chegou_em", null);
+    const enterpriseId = normalizarEnterpriseId(item.enterpriseId);
+    if (enterpriseId) query = query.eq("enterprise_id", enterpriseId);
+
+    const { error, count } = await query;
 
     if (error) resultado.erros.push(`${item.entityId}: ${error.message}`);
     else resultado.atualizados += count ?? 0;

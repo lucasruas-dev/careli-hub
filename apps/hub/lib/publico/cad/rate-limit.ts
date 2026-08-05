@@ -25,19 +25,30 @@ export type Balde =
   | "enviar"
   | "identificacao"
   | "imobiliaria"
-  | "ocr";
+  | "ocr"
+  | "upload";
 
 type Regra = { janelaSegundos: number; teto: number };
 
+// ⚠️ OS TETOS SÃO POR IP — e escritório de imobiliária inteiro (ou 4G com CGNAT) divide UM IP.
+// Calibrados em 03/08 para o dia de trabalho em massa dos corretores, com números REAIS de
+// produção: uma única CAD de casado consome 10-20 leituras de OCR (cada foto ruim = 2 rotações
+// cobradas), e em 02/08 um só IP gastou 21 das antigas 30/dia. Com 3-4 corretores no mesmo
+// Wi-Fi, os tetos antigos travavam o escritório na segunda CAD da manhã. A defesa contra abuso
+// continua: os tetos novos seguram bot, não gente trabalhando.
 const REGRAS: Record<Balde, Regra> = {
   // Widget de FAQ: conversa longa é legítima, conversa infinita é bot.
   assistente: { janelaSegundos: 60 * 60, teto: 40 },
   // Torneiras PAGAS: teto diário e 429 seco, sem atraso progressivo (atrasar não economiza).
-  creci: { janelaSegundos: 24 * 60 * 60, teto: 30 },
-  enviar: { janelaSegundos: 60 * 60, teto: 10 },
-  identificacao: { janelaSegundos: 10 * 60, teto: 12 },
-  imobiliaria: { janelaSegundos: 10 * 60, teto: 12 },
-  ocr: { janelaSegundos: 24 * 60 * 60, teto: 30 },
+  creci: { janelaSegundos: 24 * 60 * 60, teto: 60 },
+  enviar: { janelaSegundos: 60 * 60, teto: 60 },
+  identificacao: { janelaSegundos: 10 * 60, teto: 40 },
+  imobiliaria: { janelaSegundos: 10 * 60, teto: 24 },
+  ocr: { janelaSegundos: 24 * 60 * 60, teto: 400 },
+  // Permissão de gravar UM documento grande direto no Storage. Não custa consulta paga, mas cada
+  // permissão vira bytes no bucket, então tem teto. Uma CAD com tudo grande gasta ~6; o teto
+  // aguenta o escritório inteiro no mesmo Wi-Fi sem travar na segunda CAD da manhã.
+  upload: { janelaSegundos: 60 * 60, teto: 120 },
 };
 
 // Baldes onde o excesso vira espera antes de virar bloqueio. Só os de identificação: nas

@@ -4,7 +4,7 @@ import { encerrarDia, iniciarEventoReal } from "./data";
 
 // A trava mais importante do módulo (Lucas 19/jul): depois que o credenciamento abriu, NÃO
 // existe reset. Zerar no meio do evento apagaria a fila física de centenas de pessoas já
-// bipadas, sem reconstrução possível. Estes testes existem para que ninguém reintroduza um
+// que já fizeram check-in, sem reconstrução possível. Estes testes existem para que ninguém reintroduza um
 // "forçar" por engano.
 
 // Mock mínimo do client: responde ao getEvento e registra quem tentou apagar/atualizar o quê.

@@ -4047,8 +4047,14 @@ function TicketWorkspace({
         </CollapsiblePanel>
       </header>
 
+      {/* `min-w-0` nas DUAS colunas: item de grid nasce com `min-width: auto`, ou seja, se
+          recusa a encolher abaixo do conteúdo. Bastava um nome de arquivo comprido na lista de
+          evidências ("Captura de tela 2026-07-27 113434.png") pra coluna inchar e o rodapé de
+          ações vazar pra fora do modal — era o botão de mandar pra validação saindo cortado
+          assim que o operador anexava alguma coisa. O `truncate` do nome só funciona depois
+          que alguém permite o encolhimento. */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(20rem,0.38fr)]">
-        <div className="grid gap-4">
+        <div className="grid min-w-0 gap-4">
           <WorkspaceDisclosureBlock
             isExpanded={isSectionExpanded("description")}
             onToggle={() => toggleSection("description")}
@@ -4092,7 +4098,7 @@ function TicketWorkspace({
           </div>
         </div>
 
-        <aside className="grid content-start gap-4">
+        <aside className="grid min-w-0 content-start gap-4">
           <CollapsiblePanel
             icon={<CalendarDays className="size-4" />}
             isExpanded={isSectionExpanded("delivery")}
@@ -5322,7 +5328,9 @@ function TicketReplyForm({
           </p>
         ) : null}
       </div>
-      <div className="mt-3 flex justify-end gap-2">
+      {/* `flex-wrap`: se a coluna ficar estreita, as ações descem de linha em vez de sumirem
+          pela borda. Cinto e suspensório junto com o `min-w-0` das colunas. */}
+      <div className="mt-3 flex flex-wrap justify-end gap-2">
         <Tooltip content="Mover para Backlog" placement="top">
           <button
             aria-label="Mover para Backlog"
@@ -5449,9 +5457,14 @@ function AttachmentsPanel({
   const [expandedAttachmentId, setExpandedAttachmentId] = useState<string | null>(
     null,
   );
+  // Mesma fonte do card: Storage primeiro, base64 legado como reserva. O modal inteiro estava
+  // atrás de um `expandedAttachment?.dataUrl`, então anexo do Storage nem abria em tela cheia.
   const expandedAttachment =
     attachments.find((attachment) => attachment.id === expandedAttachmentId) ??
     null;
+  const fonteExpandida = expandedAttachment
+    ? fonteDoAnexo(expandedAttachment)
+    : null;
 
   return (
     <>
@@ -5477,7 +5490,7 @@ function AttachmentsPanel({
         )}
       </Surface>
 
-      {expandedAttachment?.dataUrl ? (
+      {expandedAttachment && fonteExpandida ? (
         <div
           className="fixed inset-0 z-[80] grid place-items-center bg-black/90 p-2 md:p-4"
           onClick={() => setExpandedAttachmentId(null)}
@@ -5510,19 +5523,19 @@ function AttachmentsPanel({
                 height={1200}
                 unoptimized
                 width={1920}
-                src={expandedAttachment.dataUrl}
+                src={fonteExpandida}
               />
             ) : null}
             {expandedAttachment.type === "video" ? (
               <video
                 className="h-[calc(96vh-4rem)] w-full bg-inverse object-contain"
                 controls
-                src={expandedAttachment.dataUrl}
+                src={fonteExpandida}
               />
             ) : null}
             {expandedAttachment.type === "audio" ? (
               <div className="grid min-h-48 place-items-center p-6">
-                <audio className="w-full" controls src={expandedAttachment.dataUrl} />
+                <audio className="w-full" controls src={fonteExpandida} />
               </div>
             ) : null}
           </div>
@@ -5532,6 +5545,14 @@ function AttachmentsPanel({
   );
 }
 
+// DE ONDE SAI O ARQUIVO DO ANEXO. Anexo novo vive no Storage e chega como `url` (assinada na
+// leitura); o `dataUrl` é o base64 legado, que só existe nos anteriores ao Storage. A tela lia
+// SÓ o `dataUrl`, então todo anexo migrado ou criado depois de 14/07 aparecia como cartão
+// cinza com ícone de imagem quebrada — e o visualizador em tela cheia nem abria.
+function fonteDoAnexo(attachment: HubItTicket["attachments"][number]) {
+  return attachment.url ?? attachment.dataUrl ?? null;
+}
+
 function AttachmentCard({
   attachment,
   onOpen,
@@ -5539,16 +5560,17 @@ function AttachmentCard({
   attachment: HubItTicket["attachments"][number];
   onOpen: () => void;
 }) {
+  const fonte = fonteDoAnexo(attachment);
   const canPreview =
-    Boolean(attachment.dataUrl) &&
+    Boolean(fonte) &&
     (attachment.type === "image" ||
       attachment.type === "video" ||
       attachment.type === "audio");
-  const canOpenFile = Boolean(attachment.dataUrl) && attachment.type === "file";
+  const canOpenFile = Boolean(fonte) && attachment.type === "file";
 
   return (
     <div className="group overflow-hidden rounded-xl border border-line bg-subtle text-left transition hover:border-[#A07C3B]/30">
-      {attachment.type === "image" && attachment.dataUrl ? (
+      {attachment.type === "image" && fonte ? (
         <button
           aria-label="Abrir imagem em tela grande"
           className="relative block w-full"
@@ -5561,14 +5583,14 @@ function AttachmentCard({
             height={144}
             unoptimized
             width={320}
-            src={attachment.dataUrl}
+            src={fonte}
           />
           <span className="absolute right-2 top-2 grid size-8 place-items-center rounded-lg bg-black/80 text-white">
             <Maximize2 className="size-4" />
           </span>
         </button>
       ) : null}
-      {attachment.type === "video" && attachment.dataUrl ? (
+      {attachment.type === "video" && fonte ? (
         <button
           aria-label="Abrir video em tela grande"
           className="relative block w-full"
@@ -5577,19 +5599,19 @@ function AttachmentCard({
         >
           <video
             className="h-36 w-full bg-inverse object-contain"
-            src={attachment.dataUrl}
+            src={fonte}
           />
           <span className="absolute right-2 top-2 grid size-8 place-items-center rounded-lg bg-black/80 text-white">
             <Maximize2 className="size-4" />
           </span>
         </button>
       ) : null}
-      {attachment.type === "audio" && attachment.dataUrl ? (
+      {attachment.type === "audio" && fonte ? (
         <div className="grid h-36 place-items-center bg-subtle p-3">
-          <audio className="w-full" controls src={attachment.dataUrl} />
+          <audio className="w-full" controls src={fonte} />
         </div>
       ) : null}
-      {!attachment.dataUrl || attachment.type === "file" ? (
+      {!fonte || attachment.type === "file" ? (
         <div className="grid h-36 place-items-center bg-subtle text-ink-muted">
           {attachment.type === "image" ? (
             <ImageIcon className="size-7" />
@@ -5627,7 +5649,7 @@ function AttachmentCard({
               aria-label="Abrir arquivo anexado"
               className="grid size-8 shrink-0 place-items-center rounded-lg border border-line bg-surface text-ink-muted transition hover:text-ink"
               download={attachment.fileName}
-              href={attachment.dataUrl ?? undefined}
+              href={fonte ?? undefined}
               rel="noopener noreferrer"
               target="_blank"
             >

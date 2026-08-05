@@ -1,18 +1,13 @@
 "use client";
 
-import {
-  Laptop,
-  Loader2,
-  Maximize,
-  Minimize,
-  Monitor,
-  Plus,
-  RefreshCw,
-  Tv,
-} from "lucide-react";
+import { Laptop, Loader2, Maximize, Minimize, Monitor, Plus, RefreshCw, ScanLine, Tv, X } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { usePersistedState } from "@/hooks/use-persisted-state";
+import { ehIdDeCredencial } from "@/lib/prometeu/credencial";
+import { calcularKpisDoEvento } from "@/lib/prometeu/kpis";
+
+import { usarLeitorQr } from "../checkin/usar-leitor-qr";
 
 import {
   PROMETEU_ETAPAS,
@@ -21,45 +16,65 @@ import {
   type PrometeuCredenciado,
   type PrometeuEtapa,
   type PrometeuEvento,
+  type PrometeuIndicadorDaMesa,
   type PrometeuMesa,
+  type PrometeuOperadorResumo,
+  type PrometeuPassoJornada,
 } from "@/lib/prometeu/types";
 
 import {
   criarEventoRemoto,
   fetchEventos,
   fetchFila,
+  fetchJornada,
+  fetchOperadores,
+  fetchReservas,
   moverCredenciado,
+  type ReservaC2x,
 } from "../../data/prometeu-operations";
+import { COCKPIT_CSS } from "./cockpit-estilo";
 
-// Central do Prometeu — a tela de comando ao vivo do dia do lançamento.
+// Central do Prometeu — a tela de comando do dia do lançamento.
 //
-// A estrutura é a do mockup APROVADO pelo Lucas (public/prometeu/cockpit.html): KPIs no topo e
-// três abas — Painel · Mapa do salão · Analítico (com Lista/Kanban DENTRO do Analítico, não
-// como tela de abertura). A diferença é que aqui os números vêm das tabelas prometeu_*.
+// ESTE ARQUIVO É O MOCKUP APROVADO (public/prometeu/cockpit.html) COM OS MOTORES LIGADOS: o
+// markup e as classes são os do mockup, o CSS é o do mockup (cockpit-estilo.ts, gerado dele), e
+// a única diferença é a origem do dado — no mockup era array inventado, aqui vem das tabelas
+// prometeu_*. Ao mexer, mexa como se estivesse mexendo no HTML: mesma classe, mesma estrutura.
 //
-// Onde o mockup mostrava dado que ainda não temos fonte (valor em R$ das unidades, que virá do
+// Onde o mockup mostrava dado que ainda não tem fonte (valor em R$ das unidades, que virá do
 // C2X), a tela mostra travessão em vez de número inventado.
 
-type Aba = "painel" | "mapa" | "analitico";
+type Aba = "painel" | "mapa" | "analitico" | "reservas";
 type SubAba = "lista" | "kanban";
 type VerPor = "cliente" | "imobiliaria" | "unidade";
 
-// ◉ = presença confirmada por bipagem do QR · ◈ = estágio que vem do dado (C2X/sistema)
-const FONTE_QR = "◉";
-const FONTE_DADO = "◈";
+// O modal do mockup servia dois conteúdos: a lista de quem está num estágio (com o toggle
+// Lista / Por imobiliária) e a jornada de UMA pessoa (sem toggle). Mantido igual.
+//
+// Guarda as ETAPAS, não a lista de pessoas: a lista é derivada no render, então o modal aberto
+// acompanha o polling de 10s. Guardando as pessoas, o coordenador ficaria olhando uma foto do
+// instante do clique — e a fila anda justamente enquanto ele está com o modal aberto.
+type ConteudoDoModal =
+  | { estagio: string; etapas: PrometeuEtapa[]; tipo: "pessoas"; titulo: string }
+  | { pessoa: PrometeuCredenciado; tipo: "jornada" };
 
-// Acima disto a espera vira gargalo (destaque vermelho). Mesmo limite no Painel e no Mapa —
-// critérios diferentes fariam a mesma fila parecer saudável numa aba e crítica na outra.
-// TODO: passar a ler as metas do Setup (config.metas.filaRecepcao.alerta) por evento.
 const LIMITE_GARGALO_MIN = 20;
 
-const ETAPAS_EM_ATENDIMENTO: PrometeuEtapa[] = [
-  "negociacao",
-  "reserva",
-  "secretaria",
-  "proposta",
-  "pagamento",
-];
+// Ajustes do mockup para ele viver DENTRO do hub: lá era uma página inteira, aqui é um bloco de
+// módulo com o próprio scroll. Fica separado do CSS gerado para nunca se perder num regenerar.
+const AJUSTES_NO_HUB = `
+/* No mockup era página inteira (min-height:100vh); aqui é um bloco de módulo que tem que caber
+   na altura do main e rolar por dentro. Com height:auto o conteúdo cresceria e o corte
+   aconteceria no pai, sem barra de rolagem — esta é a mesma medida que a Central usava antes. */
+.pcx{height:100%;min-height:0}
+.pcx select.ev-select{font:inherit;font-size:14px;font-weight:700;color:var(--text);background:transparent;border:0;padding:0;cursor:pointer;max-width:230px}
+.pcx .h-right .rebtn{width:34px;height:34px;border-radius:9px;border:1px solid var(--line);background:var(--panel);color:var(--muted);cursor:pointer;display:flex;align-items:center;justify-content:center}
+.pcx .h-right .rebtn:hover{color:var(--brand);border-color:var(--brand)}
+.pcx .cell.vazio{cursor:default}
+.pcx .cell.vazio:hover{border-color:var(--line);box-shadow:none}
+.pcx .empty{padding:18px 0;text-align:center;color:var(--muted);font-size:12px}
+.pcx .erro{background:var(--danger-soft);color:var(--danger);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;margin-bottom:14px}
+`;
 
 function duracaoMs(ms: number): string {
   const minutos = Math.max(0, Math.floor(ms / 60000));
@@ -71,16 +86,16 @@ function duracao(desde: string, agora: number): string {
   return duracaoMs(agora - new Date(desde).getTime());
 }
 
-function horaCurta(iso: string | null): string {
-  if (!iso) return "—";
-  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
-}
-
 function haQuantoTempo(iso: string, agora: number): string {
   const minutos = Math.floor((agora - new Date(iso).getTime()) / 60000);
   if (minutos < 1) return "agora";
   if (minutos < 60) return `${minutos} min`;
   return `${Math.floor(minutos / 60)}h`;
+}
+
+function hora(iso: string | null): string {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
 function iniciais(nome: string): string {
@@ -92,14 +107,25 @@ function iniciais(nome: string): string {
     .join("");
 }
 
+function corDaEtapa(etapa: PrometeuEtapa): string {
+  return PROMETEU_ETAPAS.find((e) => e.id === etapa)?.cor ?? "#64748b";
+}
+
+function labelDaEtapa(etapa: PrometeuEtapa): string {
+  return PROMETEU_ETAPAS.find((e) => e.id === etapa)?.label ?? etapa;
+}
+
 export function CentralView() {
   const [eventos, setEventos] = useState<PrometeuEvento[]>([]);
   const [eventoId, setEventoId] = useState("");
   const [credenciados, setCredenciados] = useState<PrometeuCredenciado[]>([]);
-  const [filaRecepcao, setFilaRecepcao] = useState<PrometeuCredenciado[]>([]);
   const [mesas, setMesas] = useState<PrometeuMesa[]>([]);
+  const [resumoDeMesas, setResumoDeMesas] = useState<
+    Record<string, PrometeuIndicadorDaMesa>
+  >({});
   const [chamadas, setChamadas] = useState<PrometeuChamada[]>([]);
   const [atividade, setAtividade] = useState<PrometeuAtividade[]>([]);
+  const [operadores, setOperadores] = useState<PrometeuOperadorResumo[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [erro, setErro] = useState<string | null>(null);
 
@@ -107,20 +133,25 @@ export function CentralView() {
   const [subAba, setSubAba] = useState<SubAba>("lista");
   const [verPor, setVerPor] = useState<VerPor>("cliente");
   const [busca, setBusca] = useState("");
+  const [modal, setModal] = useState<ConteudoDoModal | null>(null);
   const [agora, setAgora] = useState(() => Date.now());
+  const [relogio, setRelogio] = useState("");
 
-  // A Central roda em telas muito diferentes no dia: notebook do coordenador, monitor da sala
-  // e TV grande. A escala fica no localStorage porque a TV é calibrada UMA vez e tem que
-  // continuar assim depois de recarregar.
+  // BIP DO GESTOR: ler a credencial abre a JORNADA do cliente. Não toca em etapa nem em banco —
+  // é só consulta. `bipando` liga a câmera; `avisoBip` é o aviso quando a credencial lida não é
+  // deste lançamento.
+  const [bipando, setBipando] = useState(false);
+  const [avisoBip, setAvisoBip] = useState<string | null>(null);
+
+  // A Central roda em telas muito diferentes no dia: notebook do coordenador, monitor da sala e
+  // TV grande. A escala fica no localStorage porque a TV é calibrada UMA vez e tem que continuar
+  // assim depois de recarregar.
   const raizRef = useRef<HTMLDivElement>(null);
-  const [escala, setEscala] = usePersistedState<number>(
-    "prometeu:central:escala",
-    1,
-    { backend: "local" },
-  );
+  const [escala, setEscala] = usePersistedState<number>("prometeu:central:escala", 1, {
+    backend: "local",
+  });
   const [emTelaCheia, setEmTelaCheia] = useState(false);
 
-  // O navegador também sai da tela cheia pelo Esc: o botão precisa acompanhar.
   useEffect(() => {
     const aoTrocar = () => setEmTelaCheia(Boolean(document.fullscreenElement));
     document.addEventListener("fullscreenchange", aoTrocar);
@@ -128,22 +159,34 @@ export function CentralView() {
   }, []);
 
   const alternarTelaCheia = useCallback(() => {
-    if (document.fullscreenElement) {
-      void document.exitFullscreen();
-      return;
-    }
-    // Tela cheia do container da Central (não da página): na TV some o menu do hub e sobra só
-    // o painel, que é o que o time quer ver de longe.
-    void raizRef.current?.requestFullscreen().catch(() => {
-      // Alguns navegadores recusam sem gesto direto; o botão é o gesto, então só ignoramos.
-    });
+    if (document.fullscreenElement) void document.exitFullscreen();
+    else void raizRef.current?.requestFullscreen().catch(() => {});
   }, []);
 
-  // Calibrado no mockup: 16 pol -> 1,00 e 32 pol -> 1,28.
-  const escalaDaTv = useCallback((polegadas: number) => {
-    return Math.round((0.0175 * polegadas + 0.72) * 100) / 100;
-  }, []);
+  // O QR da credencial carrega o id CRU; a Central já tem todos os credenciados em memória, então
+  // acha localmente e abre o MESMO modal de jornada dos cards — sem rota nova, sem efeito no banco.
+  const aoLerCredencial = useCallback(
+    (valor: string) => {
+      if (!ehIdDeCredencial(valor)) return;
+      const pessoa = credenciados.find((c) => c.id === valor.trim());
+      if (!pessoa) {
+        setAvisoBip("Essa credencial não é deste lançamento.");
+        return;
+      }
+      setAvisoBip(null);
+      setBipando(false);
+      setModal({ pessoa, tipo: "jornada" });
+    },
+    [credenciados],
+  );
 
+  const {
+    canvasRef: bipCanvasRef,
+    estado: estadoBip,
+    videoRef: bipVideoRef,
+  } = usarLeitorQr({ ativo: bipando, aoLer: aoLerCredencial });
+
+  // Mesma conta do mockup: scale = 0.0175 * polegadas + 0.72 (calibrado 16"→1, 32"→1.28).
   const perguntarPolegadas = useCallback(() => {
     const atual = Math.round((escala - 0.72) / 0.0175);
     const resposta = window.prompt(
@@ -153,12 +196,28 @@ export function CentralView() {
     if (resposta === null) return;
     const polegadas = Number.parseFloat(resposta.replace(",", "."));
     if (!Number.isFinite(polegadas) || polegadas <= 0) return;
-    setEscala(escalaDaTv(polegadas));
-  }, [escala, escalaDaTv, setEscala]);
+    setEscala(Math.round((0.0175 * polegadas + 0.72) * 100) / 100);
+  }, [escala, setEscala]);
+
+  // O relógio do mockup bate de segundo em segundo; os cronômetros das listas, de 30 em 30 (não
+  // adianta redesenhar 400 linhas por segundo para mudar "12 min").
+  useEffect(() => {
+    const escrever = () => {
+      const n = new Date();
+      setRelogio(
+        [n.getHours(), n.getMinutes(), n.getSeconds()]
+          .map((x) => String(x).padStart(2, "0"))
+          .join(":"),
+      );
+    };
+    escrever();
+    const id = window.setInterval(escrever, 1000);
+    return () => window.clearInterval(id);
+  }, []);
 
   useEffect(() => {
-    const timer = window.setInterval(() => setAgora(Date.now()), 30000);
-    return () => window.clearInterval(timer);
+    const id = window.setInterval(() => setAgora(Date.now()), 30000);
+    return () => window.clearInterval(id);
   }, []);
 
   const carregarEventos = useCallback(async () => {
@@ -176,18 +235,19 @@ export function CentralView() {
 
   const carregarFila = useCallback(async (id: string) => {
     if (!id) return;
-    setCarregando(true);
-    const { data, error } = await fetchFila(id);
+    // A Central pede os indicadores de todas as mesas (Mapa do salão).
+    const { data, error } = await fetchFila(id, undefined, { resumoMesas: true });
     if (error) {
       setErro(error);
-    } else {
-      setErro(null);
-      setCredenciados(data?.credenciados ?? []);
-      setFilaRecepcao(data?.filaRecepcao ?? []);
-      setMesas(data?.mesas ?? []);
-      setChamadas(data?.chamadas ?? []);
-      setAtividade(data?.atividade ?? []);
+      setCarregando(false);
+      return;
     }
+    setCredenciados(data?.credenciados ?? []);
+    setMesas(data?.mesas ?? []);
+    setChamadas(data?.chamadas ?? []);
+    setAtividade(data?.atividade ?? []);
+    setResumoDeMesas(data?.resumoDeMesas ?? {});
+    setErro(null);
     setCarregando(false);
   }, []);
 
@@ -196,53 +256,60 @@ export function CentralView() {
   }, [carregarEventos]);
 
   useEffect(() => {
+    if (!eventoId) return;
     void carregarFila(eventoId);
+    void fetchOperadores(eventoId).then(({ data }) => setOperadores(data ?? []));
   }, [carregarFila, eventoId]);
 
-  // ⚠️ Conta SÓ quem já fez check-in. Sem isto, "recepcao" — que é o estado padrão de quem
-  // está apenas habilitado (iniciarEventoReal zera todo mundo em recepcao com entrou_em nulo)
-  // — mostraria os 500 cadastrados como "aguardando na espera" com o salão vazio.
-  const porEtapa = useCallback(
-    (etapa: PrometeuEtapa) =>
-      credenciados.filter((c) => c.etapa === etapa && c.entrouEm !== null).length,
+  // Polling de 10s: é a Central do dia do evento, tem que respirar junto com o salão. Pausa em
+  // segundo plano — a fatura do Hermes ensinou que polling em aba escondida é dinheiro jogado
+  // fora.
+  useEffect(() => {
+    if (!eventoId) return;
+    const id = window.setInterval(() => {
+      if (document.visibilityState === "visible") void carregarFila(eventoId);
+    }, 10000);
+    return () => window.clearInterval(id);
+  }, [carregarFila, eventoId]);
+
+  // ⚠️ Conta SÓ quem já fez check-in. Sem isto, "recepcao" — que é o estado padrão de quem está
+  // apenas habilitado — mostraria os 500 cadastrados como "aguardando na espera" com o salão
+  // vazio.
+  const presentesTodos = useMemo(
+    () => credenciados.filter((c) => c.entrouEm !== null),
     [credenciados],
   );
 
-  const kpis = useMemo(() => {
-    // "Presentes agora" = quem está no evento NESTE momento: quem concluiu ou desistiu já foi
-    // embora e não pode continuar somando.
-    const presentes = credenciados.filter(
-      (c) => c.entrouEm !== null && c.etapa !== "concluido" && c.etapa !== "cancelado",
-    );
-    const chegaram = credenciados.filter((c) => c.entrouEm !== null);
-    const emAtendimento = credenciados.filter(
-      (c) => c.entrouEm !== null && ETAPAS_EM_ATENDIMENTO.includes(c.etapa),
-    ).length;
-    const concluidos = credenciados.filter((c) => c.etapa === "concluido");
+  const daEtapa = useCallback(
+    (...etapas: PrometeuEtapa[]) => presentesTodos.filter((c) => etapas.includes(c.etapa)),
+    [presentesTodos],
+  );
 
-    // Entrada → conclusão. O carimbo da conclusão é o `etapaDesde` de quem está em "concluido"
-    // (moverEtapa reescreve etapa_desde na troca). Usar `agora` aqui faria o número INFLAR
-    // sozinho: uma venda de 1h viraria "8h" no fim do dia, sem ninguém se mover.
-    const tempos = concluidos
-      .filter((c) => c.entrouEm)
-      .map((c) => new Date(c.etapaDesde).getTime() - new Date(c.entrouEm!).getTime())
-      .filter((ms) => ms >= 0);
-    const medio = tempos.length
-      ? tempos.reduce((soma, t) => soma + t, 0) / tempos.length
-      : null;
+  const porEtapa = useCallback(
+    (etapa: PrometeuEtapa) => daEtapa(etapa).length,
+    [daEtapa],
+  );
 
-    // Conversão sobre quem PASSOU pelo evento (não sobre quem está lá agora), senão o número
-    // desabaria a cada leva de check-ins.
-    const base = chegaram.length;
-    return {
-      concluidos: concluidos.length,
-      conversao: base > 0 ? Math.round((concluidos.length / base) * 100) : null,
-      emAtendimento,
-      presentes: presentes.length,
-      tempoMedio: medio,
-      total: credenciados.length,
-    };
-  }, [credenciados]);
+  // KPIs: função pura compartilhada com a Gestão (mobile), pra os números não divergirem.
+  const kpis = useMemo(() => calcularKpisDoEvento(credenciados), [credenciados]);
+
+  // Média de tempo parado de um grupo de etapas, em minutos.
+  const mediaMinutos = useCallback(
+    (...etapas: PrometeuEtapa[]) => {
+      const grupo = daEtapa(...etapas);
+      if (grupo.length === 0) return null;
+      const soma = grupo.reduce(
+        (total, c) => total + (agora - new Date(c.etapaDesde).getTime()),
+        0,
+      );
+      return Math.round(soma / grupo.length / 60000);
+    },
+    [agora, daEtapa],
+  );
+
+  const esperaRecepcao = mediaMinutos("recepcao");
+  const esperaSecretaria = mediaMinutos("secretaria");
+  const atendimentoMedio = mediaMinutos("proposta", "pagamento");
 
   const mover = useCallback(
     async (credenciado: PrometeuCredenciado, etapa: PrometeuEtapa) => {
@@ -269,48 +336,47 @@ export function CentralView() {
       return;
     }
     if (data) {
-      setEventos((atual) => [data, ...atual]);
+      setEventos([data]);
       setEventoId(data.id);
     }
   }, []);
 
-  // Falha ao carregar NÃO é "não existe evento": oferecer "criar lançamento" depois de um erro
-  // de rede levaria o operador a criar um evento duplicado no meio do dia.
-  if (!carregando && eventos.length === 0 && erro) {
+  const abrir = useCallback(
+    (estagio: string, titulo: string, ...etapas: PrometeuEtapa[]) =>
+      () =>
+        setModal({ estagio, etapas, tipo: "pessoas", titulo }),
+    [daEtapa],
+  );
+
+  const evento = eventos.find((e) => e.id === eventoId);
+  const mesasSecretaria = mesas.filter((m) => m.zona === "secretaria");
+  // Postos de credenciamento = quem OPERA a recepção. O gestor é gravado com uma zona (coluna
+  // obrigatória) mas não fica num posto — sem este filtro ele apareceria como mais um ponto de
+  // check-in por QR, que ninguém está atendendo.
+  const operadoresRecepcao = operadores.filter(
+    (o) => o.zona === "recepcao" && o.ativo && o.perfil !== "gestor",
+  );
+
+  if (carregando) {
     return (
-      <div className="grid h-full place-items-center bg-canvas p-8">
-        <div className="max-w-md text-center">
-          <h2 className="text-lg font-semibold text-ink">Não foi possível carregar</h2>
-          <p className="mt-2 text-sm text-ink-soft">{erro}</p>
-          <button
-            className="mt-5 inline-flex items-center gap-2 rounded-lg border border-black/10 px-4 py-2 text-sm font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10"
-            onClick={() => void carregarEventos()}
-            type="button"
-          >
-            <RefreshCw size={15} /> Tentar de novo
-          </button>
-        </div>
+      <div className="grid h-full place-items-center text-ink-muted">
+        <Loader2 className="animate-spin" size={22} />
       </div>
     );
   }
 
-  if (!carregando && eventos.length === 0) {
+  if (eventos.length === 0) {
     return (
-      <div className="grid h-full place-items-center bg-canvas p-8">
-        <div className="max-w-md text-center">
-          <h2 className="text-lg font-semibold text-ink">Nenhum lançamento cadastrado</h2>
-          <p className="mt-2 text-sm text-ink-soft">
-            Crie o evento para começar a montar a fila. A ordem de atendimento sai da hora do
-            pagamento do PIX de pré-venda.
-          </p>
+      <div className="grid h-full place-items-center">
+        <div className="text-center">
+          <p className="mb-3 text-sm text-ink-muted">Nenhum lançamento cadastrado ainda.</p>
           <button
-            className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#A07C3B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8d6c33]"
+            className="inline-flex items-center gap-2 rounded-lg bg-[#A07C3B] px-4 py-2 text-sm font-semibold text-white"
             onClick={() => void criarPrimeiroEvento()}
             type="button"
           >
-            <Plus size={16} /> Criar lançamento
+            <Plus size={15} /> Criar o primeiro
           </button>
-          {erro ? <p className="mt-4 text-sm text-red-600">{erro}</p> : null}
         </div>
       </div>
     );
@@ -319,494 +385,722 @@ export function CentralView() {
   return (
     <div
       ref={raizRef}
-      className="h-full min-h-0 overflow-y-auto bg-canvas"
-      // `zoom` (e não transform) porque ele reflui o layout: na TV tudo cresce junto, sem
-      // cortar conteúdo nem criar barra horizontal.
+      className="pcx h-full min-h-0 overflow-y-auto"
+      // `zoom` (e não transform) porque ele reflui o layout: na TV tudo cresce junto, sem cortar
+      // conteúdo nem criar barra horizontal. É o mesmo applyZoom() do mockup.
       style={escala === 1 ? undefined : { zoom: escala }}
     >
-      <header className="sticky top-0 z-10 border-b border-black/[0.07] bg-canvas/95 px-5 py-3 backdrop-blur dark:border-white/[0.08]">
-        <div className="flex flex-wrap items-center gap-3">
-          <select
-            className="rounded-lg border border-black/10 bg-surface px-3 py-1.5 text-sm font-semibold text-ink dark:border-white/10"
-            onChange={(e) => setEventoId(e.target.value)}
-            value={eventoId}
+      <style dangerouslySetInnerHTML={{ __html: COCKPIT_CSS + AJUSTES_NO_HUB }} />
+
+      <header>
+        <div className="mod-icon">
+          <svg
+            fill="none"
+            stroke="currentColor"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth="2"
+            viewBox="0 0 24 24"
           >
-            {eventos.map((evento) => (
-              <option key={evento.id} value={evento.id}>
-                {evento.nome}
-                {evento.enterpriseCode ? ` · ${evento.enterpriseCode}` : ""}
-              </option>
-            ))}
-          </select>
-
-          {/* As três abas do mockup, na mesma ordem. */}
-          <nav className="flex items-center gap-1 rounded-lg bg-black/[0.05] p-1 dark:bg-white/[0.07]">
-            {(
-              [
-                ["painel", "Painel"],
-                ["mapa", "Mapa do salão"],
-                ["analitico", "Analítico"],
-              ] as const
-            ).map(([id, label]) => (
-              <button
-                key={id}
-                className={`rounded-md px-4 py-1.5 text-[0.82rem] font-bold transition-colors ${
-                  aba === id
-                    ? "bg-surface text-[#A07C3B] shadow-sm"
-                    : "text-ink-muted hover:text-ink"
-                }`}
-                onClick={() => setAba(id)}
-                type="button"
-              >
-                {label}
-              </button>
-            ))}
-          </nav>
-
-          <div className="ml-auto flex items-center gap-2">
-            {/* Escala da tela: a Central é vista de perto no notebook e de longe na TV. */}
-            <div className="flex items-center gap-0.5 rounded-lg border border-black/10 p-0.5 dark:border-white/10">
-              <BotaoEscala
-                ativo={escala === 1}
-                onClick={() => setEscala(1)}
-                titulo="Notebook · ~16 pol."
-              >
-                <Laptop size={15} />
-              </BotaoEscala>
-              <BotaoEscala
-                ativo={escala === 1.28}
-                onClick={() => setEscala(1.28)}
-                titulo="Monitor · ~32 pol."
-              >
-                <Monitor size={15} />
-              </BotaoEscala>
-              <BotaoEscala
-                ativo={escala !== 1 && escala !== 1.28}
-                onClick={perguntarPolegadas}
-                titulo="TV · informe as polegadas"
-              >
-                <Tv size={15} />
-              </BotaoEscala>
-            </div>
-
-            <button
-              className="grid h-8 w-8 place-items-center rounded-lg border border-black/10 text-ink-soft hover:text-ink dark:border-white/10"
-              onClick={alternarTelaCheia}
-              title={emTelaCheia ? "Sair da tela cheia" : "Tela cheia"}
-              type="button"
+            <line x1="10" x2="21" y1="6" y2="6" />
+            <line x1="10" x2="21" y1="12" y2="12" />
+            <line x1="10" x2="21" y1="18" y2="18" />
+            <path d="M4 6h1v4" />
+            <path d="M4 10h2" />
+            <path d="M6 18H4c0-1 2-2 2-3s-1-1.5-2-1" />
+          </svg>
+        </div>
+        <div className="brand">
+          <h1>Prometeu</h1>
+          <div className="sub">Gestão de Fila</div>
+        </div>
+        <div className="h-event">
+          <div className="ev">
+            <select
+              className="ev-select"
+              onChange={(e) => setEventoId(e.target.value)}
+              value={eventoId}
             >
-              {emTelaCheia ? <Minimize size={15} /> : <Maximize size={15} />}
-            </button>
-
-            <button
-              className="grid h-8 w-8 place-items-center rounded-lg border border-black/10 text-ink-soft hover:text-ink dark:border-white/10"
-              onClick={() => void carregarFila(eventoId)}
-              title="Atualizar"
-              type="button"
-            >
-              {carregando ? (
-                <Loader2 className="animate-spin" size={15} />
-              ) : (
-                <RefreshCw size={15} />
-              )}
-            </button>
+              {eventos.map((e) => (
+                <option key={e.id} value={e.id}>
+                  {e.config.enterpriseNome || e.nome}
+                </option>
+              ))}
+            </select>
           </div>
+          <div className="evsub">
+            {evento?.config.construtora ||
+              (evento?.enterpriseCode ? `Código ${evento.enterpriseCode}` : "Lançamento")}
+          </div>
+        </div>
+
+        <div className="switch">
+          {(
+            [
+              ["painel", "Painel"],
+              ["mapa", "Mapa do salão"],
+              ["analitico", "Analítico"],
+              ["reservas", "Reservas"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={aba === id ? "on" : ""}
+              onClick={() => setAba(id)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="themetog scaletog">
+          <button
+            className={escala === 1 ? "on" : ""}
+            onClick={() => setEscala(1)}
+            title="Notebook · ~16 pol."
+            type="button"
+          >
+            <Laptop size={17} />
+          </button>
+          <button
+            className={escala === 1.28 ? "on" : ""}
+            onClick={() => setEscala(1.28)}
+            title="Monitor · ~32 pol."
+            type="button"
+          >
+            <Monitor size={17} />
+          </button>
+          <button
+            className={escala !== 1 && escala !== 1.28 ? "on" : ""}
+            onClick={perguntarPolegadas}
+            title="TV · informe as polegadas"
+            type="button"
+          >
+            <Tv size={17} />
+          </button>
+          <button onClick={alternarTelaCheia} title="Tela cheia" type="button">
+            {emTelaCheia ? <Minimize size={17} /> : <Maximize size={17} />}
+          </button>
+        </div>
+
+        <div className="h-right">
+          <div className="live">
+            <span className="dot" />
+            AO VIVO
+          </div>
+          <div className="clock">{relogio}</div>
+          <button
+            className="rebtn"
+            onClick={() => {
+              setAvisoBip(null);
+              setBipando(true);
+            }}
+            title="Bipar credencial — abre a jornada do cliente"
+            type="button"
+          >
+            <ScanLine size={15} />
+          </button>
+          <button
+            className="rebtn"
+            onClick={() => void carregarFila(eventoId)}
+            title="Atualizar agora"
+            type="button"
+          >
+            <RefreshCw size={15} />
+          </button>
         </div>
       </header>
 
-      {erro ? (
-        <p className="mx-5 mt-4 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300">
-          {erro}
-        </p>
-      ) : null}
+      {erro ? <div className="erro">{erro}</div> : null}
 
-      {/* KPIs ficam acima das abas e valem para todas — igual ao mockup. */}
-      <div className="grid gap-3 px-5 py-4 sm:grid-cols-2 lg:grid-cols-5">
-        <Kpi
-          detalhe={`de ${kpis.total} credenciados`}
-          label="Presentes agora"
-          valor={String(kpis.presentes)}
-        />
-        <Kpi
-          cor="#A07C3B"
-          detalhe="salão + secretaria"
-          label="Em atendimento"
-          valor={String(kpis.emAtendimento)}
-        />
-        <Kpi
-          cor="#22a95b"
-          detalhe="fluxo concluído"
-          label="Vendas fechadas"
-          valor={String(kpis.concluidos)}
-        />
-        <Kpi
-          detalhe="entrada até conclusão"
-          label="Tempo médio total"
-          valor={kpis.tempoMedio === null ? "—" : duracaoMs(kpis.tempoMedio)}
-        />
-        <Kpi
-          detalhe="de quem passou pelo evento"
-          label="Conversão"
-          valor={kpis.conversao === null ? "—" : `${kpis.conversao}%`}
-        />
-      </div>
-
-      <div className="px-5 pb-6">
-        {aba === "painel" ? (
-          <Painel
-            agora={agora}
-            atividade={atividade}
-            chamadas={chamadas}
-            credenciados={credenciados}
-            filaRecepcao={filaRecepcao}
-            porEtapa={porEtapa}
-          />
-        ) : aba === "mapa" ? (
-          <MapaDoSalao
-            agora={agora}
-            credenciados={credenciados}
-            mesas={mesas}
-            porEtapa={porEtapa}
-          />
-        ) : (
-          <Analitico
-            agora={agora}
-            busca={busca}
-            credenciados={credenciados}
-            onBusca={setBusca}
-            onMover={mover}
-            onSubAba={setSubAba}
-            onVerPor={setVerPor}
-            subAba={subAba}
-            verPor={verPor}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
-function BotaoEscala(props: {
-  ativo: boolean;
-  children: React.ReactNode;
-  onClick: () => void;
-  titulo: string;
-}) {
-  return (
-    <button
-      className={`grid h-7 w-7 place-items-center rounded-md transition-colors ${
-        props.ativo
-          ? "bg-black/[0.07] text-ink dark:bg-white/[0.1]"
-          : "text-ink-muted hover:text-ink"
-      }`}
-      onClick={props.onClick}
-      title={props.titulo}
-      type="button"
-    >
-      {props.children}
-    </button>
-  );
-}
-
-function Kpi(props: { cor?: string; detalhe: string; label: string; valor: string }) {
-  return (
-    <div className="rounded-xl border border-black/[0.07] bg-surface px-4 py-3 dark:border-white/[0.08]">
-      <div
-        className="text-2xl font-bold leading-none tabular-nums text-ink"
-        style={props.cor ? { color: props.cor } : undefined}
-      >
-        {props.valor}
-      </div>
-      <div className="mt-1.5 text-[0.78rem] font-semibold text-ink">{props.label}</div>
-      <div className="text-[0.7rem] text-ink-muted">{props.detalhe}</div>
-    </div>
-  );
-}
-
-// ───────────────────────────────────────────────────────────── PAINEL
-
-function Painel(props: {
-  agora: number;
-  atividade: PrometeuAtividade[];
-  chamadas: PrometeuChamada[];
-  credenciados: PrometeuCredenciado[];
-  filaRecepcao: PrometeuCredenciado[];
-  porEtapa: (etapa: PrometeuEtapa) => number;
-}) {
-  const { agora, porEtapa } = props;
-
-  const presentes = props.credenciados.filter((c) => c.entrouEm !== null).length;
-
-  // Espera média de quem está parado na recepção: alimenta o aviso de gargalo.
-  const esperaRecepcao = useMemo(() => {
-    const naRecepcao = props.credenciados.filter(
-      (c) => c.etapa === "recepcao" && c.entrouEm,
-    );
-    if (naRecepcao.length === 0) return null;
-    const soma = naRecepcao.reduce(
-      (total, c) => total + (agora - new Date(c.etapaDesde).getTime()),
-      0,
-    );
-    return Math.round(soma / naRecepcao.length / 60000);
-  }, [agora, props.credenciados]);
-
-  return (
-    <div className="grid gap-4 xl:grid-cols-[1fr_320px]">
-      <div>
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-          <h2 className="text-base font-bold text-ink">Mapa da jornada</h2>
-          <div className="flex items-center gap-3 text-[0.7rem] text-ink-muted">
-            <span>
-              <i className="not-italic text-[#A07C3B]">{FONTE_QR}</i> presença via QR
-            </span>
-            <span>
-              <i className="not-italic text-[#2563eb]">{FONTE_DADO}</i> estágio via sistema
-            </span>
-          </div>
+      <div className="kpis">
+        <div className="kpi">
+          <div className="kv tabnum">{kpis.presentes}</div>
+          <div className="kl">Presentes agora</div>
+          <div className="kd">de {kpis.total} credenciados</div>
         </div>
-
-        <Zona
-          badge={`${FONTE_QR} QR na entrada`}
-          nome="Recepção & Espera"
-          total={porEtapa("recepcao")}
-        >
-          <Celula
-            detalhe="check-in confirmado"
-            fonte="qr"
-            label="Credenciados no evento"
-            valor={presentes}
-          />
-          <Celula
-            detalhe={
-              esperaRecepcao === null
-                ? "ninguém aguardando"
-                : `espera média ${esperaRecepcao} min`
-            }
-            fonte="qr"
-            gargalo={esperaRecepcao !== null && esperaRecepcao > LIMITE_GARGALO_MIN}
-            label="Aguardando na espera"
-            valor={porEtapa("recepcao")}
-          />
-        </Zona>
-
-        <Zona
-          badge={`${FONTE_QR} bip ao entrar`}
-          nome="Salão de Vendas"
-          total={porEtapa("negociacao") + porEtapa("reserva")}
-        >
-          <Celula
-            detalhe="mesa de negociação"
-            fonte="qr"
-            label="Com o corretor"
-            valor={porEtapa("negociacao")}
-          />
-          <Celula
-            detalhe="fila física do espelho"
-            fonte="dado"
-            label="Com reserva"
-            valor={porEtapa("reserva")}
-          />
-        </Zona>
-
-        <Zona
-          badge={`${FONTE_QR} bip + chamada por mesa`}
-          nome="Secretaria"
-          total={porEtapa("secretaria") + porEtapa("proposta") + porEtapa("pagamento")}
-        >
-          <SubLinha label="Validação e proposta">
-            <Celula
-              detalhe="aguardando chamada"
-              fonte="qr"
-              label="Recepção"
-              valor={porEtapa("secretaria")}
-            />
-            <Celula
-              detalhe="validação e registro"
-              fonte="dado"
-              label="Proposta / contrato"
-              valor={porEtapa("proposta")}
-            />
-          </SubLinha>
-          <SubLinha label="Financeiro">
-            <Celula
-              detalhe="recebendo na mesma mesa"
-              fonte="dado"
-              label="ATO e pagamento"
-              valor={porEtapa("pagamento")}
-            />
-            <Celula
-              concluido
-              detalhe="fluxo concluído"
-              fonte="dado"
-              label="Venda concluída ✓"
-              valor={porEtapa("concluido")}
-            />
-          </SubLinha>
-        </Zona>
-
-        <Zona
-          badge="desistências"
-          nome="Cancelados"
-          perigo
-          total={porEtapa("cancelado")}
-        >
-          <Celula
-            detalhe="desistiu antes de fechar"
-            fonte="dado"
-            label="Cancelados no evento"
-            perigo
-            valor={porEtapa("cancelado")}
-          />
-        </Zona>
+        <div className="kpi">
+          <div className="kv brand tabnum">{kpis.emAtendimento}</div>
+          <div className="kl">Em atendimento</div>
+          <div className="kd">salão + secretaria</div>
+        </div>
+        <div className="kpi">
+          <div className="kv ok tabnum">{kpis.concluidos}</div>
+          <div className="kl">Vendas fechadas</div>
+          <div className="kd">fluxo concluído</div>
+        </div>
+        <div className="kpi">
+          <div className="kv">
+            {kpis.tempoMedio === null ? "—" : duracaoMs(kpis.tempoMedio)}
+          </div>
+          <div className="kl">Tempo médio total</div>
+          <div className="kd">entrada até conclusão</div>
+        </div>
+        <div className="kpi">
+          <div className="kv">{kpis.conversao === null ? "—" : `${kpis.conversao}%`}</div>
+          <div className="kl">Conversão</div>
+          <div className="kd">de quem passou pelo evento</div>
+        </div>
       </div>
 
-      <aside className="space-y-4">
-        <Card titulo="Fila da recepção">
-          {props.filaRecepcao.length === 0 ? (
-            <p className="py-4 text-center text-xs text-ink-muted">
-              Ninguém credenciado ainda.
-            </p>
-          ) : (
-            <ol className="space-y-1.5">
-              {props.filaRecepcao.slice(0, 8).map((pessoa, indice) => (
-                <li key={pessoa.id} className="flex items-center gap-2">
-                  <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-[#101820] text-[0.68rem] font-bold text-[#cba25a]">
-                    {indice + 1}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate text-xs font-medium text-ink">
-                    {pessoa.nome}
-                  </span>
-                  <span
-                    className={`shrink-0 text-[0.65rem] ${pessoa.credenciadoNaJanela ? "text-emerald-600 dark:text-emerald-400" : "text-ink-muted"}`}
-                    title={
-                      pessoa.credenciadoNaJanela
-                        ? "Bipado dentro da janela: ordem do PIX"
-                        : "Bipado fora da janela: ordem de chegada"
+      {/* ================= PAINEL ================= */}
+      <div className={`view${aba === "painel" ? " on" : ""}`}>
+        <div className="grid">
+          <div>
+            <div className="maptitle">
+              <h2>Mapa da jornada</h2>
+              <div className="legend">
+                <span>
+                  <i className="lg-i lg-qr">◉</i> presença via QR
+                </span>
+                <span>
+                  <i className="lg-i lg-data">◈</i> estágio via sistema
+                </span>
+              </div>
+            </div>
+
+            <div className="zone">
+              <div className="zone-head">
+                <span className="zone-name">Recepção &amp; Espera</span>
+                <span className="zone-badge">◉ QR na entrada</span>
+                <span className="zone-total">
+                  na zona <b>{porEtapa("recepcao")}</b>
+                </span>
+              </div>
+              <div className="cells">
+                <Celula
+                  detalhe="check-in confirmado"
+                  fonte="qr"
+                  label="Credenciados no evento"
+                  onAbrir={() =>
+                    setModal({
+                      estagio: "Recepção & Espera",
+                      // As 8 etapas cobrem todo mundo que fez check-in: mesmo conjunto de
+                      // `presentesTodos`, só que derivado a cada leitura.
+                      etapas: PROMETEU_ETAPAS.map((e) => e.id),
+                      tipo: "pessoas",
+                      titulo: "Credenciados no evento",
+                    })
+                  }
+                  valor={presentesTodos.length}
+                />
+                <Celula
+                  detalhe={
+                    esperaRecepcao === null
+                      ? "ninguém aguardando"
+                      : `⏱ espera média ${esperaRecepcao} min`
+                  }
+                  fonte="qr"
+                  gargalo={esperaRecepcao !== null && esperaRecepcao > LIMITE_GARGALO_MIN}
+                  label="Aguardando na espera"
+                  onAbrir={abrir("Recepção & Espera", "Aguardando na espera", "recepcao")}
+                  valor={porEtapa("recepcao")}
+                />
+              </div>
+            </div>
+
+            <div className="zone">
+              <div className="zone-head">
+                <span className="zone-name">Salão de Vendas</span>
+                <span className="zone-badge">◉ bip ao entrar</span>
+                <span className="zone-total">
+                  na zona <b>{porEtapa("negociacao") + porEtapa("reserva")}</b>
+                </span>
+              </div>
+              <div className="cells">
+                <Celula
+                  detalhe="mesa de negociação"
+                  fonte="qr"
+                  label="Com o corretor"
+                  onAbrir={abrir("Salão de Vendas", "Com o corretor", "negociacao")}
+                  valor={porEtapa("negociacao")}
+                />
+                <Celula
+                  detalhe="fila física do espelho"
+                  fonte="dado"
+                  label="Com reserva"
+                  onAbrir={abrir("Salão de Vendas", "Com reserva", "reserva")}
+                  valor={porEtapa("reserva")}
+                />
+              </div>
+            </div>
+
+            <div className="zone">
+              <div className="zone-head">
+                <span className="zone-name">Secretaria</span>
+                <span className="zone-badge">◉ bip + chamada por mesa</span>
+                <span className="zone-total">
+                  na zona{" "}
+                  <b>
+                    {porEtapa("secretaria") + porEtapa("proposta") + porEtapa("pagamento")}
+                  </b>
+                </span>
+              </div>
+              <div className="subline">
+                <div className="subline-lab">Validação e proposta</div>
+                <div className="cells">
+                  <Celula
+                    detalhe={
+                      esperaSecretaria === null
+                        ? "ninguém aguardando"
+                        : `⏱ espera média ${esperaSecretaria} min`
                     }
-                  >
-                    {pessoa.credenciadoNaJanela ? "PIX" : "chegada"}
-                  </span>
-                </li>
-              ))}
-            </ol>
-          )}
-        </Card>
-
-        <Card titulo="Funil de unidades">
-          <Funil credenciados={props.credenciados} porEtapa={porEtapa} />
-        </Card>
-
-        <Card titulo="Últimas chamadas">
-          {props.chamadas.length === 0 ? (
-            <p className="py-4 text-center text-xs text-ink-muted">
-              Nenhuma chamada ainda.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {props.chamadas.map((chamada) => (
-                <div key={chamada.id} className="flex items-center gap-2.5">
-                  <span className="grid h-7 w-7 shrink-0 place-items-center rounded-full bg-black/[0.06] text-[0.62rem] font-bold text-ink-soft dark:bg-white/[0.08]">
-                    {iniciais(chamada.nome)}
-                  </span>
-                  <div className="min-w-0 flex-1">
-                    <div className="truncate text-xs font-semibold text-ink">
-                      {chamada.nome}
-                    </div>
-                    <div className="truncate text-[0.65rem] text-ink-muted">
-                      {chamada.zona ?? "Salão"}
-                      {chamada.mesa ? ` · Mesa ${chamada.mesa}` : ""}
-                    </div>
-                  </div>
-                  <span className="shrink-0 text-[0.65rem] text-ink-muted">
-                    {haQuantoTempo(chamada.chamadoEm, agora)}
-                  </span>
+                    fonte="qr"
+                    label="Recepção"
+                    onAbrir={abrir("Secretaria", "Aguardando chamada", "secretaria")}
+                    valor={porEtapa("secretaria")}
+                  />
+                  <Celula
+                    detalhe="validação e registro"
+                    fonte="dado"
+                    label="Proposta / contrato"
+                    onAbrir={abrir("Secretaria", "Proposta / contrato", "proposta")}
+                    valor={porEtapa("proposta")}
+                  />
                 </div>
-              ))}
+              </div>
+              <div className="subline">
+                <div className="subline-lab">Financeiro</div>
+                <div className="cells">
+                  <Celula
+                    detalhe="recebendo na mesma mesa"
+                    fonte="dado"
+                    label="ATO e pagamento"
+                    onAbrir={abrir("Secretaria", "ATO e pagamento", "pagamento")}
+                    valor={porEtapa("pagamento")}
+                  />
+                  <Celula
+                    concluido
+                    detalhe="fluxo concluído"
+                    fonte="dado"
+                    label="Venda concluída ✓"
+                    onAbrir={abrir("Secretaria", "Venda concluída", "concluido")}
+                    valor={porEtapa("concluido")}
+                  />
+                </div>
+              </div>
             </div>
-          )}
-        </Card>
 
-        <Card titulo="Atividade ao vivo">
-          {props.atividade.length === 0 ? (
-            <p className="py-4 text-center text-xs text-ink-muted">
-              Sem movimentação ainda.
-            </p>
-          ) : (
-            <div className="space-y-2">
-              {props.atividade.map((item) => {
-                const etapa = PROMETEU_ETAPAS.find((e) => e.id === item.paraEtapa);
-                return (
-                  <div key={item.id} className="flex items-start gap-2 text-xs">
-                    <span
-                      className="mt-0.5 shrink-0 not-italic"
-                      style={{ color: etapa?.cor }}
-                    >
-                      {item.deEtapa === null ? FONTE_QR : FONTE_DADO}
-                    </span>
-                    <span className="min-w-0 flex-1 text-ink-soft">
-                      <b className="font-semibold text-ink">{item.nome}</b>{" "}
-                      {item.deEtapa === null
-                        ? "fez check-in"
-                        : `entrou em ${etapa?.label.toLowerCase()}`}
-                    </span>
-                    <span className="shrink-0 text-[0.65rem] text-ink-muted">
-                      {haQuantoTempo(item.em, agora)}
-                    </span>
+            <div className="zone">
+              <div className="zone-head">
+                <span className="zone-name" style={{ color: "var(--danger)" }}>
+                  Cancelados
+                </span>
+                <span
+                  className="zone-badge"
+                  style={{ background: "var(--danger-soft)", color: "var(--danger)" }}
+                >
+                  desistências
+                </span>
+                <span className="zone-total">
+                  no evento <b>{porEtapa("cancelado")}</b>
+                </span>
+              </div>
+              <div className="cells">
+                <Celula
+                  detalhe="desistiu antes de fechar"
+                  fonte="dado"
+                  label="Cancelados no evento"
+                  onAbrir={abrir("Cancelados", "Cancelados no evento", "cancelado")}
+                  perigo
+                  valor={porEtapa("cancelado")}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div className="side">
+            <div className="card">
+              <h3>Funil de unidades</h3>
+              <Funil credenciados={presentesTodos} porEtapa={porEtapa} />
+            </div>
+
+            <div className="card">
+              <h3>Últimas chamadas</h3>
+              {chamadas.length === 0 ? (
+                <div className="empty">Nenhuma chamada ainda.</div>
+              ) : (
+                chamadas.map((chamada) => (
+                  <div key={chamada.id} className="call">
+                    <div className="cavatar">{iniciais(chamada.nome)}</div>
+                    <div className="cinfo">
+                      <div className="cname">{chamada.nome}</div>
+                      <div className="cdest">
+                        {chamada.zona ?? "Salão"}
+                        {chamada.mesa ? ` · Mesa ${chamada.mesa}` : ""}
+                      </div>
+                    </div>
+                    <div className="cwhen">{haQuantoTempo(chamada.chamadoEm, agora)}</div>
                   </div>
-                );
-              })}
+                ))
+              )}
             </div>
-          )}
-        </Card>
-      </aside>
-    </div>
-  );
-}
 
-function Zona(props: {
-  badge: string;
-  children: React.ReactNode;
-  nome: string;
-  perigo?: boolean;
-  total: number;
-}) {
-  return (
-    <section className="mb-3 rounded-xl border border-black/[0.07] bg-surface p-3.5 dark:border-white/[0.08]">
-      <header className="mb-3 flex flex-wrap items-center gap-2.5">
-        <span
-          className="text-sm font-bold"
-          style={props.perigo ? { color: "#e0554a" } : undefined}
-        >
-          {props.nome}
-        </span>
-        <span
-          className={`rounded-full px-2 py-0.5 text-[0.65rem] font-semibold ${
-            props.perigo
-              ? "bg-red-100 text-red-700 dark:bg-red-950/40 dark:text-red-300"
-              : "bg-black/[0.05] text-ink-muted dark:bg-white/[0.07]"
-          }`}
-        >
-          {props.badge}
-        </span>
-        <span className="ml-auto text-[0.7rem] text-ink-muted">
-          na zona <b className="tabular-nums text-ink">{props.total}</b>
-        </span>
-      </header>
-      <div className="space-y-2">{props.children}</div>
-    </section>
-  );
-}
-
-function SubLinha(props: { children: React.ReactNode; label: string }) {
-  return (
-    <div className="rounded-lg bg-black/[0.02] p-2 dark:bg-white/[0.03]">
-      <div className="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-wide text-ink-muted">
-        {props.label}
+            <div className="card">
+              <h3>Atividade ao vivo</h3>
+              <div className="feed">
+                {atividade.length === 0 ? (
+                  <div className="empty">Sem movimentação ainda.</div>
+                ) : (
+                  atividade.map((item) => (
+                    <div key={item.id} className="fitem">
+                      <span className={`fic ${item.deEtapa === null ? "qr" : "data"}`}>
+                        {item.deEtapa === null ? "◉" : "◈"}
+                      </span>
+                      <span>
+                        <b>{item.nome}</b>{" "}
+                        {item.deEtapa === null
+                          ? "fez check-in"
+                          : `entrou em ${labelDaEtapa(item.paraEtapa).toLowerCase()}`}
+                      </span>
+                      <span className="ft">{haQuantoTempo(item.em, agora)}</span>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
-      <div className="grid gap-2 sm:grid-cols-2">{props.children}</div>
+
+      {/* ================= MAPA DO SALÃO ================= */}
+      <div className={`view${aba === "mapa" ? " on" : ""}`}>
+        <div id="hall">
+          <div className="room">
+            <div className="room-head">
+              <span className="room-name">🚪 Entrada · Recepção</span>
+              <span className="room-count">
+                <b className="tabnum">{presentesTodos.length}</b>
+                <span>credenciados</span>
+              </span>
+            </div>
+            <div style={{ color: "var(--muted)", fontSize: 11.5, marginBottom: 14 }}>
+              Credenciamento por QR
+            </div>
+            <div className="atds">
+              {operadoresRecepcao.length === 0 ? (
+                <div className="empty">Nenhum operador de recepção no Setup.</div>
+              ) : (
+                operadoresRecepcao.map((operador) => (
+                  <div key={operador.id} className="atd livre">
+                    <div className="atd-top">
+                      <span className="atd-num">{operador.username.slice(0, 4)}</span>
+                      <span className="atd-st">no posto</span>
+                    </div>
+                    <div className="atd-who">
+                      <span className="atd-av">{iniciais(operador.nome)}</span>
+                      <span className="atd-nome">{operador.nome}</span>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div
+            className={`room${esperaRecepcao !== null && esperaRecepcao > LIMITE_GARGALO_MIN ? " hot" : ""}`}
+          >
+            <div className="room-head">
+              <span className="room-name">🪑 Área de espera</span>
+              <span className="room-count">
+                <b className="tabnum">{porEtapa("recepcao")}</b>
+                <span>aguardando</span>
+              </span>
+            </div>
+            {esperaRecepcao !== null && esperaRecepcao > LIMITE_GARGALO_MIN ? (
+              <div
+                style={{
+                  color: "var(--danger)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  marginBottom: 9,
+                }}
+              >
+                Fila mais cheia · espera média {esperaRecepcao} min
+              </div>
+            ) : (
+              <div style={{ color: "var(--muted)", fontSize: 11.5, marginBottom: 9 }}>
+                {esperaRecepcao === null
+                  ? "Ninguém aguardando"
+                  : `Espera média ${esperaRecepcao} min`}
+              </div>
+            )}
+            <Pontos classe="wait" quantidade={porEtapa("recepcao")} />
+          </div>
+
+          <div className="room">
+            <div className="room-head">
+              <span className="room-name">🏛️ Salão de vendas</span>
+              <span className="room-count">
+                <b className="tabnum">{porEtapa("negociacao") + porEtapa("reserva")}</b>
+                <span>na área</span>
+              </span>
+            </div>
+            <div className="espelho">
+              ESPELHO DE VENDAS
+              <div className="es-sub">masterplan ao vivo · unidades disponíveis</div>
+            </div>
+            <div className="salao-grupo">
+              <div className="grupo-lab">
+                <span className="gl-dot" style={{ background: "#e8792b" }} />
+                Com corretor <b className="tabnum">{porEtapa("negociacao")}</b>
+              </div>
+              <Pontos classe="laranja" quantidade={porEtapa("negociacao")} />
+            </div>
+            <div className="salao-grupo" style={{ flex: 1 }}>
+              <div className="grupo-lab">
+                <span className="gl-dot" style={{ background: "var(--info)" }} />
+                Com reserva ativa <b className="tabnum">{porEtapa("reserva")}</b>
+              </div>
+              <Pontos classe="info" quantidade={porEtapa("reserva")} />
+            </div>
+          </div>
+
+          <div
+            className="room cancel"
+            onClick={abrir("Cancelados", "Cancelamentos no evento", "cancelado")}
+            role="presentation"
+          >
+            <div className="room-head">
+              <span className="room-name">✕ Cancelados</span>
+              <span className="room-count">
+                <b className="tabnum">{porEtapa("cancelado")}</b>
+                <span>no evento</span>
+              </span>
+            </div>
+            <div style={{ color: "var(--muted)", fontSize: 11.5, marginBottom: 12 }}>
+              Desistências antes do pagamento
+            </div>
+            {/* O mockup quebrava por ONDE cancelou. O banco não guarda a etapa de origem do
+                cancelamento, mas guarda a reserva: quem já tinha unidade desistiu depois de
+                reservar, quem não tinha desistiu antes. É a mesma leitura, com dado que existe. */}
+            <div className="cancel-bk">
+              <div>
+                <b className="tabnum">
+                  {daEtapa("cancelado").filter((c) => c.unidades.length > 0).length}
+                </b>{" "}
+                depois de reservar
+              </div>
+              <div>
+                <b className="tabnum">
+                  {daEtapa("cancelado").filter((c) => c.unidades.length === 0).length}
+                </b>{" "}
+                sem reserva
+              </div>
+            </div>
+            <Pontos classe="cancel" quantidade={porEtapa("cancelado")} />
+          </div>
+
+          <div className="room exit">
+            <div className="room-head">
+              <span className="room-name">✓ Concluído</span>
+              <span className="room-count">
+                <b className="tabnum">{porEtapa("concluido")}</b>
+                <span>vendas</span>
+              </span>
+            </div>
+            <div style={{ color: "var(--muted)", fontSize: 11.5, marginBottom: 10 }}>
+              Contrato e boletos a caminho
+            </div>
+            <Pontos classe="ok" quantidade={porEtapa("concluido")} />
+          </div>
+
+          <div className="room" style={{ gridColumn: "1 / -1" }}>
+            <div className="room-head">
+              <span className="room-name">📋 Secretaria</span>
+              <span className="room-count">
+                <b className="tabnum">
+                  {porEtapa("secretaria") + porEtapa("proposta") + porEtapa("pagamento")}
+                </b>
+                <span>na área</span>
+              </span>
+            </div>
+            <div style={{ color: "var(--muted)", fontSize: 11.5, marginBottom: 14 }}>
+              Validação, proposta, contrato, ATO e pagamento, tudo na mesma mesa
+            </div>
+            <div className="sec-stats">
+              <div className="ss">
+                <b className="tabnum">{porEtapa("secretaria")}</b>
+                <span>aguardando chamada</span>
+              </div>
+              <div className="ss">
+                <b className="tabnum">
+                  {esperaSecretaria === null ? "—" : `${esperaSecretaria} min`}
+                </b>
+                <span>espera média</span>
+              </div>
+              <div className="ss">
+                <b className="tabnum">
+                  {atendimentoMedio === null ? "—" : `${atendimentoMedio} min`}
+                </b>
+                <span>atendimento médio</span>
+              </div>
+            </div>
+
+            {mesasSecretaria.length === 0 ? (
+              <div className="empty">
+                Nenhuma mesa cadastrada. Defina o número de mesas no Setup e salve.
+              </div>
+            ) : (
+              <div className="atds">
+                {mesasSecretaria.map((mesa) => {
+                  const estado =
+                    mesa.estado === "atendimento"
+                      ? "atende"
+                      : mesa.estado === "ocupada"
+                        ? "busy"
+                        : "livre";
+                  const sentado = mesa.credenciadoId
+                    ? credenciados.find((c) => c.id === mesa.credenciadoId)
+                    : undefined;
+                  // Quem está atendendo na mesa: prioriza quem sentou AGORA (gravado na mesa pela
+                  // tela do Atendente); se não houver, cai no operador cadastrado para esta mesa.
+                  const nomeAtendente =
+                    mesa.atendenteNome ??
+                    operadores.find((o) => o.mesaId === mesa.id)?.nome ??
+                    null;
+                  const indic = resumoDeMesas[mesa.id];
+                  return (
+                    <div
+                      key={mesa.id}
+                      className={`atd ${estado}${sentado ? " click" : ""}`}
+                      onClick={
+                        sentado
+                          ? () => setModal({ pessoa: sentado, tipo: "jornada" })
+                          : undefined
+                      }
+                      role="presentation"
+                    >
+                      <div className="atd-top">
+                        <span className="atd-num">{mesa.numero}</span>
+                        <span className="atd-st">
+                          {estado === "atende"
+                            ? "atendendo"
+                            : estado === "busy"
+                              ? "ocupada"
+                              : "livre"}
+                        </span>
+                      </div>
+                      <div className="atd-who">
+                        <span className="atd-av">
+                          {nomeAtendente ? iniciais(nomeAtendente) : "—"}
+                        </span>
+                        <span className="atd-nome">
+                          {nomeAtendente ?? "sem atendente"}
+                        </span>
+                      </div>
+                      {/* Quem está na mesa agora (abre a jornada dele no clique). O NOME COMPLETO
+                          do cliente — o operador precisa saber quem está sendo atendido, não só as
+                          iniciais. Tempo na etapa ao lado. */}
+                      {sentado ? (
+                        <div className="atd-cliente" title={sentado.nome}>
+                          <span className="atd-cliente-nome">{sentado.nome}</span>
+                          <span className="atd-cliente-tempo">
+                            {duracao(sentado.etapaDesde, agora)}
+                          </span>
+                        </div>
+                      ) : null}
+                      {/* Os indicadores do ATENDENTE, para a gestão: atendimentos fechados,
+                          unidades vendidas neles, tempo médio e tempo total na cadeira. */}
+                      <div className="atd-metrics">
+                        <span className="mt">
+                          <b>{indic?.atendimentos ?? 0}</b> AT
+                        </span>
+                        <span className="mt">
+                          <b>{indic?.unidades ?? 0}</b> UN
+                        </span>
+                        <span className="mt">
+                          <b>{indic?.tempoMedioMs != null ? duracaoMs(indic.tempoMedioMs) : "—"}</b>{" "}
+                          méd
+                        </span>
+                        <span className="mt">
+                          <b>{indic && indic.tempoTotalMs > 0 ? duracaoMs(indic.tempoTotalMs) : "—"}</b>{" "}
+                          total
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+
+      </div>
+
+      {/* ================= ANALÍTICO ================= */}
+      <div className={`view${aba === "analitico" ? " on" : ""}`}>
+        <Analitico
+          agora={agora}
+          busca={busca}
+          onAbrirJornada={(pessoa) => setModal({ pessoa, tipo: "jornada" })}
+          onBusca={setBusca}
+          onMover={mover}
+          onSubAba={setSubAba}
+          onVerPor={setVerPor}
+          presentes={presentesTodos}
+          subAba={subAba}
+          verPor={verPor}
+        />
+      </div>
+
+      {/* ================= RESERVAS SEGURADAS ================= */}
+      <div className={`view${aba === "reservas" ? " on" : ""}`}>
+        <Reservas
+          agora={agora}
+          credenciados={presentesTodos}
+          onAbrirJornada={(pessoa) => setModal({ pessoa, tipo: "jornada" })}
+        />
+      </div>
+
+      <ModalDeClientes
+        agora={agora}
+        conteudo={modal}
+        onFechar={() => setModal(null)}
+        // Derivada A CADA RENDER: é isto que faz a lista aberta andar junto com o polling.
+        pessoas={modal?.tipo === "pessoas" ? daEtapa(...modal.etapas) : []}
+      />
+
+      {/* BIP DO GESTOR: câmera para ler a credencial e abrir a jornada. O `aoLer` acha o cliente
+          na lista já carregada e chama setModal — o overlay some sozinho ao abrir a jornada. */}
+      {bipando ? (
+        <div className="bipscan-ov" onClick={() => setBipando(false)} role="presentation">
+          <div className="bipscan-card" onClick={(e) => e.stopPropagation()} role="presentation">
+            <div className="bipscan-head">
+              <span>
+                <ScanLine size={16} /> Bipar credencial
+              </span>
+              <button aria-label="Fechar" onClick={() => setBipando(false)} type="button">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="bipscan-cam">
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption -- vídeo da câmera, sem áudio */}
+              <video className="bipscan-video" muted playsInline ref={bipVideoRef} />
+              <canvas hidden ref={bipCanvasRef} />
+              <div className="bipscan-mira" />
+            </div>
+            <div className="bipscan-info">
+              {estadoBip === "lendo"
+                ? "Aponte para o QR da credencial do cliente."
+                : estadoBip === "pedindo-camera"
+                  ? "Liberando a câmera…"
+                  : estadoBip === "sem-permissao"
+                    ? "Permissão de câmera negada. Libere no navegador e tente de novo."
+                    : estadoBip === "sem-camera"
+                      ? "Câmera indisponível neste dispositivo."
+                      : "Iniciando…"}
+            </div>
+            {avisoBip ? <div className="bipscan-aviso">{avisoBip}</div> : null}
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
+
+// ───────────────────────────────────────────────────── PEÇAS DO PAINEL
 
 function Celula(props: {
   concluido?: boolean;
@@ -814,92 +1108,97 @@ function Celula(props: {
   fonte: "qr" | "dado";
   gargalo?: boolean;
   label: string;
+  onAbrir: () => void;
   perigo?: boolean;
   valor: number;
 }) {
+  // Card vazio não abre nada: um modal "nenhum cliente aqui" só custa um clique ao coordenador
+  // no meio do evento.
+  const clicavel = props.valor > 0;
+
   return (
     <div
-      className={`relative rounded-lg border p-2.5 ${
-        props.gargalo
-          ? "border-red-400/50 bg-red-50/60 dark:bg-red-950/20"
-          : props.concluido
-            ? "border-emerald-400/40 bg-emerald-50/50 dark:bg-emerald-950/20"
-            : "border-black/[0.06] bg-canvas dark:border-white/[0.07]"
-      }`}
+      className={`cell${props.gargalo ? " gargalo" : ""}${props.concluido ? " done" : ""}${clicavel ? "" : " vazio"}`}
+      onClick={clicavel ? props.onAbrir : undefined}
+      onKeyDown={
+        clicavel
+          ? (evento) => {
+              if (evento.key === "Enter" || evento.key === " ") {
+                evento.preventDefault();
+                props.onAbrir();
+              }
+            }
+          : undefined
+      }
+      role={clicavel ? "button" : undefined}
+      tabIndex={clicavel ? 0 : undefined}
     >
-      {props.gargalo ? (
-        <span className="absolute -top-2 left-2 rounded bg-red-600 px-1.5 py-0.5 text-[0.58rem] font-bold text-white">
-          GARGALO
-        </span>
-      ) : null}
-      <div className="flex items-center justify-between">
+      {props.gargalo ? <div className="tag-gargalo">GARGALO</div> : null}
+      <div className="ctop">
         <span
-          className="text-xl font-bold tabular-nums text-ink"
-          style={props.perigo ? { color: "#e0554a" } : undefined}
+          className="cn tabnum"
+          style={props.perigo ? { color: "var(--danger)" } : undefined}
         >
           {props.valor}
         </span>
-        <span
-          className="not-italic"
-          style={{ color: props.fonte === "qr" ? "#A07C3B" : "#2563eb" }}
-        >
-          {props.fonte === "qr" ? FONTE_QR : FONTE_DADO}
-        </span>
+        <span className={`csrc ${props.fonte}`}>{props.fonte === "qr" ? "◉" : "◈"}</span>
       </div>
-      <div className="mt-0.5 text-[0.72rem] font-semibold text-ink">{props.label}</div>
-      <div className="text-[0.65rem] text-ink-muted">{props.detalhe}</div>
+      <div className="clabel">{props.label}</div>
+      <div className="ctime">{props.detalhe}</div>
     </div>
   );
 }
 
-function Card(props: { children: React.ReactNode; titulo: string }) {
+// Cada ponto é uma pessoa na sala — a leitura de ocupação que o mockup tinha. O mockup sorteava
+// quais pulsavam; aqui pulsam os 15% do começo, para a animação não trocar a cada refresh de 10s.
+function Pontos(props: { classe: string; quantidade: number }) {
+  const teto = Math.min(props.quantidade, 60);
   return (
-    <section className="rounded-xl border border-black/[0.07] bg-surface p-3.5 dark:border-white/[0.08]">
-      <h3 className="mb-3 text-[0.78rem] font-bold text-ink">{props.titulo}</h3>
-      {props.children}
-    </section>
+    <div className="dots">
+      {Array.from({ length: teto }, (_, i) => (
+        <div
+          key={i}
+          className={`dot-p ${props.classe}${i % 7 === 0 ? " pulse" : ""}`}
+        />
+      ))}
+      {props.quantidade > teto ? (
+        <span style={{ color: "var(--muted)", fontSize: 11 }}>
+          +{props.quantidade - teto}
+        </span>
+      ) : null}
+    </div>
   );
 }
 
-// O funil do mockup mostrava valor em R$ por faixa. Esse dado vem do C2X (valor da unidade),
-// que ainda não está ligado ao Prometeu — então a barra mostra a CONTAGEM real e o valor fica
-// como travessão, em vez de número inventado.
+// O funil do mockup mostrava valor em R$ por faixa. Esse dado vem do C2X (valor da unidade), que
+// ainda não está ligado ao Prometeu — então a barra mostra a CONTAGEM real e o valor fica como
+// travessão, em vez de número inventado.
 function Funil(props: {
   credenciados: PrometeuCredenciado[];
   porEtapa: (etapa: PrometeuEtapa) => number;
 }) {
   const reservas = props.credenciados.filter((c) => c.unidades.length > 0).length;
   const linhas = [
-    { label: "Reservas", valor: reservas },
-    { label: "Propostas", valor: props.porEtapa("proposta") },
-    { label: "Pagamento", valor: props.porEtapa("pagamento") },
+    { label: "Reservas", ok: false, valor: reservas },
+    { label: "Propostas", ok: false, valor: props.porEtapa("proposta") },
+    { label: "Pagamento", ok: false, valor: props.porEtapa("pagamento") },
     { label: "Finalizadas", ok: true, valor: props.porEtapa("concluido") },
   ];
   const topo = Math.max(...linhas.map((l) => l.valor), 1);
 
   return (
-    <div className="space-y-2">
+    <div className="funil">
       {linhas.map((linha) => (
-        <div key={linha.label} className="flex items-center gap-2">
-          <div className="relative h-7 flex-1 overflow-hidden rounded-md bg-black/[0.05] dark:bg-white/[0.07]">
+        <div key={linha.label} className="frow">
+          <div className={`fbar${linha.ok ? " ok" : ""}`}>
             <div
-              className="absolute inset-y-0 left-0 rounded-md"
-              style={{
-                background: linha.ok ? "#22a95b33" : "#A07C3B33",
-                width: `${Math.max(6, (linha.valor / topo) * 100)}%`,
-              }}
+              className="fill"
+              style={{ width: `${Math.max(6, (linha.valor / topo) * 100)}%` }}
             />
-            <div className="relative flex h-full items-center justify-between px-2">
-              <span className="text-[0.7rem] font-semibold text-ink">{linha.label}</span>
-              <span className="text-[0.7rem] font-bold tabular-nums text-ink">
-                {linha.valor}
-              </span>
-            </div>
+            <span className="flabel">{linha.label}</span>
+            <span className="fval">{linha.valor}</span>
           </div>
-          <span
-            className="w-16 shrink-0 text-right text-[0.65rem] text-ink-muted"
-            title="Valor em R$ virá do C2X quando as unidades forem ligadas ao evento"
-          >
+          <span className="fmoney" title="Valor em R$ virá do C2X quando as unidades forem ligadas ao evento">
             —
           </span>
         </div>
@@ -908,572 +1207,801 @@ function Funil(props: {
   );
 }
 
-// ──────────────────────────────────────────────────── MAPA DO SALÃO
-
-function MapaDoSalao(props: {
-  agora: number;
-  credenciados: PrometeuCredenciado[];
-  mesas: PrometeuMesa[];
-  porEtapa: (etapa: PrometeuEtapa) => number;
-}) {
-  const { agora, porEtapa } = props;
-  const presentes = props.credenciados.filter((c) => c.entrouEm !== null).length;
-  const mesasSecretaria = props.mesas.filter((m) => m.zona === "secretaria");
-
-  // Média de tempo de um grupo de etapas, em minutos. Alimenta a faixa da secretaria e o
-  // critério de gargalo — que é o MESMO do Painel (acima de LIMITE_GARGALO_MIN), e não
-  // "tem alguém na sala".
-  const mediaMinutos = useCallback(
-    (etapas: PrometeuEtapa[]) => {
-      const grupo = props.credenciados.filter(
-        (c) => etapas.includes(c.etapa) && c.entrouEm !== null,
-      );
-      if (grupo.length === 0) return null;
-      const soma = grupo.reduce(
-        (total, c) => total + (agora - new Date(c.etapaDesde).getTime()),
-        0,
-      );
-      return Math.round(soma / grupo.length / 60000);
-    },
-    [agora, props.credenciados],
-  );
-
-  const esperaRecepcao = mediaMinutos(["recepcao"]);
-  const esperaSecretaria = mediaMinutos(["secretaria"]);
-  const atendimentoMedio = mediaMinutos(["proposta", "pagamento"]);
-
-  return (
-    <div className="space-y-3">
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-        <Sala contagem={presentes} rotulo="credenciados" titulo="🚪 Entrada · Recepção">
-          <p className="text-[0.7rem] text-ink-muted">Credenciamento por QR</p>
-        </Sala>
-
-        <Sala
-          contagem={porEtapa("recepcao")}
-          quente={esperaRecepcao !== null && esperaRecepcao > LIMITE_GARGALO_MIN}
-          rotulo="aguardando"
-          titulo="🪑 Área de espera"
-        >
-          {esperaRecepcao !== null && esperaRecepcao > LIMITE_GARGALO_MIN ? (
-            <p className="mb-2 text-[0.66rem] font-bold text-red-600 dark:text-red-400">
-              Fila mais cheia · espera média {esperaRecepcao} min
-            </p>
-          ) : (
-            <p className="mb-2 text-[0.7rem] text-ink-muted">
-              {esperaRecepcao === null
-                ? "Ninguém aguardando"
-                : `Espera média ${esperaRecepcao} min`}
-            </p>
-          )}
-          <Pontos cor="#9aa5b4" quantidade={porEtapa("recepcao")} />
-        </Sala>
-
-        <Sala
-          contagem={porEtapa("negociacao") + porEtapa("reserva")}
-          rotulo="na área"
-          titulo="🏛️ Salão de vendas"
-        >
-          <div className="mb-2 rounded-md bg-black/[0.04] py-2 text-center dark:bg-white/[0.06]">
-            <div className="text-[0.62rem] font-bold tracking-wide text-ink-soft">
-              ESPELHO DE VENDAS
-            </div>
-            <div className="text-[0.58rem] text-ink-muted">masterplan ao vivo</div>
-          </div>
-          <div className="mb-1 flex items-center gap-1.5 text-[0.65rem] text-ink-soft">
-            <span className="h-2 w-2 rounded-full bg-[#e8792b]" />
-            Com corretor <b className="tabular-nums">{porEtapa("negociacao")}</b>
-          </div>
-          <Pontos cor="#e8792b" quantidade={porEtapa("negociacao")} />
-          <div className="mb-1 mt-2 flex items-center gap-1.5 text-[0.65rem] text-ink-soft">
-            <span className="h-2 w-2 rounded-full bg-[#2563eb]" />
-            Com reserva ativa <b className="tabular-nums">{porEtapa("reserva")}</b>
-          </div>
-          <Pontos cor="#2563eb" quantidade={porEtapa("reserva")} />
-        </Sala>
-
-        <Sala
-          contagem={porEtapa("cancelado")}
-          perigo
-          rotulo="no evento"
-          titulo="✕ Cancelados"
-        >
-          <p className="mb-2 text-[0.7rem] text-ink-muted">
-            Desistências antes do pagamento
-          </p>
-          <Pontos cor="#e0554a" quantidade={porEtapa("cancelado")} />
-        </Sala>
-
-        <Sala
-          contagem={porEtapa("concluido")}
-          rotulo="vendas"
-          sucesso
-          titulo="✓ Concluído"
-        >
-          <p className="mb-2 text-[0.7rem] text-ink-muted">Contrato e boletos a caminho</p>
-          <Pontos cor="#22a95b" quantidade={porEtapa("concluido")} />
-        </Sala>
-      </div>
-
-      {/* Secretaria ocupa a linha inteira, como no mockup. */}
-      <section className="rounded-xl border border-black/[0.07] bg-surface p-4 dark:border-white/[0.08]">
-        <header className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <span className="text-sm font-bold text-ink">📋 Secretaria</span>
-          <span className="text-[0.7rem] text-ink-muted">
-            <b className="tabular-nums text-ink">
-              {porEtapa("secretaria") + porEtapa("proposta") + porEtapa("pagamento")}
-            </b>{" "}
-            na área
-          </span>
-        </header>
-        <p className="mb-3 text-[0.7rem] text-ink-muted">
-          Validação, proposta, contrato, ATO e pagamento, tudo na mesma mesa
-        </p>
-
-        <div className="mb-3 flex flex-wrap gap-2">
-          <Estatistica
-            rotulo="aguardando chamada"
-            valor={String(porEtapa("secretaria"))}
-          />
-          <Estatistica
-            rotulo="espera média"
-            valor={esperaSecretaria === null ? "—" : `${esperaSecretaria} min`}
-          />
-          <Estatistica
-            rotulo="atendimento médio"
-            valor={atendimentoMedio === null ? "—" : `${atendimentoMedio} min`}
-          />
-        </div>
-
-        {mesasSecretaria.length === 0 ? (
-          <p className="rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-            Nenhuma mesa cadastrada. Defina o número de mesas no Setup e salve.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-2">
-            {mesasSecretaria.map((mesa) => (
-              <div
-                key={mesa.id}
-                className={`grid h-14 w-14 place-items-center rounded-lg border text-center ${
-                  mesa.estado === "atendimento"
-                    ? "border-emerald-500/50 bg-emerald-50 dark:bg-emerald-950/30"
-                    : mesa.estado === "ocupada"
-                      ? "border-amber-500/50 bg-amber-50 dark:bg-amber-950/30"
-                      : "border-black/10 bg-canvas dark:border-white/10"
-                }`}
-                title={`Mesa ${mesa.numero} · ${mesa.estado}`}
-              >
-                <span className="text-[0.6rem] text-ink-muted">Mesa</span>
-                <span className="text-sm font-bold tabular-nums text-ink">
-                  {mesa.numero}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
-      <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 rounded-lg border border-black/[0.06] px-3 py-2 text-[0.65rem] text-ink-muted dark:border-white/[0.07]">
-        <Legenda cor="#9aa5b4" texto="aguardando" />
-        <Legenda cor="#e8792b" texto="com corretor" />
-        <Legenda cor="#2563eb" texto="reserva ativa" />
-        <Legenda cor="#e0554a" texto="cancelado" />
-        <Legenda cor="#22a95b" texto="concluído" />
-        <span className="text-ink-muted/50">|</span>
-        <span className="font-bold text-ink-soft">mesa</span>
-        <Legenda cor="#22a95b" texto="atendendo" />
-        <Legenda cor="#e0a52e" texto="ocupada" />
-        <Legenda cor="#9aa5b4" texto="livre" />
-      </div>
-    </div>
-  );
-}
-
-function Sala(props: {
-  children: React.ReactNode;
-  contagem: number;
-  perigo?: boolean;
-  quente?: boolean;
-  rotulo: string;
-  sucesso?: boolean;
-  titulo: string;
-}) {
-  return (
-    <section
-      className={`flex flex-col rounded-xl border bg-surface p-3.5 ${
-        props.quente
-          ? "border-red-400/40"
-          : props.perigo
-            ? "border-red-400/30"
-            : props.sucesso
-              ? "border-emerald-400/40"
-              : "border-black/[0.07] dark:border-white/[0.08]"
-      }`}
-    >
-      <header className="mb-2 flex items-center justify-between gap-2">
-        <span
-          className="text-[0.8rem] font-bold text-ink"
-          style={props.perigo ? { color: "#e0554a" } : undefined}
-        >
-          {props.titulo}
-        </span>
-        <span className="shrink-0 text-[0.65rem] text-ink-muted">
-          <b className="tabular-nums text-ink">{props.contagem}</b> {props.rotulo}
-        </span>
-      </header>
-      {props.children}
-    </section>
-  );
-}
-
-// Cada ponto é uma pessoa na sala — a leitura de ocupação que o mockup tinha.
-function Pontos(props: { cor: string; quantidade: number }) {
-  const teto = Math.min(props.quantidade, 40);
-  return (
-    <div className="flex flex-wrap gap-1">
-      {Array.from({ length: teto }, (_, i) => (
-        <span
-          key={i}
-          className="h-2 w-2 rounded-full"
-          style={{ background: props.cor }}
-        />
-      ))}
-      {props.quantidade > teto ? (
-        <span className="text-[0.6rem] text-ink-muted">+{props.quantidade - teto}</span>
-      ) : null}
-    </div>
-  );
-}
-
-function Estatistica(props: { rotulo: string; valor: string }) {
-  return (
-    <div className="rounded-lg bg-black/[0.04] px-3 py-2 dark:bg-white/[0.06]">
-      <div className="text-sm font-bold tabular-nums text-ink">{props.valor}</div>
-      <div className="text-[0.62rem] text-ink-muted">{props.rotulo}</div>
-    </div>
-  );
-}
-
-function Legenda(props: { cor: string; texto: string }) {
-  return (
-    <span className="flex items-center gap-1.5">
-      <i className="h-2 w-2 rounded-full" style={{ background: props.cor }} />
-      {props.texto}
-    </span>
-  );
-}
-
 // ────────────────────────────────────────────────────── ANALÍTICO
 
 function Analitico(props: {
   agora: number;
   busca: string;
-  credenciados: PrometeuCredenciado[];
+  onAbrirJornada: (pessoa: PrometeuCredenciado) => void;
   onBusca: (valor: string) => void;
   onMover: (c: PrometeuCredenciado, etapa: PrometeuEtapa) => void;
   onSubAba: (valor: SubAba) => void;
   onVerPor: (valor: VerPor) => void;
+  presentes: PrometeuCredenciado[];
   subAba: SubAba;
   verPor: VerPor;
 }) {
+  // O ANALÍTICO REFLETE A FILA, não o cadastro (pedido do Lucas, 27/07). Quem ainda não bipou
+  // não está no evento: aparece quando chegar. Por isso a base é `presentes`.
   const filtrados = useMemo(() => {
     const termo = props.busca.trim().toLowerCase();
-    if (!termo) return props.credenciados;
-    return props.credenciados.filter((c) =>
+    if (!termo) return props.presentes;
+    return props.presentes.filter((c) =>
       [c.nome, c.imobiliaria, c.corretor, c.documento, ...c.unidades.map((u) => u.codigo)]
         .filter(Boolean)
         .some((campo) => String(campo).toLowerCase().includes(termo)),
     );
-  }, [props.busca, props.credenciados]);
+  }, [props.busca, props.presentes]);
+
+  const contagem =
+    props.verPor === "unidade" && props.subAba === "lista"
+      ? `${filtrados.reduce((soma, c) => soma + c.unidades.length, 0)} unidades`
+      : `${filtrados.length} de ${props.presentes.length} clientes`;
 
   return (
     <div>
-      <div className="mb-3 flex flex-wrap items-center gap-3">
-        {/* Lista e Kanban são SUB-abas do Analítico — como no mockup aprovado. */}
-        <div className="flex items-center gap-1 rounded-lg bg-black/[0.05] p-1 dark:bg-white/[0.07]">
+      <div className="ana-bar">
+        <div className="ana-subtabs">
           {(
             [
               ["lista", "Lista"],
               ["kanban", "Kanban"],
             ] as const
-          ).map(([id, label]) => (
+          ).map(([id, rotulo]) => (
             <button
               key={id}
-              className={`rounded-md px-4 py-1 text-[0.78rem] font-bold transition-colors ${
-                props.subAba === id
-                  ? "bg-surface text-[#A07C3B] shadow-sm"
-                  : "text-ink-muted hover:text-ink"
-              }`}
+              className={props.subAba === id ? "on" : ""}
               onClick={() => props.onSubAba(id)}
               type="button"
             >
-              {label}
+              {rotulo}
             </button>
           ))}
         </div>
 
         <input
-          className="min-w-[220px] flex-1 rounded-lg border border-black/10 bg-surface px-3 py-1.5 text-sm text-ink dark:border-white/10"
+          className="lista-search"
           onChange={(e) => props.onBusca(e.target.value)}
           placeholder="Buscar por cliente, imobiliária ou unidade..."
           value={props.busca}
         />
 
-        <div className="flex items-center gap-1.5 text-[0.7rem] text-ink-muted">
-          <span>Ver por</span>
-          {(
-            [
-              ["cliente", "Cliente"],
-              ["imobiliaria", "Imobiliária"],
-              ["unidade", "Unidade"],
-            ] as const
-          ).map(([id, label]) => (
-            <button
-              key={id}
-              className={`rounded-md px-2 py-1 font-semibold transition-colors ${
-                props.verPor === id
-                  ? "bg-black/[0.07] text-ink dark:bg-white/[0.1]"
-                  : "hover:text-ink"
-              }`}
-              onClick={() => props.onVerPor(id)}
-              type="button"
-            >
-              {label}
-            </button>
-          ))}
-        </div>
+        {props.subAba === "lista" ? (
+          <div className="ana-verpor">
+            <span>Ver por</span>
+            {(
+              [
+                ["cliente", "Cliente"],
+                ["imobiliaria", "Imobiliária"],
+                ["unidade", "Unidade"],
+              ] as const
+            ).map(([id, rotulo]) => (
+              <button
+                key={id}
+                className={props.verPor === id ? "on" : ""}
+                onClick={() => props.onVerPor(id)}
+                type="button"
+              >
+                {rotulo}
+              </button>
+            ))}
+          </div>
+        ) : null}
 
-        <span className="text-[0.7rem] text-ink-muted">
-          {filtrados.length} {filtrados.length === 1 ? "registro" : "registros"}
-        </span>
+        <div className="lista-count">{contagem}</div>
       </div>
 
-      {/* Busca sem resultado é diferente de evento vazio: dizer "ninguém no evento" quando há
-          200 pessoas e o filtro é que não bateu manda o operador procurar problema onde não há. */}
-      {filtrados.length === 0 && props.busca.trim() ? (
-        <p className="rounded-xl border border-black/[0.07] py-10 text-center text-sm text-ink-muted dark:border-white/[0.08]">
-          Nada encontrado para “{props.busca.trim()}”.
-        </p>
-      ) : props.subAba === "lista" ? (
-        <Lista agora={props.agora} credenciados={filtrados} verPor={props.verPor} />
+      {filtrados.length === 0 ? (
+        <div className="lista-empty">
+          {props.presentes.length === 0
+            ? "Ninguém fez check-in ainda."
+            : "Nada encontrado."}
+        </div>
+      ) : props.subAba === "kanban" ? (
+        // Os dois ids do mockup NÃO são decorativos: é neles que mora
+        // `max-height:calc(100vh - 300px);overflow-y:auto`, ou seja, a área de rolagem própria do
+        // Analítico. Sem eles a barra de busca e as sub-abas rolam junto com as 400 linhas, e o
+        // cabeçalho fixo da tabela fica sem o container para o qual foi escrito.
+        <div id="ana-kanban">
+          <Kanban
+            agora={props.agora}
+            credenciados={filtrados}
+            onAbrirJornada={props.onAbrirJornada}
+            onMover={props.onMover}
+          />
+        </div>
       ) : (
-        <Kanban agora={props.agora} credenciados={filtrados} onMover={props.onMover} />
+        <div id="ana-lista">
+          {props.verPor === "cliente" ? (
+        <div className="ltable-wrap">
+          <table className="ltable">
+            <thead>
+              <tr>
+                <th>Cliente</th>
+                <th>Imobiliária</th>
+                <th>Unidades</th>
+                <th>Etapa atual</th>
+                <th>Tempo no evento</th>
+                <th>Tempo no estágio</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.map((c) => (
+                <tr
+                  key={c.id}
+                  onClick={() => props.onAbrirJornada(c)}
+                  style={{ cursor: "pointer" }}
+                >
+                  <td>
+                    <NomeNaTabela pessoa={c} />
+                  </td>
+                  <td>{c.imobiliaria ?? "—"}</td>
+                  <td>
+                    <div className="unid-wrap">
+                      {c.unidades.length === 0
+                        ? "—"
+                        : c.unidades.map((u) => (
+                            <span key={u.id} className="unid-chip">
+                              {u.codigo}
+                            </span>
+                          ))}
+                    </div>
+                  </td>
+                  <td>
+                    <ChipDaEtapa etapa={c.etapa} />
+                  </td>
+                  <td className="lt-tempo">
+                    {c.entrouEm ? duracao(c.entrouEm, props.agora) : "—"}
+                  </td>
+                  <td className="lt-tempo">{duracao(c.etapaDesde, props.agora)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+          ) : props.verPor === "unidade" ? (
+        <div className="ltable-wrap">
+          <table className="ltable">
+            <thead>
+              <tr>
+                <th>Unidade</th>
+                <th>Cliente</th>
+                <th>Imobiliária</th>
+                <th>Situação</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtrados.flatMap((c) =>
+                c.unidades.map((u) => (
+                  <tr
+                    key={`${c.id}-${u.id}`}
+                    onClick={() => props.onAbrirJornada(c)}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <td>
+                      <span className="unid-chip lg">{u.codigo}</span>
+                    </td>
+                    <td>
+                      <NomeNaTabela pessoa={c} />
+                    </td>
+                    <td>{c.imobiliaria ?? "—"}</td>
+                    <td>
+                      <ChipDaEtapa etapa={c.etapa} />
+                    </td>
+                  </tr>
+                )),
+              )}
+            </tbody>
+          </table>
+        </div>
+          ) : (
+            <PorImobiliaria
+              agora={props.agora}
+              credenciados={filtrados}
+              onAbrirJornada={props.onAbrirJornada}
+            />
+          )}
+        </div>
       )}
     </div>
   );
 }
 
-function Lista(props: {
+function NomeNaTabela(props: { pessoa: PrometeuCredenciado; pequeno?: boolean }) {
+  const cor = corDaEtapa(props.pessoa.etapa);
+  return (
+    <div className="lt-nome">
+      <div
+        className={`lt-av${props.pequeno ? " sm" : ""}`}
+        style={{ background: `${cor}22`, color: cor }}
+      >
+        {iniciais(props.pessoa.nome)}
+      </div>
+      <span className="lt-nm">{props.pessoa.nome}</span>
+    </div>
+  );
+}
+
+function ChipDaEtapa(props: { etapa: PrometeuEtapa }) {
+  return (
+    <span className="et-chip">
+      <span className="et-dot" style={{ background: corDaEtapa(props.etapa) }} />
+      {labelDaEtapa(props.etapa)}
+    </span>
+  );
+}
+
+// RESERVAS SEGURADAS (controle do coordenador, pedido do Lucas 29/07). Má-prática: o corretor
+// reserva a unidade e não devolve quando o cliente desiste, "guardando" para si. O fluxo certo é
+// reservar e seguir para a secretaria (proposta); quem fica PARADO na etapa `reserva` está segurando
+// unidade. A tela lista essas reservas com corretor + imobiliária + tempo, para o coordenador
+// cobrar. Alerta em 30 min (decisão do Lucas). Base = ETAPA `reserva` (a tabela prometeu_unidades
+// não é escrita hoje, então a unidade anexada não serve de critério).
+const LIMITE_RESERVA_MS = 30 * 60 * 1000;
+
+function Reservas(props: {
   agora: number;
   credenciados: PrometeuCredenciado[];
-  verPor: VerPor;
+  onAbrirJornada: (pessoa: PrometeuCredenciado) => void;
 }) {
-  // "Ver por" agrupa a mesma base por outro eixo, como no mockup.
-  if (props.verPor !== "cliente") {
-    const chave = (c: PrometeuCredenciado): string[] =>
-      props.verPor === "imobiliaria"
-        ? [c.imobiliaria ?? "Sem imobiliária"]
-        : c.unidades.length > 0
-          ? c.unidades.map((u) => u.codigo)
-          : ["Sem unidade"];
+  const [busca, setBusca] = useState("");
+  const [imob, setImob] = useState("");
+  const [corretor, setCorretor] = useState("");
+  const [soAlerta, setSoAlerta] = useState(false);
 
-    const grupos = new Map<string, PrometeuCredenciado[]>();
-    for (const credenciado of props.credenciados) {
-      for (const nome of chave(credenciado)) {
-        grupos.set(nome, [...(grupos.get(nome) ?? []), credenciado]);
+  // AS RESERVAS VÊM DO C2X, não daqui (Lucas, 01/08: "esses dados vem tudo do C2X, nada é feito no
+  // hub"). Antes esta aba filtrava por `etapa === "reserva"` do Prometeu, que ninguém alimentava —
+  // por isso vivia vazia. Agora lê os pedidos de aquisição ABERTOS na etapa Reservado, que é onde
+  // o corretor de fato registra, e cruza por CPF para trazer imobiliária e a etapa no salão.
+  const [doC2x, setDoC2x] = useState<ReservaC2x[] | null>(null);
+  const [erroC2x, setErroC2x] = useState<string | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    const buscar = async () => {
+      const { data, error } = await fetchReservas();
+      if (!vivo) return;
+      // ⚠️ Sem payload NÃO apaga a tela: um blip de rede zerando a lista faria o coordenador achar
+      // que as reservas foram resolvidas. Erro vira aviso; a lista antiga fica.
+      if (data?.clientes) {
+        setDoC2x(data.clientes);
+        setErroC2x(null);
+      } else if (error) {
+        setErroC2x(error);
       }
-    }
+    };
+    void buscar();
+    const t = window.setInterval(() => void buscar(), 20_000);
+    return () => {
+      vivo = false;
+      window.clearInterval(t);
+    };
+  }, []);
 
-    return (
-      <div className="space-y-2">
-        {[...grupos.entries()]
-          .sort((a, b) => b[1].length - a[1].length)
-          .map(([nome, membros]) => (
-            <section
-              key={nome}
-              className="rounded-xl border border-black/[0.07] bg-surface p-3 dark:border-white/[0.08]"
-            >
-              <header className="mb-2 flex items-center justify-between">
-                <span className="text-sm font-bold text-ink">{nome}</span>
-                <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-[0.68rem] font-semibold text-ink-soft dark:bg-white/[0.08]">
-                  {membros.length}
-                </span>
-              </header>
-              <div className="flex flex-wrap gap-1.5">
-                {membros.map((membro) => {
-                  const etapa = PROMETEU_ETAPAS.find((e) => e.id === membro.etapa);
-                  return (
-                    <span
-                      key={membro.id}
-                      className="rounded-md px-2 py-0.5 text-[0.7rem] font-medium"
-                      style={{ background: `${etapa?.cor}1a`, color: etapa?.cor }}
-                    >
-                      {membro.nome}
-                    </span>
-                  );
-                })}
-              </div>
-            </section>
-          ))}
-      </div>
-    );
-  }
+  // Adapta o cliente do C2X ao formato que a tabela já sabe desenhar. `etapaDesde` passa a ser a
+  // hora da reserva MAIS ANTIGA da pessoa — é ela que o alerta de 30 min cobra.
+  const reservas = useMemo(() => {
+    const noEvento = new Map(props.credenciados.map((c) => [c.id, c]));
+    return (doC2x ?? []).map((r) => {
+      const pessoa = r.credenciadoId ? noEvento.get(r.credenciadoId) : undefined;
+      return {
+        ...(pessoa ?? ({} as PrometeuCredenciado)),
+        corretor: r.corretor ?? pessoa?.corretor ?? null,
+        etapaDesde: r.desde,
+        id: r.credenciadoId ?? `c2x:${r.cpf}`,
+        imobiliaria: r.imobiliaria ?? pessoa?.imobiliaria ?? null,
+        nome: r.cliente,
+        // As unidades vêm do C2X, no formato que a tabela de chips espera.
+        unidades: r.unidades.map((codigo: string) => ({
+          codigo,
+          id: `${r.cpf}:${codigo}`,
+          lote: codigo.slice(-2),
+          quadra: codigo.slice(-4, -2),
+          situacao: "reservada",
+        })),
+      } as PrometeuCredenciado;
+    });
+  }, [doC2x, props.credenciados]);
+
+  // As opções saem das reservas paradas AGORA, mas SEMPRE incluem o valor filtrado — senão, quando
+  // a imobiliária/corretor filtrado resolve a última reserva (o desfecho desejado), a opção sumiria
+  // no polling e o select ficaria com um valor órfão, travando a tela numa lista vazia.
+  const imobiliarias = useMemo(() => {
+    const set = new Set(reservas.map((c) => c.imobiliaria?.trim()).filter(Boolean) as string[]);
+    if (imob) set.add(imob);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [reservas, imob]);
+  const corretores = useMemo(() => {
+    const set = new Set(reservas.map((c) => c.corretor?.trim()).filter(Boolean) as string[]);
+    if (corretor) set.add(corretor);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [reservas, corretor]);
+
+  const paradoMs = useCallback(
+    (c: PrometeuCredenciado) => props.agora - new Date(c.etapaDesde).getTime(),
+    [props.agora],
+  );
+
+  const filtradas = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    return reservas
+      .filter((c) => {
+        if (imob && (c.imobiliaria?.trim() ?? "") !== imob) return false;
+        if (corretor && (c.corretor?.trim() ?? "") !== corretor) return false;
+        if (soAlerta && paradoMs(c) < LIMITE_RESERVA_MS) return false;
+        if (
+          termo &&
+          ![c.nome, c.imobiliaria, c.corretor]
+            .filter(Boolean)
+            .some((v) => String(v).toLowerCase().includes(termo))
+        ) {
+          return false;
+        }
+        return true;
+      })
+      // Quem está PARADO há mais tempo primeiro: é quem o coordenador tem que cobrar antes.
+      .sort((a, b) => (a.etapaDesde ?? "").localeCompare(b.etapaDesde ?? ""));
+  }, [reservas, busca, imob, corretor, soAlerta, paradoMs]);
+
+  const emAlerta = filtradas.filter((c) => paradoMs(c) >= LIMITE_RESERVA_MS).length;
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-black/[0.07] dark:border-white/[0.08]">
-      <table className="w-full border-collapse text-sm">
-        <thead>
-          <tr className="bg-surface text-left text-[0.68rem] uppercase tracking-wide text-ink-muted">
-            <th className="px-3 py-2 font-semibold">#</th>
-            <th className="px-3 py-2 font-semibold">Cliente</th>
-            <th className="px-3 py-2 font-semibold">Imobiliária</th>
-            <th className="px-3 py-2 font-semibold">Unidades</th>
-            <th className="px-3 py-2 font-semibold">Etapa</th>
-            <th className="px-3 py-2 font-semibold">No evento</th>
-            <th className="px-3 py-2 font-semibold">No estágio</th>
-          </tr>
-        </thead>
-        <tbody>
-          {props.credenciados.map((credenciado) => {
-            const etapa = PROMETEU_ETAPAS.find((e) => e.id === credenciado.etapa);
-            return (
-              <tr
-                key={credenciado.id}
-                className="border-t border-black/[0.06] dark:border-white/[0.07]"
-              >
-                <td className="px-3 py-2 font-semibold tabular-nums text-ink-soft">
-                  {credenciado.posicao ?? "—"}
-                </td>
-                <td className="px-3 py-2 font-medium text-ink">{credenciado.nome}</td>
-                <td className="px-3 py-2 text-ink-soft">
-                  {credenciado.imobiliaria ?? "—"}
-                </td>
-                <td className="px-3 py-2 text-ink-soft">
-                  {credenciado.unidades.map((u) => u.codigo).join(", ") || "—"}
-                </td>
-                <td className="px-3 py-2">
-                  <span
-                    className="inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-xs font-semibold"
-                    style={{ background: `${etapa?.cor}1a`, color: etapa?.cor }}
-                  >
-                    <span
-                      className="h-1.5 w-1.5 rounded-full"
-                      style={{ background: etapa?.cor }}
-                    />
-                    {etapa?.label}
-                  </span>
-                </td>
-                <td className="px-3 py-2 text-ink-soft">
-                  {credenciado.entrouEm ? duracao(credenciado.entrouEm, props.agora) : "—"}
-                </td>
-                <td className="px-3 py-2 text-ink-soft">
-                  {duracao(credenciado.etapaDesde, props.agora)}
-                </td>
-              </tr>
-            );
-          })}
-          {props.credenciados.length === 0 ? (
-            <tr>
-              <td className="px-3 py-10 text-center text-sm text-ink-muted" colSpan={7}>
-                Ninguém no evento ainda.
-              </td>
-            </tr>
-          ) : null}
-        </tbody>
-      </table>
+    <div>
+      <div className="ana-bar">
+        <input
+          className="lista-search"
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por cliente, corretor ou imobiliária..."
+          value={busca}
+        />
+        <select className="reserva-sel" onChange={(e) => setImob(e.target.value)} value={imob}>
+          <option value="">Todas as imobiliárias</option>
+          {imobiliarias.map((i) => (
+            <option key={i} value={i}>
+              {i}
+            </option>
+          ))}
+        </select>
+        <select
+          className="reserva-sel"
+          onChange={(e) => setCorretor(e.target.value)}
+          value={corretor}
+        >
+          <option value="">Todos os corretores</option>
+          {corretores.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <button
+          className={`fchip${soAlerta ? " on" : ""}`}
+          onClick={() => setSoAlerta((v) => !v)}
+          type="button"
+        >
+          Só em alerta (+30 min)
+        </button>
+        <div className="lista-count">
+          {filtradas.length} reserva{filtradas.length === 1 ? "" : "s"}
+          {emAlerta > 0 ? ` · ${emAlerta} em alerta` : ""}
+        </div>
+      </div>
+
+      {filtradas.length === 0 ? (
+        <div className="lista-empty">
+          {reservas.length === 0
+            ? "Nenhuma reserva parada agora."
+            : "Nenhuma reserva parada com esse filtro."}
+        </div>
+      ) : (
+        <div id="reserva-lista">
+          <div className="ltable-wrap">
+            <table className="ltable">
+              <thead>
+                <tr>
+                  <th>Cliente</th>
+                  <th>Corretor</th>
+                  <th>Imobiliária</th>
+                  <th>Tempo na reserva</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtradas.map((c) => {
+                  const alerta = paradoMs(c) >= LIMITE_RESERVA_MS;
+                  return (
+                    <tr
+                      key={c.id}
+                      onClick={() => props.onAbrirJornada(c)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td>
+                        <NomeNaTabela pessoa={c} />
+                      </td>
+                      <td>{c.corretor?.trim() || "—"}</td>
+                      <td>{c.imobiliaria?.trim() || "—"}</td>
+                      <td className={`lt-tempo${alerta ? " lt-alerta" : ""}`}>
+                        {duracao(c.etapaDesde, props.agora)}
+                        {alerta ? <span className="reserva-flag">+30 min</span> : null}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
     </div>
+  );
+}
+
+function PorImobiliaria(props: {
+  agora: number;
+  credenciados: PrometeuCredenciado[];
+  onAbrirJornada: (pessoa: PrometeuCredenciado) => void;
+}) {
+  const grupos = useMemo(() => {
+    const mapa = new Map<string, PrometeuCredenciado[]>();
+    for (const pessoa of props.credenciados) {
+      const chave = pessoa.imobiliaria?.trim() || "Sem imobiliária";
+      const atual = mapa.get(chave);
+      if (atual) atual.push(pessoa);
+      else mapa.set(chave, [pessoa]);
+    }
+    return [...mapa.entries()].sort((a, b) => b[1].length - a[1].length);
+  }, [props.credenciados]);
+
+  return (
+    <>
+      {grupos.map(([imobiliaria, pessoas]) => {
+        const unidades = pessoas.reduce((soma, c) => soma + c.unidades.length, 0);
+        return (
+          <div key={imobiliaria} className="imob-group">
+            <div className="imob-head">
+              <span className="imob-nm">{imobiliaria}</span>
+              <span className="imob-meta">
+                {pessoas.length} clientes · {unidades} unidades
+              </span>
+            </div>
+            <div className="ltable-wrap">
+              <table className="ltable">
+                <tbody>
+                  {pessoas.map((c) => (
+                    <tr
+                      key={c.id}
+                      onClick={() => props.onAbrirJornada(c)}
+                      style={{ cursor: "pointer" }}
+                    >
+                      <td>
+                        <NomeNaTabela pessoa={c} />
+                      </td>
+                      <td>
+                        <div className="unid-wrap">
+                          {c.unidades.map((u) => (
+                            <span key={u.id} className="unid-chip">
+                              {u.codigo}
+                            </span>
+                          ))}
+                        </div>
+                      </td>
+                      <td>
+                        <ChipDaEtapa etapa={c.etapa} />
+                      </td>
+                      <td className="lt-tempo">
+                        {c.entrouEm ? duracao(c.entrouEm, props.agora) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </>
   );
 }
 
 function Kanban(props: {
   agora: number;
   credenciados: PrometeuCredenciado[];
+  onAbrirJornada: (pessoa: PrometeuCredenciado) => void;
   onMover: (c: PrometeuCredenciado, etapa: PrometeuEtapa) => void;
 }) {
+  const [arrastando, setArrastando] = useState<string | null>(null);
+
   return (
-    <div className="flex gap-3 overflow-x-auto pb-2">
+    <div className="kanban">
       {PROMETEU_ETAPAS.map((etapa) => {
-        const doGrupo = props.credenciados.filter((c) => c.etapa === etapa.id);
+        const doColuna = props.credenciados.filter((c) => c.etapa === etapa.id);
         return (
-          <section
+          <div
             key={etapa.id}
-            className="flex w-[270px] shrink-0 flex-col rounded-xl border border-black/[0.07] bg-surface dark:border-white/[0.08]"
+            className="kcol"
+            onDragOver={(e) => e.preventDefault()}
+            onDrop={() => {
+              const pessoa = props.credenciados.find((c) => c.id === arrastando);
+              if (pessoa && pessoa.etapa !== etapa.id) props.onMover(pessoa, etapa.id);
+              setArrastando(null);
+            }}
           >
-            <header className="flex items-center gap-2 border-b border-black/[0.06] px-3 py-2.5 dark:border-white/[0.07]">
-              <span
-                className="h-2.5 w-2.5 shrink-0 rounded-full"
-                style={{ background: etapa.cor }}
-              />
-              <span className="flex-1 text-sm font-semibold text-ink">{etapa.label}</span>
-              <span className="rounded-full bg-black/[0.06] px-2 py-0.5 text-xs font-semibold text-ink-soft dark:bg-white/[0.08]">
-                {doGrupo.length}
-              </span>
-            </header>
-
-            <div className="min-h-0 flex-1 space-y-2 p-2">
-              {doGrupo.map((credenciado) => (
-                <article
-                  key={credenciado.id}
-                  className="rounded-lg border border-black/[0.07] bg-canvas p-2.5 dark:border-white/[0.08]"
-                >
-                  <div className="flex items-start gap-2">
-                    {credenciado.posicao ? (
-                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-md bg-[#101820] text-[0.68rem] font-bold text-[#cba25a]">
-                        {credenciado.posicao}
-                      </span>
-                    ) : null}
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-ink">
-                        {credenciado.nome}
-                      </p>
-                      {credenciado.imobiliaria ? (
-                        <p className="truncate text-xs text-ink-soft">
-                          {credenciado.imobiliaria}
-                        </p>
-                      ) : null}
-                    </div>
-                  </div>
-
-                  {credenciado.unidades.length > 0 ? (
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {credenciado.unidades.map((unidade) => (
-                        <span
-                          key={unidade.id}
-                          className="rounded bg-black/[0.06] px-1.5 py-0.5 text-[0.66rem] font-medium text-ink-soft dark:bg-white/[0.08]"
-                        >
-                          {unidade.codigo}
-                        </span>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  <div className="mt-2 flex items-center justify-between gap-2 text-[0.66rem] text-ink-muted">
-                    <span title="Tempo neste estágio">
-                      {duracao(credenciado.etapaDesde, props.agora)}
-                    </span>
-                    <span title="Chegou ao evento">{horaCurta(credenciado.entrouEm)}</span>
-                  </div>
-
-                  <select
-                    className="mt-2 w-full rounded-md border border-black/10 bg-surface px-2 py-1 text-xs text-ink dark:border-white/10"
-                    onChange={(e) =>
-                      props.onMover(credenciado, e.target.value as PrometeuEtapa)
-                    }
-                    value={credenciado.etapa}
-                  >
-                    {PROMETEU_ETAPAS.map((opcao) => (
-                      <option key={opcao.id} value={opcao.id}>
-                        {opcao.label}
-                      </option>
-                    ))}
-                  </select>
-                </article>
-              ))}
-              {doGrupo.length === 0 ? (
-                <p className="px-1 py-6 text-center text-xs text-ink-muted">Vazio</p>
-              ) : null}
+            <div className="kcol-head">
+              <span className="et-dot" style={{ background: etapa.cor }} />
+              <span className="kcol-nm">{etapa.label}</span>
+              <span className="kcol-n">{doColuna.length}</span>
             </div>
-          </section>
+            <div className="kcol-body">
+              {doColuna.map((c) => (
+                <div
+                  key={c.id}
+                  className="kcard"
+                  draggable
+                  onClick={() => props.onAbrirJornada(c)}
+                  onDragEnd={() => setArrastando(null)}
+                  onDragStart={() => setArrastando(c.id)}
+                  role="presentation"
+                >
+                  <div className="kcard-top">
+                    <div
+                      className="lt-av sm"
+                      style={{ background: `${etapa.cor}22`, color: etapa.cor }}
+                    >
+                      {iniciais(c.nome)}
+                    </div>
+                    <span className="kcard-nm">{c.nome}</span>
+                  </div>
+                  <div className="kcard-imob">{c.imobiliaria ?? "—"}</div>
+                  <div className="kcard-foot">
+                    {c.unidades.length > 0 ? (
+                      <span className="unid-chip">
+                        {c.unidades[0]?.codigo}
+                        {c.unidades.length > 1 ? ` +${c.unidades.length - 1}` : ""}
+                      </span>
+                    ) : (
+                      <span className="kcard-tempo">sem unidade</span>
+                    )}
+                    <span className="kcard-tempo">
+                      ⏱ {duracao(c.etapaDesde, props.agora)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────── MODAL DE CLIENTES
+
+function ModalDeClientes(props: {
+  agora: number;
+  conteudo: ConteudoDoModal | null;
+  onFechar: () => void;
+  pessoas: PrometeuCredenciado[];
+}) {
+  const [modo, setModo] = useState<"lista" | "grupo">("lista");
+  const { onFechar } = props;
+
+  // Depende de `onFechar`, não de `props`: o objeto de props é novo a cada render do pai (que
+  // roda a cada 10s do polling), e o efeito ficaria removendo e recolocando o listener sem parar.
+  useEffect(() => {
+    const aoTeclar = (evento: KeyboardEvent) => {
+      if (evento.key === "Escape") onFechar();
+    };
+    document.addEventListener("keydown", aoTeclar);
+    return () => document.removeEventListener("keydown", aoTeclar);
+  }, [onFechar]);
+
+  // Toda abertura começa na Lista, como no mockup (openModal chamava setMode("lista")).
+  useEffect(() => {
+    if (props.conteudo) setModo("lista");
+  }, [props.conteudo]);
+
+  const pessoas = props.pessoas;
+
+  // Mais tempo parado primeiro: o topo da lista é quem o coordenador tem que resolver agora.
+  const ordenados = useMemo(
+    () =>
+      [...pessoas].sort(
+        (a, b) => new Date(a.etapaDesde).getTime() - new Date(b.etapaDesde).getTime(),
+      ),
+    [pessoas],
+  );
+
+  const grupos = useMemo(() => {
+    const mapa = new Map<string, PrometeuCredenciado[]>();
+    for (const pessoa of ordenados) {
+      const chave = pessoa.imobiliaria?.trim() || "Sem imobiliária";
+      const atual = mapa.get(chave);
+      if (atual) atual.push(pessoa);
+      else mapa.set(chave, [pessoa]);
+    }
+    return [...mapa.entries()].sort((a, b) => b[1].length - a[1].length);
+  }, [ordenados]);
+
+  const conteudo = props.conteudo;
+  const jornada = conteudo?.tipo === "jornada" ? conteudo.pessoa : null;
+  const cabecalho =
+    conteudo?.tipo === "pessoas"
+      ? { estagio: conteudo.estagio, titulo: conteudo.titulo }
+      : { estagio: "", titulo: "" };
+
+  return (
+    <div
+      className={`modal-ov${conteudo ? " open" : ""}`}
+      onClick={(evento) => {
+        if (evento.target === evento.currentTarget) props.onFechar();
+      }}
+      role="presentation"
+    >
+      <div className="modal">
+        <div className="modal-head">
+          <div>
+            <div className="modal-stage">
+              {jornada ? "Jornada do cliente" : cabecalho.estagio}
+            </div>
+            <div className="modal-title">{jornada ? jornada.nome : cabecalho.titulo}</div>
+            <div className="modal-count">
+              {jornada
+                ? `${jornada.imobiliaria ?? "sem imobiliária"} · ${jornada.unidades.length} ${jornada.unidades.length === 1 ? "unidade" : "unidades"}`
+                : `${pessoas.length} ${pessoas.length === 1 ? "cliente" : "clientes"}`}
+            </div>
+          </div>
+
+          {/* O toggle só existe na lista de um estágio; na jornada o mockup escondia. */}
+          {jornada ? null : (
+            <div className="modal-toggle">
+              {(
+                [
+                  ["lista", "Lista"],
+                  ["grupo", "Por imobiliária"],
+                ] as const
+              ).map(([id, rotulo]) => (
+                <button
+                  key={id}
+                  className={modo === id ? "on" : ""}
+                  onClick={() => setModo(id)}
+                  type="button"
+                >
+                  {rotulo}
+                </button>
+              ))}
+            </div>
+          )}
+
+          <button
+            className="modal-close"
+            onClick={props.onFechar}
+            style={jornada ? { marginLeft: "auto" } : undefined}
+            type="button"
+          >
+            ✕
+          </button>
+        </div>
+
+        <div className="modal-body">
+          {jornada ? (
+            <Jornada agora={props.agora} pessoa={jornada} />
+          ) : ordenados.length === 0 ? (
+            <div className="note" style={{ margin: "20px 0" }}>
+              Nenhum cliente neste estágio.
+            </div>
+          ) : modo === "lista" ? (
+            ordenados.map((pessoa) => (
+              <LinhaDoModal
+                key={pessoa.id}
+                agora={props.agora}
+                abaixo={pessoa.imobiliaria ?? "sem imobiliária"}
+                pessoa={pessoa}
+              />
+            ))
+          ) : (
+            grupos.map(([imobiliaria, doGrupo]) => (
+              <div key={imobiliaria}>
+                <div className="ghead">
+                  <span className="gnm">{imobiliaria}</span>
+                  <span className="gct">{doGrupo.length}</span>
+                </div>
+                {doGrupo.map((pessoa) => (
+                  <LinhaDoModal
+                    key={pessoa.id}
+                    agora={props.agora}
+                    abaixo={`há ${duracao(pessoa.etapaDesde, props.agora)}`}
+                    pessoa={pessoa}
+                    semTempo
+                  />
+                ))}
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function LinhaDoModal(props: {
+  abaixo: string;
+  agora: number;
+  pessoa: PrometeuCredenciado;
+  semTempo?: boolean;
+}) {
+  return (
+    <div className="crow">
+      <div className="cav">{iniciais(props.pessoa.nome)}</div>
+      <div className="cinf">
+        <div className="cnm">{props.pessoa.nome}</div>
+        <div className="cim">{props.abaixo}</div>
+      </div>
+      {props.semTempo ? null : (
+        <div className="cwait">há {duracao(props.pessoa.etapaDesde, props.agora)}</div>
+      )}
+    </div>
+  );
+}
+
+// A JORNADA do cliente no circuito do evento (decisão do Lucas): Check-in → Negociação → Reserva
+// (com as unidades) → Secretária (check-in e atendimento) → Proposta → Finalizado, mais os no-shows.
+// Reconstituída no servidor a partir das MOVIMENTAÇÕES de etapa (não só da etapa atual) — por isso
+// é buscada ao abrir o modal. "Etiqueta impressa" saiu de propósito: é um detalhe operacional, não
+// um passo da jornada de venda.
+function Jornada(props: { agora: number; pessoa: PrometeuCredenciado }) {
+  const [passos, setPassos] = useState<PrometeuPassoJornada[] | null>(null);
+
+  useEffect(() => {
+    let vivo = true;
+    void fetchJornada(props.pessoa.id).then(({ data }) => {
+      if (vivo) setPassos(data?.passos ?? []);
+    });
+    return () => {
+      vivo = false;
+    };
+  }, [props.pessoa.id]);
+
+  if (passos === null || passos.length === 0) {
+    return (
+      <div className="tl">
+        <div className="tl-item cur">
+          <div className="tl-dot" />
+          <div className="tl-body">
+            <div className="tl-txt">
+              {passos === null ? "Carregando a jornada..." : "Ainda sem passos registrados."}
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  const ultimo = passos.length - 1;
+
+  return (
+    <div className="tl">
+      {passos.map((passo, i) => {
+        const atual = i === ultimo && !passo.cancelado;
+        const classe = [
+          i < ultimo ? "done" : "",
+          atual ? "cur" : "",
+          passo.cancelado ? "cancel" : "",
+        ]
+          .filter(Boolean)
+          .join(" ");
+        return (
+          <div key={`${passo.titulo}-${i}`} className={`tl-item ${classe}`}>
+            <div className="tl-dot" />
+            <div className="tl-body">
+              <div className="tl-txt">{passo.titulo}</div>
+              {passo.detalhe ? <div className="tl-when">{passo.detalhe}</div> : null}
+              <div className="tl-when">
+                {passo.quando
+                  ? `${hora(passo.quando)}${atual ? ` · há ${duracao(passo.quando, props.agora)}` : ""}`
+                  : "—"}
+              </div>
+            </div>
+          </div>
         );
       })}
     </div>

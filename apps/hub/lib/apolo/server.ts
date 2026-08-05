@@ -1214,7 +1214,11 @@ type C2xCadastroRow = RowDataPacket & {
 // Enricher da ficha cadastral: para as entidades VISÍVEIS, puxa do C2X (users +
 // lookups) os campos do titular. Roda em PROD (o C2X é a fonte até o go-live).
 // Ver [[project-apolo-empreendimento-tela]].
-async function fetchC2xCadastroByEntity(
+//
+// Exportada porque a VALIDAÇÃO do Board (api/apolo/board/[id]) reusa a mesma leitura
+// para UMA entidade: passa só os source_links dela e Sets vazios (os ids de comprador
+// só afetam flags de relacionamento, não o cadastro básico que a ficha precisa).
+export async function fetchC2xCadastroByEntity(
   adminClient: ApoloSupabaseClient,
   sourceLinks: ApoloSourceLinkRow[],
   buyerClientIds: Set<number>,
@@ -3394,7 +3398,10 @@ async function startApoloSyncRun(adminClient: ApoloSupabaseClient): Promise<Sync
   };
 }
 
-async function persistApoloEntityBatch(
+// Exportada para o teste (`sync-c2x-identidade.test.ts`): é aqui que as DUAS rotas de sync
+// (`/api/apolo/sync/c2x` e `.../incremental`) gravam, então é aqui que se prova que o cadastro
+// mantido no Apolo sobrevive à rodada do cron.
+export async function persistApoloEntityBatch(
   adminClient: ApoloSupabaseClient,
   rawUsers: C2xUserRow[],
   syncRunId: string,
@@ -3486,36 +3493,72 @@ async function persistApoloEntityBatch(
   }));
   const searchRows = users.map((user) => buildSearchRow(user, syncedAt));
 
-  const { error: entityError } = await adminClient
-    .from("apolo_entities")
-    .upsert(entityRows, { onConflict: "id" });
-
-  if (entityError) {
-    throw entityError;
-  }
-
-  const { error: profileError } = await adminClient
-    .from("apolo_entity_profiles")
-    .upsert(profileRows, { onConflict: "entity_id,profile" });
-
-  if (profileError) {
-    throw profileError;
-  }
-
-  const { error: sourceError } = await adminClient
-    .from("apolo_source_links")
-    .upsert(sourceRows, { onConflict: "source_system,source_table,source_id" });
-
-  if (sourceError) {
-    throw sourceError;
-  }
-
+  // ⚠️ CADASTRO: O APOLO É O DONO — O C2X SÓ SEMEIA.
+  //
+  // Decisão do Lucas (04/08/2026): CLIENTE, IMOBILIÁRIA e CORRETOR passam a ser mantidos no
+  // Apolo. O C2X continua dono do DINHEIRO (carteira, financeiro, vendas), e só disso.
+  //
+  // Enquanto este bloco foi upsert de verdade, cada rodada do cron reescrevia a ficha inteira
+  // com o retrato do legado. O pior é o `metadata`: ele é remontado do zero ali em cima (só
+  // `profileNames` + `responsibleName`) e o PostgREST substitui a coluna jsonb INTEIRA — ou
+  // seja, toda rodada APAGAVA `metadata.cadastro`, `metadata.c2xSynced` e tudo mais que o Apolo
+  // tinha gravado. Junto iam embora as correções humanas em display_name, status, next_action,
+  // cidade/UF, legal_name e trade_name. Não é hipótese: em 20/jul, 122 CADs perderam etapa e
+  // analista na primeira rodada de sync depois da importação do Asana (o incidente que motivou
+  // tirar o estado operacional daqui e levar pra `apolo_esteira` — ver asana-import.ts).
+  //
+  // A regra que resolve NÃO é "parar de escrever", é CRIAR QUANDO NÃO EXISTE E NUNCA
+  // SOBRESCREVER QUANDO EXISTE. Continuar criando é obrigatório: venda registrada direto no C2X
+  // precisa de uma ficha onde pendurar a carteira, e os blocos de carteira logo abaixo têm FK
+  // para `apolo_entities` — parar de criar deixaria a carteira órfã e o sync quebraria por
+  // violação de chave estrangeira. Por isso as 7 tabelas de IDENTIDADE passam a usar
+  // `ignorarDuplicados` (= `Prefer: resolution=ignore-duplicates`, que o PostgREST traduz em
+  // ON CONFLICT DO NOTHING): quem não existe nasce, quem já existe fica intocado.
+  //
+  // VALE PARA TODOS OS PERFIS, de propósito — não só para os três da decisão (2 usuario,
+  // 6 imobiliaria, 7 corretor). Filtrar exigiria partir as 8 listas em duas e manter dois
+  // caminhos de escrita paralelos por tabela, e não compraria nada: o Apolo não cadastra
+  // colaborador/incorporador hoje, então sobrescrevê-los não recupera trabalho humano nenhum.
+  // Compraria risco: no dia em que passar a cadastrar, o filtro apagaria a ficha em silêncio,
+  // sem ninguém lembrar que ele existe. Um caminho só também resolve o user sem profile_id, que
+  // num filtro por perfil ficaria em terra de ninguém.
+  //
+  // ⚠️ De `apolo_commercial_links` até `apolo_module_records`, mais o índice de busca no fim, é
+  // CARTEIRA: continua upsert normal, porque dinheiro é do C2X e TEM que atualizar em toda
+  // rodada. Não mexer.
+  await upsertApoloRows(adminClient, "apolo_entities", entityRows, {
+    ignorarDuplicados: true,
+    onConflict: "id",
+  });
+  await upsertApoloRows(adminClient, "apolo_entity_profiles", profileRows, {
+    ignorarDuplicados: true,
+    onConflict: "entity_id,profile",
+  });
+  await upsertApoloRows(adminClient, "apolo_source_links", sourceRows, {
+    ignorarDuplicados: true,
+    onConflict: "source_system,source_table,source_id",
+  });
   await upsertApoloRows(adminClient, "apolo_entity_identifiers", identifierRows, {
+    ignorarDuplicados: true,
     onConflict: "entity_id,identifier_type,value_hash",
   });
-  await upsertApoloRows(adminClient, "apolo_contacts", contactRows);
-  await upsertApoloRows(adminClient, "apolo_addresses", addressRows);
-  await upsertApoloRows(adminClient, "apolo_relationships", relationshipRows);
+  await upsertApoloRows(adminClient, "apolo_contacts", contactRows, {
+    ignorarDuplicados: true,
+  });
+  // Endereço FICA congelado, mesmo sendo o C2X quem manda em cidade/UF. Motivo: o operador edita
+  // a MESMA linha. `salvarEdicaoCadastro` (cadastro-editar.ts) pega o endereço principal por
+  // `entity_id` — e numa ficha vinda do C2X o principal é justamente esta linha, a de id
+  // determinístico — e grava logradouro, número, bairro, CEP e complemento em cima dela. Upsert
+  // aqui devolveria `street` para o literal "Endereco cadastral" e a cidade para a do legado, ou
+  // seja, trocaria endereço de verdade por placeholder. O que o C2X tem para dar é pouco (só
+  // cidade/UF de `location_label`) e continua chegando por dois caminhos que não passam por esta
+  // tabela: `location_label` do índice de busca (upsert normal, logo abaixo) e a carteira.
+  await upsertApoloRows(adminClient, "apolo_addresses", addressRows, {
+    ignorarDuplicados: true,
+  });
+  await upsertApoloRows(adminClient, "apolo_relationships", relationshipRows, {
+    ignorarDuplicados: true,
+  });
   await upsertApoloRows(adminClient, "apolo_commercial_links", commercialRows);
   await upsertApoloRows(adminClient, "apolo_financial_snapshots", financialRows);
   await upsertApoloRows(adminClient, "apolo_documents", documentRows);
@@ -3524,6 +3567,36 @@ async function persistApoloEntityBatch(
   await upsertApoloRows(adminClient, "apolo_module_records", moduleRows, {
     onConflict: "module_key,record_type,record_id",
   });
+  // ⚠️ ÍNDICE DE BUSCA — ACOMPANHA A CARTEIRA, então UPSERT DE VERDADE. Não é identidade.
+  //
+  // `apolo_search_entries` não é ficha, é read-model: quem lê pega SÓ `entity_id` filtrando
+  // `normalized_text` por ilike (busca do Apolo em `fetchSearchEntityIds`, rota da Iris em
+  // `app/api/iris/apolo/search/route.ts`, e a CACÁ no `lookupApoloByNameAndUnit` de
+  // `lib/iris/caca-agent.ts`). Nenhuma coluna daqui é fonte de verdade de nada — tudo é
+  // recalculável a partir da ficha.
+  //
+  // E metade do `normalized_text` que o `buildSearchRow` monta é CARTEIRA, não cadastro:
+  // empreendimento, bloco/lote, código da unidade, código da solicitação e o rótulo
+  // "comprador adimplente"/"comprador inadimplente". Congelar aqui tinha um efeito que ninguém
+  // veria: cliente que JÁ TEM ficha e compra unidade nova não passaria a ser encontrável pelos
+  // termos da compra nova, nem no Apolo nem pela CACÁ no atendimento. Sem erro, sem log — a busca
+  // só não acha. E é justamente a metade que a decisão do Lucas deixou com o C2X.
+  //
+  // Por que upsert normal e não UPDATE seletivo das colunas derivadas: o campo em disputa é UM
+  // só (`normalized_text` mistura cadastro e carteira na mesma string), então não existe
+  // "atualizar só o pedaço da carteira". E um upsert com payload parcial nem roda:
+  // `display_name`, `entity_kind`, `status` e `normalized_text` são NOT NULL SEM DEFAULT, e o
+  // PostgREST valida o INSERT antes de chegar no ON CONFLICT — foi o que fez as 11 correções de
+  // 21/jul falharem EM SILÊNCIO (ver identidade-persist.ts). Sobraria UPDATE linha a linha: uma
+  // requisição por ficha, ~4 mil por rodada, para proteger dado que ninguém lê como verdade.
+  //
+  // O que o Apolo grava aqui e o upsert leva junto, de propósito: no MODO ANEXO do
+  // `cadastro-persist.ts` (CAD nova que entra numa ficha que veio do C2X) a linha de busca é
+  // regravada com e-mail, telefone e imobiliária, que o texto do C2X não traz. Perdem-se ESSES
+  // TERMOS EXTRAS e nada mais — a ficha continua achável por nome, CPF, cidade e carteira, e o
+  // cadastro em si mora em `apolo_entities.metadata.cadastro`, protegido lá em cima. Era o
+  // comportamento de sempre até hoje de manhã. `identidade-persist.ts` não entra nessa conta:
+  // ele RECUSA ficha espelho do C2X (checa `apolo_source_links`) antes de escrever.
   await upsertApoloRows(adminClient, "apolo_search_entries", searchRows, {
     onConflict: "entity_id",
   });
@@ -3546,11 +3619,17 @@ async function persistApoloEntityBatch(
   );
 }
 
+// `ignorarDuplicados` liga o ON CONFLICT DO NOTHING (o supabase-js manda
+// `Prefer: resolution=ignore-duplicates`): a linha nova entra e a que já existe NÃO é tocada.
+// Default `false` = upsert de sempre, pra não mudar quem já chamava esta função.
 async function upsertApoloRows(
   adminClient: ApoloSupabaseClient,
   table: string,
   rows: Record<string, unknown>[],
-  options: { onConflict?: string } = { onConflict: "id" },
+  {
+    ignorarDuplicados = false,
+    onConflict = "id",
+  }: { ignorarDuplicados?: boolean; onConflict?: string } = {},
 ) {
   if (rows.length === 0) {
     return;
@@ -3561,7 +3640,10 @@ async function upsertApoloRows(
   for (let index = 0; index < rows.length; index += 500) {
     const { error } = await adminClient
       .from(table)
-      .upsert(rows.slice(index, index + 500), options);
+      .upsert(rows.slice(index, index + 500), {
+        ignoreDuplicates: ignorarDuplicados,
+        onConflict,
+      });
 
     if (error) {
       throw error;

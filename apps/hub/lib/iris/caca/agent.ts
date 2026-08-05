@@ -15,7 +15,9 @@ import {
   readCacaAutomationState,
 } from "@/lib/iris/caca-agent";
 
+import { carregarAvisosVigentes } from "./avisos-operacionais";
 import { readClientNotes } from "./client-memory";
+import { lerIdentidadeLembrada } from "./identidade-lembrada";
 import {
   buildCacaTools,
   describeApoloProfile,
@@ -164,6 +166,9 @@ export async function runCacaClaudeTurn({
   // já abrimos o escopo da carteira: ela pode consultar os clientes DELA sem digitar o CNPJ.
   let imobiliariaC2xClientId: string | null = null;
   let imobiliariaName: string | null = null;
+  // entity_id do Apolo do contato (casado por TELEFONE) — pra tools que GRAVAM na ficha do prospect
+  // (registrar_chave_pix). Persistido no state pra sobreviver entre turnos.
+  let apoloEntityId: string | null = state.apoloEntityId ?? null;
 
   // Regra do Lucas: se o telefone do WhatsApp bate com o telefone do cadastro (comprador com
   // unidade), a identidade está confirmada — pode consultar e enviar boleto SEM pedir CPF.
@@ -177,6 +182,10 @@ export async function runCacaClaudeTurn({
       if (byPhone) {
         customerProfileLabel =
           describeApoloProfile(byPhone.profiles) ?? customerProfileLabel;
+
+        // O telefone casou uma entidade do Apolo (mesmo prospect, sem carteira). Guarda o
+        // entity_id pra registrar_chave_pix gravar na ficha certa.
+        apoloEntityId = byPhone.entityId ?? apoloEntityId;
 
         const isRealtor = byPhone.profiles.some((profile) =>
           ["imobiliaria", "corretor"].includes(profile.toLowerCase()),
@@ -204,6 +213,25 @@ export async function runCacaClaudeTurn({
     }
   }
 
+  // MEMÓRIA DE IDENTIDADE: o telefone não casou com um cadastro de comprador, mas ESTE número
+  // já validou um cadastro por CPF num atendimento recente (até 30 dias). Reaproveita, em vez
+  // de fazer o cliente digitar CPF e nome completo de novo — 64,5% dos atendimentos são de
+  // clientes reincidentes e a identidade morria no fechamento do ticket (4h).
+  // A persona pede uma reconfirmação leve do nome antes de expor financeiro.
+  let identidadeLembrada: { displayName: string | null } | null = null;
+
+  if (!identityVerified) {
+    const lembrada = lerIdentidadeLembrada(contact);
+
+    if (lembrada) {
+      identityVerified = true;
+      c2xClientId = lembrada.c2xClientId;
+      customerName = lembrada.displayName ?? customerName;
+      validationSource = "cpf";
+      identidadeLembrada = { displayName: lembrada.displayName };
+    }
+  }
+
   const businessHours = businessHoursForNow();
   const admin = resolveCacaAdmin(contact);
 
@@ -226,6 +254,7 @@ export async function runCacaClaudeTurn({
     contactId: contact.id ?? null,
     customerName,
     customerProfileLabel,
+    entityId: apoloEntityId,
     handoff: { reason: null, requested: false },
     identityVerified,
     imobiliariaC2xClientId,
@@ -235,12 +264,20 @@ export async function runCacaClaudeTurn({
   };
 
   const clientNotes = readClientNotes(contact);
+  // Mural de avisos: o que a operação está vivendo agora (atraso de emissão, obra, manutenção).
+  // Best-effort — se a leitura falhar, a Cacá responde sem esse contexto.
+  const avisos = await carregarAvisosVigentes(client);
   const system = buildCacaSystemPrompt({
+    avisosOperacionais: avisos.map((aviso) => ({
+      texto: aviso.texto,
+      titulo: aviso.titulo,
+    })),
     businessHoursOpen: businessHours.open,
     clientNotes: clientNotes.map((entry) => entry.note),
     customerName: toolContext.customerName ?? undefined,
     customerProfileLabel: toolContext.customerProfileLabel,
     greeting: greetingForNow(),
+    identidadeLembrada,
     identityVerified,
     imobiliariaName: toolContext.imobiliariaName,
     nextContactLabel: businessHours.nextContactLabel,
@@ -279,6 +316,7 @@ export async function runCacaClaudeTurn({
   const nextState: CacaAutomationState = {
     ...state,
     apoloC2xClientId: toolContext.c2xClientId ?? state.apoloC2xClientId ?? null,
+    apoloEntityId: apoloEntityId ?? state.apoloEntityId ?? null,
     apoloDisplayName:
       toolContext.customerName ?? state.apoloDisplayName ?? null,
     apoloValidationSource: toolContext.identityVerified

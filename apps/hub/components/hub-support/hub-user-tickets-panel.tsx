@@ -1231,31 +1231,37 @@ function AttachmentPreview({
 }: {
   attachment: HubItTicket["attachments"][number];
 }) {
+  // MESMA REGRA DO BOARD DO ZEUS: anexo novo vem do Storage (`url` assinada na leitura) e o
+  // `dataUrl` é só o base64 legado. Esta tela é a do PRÓPRIO usuário: com a leitura antiga ela
+  // mostrava ícone cinza para tudo que subiu depois do Storage, e quem abriu o chamado ficava
+  // sem ver a evidência que ele mesmo anexou.
+  const fonte = attachment.url ?? attachment.dataUrl ?? null;
+
   return (
     <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
-      {attachment.type === "image" && attachment.dataUrl ? (
+      {attachment.type === "image" && fonte ? (
         <Image
           alt={attachment.fileName}
           className="h-36 w-full object-cover"
           height={144}
-          src={attachment.dataUrl}
+          src={fonte}
           unoptimized
           width={320}
         />
       ) : null}
-      {attachment.type === "video" && attachment.dataUrl ? (
+      {attachment.type === "video" && fonte ? (
         <video
           className="h-36 w-full bg-slate-950 object-contain"
           controls
-          src={attachment.dataUrl}
+          src={fonte}
         />
       ) : null}
-      {attachment.type === "audio" && attachment.dataUrl ? (
+      {attachment.type === "audio" && fonte ? (
         <div className="grid min-h-28 place-items-center bg-slate-100 p-3">
-          <audio className="w-full" controls src={attachment.dataUrl} />
+          <audio className="w-full" controls src={fonte} />
         </div>
       ) : null}
-      {!attachment.dataUrl || attachment.type === "file" ? (
+      {!fonte || attachment.type === "file" ? (
         <div className="grid h-28 place-items-center bg-slate-100 text-slate-400">
           {attachment.type === "video" ? (
             <FileVideo className="size-7" />
@@ -1276,11 +1282,11 @@ function AttachmentPreview({
         <p className="m-0 mt-1 text-xs text-slate-500">
           {attachment.type} / {formatBytes(attachment.sizeBytes)}
         </p>
-        {attachment.type === "file" && attachment.dataUrl ? (
+        {attachment.type === "file" && fonte ? (
           <a
             className="mt-2 inline-flex h-8 items-center rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-[#7A5E2C] transition hover:border-[#A07C3B]/40 hover:bg-[#A07C3B]/5"
             download={attachment.fileName}
-            href={attachment.dataUrl}
+            href={fonte}
             rel="noopener noreferrer"
             target="_blank"
           >

@@ -24,6 +24,7 @@ import type { ApoloDashboardData } from "@/lib/apolo/types";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { usePersistedState } from "@/hooks/use-persisted-state";
+import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 
 // Tipos locais (ApoloTab, ApoloProfileFilter, ApoloTabItem, ApoloUnitSubtab,
 // ApoloFinancialSubtab, ApoloPortfolioUnit, ApoloFinancialRecord*) movidos para
@@ -270,6 +271,17 @@ export function ApoloPage() {
     }
   }, [activeTab, selectedEntity, setActiveTab]);
 
+  // Voltar pra aba/janela recarrega o dashboard do CRM — a mesma fonte que alimenta a LISTA e a
+  // FICHA DE DETALHE (RecordWorkspace). Reaproveita o `reloadKey` que já re-dispara o fetch (sem
+  // duplicar a lógica). Semeia o pending com a seleção atual pra o reload NÃO cair na 1ª entidade,
+  // preservando a ficha aberta. Não é polling: só ao focar, com debounce de ~10s dentro do hook.
+  useRefetchOnFocus(() => {
+    if (selectedEntity?.id) {
+      pendingEntityIdRef.current = selectedEntity.id;
+    }
+    setReloadKey((key) => key + 1);
+  });
+
   // Clicar num player do empreendimento leva ao CADASTRO dele no CRM 360 (regra do Lucas).
   // A busca por nome só CARREGA os candidatos; quem escolhe a ficha certa é o `entityId`
   // (derivado do id do C2X) — por isso ele fica pendente até o resultado chegar.
@@ -440,7 +452,7 @@ export function ApoloPage() {
           </button>
         ) : null}
         {/* O "+ novo cadastro" e os KPIs ficam no cabeçalho do CRM (CrmCommandCenter). */}
-        {activeScreen === "board" ? <BoardView /> : null}
+        {activeScreen === "board" ? <BoardView onOpenEntity={openEntityInCrm} /> : null}
         {activeScreen === "importacao" ? <ImportacaoView /> : null}
         {activeScreen === "dashboard" ? (
           <DashboardScreen dashboard={dashboard} entities={entities} loading={loading} />

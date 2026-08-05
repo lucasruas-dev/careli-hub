@@ -47,3 +47,7 @@ yarn-error.log*
 
 # Permissoes locais do Claude Code (nao versionar)
 .claude/settings.local.json
+
+# Dumps de auditoria e scripts soltos gerados durante investigacao (nao sao codigo do produto)
+/audit-*.json
+/scratch-*.mjs

@@ -1,6 +1,8 @@
 "use client";
 
 import { Sparkles, X } from "lucide-react";
+
+import { LogoEmpreendimento } from "@/modules/publico/logo-empreendimento";
 import dynamicImport from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -631,20 +633,16 @@ function CardEmpreendimento({
           height: 108,
           justifyContent: "center",
           overflow: "hidden",
+          padding: 10,
         }}
       >
-        {empreendimento.logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            alt=""
-            src={empreendimento.logoUrl}
-            style={{ height: "100%", objectFit: "cover", width: "100%" }}
-          />
-        ) : (
-          <span style={{ color: GOLD, fontSize: 28, fontWeight: 700 }}>
-            {empreendimento.code || empreendimento.name.slice(0, 3).toUpperCase()}
-          </span>
-        )}
+        <LogoEmpreendimento
+          altura={88}
+          code={empreendimento.code}
+          largura={200}
+          logoUrl={empreendimento.logoUrl}
+          name={empreendimento.name}
+        />
       </div>
       <div style={{ padding: "14px 16px" }}>
         <div style={{ color: C.text, fontSize: 16, fontWeight: 600 }}>{empreendimento.name}</div>

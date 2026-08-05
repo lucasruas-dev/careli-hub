@@ -2,11 +2,24 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import {
+  validarCamposMinimos,
+  validarDocumentosObrigatorios,
+} from "@/lib/apolo/cadastro-obrigatorios";
+import {
   createApoloEntity,
   type ApoloBirthRole,
   type CreateApoloEntityInput,
 } from "@/lib/apolo/cadastro-persist";
-import { uploadApoloDocument } from "@/lib/apolo/documentos";
+import {
+  APOLO_DOC_MAX_BYTES,
+  MENSAGEM_DOCUMENTO_GRANDE,
+  caminhoUploadDiretoValido,
+  documentoTemArquivo,
+  donoUploadOperador,
+  lerDocumentoDoStorage,
+  removerDocumentoDoStorage,
+  uploadApoloDocument,
+} from "@/lib/apolo/documentos";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 import { montarCadPdf, type CadDoc } from "@/modules/apolo/blocks/cadastro/cad-pdf";
 import { PDFDocument } from "pdf-lib";
@@ -52,12 +65,20 @@ function rotuloCategoria(categoria: string): string {
   return CATEGORIA_LABEL[categoria] ?? "Documento";
 }
 
+// Teto para JUNTAR paginas baixando do Storage (gemeo do de lib/apolo/cadastro-upload.ts).
+const TETO_JUNCAO_BYTES = 24 * 1024 * 1024;
+
 type IncomingDoc = {
   categoria?: string;
   extractedPayload?: unknown;
+  // Documento PEQUENO: o arquivo vem em base64 dentro do JSON (fluxo de sempre).
   fileBase64?: string;
   fileName?: string;
   mimeType?: string;
+  // Documento GRANDE: o browser ja gravou no bucket (via /api/apolo/cadastro/upload-url) e manda
+  // so a referencia. A Vercel corta o corpo em ~4,5MB, entao acima disso nao ha como viajar aqui.
+  sizeBytes?: number;
+  storagePath?: string;
 };
 
 // A CAD chega como ESTRUTURA (seções), não como PDF pronto: o PDF é montado aqui, no servidor,
@@ -66,6 +87,16 @@ type IncomingDoc = {
 type SalvarPayload = CreateApoloEntityInput & {
   cad?: Omit<CadDoc, "autenticacao"> | null;
   documentos?: IncomingDoc[];
+  // Vínculo escolhido pelo operador no wizard (imobiliária -> empreendimento -> corretor). A
+  // imobiliária vem em perfil.imobiliariaId; aqui vêm o empreendimento e o corretor. Grava a
+  // esteira igual ao portal público, para a CAD manual NÃO nascer órfã de empreendimento.
+  vinculo?: {
+    corretorEmail?: string;
+    corretorEntityId?: string;
+    corretorNome?: string;
+    empreendimentoNome?: string;
+    enterpriseId?: string;
+  };
 };
 
 export async function POST(request: Request) {
@@ -97,7 +128,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Informe se e PF ou PJ." }, { status: 400 });
   }
 
-  const documentos = (payload.documentos ?? []).filter((doc) => doc?.fileBase64);
+  // Documento anexado em QUALQUER uma das duas formas: base64 no corpo (pequeno) ou caminho de
+  // arquivo ja gravado no bucket (grande, upload direto).
+  const documentos = (payload.documentos ?? []).filter(documentoTemArquivo);
   const cad = payload.cad?.secoes?.length ? payload.cad : null;
   const totalFiles = documentos.length + (cad ? 1 : 0);
   if (totalFiles > MAX_FILES) {
@@ -106,10 +139,48 @@ export async function POST(request: Request) {
       { status: 413 },
     );
   }
+  const donoUpload = donoUploadOperador(authorization.userId);
   for (const doc of documentos) {
-    if ((doc.fileBase64?.length ?? 0) > MAX_BASE64_LENGTH) {
-      return NextResponse.json({ error: "Arquivo acima do limite de 20MB." }, { status: 413 });
+    const caminho = (doc.storagePath ?? "").trim();
+    if (caminho) {
+      // O caminho tem que ser um que ESTE operador recebeu para gravar (rota /upload-url): sem
+      // isso um corpo forjado apontaria a linha do documento para o arquivo de outra pessoa.
+      if (!caminhoUploadDiretoValido(caminho, donoUpload)) {
+        return NextResponse.json(
+          { error: "Arquivo enviado nao confere com esta sessao." },
+          { status: 400 },
+        );
+      }
+      if ((doc.sizeBytes ?? 0) > APOLO_DOC_MAX_BYTES) {
+        return NextResponse.json({ error: MENSAGEM_DOCUMENTO_GRANDE }, { status: 413 });
+      }
+      continue;
     }
+    if ((doc.fileBase64?.length ?? 0) > MAX_BASE64_LENGTH) {
+      return NextResponse.json({ error: MENSAGEM_DOCUMENTO_GRANDE }, { status: 413 });
+    }
+  }
+
+  // 🔒 MESMA TRAVA DE OBRIGATÓRIOS DO PORTAL PÚBLICO (incidente 04/08). Esta rota interna também
+  // só validava quantidade/tamanho de arquivo: o mesmo furo. O wizard interno já trava por etapa,
+  // mas a validação de cliente pode ser burlada, então a barra de verdade fica aqui. Exige o
+  // ARQUIVO anexado, nunca o sucesso do OCR (v1.105.0 — [[project_apolo_most_sem_trava]]).
+  // Ver lib/apolo/cadastro-obrigatorios.ts.
+  const campos = validarCamposMinimos({
+    empresa: payload.empresa,
+    identidade: payload.identidade,
+    persona: payload.persona,
+  });
+  if (!campos.ok) {
+    return NextResponse.json({ error: campos.mensagem }, { status: 400 });
+  }
+  const obrigatorios = validarDocumentosObrigatorios({
+    documentos,
+    perfil: payload.perfil,
+    persona: payload.persona,
+  });
+  if (!obrigatorios.ok) {
+    return NextResponse.json({ error: obrigatorios.mensagem }, { status: 400 });
   }
 
   // Autor do cadastro (nome do operador).
@@ -120,14 +191,26 @@ export async function POST(request: Request) {
     .maybeSingle<{ display_name: string | null; email: string | null }>();
   const uploadedByName = operator?.display_name ?? operator?.email ?? null;
 
-  // 1) Cria a entidade coordenadamente.
+  // 1) Cria a entidade coordenadamente — com DEDUP por documento (não cria 2ª ficha do mesmo CPF).
   const result = await createApoloEntity(adminClient, {
     ...payload,
+    dedupPorDocumento: true,
+    // A duplicidade é POR EMPREENDIMENTO: quem já tem CAD no Vale do Ouro pode abrir CAD em
+    // outro loteamento. Sem este campo o dedup barra tudo (era o 409 que travava o time).
+    enterpriseId: payload.vinculo?.enterpriseId ?? null,
     origem: payload.origem || "cadastro-formulario",
     ownerUserId: authorization.userId,
   });
 
   if (!result.ok) {
+    // Documento já tem ficha: NÃO cria uma segunda (era a causa dos "dois Pedro"); devolve o id da
+    // ficha existente para a tela abrir/avisar em vez de duplicar a pessoa no mesmo empreendimento.
+    if (result.entityIdExistente) {
+      return NextResponse.json(
+        { entityIdExistente: result.entityIdExistente, error: result.error, jaExiste: true },
+        { status: 409 },
+      );
+    }
     return NextResponse.json({ error: result.error }, { status: 500 });
   }
 
@@ -137,10 +220,50 @@ export async function POST(request: Request) {
       ? payload.empresa?.razaoSocial?.trim() || "Empresa"
       : payload.identidade?.nome?.trim() || "Cliente";
 
-  // 2) Sobe os documentos anexados + o CAD pro drive da entidade. Best-effort: falha de upload
-  // vira warning (a entidade ja existe), nao derruba o cadastro.
+  // Avisos acumulados (esteira + documentos): a entidade já existe, então falhas aqui viram aviso.
   const uploadWarnings: string[] = [];
   const savedDocs: string[] = [];
+
+  // 1b) VÍNCULO na esteira (empreendimento + imobiliária + corretor), como o portal público faz —
+  // para a CAD manual entrar na fila COM empreendimento e não nascer órfã (o bug das órfãs). Só
+  // grava quando o operador escolheu o empreendimento no wizard; best-effort com aviso.
+  const vinculo = payload.vinculo;
+  const imobiliariaId = payload.perfil?.imobiliariaId?.trim();
+  if (vinculo?.enterpriseId && imobiliariaId) {
+    const imobiliariaNome = await nomeDaImobiliaria(
+      adminClient,
+      imobiliariaId,
+      payload.perfil?.imobiliariaLabel,
+    );
+    const { error: esteiraError } = await adminClient.from("apolo_esteira").upsert(
+      {
+        chegou_em: new Date().toISOString(),
+        corretor: vinculo.corretorNome?.trim() || null,
+        corretor_email: vinculo.corretorEmail?.trim() || null,
+        corretor_entity_id:
+          vinculo.corretorEntityId && UUID_RE.test(vinculo.corretorEntityId)
+            ? vinculo.corretorEntityId
+            : null,
+        empreendimento: vinculo.empreendimentoNome?.trim() || null,
+        enterprise_id: vinculo.enterpriseId,
+        entity_id: entityId,
+        etapa: "validacao",
+        imobiliaria: imobiliariaNome || null,
+        imobiliaria_entity_id: UUID_RE.test(imobiliariaId) ? imobiliariaId : null,
+        origem: "cadastro-manual",
+      },
+      // A chave da esteira é `(entity_id, enterprise_id)` desde a 0080: uma CAD por pessoa POR
+      // EMPREENDIMENTO. `enterprise_id` já vai no registro acima (o `if` acima garante), então
+      // este upsert cria a CAD nova do loteamento sem tocar na CAD que a pessoa tem em outro.
+      { onConflict: "entity_id,enterprise_id" },
+    );
+    if (esteiraError) {
+      uploadWarnings.push(`esteira: ${esteiraError.message}`);
+    }
+  }
+
+  // 2) Sobe os documentos anexados + o CAD pro drive da entidade. Best-effort: falha de upload
+  // vira warning (a entidade ja existe), nao derruba o cadastro.
 
   // Agrupa por documento: as varias faces/paginas de um mesmo documento viram UM arquivo no
   // drive (frente+verso do RG, contrato social inteiro), em vez de varios soltos.
@@ -153,6 +276,58 @@ export async function POST(request: Request) {
   for (const [categoria, arquivos] of porCategoria) {
     const rotulo = `${nomeCliente} - ${rotuloCategoria(categoria)}`;
     const varias = arquivos.length > 1;
+    const primeiro = arquivos[0];
+
+    // Documento de arquivo UNICO que subiu direto: a linha so aponta pro arquivo que ja esta no
+    // bucket. Nada e baixado nem re-enviado -- e o caminho dos arquivos grandes.
+    if (!varias && primeiro && (primeiro.storagePath ?? "").trim()) {
+      const upload = await uploadApoloDocument({
+        adminClient,
+        documentType: categoria,
+        extractedPayload: primeiro.extractedPayload,
+        fileName: primeiro.fileName || `${categoria}.pdf`,
+        label: rotulo,
+        mimeType: primeiro.mimeType || null,
+        ownerId: entityId,
+        scope: "entidade",
+        sizeBytes: primeiro.sizeBytes ?? null,
+        storagePath: primeiro.storagePath,
+        uploadedByName,
+      });
+      if (upload.ok) savedDocs.push(categoria);
+      else uploadWarnings.push(`documento ${categoria}: ${upload.error}`);
+      continue;
+    }
+
+    // Documento com VARIAS paginas em que alguma subiu direto: pra virar UM PDF so (o que o time ve
+    // no drive hoje) o servidor precisa dos bytes, entao baixa do Storage. Acima do teto, guarda
+    // uma pagina por arquivo em vez de estourar a memoria da function.
+    const algumDireto = arquivos.some((a) => (a.storagePath ?? "").trim());
+    const soma = arquivos.reduce((total, a) => total + tamanhoAproximado(a), 0);
+    if (varias && algumDireto && soma > TETO_JUNCAO_BYTES) {
+      uploadWarnings.push(
+        `documento ${categoria}: as páginas somam ${(soma / 1_048_576).toFixed(1)}MB e ficaram como arquivos separados no drive`,
+      );
+      for (const arquivo of arquivos) {
+        const upload = await uploadApoloDocument({
+          adminClient,
+          documentType: categoria,
+          extractedPayload: arquivo.extractedPayload,
+          fileBase64: arquivo.fileBase64 ?? null,
+          fileName: arquivo.fileName || `${categoria}.pdf`,
+          label: rotulo,
+          mimeType: arquivo.mimeType || null,
+          ownerId: entityId,
+          scope: "entidade",
+          sizeBytes: arquivo.sizeBytes ?? null,
+          storagePath: arquivo.storagePath ?? null,
+          uploadedByName,
+        });
+        if (upload.ok) savedDocs.push(categoria);
+        else uploadWarnings.push(`documento ${categoria}: ${upload.error}`);
+      }
+      continue;
+    }
 
     let fileBase64: string;
     let fileName: string;
@@ -160,12 +335,12 @@ export async function POST(request: Request) {
 
     try {
       fileBase64 = varias
-        ? await juntarEmPdf(arquivos)
-        : (arquivos[0]?.fileBase64 as string);
+        ? await juntarEmPdf(adminClient, arquivos)
+        : (primeiro?.fileBase64 as string);
       fileName = varias
         ? `${rotulo}.pdf`
-        : arquivos[0]?.fileName || `${categoria}.pdf`;
-      mimeType = varias ? "application/pdf" : arquivos[0]?.mimeType || null;
+        : primeiro?.fileName || `${categoria}.pdf`;
+      mimeType = varias ? "application/pdf" : primeiro?.mimeType || null;
     } catch (error) {
       uploadWarnings.push(
         `documento ${categoria}: falha ao juntar as páginas (${(error as Error).message})`,
@@ -177,7 +352,7 @@ export async function POST(request: Request) {
       adminClient,
       documentType: categoria,
       // A leitura guardada e a da primeira face (e onde estao os dados do titular).
-      extractedPayload: arquivos[0]?.extractedPayload,
+      extractedPayload: primeiro?.extractedPayload,
       fileBase64,
       fileName,
       label: rotulo,
@@ -190,6 +365,15 @@ export async function POST(request: Request) {
       savedDocs.push(categoria);
     } else {
       uploadWarnings.push(`documento ${categoria}: ${upload.error}`);
+    }
+
+    // As paginas que subiram direto viraram parte do PDF unico: os originais no staging nao tem
+    // mais dono. Limpeza best-effort, pra nao deixar arquivo orfao no bucket.
+    if (upload.ok && algumDireto) {
+      for (const arquivo of arquivos) {
+        const caminho = (arquivo.storagePath ?? "").trim();
+        if (caminho) await removerDocumentoDoStorage(adminClient, caminho);
+      }
     }
   }
 
@@ -284,14 +468,39 @@ function stripDataUrl(value: string): Buffer {
   return Buffer.from(cru, "base64");
 }
 
+// Bytes de UM arquivo do payload, venha ele em base64 no corpo (fluxo de sempre) ou ja gravado no
+// bucket (upload direto). So e chamado no agrupamento: documento de arquivo unico que subiu direto
+// nem baixa nem re-sobe.
+async function bytesDoArquivo(
+  adminClient: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  arquivo: IncomingDoc,
+): Promise<Buffer> {
+  const caminho = (arquivo.storagePath ?? "").trim();
+  if (caminho) {
+    const bytes = await lerDocumentoDoStorage(adminClient, caminho);
+    if (!bytes) throw new Error("arquivo enviado não foi encontrado no armazenamento");
+    return bytes;
+  }
+  return stripDataUrl(arquivo.fileBase64 as string);
+}
+
+// Tamanho aproximado de um arquivo do payload, pra decidir se da pra juntar em memoria.
+function tamanhoAproximado(arquivo: IncomingDoc): number {
+  if ((arquivo.storagePath ?? "").trim()) return arquivo.sizeBytes ?? 0;
+  return Math.floor(((arquivo.fileBase64 ?? "").length * 3) / 4);
+}
+
 // Junta os arquivos de UM documento (RG frente+verso, contrato social com N paginas) num PDF
 // unico: o drive guarda 1 arquivo por documento em vez de varios soltos. Imagem vira pagina do
 // tamanho dela; PDF entra com as paginas copiadas.
-async function juntarEmPdf(arquivos: IncomingDoc[]): Promise<string> {
+async function juntarEmPdf(
+  adminClient: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  arquivos: IncomingDoc[],
+): Promise<string> {
   const doc = await PDFDocument.create();
 
   for (const arquivo of arquivos) {
-    const bytes = stripDataUrl(arquivo.fileBase64 as string);
+    const bytes = await bytesDoArquivo(adminClient, arquivo);
     const nome = (arquivo.fileName ?? "").toLowerCase();
     const mime = (arquivo.mimeType ?? "").toLowerCase();
     const ehPdf = mime.includes("pdf") || nome.endsWith(".pdf");

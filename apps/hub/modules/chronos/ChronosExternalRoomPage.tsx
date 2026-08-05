@@ -435,6 +435,12 @@ export function ChronosExternalRoomPage({
   const [meetingId, setMeetingId] = useState("");
   const [wherebyRoom, setWherebyRoom] =
     useState<ChronosWherebyPublicRoom | null>(null);
+  // Chave de preparo (`<slug>:hub` | `<slug>:public`, mesmo formato do
+  // preparationKey do efeito de preparo) que PRODUZIU o wherebyRoom corrente.
+  // Complemento da correcao do incidente 04/08: o gate de render usa isso para
+  // nao deixar o HOST montar um embed cuja URL veio de um POST publico (sem
+  // Bearer) na janela transitoria em que a sessao do colaborador ainda resolvia.
+  const [wherebyRoomPreparedKey, setWherebyRoomPreparedKey] = useState("");
   const [wherebyIsHost, setWherebyIsHost] = useState(false);
   const [isWherebyIdentityConfirmed, setIsWherebyIdentityConfirmed] =
     useState(false);
@@ -1266,7 +1272,14 @@ export function ChronosExternalRoomPage({
   }, [isChronosLiveKitProvider, startLocalMedia, stopCurrentLocalMedia]);
 
   useEffect(() => {
-    if (!isChronosWherebyProvider || authState.status === "loading") {
+    // Incidente 04/08 (Chronos "careli" no mobile): o convidado EXTERNO ficava preso na
+    // "verificacao de login do colaborador" ANTES de chegar a porta do Whereby. Regra do
+    // Lucas: externo PEDE entrada, host APROVA (sala isLocked, knock nativo do Whereby).
+    // O preparo da sala do CONVIDADO nao depende de sessao do hub (a rota publica responde
+    // sem Bearer), entao NAO travamos o preparo enquanto o authState assenta. Quando o
+    // colaborador termina de logar, o preparationKey vira "hub" e este efeito RE-prepara
+    // com o token (o host passa a receber o hostRoomUrl e admite quem bate na porta).
+    if (!isChronosWherebyProvider) {
       return;
     }
 
@@ -1331,6 +1344,9 @@ export function ChronosExternalRoomPage({
         setRemoteParticipants({});
         setWherebyIsHost(Boolean(payload.isHost));
         setWherebyRoom(payload.whereby);
+        // Amarra a origem do wherebyRoom a chave que o preparou (com/sem
+        // Bearer). O gate de render exige "<slug>:hub" para o HOST montar.
+        setWherebyRoomPreparedKey(preparationKey);
       } catch (error) {
         if (cancelled) {
           return;
@@ -2523,6 +2539,12 @@ export function ChronosExternalRoomPage({
         setEntryRequestStatus("idle");
         setRemoteParticipants({});
         setWherebyRoom(payload.whereby);
+        // Mesma invariante do efeito de preparo: registrar de qual chave
+        // (com/sem Bearer) veio o wherebyRoom, para o gate do HOST nao ficar
+        // preso num "<slug>:public" obsoleto quando esta rota seta a sala.
+        setWherebyRoomPreparedKey(
+          `${room.slug}:${authState.session?.accessToken ? "hub" : "public"}`,
+        );
         setLocalParticipant(participant);
         setMeetingId(payload.meetingId);
         setRealtimeStatus("ready");
@@ -3480,6 +3502,7 @@ export function ChronosExternalRoomPage({
     setLocalParticipant(null);
     setMeetingId("");
     setWherebyRoom(null);
+    setWherebyRoomPreparedKey("");
     setWherebyStatus("idle");
     setRemoteParticipants({});
     setChatMessages([]);
@@ -3518,8 +3541,11 @@ export function ChronosExternalRoomPage({
   function handleConfirmWherebyIdentity(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
 
-    if (!participantNameForJoin || !participantOrganization) {
-      setJoinError("Informe nome e empresa para entrar.");
+    // 04/08: o convidado externo precisa CHEGAR ao knock do Whereby (onde o host aprova)
+    // informando so o NOME. Empresa e opcional (entra no rotulo/metadata se preenchida),
+    // nunca uma trava, senao o form vira o "login e senha" que prendia o cliente no mobile.
+    if (!participantNameForJoin) {
+      setJoinError("Informe seu nome para entrar.");
       return;
     }
 
@@ -3574,6 +3600,38 @@ export function ChronosExternalRoomPage({
       : "";
   const shouldShowChronosPreJoin =
     !hasJoined && !isChronosWherebyProvider;
+  // Correcao do incidente 04/08 (host preso batendo na porta da propria sala).
+  // Cenario: colaborador volta com token velho em rede movel ruim e o authState
+  // leva ~segundos para resolver. Nessa janela o POST PUBLICO de preparo (sem
+  // Bearer) pode resolver antes e deixar `wherebyRoom` com a URL de CONVIDADO
+  // (sala isLocked). Se o HOST montasse o embed nesse instante, conectaria como
+  // convidado e cairia no knock da propria sala.
+  // Quem diz se a pessoa entra como ANFITRIAO e a RESPOSTA do servidor
+  // (payload.isHost, unico caso em que o preparo devolve a hostRoomUrl), nunca o
+  // fato de o browser ter mandado o Bearer: token vencido, sessao recuperada sem
+  // access token e perfil sem "chronos:manage" voltam isHost=false mesmo com
+  // Authorization no POST. Nesses casos a URL e mesmo a de convidado e o
+  // colaborador entra pela porta, que e o certo para quem nao criou a sala.
+  // Por isso o loader so segura o colaborador na janela em que FALTA a resposta
+  // do preparo com sessao. Sem access token para mandar, ou com o preparo tendo
+  // falhado, nao ha resposta melhor a esperar e segurar aqui daria loader
+  // eterno. O CONVIDADO externo (isHubParticipant = false) nunca entra nesta
+  // trava e monta com a URL publica normalmente.
+  const hasHubAccessTokenForWhereby = Boolean(authState.session?.accessToken);
+  const isWherebyHostConfirmedByServer =
+    wherebyIsHost && Boolean(wherebyRoom?.hostRoomUrl);
+  const isWherebyRoomAnsweredWithHubSession =
+    wherebyRoomPreparedKey === `${room.slug}:hub`;
+  // Falha no preparo (POST recusado) ou no carregamento do embed: a pessoa TEM
+  // que ver a mensagem, nunca ficar girando no loader "Preparando sala Whereby".
+  const hasWherebyPreparationFailed =
+    Boolean(joinError) && !joining && wherebyStatus === "idle";
+  const isHostWaitingForHubWherebyRoom =
+    isHubParticipant &&
+    hasHubAccessTokenForWhereby &&
+    !hasWherebyPreparationFailed &&
+    !isWherebyHostConfirmedByServer &&
+    !isWherebyRoomAnsweredWithHubSession;
 
   return (
     <main
@@ -3856,7 +3914,11 @@ export function ChronosExternalRoomPage({
         ) : isChronosWherebyProvider ? (
           <section className="relative h-full min-h-0 overflow-hidden bg-black">
             <div className="relative h-full min-h-0 overflow-hidden bg-black">
-              {wherebyStatus === "loading" || joining ? (
+              {!hasWherebyPreparationFailed &&
+              (wherebyStatus === "loading" ||
+                joining ||
+                isResolvingHubParticipant ||
+                isHostWaitingForHubWherebyRoom) ? (
                 <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] text-sm font-semibold text-white/72">
                   <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-black/35 px-3 py-2 shadow-xl">
                     <PanteonLoadingMark inverse size="xs" />
@@ -3864,7 +3926,25 @@ export function ChronosExternalRoomPage({
                   </span>
                 </div>
               ) : null}
-              {wherebyRoom && wherebyRoomUrl && wherebyStatus !== "idle" ? (
+              {/* Enquanto o login do COLABORADOR ainda resolve (authState loading), so o
+                  loader acima aparece: nunca a Identificacao nem a tela de indisponivel.
+                  Assim o host nao ve o form de convidado piscar e o convidado ve
+                  "Preparando" em vez de uma tela que parecia login. Ao resolver:
+                  convidado -> form (so nome) -> embed -> knock do Whereby; colaborador
+                  -> embed direto como host. (04/08)
+                  Complemento (04/08): a garantia de "nao montar embed com URL de
+                  convidado" para o HOST NAO vem so do isResolvingHubParticipant (que tem
+                  um render de folga na transicao loading->resolvido). Vem de
+                  isHostWaitingForHubWherebyRoom, que espera a RESPOSTA do preparo com
+                  sessao (isHost do servidor).
+                  hasWherebyPreparationFailed tem precedencia sobre os dois: se o preparo
+                  falhou, a pessoa TEM que ver a mensagem de erro abaixo em vez de ficar
+                  presa no loader. */}
+              {!hasWherebyPreparationFailed &&
+              (isResolvingHubParticipant ||
+                isHostWaitingForHubWherebyRoom) ? null : wherebyRoom &&
+                wherebyRoomUrl &&
+                wherebyStatus !== "idle" ? (
                 !canRenderWherebyEmbed ? (
                   <form
                     className="absolute inset-0 z-10 grid place-items-center bg-[#101820]/72 p-4 text-[#101820] backdrop-blur-sm"
@@ -3889,11 +3969,11 @@ export function ChronosExternalRoomPage({
                         />
                       </label>
                       <label className="grid gap-1 text-xs font-bold uppercase text-[#667085]">
-                        Empresa
+                        Empresa (opcional)
                         <input
                           className="h-10 w-full rounded-md border border-[#d9e0e7] bg-white px-3 text-sm normal-case text-[#101820] outline-none focus:border-[#A07C3B]"
                           onChange={(event) => setOrganization(event.target.value)}
-                          placeholder="Empresa"
+                          placeholder="Empresa (opcional)"
                           value={participantOrganization}
                         />
                       </label>
@@ -3904,7 +3984,7 @@ export function ChronosExternalRoomPage({
                       ) : null}
                       <button
                         className="inline-flex h-10 items-center justify-center rounded-md border border-[#A07C3B] bg-[#A07C3B] px-4 text-sm font-semibold text-white transition hover:bg-[#8f6f35] disabled:cursor-not-allowed disabled:opacity-55"
-                        disabled={!participantNameForJoin || !participantOrganization}
+                        disabled={!participantNameForJoin}
                         type="submit"
                       >
                         Entrar na sala
@@ -4018,7 +4098,15 @@ export function ChronosExternalRoomPage({
                 )
               ) : (
                 <div className="absolute inset-0 z-10 grid place-items-center bg-[#101820] p-6 text-center text-sm font-semibold text-white/72">
-                  {joinError || "Sala Whereby indisponivel no momento."}
+                  <div className="grid max-w-[26rem] gap-2">
+                    <p className="m-0">
+                      {joinError || "Sala Whereby indisponivel no momento."}
+                    </p>
+                    <p className="m-0 text-xs font-medium text-white/55">
+                      Atualize a pagina para tentar de novo. Se voce organiza a
+                      reuniao, entre no Hub novamente e reabra este link.
+                    </p>
+                  </div>
                 </div>
               )}
             </div>

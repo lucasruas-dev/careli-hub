@@ -22,6 +22,15 @@ const APOLO_READ_ROLES: HubUserRole[] = [
 // Quem pode ESCREVER (importar CADs, mexer na esteira). `viewer` só olha.
 const APOLO_WRITE_ROLES: HubUserRole[] = ["admin", "leader", "operator"];
 
+// Ações reservadas ao ADMIN (ex.: reenviar o aviso de reprovação, que dispara WhatsApp com custo).
+const APOLO_ADMIN_ROLES: HubUserRole[] = ["admin"];
+
+// Ações da COORDENAÇÃO: mais restrito que a escrita comum (que o `operator`/analista tem), mas sem
+// exigir admin. Usado no override de crédito reprovado (PROBLEMA 3, Lucas 04/08): "aprovado com
+// restrição pela coordenação". Não existe papel "coordenação" no Hub; a coordenação são os
+// `leader` (ex.: Cinthia, Northon) — o analista (`operator`) não destrava crédito reprovado.
+const APOLO_COORDINATION_ROLES: HubUserRole[] = ["admin", "leader"];
+
 function getBearerToken(request: Request) {
   const header = request.headers.get("authorization") ?? "";
   const match = header.match(/^Bearer\s+(.+)$/i);
@@ -44,6 +53,22 @@ export async function authorizeApoloWrite(
   request: Request,
 ): Promise<ApoloAuthResult> {
   return authorizeApolo(request, APOLO_WRITE_ROLES);
+}
+
+// Recorte mais estrito: só ADMIN. Usado no reenvio manual do aviso de reprovação (dispara
+// WhatsApp com custo, então fica fora do alcance de operador/líder).
+export async function authorizeApoloAdmin(
+  request: Request,
+): Promise<ApoloAuthResult> {
+  return authorizeApolo(request, APOLO_ADMIN_ROLES);
+}
+
+// Recorte da COORDENAÇÃO (admin + leader). Usado no override de crédito reprovado: só a
+// coordenação aprova "com restrição". Analista (`operator`) não passa.
+export async function authorizeApoloCoordenacao(
+  request: Request,
+): Promise<ApoloAuthResult> {
+  return authorizeApolo(request, APOLO_COORDINATION_ROLES);
 }
 
 async function authorizeApolo(

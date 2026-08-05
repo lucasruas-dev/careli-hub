@@ -36,6 +36,43 @@ type LegacyAttachmentRow = {
   ticket_id: string;
 };
 
+// O BUCKET TEM LISTA BRANCA DE TIPOS e compara o texto INTEIRO. Duas coisas quebravam:
+//   • a gravação de tela produz `video/webm;codecs=vp8` — é webm, mas o sufixo faz a
+//     comparação falhar (17 dos 47 anexos parados);
+//   • planilha e CSV simplesmente não estão liberados no bucket (5 anexos).
+// Aqui o tipo é limpo do sufixo e, se ainda assim não for aceito, vai como binário genérico —
+// que está liberado. Melhor guardar o arquivo com tipo genérico do que não guardar.
+const TIPOS_ACEITOS_NO_BUCKET = new Set([
+  "application/octet-stream",
+  "application/pdf",
+  "audio/mp4",
+  "audio/mpeg",
+  "audio/ogg",
+  "audio/wav",
+  "audio/webm",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "text/plain",
+  "video/mp4",
+  "video/webm",
+]);
+
+export function tipoAceitoPeloBucket(mimeType: string | null | undefined): string {
+  // `video/webm;codecs=vp8` -> `video/webm`. O parâmetro depois do `;` descreve o codec e não
+  // faz parte do tipo para efeito da lista do bucket.
+  const limpo = String(mimeType ?? "")
+    .split(";")[0]
+    ?.trim()
+    .toLowerCase();
+
+  if (limpo && TIPOS_ACEITOS_NO_BUCKET.has(limpo)) {
+    return limpo;
+  }
+
+  return "application/octet-stream";
+}
+
 const DEFAULT_BATCH_SIZE = 15;
 const MAX_BATCH_SIZE = 40;
 
@@ -102,12 +139,14 @@ export async function backfillHubItTicketAttachments({
       const upload = await client.storage
         .from(HUB_IT_TICKET_ATTACHMENT_BUCKET)
         .upload(storagePath, decoded.bytes, {
-          contentType: row.mime_type || decoded.mimeType,
+          contentType: tipoAceitoPeloBucket(row.mime_type || decoded.mimeType),
           upsert: true,
         });
 
       if (upload.error) {
-        failures.push(`${row.file_name}: upload falhou`);
+        // O MOTIVO, não só "falhou". A mensagem genérica custou uma investigação inteira:
+        // pela tela era impossível saber que o bucket estava recusando o tipo do arquivo.
+        failures.push(`${row.file_name}: ${upload.error.message}`);
         continue;
       }
 
@@ -158,8 +197,13 @@ export async function backfillHubItTicketAttachments({
   };
 }
 
-function decodeDataUrl(dataUrl: string) {
-  const match = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl.trim());
+// O MESMO `;codecs=` de novo, agora aqui. O regex antigo era `^data:([^;,]+);base64,` — o
+// `[^;,]+` para no primeiro `;`, então uma gravação de tela, que chega como
+// `data:video/webm;codecs=vp8;base64,...`, NUNCA casava e era reportada como "data-URL
+// invalido". O tipo estava certo e o arquivo inteiro estava lá: quem não sabia ler era a gente.
+// Agora o tipo é tudo o que vem antes do `;base64,`, com os parâmetros que houver.
+export function decodeDataUrl(dataUrl: string) {
+  const match = /^data:(.*?);base64,(.+)$/s.exec(dataUrl.trim());
 
   if (!match?.[1] || !match[2]) {
     return null;

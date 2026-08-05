@@ -74,6 +74,24 @@ export function ImportarCads(props: {
   // Onde os itens entram na esteira. Padrão "credito": mesmo finalizadas no Asana, as CADs
   // ainda precisam passar pela análise de crédito no processo novo.
   const [etapa, setEtapa] = useState<"validacao" | "credito" | "credenciado">("credito");
+  // Canal por CPF: simula antes de gravar e mostra os conflitos que serão barrados.
+  const [secaoRodando, setSecaoRodando] = useState<"aplicar" | "simular" | null>(null);
+  const [secaoResumo, setSecaoResumo] = useState<{
+    conflitos: number;
+    pessoasNovas: number;
+    semCpf: number;
+    total: number;
+    vinculaveis: number;
+  } | null>(null);
+  const [secaoConflitos, setSecaoConflitos] = useState<
+    Array<{
+      cad: string;
+      imobiliariaAtual: string | null;
+      imobiliariaNova: string | null;
+      motivo: string;
+    }>
+  >([]);
+  const [secaoAplicado, setSecaoAplicado] = useState<string | null>(null);
   // Progresso do envio de anexos, que roda em lotes.
   const [docs, setDocs] = useState<{
     baixados: number;
@@ -82,6 +100,57 @@ export function ImportarCads(props: {
     rodando: boolean;
     total: number;
   } | null>(null);
+
+  // Importa a seção inteira pelo CPF escrito na CAD. `dryRun` primeiro, sempre: é o que mostra os
+  // conflitos antes de qualquer gravação.
+  const importarSecao = async (dryRun: boolean) => {
+    setSecaoRodando(dryRun ? "simular" : "aplicar");
+    setErro(null);
+    setSecaoAplicado(null);
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/asana/importar-secao", {
+        body: JSON.stringify({
+          analistaId: analistaId || null,
+          dryRun,
+          empreendimento,
+          etapa: "validacao",
+          // O canal trabalha UMA seção por vez: se houver lista, vale a primeira.
+          secao: secoes.split(",")[0]?.trim() ?? "",
+        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const corpo = (await resposta.json()) as {
+        data?: {
+          aplicacao?: { vinculados?: number } | null;
+          aviso?: string;
+          conflitos?: typeof secaoConflitos;
+          criacao?: { criados?: number; reaproveitados?: number } | null;
+          resumo?: typeof secaoResumo;
+        };
+        error?: string;
+      };
+      if (!resposta.ok) {
+        setErro(corpo.error ?? `Falha (${resposta.status}).`);
+        return;
+      }
+      setSecaoResumo(corpo.data?.resumo ?? null);
+      setSecaoConflitos(corpo.data?.conflitos ?? []);
+      if (corpo.data?.aviso) setAviso(corpo.data.aviso);
+      if (!dryRun) {
+        const ap = corpo.data?.aplicacao;
+        const cr = corpo.data?.criacao;
+        setSecaoAplicado(
+          `Importadas ${ap?.vinculados ?? 0} fichas · ${cr?.criados ?? 0} pessoas novas · ${cr?.reaproveitados ?? 0} já eram nossas (reaproveitadas, sem duplicar).`,
+        );
+      }
+    } catch (e) {
+      setErro((e as Error).message);
+    } finally {
+      setSecaoRodando(null);
+    }
+  };
 
   const escanear = useCallback(async () => {
     setCarregando(true);
@@ -283,6 +352,80 @@ export function ImportarCads(props: {
         <p className="mt-2 text-xs text-ink-muted">
           A busca é gratuita: lê o Asana e compara com o Apolo, sem ler nenhum documento.
         </p>
+
+        {/* CANAL POR CPF — pega a seção inteira usando o CPF escrito na própria CAD, em vez de
+            casar por nome. É o que resolve o comprador que volta como prospect e o que barra a
+            mesma pessoa entrando duas vezes no mesmo empreendimento. */}
+        <div className="mt-4 rounded-lg border border-line bg-subtle/40 p-3">
+          <p className="m-0 text-sm font-semibold text-ink">
+            Importar a seção inteira (pelo CPF da CAD)
+          </p>
+          <p className="m-0 mt-1 text-xs text-ink-soft">
+            Usa o CPF escrito na CAD, então não depende do nome bater. Quem já é nosso cliente é
+            reaproveitado (a pessoa não duplica) e entra como prospect deste empreendimento. Quem
+            já é prospect daqui por outra imobiliária é <b>bloqueado</b> e listado — essa decisão é
+            do negócio. Custo zero: nenhum documento é lido.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button
+              className="inline-flex items-center gap-2 rounded-lg border border-line px-3 py-2 text-sm font-semibold text-ink hover:bg-subtle disabled:opacity-50"
+              disabled={secaoRodando !== null}
+              onClick={() => void importarSecao(true)}
+              type="button"
+            >
+              {secaoRodando === "simular" ? (
+                <Loader2 className="animate-spin" size={15} />
+              ) : (
+                <Search size={15} />
+              )}
+              Simular (não grava)
+            </button>
+            <button
+              className="inline-flex items-center gap-2 rounded-lg bg-inverse px-4 py-2 text-sm font-semibold text-brand-ink disabled:opacity-50"
+              disabled={secaoRodando !== null || !secaoResumo}
+              onClick={() => void importarSecao(false)}
+              type="button"
+            >
+              {secaoRodando === "aplicar" ? (
+                <Loader2 className="animate-spin" size={15} />
+              ) : (
+                <Check size={15} />
+              )}
+              Importar para Validação
+            </button>
+          </div>
+
+          {secaoResumo ? (
+            <div className="mt-3 grid gap-1.5 text-xs">
+              <p className="m-0 text-ink">
+                <b>{secaoResumo.total}</b> CADs na seção · <b>{secaoResumo.vinculaveis}</b> prontas
+                para importar · <b>{secaoResumo.conflitos}</b> em conflito ·{" "}
+                <b>{secaoResumo.semCpf}</b> sem CPF na CAD (precisam da leitura do documento)
+              </p>
+              {secaoConflitos.length ? (
+                <div className="rounded border border-amber-300 bg-amber-50 p-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+                  <p className="m-0 font-semibold text-amber-900 dark:text-amber-200">
+                    Conflitos ({secaoConflitos.length}) — não serão importados:
+                  </p>
+                  <ul className="m-0 mt-1 list-disc pl-4 text-amber-900 dark:text-amber-200">
+                    {secaoConflitos.slice(0, 12).map((c) => (
+                      <li key={c.cad}>
+                        <b>{c.cad}</b> — {c.motivo}
+                        {c.imobiliariaAtual ? ` (atual: ${c.imobiliariaAtual}` : ""}
+                        {c.imobiliariaNova ? ` · nova: ${c.imobiliariaNova})` : ""}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {secaoAplicado ? (
+                <p className="m-0 font-semibold text-emerald-700 dark:text-emerald-300">
+                  {secaoAplicado}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
       </section>
 
       {erro ? (

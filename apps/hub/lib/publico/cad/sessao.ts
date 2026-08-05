@@ -13,9 +13,12 @@
 // se justifica, e o formato é o mesmo JWT de sempre.
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-// 45 min: dá para o corretor fotografar documento, preencher e enviar sem correr, e é curto o
-// bastante para um token vazado não virar acesso permanente.
-export const SESSAO_TTL_SEGUNDOS = 45 * 60;
+// 90 min (era 45): o fluxo parte do corretor JÁ com os documentos em mãos (premissa do Lucas,
+// 03/08), então não precisa de horas — mas 45 min expirava no meio de preenchimento real e o
+// Enviar morria com tudo digitado (achado da revisão de 03/08). 90 min é o dobro folgado de um
+// preenchimento caprichado, e o token segue curto o bastante para não virar acesso permanente
+// (morre ao fechar a aba; só serve para o próprio formulário).
+export const SESSAO_TTL_SEGUNDOS = 90 * 60;
 
 export type SessaoCad = {
   // Entidade PF do corretor (papel 'corretor'). É o dono da CAD.
@@ -281,6 +284,22 @@ export function verificarPreSessaoImob(
 
 export function preSessaoImobDoRequest(request: Request): VerificarPreImobResultado {
   return verificarPreSessaoImob(request.headers.get("x-cad-pre-sessao-imob"));
+}
+
+// ---------------------------------------------------------------------------
+// Dono da área de staging do upload direto de documento
+// ---------------------------------------------------------------------------
+//
+// O documento GRANDE não cabe no corpo do POST, então sobe direto para o Storage por uma URL
+// assinada (ver lib/apolo/documentos.ts). O caminho é escolhido pelo SERVIDOR e amarrado a quem
+// pediu: na hora de salvar, a rota exige que o caminho comece pelo prefixo DESTE dono. Sem essa
+// amarração, um corpo forjado apontaria a linha do documento para o arquivo de outra pessoa.
+export function donoUploadSessao(sessao: SessaoCad): string {
+  return `s-${sessao.sessaoId || sessao.corretorEntityId}`;
+}
+
+export function donoUploadPreImob(pre: PreSessaoImob): string {
+  return `c-${pre.cnpj}`;
 }
 
 // Reemite a sessão com o empreendimento escolhido. O corretor pode enviar várias CADs na

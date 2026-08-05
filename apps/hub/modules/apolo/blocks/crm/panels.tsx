@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react
 import {
   CalendarClock,
   ChevronDown,
+  Pencil,
   ExternalLink,
   FileText,
   Filter,
@@ -72,6 +73,15 @@ import type { ApoloCarteiraRoleKind } from "../../data/apolo-derive";
 import { ScopedPortfolioPanel } from "./scoped-portfolio-panel";
 import { StatementPanel } from "./statement-panel";
 import { getApoloAccessToken } from "../../data/apolo-operations";
+import {
+  C2X_ESCOLARIDADE,
+  C2X_ESTADO_CIVIL,
+  C2X_FAIXA_RENDA,
+  C2X_REGIME_BENS,
+  C2X_SEXO,
+} from "@/lib/apolo/c2x-fields";
+import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
+import type { CadastroEditavel } from "@/lib/apolo/cadastro-editar";
 import type {
   ApoloFinancialRecord,
   ApoloFinancialRecordType,
@@ -241,6 +251,23 @@ function SummaryPanel({
 }
 
 function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
+  // MODO EDIÇÃO: o time preenche à mão o que falta na ficha (regime de bens, etc.) antes de subir
+  // ao C2X. Só a ficha nascida no Apolo é editável; a que veio do C2X é espelho do legado.
+  const [editando, setEditando] = useState(false);
+  if (editando) {
+    return (
+      <EdicaoCadastro
+        entityId={entity.id}
+        onCancelar={() => setEditando(false)}
+        onSalvo={() => {
+          setEditando(false);
+          // Recarrega a ficha para a visualização refletir o que foi salvo.
+          if (typeof window !== "undefined") window.location.reload();
+        }}
+      />
+    );
+  }
+
   const primaryEmail = primaryContact(entity, "email");
   const primaryPhone = primaryPhoneContact(entity);
   const primaryAddress = entity.addresses[0];
@@ -280,6 +307,13 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
   // Casado (ou união estável) libera regime + cônjuge.
   const civilStatus = cad?.civilState ?? civilStatusLabel(entity);
   const isMarried = /casad|uni[aã]o est[aá]vel/i.test(civilStatus ?? "");
+  // CÔNJUGE: no C2X vem em `cad.spouse`; na CAD nascida no Apolo, `cad.spouse` é nulo e o cônjuge
+  // vive no relacionamento tipado (relation "conjuge"). Antes a aba só olhava o C2X, então a
+  // esposa do prospect sumia da ficha mesmo estando cadastrada. Aqui as duas fontes se juntam.
+  const conjugeRel = entity.relationships.find((r) => /c[oô]njuge/i.test(r.relation));
+  const spouseNome = cad?.spouse?.name ?? conjugeRel?.label ?? null;
+  const spouseTelefone = cad?.spouse?.phone ?? conjugeRel?.phone ?? null;
+  const spouseEmail = cad?.spouse?.email ?? conjugeRel?.email ?? null;
   // CRECI só faz sentido pra imobiliária/corretor.
   const isRealtor =
     entity.profiles.includes("imobiliaria") || entity.profiles.includes("corretor");
@@ -325,7 +359,16 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
   return (
     <div className="grid gap-4">
       <section className="rounded-xl border border-line bg-surface p-4">
-        <PanelTitle eyebrow="Dados do cliente" title="Cadastro" />
+        <div className="flex items-start justify-between gap-3">
+          <PanelTitle eyebrow="Dados do cliente" title="Cadastro" />
+          <button
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink-soft transition hover:border-ink hover:text-ink"
+            onClick={() => setEditando(true)}
+            type="button"
+          >
+            <Pencil aria-hidden="true" className="size-3.5" /> Editar
+          </button>
+        </div>
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           {cadastroRows.map(([label, value]) => (
             <ReadonlyLine key={label} label={label} value={value || "-"} />
@@ -342,14 +385,14 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
       </section>
       {/* Cônjuge: só PF casada (PJ e solteiro não têm). Vem do C2X (spouses) e
           também aparece na aba Relacionamentos como contato. */}
-      {!isCompany && (isMarried || cad?.spouse) ? (
+      {!isCompany && (isMarried || spouseNome) ? (
         <section className="rounded-xl border border-line bg-surface p-4">
           <PanelTitle eyebrow="Conjuge" title="Dados do conjuge" />
           <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            <ReadonlyLine label="Conjuge" value={cad?.spouse?.name ?? "-"} />
+            <ReadonlyLine label="Conjuge" value={spouseNome ?? "-"} />
             <ReadonlyLine label="CPF" value={cad?.spouse?.cpf ?? "-"} />
-            <ReadonlyLine label="Telefone" value={cad?.spouse?.phone ?? "-"} />
-            <ReadonlyLine label="E-mail" value={cad?.spouse?.email ?? "-"} />
+            <ReadonlyLine label="Telefone" value={spouseTelefone ?? "-"} />
+            <ReadonlyLine label="E-mail" value={spouseEmail ?? "-"} />
             <ReadonlyLine label="Nascimento" value={cad?.spouse?.birthday ?? "-"} />
             <ReadonlyLine label="Documento" value={cad?.spouse?.document ?? "-"} />
             <ReadonlyLine label="Profissao" value={cad?.spouse?.profession ?? "-"} />
@@ -357,6 +400,251 @@ function RegistrationPanel({ entity }: { entity: ApoloEntity }) {
         </section>
       ) : null}
     </div>
+  );
+}
+
+// FORMULÁRIO DE EDIÇÃO do cadastro. Carrega os campos com os ids do C2X (que os selects usam),
+// deixa o time completar o que falta (regime de bens à frente de todos) e salva de volta. Os
+// selects reusam as mesmas listas do C2X que a escrita usa — o que a tela grava é o que sobe.
+const CADASTRO_VAZIO: CadastroEditavel = {
+  bairro: "", cep: "", cidade: "", cidade_uf: "", complemento: "", conjuge_cpf: "",
+  conjuge_email: "", conjuge_nome: "", conjuge_telefone: "", dataNascimento: "", email: "",
+  escolaridadeId: "", estadoCivilId: "", logradouro: "", nacionalidade: "", naturalidade: "",
+  nomeMae: "", numero: "", profissaoId: "", regimeBensId: "", rendaId: "", sexoId: "", telefone: "",
+};
+
+function EdicaoCadastro({
+  entityId,
+  onCancelar,
+  onSalvo,
+}: {
+  entityId: string;
+  onCancelar: () => void;
+  onSalvo: () => void;
+}) {
+  const [dados, setDados] = useState<CadastroEditavel>(CADASTRO_VAZIO);
+  const [carregando, setCarregando] = useState(true);
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        const token = await getApoloAccessToken();
+        const resp = await fetch(`/api/apolo/cadastro/${entityId}`, {
+          cache: "no-store",
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        const json = (await resp.json().catch(() => null)) as {
+          data?: { dados: CadastroEditavel };
+          error?: string;
+        } | null;
+        if (!resp.ok || !json?.data) {
+          setErro(json?.error ?? "Não consegui carregar o cadastro.");
+        } else {
+          setDados({ ...CADASTRO_VAZIO, ...json.data.dados });
+        }
+      } catch {
+        setErro("Não consegui carregar o cadastro.");
+      } finally {
+        setCarregando(false);
+      }
+    })();
+  }, [entityId]);
+
+  const set = (campo: keyof CadastroEditavel) => (valor: string) =>
+    setDados((atual) => ({ ...atual, [campo]: valor }));
+
+  const casado = dados.estadoCivilId === "2" || dados.estadoCivilId === "6";
+
+  async function salvar() {
+    setSalvando(true);
+    setErro(null);
+    try {
+      const token = await getApoloAccessToken();
+      const resp = await fetch(`/api/apolo/cadastro/${entityId}`, {
+        body: JSON.stringify(dados),
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        method: "PATCH",
+      });
+      if (!resp.ok) {
+        const json = (await resp.json().catch(() => null)) as { error?: string } | null;
+        setErro(json?.error ?? "Não consegui salvar.");
+        setSalvando(false);
+        return;
+      }
+      onSalvo();
+    } catch {
+      setErro("Não consegui salvar.");
+      setSalvando(false);
+    }
+  }
+
+  if (carregando) {
+    return (
+      <div className="grid place-items-center rounded-xl border border-line bg-surface p-10 text-ink-muted">
+        <Loader2 aria-hidden="true" className="size-5 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="grid gap-4">
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <PanelTitle eyebrow="Preencher à mão" title="Editar cadastro" />
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink-soft transition hover:text-ink"
+              disabled={salvando}
+              onClick={onCancelar}
+              type="button"
+            >
+              Cancelar
+            </button>
+            <button
+              className="inline-flex items-center gap-1.5 rounded-lg bg-ink px-4 py-1.5 text-xs font-semibold text-inverse transition hover:opacity-90 disabled:opacity-50"
+              disabled={salvando}
+              onClick={() => void salvar()}
+              type="button"
+            >
+              {salvando ? <Loader2 aria-hidden="true" className="size-3.5 animate-spin" /> : null}
+              Salvar
+            </button>
+          </div>
+        </div>
+
+        {erro ? (
+          <p className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">
+            {erro}
+          </p>
+        ) : null}
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <CampoData label="Nascimento" onChange={set("dataNascimento")} value={dados.dataNascimento} />
+          <CampoSelect label="Sexo" onChange={set("sexoId")} opcoes={C2X_SEXO} value={dados.sexoId} />
+          <CampoSelect
+            label="Estado civil"
+            onChange={set("estadoCivilId")}
+            opcoes={C2X_ESTADO_CIVIL}
+            value={dados.estadoCivilId}
+          />
+          {casado ? (
+            <CampoSelect
+              label="Regime de bens"
+              onChange={set("regimeBensId")}
+              opcoes={C2X_REGIME_BENS}
+              value={dados.regimeBensId}
+            />
+          ) : null}
+          <CampoSelect
+            label="Profissão"
+            onChange={set("profissaoId")}
+            opcoes={C2X_PROFISSOES}
+            value={dados.profissaoId}
+          />
+          <CampoSelect label="Renda" onChange={set("rendaId")} opcoes={C2X_FAIXA_RENDA} value={dados.rendaId} />
+          <CampoSelect
+            label="Escolaridade"
+            onChange={set("escolaridadeId")}
+            opcoes={C2X_ESCOLARIDADE}
+            value={dados.escolaridadeId}
+          />
+          <CampoTexto label="Naturalidade" onChange={set("naturalidade")} value={dados.naturalidade} />
+          <CampoTexto label="Nacionalidade" onChange={set("nacionalidade")} value={dados.nacionalidade} />
+          <CampoTexto label="Nome da mãe" onChange={set("nomeMae")} value={dados.nomeMae} />
+          <CampoTexto label="Telefone" onChange={set("telefone")} value={dados.telefone} />
+          <CampoTexto label="E-mail" onChange={set("email")} value={dados.email} />
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-line bg-surface p-4">
+        <PanelTitle eyebrow="Endereço" title="Endereço" />
+        <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <CampoTexto label="CEP" onChange={set("cep")} value={dados.cep} />
+          <CampoTexto label="Logradouro" onChange={set("logradouro")} value={dados.logradouro} />
+          <CampoTexto label="Número" onChange={set("numero")} value={dados.numero} />
+          <CampoTexto label="Complemento" onChange={set("complemento")} value={dados.complemento} />
+          <CampoTexto label="Bairro" onChange={set("bairro")} value={dados.bairro} />
+          <CampoTexto label="Cidade" onChange={set("cidade")} value={dados.cidade} />
+          <CampoTexto label="UF" onChange={set("cidade_uf")} value={dados.cidade_uf} />
+        </div>
+      </section>
+
+      {casado ? (
+        <section className="rounded-xl border border-line bg-surface p-4">
+          <PanelTitle eyebrow="Cônjuge" title="Dados do cônjuge" />
+          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <CampoTexto label="Nome" onChange={set("conjuge_nome")} value={dados.conjuge_nome} />
+            <CampoTexto label="CPF" onChange={set("conjuge_cpf")} value={dados.conjuge_cpf} />
+            <CampoTexto label="Telefone" onChange={set("conjuge_telefone")} value={dados.conjuge_telefone} />
+            <CampoTexto label="E-mail" onChange={set("conjuge_email")} value={dados.conjuge_email} />
+          </div>
+        </section>
+      ) : null}
+    </div>
+  );
+}
+
+function CampoTexto({
+  label,
+  onChange,
+  value,
+}: {
+  label: string;
+  onChange: (v: string) => void;
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+        {label}
+      </span>
+      <input
+        className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-ink"
+        onChange={(e) => onChange(e.target.value)}
+        value={value}
+      />
+    </label>
+  );
+}
+
+function CampoData(props: { label: string; onChange: (v: string) => void; value: string }) {
+  return <CampoTexto {...props} />;
+}
+
+function CampoSelect({
+  label,
+  onChange,
+  opcoes,
+  value,
+}: {
+  label: string;
+  onChange: (v: string) => void;
+  opcoes: readonly { id: number; label: string }[];
+  value: string;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+        {label}
+      </span>
+      <select
+        className="w-full rounded-lg border border-line bg-canvas px-3 py-2 text-sm text-ink outline-none focus:border-ink"
+        onChange={(e) => onChange(e.target.value)}
+        value={value}
+      >
+        <option value="">Selecione</option>
+        {opcoes.map((o) => (
+          <option key={o.id} value={String(o.id)}>
+            {o.label}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }
 

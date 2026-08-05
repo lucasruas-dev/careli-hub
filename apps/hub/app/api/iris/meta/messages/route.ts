@@ -10,6 +10,7 @@ import {
   sendMetaWhatsAppAudioMessage,
   sendMetaWhatsAppMediaMessage,
   sendMetaWhatsAppReactionMessage,
+  sendMetaWhatsAppTemplateMessage,
   sendMetaWhatsAppTextMessage,
   signWhatsAppBody,
 } from "@/lib/iris/meta-whatsapp";
@@ -34,9 +35,135 @@ type SendMessageBody = {
   media?: unknown;
   messageId?: unknown;
   replyToMessageId?: unknown;
+  // Template aprovado da Meta: o ÚNICO jeito de falar com quem está fora da janela de 24h.
+  // Ver normalizeTemplateInput logo abaixo.
+  template?: unknown;
   ticketId?: unknown;
   to?: unknown;
 };
+
+type TemplateInput = {
+  bodyParameters: string[];
+  language: string;
+  name: string;
+};
+
+// REABRIR CONVERSA FORA DA JANELA DE 24H.
+//
+// O problema (auditoria de 26/07): 80 dos 98 atendimentos abertos estavam com a janela da Meta
+// fechada. Nesses, o campo de texto vem desabilitado e NÃO havia nenhum caminho de template
+// dentro da conversa — o operador lia o pedido do cliente e não tinha o que clicar. O único
+// atalho era "+ Novo atendimento", que recusa com 409 porque já existe ticket ativo e manda
+// "abra o atendimento existente", justamente a tela onde ele não pode escrever. Eram 61 clientes
+// com a bola conosco e sem saída.
+//
+// Aqui o template passa a poder ser enviado NO PROTOCOLO ATUAL, sem criar ticket novo.
+// PREENCHE OS PARÂMETROS DO TEMPLATE QUANDO O CHAMADOR NÃO MANDOU NENHUM.
+//
+// A Meta recusa o envio quando a quantidade de parâmetros não bate com o que o template
+// aprovado declara, e recusa também parâmetro em branco. O botão "Reabrir conversa" mandava
+// `bodyParameters: []` fixo (erro meu, 26/07): com o modelo "Devolutiva de ticket", que tem
+// quatro variáveis, todo reabrir falhava com "Não foi possível reabrir a conversa".
+//
+// Resolve por CHAVE, do mesmo jeito que /api/iris/tickets: o template diz quais variáveis usa
+// e em que ordem, e cada uma é preenchida com o valor certo. Fica no SERVIDOR de propósito —
+// é aqui que existem ticket, contato e operador, e assim qualquer chamador fica protegido,
+// não só a tela que eu consertei.
+async function preencherParametrosDoTemplate({
+  client,
+  metaTemplateName,
+  operatorName,
+  ticketId,
+}: {
+  client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>;
+  metaTemplateName: string;
+  operatorName: string | null;
+  ticketId: string | null;
+}): Promise<string[]> {
+  // O nome aprovado na Meta mora no metadata (`metaTemplateName`), não em coluna própria —
+  // conferido no banco antes de escrever, porque typecheck não pega nome de coluna errado.
+  // `limit(1)` e não `maybeSingle`: há modelos repetidos apontando pro mesmo nome da Meta.
+  const { data: modelos } = await client
+    .from("caredesk_templates")
+    .select("variables")
+    .eq("metadata->>metaTemplateName", metaTemplateName)
+    .limit(1);
+
+  const modelo = (modelos ?? [])[0] as { variables: unknown } | undefined;
+
+  const variaveis = Array.isArray(modelo?.variables)
+    ? (modelo.variables as unknown[]).filter(
+        (item): item is string => typeof item === "string",
+      )
+    : [];
+
+  if (variaveis.length === 0) {
+    return [];
+  }
+
+  const { data: ticket } = ticketId
+    ? await client
+        .from("caredesk_tickets")
+        .select(
+          "protocol, subject, caredesk_contacts(display_name), caredesk_ticket_profiles(name), caredesk_queues(name)",
+        )
+        .eq("id", ticketId)
+        .maybeSingle<{
+          caredesk_contacts: { display_name: string | null } | null;
+          caredesk_queues: { name: string | null } | null;
+          caredesk_ticket_profiles: { name: string | null } | null;
+          protocol: string | null;
+          subject: string | null;
+        }>()
+    : { data: null };
+
+  const nomeCompleto = ticket?.caredesk_contacts?.display_name?.trim() ?? "";
+  const primeiroNome = nomeCompleto.split(/\s+/)[0] ?? "";
+  // O assunto costuma vir do perfil do ticket; quando a ficha está sem assunto (acontece, e
+  // era o caso do AT-001285), a fila responde pelo contexto. NUNCA devolver string vazia:
+  // a Meta rejeita o envio inteiro por causa de um parâmetro em branco.
+  const assunto =
+    ticket?.caredesk_ticket_profiles?.name?.trim() ||
+    ticket?.subject?.trim() ||
+    ticket?.caredesk_queues?.name?.trim() ||
+    "seu atendimento";
+
+  const valorPorChave: Record<string, string> = {
+    assunto,
+    nome_cliente: nomeCompleto || primeiroNome || "cliente",
+    operador: operatorName?.trim() || "equipe Careli",
+    primeiro_nome: primeiroNome || "cliente",
+    protocolo: ticket?.protocol?.trim() || "-",
+  };
+
+  return variaveis.map((chave) => valorPorChave[chave] ?? "-");
+}
+
+function normalizeTemplateInput(value: unknown): TemplateInput | null {
+  if (!value || typeof value !== "object") {
+    return null;
+  }
+
+  const registro = value as Record<string, unknown>;
+  const name = typeof registro.name === "string" ? registro.name.trim() : "";
+  const language =
+    typeof registro.language === "string" ? registro.language.trim() : "";
+
+  if (!name || !language) {
+    return null;
+  }
+
+  const bodyParameters = Array.isArray(registro.bodyParameters)
+    ? registro.bodyParameters
+        .map((parametro) =>
+          typeof parametro === "string" ? parametro.trim() : "",
+        )
+        // A Meta recusa parâmetro vazio; melhor mandar um traço do que estourar o envio.
+        .map((parametro) => parametro || "-")
+    : [];
+
+  return { bodyParameters, language, name };
+}
 
 type OperatorIdentity = {
   avatarUrl: string | null;
@@ -85,6 +212,7 @@ export async function POST(request: NextRequest) {
   const channelId = normalizeUuid(input?.channelId);
   const contactId = normalizeUuid(input?.contactId);
   const messageId = normalizeUuid(input?.messageId);
+  const template = normalizeTemplateInput(input?.template);
   const replyToMessageId = normalizeUuid(input?.replyToMessageId);
 
   if (!to) {
@@ -104,13 +232,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!body && !audioMedia && !attachmentMedia) {
+  if (!body && !audioMedia && !attachmentMedia && !template) {
     return NextResponse.json(
       { error: "Informe a mensagem para enviar pelo WhatsApp." },
       { status: 400 },
     );
   }
-  const outboundBody = body ?? (audioMedia ? "Audio WhatsApp" : "");
+  // No template, o `body` é o texto JÁ RENDERIZADO que a tela mostra no histórico (o que a Meta
+  // envia é o modelo aprovado, com os parâmetros). Se vier sem texto, guarda ao menos o nome do
+  // modelo para o histórico não ficar com uma mensagem em branco.
+  const outboundBody =
+    body ??
+    (audioMedia ? "Audio WhatsApp" : template ? `[${template.name}]` : "");
   // Mídia normalizada (áudio OU anexo) num único formato pra persistir/enviar.
   const outboundMedia: NormalizedOutboundMedia | null = audioMedia
     ? { ...audioMedia, type: "audio" }
@@ -175,7 +308,11 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!customerServiceWindow.open) {
+  // A trava da janela vale para TEXTO LIVRE. O template aprovado é justamente o que a Meta
+  // permite fora dela: barrar aqui deixaria o operador sem nenhum caminho para responder os 80
+  // atendimentos (de 98) que estão com a janela fechada — que é o problema que estamos
+  // consertando. Com template, segue para o envio.
+  if (!template && !customerServiceWindow.open) {
     return NextResponse.json(
       customerServiceWindowErrorPayload(customerServiceWindow),
       { status: 409 },
@@ -267,10 +404,32 @@ export async function POST(request: NextRequest) {
     userId: authorization.user.id,
   });
 
+  // Só entra quando o chamador não mandou parâmetro nenhum. Quem já monta os seus (a abertura
+  // de atendimento, por exemplo) continua mandando e nada muda.
+  const templateBodyParameters =
+    template && template.bodyParameters.length === 0
+      ? await preencherParametrosDoTemplate({
+          client: authorization.client,
+          metaTemplateName: template.name,
+          operatorName: operatorIdentity?.label ?? null,
+          ticketId,
+        })
+      : (template?.bodyParameters ?? []);
+
   try {
     const sendAttempt = await sendMetaWhatsAppMessageWithFallback({
       send: (candidate) =>
-        audioMedia
+        // Template primeiro: é o caminho de quem está fora da janela de 24h, e a Meta recusa
+        // texto livre nesse caso. Nunca assina o corpo (o conteúdo é o aprovado por ela).
+        template
+          ? sendMetaWhatsAppTemplateMessage({
+              bodyParameters: templateBodyParameters,
+              ...(metaSendConfig ? { config: metaSendConfig } : {}),
+              language: template.language,
+              name: template.name,
+              to: candidate,
+            })
+          : audioMedia
           ? sendMetaWhatsAppAudioMessage({
               audioBase64: audioMedia.base64,
               ...(metaSendConfig ? { config: metaSendConfig } : {}),

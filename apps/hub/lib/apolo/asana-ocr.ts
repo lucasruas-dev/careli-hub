@@ -95,6 +95,9 @@ export type CadParaLeitura = {
     renda?: string;
     telefone?: string;
   };
+  // Quem vendeu. Atravessa orçamento -> tela -> POST junto com a imobiliária: sem isso a ficha
+  // nasce com a imobiliária preenchida e o corretor em branco.
+  corretor?: string | null;
   cpfNoTexto: string | null;
   email: string | null;
   escolaridade?: string | null;
@@ -116,6 +119,9 @@ export type Orcamento = {
   imagensAPagar: number;
   // Arquivos que já foram lidos antes (dedup por hash) — não serão cobrados de novo.
   jaLidos: number;
+  // CADs cuja task JÁ FOI IMPORTADA: a pessoa está na esteira. Ler o documento de novo é pagar
+  // por dado que já temos, então saem do lote e do custo.
+  jaNaEsteira: number;
   naoLegiveis: number;
   totalCads: number;
 };
@@ -155,7 +161,27 @@ export async function orcarLeitura(input: {
   let gratisPorTexto = 0;
   let naoLegiveis = 0;
 
+  // Economia (c): task já importada = pessoa já na esteira. É a checagem mais barata que existe
+  // (uma consulta local, sem Asana e sem MOST) e a que mais economiza quando a seção já passou
+  // por aqui antes — sem ela, mudar a CAD de seção no Asana faria pagar OCR de novo.
+  const jaImportadas = new Set<string>();
+  const gids = input.cads.map((c) => c.gid);
+  for (let i = 0; i < gids.length; i += 200) {
+    const { data } = await input.client
+      .from("apolo_source_links")
+      .select("source_id")
+      .eq("source_system", "asana")
+      .eq("source_table", "cad_task")
+      .in("source_id", gids.slice(i, i + 200));
+    for (const linha of (data ?? []) as { source_id: string }[]) {
+      jaImportadas.add(linha.source_id);
+    }
+  }
+
   for (const cad of input.cads) {
+    // Já está na esteira: nem lista anexos, nem entra no lote.
+    if (jaImportadas.has(cad.gid)) continue;
+
     // Economia (a): CPF já escrito no cadastro = zero consulta.
     const cpfNoTexto = acharCpfNoTexto(cad.notas);
     const anexos = cpfNoTexto ? [] : await listarAnexos(cad.gid);
@@ -187,8 +213,11 @@ export async function orcarLeitura(input: {
       gratisPorTexto,
       imagensAPagar,
       jaLidos: jaLidos ?? 0,
+      jaNaEsteira: jaImportadas.size,
       naoLegiveis,
-      totalCads: input.cads.length,
+      // O total é o do LOTE (o que sobrou para ler), não o da seção: é sobre ele que a tela
+      // fatia os lotes e conta o progresso.
+      totalCads: itens.length,
     },
   };
 }

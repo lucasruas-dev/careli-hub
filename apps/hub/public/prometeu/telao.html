@@ -232,7 +232,7 @@
     const d=DESTINOS[canal]||{label:"—",cor:"#667085"};
     const chip=document.getElementById("canal-chip"); chip.textContent=d.label; chip.style.background=d.cor;
     document.title="Telão · "+d.label;
-    fila=[]; for(let i=0;i<4;i++) fila.push(novaChamada()); renderListas();
+    fila=[]; ultimas=[]; renderListas();
   }
   function tick(){const n=new Date();document.getElementById("clock").textContent=[n.getHours(),n.getMinutes()].map(x=>pad(x,2)).join(":");}
   tick();setInterval(tick,1000);
@@ -279,6 +279,21 @@
   function setVol(v){ idleVol=(+v)/100; document.getElementById("vol-val").textContent=v+"%"; aplicarVol(volAtual()); try{localStorage.setItem("prometeu_vol",v);}catch(e){} }
   function toggleVideoMudo(){ videoMudo=!videoMudo; document.getElementById("sw-mudo").classList.toggle("on",videoMudo); aplicarVol(volAtual()); try{localStorage.setItem("prometeu_mudo",videoMudo?"1":"0");}catch(e){} }
   function extrairYT(s){ const m=s.match(/(?:v=|youtu\.be\/|embed\/|shorts\/)([\w-]{11})/)||s.match(/^([\w-]{11})$/); return m?m[1]:null; }
+
+  // ===== MAESTRO: o fundo (música/vídeo) obedece ao comando central =====
+  // Um comando no /prometeu/maestro muda TODAS as TVs juntas (broadcast "palco" + estado salvo
+  // no evento, aplicado também na 1ª carga). As CHAMADAS seguem 100% independentes por canal.
+  let palcoVideoAtual=null, palcoMarca=null;
+  function aplicarPalco(p){
+    if(!p || p.atualizadoEm===palcoMarca) return;
+    palcoMarca=p.atualizadoEm||null;
+    if(typeof p.volume==="number"){ idleVol=p.volume/100; const vv=document.getElementById("vol-val"); if(vv)vv.textContent=p.volume+"%"; try{localStorage.setItem("prometeu_vol",String(p.volume));}catch(e){} }
+    if(typeof p.mudo==="boolean"){ videoMudo=p.mudo; const sw=document.getElementById("sw-mudo"); if(sw)sw.classList.toggle("on",videoMudo); try{localStorage.setItem("prometeu_mudo",videoMudo?"1":"0");}catch(e){} }
+    if(p.videoId && p.videoId!==palcoVideoAtual){ palcoVideoAtual=p.videoId; try{localStorage.setItem("prometeu_yt",p.videoId);}catch(e){} carregarYouTube(p.videoId); }
+    if(p.tocando===false){ try{ytPlayer&&ytPlayer.pauseVideo&&ytPlayer.pauseVideo();}catch(e){} try{bgVideo.pause();}catch(e){} }
+    if(p.tocando===true){ try{ytPlayer&&ytPlayer.playVideo&&ytPlayer.playVideo();}catch(e){} if(bgVideo.src){bgVideo.play().catch(()=>{});} }
+    aplicarVol(volAtual()); // respeita o duck se um anúncio estiver no ar
+  }
   function carregarYouTube(id){
     bgVideo.pause(); bgVideo.classList.remove("on");
     document.getElementById("bg-yt-wrap").style.display="block";
@@ -359,12 +374,26 @@
   }
 
   // ===== chamada transitória =====
-  function chamar(c){
+  // FILA DE ANÚNCIOS: com 18 mesas, duas chamadas a segundos de distância se atropelavam — o
+  // quadro trocava com a voz da primeira ainda no ar (duas vozes juntas) e o encerrar() da
+  // primeira derrubava o quadro no MEIO do anúncio da segunda. Agora cada chamada entra na fila
+  // e o telão anuncia UMA POR VEZ; a próxima só sobe quando a atual termina.
+  let filaAnuncios=[]; let anunciando=false; let anuncioWatchdog=null;
+  function chamar(c){ filaAnuncios.push(c); processarAnuncios(); }
+  function processarAnuncios(){
+    if(anunciando || !filaAnuncios.length) return;
+    anunciando=true;
+    const c=filaAnuncios.shift();
+    const terminou=()=>{ clearTimeout(anuncioWatchdog); ultimas.unshift(c); ultimas=ultimas.slice(0,6); renderListas(); holdTimer=setTimeout(()=>{ encerrar(); anunciando=false; processarAnuncios(); },2500); };
+    // Rede: se o áudio morrer sem avisar (autoplay bloqueado, blob perdido), a fila NÃO pode
+    // travar — 30s depois seguimos em frente sozinhos.
+    clearTimeout(anuncioWatchdog);
+    anuncioWatchdog=setTimeout(()=>{ anunciando=false; encerrar(); processarAnuncios(); },30000);
     clearTimeout(holdTimer);
     atual=c;
     document.body.classList.add("chamando");
     renderCall(); duckIdle(true);
-    anunciar(c,()=>{ ultimas.unshift(c); ultimas=ultimas.slice(0,6); renderListas(); holdTimer=setTimeout(encerrar,2500); });
+    anunciar(c,terminou);
   }
   function encerrar(){ document.body.classList.remove("chamando"); duckIdle(false); }
   let chamadaPendente=false;
@@ -455,23 +484,159 @@
     if(pendenteExterna){ const p=pendenteExterna; pendenteExterna=null; setTimeout(()=>chamar(p),500); }
   }
 
-  // ===== CHAMADA VINDA DO ATENDENTE: o telão escuta o proxy e mostra na TV do canal =====
-  // Ponte com o Atendente = BroadcastChannel (mesma origem, entre abas/TVs). Sem servidor.
-  const canalFila=("BroadcastChannel" in window)?new BroadcastChannel("prometeu-fila"):null;
-  let lastChamadaId=0, pendenteExterna=null;
-  function iniciarEscutaChamada(){
-    if(!canalFila)return;
-    canalFila.onmessage=(ev)=>{
-      const m=ev.data;
-      if(m && m.nome && m.tipo===canal && (m.id||0)>lastChamadaId){ lastChamadaId=m.id||Date.now(); chamarExterno(m); } // só as do MEU canal
-    };
+  // ===== CHAMADA REAL: o telão escuta o broadcast do evento (o MESMO canal do celular do cliente)
+  // e pergunta ao servidor QUEM foi chamado no SEU canal. Instantâneo pelo Realtime; um poll leve de
+  // 20s é a rede de segurança (poucos telões => custo irrisório). =====
+  const TELAO_ENDPOINT="/api/prometeu/telao";
+  let lastChamadaId=null, pendenteExterna=null, rtCanal=null, telaoPoll=null, buscandoTelao=false, rtIniciado=false;
+
+  const mapProx=p=>({nome:p.nome, imob:p.imob, corretor:p.corretor, tipo:canal});
+  const mapAnt =c=>({nome:c.nome, mesa:c.mesa, corretor:c.corretor, imob:c.imob, tipo:canal});
+
+  // Auth do endpoint = Bearer da sessão do hub (mesmo contrato do Apolo/Central). O telão é HTML
+  // estático, mas a sessão do Supabase vive no localStorage da MESMA origem. Em vez de adivinhar o
+  // formato do storage, usamos o PRÓPRIO supabase-js (getSession — o mesmo método das telas React)
+  // pra ler o access_token. O client é compartilhado com o realtime. URL+key são PÚBLICAS (bundle).
+  // Se for um OPERADOR do evento (área /evento) sem essa sessão, o cookie próprio vai no fetch
+  // (credentials:'same-origin') e cobre o outro caso.
+  const SB_URL="https://bxgukywoxgivlrhjkwjx.supabase.co";
+  const SB_KEY="sb_publishable_jOR39K0M9_VF26qItlDSCA_U6Zps1aw";
+  let _sb=null, _sbCarregando=null;
+  async function getSb(){
+    if(_sb) return _sb;
+    if(_sbCarregando) return _sbCarregando;
+    // SEM guard de "já tentei": um blip de Wi-Fi no boot da TV deixava o import falho PARA
+    // SEMPRE (sem realtime e sem token até alguém dar F5). Agora cada chamada re-tenta; o
+    // `_sbCarregando` só evita imports simultâneos.
+    _sbCarregando=(async()=>{
+      try{ const {createClient}=await import("https://esm.sh/@supabase/supabase-js@2"); _sb=createClient(SB_URL, SB_KEY); }catch(e){ _sb=null; }
+      _sbCarregando=null;
+      return _sb;
+    })();
+    return _sbCarregando;
   }
-  function chamarExterno(m){
-    const call={nome:m.nome, imob:m.imob, corretor:m.tipo==="salao"?m.corretor:null, tipo:m.tipo, mesa:m.mesa};
-    if(Array.isArray(m.proximos)) fila = m.proximos.map(n=>({nome:n, tipo:canal})); // reflete a fila REAL do atendente
-    renderListas(); // atualiza os "próximos" na hora (não espera a voz)
+  async function tokenDoHub(){
+    try{ const sb=await getSb(); if(!sb) return null; const {data}=await sb.auth.getSession(); return (data&&data.session&&data.session.access_token)||null; }catch(e){ return null; }
+  }
+
+  // AVISO DE TV MORTA: 3 polls seguidos falhando (401 de sessão vencida, rede, rota fora) e a
+  // TV avisava NADA — ficava idêntica a uma TV saudável sem chamadas, e ninguém percebia que o
+  // telão tinha morrido até um cliente reclamar. Uma faixa discreta transforma isso em chamado
+  // de suporte imediato.
+  let falhasSeguidas=0;
+  function avisoConexao(morto){
+    let el=document.getElementById("telao-offline");
+    if(!morto){ if(el) el.remove(); return; }
+    if(el) return;
+    el=document.createElement("div");
+    el.id="telao-offline";
+    el.textContent="TELÃO DESCONECTADO — chame o suporte (recarregue a página)";
+    el.style.cssText="position:fixed;top:0;left:0;right:0;z-index:9999;background:#b91c1c;color:#fff;font:700 16px/1.4 system-ui;padding:6px 14px;text-align:center;letter-spacing:.04em";
+    document.body.appendChild(el);
+  }
+  // MODO TV INDEPENDENTE: com `?tv=<token>` na URL a TV não precisa de login nenhum — o token
+  // (emitido no Setup, aba Telões) autoriza a rota sozinho e nunca expira no meio do evento.
+  const TV_TOKEN=new URLSearchParams(location.search).get("tv")||"";
+  async function buscarTelao(alvo){
+    if(buscandoTelao) return null; buscandoTelao=true;
+    try{
+      // Com token de TV nem consulta a sessão do hub (a TV não tem e não precisa).
+      const tk=TV_TOKEN?null:await tokenDoHub();
+      // `alvo` vai na URL: a RECHAMADA reaproveita a linha original (hora antiga), que minutos
+      // depois já saiu das 12 recentes — sem pedir o card do alvo à rota, o telão ficava MUDO
+      // em quase toda rechamada (o atendente via "Chamado!", o cliente não ouvia o nome).
+      const alvoQs=alvo?`&alvo=${encodeURIComponent(alvo)}`:"";
+      const tvQs=TV_TOKEN?`&tv=${encodeURIComponent(TV_TOKEN)}`:"";
+      const r=await fetch(`${TELAO_ENDPOINT}?canal=${encodeURIComponent(canal)}${alvoQs}${tvQs}`,{
+        cache:"no-store",
+        credentials:"same-origin",
+        headers: tk ? { Authorization:`Bearer ${tk}` } : {},
+      });
+      if(!r.ok){ falhasSeguidas++; avisoConexao(falhasSeguidas>=3); return null; }
+      falhasSeguidas=0; avisoConexao(false);
+      return (await r.json()).data||null;
+    }
+    catch(e){ falhasSeguidas++; avisoConexao(falhasSeguidas>=3); return null; } finally{ buscandoTelao=false; }
+  }
+
+  // Aplica o estado do servidor. `anunciar=false` na 1ª carga: mostra as listas mas NÃO re-anuncia
+  // a última chamada que já passou (senão a TV "grita" um nome velho ao ligar).
+  // `alvo` = quem o aviso em tempo real disse que ACABOU de ser chamado. É o que faz a RECHAMADA
+  // funcionar: chamar de novo REAPROVEITA a mesma linha (mesmo id, mesma hora — de propósito, pra
+  // o cronômetro de espera não zerar), então comparar o id sozinho nunca dispararia o 2º anúncio.
+  function aplicarDados(d,anunciar,alvo){
+    // O fundo do MAESTRO vem junto em toda leitura (1ª carga E poll de 20s): TV que perdeu o
+    // broadcast converge sozinha. O guard por atualizadoEm evita reaplicar o mesmo comando.
+    aplicarPalco(d.palco);
+    fila=(d.proximos||[]).map(mapProx);
+    ultimas=(d.jaChamados||[]).map(mapAnt);
+    renderListas();
+
+    // QUEM ANUNCIAR — duas portas, e elas NÃO se misturam:
+    //
+    // 1) TOPO NOVO: chamaram alguém agora; o topo do canal mudou de id. `lastChamadaId` acompanha
+    //    SEMPRE o topo, mesmo quando quem anuncia é outra pessoa — senão, depois de uma rechamada
+    //    o poll de 20s acharia o topo "novo" outra vez e repetiria um nome já anunciado.
+    // 2) ALVO: o aviso em tempo real disse quem foi chamado. Serve pra RECHAMADA, em que o id e a
+    //    hora não mudam e a pessoa pode nem estar no topo (chamei a Ana, depois o Bruno, e rechamo
+    //    a Ana: o topo continua sendo o Bruno).
+    const topo=d.atual;
+    const topoEhNovo=Boolean(topo && topo.id && topo.id!==lastChamadaId);
+    if(topo && topo.id) lastChamadaId=topo.id;
+
+    let a=null;
+    if(alvo){
+      const chamadas=[topo].concat(d.jaChamados||[]).filter(Boolean);
+      a=chamadas.find(c=>c.credenciadoId===alvo)||null;
+      // Fora da janela das recentes? A rota devolve o card do alvo em `d.alvo` (buscado direto
+      // pela chamada aberta). Só depois de TUDO falhar é que o alvo é "de outro canal".
+      if(!a && d.alvo && d.alvo.credenciadoId===alvo) a=d.alvo;
+    }
+    if(!a && topoEhNovo) a=topo;         // sem alvo (poll): só anuncia se o topo mudou
+    if(!a || !anunciar) return;
+
+    const call={nome:a.nome, imob:a.imob, corretor:canal==="salao"?a.corretor:null, tipo:canal, mesa:a.mesa};
     if(document.body.classList.contains("comemorando")||document.body.classList.contains("locutando")){ pendenteExterna=call; return; } // espera a festa/locutor
     chamar(call);
+  }
+
+  // O poll TAMBÉM tenta ligar o realtime se ele ainda não subiu (1ª carga falhou / import caiu):
+  // a TV se auto-recupera em até 20s em vez de rodar o evento inteiro só no poll. conectarRealtime
+  // é idempotente (guardado por rtIniciado).
+  // `alvo` só chega quando a atualização nasceu de um AVISO em tempo real (o poll de 20s não sabe
+  // quem foi chamado e não pode reanunciar ninguém por conta própria — senão a TV repetiria o
+  // último nome a cada 20 segundos).
+  async function atualizarDoServidor(alvo){ const d=await buscarTelao(alvo); if(d){ conectarRealtime(d.realtime); aplicarDados(d,true,alvo); } }
+
+  // Realtime com REJOIN (padrão do projeto: todo subscribe reconecta). O Wi-Fi do salão derruba o
+  // socket; sem isto a TV cairia pro poll de 20s o resto do evento. `rtIniciado` evita canal duplo.
+  async function conectarRealtime(rt){
+    if(!rt||!rt.topico||rtIniciado)return;
+    rtIniciado=true;
+    const sb=await getSb();
+    if(!sb){ rtIniciado=false; return; } // import caiu: o poll tenta de novo depois
+    let tentativa=0;
+    const assinar=()=>{
+      rtCanal=sb.channel(rt.topico,{config:{broadcast:{self:false}}})
+        .on("broadcast",{event:rt.evento||"chamado"},(msg)=>{ atualizarDoServidor(msg&&msg.payload?msg.payload.c:null); })
+        .on("broadcast",{event:"palco"},(msg)=>{ aplicarPalco(msg&&msg.payload); })
+        .subscribe((status)=>{
+          if(status==="SUBSCRIBED"){ tentativa=0; return; }
+          if(status==="CHANNEL_ERROR"||status==="TIMED_OUT"||status==="CLOSED"){
+            try{ sb.removeChannel(rtCanal); }catch(e){}
+            const espera=Math.min(30000, 2000*Math.pow(2,tentativa)); tentativa++;
+            setTimeout(assinar, espera);
+          }
+        });
+    };
+    assinar();
+  }
+
+  async function iniciarEscutaChamada(){
+    const ctrl=document.querySelector(".ctrl"); if(ctrl) ctrl.style.display="none"; // telão real é exibição: sem controles de demo
+    const d=await buscarTelao();
+    if(d){ aplicarDados(d,false); conectarRealtime(d.realtime); }
+    if(!telaoPoll) telaoPoll=setInterval(atualizarDoServidor, 20000);
   }
 
   function toggleMute(){
@@ -490,8 +655,7 @@
     document.getElementById("start").classList.add("hide");
     try{alerta.load();}catch(e){} unlockAudio();
     if("speechSynthesis" in window){speechSynthesis.getVoices();}
-    iniciarPollLocutor(); // passa a escutar o painel do locutor
-    iniciarEscutaChamada(); // passa a escutar as chamadas do atendente (BroadcastChannel)
+    iniciarEscutaChamada(); // escuta os chamados REAIS do evento (broadcast do Realtime + poll de 20s)
     try{ const savedYt=localStorage.getItem("prometeu_yt"); if(savedYt){ document.getElementById("yt-url").value="https://youtu.be/"+savedYt; carregarYouTube(savedYt); } }catch(e){} // restaura o vídeo do último uso
   }
 

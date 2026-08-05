@@ -3,7 +3,7 @@ import { NextResponse } from "next/server";
 import { authorizePrometeuRead, authorizePrometeuWrite } from "@/lib/prometeu/auth";
 import { createPrometeuClient, listJanelas, salvarJanela } from "@/lib/prometeu/data";
 
-// Janelas de credenciamento — uma por DIA ("no tal dia sera nessa hora"). E o que decide, no
+// Janelas de check-in — uma por DIA ("no tal dia sera nessa hora"). E o que decide, no
 // instante do bip, se a fila da recepcao segue a ordem do PIX ou a ordem de chegada.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";

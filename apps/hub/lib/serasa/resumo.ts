@@ -151,31 +151,45 @@ export function resumirRelatorio(corpo: unknown): ResumoRelatorio {
       comoTexto(registro?.name);
     resumo.situacao = comoTexto(registro?.statusRegistration);
 
-    // Score: primeiro em `attributes` (onde o TOP_SCORE entrega), depois no bloco `score`.
-    const dosAtributos = scoreDosAtributos(relatorio);
-    if (dosAtributos.valor !== undefined) {
-      resumo.score = dosAtributos.valor;
-      resumo.origemScore = dosAtributos.origem;
-      resumo.faixa = dosAtributos.faixa;
-    }
-
+    // Score de crédito. A FONTE PRIMÁRIA é o bloco `score` (PRODUÇÃO: score.score=916, modelo HRLN,
+    // codeMessage 99). Só quando ele não traz score válido — foi o caso da HOMOLOGAÇÃO, que devolvia
+    // codeMessage 404 "Score not found" — é que se usa `attributes.attributesResponse[].scoring`
+    // (663, HRP4). Nunca o contrário: em produção o `scoring` de attributes é de OUTRO modelo
+    // (HRP5, ex.: 3722/5017), numa escala diferente, e NÃO é o score de crédito.
     const score = comoRegistro(relatorio.score);
     if (score) {
-      if (resumo.score === undefined) {
-        for (const chave of ["score", "scoreValue", "value", "pontuacao"]) {
-          const n = Number(score[chave]);
-          if (Number.isFinite(n) && n > 0 && n <= 1000) {
-            resumo.score = n;
-            resumo.origemScore = `reports[0].score.${chave}`;
-            break;
-          }
+      for (const chave of ["score", "scoreValue", "value", "pontuacao"]) {
+        const n = Number(score[chave]);
+        if (Number.isFinite(n) && n > 0 && n <= 1000) {
+          resumo.score = n;
+          resumo.origemScore = `reports[0].score.${chave}`;
+          resumo.faixa = comoTexto(score.scoreModel);
+          break;
         }
-        resumo.faixa = resumo.faixa ?? comoTexto(score.scoreModel);
       }
       // A mensagem do bloco score explica quando o score não pôde ser calculado.
       if (resumo.score === undefined) resumo.mensagemScore = comoTexto(score.message);
       // `billing` diz se ESTA consulta foi cobrada — melhor que qualquer estimativa nossa.
       if (typeof score.billing === "boolean") resumo.cobrado = score.billing;
+    }
+
+    // Fallback (HOMOLOGAÇÃO): quando o bloco `score` não trouxe score, o valor real está em
+    // `attributes`. Em produção este ramo não é alcançado, porque score.score já resolveu.
+    if (resumo.score === undefined) {
+      const dosAtributos = scoreDosAtributos(relatorio);
+      if (dosAtributos.valor !== undefined) {
+        resumo.score = dosAtributos.valor;
+        resumo.origemScore = dosAtributos.origem;
+        resumo.faixa = dosAtributos.faixa;
+      }
+    }
+
+    // Cobrança (`billing`): em produção não vem no bloco `score`, e sim no primeiro atributo.
+    if (resumo.cobrado === undefined) {
+      const attr0 = comoRegistro(
+        comoLista(comoRegistro(relatorio.attributes)?.attributesResponse)[0],
+      );
+      if (typeof attr0?.billing === "boolean") resumo.cobrado = attr0.billing;
     }
 
     const { negativacoes, protestos } = contarNegativacoes(comoRegistro(relatorio.negativeData));

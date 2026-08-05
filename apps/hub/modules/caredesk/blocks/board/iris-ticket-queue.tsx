@@ -42,6 +42,8 @@ export type IrisBoardTicket = {
   crm360Registration?: unknown;
   // Conversa de grupo de WhatsApp (monitoramento CACÁ, read-only).
   isGroup?: boolean;
+  // Atendimento nascido de uma AÇÃO de contato em massa (metadata.acaoId) → mora na aba "Ações".
+  isAcao?: boolean;
   // Conversa 1:1 do canal Relacionamento (6566) via Evolution.
   isDirect?: boolean;
   firstRespondedAt?: string | null;

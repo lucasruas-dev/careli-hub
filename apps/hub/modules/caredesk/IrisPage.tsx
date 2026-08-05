@@ -148,6 +148,8 @@ import { getHubPresenceSnapshot } from "@/lib/hub-presence";
 import { canReplyAsCaca } from "@/lib/iris/caca-reply-access";
 import { PhoneFlag } from "./components/phone-flag";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+import { IrisCronometroEspera } from "./blocks/conversation/iris-cronometro-espera";
+import { calcularEspera, classesDaEspera } from "./lib/espera";
 import { useAuth } from "@/providers/auth-provider";
 import { usePanteonNotifications } from "@/providers/pulsex-notification-provider";
 import type {
@@ -1374,6 +1376,7 @@ export function IrisPage({
               renderCobrancaProposal={renderCobrancaProposal}
               ticket={selectedTicketForView}
               tickets={irisData.tickets}
+              templates={irisData.templates}
               selectedTicketId={selectedTicket?.id ?? selectedTicketId}
               onSelectTicket={setSelectedTicketId}
               onClose={() => setActiveView("gestao")}
@@ -1456,6 +1459,7 @@ export function IrisPage({
               renderCobrancaProposal={renderCobrancaProposal}
               ticket={selectedTicketForView}
               tickets={irisData.tickets}
+              templates={irisData.templates}
               selectedTicketId={selectedTicket?.id ?? selectedTicketId}
               onSelectTicket={setSelectedTicketId}
               onClose={() => setActiveView("gestao")}
@@ -1570,6 +1574,7 @@ function AttendanceView({
   onSelectTicket,
   renderCobrancaProposal,
   selectedTicketId,
+  templates,
   ticket,
   tickets,
 }: {
@@ -1592,6 +1597,7 @@ function AttendanceView({
   }) => void;
   onSelectTicket: (ticketId: string) => void;
   selectedTicketId: string;
+  templates?: IrisTemplate[];
   ticket: IrisTicket | null;
   tickets: IrisTicket[];
 }) {
@@ -1613,6 +1619,7 @@ function AttendanceView({
       onMessageUpdated={onMessageUpdated}
       onTicketClosed={onTicketClosed}
       onTicketContextUpdated={onTicketContextUpdated}
+      templates={templates}
     />
   );
 }
@@ -1662,6 +1669,7 @@ function IrisConversationPanel({
   onSelectTicket,
   renderCobrancaProposal,
   selectedTicketId,
+  templates,
   ticket,
   tickets,
 }: {
@@ -1686,8 +1694,11 @@ function IrisConversationPanel({
   selectedTicketId: string;
   ticket: IrisTicket;
   tickets: IrisTicket[];
+  // Modelos aprovados da Meta — usados para REABRIR conversa fora da janela de 24h.
+  templates?: IrisTemplate[];
 }) {
   const [conversationFilter, setConversationFilter] = useState("Abertas");
+  const [reabrindoConversa, setReabrindoConversa] = useState(false);
   // Filtro por canal na fila (Tudo / WhatsApp / Grupo / E-mail).
   const [conversationChannel, setConversationChannel] =
     useState<IrisInboxChannelFilter>("all");
@@ -1978,24 +1989,18 @@ function IrisConversationPanel({
   ];
 
   const loadApoloContext = useCallback(async () => {
-    const phoneDigits = normalizeIrisPhoneDigits(ticket.contactPhone);
-    const queryCandidates = [
-      phoneDigits.length >= 8 ? phoneDigits : "",
-      ticketContactLabel(ticket),
-    ].filter((value, index, values) => {
-      const normalized = value.trim();
-
-      return (
-        normalized.length >= 3 &&
-        values.findIndex((item) => item.trim() === normalized) === index
-      );
-    });
+    // O cockpit SÓ enriquece o painel quando o TELEFONE do contato casou no Apolo (regra do Lucas
+    // 25/jul — ver [[reference_iris_vinculo_nome_vazamento]]). O `documentMasked` vem do phone-match
+    // (crm360Registration) e SÓ existe quando o telefone bateu; o read-model do Apolo é buscado por
+    // TEXTO (o documento está no normalized_text, o telefone fica hasheado e não casa por texto).
+    // NUNCA buscamos por NOME: era o que pescava um homônimo e vazava a carteira de outra pessoa.
+    const documentQuery = (ticket.crm360Registration?.documentMasked ?? "").trim();
+    const queryCandidates = documentQuery.length >= 3 ? [documentQuery] : [];
 
     if (!queryCandidates.length) {
+      // Sem match por telefone (nenhum documento do phone-match): não traz nada do Apolo.
       setApoloContextEntity(null);
-      setApoloContextError(
-        "Telefone ou nome insuficiente para consultar o Apolo.",
-      );
+      setApoloContextError(null);
       setApoloContextLoading(false);
       return;
     }
@@ -2055,8 +2060,8 @@ function IrisConversationPanel({
         try {
           const c2xResponse = await fetch("/api/iris/c2x/resolve", {
             body: JSON.stringify({
+              // Só por TELEFONE — nunca por nome (evita casar homônimo). Ver regra acima.
               phones: ticket.contactPhone ? [ticket.contactPhone] : [],
-              query: ticketContactLabel(ticket),
             }),
             cache: "no-store",
             headers: {
@@ -2629,17 +2634,80 @@ function IrisConversationPanel({
     }
   }
 
-  async function closeTicket() {
-    if (ticketClosed || closingTicket) {
+  // REABRIR CONVERSA fora da janela de 24h. A Meta só aceita modelo aprovado depois desse prazo,
+  // e sem isto o operador ficava sem NENHUM caminho: 80 dos 98 atendimentos abertos estavam
+  // nessa situação em 26/07, 61 deles com a bola conosco. Envia no protocolo atual (não cria
+  // ticket novo, que era o que o "+ Novo atendimento" tentava e recusava com 409).
+  const templatesDeRetomada = (templates ?? [])
+    .filter(
+      (modelo) =>
+        modelo.channelKind === "whatsapp" &&
+        Boolean(readTemplateMetaName(modelo)) &&
+        modelo.status !== "paused" &&
+        !isMetaTemplateUnavailableStatus(readTemplateMetaStatus(modelo)),
+    )
+    .map((modelo) => ({
+      id: modelo.id,
+      label: modelo.name,
+      preview: (modelo.body ?? "").slice(0, 180),
+    }));
+
+  async function reabrirConversaComTemplate(templateId: string) {
+    const modelo = (templates ?? []).find((item) => item.id === templateId);
+    const metaName = readTemplateMetaName(modelo);
+
+    if (!modelo || !metaName || !ticket.contactPhone) {
+      setFeedback("Não consegui identificar o modelo ou o telefone do cliente.");
       return;
     }
-    const confirmed = window.confirm(
-      `Encerrar o chat e finalizar o protocolo ${ticket.protocol}?`,
-    );
-    if (!confirmed) {
-      return;
+
+    setReabrindoConversa(true);
+    setFeedback("");
+
+    try {
+      const token = await accessToken();
+      const response = await fetch("/api/iris/meta/messages", {
+        body: JSON.stringify({
+          // O corpo renderizado é o que fica no histórico da Iris; o que a Meta envia é o
+          // modelo aprovado com os parâmetros.
+          body: modelo.body ?? modelo.name,
+          channelId: ticket.channelId ?? undefined,
+          contactId: ticket.contactId ?? undefined,
+          template: {
+            bodyParameters: [],
+            language: readTemplateMetadataString(modelo, "metaLanguage") ?? "pt_BR",
+            name: metaName,
+          },
+          ticketId: ticket.id,
+          to: ticket.contactPhone,
+        }),
+        cache: "no-store",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
+        method: "POST",
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        message?: IrisMessage;
+      } | null;
+
+      if (!response.ok) {
+        setFeedback(payload?.error ?? "Não foi possível reabrir a conversa.");
+        return;
+      }
+
+      if (payload?.message) {
+        onMessageCreated(ticket.id, payload.message);
+      }
+
+      setFeedback("Conversa reaberta. A janela de 24h volta quando o cliente responder.");
+    } catch {
+      setFeedback("Não foi possível reabrir a conversa.");
+    } finally {
+      setReabrindoConversa(false);
     }
-    await performClose({});
   }
 
   async function transferTicket(input: {
@@ -4066,6 +4134,19 @@ function IrisConversationPanel({
                 </h2>
                 <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs font-medium text-ink-muted">
                   <span>{ticket.protocol}</span>
+                  {/* Cronômetro AO VIVO de quanto o cliente está esperando resposta (pedido do
+                      Lucas). Só aparece quando a bola é nossa; some sozinho quando respondemos. */}
+                  {!ticketClosed ? (
+                    <IrisCronometroEspera
+                      bolaConosco={latestMessage?.direction === "inbound"}
+                      desde={
+                        [...ticket.messages]
+                          .reverse()
+                          .find((mensagem) => mensagem.direction === "inbound")
+                          ?.createdAt ?? ticket.lastMessageAt
+                      }
+                    />
+                  ) : null}
                   {/* Grupo nao tem status de atendimento (nao abre nem encerra). */}
                   {!ticketIsGroup ? (
                     <>
@@ -4292,6 +4373,9 @@ function IrisConversationPanel({
           cobrancaMode={cobrancaMode}
           composerMode={effectiveComposerMode}
           composerReady={composerReadyForMode}
+          templatesDeRetomada={templatesDeRetomada}
+          onReabrirConversa={reabrirConversaComTemplate}
+          reabrindoConversa={reabrindoConversa}
           mustWhisper={mustWhisper}
           onComposerModeChange={setComposerMode}
           onToggleAttendant={() => setAttendantOpen((current) => !current)}
@@ -4541,6 +4625,15 @@ function IrisConversationPanel({
       {closeModalOpen ? (
         <IrisCobrancaCloseModal
           currentSubject={attendanceSubject || ticket.subject}
+          // Cliente falou por último = a bola está com a gente. Auditoria de 25/jun a 26/jul: 136
+          // atendimentos foram encerrados como "Finalizado" nessa situação, 49 deles com um pedido
+          // explícito em aberto (o pior: AT-000308, fechado com a cliente pedindo boleto há 2 dias).
+          // O modal mostra a mensagem que ficaria sem resposta em vez de perguntar no vazio.
+          pendenciaDoCliente={
+            latestMessage?.direction === "inbound"
+              ? (latestMessage.body?.trim().slice(0, 160) ?? null) || null
+              : null
+          }
           protocol={ticket.protocol}
           submitting={closingTicket}
           onCancel={() => setCloseModalOpen(false)}
@@ -7555,12 +7648,29 @@ async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
     throw new Error("Conexao do Supabase indisponivel para salvar a fila.");
   }
 
+  // MERGE, não substituição. O metadata da fila guarda o vínculo fila→número (channelId) mas
+  // também o dono padrão do Direct (defaultAssigneeUserId), gravado fora desta tela. Escrever
+  // o objeto inteiro apagaria em silêncio tudo o que a tela não conhece — é a mesma armadilha
+  // do upsert que já limpou metadata no Apolo. Ver [[reference-apolo-metadata-sync-apaga]].
+  let metadataAtual: Record<string, unknown> = {};
+
+  if (form.id) {
+    const { data } = await supabase
+      .from("caredesk_queues")
+      .select("metadata")
+      .eq("id", form.id)
+      .maybeSingle<{ metadata: unknown }>();
+
+    if (data?.metadata && typeof data.metadata === "object" && !Array.isArray(data.metadata)) {
+      metadataAtual = data.metadata as Record<string, unknown>;
+    }
+  }
+
   const payload = {
     assignment_strategy: form.assignmentStrategy.trim() || "manual",
     color: /^#[0-9a-fA-F]{6}$/.test(form.color) ? form.color : "#A07C3B",
     default_priority: normalizePriority(form.defaultPriority),
-    // Vínculo fila→número (canal WhatsApp). metadata das filas só guarda isso hoje.
-    metadata: { channelId: form.channelId.trim() || null },
+    metadata: { ...metadataAtual, channelId: form.channelId.trim() || null },
     name: form.name.trim(),
     routing_strategy: form.routingStrategy.trim() || "manual",
     sla_first_response_minutes: normalizePositiveInteger(
@@ -8293,16 +8403,47 @@ function isWaitingForIris(ticket: IrisTicket) {
   );
 }
 
-function isSlaCritical(ticket: IrisTicket) {
-  const due = ticket.firstRespondedAt
-    ? ticket.resolutionDueAt
-    : (ticket.firstResponseDueAt ?? ticket.resolutionDueAt);
-
-  if (!due || isClosedTicket(ticket)) {
-    return false;
+// TEMPO DE ESPERA no lugar do "Vencido" binário.
+//
+// A regra antiga comparava o prazo do SLA com o relógio e pintava de vermelho 96 dos 98
+// atendimentos abertos, incluindo 19 de 19 que aguardavam o CLIENTE responder. Cor que aparece
+// em 98% da tela não separa nada, e a operadora acabava escolhendo o próximo pela ordem em que
+// apareceu. Agora o relógio só corre quando a bola é NOSSA e pausa fora do expediente.
+// A lógica (com 12 testes) vive em ./lib/espera.
+function esperaDoTicket(ticket: IrisTicket) {
+  if (isClosedTicket(ticket)) {
+    return { faixa: "sem_espera" as const, minutos: 0, rotulo: "" };
   }
 
-  return new Date(due).getTime() <= Date.now();
+  const status = effectiveIrisStatus(ticket);
+  const ultima = ticket.messages.at(-1);
+  const ultimoInbound = [...ticket.messages]
+    .reverse()
+    .find((mensagem) => mensagem.direction === "inbound");
+
+  // A bola é nossa quando o status diz que esperamos agir OU quando o cliente falou por último.
+  // waiting_customer é o caso explícito de bola com ele: aí não há espera a cobrar de ninguém.
+  const bolaConosco =
+    status === "waiting_customer"
+      ? false
+      : status === "new" || status === "pending" || status === "waiting_operator"
+        ? true
+        : ultima
+          ? ultima.direction === "inbound"
+          : false;
+
+  return calcularEspera({
+    bolaConosco,
+    // Conta do último inbound, não da abertura: um atendimento antigo em que a cliente acabou de
+    // escrever espera há 2 minutos, não há 3 dias.
+    desde: ultimoInbound?.createdAt ?? ticket.lastMessageAt,
+  });
+}
+
+// Mantida com a mesma assinatura: é usada no contador do board, na ordenação e no card.
+// "Crítico" passa a significar "esperando há muito tempo por NÓS".
+function isSlaCritical(ticket: IrisTicket) {
+  return esperaDoTicket(ticket).faixa === "atrasado";
 }
 
 function slaLabel(ticket: IrisTicket) {
@@ -8310,27 +8451,14 @@ function slaLabel(ticket: IrisTicket) {
     return "Encerrado";
   }
 
-  const due = ticket.firstRespondedAt
-    ? ticket.resolutionDueAt
-    : (ticket.firstResponseDueAt ?? ticket.resolutionDueAt);
+  const espera = esperaDoTicket(ticket);
 
-  if (!due) {
-    return "Sem SLA";
+  if (espera.faixa === "sem_espera") {
+    // Bola com o cliente: não é "sem SLA" nem "vencido", é simplesmente a vez dele.
+    return "Aguardando cliente";
   }
 
-  const diffMinutes = Math.round(
-    (new Date(due).getTime() - Date.now()) / 60000,
-  );
-
-  if (diffMinutes <= 0) {
-    return "Vencido";
-  }
-
-  if (diffMinutes < 60) {
-    return `${diffMinutes} min`;
-  }
-
-  return `${Math.floor(diffMinutes / 60)}h ${diffMinutes % 60}m`;
+  return espera.rotulo;
 }
 
 function slaClasses(ticket: IrisTicket) {
@@ -8338,11 +8466,7 @@ function slaClasses(ticket: IrisTicket) {
     return "bg-subtle text-ink-soft ring-slate-200";
   }
 
-  if (isSlaCritical(ticket)) {
-    return "bg-rose-50 text-rose-700 ring-rose-100";
-  }
-
-  return "bg-emerald-50 text-emerald-700 ring-emerald-100";
+  return classesDaEspera(esperaDoTicket(ticket).faixa);
 }
 
 function statusTone(status: IrisStatus) {
@@ -8692,7 +8816,11 @@ function pickIrisApoloEntityForTicket(
     }
   }
 
-  return entities[0] ?? null;
+  // NUNCA cair no primeiro resultado. Antes um `entities[0]` aqui pegava o 1º HOMÔNIMO de uma
+  // busca por nome e enchia o painel com a carteira de OUTRA pessoa (incidente Ana Paula,
+  // ver [[reference_iris_vinculo_nome_vazamento]]). O cockpit só enriquece com match por TELEFONE
+  // (via entityId do phone-match ou telefone nos contatos); sem isso, não resolve entidade nenhuma.
+  return null;
 }
 
 function hasIrisRegisteredUserProfile(

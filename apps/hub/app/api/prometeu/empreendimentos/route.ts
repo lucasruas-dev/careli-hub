@@ -8,6 +8,8 @@ import { authorizePrometeuRead } from "@/lib/prometeu/auth";
 // (`apolo_enterprise_settings.credenciamento_ativo`), com nome e sigla vindos do C2X.
 // Amarrar o evento ao empreendimento REAL e o que deixa a etiqueta e a fila filtrarem por ele
 // depois — evento novo com nome digitado a mao nao se liga a nada.
+// O objeto ja carrega `incorporador` (vem do C2X em listEmpreendimentosAtivos) e e repassado
+// verbatim no JSON: o Setup usa esse valor pra pre-preencher a construtora.
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 

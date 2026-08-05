@@ -125,18 +125,24 @@ async function ingestOne(
   message: ParsedGmailMessage,
 ): Promise<IngestOutcome> {
   const recipients = extractEmails([message.deliveredTo, message.to]);
-  let channel = await findEmailChannel(client, recipients);
 
+  // O canal é decidido em duas etapas, nesta ordem:
+  // 1) THREAD conhecida: resposta a uma conversa que já existe volta pro MESMO canal, mesmo que
+  //    tenha voltado endereçada à caixa robô (caca@) em vez do grupo (contato@). Mantém a conversa.
+  let channel = await findChannelByExistingThread(client, message.threadId);
+
+  // 2) Pelo DESTINATÁRIO, com prioridade pro canal de GRUPO: e-mail pro grupo contato@ carrega
+  //    contato@ E caca@ (Delivered-To) nos destinatários -> vai pro canal CONTATO; e-mail que chega
+  //    DIRETO na caca@ (só caca@) -> vai pro canal da própria caixa robô (CACÁ). Duas filas
+  //    separadas: o que chega no contato fica no contato, o que chega na caca fica na caca. A caca@
+  //    é caixa robô (ninguém atende nela), então tudo que cai lá vira fila. (decisão do Lucas 25/jul,
+  //    ver [[reference_iris_email_inbound_match]].)
   if (!channel) {
-    // Fallback por THREAD: a resposta do cliente pode voltar endereçada à caixa robô (caca@)
-    // em vez do grupo (contato@) — acontece enquanto o Send-As não está configurado, aí o
-    // envio sai como caca@ e o "responder" do cliente vai pra caca@. Se o threadId casa com um
-    // ticket existente, usamos o canal dele e anexamos. Robusto e não depende do destinatário.
-    channel = await findChannelByExistingThread(client, message.threadId);
+    channel = await findEmailChannel(client, recipients);
   }
 
   if (!channel) {
-    // Nenhum grupo mapeado nem thread conhecida. Não vira ticket.
+    // Nem thread nem canal por destinatário (nem Contato nem Cacá). Não vira ticket.
     return "skipped";
   }
 
@@ -194,15 +200,32 @@ async function findEmailChannel(
     .select("id,external_account_id,config,workspace_id")
     .eq("kind", "email")
     .eq("status", "active")
-    .in("external_account_id", recipients)
-    .limit(1)
-    .maybeSingle<ChannelRow>();
+    .in("external_account_id", recipients);
 
   if (error) {
     throw error;
   }
 
-  return data;
+  const canais = data ?? [];
+  if (canais.length === 0) {
+    return null;
+  }
+
+  // Um e-mail do GRUPO bate DOIS canais: contato@ (do To) e caca@ (do Delivered-To, a caixa robô).
+  // Prioriza o canal de grupo — aquele cujo endereço NÃO é a própria caixa de ingestão — sobre o
+  // canal da caixa robô (Cacá). Assim o e-mail do grupo vai pro Contato; só o que chega DIRETO na
+  // caca@ (sem grupo no destinatário) cai no Cacá.
+  const deGrupo = canais.find((c) => {
+    const ingest = readChannelIngestMailbox(c);
+    return !ingest || c.external_account_id?.trim().toLowerCase() !== ingest;
+  });
+  return deGrupo ?? canais[0] ?? null;
+}
+
+// Endereço da caixa de ingestão do canal (config.ingestMailbox), normalizado. null se ausente.
+function readChannelIngestMailbox(channel: ChannelRow): string | null {
+  const raw = channel.config?.["ingestMailbox"];
+  return typeof raw === "string" ? raw.trim().toLowerCase() : null;
 }
 
 // Casa o canal pelo THREAD do Gmail: procura um ticket cujo source_context.gmailThreadId seja

@@ -49,6 +49,8 @@ import {
   titleCase,
 } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
+import { documentosFaltandoCurto, juntarPtBr } from "@/lib/apolo/cadastro-obrigatorios";
+import { cpfValido } from "@/lib/apolo/documento";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 
 import {
@@ -62,6 +64,11 @@ import {
   ehPdf,
   trocarExtensaoParaJpg,
 } from "../../lib/document-capture";
+import {
+  type AssinaturaUpload,
+  bytesDoBase64,
+  subirDocumentoDireto,
+} from "../../lib/document-upload";
 import { buscarEnderecoPorCep, soDigitos } from "../../lib/cep";
 
 // Wizard de cadastro de CAD (prospect). Etapas: Identificação -> Endereço ->
@@ -75,6 +82,9 @@ type SelectOption = { id: number | string; label: string };
 type CadastroDraft = Record<string, string>;
 type Extraction = {
   cadastro: CadastroDraft;
+  // Aviso NÃO-bloqueante de baixa confiança: preenchido pelo conferirDocumento quando o doc é de
+  // uma família que não trava (comprovante/certidão/genérico). O DocUploader mostra em âmbar.
+  avisoQualidade?: string;
   // Confiança do documento inteiro, dita pela MOST (result[].score) — é o porteiro.
   confiancaDocumento?: number | null;
   // Recorte tratado que a MOST devolve (endireitado, sem fundo). Vai pro drive no lugar da
@@ -216,6 +226,56 @@ type DocCategoria =
   | "identificacao_conjuge";
 // N arquivos por categoria: um documento pode ter frente + verso, ou varias paginas.
 type DocumentosAnexados = Partial<Record<DocCategoria, ArquivoAnexado[]>>;
+
+// ---------------------------------------------------------------------------
+// Dois caminhos para o arquivo, escolhidos por TAMANHO (decisão do Lucas)
+// ---------------------------------------------------------------------------
+//
+// PEQUENO: segue o fluxo de HOJE, base64 dentro do JSON de /salvar. Nada muda — nem o agrupamento
+// de RG frente+verso num PDF único, nem a leitura, nem a ordem das coisas.
+// GRANDE: sobe DIRETO pro Storage (URL assinada) e no JSON viaja só o caminho do arquivo gravado.
+//
+// O corte isola o risco: o caminho novo só é exercitado por arquivo que HOJE JÁ FALHA.
+//
+// DE ONDE SAI O NÚMERO: a Vercel corta o corpo da requisição em ~4,5MB ANTES de a rota rodar, e o
+// base64 infla o arquivo em ~33% (4,5MB de base64 são ~3,4MB de arquivo). Descontando o resto do
+// JSON (a estrutura da CAD, ficha, sócios), sobra o teto de 3,2MB de base64 que JÁ roda em
+// produção hoje. Mantê-lo é o que garante que todo cadastro que funciona hoje continue idêntico:
+// se tudo cabe em 3,2MB, nada sobe direto.
+const TETO_CORPO_BASE64 = 3_200_000;
+// Teto por documento, em bytes REAIS do arquivo. Acima disso não existe caminho: nem o direto.
+const TETO_DOCUMENTO_BYTES = 20 * 1024 * 1024;
+
+type DocumentoEnvio = {
+  categoria: string;
+  fileBase64?: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes?: number;
+  storagePath?: string;
+};
+
+// Quais CATEGORIAS não cabem no corpo e vão pelo caminho direto.
+//
+// A decisão é por CATEGORIA, nunca por arquivo solto: frente e verso do mesmo documento têm que ir
+// pelo mesmo caminho, senão o servidor fica com os bytes de uma face e o caminho da outra e o PDF
+// único do drive quebraria. Categorias MENORES primeiro: o orçamento do corpo é gasto com o que já
+// cabe hoje e só o excedente vai pro caminho novo.
+function categoriasParaUploadDireto(docs: DocumentoEnvio[]): Set<string> {
+  const porCategoria = new Map<string, number>();
+  for (const doc of docs) {
+    const atual = porCategoria.get(doc.categoria) ?? 0;
+    porCategoria.set(doc.categoria, atual + (doc.fileBase64?.length ?? 0));
+  }
+
+  const direto = new Set<string>();
+  let usado = 0;
+  for (const [categoria, tamanho] of [...porCategoria.entries()].sort((a, b) => a[1] - b[1])) {
+    if (usado + tamanho <= TETO_CORPO_BASE64) usado += tamanho;
+    else direto.add(categoria);
+  }
+  return direto;
+}
 
 // QSA que vem do enriquecimento por CNPJ: informativo, read-only.
 type Socio = { nome: string; qualificacao: string };
@@ -496,15 +556,23 @@ const CONFIANCA_MINIMA: Record<FamiliaDoc, number> = {
   outro: 0.65,
 };
 
-// Recusa o documento trocado. So barra quando a leitura reconheceu OUTRA familia com clareza —
-// tipo nao reconhecido ("outro") passa, pra nao travar documento legitimo mal classificado.
+
+// Confere o documento e ANOTA AVISOS — nunca trava (decisão do Lucas, 02/08: "tira a trava da
+// certidão de casamento e outras; se a MOST não conseguir ler, abre manual, mas salva o
+// arquivo"). Antes, tipo trocado e qualidade baixa de RG/CNH lançavam erro e o ARQUIVO ERA
+// DESCARTADO junto — no dia do evento isso barrou certidão legítima que a MOST não reconhece.
+// A leitura vira apoio: preenche o que conseguir, avisa o que desconfiou, e quem confere é o
+// operador na Validação. O arquivo enviado SEMPRE fica salvo (retenção no DocUploader).
 function conferirDocumento(ext: Extraction, aceitas: FamiliaDoc[], pedido: string): void {
   const familia = familiaDoc(ext.documentType);
+  const avisos: string[] = [];
 
+  // Tipo trocado com clareza ("outro" não conta): não barra mais, mas avisa alto.
   if (familia !== "outro" && !aceitas.includes(familia)) {
     const lido = mapDocType(ext.documentType);
-    throw new Error(
-      `Documento incorreto: parece ${lido ? `"${lido}"` : "de outro tipo"}. Envie ${pedido}.`,
+    avisos.push(
+      `A leitura reconheceu ${lido ? `"${lido}"` : "outro tipo de documento"} — confira se ` +
+        `enviou ${pedido}. O arquivo foi salvo; preencha os campos manualmente se preciso.`,
     );
   }
 
@@ -514,12 +582,13 @@ function conferirDocumento(ext: Extraction, aceitas: FamiliaDoc[], pedido: strin
   const minima = CONFIANCA_MINIMA[familia];
   const confianca = ext.confiancaDocumento ?? null;
   if (confianca !== null && confianca < minima) {
-    throw new Error(
-      `A qualidade do documento está ruim (leitura de ${Math.round(confianca * 100)}%, ` +
-        `mínimo ${Math.round(minima * 100)}%). Envie outra foto: documento inteiro ` +
-        "na imagem, sem reflexo e bem focado.",
+    avisos.push(
+      `Leitura com baixa confiança (${Math.round(confianca * 100)}%). ` +
+        "Os dados podem vir incompletos — confira e complete manualmente.",
     );
   }
+
+  if (avisos.length) ext.avisoQualidade = avisos.join(" ");
 }
 
 function mapCertidao(type: string): string {
@@ -658,6 +727,58 @@ async function apiGetEmpreendimentos(): Promise<SelectOption[]> {
     .map((row) => ({ id: String(row.id), label: String(row.name) }));
 }
 
+// Empreendimentos que UMA imobiliária específica trabalha (só prospect interno): alimenta o
+// seletor "Empreendimento" do bloco Vínculo. Bearer via accessToken(); `[]` em erro.
+async function apiEmpreendimentosDaImob(
+  imobId: string,
+): Promise<Array<{ enterpriseId: string; nome: string }>> {
+  try {
+    const token = await accessToken();
+    const response = await fetch(`/api/apolo/imobiliarias/${imobId}/empreendimentos`, {
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const json = (await response.json().catch(() => null)) as
+      | { data?: { empreendimentos?: Array<{ enterpriseId?: string; nome?: string }> } }
+      | null;
+    return (json?.data?.empreendimentos ?? [])
+      .filter((row) => row?.enterpriseId && row?.nome)
+      .map((row) => ({ enterpriseId: String(row.enterpriseId), nome: String(row.nome) }));
+  } catch {
+    return [];
+  }
+}
+
+// Corretores vinculados a UMA imobiliária (só prospect interno): alimenta o seletor "Corretor" do
+// bloco Vínculo. Bearer via accessToken(); `[]` em erro.
+async function apiCorretoresDaImob(
+  imobId: string,
+): Promise<Array<{ entityId: string; nome: string; email: string | null }>> {
+  try {
+    const token = await accessToken();
+    const response = await fetch(`/api/apolo/imobiliarias/${imobId}/corretores`, {
+      cache: "no-store",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    const json = (await response.json().catch(() => null)) as
+      | {
+          data?: {
+            corretores?: Array<{ entityId?: string; nome?: string; email?: string | null }>;
+          };
+        }
+      | null;
+    return (json?.data?.corretores ?? [])
+      .filter((row) => row?.entityId && row?.nome)
+      .map((row) => ({
+        email: row.email ?? null,
+        entityId: String(row.entityId),
+        nome: String(row.nome),
+      }));
+  } catch {
+    return [];
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Adapter de I/O: interno (Bearer) x público (token de sessão do corretor).
 //
@@ -688,7 +809,51 @@ export type ApiCadastro = {
   salvar: (body: Record<string, unknown>) => Promise<SalvarResposta>;
   imobiliarias: () => Promise<SelectOption[]>;
   empreendimentos: () => Promise<SelectOption[]>;
+  // Permissão de gravar UM documento grande direto no Storage. Mora no adapter porque interno e
+  // público falam com rotas diferentes (Bearer x token de sessão).
+  assinarUpload: (fileName: string) => Promise<AssinaturaUpload>;
 };
+
+// Pede a permissão de upload direto no modo INTERNO (operador logado, Bearer).
+async function apiAssinarUploadCadastro(fileName: string): Promise<AssinaturaUpload> {
+  const token = await accessToken();
+  const response = await fetch("/api/apolo/cadastro/upload-url", {
+    body: JSON.stringify({ fileName }),
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    method: "POST",
+  });
+  const json = (await response.json().catch(() => null)) as
+    | (Partial<AssinaturaUpload> & { error?: string })
+    | null;
+  if (!response.ok || !json?.bucket || !json?.path || !json?.token) {
+    throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
+  }
+  return { bucket: json.bucket, path: json.path, token: json.token };
+}
+
+// Espelho público: mesma forma, token de sessão no header em vez de Bearer.
+async function assinarUploadPublico(
+  headers: Record<string, string>,
+  fileName: string,
+): Promise<AssinaturaUpload> {
+  const response = await fetch("/api/publico/cad/upload-url", {
+    body: JSON.stringify({ fileName }),
+    cache: "no-store",
+    headers,
+    method: "POST",
+  });
+  const json = (await response.json().catch(() => null)) as
+    | (Partial<AssinaturaUpload> & { error?: string })
+    | null;
+  if (!response.ok || !json?.bucket || !json?.path || !json?.token) {
+    throw new Error(json?.error ?? `Falha HTTP ${response.status}`);
+  }
+  return { bucket: json.bucket, path: json.path, token: json.token };
+}
 
 // Espelho público de `apiPost`: mesma forma (desembrulha `{ data }`), troca Bearer por o header
 // de sessão. A rota /api/publico/cad/ocr é um multiplexer por `action`, igual /api/apolo/mostqi.
@@ -746,6 +911,7 @@ async function salvarPublico(
 function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
   if (!publico) {
     return {
+      assinarUpload: apiAssinarUploadCadastro,
       empreendimentos: apiGetEmpreendimentos,
       imobiliarias: apiGetImobiliarias,
       ocr: apiPost,
@@ -759,6 +925,9 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
     [header]: publico.sessao,
   });
   return {
+    // A rota pública que assina o upload aceita os DOIS tokens (corretor e imobiliária), então
+    // basta repassar o mesmo header que o resto do adapter usa.
+    assinarUpload: (fileName: string) => assinarUploadPublico(headers(), fileName),
     // Imobiliária pública: a vitrine de ativos vem do token/prop, não de rede (não há rota que
     // liste). CAD do corretor: `[]` — imobiliária e empreendimento já vêm FIXOS do token.
     empreendimentos: async () => publico.empreendimentos ?? [],
@@ -776,6 +945,7 @@ type CadastroCtx = { api: ApiCadastro; modoPublico: boolean };
 
 const ApiCadastroContext = createContext<CadastroCtx>({
   api: {
+    assinarUpload: apiAssinarUploadCadastro,
     empreendimentos: apiGetEmpreendimentos,
     imobiliarias: apiGetImobiliarias,
     ocr: apiPost,
@@ -862,6 +1032,17 @@ export function CadastroFlow({
   // Seleção herdada do portal = não repete o seletor na Identificação.
   const empreendimentosHerdados = Boolean(empreendimentosIniciais?.length);
   const [corretores, setCorretores] = useState<CorretorCadastro[]>([]);
+  // Prospect INTERNO: depois de escolher a imobiliária no "Vínculo", vincula-se um empreendimento
+  // (que ELA trabalha) e um corretor (dela). Rotas próprias por imobiliária; só existe quando
+  // `!isImobiliaria && !modoPublico`. Ver o effect e o objeto `vinculoProspect` abaixo.
+  const [empImobLista, setEmpImobLista] = useState<Array<{ enterpriseId: string; nome: string }>>(
+    [],
+  );
+  const [empImobSel, setEmpImobSel] = useState("");
+  const [corretorImobLista, setCorretorImobLista] = useState<
+    Array<{ entityId: string; nome: string; email: string | null }>
+  >([]);
+  const [corretorImobSel, setCorretorImobSel] = useState("");
 
   // Imobiliárias reais do Apolo (read-model), inclusive no localhost: a chave de serviço do
   // .env.local valida contra o projeto de produção (verificado 16/jul). Sem lista, o seletor
@@ -901,6 +1082,41 @@ export function CadastroFlow({
       alive = false;
     };
   }, [api, isImobiliaria, modoPublico]);
+
+  // Prospect INTERNO: ao escolher a imobiliária no "Vínculo", carrega os empreendimentos que ELA
+  // trabalha e os corretores dela (rotas próprias). Só dispara quando `imobiliariaId` é uma
+  // imobiliária de verdade (UUID) — o mesmo seletor casa corretores avulsos, cujo id não é UUID.
+  // Trocar de imobiliária zera as seleções; 1 empreendimento já seleciona; 0 ou vários = operador.
+  useEffect(() => {
+    if (isImobiliaria || modoPublico) return;
+    const imobId = perfil.imobiliariaId;
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(imobId);
+    if (!isUuid) {
+      setEmpImobLista([]);
+      setEmpImobSel("");
+      setCorretorImobLista([]);
+      setCorretorImobSel("");
+      return;
+    }
+    let alive = true;
+    // Zera a seleção de corretor de cara: a lista da imobiliária ANTERIOR não vale pra esta.
+    setCorretorImobSel("");
+    void (async () => {
+      const [emps, cors] = await Promise.all([
+        apiEmpreendimentosDaImob(imobId),
+        apiCorretoresDaImob(imobId),
+      ]);
+      if (!alive) return;
+      setEmpImobLista(emps);
+      // Exatamente 1 → já seleciona (read-only na tela); 0 ou vários → operador decide.
+      setEmpImobSel(emps.length === 1 && emps[0] ? emps[0].enterpriseId : "");
+      setCorretorImobLista(cors);
+      setCorretorImobSel("");
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [isImobiliaria, modoPublico, perfil.imobiliariaId]);
 
   // PJ não tem certidão/cônjuge. PF: Casado(2), Divorciado(3), Separado(4) e
   // União Estável(6) exigem certidão (o MOST valida a autenticidade).
@@ -946,8 +1162,27 @@ export function CadastroFlow({
     setSocios([]);
     setEmpreendimentosSel([]);
     setCorretores([]);
+    setEmpImobLista([]);
+    setEmpImobSel("");
+    setCorretorImobLista([]);
+    setCorretorImobSel("");
     setResetKey((k) => k + 1);
   }
+
+  // Vínculo do prospect INTERNO (empreendimento + corretor da imobiliária) que vai no payload do
+  // salvar. Só existe quando um empreendimento foi resolvido (auto no caso de 1, ou escolhido).
+  const empImobSelObj = empImobLista.find((e) => e.enterpriseId === empImobSel);
+  const corretorImobSelObj = corretorImobLista.find((c) => c.entityId === corretorImobSel);
+  const vinculoProspect =
+    !isImobiliaria && !modoPublico && empImobSel
+      ? {
+          corretorEmail: corretorImobSelObj?.email ?? undefined,
+          corretorEntityId: corretorImobSel || undefined,
+          corretorNome: corretorImobSelObj?.nome ?? undefined,
+          empreendimentoNome: empImobSelObj?.nome ?? undefined,
+          enterpriseId: empImobSel,
+        }
+      : null;
 
   const activeIndex = Math.min(step, steps.length - 1);
   const pct = Math.round(((activeIndex + 1) / steps.length) * 100);
@@ -1012,6 +1247,10 @@ export function CadastroFlow({
         {current === "Identificação" ? (
           <StepIdentificacao
             conjuge={conjuge}
+            corretorImobLista={corretorImobLista}
+            corretorImobSel={corretorImobSel}
+            empImobLista={empImobLista}
+            empImobSel={empImobSel}
             empreendimentos={empreendimentos}
             empreendimentosHerdados={empreendimentosHerdados}
             empreendimentosSel={empreendimentosSel}
@@ -1023,6 +1262,8 @@ export function CadastroFlow({
             perfil={perfil}
             persona={persona}
             onConjugeChange={(patch) => setConjuge((c) => ({ ...c, ...patch }))}
+            onCorretorImobChange={setCorretorImobSel}
+            onEmpImobChange={setEmpImobSel}
             onEmpreendimentosChange={setEmpreendimentosSel}
             onDocumento={reterDocumento("identificacao")}
             onDocumentoConjuge={reterDocumento("identificacao_conjuge")}
@@ -1088,6 +1329,9 @@ export function CadastroFlow({
               }));
               setEnrich(enr);
             }}
+            onIdentidadeChange={(patch) =>
+              setIdentidade((atual) => (atual ? { ...atual, ...patch } : atual))
+            }
             onPerfilChange={(patch) => setPerfil((p) => ({ ...p, ...patch }))}
             onNext={() => setStep(1)}
           />
@@ -1200,6 +1444,7 @@ export function CadastroFlow({
             socios={socios}
             steps={steps}
             tipo={tipo}
+            vinculo={vinculoProspect}
             onBack={() => setStep(step - 1)}
             onEditar={(target) => setStep(target)}
           />
@@ -1328,6 +1573,7 @@ function DocUploader({
   const [lidos, setLidos] = useState<ArquivoLido[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [aviso, setAviso] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
   const working = loading || Boolean(busy);
@@ -1337,9 +1583,13 @@ function DocUploader({
   async function processFiles(files: File[]) {
     if (!files.length) return;
     setError(null);
+    setAviso(null);
     setLoading(true);
     try {
       const novos: ArquivoLido[] = [];
+      let falhaDeLeitura = false;
+      // Mensagem ESPECÍFICA quando a falha não é da leitura em si (429 do teto, 401 de sessão).
+      let avisoDeLeitura: string | null = null;
 
       for (const file of files) {
         let ext: Extraction = EXTRACAO_VAZIA;
@@ -1355,19 +1605,39 @@ function DocUploader({
           // extra quando o documento veio vazio — documento bom lê na primeira.
           // No público cada rotação é uma consulta COBRADA e o teto do balde `ocr` é apertado:
           // paramos em [0, 90] (a tela orienta a fotografar na horizontal). Interno mantém as 4.
-          const rotacoes = ehPdf(file) ? [0] : modoPublico ? [0, 90] : [0, 90, 270, 180];
-          for (const tentativa of rotacoes) {
-            const paraLeitura = await arquivoParaLeitura(file, tentativa);
-            ext = await api.ocr<Extraction>({
-              action: "extract",
-              fileBase64: paraLeitura.fileBase64,
-              fileName: paraLeitura.fileName,
-            });
-            // Reconheceu = extraiu ao menos um campo. Não dá pra usar documentType: result vazio
-            // volta como "desconhecido" (truthy), o que faria parar sem girar.
-            if (ext.fields.length > 0) {
-              graus = tentativa;
-              break;
+          //
+          // ⚠️ FALHA DE LEITURA NÃO DERRUBA O ENVIO (Lucas, 02/08): se a MOST der erro, o
+          // arquivo segue o fluxo com extração VAZIA — fica salvo, e os campos abrem para o
+          // preenchimento manual. Antes, o erro descartava o arquivo e travava o cadastro.
+          try {
+            const rotacoes = ehPdf(file) ? [0] : modoPublico ? [0, 90] : [0, 90, 270, 180];
+            for (const tentativa of rotacoes) {
+              const paraLeitura = await arquivoParaLeitura(file, tentativa);
+              ext = await api.ocr<Extraction>({
+                action: "extract",
+                fileBase64: paraLeitura.fileBase64,
+                fileName: paraLeitura.fileName,
+              });
+              // Reconheceu = extraiu ao menos um campo. Não dá pra usar documentType: result vazio
+              // volta como "desconhecido" (truthy), o que faria parar sem girar.
+              if (ext.fields.length > 0) {
+                graus = tentativa;
+                break;
+              }
+            }
+          } catch (erroLeitura) {
+            ext = EXTRACAO_VAZIA;
+            falhaDeLeitura = true;
+            // 429 (teto de leituras) e 401 (sessão expirada) NÃO são "leitura falhou": mascarar
+            // fazia o corretor digitar tudo na mão sem saber que era bloqueio — e no 401 o
+            // Enviar ia morrer no fim de qualquer jeito. A mensagem da rota é acionável.
+            const msg = erroLeitura instanceof Error ? erroLeitura.message : "";
+            if (/sess[aã]o/i.test(msg)) {
+              avisoDeLeitura =
+                "Sua sessão expirou — os campos abrem para preencher manualmente, mas o envio " +
+                "vai pedir para entrar de novo. Salve o que puder e reabra pelo CPF.";
+            } else if (/limite|429|aguarde/i.test(msg)) {
+              avisoDeLeitura = msg;
             }
           }
         }
@@ -1384,11 +1654,26 @@ function DocUploader({
       }
 
       const todos = [...lidos, ...novos];
-      // Alimenta a ficha com TUDO que foi lido (frente + verso). onExtracted valida e LANCA se
-      // for o tipo errado / qualidade ruim; por isso os arquivos so sao retidos depois.
-      await onExtracted(mesclarExtracoes(todos.map((item) => item.ext)));
+      // O ARQUIVO É RETIDO ANTES de qualquer validação (Lucas, 02/08): aconteça o que acontecer
+      // com a leitura, o documento enviado fica salvo. A única exceção continua sendo regra de
+      // NEGÓCIO no onExtracted (ex.: documento do titular no lugar do cônjuge), que lança — e
+      // mesmo aí o arquivo já foi anexado; a tela avisa para o operador trocar.
       for (const novo of novos) onFile?.(novo.arquivo);
       setLidos(todos);
+
+      // Alimenta a ficha com TUDO que foi lido (frente + verso). Leitura falha/vazia passa por
+      // aqui do mesmo jeito: os campos do formulário abrem em branco para o preenchimento manual.
+      const merged = mesclarExtracoes(todos.map((item) => item.ext));
+      await onExtracted(merged);
+      // Avisos de conferência (tipo trocado, baixa confiança): mostram, não travam.
+      if (merged.avisoQualidade) setAviso(merged.avisoQualidade);
+      if (falhaDeLeitura) {
+        setAviso(
+          avisoDeLeitura ??
+            "A leitura automática falhou neste documento. O arquivo foi salvo — " +
+              "preencha os campos manualmente.",
+        );
+      }
     } catch (err) {
       setError((err as Error).message);
     } finally {
@@ -1489,6 +1774,9 @@ function DocUploader({
       {error ? (
         <p className="mt-2 text-xs font-medium text-rose-600 dark:text-rose-300">{error}</p>
       ) : null}
+      {aviso && !error ? (
+        <p className="mt-2 text-xs font-medium text-amber-600 dark:text-amber-300">{aviso}</p>
+      ) : null}
     </div>
   );
 }
@@ -1572,6 +1860,10 @@ function NavButtons({
 
 function StepIdentificacao({
   conjuge,
+  corretorImobLista,
+  corretorImobSel,
+  empImobLista,
+  empImobSel,
   empreendimentos,
   empreendimentosHerdados,
   empreendimentosSel,
@@ -1581,12 +1873,15 @@ function StepIdentificacao({
   imobiliarias,
   isImobiliaria,
   onConjugeChange,
+  onCorretorImobChange,
   onDocumento,
   onDocumentoConjuge,
+  onEmpImobChange,
   onEmpreendimentosChange,
   onEmpresaChange,
   onEmpresaExtract,
   onExtract,
+  onIdentidadeChange,
   onNext,
   onPerfilChange,
   onPersona,
@@ -1594,6 +1889,10 @@ function StepIdentificacao({
   persona,
 }: {
   conjuge: Conjuge;
+  corretorImobLista: Array<{ entityId: string; nome: string; email: string | null }>;
+  corretorImobSel: string;
+  empImobLista: Array<{ enterpriseId: string; nome: string }>;
+  empImobSel: string;
   empreendimentos: SelectOption[];
   empreendimentosHerdados: boolean;
   empreendimentosSel: string[];
@@ -1603,12 +1902,16 @@ function StepIdentificacao({
   imobiliarias: SelectOption[];
   isImobiliaria: boolean;
   onConjugeChange: (patch: Partial<Conjuge>) => void;
+  onCorretorImobChange: (id: string) => void;
   onDocumento: (arquivo: ArquivoAnexado) => void;
   onDocumentoConjuge: (arquivo: ArquivoAnexado) => void;
+  onEmpImobChange: (id: string) => void;
   onEmpreendimentosChange: (ids: string[]) => void;
   onEmpresaChange: (patch: Partial<Empresa>) => void;
   onEmpresaExtract: (ext: Extraction, emp: Partial<Empresa>) => void;
   onExtract: (ext: Extraction, enr: Enrichment) => void;
+  // Correção à mão do que a leitura não trouxe. Ver o comentário do bloco "Dados do documento".
+  onIdentidadeChange: (patch: Partial<Identidade>) => void;
   onNext: () => void;
   onPerfilChange: (patch: Partial<Perfil>) => void;
   onPersona: (persona: Persona) => void;
@@ -1724,8 +2027,42 @@ function StepIdentificacao({
     onEmpresaExtract(ext, emp);
   }
 
+  // Prospect INTERNO: escolhida a imobiliária, exige o EMPREENDIMENTO (senão a ficha nasceria sem
+  // empreendimento — o bug das órfãs) e o CORRETOR quando a imobiliária tem corretores cadastrados.
+  // No público a imobiliária/empreendimento vêm do token; na imobiliária este vínculo não existe.
+  const vinculoProspectOk =
+    isImobiliaria ||
+    modoPublico ||
+    (Boolean(empImobSel) && (corretorImobLista.length === 0 || Boolean(corretorImobSel)));
+
+  // O que o documento NÃO entregou. Só nome e CPF impedem de seguir (é o que o servidor exige
+  // em cadastro-persist); os outros entram na lista pra ficar claro o que vale preencher.
+  const faltaNoDocumento = identidade
+    ? [
+        identidade.nome.trim() ? null : "nome",
+        // "CPF válido", não "CPF preenchido": ver o comentário do campo, o contracheque devolve
+        // texto solto nesse campo e um valor errado é pior que um vazio.
+        cpfValido(identidade.cpf) ? null : "CPF",
+        identidade.nomeMae.trim() ? null : "nome da mãe",
+        identidade.naturalidade.trim() ? null : "naturalidade",
+        identidade.nacionalidade.trim() ? null : "nacionalidade",
+      ].filter((item): item is string => item !== null)
+    : [];
+  // CPF digitado errado nao pode passar: o cadastro inteiro pendura nele (dedupe, consulta de
+  // credito, vinculo com o C2X). Validamos aqui pra falhar na hora, e nao no fim do wizard.
+  const cpfDaIdentidadeOk = Boolean(identidade && cpfValido(identidade.cpf));
+
   const podeAvancarPf = Boolean(
     identidade &&
+      identidade.nome.trim() &&
+      cpfDaIdentidadeOk &&
+      // NATURALIDADE OBRIGATÓRIA (incidente 05/08): 8 CADs voltaram recusadas pelo C2X com
+      // "Naturalidade não pode ficar em branco" / "Nacionalidade não pode ficar em branco". Só a
+      // naturalidade é exigida porque a nacionalidade é DERIVADA dela (derivarNacionalidade, em
+      // lib/apolo/cadastro-cascata.ts). NÃO é trava de OCR (v1.105.0): logo acima o campo
+      // Naturalidade abre para digitação sempre que a leitura vem vazia. Espelha a trava do
+      // servidor em lib/apolo/cadastro-obrigatorios.ts (validarCamposMinimos).
+      identidade.naturalidade.trim() &&
       perfil.sexoId &&
       perfil.estadoCivilId &&
       perfil.escolaridadeId &&
@@ -1733,6 +2070,7 @@ function StepIdentificacao({
       perfil.profissaoId &&
       // No público a imobiliária vem do token (o servidor a força); o browser não a preenche.
       (modoPublico || perfil.imobiliariaId) &&
+      vinculoProspectOk &&
       emailValido &&
       conjugeOk,
   );
@@ -1741,7 +2079,12 @@ function StepIdentificacao({
   const podeAvancarPj = Boolean(
     isImobiliaria
       ? empresa.documentoLido && emailRegex.test(empresa.email) && empreendimentosSel.length > 0
-      : empresa.documentoLido && perfil.imobiliariaId && emailRegex.test(empresa.email),
+      : empresa.documentoLido &&
+        // No público a imobiliária vem do token (o servidor a força); o browser não a preenche —
+        // mesma exceção do PF acima. Sem isto, PJ pelo link público nunca habilita o avançar.
+        (modoPublico || perfil.imobiliariaId) &&
+        vinculoProspectOk &&
+        emailRegex.test(empresa.email),
   );
   const podeAvancar = isPj ? podeAvancarPj : podeAvancarPf;
 
@@ -1756,6 +2099,37 @@ function StepIdentificacao({
             placeholder="Buscar imobiliária ou corretor…"
             onChange={(v) => onPerfilChange({ imobiliariaId: v })}
           />
+          {/* Escolhida a imobiliária, vincula-se o empreendimento (que ela trabalha) e o corretor
+              dela. 0 empreendimentos = aviso; 1 = já resolvido (read-only); vários = seletor. */}
+          {perfil.imobiliariaId ? (
+            <>
+              {empImobLista.length === 0 ? (
+                <p className="m-0 rounded-lg border border-line bg-subtle px-3 py-2 text-xs text-ink-muted sm:col-span-2 lg:col-span-1">
+                  Esta imobiliária não tem empreendimento habilitado.
+                </p>
+              ) : empImobLista.length === 1 ? (
+                <ReadField
+                  label="Empreendimento"
+                  value={empImobLista[0] ? empImobLista[0].nome : ""}
+                />
+              ) : (
+                <SearchableSelect
+                  label="Empreendimento"
+                  value={empImobSel}
+                  options={empImobLista.map((e) => ({ id: e.enterpriseId, label: e.nome }))}
+                  placeholder="Buscar empreendimento…"
+                  onChange={onEmpImobChange}
+                />
+              )}
+              <SearchableSelect
+                label="Corretor"
+                value={corretorImobSel}
+                options={corretorImobLista.map((c) => ({ id: c.entityId, label: c.nome }))}
+                placeholder="Buscar corretor…"
+                onChange={onCorretorImobChange}
+              />
+            </>
+          ) : null}
         </Secao>
       )}
 
@@ -1892,14 +2266,83 @@ function StepIdentificacao({
         <>
           <Secao title="Dados do documento">
             <ReadField label="Tipo" value={mapDocType(identidade.tipoDocumento, "")} />
-            <ReadField label="Nome" value={titleCase(identidade.nome)} span2 />
-            <ReadField label="CPF" value={identidade.cpf} />
+            {/* CAMPO VAZIO VIRA CAMPO DIGITÁVEL (pedido do Lucas 27/07). O que a leitura trouxe
+                continua como texto fixo, pra ninguém sobrescrever dado bom sem querer; o que ela
+                NÃO trouxe abre pro operador preencher, em vez de travar o cadastro.
+                Caso real que motivou: a Katia Duarte subiu contracheque, conta de luz e carteira
+                do CRC. A MOST leu tudo com 95% a 99% e acertou o nome — mas nenhum desses
+                documentos TEM CPF, então não havia o que extrair e o cadastro parava ali. */}
+            {identidade.nome ? (
+              <ReadField label="Nome" value={titleCase(identidade.nome)} span2 />
+            ) : (
+              <TextField
+                editavel
+                label="Nome"
+                placeholder="Nome completo, como está no documento"
+                value={identidade.nome}
+                onChange={(v) => onIdentidadeChange({ nome: v })}
+              />
+            )}
+            {/* CPF abre pra edição quando está vazio OU quando não é um CPF de verdade. O
+                "ou" não é preciosismo: o contracheque da Katia devolveu `cpf: "Férias Vencidas"`
+                e `cpf: "Férias de 04/05/2026 até 02/"`. Se o critério fosse só "vazio", o campo
+                apareceria travado com esse lixo e o operador não teria como consertar. */}
+            {cpfDaIdentidadeOk ? (
+              <ReadField label="CPF" value={identidade.cpf} />
+            ) : (
+              <TextField
+                editavel
+                label="CPF"
+                placeholder="000.000.000-00"
+                value={identidade.cpf}
+                onChange={(v) => onIdentidadeChange({ cpf: v })}
+              />
+            )}
             <ReadField label="Nascimento" value={formatDateBR(identidade.dataNascimento)} />
             <ReadField label="Idade" value={calcIdade(identidade.dataNascimento)} />
-            <ReadField label="Nome da mãe" value={titleCase(identidade.nomeMae)} span2 />
-            <ReadField label="Naturalidade" value={titleCase(identidade.naturalidade)} />
-            <ReadField label="Nacionalidade" value={titleCase(identidade.nacionalidade)} />
+            {identidade.nomeMae ? (
+              <ReadField label="Nome da mãe" value={titleCase(identidade.nomeMae)} span2 />
+            ) : (
+              <TextField
+                editavel
+                label="Nome da mãe"
+                placeholder="Nome completo da mãe"
+                value={identidade.nomeMae}
+                onChange={(v) => onIdentidadeChange({ nomeMae: v })}
+              />
+            )}
+            <CampoDoDocumento
+              label="Naturalidade (obrigatória)"
+              placeholder="Cidade de nascimento, ex.: Goiânia / GO"
+              value={identidade.naturalidade}
+              onChange={(v) => onIdentidadeChange({ naturalidade: v })}
+            />
+            <CampoDoDocumento
+              label="Nacionalidade"
+              placeholder="Brasileira"
+              value={identidade.nacionalidade}
+              onChange={(v) => onIdentidadeChange({ nacionalidade: v })}
+            />
           </Secao>
+
+          {/* O QUE FALTA, DITO NA CARA. Antes o operador seguia com os campos vazios e só
+              descobria o problema quando o servidor recusava, lá no fim do cadastro. */}
+          {faltaNoDocumento.length > 0 ? (
+            <p className="mb-3 rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+              A leitura do documento não trouxe: {faltaNoDocumento.join(", ")}. Preencha à mão
+              nos campos acima, ou envie um RG, CNH ou passaporte.
+            </p>
+          ) : null}
+
+          {/* A naturalidade não é "só mais um campo que faltou ler": ela BARRA o avanço, senão o
+              C2X recusa a CAD lá na frente ("Naturalidade não pode ficar em branco" — 8 casos em
+              produção). A nacionalidade sai dela sozinha, por isso não é cobrada aqui. */}
+          {identidade.naturalidade.trim() ? null : (
+            <p className="mb-3 rounded-lg border border-rose-300/60 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+              Informe a naturalidade (cidade de nascimento) para continuar. Sem ela o C2X recusa a
+              CAD e o cadastro volta para refazer.
+            </p>
+          )}
 
           <Secao title="Perfil">
             <SelectField
@@ -2199,8 +2642,21 @@ function BlocoSocio({
             <ReadField label="CPF" value={socio.cpf} />
             <ReadField label="Nascimento" value={formatDateBR(socio.dataNascimento)} />
             <ReadField label="Nome da mãe" value={titleCase(socio.nomeMae)} span2 />
-            <ReadField label="Naturalidade" value={titleCase(socio.naturalidade)} />
-            <ReadField label="Nacionalidade" value={titleCase(socio.nacionalidade)} />
+            {/* Naturalidade/nacionalidade do sócio eram ReadField puro: quando a leitura não
+                entregava (CNH não traz naturalidade impressa, e foto ruim de RG também falha), o
+                campo ficava "—" e NÃO havia como preencher. Mesmo tratamento do titular. */}
+            <CampoDoDocumento
+              label="Naturalidade"
+              placeholder="Cidade de nascimento, ex.: Goiânia / GO"
+              value={socio.naturalidade}
+              onChange={(v) => aoMudar({ naturalidade: v })}
+            />
+            <CampoDoDocumento
+              label="Nacionalidade"
+              placeholder="Brasileira"
+              value={socio.nacionalidade}
+              onChange={(v) => aoMudar({ nacionalidade: v })}
+            />
           </Secao>
 
           <Secao title="Perfil do sócio">
@@ -2800,9 +3256,13 @@ function StepCertidao({
               Autenticidade confirmada ({mapCertidao(certidao.documentType)}).
             </div>
           ) : (
-            <div className="mt-2 flex items-center gap-2 rounded-lg border border-rose-200 dark:border-rose-500/30 bg-rose-50 dark:bg-rose-500/12 px-3 py-2 text-xs font-medium text-rose-700 dark:text-rose-300">
-              <X className="size-4" aria-hidden="true" />
-              Documento não reconhecido como certidão. Reenvie a certidão correta.
+            // Leitura não confirmou = AVISO, não bloqueio (Lucas, 02/08): certidão de cartório
+            // foge do padrão que a MOST conhece e ela recusava documento legítimo. O arquivo
+            // fica salvo e os campos abrem para o manual; quem confere é a Validação.
+            <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300">
+              <AlertTriangle className="size-4" aria-hidden="true" />
+              Não consegui confirmar a leitura da certidão — o arquivo foi salvo. Confira o
+              documento e preencha os campos manualmente.
             </div>
           )
         ) : null}
@@ -2840,7 +3300,10 @@ function StepCertidao({
       ) : null}
 
       <NavButtons
-        canNext={Boolean(valida) && (!pedeRegime || Boolean(regimeBensId))}
+        // Avançar exige o documento ENVIADO (não mais a leitura reconhecida — a MOST recusava
+        // certidão legítima e trancava o cadastro aqui). O regime segue obrigatório quando
+        // o estado civil pede; sem leitura, ele abre para seleção manual.
+        canNext={Boolean(certidao) && (!pedeRegime || Boolean(regimeBensId))}
         onBack={onBack}
         onNext={onNext}
         nextLabel="Avançar para revisão"
@@ -2867,6 +3330,7 @@ function StepRevisao({
   socios,
   steps,
   tipo,
+  vinculo,
 }: {
   conjuge: Conjuge | null;
   corretores: CorretorCadastro[];
@@ -2886,6 +3350,14 @@ function StepRevisao({
   socios: SocioCadastro[];
   steps: string[];
   tipo: string;
+  // Prospect interno: empreendimento + corretor da imobiliária, já resolvido no CadastroFlow.
+  vinculo: {
+    enterpriseId?: string;
+    empreendimentoNome?: string;
+    corretorEntityId?: string;
+    corretorNome?: string;
+    corretorEmail?: string;
+  } | null;
 }) {
   // Adapter de salvamento (interno: /api/apolo/cadastro/salvar; público: rota gated do modo) +
   // flag público, que redireciona os "sair/novo cadastro" para recarregar em vez de ir ao /apolo.
@@ -2910,6 +3382,29 @@ function StepRevisao({
   const [enviando, setEnviando] = useState(false);
   const [erroEnvio, setErroEnvio] = useState<string | null>(null);
   const [resultado, setResultado] = useState<SalvarResposta | null>(null);
+
+  // 🔒 TRAVA DE OBRIGATÓRIOS NO CLIENTE (incidente 04/08): o Enviar antes só olhava se estava
+  // "enviando" — dava para submeter a CAD sem os documentos e ela caía na "correção". Agora o
+  // botão fica desabilitado enquanto faltar documento obrigatório, e a lista do que falta aparece
+  // ao lado. A trava de verdade é a do servidor (as duas rotas de salvar); esta é só UX/atalho —
+  // usa as MESMAS regras (lib/apolo/cadastro-obrigatorios.ts).
+  //
+  // ⚠️ Conta o ARQUIVO ANEXADO, não o sucesso do OCR (v1.105.0 — [[project_apolo_most_sem_trava]]):
+  // `documentos` é preenchido no `onFile`, ANTES de qualquer leitura, então um documento cuja
+  // leitura falhou (campos preenchidos à mão) continua contando como anexado.
+  const categoriasAnexadas = [
+    ...Object.entries(documentos)
+      .filter(([, arquivos]) => (arquivos ?? []).length > 0)
+      .map(([categoria]) => categoria),
+    // Sócios (PJ): o índice não importa para a trava, só a família (id / comprovante) estar presente.
+    ...(socios.some((s) => s.arquivosIdentificacao.length > 0) ? ["identificacao_socio_1"] : []),
+    ...(socios.some((s) => s.arquivosComprovante.length > 0) ? ["comprovante_socio_1"] : []),
+  ];
+  const faltando = documentosFaltandoCurto(
+    { estadoCivilId: perfil.estadoCivilId, persona },
+    categoriasAnexadas,
+  );
+  const podeEnviar = faltando.length === 0;
 
   // Certidões, análise financeira (GOLD) e demais consultas sob demanda saíram
   // do cadastro (decisão do Lucas 11/jul): o cadastro/CAD mostra só o que é
@@ -2946,6 +3441,45 @@ function StepRevisao({
         })),
       ]);
 
+      // TETO POR DOCUMENTO: 20MB de arquivo de verdade (não de base64). Acima disso não existe
+      // caminho, nem o direto — a mensagem diz o limite real e o que fazer.
+      const todosDocs: DocumentoEnvio[] = [...anexos, ...anexosSocios];
+      const grande = todosDocs.find((d) => bytesDoBase64(d.fileBase64) > TETO_DOCUMENTO_BYTES);
+      if (grande) {
+        setErroEnvio(
+          `O arquivo "${grande.fileName}" tem ${(bytesDoBase64(grande.fileBase64) / 1_048_576).toFixed(1)}MB e ` +
+            "o limite é de 20MB por documento. Envie uma versão menor (uma FOTO do documento, em " +
+            "vez do PDF, ou o PDF com menos páginas) e tente de novo. Nada do que você preencheu se perde.",
+        );
+        setEnviando(false);
+        return;
+      }
+
+      // DOIS CAMINHOS (ver TETO_CORPO_BASE64): o que cabe no corpo vai como sempre; o que não cabe
+      // sobe direto pro Storage e viaja só como referência. Se tudo couber, este bloco não faz nada
+      // e o envio é byte a byte o de hoje.
+      const direto = categoriasParaUploadDireto(todosDocs);
+      const documentosEnvio: DocumentoEnvio[] = [];
+      for (const doc of todosDocs) {
+        if (!direto.has(doc.categoria) || !doc.fileBase64) {
+          documentosEnvio.push(doc);
+          continue;
+        }
+        const gravado = await subirDocumentoDireto({
+          assinarUpload: api.assinarUpload,
+          fileBase64: doc.fileBase64,
+          fileName: doc.fileName,
+          mimeType: doc.mimeType,
+        });
+        documentosEnvio.push({
+          categoria: doc.categoria,
+          fileName: doc.fileName,
+          mimeType: doc.mimeType,
+          sizeBytes: gravado.sizeBytes,
+          storagePath: gravado.storagePath,
+        });
+      }
+
       const salvo = await api.salvar({
         // Estrutura da CAD: o PDF é montado no servidor, com o código de autenticação.
         cad: montarCadDoc(),
@@ -2971,7 +3505,7 @@ function StepRevisao({
                 telefone: c.telefone,
               }))
           : undefined,
-        documentos: [...anexos, ...anexosSocios],
+        documentos: documentosEnvio,
         // Empreendimentos vinculados (só imobiliária) → relacionamentos de trabalho.
         empreendimentos: isImobiliaria
           ? empreendimentosSel.map((id) => ({ id, label: label(empreendimentos, id) }))
@@ -2982,6 +3516,9 @@ function StepRevisao({
         perfil: { ...perfil, imobiliariaLabel: label(imobiliarias, perfil.imobiliariaId) },
         persona,
         role: tipo,
+        // Vínculo do prospect interno (empreendimento + corretor da imobiliária). O servidor ignora
+        // quando ausente; nos modos imobiliária/público ele nunca é montado (fica null → undefined).
+        vinculo: vinculo ?? undefined,
         socios: isPj
           ? socios.map((socio) => ({
               cpf: socio.cpf,
@@ -3485,19 +4022,30 @@ function StepRevisao({
           Voltar
         </button>
         {enviado ? null : (
-          <button
-            type="button"
-            disabled={enviando}
-            onClick={() => void enviar()}
-            className="inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-wait disabled:opacity-70"
-          >
-            {enviando ? (
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
-            ) : (
-              <Send className="size-4" aria-hidden="true" />
+          <div className="flex flex-col items-end gap-1.5">
+            {/* O que ainda falta anexar. Some quando está tudo presente (podeEnviar). */}
+            {podeEnviar ? null : (
+              <p className="m-0 text-right text-xs font-medium text-amber-700 dark:text-amber-300">
+                Falta: {juntarPtBr(faltando)}
+              </p>
             )}
-            {enviando ? "Enviando" : "Enviar"}
-          </button>
+            <button
+              type="button"
+              disabled={enviando || !podeEnviar}
+              title={podeEnviar ? undefined : `Anexe ${juntarPtBr(faltando)} para enviar.`}
+              onClick={() => void enviar()}
+              className={`inline-flex h-9 items-center gap-2 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:opacity-60 ${
+                enviando ? "disabled:cursor-wait" : "disabled:cursor-not-allowed"
+              }`}
+            >
+              {enviando ? (
+                <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Send className="size-4" aria-hidden="true" />
+              )}
+              {enviando ? "Enviando" : "Enviar"}
+            </button>
+          </div>
         )}
       </div>
     </div>
@@ -3505,6 +4053,33 @@ function StepRevisao({
 }
 
 // ---------- campos ----------
+
+// Campo que o DOCUMENTO deveria trazer (naturalidade, nome da mãe, nacionalidade): quando a leitura
+// entregou, fica travado (é dado do documento, não se digita por cima); quando NÃO entregou, abre
+// para digitar — a regra do v1.105.0, a leitura nunca trava o cadastro.
+//
+// ⚠️ POR QUE UM COMPONENTE, e não o ternário `valor ? ReadField : TextField` que estava aqui: aquele
+// ternário decidia pelo VALOR ATUAL, então bastava digitar a PRIMEIRA LETRA para o campo virar
+// travado e o input sumir da tela. O operador não conseguia terminar de escrever, e no caso da
+// naturalidade (que passou a barrar o avanço) isso trancava o cadastro inteiro. Aqui a decisão é
+// tomada UMA VEZ, na montagem: quem nasceu vazio continua digitável enquanto a pessoa escreve.
+function CampoDoDocumento({
+  label,
+  onChange,
+  placeholder,
+  value,
+}: {
+  label: string;
+  onChange: (value: string) => void;
+  placeholder?: string;
+  value: string;
+}) {
+  const [veioDoDocumento] = useState(() => Boolean(value.trim()));
+  if (veioDoDocumento) return <ReadField label={label} value={titleCase(value)} />;
+  return (
+    <TextField editavel label={label} onChange={onChange} placeholder={placeholder} value={value} />
+  );
+}
 
 function ReadField({
   label,
@@ -3620,10 +4195,14 @@ function EnderecoEditavel({
   onChange: (patch: Partial<Endereco>) => void;
 }) {
   const [buscando, setBuscando] = useState(false);
+  // Guarda o último CEP já consultado, para o preenchimento automático rodar UMA vez por CEP e não
+  // ficar reescrevendo por cima do que o operador corrigiu à mão.
+  const cepConsultado = useRef<string>("");
 
   async function aoMudarCep(valor: string) {
     onChange({ cep: valor });
     if (soDigitos(valor).length !== 8) return;
+    cepConsultado.current = soDigitos(valor);
     setBuscando(true);
     const achado = await buscarEnderecoPorCep(valor);
     setBuscando(false);
@@ -3636,6 +4215,39 @@ function EnderecoEditavel({
       });
     }
   }
+
+  // QUANDO O CEP VEM DA LEITURA DO DOCUMENTO (o operador não digitou nada), `aoMudarCep` nunca roda
+  // e o endereço fica exatamente como o OCR leu. Em comprovante de baixa confiança isso trazia o
+  // rótulo de outro campo no lugar da rua (caso real: logradouro veio "CPF/CNPJ:."). Aqui a busca
+  // pelo CEP é disparada mesmo assim.
+  //
+  // O logradouro dos Correios ganha do lido SÓ quando o CEP é de rua específica (aí `logradouro`
+  // vem preenchido na resposta); em CEP geral de cidade a resposta vem sem rua e o que o documento
+  // trouxe é preservado. Bairro, cidade e UF só preenchem o que estiver vazio.
+  useEffect(() => {
+    const cep = soDigitos(endereco.cep);
+    if (cep.length !== 8 || cepConsultado.current === cep) return;
+    cepConsultado.current = cep;
+    let cancelado = false;
+    void (async () => {
+      setBuscando(true);
+      const achado = await buscarEnderecoPorCep(cep);
+      if (cancelado) return;
+      setBuscando(false);
+      if (!achado) return;
+      onChange({
+        bairro: endereco.bairro || achado.bairro,
+        cidade: endereco.cidade || achado.cidade,
+        logradouro: achado.logradouro || endereco.logradouro,
+        uf: endereco.uf || achado.uf,
+      });
+    })();
+    return () => {
+      cancelado = true;
+    };
+    // Só o CEP dispara: incluir os demais campos faria o efeito correr a cada tecla do operador.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [endereco.cep]);
 
   return (
     <Secao title="Endereço">

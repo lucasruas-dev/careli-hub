@@ -95,6 +95,102 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo] PIX pago credencia o cliente mesmo quando o envio do link falhou (v1.62.46)`.
+- Squad/agente responsavel: `Zeus / Apolo`.
+- Data e hora local: `2026-07-24 14:10:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: autorizacao direta do Lucas ("pode seguir"), a partir do caso real da VICENTINA LUZIA DE PAULO no Board do Vale do Ouro.
+- Escopo publicado:
+  - `aoConfirmarPagamentoPrevenda` passa a mover a etapa `prevenda` -> `credenciado`, com `eq('etapa','prevenda')` (mesma trava do envio, nunca puxa ninguem para tras);
+  - correcao pontual de dados: 1 ficha (Vicentina) movida para `credenciado`, autorizada na mesma mensagem.
+- Commit publicado: nao commitado (deploy por CLI com `--archive=tgz`, arvore de trabalho da sessao).
+- Deployment anterior (rollback): `careli-hub-hub-i2bs-9s5f7rx9y` (v1.62.45).
+- Deployment novo: `https://careli-hub-hub-i2bs-jy4ga1ar5-lucasruas-devs-projects.vercel.app`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `HTTP 200`, alias confirmado por `vercel inspect` no deployment novo.
+- Arquivos/modulos incluidos: `apps/hub/lib/apolo/prevenda-fluxo.ts`, `apps/hub/lib/changelog/changelog.ts`.
+- Arquivos/modulos excluidos: migrations, envs, secrets.
+- Validacoes executadas:
+  - `npm --prefix apps/hub run check-types`: PASS;
+  - `npm --prefix apps/hub test`: PASS (265 testes);
+  - diagnostico no banco: 73 fichas com `pago_em`, 72 ja em `credenciado`, 1 presa em `prevenda` (a Vicentina) — ou seja o furo so aparece quando o disparo falha;
+  - fila do Prometeu conferida ANTES da correcao e ja estava certa: a Vicentina ocupava a posicao 66 entre quem pagou 19:25 e 21:40, porque o ramo "pagou e nao estava na fila" ja insere com a hora do pagamento.
+- Healthchecks pos-deploy: `https://c2x.app.br` `200`; `https://c2x.app.br/apolo` `200`.
+- Rollback definido: `npx vercel promote https://careli-hub-hub-i2bs-9s5f7rx9y-lucasruas-devs-projects.vercel.app --scope lucasruas-devs-projects`.
+- Riscos conhecidos: nenhum identificado; a mudanca so avanca quem esta em `prevenda` com pagamento confirmado.
+- Pendencias: nenhuma desta frente.
+- Status: `EM PRODUCAO`.
+- Proxima acao: retomar a conferencia da divergencia do comparativo Asana x Board (Vale do Ouro).
+
+Registro de producao:
+
+- Assunto: `[Iris] Atendimento aberto nao some do Board + nome do Apolo + fechamento automatico da CACA (v1.62.45, apos incidente da v1.62.44)`.
+- Squad/agente responsavel: `Zeus / Iris`.
+- Data e hora local: `2026-07-24 12:35:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: autorizacao direta do Lucas ("pode subir"); incidente relatado pelo time ("cliente em atendimento" para cliente que nao aparece no Board) e refeito apos o rollback da v1.62.44.
+- Escopo publicado:
+  - Board/Historico: a leitura unica de tickets com `.limit(200)` virou duas (abertos sem janela + encerrados `limit 400`), entao atendimento aberto antigo volta a aparecer e o Historico deixa de mostrar so o topo da lista;
+  - leituras dependentes (contatos, mensagens, usuarios) passaram a ir em LOTES de 100 ids pelo helper `lerEmLotes`;
+  - nome do cliente: `enrichTicketsWithCrm360` manda os telefones em lotes de 100 (a rota corta em 100 por chamada) e passa a nao reconsultar quem ja tem resposta em cache;
+  - fechamento automatico: `lib/iris/fechar-sem-interacao.ts` + cron horario `/api/iris/tickets/fechar-sem-interacao`, motivo `Sem interação - Assistente Virtual`.
+- Commit publicado: nao commitado (deploy por CLI com `--archive=tgz`, arvore de trabalho da sessao).
+- Deployment anterior (rollback): `careli-hub-hub-i2bs-9yrrvn0yk` (o mesmo promovido no rollback da v1.62.44).
+- Deployment novo: `https://careli-hub-hub-i2bs-9s5f7rx9y-lucasruas-devs-projects.vercel.app`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `HTTP 200` apos o deploy, alias confirmado por `vercel inspect` no deployment novo.
+- Arquivos/modulos incluidos: `apps/hub/modules/caredesk/data/iris-data-client.ts`, `apps/hub/lib/iris/fechar-sem-interacao.ts` (novo), `apps/hub/lib/iris/fechar-sem-interacao.test.ts` (novo), `apps/hub/app/api/iris/tickets/fechar-sem-interacao/route.ts` (novo), `apps/hub/proxy.ts`, `vercel.json`, `apps/hub/lib/changelog/changelog.ts`.
+- Arquivos/modulos excluidos: migrations, envs, secrets, banco, Supabase.
+- Validacoes executadas:
+  - `npm --prefix apps/hub run check-types`: PASS;
+  - `npm --prefix apps/hub test`: PASS (265 testes, 9 novos cobrindo a regra de fechamento);
+  - CAUSA DO INCIDENTE REPRODUZIDA contra o Supabase de producao antes de subir: `.in('ticket_id', ids)` com 700 ids gera URL de 27.670 chars e responde `HTTP 400`; com 100 ids sao 4.270 chars e responde `HTTP 200`. Teto medido: 300 ids (12.070 chars) ainda passa;
+  - `GET https://c2x.app.br/api/iris/tickets/fechar-sem-interacao?simulacao=1` sem credencial: `HTTP 401` (rota publicada e allowlist do proxy funcionando, sem vazar para sessao de login);
+  - conferencia do backlog em `caredesk_tickets`/`caredesk_messages`: 104 candidatos ao fechamento automatico, TODOS sem operador atribuido, o mais antigo parado desde 14/07.
+- Healthchecks pos-deploy: `https://c2x.app.br` `200`; `https://c2x.app.br/iris` `200`.
+- Logs recentes: console do navegador do Lucas na v1.62.44 registrou `GET .../caredesk_messages?...&order=created_at.desc&limit=1000 400 (Bad Request)`, que foi o ponto de partida do diagnostico.
+- Rollback definido: `npx vercel promote https://careli-hub-hub-i2bs-9yrrvn0yk-lucasruas-devs-projects.vercel.app --scope lucasruas-devs-projects`.
+- Riscos conhecidos:
+  - o cron da hora cheia seguinte fecha ~104 tickets de uma vez (backlog acumulado); a partir dai o volume por hora e residual;
+  - `.in()` com lista de ids continua sendo o modo de falha da Iris: qualquer leitura nova por lista de ids precisa ir em lotes;
+  - a janela de encerrados e 400: quando o volume crescer, a busca do Historico deve ir ao banco em vez de subir esse numero.
+- Pendencias: validacao visual do Lucas (AT-000033 no Board, nome da Elizabete, contagem do Historico); conferir o resultado do primeiro cron.
+- Status: `EM PRODUCAO`.
+- Proxima acao: acompanhar o primeiro disparo do cron e confirmar com o time que os atendimentos presos sairam da fila.
+
+Registro de producao:
+
+- Assunto: `[Apolo] Leitura de documentos com as mesmas regras do import por CPF`.
+- Squad/agente responsavel: `Zeus / Apolo`.
+- Data e hora local: `2026-07-23 15:45:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: autorizacao direta do Lucas ("pode subir") na frente de importacao das CADs do Vale do Ouro; pedido literal "quero que depois disso aplique as regras que escrevemos".
+- Escopo publicado:
+  - `separarPorConflito` extraida para `lib/apolo/asana-import.ts` e usada pelas DUAS portas de entrada da esteira (import por CPF e leitura de documentos), fechando o caminho por onde a mesma pessoa entraria duas vezes no mesmo empreendimento;
+  - campo vazio na ficha atual tratado como complemento e nao como divergencia (a base tem 3 fichas sem imobiliaria e 2 sem empreendimento, que virariam falso conflito);
+  - corretor propagado na leitura (orcamento -> tela -> gravacao); antes era `corretor: null` fixo e a ficha nascia sem o corretor;
+  - economia nova no orcamento: CAD com task ja vinculada em `apolo_source_links` sai do lote antes de listar anexos, evitando pagar OCR de quem ja esta no Board quando a CAD so muda de secao no Asana;
+  - tela de leitura passa a mostrar os conflitos separados das CADs sem CPF legivel, e o card `Fora do lote`.
+- Commit publicado: nao commitado (deploy por CLI com `--archive=tgz`, arvore de trabalho da sessao).
+- Deployment anterior (rollback): `careli-hub-hub-i2bs-amg1lpzkk`.
+- Deployment novo: `dpl_FBmdkXggqtTZfFKWsUF5vKjFiJBd`; URL tecnica `https://careli-hub-hub-i2bs-hrzkk6nrj-lucasruas-devs-projects.vercel.app`.
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: confirmado `HTTP 200` apos o deploy, status `Ready`.
+- Arquivos/modulos incluidos: `apps/hub/lib/apolo/asana-import.ts`, `apps/hub/lib/apolo/asana-ocr.ts`, `apps/hub/app/api/apolo/asana/leitura/route.ts`, `apps/hub/app/api/apolo/asana/importar-secao/route.ts`, `apps/hub/modules/apolo/blocks/importacao/ler-cads.tsx`, `apps/hub/lib/changelog/changelog.ts`.
+- Arquivos/modulos excluidos: migrations, envs, secrets, banco, Supabase.
+- Validacoes executadas:
+  - `npm --prefix apps/hub run check-types`: PASS;
+  - `HEAD https://c2x.app.br`: `200`;
+  - consulta de conferencia em `apolo_esteira` (394 fichas Vale do Ouro, 3 sem imobiliaria, 2 sem empreendimento) usada para calibrar a regra de conflito.
+- Risco residual: o CPF so existe DEPOIS da leitura paga, entao o conflito e detectado apos o gasto. A ficha nao entra por cima da existente e o documento lido fica salvo (dedup por hash nao cobra a releitura).
+- Status: `EM PRODUCAO`.
+- Changelog: `1.62.21` (`2026-07-23-leitura-com-as-mesmas-regras`).
+
+Registro de producao:
+
 - Assunto: `[Chronos] Host reconhecido e Nome com espaco na sala publica`.
 - Squad/agente responsavel: `Zeus / Hefesto / Chronos`.
 - Data e hora local: `2026-06-10 13:12:55 -03:00`.
@@ -4856,3 +4952,63 @@ Conclusao:
 - Junto no mesmo deploy: `corrigir-titular` deixou de reprocessar ficha que ja tem registro de edicao (o laudo continua dizendo "trocado" depois da correcao; um segundo clique apagaria o que o operador digitou).
 - Verificacao: `tsc --noEmit` limpo, build completo OK, 158 testes PASS, contagem de pecas do board-view (3 efeitos).
 - PENDENTE ANTES DA PRIMEIRA CONSULTA: respostas do Serasa (endpoint de token, host de homologacao, grafia dos 4 reportName, `federalUnit`, schema da resposta, preco por consulta) — e-mail enviado pelo Lucas em 21/jul. Env vars a configurar na Vercel. Comprovante: aguarda saber se a API devolve PDF; decisao do Lucas e que ele leve NOSSAS referencias.
+
+## v1.65.0 — 28/jul/2026 · Apolo: subir cadastros para o C2X + editar ficha no CRM
+- Integração de ESCRITA Apolo→C2X (POST /api/v1/users). Motor + orquestração + camada de lote + tela /apolo/sync-c2x + edição do cadastro no CRM.
+- Migration 0074_apolo_c2x_sync aplicada. Env C2X_WRITE_API_URL/TOKEN na Vercel (aponta p/ TESTE do C2X até a URL de prod).
+- Dry-run: 164 CADs prontas / 243 faltando campo. Envio real do lote = quando o Lucas clicar.
+- Rollback: 1.64.0.
+
+## v1.66.0 — 28/jul/2026 · Prometeu: faxina na tela de Atendimento + no-show por fila + PiP e reset
+- Autorização: Lucas ("pode subir"), 2026-07-28. Deployment `careli-hub-hub-i2bs-npx4z12ji` (dpl_6sVB4zqd7KHHrJYJPaSMHAAmEpou). c2x.app.br → 200.
+- Rollback: v1.65.0 (`careli-hub-hub-i2bs-koyi2hz13`).
+- 8 pontos apontados pelo Lucas testando o ensaio, na tela do Atendente:
+  1. Título "Central · Atendente" → **"Atendimento"**; removidas as abas Recepção/Salão/Secretaria do header (a separação vem do login).
+  2. Removido o painel **"Fila do salão"** da tela do atendente.
+  3. Removido o botão de **WhatsApp** na fila (mantido só na ficha do cliente).
+  4. **No-show por fila:** cada posto vê só o "não veio" da própria fila. Corrigido no atendente (filtra etapa=secretaria) E no organizador (checkin-view: recepcao→recepcao, salao→negociacao, secretaria→secretaria). Aproveita que a etapa não muda no no-show.
+  5. **Reset limpa no-show e PA:** `iniciarEventoReal` ganhou `limparMarcasDeEnsaio` (remove metadata.noShow e metadata.pa, merge por linha — lição da 0057). Antes sobreviviam de um dia p/ o outro.
+  6. **PiP consertado:** a janela flutuante ganhou root React próprio (`PipHost` + createRoot no document dela) no lugar do createPortal. Com portal, o React escutava eventos no root da aba principal e clique numa window separada não chegava → Finalizar/Pausar/Direcionar mortos.
+- PA (ponto que o Lucas revisou): NÃO era bug de captura (a UI só deixa registrar no check-in da secretaria); a PA "no salão" era resíduo de ontem que o reset não limpava → cai na correção do reset. Uma trava de backend que eu tinha começado em registrarPa foi REVERTIDA (desnecessária).
+- Verificação: `tsc --noEmit` limpo, 107 testes do Prometeu PASS.
+- Arquivos: `modules/prometeu/blocks/atendente/atendente-view.tsx`, `.../checkin/checkin-view.tsx`, `lib/prometeu/data.ts`, `lib/changelog/changelog.ts`.
+- ⚠️ Resíduos de teste de ontem (PA do Alison, no-show do Emanuel) NÃO limpos no deploy p/ não apagar os testes em curso do Lucas — somem no próximo reset.
+
+## v1.67.0 — 28/jul/2026 · Prometeu: Finalizar encerra e libera a mesa + menu recolhível
+- Autorização: Lucas ("pode"), 2026-07-28. Deployment `careli-hub-hub-i2bs-1o4uy3oot`. c2x.app.br → 200.
+- Rollback: v1.66.0 (`careli-hub-hub-i2bs-npx4z12ji`).
+- 🐛 **BUG do Finalizar (causa-raiz)**: o PATCH `/api/prometeu/credenciados` valida `credenciadoId` na entrada, mas `finalizarAtendimento`/`confirmarDirecionamento`/`naoVeio` chamavam a ação `liberar` SÓ com `mesaId` → 400, e o front NÃO checava o retorno → a mesa ficava presa com o cliente já movido (etapa=concluido, mesa=atendimento). Diagnóstico confirmado pelo banco (HENRIQUE concluido + mesa 02 atendimento). Fix: Finalizar e Direcionar viraram UM request atômico (`liberarMesaRemoto` com credenciadoId + etapa; `liberarMesa` já avança a etapa via `moverPara`) e checam o erro; `naoVeio` passa credenciadoId. Guard do endpoint mantido. `moverCredenciado` órfão removido do import. Mesa 02 do ensaio destravada por SQL.
+- Menu: label "Atendente"→"Atendimento" (id inalterado). Sidebar colapsável (estado `menuRecolhido`; aside w-232↔w-64; labels viram tooltip; botão PanelLeftClose/Open).
+- Jornada do cliente (central-view + atendente-view): começa no **check-in**; removidos "CAD recebida" e "Pré-venda paga" (pré-evento, saíam fora de ordem).
+- Verificação: `tsc --noEmit` limpo, 107 testes do Prometeu PASS.
+- ⏭️ PENDENTE (próximo recorte): **mapa do salão** — a mesa não registra quem sentou (escolha é só localStorage) e no dia real os atendentes logam como operadores. Registrar o atendente na mesa (coluna nova) + indicadores por mesa.
+
+## v1.68.0 — 28/jul/2026 · Prometeu: Mapa do salão mostra o atendente e os indicadores por mesa
+- Autorização: Lucas ("pode"), 2026-07-28. Deployment `careli-hub-hub-i2bs-orfsuzlq3`. c2x.app.br → 200.
+- Rollback: v1.67.0 (`careli-hub-hub-i2bs-1o4uy3oot`).
+- **Migration 0076 APLICADA** em prod: `prometeu_mesas.atendente_nome` (texto; quem atende é operador do evento OU admin, guardar o nome evita join — `atendente_user_id` não serve pro operador).
+- Mapa do salão (Central): cada mesa mostra QUEM está atendendo (antes "sem atendente") + indicadores da gestão: AT (atendimentos fechados), UN (unidades vendidas neles), tempo médio e tempo total.
+- data.ts: `listMesas` +atendenteNome; `sentarNaMesa`/`sairDaMesa`; `resumoDeTodasAsMesas` (batch, mesma derivação do resumoDaMesa + tempo total + soma de unidades). Rota `/api/prometeu/mesa` (PATCH sentar/sair, `autorizarOperacao` aceita hub OU operador). `/fila?resumoMesas=1` (só a Central). atendente-view grava ao sentar (operador?.nome ?? hubUser?.name) e limpa ao Sair da mesa. central-view exibe.
+- Verificação: `tsc --noEmit` limpo, 107 testes do Prometeu PASS.
+- ⏭️ PARTE 2 (em andamento): jornada reformulada — Check-in → Negociação → Reserva (unidades) → Secretária check-in → Secretária atendimento → Proposta → Finalizado + no-shows, SEM "Etiqueta impressa". Reconstituir das movimentações (prometeu_movimentacoes) + entrouEm + no-show.
+
+## v1.69.0 — 28/jul/2026 · Prometeu: jornada do cliente reformulada (circuito + no-shows)
+- Autorização: Lucas ("pode sim"), 2026-07-28. Deployment `careli-hub-hub-i2bs-j5wk45wyx`. c2x.app.br → 200. SEM migration.
+- Rollback: v1.68.0 (`careli-hub-hub-i2bs-orfsuzlq3`).
+- Jornada (Central + ficha do Atendimento) mostra o CIRCUITO: Check-in → Negociação → Reserva (com unidades) → Secretária (check-in e atendimento) → Proposta → Finalizado + no-shows. "Etiqueta impressa" saiu.
+- `jornadaDoCredenciado` (data.ts) reconstitui do HISTÓRICO: entrou_em + prometeu_movimentacoes (para_etapa→LABEL_DA_JORNADA) + chamada da secretaria atendida + metadata.noShow + unidades no passo Reserva; ordenado pelo relógio. Rota GET /api/prometeu/jornada (só ao abrir o modal, fora do polling). central-view Jornada virou async; atendente-view ficha busca a mesma. Removidos labelDaEtapa + PROMETEU_ETAPAS órfãos.
+- Verificação: tsc limpo, 107 testes PASS, lint sem erros novos.
+- ✅ Fecha o pacote das 5 correções do Prometeu de hoje (v1.66→v1.69): faxina do Atendimento, no-show por fila, PiP, reset, Finalizar+menu, mapa do salão (atendente+indicadores), jornada.
+
+## v1.70.0 + v1.71.0 — 29/jul/2026 · Reset reintegra + Iris aba Ações (Fase 1) — MESMO deploy
+- Autorização: Lucas ("pode sim" no reset + "pode subir" na aba), 2026-07-29. Deployment `careli-hub-hub-i2bs-dyv4mnau4`. c2x.app.br → 200, /iris/acoes → 200.
+- Rollback: v1.69.0 (`careli-hub-hub-i2bs-j5wk45wyx`).
+- **v1.70.0** — Prometeu: `iniciarEventoReal` zera `encerrado_em`/`encerrado_motivo` no reset (reintegra quem levou "No-show definitivo" no ensaio). Descoberto ao bater 397/95 (Apolo) vs 396/94 (Prometeu): o EMANUEL FERNANDO DA SILVA, que pagou o PIX, tinha sido excluído por um teste em 28/jul. Reintegrado à mão + reset corrigido. reset-bloqueado.test.ts (6) verde.
+- **v1.71.0** — Iris: Fase 1 da AÇÃO DE CONTATO. Migration 0077 (apolo_acoes + apolo_acao_alvos, RLS deny-all) + seed "Convite Vale do Ouro" (397 alvos). lib/apolo/acoes.ts + rotas /api/apolo/acoes[/id] + tela `/iris/acoes` (lista corrida + filtros; Telefônico → perfil+unidades inline, WhatsApp → marca). Contato = CANAL (telefone é prioridade; whatsapp = não falou). Unidades: operador (telefônico) ou cliente (botão do template, Fase 3).
+- ⏭️ FASES seguintes da Ação: (2) template Meta (convite imagem + 3 botões 1/2-3/acima-de-3) + disparo pelo 4143 (`phone_number_id=1167201739813897`, WABA Elife extra) + link da aba no menu; (3) aba **"Ações" NOVA no Board da Iris** (ao lado de Atendimento/E-mail/Grupos) — decisão do Lucas 29/jul: a ação VIRA um atendimento/ticket, mas categorizado 'acao' e morando nessa aba própria; a Cacá NÃO responde, só grava a resposta na campanha (o inbound casa por replyContextMessageId → apolo_acao_alvos.disparo_wa_message_id). Ver [[project_apolo_acao_contato]].
+- ⚠️ Verificar antes do disparo: o 4143 já teve bloqueio de pagamento na WABA (incidente do template da Iris).
+
+## v1.72.0 — 29/jul/2026 · Ações: botão que cria o template do convite na Meta
+- Autorização: Lucas ("pode"), 2026-07-29. Deployment `careli-hub-hub-i2bs-er6nqes6v`. c2x.app.br → 200. Rollback: v1.71.0 (`dyv4mnau4`).
+- Botão "Criar template do convite" na aba Ações (padrão do "Criar templates" da imobiliária, mas com imagem+botões). Rota POST /api/apolo/acoes/[acaoId]/template (multipart): upload da arte → handle → createMetaWhatsAppMessageTemplate (MARKETING, HEADER IMAGE + BODY {{1}} + 3 QUICK_REPLY: 1 unidade / 2 a 3 / acima de 3), grava template_meta_name='convite_vale_ouro'. Número 4143.
+- ⏭️ Próximo: Lucas clica e sobe a arte (a Meta aprova); enquanto isso construo o DISPARO (botão na aba Ações → sendMetaWhatsAppTemplateMessage pelo 4143 com header image + {{1}}=nome + grava disparo_wa_message_id) e a captura da resposta (Fase 3).

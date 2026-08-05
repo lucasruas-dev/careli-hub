@@ -1,9 +1,26 @@
 "use client";
 
-import { AlertTriangle, CreditCard, Loader2, RefreshCw, ShieldCheck, Wrench } from "lucide-react";
+import {
+  AlertTriangle,
+  Check,
+  CheckCheck,
+  CreditCard,
+  FileText,
+  Loader2,
+  RefreshCw,
+  Send,
+  ShieldCheck,
+  Users,
+  Wrench,
+} from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
+import {
+  ResultadoCredito,
+  type ResumoCredito,
+  type VeredicoCredito,
+} from "../serasa/resultado-credito";
 
 // ANÁLISE DE CRÉDITO — consulta ao Serasa Experian.
 //
@@ -15,11 +32,38 @@ import { getApoloAccessToken } from "../../data/apolo-operations";
 // token, host e nomes dos relatórios), a tela DIZ o que falta em vez de oferecer um botão que
 // não funciona.
 
+type EnvioResultado = {
+  destinatario?: string | null;
+  error?: string;
+  ok: boolean;
+  pulado?: boolean;
+};
+
+type Disparo = {
+  created_at: string;
+  delivered_at?: string | null;
+  destinatario?: string | null;
+  erro?: string | null;
+  origem?: string | null;
+  read_at?: string | null;
+  sent_at?: string | null;
+  status: string; // enviado | entregue | lido | falhou
+  telefone?: string | null;
+  tipo: string; // coordenador | corretor
+};
+
 type Situacao = {
   ambiente?: "homologacao" | "producao";
   avisoAmbiente?: string | null;
   configurado: boolean;
+  // Estado civil e CPF do cônjuge vêm da ficha da esteira, resolvidos no servidor. O CPF em si
+  // NÃO trafega: só o "tem ou não tem", que é o que a tela precisa para decidir o botão.
+  conjuge?: { nome: string; temCpf: boolean; temConjuge: boolean };
   consultasHoje?: number;
+  disparos?: Disparo[];
+  ehAdmin?: boolean;
+  // Etapa PERSISTIDA da esteira. "revisao" = crédito reprovado; é o que decide o painel de aviso.
+  etapa?: string | null;
   faltando?: string[];
   tetoDiario?: number | null;
   ultimaConsulta?: {
@@ -27,15 +71,32 @@ type Situacao = {
     created_at: string;
     id: string;
     report_name: string;
-    resumo: { faixa?: string; negativacoes?: number; score?: number };
+    resposta?: unknown;
+    resumo: ResumoCredito;
+    veredito?: VeredicoCredito | null;
   } | null;
 };
 
-export function CreditoSerasa({ entityId }: { entityId: string }) {
+export function CreditoSerasa({
+  entityId,
+  onResultado,
+}: {
+  entityId: string;
+  // Avisa o Board quando a consulta resolve: o servidor já moveu a etapa (aprovado -> pré-venda,
+  // reprovado -> revisão) e a tela precisa refletir sem esperar reload.
+  onResultado?: (r: { aprovado: boolean; etapa?: string }) => void;
+}) {
   const [situacao, setSituacao] = useState<Situacao | null>(null);
   const [carregando, setCarregando] = useState(true);
   const [consultando, setConsultando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const [reenviando, setReenviando] = useState<"coordenador" | "corretor" | null>(null);
+  const [avisoReenvio, setAvisoReenvio] = useState<string | null>(null);
+  const [baixando, setBaixando] = useState<"cad" | "comprovante" | null>(null);
+  const [avisoDoc, setAvisoDoc] = useState<string | null>(null);
+  // Resultado da consulta do cônjuge. Estado próprio porque ele NÃO entra no painel de baixo,
+  // que mostra a última consulta do titular.
+  const [resultadoConjuge, setResultadoConjuge] = useState<string | null>(null);
 
   const carregar = useCallback(async () => {
     setCarregando(true);
@@ -130,28 +191,62 @@ export function CreditoSerasa({ entityId }: { entityId: string }) {
     }
   };
 
-  const consultar = async (forcar: boolean) => {
+  // `alvo` decide de quem é a consulta. O CPF do cônjuge o servidor pega da ficha; daqui só vai
+  // a intenção, porque a rota nunca aceita documento vindo da tela.
+  const consultar = async (forcar: boolean, alvo: "titular" | "conjuge" = "titular") => {
     setConsultando(true);
     setErro(null);
     try {
       const token = await getApoloAccessToken();
       const resposta = await fetch("/api/apolo/serasa/consultar", {
         body: JSON.stringify({
+          alvo,
           confirmado: true,
           entityId,
           forcar,
-          // ⚠️ RELATORIO_AVANCADO_TOP_SCORE_PF_PME é o ÚNICO PF autorizado na nossa credencial
-          // (testado 21/jul com a massa do Serasa): o BASICO_PF_PME devolve 412 USER-NOT-AUTHORIZED
-          // [BPCB]. O avançado é o mais completo (traz o score em attributes). Ainda por env para
-          // permitir troca sem deploy quando o contrato de produção definir outro.
+          // RELATORIO_BASICO_PF_PME: o relatório de triagem, escolhido pelo Lucas (21/jul) por ser
+          // o mais barato e trazer as restrições (que é o que decide aprovado/reprovado). Em
+          // HOMOLOGAÇÃO o básico dava 412 USER-NOT-AUTHORIZED [BPCB], mas em PRODUÇÃO o contrato o
+          // autoriza (confirmado com a credencial de prod). Segue por env para trocar sem deploy.
           reportName:
-            process.env.NEXT_PUBLIC_SERASA_REPORT_PF ?? "RELATORIO_AVANCADO_TOP_SCORE_PF_PME",
+            process.env.NEXT_PUBLIC_SERASA_REPORT_PF ?? "RELATORIO_BASICO_PF_PME",
         }),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "POST",
       });
-      const corpo = (await resposta.json()) as { data?: unknown; error?: string };
+      const corpo = (await resposta.json()) as {
+        data?: {
+          alvo?: string;
+          etapa?: string | null;
+          veredito?: { aprovado?: boolean; motivo?: string };
+        };
+        error?: string;
+      };
       if (!resposta.ok) setErro(corpo.error ?? `Falha (${resposta.status}).`);
+      else {
+        // RESULTADO DO CÔNJUGE PRECISA APARECER. Ele não entra no painel de baixo, que é
+        // montado a partir da última consulta DO TITULAR — sem esta linha o operador paga a
+        // consulta, a tela fica idêntica, e ele clica de novo achando que não funcionou.
+        if (corpo.data?.alvo === "conjuge" && corpo.data.veredito) {
+          const aprovado = Boolean(corpo.data.veredito.aprovado);
+          setResultadoConjuge(
+            aprovado
+              ? "Crédito do cônjuge APROVADO. O credenciamento pode seguir."
+              : `Crédito do cônjuge reprovado. ${corpo.data.veredito.motivo ?? ""}`.trim() +
+                  " A ficha do titular não foi alterada.",
+          );
+        }
+
+        // O servidor já moveu a etapa pela regra do crédito. Avisa o Board na hora.
+        // `etapa` vem NULA quando nada se moveu (cônjuge reprovado não mexe na ficha do
+        // titular); aí não avisamos o Board, senão a tela mudaria sem o banco ter mudado.
+        if (corpo.data?.veredito && corpo.data.etapa) {
+          onResultado?.({
+            aprovado: Boolean(corpo.data.veredito.aprovado),
+            etapa: corpo.data.etapa,
+          });
+        }
+      }
       // Recarrega SEMPRE, inclusive no erro: a tentativa que falhou também conta no teto
       // diário do Serasa, e o contador da tela precisa refletir isso.
       await carregar();
@@ -159,6 +254,64 @@ export function CreditoSerasa({ entityId }: { entityId: string }) {
       setErro((e as Error).message);
     } finally {
       setConsultando(false);
+    }
+  };
+
+  // Reenvio manual do aviso de reprovação (só admin). O servidor blinda de novo por papel; aqui
+  // é conveniência de UI. Recarrega ao fim pra puxar o novo disparo com o status.
+  const reenviar = async (destinatario: "coordenador" | "corretor") => {
+    setReenviando(destinatario);
+    setAvisoReenvio(null);
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/serasa/reenviar-reprovacao", {
+        body: JSON.stringify({ destinatario, entityId }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const corpo = (await resposta.json()) as {
+        data?: { coordenador: EnvioResultado; corretor: EnvioResultado };
+        error?: string;
+      };
+      if (!resposta.ok) {
+        setAvisoReenvio(corpo.error ?? `Falha (${resposta.status}).`);
+      } else {
+        const alvo = corpo.data?.[destinatario];
+        if (alvo?.ok) setAvisoReenvio(`Aviso reenviado ao ${destinatario}.`);
+        else if (alvo?.pulado) setAvisoReenvio(`O ${destinatario} não tem telefone cadastrado.`);
+        else setAvisoReenvio(alvo?.error ?? "Não foi possível reenviar.");
+      }
+      await carregar();
+    } catch (e) {
+      setAvisoReenvio((e as Error).message);
+    } finally {
+      setReenviando(null);
+    }
+  };
+
+  // Baixa o comprovante da consulta (gera se preciso) ou salva a CAD nos documentos. Abre o PDF
+  // numa aba nova; o documento também fica na aba Documentos da ficha.
+  const baixarDocumento = async (tipo: "cad" | "comprovante") => {
+    setBaixando(tipo);
+    setAvisoDoc(null);
+    try {
+      const token = await getApoloAccessToken();
+      const rota = tipo === "comprovante" ? "comprovante" : "salvar-cad";
+      const resposta = await fetch(`/api/apolo/board/${entityId}/${rota}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        method: "POST",
+      });
+      const corpo = (await resposta.json()) as { data?: { url?: string | null }; error?: string };
+      if (!resposta.ok) {
+        setAvisoDoc(corpo.error ?? `Falha (${resposta.status}).`);
+      } else {
+        if (corpo.data?.url) window.open(corpo.data.url, "_blank", "noopener");
+        setAvisoDoc(tipo === "cad" ? "CAD aberta." : "Comprovante aberto.");
+      }
+    } catch (e) {
+      setAvisoDoc((e as Error).message);
+    } finally {
+      setBaixando(null);
     }
   };
 
@@ -203,6 +356,10 @@ export function CreditoSerasa({ entityId }: { entityId: string }) {
 
   const ehTeste = situacao.ambiente === "homologacao";
   const anterior = situacao.ultimaConsulta;
+  // Botão do cônjuge só para casado/união estável. Sem CPF do cônjuge o botão continua visível
+  // de propósito (decisão do Lucas): o operador clica e recebe o aviso dizendo onde preencher,
+  // em vez de ficar sem entender por que a opção não existe.
+  const temConjuge = Boolean(situacao.conjuge?.temConjuge);
 
   return (
     <div className="mt-4 grid gap-3">
@@ -230,46 +387,24 @@ export function CreditoSerasa({ entityId }: { entityId: string }) {
         </p>
       ) : null}
 
-      <div className="rounded-xl border border-line bg-surface p-5">
-        {anterior ? (
-          <>
-            <div className="flex flex-wrap items-end gap-4">
-              <div>
-                <p className="m-0 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
-                  Score
-                </p>
-                <p className="m-0 text-3xl font-bold text-ink">
-                  {anterior.resumo?.score ?? "—"}
-                </p>
-              </div>
-              {anterior.resumo?.faixa ? (
-                <div>
-                  <p className="m-0 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
-                    Faixa
-                  </p>
-                  <p className="m-0 text-sm font-semibold text-ink">{anterior.resumo.faixa}</p>
-                </div>
-              ) : null}
-              {anterior.resumo?.negativacoes !== undefined ? (
-                <div>
-                  <p className="m-0 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
-                    Negativações
-                  </p>
-                  <p className="m-0 text-sm font-semibold text-ink">
-                    {anterior.resumo.negativacoes}
-                  </p>
-                </div>
-              ) : null}
-            </div>
+      {anterior ? (
+        <>
+          {/* Resultado completo: veredito, score, dados cadastrais e restrições (dívidas vencidas). */}
+          <ResultadoCredito
+            cru={anterior.resposta}
+            resumo={anterior.resumo}
+            veredito={anterior.veredito ?? undefined}
+          />
 
-            <p className="m-0 mt-3 text-xs text-ink-muted">
+          <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+            <p className="m-0 text-xs text-ink-muted">
               {anterior.report_name} · consultado em{" "}
               {new Date(anterior.created_at).toLocaleString("pt-BR")}
               {anterior.ambiente === "homologacao" ? " · homologação" : ""}
             </p>
 
             <button
-              className="mt-4 inline-flex items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
+              className="inline-flex items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
               disabled={consultando}
               onClick={() => void consultar(true)}
               type="button"
@@ -281,38 +416,225 @@ export function CreditoSerasa({ entityId }: { entityId: string }) {
               )}
               Consultar de novo (gera nova cobrança)
             </button>
-          </>
-        ) : (
-          <>
-            <p className="m-0 text-sm font-bold text-ink">Nenhuma consulta para esta ficha</p>
-            <p className="m-0 mt-1 text-xs text-ink-soft">
-              A consulta usa o documento que está no cadastro e fica registrada com o seu
-              usuário, para conferência posterior.
-            </p>
+          </div>
+
+          {/* CRÉDITO DO CÔNJUGE (pedido do Lucas 27/07). Aparece só para casado ou união
+              estável. É o caminho de resgate: titular reprovado manda a ficha para revisão, e o
+              cônjuge aprovado libera o credenciamento, porque é a renda dele que sustenta a
+              compra. Cônjuge reprovado não muda nada, para não derrubar quem tem crédito.
+              Sem CPF do cônjuge na ficha, o servidor devolve o aviso dizendo onde preencher. */}
+          {temConjuge ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-surface px-4 py-3">
+              <p className="m-0 text-xs text-ink-muted">
+                Cliente casado. Dá para consultar o crédito do cônjuge: aprovado, o
+                credenciamento segue mesmo com o titular em revisão.
+              </p>
+
+              <button
+                className="inline-flex items-center gap-2 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
+                disabled={consultando}
+                onClick={() => void consultar(true, "conjuge")}
+                type="button"
+              >
+                {consultando ? (
+                  <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                ) : (
+                  <Users aria-hidden="true" className="size-3.5" />
+                )}
+                Consultar crédito do cônjuge (gera cobrança)
+              </button>
+
+              {resultadoConjuge ? (
+                <p className="m-0 w-full rounded-lg border border-line bg-subtle px-3 py-2 text-xs font-semibold text-ink">
+                  {resultadoConjuge}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* Documentos desta ficha: comprovante (com QR) e CAD são salvos AUTOMATICAMENTE na
+              consulta, na pasta do cliente. Os botões apenas abrem/baixam o que já foi salvo. */}
+          <div className="flex flex-wrap items-center gap-2 rounded-xl border border-line bg-surface px-4 py-3">
             <button
-              className="mt-4 inline-flex items-center gap-2 rounded-lg bg-inverse px-3.5 py-2 text-sm font-bold text-brand-ink disabled:opacity-60"
-              disabled={consultando}
-              onClick={() => void consultar(false)}
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
+              disabled={baixando !== null}
+              onClick={() => void baixarDocumento("comprovante")}
               type="button"
             >
-              {consultando ? (
-                <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+              {baixando === "comprovante" ? (
+                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
               ) : (
-                <CreditCard aria-hidden="true" className="size-4" />
+                <FileText aria-hidden="true" className="size-3.5" />
               )}
-              {consultando ? "Consultando…" : "Consultar Serasa"}
+              Baixar comprovante
             </button>
-          </>
-        )}
+            <button
+              className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
+              disabled={baixando !== null}
+              onClick={() => void baixarDocumento("cad")}
+              type="button"
+            >
+              {baixando === "cad" ? (
+                <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+              ) : (
+                <FileText aria-hidden="true" className="size-3.5" />
+              )}
+              Baixar CAD
+            </button>
+            {avisoDoc ? <span className="text-xs text-ink-muted">{avisoDoc}</span> : null}
+          </div>
 
-        {erro ? (
-          <p className="m-0 mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
-            {erro}
+          {erro ? (
+            <p className="m-0 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
+              {erro}
+            </p>
+          ) : null}
+
+          {/* Reprovado: aviso automático ao coordenador (+ corretor se houver telefone), com a
+              devolutiva de entrega e o reenvio manual (só admin). O gatilho é a ETAPA persistida
+              ("revisao"), não o veredito recomputado — que oscila com limite/C2X e poderia exibir o
+              painel (e o reenvio) para um cliente aprovado. */}
+          {situacao.etapa === "revisao" ? (
+            <div className="rounded-xl border border-line bg-surface p-4">
+              <p className="m-0 flex items-center gap-2 text-sm font-bold text-ink">
+                <Send aria-hidden="true" className="size-4" />
+                Aviso de reprovação
+              </p>
+              <p className="m-0 mt-1 text-xs text-ink-soft">
+                O coordenador do empreendimento é avisado automaticamente, com a CAD anexa. O
+                corretor recebe também quando tem telefone cadastrado.
+              </p>
+
+              {situacao.disparos?.length ? (
+                <ul className="m-0 mt-3 grid list-none gap-1.5 p-0">
+                  {situacao.disparos.map((d, i) => (
+                    <li
+                      className="flex flex-wrap items-center gap-2 text-xs"
+                      key={`${d.tipo}-${d.created_at}-${i}`}
+                    >
+                      <StatusEntrega status={d.status} />
+                      <span className="font-semibold capitalize text-ink">{d.tipo}</span>
+                      {d.destinatario ? (
+                        <span className="text-ink-soft">· {d.destinatario}</span>
+                      ) : null}
+                      {d.origem === "reenvio" ? (
+                        <span className="text-ink-muted">· reenvio</span>
+                      ) : null}
+                      <span className="ml-auto text-ink-muted">
+                        {new Date(d.created_at).toLocaleString("pt-BR")}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p className="m-0 mt-3 text-xs text-ink-muted">Nenhum aviso enviado ainda.</p>
+              )}
+
+              {situacao.ehAdmin ? (
+                <div className="mt-3 flex flex-wrap items-center gap-2">
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
+                    disabled={reenviando !== null}
+                    onClick={() => void reenviar("coordenador")}
+                    type="button"
+                  >
+                    {reenviando === "coordenador" ? (
+                      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw aria-hidden="true" className="size-3.5" />
+                    )}
+                    Reenviar ao coordenador
+                  </button>
+                  <button
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-line px-3 py-1.5 text-xs font-semibold text-ink hover:bg-subtle disabled:opacity-60"
+                    disabled={reenviando !== null}
+                    onClick={() => void reenviar("corretor")}
+                    type="button"
+                  >
+                    {reenviando === "corretor" ? (
+                      <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+                    ) : (
+                      <RefreshCw aria-hidden="true" className="size-3.5" />
+                    )}
+                    Reenviar ao corretor
+                  </button>
+                </div>
+              ) : null}
+
+              {avisoReenvio ? (
+                <p className="m-0 mt-3 rounded-lg border border-line bg-subtle/40 px-3 py-2 text-xs text-ink-soft">
+                  {avisoReenvio}
+                </p>
+              ) : null}
+            </div>
+          ) : null}
+        </>
+      ) : (
+        <div className="rounded-xl border border-line bg-surface p-5">
+          <p className="m-0 text-sm font-bold text-ink">Nenhuma consulta para esta ficha</p>
+          <p className="m-0 mt-1 text-xs text-ink-soft">
+            A consulta usa o documento que está no cadastro e fica registrada com o seu usuário,
+            para conferência posterior.
           </p>
-        ) : null}
-      </div>
+          <button
+            className="mt-4 inline-flex items-center gap-2 rounded-lg bg-inverse px-3.5 py-2 text-sm font-bold text-brand-ink disabled:opacity-60"
+            disabled={consultando}
+            onClick={() => void consultar(false)}
+            type="button"
+          >
+            {consultando ? (
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            ) : (
+              <CreditCard aria-hidden="true" className="size-4" />
+            )}
+            {consultando ? "Consultando…" : "Consultar Serasa"}
+          </button>
+
+          {erro ? (
+            <p className="m-0 mt-3 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
+              {erro}
+            </p>
+          ) : null}
+        </div>
+      )}
     </div>
+  );
+}
+
+// Devolutiva de entrega da Meta, no vocabulário do WhatsApp: um tique = enviado, dois = entregue,
+// dois azuis = lido. Falha aparece em vermelho.
+function StatusEntrega({ status }: { status: string }) {
+  if (status === "lido") {
+    return (
+      <span className="inline-flex items-center gap-1 text-sky-600" title="Lido">
+        <CheckCheck aria-hidden="true" className="size-4" />
+        Lido
+      </span>
+    );
+  }
+  if (status === "entregue") {
+    return (
+      <span className="inline-flex items-center gap-1 text-emerald-600" title="Entregue">
+        <CheckCheck aria-hidden="true" className="size-4" />
+        Entregue
+      </span>
+    );
+  }
+  if (status === "falhou") {
+    return (
+      <span className="inline-flex items-center gap-1 text-red-600" title="Falhou">
+        <AlertTriangle aria-hidden="true" className="size-3.5" />
+        Falhou
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-ink-muted" title="Enviado">
+      <Check aria-hidden="true" className="size-4" />
+      Enviado
+    </span>
   );
 }
 

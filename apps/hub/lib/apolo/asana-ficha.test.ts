@@ -3,27 +3,46 @@ import { describe, expect, it } from "vitest";
 import { camposDaFicha, gravarFichaDoLote } from "./asana-import";
 
 // Client falso mínimo: guarda as fichas num Map e responde ao encadeamento que
-// `gravarFichaDoLote` usa (select→eq→maybeSingle e update→eq).
+// `gravarFichaDoLote` usa.
+//
+// ⚠️ O ENCADEAMENTO MUDOU COM A MIGRATION 0080. A esteira passou a ter uma linha por CAD
+// (`entity_id + enterprise_id`), então ler "a ficha do fulano" com `.maybeSingle()` cru pode
+// voltar mais de uma linha e ESTOURAR. A leitura agora é
+// `select → eq → order×3 → limit(1) → maybeSingle`, e a escrita é `update → eq(entity) →
+// eq(enterprise)`. O fake espelha isso: `order` e `limit` devolvem o próprio builder, e o segundo
+// `eq` do update é ignorado (o fixture já é a linha procurada).
 function clienteFalso(inicial: Record<string, Record<string, unknown> | null>) {
   const fichas = new Map(Object.entries(inicial));
   const client = {
     from() {
       return {
         select() {
-          return {
-            eq(_coluna: string, id: string) {
-              return {
-                maybeSingle: async () =>
-                  fichas.has(id) ? { data: { ficha: fichas.get(id) } } : { data: null },
-              };
-            },
+          const leitura = (id: string) => {
+            const builder = {
+              limit: () => builder,
+              maybeSingle: async () =>
+                fichas.has(id)
+                  ? { data: { enterprise_id: "35", ficha: fichas.get(id) } }
+                  : { data: null },
+              order: () => builder,
+            };
+            return builder;
           };
+          return { eq: (_coluna: string, id: string) => leitura(id) };
         },
         update(valores: { ficha: Record<string, unknown> }) {
           return {
-            eq: async (_coluna: string, id: string) => {
-              fichas.set(id, valores.ficha);
-              return { error: null };
+            eq(_coluna: string, id: string) {
+              const gravar = async () => {
+                fichas.set(id, valores.ficha);
+                return { error: null };
+              };
+              // `await query` (o builder é thenable) e `.eq("enterprise_id", ...)` encadeado
+              // caem no MESMO lugar: gravar a ficha daquela entidade.
+              return {
+                eq: gravar,
+                then: (resolver: (valor: unknown) => unknown) => gravar().then(resolver),
+              };
             },
           };
         },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import {
   Bot,
   Inbox,
@@ -9,6 +9,7 @@ import {
   MessageCircle,
   Plus,
   Search,
+  Timer,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 
@@ -49,6 +50,19 @@ const PRIORITY_WEIGHT: Record<string, number> = {
 const cacaOwnerLabel = "Cacá";
 
 type GroupMode = "status" | "fila" | "canal" | "operador";
+
+// Abas do Board por NATUREZA do canal. Grupo não é atendimento (não abre nem fecha), e-mail tem
+// ritmo próprio: separados, cada um mostra números que fazem sentido pra ele. "Ações" é a campanha
+// de contato em massa (não tem ticket na fila — a resposta cai direto na ação), então esta aba
+// mostra a tela da campanha em vez do kanban. Ver [[project_apolo_acao_contato]].
+type AbaDoBoard = "atendimento" | "email" | "grupos" | "acoes";
+
+const ABAS_DO_BOARD: { chave: AbaDoBoard; rotulo: string }[] = [
+  { chave: "atendimento", rotulo: "Atendimento" },
+  { chave: "email", rotulo: "E-mail" },
+  { chave: "grupos", rotulo: "Grupos" },
+  { chave: "acoes", rotulo: "Ações" },
+];
 
 const groupModes: { key: GroupMode; label: string }[] = [
   { key: "status", label: "Status" },
@@ -105,6 +119,73 @@ export function IrisBoardKanban({
     "iris.board.viewMode",
     "kanban",
   );
+  const [abaAtiva, setAbaAtiva] = usePersistedState<AbaDoBoard>(
+    "iris.board.aba",
+    "atendimento",
+  );
+  // FILTROS COMBINÁVEIS. Antes o Board só tinha AGRUPAMENTO (Status/Fila/Canal/Operador), que
+  // muda as colunas mas não esconde nada — a barra parecia filtro e não filtrava. Agora dá pra
+  // somar critérios ("Cinthia" E "Pendente" E "WhatsApp") e, dentro da mesma dimensão, marcar
+  // mais de um valor (Cinthia OU Eliandiene). Pedido do Lucas em 26/07.
+  const [filtros, setFiltros] = usePersistedState<Record<GroupMode, string[]>>(
+    "iris.board.filtros",
+    { canal: [], fila: [], operador: [], status: [] },
+  );
+  const [seletorAberto, setSeletorAberto] = useState<GroupMode | null>(null);
+
+  // ABAS DO BOARD (Atendimento · E-mail · Grupos). Decisão do Lucas em 26/07.
+  //
+  // Os grupos de WhatsApp NÃO são atendimento: são salas de trabalho interno ("Vale do Ouro
+  // Back Office", "Diretoria Gurgel", "Careli Time"), não abrem, não fecham e não têm dono.
+  // Misturados na mesma tela eles inflavam o indicador em 40%: o Board dizia 137 abertos
+  // enquanto o banco tinha 98 atendimentos — a diferença eram exatamente os 39 grupos.
+  //
+  // A separação é de APRESENTAÇÃO (filtro antes dos indicadores e das colunas), não mexe na
+  // origem dos dados. Cada aba recalcula os próprios números, então "Abertos" volta a dizer a
+  // verdade sobre atendimento.
+  const ticketsDaAba = useMemo(
+    () =>
+      tickets.filter((ticket) => {
+        // Atendimento de ação (contato em massa) só aparece na aba "Ações" — sai da fila geral.
+        if (ticket.isAcao) {
+          return abaAtiva === "acoes";
+        }
+
+        if (ticket.isGroup) {
+          return abaAtiva === "grupos";
+        }
+
+        if (isEmailBoardTicket(ticket)) {
+          return abaAtiva === "email";
+        }
+
+        return abaAtiva === "atendimento";
+      }),
+    [abaAtiva, tickets],
+  );
+
+  // Não lidas por aba, para a pessoa ver movimento sem precisar entrar.
+  const naoLidasPorAba = useMemo(() => {
+    const contagem = { acoes: 0, atendimento: 0, email: 0, grupos: 0 };
+
+    for (const ticket of tickets) {
+      if (!ticket.unread) {
+        continue;
+      }
+
+      if (ticket.isAcao) {
+        contagem.acoes += 1;
+      } else if (ticket.isGroup) {
+        contagem.grupos += 1;
+      } else if (isEmailBoardTicket(ticket)) {
+        contagem.email += 1;
+      } else {
+        contagem.atendimento += 1;
+      }
+    }
+
+    return contagem;
+  }, [tickets]);
 
   const indicators = useMemo<
     { label: string; title?: string; tone?: "danger" | "gold"; value: string }[]
@@ -112,12 +193,12 @@ export function IrisBoardKanban({
     () => [
       {
         label: "Abertos",
-        value: `${tickets.filter((ticket) => !helpers.isClosedTicket(ticket)).length}`,
+        value: `${ticketsDaAba.filter((ticket) => !helpers.isClosedTicket(ticket)).length}`,
       },
       {
         label: "SLA crítico",
         tone: "danger",
-        value: `${tickets.filter(helpers.isSlaCritical).length}`,
+        value: `${ticketsDaAba.filter(helpers.isSlaCritical).length}`,
       },
       {
         label: "1ª resposta",
@@ -138,19 +219,75 @@ export function IrisBoardKanban({
       {
         label: "Sem resposta",
         tone: "gold",
-        value: `${tickets.filter(helpers.isWaitingForIris).length}`,
+        value: `${ticketsDaAba.filter(helpers.isWaitingForIris).length}`,
       },
       {
         label: "Resolvido hoje",
-        value: `${tickets.filter(helpers.isClosedToday).length}`,
+        value: `${ticketsDaAba.filter(helpers.isClosedToday).length}`,
       },
     ],
-    [helpers, metrics, tickets],
+    [helpers, metrics, ticketsDaAba],
   );
 
+  // Valores existentes em cada dimensão, para o seletor só oferecer o que a aba realmente tem
+  // (não adianta oferecer "Gurgel" se não há nenhum card do Gurgel aqui).
+  const valoresPorDimensao = useMemo(() => {
+    const mapa: Record<GroupMode, string[]> = {
+      canal: [],
+      fila: [],
+      operador: [],
+      status: [],
+    };
+
+    for (const dimensao of ["status", "fila", "canal", "operador"] as const) {
+      const vistos = new Set<string>();
+
+      for (const ticket of ticketsDaAba) {
+        vistos.add(valorDaDimensao(dimensao, ticket, helpers));
+      }
+
+      mapa[dimensao] = Array.from(vistos).sort((a, b) => a.localeCompare(b));
+    }
+
+    return mapa;
+  }, [helpers, ticketsDaAba]);
+
+  // Dentro da mesma dimensão os valores somam (OU); entre dimensões, restringem (E).
+  const ticketsFiltrados = useMemo(
+    () =>
+      ticketsDaAba.filter((ticket) =>
+        (["status", "fila", "canal", "operador"] as const).every((dimensao) => {
+          const escolhidos = filtros[dimensao];
+
+          return (
+            escolhidos.length === 0 ||
+            escolhidos.includes(valorDaDimensao(dimensao, ticket, helpers))
+          );
+        }),
+      ),
+    [filtros, helpers, ticketsDaAba],
+  );
+
+  const totalDeFiltros = (
+    ["status", "fila", "canal", "operador"] as const
+  ).reduce((soma, dimensao) => soma + filtros[dimensao].length, 0);
+
+  function alternarFiltro(dimensao: GroupMode, valor: string) {
+    setFiltros((atual) => {
+      const escolhidos = atual[dimensao];
+
+      return {
+        ...atual,
+        [dimensao]: escolhidos.includes(valor)
+          ? escolhidos.filter((item) => item !== valor)
+          : [...escolhidos, valor],
+      };
+    });
+  }
+
   const visibleTickets = useMemo(
-    () => sortTickets(filterTickets(tickets, search, helpers), sortMode, helpers),
-    [helpers, search, sortMode, tickets],
+    () => sortTickets(filterTickets(ticketsFiltrados, search, helpers), sortMode, helpers),
+    [helpers, search, sortMode, ticketsFiltrados],
   );
 
   const columns = useMemo(
@@ -160,6 +297,43 @@ export function IrisBoardKanban({
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3">
+      <div className="flex shrink-0 items-center gap-1 border-b border-line/70">
+        {ABAS_DO_BOARD.map((aba) => {
+          const naoLidas = naoLidasPorAba[aba.chave];
+          const ativa = abaAtiva === aba.chave;
+
+          return (
+            <button
+              key={aba.chave}
+              type="button"
+              onClick={() => setAbaAtiva(aba.chave)}
+              aria-pressed={ativa}
+              className={[
+                "-mb-px inline-flex items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-semibold transition-colors",
+                ativa
+                  ? "border-[#A07C3B] text-[#7A5E2C]"
+                  : "border-transparent text-ink-muted hover:text-ink",
+              ].join(" ")}
+            >
+              {aba.rotulo}
+              {naoLidas > 0 ? (
+                <span
+                  title={`${naoLidas} sem ler`}
+                  className={[
+                    "inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                    ativa
+                      ? "bg-[#A07C3B] text-white"
+                      : "bg-[#A07C3B]/15 text-[#7A5E2C]",
+                  ].join(" ")}
+                >
+                  {naoLidas}
+                </span>
+              ) : null}
+            </button>
+          );
+        })}
+      </div>
+
       <div className="grid gap-2 sm:grid-cols-3 xl:grid-cols-7">
         {indicators.map((indicator) => (
           <div
@@ -191,6 +365,84 @@ export function IrisBoardKanban({
             </p>
           </div>
         ))}
+      </div>
+
+      {/* BARRA DE FILTROS: chips que somam. O contador "mostrando X de Y" evita o erro clássico
+          do filtro esquecido ligado — sem ele a pessoa acha que a fila esvaziou. */}
+      <div className="flex shrink-0 flex-wrap items-center gap-1.5 text-xs">
+        <span className="font-semibold text-ink-muted">Filtros:</span>
+        {(["operador", "status", "canal", "fila"] as const).map((dimensao) => (
+          <div key={dimensao} className="relative">
+            <button
+              type="button"
+              onClick={() =>
+                setSeletorAberto((atual) =>
+                  atual === dimensao ? null : dimensao,
+                )
+              }
+              className={[
+                "inline-flex h-7 items-center gap-1 rounded-full border px-2.5 font-semibold transition-colors",
+                filtros[dimensao].length > 0
+                  ? "border-[#A07C3B]/40 bg-[#A07C3B]/10 text-[#7A5E2C]"
+                  : "border-line/70 bg-surface text-ink-muted hover:border-[#A07C3B]/25",
+              ].join(" ")}
+            >
+              {groupModes.find((modo) => modo.key === dimensao)?.label}
+              {filtros[dimensao].length > 0 ? (
+                <span className="tabular-nums">
+                  {filtros[dimensao].length}
+                </span>
+              ) : (
+                <Plus className="size-3" aria-hidden="true" />
+              )}
+            </button>
+            {seletorAberto === dimensao ? (
+              <div className="absolute left-0 top-8 z-30 max-h-64 w-56 overflow-y-auto rounded-lg border border-line bg-surface p-1 shadow-lg">
+                {valoresPorDimensao[dimensao].length === 0 ? (
+                  <p className="p-2 text-ink-muted">Nada por aqui</p>
+                ) : (
+                  valoresPorDimensao[dimensao].map((valor) => (
+                    <button
+                      key={valor}
+                      type="button"
+                      onClick={() => alternarFiltro(dimensao, valor)}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left hover:bg-subtle"
+                    >
+                      <span
+                        className={[
+                          "flex size-3.5 shrink-0 items-center justify-center rounded border",
+                          filtros[dimensao].includes(valor)
+                            ? "border-[#A07C3B] bg-[#A07C3B] text-white"
+                            : "border-line",
+                        ].join(" ")}
+                      >
+                        {filtros[dimensao].includes(valor) ? "✓" : ""}
+                      </span>
+                      <span className="truncate text-ink">{valor}</span>
+                    </button>
+                  ))
+                )}
+              </div>
+            ) : null}
+          </div>
+        ))}
+
+        {totalDeFiltros > 0 ? (
+          <>
+            <span className="tabular-nums text-ink-muted">
+              mostrando {ticketsFiltrados.length} de {ticketsDaAba.length}
+            </span>
+            <button
+              type="button"
+              onClick={() =>
+                setFiltros({ canal: [], fila: [], operador: [], status: [] })
+              }
+              className="font-semibold text-[#7A5E2C] underline-offset-2 hover:underline"
+            >
+              Limpar
+            </button>
+          </>
+        ) : null}
       </div>
 
       <div className="flex shrink-0 flex-wrap items-center gap-2">
@@ -281,6 +533,7 @@ export function IrisBoardKanban({
           {columns.map((column) => (
             <BoardColumnView
               key={column.key}
+              agrupadoPor={groupMode}
               column={column}
               helpers={helpers}
               onOpenAttendance={onOpenAttendance}
@@ -318,12 +571,14 @@ export function IrisBoardKanban({
 }
 
 function BoardColumnView({
+  agrupadoPor,
   column,
   helpers,
   onOpenAttendance,
   onSelectTicket,
   renderers,
 }: {
+  agrupadoPor: GroupMode;
   column: BoardColumn;
   helpers: IrisTicketQueueHelpers;
   onOpenAttendance: (ticketId: string) => void;
@@ -353,6 +608,7 @@ function BoardColumnView({
           column.tickets.map((ticket) => (
             <BoardCard
               key={ticket.id}
+              agrupadoPor={agrupadoPor}
               helpers={helpers}
               onOpenAttendance={onOpenAttendance}
               onSelectTicket={onSelectTicket}
@@ -391,11 +647,13 @@ function queueAccentColor(queueLabel: string): string {
 }
 
 function BoardCard({
+  agrupadoPor,
   helpers,
   onOpenAttendance,
   onSelectTicket,
   ticket,
 }: {
+  agrupadoPor: GroupMode;
   helpers: IrisTicketQueueHelpers;
   onOpenAttendance: (ticketId: string) => void;
   onSelectTicket: (ticketId: string) => void;
@@ -410,6 +668,13 @@ function BoardCard({
   const crm = readBoardTicketCrm(ticket.crm360Registration);
   const lastMessageAt = helpers.formatDateTime(
     ticket.lastMessageAt ?? ticket.openedAt,
+  );
+  // "esperando 2h14" quando a bola é nossa; "Aguardando cliente" quando é dele; "Encerrado"
+  // no fechado. Só põe o ícone de relógio quando há tempo correndo contra nós.
+  const esperaLabel = helpers.slaLabel(ticket);
+  const mostraCronometro = esperaLabel.startsWith("esperando");
+  const statusDoCard = STATUS_FLOW.find(
+    (etapa) => etapa.key === statusColumnKey(ticket, helpers),
   );
 
   const open = () => {
@@ -450,6 +715,12 @@ function BoardCard({
           </>
         )}
         <BoardProfileChip crm={crm} />
+        {/* O CARD MOSTRA O QUE A COLUNA NÃO DIZ (pedido do Lucas): agrupado por operador, a
+            coluna diz de quem é, mas não em que pé está. Aí a etiqueta de status vem pro card.
+            Quando o agrupamento JÁ É por status, a coluna diz e a etiqueta some — repetir a
+            mesma informação em dois lugares é o ruído que estamos tirando da tela. Mesma
+            classificação e mesma cor do cabeçalho da coluna, pro operador reconhecer de olho. */}
+        {agrupadoPor !== "status" ? <BoardStatusChip status={statusDoCard} /> : null}
         {(ticket.unreadCount ?? 0) > 0 ? (
           <span
             className="ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full bg-emerald-500 px-1 text-[9px] font-bold tabular-nums text-white"
@@ -474,12 +745,20 @@ function BoardCard({
       ) : null}
 
       <div className="mt-2 flex items-center justify-between gap-2">
+        {/* CRONÔMETRO no card: o operador escolhe o próximo olhando para o quadro, então o
+            tempo de espera precisa estar AQUI, não só dentro da conversa (pedido do Lucas).
+            `esperaLabel` já vem de helpers.slaLabel, que hoje devolve "esperando 2h14" quando
+            a bola é nossa e "Aguardando cliente" quando é dele. */}
         <span
-          className={`truncate text-[11px] tabular-nums ${
+          className={`inline-flex min-w-0 items-center gap-1 truncate text-[11px] tabular-nums ${
             slaCritical ? "font-semibold text-rose-500" : "text-ink-muted"
           }`}
+          title={`Última mensagem: ${lastMessageAt}`}
         >
-          {slaCritical ? `vencido · ${lastMessageAt}` : lastMessageAt}
+          {mostraCronometro ? (
+            <Timer className="size-3 shrink-0" aria-hidden="true" />
+          ) : null}
+          <span className="truncate">{esperaLabel || lastMessageAt}</span>
         </span>
         <span
           className="shrink-0"
@@ -508,6 +787,34 @@ function BoardCard({
   );
 }
 
+// Etiqueta de status do card. Ponto colorido + texto neutro, igual ao cabeçalho da coluna: a
+// cor identifica, o texto confirma. Preferi o ponto a pintar o chip inteiro porque cinco chips
+// coloridos no mesmo card voltariam a ser o "tudo vermelho" que acabamos de tirar da tela — e
+// porque o ponto já está provado nos dois temas, claro e escuro.
+function BoardStatusChip({
+  status,
+}: {
+  status: { accent: string; label: string } | undefined;
+}) {
+  if (!status) {
+    return null;
+  }
+
+  return (
+    <span
+      className="inline-flex min-w-0 shrink items-center gap-1 rounded-full border border-line/70 bg-subtle px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-ink-soft"
+      title={`Status: ${status.label}`}
+    >
+      <span
+        className="size-1.5 shrink-0 rounded-full"
+        style={{ backgroundColor: status.accent }}
+        aria-hidden="true"
+      />
+      <span className="truncate">{status.label}</span>
+    </span>
+  );
+}
+
 // Em que coluna do fluxo o ticket cai (modo status) — derivado do status real,
 // sem nada manual: o card anda sozinho conforme a conversa muda.
 function statusColumnKey(
@@ -528,6 +835,37 @@ function statusColumnKey(
   }
 
   return "pendente";
+}
+
+// O VALOR de um ticket em cada dimensão. Serve pro agrupamento (colunas) E pros filtros, pra
+// os dois nunca discordarem: se a coluna diz "Cinthia", o filtro "Operador: Cinthia" tem que
+// pegar exatamente os mesmos cards.
+export function valorDaDimensao(
+  dimensao: GroupMode,
+  ticket: IrisBoardTicket,
+  helpers: IrisTicketQueueHelpers,
+): string {
+  if (dimensao === "status") {
+    const chave = statusColumnKey(ticket, helpers);
+
+    return (
+      STATUS_FLOW.find((fluxo) => fluxo.key === chave)?.label ?? "Pendente"
+    );
+  }
+
+  if (dimensao === "fila") {
+    if (isEmailBoardTicket(ticket)) {
+      return emailBoxLabel(ticket.channelLabel);
+    }
+
+    return ticket.queueLabel || "Sem fila";
+  }
+
+  if (dimensao === "canal") {
+    return helpers.formatIrisChannelLabel(ticket.channelLabel) || "Canal";
+  }
+
+  return (ticket.assignedToLabel ?? "").trim() || cacaOwnerLabel;
 }
 
 function buildColumns(

@@ -112,8 +112,14 @@ export function AuthProvider({
   // Rotas públicas por design (sem login): /publico/* (ex.: dashboard de CADs por
   // empreendimento). Não expõem dado do HUB — leem fonte própria server-side.
   const isPublicPageRoute = pathname?.startsWith("/publico/") ?? false;
+  // Área própria do evento (/evento): o operador do Prometeu tem conta própria (não é usuário do
+  // hub), então esta rota NÃO pode cair no redirect para /login. A tela valida a sessão do
+  // operador por dentro (cookie assinado, fetchOperadorEu) e mostra o login do operador quando não
+  // há sessão. Sem dado do hub exposto: o /evento só fala com as rotas /api/prometeu/*.
+  const isEventoRoute =
+    pathname === "/evento" || (pathname?.startsWith("/evento/") ?? false);
   const isAuthBypassRoute =
-    isLoginRoute || isPublicChronosRoute || isPublicPageRoute;
+    isLoginRoute || isPublicChronosRoute || isPublicPageRoute || isEventoRoute;
   const hubUser = useMemo(
     () =>
       authState.user ? mapAuthUserToHubUserContext(authState.user) : null,

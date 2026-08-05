@@ -5,8 +5,9 @@
 //
 // A regra em uma frase: a imagem que vai pra LEITURA (MOST) é de alta qualidade, pra a IA
 // enxergar texto miúdo de conta de luz; a que vai pro DRIVE é comprimida, pra caber no POST
-// (o Vercel corta request acima de ~4.5MB) e economizar storage. PDF passa intacto — não dá pra
-// redimensionar num canvas, e comprimir um PDF assinado seria perda.
+// (o Vercel corta request acima de ~4.5MB) e economizar storage. PDF: pra LEITURA é RASTERIZADO
+// em alta (senão a MOST rasteriza em DPI baixo e reprova por "baixa confiança"); pro DRIVE segue
+// intacto — ver [[reference_most_qualidade_pdf_vs_print]].
 
 export type ArquivoCapturado = {
   fileBase64: string;
@@ -72,11 +73,47 @@ export function comprimirImagem(
   });
 }
 
+// Rasteriza a 1ª página de um PDF num JPEG de alta resolução, pra a MOST ler como se fosse um
+// print. Motivo: PDF e imagem batem no MESMO endpoint de imagem da MOST; entregando o PDF cru, é
+// ELA que rasteriza — num DPI baixo que deixa o texto miúdo da conta ilegível pro OCR e reprova
+// por "baixa confiança". Só a 1ª página: a MOST processa só ela, e o comprovante traz o endereço
+// na primeira. pdf.js é pesado (~1,3MB) — import DINÂMICO, só carrega quando o arquivo é PDF.
+async function rasterizarPdf(file: File, maxLado: number, qualidade: number): Promise<string> {
+  const pdfjs = await import("pdfjs-dist");
+  // Worker servido do /public (independe do bundler); a versão é casada com pdfjs-dist no build.
+  pdfjs.GlobalWorkerOptions.workerSrc = "/pdf.worker.min.mjs";
+  const dados = new Uint8Array(await file.arrayBuffer());
+  const loadingTask = pdfjs.getDocument({ data: dados });
+  const doc = await loadingTask.promise;
+  try {
+    const page = await doc.getPage(1);
+    const base = page.getViewport({ scale: 1 });
+    const escala = Math.max(1, maxLado / Math.max(base.width, base.height));
+    const viewport = page.getViewport({ scale: escala });
+    const canvas = document.createElement("canvas");
+    canvas.width = Math.round(viewport.width);
+    canvas.height = Math.round(viewport.height);
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Canvas indisponível.");
+    await page.render({ canvas, canvasContext: ctx, viewport }).promise;
+    return canvas.toDataURL("image/jpeg", qualidade);
+  } finally {
+    void loadingTask.destroy();
+  }
+}
+
 // Vai pra LEITURA (MOST): alta qualidade (2600px @ 0.9). Um arquivo por chamada, então cabe no
 // limite individual. Comprimir demais aqui degrada o OCR — foi o que fez o endereço vir vazio.
 export async function arquivoParaLeitura(file: File, graus = 0): Promise<ArquivoCapturado> {
   if (ehPdf(file)) {
-    return { fileBase64: await fileToBase64(file), fileName: file.name, mimeType: file.type || "application/pdf" };
+    // Rasteriza a 1ª página em alta pra a MOST ler como um print. Se o pdf.js falhar (PDF
+    // protegido, fonte exótica), cai no fallback: manda o PDF cru (comportamento antigo).
+    try {
+      const jpeg = await rasterizarPdf(file, 2600, 0.9);
+      return { fileBase64: jpeg, fileName: trocarExtensaoParaJpg(file.name), mimeType: "image/jpeg" };
+    } catch {
+      return { fileBase64: await fileToBase64(file), fileName: file.name, mimeType: file.type || "application/pdf" };
+    }
   }
   return {
     fileBase64: await comprimirImagem(file, 2600, 0.9, graus),

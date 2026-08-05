@@ -90,6 +90,8 @@ export type IrisTicket = {
   channelLabel: string;
   // Conversa de grupo de WhatsApp (monitoramento CACÁ, read-only).
   isGroup?: boolean;
+  // Atendimento nascido de uma AÇÃO de contato em massa (metadata.acaoId) → aba "Ações".
+  isAcao?: boolean;
   // Conversa 1:1 do canal Relacionamento (6566) via Evolution — atendimento
   // normal, mas sem janela de 24h nem template (não é Meta).
   isDirect?: boolean;

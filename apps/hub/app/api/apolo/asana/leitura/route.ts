@@ -8,6 +8,7 @@ import {
   criarEntidadesDoLote,
   escanearCads,
   gravarFichaDoLote,
+  separarPorConflito,
 } from "@/lib/apolo/asana-import";
 import { lerDocumentosDoLote, orcarLeitura } from "@/lib/apolo/asana-ocr";
 import { authorizeApoloRead, authorizeApoloWrite } from "@/lib/apolo/auth";
@@ -56,6 +57,7 @@ export async function GET(request: Request) {
     const { itens, orcamento } = await orcarLeitura({
       cads: cads.map((cad) => ({
         conjuge: cad.conjuge,
+        corretor: cad.corretor,
         // Data de criação da CAD no Asana: precisa atravessar orçamento -> tela -> POST,
         // senão a esteira nasce sem data de chegada.
         criadoEm: cad.criadoEm,
@@ -141,6 +143,7 @@ export async function POST(request: Request) {
         // Da DESCRIÇÃO da CAD (grátis): cônjuge, escolaridade, estado civil, profissão e
         // renda. É o que evita pagar enriquecimento para descobrir o mesmo.
         conjuge: item.conjuge,
+        corretor: item.corretor ?? null,
         cpf: lido.cpf,
         criadoEm: item.criadoEm ?? null,
         dataNascimento: lido.dataNascimento,
@@ -171,20 +174,38 @@ export async function POST(request: Request) {
     ownerUserId: auth.userId,
   });
 
-  // 3) VINCULA à task e coloca na esteira em VALIDAÇÃO: o operador confere o que o OCR leu e
+  // 3) CONFLITO — as mesmas regras do import por CPF. A leitura já foi paga (o CPF só aparece
+  //    depois dela), então aqui não dá para barrar antes de gastar; o que dá é NÃO deixar a ficha
+  //    entrar por cima de outra. Quem conflita volta na resposta para o operador decidir, e o que
+  //    a MOST leu fica salvo — o dedup por hash não cobra de novo quando ele reimportar.
+  const identificados = comCpf.filter((item) => entidadePorCad[item.gid]);
+  const { conflitos, liberados } = await separarPorConflito({
+    client,
+    itens: identificados.map((item) => ({
+      empreendimento: body.empreendimento ?? null,
+      entityId: entidadePorCad[item.gid]!,
+      gid: item.gid,
+      imobiliaria: item.imobiliaria,
+      nome: item.nome,
+    })),
+  });
+
+  // 4) VINCULA à task e coloca na esteira em VALIDAÇÃO: o operador confere o que o OCR leu e
   //    completa o que faltou, que é o processo que o Lucas descreveu.
-  const paraVincular = comCpf
-    .filter((item) => entidadePorCad[item.gid])
+  const paraVincular = identificados
+    .filter((item) => liberados.has(item.gid))
     .map((item) => ({
-      corretor: null,
+      corretor: item.corretor ?? null,
       // ⚠️ Já foi `null` aqui, e o efeito era a fila inteira com o horário da importação
       // (392 registros com a mesma data). A data de chegada vem da task do Asana.
       criadoEm: item.criadoEm ?? null,
+      email: item.email,
       empreendimento: body.empreendimento ?? null,
       entityId: entidadePorCad[item.gid]!,
       gid: item.gid,
       imobiliaria: item.imobiliaria,
       secao: body.secao ?? "Em Cadastro",
+      telefone: item.telefone,
     }));
 
   const vinculo = paraVincular.length
@@ -197,7 +218,7 @@ export async function POST(request: Request) {
       })
     : { erros: [], ignorados: 0, vinculados: 0 };
 
-  // 4) FICHA: copia o cadastro para `apolo_esteira.ficha`, que é de onde a tela de validação
+  // 5) FICHA: copia o cadastro para `apolo_esteira.ficha`, que é de onde a tela de validação
   //    lê. Sem este passo o dado fica só no metadata da entidade, e para quem existe no C2X o
   //    sync noturno apaga o metadata inteiro — a leitura paga e o formulário iriam junto.
   const ficha = paraVincular.length
@@ -205,12 +226,15 @@ export async function POST(request: Request) {
         client,
         itens: paraVincular.map((alvo) => ({
           campos: camposDaFicha(comCpf.find((c) => c.gid === alvo.gid)!),
+          // A ficha vai para a CAD DESTE empreendimento: a mesma pessoa pode ter CAD em outro
+          // loteamento, e a leitura paga deste lote é só desta CAD.
+          empreendimento: body.empreendimento ?? null,
           entityId: alvo.entityId,
         })),
       })
     : { atualizados: 0, erros: [] };
 
-  // 5) ANEXOS para o Apolo (grátis) — é o que a validação mostra ao lado dos dados.
+  // 6) ANEXOS para o Apolo (grátis) — é o que a validação mostra ao lado dos dados.
   const documentos = paraVincular.length
     ? await trazerDocumentosDoLote({
         client,
@@ -229,6 +253,9 @@ export async function POST(request: Request) {
 
   return NextResponse.json({
     data: {
+      // Quem foi lido mas NÃO entrou na esteira, com o motivo. Fica ao lado de `vinculo` de
+      // propósito: a soma de vinculados + conflitos + pendentes tem que fechar com o lote.
+      conflitos,
       criacao,
       documentos,
       ficha,

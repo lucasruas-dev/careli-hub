@@ -413,7 +413,11 @@ export async function gravarVinculoEsteira(
       imobiliaria_entity_id: vinculo.imobiliariaEntityId,
       origem: "publico-cad",
     },
-    { onConflict: "entity_id" },
+    // ⚠️ A CHAVE É `(entity_id, enterprise_id)` desde a 0080 — e é AQUI que a mudança paga:
+    // o portal público é onde o corretor abre CAD para quem já comprou em outro loteamento.
+    // Com `onConflict: "entity_id"` (o de antes) a segunda CAD entrava POR CIMA da primeira;
+    // depois da migration seria erro 42P10 do Postgres, porque nenhuma constraint única casa.
+    { onConflict: "entity_id,enterprise_id" },
   );
 
   if (error) {
@@ -429,6 +433,13 @@ export async function registrarOrigemPublica(
   vinculo: VinculoCad,
   protocolo: string,
 ): Promise<string | null> {
+  // ⚠️ `apolo_source_links` tem `unique (source_system, source_table, source_id)`, e a TRILHA agora
+  // é da CAD — e a CAD é (pessoa, empreendimento) desde a 0080. O `protocolo` (código de
+  // autenticação) depende só de `entityId + ano` (ver `gerarCodigoAutenticacao`), então a MESMA
+  // pessoa abrindo a 2ª CAD em OUTRO empreendimento no mesmo ano colidia (23505) e a trilha da 2ª
+  // CAD (corretor, imobiliária, sessão) nunca era gravada. Incluir o empreendimento na chave de
+  // origem faz cada CAD ter a sua. O `protocolo` impresso no PDF continua vindo de onde vem hoje;
+  // só a CHAVE de origem muda.
   const { error } = await adminClient.from("apolo_source_links").insert({
     entity_id: vinculo.prospectEntityId,
     metadata: {
@@ -439,7 +450,7 @@ export async function registrarOrigemPublica(
       protocolo,
       sessaoId: vinculo.sessaoId,
     },
-    source_id: protocolo,
+    source_id: `${protocolo}-${vinculo.enterpriseId}`,
     source_system: "publico-cad",
     source_table: "formulario_corretor",
   });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloWrite } from "@/lib/apolo/auth";
 import { acharDocumentosDoCasal } from "@/lib/apolo/corrigir-titular";
+import { lerCadDaEsteira } from "@/lib/apolo/esteira-cad";
 import { atualizarIdentidade } from "@/lib/apolo/identidade-persist";
 import { custoOcrImagem } from "@/lib/apolo/most-precos";
 import { createApoloAdminClient } from "@/lib/apolo/server";
@@ -217,14 +218,17 @@ export async function POST(request: Request) {
 
     // A ficha (jsonb) passa a ser do proponente: o que estava lá era do cônjuge.
     const doProponente = achado.proponenteEncontrado;
-    const { data: esteira } = await client
-      .from("apolo_esteira")
-      .select("ficha")
-      .eq("entity_id", entityId)
-      .maybeSingle();
+    // ⚠️ SEM ESCOPO DE EMPREENDIMENTO, DE PROPÓSITO. Isto conserta a ficha que nasceu com a
+    // PESSOA ERRADA (o OCR leu o documento do cônjuge). O erro é da identidade, não de uma CAD:
+    // se o titular estava trocado, estava trocado em todas as CADs dessa entidade. Ler/escrever a
+    // mais recente e deixar a outra com os dados do cônjuge seria consertar pela metade.
+    const esteira = await lerCadDaEsteira<{ ficha: Record<string, unknown> | null }>(
+      client,
+      entityId,
+      "ficha",
+    );
 
-    const fichaAtual = ((esteira as { ficha: Record<string, unknown> } | null)?.ficha ??
-      {}) as Record<string, unknown>;
+    const fichaAtual = (esteira?.ficha ?? {}) as Record<string, unknown>;
 
     // Os campos de IDENTIDADE da ficha eram do CÔNJUGE e passam a ser do proponente.
     //
@@ -248,6 +252,9 @@ export async function POST(request: Request) {
       else delete ficha[chave];
     }
 
+    // Escreve em TODAS as CADs desta entidade, pelo mesmo motivo da leitura acima: a correção é
+    // da PESSOA. Deixar a CAD do outro loteamento com o nascimento e a mãe do cônjuge seria o
+    // erro original sobrevivendo num lugar onde ninguém mais vai olhar.
     await client.from("apolo_esteira").update({ ficha }).eq("entity_id", entityId);
 
     // O cônjuge ganha os dados do documento DELE, quando encontrado.

@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowLeft,
   Building2,
   Check,
   CreditCard,
+  ExternalLink,
   FileCheck2,
   LayoutGrid,
   List,
@@ -17,6 +18,7 @@ import {
   Search,
   Send,
   ShieldCheck,
+  Upload,
   UserRound,
   X,
 } from "lucide-react";
@@ -40,8 +42,11 @@ import { formatarTelefoneBR } from "@/lib/format/phone-br";
 import { buscarEnderecoPorCep } from "../../lib/cep";
 
 import { CreditoSerasa } from "./credito-serasa";
+import { StatusPixPrevenda } from "./status-pix";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
+
+import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 
 // Tela de trabalho do operador: a ESTEIRA de credenciamento (Lucas 18/jul).
 // A imobiliária e a CAD percorrem caminhos diferentes:
@@ -55,6 +60,13 @@ import { getApoloAccessToken } from "../../data/apolo-operations";
 type ItemFila = {
   // Analista responsável salvo no banco (metadata.esteira.analistaId).
   analistaId?: string | null;
+  // Motivo da recusa do C2X (coluna `erro` de apolo_c2x_sync), para o tooltip do alerta.
+  c2xErro?: string | null;
+  // A CAD NÃO conseguiu subir para o C2X. Preenchido só quando falhou:
+  //   'erro'            -> a API recusou (motivo em `c2xErro`).
+  //   'sem_confirmacao' -> respondeu sucesso mas o cadastro não apareceu no banco do C2X.
+  // Null = está no C2X ou ainda não foi tentada, e nos dois casos o card não mostra nada.
+  c2xFalha?: string | null;
   // Corretor e imobiliária vindos da CAD importada (o cadastro do wizard usa outros campos).
   corretor?: string | null;
   corretores: number;
@@ -63,21 +75,40 @@ type ItemFila = {
   imobiliaria?: string | null;
   // Nomes dos empreendimentos a que o item se refere (eixo de filtro/ordenação do Board).
   empreendimentos: string[];
+  // De QUAL CAD é este card. A esteira é `(entity_id, enterprise_id)` desde a migration 0080:
+  // a mesma pessoa pode ter uma CAD por empreendimento. O card continua sendo por PESSOA (o `id`
+  // é o entityId), mas as AÇÕES precisam dizer em qual CAD estão mexendo — senão a etapa iria
+  // parar na CAD que a pessoa tem em outro loteamento.
+  enterpriseId?: string | null;
   // Etapa PERSISTIDA (metadata.esteira.etapa). É o ponto de partida do item na tela: quem foi
   // importado do Asana como credenciado precisa nascer na coluna certa, não em Validação.
   etapa?: string | null;
+  // Algum envio da pré-venda falhou. Só quem falhou é marcado: se todo card ganhasse um ícone de
+  // status, o problema deixaria de saltar aos olhos.
+  erroEnvio?: boolean;
   id: string;
   nome: string;
+  // PIX da pré-venda confirmado (hora do nosso carimbo). Null = enviamos a cobrança mas ainda
+  // não caiu. É o que separa, dentro de "Credenciado", quem pagou de quem só recebeu o PIX.
+  pagoEm?: string | null;
   papel: string;
   socios: number;
 };
 
 // A etapa salva é texto; o Board trabalha com índice em ETAPAS_CAD. Esta é a ponte.
+// Os DESVIOS do crédito (revisão, indeferido) abrem NA Análise de crédito: quem está em revisão
+// precisa ver a análise que reprovou, não voltar pra Validação. Correção é devolução da validação.
+// `credenciado` = 4 (e não 3) DE PROPÓSITO: é o último estágio da esteira, então a ficha entra
+// como CONCLUÍDA — todas as bolinhas ficam verdes, aparece o selo "Credenciado" e some o botão de
+// avançar (não há pra onde ir depois). Com 3 ela ficava como "etapa atual", cinza e pedindo ação.
 const INDICE_POR_ETAPA: Record<string, number> = {
   cadastro: 0,
-  credenciado: 3,
+  correcao: 0,
+  credenciado: 4,
   credito: 1,
+  indeferido: 1,
   prevenda: 2,
+  revisao: 1,
   validacao: 0,
 };
 
@@ -166,7 +197,13 @@ type EventoHistorico = {
 
 type Mensagem = { autor: string; em: string; id: string; texto: string };
 
-export function BoardView() {
+export function BoardView({
+  onOpenEntity,
+}: {
+  // Abre a ficha do cliente no CRM do Apolo (mesma navegação dos relacionamentos). Vem do
+  // ApoloPage (openEntityInCrm): busca por nome e seleciona pela id certa.
+  onOpenEntity?: (name: string, entityId: string) => void;
+} = {}) {
   const [itens, setItens] = useState<ItemFila[]>([]);
   const [analistas, setAnalistas] = useState<Analista[]>([]);
   const [usuarioAtual, setUsuarioAtual] = useState<Analista | null>(null);
@@ -175,13 +212,20 @@ export function BoardView() {
   const [carregando, setCarregando] = useState(true);
   const [filtro, setFiltro] = useState<"todos" | "imobiliaria" | "prospect">("todos");
   const [selecionado, setSelecionado] = useState<ItemFila | null>(null);
-  const [visao, setVisao] = useState<"kanban" | "tabela">("tabela");
+  // Abre no KANBAN: é a leitura que mostra de cara onde a fila está parada (quantos em cada
+  // etapa). A tabela continua a um clique, no alternador do cabeçalho.
+  const [visao, setVisao] = useState<"kanban" | "tabela">("kanban");
   const [busca, setBusca] = useState("");
   const [empreendimento, setEmpreendimento] = useState("todos");
   const [ordem, setOrdem] = useState<"antigos" | "nome" | "recentes">("antigos");
   // Filtro por etapa: com centenas de itens na fila, ver só uma coluna por vez é o que torna
   // a lista utilizável.
   const [etapaFiltro, setEtapaFiltro] = useState("todas");
+  // Dentro de "Credenciado" convivem quem já pagou o PIX e quem só recebeu a cobrança. Este
+  // filtro é o que separa os dois na hora de cobrar quem falta.
+  const [pagoFiltro, setPagoFiltro] = useState<"pagos" | "pendentes" | "todos">("todos");
+  // Isolar as fichas cujo envio falhou — o chip só existe quando há alguma.
+  const [soErros, setSoErros] = useState(false);
   // Ordenação clicando no cabeçalho. `null` = usa a ordem escolhida no seletor.
   const [colunaOrdem, setColunaOrdem] = useState<{
     campo: "chegada" | "documento" | "empreendimento" | "etapa" | "nome";
@@ -199,6 +243,8 @@ export function BoardView() {
   const [emCorrecao, setEmCorrecao] = useState<Record<string, boolean>>({});
   // Popup de motivo: recusar e mandar pra correção exigem justificativa.
   const [modalMotivo, setModalMotivo] = useState<"correcao" | "indeferir" | null>(null);
+  // PROBLEMA 3 (Lucas, 04/08): modal do override da coordenação (aprovar com restrição + evidência).
+  const [modalRestricao, setModalRestricao] = useState(false);
   // Histórico e conversa interna por item (locais nesta versão).
   const [eventos, setEventos] = useState<Record<string, EventoHistorico[]>>({});
   const [mensagens, setMensagens] = useState<Record<string, Mensagem[]>>({});
@@ -228,6 +274,23 @@ export function BoardView() {
       ],
     }));
 
+  // Persiste a etapa no servidor (apolo_esteira) quando o operador decide no Board. Best-effort:
+  // o estado local já moveu a tela; falha de rede não pode desfazer o que ele acabou de ver.
+  const gravarEtapa = async (entityId: string, etapa: string, motivo?: string) => {
+    try {
+      const token = await getApoloAccessToken();
+      // `enterpriseId` do card: diz ao servidor QUAL CAD desta pessoa está sendo movida.
+      const enterpriseId = itens.find((item) => item.id === entityId)?.enterpriseId ?? null;
+      await fetch(`/api/apolo/board/${encodeURIComponent(entityId)}/etapa`, {
+        body: JSON.stringify({ enterpriseId, etapa, motivo }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "PATCH",
+      });
+    } catch {
+      // A ação local já aconteceu; não travar a UI por falha de rede.
+    }
+  };
+
   // Recusa e correção SEMPRE com motivo (regra do Lucas): fica no histórico e é o que o
   // corretor/cliente recebe de volta.
   const indeferir = (itemId: string, motivo: string) => {
@@ -235,80 +298,144 @@ export function BoardView() {
     setEmRevisao((prev) => ({ ...prev, [itemId]: false }));
     setEmCorrecao((prev) => ({ ...prev, [itemId]: false }));
     registrarEvento(itemId, "sistema", `Reprovado — motivo: ${motivo}`);
+    void gravarEtapa(itemId, "indeferido", motivo);
   };
 
   const enviarParaCorrecao = (itemId: string, motivo: string) => {
     setEmCorrecao((prev) => ({ ...prev, [itemId]: true }));
     setEmRevisao((prev) => ({ ...prev, [itemId]: false }));
     registrarEvento(itemId, "nota", `Enviado para correção — pendências: ${motivo}`);
+    void gravarEtapa(itemId, "correcao", motivo);
   };
 
   const reabrir = (itemId: string) => {
     setIndeferidos((prev) => ({ ...prev, [itemId]: false }));
     setEmCorrecao((prev) => ({ ...prev, [itemId]: false }));
     registrarEvento(itemId, "etapa", "Análise reaberta");
+    void gravarEtapa(itemId, "credito");
   };
 
   // Analista escala pro coordenador decidir o crédito.
   const enviarParaRevisao = (itemId: string) => {
     setEmRevisao((prev) => ({ ...prev, [itemId]: true }));
     registrarEvento(itemId, "aprovacao", "Enviado ao coordenador para revisão do crédito");
+    void gravarEtapa(itemId, "revisao");
   };
 
-  // Coordenador aprova: o crédito segue e o item volta ao caminho normal.
-  const aprovarRevisao = (itemId: string) => {
-    setEmRevisao((prev) => ({ ...prev, [itemId]: false }));
-    setIndeferidos((prev) => ({ ...prev, [itemId]: false }));
-    registrarEvento(itemId, "aprovacao", "Crédito aprovado pelo coordenador");
+  // APROVAR COM RESTRIÇÃO (COORDENAÇÃO) — PROBLEMA 3 (Lucas, 04/08). Substitui o antigo
+  // `aprovarRevisao`, que fazia `gravarEtapa(itemId, "prevenda")` CRU: reprovado ia para a cobrança
+  // sem evidência, sem registro e ignorando o toggle da pré-venda. Agora vai pela rota de override,
+  // que exige a evidência anexada, registra quem/quando e destrava respeitando `prevenda_habilitada`
+  // (prevenda se ligada, senão credenciado). O destino real vem do servidor.
+  const aprovarComRestricao = async (
+    itemId: string,
+    payload: { fileBase64: string; fileName: string; mimeType: string; motivo: string },
+  ): Promise<{ error?: string; ok?: boolean }> => {
+    try {
+      const token = await getApoloAccessToken();
+      const enterpriseId = itens.find((item) => item.id === itemId)?.enterpriseId ?? null;
+      const resposta = await fetch("/api/apolo/serasa/aprovar-restricao", {
+        body: JSON.stringify({
+          enterpriseId,
+          entityId: itemId,
+          fileBase64: payload.fileBase64,
+          fileName: payload.fileName,
+          mimeType: payload.mimeType,
+          motivo: payload.motivo,
+        }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const corpo = (await resposta.json()) as { data?: { etapa?: string }; error?: string };
+      if (!resposta.ok) return { error: corpo.error ?? `Falha (${resposta.status}).` };
+
+      // Servidor destravou e disse para onde. Reflete na tela na hora, sem esperar o reload.
+      const etapaNova = corpo.data?.etapa;
+      setEmRevisao((prev) => ({ ...prev, [itemId]: false }));
+      setIndeferidos((prev) => ({ ...prev, [itemId]: false }));
+      const indice = etapaNova ? INDICE_POR_ETAPA[etapaNova] : undefined;
+      if (indice !== undefined) setProgresso((prev) => ({ ...prev, [itemId]: indice }));
+      registrarEvento(itemId, "aprovacao", "Crédito aprovado com restrição pela coordenação");
+      void carregarFila();
+      return { ok: true };
+    } catch (e) {
+      return { error: (e as Error).message };
+    }
   };
+
+  // Carrega a fila do Board/Esteira. Extraída num callback estável para ser reusada tanto na
+  // montagem quanto no refetch ao focar a aba (useRefetchOnFocus) — a MESMA função, sem
+  // duplicar o fetch. As semeaduras seguem com "sessão vence servidor" (o operador não perde o
+  // que mexeu na tela); os cards em si (`itens`) são substituídos pelo servidor, então PIX pago,
+  // CPF corrigido e afins passam a refletir sem F5.
+  const carregarFila = useCallback(async () => {
+    try {
+      const accessToken = await getApoloAccessToken();
+      const response = await fetch("/api/apolo/board", {
+        cache: "no-store",
+        headers: { Authorization: `Bearer ${accessToken}` },
+      });
+      const payload = (await response.json()) as {
+        data?: { analistas?: Analista[]; itens?: ItemFila[]; usuarioAtual?: Analista | null };
+      };
+      const itensCarregados = payload.data?.itens ?? [];
+      setItens(itensCarregados);
+      setAnalistas(payload.data?.analistas ?? []);
+      setUsuarioAtual(payload.data?.usuarioAtual ?? null);
+
+      // O item ABERTO é um estado à parte de `itens` (não é derivado por id), e o título da
+      // tela de detalhe lê dele. Sem esta linha, corrigir o nome arrumava o card e a tabela e
+      // deixava o cabeçalho da própria tela onde a correção foi feita com o nome antigo.
+      setSelecionado((atual) =>
+        atual ? (itensCarregados.find((item) => item.id === atual.id) ?? atual) : atual,
+      );
+
+      // Semeia etapa e analista com o que veio do banco, preservando o que o operador já
+      // mexeu nesta sessão (o que ele fez na tela ganha do que estava salvo).
+      setProgresso((atual) => {
+        const semeado: Record<string, number> = {};
+        for (const item of itensCarregados) {
+          const indice = item.etapa ? INDICE_POR_ETAPA[item.etapa] : undefined;
+          if (indice !== undefined) semeado[item.id] = indice;
+        }
+        return { ...semeado, ...atual };
+      });
+
+      // Semeia os DESVIOS (revisão/correção/indeferido) a partir da etapa persistida. Sem
+      // isso eles se perdiam no reload: o item voltava para o caminho normal e a coluna
+      // "Crédito em revisão" esvaziava sozinha. O que o operador mexeu na sessão prevalece.
+      const marcarPorEtapa = (alvo: string): Record<string, boolean> => {
+        const marcas: Record<string, boolean> = {};
+        for (const item of itensCarregados) if (item.etapa === alvo) marcas[item.id] = true;
+        return marcas;
+      };
+      setEmRevisao((atual) => ({ ...marcarPorEtapa("revisao"), ...atual }));
+      setEmCorrecao((atual) => ({ ...marcarPorEtapa("correcao"), ...atual }));
+      setIndeferidos((atual) => ({ ...marcarPorEtapa("indeferido"), ...atual }));
+
+      setAnalistaPorItem((atual) => {
+        const semeado: Record<string, string> = {};
+        for (const item of itensCarregados) {
+          if (item.analistaId) semeado[item.id] = item.analistaId;
+        }
+        return { ...semeado, ...atual };
+      });
+    } catch {
+      // fila vazia
+    } finally {
+      setCarregando(false);
+    }
+  }, []);
 
   useEffect(() => {
-    let alive = true;
-    void (async () => {
-      try {
-        const accessToken = await getApoloAccessToken();
-        const response = await fetch("/api/apolo/board", {
-          cache: "no-store",
-          headers: { Authorization: `Bearer ${accessToken}` },
-        });
-        const payload = (await response.json()) as {
-          data?: { analistas?: Analista[]; itens?: ItemFila[]; usuarioAtual?: Analista | null };
-        };
-        if (alive) {
-          const itensCarregados = payload.data?.itens ?? [];
-          setItens(itensCarregados);
-          setAnalistas(payload.data?.analistas ?? []);
-          setUsuarioAtual(payload.data?.usuarioAtual ?? null);
+    void carregarFila();
+  }, [carregarFila]);
 
-          // Semeia etapa e analista com o que veio do banco, preservando o que o operador já
-          // mexeu nesta sessão (o que ele fez na tela ganha do que estava salvo).
-          setProgresso((atual) => {
-            const semeado: Record<string, number> = {};
-            for (const item of itensCarregados) {
-              const indice = item.etapa ? INDICE_POR_ETAPA[item.etapa] : undefined;
-              if (indice !== undefined) semeado[item.id] = indice;
-            }
-            return { ...semeado, ...atual };
-          });
-
-          setAnalistaPorItem((atual) => {
-            const semeado: Record<string, string> = {};
-            for (const item of itensCarregados) {
-              if (item.analistaId) semeado[item.id] = item.analistaId;
-            }
-            return { ...semeado, ...atual };
-          });
-        }
-      } catch {
-        // fila vazia
-      } finally {
-        if (alive) setCarregando(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, []);
+  // Volta pra aba/janela → recarrega a fila (correção de CPF, PIX por webhook, troca de etapa).
+  // Não é polling: só ao focar, com debounce de ~10s dentro do hook.
+  useRefetchOnFocus(() => {
+    void carregarFila();
+  });
 
   // Lista de empreendimentos pro seletor (só os que realmente aparecem na fila).
   const empreendimentosDisponiveis = Array.from(
@@ -343,6 +470,11 @@ export function BoardView() {
             Boolean(emCorrecao[item.id]),
           ) === etapaFiltro,
     )
+    .filter((item) => {
+      if (pagoFiltro === "todos") return true;
+      return pagoFiltro === "pagos" ? Boolean(item.pagoEm) : !item.pagoEm;
+    })
+    .filter((item) => (soErros ? Boolean(item.erroEnvio) : true))
     .sort((a, b) => {
       // Clique no cabeçalho manda; o seletor é o padrão quando não há coluna escolhida.
       if (colunaOrdem) {
@@ -427,6 +559,17 @@ export function BoardView() {
           </button>
 
           <div className="flex items-center gap-2">
+            {/* Atalho pro cadastro do cliente no CRM, sem sair pra pesquisar. */}
+            {onOpenEntity ? (
+              <button
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-line px-3 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle"
+                onClick={() => onOpenEntity(selecionado.nome, selecionado.id)}
+                type="button"
+              >
+                <ExternalLink aria-hidden="true" className="size-4" />
+                Abrir no CRM
+              </button>
+            ) : null}
             {/* Quem abriu assumiu: fica explícito de quem é a análise. */}
             {analistaAberto ? (
               <span className="inline-flex items-center gap-1.5 rounded-full border border-line bg-subtle px-2.5 py-1 text-[11px] font-semibold text-ink-soft">
@@ -467,7 +610,7 @@ export function BoardView() {
             item={selecionado}
             mensagens={(mensagens[selecionado.id] ?? []).length}
             onAbrirChat={() => setPainelAberto(true)}
-            onAprovarRevisao={() => aprovarRevisao(selecionado.id)}
+            onAprovarRestricao={() => setModalRestricao(true)}
             onAvancar={() =>
               setProgresso((prev) => ({
                 ...prev,
@@ -475,6 +618,28 @@ export function BoardView() {
               }))
             }
             onCorrecao={() => setModalMotivo("correcao")}
+            onIdentidadeSalva={() => void carregarFila()}
+            onCreditoResultado={(r) => {
+              // O crédito moveu a etapa no servidor (aprovado: pré-venda, reprovado: revisão);
+              // refletir na tela na hora, sem esperar o reload da fila.
+              const alvo = selecionado.id;
+              if (r.etapa === "prevenda") {
+                setProgresso((prev) => ({ ...prev, [alvo]: 2 }));
+                setEmRevisao((prev) => ({ ...prev, [alvo]: false }));
+                setIndeferidos((prev) => ({ ...prev, [alvo]: false }));
+              } else if (r.etapa === "revisao") {
+                // Fica ancorado NA Análise de crédito (índice 1), com o desvio de revisão.
+                setProgresso((prev) => ({ ...prev, [alvo]: 1 }));
+                setEmRevisao((prev) => ({ ...prev, [alvo]: true }));
+              }
+              registrarEvento(
+                alvo,
+                r.aprovado ? "aprovacao" : "sistema",
+                r.aprovado
+                  ? "Crédito aprovado: seguiu para a pré-venda"
+                  : "Crédito reprovado: enviado para revisão",
+              );
+            }}
             onEnviarGestao={() => enviarParaRevisao(selecionado.id)}
             onIndeferir={() => setModalMotivo("indeferir")}
             onReabrir={() => reabrir(selecionado.id)}
@@ -498,6 +663,20 @@ export function BoardView() {
               setModalMotivo(null);
             }}
             tipo={modalMotivo}
+          />
+        ) : null}
+
+        {/* PROBLEMA 3 (Lucas, 04/08): override da coordenação. Exige a evidência do de-acordo
+            (PDF/PNG/JPEG) antes de destravar o crédito reprovado. */}
+        {modalRestricao ? (
+          <ModalAprovarRestricao
+            nome={toTitleCase(selecionado.nome)}
+            onCancelar={() => setModalRestricao(false)}
+            onConfirmar={async (payload) => {
+              const r = await aprovarComRestricao(selecionado.id, payload);
+              if (r.ok) setModalRestricao(false);
+              return r;
+            }}
           />
         ) : null}
 
@@ -525,9 +704,6 @@ export function BoardView() {
             Tudo que entra no lançamento passa por aqui: imobiliárias, corretores e CADs.
           </p>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-[11px] font-semibold text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
-              Prévia de layout · as ações ainda não gravam
-            </span>
             {/* Mesmo alternador do board da Iris. */}
             <div className="inline-flex shrink-0 rounded-lg border border-line/70 bg-subtle/70 p-0.5">
               <button
@@ -655,6 +831,37 @@ export function BoardView() {
             })}
           </select>
 
+          {/* Falha de envio: o chip só existe quando há alguma — sem erro, sem ruído na tela. */}
+          {itens.some((item) => item.erroEnvio) ? (
+            <button
+              className={`inline-flex h-9 items-center gap-1.5 rounded-lg border px-3 text-sm font-semibold transition-colors ${
+                soErros
+                  ? "border-rose-300 bg-rose-600 text-white"
+                  : "border-rose-300 bg-rose-50 text-rose-700 hover:bg-rose-100 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+              }`}
+              onClick={() => setSoErros((v) => !v)}
+              type="button"
+            >
+              <AlertTriangle aria-hidden="true" className="size-4" />
+              {itens.filter((item) => item.erroEnvio).length} com erro de envio
+            </button>
+          ) : null}
+
+          {/* PIX da pré-venda: separa quem pagou de quem só recebeu a cobrança. */}
+          <select
+            className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
+            onChange={(event) => setPagoFiltro(event.target.value as typeof pagoFiltro)}
+            value={pagoFiltro}
+          >
+            <option value="todos">PIX: todos</option>
+            <option value="pagos">
+              PIX pago ({itens.filter((item) => item.pagoEm).length})
+            </option>
+            <option value="pendentes">
+              PIX pendente ({itens.filter((item) => !item.pagoEm).length})
+            </option>
+          </select>
+
           <select
             className="h-9 rounded-lg border border-line/70 bg-surface px-2 text-sm text-ink outline-none [&>option]:bg-surface [&>option]:text-ink"
             onChange={(event) => {
@@ -747,8 +954,29 @@ export function BoardView() {
                           )}
                         </span>
                         <div className="min-w-0">
-                          <p className="m-0 truncate text-sm font-semibold text-ink">
-                            {toTitleCase(item.nome)}
+                          <p className="m-0 flex items-center gap-1.5 truncate text-sm font-semibold text-ink">
+                            <span className="truncate">{toTitleCase(item.nome)}</span>
+                            {item.erroEnvio ? (
+                              <span
+                                className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+                                title="Falha no envio da cobrança ou do recibo"
+                              >
+                                <AlertTriangle aria-hidden="true" className="size-2.5" /> envio
+                              </span>
+                            ) : null}
+                            {/* Não conseguiu subir para o C2X: motivo no tooltip. */}
+                            <SeloC2x erro={item.c2xErro} falha={item.c2xFalha} />
+                            {item.pagoEm ? (
+                              <span
+                                className="inline-flex shrink-0 items-center gap-0.5 rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+                                title={`PIX confirmado em ${new Date(item.pagoEm).toLocaleString(
+                                  "pt-BR",
+                                  { timeZone: "America/Sao_Paulo" },
+                                )}`}
+                              >
+                                <Check aria-hidden="true" className="size-2.5" /> PIX pago
+                              </span>
+                            ) : null}
                           </p>
                           <p className="m-0 truncate text-[11px] text-ink-muted">
                             {imob ? "Imobiliária" : "CAD · prospect"}
@@ -1290,6 +1518,154 @@ function ModalMotivo({
   );
 }
 
+// Lê um arquivo como data URL base64 ("data:<mime>;base64,..."). A rota aceita o prefixo `data:`
+// (o `uploadApoloDocument` o remove antes de decodificar).
+function lerArquivoBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(reader.error ?? new Error("Falha ao ler o arquivo."));
+    reader.readAsDataURL(file);
+  });
+}
+
+// PROBLEMA 3 (Lucas, 04/08): override da coordenação em crédito reprovado. Espelha o padrão do
+// `ModalMotivo`, mas a peça central é a EVIDÊNCIA (PDF/PNG/JPEG) — obrigatória, o botão só habilita
+// com o arquivo escolhido. O motivo é opcional. O envio (upload + destrava) é do servidor; o modal
+// só monta o payload e mostra o erro que voltar.
+function ModalAprovarRestricao({
+  nome,
+  onCancelar,
+  onConfirmar,
+}: {
+  nome: string;
+  onCancelar: () => void;
+  onConfirmar: (payload: {
+    fileBase64: string;
+    fileName: string;
+    mimeType: string;
+    motivo: string;
+  }) => Promise<{ error?: string; ok?: boolean }>;
+}) {
+  const [arquivo, setArquivo] = useState<File | null>(null);
+  const [motivo, setMotivo] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const confirmar = async () => {
+    if (!arquivo || salvando) return;
+    setSalvando(true);
+    setErro(null);
+    let fileBase64: string;
+    try {
+      fileBase64 = await lerArquivoBase64(arquivo);
+    } catch {
+      setErro("Não foi possível ler o arquivo.");
+      setSalvando(false);
+      return;
+    }
+    const r = await onConfirmar({
+      fileBase64,
+      fileName: arquivo.name,
+      mimeType: arquivo.type,
+      motivo: motivo.trim(),
+    });
+    // Sucesso: o pai fecha o modal (desmonta). Só tratamos o erro aqui.
+    if (r?.error) {
+      setErro(r.error);
+      setSalvando(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      <button
+        aria-label="Fechar"
+        className="absolute inset-0 cursor-default bg-black/40"
+        onClick={salvando ? undefined : onCancelar}
+        type="button"
+      />
+
+      <div className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
+        <div className="border-b border-line px-5 py-4">
+          <h2 className="m-0 text-base font-semibold text-ink">Aprovar com restrição</h2>
+          <p className="m-0 mt-0.5 text-xs text-ink-muted">
+            {nome} teve o crédito reprovado. A coordenação pode aprovar mesmo assim, anexando a
+            evidência do de-acordo. Fica registrado quem aprovou e quando.
+          </p>
+        </div>
+
+        <div className="grid gap-3 px-5 py-4">
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold text-ink">
+              Evidência do de-acordo <span className="text-rose-600">*</span>
+            </span>
+            <span className="text-[11px] text-ink-muted">PDF, PNG ou JPEG.</span>
+            <div className="flex items-center gap-2 rounded-lg border border-dashed border-line bg-subtle/40 px-3 py-2">
+              <Upload aria-hidden="true" className="size-4 shrink-0 text-ink-muted" />
+              <input
+                accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                className="min-w-0 flex-1 text-xs text-ink file:mr-3 file:rounded-md file:border-0 file:bg-inverse file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-brand-ink"
+                disabled={salvando}
+                onChange={(event) => {
+                  setArquivo(event.target.files?.[0] ?? null);
+                  setErro(null);
+                }}
+                type="file"
+              />
+            </div>
+            {arquivo ? (
+              <span className="truncate text-[11px] text-ink-soft">{arquivo.name}</span>
+            ) : null}
+          </label>
+
+          <label className="grid gap-1.5">
+            <span className="text-xs font-semibold text-ink">Motivo (opcional)</span>
+            <textarea
+              className="min-h-[80px] w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted"
+              disabled={salvando}
+              onChange={(event) => setMotivo(event.target.value)}
+              placeholder="Ex.: cliente com fiador; acordo já quitado…"
+              value={motivo}
+            />
+          </label>
+
+          {erro ? (
+            <p className="m-0 flex items-center gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+              <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
+              {erro}
+            </p>
+          ) : null}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
+          <button
+            className="inline-flex h-9 items-center rounded-lg border border-line px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle disabled:opacity-40"
+            disabled={salvando}
+            onClick={onCancelar}
+            type="button"
+          >
+            Cancelar
+          </button>
+          <button
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#7C3AED] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#6D28D9] disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!arquivo || salvando}
+            onClick={() => void confirmar()}
+            type="button"
+          >
+            {salvando ? (
+              <Loader2 aria-hidden="true" className="size-4 animate-spin" />
+            ) : (
+              <ShieldCheck aria-hidden="true" className="size-4" />
+            )}
+            {salvando ? "Aprovando…" : "Aprovar com restrição"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function corDoEvento(tipo: EventoHistorico["tipo"]): string {
   if (tipo === "chegada") return "#2563EB";
   if (tipo === "aprovacao") return "#A07C3B";
@@ -1303,6 +1679,50 @@ function iniciais(nome: string): string {
   const primeira = partes[0]?.[0] ?? "";
   const ultima = partes.length > 1 ? (partes[partes.length - 1]?.[0] ?? "") : "";
   return `${primeira}${ultima}`.toUpperCase();
+}
+
+// ALERTA: a CAD não conseguiu subir para o C2X (pedido do Lucas 05/08: "é bom ter algum alerta caso
+// eu não consiga subir uma cad para o c2x"). Ícone + tooltip com o motivo, no mesmo formato dos
+// outros selos do card. Aparece SÓ quando falhou: quem está no C2X e quem nem foi tentado ficam sem
+// marca, senão o problema deixa de saltar aos olhos.
+//
+// Duas cores porque são problemas diferentes:
+//   vermelho = a API recusou (dá para ler o motivo e corrigir a ficha);
+//   âmbar    = respondeu sucesso mas o cadastro não foi achado no banco do C2X. É o caso perigoso,
+//              o que PARECE sucesso (incidente 28/jul e 01/08, escrita indo para o ambiente errado).
+// O C2X é um Rails e devolve a recusa em HTML, com os campos separados por `<br>` (ex.:
+// "Naturalidade não pode ficar em branco<br>Nacionalidade não pode ficar em branco"). Jogar isso
+// cru no tooltip faz o operador ler a tag. Aqui viram "; " e qualquer outra tag é removida.
+function motivoLegivel(bruto: string): string {
+  return bruto
+    .replace(/<br\s*\/?>/gi, "; ")
+    .replace(/<[^>]*>/g, "")
+    .replace(/\s*;\s*(?=;)/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/[;\s]+$/, "")
+    .trim();
+}
+
+function SeloC2x({ erro, falha }: { erro?: string | null; falha?: string | null }) {
+  if (falha !== "erro" && falha !== "sem_confirmacao") return null;
+  const semConfirmacao = falha === "sem_confirmacao";
+  const motivo = motivoLegivel(erro ?? "");
+  const titulo = semConfirmacao
+    ? "Não confirmado no C2X: a API respondeu sucesso, mas o cadastro não apareceu no banco do C2X. Conferir antes de seguir."
+    : `Não subiu para o C2X: ${motivo || "motivo não registrado."}`;
+
+  return (
+    <span
+      className={`inline-flex shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
+        semConfirmacao
+          ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+          : "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+      }`}
+      title={titulo}
+    >
+      <AlertTriangle aria-hidden="true" className="size-2.5" /> C2X
+    </span>
+  );
 }
 
 // Card no padrão da Íris: borda esquerda colorida pelo TIPO, chip, nome, documento e rodapé.
@@ -1347,11 +1767,43 @@ function CardBoard({
         >
           {imob ? "Imobiliária" : "CAD"}
         </span>
+        {/* Falha de envio: o único estado que ganha destaque no card. Aparece SÓ quando existe. */}
+        {item.erroEnvio ? (
+          <span
+            className="inline-flex items-center gap-0.5 rounded-full border border-rose-300 bg-rose-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
+            title="Falha no envio da cobrança ou do recibo — abra a ficha para ver o motivo"
+          >
+            <AlertTriangle aria-hidden="true" className="size-2.5" /> envio
+          </span>
+        ) : null}
+        {/* Não conseguiu subir para o C2X: o motivo fica no tooltip. */}
+        <SeloC2x erro={item.c2xErro} falha={item.c2xFalha} />
+        {/* PIX confirmado: dentro de "Credenciado" é o que separa quem pagou de quem só
+            recebeu a cobrança. A hora fica no title (é ela que ordena a fila do Prometeu). */}
+        {item.pagoEm ? (
+          <span
+            className="inline-flex items-center gap-0.5 rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-300"
+            title={`PIX confirmado em ${new Date(item.pagoEm).toLocaleString("pt-BR", {
+              timeZone: "America/Sao_Paulo",
+            })}`}
+          >
+            <Check aria-hidden="true" className="size-2.5" /> PIX pago
+          </span>
+        ) : null}
       </div>
 
       <p className="truncate text-sm font-semibold text-ink">{toTitleCase(item.nome)}</p>
       {item.documento ? (
         <p className="mt-0.5 truncate text-xs text-ink-muted tabular-nums">{item.documento}</p>
+      ) : null}
+
+      {/* Imobiliária e corretor (dado do Asana): de quem é a CAD. Só no funil da CAD. Em DUAS
+          linhas — o corretor embaixo da imobiliária — pra nenhum dos dois ser cortado. */}
+      {!imob && (item.imobiliaria || item.corretor) ? (
+        <div className="mt-0.5 text-[11px] leading-tight text-ink-soft">
+          <p className="m-0 truncate">{item.imobiliaria ?? "—"}</p>
+          {item.corretor ? <p className="m-0 truncate text-ink-muted">{item.corretor}</p> : null}
+        </div>
       ) : null}
 
       {/* Empreendimento em destaque: é a informação que o Lucas precisa bater de imediato. */}
@@ -1414,10 +1866,12 @@ function DetalheBoard({
   item,
   mensagens,
   onAbrirChat,
-  onAprovarRevisao,
+  onAprovarRestricao,
   onAvancar,
   onCorrecao,
+  onCreditoResultado,
   onEnviarGestao,
+  onIdentidadeSalva,
   onIndeferir,
   onReabrir,
   onVoltar,
@@ -1429,11 +1883,17 @@ function DetalheBoard({
   indeferido: boolean;
   mensagens: number;
   onAbrirChat: () => void;
-  onAprovarRevisao: () => void;
+  // PROBLEMA 3: abre o modal do override da coordenação (evidência obrigatória).
+  onAprovarRestricao: () => void;
   onAvancar: () => void;
   onCorrecao: () => void;
+  // Resultado do crédito: o servidor moveu a etapa (aprovado -> pré-venda, reprovado -> revisão)
+  // e a tela reflete na hora.
+  onCreditoResultado: (r: { aprovado: boolean; etapa?: string }) => void;
   // Escalar pro coordenador: o analista pede o aval de quem aprova o crédito.
   onEnviarGestao: () => void;
+  // Nome/documento corrigido na validação: a fila precisa recarregar, senão o card fica velho.
+  onIdentidadeSalva: () => void;
   onIndeferir: () => void;
   onReabrir: () => void;
   onVoltar: () => void;
@@ -1443,6 +1903,13 @@ function DetalheBoard({
   const indice = Math.min(etapaAtual, etapas.length - 1);
   const etapa = etapas[indice];
   const concluida = etapaAtual >= etapas.length;
+
+  // Revisitar uma etapa JÁ ALCANÇADA só para ver a tela (ex.: rever o resultado do crédito
+  // estando na pré-venda), sem mexer na etapa real. `null` = mostra a etapa atual.
+  const [visualizando, setVisualizando] = useState<number | null>(null);
+  useEffect(() => setVisualizando(null), [item.id]);
+  const indiceVisto = visualizando ?? indice;
+  const etapaVista = etapas[indiceVisto] ?? etapa;
 
   return (
     <div className="grid gap-5">
@@ -1486,13 +1953,15 @@ function DetalheBoard({
         </div>
       </div>
 
-      {/* trilha das etapas */}
+      {/* trilha das etapas — cada etapa já alcançada é clicável para revisitar a tela */}
       <ol className="flex flex-wrap items-center gap-x-2 gap-y-2">
         {etapas.map((passo, i) => {
           const feita = i < etapaAtual;
           const atual = i === indice && !concluida;
-          return (
-            <li className="flex items-center gap-2" key={passo.id}>
+          const alcancada = concluida || i <= indice;
+          const vendo = i === indiceVisto;
+          const conteudo = (
+            <>
               <span
                 className={`flex size-7 items-center justify-center rounded-full text-[11px] font-bold ${
                   feita
@@ -1500,15 +1969,29 @@ function DetalheBoard({
                     : atual
                       ? "bg-inverse text-brand-ink"
                       : "border border-line bg-surface text-ink-muted"
-                }`}
+                } ${vendo && !atual ? "ring-2 ring-[#A07C3B]/50 ring-offset-1" : ""}`}
               >
                 {feita ? <Check aria-hidden="true" className="size-3.5" /> : i + 1}
               </span>
-              <span
-                className={`text-xs font-medium ${atual ? "text-ink" : "text-ink-muted"}`}
-              >
+              <span className={`text-xs font-medium ${vendo ? "text-ink" : "text-ink-muted"}`}>
                 {passo.label}
               </span>
+            </>
+          );
+          return (
+            <li className="flex items-center gap-2" key={passo.id}>
+              {alcancada ? (
+                <button
+                  className="flex items-center gap-2 rounded-lg px-1 py-0.5 transition-colors hover:bg-subtle"
+                  onClick={() => setVisualizando(atual ? null : i)}
+                  title={`Ver ${passo.label}`}
+                  type="button"
+                >
+                  {conteudo}
+                </button>
+              ) : (
+                <span className="flex items-center gap-2 px-1 py-0.5">{conteudo}</span>
+              )}
               {i < etapas.length - 1 ? (
                 <span className="mx-1 h-px w-6 bg-line" />
               ) : null}
@@ -1517,10 +2000,18 @@ function DetalheBoard({
         })}
       </ol>
 
-      {concluida || !etapa ? (
+      {concluida && visualizando === null ? (
         <PainelConcluido imob={imob} />
+      ) : etapaVista ? (
+        <PainelEtapa
+          entityId={item.id}
+          etapa={etapaVista}
+          imob={imob}
+          onCreditoResultado={onCreditoResultado}
+          onIdentidadeSalva={onIdentidadeSalva}
+        />
       ) : (
-        <PainelEtapa entityId={item.id} etapa={etapa} imob={imob} />
+        <PainelConcluido imob={imob} />
       )}
 
       <div className="flex items-center justify-between gap-2 border-t border-line pt-4">
@@ -1561,35 +2052,43 @@ function DetalheBoard({
               {emCorrecao ? "Retomar análise" : "Reabrir análise"}
             </button>
           ) : emRevisao ? (
-            // Em revisão: a decisão é do COORDENADOR — aprovar o crédito ou indeferir.
+            // Em revisão = crédito REPROVADO. A decisão é da COORDENAÇÃO. Duas saídas (PROBLEMA 2 +
+            // 3, Lucas 04/08): devolver para correção, OU aprovar COM RESTRIÇÃO — e aprovar exige a
+            // evidência do de-acordo (o modal cobra o anexo). O antigo botão "Aprovar crédito
+            // (coordenador)" empurrava reprovado -> prevenda sem evidência e sem registro; não
+            // existe mais. Não há "indeferir": crédito reprovado vive na coluna de revisão.
             <>
               <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-4 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                onClick={onIndeferir}
+                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-300 px-4 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-300 dark:hover:bg-amber-500/10"
+                onClick={onCorrecao}
                 type="button"
               >
-                <X aria-hidden="true" className="size-4" />
-                Indeferir crédito
+                <AlertTriangle aria-hidden="true" className="size-4" />
+                Enviar para correção
               </button>
               <button
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-[#7C3AED] px-5 text-sm font-semibold text-white transition-colors hover:bg-[#6D28D9]"
-                onClick={onAprovarRevisao}
+                onClick={onAprovarRestricao}
                 type="button"
               >
                 <ShieldCheck aria-hidden="true" className="size-4" />
-                Aprovar crédito (coordenador)
+                Aprovar com restrição (coordenação)
               </button>
             </>
           ) : concluida ? null : (
             <>
-              <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-4 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
-                onClick={onIndeferir}
-                type="button"
-              >
-                <X aria-hidden="true" className="size-4" />
-                {imob ? "Recusar" : "Indeferir crédito"}
-              </button>
+              {/* "Recusar" é só do fluxo da IMOBILIÁRIA. No CAD não existe mais "indeferir
+                  crédito": crédito reprovado vai sozinho para a coluna de revisão. */}
+              {imob ? (
+                <button
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-rose-200 px-4 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-500/30 dark:text-rose-300 dark:hover:bg-rose-500/10"
+                  onClick={onIndeferir}
+                  type="button"
+                >
+                  <X aria-hidden="true" className="size-4" />
+                  Recusar
+                </button>
+              ) : null}
               {/* Devolver pro corretor ajustar — não é reprovação, é pendência. */}
               <button
                 className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-amber-300 px-4 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-50 dark:border-amber-500/30 dark:text-amber-300 dark:hover:bg-amber-500/10"
@@ -1608,14 +2107,20 @@ function DetalheBoard({
                 <ShieldCheck aria-hidden="true" className="size-4" />
                 Enviar ao coordenador
               </button>
-              <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90"
-                onClick={onAvancar}
-                type="button"
-              >
-                <Check aria-hidden="true" className="size-4" />
-                {etapa ? acaoDaEtapa(etapa.id) : "Aprovar"}
-              </button>
+              {/* Na PRÉ-VENDA a ação de verdade (gerar o PIX e disparar a cobrança) vive no painel
+                  da etapa, com feedback de envio — como o crédito faz com o Serasa. Um botão
+                  genérico "Gerar PIX" aqui no rodapé só faria progresso++ e pularia pra Credenciado
+                  SEM gerar nada, que era o que estava enganando. Por isso ele não aparece aqui. */}
+              {etapa?.id === "prevenda" ? null : (
+                <button
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90"
+                  onClick={onAvancar}
+                  type="button"
+                >
+                  <Check aria-hidden="true" className="size-4" />
+                  {etapa ? acaoDaEtapa(etapa.id) : "Aprovar"}
+                </button>
+              )}
             </>
           )}
         </div>
@@ -1635,12 +2140,16 @@ function acaoDaEtapa(id: string): string {
 function PainelEtapa({
   entityId,
   etapa,
+  onCreditoResultado,
+  onIdentidadeSalva,
 }: {
   entityId: string;
   etapa: Etapa;
   // `imob` continua no contrato porque quem chama passa, mas o painel não distingue os dois
   // fluxos hoje. Fica declarado e não desestruturado, em vez de sumir da assinatura.
   imob?: boolean;
+  onCreditoResultado?: (r: { aprovado: boolean; etapa?: string }) => void;
+  onIdentidadeSalva?: () => void;
 }) {
   const Icon = etapa.icon;
   return (
@@ -1658,8 +2167,14 @@ function PainelEtapa({
       {/* Validação cadastral = documento ORIGINAL ao lado dos dados lidos (ideia do Lucas): sem o
           documento à vista o operador estaria conferindo no escuro. As demais etapas ficam vazias
           até a lógica ser ligada — nada de dado de mentira na tela. */}
-      {etapa.id === "cadastro" ? <ValidacaoLadoALado entityId={entityId} /> : null}
-      {etapa.id === "credito" ? <CreditoSerasa entityId={entityId} /> : null}
+      {etapa.id === "cadastro" ? (
+        <ValidacaoLadoALado entityId={entityId} onIdentidadeSalva={onIdentidadeSalva} />
+      ) : null}
+      {etapa.id === "credito" ? (
+        <CreditoSerasa entityId={entityId} onResultado={onCreditoResultado} />
+      ) : null}
+      {/* Pré-venda: o ciclo do PIX (gerou -> enviou -> recebeu), com os erros à vista. */}
+      {etapa.id === "prevenda" ? <StatusPixPrevenda entityId={entityId} /> : null}
     </div>
   );
 }
@@ -2011,7 +2526,16 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
 
 // Ficha completa (esquerda) + documento original (direita). O operador lê a ficha e confere no
 // documento antes de aprovar.
-function ValidacaoLadoALado({ entityId }: { entityId: string }) {
+function ValidacaoLadoALado({
+  entityId,
+  onIdentidadeSalva,
+}: {
+  entityId: string;
+  // Avisa a FILA que o nome/documento mudou. Sem isso, o card, a linha da tabela e o título
+  // desta própria tela continuam com o nome antigo até um F5: eles leem de `itens`, carregado
+  // uma vez só, e aqui a gente recarregava apenas a ficha. Ver o comentário de `carregarFila`.
+  onIdentidadeSalva?: () => void;
+}) {
   const [docs, setDocs] = useState<DocItem[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [ativo, setAtivo] = useState<DocItem | null>(null);
@@ -2153,6 +2677,12 @@ function ValidacaoLadoALado({ entityId }: { entityId: string }) {
       });
       const payload = (await recarregada.json()) as { data?: Ficha };
       if (payload.data) setFicha(payload.data);
+
+      // Só quando a IDENTIDADE mudou: é o único caso em que a fila mostra dado velho. Salvar
+      // profissão ou renda não muda o card, e refetch a cada salvamento seria peso à toa.
+      if (mexeuNaIdentidade) {
+        onIdentidadeSalva?.();
+      }
 
       setRascunho({});
       setEditando(false);

@@ -94,6 +94,9 @@ export function IrisConversationComposerActions({
   textareaRef,
   ticketChecklist,
   ticketClosed,
+  templatesDeRetomada,
+  onReabrirConversa,
+  reabrindoConversa,
 }: {
   agendaContext?: AgendaQuickCreateContext | null;
   attendantOpen?: boolean;
@@ -135,6 +138,12 @@ export function IrisConversationComposerActions({
   hasAttachment?: boolean;
   onPickAttachment?: (file: File | null) => void;
   onCancelAttachment?: () => void;
+  // REABRIR CONVERSA — fora da janela de 24h a Meta só aceita template aprovado. Sem isto o
+  // operador abre o atendimento, lê o pedido e não tem o que clicar: em 26/07 eram 80 dos 98
+  // abertos nessa situação, 61 deles com a bola conosco. Ver a rota /api/iris/meta/messages.
+  templatesDeRetomada?: Array<{ id: string; label: string; preview: string }>;
+  onReabrirConversa?: (templateId: string) => void | Promise<void>;
+  reabrindoConversa?: boolean;
   onComposerPaste?: (event: ClipboardEvent<HTMLTextAreaElement>) => void;
   recordingElapsedLabel?: string;
   onToggleEmojiPicker: () => void;
@@ -165,6 +174,12 @@ export function IrisConversationComposerActions({
   const hasComposerContext = Boolean(editingMessageBody || replyToMessageBody);
   const composerContextBody =
     editingMessageBody ?? replyToMessageBody ?? "Mensagem selecionada";
+  const [templateEscolhido, setTemplateEscolhido] = useState("");
+  const previewDoTemplate =
+    (templatesDeRetomada ?? []).find(
+      (modelo) => modelo.id === templateEscolhido,
+    )?.preview ?? "";
+
   const composerContextLabel = editingMessageBody
     ? "Editando mensagem"
     : "Respondendo";
@@ -193,8 +208,62 @@ export function IrisConversationComposerActions({
         : "Enviar mensagem"
       : blockedTooltip;
 
+  // Janela da Meta fechada: texto livre não sai, só template aprovado. Grupo, Direct e e-mail
+  // não têm essa regra.
+  const janelaFechada =
+    !ticketClosed &&
+    !composerReady &&
+    !isEvolutionChannel &&
+    !isEmailChannel &&
+    Boolean(templatesDeRetomada?.length) &&
+    Boolean(onReabrirConversa);
+
   return (
     <footer className="shrink-0 border-t border-line bg-surface p-2.5">
+      {janelaFechada ? (
+        <div className="mb-2 rounded-lg border border-amber-300/60 bg-amber-50 p-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+            Passou de 24h desde a última mensagem do cliente
+          </p>
+          <p className="m-0 mt-0.5 text-xs text-ink-soft">
+            O WhatsApp só aceita um modelo aprovado agora. Escolha um para
+            retomar a conversa neste mesmo protocolo.
+          </p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <select
+              value={templateEscolhido}
+              onChange={(event) => setTemplateEscolhido(event.target.value)}
+              disabled={reabrindoConversa}
+              className="h-8 min-w-[220px] flex-1 rounded-lg border border-line/70 bg-surface px-2 text-xs text-ink outline-none focus:border-[#A07C3B]/40 disabled:opacity-50"
+            >
+              <option value="">Selecione o modelo…</option>
+              {(templatesDeRetomada ?? []).map((modelo) => (
+                <option key={modelo.id} value={modelo.id}>
+                  {modelo.label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={!templateEscolhido || reabrindoConversa}
+              onClick={() => {
+                if (templateEscolhido && onReabrirConversa) {
+                  void onReabrirConversa(templateEscolhido);
+                }
+              }}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-[#A07C3B] px-3 text-xs font-semibold text-white transition-colors hover:bg-[#8A6A32] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <Send className="size-3.5" aria-hidden="true" />
+              {reabrindoConversa ? "Enviando…" : "Reabrir conversa"}
+            </button>
+          </div>
+          {previewDoTemplate ? (
+            <p className="m-0 mt-2 rounded-md bg-surface/70 px-2 py-1.5 text-[11px] italic text-ink-muted">
+              {previewDoTemplate}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
       {!ticketClosed ? (
         <div className="mb-2 flex items-center gap-2">
           <div className="inline-flex rounded-lg border border-line/70 bg-subtle/70 p-0.5">

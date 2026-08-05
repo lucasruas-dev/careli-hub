@@ -30,6 +30,7 @@ export type ApoloEnterpriseTab =
   | "carteira"
   | "relacionamentos"
   | "resumo"
+  | "setup"
   | "unidades"
   | "vendas";
 

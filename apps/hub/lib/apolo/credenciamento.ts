@@ -25,6 +25,8 @@ type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 export type CredenciamentoEmpreendimento = {
   code: string;
   id: string;
+  // Incorporador do C2X (row.incorporador). Consumido pelo Setup do Prometeu.
+  incorporador: string | null;
   logoUrl: string | null;
   name: string;
 };
@@ -75,6 +77,7 @@ export async function listEmpreendimentosAtivos(
       return {
         code,
         id,
+        incorporador: row?.incorporador ?? null,
         logoUrl: logos[id] ?? null,
         name: row?.name ?? code ?? "Empreendimento",
       };

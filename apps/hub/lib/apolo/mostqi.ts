@@ -752,6 +752,9 @@ export type EnrichmentResult = {
   emails: string[];
   enderecos: string[];
   estadoCivil: string;
+  // Data de nascimento (basic_data.birthDate), normalizada em "AAAA-MM-DD". Vinha sendo paga na
+  // PF_01 e descartada na leitura: o dataset já é cobrado por causa do nome da mãe.
+  nascimento: string;
   // Nome completo do titular (dataset basic_data, campo `name`). Vem da CARELI_PF_01.
   // Existe para o portal público: o corretor digita SÓ o CPF e o nome chega preenchido,
   // em vez de ele digitar (Lucas, 20/jul: "o corretor digita o cpf, a most traz o nome completo").
@@ -781,6 +784,7 @@ function emptyEnrichment(
     emails: [],
     enderecos: [],
     estadoCivil: "",
+    nascimento: "",
     nome: "",
     nomeMae: "",
     nomePai: "",
@@ -887,6 +891,8 @@ function normalizeEnrichment(payload: unknown, includeRaw: boolean): EnrichmentR
   if (basic) {
     // `name` é o nome completo do titular. É o que faz o portal público pedir só o CPF.
     result.nome = str(basic.name);
+    // A base devolve ISO com hora ("1985-04-12T00:00:00"); a ficha guarda só a data.
+    result.nascimento = str(basic.birthDate).slice(0, 10);
     result.nomeMae = str(basic.motherName);
     result.nomePai = str(basic.fatherName);
     result.estadoCivil = str(asRecord(basic.maritalStatusData)?.maritalStatus);

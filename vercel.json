@@ -34,6 +34,14 @@
     {
       "path": "/api/iris/gmail/poll",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/iris/tickets/fechar-sem-interacao",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/iris/evolution/saude",
+      "schedule": "*/5 * * * *"
     }
   ]
 }

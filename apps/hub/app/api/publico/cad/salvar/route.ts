@@ -1,6 +1,19 @@
+import {
+  validarCamposMinimos,
+  validarDocumentosObrigatorios,
+} from "@/lib/apolo/cadastro-obrigatorios";
 import { createApoloEntity, type CreateApoloEntityInput } from "@/lib/apolo/cadastro-persist";
-import { agruparEUploadDocumentos, type DocumentoEntrada } from "@/lib/apolo/cadastro-upload";
-import { uploadApoloDocument } from "@/lib/apolo/documentos";
+import {
+  agruparEUploadDocumentos,
+  documentoTemArquivo,
+  type DocumentoEntrada,
+} from "@/lib/apolo/cadastro-upload";
+import {
+  APOLO_DOC_MAX_BYTES,
+  MENSAGEM_DOCUMENTO_GRANDE,
+  caminhoUploadDiretoValido,
+  uploadApoloDocument,
+} from "@/lib/apolo/documentos";
 import {
   gravarVinculoEsteira,
   nomeDoEmpreendimento,
@@ -8,7 +21,7 @@ import {
 } from "@/lib/publico/cad/dados";
 import { protocoloDaAutenticacao } from "@/lib/publico/cad/regras";
 import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
-import { sessaoDoRequest } from "@/lib/publico/cad/sessao";
+import { donoUploadSessao, sessaoDoRequest } from "@/lib/publico/cad/sessao";
 import { montarCadPdf, type CadDoc } from "@/modules/apolo/blocks/cadastro/cad-pdf";
 
 // S10 público — a CAD é gravada com o MESMO payload que o wizard COMPLETO monta (SalvarPayload) e
@@ -59,14 +72,55 @@ export async function POST(request: Request) {
     return responder(inicio, erro("Este formulário só cria CAD de prospect."));
   }
 
-  const documentos = (payload.documentos ?? []).filter((doc) => doc?.fileBase64);
+  // Documento anexado em QUALQUER uma das duas formas: base64 no corpo (documento pequeno, fluxo
+  // de sempre) ou caminho de arquivo já gravado no bucket (documento grande, upload direto).
+  const documentos = (payload.documentos ?? []).filter(documentoTemArquivo);
   if (documentos.length > MAX_FILES) {
     return responder(inicio, erro(`Envie no máximo ${MAX_FILES} arquivos por CAD.`, 413));
   }
   for (const doc of documentos) {
+    const caminho = (doc.storagePath ?? "").trim();
+    if (caminho) {
+      // O caminho tem que ser um que ESTA sessão recebeu para gravar (rota /upload-url). Sem isso,
+      // um corpo forjado criaria a linha do documento apontando para o arquivo de outra pessoa.
+      if (!caminhoUploadDiretoValido(caminho, donoUploadSessao(sessao))) {
+        return responder(inicio, erro("Arquivo enviado não confere com esta sessão.", 400));
+      }
+      if ((doc.sizeBytes ?? 0) > APOLO_DOC_MAX_BYTES) {
+        return responder(inicio, erro(MENSAGEM_DOCUMENTO_GRANDE, 413));
+      }
+      continue;
+    }
     if ((doc.fileBase64?.length ?? 0) > MAX_BASE64) {
       return responder(inicio, erro("Uma das fotos ficou grande demais. Tire outra com menos zoom.", 413));
     }
+  }
+
+  // 🔒 TRAVA DE OBRIGATÓRIOS (incidente 04/08 — decisão do Lucas): a CAD é BARRADA aqui quando
+  // falta documento ou campo obrigatório, em vez de entrar e cair na "correção". A validação do
+  // cliente pode ser burlada (bundle antigo, replay do POST); esta não. A persona vem do corpo,
+  // mas os documentos exigidos derivam dela + do estado civil — o mesmo conjunto que o wizard já
+  // trava para avançar. Ver lib/apolo/cadastro-obrigatorios.ts.
+  //
+  // ⚠️ Exige o ARQUIVO anexado (fileBase64 presente), NUNCA o sucesso do OCR nem a "qualidade" da
+  // leitura (v1.105.0 — [[project_apolo_most_sem_trava]]): a leitura pode ter falhado e os campos
+  // terem sido preenchidos à mão; o documento anexado continua valendo.
+  const persona = payload.persona === "pj" ? "pj" : "pf";
+  const campos = validarCamposMinimos({
+    empresa: payload.empresa,
+    identidade: payload.identidade,
+    persona,
+  });
+  if (!campos.ok) {
+    return responder(inicio, erro(campos.mensagem, 400));
+  }
+  const obrigatorios = validarDocumentosObrigatorios({
+    documentos,
+    perfil: payload.perfil,
+    persona,
+  });
+  if (!obrigatorios.ok) {
+    return responder(inicio, erro(obrigatorios.mensagem, 400));
   }
 
   try {
@@ -77,6 +131,10 @@ export async function POST(request: Request) {
     //    corpo — é o ponto exato que fecha o furo do formulário anônimo.
     const criado = await createApoloEntity(adminClient, {
       ...payload,
+      dedupPorDocumento: true,
+      // O empreendimento sai do TOKEN, nunca do corpo — mesma regra da imobiliária. É ele que
+      // diz se a CAD existente é do mesmo loteamento (duplicidade) ou de outro (pode seguir).
+      enterpriseId: sessao.enterpriseId,
       origem: "publico-cad",
       ownerUserId: null,
       perfil: {
@@ -86,7 +144,14 @@ export async function POST(request: Request) {
       },
       role: "prospect",
     });
-    if (!criado.ok) return responder(inicio, erro(undefined, 500));
+    if (!criado.ok) {
+      // Ficha com CAD JÁ NA ESTEIRA: recusa com a mensagem VERDADEIRA do persist (ficha sem
+      // esteira não cai mais aqui — vira anexo na ficha existente, achado de 03/08). Não vaza id.
+      if (criado.entityIdExistente) {
+        return responder(inicio, erro(criado.error, 409));
+      }
+      return responder(inicio, erro(undefined, 500));
+    }
 
     const nomeCliente =
       payload.persona === "pj"

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { registrarRespostaDeAcao } from "@/lib/apolo/acao-resposta";
 import {
   CACA_AGENT_VERSION,
   readCacaAutomationState,
@@ -17,6 +18,10 @@ import {
   isCacaVoiceReplyEnabled,
   runCacaClaudeTurn,
 } from "@/lib/iris/caca/agent";
+import {
+  consultarEstadoDoTurno,
+  decidirTurno,
+} from "@/lib/iris/caca/guarda-de-turno";
 import {
   buildBrazilianPhoneVariants,
   downloadMetaWhatsAppMedia,
@@ -272,6 +277,18 @@ async function processInboundMessage({
     event.payload,
     event.provider_message_id,
   );
+
+  // RESPOSTA a um disparo de AÇÃO de contato (o botão do convite): grava as unidades no alvo (para
+  // os KPIs da campanha). Efeito colateral, NÃO interrompe — a mensagem segue o fluxo normal e cai
+  // na conversa do atendimento que o disparo abriu (o ticket é achado por
+  // findTicketByReplyContextMessageId; a Cacá fica de fora pelo gate de contato ativo).
+  // Ver [[project_apolo_acao_contato]].
+  await registrarRespostaDeAcao(client, {
+    recebidoEm: event.received_at,
+    texto: messageDetail.body,
+    waMessageId: messageDetail.replyContextMessageId,
+  });
+
   const workspaceId = await getDefaultWorkspaceId(client);
   const channel = await getWhatsAppChannel(client, event.phone_number_id);
   const channelId = channel?.id ?? null;
@@ -428,6 +445,50 @@ async function processInboundMessage({
   };
 }
 
+// Casa a devolutiva de entrega no disparo do Apolo (apolo_disparos) por wa_message_id.
+// Best-effort: qualquer falha (tabela ausente em ambiente antigo, sem linha correspondente) é
+// silenciosa — este é um efeito colateral do webhook, não o seu caminho principal.
+async function atualizarApoloDisparo({
+  client,
+  deliveryStatus,
+  event,
+  providerStatusId,
+}: {
+  client: IrisMetaProcessorClient;
+  deliveryStatus: string;
+  event: IrisMetaWebhookEventRow;
+  providerStatusId: string;
+}): Promise<void> {
+  // Meta -> nosso vocabulário. "sent" não rebaixa: o disparo já nasce "enviado".
+  const mapa: Record<string, string> = {
+    delivered: "entregue",
+    failed: "falhou",
+    read: "lido",
+  };
+  const status = mapa[deliveryStatus];
+  if (!status) return;
+
+  const patch: Record<string, string> = { status };
+  if (deliveryStatus === "delivered") patch.delivered_at = event.received_at;
+  // 'read' NÃO mexe em delivered_at: preserva o horário real da entrega (quando o 'delivered' veio
+  // antes) em vez de sobrescrever com o horário de leitura.
+  if (deliveryStatus === "read") patch.read_at = event.received_at;
+  if (deliveryStatus === "failed") {
+    const err = extractStatusError(event.payload, providerStatusId);
+    if (err?.message) patch.erro = err.message;
+  }
+
+  try {
+    let q = client.from("apolo_disparos").update(patch).eq("wa_message_id", providerStatusId);
+    // Monotonicidade: 'entregue' nunca rebaixa um 'lido'. Os webhooks de status da Meta podem
+    // chegar fora de ordem ou por retry; sem isto, um 'delivered' atrasado apagaria o 'lido'.
+    if (deliveryStatus === "delivered") q = q.neq("status", "lido");
+    await q;
+  } catch {
+    // ambiente sem a tabela ainda, ou id que não é de disparo do Apolo — ignora.
+  }
+}
+
 async function processStatusUpdate({
   client,
   event,
@@ -450,6 +511,11 @@ async function processStatusUpdate({
   const deliveryStatus = normalizeDeliveryStatus(
     extractStatusDetail(event.payload, providerStatusId),
   );
+
+  // DEVOLUTIVA dos disparos do Apolo (aviso de reprovação de crédito): esses envios saem FORA do
+  // fluxo de tickets, então não têm referência em caredesk_whatsapp_message_refs. Casamos o status
+  // aqui, por wa_message_id, best-effort — nunca derruba o processamento do webhook.
+  await atualizarApoloDisparo({ client, event, deliveryStatus, providerStatusId });
 
   const { data, error } = await client
     .from("caredesk_whatsapp_message_refs")
@@ -2064,6 +2130,35 @@ function extractStatusError(payload: Json, statusId: string) {
   return { code, message, title };
 }
 
+// Resposta da CACA quando o modelo falhou duas vezes seguidas. Nao inventa atendimento: assume
+// o limite, transfere de verdade (handoff.required liga o `handoffRequired` no estado do ticket,
+// entao ela NAO volta a falar neste atendimento) e deixa o motivo tecnico registrado no trace
+// pra a gente enxergar a falha, que antes so' existia num console.error que ninguem le'.
+function montarTurnoDeFalha({
+  motivo,
+  ticket,
+}: {
+  motivo: string;
+  ticket: IrisTicketRow;
+}): CacaAutoReply {
+  const estado = readCacaAutomationState(ticket);
+  const razao = `Falha tecnica da assistente ao processar a mensagem: ${motivo}`;
+
+  return {
+    agentVersion: CACA_AGENT_VERSION,
+    handoff: { reason: razao, required: true },
+    model: null,
+    nextState: { ...estado, handoffRequired: true },
+    nextStep: "handoff",
+    replyText:
+      "Desculpa, tive um problema técnico aqui e não consegui concluir o seu atendimento agora. " +
+      "Já passei a sua conversa para uma pessoa do nosso time dar sequência, tá? Obrigada pela paciência.",
+    source: "deterministic",
+    toolsUsed: [],
+    trace: [],
+  };
+}
+
 async function maybeSendCacaAutoReply({
   cacaEnabled,
   channelId,
@@ -2097,6 +2192,23 @@ async function maybeSendCacaAutoReply({
     isCacaClaudeEngineEnabled() &&
     messageDetail.messageType === "audio";
 
+  // GUARDA DE TURNO (antes de gastar token): se o cliente mandou outra mensagem depois desta,
+  // ou se alguem ja' respondeu, esta execucao nao fala. Ver [[guarda-de-turno]].
+  const estadoAntes = await consultarEstadoDoTurno({
+    client,
+    providerMessageId: event.provider_message_id ?? null,
+    ticketId: ticket.id,
+  });
+  const decisaoAntes = decidirTurno(estadoAntes);
+
+  if (!decisaoAntes.responder) {
+    console.info(
+      `[iris] Cacá nao respondeu o turno (${decisaoAntes.motivo})`,
+      ticket.protocol ?? ticket.id,
+    );
+    return false;
+  }
+
   let reply: CacaAutoReply;
 
   if (isCacaClaudeEngineEnabled()) {
@@ -2110,15 +2222,66 @@ async function maybeSendCacaAutoReply({
         ticket,
         voiceMode: voiceReply,
       });
-    } catch (error) {
+    } catch (primeiroErro) {
+      // Uma segunda tentativa: a maioria das falhas do modelo e' transitoria (timeout, limite
+      // de taxa, indisponibilidade momentanea).
       console.error(
-        "[iris] Cacá-Claude falhou; usando a Cacá deterministica",
-        errorMessage(error),
+        "[iris] Cacá-Claude falhou; tentando de novo",
+        errorMessage(primeiroErro),
       );
-      reply = await runCacaAgentTurn({ client, contact, messageDetail, ticket });
+
+      try {
+        reply = await runCacaClaudeTurn({
+          client,
+          contact,
+          destination,
+          messageDetail,
+          outboundPhoneNumberId: event.phone_number_id ?? null,
+          ticket,
+          voiceMode: voiceReply,
+        });
+      } catch (segundoErro) {
+        // Falhou duas vezes. Aqui ficava a Cacá deterministica, e ela DESTRUIA a conversa:
+        // sem memoria, tratava o cliente pelo apelido cru do WhatsApp ("beteapa70") e pedia
+        // pra ele explicar tudo de novo, ignorando o que ele acabara de dizer. Foram 26
+        // respostas dessas em 14 atendimentos (a dona Elizabete levou 6 na mesma conversa,
+        // AT-000923). Responder qualquer coisa e' PIOR que transferir: queima a confianca que
+        // a Cacá boa acabou de construir. Agora ela assume o limite e passa pra uma pessoa.
+        console.error(
+          "[iris] Cacá-Claude falhou 2x; transferindo pra atendimento humano",
+          errorMessage(segundoErro),
+        );
+
+        reply = montarTurnoDeFalha({
+          motivo: errorMessage(segundoErro),
+          ticket,
+        });
+      }
     }
   } else {
+    // Engine Claude DESLIGADO de proposito (env): aqui o motor deterministico continua sendo o
+    // comportamento esperado, nao um sintoma de falha.
     reply = await runCacaAgentTurn({ client, contact, messageDetail, ticket });
+  }
+
+  // GUARDA DE TURNO, segunda passada: gerar a resposta leva segundos, e e' nessa janela que a
+  // corrida acontece de verdade (no AT-000923 as duas respostas sairam com 8s de diferenca).
+  // Reconsulta imediatamente antes de gravar/enviar; se alguem falou nesse meio-tempo, descarta
+  // esta resposta em vez de duplicar na cara do cliente.
+  const decisaoDepois = decidirTurno(
+    await consultarEstadoDoTurno({
+      client,
+      providerMessageId: event.provider_message_id ?? null,
+      ticketId: ticket.id,
+    }),
+  );
+
+  if (!decisaoDepois.responder) {
+    console.info(
+      `[iris] Cacá descartou a resposta ja' gerada (${decisaoDepois.motivo})`,
+      ticket.protocol ?? ticket.id,
+    );
+    return false;
   }
 
   // Link precisa ser clicável -> se a resposta tiver URL, manda por texto mesmo (não vira voz).

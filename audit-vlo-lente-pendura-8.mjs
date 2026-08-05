@@ -1,0 +1,16 @@
+import fs from "node:fs"; import path from "node:path"; import { createRequire } from "node:module";
+const req = createRequire(path.resolve(process.cwd(), "apps/hub/package.json"));
+const mysql = req("mysql2/promise");
+const env = Object.fromEntries(fs.readFileSync("apps/hub/.env.local","utf8").split("\n").filter(l=>l.includes("=")&&!l.trim().startsWith("#")).map(l=>{const i=l.indexOf("=");return[l.slice(0,i).trim(),l.slice(i+1).trim().replace(/^["']|["']$/g,"")]}));
+const c = await mysql.createConnection({host:env.GUARDIAN_DB_HOST,user:env.GUARDIAN_DB_USER,password:env.GUARDIAN_DB_PASSWORD,database:env.GUARDIAN_DB_NAME,port:+(env.GUARDIAN_DB_PORT||3306),dateStrings:true,connectTimeout:20000});
+const q = async (s,p)=>{const [r]=await c.query(s,p);return r;};
+const out = {};
+out.split_ent = await q("SELECT * FROM split_enterprises WHERE enterprise_id IN (35,36,37)");
+out.pol = await q("SELECT * FROM commercial_policies WHERE enterprise_id IN (35,36,37)");
+out.notif = await q("SELECT * FROM enterprise_asaas_notification_configs WHERE enterprise_id IN (35,36,37)");
+out.cores = await q("SELECT enterprise_id, COUNT(*) n FROM enterprise_sale_status_colors WHERE enterprise_id IN (35,36,37) GROUP BY 1");
+out.planos_genericos = await q("SELECT id, enterprise_id, name, parcels, annual_value, acquisition_request_id FROM commercial_plans WHERE enterprise_id IN (35,36,37) AND acquisition_request_id IS NULL");
+out.drafts_todos = await q("SELECT enterprise_id, COUNT(*) n FROM draft_contracts GROUP BY enterprise_id ORDER BY enterprise_id");
+fs.writeFileSync("audit-vlo-out8.json", JSON.stringify(out,null,1));
+console.log(JSON.stringify({split_ent:out.split_ent, pol:out.pol.map(p=>({id:p.id,enterprise_id:p.enterprise_id,name:p.name})), notif:out.notif.map(n=>({id:n.id,enterprise_id:n.enterprise_id,...n})), cores:out.cores, planos_genericos:out.planos_genericos, drafts_todos:out.drafts_todos},null,1).slice(0,7000));
+await c.end();

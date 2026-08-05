@@ -73,6 +73,14 @@ export function getGmailIngestMailbox(): string {
   return process.env.GMAIL_INGEST_MAILBOX?.trim() || DEFAULT_INGEST_MAILBOX;
 }
 
+// Remetente dos DISPAROS automáticos (avisos, recibos, cobranças, relatórios): a caixa da Cacá.
+// Regra do Lucas (23/jul): todo e-mail transacional "sai da Cacá" — endereço = a própria caixa
+// robô (caca@) e nome exibido "Cacá - C2X". Enviar da caca@ (a caixa autenticada) ainda dispensa
+// alias/Send-As, então é mais robusto que o antigo contato@ (que exigia liberação na conta).
+export function getCacaSender(): string {
+  return `Cacá - C2X <${getGmailIngestMailbox()}>`;
+}
+
 function readGmailOAuthConfig(): {
   clientId: string;
   clientSecret: string;
@@ -272,6 +280,7 @@ function walkParts(
 // inReplyTo (o Message-ID original) + references. `from` deve ser um endereço que a caixa tem
 // permissao de enviar (a propria caca@, ou um alias/Send-As do grupo).
 export async function sendGmailMessage({
+  attachments,
   bodyHtml,
   bodyText,
   from = getGmailIngestMailbox(),
@@ -281,6 +290,13 @@ export async function sendGmailMessage({
   threadId,
   to,
 }: {
+  // Anexos opcionais (ex.: a ficha/CAD em PDF). Com anexo a mensagem vira multipart/mixed,
+  // com o corpo virando a primeira parte. Sem anexo, nada muda no que já era enviado.
+  attachments?: Array<{
+    content: Buffer | Uint8Array;
+    filename: string;
+    mimeType: string;
+  }>;
   // Quando informado, envia multipart/alternative (texto + HTML) — o cliente escolhe a
   // versão rica (com logo/assinatura) e cai no texto puro se bloquear HTML.
   bodyHtml?: string | null;
@@ -293,7 +309,7 @@ export async function sendGmailMessage({
   to: string;
 }): Promise<{ id: string; threadId: string }> {
   const headerLines = [
-    `From: ${from}`,
+    `From: ${formatFromHeader(from)}`,
     `To: ${to}`,
     `Subject: ${encodeHeaderValue(subjectLine)}`,
     "MIME-Version: 1.0",
@@ -304,18 +320,18 @@ export async function sendGmailMessage({
     headerLines.push(`References: ${references ? `${references} ${inReplyTo}` : inReplyTo}`);
   }
 
-  let rawMessage: string;
+  const anexos = attachments ?? [];
+  const novoBoundary = (prefixo: string) =>
+    `${prefixo}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+
+  // 1) Corpo: texto puro, ou multipart/alternative quando há HTML.
+  let corpoHeaders: string[];
+  let corpoConteudo: string;
 
   if (bodyHtml) {
-    const boundary = `iris_${Date.now().toString(36)}_${Math.random()
-      .toString(36)
-      .slice(2)}`;
-
-    headerLines.push(
-      `Content-Type: multipart/alternative; boundary="${boundary}"`,
-    );
-
-    const parts = [
+    const boundary = novoBoundary("iris");
+    corpoHeaders = [`Content-Type: multipart/alternative; boundary="${boundary}"`];
+    corpoConteudo = [
       `--${boundary}`,
       'Content-Type: text/plain; charset="UTF-8"',
       "Content-Transfer-Encoding: 8bit",
@@ -327,13 +343,40 @@ export async function sendGmailMessage({
       "",
       bodyHtml,
       `--${boundary}--`,
-    ];
-
-    rawMessage = `${headerLines.join("\r\n")}\r\n\r\n${parts.join("\r\n")}`;
+    ].join("\r\n");
   } else {
-    headerLines.push('Content-Type: text/plain; charset="UTF-8"');
-    headerLines.push("Content-Transfer-Encoding: 8bit");
-    rawMessage = `${headerLines.join("\r\n")}\r\n\r\n${bodyText}`;
+    corpoHeaders = [
+      'Content-Type: text/plain; charset="UTF-8"',
+      "Content-Transfer-Encoding: 8bit",
+    ];
+    corpoConteudo = bodyText;
+  }
+
+  // 2) Com anexo, o corpo vira a primeira parte de um multipart/mixed.
+  let rawMessage: string;
+
+  if (anexos.length) {
+    const mixed = novoBoundary("irismix");
+    headerLines.push(`Content-Type: multipart/mixed; boundary="${mixed}"`);
+
+    const partes = [`--${mixed}`, ...corpoHeaders, "", corpoConteudo];
+    for (const anexo of anexos) {
+      partes.push(
+        `--${mixed}`,
+        `Content-Type: ${anexo.mimeType}; name="${anexo.filename}"`,
+        `Content-Disposition: attachment; filename="${anexo.filename}"`,
+        "Content-Transfer-Encoding: base64",
+        "",
+        // RFC 2045: base64 em linhas de no máximo 76 caracteres.
+        Buffer.from(anexo.content).toString("base64").replace(/(.{76})/g, "$1\r\n"),
+      );
+    }
+    partes.push(`--${mixed}--`);
+
+    rawMessage = `${headerLines.join("\r\n")}\r\n\r\n${partes.join("\r\n")}`;
+  } else {
+    headerLines.push(...corpoHeaders);
+    rawMessage = `${headerLines.join("\r\n")}\r\n\r\n${corpoConteudo}`;
   }
 
   const data = await gmailFetch<{ id?: string; threadId?: string }>(
@@ -433,6 +476,16 @@ function decodeBase64Url(data: string): string {
   const normalized = data.replace(/-/g, "+").replace(/_/g, "/");
 
   return Buffer.from(normalized, "base64").toString("utf8");
+}
+
+// From com display name (ex.: "Cacá - C2X <x@y>") precisa do NOME em RFC 2047, senão o acento
+// quebra o header (o cliente mostra "CacÃ¡"). Sem "<...>" (só o endereço), vai cru — como antes.
+function formatFromHeader(from: string): string {
+  const m = /^\s*"?([^"<]+?)"?\s*<([^>]+)>\s*$/.exec(from);
+  const nome = m?.[1]?.trim();
+  const email = m?.[2]?.trim();
+  if (!nome || !email) return from;
+  return `${encodeHeaderValue(nome)} <${email}>`;
 }
 
 // Assunto com acento/UTF-8 -> RFC 2047 (encoded-word) pra não quebrar o header.

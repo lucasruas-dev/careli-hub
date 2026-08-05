@@ -27,18 +27,25 @@ export function IrisCobrancaCloseModal({
   currentSubject,
   onCancel,
   onConfirm,
+  pendenciaDoCliente,
   protocol,
   submitting,
 }: {
   currentSubject: string;
   onCancel: () => void;
   onConfirm: (input: { note: string; reason: string; subject: string }) => void;
+  // Última mensagem do cliente quando é ELE quem falou por último (a bola está com a gente).
+  // null = a última palavra foi nossa, encerrar é natural. Ver a faixa de alerta abaixo.
+  pendenciaDoCliente?: string | null;
   protocol: string;
   submitting: boolean;
 }) {
   const [note, setNote] = useState("");
   const [subject, setSubject] = useState(currentSubject);
-  const [reason, setReason] = useState("");
+  // "Finalizado" pré-selecionado: é o desfecho da imensa maioria e o operador reabre o select
+  // quando não for o caso. Antes o botão nascia travado e exigia 2 escolhas em branco a cada
+  // encerramento — atrito repetido dezenas de vezes por dia.
+  const [reason, setReason] = useState<string>("Finalizado");
   const [subjects, setSubjects] = useState<string[]>([]);
 
   useEffect(() => {
@@ -84,6 +91,19 @@ export function IrisCobrancaCloseModal({
       subtitle={`Finaliza o protocolo ${protocol}`}
       title="Encerrar atendimento"
     >
+      {pendenciaDoCliente ? (
+        <div className="rounded-lg border border-amber-300/60 bg-amber-50 px-3 py-2 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <p className="m-0 text-[11px] font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+            O cliente falou por último
+          </p>
+          <p className="m-0 mt-1 text-sm italic text-ink">
+            &ldquo;{pendenciaDoCliente}&rdquo;
+          </p>
+          <p className="m-0 mt-1 text-xs text-ink-muted">
+            Encerrando agora, esta mensagem fica sem resposta.
+          </p>
+        </div>
+      ) : null}
       <label className="block">
         <span className="mb-1 block text-[11px] font-semibold text-ink-muted">
           Assunto do atendimento{" "}

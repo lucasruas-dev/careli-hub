@@ -68,6 +68,103 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
     },
   },
   {
+    name: "consultar_status_cad",
+    description:
+      "Consulta o STATUS/ETAPA da CAD (cadastro de pré-venda) de UMA pessoa pelo CPF, na base do Board da Careli. Use quando o cliente, o corretor ou a imobiliária perguntar como está a CAD de alguém: se o crédito foi aprovado, se vai receber o PIX, em que etapa está. Retorna se a CAD está em validação, com crédito APROVADO (segue pra pré-venda e recebe o PIX) ou reprovada/em revisão. Peça o CPF (11 dígitos) da pessoa que se quer consultar. É a ferramenta do processo de CAD da ação de lançamento — diferente da consultar_cad, que é a visão gerencial por imobiliária/empreendimento.",
+    input_schema: {
+      type: "object",
+      properties: {
+        cpf: {
+          type: "string",
+          description: "CPF da pessoa cuja CAD se quer consultar (só os números, 11 dígitos).",
+        },
+      },
+      required: ["cpf"],
+    },
+  },
+  {
+    name: "enviar_pix_credenciamento",
+    description:
+      "Recupera o LINK do PIX do credenciamento (a cobrança da etapa de pré-venda) de uma pessoa pelo CPF, para você ENCAMINHAR no atendimento. Use sempre que o cliente, o corretor ou a imobiliária pedir o PIX: 'não recebi', 'perdi a mensagem', 'me manda de novo', 'manda o PIX do fulano'. Devolve o link de pagamento e o copia-e-cola da MESMA cobrança já emitida — reenviar NÃO cobra duas vezes. Se a pessoa já pagou, a ferramenta avisa e você NÃO deve mandar link de pagamento de novo. Se ainda não chegou na etapa do PIX, ela explica em que etapa está.",
+    input_schema: {
+      type: "object",
+      properties: {
+        cpf: {
+          type: "string",
+          description:
+            "CPF da pessoa de quem se quer o PIX do credenciamento (só os números, 11 dígitos).",
+        },
+      },
+      required: ["cpf"],
+    },
+  },
+  {
+    name: "registrar_chave_pix",
+    description:
+      "Grava, na ficha do prospect, a CHAVE PIX que ele informou para a EVENTUAL DEVOLUÇÃO dos R$1.000 do credenciamento (o valor volta em até 10 dias úteis se ele não adquirir unidade). Chame SOMENTE quando a pessoa, no atendimento, informar uma chave PIX nesse contexto de devolução — depois de já ter PAGO o PIX do credenciamento (ela recebe um recibo pedindo a chave). NÃO peça CPF: a ferramenta identifica a pessoa pelo próprio atendimento (telefone). A ferramenta confere sozinha se o pagamento já consta; se ainda não constar pago, ela avisa e NÃO registra — repasse isso ao cliente.",
+    input_schema: {
+      type: "object",
+      properties: {
+        chave_pix: {
+          type: "string",
+          description:
+            "A chave PIX exatamente como o cliente informou (CPF, e-mail, telefone ou chave aleatória).",
+        },
+        tipo_chave: {
+          type: "string",
+          description: "Opcional: cpf, email, telefone ou aleatoria, se der pra inferir.",
+        },
+      },
+      required: ["chave_pix"],
+    },
+  },
+  {
+    name: "consultar_consolidado_cads",
+    description:
+      "Traz o CONSOLIDADO (numeros somados) das CADs de um empreendimento: quantas fichas no total, quantas em cada etapa da esteira (validacao, analise de credito, credito em revisao, pre-venda, credenciado), QUANTOS CLIENTES JA PAGARAM o PIX e o VALOR TOTAL recebido. Use quando pedirem uma visao geral, um panorama, um resumo, 'como esta o Vale do Ouro', 'quantas CADs temos', 'quantos ja pagaram', 'quanto entrou'. NAO precisa de CPF: e a visao do funil inteiro. Para o detalhe de UMA pessoa, use consultar_ficha_credenciamento. Se nao informar o empreendimento, assume Vale do Ouro.",
+    input_schema: {
+      type: "object",
+      properties: {
+        empreendimento: {
+          type: "string",
+          description:
+            "Nome do empreendimento (ex.: 'Vale do Ouro'). Opcional; padrao Vale do Ouro.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "consultar_ficha_credenciamento",
+    description:
+      "RAIO-X COMPLETO da ficha de uma pessoa na esteira do Board do Apolo, pelo CPF. É a ferramenta para responder QUALQUER dúvida operacional do atendimento desta ação: em que etapa a CAD está, qual imobiliária e corretor, quando a CAD chegou, se a cobrança do PIX foi emitida, SE O CLIENTE PAGOU e quando, se o PIX foi ENVIADO, PARA QUAL TELEFONE e PARA QUAL E-MAIL, se foi entregue, se foi lido, e SE DEU ERRO no envio (com o motivo em português). Use sempre que perguntarem 'ele recebeu?', 'foi pra qual número?', 'ele pagou?', 'deu erro?', 'em que pé está?'. Os contatos voltam parcialmente mascarados, o suficiente para conferir se estão certos.",
+    input_schema: {
+      type: "object",
+      properties: {
+        cpf: {
+          type: "string",
+          description: "CPF da pessoa cuja ficha se quer abrir (só os números, 11 dígitos).",
+        },
+      },
+      required: ["cpf"],
+    },
+  },
+  {
+    name: "enviar_ficha_cad",
+    description:
+      "Gera a FICHA DE CADASTRO (CAD) da pessoa em PDF e devolve um link para você ENCAMINHAR no atendimento. Use quando pedirem a ficha: 'me manda a CAD', 'quero conferir os dados', 'não recebi o anexo', 'preciso da ficha do cliente'. O link vale 1 hora e sai com os dados atuais do cadastro. ATENÇÃO: a ficha contém dados pessoais (CPF, RG, filiação, renda) — só entregue ao próprio titular ou ao corretor/imobiliária responsável por aquela CAD, nunca a um terceiro.",
+    input_schema: {
+      type: "object",
+      properties: {
+        cpf: {
+          type: "string",
+          description: "CPF da pessoa cuja ficha se quer gerar (só os números, 11 dígitos).",
+        },
+      },
+      required: ["cpf"],
+    },
+  },
+  {
     name: "consultar_cadastro_imobiliaria",
     description:
       "Confirma se uma IMOBILIÁRIA / pessoa jurídica (parceira, corretora) tem cadastro na Careli e retorna os dados dela, a partir do CNPJ. Use quando quem fala é uma empresa/imobiliária e quer saber se está cadastrada ou conferir o cadastro. Pessoa jurídica NÃO precisa de validação de identidade: basta o CNPJ (14 dígitos). Se vier um CPF (pessoa física), NÃO use esta ferramenta — peça a validação de identidade do titular.",

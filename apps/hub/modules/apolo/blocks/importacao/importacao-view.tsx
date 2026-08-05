@@ -12,6 +12,7 @@ import { useCallback, useEffect, useState } from "react";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
 
+import { ComparativoAsanaApolo } from "./comparativo";
 import { CompletarDados } from "./completar-dados";
 import { CompletarVinculos } from "./completar-vinculos";
 import { ImportarCads } from "./importar-cads";
@@ -61,7 +62,10 @@ function pareceDocumento(nome: string): boolean {
 }
 
 export function ImportacaoView() {
-  const [aba, setAba] = useState<"completar" | "importar" | "ler" | "sondagem">("importar");
+  // Abre no COMPARATIVO: a primeira pergunta de quem entra aqui é "o que ainda não subiu?".
+  const [aba, setAba] = useState<
+    "comparativo" | "completar" | "importar" | "ler" | "sondagem"
+  >("comparativo");
   // Filtro que a aba Importar repassa quando manda o operador para a leitura.
   const [filtroDaLeitura, setFiltroDaLeitura] = useState({
     empreendimento: "Vale do Ouro",
@@ -112,6 +116,7 @@ export function ImportacaoView() {
         <nav className="ml-auto flex items-center gap-1 rounded-lg bg-black/[0.05] p-1 dark:bg-white/[0.07]">
           {(
             [
+              ["comparativo", "Asana x Board"],
               ["importar", "Importar"],
               ["ler", "Ler documentos"],
               ["completar", "Completar dados"],
@@ -149,6 +154,12 @@ export function ImportacaoView() {
           </button>
         ) : null}
       </header>
+
+      {aba === "comparativo" ? (
+        <div className="p-5">
+          <ComparativoAsanaApolo />
+        </div>
+      ) : null}
 
       {aba === "completar" ? (
         <div className="p-5">

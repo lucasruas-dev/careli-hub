@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { authorizePrometeuRead, authorizePrometeuWrite } from "@/lib/prometeu/auth";
+import { authorizePrometeuWrite } from "@/lib/prometeu/auth";
 import {
   atualizarEvento,
   createPrometeuClient,
@@ -8,6 +8,7 @@ import {
   criarMesas,
   listEventos,
 } from "@/lib/prometeu/data";
+import { autorizarOperacao } from "@/lib/prometeu/operador-server";
 import type { PrometeuEventoConfig } from "@/lib/prometeu/types";
 
 // Eventos do Prometeu (os lancamentos). GET lista, POST cria, PATCH salva o Setup.
@@ -15,7 +16,9 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: Request) {
-  const auth = await authorizePrometeuRead(request);
+  // Listagem de eventos: aceita a sessao do hub OU o cookie do operador (as telas do posto
+  // resolvem qual evento esta ativo por aqui). Criar/salvar (POST/PATCH) segue so no hub.
+  const auth = await autorizarOperacao(request);
   if (!auth.ok) return auth.response;
 
   const client = createPrometeuClient();

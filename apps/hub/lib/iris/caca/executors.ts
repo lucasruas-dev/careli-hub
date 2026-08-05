@@ -6,6 +6,11 @@ import {
   formatPanteonResultado,
   queryPanteon,
 } from "@/lib/analytics/query-panteon";
+import { consultarCobranca, obterQrCodePix } from "@/lib/apolo/asaas-prevenda";
+import { carregarResumoApolo } from "@/lib/apolo/cads-publico-resumo";
+import { montarFichaCad } from "@/lib/apolo/cobranca-prevenda";
+import { lerCadDaEsteira, lerCadsDaEsteira } from "@/lib/apolo/esteira-cad";
+import { createApoloAdminClient } from "@/lib/apolo/server";
 import { prepareBoletoResendAction } from "@/lib/guardian/asaas";
 import {
   type C2xImobiliariaClientMatch,
@@ -38,6 +43,7 @@ import {
 } from "@/lib/iris/iris-analytics";
 
 import { appendClientNote } from "./client-memory";
+import { gravarIdentidadeLembrada } from "./identidade-lembrada";
 import { sortInstallmentsByDueDate } from "./installment-order";
 import { CACA_TOOL_DEFINITIONS } from "./tools";
 
@@ -50,6 +56,9 @@ export type CacaToolContext = {
   client: SupabaseClient;
   contactId: string | null;
   customerName: string | null;
+  // entity_id do Apolo do contato, casado pelo TELEFONE (não expõe dado — só serve pra tools que
+  // GRAVAM na ficha do prospect, ex.: registrar_chave_pix). null = telefone não casou entidade.
+  entityId: string | null;
   // Perfil do contato no Apolo (comprador, colaborador, imobiliaria, prospect...) para a
   // Caca entender COM QUEM fala e nao tratar ausencia de carteira como erro. null = desconhecido.
   customerProfileLabel: string | null;
@@ -126,6 +135,26 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
       run: async () => consultarCadastro(context),
     },
     {
+      definition: requireDefinition("consultar_status_cad"),
+      run: async (input) => consultarStatusCad(context, input),
+    },
+    {
+      definition: requireDefinition("enviar_pix_credenciamento"),
+      run: async (input) => enviarPixCredenciamento(context, input),
+    },
+    {
+      definition: requireDefinition("registrar_chave_pix"),
+      run: async (input) => registrarChavePix(context, input),
+    },
+    {
+      definition: requireDefinition("consultar_ficha_credenciamento"),
+      run: async (input) => consultarFichaCredenciamento(context, input),
+    },
+    {
+      definition: requireDefinition("enviar_ficha_cad"),
+      run: async (input) => enviarFichaCad(context, input),
+    },
+    {
       definition: requireDefinition("consultar_cadastro_imobiliaria"),
       run: async (input) => consultarCadastroImobiliaria(context, input),
     },
@@ -154,6 +183,13 @@ export function buildCacaTools(context: CacaToolContext): ClaudeAgentTool[] {
   // Ferramentas de ANALISTA: só no modo assistente/gestão (proprietários).
   if (context.assistantMode) {
     tools.push(
+      {
+        // Consolidado das CADs = número de GESTÃO. Fica aqui, no modo assistente, para o cliente,
+        // corretor ou imobiliária comum NÃO conseguir o total somado do empreendimento — só a
+        // direção. Cada um continua vendo a própria ficha pelo CPF (fora deste bloco).
+        definition: requireDefinition("consultar_consolidado_cads"),
+        run: async (input) => consultarConsolidadoCads(context, input),
+      },
       {
         definition: requireDefinition("consultar_panteon"),
         run: async (input) => consultarPanteon(context, input),
@@ -603,6 +639,546 @@ async function cenarioComercial(input: unknown): Promise<string> {
 
 // Central de CAD (Asana): cadastros de prospects enviados pelos corretores. Cada CAD tem
 // cliente (nome da task), empreendimento, imobiliária credenciada e etapa (seção).
+// AÇÃO DE LANÇAMENTO — status da CAD de uma pessoa pelo CPF, lido da esteira do Board (não do
+// Asana). A ETAPA da esteira já é o veredito: 'prevenda' = crédito aprovado (entra no PIX),
+// 'revisao' = reprovado, 'validacao'/sem linha = ainda em validação. Ver o bloco da ação na persona.
+async function consultarStatusCad(
+  context: CacaToolContext,
+  input: unknown,
+): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const cpf = (typeof record.cpf === "string" ? record.cpf : "").replace(/\D/g, "");
+  if (cpf.length !== 11) {
+    return "Pra localizar a CAD eu preciso do CPF completo, com os 11 números. Confirme o CPF da pessoa e me manda de novo.";
+  }
+
+  // Admin client: ignora RLS, garante a leitura da esteira independentemente da policy.
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    return "Não consegui acessar a base de CADs agora. Se precisar, eu te encaminho pro nosso time.";
+  }
+
+  const match = await lookupApoloByDocument(admin, cpf);
+  if (!match?.entityId) {
+    return "Não localizei nenhuma CAD com esse CPF. Pode ser que o cadastro ainda não tenha sido enviado, ou que o número esteja diferente. Confere o CPF comigo; se continuar não achando, o time consegue verificar.";
+  }
+
+  // ⚠️ A CACÁ SÓ TEM O CPF — ou seja, a PESSOA, nunca o empreendimento. Desde a 0080 a pessoa
+  // pode ter uma CAD por loteamento, então a resposta certa é LISTAR: se houver mais de uma, ela
+  // diz o status de cada uma, com o nome do empreendimento. Escolher uma às escondidas seria
+  // informar ao cliente o status da CAD errada.
+  const cads = await lerCadsDaEsteira<{ empreendimento: string | null; etapa: string | null }>(
+    admin,
+    match.entityId,
+    "etapa, empreendimento",
+  );
+  const esteira = cads[0] ?? null;
+
+  const nome = match.displayName?.trim() || "o cliente";
+
+  // Sem linha na esteira: SÓ é uma CAD desta ação se a entidade NASCEU como cadastro do portal
+  // (status 'review' + origem 'apolo'). Um comprador antigo do C2X que por acaso tem o mesmo CPF
+  // NÃO é uma CAD — não podemos dizer que "está em validação".
+  if (!esteira) {
+    const { data: ent } = await admin
+      .from("apolo_entities")
+      .select("status, metadata")
+      .eq("id", match.entityId)
+      .maybeSingle<{ metadata: { source?: string } | null; status: string | null }>();
+    const ehCadNova = ent?.status === "review" && ent?.metadata?.source === "apolo";
+    if (!ehCadNova) {
+      return "Não localizei uma CAD desta ação com esse CPF. Pode ser que o cadastro ainda não tenha sido enviado. Confere o CPF comigo; se precisar, o time verifica.";
+    }
+    return `A CAD de ${nome} está em processo de validação. Depois da validação vem a análise de crédito; se for aprovada, ele entra no lote de PIX de amanhã. Pode me consultar de novo mais tarde, que já pode ter retorno.`;
+  }
+
+  // Mais de uma CAD: a pessoa está em dois lançamentos. Responder sobre uma só esconderia a
+  // outra, e a pergunta ("como está minha CAD?") é sobre as duas.
+  if (cads.length > 1) {
+    const linhas = cads
+      .map(
+        (c) =>
+          `• ${c.empreendimento?.trim() || "empreendimento não informado"}: ${rotuloEtapaCad(c.etapa)}`,
+      )
+      .join("\n");
+    return (
+      `${nome} tem ${cads.length} CADs abertas, uma por empreendimento:\n${linhas}\n\n` +
+      "Me diz de qual empreendimento você quer falar que eu detalho."
+    );
+  }
+
+  const empreendimento = esteira.empreendimento?.trim() || null;
+  const ondeEmp = empreendimento ? ` (${empreendimento})` : "";
+  const etapa = esteira.etapa ?? "validacao";
+
+  if (etapa === "prevenda" || etapa === "credenciado") {
+    return `A CAD de ${nome}${ondeEmp} teve o crédito APROVADO e o PIX do credenciamento já foi emitido e enviado, no WhatsApp e no e-mail, junto com a ficha de cadastro. Se ele não recebeu ou perdeu a mensagem, use a ferramenta enviar_pix_credenciamento com esse mesmo CPF que eu te passo o link de novo — é a mesma cobrança, não cobra duas vezes.`;
+  }
+  if (etapa === "revisao") {
+    return `A CAD de ${nome}${ondeEmp} passou pela análise e não foi aprovada no crédito nesta etapa, ficou em revisão com o nosso time. Se quiser, eu te encaminho pra um analista da Careli olhar o caso.`;
+  }
+  return `A CAD de ${nome}${ondeEmp} está em processo de validação. Depois da validação vem a análise de crédito; se for aprovada, ele recebe o PIX do credenciamento no WhatsApp e no e-mail. Se quiser, pode me consultar de novo mais tarde, que a validação e a análise já podem ter retorno.`;
+}
+
+// Rótulo curto da etapa, para listar várias CADs numa resposta só (a pessoa com CAD em mais de
+// um empreendimento). Fala a língua do cliente, não a do banco.
+function rotuloEtapaCad(etapa: string | null): string {
+  switch (etapa) {
+    case "credenciado":
+      return "crédito aprovado, PIX do credenciamento já emitido";
+    case "credito":
+      return "em análise de crédito";
+    case "indeferido":
+      return "não aprovada nesta etapa";
+    case "prevenda":
+      return "crédito aprovado, PIX do credenciamento já emitido";
+    case "revisao":
+      return "em revisão com o nosso time";
+    default:
+      return "em processo de validação";
+  }
+}
+
+// Mostra o suficiente pra pessoa CONFERIR se o contato está certo, sem despejar o dado inteiro
+// numa conversa que pode não ser do titular.
+function contatoParcial(valor: string | null, tipo: "email" | "telefone"): string {
+  const v = (valor ?? "").trim();
+  if (!v) return "não cadastrado";
+
+  if (tipo === "telefone") {
+    const d = v.replace(/\D/g, "");
+    if (d.length < 6) return "número incompleto no cadastro";
+    const nacional = d.startsWith("55") && d.length >= 12 ? d.slice(2) : d;
+    const ddd = nacional.slice(0, 2);
+    const fim = nacional.slice(-4);
+    return `(${ddd}) ${"*".repeat(Math.max(0, nacional.length - 6))}-${fim}`;
+  }
+
+  const [usuario = "", dominio = ""] = v.split("@");
+  if (!dominio) return `${v.slice(0, 3)}*** (não parece um e-mail válido)`;
+  const visivel = usuario.slice(0, 3);
+  return `${visivel}${"*".repeat(Math.max(1, usuario.length - 3))}@${dominio}`;
+}
+
+// RAIO-X DA FICHA para o atendimento: onde a CAD está, o que já foi enviado, para onde, se
+// entregou, se deu erro e se pagou. É o que o atendente veria abrindo o Board do Apolo — a CACÁ
+// passa a ver o mesmo, para responder sem transferir.
+async function consultarFichaCredenciamento(
+  context: CacaToolContext,
+  input: unknown,
+): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const cpf = (typeof record.cpf === "string" ? record.cpf : "").replace(/\D/g, "");
+  if (cpf.length !== 11) {
+    return "Pra abrir a ficha eu preciso do CPF completo, com os 11 números. Me confirma o CPF do cliente.";
+  }
+
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    return "Não consegui acessar a base agora. Se precisar, eu te encaminho pro nosso time.";
+  }
+
+  const match = await lookupApoloByDocument(admin, cpf);
+  if (!match?.entityId) {
+    return "Não localizei nenhuma ficha com esse CPF. Confere o CPF comigo; se continuar não achando, o time verifica.";
+  }
+  const entityId = match.entityId;
+  const nome = match.displayName?.trim() || "o cliente";
+
+  // Sem empreendimento no escopo (a CACÁ atende por CPF): a CAD MAIS RECENTE, com ordem
+  // explícita. É a que o cliente acabou de mandar, e é sobre ela que ele está perguntando.
+  const esteira = await lerCadDaEsteira<{
+    chegou_em: string | null;
+    corretor: string | null;
+    empreendimento: string | null;
+    etapa: string | null;
+    imobiliaria: string | null;
+    pagamento_ref: string | null;
+    pago_em: string | null;
+  }>(
+    admin,
+    entityId,
+    "etapa, empreendimento, imobiliaria, corretor, chegou_em, pago_em, pagamento_ref",
+  );
+
+  if (!esteira) {
+    return `Não encontrei ${nome} na esteira de CADs desta ação. Pode ser que a ficha ainda não tenha sido enviada pelo time. Confere o CPF comigo ou me pede pra transferir.`;
+  }
+
+  const { data: disparos } = await admin
+    .from("apolo_disparos")
+    .select("tipo, origem, destinatario, status, erro, created_at, delivered_at, read_at")
+    .eq("entity_id", entityId)
+    .in("tipo", ["prevenda_cobranca", "prevenda_recibo"])
+    .order("created_at", { ascending: true });
+
+  const linhas = (disparos ?? []) as {
+    created_at: string;
+    delivered_at: string | null;
+    destinatario: string | null;
+    erro: string | null;
+    origem: string | null;
+    read_at: string | null;
+    status: string | null;
+    tipo: string | null;
+  }[];
+
+  const quando = (iso: string | null) =>
+    iso
+      ? new Date(iso).toLocaleString("pt-BR", {
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          month: "2-digit",
+          timeZone: "America/Sao_Paulo",
+        })
+      : "—";
+
+  const ETAPAS: Record<string, string> = {
+    credenciado: "CREDENCIADO (última etapa: o PIX já foi emitido e enviado)",
+    credito: "ANÁLISE DE CRÉDITO",
+    prevenda: "PRÉ-VENDA (crédito aprovado, é a etapa do PIX)",
+    revisao: "EM REVISÃO (o crédito não foi aprovado nesta etapa)",
+    validacao: "VALIDAÇÃO (o time está conferindo os dados da ficha)",
+  };
+
+  const partes: string[] = [
+    `FICHA DE ${nome.toUpperCase()}`,
+    `- Empreendimento: ${esteira.empreendimento?.trim() || "não informado"}`,
+    `- Imobiliária: ${esteira.imobiliaria?.trim() || "não informada"} · Corretor: ${esteira.corretor?.trim() || "não informado"}`,
+    `- CAD chegou em: ${quando(esteira.chegou_em)}`,
+    `- Etapa atual: ${ETAPAS[esteira.etapa ?? ""] ?? esteira.etapa ?? "desconhecida"}`,
+  ];
+
+  // PAGAMENTO
+  if (esteira.pago_em) {
+    partes.push(
+      `- PAGAMENTO: PAGO em ${quando(esteira.pago_em)}. O cadastro dele está CONCLUÍDO. A posição dele na fila do evento é definida por esta hora do pagamento.`,
+    );
+  } else if (esteira.pagamento_ref && !esteira.pagamento_ref.startsWith("reservado:")) {
+    partes.push("- PAGAMENTO: cobrança emitida, mas AINDA NÃO PAGA.");
+  } else {
+    partes.push("- PAGAMENTO: ainda não há cobrança emitida para esta ficha.");
+  }
+
+  // ENVIOS: o que saiu, pra onde, e o que aconteceu depois.
+  const cobrancas = linhas.filter((l) => l.tipo === "prevenda_cobranca");
+  const recibos = linhas.filter((l) => l.tipo === "prevenda_recibo");
+
+  const descreverEnvio = (l: (typeof linhas)[number]) => {
+    const canal = l.origem?.includes("email") ? "email" : "telefone";
+    const destino = contatoParcial(l.destinatario, canal === "email" ? "email" : "telefone");
+    const rotulo = canal === "email" ? "E-mail" : "WhatsApp";
+
+    if (l.erro) {
+      const motivo = /undeliverable|131026|133010/i.test(l.erro)
+        ? "o número não tem WhatsApp"
+        : /fora do padrão/i.test(l.erro)
+          ? "o telefone cadastrado não é um celular brasileiro válido, então não enviamos por segurança"
+          : /sem telefone/i.test(l.erro)
+            ? "não havia telefone no cadastro"
+            : /sem e-mail/i.test(l.erro)
+              ? "não havia e-mail no cadastro"
+              : /invalid|400|mailbox|550/i.test(l.erro)
+                ? "o e-mail cadastrado está inválido (erro de digitação)"
+                : "falha técnica no envio";
+      return `  · ${rotulo} para ${destino}: NÃO FOI ENTREGUE — ${motivo}. (tentativa em ${quando(l.created_at)})`;
+    }
+
+    const estado = l.read_at
+      ? `LIDO em ${quando(l.read_at)}`
+      : l.delivered_at
+        ? `ENTREGUE em ${quando(l.delivered_at)}`
+        : "enviado (ainda sem confirmação de entrega)";
+    return `  · ${rotulo} para ${destino}: ${estado}. (enviado em ${quando(l.created_at)})`;
+  };
+
+  if (cobrancas.length) {
+    partes.push("- PIX DO CREDENCIAMENTO — envios:");
+    partes.push(...cobrancas.map(descreverEnvio));
+  } else {
+    partes.push("- PIX DO CREDENCIAMENTO: nenhum envio registrado para esta ficha ainda.");
+  }
+
+  if (recibos.length) {
+    partes.push("- RECIBO do pagamento — envios:");
+    partes.push(...recibos.map(descreverEnvio));
+  }
+
+  // PRÓXIMO PASSO — o que dizer a quem perguntou.
+  const falhouTudo =
+    cobrancas.length > 0 && cobrancas.every((l) => Boolean(l.erro));
+  if (esteira.pago_em) {
+    partes.push(
+      "PRÓXIMO PASSO: nada a fazer, está concluído. NÃO mande link de pagamento pra ele.",
+    );
+  } else if (falhouTudo) {
+    partes.push(
+      "PRÓXIMO PASSO: ele NÃO recebeu a mensagem em nenhum canal. Confirme o telefone/e-mail corretos com quem está falando, use enviar_pix_credenciamento pra mandar o link na conversa, e avise o time pra corrigir o cadastro.",
+    );
+  } else if (esteira.pagamento_ref) {
+    partes.push(
+      "PRÓXIMO PASSO: a cobrança está em aberto. Se ele pedir o link de novo, use enviar_pix_credenciamento.",
+    );
+  } else if (esteira.etapa === "revisao") {
+    partes.push(
+      "PRÓXIMO PASSO: o caso está em revisão com o time. Ofereça encaminhar pra um analista, sem expor motivo ou score.",
+    );
+  } else {
+    partes.push(
+      "PRÓXIMO PASSO: a ficha ainda está andando na esteira. Explique a etapa e convide a consultar de novo mais tarde, sem prometer data.",
+    );
+  }
+
+  return partes.join("\n");
+}
+
+// CONSOLIDADO das CADs de um empreendimento — o número somado que o atendente não conseguia
+// montar abrindo ficha a ficha: quantas em cada etapa, quantas pagaram, quanto entrou.
+async function consultarConsolidadoCads(
+  context: CacaToolContext,
+  input: unknown,
+): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const empreendimento =
+    (typeof record.empreendimento === "string" ? record.empreendimento : "").trim() ||
+    "Vale do Ouro";
+
+  const resumo = await carregarResumoApolo(empreendimento);
+  if (!resumo) {
+    return `Não consegui montar o consolidado de ${empreendimento} agora. Se precisar, o time verifica no Board.`;
+  }
+
+  const moeda = (v: number) =>
+    v.toLocaleString("pt-BR", { currency: "BRL", minimumFractionDigits: 2, style: "currency" });
+
+  // Total recebido = tudo que está na esteira (o funil inteiro). Não somo as etapas porque
+  // "correcao" e outras podem se sobrepor; o total real vem de uma contagem à parte na lib? Não —
+  // a lib já separa por etapa exclusiva. A soma das etapas é o total de fichas na esteira.
+  const total =
+    resumo.validacao +
+    resumo.analiseCredito +
+    resumo.creditoRevisao +
+    resumo.correcao +
+    resumo.prevenda +
+    resumo.credenciados;
+
+  return [
+    `CONSOLIDADO DAS CADs — ${empreendimento}`,
+    `Total na esteira: ${total} fichas.`,
+    `- Validação: ${resumo.validacao}`,
+    `- Análise de crédito: ${resumo.analiseCredito}`,
+    `- Crédito em revisão (reprovados): ${resumo.creditoRevisao}`,
+    resumo.correcao > 0 ? `- Em correção: ${resumo.correcao}` : "",
+    `- Pré-venda (crédito aprovado, aguardando/recebendo o PIX): ${resumo.prevenda}`,
+    `- Credenciado (PIX já emitido): ${resumo.credenciados}`,
+    ``,
+    `PAGAMENTOS: ${resumo.pagos} cliente(s) já pagaram o PIX, somando ${moeda(resumo.valorPago)}.`,
+    ``,
+    `Se quiser o detalhe de uma pessoa (se pagou, para qual telefone/e-mail foi o PIX, se deu erro), me passe o CPF que eu abro a ficha.`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
+// A FICHA (CAD) em PDF para a CACÁ encaminhar no atendimento — "me manda a ficha", "quero
+// conferir os dados", "não recebi o anexo".
+//
+// Devolve um LINK ASSINADO de 1 hora, gerado na hora a partir do cadastro atual (então já sai com
+// as correções que o time fez). O documento tem CPF, RG, filiação e renda: a persona manda entregar
+// só ao próprio titular ou ao corretor/imobiliária daquela CAD, nunca a terceiro.
+async function enviarFichaCad(context: CacaToolContext, input: unknown): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const cpf = (typeof record.cpf === "string" ? record.cpf : "").replace(/\D/g, "");
+  if (cpf.length !== 11) {
+    return "Pra gerar a ficha eu preciso do CPF completo, com os 11 números.";
+  }
+
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    return "Não consegui acessar a base agora. Se precisar, eu te encaminho pro nosso time.";
+  }
+
+  const match = await lookupApoloByDocument(admin, cpf);
+  if (!match?.entityId) {
+    return "Não localizei nenhuma ficha com esse CPF. Confere o CPF comigo.";
+  }
+  const nome = match.displayName?.trim() || "o cliente";
+
+  const ficha = await montarFichaCad(admin, match.entityId, nome);
+  if (!ficha?.link) {
+    return `Não consegui gerar a ficha de ${nome} agora. Avisa que vou acionar o time pra enviar.`;
+  }
+
+  return [
+    `Ficha de cadastro (CAD) de ${nome}, em PDF:`,
+    ficha.link,
+    "",
+    "O link vale por 1 hora — se expirar, é só me pedir de novo.",
+    "Ao encaminhar, peça pra conferir os dados e avisar se algo estiver errado, que o time corrige.",
+  ].join("\n");
+}
+
+// O PIX DO CREDENCIAMENTO na mão da CACÁ: quando o cliente, o corretor ou a imobiliária pede o
+// link no atendimento, ela devolve na hora em vez de transferir pro time.
+//
+// É sempre a MESMA cobrança já emitida (lida de `apolo_esteira.pagamento_ref` e consultada no
+// Asaas): reenviar não cria cobrança nova e ninguém paga duas vezes. Quem já pagou NÃO recebe
+// link de novo — recebe a confirmação de que está pago.
+async function enviarPixCredenciamento(
+  context: CacaToolContext,
+  input: unknown,
+): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const cpf = (typeof record.cpf === "string" ? record.cpf : "").replace(/\D/g, "");
+  if (cpf.length !== 11) {
+    return "Pra achar o PIX do credenciamento eu preciso do CPF completo, com os 11 números. Me confirma o CPF do cliente.";
+  }
+
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    return "Não consegui acessar a base agora. Se precisar, eu te encaminho pro nosso time.";
+  }
+
+  const match = await lookupApoloByDocument(admin, cpf);
+  if (!match?.entityId) {
+    return "Não localizei nenhuma CAD com esse CPF. Confere o CPF comigo; se continuar não achando, o time verifica.";
+  }
+
+  const nome = match.displayName?.trim() || "o cliente";
+
+  // ⚠️ AQUI VAI UM LINK DE PAGAMENTO PARA O CLIENTE. Com CAD em dois loteamentos, mandar o PIX da
+  // CAD errada é cobrar o valor de outro empreendimento. Como a CACÁ só tem o CPF, a regra é:
+  // uma CAD -> manda; mais de uma -> PERGUNTA de qual é, em vez de escolher por conta.
+  const cadsPix = await lerCadsDaEsteira<{
+    empreendimento: string | null;
+    etapa: string | null;
+    pagamento_ref: string | null;
+    pago_em: string | null;
+  }>(admin, match.entityId, "etapa, pagamento_ref, pago_em, empreendimento");
+
+  if (cadsPix.length > 1) {
+    const nomes = cadsPix
+      .map((c) => c.empreendimento?.trim() || "empreendimento não informado")
+      .join(", ");
+    return `${nome} tem CAD em mais de um empreendimento (${nomes}), e cada uma tem o seu PIX. Me diz de qual empreendimento é o credenciamento que eu mando o link certo — ou eu te encaminho pro time.`;
+  }
+
+  const esteira = cadsPix[0] ?? null;
+
+  if (!esteira) {
+    return `Não encontrei a CAD de ${nome} na esteira desta ação, então ainda não há PIX de credenciamento pra ele. Confere o CPF comigo ou fala com o time.`;
+  }
+
+  if (esteira.pago_em) {
+    return `O PIX do credenciamento de ${nome} JÁ FOI PAGO — o cadastro dele está concluído. Não mande link de pagamento de novo: se ele pagar outra vez, vira devolução. Se ele quiser o comprovante, o time consegue reenviar o recibo.`;
+  }
+
+  if (!esteira.pagamento_ref || esteira.pagamento_ref.startsWith("reservado:")) {
+    const etapa = esteira.etapa ?? "validacao";
+    if (etapa === "revisao") {
+      return `A CAD de ${nome} está em revisão de crédito, então ainda não existe PIX de credenciamento pra ela. Posso te encaminhar pra um analista olhar o caso.`;
+    }
+    return `A CAD de ${nome} ainda não chegou na etapa do PIX (está em ${etapa === "credito" ? "análise de crédito" : "validação"}), então ainda não existe cobrança emitida. Assim que o crédito for aprovado, o PIX é enviado no WhatsApp e no e-mail dele.`;
+  }
+
+  const [cobranca, qr] = await Promise.all([
+    consultarCobranca(esteira.pagamento_ref),
+    obterQrCodePix(esteira.pagamento_ref),
+  ]);
+
+  const link = cobranca.ok ? cobranca.data.invoiceUrl : null;
+  const copiaECola = qr.ok ? qr.data.payload : null;
+
+  if (!link && !copiaECola) {
+    return `${nome} tem o PIX do credenciamento emitido, mas não consegui recuperar o link agora. Avisa que vou acionar o time pra reenviar.`;
+  }
+
+  const valor = cobranca.ok ? cobranca.data.value : 1000;
+  const empreendimento = esteira.empreendimento?.trim() || "o empreendimento";
+
+  const partes = [
+    `PIX do credenciamento de ${nome} (${empreendimento}), no valor de R$ ${valor.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}:`,
+    link ? `Link de pagamento: ${link}` : "",
+    copiaECola ? `PIX copia e cola: ${copiaECola}` : "",
+    "",
+    "É a MESMA cobrança que já foi enviada pra ele, então pode mandar sem medo: não cobra duas vezes.",
+    "Lembre ao encaminhar: esse valor é ETAPA DA FICHA DE CADASTRO — é abatido se ele adquirir uma ou mais unidades no evento, é restituído em até 10 dias úteis se não adquirir nenhuma, e NÃO garante reserva de unidade.",
+  ];
+
+  return partes.filter(Boolean).join("\n");
+}
+
+// Registra a CHAVE PIX que o prospect informa pra EVENTUAL DEVOLUÇÃO dos R$1.000 do credenciamento.
+// Identidade pelo TELEFONE (context.entityId, casado por telefone) — a ficha nasce da esteira, então
+// o telefone dela é assertivo. SÓ grava se o pagamento já CONSTA (pago_em): a devolução só existe
+// depois de pago. Guarda server-side — não confia só no que a IA "acha".
+async function registrarChavePix(
+  context: CacaToolContext,
+  input: unknown,
+): Promise<string> {
+  const record =
+    input && typeof input === "object" ? (input as Record<string, unknown>) : {};
+  const chave = (typeof record.chave_pix === "string" ? record.chave_pix : "").trim();
+  const tipo =
+    typeof record.tipo_chave === "string" ? record.tipo_chave.trim().slice(0, 20) : null;
+
+  if (!chave) {
+    return "Me confirma qual é a sua chave PIX pra devolução, por favor.";
+  }
+
+  const entityId = context.entityId;
+  if (!entityId) {
+    return "Não consegui localizar seu cadastro pelo seu número aqui. Vou encaminhar pro nosso time registrar sua chave PIX.";
+  }
+
+  const admin = createApoloAdminClient();
+  if (!admin) {
+    return "Não consegui acessar a base agora. Já encaminho pro time registrar sua chave.";
+  }
+
+  // Sem empreendimento no escopo (a identidade aqui vem do TELEFONE do atendimento): a CAD mais
+  // recente. Ver o comentário do update logo abaixo — a chave PIX é da pessoa, não da CAD.
+  const esteira = await lerCadDaEsteira<{ pago_em: string | null }>(
+    admin,
+    entityId,
+    "pago_em",
+  );
+
+  if (!esteira) {
+    return "Não encontrei sua ficha na esteira desta ação. Vou encaminhar pro time.";
+  }
+
+  if (!esteira.pago_em) {
+    return "Ainda não consta o pagamento do PIX confirmado na sua ficha. Assim que o pagamento cair, a gente registra sua chave PIX pra uma eventual devolução.";
+  }
+
+  // ⚠️ GRAVA EM TODAS AS CADs DA PESSOA, DE PROPÓSITO. A chave PIX de devolução é da PESSOA (é a
+  // conta dela), não de uma CAD: se ela tiver direito a devolução em dois empreendimentos, é a
+  // mesma conta que recebe. Registrar só numa deixaria a outra devolução sem para onde ir.
+  const agora = new Date().toISOString();
+  const { error } = await admin
+    .from("apolo_esteira")
+    .update({
+      atualizado_em: agora,
+      chave_pix_devolucao: chave,
+      chave_pix_registrada_em: agora,
+      chave_pix_registrada_via: "caca",
+    })
+    .eq("entity_id", entityId);
+
+  if (error) {
+    return "Tive um probleminha pra salvar sua chave PIX. Vou acionar o time pra registrar.";
+  }
+
+  return `Prontinho! Anotei sua chave PIX${tipo ? ` (${tipo})` : ""} pra uma eventual devolução. Lembrando: o valor é abatido se você adquirir uma ou mais unidades no evento; é restituído em até 10 dias úteis depois do evento se você não adquirir nenhuma; e não reserva unidade.`;
+}
+
 async function consultarCad(input: unknown): Promise<string> {
   const record =
     input && typeof input === "object" ? (input as Record<string, unknown>) : {};
@@ -819,6 +1395,24 @@ async function validarIdentidade(
   context.validationSource = "cpf";
   context.customerProfileLabel =
     describeApoloProfile(match.profiles) ?? context.customerProfileLabel;
+
+  // Lembra que ESTE número validou ESTE cadastro, pra o cliente não digitar CPF de novo no
+  // próximo atendimento (a validação morria no fechamento do ticket, e 64,5% dos atendimentos
+  // são de reincidentes). Vale 30 dias e pede reconfirmação do nome. Ver [[identidade-lembrada]].
+  // Best-effort: falhar aqui não pode invalidar uma identidade que já foi confirmada.
+  if (context.contactId && match.c2xClientId) {
+    try {
+      await gravarIdentidadeLembrada({
+        c2xClientId: match.c2xClientId,
+        client: context.client,
+        contactId: context.contactId,
+        displayName: match.displayName ?? null,
+        documento,
+      });
+    } catch {
+      // segue o atendimento: a memória é conveniência, não requisito.
+    }
+  }
 
   // Se quem validou é uma imobiliária/corretora, abre também a carteira DELA (clientes
   // vinculados) — assim ela pode consultar os clientes mesmo tendo se identificado por aqui.

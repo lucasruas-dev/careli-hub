@@ -6,6 +6,8 @@ import {
   LayoutDashboard,
   ListOrdered,
   Mic,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   TabletSmartphone,
   Tag,
@@ -17,6 +19,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useHubTheme } from "@/providers/theme-provider";
 
 import { CentralView } from "./blocks/central/central-view";
+import { AtendenteView } from "./blocks/atendente/atendente-view";
+import { EtiquetaView } from "./blocks/etiqueta/etiqueta-view";
+import { FilaView } from "./blocks/fila/fila-view";
 import { SetupView } from "./blocks/setup/setup-view";
 
 // Prometeu no hub: rail escuro de telas a esquerda (mesmo visual do Iris) + conteudo a direita.
@@ -43,8 +48,31 @@ const ALL_SCREENS: readonly PrometeuScreen[] = [
     id: "central",
     label: "Central",
   },
-  { file: "atendente.html", icon: TabletSmartphone, id: "atendente", label: "Atendente" },
-  { file: "etiqueta.html", icon: Tag, id: "etiqueta", label: "Etiqueta" },
+  {
+    // Fila do EVENTO (antes do check-in): ordem do PIX + o ajuste manual do organizador.
+    component: FilaView,
+    file: "cockpit.html",
+    icon: ListOrdered,
+    id: "fila",
+    label: "Fila",
+  },
+  {
+    // A mesa da secretaria: escolhe a mesa, chama da fila, recebe e conclui. Saiu do mockup em
+    // 27/07 — antes era iframe com nomes ficticios.
+    component: AtendenteView,
+    file: "atendente.html",
+    icon: TabletSmartphone,
+    id: "atendente",
+    label: "Atendimento",
+  },
+  {
+    // Crachá do cliente: nasce da fila (todo credenciado do evento) e imprime na térmica.
+    component: EtiquetaView,
+    file: "etiqueta.html",
+    icon: Tag,
+    id: "etiqueta",
+    label: "Etiqueta",
+  },
   { file: "telao.html", icon: Tv, id: "telao", label: "Telão", newTab: true },
   { file: "locutor.html", icon: Mic, id: "locutor", label: "Locutor" },
   {
@@ -58,6 +86,8 @@ const ALL_SCREENS: readonly PrometeuScreen[] = [
 
 export function PrometeuModule() {
   const [activeId, setActiveId] = useState<string>("central");
+  // Menu recolhido: encolhe a lateral para só os ícones, dando mais tela para o atendimento.
+  const [menuRecolhido, setMenuRecolhido] = useState(false);
   const { mode } = useHubTheme();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const active =
@@ -94,14 +124,37 @@ export function PrometeuModule() {
 
   return (
     <div className="flex h-full min-h-0">
-      <aside className="panteon-module-sidebar panteon-module-sidebar--themed flex h-full min-h-0 w-[232px] shrink-0 flex-col px-3 py-4 text-ink">
+      <aside
+        className={`panteon-module-sidebar panteon-module-sidebar--themed flex h-full min-h-0 shrink-0 flex-col px-3 py-4 text-ink transition-[width] duration-200 ${
+          menuRecolhido ? "w-[64px]" : "w-[232px]"
+        }`}
+      >
         <div className="panteon-module-sidebar__top -mx-3 mb-2 flex items-center gap-2.5 px-3">
-          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#A07C3B]/55 bg-[#101820] text-[#cba25a]">
-            <ListOrdered aria-hidden="true" size={18} />
-          </span>
-          <span className="text-[0.95rem] font-semibold tracking-[0.01em] text-ink">
-            Prometeu
-          </span>
+          {menuRecolhido ? null : (
+            <>
+              <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-[#A07C3B]/55 bg-[#101820] text-[#cba25a]">
+                <ListOrdered aria-hidden="true" size={18} />
+              </span>
+              <span className="text-[0.95rem] font-semibold tracking-[0.01em] text-ink">
+                Prometeu
+              </span>
+            </>
+          )}
+          {/* Recolher/expandir a lateral para ganhar tela no atendimento. */}
+          <button
+            className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-ink-muted transition-colors hover:bg-black/[0.05] hover:text-ink dark:hover:bg-white/[0.06] ${
+              menuRecolhido ? "mx-auto" : "ml-auto"
+            }`}
+            onClick={() => setMenuRecolhido((v) => !v)}
+            title={menuRecolhido ? "Expandir menu" : "Recolher menu"}
+            type="button"
+          >
+            {menuRecolhido ? (
+              <PanelLeftOpen aria-hidden="true" size={17} />
+            ) : (
+              <PanelLeftClose aria-hidden="true" size={17} />
+            )}
+          </button>
         </div>
 
         <nav className="mt-1 flex-1 space-y-0.5 overflow-y-auto">
@@ -112,6 +165,8 @@ export function PrometeuModule() {
               <button
                 key={screen.id}
                 className={`group relative flex w-full items-center gap-3 rounded-[9px] px-3 py-2 text-left transition-colors ${
+                  menuRecolhido ? "justify-center" : ""
+                } ${
                   isActive
                     ? "bg-black/[0.07] text-ink dark:bg-white/[0.08]"
                     : "text-ink-soft hover:bg-black/[0.04] hover:text-ink dark:hover:bg-white/[0.05]"
@@ -127,6 +182,8 @@ export function PrometeuModule() {
                   }
                   setActiveId(screen.id);
                 }}
+                // Recolhido, o nome vira tooltip para o operador ainda reconhecer o posto.
+                title={menuRecolhido ? screen.label : undefined}
                 type="button"
               >
                 {isActive ? (
@@ -141,10 +198,12 @@ export function PrometeuModule() {
                 >
                   <Icon aria-hidden="true" size={17} />
                 </span>
-                <span className="min-w-0 flex-1 truncate text-sm font-semibold">
-                  {screen.label}
-                </span>
-                {screen.newTab ? (
+                {menuRecolhido ? null : (
+                  <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+                    {screen.label}
+                  </span>
+                )}
+                {menuRecolhido ? null : screen.newTab ? (
                   <ExternalLink
                     aria-hidden="true"
                     className="text-ink-muted"

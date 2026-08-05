@@ -7,6 +7,7 @@ import {
   type HubUserScope,
 } from "@/lib/hub/access-scope";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
+import { calcularEspera } from "../lib/espera";
 import type {
   IrisCrm360Registration,
   IrisData,
@@ -43,6 +44,14 @@ const IRIS_CRM360_ENRICH_TIMEOUT_MS = 4_000;
 // cadastro já conhecido — senão, no meio do atendimento, o nome do comprador vira o
 // handle do WhatsApp e o painel da direita esvazia. Reseta no reload (robustez em memória).
 const irisCrm360RegistrationCache = new Map<string, IrisCrm360Registration>();
+// Telefone que NAO achou cadastro tambem entra em cache, por um tempo curto: sem isso todo
+// refresh (90s) reconsulta a base inteira de quem nunca vai casar, e a consulta e' cara
+// (varias tabelas do Apolo por telefone). TTL curto porque o cliente pode ser cadastrado
+// no meio do dia e o nome tem que aparecer sem exigir reload. Ver [[project-hermes-cost]].
+const irisCrm360MissingCache = new Map<string, number>();
+const IRIS_CRM360_MISSING_TTL_MS = 10 * 60 * 1000;
+// A rota /api/iris/apolo/phone-match aceita no maximo 100 telefones por chamada.
+const IRIS_CRM360_LOTE_DE_TELEFONES = 100;
 
 export async function loadIrisData({
   operatorUserId,
@@ -129,42 +138,68 @@ export async function loadIrisData({
         )
         .map((queue) => queue.id)
     : [];
-  let ticketsQuery = supabase
-    .from("caredesk_tickets")
-    .select(
-      "id,protocol,contact_id,queue_id,profile_id,channel_id,status,priority,subject,source_module,source_entity_type,source_context,assigned_to_user_id,opened_at,first_response_due_at,resolution_due_at,first_responded_at,resolved_at,closed_at,metadata,created_at,updated_at",
-    )
+  // ⚠️ ATENDIMENTO ABERTO NUNCA PODE SUMIR DA TELA.
+  //
+  // Antes isto era UMA consulta com `.limit(200)` ordenada por `opened_at desc`, e board e
+  // histórico eram montados em cima dela. Com mais de 200 tickets, os ANTIGOS caíam fora da
+  // janela: o ticket sumia da tela mas continuava bloqueando novo atendimento do mesmo cliente
+  // (a trava consulta o BANCO, não a tela). Incidente 24/jul: AT-000033, aberto em 29/06, preso
+  // com uma operadora que não conseguia vê-lo, enquanto a cliente mandava mensagem sem resposta.
+  //
+  // Agora são DUAS leituras com a MESMA régua de acesso: todos os ABERTOS (sem janela de data) e
+  // só os ENCERRADOS recentes (o histórico busca no banco quando precisa de um antigo).
+  const SELECT_TICKETS =
+    "id,protocol,contact_id,queue_id,profile_id,channel_id,status,priority,subject,source_module,source_entity_type,source_context,assigned_to_user_id,opened_at,first_response_due_at,resolution_due_at,first_responded_at,resolved_at,closed_at,metadata,created_at,updated_at";
+
+  const montarQueryTickets = () => {
+    let query = supabase.from("caredesk_tickets").select(SELECT_TICKETS);
+
+    if (operatorUserId) {
+      query = query.eq("assigned_to_user_id", operatorUserId);
+    }
+
+    // Régua de acesso nos TICKETS: só os das filas que o usuário enxerga — senão
+    // esconder a fila não adiantaria nada (o ticket dela apareceria assim mesmo).
+    // Ticket sem fila segue a mesma regra da fila sem vínculo: só adm.
+    if (viewerScope && !isAdminProfile(viewerScope.profile)) {
+      const visibleQueueIds = queues.map((queue) => queue.id);
+      query = visibleQueueIds.length
+        ? query.in("queue_id", visibleQueueIds)
+        : query.eq("queue_id", "__iris_sem_fila_visivel__");
+    }
+
+    if (normalizedQueueSlugFilter) {
+      query = scopedQueueIds.length
+        ? query.in("queue_id", scopedQueueIds)
+        : query.eq("queue_id", "__iris_queue_scope_not_found__");
+    }
+
+    return query;
+  };
+
+  const ticketsAbertosQuery = montarQueryTickets()
+    .neq("status", "closed")
     .order("opened_at", { ascending: false })
-    .limit(200);
+    .limit(2000);
 
-  if (operatorUserId) {
-    ticketsQuery = ticketsQuery.eq("assigned_to_user_id", operatorUserId);
-  }
-
-  // Régua de acesso nos TICKETS: só os das filas que o usuário enxerga — senão
-  // esconder a fila não adiantaria nada (o ticket dela apareceria assim mesmo).
-  // Ticket sem fila segue a mesma regra da fila sem vínculo: só adm.
-  if (viewerScope && !isAdminProfile(viewerScope.profile)) {
-    const visibleQueueIds = queues.map((queue) => queue.id);
-    ticketsQuery = visibleQueueIds.length
-      ? ticketsQuery.in("queue_id", visibleQueueIds)
-      : ticketsQuery.eq("queue_id", "__iris_sem_fila_visivel__");
-  }
-
-  if (normalizedQueueSlugFilter) {
-    ticketsQuery = scopedQueueIds.length
-      ? ticketsQuery.in("queue_id", scopedQueueIds)
-      : ticketsQuery.eq("queue_id", "__iris_queue_scope_not_found__");
-  }
+  // ENCERRADOS: janela ampliada (era 200, e a tela mostrava 53 de 775), mas NÃO ilimitada — os
+  // ids destes tickets viajam na URL das leituras dependentes (mensagens/contatos), e lista
+  // grande demais estoura o tamanho da requisição. Por isso as dependentes vão em LOTES abaixo.
+  const ticketsEncerradosQuery = montarQueryTickets()
+    .eq("status", "closed")
+    .order("closed_at", { ascending: false, nullsFirst: false })
+    .limit(400);
 
   const [
-    ticketsResult,
+    ticketsAbertosResult,
+    ticketsEncerradosResult,
     profilesResult,
     templatesResult,
     channelsResult,
     broadcastsResult,
   ] = await Promise.all([
-    ticketsQuery,
+    ticketsAbertosQuery,
+    ticketsEncerradosQuery,
     supabase
       .from("caredesk_ticket_profiles")
       .select(
@@ -190,7 +225,8 @@ export async function loadIrisData({
   ]);
 
   const failedResult = [
-    ticketsResult,
+    ticketsAbertosResult,
+    ticketsEncerradosResult,
     profilesResult,
     templatesResult,
     channelsResult,
@@ -201,7 +237,11 @@ export async function loadIrisData({
     throw failedResult.error;
   }
 
-  const ticketsRows = ticketsResult.data ?? [];
+  // Abertos primeiro (são o trabalho), depois os encerrados recentes (histórico).
+  const ticketsRows = [
+    ...(ticketsAbertosResult.data ?? []),
+    ...(ticketsEncerradosResult.data ?? []),
+  ];
   const ticketIds = ticketsRows.map((ticket) => ticket.id);
   const contactIds = unique(
     ticketsRows.map((ticket) => ticket.contact_id).filter(Boolean),
@@ -210,38 +250,120 @@ export async function loadIrisData({
     ticketsRows.map((ticket) => ticket.assigned_to_user_id).filter(Boolean),
   );
 
+  // Os ids abaixo viajam na URL do PostgREST. Lista longa demais estoura o tamanho da
+  // requisicao: o Supabase responde 400 e a tela inteira morre com "nao foi possivel
+  // carregar a operacao" (foi o que derrubou a Iris ao ampliar a janela de tickets).
+  // Por isso TODA leitura por lista de ids vai em lotes.
+  const LOTE_DE_IDS = 100;
+
+  async function lerEmLotes<Row>(
+    ids: string[],
+    ler: (
+      lote: string[],
+    ) => PromiseLike<{ data: Row[] | null; error: unknown }>,
+  ): Promise<{ data: Row[]; error: unknown }> {
+    const lotes: string[][] = [];
+
+    for (let inicio = 0; inicio < ids.length; inicio += LOTE_DE_IDS) {
+      lotes.push(ids.slice(inicio, inicio + LOTE_DE_IDS));
+    }
+
+    // Em paralelo: sequencial somaria um round-trip por lote numa tela que ja e pesada.
+    const respostas = await Promise.all(lotes.map((lote) => ler(lote)));
+    const linhas: Row[] = [];
+
+    for (const resposta of respostas) {
+      if (resposta.error) {
+        return { data: linhas, error: resposta.error };
+      }
+
+      linhas.push(...(resposta.data ?? []));
+    }
+
+    return { data: linhas, error: null };
+  }
+
   const [contactsResult, messagesResult, assignedUsersResult] =
     await Promise.all([
-      contactIds.length
-        ? supabase
-            .from("caredesk_contacts")
-            .select(
-              "id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload",
-            )
-            .in("id", contactIds)
-        : Promise.resolve({ data: [], error: null }),
-      ticketIds.length
-        ? supabase
-            .from("caredesk_messages")
-            .select(
-              "id,ticket_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
-            )
-            .in("ticket_id", ticketIds)
-            // Sem .limit explicito o PostgREST corta em 1000 linhas; com ordem
-            // ASCENDENTE isso derrubava as mensagens MAIS NOVAS (tickets recentes
-            // ficavam "sem mensagens" depois que o workspace passou de 1000 msgs).
-            // Buscamos as 1000 MAIS NOVAS (desc) e o groupMessagesByTicket reordena
-            // ascendente por ticket para o resto do codigo (ultima msg, nao-lidas).
-            .order("created_at", { ascending: false })
-            .limit(1000)
-        : Promise.resolve({ data: [], error: null }),
-      assignedUserIds.length
-        ? supabase
-            .from("hub_users")
-            .select("id,display_name,avatar_url")
-            .in("id", assignedUserIds)
-        : Promise.resolve({ data: [], error: null }),
+      lerEmLotes(contactIds, (lote) =>
+        supabase
+          .from("caredesk_contacts")
+          .select(
+            "id,display_name,document,email,phone,whatsapp_phone,metadata,c2x_payload",
+          )
+          .in("id", lote),
+      ),
+      // Ordem DESCENDENTE por lote: sem ela o PostgREST corta pelas mensagens mais
+      // ANTIGAS e tickets recentes aparecem "sem mensagens". O groupMessagesByTicket
+      // reordena ascendente por ticket para o resto do codigo (ultima msg, nao-lidas).
+      // Como ticketIds vem com os ABERTOS na frente, o corte por lote sacrifica no
+      // maximo o preview de encerrados antigos, nunca a conversa de quem esta no board.
+      lerEmLotes(ticketIds, (lote) =>
+        supabase
+          .from("caredesk_messages")
+          .select(
+            "id,ticket_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
+          )
+          .in("ticket_id", lote)
+          .order("created_at", { ascending: false })
+          .limit(300),
+      ),
+      lerEmLotes(assignedUserIds, (lote) =>
+        supabase
+          .from("hub_users")
+          .select("id,display_name,avatar_url")
+          .in("id", lote),
+      ),
     ]);
+
+  // SEGUNDA PASSADA — a fila nao pode ficar cega.
+  //
+  // A leitura acima pede 300 mensagens por lote de 100 tickets. Quando algumas conversas sao
+  // longas (a maior da base tem 107 mensagens), elas consomem o orcamento e os demais tickets do
+  // lote voltam SEM NENHUMA mensagem. O efeito na tela e' brutal: em 26/07, 60 dos 100 primeiros
+  // itens da fila apareciam como "Sem mensagens registradas" — embora no banco NENHUM ticket
+  // aberto esteja sem mensagem. A operadora tinha que abrir um por um so' pra descobrir o que o
+  // cliente queria, com 110 na fila e o relogio correndo.
+  //
+  // Aqui a gente descobre quem ficou de fora e busca SO' a ultima mensagem desses, em lotes
+  // pequenos (o limite passa a ser generoso por ticket). E' auto-corretivo: se a primeira leitura
+  // ja' trouxe tudo, nada acontece; quanto pior o corte, mais essa passada recupera.
+  const ticketsComMensagem = new Set(
+    (messagesResult.data ?? []).map((linha) => linha.ticket_id),
+  );
+  const semPreview = ticketIds.filter((id) => !ticketsComMensagem.has(id));
+
+  if (!messagesResult.error && semPreview.length > 0) {
+    const LOTE_DO_RESGATE = 20;
+    const lotes: string[][] = [];
+
+    for (let inicio = 0; inicio < semPreview.length; inicio += LOTE_DO_RESGATE) {
+      lotes.push(semPreview.slice(inicio, inicio + LOTE_DO_RESGATE));
+    }
+
+    const resgates = await Promise.all(
+      lotes.map((lote) =>
+        supabase
+          .from("caredesk_messages")
+          .select(
+            "id,ticket_id,body,direction,sender_type,sender_user_id,message_type,delivery_status,provider_payload,created_at,sent_at,delivered_at,read_at,external_message_id,sender_user:hub_users(display_name,email,avatar_url)",
+          )
+          .in("ticket_id", lote)
+          .order("created_at", { ascending: false })
+          // 5 por ticket: o suficiente pra prévia e pro contador de não-lidas, sem repetir o
+          // estouro de orçamento que criou o problema.
+          .limit(lote.length * 5),
+      ),
+    );
+
+    for (const resgate of resgates) {
+      // Best-effort: se o resgate falhar, a fila volta ao comportamento antigo (alguns sem
+      // prévia) em vez de derrubar a tela inteira.
+      if (!resgate.error && resgate.data) {
+        messagesResult.data.push(...resgate.data);
+      }
+    }
+  }
 
   const failedNestedResult = [
     contactsResult,
@@ -549,7 +671,12 @@ export async function enrichTicketsWithCrm360(
 
       if (fresh && fresh.status === "registered") {
         irisCrm360RegistrationCache.set(phone, fresh);
+        irisCrm360MissingCache.delete(phone);
         return { ...ticket, crm360Registration: fresh };
+      }
+
+      if (fresh && fresh.status === "missing") {
+        irisCrm360MissingCache.set(phone, Date.now() + IRIS_CRM360_MISSING_TTL_MS);
       }
 
       const cached = irisCrm360RegistrationCache.get(phone);
@@ -562,6 +689,28 @@ export async function enrichTicketsWithCrm360(
     }),
   });
 
+  // So vai ao servidor quem ainda nao tem resposta em cache. Quem ja resolveu como
+  // cadastrado nunca mais e' consultado (o vinculo nao muda de 90 em 90s), e quem deu
+  // "missing" volta a ser consultado depois do TTL.
+  const agora = Date.now();
+  const pendentes = phones.filter((phone) => {
+    if (irisCrm360RegistrationCache.has(phone)) {
+      return false;
+    }
+
+    const expiraEm = irisCrm360MissingCache.get(phone);
+
+    if (expiraEm && expiraEm > agora) {
+      return false;
+    }
+
+    return true;
+  });
+
+  if (!pendentes.length) {
+    return applyRegistrations({});
+  }
+
   try {
     const accessToken = await getAccessToken();
     const controller = new AbortController();
@@ -570,27 +719,50 @@ export async function enrichTicketsWithCrm360(
       IRIS_CRM360_ENRICH_TIMEOUT_MS,
     );
 
-    const response = await fetch("/api/iris/apolo/phone-match", {
-      body: JSON.stringify({ phones }),
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "Content-Type": "application/json",
-      },
-      method: "POST",
-      signal: controller.signal,
-    });
-    window.clearTimeout(timeoutId);
+    // Em LOTES: a rota corta em 100 telefones por chamada. Com uma unica chamada, tudo
+    // que passasse de 100 ficava sem cadastro e o Board mostrava o apelido do WhatsApp
+    // ("beteapa70") em vez do nome do Apolo — mesmo com o cliente na carteira.
+    const lotes: string[][] = [];
 
-    if (!response.ok) {
-      // Endpoint falhou: preserva o último cadastro conhecido em vez de derrubar.
-      return applyRegistrations({});
+    for (
+      let inicio = 0;
+      inicio < pendentes.length;
+      inicio += IRIS_CRM360_LOTE_DE_TELEFONES
+    ) {
+      lotes.push(pendentes.slice(inicio, inicio + IRIS_CRM360_LOTE_DE_TELEFONES));
     }
 
-    const payload = (await response.json().catch(() => null)) as {
-      results?: Record<string, IrisCrm360Registration>;
-    } | null;
+    const respostas = await Promise.all(
+      lotes.map((lote) =>
+        fetch("/api/iris/apolo/phone-match", {
+          body: JSON.stringify({ phones: lote }),
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+          signal: controller.signal,
+        }),
+      ),
+    );
+    window.clearTimeout(timeoutId);
 
-    return applyRegistrations(payload?.results ?? {});
+    const results: Record<string, IrisCrm360Registration> = {};
+
+    for (const response of respostas) {
+      if (!response.ok) {
+        // Lote falhou: os outros seguem valendo e este preserva o cadastro conhecido.
+        continue;
+      }
+
+      const payload = (await response.json().catch(() => null)) as {
+        results?: Record<string, IrisCrm360Registration>;
+      } | null;
+
+      Object.assign(results, payload?.results ?? {});
+    }
+
+    return applyRegistrations(results);
   } catch (error) {
     const isAbort =
       error instanceof DOMException && error.name === "AbortError";
@@ -770,6 +942,12 @@ function mapTicketRow(input: {
     channelLabel: input.channel?.name ?? "Canal nao definido",
     isGroup: input.row.source_entity_type === "whatsapp-group",
     isDirect: input.row.source_entity_type === "whatsapp-direct",
+    // Atendimento de uma AÇÃO de contato em massa (marca metadata.acaoId) → aba "Ações" do Board.
+    isAcao: Boolean(
+      input.row.metadata &&
+        typeof input.row.metadata === "object" &&
+        (input.row.metadata as Record<string, unknown>).acaoId,
+    ),
     hasDeliveryError: hasTicketDeliveryError(input.messages),
     contactAvatarUrl: getContactAvatarUrl(input.contact),
     contactDocument: input.contact?.document ?? null,
@@ -1443,16 +1621,37 @@ function isWaitingForIris(ticket: IrisTicket) {
   );
 }
 
+// Mesma regra da tela (IrisPage.esperaDoTicket): "crítico" = o CLIENTE está esperando NÓS há
+// muito tempo, contando só horário comercial. A versão antiga comparava o prazo do SLA com o
+// relógio e marcava 96 de 98 abertos, inclusive os que aguardavam o próprio cliente responder —
+// o contador "SLA CRÍTICO 96" do board vinha daqui. As duas precisam contar igual, senão o
+// número do topo discorda das cores dos cards. Lógica e testes em ../lib/espera.
 function isSlaCritical(ticket: IrisTicket) {
-  const due = ticket.firstRespondedAt
-    ? ticket.resolutionDueAt
-    : (ticket.firstResponseDueAt ?? ticket.resolutionDueAt);
-
-  if (!due || isClosedTicket(ticket)) {
+  if (isClosedTicket(ticket)) {
     return false;
   }
 
-  return new Date(due).getTime() <= Date.now();
+  const status = effectiveIrisStatus(ticket);
+  const ultima = ticket.messages.at(-1);
+  const ultimoInbound = [...ticket.messages]
+    .reverse()
+    .find((mensagem) => mensagem.direction === "inbound");
+
+  const bolaConosco =
+    status === "waiting_customer"
+      ? false
+      : status === "new" || status === "pending" || status === "waiting_operator"
+        ? true
+        : ultima
+          ? ultima.direction === "inbound"
+          : false;
+
+  return (
+    calcularEspera({
+      bolaConosco,
+      desde: ultimoInbound?.createdAt ?? ticket.lastMessageAt,
+    }).faixa === "atrasado"
+  );
 }
 
 function estimateFirstResponse(tickets: IrisTicket[]) {

@@ -1,7 +1,21 @@
 import { NextResponse } from "next/server";
 
 import { authorizeApoloWrite } from "@/lib/apolo/auth";
+import { avisarImobReprovado } from "@/lib/apolo/disparo-imobiliaria";
+import { dispararReprovacao } from "@/lib/apolo/disparo-reprovacao";
+import { lerCadDaEsteira } from "@/lib/apolo/esteira-cad";
+import { cpfValido } from "@/lib/apolo/documento";
+import { destinoAposCredito } from "@/lib/apolo/destino-credito";
+import { atualizarEtapa } from "@/lib/apolo/esteira";
+import {
+  resolverAnaliseHabilitada,
+  resolverLimiteCredito,
+  resolverPrevendaHabilitada,
+} from "@/lib/apolo/limite-credito";
+import { comLimiteDeTempo, gerarESalvarCad } from "@/lib/apolo/salvar-cad";
 import { createApoloAdminClient } from "@/lib/apolo/server";
+import { gerarESalvarComprovante } from "@/lib/serasa/comprovante";
+import { avaliarCredito } from "@/lib/serasa/avaliacao";
 import { consultarPF, consultarPJ } from "@/lib/serasa/client";
 import { ambienteConfere, lerConfigSerasa } from "@/lib/serasa/config";
 import { resumirRelatorio } from "@/lib/serasa/resumo";
@@ -26,7 +40,14 @@ const TETO_DIARIO_HOMOLOGACAO = 150;
 const DIAS_REAPROVEITAMENTO = 30;
 
 type Corpo = {
+  // De QUEM é a consulta. "titular" é o dono da ficha (comportamento de sempre); "conjuge" usa
+  // o CPF do cônjuge que está na ficha da esteira, para o caso de compra em casal.
+  alvo?: "titular" | "conjuge";
   confirmado?: boolean;
+  // De QUAL CAD é a consulta. Desde a 0080 a pessoa pode ter CAD em vários empreendimentos, e
+  // limite de crédito, pré-venda e etapa são configuração DO EMPREENDIMENTO. Sem ele, a CAD mais
+  // recente (mesmo default do Board, que hoje mostra um card por pessoa).
+  enterpriseId?: null | number | string;
   entityId?: string;
   finalidade?: string;
   forcar?: boolean;
@@ -40,7 +61,7 @@ async function situacao(client: NonNullable<ReturnType<typeof createApoloAdminCl
   const [{ data: recente }, { count: hoje }] = await Promise.all([
     client
       .from("serasa_consultas")
-      .select("id, created_at, ambiente, resumo, report_name")
+      .select("id, created_at, ambiente, resumo, report_name, resposta")
       .eq("documento", documento)
       .eq("status", "sucesso")
       .gte("created_at", desde)
@@ -56,6 +77,50 @@ async function situacao(client: NonNullable<ReturnType<typeof createApoloAdminCl
   return { consultasHoje: hoje ?? 0, recente: recente ?? null };
 }
 
+// Só ADMIN reenvia o aviso de reprovação. Em dev sem sessão real (userId sintético), libera.
+async function viewerEhAdmin(
+  client: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  userId: string,
+): Promise<boolean> {
+  if (!/^[0-9a-f-]{36}$/i.test(userId)) return true;
+  const { data } = await client
+    .from("hub_users")
+    .select("role")
+    .eq("id", userId)
+    .maybeSingle<{ role: string }>();
+  return data?.role === "admin";
+}
+
+// Devolutiva dos avisos de reprovação já enviados nesta ficha (mais recentes primeiro).
+async function listarDisparos(
+  client: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  entityId: string,
+) {
+  const { data } = await client
+    .from("apolo_disparos")
+    .select(
+      "tipo, destinatario, telefone, status, origem, erro, sent_at, delivered_at, read_at, created_at",
+    )
+    .eq("entity_id", entityId)
+    .order("created_at", { ascending: false })
+    .limit(10);
+  return data ?? [];
+}
+
+// Etapa PERSISTIDA da esteira. É ela — não o veredito recomputado — que diz se o cliente está
+// reprovado no crédito ("revisao"). A tela usa isto para decidir se mostra o aviso de reprovação e
+// os botões de reenvio, imune a mudança de limite ou indisponibilidade do C2X.
+async function lerEtapaEsteira(
+  client: NonNullable<ReturnType<typeof createApoloAdminClient>>,
+  entityId: string,
+  enterpriseId?: unknown,
+): Promise<string | null> {
+  const data = await lerCadDaEsteira<{ etapa: string | null }>(client, entityId, "etapa", {
+    enterpriseId,
+  });
+  return data?.etapa ?? null;
+}
+
 export async function GET(request: Request) {
   const auth = await authorizeApoloWrite(request);
   if (!auth.ok) return auth.response;
@@ -67,6 +132,7 @@ export async function GET(request: Request) {
   // em log de proxy, e ninguém consulta um documento arbitrário por esta rota).
   const url = new URL(request.url);
   const entityId = url.searchParams.get("entityId") ?? "";
+  const enterpriseId = url.searchParams.get("enterpriseId");
 
   let documento = "";
   if (entityId) {
@@ -90,16 +156,54 @@ export async function GET(request: Request) {
     ? await situacao(client, documento)
     : { consultasHoje: 0, recente: null };
 
+  // Veredito calculado do cru salvo: aprovado/reprovado pela regra do empreendimento. O limite
+  // sai do empreendimento do cliente (best-effort); sem limite próprio, cai no padrão R$ 1.000.
+  const cru = (recente as { resposta?: unknown } | null)?.resposta ?? null;
+  const limiteResolvido = entityId
+    ? await resolverLimiteCredito(client, entityId, enterpriseId)
+    : null;
+  const veredito = cru ? avaliarCredito(cru, limiteResolvido ?? 1000) : null;
+
+  // Papel do viewer + etapa persistida + histórico de disparos: o REENVIO do aviso é só de ADMIN, o
+  // painel de reprovação se guia pela ETAPA (não pelo veredito recomputado), e a tela mostra a
+  // devolutiva de entrega (enviado/entregue/lido) de cada envio já feito nesta ficha.
+  const ehAdmin = await viewerEhAdmin(client, auth.userId);
+  const [disparos, etapa] = entityId
+    ? await Promise.all([listarDisparos(client, entityId), lerEtapaEsteira(client, entityId)])
+    : [[], null];
+
+  // CÔNJUGE: a tela precisa saber se o botão de consultar o cônjuge deve aparecer, e o estado
+  // civil mora na ficha da esteira. Casado = 2, união estável = 6 (tabela do C2X).
+  // Mandamos só se É casado e se TEM CPF do cônjuge — o CPF em si nunca sai daqui.
+  const fichaEsteira = entityId
+    ? await lerCadDaEsteira<{ ficha: Record<string, unknown> | null }>(client, entityId, "ficha", {
+        enterpriseId,
+      })
+    : null;
+
+  const estadoCivil = String(fichaEsteira?.ficha?.estadoCivilId ?? "");
+  const cpfDoConjuge = String(fichaEsteira?.ficha?.conjugeCpf ?? "").replace(/\D/g, "");
+  const conjuge = {
+    // Nome só para a tela dizer de quem é a consulta; pode vir vazio (só 6 fichas têm).
+    nome: String(fichaEsteira?.ficha?.conjugeNome ?? ""),
+    temCpf: cpfDoConjuge.length === 11,
+    temConjuge: ["2", "6"].includes(estadoCivil),
+  };
+
   return NextResponse.json(
     {
       data: {
         ambiente: cfg.config.ambiente,
         avisoAmbiente: coerente.ok ? null : coerente.erro,
         configurado: true,
+        conjuge,
         consultasHoje,
+        disparos,
+        ehAdmin,
+        etapa,
         // Em homologação a conta é contra o teto do IP; em produção, informativa.
         tetoDiario: cfg.config.ambiente === "homologacao" ? TETO_DIARIO_HOMOLOGACAO : null,
-        ultimaConsulta: recente,
+        ultimaConsulta: recente ? { ...recente, veredito } : null,
       },
     },
     { headers: { "Cache-Control": "no-store" } },
@@ -121,8 +225,8 @@ export async function POST(request: Request) {
       { status: 428 },
     );
   }
-  if (!corpo.entityId || !corpo.reportName) {
-    return NextResponse.json({ error: "Informe a ficha e o relatorio." }, { status: 400 });
+  if (!corpo.entityId) {
+    return NextResponse.json({ error: "Informe a ficha." }, { status: 400 });
   }
 
   const cfg = lerConfigSerasa();
@@ -153,16 +257,126 @@ export async function POST(request: Request) {
 
   if (!entidade) return NextResponse.json({ error: "Ficha nao encontrada." }, { status: 404 });
 
-  const documento = (entidade.document_masked ?? "").replace(/\D/g, "");
-  const ehPj = entidade.entity_kind === "pj";
+  // CÔNJUGE (pedido do Lucas 27/07): quando o cliente é casado, dá pra consultar também quem
+  // compra junto. O CPF sai da FICHA da esteira (`ficha.conjugeCpf`), nunca do corpo da
+  // requisição — mesma regra do titular: ninguém consulta um CPF arbitrário por esta rota.
+  //
+  // O cônjuge não é entidade própria no Apolo, é campo dentro da ficha do titular. Por isso a
+  // consulta é sempre PF e o registro fica pendurado no `entity_id` do titular, separado pela
+  // `finalidade`.
+  const ehConjuge = corpo.alvo === "conjuge";
+  let documentoDoConjuge = "";
+
+  if (ehConjuge) {
+    // ⚠️ CONSULTA PAGA. O CPF do cônjuge sai da FICHA — e a ficha é POR CAD. Sem escopo, uma
+    // pessoa com CAD em dois loteamentos poderia ter o cônjuge de uma ficha consultado na outra.
+    const esteira = await lerCadDaEsteira<{ ficha: Record<string, unknown> | null }>(
+      client,
+      entidade.id,
+      "ficha",
+      { enterpriseId: corpo.enterpriseId },
+    );
+
+    const bruto = esteira?.ficha?.conjugeCpf;
+    documentoDoConjuge = typeof bruto === "string" ? bruto.replace(/\D/g, "") : "";
+
+    // O aviso que o Lucas pediu: sem CPF do cônjuge não há o que consultar, e a mensagem diz
+    // onde resolver. Hoje 80 dos 103 casados do Vale do Ouro caem aqui.
+    if (!documentoDoConjuge) {
+      return NextResponse.json(
+        {
+          error:
+            "Sem o CPF do conjuge nao da para consultar. Preencha o CPF do conjuge na ficha " +
+            "do cliente e tente de novo.",
+        },
+        { status: 412 },
+      );
+    }
+  }
+
+  const documento = ehConjuge
+    ? documentoDoConjuge
+    : (entidade.document_masked ?? "").replace(/\D/g, "");
+  const ehPj = !ehConjuge && entidade.entity_kind === "pj";
   const tamanhoEsperado = ehPj ? 14 : 11;
 
   if (documento.length !== tamanhoEsperado) {
     return NextResponse.json(
       {
+        error: ehConjuge
+          ? `O CPF do conjuge na ficha esta incompleto (${documento.length} digitos). ` +
+            "Corrija na ficha do cliente e tente de novo."
+          : `A ficha nao tem ${ehPj ? "CNPJ" : "CPF"} completo para consultar ` +
+            `(${documento.length} digitos). Complete o cadastro antes.`,
+      },
+      { status: 412 },
+    );
+  }
+
+  // Dígito verificador do CPF: a MOST às vezes lê um dígito errado (ex.: 106… no lugar de 166…) e
+  // a ficha nasce com CPF impossível. O Serasa rejeita com 412 "[X-Document-Id] inválido" e a
+  // chamada pode ser COBRADA — barramos ANTES de gastar. (CNPJ tem regra própria; aqui é PF.)
+  if (!ehPj && !cpfValido(documento)) {
+    return NextResponse.json(
+      {
         error:
-          `A ficha nao tem ${ehPj ? "CNPJ" : "CPF"} completo para consultar ` +
-          `(${documento.length} digitos). Complete o cadastro antes.`,
+          "O CPF da ficha é inválido (o dígito verificador não confere). Corrija o CPF na " +
+          "validação antes de consultar o crédito.",
+      },
+      { status: 412 },
+    );
+  }
+
+  // ANÁLISE DE CRÉDITO DESLIGADA no empreendimento: o lançamento não faz crédito, então NÃO
+  // consultamos o Serasa (consulta é paga). A ficha com documento OK avança direto — pré-venda se
+  // ela estiver ligada, senão credenciado. Mesmo destino de um "aprovado", só que sem consulta.
+  const analiseHabilitada = await resolverAnaliseHabilitada(client, entidade.id, corpo.enterpriseId);
+  if (!analiseHabilitada) {
+    const prevendaHabilitada = await resolverPrevendaHabilitada(
+      client,
+      entidade.id,
+      corpo.enterpriseId,
+    );
+    // Sem consulta = tratamos como "aprovado" (documento OK), então o destino segue a MESMA regra
+    // do crédito aprovado: prevenda se ligada, senão credenciado (PROBLEMA 1, Lucas 04/08).
+    const destino = destinoAposCredito({ aprovado: true, prevendaHabilitada });
+    const transicao = await atualizarEtapa(client, entidade.id, destino, {
+      atualizadoPor: auth.userId,
+      automatico: true,
+      enterpriseId: corpo.enterpriseId ?? null,
+      motivo: "Análise de crédito desligada no empreendimento — avançou sem consulta.",
+      nuncaRebaixar: true,
+    });
+    return NextResponse.json({
+      data: {
+        analisePulada: true,
+        etapa: transicao.etapa,
+        mensagem:
+          "Análise de crédito desligada neste empreendimento. A ficha avançou sem consulta ao Serasa.",
+        reaproveitada: false,
+      },
+    });
+  }
+
+  // O RELATÓRIO é escolhido pelo TIPO da ficha, no servidor — a tela não decide. PF e PJ são
+  // serviços diferentes no Serasa, com relatórios de nomes diferentes; mandar o relatório de PF
+  // numa consulta PJ dá "report not found" (412). Cada tipo tem a sua env própria.
+  const overrideTela = corpo.reportName?.trim() || null;
+  const reportName = ehPj
+    ? // PJ: a env é a fonte da verdade. O override da tela só entra se NÃO for um nome de PF
+      // (o front hoje manda RELATORIO_BASICO_PF_PME por padrão — esse nunca vale para PJ).
+      process.env.SERASA_REPORT_PJ?.trim() ||
+      (overrideTela && !/PF|PME/i.test(overrideTela) ? overrideTela : null)
+    : // PF: mantém o que já funcionava — env, senão o que a tela manda, senão o default.
+      process.env.SERASA_REPORT_PF?.trim() || overrideTela || "RELATORIO_BASICO_PF_PME";
+
+  if (!reportName) {
+    return NextResponse.json(
+      {
+        error:
+          "Consulta de PJ ainda nao configurada: falta o NOME do relatorio PJ contratado no " +
+          "Serasa. Defina a variavel de ambiente SERASA_REPORT_PJ com a grafia exata do relatorio " +
+          "(ex.: RELATORIO_BASICO_PJ) e a consulta de CNPJ passa a rodar.",
       },
       { status: 412 },
     );
@@ -193,7 +407,7 @@ export async function POST(request: Request) {
   const entrada = {
     documento,
     optionalFeatures: corpo.optionalFeatures ?? [],
-    reportName: corpo.reportName,
+    reportName,
   };
 
   const resposta = ehPj
@@ -208,7 +422,11 @@ export async function POST(request: Request) {
     documento,
     entity_id: entidade.id,
     erro: resposta.ok ? null : resposta.erro,
-    finalidade: corpo.finalidade?.trim() || "analise-credito-cad",
+    // Separa as duas consultas do mesmo cliente sem precisar de coluna nova: `entity_id` é o
+    // titular nos dois casos, e a finalidade diz de quem é o resultado.
+    finalidade: ehConjuge
+      ? "analise-credito-conjuge"
+      : corpo.finalidade?.trim() || "analise-credito-cad",
     http_status: resposta.httpStatus,
     optional_features: entrada.optionalFeatures,
     report_name: entrada.reportName,
@@ -232,5 +450,129 @@ export async function POST(request: Request) {
     );
   }
 
-  return NextResponse.json({ data: { consulta: gravada, reaproveitada: false } });
+  // GATILHO DA ESTEIRA: o resultado do crédito move a etapa automaticamente. Aprovado segue para
+  // a PRÉ-VENDA (sem rebaixar quem já passou); reprovado vai para "Crédito em revisão" com o
+  // motivo, de onde só o coordenador/admin destrava. A decisão é do servidor, não da tela: é o
+  // ponto autoritativo, logo depois de gravar a consulta.
+  // O limite vem do EMPREENDIMENTO do cliente (best-effort); sem limite próprio, padrão R$ 1.000.
+  //
+  // ⚠️ `automatico: true` = SEM REGRESSÃO. Quem já está em pré-venda ou credenciado não é movido
+  // por reconsulta: ou o coordenador já liberou o crédito, ou a pessoa já PAGOU. Sem essa trava,
+  // reconsultar uma ficha credenciada a devolvia para revisão e desfazia a decisão humana.
+  const limiteResolvido = await resolverLimiteCredito(client, entidade.id, corpo.enterpriseId);
+  const veredito = avaliarCredito(resposta.corpo, limiteResolvido ?? 1000);
+  // Pré-venda DESLIGADA no empreendimento (ex.: fila já montada, PIX encerrado): o aprovado vai
+  // DIRETO para credenciado, sem gerar PIX. Ligada (padrão) segue para pré-venda como sempre.
+  const prevendaHabilitada = await resolverPrevendaHabilitada(
+    client,
+    entidade.id,
+    corpo.enterpriseId,
+  );
+  // Destino pela regra única (PROBLEMA 1 + 2, Lucas 04/08): aprovado -> prevenda se ligada, senão
+  // credenciado; reprovado -> revisao (trava). Antes o `? "prevenda" : "credenciado"` vivia
+  // repetido aqui e no caminho da análise desligada — agora é `destinoAposCredito`.
+  const destino = destinoAposCredito({ aprovado: veredito.aprovado, prevendaHabilitada });
+  // O CÔNJUGE SÓ AJUDA, NUNCA ATRAPALHA (regra do Lucas, 27/07):
+  //   • titular reprovado -> ficha vai para "Crédito em revisão", como sempre;
+  //   • cônjuge aprovado  -> RESGATA a ficha e o credenciamento segue, porque a renda que
+  //     sustenta a compra é a dele;
+  //   • cônjuge reprovado -> não mexe em nada. A ficha já está em revisão pelo titular, e se o
+  //     titular tinha sido aprovado seria errado derrubá-lo por causa do cônjuge: quem tem
+  //     crédito é ele.
+  //
+  // O `nuncaRebaixar` continua valendo, então nem o resgate nem a aprovação normal desfazem
+  // decisão humana de quem já está em pré-venda ou credenciado.
+  const conjugeResgata = ehConjuge && veredito.aprovado;
+  const transicao =
+    ehConjuge && !conjugeResgata
+      ? null
+      : await atualizarEtapa(
+          client,
+          entidade.id,
+          destino,
+          {
+            atualizadoPor: auth.userId,
+            automatico: true,
+            enterpriseId: corpo.enterpriseId ?? null,
+            motivo: conjugeResgata
+              ? "Crédito aprovado pelo cônjuge."
+              : veredito.aprovado
+                ? undefined
+                : `Crédito reprovado. ${veredito.motivo}`,
+            nuncaRebaixar: veredito.aprovado,
+          },
+        );
+
+  // DISPARO AUTOMÁTICO da reprovação: reprovou -> avisa o coordenador do empreendimento (sempre) e
+  // o corretor (se tiver telefone), com a CAD anexa, pela Iris. Best-effort: falha no disparo NÃO
+  // derruba a consulta (que já foi cobrada e gravada) — o resultado vai na resposta pra tela
+  // mostrar, e o reenvio manual cobre o que falhar. Só dispara em disparo genuíno, não no reaproveitamento.
+  //
+  // ⚠️ Só avisa se a ficha REALMENTE foi para revisão. Quando a etapa é mantida (a pessoa já está
+  // em pré-venda/credenciado, protegida contra regressão), avisar de novo seria dizer ao
+  // coordenador que um cliente já aprovado — ou que já pagou — foi reprovado.
+  // Cônjuge reprovado não avisa ninguém: `transicao` é null e a ficha não mudou de etapa —
+  // avisar sem mudar seria alarme falso. Cônjuge aprovado também não cai aqui (é aprovação).
+  let disparo = null;
+  if (transicao && !veredito.aprovado && !transicao.mantida) {
+    try {
+      disparo = await dispararReprovacao({
+        adminClient: client,
+        enterpriseId: corpo.enterpriseId ?? null,
+        entityId: entidade.id,
+      });
+    } catch {
+      disparo = null;
+    }
+    // Avisa também a IMOBILIÁRIA (só o STATUS, nunca o valor do crédito). Best-effort próprio.
+    try {
+      await avisarImobReprovado(client, entidade.id);
+    } catch {
+      /* segue */
+    }
+  }
+
+  // COMPROVANTE da consulta + CAD da ficha: ambos gerados e salvos na pasta do cliente,
+  // automaticamente (pedido do Lucas). Best-effort — falha aqui não derruba a consulta já cobrada
+  // e gravada. Todo resultado (aprovado ou reprovado) tem comprovante e CAD.
+  // ⚠️ NADA DISSO RODA PARA O CÔNJUGE. Comprovante e CAD são documentos DO TITULAR e são
+  // montados a partir da "última consulta da ficha". Como a consulta do cônjuge fica gravada no
+  // entity_id do titular, gerar aqui produziria: (1) uma CAD do titular carimbada com o
+  // resultado do cônjuge — apagando a anterior, porque salvar-cad substitui a automática; e
+  // (2) um comprovante com o NOME do titular e o CPF, o score e as restrições do cônjuge, ou
+  // seja, um documento falso, com QR de verificação, salvo na pasta do cliente.
+  const idGravada = ehConjuge ? null : (gravada as { id?: string } | null)?.id;
+  if (idGravada) {
+    const quem = /^[0-9a-f-]{36}$/i.test(auth.userId) ? "Análise de crédito" : null;
+    // Best-effort E com teto de tempo: a consulta já foi cobrada e gravada; comprovante e CAD não
+    // podem estourar o maxDuration (504) sob C2X lento. O que não der tempo é gerado depois (a
+    // próxima transição regenera a CAD; o botão baixa/gera o comprovante).
+    try {
+      await comLimiteDeTempo(gerarESalvarComprovante(client, idGravada, { uploadedByName: quem }), 15000);
+    } catch {
+      /* segue */
+    }
+    try {
+      await comLimiteDeTempo(
+        gerarESalvarCad(client, entidade.id, {
+          enterpriseId: corpo.enterpriseId ?? null,
+          uploadedByName: quem,
+        }),
+        15000,
+      );
+    } catch {
+      /* segue */
+    }
+  }
+
+  return NextResponse.json({
+    data: {
+      alvo: ehConjuge ? "conjuge" : "titular",
+      consulta: gravada,
+      disparo,
+      etapa: transicao?.etapa ?? null,
+      reaproveitada: false,
+      veredito,
+    },
+  });
 }

@@ -77,6 +77,9 @@ export async function POST(request: Request) {
           profissao: cad.profissao,
           renda: cad.renda,
         }),
+        // A CAD é POR EMPREENDIMENTO: sem isto, a ficha lida deste lançamento seria escrita na
+        // CAD que a pessoa tem em outro loteamento.
+        empreendimento,
         entityId: entidadePorGid.get(cad.gid)!,
       }));
 

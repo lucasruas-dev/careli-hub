@@ -18,6 +18,7 @@ import {
   MapPinned,
   Network,
   Search,
+  Settings,
   Tag,
   TrendingUp,
   WalletCards,
@@ -114,6 +115,7 @@ const detailTabs = [
   // "Carteira" com o ícone de carteira do Hades (WalletCards).
   { icon: WalletCards, id: "carteira", label: "Carteira" },
   { icon: Network, id: "relacionamentos", label: "Relacionamentos" },
+  { icon: Settings, id: "setup", label: "Setup" },
 ] as const;
 
 // A aba é controlada pelo ApoloPage (o tipo canônico mora no lib).
@@ -468,6 +470,9 @@ function EnterpriseDetail({
         {tab === "vendas" ? (
           <VendasTab onOpenEntity={onOpenEntity} row={row} />
         ) : null}
+        {tab === "setup" ? (
+          <CredenciamentoCard code={row.code} enterpriseId={row.id} name={row.name} />
+        ) : null}
       </section>
     </div>
   );
@@ -499,12 +504,10 @@ function CadastroTab({ row }: { row: ApoloEnterpriseRow }) {
     };
   }, [row.codes]);
 
-  // A logo fica FORA do early-return do cadastro: o C2X às vezes cai/demora, e mesmo assim o
-  // operador precisa conseguir subir a imagem.
+  // O credenciamento/logo/toggles saíram para a aba "Setup" (CredenciamentoCard). O Cadastro
+  // mostra só os CAMPOS do empreendimento (dados gerais do C2X).
   return (
     <div className="grid gap-3">
-      <CredenciamentoCard code={row.code} enterpriseId={row.id} name={row.name} />
-
       {error ? (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-5 text-sm font-semibold text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300">
           {error}
@@ -789,8 +792,15 @@ async function fetchEnterpriseLogos(): Promise<Record<string, string>> {
   }
 }
 
-// Settings do empreendimento (hoje só o flag de credenciamento ativo).
-async function fetchEnterpriseAtivo(enterpriseId: string): Promise<boolean> {
+// Settings do empreendimento: master (credenciamento ativo), toggles das sub-etapas (análise de
+// crédito e pré-venda) e os valores de cada uma (limite de crédito e valor do PIX).
+async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
+  analiseCredito: boolean;
+  ativo: boolean;
+  limiteCredito: number | null;
+  prevenda: boolean;
+  valorPix: number | null;
+}> {
   try {
     const accessToken = await getApoloAccessToken();
     const response = await fetch("/api/apolo/empreendimentos/settings", {
@@ -798,11 +808,31 @@ async function fetchEnterpriseAtivo(enterpriseId: string): Promise<boolean> {
       headers: { Authorization: `Bearer ${accessToken}` },
     });
     const payload = (await response.json()) as {
-      data?: { settings?: Record<string, { credenciamentoAtivo?: boolean }> };
+      data?: {
+        settings?: Record<
+          string,
+          {
+            analiseCreditoHabilitada?: boolean;
+            credenciamentoAtivo?: boolean;
+            limiteCredito?: number | null;
+            prevendaHabilitada?: boolean;
+            valorPix?: number | null;
+          }
+        >;
+      };
     };
-    return Boolean(payload.data?.settings?.[enterpriseId]?.credenciamentoAtivo);
+    const setting = payload.data?.settings?.[enterpriseId];
+    return {
+      // Sem setting salvo = habilitadas por padrão (bate com o default true da migration).
+      analiseCredito: setting?.analiseCreditoHabilitada ?? true,
+      ativo: Boolean(setting?.credenciamentoAtivo),
+      limiteCredito:
+        typeof setting?.limiteCredito === "number" ? setting.limiteCredito : null,
+      prevenda: setting?.prevendaHabilitada ?? true,
+      valorPix: typeof setting?.valorPix === "number" ? setting.valorPix : null,
+    };
   } catch {
-    return false;
+    return { analiseCredito: true, ativo: false, limiteCredito: null, prevenda: true, valorPix: null };
   }
 }
 
@@ -820,6 +850,36 @@ async function postEnterpriseAtivo(
         "Content-Type": "application/json",
       },
       method: "POST",
+    });
+    const payload = (await response.json()) as { error?: string };
+    if (!response.ok) return { error: payload.error ?? "Falha ao salvar.", ok: false };
+    return { ok: true };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Falha ao salvar.", ok: false };
+  }
+}
+
+// Salva campos parciais das sub-etapas (toggles e valores), sem tocar o master de credenciamento.
+// Envia SÓ os campos passados no patch, para não sobrescrever os demais.
+async function patchEnterpriseSettings(
+  enterpriseId: string,
+  code: string,
+  patch: {
+    analiseCreditoHabilitada?: boolean;
+    limiteCredito?: number | null;
+    prevendaHabilitada?: boolean;
+    valorPix?: number | null;
+  },
+): Promise<{ error?: string; ok: boolean }> {
+  try {
+    const accessToken = await getApoloAccessToken();
+    const response = await fetch("/api/apolo/empreendimentos/settings", {
+      body: JSON.stringify({ ...patch, code, enterpriseId }),
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        "Content-Type": "application/json",
+      },
+      method: "PATCH",
     });
     const payload = (await response.json()) as { error?: string };
     if (!response.ok) return { error: payload.error ?? "Falha ao salvar.", ok: false };
@@ -869,6 +929,16 @@ function CredenciamentoCard({
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [ativo, setAtivo] = useState(false);
   const [salvandoAtivo, setSalvandoAtivo] = useState(false);
+  // Análise de Crédito: toggle + limite (texto de moeda "1.000,00"). Vazio = padrão R$ 1.000.
+  const [analiseOn, setAnaliseOn] = useState(true);
+  const [limite, setLimite] = useState("");
+  const [salvandoAnalise, setSalvandoAnalise] = useState(false);
+  const [erroAnalise, setErroAnalise] = useState<string | null>(null);
+  // Pré-venda: toggle + valor do PIX (texto de moeda). Vazio = padrão R$ 1.000.
+  const [prevendaOn, setPrevendaOn] = useState(true);
+  const [valorPix, setValorPix] = useState("");
+  const [salvandoPrevenda, setSalvandoPrevenda] = useState(false);
+  const [erroPrevenda, setErroPrevenda] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -878,8 +948,13 @@ function CredenciamentoCard({
     void fetchEnterpriseLogos().then((map) => {
       if (alive) setLogoUrl(map[enterpriseId] ?? null);
     });
-    void fetchEnterpriseAtivo(enterpriseId).then((value) => {
-      if (alive) setAtivo(value);
+    void fetchEnterpriseSettings(enterpriseId).then((value) => {
+      if (!alive) return;
+      setAtivo(value.ativo);
+      setAnaliseOn(value.analiseCredito);
+      setLimite(numeroParaMoeda(value.limiteCredito));
+      setPrevendaOn(value.prevenda);
+      setValorPix(numeroParaMoeda(value.valorPix));
     });
     return () => {
       alive = false;
@@ -897,6 +972,49 @@ function CredenciamentoCard({
       setAtivo(!proximo); // desfaz
       setErro(result.error ?? "Falha ao salvar.");
     }
+  }
+
+  // Salva o bloco Análise de Crédito (toggle + limite juntos). Ligada exige limite: sem valor,
+  // bloqueia o Salvar e avisa no campo. Desligada, salva só o flag (o limite é ignorado).
+  async function salvarAnalise() {
+    setErroAnalise(null);
+    const valor = moedaParaNumero(limite);
+    if (analiseOn && valor === null) {
+      setErroAnalise("Informe o limite de crédito para habilitar a análise.");
+      return;
+    }
+    setSalvandoAnalise(true);
+    const result = await patchEnterpriseSettings(enterpriseId, code, {
+      analiseCreditoHabilitada: analiseOn,
+      ...(analiseOn ? { limiteCredito: valor } : {}),
+    });
+    setSalvandoAnalise(false);
+    if (!result.ok) {
+      setErroAnalise(result.error ?? "Falha ao salvar.");
+      return;
+    }
+    if (analiseOn) setLimite(numeroParaMoeda(valor));
+  }
+
+  // Salva o bloco Pré-venda (toggle + valor do PIX juntos). Mesma trava: ligada sem valor não salva.
+  async function salvarPrevenda() {
+    setErroPrevenda(null);
+    const valor = moedaParaNumero(valorPix);
+    if (prevendaOn && valor === null) {
+      setErroPrevenda("Informe o valor do PIX para habilitar a pré-venda.");
+      return;
+    }
+    setSalvandoPrevenda(true);
+    const result = await patchEnterpriseSettings(enterpriseId, code, {
+      prevendaHabilitada: prevendaOn,
+      ...(prevendaOn ? { valorPix: valor } : {}),
+    });
+    setSalvandoPrevenda(false);
+    if (!result.ok) {
+      setErroPrevenda(result.error ?? "Falha ao salvar.");
+      return;
+    }
+    if (prevendaOn) setValorPix(numeroParaMoeda(valor));
   }
 
   async function handleFile(file: File | undefined) {
@@ -918,13 +1036,17 @@ function CredenciamentoCard({
         Credenciamento de imobiliárias
       </p>
 
-      {/* Flag "na ativa": define se o empreendimento aparece no portal das imobiliárias. */}
+      {/* Master "Recebendo CAD": chave geral do credenciamento. Ligada, o empreendimento entra no
+          portal das imobiliárias; desligada, as sub-etapas abaixo ficam travadas. */}
       <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-line bg-subtle/50 px-3 py-2.5">
         <div className="min-w-0">
-          <p className="m-0 text-sm font-medium text-ink">
-            Recebendo credenciamento
+          <p className="m-0 flex flex-wrap items-center gap-2 text-sm font-semibold text-ink">
+            Recebendo CAD
+            <span className="rounded-full border border-[#A07C3B]/30 bg-[#A07C3B]/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[#7A5E2C] dark:text-[#d9b877]">
+              Master
+            </span>
             <span
-              className={`ml-2 inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
+              className={`inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
                 ativo
                   ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300"
                   : "bg-subtle text-ink-muted"
@@ -934,13 +1056,13 @@ function CredenciamentoCard({
             </span>
           </p>
           <p className="m-0 mt-0.5 text-xs text-ink-muted">
-            Ligado, este empreendimento aparece no portal para as imobiliárias solicitarem
-            habilitação e recebe novas CADs.
+            Chave geral do credenciamento: ligada, o empreendimento aparece no portal das
+            imobiliárias e recebe novas CADs. Desligada, as etapas abaixo ficam inativas.
           </p>
         </div>
         <button
           aria-checked={ativo}
-          aria-label="Recebendo credenciamento"
+          aria-label="Recebendo CAD"
           className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
             ativo ? "bg-inverse" : "bg-line-strong"
           }`}
@@ -956,6 +1078,37 @@ function CredenciamentoCard({
           />
         </button>
       </div>
+
+      {/* Sub-etapas: travadas (esmaecidas) quando o master está desligado. */}
+      <SubEtapaCredenciamento
+        ativo={ativo}
+        descricao="Consulta o Serasa e reprova restrições acima do limite. Desligada, a esteira pula a etapa de crédito."
+        erro={erroAnalise}
+        fieldHelp="Restrições acima deste valor reprovam o crédito. Vazio = padrão R$ 1.000."
+        fieldLabel="Limite de crédito"
+        habilitada={analiseOn}
+        onSalvar={() => void salvarAnalise()}
+        onToggle={() => setAnaliseOn((v) => !v)}
+        onValorChange={(display) => setLimite(digitsParaMoeda(display))}
+        salvando={salvandoAnalise}
+        titulo="Análise de Crédito"
+        valor={limite}
+      />
+
+      <SubEtapaCredenciamento
+        ativo={ativo}
+        descricao="Cobra o PIX de credenciamento na pré-venda para concluir o cadastro. Desligada, a esteira pula a cobrança."
+        erro={erroPrevenda}
+        fieldHelp="O que o cliente paga na pré-venda para concluir o cadastro. Vazio = padrão R$ 1.000."
+        fieldLabel="Valor do PIX"
+        habilitada={prevendaOn}
+        onSalvar={() => void salvarPrevenda()}
+        onToggle={() => setPrevendaOn((v) => !v)}
+        onValorChange={(display) => setValorPix(digitsParaMoeda(display))}
+        salvando={salvandoPrevenda}
+        titulo="Pré-venda"
+        valor={valorPix}
+      />
 
       <p className="m-0 mt-4 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
         Logo do empreendimento
@@ -3776,6 +3929,137 @@ function SkeletonScreen() {
 
 function locationLabel(row: ApoloEnterpriseRow): string {
   return [row.city, row.state].filter(Boolean).join("/");
+}
+
+// Sub-etapa do credenciamento (Análise de Crédito / Pré-venda): toggle + valor em moeda + Salvar.
+// Salva o BLOCO (toggle e valor juntos); ligada, o valor é obrigatório (a trava mora no onSalvar do
+// pai). Travada e esmaecida quando o master "Recebendo CAD" está desligado.
+function SubEtapaCredenciamento({
+  ativo,
+  descricao,
+  erro,
+  fieldHelp,
+  fieldLabel,
+  habilitada,
+  onSalvar,
+  onToggle,
+  onValorChange,
+  salvando,
+  titulo,
+  valor,
+}: {
+  ativo: boolean;
+  descricao: string;
+  erro: string | null;
+  fieldHelp: string;
+  fieldLabel: string;
+  habilitada: boolean;
+  onSalvar: () => void;
+  onToggle: () => void;
+  onValorChange: (display: string) => void;
+  salvando: boolean;
+  titulo: string;
+  valor: string;
+}) {
+  const travado = !ativo;
+
+  return (
+    <div
+      aria-disabled={travado}
+      className={`mt-3 rounded-lg border border-line bg-subtle/50 px-3 py-2.5 transition-opacity ${
+        travado ? "pointer-events-none opacity-50" : ""
+      }`}
+    >
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="m-0 text-sm font-medium text-ink">{titulo}</p>
+          <p className="m-0 mt-0.5 text-xs text-ink-muted">{descricao}</p>
+        </div>
+        <button
+          aria-checked={habilitada}
+          aria-label={titulo}
+          className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors disabled:opacity-60 ${
+            habilitada ? "bg-inverse" : "bg-line-strong"
+          }`}
+          disabled={travado}
+          onClick={onToggle}
+          role="switch"
+          type="button"
+        >
+          <span
+            className={`inline-block size-4 rounded-full bg-white shadow transition-transform ${
+              habilitada ? "translate-x-6" : "translate-x-1"
+            }`}
+          />
+        </button>
+      </div>
+
+      <div className="mt-2.5">
+        {habilitada ? (
+          <>
+            <p className="m-0 text-sm font-medium text-ink">{fieldLabel}</p>
+            <p className="m-0 mt-0.5 text-xs text-ink-muted">{fieldHelp}</p>
+          </>
+        ) : null}
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {habilitada ? (
+            <span className="inline-flex h-9 items-center rounded-lg border border-line bg-surface px-3 focus-within:border-line-strong">
+              <span className="mr-1 text-sm text-ink-muted">R$</span>
+              <input
+                className="w-28 bg-transparent text-sm text-ink outline-none"
+                disabled={travado}
+                inputMode="numeric"
+                onChange={(event) => onValorChange(event.target.value)}
+                placeholder="0,00"
+                value={valor}
+              />
+            </span>
+          ) : null}
+          <button
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={salvando || travado}
+            onClick={onSalvar}
+            type="button"
+          >
+            {salvando ? <Loader2 aria-hidden="true" className="size-3.5 animate-spin" /> : null}
+            Salvar
+          </button>
+        </div>
+        {erro ? (
+          <p className="m-0 mt-2 text-xs font-medium text-rose-600 dark:text-rose-300">{erro}</p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+// --- Máscara de moeda BR (sem lib): guarda os dígitos como centavos e exibe "1.234,56". ---
+
+// O que o operador digitou → texto exibido: tira o que não é dígito, lê como centavos e formata.
+// Re-derivado a cada tecla (o input é controlado pelo texto formatado).
+function digitsParaMoeda(entrada: string): string {
+  const digitos = entrada.replace(/\D/g, "");
+  if (digitos === "") return "";
+  return (Number(digitos) / 100).toLocaleString("pt-BR", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  });
+}
+
+// Texto exibido → número em reais (null quando vazio). "1.234,56" → 1234.56.
+function moedaParaNumero(display: string): number | null {
+  const digitos = display.replace(/\D/g, "");
+  if (digitos === "") return null;
+  return Number(digitos) / 100;
+}
+
+// Número em reais guardado → texto exibido "1.234,56" (vazio quando null).
+function numeroParaMoeda(valor: number | null): string {
+  if (valor === null) return "";
+  return valor.toLocaleString("pt-BR", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  });
 }
 
 function formatCurrency(value: number): string {

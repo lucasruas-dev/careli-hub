@@ -1,0 +1,360 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Vale do Ouro · BI de Vendas</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --canvas:#f6f4ef; --surface:#ffffff; --linha:#e5e0d5;
+    --ink:#211d16; --fraca:#7a715f;
+    --ouro:#a07c3b; --ouro-claro:#c9a45c; --terracota:#b5451b; --terra-claro:#c96a3b;
+    --verde:#4d7c43;
+  }
+  body{background:var(--canvas);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px;margin:0 auto;padding:26px 20px 60px}
+  .num{font-variant-numeric:tabular-nums}
+
+  header{display:flex;flex-wrap:wrap;align-items:center;gap:18px;padding:6px 0 22px;border-bottom:2px solid var(--linha)}
+  .marca-nome .vale{font-size:26px;font-weight:800;letter-spacing:.05em}
+  .marca-nome .cidade{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--fraca);margin-top:2px}
+  .hero-right{margin-left:auto;text-align:right}
+  .badge-vivo{display:inline-flex;align-items:center;gap:7px;background:#fdf6e8;border:1px solid #e8d9b8;border-radius:99px;padding:5px 12px;font-size:11.5px;font-weight:800;letter-spacing:.07em;color:var(--ouro)}
+  .badge-vivo .p{width:8px;height:8px;border-radius:50%;background:var(--verde);box-shadow:0 0 6px var(--verde);animation:pulsa 2s infinite}
+  @keyframes pulsa{50%{opacity:.35}}
+  @media(prefers-reduced-motion:reduce){.badge-vivo .p{animation:none}}
+  .hero-right .quando{color:var(--fraca);font-size:12.5px;margin-top:6px}
+
+  .placar{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:24px 0 6px}
+  .kpi{background:var(--surface);border:1px solid var(--linha);border-radius:14px;padding:18px 20px;box-shadow:0 1px 2px #00000008}
+  .kpi.destaque{border-color:#d8c69a;background:linear-gradient(165deg,#fffdf7,#fdf6e8)}
+  .kpi .lb{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--fraca);font-weight:800}
+  .kpi .v{font-size:40px;font-weight:800;line-height:1.15;margin-top:5px;letter-spacing:-.01em}
+  .kpi.destaque .v{color:var(--ouro)}
+  .kpi .sub{color:var(--fraca);font-size:12.5px;margin-top:3px}
+
+  section{margin-top:30px}
+  h2{font-size:19px;font-weight:800;margin-bottom:3px}
+  .h-sub{color:var(--fraca);font-size:13px;margin-bottom:12px}
+  .card{background:var(--surface);border:1px solid var(--linha);border-radius:14px;padding:18px 20px;box-shadow:0 1px 2px #00000008}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+  @media(max-width:820px){.grid2,.grid3{grid-template-columns:1fr}}
+
+  .estoque{display:flex;height:34px;border-radius:9px;overflow:hidden;border:1px solid var(--linha)}
+  .estoque div{display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800;color:#fff;white-space:nowrap;overflow:hidden}
+  .leg{display:flex;flex-wrap:wrap;gap:14px;margin-top:10px;font-size:12.5px;color:var(--fraca)}
+  .leg b{color:var(--ink)}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:1px}
+
+  .duelo{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:stretch}
+  @media(max-width:820px){.duelo{grid-template-columns:1fr;gap:10px}}
+  .lado{border-radius:14px;padding:20px;border:1px solid var(--linha)}
+  .lado .quem{font-size:12px;letter-spacing:.13em;text-transform:uppercase;font-weight:800}
+  .lado .n{font-size:52px;font-weight:800;line-height:1.05;margin-top:8px}
+  .lado .vgv{font-size:13.5px;color:var(--fraca);margin-top:2px}
+  .lado.int{background:linear-gradient(160deg,#fffdf7,#faf3e2);border-color:#d8c69a}
+  .lado.int .quem,.lado.int .n{color:var(--ouro)}
+  .lado.ext{background:linear-gradient(160deg,#fffaf7,#faeade);border-color:#e0b89f}
+  .lado.ext .quem,.lado.ext .n{color:var(--terracota)}
+  .vs{display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:var(--fraca)}
+  .duelo-barra{display:flex;height:12px;border-radius:99px;overflow:hidden;margin-top:14px;border:1px solid var(--linha)}
+
+  .hrow{display:grid;grid-template-columns:minmax(120px,220px) 1fr 92px;gap:10px;align-items:center;padding:5px 0;font-size:13.5px}
+  .hrow .nome{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .hrow .trilho{background:#efece4;border-radius:6px;height:15px;overflow:hidden}
+  .hrow .fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--ouro),var(--ouro-claro))}
+  .hrow .val{text-align:right;color:var(--fraca);font-size:12.5px}
+  .hrow .val b{color:var(--ink);font-size:13.5px}
+
+  .curva-wrap{overflow-x:auto}
+  .curva-svg{width:100%;min-width:520px;display:block}
+
+  .split{display:flex;height:26px;border-radius:8px;overflow:hidden;border:1px solid var(--linha);font-size:12px;font-weight:800}
+  .split div{display:flex;align-items:center;justify-content:center;color:#fff;white-space:nowrap;overflow:hidden}
+  .mini-lb{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--fraca);font-weight:800;margin-bottom:8px}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:4.5px 0;font-size:13.5px;border-bottom:1px dashed #ece7db}
+  .kv:last-child{border-bottom:0}
+  .kv .q{color:var(--fraca)}
+  .kv .q b{color:var(--ink)}
+
+  footer{margin-top:40px;padding-top:14px;border-top:2px solid var(--linha);display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;color:#9a917e;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="marca-nome">
+      <div class="vale">VALE DO OURO</div>
+      <div class="cidade">Pará de Minas · MG</div>
+    </div>
+    <div class="hero-right">
+      <div class="badge-vivo"><span class="p"></span> AO VIVO · LANÇAMENTO 01/08/2026</div>
+      <div class="quando">BI de Vendas · <span id="carimbo">carregando…</span></div>
+    </div>
+  </header>
+
+  <div class="placar" id="placar"></div>
+
+  <section>
+    <h2>O mapa das <span id="tot-unidades">…</span> unidades</h2>
+    <div class="h-sub">Situação de todo o empreendimento neste momento</div>
+    <div class="card">
+      <div class="estoque" id="estoque"></div>
+      <div class="leg" id="estoque-leg"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Vendas por carteira de lotes</h2>
+    <div class="h-sub">Como os lotes foram divididos no sistema entre as duas coordenações</div>
+    <div class="card">
+      <div class="duelo">
+        <div class="lado int">
+          <div class="quem">Lotes · Cecílio</div>
+          <div class="n num" id="int-n">…</div>
+          <div class="vgv num" id="int-vgv"></div>
+        </div>
+        <div class="vs">×</div>
+        <div class="lado ext">
+          <div class="quem">Lotes · Lino</div>
+          <div class="n num" id="ext-n">…</div>
+          <div class="vgv num" id="ext-vgv"></div>
+        </div>
+      </div>
+      <div class="duelo-barra" id="duelo-barra"></div>
+      <div class="leg" style="justify-content:space-between" id="duelo-leg"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>O filme do dia</h2>
+    <div class="h-sub">Contratos por hora, hoje</div>
+    <div class="card curva-wrap">
+      <div id="curva"></div>
+      <div class="leg" id="curva-leg"></div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Pós-venda em tempo real</h2>
+    <div class="h-sub">Contratos e entrada, direto do C2X</div>
+    <div class="grid3" id="posvenda"></div>
+  </section>
+
+  <section>
+    <h2>Ranking das imobiliárias</h2>
+    <div class="h-sub" id="ranking-sub">Vendas e VGV por parceiro</div>
+    <div class="card" id="ranking"></div>
+  </section>
+
+  <section>
+    <div class="grid2">
+      <div class="card">
+        <h2>Plano comercial</h2>
+        <div class="h-sub">Como as vendas foram fechadas</div>
+        <div id="planos"></div>
+      </div>
+      <div class="card">
+        <h2>Entrada parcelada</h2>
+        <div class="h-sub">Em quantas vezes o sinal foi dividido</div>
+        <div id="parcelas"></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Investidores &amp; multi-lote</h2>
+    <div class="h-sub" id="inv-sub">A leitura fina da carteira</div>
+    <div class="grid3" id="investidores"></div>
+  </section>
+
+  <section>
+    <h2>Quem é o comprador do Vale do Ouro</h2>
+    <div class="h-sub">Perfil dos compradores — cadastro C2X + endereço real</div>
+    <div class="grid3" id="perfil"></div>
+  </section>
+
+  <footer>
+    <span>VALE DO OURO · Careli Empreendimentos</span>
+    <span id="rodape">Fonte: C2X ao vivo (pedidos de aquisição abertos) · Panteon</span>
+  </footer>
+</div>
+
+<script>
+(function(){
+  "use strict";
+  var API = "/api/publico/bi/vale-do-ouro";
+  var $ = function(id){ return document.getElementById(id); };
+  var esc = function(s){ var d=document.createElement("div"); d.textContent=String(s==null?"":s); return d.innerHTML; };
+  var n = function(v){ return Number(v||0); };
+  var pt = function(v){ return n(v).toLocaleString("pt-BR"); };
+  var reais = function(v){
+    v = n(v);
+    if (v >= 1e6) return "R$ " + (v/1e6).toLocaleString("pt-BR",{maximumFractionDigits:2}) + " mi";
+    if (v >= 1e3) return "R$ " + Math.round(v/1e3).toLocaleString("pt-BR") + " mil";
+    return "R$ " + pt(v);
+  };
+  var pc = function(parte,todo){ return todo ? Math.round(100*parte/todo) : 0; };
+
+  function kpis(d){
+    var v = d.vendas||{}, r = d.reservas||{};
+    var tot = (d.statusUnidades||[]).reduce(function(s,x){return s+n(x.qtd)},0);
+    var disp = (d.statusUnidades||[]).filter(function(x){return x.status==="Disponível"})[0];
+    $("placar").innerHTML =
+      '<div class="kpi destaque"><div class="lb">Unidades vendidas</div><div class="v num">'+pt(v.unidades)+'</div><div class="sub">'+pc(n(v.unidades),tot)+'% do empreendimento</div></div>'+
+      '<div class="kpi destaque"><div class="lb">VGV vendido</div><div class="v num">'+reais(v.vgv)+'</div><div class="sub">ticket médio '+reais(v.ticket)+'</div></div>'+
+      '<div class="kpi"><div class="lb">Reservas ativas</div><div class="v num">'+pt(r.unidades)+'</div><div class="sub">'+reais(r.vgv)+' em negociação</div></div>'+
+      '<div class="kpi"><div class="lb">Ainda disponíveis</div><div class="v num">'+pt(disp?disp.qtd:0)+'</div><div class="sub">de '+pt(tot)+' unidades</div></div>';
+    $("tot-unidades").textContent = pt(tot);
+  }
+
+  function estoque(d){
+    var ordem = ["Em negociação","Reservado","Disponível","Bloqueado para venda"];
+    var cores = {"Em negociação":"var(--ouro)","Reservado":"var(--terra-claro)","Disponível":"var(--verde)","Bloqueado para venda":"#a49c8b"};
+    var rot   = {"Em negociação":"vendidas","Reservado":"reservadas","Disponível":"disponíveis","Bloqueado para venda":"bloqueadas"};
+    var itens = (d.statusUnidades||[]).slice().sort(function(a,b){return ordem.indexOf(a.status)-ordem.indexOf(b.status)});
+    var tot = itens.reduce(function(s,x){return s+n(x.qtd)},0) || 1;
+    $("estoque").innerHTML = itens.map(function(x){
+      var w = (100*n(x.qtd)/tot).toFixed(1);
+      var texto = w > 14 ? pt(x.qtd)+" "+(rot[x.status]||x.status) : (w > 6 ? pt(x.qtd) : "");
+      return '<div style="width:'+w+'%;background:'+(cores[x.status]||"#999")+'">'+texto+'</div>';
+    }).join("");
+    $("estoque-leg").innerHTML = itens.map(function(x){
+      return '<span><span class="dot" style="background:'+(cores[x.status]||"#999")+'"></span><b>'+pt(x.qtd)+'</b> '+(rot[x.status]||esc(x.status))+' ('+pc(n(x.qtd),tot)+'%)</span>';
+    }).join("");
+  }
+
+  function duelo(d){
+    var int=null, ext=null;
+    (d.porTipo||[]).forEach(function(t){
+      if (/interna/i.test(t.tipo||"")) int=t;
+      if (/externa/i.test(t.tipo||"")) ext=t;
+    });
+    if (!int || !ext) return;
+    var tot = n(int.vendas)+n(ext.vendas) || 1;
+    $("int-n").textContent = pt(int.vendas);
+    $("ext-n").textContent = pt(ext.vendas);
+    $("int-vgv").textContent = reais(int.vgv)+" · ticket "+reais(int.ticket);
+    $("ext-vgv").textContent = reais(ext.vgv)+" · ticket "+reais(ext.ticket);
+    var wi=(100*n(int.vendas)/tot).toFixed(1);
+    $("duelo-barra").innerHTML = '<div style="width:'+wi+'%;background:var(--ouro-claro)"></div><div style="width:'+(100-wi).toFixed(1)+'%;background:var(--terra-claro)"></div>';
+    var dif = Math.abs(n(int.vendas)-n(ext.vendas));
+    $("duelo-leg").innerHTML = '<span><b>'+pc(n(int.vendas),tot)+'%</b> das vendas</span><span>diferença de <b>'+pt(dif)+' '+(dif===1?'lote':'lotes')+'</b></span><span><b>'+pc(n(ext.vendas),tot)+'%</b> das vendas</span>';
+  }
+
+  function curva(d){
+    var hs = d.vendasHoje||[];
+    if (!hs.length){ $("curva").innerHTML=""; $("curva-leg").innerHTML="<span>Sem vendas registradas hoje.</span>"; return; }
+    var max = Math.max.apply(null, hs.map(function(h){return n(h.qtd)})) || 1;
+    var W=720, H=210, x0=46, x1=700, y0=170, alt=150;
+    var passo = hs.length>1 ? (x1-x0)/(hs.length-1) : 0;
+    var pts = hs.map(function(h,i){ return { x: x0+i*passo, y: y0 - (n(h.qtd)/max)*alt, q:n(h.qtd), hora:(h.hora||"").slice(0,2)+"h" }; });
+    var linha = pts.map(function(p,i){ return (i?"L":"M")+p.x.toFixed(1)+" "+p.y.toFixed(1); }).join(" ");
+    var melhor = pts.reduce(function(a,b){ return b.q>a.q?b:a; });
+    var svg = '<svg class="curva-svg" viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="xMidYMid meet">'
+      +'<defs><linearGradient id="ar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#a07c3b" stop-opacity=".35"/><stop offset="1" stop-color="#a07c3b" stop-opacity="0"/></linearGradient></defs>'
+      +'<line x1="'+x0+'" y1="'+y0+'" x2="'+x1+'" y2="'+y0+'" stroke="#e5e0d5"/>'
+      +'<path d="'+linha+' L'+pts[pts.length-1].x.toFixed(1)+' '+y0+' L'+x0+' '+y0+' Z" fill="url(#ar)"/>'
+      +'<path d="'+linha+'" fill="none" stroke="#a07c3b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>'
+      + pts.map(function(p){ return '<circle cx="'+p.x.toFixed(1)+'" cy="'+p.y.toFixed(1)+'" r="'+(p===melhor?5.5:4)+'" fill="#a07c3b"'+(p===melhor?' stroke="#fff" stroke-width="2"':'')+'/>'; }).join("")
+      + pts.map(function(p){ return '<text x="'+p.x.toFixed(1)+'" y="'+(p.y-10).toFixed(1)+'" text-anchor="middle" font-size="'+(p===melhor?15:12)+'" font-weight="800" fill="'+(p===melhor?'#a07c3b':'#211d16')+'" font-family="system-ui">'+p.q+'</text>'; }).join("")
+      + pts.map(function(p){ return '<text x="'+p.x.toFixed(1)+'" y="188" text-anchor="middle" font-size="11" fill="#7a715f" font-family="system-ui">'+esc(p.hora)+'</text>'; }).join("")
+      +'</svg>';
+    $("curva").innerHTML = svg;
+    $("curva-leg").innerHTML = '<span>Pico às <b>'+esc(melhor.hora)+': '+melhor.q+' contratos numa hora</b>.</span>';
+  }
+
+  function posvenda(d){
+    var v = n((d.vendas||{}).unidades), c = d.contratos||{}, cb = d.cobranca||{};
+    $("posvenda").innerHTML =
+      '<div class="card"><div class="mini-lb">Contratos</div>'
+      +'<div class="kv"><span class="k">Contrato gerado</span><span class="q num"><b>'+pt(c.gerados)+'</b> de '+pt(v)+' · '+pc(n(c.gerados),v)+'%</span></div>'
+      +'<div class="kv"><span class="k">Vendas em proposta</span><span class="q num"><b>'+pt(Math.max(0,v-n(c.gerados)))+'</b></span></div></div>'
+      +'<div class="card"><div class="mini-lb">Entrada (ato + sinal)</div>'
+      +'<div class="kv"><span class="k">Cobrança gerada</span><span class="q num"><b>'+pt(cb.vendas_com_cobranca)+'</b> de '+pt(v)+' vendas</span></div>'
+      +'<div class="kv"><span class="k">Total de entrada</span><span class="q num"><b>'+reais(cb.entrada_gerada)+'</b></span></div></div>'
+      +'<div class="card"><div class="mini-lb">Caixa</div>'
+      +'<div class="kv"><span class="k">Liquidado</span><span class="q num"><b>'+reais(cb.liquidado)+'</b></span></div>'
+      +'<div class="kv"><span class="k">A liquidar</span><span class="q num"><b>'+reais(n(cb.entrada_gerada)-n(cb.liquidado))+'</b></span></div></div>';
+  }
+
+  function barras(el, itens, campoNome, campoQtd, extra){
+    var max = Math.max.apply(null, itens.map(function(i){return n(i[campoQtd])})) || 1;
+    el.innerHTML = itens.map(function(i,idx){
+      var medalha = el.id==="ranking" ? (idx===0?"🥇 ":idx===1?"🥈 ":idx===2?"🥉 ":"") : "";
+      var w = (100*n(i[campoQtd])/max).toFixed(1);
+      return '<div class="hrow"><div class="nome">'+medalha+esc(i[campoNome])+'</div>'
+        +'<div class="trilho"><div class="fill" style="width:'+w+'%"></div></div>'
+        +'<div class="val num"><b>'+pt(i[campoQtd])+'</b>'+(extra?extra(i):"")+'</div></div>';
+    }).join("");
+  }
+
+  function investidores(d){
+    var v = n((d.vendas||{}).unidades), vgv = n((d.vendas||{}).vgv), inv = d.investidores||{};
+    $("inv-sub").textContent = pt(v)+" lotes para "+pt(inv.titulares)+" compradores — a leitura fina da carteira";
+    $("investidores").innerHTML =
+      '<div class="card"><div class="mini-lb">Concentração</div>'
+      +'<div class="kv"><span class="k">Compradores titulares</span><span class="q num"><b>'+pt(inv.titulares)+'</b></span></div>'
+      +'<div class="kv"><span class="k">Compraram 1 lote</span><span class="q num"><b>'+pt(n(inv.titulares)-n(inv.multi_lote))+'</b></span></div>'
+      +'<div class="kv"><span class="k">Compraram 2+ lotes</span><span class="q num"><b>'+pt(inv.multi_lote)+'</b> → '+pt(inv.unidades_multi)+' unidades</span></div></div>'
+      +'<div class="card"><div class="mini-lb">Peso dos investidores</div>'
+      +'<div class="kv"><span class="k">Das vendas</span><span class="q num"><b>'+pc(n(inv.unidades_multi),v)+'%</b></span></div>'
+      +'<div class="kv"><span class="k">Do VGV</span><span class="q num"><b>'+pc(n(inv.vgv_multi),vgv)+'%</b> · '+reais(inv.vgv_multi)+'</span></div></div>'
+      +'<div class="card"><div class="mini-lb">Maior comprador</div>'
+      +'<div class="kv"><span class="k">Lotes de um só comprador</span><span class="q num"><b>'+pt(inv.maior_lotes)+'</b></span></div></div>';
+  }
+
+  function perfil(d){
+    var v = n((d.vendas||{}).unidades) || 1;
+    var sx = {}; (d.sexo||[]).forEach(function(s){ sx[s.k]=n(s.qtd); });
+    var m = sx["Masculino"]||0, f = sx["Feminino"]||0;
+    var linhasKv = function(itens, lim){ return (itens||[]).slice(0,lim).map(function(i){
+      return '<div class="kv"><span class="k">'+esc(i.k)+'</span><span class="q num"><b>'+pt(i.qtd)+'</b> · '+pc(n(i.qtd),v)+'%</span></div>'; }).join(""); };
+    var ordemIdade = ["Até 24","25 a 34","35 a 44","45 a 54","55+","Não informado"];
+    var idades = (d.idades||[]).slice().sort(function(a,b){return ordemIdade.indexOf(a.k)-ordemIdade.indexOf(b.k)});
+    $("perfil").innerHTML =
+      '<div class="card"><div class="mini-lb">Sexo</div>'
+      +'<div class="split"><div style="width:'+pc(m,m+f)+'%;background:var(--ouro)">'+pc(m,m+f)+'% homens</div><div style="width:'+pc(f,m+f)+'%;background:var(--terra-claro)">'+pc(f,m+f)+'% mulheres</div></div>'
+      +'<div class="mini-lb" style="margin-top:18px">Idade</div>'+linhasKv(idades,6)+'</div>'
+      +'<div class="card"><div class="mini-lb">Estado civil</div>'+linhasKv(d.estadoCivil,4)
+      +'<div class="mini-lb" style="margin-top:18px">Renda familiar</div>'+linhasKv(d.faixaSalarial,5)+'</div>'
+      +'<div class="card"><div class="mini-lb">Profissões mais comuns</div>'+linhasKv(d.profissoes,6)
+      +'<div class="mini-lb" style="margin-top:18px">Onde mora</div>'+linhasKv(d.cidades,5)+'</div>';
+  }
+
+  function render(d){
+    kpis(d); estoque(d); duelo(d); curva(d); posvenda(d); investidores(d); perfil(d);
+    barras($("ranking"), d.rankingImob||[], "imob", "vendas", function(i){ return " · "+reais(i.vgv); });
+    $("ranking-sub").textContent = "Vendas e VGV por parceiro — "+pt((d.rankingImob||[]).length)+" imobiliárias pontuaram";
+    barras($("planos"), d.planos||[], "plano", "qtd");
+    var rotP = function(p){ return n(p.parcelas)<=1 ? "À vista (1×)" : pt(p.parcelas)+"×"; };
+    barras($("parcelas"), (d.parcelasEntrada||[]).map(function(p){ return { nome: rotP(p), qtd: p.qtd }; }).sort(function(a,b){return n(b.qtd)-n(a.qtd)}), "nome", "qtd");
+    var quando = new Date(d.geradoEm);
+    var hhmm = quando.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
+    $("carimbo").textContent = "atualizado às "+hhmm+" · direto do C2X";
+    $("rodape").textContent = "Fonte: C2X ao vivo (pedidos de aquisição abertos) · atualizado às "+hhmm+" · Panteon";
+  }
+
+  var falhas = 0;
+  function carregar(){
+    fetch(API, {cache:"no-store"}).then(function(r){ if(!r.ok) throw new Error(r.status); return r.json(); })
+      .then(function(j){
+        // SEM PAYLOAD, MANTÉM O QUE ESTÁ NA TELA (regra da casa): um blip não apaga o BI.
+        if (!j || !j.data) throw new Error("vazio");
+        falhas = 0;
+        render(j.data);
+      })
+      .catch(function(){
+        falhas++;
+        if (falhas >= 3) $("carimbo").textContent = "sem conexão — mostrando o último dado";
+      });
+  }
+  carregar();
+  setInterval(carregar, 60000);
+})();
+</script>
+</body>
+</html>

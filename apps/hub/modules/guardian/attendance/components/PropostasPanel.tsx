@@ -15,12 +15,14 @@ import {
   Handshake,
   Loader2,
   MessageSquare,
+  Scale,
   Send,
   Trash2,
   X,
 } from "lucide-react";
 import { Tooltip } from "@repo/uix";
 import { DetailSection } from "@/modules/guardian/attendance/components/DetailSection";
+import { DossieJuridicoModal } from "@/modules/guardian/attendance/components/DossieJuridicoModal";
 import { ProposalChat } from "@/modules/guardian/attendance/components/ProposalChat";
 import { hasProposalUpdate } from "@/lib/guardian/proposal-seen";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
@@ -58,6 +60,7 @@ export function PropostasPanel({
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<GuardianCompromissoKind | null>(null);
   const [editing, setEditing] = useState<GuardianCompromissoDetail | null>(null);
+  const [dossie, setDossie] = useState(false);
 
   const load = useCallback(async () => {
     if (!clientC2xId) {
@@ -120,6 +123,16 @@ export function PropostasPanel({
     <DetailSection title="Propostas" icon={Handshake} accent>
       <div className="mb-4 flex flex-wrap items-center justify-end gap-3">
         <div className="flex gap-2">
+          {/* Encaminhar ao jurídico é o fim da linha da negociação: fica junto das outras ações,
+              mas antes delas, porque a leitura natural é promessa → acordo → jurídico. */}
+          <button
+            type="button"
+            onClick={() => setDossie(true)}
+            className="inline-flex h-9 items-center gap-2 rounded-lg border border-line/70 bg-surface px-3 text-sm font-semibold text-ink transition-colors hover:bg-subtle"
+          >
+            <Scale className="size-4" aria-hidden="true" />
+            Dossie juridico
+          </button>
           <button
             type="button"
             onClick={() => setForm("promessa")}
@@ -190,6 +203,10 @@ export function PropostasPanel({
             window.dispatchEvent(new CustomEvent("guardian:motor-changed"));
           }}
         />
+      ) : null}
+
+      {dossie ? (
+        <DossieJuridicoModal client={client} onClose={() => setDossie(false)} />
       ) : null}
     </DetailSection>
   );

@@ -105,6 +105,11 @@ export async function createChronosWherebyMeeting({
   transcriptionRequired,
 }: ChronosWherebyCreateMeetingInput): Promise<ChronosWherebyMeeting> {
   const config = getChronosWherebyConfig();
+  // SALA TRANCADA de propósito (regra do Lucas, 04/08): o convidado EXTERNO tem que PEDIR entrada e
+  // o anfitrião APROVAR. `isLocked: true` é o mecanismo nativo do Whereby para isso — o host admite
+  // quem bate na porta. NÃO desligar sem decisão do Lucas: sem a trava, qualquer um com o link
+  // entra direto na reunião com cliente. (O problema do celular que parecia "pedir login" era a
+  // NOSSA página travando o convidado ANTES da porta — corrigido à parte, não aqui.)
   const body: Record<string, unknown> = {
     endDate,
     fields: ["hostRoomUrl"],

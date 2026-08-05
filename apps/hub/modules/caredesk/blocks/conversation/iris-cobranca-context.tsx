@@ -291,6 +291,10 @@ export function IrisCobrancaContextSidebar({
               tabs.length >= 5 ? "grid-cols-5" : "grid-cols-4",
             ].join(" ")}
           >
+            {/* Ícone + NOME. Antes era só o ícone com o nome no tooltip: a operadora tinha que
+                passar o mouse em cada um para descobrir onde ficava a carteira. Eram 6 ícones
+                mudos aqui e mais 5 na fila, e isso apareceu na queixa do time ("confuso"). O
+                texto some abaixo de 5 abas por falta de espaço, mas aí o tooltip continua. */}
             {tabs.map((option) => (
               <Tooltip content={option.label} key={option.id} placement="bottom">
                 <button
@@ -304,6 +308,11 @@ export function IrisCobrancaContextSidebar({
                       : "text-ink-muted hover:bg-surface hover:text-[#7A5E2C]",
                   ].join(" ")}
                 >
+                  {/* SÓ O ÍCONE (decisão do Lucas, 26/07). Tentei pôr o rótulo ao lado para
+                      resolver a queixa dos "ícones sem nome": com 5 abas em 340px de painel o
+                      texto sobrepõe o ícone, tanto em todas as abas quanto só na ativa. O nome
+                      continua no tooltip. Se um dia quisermos rótulo aqui, o caminho é reduzir
+                      o número de abas, não espremer texto. */}
                   <option.icon className="size-4" aria-hidden="true" />
                 </button>
               </Tooltip>

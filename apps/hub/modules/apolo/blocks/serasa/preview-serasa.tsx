@@ -77,6 +77,88 @@ export function PreviewSerasa() {
   const [erro, setErro] = useState("");
   const [res, setRes] = useState<Resultado | null>(null);
   const [verCru, setVerCru] = useState(false);
+  // Setup (uma vez) dos templates Meta de reprovação de crédito.
+  const [criandoTpl, setCriandoTpl] = useState(false);
+  const [tplMsg, setTplMsg] = useState("");
+
+  type LinhaTpl = {
+    error?: string;
+    jaExistia: boolean;
+    name: string;
+    ok: boolean;
+    status: string | null;
+  };
+
+  const criarTemplates = async () => {
+    setCriandoTpl(true);
+    setTplMsg("");
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/serasa/setup-template", {
+        headers: { Authorization: `Bearer ${token}` },
+        method: "POST",
+      });
+      const json = (await resposta.json()) as {
+        data?: { coordenador: LinhaTpl; corretor: LinhaTpl };
+        error?: string;
+      };
+      if (!json.data) {
+        setTplMsg(json.error ?? "Falha ao criar os templates.");
+        return;
+      }
+      const linha = (t: LinhaTpl) =>
+        t.ok
+          ? `✓ ${t.name}: ${t.jaExistia ? "já existia" : `criado (${t.status ?? "PENDING"})`}`
+          : `✕ ${t.name}: ${t.error ?? "erro"}`;
+      setTplMsg([linha(json.data.coordenador), linha(json.data.corretor)].join("\n"));
+    } catch (e) {
+      setTplMsg((e as Error).message);
+    } finally {
+      setCriandoTpl(false);
+    }
+  };
+
+  // Teste do disparo: manda as duas mensagens (coordenador com CAD anexa + corretor) pro número.
+  const [telefoneTeste, setTelefoneTeste] = useState("31983013616");
+  const [cpfTeste, setCpfTeste] = useState("");
+  const [testando, setTestando] = useState(false);
+  const [testeMsg, setTesteMsg] = useState("");
+
+  const testarDisparo = async () => {
+    setTestando(true);
+    setTesteMsg("");
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch("/api/apolo/serasa/testar-disparo", {
+        body: JSON.stringify({ cpf: cpfTeste, telefone: telefoneTeste }),
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        method: "POST",
+      });
+      const json = (await resposta.json()) as {
+        data?: {
+          coordenador: { error?: string; ok: boolean };
+          corretor: { error?: string; ok: boolean };
+        };
+        error?: string;
+      };
+      if (!json.data) {
+        setTesteMsg(json.error ?? "Falha no disparo.");
+        return;
+      }
+      const linha = (nome: string, t: { error?: string; ok: boolean }) =>
+        t.ok ? `✓ ${nome} enviado` : `✕ ${nome}: ${t.error ?? "erro"}`;
+      setTesteMsg(
+        [
+          linha("Coordenador (com CAD)", json.data.coordenador),
+          linha("Corretor", json.data.corretor),
+        ].join("\n"),
+      );
+    } catch (e) {
+      setTesteMsg((e as Error).message);
+    } finally {
+      setTestando(false);
+    }
+  };
 
   const consultar = async () => {
     setCarregando(true);
@@ -111,6 +193,73 @@ export function PreviewSerasa() {
           traz. Cada consulta conta no teto diario (150).
         </p>
       </header>
+
+      {/* Setup (uma vez): cria os templates Meta de reprovação de crédito no número 4143. */}
+      <div className="mb-4 rounded-xl border border-line bg-surface p-4">
+        <p className="m-0 text-sm font-semibold text-ink">Templates Meta da reprovação de crédito</p>
+        <p className="m-0 mt-1 text-xs text-ink-soft">
+          Cria os dois templates no número 4143: coordenador (com anexo da CAD) e corretor (só
+          aviso). Pode clicar mais de uma vez, se já existirem não duplica.
+        </p>
+        <button
+          className="mt-3 rounded-lg bg-inverse px-4 py-2 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:opacity-50"
+          disabled={criandoTpl}
+          onClick={criarTemplates}
+          type="button"
+        >
+          {criandoTpl ? "Criando..." : "Criar templates de reprovação no Meta"}
+        </button>
+        {tplMsg ? (
+          <pre className="m-0 mt-3 whitespace-pre-wrap rounded-lg border border-line bg-canvas p-3 text-xs text-ink-soft">
+            {tplMsg}
+          </pre>
+        ) : null}
+      </div>
+
+      {/* Teste do disparo pro WhatsApp (precisa dos templates JÁ APROVADOS pela Meta). */}
+      <div className="mb-4 rounded-xl border border-line bg-surface p-4">
+        <p className="m-0 text-sm font-semibold text-ink">Testar disparo pro meu número</p>
+        <p className="m-0 mt-1 text-xs text-ink-soft">
+          Manda as duas mensagens (coordenador com a CAD anexa e corretor) pro número abaixo. Só
+          funciona depois que a Meta aprovar os templates.
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-2">
+          <label className="flex-1">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              WhatsApp (com DDD)
+            </span>
+            <input
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink"
+              onChange={(e) => setTelefoneTeste(e.target.value)}
+              value={telefoneTeste}
+            />
+          </label>
+          <label className="flex-1">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-wide text-ink-muted">
+              CPF do cliente (CAD real, opcional)
+            </span>
+            <input
+              className="w-full rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink"
+              onChange={(e) => setCpfTeste(e.target.value)}
+              placeholder="vazio = CAD de exemplo"
+              value={cpfTeste}
+            />
+          </label>
+          <button
+            className="rounded-lg bg-inverse px-4 py-2 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:opacity-50"
+            disabled={testando || !telefoneTeste.trim()}
+            onClick={testarDisparo}
+            type="button"
+          >
+            {testando ? "Enviando..." : "Testar disparo"}
+          </button>
+        </div>
+        {testeMsg ? (
+          <pre className="m-0 mt-3 whitespace-pre-wrap rounded-lg border border-line bg-canvas p-3 text-xs text-ink-soft">
+            {testeMsg}
+          </pre>
+        ) : null}
+      </div>
 
       <div className="flex flex-wrap items-end gap-3 rounded-xl border border-line bg-surface p-4">
         <label className="flex-1">

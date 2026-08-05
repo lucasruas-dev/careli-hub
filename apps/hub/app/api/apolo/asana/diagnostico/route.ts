@@ -89,7 +89,17 @@ export async function POST(request: Request) {
           .from("apolo_entities")
           .select("id, display_name, legal_name, entity_kind")
           .in("id", bloco),
-        client.from("apolo_esteira").select("entity_id, ficha").in("entity_id", bloco),
+        // Uma linha por CAD desde a 0080. O diagnóstico é do lote DESTE empreendimento, então a
+        // ficha lida é a da CAD dele — sem o filtro, a ficha de outro loteamento poderia entrar
+        // no laudo e apontar divergência de titular onde não há.
+        client
+          .from("apolo_esteira")
+          .select("entity_id, ficha")
+          // `.ilike`, não `.eq`: a esteira grava "VALE DO OURO" (prod) mas o default é "Vale do
+          // Ouro". `.eq` é case-sensitive e casaria ZERO linha, e o diagnóstico ficava sem a ficha
+          // de cada CAD (todo laudo saía como se faltasse dado). `.ilike` compara sem caixa.
+          .ilike("empreendimento", empreendimento)
+          .in("entity_id", bloco),
         client
           .from("apolo_relationships")
           .select("entity_id, label")

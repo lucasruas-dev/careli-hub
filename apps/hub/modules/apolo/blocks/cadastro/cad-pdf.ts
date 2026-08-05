@@ -235,33 +235,30 @@ export async function montarCadPdf(cad: CadDoc): Promise<Uint8Array> {
     .filter((secao) => secao.fields.length > 0);
 
   // ---------- cabecalho ----------
-  // Logo do C2X (a empresa dona do Panteon) assinando o documento. Best-effort de proposito:
-  // se o PNG embutido falhar por algum motivo, a CAD sai sem logo em vez de nao sair.
-  let tituloX = MARGIN;
-  // Altura que a logo ocupa abaixo do topo. Entra no calculo da regua horizontal: sem isso o
-  // traco encosta na base da logo (conferido no render).
-  let alturaLogo = 0;
+  // Logo do C2X (a empresa dona do Panteon) CENTRALIZADA no topo, numa linha propria (pedido do
+  // Lucas). Best-effort de proposito: se o PNG embutido falhar, a CAD sai sem logo em vez de nao
+  // sair -- e o titulo/meta assumem o topo.
   try {
     const logo = await doc.embedPng(Buffer.from(C2X_LOGO_PNG_BASE64, "base64"));
-    const larguraLogo = 58;
-    alturaLogo = (logo.height / logo.width) * larguraLogo;
+    const larguraLogo = 72;
+    const alturaLogo = (logo.height / logo.width) * larguraLogo;
     ctx.page.drawImage(logo, {
       height: alturaLogo,
       width: larguraLogo,
-      x: MARGIN,
-      y: ctx.y - alturaLogo + 3,
+      x: (A4.w - larguraLogo) / 2,
+      y: ctx.y - alturaLogo,
     });
-    tituloX = MARGIN + larguraLogo + 14;
+    // Desce abaixo da logo para o titulo e a meta comecarem numa nova linha.
+    ctx.y -= alturaLogo + 14;
   } catch {
-    alturaLogo = 0;
-    tituloX = MARGIN;
+    // sem logo: o titulo assume o topo, sem deslocamento.
   }
 
   ctx.page.drawText(cad.titulo || "Cadastro de CAD", {
     color: INK,
     font: bold,
     size: 14,
-    x: tituloX,
+    x: MARGIN,
     y: ctx.y - 3,
   });
   // meta a direita (duas linhas).
@@ -289,10 +286,8 @@ export async function montarCadPdf(cad: CadDoc): Promise<Uint8Array> {
     metaRight("Corretor", cad.corretor, 11 * linhasMeta);
   }
 
-  // A regua horizontal fica abaixo do MAIS ALTO dos tres blocos do cabecalho: a logo (a
-  // esquerda), o titulo e as linhas de meta (a direita). Antes era um decremento fixo de 20,
-  // que bastava para uma linha de meta sem logo e encostava nos outros casos.
-  ctx.y -= Math.max(20 + Math.max(0, linhasMeta - 1) * 11, alturaLogo + 8);
+  // A regua horizontal fica abaixo do titulo/meta -- a logo ja esta acima, em linha propria.
+  ctx.y -= 20 + Math.max(0, linhasMeta - 1) * 11;
   ctx.page.drawLine({
     color: INK,
     end: { x: A4.w - MARGIN, y: ctx.y },

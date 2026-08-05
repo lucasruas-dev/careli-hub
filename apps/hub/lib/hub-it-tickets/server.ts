@@ -1221,6 +1221,14 @@ function normalizeAttachments(
       ? Math.max(0, Math.trunc(attachment.sizeBytes))
       : 0;
     const type = attachment.type;
+    // ⚠️ ESTA LINHA É O BUG DE 14/07 A 27/07. Esta função REMONTA o anexo campo a campo, e o
+    // `storagePath` não estava na lista: o navegador subia o arquivo pro bucket, mandava o
+    // caminho, e ele era descartado aqui. A linha nascia com storage_path NULL e, como o
+    // cliente só manda base64 quando o upload FALHA, content_data_url também vinha NULL.
+    // Resultado: 20 anexos gravados sem lugar nenhum de onde ler o arquivo.
+    // O `satisfies` não protegeu porque `storagePath` é opcional no tipo — campo opcional
+    // esquecido num remonte não é erro de compilação, é perda silenciosa de dado.
+    const storagePath = sanitizeOptionalText(attachment.storagePath, 400);
 
     if (!fileName || !mimeType || !isAttachmentType(type)) {
       return [];
@@ -1234,6 +1242,13 @@ function normalizeAttachments(
       return [];
     }
 
+    // Sem caminho no Storage E sem base64 não há arquivo para exibir depois. Descartar aqui é
+    // melhor que gravar um anexo fantasma: o usuário vê que não anexou e tenta de novo, em vez
+    // de descobrir semanas depois que a evidência do chamado nunca existiu.
+    if (!storagePath && !dataUrl) {
+      return [];
+    }
+
     return [
       {
         capturedAt: attachment.capturedAt || new Date().toISOString(),
@@ -1241,6 +1256,7 @@ function normalizeAttachments(
         fileName,
         mimeType,
         sizeBytes,
+        storagePath,
         type,
       } satisfies HubItTicketAttachmentInput,
     ];

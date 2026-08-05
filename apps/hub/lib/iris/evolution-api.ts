@@ -258,6 +258,78 @@ export async function fetchEvolutionMediaBase64(
   }
 }
 
+// A AGENDA DA INSTÂNCIA. O número do Relacionamento espelha um WhatsApp real, com os contatos
+// salvos no aparelho — e é de lá que sai o nome de quem NUNCA falou no grupo.
+//
+// Até 27/07 a gente só tinha os nomes de quem falava (o `pushName` que vem na mensagem), então
+// a menção listava números. Este endpoint traz a agenda inteira de uma vez.
+//
+// `name` é o nome SALVO na agenda (o que o time escreveu); `pushName` é o nome que a pessoa
+// escolheu no perfil dela. Preferimos o da agenda: é como o time chama a pessoa.
+export type EvolutionContato = { name: string | null; phone: string };
+
+export async function fetchEvolutionContatos(): Promise<EvolutionContato[]> {
+  const config = getEvolutionApiConfig();
+  if (!config) return [];
+
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 20000);
+
+    const response = await fetch(
+      `${config.url}/chat/findContacts/${encodeURIComponent(config.instance)}`,
+      {
+        body: JSON.stringify({}),
+        headers: { apikey: config.apiKey, "Content-Type": "application/json" },
+        method: "POST",
+        signal: controller.signal,
+      },
+    ).finally(() => clearTimeout(timeout));
+
+    if (!response.ok) return [];
+
+    const data = (await response.json()) as unknown;
+    const lista = Array.isArray(data)
+      ? data
+      : Array.isArray((data as Record<string, unknown>)?.contacts)
+        ? ((data as Record<string, unknown>).contacts as unknown[])
+        : [];
+
+    return lista
+      .map((item) => {
+        if (!item || typeof item !== "object") return null;
+
+        const c = item as Record<string, unknown>;
+        const bruto =
+          typeof c.remoteJid === "string"
+            ? c.remoteJid
+            : typeof c.id === "string"
+              ? c.id
+              : "";
+
+        // Grupos e listas de transmissão entram na mesma resposta: só interessa gente.
+        if (!bruto || bruto.includes("@g.us") || bruto.includes("broadcast")) {
+          return null;
+        }
+
+        const phone = bruto.split("@")[0]?.replace(/\D/g, "") ?? "";
+        if (!phone) return null;
+
+        const nomeDaAgenda =
+          typeof c.name === "string" && c.name.trim() ? c.name.trim() : null;
+        const nomeDoPerfil =
+          typeof c.pushName === "string" && c.pushName.trim()
+            ? c.pushName.trim()
+            : null;
+
+        return { name: nomeDaAgenda ?? nomeDoPerfil, phone };
+      })
+      .filter((c): c is EvolutionContato => c !== null);
+  } catch {
+    return [];
+  }
+}
+
 export async function fetchEvolutionGroupInfo(
   groupJid: string,
 ): Promise<EvolutionGroupInfo | null> {

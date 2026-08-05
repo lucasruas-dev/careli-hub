@@ -449,6 +449,7 @@ async function findOrCreateDirectContact({
 type DirectQueue = {
   id: string;
   default_priority: string | null;
+  metadata: unknown;
   sla_first_response_minutes: number | null;
   sla_resolution_minutes: number | null;
 } | null;
@@ -457,11 +458,28 @@ async function getDirectQueue(client: EvolutionClient): Promise<DirectQueue> {
   const { data } = await client
     .from("caredesk_queues")
     .select(
-      "id,default_priority,sla_first_response_minutes,sla_resolution_minutes",
+      "id,default_priority,metadata,sla_first_response_minutes,sla_resolution_minutes",
     )
     .eq("slug", DIRECT_QUEUE_SLUG)
     .maybeSingle<NonNullable<DirectQueue>>();
   return data ?? null;
+}
+
+// DONO PADRAO DA FILA (pedido do Lucas em 26/07: "o direct pode sempre colocar o dono a
+// Raiane Oliveira"). Fica em `metadata.defaultAssigneeUserId` da fila, e nao chumbado aqui,
+// porque quem responde pelo relacionamento muda com o tempo e trocar isso nao pode exigir
+// deploy. Sem o valor configurado, o ticket nasce sem dono, exatamente como era antes.
+//
+// Motivo de existir: dos 106 tickets que a fila Direct ja' recebeu, os 106 nasceram orfaos e
+// nenhum foi atribuido a ninguem. "Sem responsavel" virou a maior coluna do Board.
+export function donoPadraoDaFila(metadata: unknown): string | null {
+  if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
+    return null;
+  }
+
+  const valor = (metadata as Record<string, unknown>).defaultAssigneeUserId;
+
+  return typeof valor === "string" && valor.trim() !== "" ? valor.trim() : null;
 }
 
 async function ensureOpenDirectTicket({
@@ -501,6 +519,7 @@ async function ensureOpenDirectTicket({
   const inserted = await client
     .from("caredesk_tickets")
     .insert({
+      assigned_to_user_id: donoPadraoDaFila(queue?.metadata),
       channel_id: channelId,
       contact_id: contactId,
       first_response_due_at: addMinutes(now, firstMinutes),

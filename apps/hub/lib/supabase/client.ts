@@ -38,6 +38,71 @@ export function getHubSupabaseClient() {
   return browserClient;
 }
 
+/**
+ * Le SINCRONO se ha um token de sessao do hub guardado no localStorage.
+ *
+ * Motivacao (incidente 04/08): antes do authState resolver, precisamos
+ * distinguir um COLABORADOR logando (tem token guardado, precisa esperar a
+ * sessao pra entrar como host) de um CONVIDADO externo (sem token, nao deve
+ * esperar nada). No WebView do WhatsApp o client.auth.getSession() pode travar
+ * ate ~20s mesmo para quem nao tem sessao, entao gatear entrada em
+ * authState.status==="loading" prendia o convidado a toa. Esta funcao NAO valida
+ * se o token esta vivo; so indica se existe algo a recuperar.
+ */
+export function hasStoredHubSupabaseSession(): boolean {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const projectRef = getSupabaseProjectRef(hubSupabaseConfig.url);
+
+  if (!projectRef) {
+    return false;
+  }
+
+  const storageKey = `sb-${projectRef}-auth-token`;
+
+  try {
+    for (let index = 0; index < window.localStorage.length; index += 1) {
+      const key = window.localStorage.key(index);
+
+      if (!key) {
+        continue;
+      }
+
+      // O supabase-js pode quebrar o token em chunks (`<key>.0`, `<key>.1`),
+      // entao aceitamos a chave exata OU qualquer chunk dela.
+      if (key !== storageKey && !key.startsWith(`${storageKey}.`)) {
+        continue;
+      }
+
+      const rawValue = window.localStorage.getItem(key);
+
+      if (rawValue && rawValue.trim()) {
+        return true;
+      }
+    }
+  } catch {
+    // localStorage pode lancar em modos restritos (Safari privado, WebView).
+    // Nesse caso tratamos como "sem sessao guardada" (convidado).
+    return false;
+  }
+
+  return false;
+}
+
+function getSupabaseProjectRef(url?: string): string | null {
+  if (!url?.trim()) {
+    return null;
+  }
+
+  try {
+    return new URL(url).hostname.split(".")[0] || null;
+  } catch {
+    return null;
+  }
+}
+
 export function getHubSupabaseDiagnostics() {
   return {
     anonKey: maskSecret(hubSupabaseConfig.anonKey),

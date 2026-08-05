@@ -2,12 +2,13 @@
 
 import {
   AlertTriangle,
-  CalendarClock,
   Check,
+  Clock,
   Loader2,
   Moon,
   Play,
   Plus,
+  QrCode,
   Save,
   Trash2,
 } from "lucide-react";
@@ -16,21 +17,22 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type {
   PrometeuEvento,
   PrometeuEventoConfig,
-  PrometeuJanela,
 } from "@/lib/prometeu/types";
 
 import {
   ativarEventoRemoto,
   criarEventoRemoto,
   encerrarDiaRemoto,
+  criarTemplateBoasVindasRemoto,
+  criarTemplateChamadoRemoto,
   fetchEmpreendimentos,
   fetchEventos,
-  fetchJanelas,
   iniciarEventoRealRemoto,
   salvarEventoRemoto,
-  salvarJanelaRemoto,
   type PrometeuEmpreendimento,
 } from "../../data/prometeu-operations";
+import { EquipeConteudo } from "./equipe-conteudo";
+import { MaestroConteudo } from "./maestro-conteudo";
 
 // Setup do Prometeu: onde o lançamento é configurado e ATIVADO.
 //
@@ -61,11 +63,15 @@ const ROTULO_STATUS: Record<string, { cor: string; label: string }> = {
   rascunho: { cor: "#64748b", label: "Rascunho" },
 };
 
+// As frentes do cockpit: o que se configura, quem opera e o palco (fundo dos telões). O header
+// (evento + ciclo de vida) fica fora das abas, sempre visível.
+type Aba = "config" | "equipe" | "teloes";
+
 export function SetupView() {
   const [eventos, setEventos] = useState<PrometeuEvento[]>([]);
   const [eventoId, setEventoId] = useState("");
   const [empreendimentos, setEmpreendimentos] = useState<PrometeuEmpreendimento[]>([]);
-  const [janelas, setJanelas] = useState<PrometeuJanela[]>([]);
+  const [aba, setAba] = useState<Aba>("config");
   const [carregando, setCarregando] = useState(true);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -81,6 +87,12 @@ export function SetupView() {
   const [dataEvento, setDataEvento] = useState("");
   const [mesas, setMesas] = useState(10);
   const [whatsapp, setWhatsapp] = useState(true);
+  const [avisarChamado, setAvisarChamado] = useState(true);
+  const [criandoTemplate, setCriandoTemplate] = useState(false);
+  const [avisoTemplate, setAvisoTemplate] = useState<string | null>(null);
+  const [criandoTemplateChamado, setCriandoTemplateChamado] = useState(false);
+  const [avisoTemplateChamado, setAvisoTemplateChamado] = useState<string | null>(null);
+  const [checkinHabilitado, setCheckinHabilitado] = useState(true);
   const [metas, setMetas] = useState(METAS_PADRAO);
 
   const evento = useMemo(
@@ -96,6 +108,10 @@ export function SetupView() {
     setLocal(alvo.config.local ?? "");
     setMesas(alvo.config.mesasSecretaria ?? 10);
     setWhatsapp(alvo.config.senhaPorWhatsapp ?? true);
+    // Ausente = ligado (default): o aviso de chamado passa a valer para eventos já criados.
+    setAvisarChamado(alvo.config.avisarChamadoPorWhatsapp ?? true);
+    // Ausente = ligado (default histórico: prioridade pela ordem do PIX).
+    setCheckinHabilitado(alvo.config.checkinHabilitado ?? true);
     setMetas({ ...METAS_PADRAO, ...(alvo.config.metas ?? {}) });
   }, []);
 
@@ -115,8 +131,6 @@ export function SetupView() {
     if (alvo) {
       setEventoId(alvo.id);
       preencher(alvo);
-      const res = await fetchJanelas(alvo.id);
-      setJanelas(res.data ?? []);
     }
     setCarregando(false);
   }, [preencher]);
@@ -126,14 +140,25 @@ export function SetupView() {
   }, [carregar]);
 
   const trocarEvento = useCallback(
-    async (id: string) => {
+    (id: string) => {
       setEventoId(id);
       const alvo = eventos.find((e) => e.id === id);
       if (alvo) preencher(alvo);
-      const res = await fetchJanelas(id);
-      setJanelas(res.data ?? []);
     },
     [eventos, preencher],
+  );
+
+  // Ao escolher o empreendimento, herda o incorporador (C2X) como construtora — mas SÓ quando o
+  // campo está vazio, pra não pisar no que o operador já digitou.
+  const trocarEmpreendimento = useCallback(
+    (id: string) => {
+      setEnterpriseId(id);
+      const incorporador = empreendimentos.find((e) => e.id === id)?.incorporador?.trim();
+      if (incorporador) {
+        setConstrutora((atual) => (atual.trim() ? atual : incorporador));
+      }
+    },
+    [empreendimentos],
   );
 
   const salvar = useCallback(async () => {
@@ -144,8 +169,13 @@ export function SetupView() {
     const escolhido = empreendimentos.find((e) => e.id === enterpriseId);
     const { data, error } = await salvarEventoRemoto({
       config: {
+        checkinHabilitado,
         construtora,
+        // Nome por extenso junto do id/code: e' o que as outras telas mostram para o time saber
+        // de qual lancamento e' a fila. So o Setup tem essa lista em maos.
+        enterpriseNome: escolhido?.name ?? undefined,
         local,
+        avisarChamadoPorWhatsapp: avisarChamado,
         mesasSecretaria: mesas,
         metas,
         senhaPorWhatsapp: whatsapp,
@@ -168,6 +198,8 @@ export function SetupView() {
       window.setTimeout(() => setAviso(null), 4000);
     }
   }, [
+    avisarChamado,
+    checkinHabilitado,
     construtora,
     dataEvento,
     empreendimentos,
@@ -192,6 +224,34 @@ export function SetupView() {
     );
     setAviso("Lançamento ativo. Já pode subir CAD, imprimir etiqueta e montar a fila.");
   }, [eventoId]);
+
+  const criarTemplate = useCallback(async () => {
+    setCriandoTemplate(true);
+    setAvisoTemplate(null);
+    const { data, error } = await criarTemplateBoasVindasRemoto();
+    setCriandoTemplate(false);
+    setAvisoTemplate(
+      error
+        ? `Falha ao criar: ${error}`
+        : data?.status === "ja_existe"
+          ? "Template já existe na Meta."
+          : "Template enviado à Meta. Aguardando aprovação (pode levar horas).",
+    );
+  }, []);
+
+  const criarTemplateChamado = useCallback(async () => {
+    setCriandoTemplateChamado(true);
+    setAvisoTemplateChamado(null);
+    const { data, error } = await criarTemplateChamadoRemoto();
+    setCriandoTemplateChamado(false);
+    setAvisoTemplateChamado(
+      error
+        ? `Falha ao criar: ${error}`
+        : data?.status === "ja_existe"
+          ? "Template já existe na Meta."
+          : "Template enviado à Meta. Aguardando aprovação (pode levar horas).",
+    );
+  }, []);
 
   const iniciarReal = useCallback(async () => {
     if (!eventoId) return;
@@ -240,7 +300,6 @@ export function SetupView() {
       setEventos((atual) => [data, ...atual]);
       setEventoId(data.id);
       preencher(data);
-      setJanelas([]);
     }
   }, [preencher]);
 
@@ -258,7 +317,7 @@ export function SetupView() {
         <div className="max-w-md text-center">
           <h2 className="text-lg font-semibold text-ink">Nenhum lançamento ainda</h2>
           <p className="mt-2 text-sm text-ink-soft">
-            Crie o lançamento para configurar o evento, as janelas de credenciamento e as mesas.
+            Crie o lançamento para configurar o evento, o check-in e as mesas.
           </p>
           <button
             className="mt-5 inline-flex items-center gap-2 rounded-lg bg-[#A07C3B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8d6c33]"
@@ -343,6 +402,32 @@ export function SetupView() {
         </div>
       </header>
 
+      {/* Abas do Setup (o header acima fica fora delas). Mesmo estilo de pílula da Central. */}
+      <div className="px-5 pt-4">
+        <nav className="inline-flex items-center gap-1 rounded-lg bg-black/[0.05] p-1 dark:bg-white/[0.07]">
+          {(
+            [
+              ["config", "Configurações"],
+              ["equipe", "Equipe"],
+              ["teloes", "Telões"],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              className={`rounded-md px-4 py-1.5 text-[0.82rem] font-bold transition-colors ${
+                aba === id
+                  ? "bg-surface text-[#A07C3B] shadow-sm"
+                  : "text-ink-muted hover:text-ink"
+              }`}
+              onClick={() => setAba(id)}
+              type="button"
+            >
+              {label}
+            </button>
+          ))}
+        </nav>
+      </div>
+
       {aviso ? (
         <p className="mx-5 mt-4 rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300">
           {aviso}
@@ -355,6 +440,8 @@ export function SetupView() {
       ) : null}
 
       <div className="space-y-4 p-5">
+        {aba === "config" ? (
+          <>
         <Card
           hint="A data é informativa: quem libera a operação é o botão de ativar"
           titulo="Configuração do lançamento"
@@ -371,7 +458,7 @@ export function SetupView() {
             <Campo label="Empreendimento">
               <select
                 className={inputClasse}
-                onChange={(e) => setEnterpriseId(e.target.value)}
+                onChange={(e) => trocarEmpreendimento(e.target.value)}
                 value={enterpriseId}
               >
                 <option value="">Selecione</option>
@@ -447,19 +534,57 @@ export function SetupView() {
                 </span>
                 Enviar pelo WhatsApp
               </button>
+              <button
+                className="mt-2 block rounded-lg border border-black/10 px-3 py-2 text-xs font-medium text-ink-soft transition-colors hover:border-[#c9a15f] hover:text-[#c9a15f] disabled:opacity-50 dark:border-white/10"
+                disabled={criandoTemplate}
+                onClick={criarTemplate}
+                type="button"
+              >
+                {criandoTemplate ? "Enviando à Meta…" : "Criar template de boas-vindas"}
+              </button>
+              {avisoTemplate ? (
+                <p className="mt-1 text-xs text-ink-muted">{avisoTemplate}</p>
+              ) : null}
+
+              <div className="mt-4 border-t border-black/10 pt-3 dark:border-white/10">
+                <button
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+                    avisarChamado
+                      ? "border-emerald-500/40 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+                      : "border-black/10 text-ink-soft dark:border-white/10"
+                  }`}
+                  onClick={() => setAvisarChamado((v) => !v)}
+                  type="button"
+                >
+                  <span
+                    className={`h-4 w-7 rounded-full p-0.5 transition-colors ${avisarChamado ? "bg-emerald-500" : "bg-black/20 dark:bg-white/20"}`}
+                  >
+                    <span
+                      className={`block h-3 w-3 rounded-full bg-white transition-transform ${avisarChamado ? "translate-x-3" : ""}`}
+                    />
+                  </span>
+                  Avisar por WhatsApp ao chamar
+                </button>
+                <p className="mt-1 text-xs text-ink-muted">
+                  Reforço do alerta da tela: manda um WhatsApp na hora que o cliente é chamado.
+                </p>
+                <button
+                  className="mt-2 block rounded-lg border border-black/10 px-3 py-2 text-xs font-medium text-ink-soft transition-colors hover:border-[#c9a15f] hover:text-[#c9a15f] disabled:opacity-50 dark:border-white/10"
+                  disabled={criandoTemplateChamado}
+                  onClick={criarTemplateChamado}
+                  type="button"
+                >
+                  {criandoTemplateChamado ? "Enviando à Meta…" : "Criar template de chamado"}
+                </button>
+                {avisoTemplateChamado ? (
+                  <p className="mt-1 text-xs text-ink-muted">{avisoTemplateChamado}</p>
+                ) : null}
+              </div>
             </Campo>
           </div>
         </Card>
 
-        <JanelasCard
-          eventoId={eventoId}
-          janelas={janelas}
-          onMudou={async () => {
-            const res = await fetchJanelas(eventoId);
-            setJanelas(res.data ?? []);
-          }}
-          onErro={setErro}
-        />
+        <CheckinCard habilitado={checkinHabilitado} onChange={setCheckinHabilitado} />
 
         <Card
           hint="Referência dos indicadores · colorem gargalos na Central e no tablet do atendente"
@@ -535,11 +660,26 @@ export function SetupView() {
             })}
           </div>
         </Card>
+          </>
+        ) : null}
 
-        <p className="px-1 pb-2 text-xs text-ink-muted">
-          A equipe do lançamento (coordenação, recepção, salão, secretaria e mesas) ainda não
-          está aqui: depende dos usuários do hub e dos contatos da construtora no Apolo.
-        </p>
+        {aba === "teloes" ? (
+          <Card
+            hint="Muda o fundo de todas as TVs juntas; as chamadas de cada telão seguem independentes"
+            titulo="Maestro dos telões"
+          >
+            <MaestroConteudo />
+          </Card>
+        ) : null}
+
+        {aba === "equipe" ? (
+          <Card
+            hint="Cada pessoa opera o posto atribuído; a tela de operação abre já no lugar dela"
+            titulo="Equipe do lançamento"
+          >
+            <EquipeConteudo eventoId={eventoId} onErro={setErro} />
+          </Card>
+        ) : null}
       </div>
 
       {confirmandoReset ? (
@@ -614,107 +754,45 @@ function MetaInput(props: {
   );
 }
 
-// As janelas decidem o regime da fila no dia: bipado dentro dela segue a ordem do PIX;
-// bipado depois, ordem de chegada. Uma linha por dia de credenciamento.
-function JanelasCard(props: {
-  eventoId: string;
-  janelas: PrometeuJanela[];
-  onErro: (erro: string) => void;
-  onMudou: () => Promise<void>;
-}) {
-  const [data, setData] = useState("");
-  const [inicio, setInicio] = useState("08:00");
-  const [fim, setFim] = useState("09:00");
-  const [salvando, setSalvando] = useState(false);
-
-  const adicionar = async () => {
-    if (!data) {
-      props.onErro("Escolha a data da janela de credenciamento.");
-      return;
-    }
-    setSalvando(true);
-    const { error } = await salvarJanelaRemoto({
-      data,
-      eventoId: props.eventoId,
-      horaFim: fim,
-      horaInicio: inicio,
-    });
-    setSalvando(false);
-    if (error) {
-      props.onErro(error);
-      return;
-    }
-    setData("");
-    await props.onMudou();
-  };
-
+// Regime da fila no dia, resolvido por um interruptor só (mesmo toggle do "Senha da fila").
+// Ligado: prioridade pela ordem do PIX. Desligado: ordem de chegada (check-in físico).
+// As janelas por data/hora saíram da tela — as rotas/tabela seguem intactas, só não são usadas aqui.
+function CheckinCard(props: { habilitado: boolean; onChange: (valor: boolean) => void }) {
   return (
     <Card
-      hint="Quem é bipado dentro da janela entra pela ordem do PIX; depois dela, por ordem de chegada"
-      titulo="Janelas de credenciamento"
+      hint="Define quem tem prioridade quando o cliente chega na recepção"
+      titulo="Check-in"
     >
-      {props.janelas.length > 0 ? (
-        <ul className="mb-4 space-y-2">
-          {props.janelas.map((janela) => (
-            <li
-              key={janela.id}
-              className="flex items-center gap-3 rounded-lg border border-black/[0.06] px-3 py-2 dark:border-white/[0.07]"
-            >
-              <CalendarClock className="text-ink-muted" size={16} />
-              <span className="text-sm font-semibold text-ink">
-                {new Date(`${janela.data}T12:00:00`).toLocaleDateString("pt-BR", {
-                  day: "2-digit",
-                  month: "long",
-                  weekday: "long",
-                })}
-              </span>
-              <span className="ml-auto rounded-full bg-black/[0.06] px-2.5 py-0.5 text-sm font-semibold text-ink-soft dark:bg-white/[0.08]">
-                {janela.horaInicio.slice(0, 5)} às {janela.horaFim.slice(0, 5)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mb-4 rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800 dark:bg-amber-950/30 dark:text-amber-300">
-          Sem janela cadastrada. Sem ela, todo mundo que bipar entra por ordem de chegada e a
-          ordem do PIX não vale no dia.
-        </p>
-      )}
-
-      <div className="flex flex-wrap items-end gap-3">
-        <Campo label="Dia">
-          <input
-            className={inputClasse}
-            onChange={(e) => setData(e.target.value)}
-            type="date"
-            value={data}
-          />
-        </Campo>
-        <Campo label="Início">
-          <input
-            className={inputClasse}
-            onChange={(e) => setInicio(e.target.value)}
-            type="time"
-            value={inicio}
-          />
-        </Campo>
-        <Campo label="Fim">
-          <input
-            className={inputClasse}
-            onChange={(e) => setFim(e.target.value)}
-            type="time"
-            value={fim}
-          />
-        </Campo>
+      <div className="flex flex-wrap items-center gap-4">
         <button
-          className="inline-flex items-center gap-2 rounded-lg border border-black/10 px-3 py-2 text-sm font-semibold text-ink hover:bg-black/[0.04] dark:border-white/10 dark:hover:bg-white/[0.06]"
-          disabled={salvando}
-          onClick={() => void adicionar()}
+          className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-medium transition-colors ${
+            props.habilitado
+              ? "border-emerald-500/40 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300"
+              : "border-black/10 text-ink-soft dark:border-white/10"
+          }`}
+          onClick={() => props.onChange(!props.habilitado)}
           type="button"
         >
-          {salvando ? <Loader2 className="animate-spin" size={15} /> : <Plus size={15} />}
-          Adicionar janela
+          <span
+            className={`h-4 w-7 rounded-full p-0.5 transition-colors ${props.habilitado ? "bg-emerald-500" : "bg-black/20 dark:bg-white/20"}`}
+          >
+            <span
+              className={`block h-3 w-3 rounded-full bg-white transition-transform ${props.habilitado ? "translate-x-3" : ""}`}
+            />
+          </span>
+          {props.habilitado ? "Check-in ativo" : "Check-in desligado"}
         </button>
+
+        <p className="flex items-center gap-2 text-sm text-ink-soft">
+          {props.habilitado ? (
+            <QrCode className="shrink-0 text-emerald-600 dark:text-emerald-400" size={16} />
+          ) : (
+            <Clock className="shrink-0 text-ink-muted" size={16} />
+          )}
+          {props.habilitado
+            ? "Quem pagou o PIX tem prioridade na fila."
+            : "A fila ordena pela hora de chegada (check-in físico)."}
+        </p>
       </div>
     </Card>
   );

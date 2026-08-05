@@ -30,6 +30,12 @@ export async function POST(request: Request) {
   // respondemos: o widget não é um chat aberto ao mundo.
   const sessao = verificarSessao(request.headers.get("x-cad-sessao"));
   const pre = verificarPreSessao(request.headers.get("x-cad-pre-sessao"));
+  // O comentário acima sempre prometeu isto, mas o código não cumpria (achado da revisão de
+  // 03/08): POST anônimo chegava ao Claude, contido só pelo balde por IP — dinheiro aberto a
+  // abuso por IP rotativo no dia em que o link circula em massa. Agora cumpre.
+  if (!sessao.ok && !pre.ok) {
+    return json({ error: "Identifique-se pelo CPF para falar com a assistente." }, 401);
+  }
   const imobiliaria = sessao.ok ? sessao.sessao.imobiliariaNome : pre.ok ? pre.pre.imobiliariaNome : "";
 
   const preparo = await prepararRota(request, "assistente");

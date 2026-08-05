@@ -1,10 +1,19 @@
 import { createApoloEntity, type CreateApoloEntityInput } from "@/lib/apolo/cadastro-persist";
-import { agruparEUploadDocumentos, type DocumentoEntrada } from "@/lib/apolo/cadastro-upload";
+import {
+  agruparEUploadDocumentos,
+  documentoTemArquivo,
+  type DocumentoEntrada,
+} from "@/lib/apolo/cadastro-upload";
 import { listEmpreendimentosAtivos } from "@/lib/apolo/credenciamento";
-import { uploadApoloDocument } from "@/lib/apolo/documentos";
+import {
+  APOLO_DOC_MAX_BYTES,
+  MENSAGEM_DOCUMENTO_GRANDE,
+  caminhoUploadDiretoValido,
+  uploadApoloDocument,
+} from "@/lib/apolo/documentos";
 import { normalizarCnpj } from "@/lib/publico/cad/regras";
 import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
-import { preSessaoImobDoRequest } from "@/lib/publico/cad/sessao";
+import { donoUploadPreImob, preSessaoImobDoRequest } from "@/lib/publico/cad/sessao";
 import { montarCadPdf, type CadDoc } from "@/modules/apolo/blocks/cadastro/cad-pdf";
 
 // Auto-cadastro PÚBLICO da imobiliária, agora pelo CadastroFlow COMPLETO (tipo="imobiliaria").
@@ -55,11 +64,24 @@ export async function POST(request: Request) {
     return responder(inicio, erro("O CNPJ do cartão não confere com o informado no início."));
   }
 
-  const documentos = (payload.documentos ?? []).filter((doc) => doc?.fileBase64);
+  // Duas formas de anexo (ver /api/publico/cad/salvar): base64 no corpo para documento pequeno,
+  // caminho de arquivo já gravado no bucket para documento grande.
+  const documentos = (payload.documentos ?? []).filter(documentoTemArquivo);
   if (documentos.length > MAX_FILES) {
     return responder(inicio, erro(`Envie no máximo ${MAX_FILES} arquivos por cadastro.`, 413));
   }
   for (const doc of documentos) {
+    const caminho = (doc.storagePath ?? "").trim();
+    if (caminho) {
+      // O caminho tem que ser um que ESTA pré-sessão recebeu para gravar (rota /upload-url).
+      if (!caminhoUploadDiretoValido(caminho, donoUploadPreImob(pre.pre))) {
+        return responder(inicio, erro("Arquivo enviado não confere com esta sessão.", 400));
+      }
+      if ((doc.sizeBytes ?? 0) > APOLO_DOC_MAX_BYTES) {
+        return responder(inicio, erro(MENSAGEM_DOCUMENTO_GRANDE, 413));
+      }
+      continue;
+    }
     if ((doc.fileBase64?.length ?? 0) > MAX_BASE64) {
       return responder(inicio, erro("Um dos arquivos ficou grande demais. Envie um menor.", 413));
     }

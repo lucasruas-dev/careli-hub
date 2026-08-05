@@ -66,6 +66,19 @@ const CARGOS = [
 
 const NON_ROLE = new Set(["usuario", "pessoa_fisica", "pessoa_juridica", "acesso_incorporador"]);
 
+// Nível escolhido -> papel do Apolo, para a busca FILTRAR por tipo. Sem isto, buscar uma imobiliária
+// pelo nome traz junto todos os clientes que ela captou (o índice agrega a imobiliária no texto de
+// busca), e a imobiliária some no meio dos resultados. Só mapeia os níveis que têm papel próprio.
+const PERFIL_POR_NIVEL: Record<string, string> = {
+  Comprador: "comprador",
+  Corretor: "corretor",
+  Fornecedor: "fornecedor",
+  Imobiliária: "imobiliaria",
+  Incorporador: "incorporador",
+  Parceiro: "parceiro",
+  Prospect: "prospect",
+};
+
 type SearchEntity = {
   id: string;
   name: string;
@@ -104,6 +117,22 @@ export function AddRelationshipModal({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Busca AUTOMÁTICA enquanto digita (debounce). Antes a busca só disparava no Enter, e o Lucas
+  // bateu nisso tentando ligar o Vale do Ouro à Raiane: digitava o nome, nada aparecia (faltava
+  // apertar Enter), e ao salvar vinha "Busque e selecione a entidade". Com nível escolhido e ao
+  // menos 2 letras, busca sozinho.
+  // ⚠️ Este hook fica ANTES do early-return `if (!open)`: nenhum hook pode vir depois de um return
+  // condicional, senão a contagem de hooks muda quando o modal abre e o React derruba a árvore
+  // (era o erro #310 que quebrava a ficha ao clicar em "Adicionar", incidente 22/jul).
+  useEffect(() => {
+    if (!open || !kind || !relType.trim() || query.trim().length < 2) return;
+    const id = setTimeout(() => {
+      void runSearchPara(relType);
+    }, 350);
+    return () => clearTimeout(id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, query, relType, kind]);
+
   if (!open) {
     return null;
   }
@@ -135,19 +164,6 @@ export function AddRelationshipModal({
   function runSearch() {
     return runSearchPara(relType);
   }
-
-  // Busca AUTOMÁTICA enquanto digita (debounce). Antes a busca só disparava no Enter, e o Lucas
-  // bateu nisso tentando ligar o Vale do Ouro à Raiane: digitava o nome, nada aparecia (faltava
-  // apertar Enter), e ao salvar vinha "Busque e selecione a entidade". Com nível escolhido e ao
-  // menos 2 letras, busca sozinho.
-  useEffect(() => {
-    if (!kind || !relType.trim() || query.trim().length < 2) return;
-    const id = setTimeout(() => {
-      void runSearchPara(relType);
-    }, 350);
-    return () => clearTimeout(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query, relType, kind]);
 
   // Recebe o nível por PARÂMETRO: quando o usuário clica num chip, o `relType` do estado ainda
   // é o anterior (setState não é síncrono), e a busca sairia pela fonte errada.
@@ -197,8 +213,12 @@ export function AddRelationshipModal({
 
     try {
       const token = await getApoloAccessToken();
+      // Filtra pelo papel do nível escolhido (ex.: Imobiliária -> só imobiliárias), senão a busca
+      // por nome traz junto os clientes captados por aquela entidade.
+      const perfil = PERFIL_POR_NIVEL[tipo];
+      const perfilParam = perfil ? `&profile=${perfil}` : "";
       const response = await fetch(
-        `/api/apolo/relationships?q=${encodeURIComponent(term)}`,
+        `/api/apolo/relationships?q=${encodeURIComponent(term)}${perfilParam}`,
         { cache: "no-store", headers: { Authorization: `Bearer ${token}` } },
       );
       const payload = (await response.json()) as {

@@ -32,6 +32,7 @@ type Orcamento = {
   gratisPorTexto: number;
   imagensAPagar: number;
   jaLidos: number;
+  jaNaEsteira: number;
   naoLegiveis: number;
   totalCads: number;
 };
@@ -41,7 +42,16 @@ type Previa = {
   orcamento: Orcamento;
   secoes: string[];
 };
+// Lido, mas barrado antes de entrar na esteira: a pessoa já tem ficha em algum empreendimento.
+type Conflito = {
+  cad: string;
+  empreendimentoAtual: string | null;
+  imobiliariaAtual: string | null;
+  imobiliariaNova: string | null;
+  motivo: string;
+};
 type Acumulado = {
+  conflitos: Conflito[];
   criados: number;
   documentos: number;
   gasto: number;
@@ -108,6 +118,7 @@ export function LerCads(props: {
     setLendo(true);
     setErro(null);
     setAcumulado({
+      conflitos: [],
       criados: 0,
       documentos: 0,
       gasto: 0,
@@ -137,6 +148,7 @@ export function LerCads(props: {
         });
         const corpo = (await resposta.json()) as {
           data?: {
+            conflitos?: Conflito[];
             criacao: { criados: number; reaproveitados: number };
             documentos: { baixados: number };
             leitura: { gastoBrl: number; imagensPagas: number; reaproveitados: number };
@@ -153,6 +165,7 @@ export function LerCads(props: {
             atual
               ? {
                   ...atual,
+                  conflitos: [...atual.conflitos, ...(d.conflitos ?? [])],
                   criados: atual.criados + d.criacao.criados,
                   documentos: atual.documentos + d.documentos.baixados,
                   gasto: atual.gasto + d.leitura.gastoBrl,
@@ -241,7 +254,12 @@ export function LerCads(props: {
                 estimativa de teto: documento já lido antes não é cobrado de novo.
               </p>
 
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+              <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                <Economia
+                  detalhe="já estão no Board"
+                  rotulo="Fora do lote"
+                  valor={orc.jaNaEsteira}
+                />
                 <Economia
                   detalhe="CPF já está escrito na CAD"
                   rotulo="CADs sem custo"
@@ -350,6 +368,42 @@ export function LerCads(props: {
             </div>
           ) : null}
 
+          {acumulado.conflitos.length > 0 ? (
+            <div className="mt-4 rounded-lg border border-rose-400/40 bg-rose-50/40 p-3 dark:bg-rose-950/20">
+              <div className="flex items-center gap-2">
+                <FileWarning className="text-rose-600" size={15} />
+                <p className="text-sm font-semibold text-ink">
+                  {acumulado.conflitos.length} já tinham ficha (não entraram)
+                </p>
+              </div>
+              <p className="mt-1 text-xs text-ink-soft">
+                O documento foi lido e ficou salvo, mas a ficha NÃO entrou na esteira para não
+                passar por cima da que já existe. Decida de quem é o cliente e reimporte: a
+                releitura destes não é cobrada de novo.
+              </p>
+              <ul className="m-0 mt-2 grid list-none gap-1.5 p-0">
+                {acumulado.conflitos.map((c) => (
+                  <li className="text-xs text-ink-soft" key={`${c.cad}-${c.motivo}`}>
+                    <b className="text-ink">{c.cad}</b>
+                    {c.imobiliariaAtual || c.imobiliariaNova ? (
+                      <>
+                        {" "}
+                        · já está por <b>{c.imobiliariaAtual ?? "sem imobiliária"}</b>
+                        {c.imobiliariaNova ? (
+                          <>
+                            , esta CAD veio por <b>{c.imobiliariaNova}</b>
+                          </>
+                        ) : null}
+                      </>
+                    ) : null}
+                    {c.empreendimentoAtual ? <> · em {c.empreendimentoAtual}</> : null}
+                    <span className="block text-ink-muted">{c.motivo}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
           {!lendo ? (
             <p className="mt-3 text-xs text-ink-muted">
               Os cadastros criados entraram em <b>Validação</b> no Board, com o que o OCR
@@ -361,7 +415,9 @@ export function LerCads(props: {
 
       {previa && previa.itens.length === 0 ? (
         <p className="rounded-xl border border-black/[0.07] py-10 text-center text-sm text-ink-muted dark:border-white/[0.08]">
-          Nenhuma CAD encontrada nessas seções para esse empreendimento.
+          {previa.orcamento.jaNaEsteira > 0
+            ? `Nada a ler: as ${previa.orcamento.jaNaEsteira} CADs desta seção já estão no Board.`
+            : "Nenhuma CAD encontrada nessas seções para esse empreendimento."}
         </p>
       ) : null}
     </div>

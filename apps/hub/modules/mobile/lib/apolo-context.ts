@@ -29,7 +29,9 @@ function pickEntity(
     }
   }
 
-  return entities[0] ?? null;
+  // NUNCA cair no 1º resultado: pegava um homônimo e vazava a carteira de outra pessoa (incidente
+  // Ana Paula, ver [[reference_iris_vinculo_nome_vazamento]]). Só casa por TELEFONE.
+  return null;
 }
 
 export async function loadApoloContextForTicket(
@@ -56,11 +58,9 @@ export async function loadApoloContextForTicket(
 
   const accessToken = await getMobileAccessToken();
 
-  // 1) Read-model do Apolo: documento (casa no normalized_text) > nome.
-  const candidates = [documentQuery, label].filter(
-    (value, index, values) =>
-      value.length >= 3 && values.indexOf(value) === index,
-  );
+  // 1) Read-model do Apolo: SÓ pelo documento (que vem do phone-match — só existe se o telefone
+  // casou). NUNCA por nome: era o que pescava um homônimo e vazava a carteira de outra pessoa.
+  const candidates = documentQuery.length >= 3 ? [documentQuery] : [];
 
   for (const candidate of candidates) {
     const response = await fetch(
@@ -91,11 +91,11 @@ export async function loadApoloContextForTicket(
   try {
     const response = await fetch("/api/iris/c2x/resolve", {
       body: JSON.stringify({
+        // Só por TELEFONE — nunca por nome (evita casar homônimo).
         phones: [
           ticket.contactPhone,
           ticket.crm360Registration?.matchedPhone,
         ].filter((phone): phone is string => Boolean(phone)),
-        query: label,
       }),
       cache: "no-store",
       headers: {

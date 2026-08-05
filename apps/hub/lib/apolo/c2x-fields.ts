@@ -51,6 +51,45 @@ export const C2X_FAIXA_RENDA: C2xOption[] = [
   { id: 6, label: "Acima de 12 salários" },
 ];
 
+// Perfil do usuário no C2X (users.profile_id). Levantado da tabela `profiles` (28/jul). Só estes
+// papéis vão para o C2X pela API de escrita: o CLIENTE (cada proponente vira um titular),
+// a IMOBILIÁRIA e o INCORPORADOR. O CORRETOR mora só no Apolo (decisão do Lucas 28/jul): no C2X o
+// cliente é vinculado à IMOBILIÁRIA, não ao corretor. Ver docs/architecture/c2x-api-escrita-diagnostico.md.
+export const C2X_PROFILE = {
+  cliente: 2,
+  imobiliaria: 6,
+  incorporador: 3,
+} as const;
+
+// Tipo do documento de identificação (users.document_type_id). Tabela `document_types` do C2X.
+export const C2X_DOCUMENT_TYPE: C2xOption[] = [
+  { id: 1, label: "CNH" },
+  { id: 2, label: "CPF" },
+  { id: 3, label: "RG" },
+  { id: 4, label: "OAB" },
+  { id: 5, label: "Passaporte" },
+];
+
+// Situação do cadastro (users.user_status_id). Tabela `user_statuses`. A CAD do Apolo já chega
+// validada, então o cadastro entra APROVADO (2) no C2X, sem passar pela fila de aprovação e sem
+// e-mail de boas-vindas — como combinado na devolutiva ao contrato de API.
+export const C2X_USER_STATUS = {
+  aguardando: 1,
+  aprovado: 2,
+  reprovado: 3,
+} as const;
+
+// Casa o tipo do documento (texto do OCR/formulário) com o document_type_id do C2X. O RG é o
+// padrão para identificação civil: quando o documento é comprovante de endereço ou não identifica,
+// devolve RG em vez de inventar, porque o número que vai junto (identification_number) é o do RG/CNH.
+export function matchDocumentTypeId(tipo: string | null | undefined): number {
+  const v = normalize(String(tipo ?? ""));
+  if (/CNH|HABILITACAO|MOTORISTA/.test(v)) return 1;
+  if (/PASSAPORT/.test(v)) return 5;
+  if (/\bOAB\b/.test(v)) return 4;
+  return 3; // RG (padrão)
+}
+
 function normalize(value: string): string {
   return String(value ?? "")
     .normalize("NFD")
@@ -99,8 +138,15 @@ export function matchRegimeBensId(text: string): string {
 }
 
 // Mapeia genero do enriquecimento (F/M) para o sexo do C2X.
+//
+// A terceira opcao ("Nao quero informar", id 3) precisa ser reconhecida TAMBEM pelo rotulo: o
+// cadastro guarda o id, mas o caminho de envio ao C2X faz id -> rotulo -> id, e sem esta linha o
+// valor sumia na volta (o cliente ia sem o campo). Provado em c2x-roundtrip.test.ts.
 export function matchSexoId(gender: string): number | null {
   const v = normalize(gender);
+  if (v.includes("NAO QUERO") || v.includes("NAO INFORMAR") || v.includes("NAO INFORMADO")) {
+    return 3;
+  }
   if (v.startsWith("M")) return 1;
   if (v.startsWith("F")) return 2;
   return null;

@@ -10,8 +10,15 @@ import type {
   PrometeuEtapa,
   PrometeuEvento,
   PrometeuEventoConfig,
+  PrometeuIndicadorDaMesa,
   PrometeuJanela,
   PrometeuMesa,
+  PrometeuOperadorEu,
+  PrometeuOperadorResumo,
+  PrometeuPapel,
+  PrometeuPassoJornada,
+  PrometeuResumoDaMesa,
+  PrometeuZona,
 } from "@/lib/prometeu/types";
 
 async function getAccessToken(): Promise<string | null> {
@@ -22,10 +29,13 @@ async function getAccessToken(): Promise<string | null> {
   return data.session?.access_token ?? null;
 }
 
+// `status` viaja junto porque nem toda recusa é falha: o bip do salão devolve 409 quando a
+// pessoa não foi chamada, e a tela precisa separar "o sistema barrou de propósito" de "deu
+// erro, tenta de novo". Sem o código, as duas chegariam como texto e ficariam iguais.
 async function chamar<T>(
   url: string,
   init?: RequestInit,
-): Promise<{ data?: T; error?: string }> {
+): Promise<{ data?: T; error?: string; status?: number }> {
   const token = await getAccessToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers.Authorization = `Bearer ${token}`;
@@ -37,8 +47,14 @@ async function chamar<T>(
       error?: string;
     };
 
-    if (!resposta.ok) return { error: corpo.error ?? `Falha (${resposta.status}).` };
-    return { data: corpo.data };
+    if (!resposta.ok) {
+      return {
+        error: corpo.error ?? `Falha (${resposta.status}).`,
+        status: resposta.status,
+      };
+    }
+
+    return { data: corpo.data, status: resposta.status };
   } catch (erro) {
     return { error: (erro as Error).message };
   }
@@ -52,6 +68,8 @@ export async function fetchEventos() {
 export type PrometeuEmpreendimento = {
   code: string;
   id: string;
+  // Incorporador do C2X — vira o pre-preenchimento da construtora no Setup.
+  incorporador?: string | null;
   logoUrl: string | null;
   name: string;
 };
@@ -70,6 +88,24 @@ export async function criarEventoRemoto(input: {
     body: JSON.stringify(input),
     method: "POST",
   });
+}
+
+// Cria (submete à Meta) o template de boas-vindas do check-in. Ação única, disparada pelo botão do
+// Setup. A aprovação fica com a Meta (pode levar horas a dias).
+export async function criarTemplateBoasVindasRemoto() {
+  return chamar<{ id: string | null; name: string; status: string }>(
+    "/api/prometeu/boas-vindas-template",
+    { method: "POST" },
+  );
+}
+
+// Cria (submete à Meta) o template do chamado ("É a sua vez"). Ação única, disparada pelo botão do
+// Setup. A aprovação fica com a Meta (pode levar horas a dias).
+export async function criarTemplateChamadoRemoto() {
+  return chamar<{ id: string | null; name: string; status: string }>(
+    "/api/prometeu/chamado-template",
+    { method: "POST" },
+  );
 }
 
 export async function salvarEventoRemoto(input: {
@@ -148,13 +184,51 @@ export type FilaPayload = {
   // A fila do EVENTO: ordem do PIX (e os ajustes do admin). Todos os habilitados.
   credenciados: PrometeuCredenciado[];
   evento: PrometeuEvento;
-  // A fila da RECEPÇÃO: só quem já bipou, nos dois regimes da janela. É quem chamar agora.
+  // A fila da RECEPÇÃO: quem já fez check-in e ainda espera. É de onde o SALÃO chama.
   filaRecepcao: PrometeuCredenciado[];
+  // A fila do SALÃO: quem está em negociação. É de onde a SECRETARIA chama.
+  filaSalao: PrometeuCredenciado[];
+  // A fila da SECRETARIA: quem o organizador dela ja bipou na chegada e espera atendimento.
+  filaSecretaria: PrometeuCredenciado[];
+  // Chamados que nao apareceram. Saem das filas normais; chamar de novo os traz de volta.
+  noShow: PrometeuCredenciado[];
+  // Chamados que ainda não apareceram. Vem do banco porque UMA pessoa chama VÁRIAS de uma vez,
+  // e o organizador do outro celular precisa enxergar o que o colega chamou.
+  // ⚠️ Esta lista vem FILTRADA (só chamadas SEM mesa) — é a do painel do salão, onde o "Não veio"
+  // não pode alcançar chamado de mesa. A tela do ATENDENTE precisa da completa (abaixo).
+  emTransito: { chamadoEm: string; credenciadoId: string }[];
+  // TODAS as chamadas abertas, com a mesa. É daqui que o atendente reconhece a chamada da PRÓPRIA
+  // mesa (overlay Compareceu/Não veio/Rechamar) — regressão de 01/08: a lista filtrada acima nunca
+  // traz chamada com mesa, e o overlay parou de abrir. Opcional para atravessar deploy misto.
+  emTransitoTodos?: { chamadoEm: string; credenciadoId: string; mesaId: string | null }[];
   mesas: PrometeuMesa[];
+  // Os indicadores da MESA (atendimentos do dia, tempo médio e começo do atendimento em curso).
+  // Só vem preenchido para quem passou `mesaId` — as outras telas não pedem e não pagam a conta.
+  resumoDaMesa: PrometeuResumoDaMesa | null;
+  // Indicadores de TODAS as mesas (por mesaId), só quando a Central pede `resumoMesas`.
+  resumoDeMesas: Record<string, PrometeuIndicadorDaMesa>;
 };
 
-export async function fetchFila(eventoId: string) {
-  return chamar<FilaPayload>(`/api/prometeu/fila?eventoId=${encodeURIComponent(eventoId)}`);
+// `mesaId` é opcional de propósito: quem informa a mesa recebe também o resumo dela.
+// `resumoMesas` faz o servidor devolver os indicadores de TODAS as mesas (só a Central usa).
+export async function fetchFila(
+  eventoId: string,
+  mesaId?: string,
+  opcoes?: { resumoMesas?: boolean },
+) {
+  const mesa = mesaId ? `&mesaId=${encodeURIComponent(mesaId)}` : "";
+  const resumo = opcoes?.resumoMesas ? "&resumoMesas=1" : "";
+
+  return chamar<FilaPayload>(
+    `/api/prometeu/fila?eventoId=${encodeURIComponent(eventoId)}${mesa}${resumo}`,
+  );
+}
+
+// A jornada de UM cliente (modal da Central). Buscada só ao abrir, fora do polling da fila.
+export async function fetchJornada(credenciadoId: string) {
+  return chamar<{ passos: PrometeuPassoJornada[] }>(
+    `/api/prometeu/jornada?credenciadoId=${encodeURIComponent(credenciadoId)}`,
+  );
 }
 
 export async function moverCredenciado(input: {
@@ -178,13 +252,217 @@ export async function confirmarPagamento(input: {
   });
 }
 
-// O bip do QR na recepcao. Devolve `naJanela`, que decide o regime da fila desse cliente.
+// O check-in (leitura do QR) na recepcao. Devolve `naJanela`, que decide o regime da fila
+// desse cliente.
 export async function fazerCheckInRemoto(input: {
   credenciadoId: string;
   eventoId: string;
 }) {
   return chamar<{ naJanela: boolean; ok: boolean }>("/api/prometeu/credenciados", {
     body: JSON.stringify({ acao: "checkin", ...input }),
+    method: "PATCH",
+  });
+}
+
+// OS OUTROS DOIS BIPS DO DIA. Mesma leitura de QR do check-in, postos diferentes:
+//  • SALAO confirma uma chamada — se a pessoa NAO foi chamada o servidor devolve 409 e nada se
+//    move (e' a trava anti-fura-fila; a tela precisa mostrar a recusa, nao engolir);
+//  • SECRETARIA registra a chegada de quem foi por conta propria, sem chamada previa.
+// `credenciado` volta com o nome pra tela confirmar em voz alta quem acabou de passar.
+export type BipDePosto = {
+  credenciado: { etapa: string; nome: string } | null;
+  ok: boolean;
+};
+
+// O organizador do salão chamando o próximo da fila. NÃO move etapa: quem move é o bip do QR,
+// que é a confirmação de que apareceu a pessoa certa.
+export async function chamarDoSalaoRemoto(input: {
+  credenciadoId: string;
+  eventoId: string;
+}) {
+  return chamar<{ ok: boolean }>("/api/prometeu/credenciados", {
+    body: JSON.stringify({ acao: "chamar-do-salao", ...input }),
+    method: "PATCH",
+  });
+}
+
+// A PA (folha A4 com a proposta feita no salão), fotografada no bip da secretaria.
+//
+// Sobe DIRETO pro Storage: a foto de um A4 passa fácil dos 4,5 MB que a function da Vercel
+// aceita no corpo. O servidor só assina a URL e depois carimba o caminho no credenciado.
+//
+// Devolve o `path` para quem chamou registrar em seguida — e é justamente esse caminho que não
+// pode se perder no meio (foi o que deixou anexo invisível no Zeus).
+export async function enviarPaRemoto(input: {
+  arquivo: Blob;
+  credenciadoId: string;
+  eventoId: string;
+}): Promise<{ error?: string; path?: string }> {
+  const preparo = await chamar<{ bucket: string; path: string; token: string }>(
+    "/api/prometeu/pa",
+    {
+      body: JSON.stringify({
+        credenciadoId: input.credenciadoId,
+        eventoId: input.eventoId,
+      }),
+      method: "POST",
+    },
+  );
+
+  if (preparo.error || !preparo.data) {
+    return { error: preparo.error ?? "Falha ao preparar o envio da PA." };
+  }
+
+  const client = getHubSupabaseClient();
+
+  if (!client) {
+    return { error: "Conexao indisponivel para enviar a PA." };
+  }
+
+  const envio = await client.storage
+    .from(preparo.data.bucket)
+    .uploadToSignedUrl(preparo.data.path, preparo.data.token, input.arquivo, {
+      contentType: "image/jpeg",
+    });
+
+  if (envio.error) {
+    return { error: envio.error.message };
+  }
+
+  // Só DEPOIS de o arquivo estar no bucket o caminho é gravado. Na ordem inversa, uma falha de
+  // upload deixaria o credenciado apontando para um arquivo que não existe.
+  const carimbo = await chamar<{ ok: boolean }>("/api/prometeu/pa", {
+    body: JSON.stringify({
+      credenciadoId: input.credenciadoId,
+      path: preparo.data.path,
+    }),
+    method: "PATCH",
+  });
+
+  if (carimbo.error) return { error: carimbo.error };
+
+  return { path: preparo.data.path };
+}
+
+// URL temporária para ABRIR a PA (o atendente remoto lançando a proposta).
+export async function urlDaPaRemoto(path: string) {
+  return chamar<{ url: string }>(
+    `/api/prometeu/pa?path=${encodeURIComponent(path)}`,
+  );
+}
+
+// AS RESERVAS DO DIA, LIDAS DO C2X. O hub não registra reserva (Lucas, 01/08: "esses dados vem
+// tudo do C2X, nada é feito no hub") — o corretor lança o pedido de aquisição lá e aqui a gente
+// reflete. Vem agrupado por CLIENTE, com as unidades dele, porque a aba lista pessoas.
+export type ReservaC2x = {
+  cliente: string;
+  corretor: string | null;
+  cpf: string;
+  credenciadoId: string | null;
+  // Hora da reserva mais antiga da pessoa: base do "tempo na reserva" e do alerta de 30 min.
+  desde: string;
+  etapaNoEvento: string | null;
+  imobiliaria: string | null;
+  // Reservou no C2X mas não passou pelo credenciamento do evento. Aparece, marcado.
+  naFilaDoEvento: boolean;
+  unidades: string[];
+};
+
+export async function fetchReservas(eventoId?: string) {
+  const qs = eventoId ? `?eventoId=${encodeURIComponent(eventoId)}` : "";
+  return chamar<{
+    atualizadoEm: string;
+    clientes: ReservaC2x[];
+    resumo: { clientes: number; foraDaFila: number; unidades: number };
+  }>(`/api/prometeu/reservas${qs}`);
+}
+
+// Chamou, rechamou, ninguem apareceu: tira do painel de transito sem perder a pessoa. `zona` = o
+// posto que marcou, pra o no-show aparecer so' na tela dele (o do salao nao vaza pra recepcao).
+export async function marcarNoShowRemoto(input: { credenciadoId: string; zona?: string }) {
+  return chamar<{ ok: boolean }>("/api/prometeu/credenciados", {
+    body: JSON.stringify({ acao: "no-show", ...input }),
+    method: "PATCH",
+  });
+}
+
+// EXCLUIR DA OPERAÇÃO — o "No-show" definitivo (decisão D2 do Lucas, 27/07). Não confundir com
+// `marcarNoShowRemoto`, que é o "Não veio" recuperável: aquele manda para a aba Aguardando
+// retorno, este carimba `encerrado_em` e a pessoa some das filas, da aba de retorno e das demais
+// telas do evento. Não é delete — o registro fica no histórico para o relatório do dia.
+export async function excluirCredenciadoRemoto(input: {
+  credenciadoId: string;
+  motivo?: string;
+}) {
+  return chamar<{ ok: boolean }>("/api/prometeu/credenciados", {
+    body: JSON.stringify({ acao: "excluir", ...input }),
+    method: "PATCH",
+  });
+}
+
+// O LINK DA FILA daquele cliente (pagina publica /publico/fila, assinada por HMAC). E' o que o
+// botao de WhatsApp da fila reenvia: nao e' mensagem nova, e' o MESMO link que a pessoa deveria
+// ter recebido no check-in para acompanhar a propria posicao no celular (decisao D1 do Lucas,
+// 27/07). A URL so' pode ser montada no servidor, que e' onde vive a chave da assinatura.
+export async function linkDaFilaRemoto(input: {
+  credenciadoId: string;
+  eventoId: string;
+}) {
+  return chamar<{ link: string }>(
+    `/api/prometeu/link-fila?credenciadoId=${encodeURIComponent(input.credenciadoId)}&eventoId=${encodeURIComponent(input.eventoId)}`,
+  );
+}
+
+// ── MAESTRO dos telões: fundo (música/vídeo) sincronizado em todas as TVs ──
+export type PalcoEstado = {
+  atualizadoEm?: string;
+  mudo?: boolean;
+  tocando?: boolean;
+  videoId?: string | null;
+  volume?: number;
+};
+
+export async function fetchPalco() {
+  return chamar<{
+    eventoId: string;
+    // Links da TV independente (token HMAC, sem login) — o Setup mostra com botão copiar.
+    linksTv?: { salao?: string | null; secretaria?: string | null };
+    palco: PalcoEstado | null;
+  }>("/api/prometeu/palco");
+}
+
+export async function comandarPalco(cmd: PalcoEstado) {
+  return chamar<{ eventoId: string; palco: PalcoEstado }>("/api/prometeu/palco", {
+    body: JSON.stringify(cmd),
+    method: "POST",
+  });
+}
+
+export async function bipDoSalaoRemoto(input: {
+  credenciadoId: string;
+  eventoId: string;
+}) {
+  return chamar<BipDePosto>("/api/prometeu/credenciados", {
+    body: JSON.stringify({ acao: "bip-salao", ...input }),
+    method: "PATCH",
+  });
+}
+
+export async function bipDaSecretariaRemoto(input: {
+  credenciadoId: string;
+  eventoId: string;
+}) {
+  return chamar<BipDePosto>("/api/prometeu/credenciados", {
+    body: JSON.stringify({ acao: "bip-secretaria", ...input }),
+    method: "PATCH",
+  });
+}
+
+// Carimba que a etiqueta daquele cliente ja foi impressa (etiqueta_impressa_em). E o que deixa
+// a tela mostrar quem falta, em vez de o time reimprimir o lote inteiro por via das duvidas.
+export async function marcarEtiquetaImpressaRemoto(credenciadoId: string) {
+  return chamar<{ ok: boolean }>("/api/prometeu/credenciados", {
+    body: JSON.stringify({ acao: "etiqueta", credenciadoId }),
     method: "PATCH",
   });
 }
@@ -213,4 +491,112 @@ export async function adicionarCredenciadoRemoto(input: {
     body: JSON.stringify(input),
     method: "POST",
   });
+}
+
+// -------------------------------------------------------------- operacao do dia
+
+// CHAMAR o cliente: para uma mesa (secretaria) ou para uma zona (salao, com moverPara).
+export async function chamarCredenciadoRemoto(input: {
+  credenciadoId: string;
+  eventoId: string;
+  mesaId?: string;
+  moverPara?: PrometeuEtapa;
+  zona?: PrometeuZona;
+}) {
+  return chamar<{ ok: boolean }>("/api/prometeu/credenciados", {
+    body: JSON.stringify({ acao: "chamar", ...input }),
+    method: "PATCH",
+  });
+}
+
+// ATENDER: o cliente compareceu na mesa (ocupada -> atendimento).
+export async function atenderRemoto(input: {
+  credenciadoId: string;
+  mesaId: string;
+}) {
+  return chamar<{ ok: boolean }>("/api/prometeu/credenciados", {
+    body: JSON.stringify({ acao: "atender", ...input }),
+    method: "PATCH",
+  });
+}
+
+// LIBERAR a mesa (fim do atendimento). `etapa` opcional avanca/direciona o cliente no mesmo ato.
+export async function liberarMesaRemoto(input: {
+  credenciadoId?: string;
+  etapa?: PrometeuEtapa;
+  mesaId: string;
+  motivo?: string;
+}) {
+  return chamar<{ ok: boolean }>("/api/prometeu/credenciados", {
+    body: JSON.stringify({ acao: "liberar", ...input }),
+    method: "PATCH",
+  });
+}
+
+// SENTAR na mesa: registra que ESTE atendente esta na mesa (o Mapa do salao mostra o nome).
+export async function sentarNaMesaRemoto(input: { mesaId: string; nome: string }) {
+  return chamar<{ ok: boolean }>("/api/prometeu/mesa", {
+    body: JSON.stringify({ acao: "sentar", ...input }),
+    method: "PATCH",
+  });
+}
+
+// SAIR da mesa: limpa o atendente da mesa.
+export async function sairDaMesaRemoto(input: { mesaId: string }) {
+  return chamar<{ ok: boolean }>("/api/prometeu/mesa", {
+    body: JSON.stringify({ acao: "sair", ...input }),
+    method: "PATCH",
+  });
+}
+
+// -------------------------------------------------------------- operadores
+
+// LOGIN do operador do evento (conta propria, nao e' usuario do hub). O cookie de sessao e' setado
+// pelo SERVIDOR na resposta; o fetch same-origin do helper `chamar` ja carrega/recebe o cookie.
+export async function loginOperador(username: string, senha: string) {
+  return chamar<PrometeuOperadorEu>("/api/prometeu/operador/login", {
+    body: JSON.stringify({ senha, username }),
+    method: "POST",
+  });
+}
+
+// LOGOUT: o servidor apaga o cookie de sessao.
+export async function logoutOperador() {
+  return chamar<{ ok: boolean }>("/api/prometeu/operador/logout", {
+    method: "POST",
+  });
+}
+
+// "Quem sou eu": le o cookie de sessao. Devolve null quando nao ha operador logado.
+export async function fetchOperadorEu() {
+  return chamar<PrometeuOperadorEu>("/api/prometeu/operador/eu");
+}
+
+// ADMIN (Setup, com sessao do hub): lista, cria e remove operadores do evento.
+export async function fetchOperadores(eventoId: string) {
+  return chamar<PrometeuOperadorResumo[]>(
+    `/api/prometeu/operadores?eventoId=${encodeURIComponent(eventoId)}`,
+  );
+}
+
+export async function criarOperadorRemoto(input: {
+  eventoId: string;
+  mesaId?: string | null;
+  nome: string;
+  perfil: PrometeuPapel;
+  senha: string;
+  username: string;
+  zona: PrometeuZona;
+}) {
+  return chamar<{ id: string; ok: boolean }>("/api/prometeu/operadores", {
+    body: JSON.stringify(input),
+    method: "POST",
+  });
+}
+
+export async function removerOperadorRemoto(id: string) {
+  return chamar<{ ok: boolean }>(
+    `/api/prometeu/operadores?id=${encodeURIComponent(id)}`,
+    { method: "DELETE" },
+  );
 }

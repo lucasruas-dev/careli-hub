@@ -1,0 +1,387 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Vale do Ouro · Fechamento do Atendimento · 01/08</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  :root{
+    --canvas:#f6f4ef; --surface:#ffffff; --linha:#e5e0d5;
+    --ink:#211d16; --fraca:#7a715f;
+    --ouro:#a07c3b; --ouro-claro:#c9a45c; --terracota:#b5451b; --terra-claro:#c96a3b;
+    --verde:#4d7c43; --alerta:#b91c1c;
+  }
+  body{background:var(--canvas);color:var(--ink);font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{max-width:1100px;margin:0 auto;padding:26px 20px 60px}
+  .num{font-variant-numeric:tabular-nums}
+  header{display:flex;flex-wrap:wrap;align-items:center;gap:18px;padding:6px 0 22px;border-bottom:2px solid var(--linha)}
+  .marca-nome .vale{font-size:26px;font-weight:800;letter-spacing:.05em}
+  .marca-nome .cidade{font-size:11px;letter-spacing:.24em;text-transform:uppercase;color:var(--fraca);margin-top:2px}
+  .hero-right{margin-left:auto;text-align:right}
+  .badge{display:inline-flex;align-items:center;gap:7px;background:#fdf6e8;border:1px solid #e8d9b8;border-radius:99px;padding:5px 12px;font-size:11.5px;font-weight:800;letter-spacing:.07em;color:var(--ouro)}
+  .hero-right .quando{color:var(--fraca);font-size:12.5px;margin-top:6px}
+  .placar{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin:24px 0 6px}
+  .kpi{background:var(--surface);border:1px solid var(--linha);border-radius:14px;padding:18px 20px;box-shadow:0 1px 2px #00000008}
+  .kpi.destaque{border-color:#d8c69a;background:linear-gradient(165deg,#fffdf7,#fdf6e8)}
+  .kpi .lb{font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--fraca);font-weight:800}
+  .kpi .v{font-size:38px;font-weight:800;line-height:1.15;margin-top:5px}
+  .kpi.destaque .v{color:var(--ouro)}
+  .kpi .sub{color:var(--fraca);font-size:12.5px;margin-top:3px}
+  section{margin-top:30px}
+  h2{font-size:19px;font-weight:800;margin-bottom:3px}
+  .h-sub{color:var(--fraca);font-size:13px;margin-bottom:12px}
+  .card{background:var(--surface);border:1px solid var(--linha);border-radius:14px;padding:18px 20px;box-shadow:0 1px 2px #00000008}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media(max-width:820px){.grid2{grid-template-columns:1fr}}
+
+  /* régua da jornada */
+  .regua{display:flex;border-radius:10px;overflow:hidden;border:1px solid var(--linha);height:44px;margin:6px 0 14px}
+  .regua div{display:flex;flex-direction:column;align-items:center;justify-content:center;color:#fff;font-size:11px;font-weight:800;line-height:1.25;white-space:nowrap;overflow:hidden}
+  .etapas{display:grid;gap:8px}
+  .erow{display:grid;grid-template-columns:minmax(120px,190px) 1fr;gap:12px;align-items:center;padding:9px 12px;border:1px solid var(--linha);border-radius:12px;background:#fdfcf9}
+  .erow.gargalo{border-color:#e8b4a8;background:#fdf3f0}
+  .erow .nome{font-weight:800;font-size:13.5px}
+  .erow .nome small{display:block;font-weight:600;color:var(--fraca);font-size:11px}
+  .erow .nums{display:flex;gap:18px;flex-wrap:wrap;font-size:13px}
+  .erow .nums b{font-size:16px}
+  .erow .nums span{color:var(--fraca);font-size:11px;display:block}
+  .erow.gargalo .nums b{color:var(--alerta)}
+
+  .funil{display:flex;flex-direction:column;gap:8px}
+  .fstep{display:grid;grid-template-columns:190px 1fr 120px;gap:12px;align-items:center}
+  @media(max-width:640px){.fstep{grid-template-columns:120px 1fr 90px}}
+  .fstep .rot{font-size:13px;font-weight:700}
+  .fstep .trilho{background:#efece4;border-radius:8px;height:28px;overflow:hidden}
+  .fstep .fill{height:100%;border-radius:8px;background:linear-gradient(90deg,var(--ouro),var(--ouro-claro));display:flex;align-items:center;justify-content:flex-end;padding-right:10px;color:#fff;font-weight:800;font-size:13px}
+  .fstep .pct{text-align:right;color:var(--fraca);font-size:12.5px}
+  .hrow{display:grid;grid-template-columns:minmax(90px,140px) 1fr 150px;gap:10px;align-items:center;padding:5px 0;font-size:13.5px}
+  .hrow .trilho{background:#efece4;border-radius:6px;height:15px;overflow:hidden}
+  .hrow .fill{height:100%;border-radius:6px;background:linear-gradient(90deg,var(--ouro),var(--ouro-claro))}
+  .hrow .val{text-align:right;color:var(--fraca);font-size:12.5px}
+  .hrow .val b{color:var(--ink);font-size:13.5px}
+  .curva-wrap{overflow-x:auto}
+  .curva-svg{width:100%;min-width:520px;display:block}
+  .kv{display:flex;justify-content:space-between;gap:10px;padding:4.5px 0;font-size:13.5px;border-bottom:1px dashed #ece7db}
+  .kv:last-child{border-bottom:0}
+  .kv .q{color:var(--fraca)}
+  .kv .q b{color:var(--ink)}
+  .mini-lb{font-size:11px;letter-spacing:.13em;text-transform:uppercase;color:var(--fraca);font-weight:800;margin-bottom:8px}
+  .selo{border-left:4px solid var(--verde);background:#f0f6ee;border-radius:0 10px 10px 0;padding:12px 16px;font-size:13.5px;margin-top:14px}
+  .selo b{color:var(--verde)}
+  .selo.dor{border-left-color:var(--alerta);background:#fdf0ee}
+  .selo.dor b{color:var(--alerta)}
+  footer{margin-top:40px;padding-top:14px;border-top:2px solid var(--linha);display:flex;flex-wrap:wrap;gap:8px;justify-content:space-between;color:#9a917e;font-size:12px}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="marca-nome">
+      <div class="vale">VALE DO OURO</div>
+      <div class="cidade">Fechamento do atendimento · Dia 1</div>
+    </div>
+    <div class="hero-right">
+      <div class="badge">SEXTA · 01/08/2026 · DIA ENCERRADO</div>
+      <div class="quando">Prometeu (fila, mesas e jornadas) · 453 movimentações analisadas</div>
+    </div>
+  </header>
+
+  <div class="placar">
+    <div class="kpi destaque">
+      <div class="lb">Check-ins na recepção</div>
+      <div class="v num">142</div>
+      <div class="sub">103 credenciados ANTES da abertura, em 81 minutos</div>
+    </div>
+    <div class="kpi destaque">
+      <div class="lb">Atendimentos concluídos</div>
+      <div class="v num">108</div>
+      <div class="sub">76% de quem fez check-in fechou o fluxo</div>
+    </div>
+    <div class="kpi">
+      <div class="lb">Jornada típica</div>
+      <div class="v num">5h05</div>
+      <div class="sub">da abertura (9h) à conclusão (mediana) · a mais rápida: 15 min</div>
+    </div>
+    <div class="kpi">
+      <div class="lb">Chamadas de mesa</div>
+      <div class="v num">231</div>
+      <div class="sub">100% resolvidas · 4 min da chamada até sentar</div>
+    </div>
+  </div>
+
+  <section>
+    <h2>O cenário do check-in</h2>
+    <div class="h-sub">A largada: quanto o time levou para credenciar a casa antes de o evento abrir</div>
+    <div class="card">
+      <div class="placar" style="margin:0">
+        <div class="kpi" style="box-shadow:none">
+          <div class="lb">Credenciados antes das 9h</div>
+          <div class="v num" style="font-size:32px">103</div>
+          <div class="sub">das 7h35 às 8h56</div>
+        </div>
+        <div class="kpi" style="box-shadow:none">
+          <div class="lb">Tempo total da largada</div>
+          <div class="v num" style="font-size:32px">81 min</div>
+          <div class="sub">ritmo médio de 76 pessoas/hora</div>
+        </div>
+        <div class="kpi" style="box-shadow:none">
+          <div class="lb">Melhor quarto de hora</div>
+          <div class="v num" style="font-size:32px">49</div>
+          <div class="sub">check-ins entre 7h30 e 7h45 — 1 a cada 18 segundos</div>
+        </div>
+      </div>
+      <div class="selo"><b>O credenciamento não foi gargalo em nenhum momento:</b> a casa inteira entrou antes de o evento abrir. Por isso as esperas abaixo contam A PARTIR DAS 9h, a hora da abertura — chegar cedo foi escolha do cliente, não fila do evento.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>A régua da jornada</h2>
+    <div class="h-sub">Onde o tempo do cliente foi gasto a partir da abertura (9h) — mediana, média e o pior caso (10% mais lentos)</div>
+    <div class="card">
+      <div class="regua">
+        <div style="width:39%;background:#c9a45c">RECEPÇÃO · 1h54</div>
+        <div style="width:13%;background:#8a6a30">SALÃO 39m</div>
+        <div style="width:44%;background:#c96a3b">SECRETARIA · 2h10</div>
+        <div style="width:4%;background:#4d7c43">7m</div>
+      </div>
+      <div class="etapas">
+        <div class="erow">
+          <div class="nome">1 · Recepção<small>da abertura (9h) até ser chamado ao salão</small></div>
+          <div class="nums">
+            <div><b class="num">1h54</b><span>mediana</span></div>
+            <div><b class="num">1h52</b><span>média</span></div>
+            <div><b class="num">3h08</b><span>10% esperaram mais que</span></div>
+          </div>
+        </div>
+        <div class="erow">
+          <div class="nome">2 · Salão de vendas<small>negociação com o corretor</small></div>
+          <div class="nums">
+            <div><b class="num">39m</b><span>mediana</span></div>
+            <div><b class="num">51m</b><span>média</span></div>
+            <div><b class="num">1h22</b><span>10% levaram mais que</span></div>
+          </div>
+        </div>
+        <div class="erow gargalo">
+          <div class="nome">3 · Secretaria (espera)<small>da chegada até a mesa chamar — o gargalo do dia</small></div>
+          <div class="nums">
+            <div><b class="num">2h10</b><span>mediana</span></div>
+            <div><b class="num">1h51</b><span>média</span></div>
+            <div><b class="num">2h44</b><span>10% esperaram mais que</span></div>
+          </div>
+        </div>
+        <div class="erow">
+          <div class="nome">4 · Mesa (fechamento)<small>de sentar até concluir</small></div>
+          <div class="nums">
+            <div><b class="num">7m</b><span>mediana</span></div>
+            <div><b class="num">15m</b><span>média</span></div>
+            <div><b class="num">36m</b><span>10% levaram mais que</span></div>
+          </div>
+        </div>
+      </div>
+      <div class="selo dor"><b>O gargalo foi ESPERA, não atendimento:</b> na mesa o fechamento levou 7 minutos — mas, contando da abertura às 9h, o cliente típico esperou 1h54 para entrar no salão e mais 2h10 pela mesa. Jornada completa: mediana de 5h05, e 10% passaram de 6h37 (a mais longa: 7h28). A maior fatia da espera é a da secretaria — é lá que o dia 2 ganha tempo.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>A onda da secretaria</h2>
+    <div class="h-sub">Quantas pessoas estavam esperando mesa, hora a hora</div>
+    <div class="card curva-wrap">
+      <svg class="curva-svg" viewBox="0 0 720 210" preserveAspectRatio="xMidYMid meet">
+        <defs><linearGradient id="ar" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#c96a3b" stop-opacity=".4"/><stop offset="1" stop-color="#c96a3b" stop-opacity="0"/></linearGradient></defs>
+        <line x1="46" y1="170" x2="700" y2="170" stroke="#e5e0d5"/>
+        <!-- 9h:1 10h:10 11h:28 12h:35 13h:60 14h:53 15h:25 -->
+        <path d="M70 167.6 L175 146 L280 102.8 L385 86 L490 26 L595 42.8 L700 110 L700 170 L70 170 Z" fill="url(#ar)"/>
+        <path d="M70 167.6 L175 146 L280 102.8 L385 86 L490 26 L595 42.8 L700 110" fill="none" stroke="#b5451b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+        <g fill="#b5451b">
+          <circle cx="70" cy="167.6" r="3"/><circle cx="175" cy="146" r="4"/><circle cx="280" cy="102.8" r="4"/><circle cx="385" cy="86" r="4"/><circle cx="490" cy="26" r="6" stroke="#fff" stroke-width="2"/><circle cx="595" cy="42.8" r="4"/><circle cx="700" cy="110" r="4"/>
+        </g>
+        <g font-size="12" font-weight="800" font-family="system-ui" text-anchor="middle" fill="#211d16">
+          <text x="175" y="136">10</text><text x="280" y="93">28</text><text x="385" y="76">35</text><text x="490" y="15" font-size="16" fill="#b5451b">60</text><text x="595" y="33">53</text><text x="700" y="100">25</text>
+        </g>
+        <g fill="#7a715f" font-size="11" font-family="system-ui" text-anchor="middle">
+          <text x="70" y="188">9h</text><text x="175" y="188">10h</text><text x="280" y="188">11h</text><text x="385" y="188">12h</text><text x="490" y="188">13h</text><text x="595" y="188">14h</text><text x="700" y="188">15h</text>
+        </g>
+      </svg>
+      <div class="h-sub" style="margin:10px 0 0">Pico às <b>13h: 60 pessoas esperando mesa ao mesmo tempo</b>. Para o dia 2: reforçar as mesas na janela 12h–15h resolve a maior dor do cliente.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Salão × Mesas: o descompasso que criou a fila</h2>
+    <div class="h-sub">Chamadas por hora em cada posto — a rajada da manhã contra o ritmo constante da tarde</div>
+    <div class="card curva-wrap">
+      <svg class="curva-svg" viewBox="0 0 720 215" preserveAspectRatio="xMidYMid meet">
+        <line x1="46" y1="170" x2="700" y2="170" stroke="#e5e0d5"/>
+        <!-- salão (dourado): 9h:26 10h:26 11h:30 12h:22 13h:1 depois 0 -->
+        <path d="M70 53 L148.8 53 L227.5 35 L306.3 71 L385 165.5 L463.8 170 L542.5 170 L621.3 170 L700 170" fill="none" stroke="#a07c3b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+        <!-- mesas (terracota): 5 6 13 16 20 31 22 9 5 -->
+        <path d="M70 147.5 L148.8 143 L227.5 111.5 L306.3 98 L385 80 L463.8 30.5 L542.5 71 L621.3 129.5 L700 147.5" fill="none" stroke="#b5451b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+        <g fill="#a07c3b">
+          <circle cx="70" cy="53" r="4"/><circle cx="148.8" cy="53" r="4"/><circle cx="227.5" cy="35" r="5.5" stroke="#fff" stroke-width="2"/><circle cx="306.3" cy="71" r="4"/><circle cx="385" cy="165.5" r="3"/>
+        </g>
+        <g fill="#b5451b">
+          <circle cx="70" cy="147.5" r="3"/><circle cx="148.8" cy="143" r="3"/><circle cx="227.5" cy="111.5" r="3"/><circle cx="306.3" cy="98" r="4"/><circle cx="385" cy="80" r="4"/><circle cx="463.8" cy="30.5" r="5.5" stroke="#fff" stroke-width="2"/><circle cx="542.5" cy="71" r="4"/><circle cx="621.3" cy="129.5" r="3"/><circle cx="700" cy="147.5" r="3"/>
+        </g>
+        <g font-size="12" font-weight="800" font-family="system-ui" text-anchor="middle">
+          <text x="227.5" y="24" fill="#a07c3b" font-size="15">30</text>
+          <text x="70" y="43" fill="#a07c3b">26</text>
+          <text x="463.8" y="20" fill="#b5451b" font-size="15">31</text>
+          <text x="385" y="70" fill="#b5451b">20</text>
+        </g>
+        <g fill="#7a715f" font-size="11" font-family="system-ui" text-anchor="middle">
+          <text x="70" y="188">9h</text><text x="148.8" y="188">10h</text><text x="227.5" y="188">11h</text><text x="306.3" y="188">12h</text><text x="385" y="188">13h</text><text x="463.8" y="188">14h</text><text x="542.5" y="188">15h</text><text x="621.3" y="188">16h</text><text x="700" y="188">17h</text>
+        </g>
+        <g font-size="11.5" font-family="system-ui" font-weight="700">
+          <text x="60" y="210" fill="#a07c3b">— Salão chamando (104 até meio-dia, parou às 13h)</text>
+          <text x="420" y="210" fill="#b5451b">— Mesas chamando (~20 por hora, pico 14h)</text>
+        </g>
+      </svg>
+      <div class="selo dor" style="margin-top:12px"><b>A matemática da fila:</b> o salão despejou 104 pessoas na esteira em 4 horas; as mesas absorviam ~20 por hora. A diferença acumulou nos 60 esperando às 13h. Para o dia 2: ou o salão chama no ritmo das mesas, ou as mesas reforçam na janela 12h–15h.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>O motor da secretaria, hora a hora</h2>
+    <div class="h-sub">Chamou → sentou → concluiu: as três engrenagens giraram juntas</div>
+    <div class="card">
+      <div class="hrow" style="grid-template-columns:minmax(70px,90px) 1fr 1fr 1fr;font-weight:800;color:var(--fraca);font-size:11px;text-transform:uppercase;letter-spacing:.08em">
+        <div>Hora</div><div>Chamadas</div><div>Sentaram</div><div>Concluíram</div>
+      </div>
+      <div class="hrow" style="grid-template-columns:minmax(70px,90px) 1fr 1fr 1fr"><div class="num">9h–11h</div><div class="num"><b>24</b></div><div class="num"><b>24</b></div><div class="num"><b>15</b></div></div>
+      <div class="hrow" style="grid-template-columns:minmax(70px,90px) 1fr 1fr 1fr"><div class="num">12h</div><div class="num"><b>16</b></div><div class="num"><b>10</b></div><div class="num"><b>9</b></div></div>
+      <div class="hrow" style="grid-template-columns:minmax(70px,90px) 1fr 1fr 1fr"><div class="num">13h</div><div class="num"><b>20</b></div><div class="num"><b>22</b></div><div class="num"><b>17</b></div></div>
+      <div class="hrow" style="grid-template-columns:minmax(70px,90px) 1fr 1fr 1fr"><div class="num">14h ⭐</div><div class="num"><b>31</b></div><div class="num"><b>33</b></div><div class="num"><b>31</b></div></div>
+      <div class="hrow" style="grid-template-columns:minmax(70px,90px) 1fr 1fr 1fr"><div class="num">15h</div><div class="num"><b>22</b></div><div class="num"><b>23</b></div><div class="num"><b>21</b></div></div>
+      <div class="hrow" style="grid-template-columns:minmax(70px,90px) 1fr 1fr 1fr"><div class="num">16h–17h</div><div class="num"><b>14</b></div><div class="num"><b>15</b></div><div class="num"><b>15</b></div></div>
+      <div class="selo" style="margin-top:12px"><b>Às 14h a máquina rodou redonda:</b> 31 chamadas, 33 sentaram, 31 concluíram — a hora de ouro da secretaria, já com as correções do meio do dia no ar. Chamada virando conclusão na mesma hora.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>Diário de bordo — os erros do dia</h2>
+    <div class="h-sub">O que foi reportado ao vivo pela operação e o desfecho de cada um</div>
+    <div class="card">
+      <div class="kv"><span class="k">Colaborador da organização caía na tela errada ao entrar</span><span class="q">manhã · <b style="color:var(--verde)">resolvido</b></span></div>
+      <div class="kv"><span class="k">Cliente preso na lista de "não vieram" sem ter faltado</span><span class="q">manhã · <b style="color:var(--verde)">resolvido</b></span></div>
+      <div class="kv"><span class="k">Telão não anunciava as chamadas após o "Iniciar evento"</span><span class="q">manhã · <b style="color:var(--verde)">resolvido</b></span></div>
+      <div class="kv"><span class="k">Fila lenta para carregar no celular dos organizadores</span><span class="q">manhã · <b style="color:var(--verde)">resolvido</b></span></div>
+      <div class="kv"><span class="k">Posição da fila errada para o time externo</span><span class="q">manhã · <b style="color:var(--verde)">resolvido</b></span></div>
+      <div class="kv"><span class="k">Credenciados que não apareciam para imprimir etiqueta</span><span class="q">manhã · <b style="color:var(--verde)">resolvido</b> (160 liberados)</span></div>
+      <div class="kv"><span class="k">Aba Reservas não refletia o que estava no C2X</span><span class="q">almoço · <b style="color:var(--verde)">resolvido</b> (ligada direto no C2X)</span></div>
+      <div class="kv"><span class="k">Time não conseguia chamar na fila da secretaria</span><span class="q">tarde · <b style="color:var(--verde)">resolvido</b></span></div>
+      <div class="kv"><span class="k">Check-in da secretaria lia o QR mas não punha na fila</span><span class="q">tarde · <b style="color:var(--verde)">resolvido</b></span></div>
+      <div class="kv"><span class="k">Fila da secretaria parada ("não funciona nada")</span><span class="q">tarde · <b style="color:var(--verde)">resolvido</b> (revisão completa + correção em lote)</span></div>
+      <div class="kv"><span class="k">Mesa chamava e ficava sem os botões Compareceu / Não veio</span><span class="q">tarde · <b style="color:var(--verde)">resolvido</b></span></div>
+      <div class="kv"><span class="k">Telão mudo nas rechamadas</span><span class="q">tarde · <b style="color:var(--verde)">resolvido</b></span></div>
+      <div class="kv"><span class="k">Duas mesas conseguiam chamar o mesmo cliente</span><span class="q">tarde · <b style="color:var(--verde)">resolvido</b> (trava no servidor)</span></div>
+      <div class="kv"><span class="k">Bip da secretaria parou de ler os crachás</span><span class="q">fim da tarde · <b style="color:var(--verde)">resolvido</b></span></div>
+      <div class="kv"><span class="k">WhatsApp "é a sua vez" não chegava no celular do cliente</span><span class="q">detectado à tarde · <b style="color:#b8860b">pendente</b> (template em análise na Meta)</span></div>
+      <div class="selo" style="margin-top:12px"><b>14 de 15 resolvidos no próprio dia</b>, com a operação rodando. O único pendente (WhatsApp de chamada) tem alternativa no ar: telão + página do cliente no celular.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>O funil real do dia</h2>
+    <div class="h-sub">Quantas pessoas passaram por cada etapa (pelas movimentações registradas)</div>
+    <div class="card">
+      <div class="funil">
+        <div class="fstep">
+          <div class="rot">Check-in na recepção</div>
+          <div class="trilho"><div class="fill" style="width:100%">142</div></div>
+          <div class="pct num">100%</div>
+        </div>
+        <div class="fstep">
+          <div class="rot">Salão (negociação)</div>
+          <div class="trilho"><div class="fill" style="width:63.4%">90</div></div>
+          <div class="pct num">63% dos presentes</div>
+        </div>
+        <div class="fstep">
+          <div class="rot">Secretaria</div>
+          <div class="trilho"><div class="fill" style="width:78.9%">112</div></div>
+          <div class="pct num">79% dos presentes</div>
+        </div>
+        <div class="fstep">
+          <div class="rot">Concluíram</div>
+          <div class="trilho"><div class="fill" style="width:76.1%">108</div></div>
+          <div class="pct num">76% dos presentes</div>
+        </div>
+      </div>
+      <div class="selo"><b>96% de aproveitamento na ponta:</b> das 112 pessoas que chegaram à secretaria, 108 concluíram. E 22 foram direto ao fechamento sem passar pelo salão registrado — cliente decidido não fez fila dupla.</div>
+    </div>
+  </section>
+
+  <section>
+    <h2>O ritmo do dia</h2>
+    <div class="h-sub">Chegadas de manhã cedo, conclusões à tarde — as duas ondas do lançamento</div>
+    <div class="card curva-wrap">
+      <svg class="curva-svg" viewBox="0 0 760 230" preserveAspectRatio="xMidYMid meet">
+        <g stroke="#e5e0d5" stroke-width="1"><line x1="46" y1="180" x2="740" y2="180"/></g>
+        <path d="M70 30.9 L130 106.5 L190 158.4 L250 177.8 L310 171.3 L370 171.3 L430 164.9 L490 171.3 L550 175.7 L610 175.7 L670 169.2 L730 180" fill="none" stroke="#a07c3b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+        <path d="M70 180 L130 180 L190 177.8 L250 173.5 L310 156.2 L370 160.5 L430 143.2 L490 112.9 L550 134.5 L610 158.4 L670 169.2 L730 177.8" fill="none" stroke="#b5451b" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+        <g fill="#a07c3b">
+          <circle cx="70" cy="30.9" r="5.5" stroke="#fff" stroke-width="2"/><circle cx="130" cy="106.5" r="4"/><circle cx="190" cy="158.4" r="3"/><circle cx="250" cy="177.8" r="3"/><circle cx="310" cy="171.3" r="3"/><circle cx="370" cy="171.3" r="3"/><circle cx="430" cy="164.9" r="3"/><circle cx="490" cy="171.3" r="3"/><circle cx="550" cy="175.7" r="3"/><circle cx="610" cy="175.7" r="3"/><circle cx="670" cy="169.2" r="3"/>
+        </g>
+        <g fill="#b5451b">
+          <circle cx="190" cy="177.8" r="3"/><circle cx="250" cy="173.5" r="3"/><circle cx="310" cy="156.2" r="3"/><circle cx="370" cy="160.5" r="3"/><circle cx="430" cy="143.2" r="3"/><circle cx="490" cy="112.9" r="5.5" stroke="#fff" stroke-width="2"/><circle cx="550" cy="134.5" r="4"/><circle cx="610" cy="158.4" r="3"/><circle cx="670" cy="169.2" r="3"/><circle cx="730" cy="177.8" r="3"/>
+        </g>
+        <g font-size="12" font-weight="800" font-family="system-ui" text-anchor="middle">
+          <text x="70" y="20" fill="#a07c3b" font-size="15">69</text>
+          <text x="130" y="96" fill="#a07c3b">34</text>
+          <text x="490" y="102" fill="#b5451b" font-size="15">31</text>
+          <text x="550" y="124" fill="#b5451b">21</text>
+          <text x="430" y="133" fill="#b5451b">17</text>
+        </g>
+        <g fill="#7a715f" font-size="11" font-family="system-ui" text-anchor="middle">
+          <text x="70" y="198">7h</text><text x="130" y="198">8h</text><text x="190" y="198">9h</text><text x="250" y="198">10h</text><text x="310" y="198">11h</text><text x="370" y="198">12h</text><text x="430" y="198">13h</text><text x="490" y="198">14h</text><text x="550" y="198">15h</text><text x="610" y="198">16h</text><text x="670" y="198">17h</text><text x="730" y="198">18h</text>
+        </g>
+        <g font-size="11.5" font-family="system-ui" font-weight="700">
+          <text x="60" y="222" fill="#a07c3b">— Check-ins (pico 7h)</text>
+          <text x="250" y="222" fill="#b5451b">— Conclusões (pico 14h)</text>
+        </g>
+      </svg>
+      <div class="h-sub" style="margin:10px 0 0">A casa encheu antes da abertura (103 chegadas até as 9h) e a esteira converteu à tarde — 69 conclusões entre 13h e 15h, a jornada de 5h05 da régua contada da abertura.</div>
+    </div>
+  </section>
+
+  <section>
+    <div class="grid2">
+      <div class="card">
+        <h2>Placar das mesas</h2>
+        <div class="h-sub">Atendimentos · tempo médio da chamada até o cliente sentar</div>
+        <div class="hrow"><div>🥇 Mesa 03</div><div class="trilho"><div class="fill" style="width:100%"></div></div><div class="val num"><b>22</b> · chega em 3 min</div></div>
+        <div class="hrow"><div>🥇 Mesa 04</div><div class="trilho"><div class="fill" style="width:100%"></div></div><div class="val num"><b>22</b> · chega em 4 min</div></div>
+        <div class="hrow"><div>🥉 Mesa 01</div><div class="trilho"><div class="fill" style="width:90.9%"></div></div><div class="val num"><b>20</b> · chega em 3 min</div></div>
+        <div class="hrow"><div>Mesa 06</div><div class="trilho"><div class="fill" style="width:81.8%"></div></div><div class="val num"><b>18</b> · chega em 7 min</div></div>
+        <div class="hrow"><div>Mesa 02</div><div class="trilho"><div class="fill" style="width:59.1%"></div></div><div class="val num"><b>13</b> · chega em 10 min</div></div>
+        <div class="hrow"><div>Mesa 08</div><div class="trilho"><div class="fill" style="width:59.1%"></div></div><div class="val num"><b>13</b> · chega em 3 min</div></div>
+        <div class="hrow"><div>Mesa 07</div><div class="trilho"><div class="fill" style="width:45.5%"></div></div><div class="val num"><b>10</b> · chega em 16 min</div></div>
+        <div class="hrow"><div>Mesa 05</div><div class="trilho"><div class="fill" style="width:36.4%"></div></div><div class="val num"><b>8</b> · chega em 9 min</div></div>
+        <div class="selo" style="margin-top:12px">As três mesas mais produtivas (03, 04, 01) também são as que o cliente chega mais rápido — ritmo de chamada constante é o que faz a fila andar.</div>
+      </div>
+      <div class="card">
+        <h2>Eficiência das chamadas</h2>
+        <div class="h-sub">O trabalho invisível de trazer o cliente até a mesa</div>
+        <div class="kv"><span class="k">Chamadas feitas</span><span class="q num"><b>231</b></span></div>
+        <div class="kv"><span class="k">Pessoas chamadas mais de uma vez</span><span class="q num"><b>92</b></span></div>
+        <div class="kv"><span class="k">Marcados "não veio"</span><span class="q num"><b>9</b> (6%)</span></div>
+        <div class="kv"><span class="k">Tempo médio chamada → sentar</span><span class="q num"><b>4 min</b></span></div>
+        <div class="kv"><span class="k">Chamadas penduradas no fim do dia</span><span class="q num"><b>0</b></span></div>
+        <h2 style="margin-top:18px">A virada para o dia 2</h2>
+        <div class="h-sub">Como o dia foi guardado</div>
+        <div class="kv"><span class="k">Concluídos — guardados</span><span class="q num"><b>108</b></span></div>
+        <div class="kv"><span class="k">Seguem na fila para o dia 2</span><span class="q num"><b>499</b></span></div>
+        <div class="kv"><span class="k">Mesas liberadas</span><span class="q num"><b>todas</b></span></div>
+        <div class="selo" style="margin-top:12px"><b>Pronto para o dia 2:</b> credenciais de ontem valem hoje, fila preservada na etapa em que cada um parou, mesas livres.</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    <span>VALE DO OURO · Careli Empreendimentos</span>
+    <span>Fonte: Prometeu (fila, chamadas, mesas e 453 movimentações) · fechado em 02/08 · Panteon</span>
+  </footer>
+</div>
+</body>
+</html>
