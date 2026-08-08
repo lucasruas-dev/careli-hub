@@ -39,7 +39,7 @@ export async function POST(request: Request) {
   const temSessaoCorretor = sessaoDoRequest(request).ok;
   const temPreSessaoImob = preSessaoImobDoRequest(request).ok;
   if (!temSessaoCorretor && !temPreSessaoImob) {
-    return erro("Sua sessão expirou. Informe o CPF/CNPJ novamente.", 401);
+    return erro("Sua sessão expirou. Reabra o link e informe o seu CPF ou CNPJ de novo.", 401);
   }
 
   const preparo = await prepararRota(request, "ocr");
@@ -51,11 +51,11 @@ export async function POST(request: Request) {
 
   if (action === "extract") {
     const fileBase64 = String(corpo?.fileBase64 ?? "");
-    if (!fileBase64) return responder(inicio, erro("Envie a foto do documento."));
+    if (!fileBase64) return responder(inicio, erro("Anexe a foto do documento para continuar."));
     if (fileBase64.length > MAX_BASE64_PUBLICO) {
       return responder(
         inicio,
-        erro("A foto ficou grande demais. Tire outra com menos zoom ou envie um arquivo menor.", 413),
+        erro("A foto ficou grande demais. Tire outra com menos zoom ou anexe um arquivo menor.", 413),
       );
     }
     try {
@@ -70,7 +70,10 @@ export async function POST(request: Request) {
       return responder(inicio, json({ data: extraction }));
     } catch {
       // Falha real de leitura vira erro HTTP (o wizard já trata: deixa preencher na mão).
-      return responder(inicio, erro("Não conseguimos ler a foto agora. Preencha os dados na mão.", 502));
+      return responder(
+        inicio,
+        erro("Não conseguimos ler a foto agora. O arquivo fica salvo: preencha os dados na mão.", 502),
+      );
     }
   }
 
@@ -82,7 +85,10 @@ export async function POST(request: Request) {
       });
       return responder(inicio, json({ data: enr }));
     } catch {
-      return responder(inicio, erro("Não conseguimos enriquecer agora.", 502));
+      return responder(
+        inicio,
+        erro("Não conseguimos completar os dados pelo CPF agora. Preencha os campos na mão.", 502),
+      );
     }
   }
 
@@ -93,7 +99,10 @@ export async function POST(request: Request) {
       });
       return responder(inicio, json({ data: enr }));
     } catch {
-      return responder(inicio, erro("Não conseguimos consultar o CNPJ agora.", 502));
+      return responder(
+        inicio,
+        erro("Não conseguimos consultar o CNPJ agora. Preencha os campos na mão.", 502),
+      );
     }
   }
 

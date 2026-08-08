@@ -15,7 +15,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const sessao = sessaoDoRequest(request);
-  if (!sessao.ok) return erro("Sua sessão expirou. Informe o CPF novamente.", 401);
+  if (!sessao.ok) return erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401);
 
   const preparo = await prepararRota(request, "identificacao");
   if (!preparo.ok) return preparo.response;
@@ -34,7 +34,7 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const sessao = sessaoDoRequest(request);
-  if (!sessao.ok) return erro("Sua sessão expirou. Informe o CPF novamente.", 401);
+  if (!sessao.ok) return erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401);
 
   const corpo = await lerCorpo<{ enterpriseId?: string }>(request);
   const escolhido = String(corpo?.enterpriseId ?? "").trim();

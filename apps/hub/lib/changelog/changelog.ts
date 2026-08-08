@@ -36,6 +36,148 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-07-estoque-conta-lote-nao-proposta",
+    deployedAt: "2026-08-07T08:15:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O estoque do BI passa a contar LOTE, não proposta: vendidos, reservados e disponíveis agora sempre somam o total de lotes à venda",
+              "Corrigido o número de lotes disponíveis, que aparecia bem maior que a realidade: mostrava 28 quando só 5 estão livres de verdade",
+              "Lote com reserva aberta não aparece mais como disponível",
+              "Os nomes das carteiras na tela agora são Cecílio Rocha e Família Lino",
+            ],
+            screen: "BI do Vale do Ouro",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "O painel somava 157 vendidas + 46 reservas + 28 disponíveis = 231 sobre 190 lotes. Duas causas, as duas de contar a entidade errada: (1) RESERVA vinha de PROPOSTA em estágio 1, e 14 delas apontavam para lote que JÁ TEM VENDA (reserva antiga sem baixa), então o mesmo lote entrava como vendido e reservado; (2) DISPONÍVEL vinha do sale_status_id do cadastro, sem olhar proposta viva, e os 9 lotes vendidos que ficaram no master têm o gêmeo na carteira marcado como Reservado. Agora `statusUnidades` e `reservas` percorrem o LOTE COMERCIAL (uma linha por lote físico) e decidem por precedência via PROPOSTA_DO_LOTE(): tem venda -> Vendido; senão tem reserva -> Reservado; senão Disponível. O EXISTS casa as propostas do próprio lote E as do master pelo NÚMERO DO LOTE (SUBSTRING(name,4)), mesma regra do gêmeo. Validado nos três recortes: todos 157+28+5=190, VOC 76+10+4=90, VOL 81+18+1=100.",
+      motivation:
+        "Lucas, 07/08: \"tem alguma coisa errada, pois tínhamos somente 190 lotes para vendas e o resto estava bloqueado, somando os valores não dá isso\". Ele estava certo: eu tinha visto o sintoma (avisei que o disponível estava otimista) e tratei como imprecisão a acertar depois, quando era erro de cálculo. Risco real de corretor oferecer lote já reservado no salão.",
+    },
+    title: "Estoque do BI passa a contar lote, e o disponível deixa de mentir",
+    type: "correcao",
+    version: "1.118.0",
+  },
+  {
+    buildTag: "2026-08-07-bi-por-carteira-e-estoque-real",
+    deployedAt: "2026-08-07T07:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "Novo painel só da Coordenação Cecílio e outro só da Coordenação Lino, além do painel do lançamento inteiro que já existia",
+              "O percentual de vendas passa a ser sobre os lotes postos à venda: mostrava 53% quando o real é 83%, porque contava junto 108 lotes que nunca foram lançados",
+              "Os 108 lotes ainda não lançados continuam visíveis, agora como número à parte",
+              "Nota nova explicando por que a barra de estoque e os totais divergem: 9 vendas e 32 reservas seguem no registro antigo do lote",
+            ],
+            screen: "BI do Vale do Ouro",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "lib/prometeu/bi-vale-do-ouro.ts ganhou o tipo CarteiraDoVale (todos|voc|vol) + normalizarCarteira + recorteDaCarteira; montarBiValeDoOuro(carteira) serve os TRÊS recortes com o mesmo SQL. A rota /api/publico/bi/vale-do-ouro aceita ?carteira=voc|vol (MESMA rota, então o proxy.ts não muda e o cache de 60s continua valendo). ⚠️ AS ÓRFÃS DO MASTER: sobraram no VLO(35) 9 vendas e 32 reservas que não migraram; filtrar a carteira só por enterprise_id sumiria com elas dos DOIS painéis (soma daria 148 em vez de 157). A atribuição é pela carteira do LOTE GÊMEO, casado por SUBSTRING(name,4): VLO0104 -> VOC0104(37) ou VOL0104(36). NÃO se usa o campo tipo (interna/externa): ele acerta hoje por coincidência estrutural e quebraria em silêncio num recadastro. Provado no C2X: os 298 lotes do master têm exatamente 1 gêmeo cada, COUNT(*) = COUNT(DISTINCT unidade) nos três recortes (157/76/81) e nenhum lote tem proposta viva no master e na carteira ao mesmo tempo. DENOMINADOR: separados os lotes COMERCIAIS (price > 1) do estoque NÃO LANÇADO (price <= 1 e sale_blocked); os 108 já estavam assim no 35 antes da divisão e nenhum tem proposta. Páginas: public/bi/vale-do-ouro-voc.html e -vol.html copiadas da aprovada (mesmo CSS, sem o bloco de duelo, que só faz sentido no unificado). Conferência no MySQL: VOC 76 + VOL 81 = 157 vendas e VGV 10.992.544 + 12.007.185 = 22.999.729, idêntico ao recorte todos.",
+      motivation:
+        "Lucas, 07/08: \"o BI está todo errado, temos que refazer considerando agora o VOC e VOL\" e depois \"quero fazer um painel para cada um\". A investigação mostrou que o total já somava as três carteiras corretamente; o que distorcia era contar os 108 lotes nunca lançados como estoque, o que fazia o lançamento parecer 53% vendido.",
+    },
+    title: "BI do Vale do Ouro ganha um painel por coordenação",
+    type: "melhoria",
+    version: "1.117.0",
+  },
+  {
+    buildTag: "2026-08-05-corretor-fora-da-fila-e-vinculo-visivel",
+    deployedAt: "2026-08-05T14:05:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cadastro de corretor não aparece mais na fila de validação: 15 saem da tela",
+              "Excluir um vínculo agora some da lista de verdade; antes o vínculo excluído continuava aparecendo e o botão parecia não funcionar",
+              "Quando não dá para excluir, a tela avisa o motivo em vez de não fazer nada",
+            ],
+            screen: "Board e CRM 360",
+          },
+          {
+            items: [
+              "Naturalidade e nacionalidade do cônjuge abrem para digitar quando a leitura do documento não traz",
+              "A revisão mostra a imobiliária e o corretor da CAD enviada pelo link público; antes o vínculo aparecia em branco",
+            ],
+            screen: "Cadastro e portal de CAD",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "1) CORRETOR NA FILA, o SEGUNDO portão: /api/apolo/board monta a fila de DUAS fontes, e a segunda (apolo_entities com status='review' e source='apolo') não olha a esteira. Barrar só a gravação na esteira dava impressão de resolvido e a tela seguia igual. A consulta ganhou `.or(\"metadata->>bornRole.is.null,metadata->>bornRole.neq.corretor\")` — o is.null preserva entidades antigas sem bornRole, que um neq puro descartaria (NULL não é \"diferente de\" nada em SQL). Medido: 110 na fila, 15 são corretor e saem. 2) VÍNCULO EXCLUÍDO CONTINUAVA NA TELA: excluir ARQUIVA a linha (status 'archived') para manter histórico, mas lib/apolo/server.ts trazia todos os status; agora filtra archived antes do map. A rota de archive já ignorava arquivados e devolvia 404 na segunda tentativa, e relationships-panel.tsx engolia a falha sem `else` — passou a avisar, com mensagem específica para o 404. 3) CÔNJUGE: os dois campos viraram CampoDoDocumento, fechando o último dos três blocos (titular e sócio já tinham). 4) REVISÃO PÚBLICA: PublicoConfig ganhou imobiliariaNome/corretorNome, o PortaoCorretor passa os dois no onValidado e StepRevisao os exibe; no público a lista de imobiliárias (que resolve o rótulo no interno) não é carregada e não há rota pública que a liste, por isso o campo vinha vazio. 295 testes.",
+      motivation:
+        "Lucas testando em 05/08: cadastrou um corretor e ele apareceu na validação mesmo depois da primeira correção; o botão de excluir vínculo parecia morto (na verdade já tinha arquivado, e a tela continuava mostrando); a revisão do link público não trazia imobiliária nem corretor; e o cônjuge tinha os mesmos campos travados que já corrigimos no titular e no sócio.",
+    },
+    title: "Corretor sai da fila, vínculo excluído some e revisão mostra quem trouxe a CAD",
+    type: "correcao",
+    version: "1.116.0",
+  },
+  {
+    buildTag: "2026-08-05-cliente-pj-no-c2x-e-cad-que-explica",
+    deployedAt: "2026-08-05T13:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Cliente pessoa jurídica agora sobe para o C2X como CLIENTE, com CNPJ e razão social; antes toda empresa era enviada como imobiliária, e por isso nenhuma chegava lá",
+              "O envio passa a decidir pelo PAPEL do cadastro, não por ser pessoa física ou jurídica",
+              "O aviso no card agora acende também para a CAD credenciada que NUNCA foi tentada no C2X, não só para a que falhou",
+            ],
+            screen: "Board e envio para o C2X",
+          },
+          {
+            items: [
+              "A tela diz o que falta para avançar, em vez de só deixar o botão apagado: nome, CPF, naturalidade, escolaridade, renda, o que estiver faltando",
+              "Cadastro de corretor não entra mais na fila de validação: corretor não tem documento de comprador para validar",
+              "Naturalidade e nacionalidade do sócio abrem para digitar quando a leitura não traz (a CNH não tem naturalidade impressa)",
+              "O endereço é completado pelo CEP mesmo quando ele vem da leitura do comprovante, não só quando digitado",
+            ],
+            screen: "Cadastro e portal de CAD",
+          },
+          {
+            items: [
+              "Textos do portal explicam o passo a passo: de quem é o CPF pedido, qual documento anexar em cada etapa e o que ter em mãos antes de começar",
+            ],
+            screen: "Portal público de CAD",
+          },
+          {
+            items: [
+              "A barra de etapas acompanha o crédito aprovado que vai direto para credenciado quando a pré-venda está desligada",
+            ],
+            screen: "Análise de crédito",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "1) CLIENTE PJ: nasceu perfilPorPapel() em c2x-write.ts e perfilDaFicha() em c2x-write-server.ts, usadas TANTO pelo filtro da fila QUANTO pela montagem do payload (uma fonte só). O perfil sai de metadata.bornRole (cobertura medida: 109/109 das entidades source=apolo), com de-para prospect→cliente(2), imobiliaria→imobiliaria(6), incorporador→incorporador(3); corretor/colaborador/fornecedor/parceiro NÃO sobem. montarPayloadCliente ganhou o desvio `if (c.isCompany)` com cnpj/social_name/fantasy_name/person_type jurídica, e montarDados passou a ler metadata.cadastro.socios para preencher o que o C2X pede de pessoa. O formato-alvo não é suposição: o C2X já tem 80 users com profile_id=2 + person_type_id=2 exatamente assim. ⚠️ O caminho PF foi verificado byte a byte contra o HEAD e está IDÊNTICO; teste congela o payload PF para acusar regressão futura. Filtro novo medido em produção: 87 candidatas viram 78, entram as 6 PJ prospect credenciadas (incl. Vovo Braga) e saem os 15 corretores. 2) ALERTA: a decisão saiu da rota e virou função pura em lib/apolo/c2x-alerta-board.ts (alertaC2xDaCad) com 3 estados (erro / sem_confirmacao / nunca_tentado), 8 testes; cobre os 97 credenciados que não tinham linha em apolo_c2x_sync e por isso eram invisíveis. 3) O QUE FALTA NA TELA: podeAvancarPf/Pj passaram a derivar de uma LISTA de faltantes, e a mesma lista alimenta o aviso, então botão e aviso nunca discordam. 4) Corretor fora da esteira: a gravação em apolo_esteira passou a checar o papel (era só empreendimento+imobiliária, e o cadastro de corretor tem os dois); 12 corretores removidos da fila, os 5 que também são compradores preservados. 5) Board: o índice da barra passou a sair de INDICE_POR_ETAPA, o mesmo mapa do reload. 295 testes.",
+      motivation:
+        "Lucas testando o fluxo real em 05/08: a Vovo Braga (padaria, cliente PJ) chegou a credenciado e não apareceu no C2X; um cadastro de corretor caiu na fila de validação sem ter o que validar; e um cadastro PF ficou travado com o botão apagado sem dizer o que faltava. Palavras dele: \"seria ótimo colocar um aviso do que falta a ser preenchido\".",
+    },
+    title: "Cliente empresa chega ao C2X, e o cadastro diz o que falta",
+    type: "correcao",
+    version: "1.115.0",
+  },
+  {
     buildTag: "2026-08-05-cad-aceita-20mb-e-completa-endereco",
     deployedAt: "2026-08-05T11:40:00-03:00",
     modules: [

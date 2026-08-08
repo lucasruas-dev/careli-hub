@@ -25,6 +25,8 @@
 import {
   C2X_ESCOLARIDADE,
   C2X_FAIXA_RENDA,
+  C2X_PROFISSAO_NAO_DECLARADA,
+  matchCompanySizeId,
   matchEstadoCivilId,
   matchRegimeBensId,
   matchSexoId,
@@ -173,8 +175,51 @@ function telefones(telefone: string | null): PayloadIntegracao[] {
 
 // ── MONTAGEM DOS PAYLOADS ─────────────────────────────────────────────────
 
+// CLIENTE PESSOA JURÍDICA no envelope oficial. Mesmo `profile: "cliente"`, mudando o tipo de
+// pessoa — a empresa que compra o lote é CLIENTE, não imobiliária.
+//
+// Existe aqui, e não só em c2x-write.ts, porque este módulo é o caminho declarado como o certo
+// (ver o cabeçalho do arquivo): sem isto, no dia em que a integração dedicada for ligada, o
+// cliente PJ voltaria a subir como pessoa física com CNPJ e sem razão social.
+export function montarClientePjIntegracao(d: DadosIntegracao): PayloadIntegracao {
+  const c = d.cadastro;
+  const rep = c.legalRepresentative;
+
+  return limpar({
+    profile: "cliente",
+    person_type: "juridica",
+
+    name: d.nome,
+    email: d.email,
+    cnpj: doc(c.cnpj),
+    social_name: c.socialName ?? d.nome,
+    fantasy_name: c.fantasyName ?? d.nome,
+    user_nire: c.nire,
+    municipal_inscription: c.municipalInscription,
+    company_size_id: matchCompanySizeId(c.companySize),
+    open_company_date: dataIso(c.openCompanyDate),
+    // A profissão do cliente PJ é a do REPRESENTANTE LEGAL. Enquanto o wizard não a coletar,
+    // cai em "PROFISSÃO NÃO DECLARADA" — o padrão dos clientes PJ que já existem no C2X.
+    profession_id:
+      num(d.ids?.professionId) ??
+      matchProfissaoId(rep?.profession ?? c.profession) ??
+      C2X_PROFISSAO_NAO_DECLARADA,
+
+    // O par que dá visibilidade comercial ao cliente (igual ao PF).
+    vinculed_by_document: doc(d.vinculedByDocument),
+    enterprise_id: d.enterpriseId ?? null,
+
+    address: endereco(d.endereco),
+    phones: telefones(d.telefone),
+  });
+}
+
 export function montarClienteIntegracao(d: DadosIntegracao): PayloadIntegracao {
   const c = d.cadastro;
+  // PJ entra pelo MESMO perfil de cliente, só mudando o tipo de pessoa. O caminho PF segue
+  // intocado abaixo.
+  if (c.isCompany) return montarClientePjIntegracao(d);
+
   const cpf = doc(c.cpf);
   // O id do cadastro MANDA; o rótulo é só a rede de segurança para fichas antigas.
   const civil = num(d.ids?.civilStateId) ?? matchEstadoCivilId(c.civilState ?? "");
@@ -234,8 +279,9 @@ export function montarImobiliariaIntegracao(d: DadosIntegracao): PayloadIntegrac
     social_name: c.socialName ?? d.nome,
     user_nire: c.nire,
     municipal_inscription: c.municipalInscription,
-    // company_size_id (porte) é opcional no contrato e NÃO existe no cadastro do Apolo — fica fora
-    // em vez de ir com palpite.
+    // company_size_id (porte) é opcional no contrato. O dado EXISTE no cadastro do Apolo
+    // (`metadata.cadastro.porte` -> matchCompanySizeId), mas segue fora daqui de propósito: mexer
+    // no payload de imobiliária/incorporador é outro recorte. O cliente PJ acima já manda.
     open_company_date: dataIso(c.openCompanyDate),
     phone: soDigitos(d.telefone) || null,
 
@@ -256,8 +302,9 @@ export function montarIncorporadorIntegracao(d: DadosIntegracao): PayloadIntegra
     social_name: c.socialName ?? d.nome,
     user_nire: c.nire,
     municipal_inscription: c.municipalInscription,
-    // company_size_id (porte) é opcional no contrato e NÃO existe no cadastro do Apolo — fica fora
-    // em vez de ir com palpite.
+    // company_size_id (porte) é opcional no contrato. O dado EXISTE no cadastro do Apolo
+    // (`metadata.cadastro.porte` -> matchCompanySizeId), mas segue fora daqui de propósito: mexer
+    // no payload de imobiliária/incorporador é outro recorte. O cliente PJ acima já manda.
     open_company_date: dataIso(c.openCompanyDate),
     phone: soDigitos(d.telefone) || null,
 

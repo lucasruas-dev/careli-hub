@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Vale do Ouro · BI de Vendas</title>
+<title>Vale do Ouro · BI de Vendas · Cecílio Rocha</title>
 <style>
   *{box-sizing:border-box;margin:0;padding:0}
   :root{
@@ -49,19 +49,6 @@
   .leg b{color:var(--ink)}
   .dot{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:6px;vertical-align:1px}
 
-  .duelo{display:grid;grid-template-columns:1fr auto 1fr;gap:16px;align-items:stretch}
-  @media(max-width:820px){.duelo{grid-template-columns:1fr;gap:10px}}
-  .lado{border-radius:14px;padding:20px;border:1px solid var(--linha)}
-  .lado .quem{font-size:12px;letter-spacing:.13em;text-transform:uppercase;font-weight:800}
-  .lado .n{font-size:52px;font-weight:800;line-height:1.05;margin-top:8px}
-  .lado .vgv{font-size:13.5px;color:var(--fraca);margin-top:2px}
-  .lado.int{background:linear-gradient(160deg,#fffdf7,#faf3e2);border-color:#d8c69a}
-  .lado.int .quem,.lado.int .n{color:var(--ouro)}
-  .lado.ext{background:linear-gradient(160deg,#fffaf7,#faeade);border-color:#e0b89f}
-  .lado.ext .quem,.lado.ext .n{color:var(--terracota)}
-  .vs{display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;color:var(--fraca)}
-  .duelo-barra{display:flex;height:12px;border-radius:99px;overflow:hidden;margin-top:14px;border:1px solid var(--linha)}
-
   .hrow{display:grid;grid-template-columns:minmax(120px,220px) 1fr 92px;gap:10px;align-items:center;padding:5px 0;font-size:13.5px}
   .hrow .nome{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .hrow .trilho{background:#efece4;border-radius:6px;height:15px;overflow:hidden}
@@ -88,7 +75,7 @@
   <header>
     <div class="marca-nome">
       <div class="vale">VALE DO OURO</div>
-      <div class="cidade">Pará de Minas · MG</div>
+      <div class="cidade">Cecílio Rocha · Pará de Minas · MG</div>
     </div>
     <div class="hero-right">
       <div class="badge-vivo"><span class="p"></span> AO VIVO · LANÇAMENTO 01/08/2026</div>
@@ -100,33 +87,11 @@
 
   <section>
     <h2>O mapa das <span id="tot-unidades">…</span> unidades postas à venda</h2>
-    <div class="h-sub" id="estoque-sub">Situação do que foi posto à venda neste momento</div>
+    <div class="h-sub" id="estoque-sub">Situação das unidades desta carteira neste momento</div>
     <div class="card">
       <div class="estoque" id="estoque"></div>
       <div class="leg" id="estoque-leg"></div>
       <div class="leg" id="estoque-nota"></div>
-    </div>
-  </section>
-
-  <section>
-    <h2>Vendas por carteira de lotes</h2>
-    <div class="h-sub">Como os lotes foram divididos no sistema entre as duas carteiras</div>
-    <div class="card">
-      <div class="duelo">
-        <div class="lado int">
-          <div class="quem">Lotes · Cecílio Rocha</div>
-          <div class="n num" id="int-n">…</div>
-          <div class="vgv num" id="int-vgv"></div>
-        </div>
-        <div class="vs">×</div>
-        <div class="lado ext">
-          <div class="quem">Lotes · Família Lino</div>
-          <div class="n num" id="ext-n">…</div>
-          <div class="vgv num" id="ext-vgv"></div>
-        </div>
-      </div>
-      <div class="duelo-barra" id="duelo-barra"></div>
-      <div class="leg" style="justify-content:space-between" id="duelo-leg"></div>
     </div>
   </section>
 
@@ -179,7 +144,7 @@
   </section>
 
   <footer>
-    <span>VALE DO OURO · Careli Empreendimentos</span>
+    <span>VALE DO OURO · Cecílio Rocha · Careli Empreendimentos</span>
     <span id="rodape">Fonte: C2X ao vivo (pedidos de aquisição abertos) · Panteon</span>
   </footer>
 </div>
@@ -187,7 +152,12 @@
 <script>
 (function(){
   "use strict";
-  var API = "/api/publico/bi/vale-do-ouro";
+  // Painel de UMA coordenação. Mesma rota do painel do lançamento inteiro, com o recorte na query:
+  // a camada de dados (lib/prometeu/bi-vale-do-ouro.ts) devolve só os lotes e as propostas desta
+  // coordenação — inclusive as propostas que ficaram no registro antigo do lote, atribuídas pelo
+  // lote gêmeo, para não sumirem dos dois painéis.
+  var API = "/api/publico/bi/vale-do-ouro?carteira=voc";
+  var COORD = "Cecílio Rocha";
   var $ = function(id){ return document.getElementById(id); };
   var esc = function(s){ var d=document.createElement("div"); d.textContent=String(s==null?"":s); return d.innerHTML; };
   var n = function(v){ return Number(v||0); };
@@ -200,9 +170,9 @@
   };
   var pc = function(parte,todo){ return todo ? Math.round(100*parte/todo) : 0; };
 
-  // DENOMINADOR = unidade COMERCIAL (posta à venda). A camada de dados separa as que nunca foram
-  // lançadas (preço simbólico + bloqueadas); contá-las aqui afundaria o percentual e o rótulo
-  // mentiria. Fallback na soma do estoque se o campo faltar.
+  // DENOMINADOR = lote COMERCIAL (posto à venda). A camada de dados separa os lotes que nunca
+  // foram lançados (preço simbólico + bloqueados); contá-los aqui afundaria o percentual e o
+  // rótulo mentiria. Fallback na soma do estoque se o campo faltar.
   function totalComercial(d){
     var un = d.unidades||{};
     return n(un.comerciais) || (d.statusUnidades||[]).reduce(function(s,x){return s+n(x.qtd)},0);
@@ -235,14 +205,14 @@
       return '<span><span class="dot" style="background:'+(cores[x.status]||"#999")+'"></span><b>'+pt(x.qtd)+'</b> '+(rot[x.status]||esc(x.status))+' ('+pc(n(x.qtd),tot)+'%)</span>';
     }).join("");
 
-    // As unidades que nunca foram postas à venda ficam FORA da barra — mas o número continua à
-    // vista, senão o painel dá a impressão de que o empreendimento é menor do que é.
+    // Os lotes que nunca foram postos à venda ficam FORA da barra — mas o número continua à vista,
+    // senão o painel dá a impressão de que o empreendimento é menor do que é.
     var un = d.unidades||{};
-    var sub = "Situação do que foi posto à venda neste momento";
+    var sub = "Situação das unidades de "+COORD+" postas à venda";
     if (n(un.naoLancadas) > 0) sub += " · outras "+pt(un.naoLancadas)+" unidades ainda não foram lançadas";
     $("estoque-sub").textContent = sub;
 
-    // A barra vem da situação cadastral da UNIDADE; os KPIs vêm das PROPOSTAS abertas. Enquanto
+    // A barra vem da situação cadastral do LOTE; os KPIs vêm das PROPOSTAS abertas. Enquanto
     // houver proposta viva no registro antigo do lote, os dois números divergem — dizemos por quê
     // em vez de deixar o leitor achar que um dos dois está errado.
     var naBarra = {};
@@ -255,24 +225,6 @@
     $("estoque-nota").innerHTML = pend.length
       ? '<span>Fora da barra: '+pend.join(" e ")+' que seguem no registro antigo do lote, ainda sem baixa na situação atual.</span>'
       : "";
-  }
-
-  function duelo(d){
-    var int=null, ext=null;
-    (d.porTipo||[]).forEach(function(t){
-      if (/interna/i.test(t.tipo||"")) int=t;
-      if (/externa/i.test(t.tipo||"")) ext=t;
-    });
-    if (!int || !ext) return;
-    var tot = n(int.vendas)+n(ext.vendas) || 1;
-    $("int-n").textContent = pt(int.vendas);
-    $("ext-n").textContent = pt(ext.vendas);
-    $("int-vgv").textContent = reais(int.vgv)+" · ticket "+reais(int.ticket);
-    $("ext-vgv").textContent = reais(ext.vgv)+" · ticket "+reais(ext.ticket);
-    var wi=(100*n(int.vendas)/tot).toFixed(1);
-    $("duelo-barra").innerHTML = '<div style="width:'+wi+'%;background:var(--ouro-claro)"></div><div style="width:'+(100-wi).toFixed(1)+'%;background:var(--terra-claro)"></div>';
-    var dif = Math.abs(n(int.vendas)-n(ext.vendas));
-    $("duelo-leg").innerHTML = '<span><b>'+pc(n(int.vendas),tot)+'%</b> das vendas</span><span>diferença de <b>'+pt(dif)+' '+(dif===1?'lote':'lotes')+'</b></span><span><b>'+pc(n(ext.vendas),tot)+'%</b> das vendas</span>';
   }
 
   function curva(d){
@@ -356,7 +308,7 @@
   }
 
   function render(d){
-    kpis(d); estoque(d); duelo(d); curva(d); posvenda(d); investidores(d); perfil(d);
+    kpis(d); estoque(d); curva(d); posvenda(d); investidores(d); perfil(d);
     barras($("ranking"), d.rankingImob||[], "imob", "vendas", function(i){ return " · "+reais(i.vgv); });
     $("ranking-sub").textContent = "Vendas e VGV por parceiro — "+pt((d.rankingImob||[]).length)+" imobiliárias pontuaram";
     barras($("planos"), d.planos||[], "plano", "qtd");
@@ -365,7 +317,7 @@
     var quando = new Date(d.geradoEm);
     var hhmm = quando.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
     $("carimbo").textContent = "atualizado às "+hhmm+" · direto do C2X";
-    $("rodape").textContent = "Fonte: C2X ao vivo (pedidos de aquisição abertos) · atualizado às "+hhmm+" · Panteon";
+    $("rodape").textContent = "Fonte: C2X ao vivo (pedidos de aquisição abertos) · lotes de "+COORD+" · atualizado às "+hhmm+" · Panteon";
   }
 
   var falhas = 0;

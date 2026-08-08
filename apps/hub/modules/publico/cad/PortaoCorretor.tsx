@@ -58,7 +58,14 @@ export function PortaoCorretor({
 }: {
   // Disparado quando a validação termina e a sessão está COMPLETA (corretor + imobiliária +
   // empreendimento carimbado no token). `sessao` é o token; `empreendimentoNome` é só rótulo.
-  onValidado: (sessao: string, empreendimentoNome: string) => void;
+  // Leva TAMBEM imobiliaria e corretor: o wizard nao tem rota publica para resolver esses nomes
+  // (a lista de imobiliarias so' existe no modo interno), entao sem isso a revisao mostrava o
+  // vinculo em branco, como se a CAD nao tivesse imobiliaria nem corretor.
+  onValidado: (
+    sessao: string,
+    empreendimentoNome: string,
+    vinculo: { corretorNome: string; imobiliariaNome: string },
+  ) => void;
   whatsappCentral: string;
 }) {
   const [estado, setEstado] = useState<EstadoCad>("identificar");
@@ -115,7 +122,11 @@ export function PortaoCorretor({
         method: opcoes.metodo ?? "POST",
       });
       const dados = (await resposta.json().catch(() => ({}))) as T & { error?: string };
-      if (!resposta.ok) throw new Error(dados?.error || "Não conseguimos concluir agora.");
+      if (!resposta.ok) {
+        throw new Error(
+          dados?.error || "Não conseguimos concluir agora. Tente de novo em alguns instantes.",
+        );
+      }
       return dados;
     },
     [],
@@ -124,7 +135,14 @@ export function PortaoCorretor({
   // Depois de identificar/cadastrar: decide entre escolher o empreendimento e ENTRAR NA CAD.
   const seguirComSessao = useCallback(
     (
-      dados: { empreendimentos?: EmpreendimentoPublico[]; imobiliaria?: string; sessao?: string },
+      dados: {
+        empreendimentos?: EmpreendimentoPublico[];
+        imobiliaria?: string;
+        // Vem preenchido quando o CPF já era conhecido; no corretor recém-cadastrado o nome está
+        // no estado do formulário, por isso o fallback abaixo.
+        nome?: string;
+        sessao?: string;
+      },
       novo: boolean,
     ) => {
       const lista = dados.empreendimentos ?? [];
@@ -133,7 +151,10 @@ export function PortaoCorretor({
       // Regra do Lucas: "se tiver somente uma seguir para o formulário". A sessão já vem com o
       // enterpriseId carimbado (sessao/corretor route), então entramos direto no CadastroFlow.
       if (lista.length === 1) {
-        onValidado(dados.sessao ?? "", lista[0]?.name ?? "");
+        onValidado(dados.sessao ?? "", lista[0]?.name ?? "", {
+          corretorNome: dados.nome ?? corretor.nome,
+          imobiliariaNome: dados.imobiliaria ?? "",
+        });
         return;
       }
       setSessao(dados.sessao ?? "");
@@ -143,7 +164,7 @@ export function PortaoCorretor({
           : { empreendimentos: lista.length, tipo: "cpf-conhecido" },
       );
     },
-    [avancar, onValidado],
+    [avancar, corretor.nome, onValidado],
   );
 
   // ---------------- S0 identificar ----------------
@@ -280,7 +301,10 @@ export function PortaoCorretor({
         token: sessao,
       });
       // Sessão reemitida com o empreendimento carimbado: entra no CadastroFlow completo.
-      onValidado(dados.sessao, emp.name);
+      onValidado(dados.sessao, emp.name, {
+        corretorNome: corretor.nome,
+        imobiliariaNome: imobiliaria,
+      });
     } catch (e) {
       setErro((e as Error).message);
     } finally {
@@ -294,7 +318,17 @@ export function PortaoCorretor({
   // Render
   // ------------------------------------------------------------------
 
-  const topo = estado === "central" ? null : <Progresso passo={passos.passo} total={passos.total} />;
+  // Duas partes, dois contadores: aqui é o cadastro DO CORRETOR; o formulário do cliente vem
+  // depois, com a contagem própria dele. Sem esta legenda a barra reinicia e parece erro.
+  const topo =
+    estado === "central" ? null : (
+      <div style={{ display: "grid", gap: 6 }}>
+        <span style={{ color: C.muted, fontSize: 12, fontWeight: 600 }}>
+          Parte 1 de 2: seus dados de corretor
+        </span>
+        <Progresso passo={passos.passo} total={passos.total} />
+      </div>
+    );
 
   const conteudo = () => {
     switch (estado) {
@@ -302,20 +336,23 @@ export function PortaoCorretor({
         return (
           <>
             <Cabecalho
-              subtitulo="Informe o seu CPF para enviar uma CAD. Se ainda não tiver cadastro, a gente faz agora."
-              titulo="Vamos começar"
+              subtitulo="Corretor, informe o seu CPF para começar a CAD. Os dados do cliente entram nas próximas telas. Se você ainda não tem cadastro por aqui, a gente faz agora."
+              titulo="Vamos começar por você"
             />
             {/* Trocar o CPF invalida o que foi lido do CPF anterior. */}
             <CampoCpf
+              ajuda="Este CPF é o seu, de corretor. O CPF do cliente é pedido mais à frente."
               aoMudar={(v) => {
                 setCpf(v);
                 setNomeLido(false);
                 setCreciLido(false);
               }}
-              rotulo="Seu CPF"
+              rotulo="Seu CPF (não o do cliente)"
               valor={cpf}
             />
             <Erro>{erro}</Erro>
+            <ChecklistInicio />
+            <AjudaCaca />
           </>
         );
 
@@ -323,10 +360,15 @@ export function PortaoCorretor({
         return (
           <>
             <Cabecalho
-              subtitulo="Ainda não temos o seu cadastro por aqui. Vamos fazer agora, leva menos de um minuto: comece informando o CNPJ da sua imobiliária."
-              titulo="Cadastro do corretor"
+              subtitulo="Não encontramos o seu CPF por aqui, então vamos criar o seu cadastro agora. Comece pelo CNPJ da imobiliária em que você trabalha: é ele que libera os empreendimentos."
+              titulo="Seu cadastro de corretor"
             />
-            <CampoCnpj aoMudar={setCnpj} rotulo="CNPJ da imobiliária" valor={cnpj} />
+            <CampoCnpj
+              ajuda="A imobiliária precisa estar credenciada na Careli."
+              aoMudar={setCnpj}
+              rotulo="CNPJ da imobiliária"
+              valor={cnpj}
+            />
             <Erro>{erro}</Erro>
           </>
         );
@@ -334,7 +376,10 @@ export function PortaoCorretor({
       case "dados":
         return (
           <>
-            <Cabecalho subtitulo={`Continuar como parceiro da ${imobiliaria}.`} titulo="Seus dados" />
+            <Cabecalho
+              subtitulo={`Você está sendo cadastrado como corretor da ${imobiliaria || "sua imobiliária"}. Preencha o nome completo, um e-mail válido e o telefone com DDD.`}
+              titulo="Seus dados de corretor"
+            />
             <div style={{ display: "grid", gap: 16 }}>
               {/* Nome que veio da MOST é DADO DA BASE, não campo de digitação: fica travado. */}
               <CampoTexto
@@ -369,7 +414,7 @@ export function PortaoCorretor({
               subtitulo={
                 buscandoCreci
                   ? "Estamos buscando o seu CRECI pelo CPF."
-                  : "Confirme o seu CRECI. Se preferir, pode deixar em branco e informar depois."
+                  : "Último passo do seu cadastro: confirme o seu CRECI. Se não tiver em mãos, deixe em branco e siga, dá para informar depois."
               }
               titulo="CRECI"
             />
@@ -396,7 +441,10 @@ export function PortaoCorretor({
       case "confirmar":
         return (
           <>
-            <Cabecalho subtitulo="Confira antes de concluir." titulo="Tudo certo?" />
+            <Cabecalho
+              subtitulo="Confira os seus dados de corretor. Ao concluir, você começa o cadastro do cliente."
+              titulo="Tudo certo?"
+            />
             <Revisao
               linhas={[
                 { rotulo: "CPF", valor: cpf },
@@ -415,8 +463,8 @@ export function PortaoCorretor({
         return (
           <>
             <Cabecalho
-              subtitulo="Aparecem aqui os empreendimentos em que a sua imobiliária está habilitada a trabalhar."
-              titulo="Em qual empreendimento você quer enviar esta CAD?"
+              subtitulo="Toque no empreendimento deste cliente. Aparecem só os que a sua imobiliária está habilitada a trabalhar."
+              titulo="Para qual empreendimento é esta CAD?"
             />
             <div style={{ display: "grid", gap: 12 }}>
               {empreendimentos.map((emp) => (
@@ -438,8 +486,8 @@ export function PortaoCorretor({
             <Cabecalho
               subtitulo={
                 motivoCentral === "sem-empreendimento"
-                  ? "Sua imobiliária ainda não está habilitada em nenhum empreendimento aberto para envio. Fale com a nossa central para solicitar a habilitação: assim que sair, você já consegue enviar."
-                  : "Não localizamos esse CNPJ entre as imobiliárias credenciadas. Isso costuma ser rápido de resolver: fale com a nossa central e a gente verifica o credenciamento da sua imobiliária para você seguir com o envio."
+                  ? "Sua imobiliária ainda não está habilitada em nenhum empreendimento aberto. Fale com a nossa central para pedir a habilitação: assim que ela sair, você já consegue cadastrar clientes por aqui."
+                  : "Não localizamos esse CNPJ entre as imobiliárias credenciadas. Isso costuma ser rápido de resolver: fale com a nossa central e a gente confere o credenciamento da sua imobiliária."
               }
               titulo="Vamos resolver por aqui"
             />
@@ -498,7 +546,7 @@ export function PortaoCorretor({
       case "confirmar":
         return (
           <BotaoPrimario carregando={carregando} onClick={cadastrar} rotuloCarregando="Cadastrando...">
-            Concluir cadastro
+            Concluir meu cadastro
           </BotaoPrimario>
         );
 
@@ -572,6 +620,55 @@ export function PortaoCorretor({
 // ---------------------------------------------------------------------------
 // Peças
 // ---------------------------------------------------------------------------
+
+// O QUE TER EM MÃOS, dito ANTES de começar. O corretor preenche com o cliente sentado na frente:
+// descobrir no meio do caminho que falta a certidão é o que faz a sessão morrer pela metade.
+function ChecklistInicio() {
+  // ⚠️ Esta lista tem que bater com o que o servidor EXIGE de verdade, em
+  // lib/apolo/cadastro-obrigatorios.ts. Prometer menos do que é exigido é pior do que não avisar:
+  // o corretor chega no fim, com o cliente do lado, e descobre que falta documento.
+  // A certidão vale para casado, união estável, DIVORCIADO e SEPARADO (ESTADO_CIVIL_EXIGE_CERTIDAO);
+  // o documento do cônjuge só para casado e união estável (ESTADO_CIVIL_TEM_CONJUGE).
+  const itens = [
+    "Documento de identificação do cliente: RG, CNH ou passaporte",
+    "Comprovante de endereço do cliente, emitido nos últimos 3 meses",
+    "Se o cliente for casado, divorciado, separado ou tiver união estável: a certidão de estado civil",
+    "Se for casado ou tiver união estável: também o documento de identificação do cônjuge",
+    "Se o cliente for empresa: cartão CNPJ, contrato social e, de cada sócio, documento e comprovante de endereço",
+  ];
+  return (
+    <div
+      style={{
+        background: C.card,
+        border: `1px solid ${C.border}`,
+        borderRadius: 14,
+        marginTop: 20,
+        padding: "14px 16px",
+      }}
+    >
+      <p style={{ color: C.text, fontSize: 14, fontWeight: 600, margin: 0 }}>
+        Antes de começar, tenha em mãos
+      </p>
+      <ul style={{ margin: "8px 0 0", padding: "0 0 0 18px" }}>
+        {itens.map((item) => (
+          <li key={item} style={{ color: C.sub, fontSize: 13, lineHeight: 1.5, marginTop: 4 }}>
+            {item}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+// O botão da assistente é só um ícone flutuante: sem esta linha ninguém descobre que ali tem ajuda.
+function AjudaCaca() {
+  return (
+    <p style={{ color: C.muted, fontSize: 12, lineHeight: 1.5, margin: "12px 0 0" }}>
+      Ficou com dúvida em alguma etapa? Toque no botão redondo no canto da tela para falar com a
+      nossa assistente.
+    </p>
+  );
+}
 
 function Revisao({ linhas }: { linhas: { rotulo: string; valor: string }[] }) {
   return (

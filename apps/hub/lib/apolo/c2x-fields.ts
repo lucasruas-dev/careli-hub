@@ -61,6 +61,46 @@ export const C2X_PROFILE = {
   incorporador: 3,
 } as const;
 
+// Tipo de pessoa (users.person_type_id). A coluna é NULL sem DEFAULT no schema, mas o Rails
+// carimba 1 quando ninguém manda: os 432 clientes criados pela nossa API nasceram TODOS com 1.
+// Por isso o cliente PJ PRECISA mandar `person_type_id: 2` — sem isso a empresa nasce marcada
+// como pessoa física com CNPJ.
+export const C2X_PERSON_TYPE = {
+  fisica: 1,
+  juridica: 2,
+} as const;
+
+// Porte da empresa (users.company_size_id). Tabela `company_sizes` do C2X. Os 80 clientes PJ
+// reais do C2X têm este campo preenchido (49 ME, 15 Demais, 14 EPP, 2 MEI).
+export const C2X_COMPANY_SIZE: C2xOption[] = [
+  { id: 1, label: "MEI" },
+  { id: 2, label: "ME" },
+  { id: 3, label: "EPP" },
+  { id: 4, label: "Médio Porte" },
+  { id: 5, label: "Grande Empresa" },
+  { id: 6, label: "Demais" },
+];
+
+// Profissão "PROFISSÃO NÃO DECLARADA" (professions do C2X). É o padrão do cliente PJ: 75 dos 80
+// clientes PJ reais usam este id, porque a profissão ali é a do sócio e o cadastro do Apolo
+// ainda não coleta esse campo na etapa Sócios. Melhor declarar "não declarada" do que inventar.
+export const C2X_PROFISSAO_NAO_DECLARADA = 25;
+
+// Porte que o enriquecimento devolve ("ME", "EPP", "MEI", "DEMAIS") -> company_size_id. Sem
+// correspondência devolve null, e o campo fica de fora do payload (nunca vai chute).
+// ⚠️ "MEI" antes de "ME": a busca por trecho casaria "ME" dentro de "MEI".
+export function matchCompanySizeId(porte: string | null | undefined): number | null {
+  const v = normalize(porte ?? "").replace(/[^A-Z0-9]+/g, " ").trim();
+  if (!v) return null;
+  if (/\bMEI\b|MICROEMPRESARIO INDIVIDUAL|MICRO EMPRESARIO INDIVIDUAL/.test(v)) return 1;
+  if (/\bME\b|MICROEMPRESA|MICRO EMPRESA/.test(v)) return 2;
+  if (/\bEPP\b|PEQUENO PORTE/.test(v)) return 3;
+  if (/MEDIO/.test(v)) return 4;
+  if (/GRANDE/.test(v)) return 5;
+  if (/DEMAIS/.test(v)) return 6;
+  return null;
+}
+
 // Tipo do documento de identificação (users.document_type_id). Tabela `document_types` do C2X.
 export const C2X_DOCUMENT_TYPE: C2xOption[] = [
   { id: 1, label: "CNH" },

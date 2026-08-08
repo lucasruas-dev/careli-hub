@@ -227,9 +227,18 @@ export async function POST(request: Request) {
   // 1b) VÍNCULO na esteira (empreendimento + imobiliária + corretor), como o portal público faz —
   // para a CAD manual entrar na fila COM empreendimento e não nascer órfã (o bug das órfãs). Só
   // grava quando o operador escolheu o empreendimento no wizard; best-effort com aviso.
+  //
+  // ⚠️ CORRETOR NÃO ENTRA NA ESTEIRA (regra do Lucas, 05/08). A esteira existe para VALIDAR
+  // DOCUMENTO DE COMPRADOR: validação, análise de crédito, pré-venda, credenciamento. O corretor
+  // não compra nada, então não há o que validar: ele é cadastrado, vinculado à imobiliária, e
+  // acabou. Antes esta condição olhava só empreendimento + imobiliária, e como o cadastro de
+  // corretor também tem os dois, ele caía na fila de Validação junto com os clientes.
+  //
+  // A IMOBILIÁRIA continua entrando de propósito: ela TEM documento para validar (contrato social,
+  // ficha dos sócios). Só o corretor está fora.
   const vinculo = payload.vinculo;
   const imobiliariaId = payload.perfil?.imobiliariaId?.trim();
-  if (vinculo?.enterpriseId && imobiliariaId) {
+  if (role !== "corretor" && vinculo?.enterpriseId && imobiliariaId) {
     const imobiliariaNome = await nomeDaImobiliaria(
       adminClient,
       imobiliariaId,

@@ -171,6 +171,16 @@ export function RelationshipsPanel({
       if (resp.ok) {
         setOpenGroup(null);
         onCreated();
+      } else {
+        // NÃO ficar em silêncio: antes, falha aqui não mudava nada na tela e o botão parecia
+        // morto. O 404 acontece quando o vínculo JÁ foi arquivado (a rota ignora arquivados),
+        // então a mensagem diz isso em vez de um erro genérico.
+        const corpo = (await resp.json().catch(() => ({}))) as { error?: string };
+        window.alert(
+          resp.status === 404
+            ? "Este vínculo já tinha sido excluído. Atualize a página para ver a lista atual."
+            : corpo.error || "Não foi possível excluir o vínculo agora. Tente de novo.",
+        );
       }
     } finally {
       setExcluindo(null);

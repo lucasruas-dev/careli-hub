@@ -94,6 +94,9 @@ export type ApoloC2xCadastro = {
   city: string | null;
   civilState: string | null;
   cnpj: string | null;
+  // Porte da empresa como TEXTO ("ME", "EPP", "MEI"...), do jeito que o enriquecimento devolve.
+  // Vira `company_size_id` no envio ao C2X (só PJ). Nulo em PF.
+  companySize: string | null;
   complement: string | null;
   cpf: string | null;
   creciNumber: string | null;
@@ -101,6 +104,9 @@ export type ApoloC2xCadastro = {
   district: string | null;
   fantasyName: string | null;
   isCompany: boolean;
+  // Quem assina pela empresa (sócio com `representanteLegal`). Numa PJ é ELE que vai em
+  // `signers_attributes`, não o cônjuge — a PJ não tem cônjuge. Nulo em PF.
+  legalRepresentative: ApoloC2xRepresentante | null;
   motherName: string | null;
   municipalInscription: string | null;
   nacionality: string | null;
@@ -120,6 +126,17 @@ export type ApoloC2xCadastro = {
   state: string | null;
   street: string | null;
   zipcode: string | null;
+};
+
+// Representante legal da PJ: o sócio que assina pela empresa. Vive em
+// `metadata.cadastro.socios[]` (o que a etapa Sócios do wizard salvou) e, como reserva, no
+// relacionamento 'representante_legal' — que sobrevive ao sync do C2X, o metadata não.
+// Guarda só o que o contrato precisa: nome, CPF, e-mail e profissão.
+export type ApoloC2xRepresentante = {
+  cpf: string | null;
+  email: string | null;
+  name: string | null;
+  profession: string | null;
 };
 
 // Cônjuge (tabela `spouses` do C2X). Além de aparecer no cadastro, o cônjuge

@@ -2,6 +2,24 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  async headers() {
+    return [
+      // Plantas do masterplan (JPG de 2 MB + JSON dos poligonos). Sao arquivos gerados uma vez
+      // e commitados, entao cada abertura da aba Mapa pagava uma revalidacao HTTP a toa. O Next
+      // so aplica cache longo em /_next/static; o que esta em public/ nao entra nessa regra.
+      // Prazo de 1 dia (e nao "immutable" de 1 ano) de proposito: se a planta for regerada com
+      // o MESMO nome de arquivo, o navegador se corrige sozinho no dia seguinte.
+      {
+        source: "/masterplan/:path*",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400, stale-while-revalidate=604800",
+          },
+        ],
+      },
+    ];
+  },
   async rewrites() {
     return [
       // Apresentacao institucional do processo de lancamento (rota publica,

@@ -571,8 +571,8 @@ function conferirDocumento(ext: Extraction, aceitas: FamiliaDoc[], pedido: strin
   if (familia !== "outro" && !aceitas.includes(familia)) {
     const lido = mapDocType(ext.documentType);
     avisos.push(
-      `A leitura reconheceu ${lido ? `"${lido}"` : "outro tipo de documento"} — confira se ` +
-        `enviou ${pedido}. O arquivo foi salvo; preencha os campos manualmente se preciso.`,
+      `A leitura reconheceu ${lido ? `"${lido}"` : "outro tipo de documento"}. Confira se ` +
+        `anexou ${pedido}. O arquivo foi salvo; se estiver certo, siga e preencha os campos na mão.`,
     );
   }
 
@@ -583,8 +583,8 @@ function conferirDocumento(ext: Extraction, aceitas: FamiliaDoc[], pedido: strin
   const confianca = ext.confiancaDocumento ?? null;
   if (confianca !== null && confianca < minima) {
     avisos.push(
-      `Leitura com baixa confiança (${Math.round(confianca * 100)}%). ` +
-        "Os dados podem vir incompletos — confira e complete manualmente.",
+      `A foto ficou difícil de ler (${Math.round(confianca * 100)}% de nitidez). ` +
+        "Alguns dados podem faltar: confira o que foi preenchido e complete na mão.",
     );
   }
 
@@ -799,6 +799,11 @@ export type PublicoConfig = {
   salvarUrl?: string;
   // Só para o cabeçalho "CAD para X" (informativo).
   empreendimentoNome?: string;
+  // Vínculo que o TOKEN carrega, repassado pelo portão. É a ÚNICA forma de a revisão mostrar
+  // imobiliária e corretor no modo público: a lista de imobiliárias (que resolve o rótulo no
+  // interno) não é carregada aqui, e não existe rota pública que a liste.
+  imobiliariaNome?: string;
+  corretorNome?: string;
   // Vitrine de empreendimentos ATIVOS (só imobiliária pública): alimenta o multi-select e a
   // resolução de rótulos, já que NÃO há rota pública que os liste. Vem do server component.
   empreendimentos?: SelectOption[];
@@ -1199,7 +1204,11 @@ export function CadastroFlow({
         <div className="rounded-2xl border border-line bg-surface px-6 py-5 shadow-[0_1px_2px_rgba(15,23,42,0.04)] print:hidden">
           <div className="flex items-center justify-between gap-4">
             <h1 className="text-lg font-semibold tracking-tight text-ink">
-              {isImobiliaria ? "Cadastro de Imobiliária" : "Cadastro de CAD"}
+              {isImobiliaria
+                ? "Cadastro de Imobiliária"
+                : modoPublico
+                  ? "Cadastro do cliente"
+                  : "Cadastro de CAD"}
             </h1>
             <div className="flex items-center gap-2">
               <span className="hidden items-center gap-1.5 rounded-full border border-line bg-subtle px-3 py-1.5 text-xs font-medium text-ink-soft sm:inline-flex">
@@ -1229,7 +1238,21 @@ export function CadastroFlow({
               )}
             </div>
           </div>
-          <span className="mt-5 block text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+          {/* No público a barra do portão já contou "parte 1"; sem esta legenda o corretor vê o
+              contador voltar para 1 e acha que perdeu o que preencheu. */}
+          {modoPublico ? (
+            <span className="mt-5 block text-xs text-ink-muted">
+              {/* O mesmo wizard serve o CAD do cliente E o auto-cadastro da imobiliária. Falar em
+                  "cliente" na tela da imobiliária confundiria quem está cadastrando a si mesma. */}
+              Parte 2 de 2: {isImobiliaria ? "dados da imobiliária" : "dados do cliente"}
+              {publico?.empreendimentoNome ? ` · ${publico.empreendimentoNome}` : ""}
+            </span>
+          ) : null}
+          <span
+            className={`block text-[11px] font-semibold uppercase tracking-wide text-ink-muted ${
+              modoPublico ? "mt-2" : "mt-5"
+            }`}
+          >
             Etapa {activeIndex + 1} de {steps.length}
           </span>
           <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-subtle">
@@ -1430,6 +1453,7 @@ export function CadastroFlow({
         {current === "Revisão" ? (
           <StepRevisao
             conjuge={temConjuge ? conjuge : null}
+            publico={publico}
             corretores={corretores}
             documentos={documentos}
             empreendimentos={empreendimentos}
@@ -1633,9 +1657,11 @@ function DocUploader({
             // Enviar ia morrer no fim de qualquer jeito. A mensagem da rota é acionável.
             const msg = erroLeitura instanceof Error ? erroLeitura.message : "";
             if (/sess[aã]o/i.test(msg)) {
+              // "CPF de corretor" só vale no CAD do cliente. No auto-cadastro da imobiliária quem
+              // abriu a sessão é a própria empresa, e mandá-la informar "CPF de corretor" confunde.
               avisoDeLeitura =
-                "Sua sessão expirou — os campos abrem para preencher manualmente, mas o envio " +
-                "vai pedir para entrar de novo. Salve o que puder e reabra pelo CPF.";
+                "Sua sessão expirou. Você ainda consegue preencher os campos na mão, mas o envio " +
+                "vai pedir os seus dados de novo. Reabra o link para continuar.";
             } else if (/limite|429|aguarde/i.test(msg)) {
               avisoDeLeitura = msg;
             }
@@ -1670,8 +1696,8 @@ function DocUploader({
       if (falhaDeLeitura) {
         setAviso(
           avisoDeLeitura ??
-            "A leitura automática falhou neste documento. O arquivo foi salvo — " +
-              "preencha os campos manualmente.",
+            "Não conseguimos ler este documento. O arquivo foi salvo mesmo assim: " +
+              "siga e preencha os campos na mão.",
         );
       }
     } catch (err) {
@@ -1704,7 +1730,7 @@ function DocUploader({
               {lidos.length === 1 ? "1 arquivo anexado" : `${lidos.length} arquivos anexados`}
             </span>
             <span className="text-xs text-ink-muted">
-              Clique para adicionar mais arquivos
+              Toque aqui para anexar mais arquivos
             </span>
           </>
         ) : (
@@ -1741,7 +1767,7 @@ function DocUploader({
         className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-ink-soft transition-colors hover:bg-subtle disabled:cursor-wait disabled:opacity-60"
       >
         <Camera className="size-3.5" aria-hidden="true" />
-        Usar câmera do dispositivo
+        Tirar foto agora com a câmera
       </button>
 
       <input
@@ -1917,6 +1943,7 @@ function StepIdentificacao({
   onPersona: (persona: Persona) => void;
   perfil: Perfil;
   persona: Persona;
+  publico?: { corretorNome?: string; imobiliariaNome?: string } | null;
 }) {
   // Adapter de leitura/enriquecimento + flag público (esconde o seletor de imobiliária e
   // dispensa `imobiliariaId`, que no público vem do token).
@@ -2052,41 +2079,57 @@ function StepIdentificacao({
   // credito, vinculo com o C2X). Validamos aqui pra falhar na hora, e nao no fim do wizard.
   const cpfDaIdentidadeOk = Boolean(identidade && cpfValido(identidade.cpf));
 
-  const podeAvancarPf = Boolean(
-    identidade &&
-      identidade.nome.trim() &&
-      cpfDaIdentidadeOk &&
-      // NATURALIDADE OBRIGATÓRIA (incidente 05/08): 8 CADs voltaram recusadas pelo C2X com
-      // "Naturalidade não pode ficar em branco" / "Nacionalidade não pode ficar em branco". Só a
-      // naturalidade é exigida porque a nacionalidade é DERIVADA dela (derivarNacionalidade, em
-      // lib/apolo/cadastro-cascata.ts). NÃO é trava de OCR (v1.105.0): logo acima o campo
-      // Naturalidade abre para digitação sempre que a leitura vem vazia. Espelha a trava do
-      // servidor em lib/apolo/cadastro-obrigatorios.ts (validarCamposMinimos).
-      identidade.naturalidade.trim() &&
-      perfil.sexoId &&
-      perfil.estadoCivilId &&
-      perfil.escolaridadeId &&
-      perfil.rendaId &&
-      perfil.profissaoId &&
-      // No público a imobiliária vem do token (o servidor a força); o browser não a preenche.
-      (modoPublico || perfil.imobiliariaId) &&
-      vinculoProspectOk &&
-      emailValido &&
-      conjugeOk,
-  );
+  // O QUE FALTA PARA AVANÇAR, DITO NA TELA (pedido do Lucas, 05/08: "o botão não está habilitado,
+  // seria ótimo colocar um aviso do que falta a ser preenchido"). Esta etapa exige ONZE coisas, e
+  // antes o botão só ficava cinza: o operador não tinha como saber qual campo estava vazio, e
+  // ficava caçando na tela com o cliente esperando.
+  //
+  // ⚠️ A MESMA lista habilita o botão E monta o aviso. Se fossem duas listas, um dia discordariam
+  // e a tela diria "está tudo certo" com o botão travado, que é pior do que o silêncio de hoje.
+  //
+  // NATURALIDADE (incidente 05/08): 8 CADs voltaram recusadas pelo C2X por naturalidade e
+  // nacionalidade em branco. Só a naturalidade é cobrada porque a nacionalidade é DERIVADA dela
+  // (derivarNacionalidade, lib/apolo/cadastro-cascata.ts). NÃO é trava de OCR (v1.105.0): o campo
+  // Naturalidade abre para digitação sempre que a leitura vem vazia.
+  const faltamNaIdentidadePf: string[] = identidade
+    ? [
+        identidade.nome.trim() ? null : "nome",
+        cpfDaIdentidadeOk ? null : "CPF válido",
+        identidade.naturalidade.trim() ? null : "naturalidade (cidade de nascimento)",
+        perfil.sexoId ? null : "sexo",
+        perfil.estadoCivilId ? null : "estado civil",
+        perfil.escolaridadeId ? null : "escolaridade",
+        perfil.rendaId ? null : "faixa de renda",
+        perfil.profissaoId ? null : "profissão",
+        modoPublico || perfil.imobiliariaId ? null : "imobiliária",
+        vinculoProspectOk ? null : "empreendimento e corretor",
+        emailValido ? null : "e-mail válido",
+        conjugeOk ? null : "dados do cônjuge",
+      ].filter((item): item is string => item !== null)
+    : ["o documento de identificação"];
+
+  const podeAvancarPf = faltamNaIdentidadePf.length === 0;
   // Imobiliária: não se vincula a outra imobiliária (a Seção "Vínculo" some); em troca, exige ao
   // menos um empreendimento (vínculo de trabalho). CRECI é opcional.
-  const podeAvancarPj = Boolean(
-    isImobiliaria
-      ? empresa.documentoLido && emailRegex.test(empresa.email) && empreendimentosSel.length > 0
-      : empresa.documentoLido &&
-        // No público a imobiliária vem do token (o servidor a força); o browser não a preenche —
-        // mesma exceção do PF acima. Sem isto, PJ pelo link público nunca habilita o avançar.
-        (modoPublico || perfil.imobiliariaId) &&
-        vinculoProspectOk &&
-        emailRegex.test(empresa.email),
-  );
+  // Mesma ideia do PF: uma lista só, que habilita o botão e explica o que falta.
+  // No público a imobiliária vem do token (o servidor a força) e o browser não a preenche; sem
+  // essa exceção, PJ pelo link público nunca habilitaria o avançar.
+  const faltamNaIdentidadePj: string[] = isImobiliaria
+    ? [
+        empresa.documentoLido ? null : "o cartão CNPJ",
+        emailRegex.test(empresa.email) ? null : "e-mail válido",
+        empreendimentosSel.length > 0 ? null : "ao menos um empreendimento",
+      ].filter((item): item is string => item !== null)
+    : [
+        empresa.documentoLido ? null : "o cartão CNPJ",
+        modoPublico || perfil.imobiliariaId ? null : "imobiliária",
+        vinculoProspectOk ? null : "empreendimento e corretor",
+        emailRegex.test(empresa.email) ? null : "e-mail válido",
+      ].filter((item): item is string => item !== null);
+
+  const podeAvancarPj = faltamNaIdentidadePj.length === 0;
   const podeAvancar = isPj ? podeAvancarPj : podeAvancarPf;
+  const faltamParaAvancar = isPj ? faltamNaIdentidadePj : faltamNaIdentidadePf;
 
   return (
     <StepCard title="1. Identificação">
@@ -2136,14 +2179,15 @@ function StepIdentificacao({
       <p className="m-0 mb-3 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
         {isImobiliaria ? (
           <>
-            Envie o <span className="font-semibold">cartão CNPJ</span> da imobiliária — os dados são
-            lidos do documento.
+            Anexe o <span className="font-semibold">cartão CNPJ</span> da imobiliária. Os dados são
+            lidos do próprio documento.
           </>
         ) : (
           <>
-            Pessoa física: envie <span className="font-semibold">RG, CNH ou passaporte</span>.
-            Pessoa jurídica: envie o <span className="font-semibold">cartão CNPJ</span> — o tipo é
-            identificado pelo documento.
+            Agora anexe o documento de identificação do cliente:{" "}
+            <span className="font-semibold">RG, CNH ou passaporte</span>. Se o cliente for empresa,
+            anexe o <span className="font-semibold">cartão CNPJ</span>. Nós identificamos o tipo
+            pelo próprio documento, você não precisa escolher nada.
           </>
         )}
       </p>
@@ -2153,8 +2197,8 @@ function StepIdentificacao({
           label={isImobiliaria ? "Adicionar cartão CNPJ da imobiliária" : "Adicionar documento do cliente"}
           hint={
             isImobiliaria
-              ? "Cartão CNPJ · imagem ou PDF"
-              : "RG / CNH (pessoa física) ou cartão CNPJ (empresa) · imagem ou PDF"
+              ? "Cartão CNPJ · foto ou PDF"
+              : "Foto ou PDF. Se o documento tiver frente e verso, anexe os dois."
           }
           onFile={onDocumento}
           onExtracted={async (ext) => {
@@ -2206,7 +2250,7 @@ function StepIdentificacao({
             </Secao>
 
             {empresa.socios.length ? (
-              <Secao title="Quadro societário (QSA)">
+              <Secao title="Sócios registrados no CNPJ">
                 {empresa.socios.map((socio, index) => (
                   <ReadField
                     key={`${socio.nome}-${index}`}
@@ -2339,8 +2383,8 @@ function StepIdentificacao({
               produção). A nacionalidade sai dela sozinha, por isso não é cobrada aqui. */}
           {identidade.naturalidade.trim() ? null : (
             <p className="mb-3 rounded-lg border border-rose-300/60 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
-              Informe a naturalidade (cidade de nascimento) para continuar. Sem ela o C2X recusa a
-              CAD e o cadastro volta para refazer.
+              Informe a naturalidade (a cidade de nascimento do cliente) para continuar. Sem ela o
+              cadastro é recusado depois e volta para refazer.
             </p>
           )}
 
@@ -2405,14 +2449,15 @@ function StepIdentificacao({
                 Cônjuge
               </p>
               <p className="mb-3 text-xs text-ink-muted">
-                Mesma ficha do titular. Envie o documento do cônjuge: leitura e
-                enriquecimento (sexo, telefone, renda) automáticos.
+                O cliente é casado ou tem união estável, então precisamos também do cônjuge. Anexe o
+                documento de identificação dele: RG, CNH ou passaporte. Os dados são preenchidos
+                pela leitura do documento; confira e complete o que faltar.
               </p>
               <div className="print:hidden">
                 <DocUploader
                   busy={enrichingConjuge}
-                  label="Documento do cônjuge"
-                  hint="RG ou CNH · imagem ou PDF"
+                  label="Adicionar documento do cônjuge"
+                  hint="RG, CNH ou passaporte · foto ou PDF"
                   onFile={onDocumentoConjuge}
                   onExtracted={lerConjuge}
                 />
@@ -2426,8 +2471,21 @@ function StepIdentificacao({
                     <ReadField label="Nascimento" value={formatDateBR(conjuge.dataNascimento)} />
                     <ReadField label="Idade" value={calcIdade(conjuge.dataNascimento)} />
                     <ReadField label="Nome da mãe" value={titleCase(conjuge.nomeMae)} span2 />
-                    <ReadField label="Naturalidade" value={titleCase(conjuge.naturalidade)} />
-                    <ReadField label="Nacionalidade" value={titleCase(conjuge.nacionalidade)} />
+                    {/* Mesmo tratamento do titular e do sócio: o que a leitura do documento NÃO
+                        entregou abre para digitar. A CNH não traz naturalidade impressa, e o RG
+                        mal fotografado também falha; travado, o campo ficava "—" para sempre. */}
+                    <CampoDoDocumento
+                      label="Naturalidade"
+                      placeholder="Cidade de nascimento, ex.: Goiânia / GO"
+                      value={conjuge.naturalidade}
+                      onChange={(v) => onConjugeChange({ naturalidade: v })}
+                    />
+                    <CampoDoDocumento
+                      label="Nacionalidade"
+                      placeholder="Brasileira"
+                      value={conjuge.nacionalidade}
+                      onChange={(v) => onConjugeChange({ nacionalidade: v })}
+                    />
                   </Secao>
 
                   <Secao title="Perfil do cônjuge">
@@ -2489,7 +2547,24 @@ function StepIdentificacao({
 
       {enrich && enrich.source !== "mostqi" ? <EnrichWarn enrich={enrich} /> : null}
 
-      <NavButtons canNext={podeAvancar} onNext={onNext} />
+      {/* O QUE FALTA, DITO NA CARA. Sem isto o botão só fica cinza e o operador procura o campo
+          vazio na tela inteira, com o cliente esperando. A lista vem da MESMA fonte que habilita
+          o botão, então nunca diz "falta X" com o avançar já liberado, nem o contrário. */}
+      {podeAvancar ? null : (
+        <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+          Para avançar, ainda falta preencher: <strong>{juntarPtBr(faltamParaAvancar)}</strong>.
+        </p>
+      )}
+
+      {/* O botão diz o que vem DEPOIS: quem está com o cliente na frente precisa saber se ainda
+          falta documento antes de avançar. */}
+      <NavButtons
+        canNext={podeAvancar}
+        nextLabel={
+          isPj ? "Avançar para o contrato social" : "Avançar para o comprovante de endereço"
+        }
+        onNext={onNext}
+      />
     </StepCard>
   );
 }
@@ -2537,13 +2612,13 @@ function StepContratoSocial({
   return (
     <StepCard title="2. Contrato social">
       <p className="m-0 mb-3 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] dark:text-[#d9b877]">
-        Envie o <span className="font-semibold">contrato social</span> (ou a última alteração
-        consolidada). Pode anexar várias páginas de uma vez.
+        Agora anexe o <span className="font-semibold">contrato social</span> da empresa, ou a última
+        alteração consolidada. Anexe todas as páginas: dá para mandar várias de uma vez.
       </p>
       <div className="print:hidden">
         <DocUploader
           label="Adicionar contrato social"
-          hint="Todas as páginas · imagem ou PDF"
+          hint="Todas as páginas · foto ou PDF"
           onFile={onDocumento}
           // Anexo puro: documento livre (nao e formulario padronizado), nao ha campo a ler --
           // e cada arquivo lido seria uma consulta cobrada a toa.
@@ -2551,7 +2626,12 @@ function StepContratoSocial({
           onExtracted={() => {}}
         />
       </div>
-      <NavButtons canNext={anexado} onBack={onBack} onNext={onNext} />
+      <NavButtons
+        canNext={anexado}
+        nextLabel="Avançar para os sócios"
+        onBack={onBack}
+        onNext={onNext}
+      />
     </StepCard>
   );
 }
@@ -2598,7 +2678,7 @@ function BlocoSocio({
 
       <DocUploader
         label="Adicionar documento de identificação"
-        hint="RG, CNH ou passaporte · imagem ou PDF"
+        hint="RG, CNH ou passaporte · foto ou PDF"
         onFile={(arquivo) =>
           aoAnexar("arquivosIdentificacao", arquivo)
         }
@@ -2705,7 +2785,7 @@ function BlocoSocio({
             </span>
             <DocUploader
               label="Adicionar comprovante de endereço"
-              hint="Conta de luz, água, telefone · imagem ou PDF"
+              hint="Conta de luz, água, telefone · foto ou PDF"
               onFile={(arquivo) =>
                 aoAnexar("arquivosComprovante", arquivo)
               }
@@ -2745,8 +2825,8 @@ function BlocoSocio({
             !socio.endereco.logradouro &&
             !socio.endereco.cidade ? (
               <p className="m-0 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300">
-                Não consegui ler o endereço no comprovante. O documento foi salvo — envie a conta
-                inteira e bem enquadrada para tentar de novo, ou preencha pelo CEP abaixo.
+                Não conseguimos ler o endereço no comprovante. O documento foi salvo: fotografe a
+                conta inteira, sem cortar as bordas, e anexe de novo, ou preencha pelo CEP abaixo.
               </p>
             ) : null}
 
@@ -2806,6 +2886,11 @@ function StepSocios({
 
   return (
     <StepCard title="3. Sócios">
+      <p className="m-0 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
+        Cadastre cada sócio da empresa. De cada um precisamos do documento de identificação (RG, CNH
+        ou passaporte) e de um comprovante de endereço dos últimos 3 meses. Marque quem assina pela
+        empresa.
+      </p>
       <div className="grid gap-4">
         {socios.map((socio, index) => (
           <BlocoSocio
@@ -3146,10 +3231,14 @@ function StepEndereco({
 }) {
   return (
     <StepCard title="2. Comprovante de endereço">
+      <p className="m-0 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
+        Agora anexe o comprovante de endereço do cliente: conta de luz, de água ou de telefone,
+        emitida nos últimos 3 meses. Fotografe a conta inteira, sem cortar as bordas.
+      </p>
       <div className="print:hidden">
         <DocUploader
           label="Adicionar comprovante de endereço"
-          hint="Conta de luz, água, telefone · imagem ou PDF"
+          hint="Conta de luz, água ou telefone · foto ou PDF"
           onFile={onDocumento}
           onExtracted={(ext) => {
             // Aqui só entra comprovante: RG/certidão/cartão CNPJ são recusados.
@@ -3176,8 +3265,8 @@ function StepEndereco({
           {/* Aviso quando a MOST não leu o comprovante: documento salvo, preenche pelo CEP. */}
           {!endereco.logradouro && !endereco.cidade ? (
             <p className="m-0 mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/12 dark:text-amber-300">
-              Não consegui ler o endereço no comprovante. O documento foi salvo — envie a conta
-              inteira e bem enquadrada para tentar de novo, ou preencha pelo CEP abaixo.
+              Não conseguimos ler o endereço no comprovante. O documento foi salvo: fotografe a
+              conta inteira, sem cortar as bordas, e anexe de novo, ou preencha pelo CEP abaixo.
             </p>
           ) : null}
           <EnderecoEditavel endereco={endereco} onChange={onEnderecoChange} />
@@ -3221,8 +3310,8 @@ function StepCertidao({
   return (
     <StepCard title="3. Certidão">
       <p className="rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-xs text-amber-700 dark:text-amber-300 print:hidden">
-        Envie a <span className="font-semibold">{tituloMinusculo}</span>. A autenticidade do
-        documento é verificada automaticamente.
+        Agora anexe a <span className="font-semibold">{tituloMinusculo}</span> do cliente. Nós
+        conferimos a autenticidade do documento automaticamente.
       </p>
 
       <div>
@@ -3231,8 +3320,8 @@ function StepCertidao({
         </p>
         <div className="print:hidden">
           <DocUploader
-            label={`Enviar ${tituloMinusculo}`}
-            hint={`${esperada.hint} · imagem ou PDF`}
+            label={`Adicionar ${tituloMinusculo}`}
+            hint={`${esperada.hint} · foto ou PDF`}
             onFile={onDocumento}
             onExtracted={(ext) => {
               conferirDocumento(ext, ["certidao"], `a ${tituloMinusculo}`);
@@ -3261,8 +3350,8 @@ function StepCertidao({
             // fica salvo e os campos abrem para o manual; quem confere é a Validação.
             <div className="mt-2 flex items-center gap-2 rounded-lg border border-amber-200 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/12 px-3 py-2 text-xs font-medium text-amber-700 dark:text-amber-300">
               <AlertTriangle className="size-4" aria-hidden="true" />
-              Não consegui confirmar a leitura da certidão — o arquivo foi salvo. Confira o
-              documento e preencha os campos manualmente.
+              Não conseguimos confirmar a leitura da certidão. O arquivo foi salvo: confira o
+              documento e preencha os campos na mão.
             </div>
           )
         ) : null}
@@ -3327,6 +3416,9 @@ function StepRevisao({
   onEditar,
   perfil,
   persona,
+  // Vínculo vindo do TOKEN no modo público (imobiliária e corretor): a revisão não consegue
+  // resolver esses nomes sozinha aqui, ver o comentário em PublicoConfig.
+  publico,
   socios,
   steps,
   tipo,
@@ -3347,6 +3439,9 @@ function StepRevisao({
   onEditar: (step: number) => void;
   perfil: Perfil;
   persona: Persona;
+  // Modo público: os nomes vêm do token (o portão repassa), porque a lista de imobiliárias que
+  // resolve o rótulo no interno não é carregada aqui.
+  publico?: { corretorNome?: string; imobiliariaNome?: string } | null;
   socios: SocioCadastro[];
   steps: string[];
   tipo: string;
@@ -3748,7 +3843,11 @@ function StepRevisao({
           </span>
           <div>
             <h2 className="text-lg font-semibold text-ink">
-              {isImobiliaria ? "Cadastro de Imobiliária" : "Cadastro de CAD"}
+              {isImobiliaria
+                ? "Cadastro de Imobiliária"
+                : modoPublico
+                  ? "Confira antes de enviar"
+                  : "Cadastro de CAD"}
             </h2>
             <p className="text-xs text-ink-muted">
               {nomeCliente} · registro {registro.completo}
@@ -3756,6 +3855,16 @@ function StepRevisao({
           </div>
         </div>
       </div>
+
+      {/* No público, o corretor está com o cliente ao lado: dizer o que o Enviar faz evita o
+          envio apressado e a ficha voltando para correção. */}
+      {enviado || !modoPublico ? null : (
+        <p className="mt-4 rounded-lg border border-[#A07C3B]/25 bg-[#A07C3B]/8 px-3 py-2 text-xs text-[#7a5e2c] print:hidden dark:text-[#d9b877]">
+          {isImobiliaria
+            ? "Confira os dados antes de enviar. Ao tocar em Enviar, o cadastro vai para a análise da Careli e não dá mais para editar por aqui."
+            : "Confira os dados do cliente com ele ao lado. Ao tocar em Enviar, a ficha vai para a análise da Careli e não dá mais para editar por aqui."}
+        </p>
+      )}
 
       {/* Achou erro? volta direto na etapa, sem precisar clicar "Voltar" várias vezes. */}
       {enviado ? null : (
@@ -3794,7 +3903,7 @@ function StepRevisao({
           </Secao>
 
           {empresa.socios.length ? (
-            <Secao title="Quadro societário (QSA)">
+            <Secao title="Sócios registrados no CNPJ">
               {empresa.socios.map((socio, index) => (
                 <ReadField
                   key={`${socio.nome}-${index}`}
@@ -3887,7 +3996,14 @@ function StepRevisao({
           <Secao title="Contato e vínculo">
             <ReadField label="Telefone" value={perfil.telefone} />
             <ReadField label="E-mail" value={perfil.email} span2 />
-            <ReadField label="Imobiliária" value={label(imobiliarias, perfil.imobiliariaId)} />
+            {/* No público o rótulo vem do token (o portão repassa); no interno, da lista. */}
+            <ReadField
+              label="Imobiliária"
+              value={publico?.imobiliariaNome || label(imobiliarias, perfil.imobiliariaId)}
+            />
+            {publico?.corretorNome ? (
+              <ReadField label="Corretor" value={publico.corretorNome} />
+            ) : null}
           </Secao>
 
           {conjuge ? (
@@ -3929,10 +4045,15 @@ function StepRevisao({
                 </span>
                 <div className="min-w-0">
                   <h2 className="m-0 text-base font-semibold text-ink">
-                    {isImobiliaria ? "Cadastro enviado com sucesso" : "CAD enviada com sucesso"}
+                    {isImobiliaria
+                      ? "Cadastro enviado com sucesso"
+                      : modoPublico
+                        ? "Cadastro do cliente enviado"
+                        : "CAD enviada com sucesso"}
                   </h2>
                   <p className="m-0 mt-0.5 text-xs text-ink-muted">
-                    {nomeCliente} · {isImobiliaria ? "Imobiliária" : "Prospect"}
+                    {nomeCliente} ·{" "}
+                    {isImobiliaria ? "Imobiliária" : modoPublico ? "Cliente" : "Prospect"}
                   </p>
                   <p className="m-0 text-xs text-ink-muted">
                     Enviado em {registro.data} às {registro.hora}
@@ -3953,6 +4074,18 @@ function StepRevisao({
               </button>
             </div>
 
+            {/* O QUE ACONTECE AGORA: sem esta linha o corretor fica em dúvida se precisa mandar
+                a ficha para alguém, e liga para a central para perguntar. */}
+            {modoPublico ? (
+              <p className="m-0 mt-4 rounded-lg bg-subtle px-3 py-2 text-xs text-ink-soft">
+                Pronto, você não precisa fazer mais nada. A ficha já chegou para a análise da
+                Careli.
+                {resultado?.autenticacao
+                  ? " Se precisar falar com a central sobre este cliente, informe o código abaixo."
+                  : ""}
+              </p>
+            ) : null}
+
             {resultado?.autenticacao ? (
               <div className="mt-4 rounded-lg border border-line bg-subtle px-3 py-2">
                 <p className="m-0 text-[10px] font-semibold uppercase tracking-wide text-ink-muted">
@@ -3967,8 +4100,9 @@ function StepRevisao({
             {resultado?.savedDocs.length ? (
               <p className="m-0 mt-2 rounded-lg bg-subtle px-3 py-2 text-xs text-ink-soft">
                 {resultado.savedDocs.length}{" "}
-                {resultado.savedDocs.length === 1 ? "arquivo salvo" : "arquivos salvos"} no
-                drive do cadastro.
+                {resultado.savedDocs.length === 1
+                  ? "arquivo foi salvo junto com a ficha."
+                  : "arquivos foram salvos junto com a ficha."}
               </p>
             ) : null}
 
@@ -3991,7 +4125,7 @@ function StepRevisao({
                 className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:opacity-50"
               >
                 <Download className="size-4" aria-hidden="true" />
-                {isImobiliaria ? "Baixar cadastro" : "Baixar CAD"}
+                {isImobiliaria ? "Baixar cadastro" : modoPublico ? "Baixar em PDF" : "Baixar CAD"}
               </button>
               <a
                 href={modoPublico ? undefined : "/apolo/cadastro"}
@@ -4006,7 +4140,7 @@ function StepRevisao({
                 }
                 className="inline-flex h-10 cursor-pointer items-center justify-center gap-2 rounded-lg border border-line bg-surface px-4 text-sm font-semibold text-ink-soft transition-colors hover:bg-subtle"
               >
-                Novo cadastro
+                {modoPublico && !isImobiliaria ? "Cadastrar outro cliente" : "Novo cadastro"}
               </a>
             </div>
           </div>
@@ -4026,7 +4160,7 @@ function StepRevisao({
             {/* O que ainda falta anexar. Some quando está tudo presente (podeEnviar). */}
             {podeEnviar ? null : (
               <p className="m-0 text-right text-xs font-medium text-amber-700 dark:text-amber-300">
-                Falta: {juntarPtBr(faltando)}
+                Ainda falta anexar: {juntarPtBr(faltando)}
               </p>
             )}
             <button
@@ -4043,7 +4177,7 @@ function StepRevisao({
               ) : (
                 <Send className="size-4" aria-hidden="true" />
               )}
-              {enviando ? "Enviando" : "Enviar"}
+              {enviando ? "Enviando" : modoPublico ? "Enviar para a Careli" : "Enviar"}
             </button>
           </div>
         )}
@@ -4543,8 +4677,8 @@ function EnrichWarn({ enrich }: { enrich: Enrichment }) {
           <CheckCircle2 className="size-3.5" aria-hidden="true" />
         )}
         {simulado
-          ? "Enriquecimento simulado (localhost sem chave)."
-          : "Enriquecimento indisponível: preencha os campos manualmente."}
+          ? "Dados automáticos simulados (ambiente de teste, sem chave)."
+          : "Não conseguimos completar os dados automaticamente. Preencha os campos na mão."}
       </div>
     </div>
   );

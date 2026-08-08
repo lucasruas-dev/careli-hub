@@ -50,7 +50,9 @@ type SalvarPayload = CreateApoloEntityInput & {
 
 export async function POST(request: Request) {
   const verificacao = sessaoDoRequest(request);
-  if (!verificacao.ok) return erro("Sua sessão expirou. Informe o CPF novamente.", 401);
+  if (!verificacao.ok) {
+    return erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401);
+  }
   const sessao = verificacao.sessao;
 
   // Sem empreendimento escolhido não existe CAD (mesma regra da CHECK constraint da 0061).
@@ -69,14 +71,14 @@ export async function POST(request: Request) {
   // O papel é FORÇADO para prospect adiante; aqui só recusamos um corpo que peça outra coisa,
   // para a mensagem ser clara (o formulário público de CAD só cria prospect).
   if (payload.role && payload.role !== "prospect") {
-    return responder(inicio, erro("Este formulário só cria CAD de prospect."));
+    return responder(inicio, erro("Este link serve só para CAD de cliente."));
   }
 
   // Documento anexado em QUALQUER uma das duas formas: base64 no corpo (documento pequeno, fluxo
   // de sempre) ou caminho de arquivo já gravado no bucket (documento grande, upload direto).
   const documentos = (payload.documentos ?? []).filter(documentoTemArquivo);
   if (documentos.length > MAX_FILES) {
-    return responder(inicio, erro(`Envie no máximo ${MAX_FILES} arquivos por CAD.`, 413));
+    return responder(inicio, erro(`Anexe no máximo ${MAX_FILES} arquivos por CAD.`, 413));
   }
   for (const doc of documentos) {
     const caminho = (doc.storagePath ?? "").trim();

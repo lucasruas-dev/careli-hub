@@ -2,10 +2,15 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "hub",
+      "name": "hub-dev",
       "runtimeExecutable": "npm",
       "runtimeArgs": ["--prefix", "apps/hub", "run", "dev"],
       "port": 3001
-    }
+    },
+    { "name": "previas-garden", "url": "http://localhost:8765", "port": 8765 },
+    { "name": "garden-previas", "url": "http://localhost:5190", "port": 5190 },
+    { "name": "garden-p4", "url": "http://localhost:8834", "port": 8834 },
+    { "name": "t4-aberta", "url": "http://localhost:8741", "port": 8741 },
+    { "name": "garden-interno", "url": "http://localhost:8899", "port": 8899 }
   ]
 }

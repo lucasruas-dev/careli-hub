@@ -5,6 +5,7 @@ import {
   ArrowLeft,
   Building2,
   Check,
+  CloudOff,
   CreditCard,
   ExternalLink,
   FileCheck2,
@@ -24,6 +25,13 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
+import {
+  destinoEhProducao,
+  foraDoC2x,
+  HOST_C2X_PRODUCAO,
+  rotuloBotaoC2x,
+  type ResultadoSubidaC2x,
+} from "@/lib/apolo/c2x-envio-card";
 import {
   C2X_ESCOLARIDADE,
   C2X_ESTADO_CIVIL,
@@ -62,10 +70,12 @@ type ItemFila = {
   analistaId?: string | null;
   // Motivo da recusa do C2X (coluna `erro` de apolo_c2x_sync), para o tooltip do alerta.
   c2xErro?: string | null;
-  // A CAD NÃO conseguiu subir para o C2X. Preenchido só quando falhou:
+  // A CAD NÃO está confirmada no C2X. Quem decide é o servidor (lib/apolo/c2x-alerta-board.ts):
   //   'erro'            -> a API recusou (motivo em `c2xErro`).
   //   'sem_confirmacao' -> respondeu sucesso mas o cadastro não apareceu no banco do C2X.
-  // Null = está no C2X ou ainda não foi tentada, e nos dois casos o card não mostra nada.
+  //   'nunca_enviado'   -> credenciado no Apolo e nunca chegou a ser enviado (não gerou nem linha
+  //                        na fila apolo_c2x_sync; era o caso que ficava em silêncio total).
+  // Null = está no C2X ou ainda não é hora de cobrar, e o card não mostra nada.
   c2xFalha?: string | null;
   // Corretor e imobiliária vindos da CAD importada (o cadastro do wizard usa outros campos).
   corretor?: string | null;
@@ -437,6 +447,49 @@ export function BoardView({
     void carregarFila();
   });
 
+  // SUBIR UMA CAD PARA O C2X, do próprio card (Lucas, 08/08: "coloca esse botão").
+  //
+  // O buraco que isso fecha: quando o C2X recusava por campo em branco, o time corrigia a ficha e
+  // o dado ficava PARADO — não existia como reenviar. Das 43 recusadas, 23 já estavam corrigidas e
+  // continuavam fora do C2X.
+  //
+  // Quem decide tudo é o servidor (imobiliária, campos obrigatórios, travas de identidade, host de
+  // destino e a trava de ensaio). Aqui só se chama e se devolve a resposta INTEIRA para o card
+  // mostrar — inclusive o motivo real da recusa, que é o que o operador precisa ler.
+  const subirParaC2x = useCallback(
+    async (entityId: string): Promise<ResultadoSubidaC2x> => {
+      // Falha ANTES de o servidor responder: não dá para carimbar "ensaio" (isso afirmaria que
+      // nada foi enviado, e numa queda de rede ninguém sabe). Fica só o erro, sem selo nenhum.
+      const semDestino = { ensaio: false, entityId, faltantes: [], hostDestino: "desconhecido" };
+      try {
+        const token = await getApoloAccessToken();
+        const resposta = await fetch("/api/apolo/c2x-sync/enviar", {
+          body: JSON.stringify({ entityId }),
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          method: "POST",
+        });
+        const corpo = (await resposta.json().catch(() => null)) as {
+          data?: ResultadoSubidaC2x;
+          error?: string;
+        } | null;
+        if (!resposta.ok || !corpo?.data) {
+          return {
+            ...semDestino,
+            erro: corpo?.error ?? `Falha (${resposta.status}).`,
+            status: "erro",
+          };
+        }
+        // Envio DE VERDADE mexeu no banco (fila de sync + carimbo na ficha): recarrega para o selo
+        // do card refletir o novo estado. Ensaio não muda nada, então não gasta uma recarga.
+        if (!corpo.data.ensaio) void carregarFila();
+        return corpo.data;
+      } catch (erro) {
+        return { ...semDestino, erro: (erro as Error).message, status: "erro" };
+      }
+    },
+    [carregarFila],
+  );
+
   // Lista de empreendimentos pro seletor (só os que realmente aparecem na fila).
   const empreendimentosDisponiveis = Array.from(
     new Set(itens.flatMap((item) => item.empreendimentos)),
@@ -620,23 +673,36 @@ export function BoardView({
             onCorrecao={() => setModalMotivo("correcao")}
             onIdentidadeSalva={() => void carregarFila()}
             onCreditoResultado={(r) => {
-              // O crédito moveu a etapa no servidor (aprovado: pré-venda, reprovado: revisão);
-              // refletir na tela na hora, sem esperar o reload da fila.
+              // O crédito moveu a etapa NO SERVIDOR; aqui a tela só reflete o que ele decidiu, sem
+              // esperar o reload da fila. São TRÊS desfechos, não dois:
+              //   aprovado + pré-venda ligada  -> prevenda (índice 2)
+              //   aprovado + pré-venda DESLIGADA -> credenciado (índice 3), pulando o PIX
+              //   reprovado -> fica na Análise de crédito com o desvio de revisão
+              // ⚠️ O caso "credenciado" faltava aqui e a barra travava na Análise de crédito mesmo
+              // com o banco já em credenciado (achado do Lucas, 05/08, testando a Vovo Braga no
+              // Vale do Ouro, que está com a pré-venda desligada).
+              // A posição sai do MESMO mapa que o reload da fila usa (INDICE_POR_ETAPA). Antes os
+              // números viviam soltos aqui, e bastava o servidor passar a devolver uma etapa nova
+              // para a barra parar de acompanhar. Assim a tela segue o servidor, seja qual for.
               const alvo = selecionado.id;
-              if (r.etapa === "prevenda") {
-                setProgresso((prev) => ({ ...prev, [alvo]: 2 }));
+              const indice = r.etapa ? INDICE_POR_ETAPA[r.etapa] : undefined;
+              if (indice !== undefined) {
+                setProgresso((prev) => ({ ...prev, [alvo]: indice }));
+              }
+              if (r.etapa === "revisao") {
+                // Ancorado NA Análise de crédito, com o desvio de revisão.
+                setEmRevisao((prev) => ({ ...prev, [alvo]: true }));
+              } else if (r.etapa) {
                 setEmRevisao((prev) => ({ ...prev, [alvo]: false }));
                 setIndeferidos((prev) => ({ ...prev, [alvo]: false }));
-              } else if (r.etapa === "revisao") {
-                // Fica ancorado NA Análise de crédito (índice 1), com o desvio de revisão.
-                setProgresso((prev) => ({ ...prev, [alvo]: 1 }));
-                setEmRevisao((prev) => ({ ...prev, [alvo]: true }));
               }
               registrarEvento(
                 alvo,
                 r.aprovado ? "aprovacao" : "sistema",
                 r.aprovado
-                  ? "Crédito aprovado: seguiu para a pré-venda"
+                  ? r.etapa === "credenciado"
+                    ? "Crédito aprovado: credenciado direto (pré-venda desligada)"
+                    : "Crédito aprovado: seguiu para a pré-venda"
                   : "Crédito reprovado: enviado para revisão",
               );
             }}
@@ -889,6 +955,7 @@ export function BoardView({
           indeferidos={indeferidos}
           itens={visiveis}
           onAbrir={abrirItem}
+          onSubirC2x={subirParaC2x}
           progresso={progresso}
         />
       ) : (
@@ -1175,6 +1242,7 @@ function KanbanBoard({
   indeferidos,
   itens,
   onAbrir,
+  onSubirC2x,
   progresso,
 }: {
   analistaDe: (id: string) => string;
@@ -1185,6 +1253,7 @@ function KanbanBoard({
   indeferidos: Record<string, boolean>;
   itens: ItemFila[];
   onAbrir: (item: ItemFila) => void;
+  onSubirC2x: (entityId: string) => Promise<ResultadoSubidaC2x>;
   progresso: Record<string, number>;
 }) {
   if (carregando) {
@@ -1232,6 +1301,7 @@ function KanbanBoard({
                     item={item}
                     key={item.id}
                     onAbrir={onAbrir}
+                    onSubirC2x={onSubirC2x}
                   />
                 ))
               ) : (
@@ -1681,15 +1751,23 @@ function iniciais(nome: string): string {
   return `${primeira}${ultima}`.toUpperCase();
 }
 
-// ALERTA: a CAD não conseguiu subir para o C2X (pedido do Lucas 05/08: "é bom ter algum alerta caso
+// ALERTA: a CAD não está confirmada no C2X (pedido do Lucas 05/08: "é bom ter algum alerta caso
 // eu não consiga subir uma cad para o c2x"). Ícone + tooltip com o motivo, no mesmo formato dos
-// outros selos do card. Aparece SÓ quando falhou: quem está no C2X e quem nem foi tentado ficam sem
-// marca, senão o problema deixa de saltar aos olhos.
+// outros selos do card. Quem está no C2X não ganha marca nenhuma, senão o problema deixa de saltar
+// aos olhos.
 //
-// Duas cores porque são problemas diferentes:
+// Três estados porque são problemas diferentes:
 //   vermelho = a API recusou (dá para ler o motivo e corrigir a ficha);
 //   âmbar    = respondeu sucesso mas o cadastro não foi achado no banco do C2X. É o caso perigoso,
 //              o que PARECE sucesso (incidente 28/jul e 01/08, escrita indo para o ambiente errado).
+//   âmbar "sem C2X" = está CREDENCIADO no Apolo e NUNCA chegou a ser enviado. Não é erro (ninguém
+//              recusou nada), é ausência: a ficha parou antes do envio e não deixou rastro em
+//              lugar nenhum. Mesmo tom de atenção do anterior, porque para o operador a conclusão
+//              é a mesma ("não está confirmado lá"); o que muda é o rótulo e o ícone.
+//
+// A DECISÃO de qual estado mostrar é do servidor (lib/apolo/c2x-alerta-board.ts). Aqui só se
+// pinta: o selo aparece em DOIS lugares (card do kanban e linha da tabela) e não pode haver duas
+// versões da mesma regra.
 // O C2X é um Rails e devolve a recusa em HTML, com os campos separados por `<br>` (ex.:
 // "Naturalidade não pode ficar em branco<br>Nacionalidade não pode ficar em branco"). Jogar isso
 // cru no tooltip faz o operador ler a tag. Aqui viram "; " e qualquer outra tag é removida.
@@ -1704,24 +1782,220 @@ function motivoLegivel(bruto: string): string {
 }
 
 function SeloC2x({ erro, falha }: { erro?: string | null; falha?: string | null }) {
-  if (falha !== "erro" && falha !== "sem_confirmacao") return null;
+  // Mesmo critério do botão de subir (`foraDoC2x`, em lib/apolo/c2x-envio-card.ts): selo e botão
+  // aparecem e somem JUNTOS. Selo sem botão é beco sem saída; botão sem selo é ruído.
+  if (!foraDoC2x(falha)) return null;
+  const nuncaEnviado = falha === "nunca_enviado";
   const semConfirmacao = falha === "sem_confirmacao";
   const motivo = motivoLegivel(erro ?? "");
-  const titulo = semConfirmacao
-    ? "Não confirmado no C2X: a API respondeu sucesso, mas o cadastro não apareceu no banco do C2X. Conferir antes de seguir."
-    : `Não subiu para o C2X: ${motivo || "motivo não registrado."}`;
+  const titulo = nuncaEnviado
+    ? "Credenciado no Apolo, mas sem confirmação de cadastro no C2X. Esta ficha nunca chegou a ser enviada: abra a ficha e confira o que falta."
+    : semConfirmacao
+      ? "Não confirmado no C2X: a API respondeu sucesso, mas o cadastro não apareceu no banco do C2X. Conferir antes de seguir."
+      : `Não subiu para o C2X: ${motivo || "motivo não registrado."}`;
+  const atencao = nuncaEnviado || semConfirmacao;
 
   return (
     <span
       className={`inline-flex shrink-0 items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide ${
-        semConfirmacao
+        atencao
           ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
           : "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-300"
       }`}
       title={titulo}
     >
-      <AlertTriangle aria-hidden="true" className="size-2.5" /> C2X
+      {nuncaEnviado ? (
+        <>
+          <CloudOff aria-hidden="true" className="size-2.5" /> sem C2X
+        </>
+      ) : (
+        <>
+          <AlertTriangle aria-hidden="true" className="size-2.5" /> C2X
+        </>
+      )}
     </span>
+  );
+}
+
+const TOM_C2X: Record<"atencao" | "erro" | "ok", string> = {
+  atencao: "text-amber-700 dark:text-amber-300",
+  erro: "text-rose-700 dark:text-rose-300",
+  ok: "text-emerald-700 dark:text-emerald-300",
+};
+
+// O QUE A TELA DIZ DEPOIS DO CLIQUE.
+//
+// A frase sai do STATUS que o servidor devolveu — nunca um "erro ao enviar" genérico. Quando o C2X
+// recusa, quem fala é a mensagem DELE (`motivoLegivel` limpa o HTML que o Rails devolve); quando o
+// gate para antes de bater na API, a frase diz O QUE FALTA, que é o que o operador precisa para
+// agir. Em todo caminho aparece o HOST de destino: o incidente de 01/08 (8 cadastros criados no
+// ambiente de teste) só foi possível porque o destino era invisível.
+function vereditoC2x(r: ResultadoSubidaC2x): {
+  texto: string;
+  titulo: string;
+  tom: "atencao" | "erro" | "ok";
+} {
+  const destino = r.hostDestino;
+  const motivo = motivoLegivel(r.erro ?? "");
+  // ⚠️ O DESTINO É JULGADO, NÃO SÓ EXIBIDO. Mostrar o host em texto verde não protege ninguém: em
+  // 01/08 a escrita foi para `teste.careli.adm.br` e passou 4 dias despercebida justamente porque
+  // quem lia a tela não tinha como saber que aquele host estava errado. Fora de produção o
+  // desfecho vira ALERTA, com o host certo escrito ao lado para a comparação ser imediata.
+  const producao = destinoEhProducao(destino);
+  const alertaDestino = `⚠ Destino NÃO é produção: ${destino} (produção é ${HOST_C2X_PRODUCAO})`;
+  const explicaDestino = `O destino configurado é ${destino}, e produção é ${HOST_C2X_PRODUCAO}. Confira C2X_WRITE_API_URL antes de liberar o envio: cadastro criado no ambiente errado não tem desfazer e some da fila como se tivesse dado certo.`;
+
+  switch (r.status) {
+    case "faltando": {
+      const faltam = r.faltantes.join(", ");
+      return {
+        texto: `Falta ${faltam}`,
+        titulo: `NADA foi enviado ao C2X: esta ficha ainda não tem ${faltam}. Complete na ficha e clique de novo.`,
+        tom: "atencao",
+      };
+    }
+    case "conferir":
+      return {
+        texto: "Ficha para conferir",
+        titulo: `NADA foi enviado: ${
+          (r.divergencias ?? []).join("; ") ||
+          "os dados de identidade divergem entre a importação e a ficha"
+        }. Nome da mãe e nascimento vão no contrato, então isto se resolve à mão antes de subir.`,
+        tom: "atencao",
+      };
+    case "pronta":
+      return r.ensaio
+        ? {
+            texto: producao ? `Ensaio OK — subiria para ${destino}` : alertaDestino,
+            titulo: producao
+              ? `ENSAIO: NADA foi enviado. A ficha passou em todos os campos obrigatórios e subiria para ${destino}. O envio de verdade ainda está travado no servidor.`
+              : `ENSAIO: NADA foi enviado, e ainda bem. A ficha está completa, mas subiria para o lugar errado. ${explicaDestino}`,
+            tom: producao ? "ok" : "erro",
+          }
+        : {
+            texto: "Pronta, mas não foi a vez dela",
+            titulo: `A ficha está pronta e não tem pendência, mas o teto de envios desta chamada foi atingido. Clique de novo. Destino: ${destino}.`,
+            tom: "atencao",
+          };
+    case "enviada":
+      return {
+        texto: producao ? `Subiu para ${destino}` : `Subiu para ${destino} — ${alertaDestino}`,
+        titulo: producao
+          ? `Cadastro criado no C2X (${destino}).`
+          : `CADASTRO CRIADO NO AMBIENTE ERRADO. ${explicaDestino}`,
+        tom: producao ? "ok" : "erro",
+      };
+    case "duplicada":
+      return {
+        texto: producao ? `Já existia em ${destino}` : `Já existia em ${destino} — ${alertaDestino}`,
+        titulo: producao
+          ? `O C2X respondeu que este cadastro já existe (${destino}); o id foi reconciliado pelo documento.`
+          : `O C2X respondeu que já existe — mas no ambiente errado. ${explicaDestino}`,
+        tom: producao ? "ok" : "erro",
+      };
+    // JÁ ESTAVA LÁ — e isto é uma BOA notícia, não uma falha.
+    //
+    // Não passa pelo teste de produção: nada foi criado em lugar nenhum, então não há ambiente
+    // errado a denunciar. A prova é a leitura do users.id no banco de PRODUÇÃO do C2X, e é
+    // justamente por isso que o selo de alerta some na próxima carga do Board — o id fica gravado
+    // na fila e na ficha.
+    case "ja_no_c2x":
+      return {
+        texto: r.ensaio ? "Já está no C2X (ensaio, nada gravado)" : "Já estava no C2X",
+        titulo: r.ensaio
+          ? "ENSAIO: esta pessoa JÁ EXISTE no C2X e nada seria enviado. O ensaio não grava, então o aviso do card continua até rodar de verdade."
+          : "Esta pessoa JÁ EXISTIA no C2X: nada foi enviado e nenhum cadastro foi criado. O id do C2X foi reconciliado na ficha, e o aviso deste card some ao recarregar o Board.",
+        tom: "ok",
+      };
+    case "sem_confirmacao":
+      return {
+        texto: "Aceitou, mas não achei no C2X",
+        titulo: `A API respondeu sucesso, mas o cadastro não apareceu no banco do C2X. Conferir para qual ambiente a escrita foi — o destino desta chamada foi ${destino} e produção é sistema.careli.adm.br.`,
+        tom: "atencao",
+      };
+    case "ausente":
+      return {
+        texto: "Não entra na fila",
+        titulo: motivo || "Esta ficha não entra na fila de envio para o C2X.",
+        tom: "atencao",
+      };
+    default:
+      return {
+        texto: motivo || "O C2X recusou",
+        titulo: `O C2X (${destino}) recusou: ${motivo || "motivo não informado."}`,
+        tom: "erro",
+      };
+  }
+}
+
+// BOTÃO "SUBIR PARA O C2X", DENTRO DO CARD (pedido do Lucas, 08/08).
+//
+// Só aparece quando a CAD NÃO está confirmada no C2X — o mesmo critério do selo. O clique não pode
+// abrir a ficha (o card inteiro é um botão), daí o `stopPropagation` no mouse e no teclado.
+//
+// ⚠️ ENQUANTO O SERVIDOR ESTIVER EM ENSAIO o clique SIMULA: roda a mesma checagem do lote e diz o
+// que aconteceria, sem tocar o C2X. A resposta traz `ensaio: true` e a linha embaixo do botão
+// carimba isso, para "subiu" e "subiria" nunca se parecerem. Quem libera o envio de verdade é a env
+// `C2X_ENVIO_CARD_LIBERADO`, no servidor (ver app/api/apolo/c2x-sync/enviar/route.ts).
+function BotaoSubirC2x({
+  item,
+  onSubir,
+}: {
+  item: ItemFila;
+  onSubir: (entityId: string) => Promise<ResultadoSubidaC2x>;
+}) {
+  const [enviando, setEnviando] = useState(false);
+  const [resultado, setResultado] = useState<ResultadoSubidaC2x | null>(null);
+
+  if (!foraDoC2x(item.c2xFalha)) return null;
+
+  const clicar = async () => {
+    // Trava de clique duplo: criar cadastro no C2X não tem desfazer, e o endpoint é genérico
+    // (cada POST cria de novo). Dois cliques seriam duas pessoas no legado.
+    if (enviando) return;
+    setEnviando(true);
+    setResultado(null);
+    try {
+      setResultado(await onSubir(item.id));
+    } finally {
+      setEnviando(false);
+    }
+  };
+
+  const veredito = resultado ? vereditoC2x(resultado) : null;
+
+  return (
+    <div className="mt-2 border-t border-line/60 pt-1.5">
+      <button
+        className="inline-flex w-full items-center justify-center gap-1 rounded-md border border-line bg-surface px-2 py-1 text-[11px] font-semibold text-ink-soft transition hover:border-ink hover:text-ink disabled:cursor-not-allowed disabled:opacity-60"
+        disabled={enviando}
+        onClick={(event) => {
+          event.stopPropagation();
+          void clicar();
+        }}
+        onKeyDown={(event) => event.stopPropagation()}
+        title="Sobe esta CAD para o C2X. Antes de enviar, confere os campos obrigatórios e diz o que falta."
+        type="button"
+      >
+        {enviando ? (
+          <Loader2 aria-hidden="true" className="size-3 animate-spin" />
+        ) : (
+          <Upload aria-hidden="true" className="size-3" />
+        )}
+        {enviando ? "Subindo…" : rotuloBotaoC2x(item.c2xFalha)}
+      </button>
+
+      {veredito ? (
+        <p className={`m-0 mt-1 text-[10px] leading-tight ${TOM_C2X[veredito.tom]}`} title={veredito.titulo}>
+          {veredito.texto}
+          {resultado?.ensaio ? (
+            <span className="ml-1 rounded border border-line px-1 py-px text-[9px] font-bold uppercase tracking-wide text-ink-muted">
+              ensaio
+            </span>
+          ) : null}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
@@ -1730,10 +2004,12 @@ function CardBoard({
   analista,
   item,
   onAbrir,
+  onSubirC2x,
 }: {
   analista: string;
   item: ItemFila;
   onAbrir: (item: ItemFila) => void;
+  onSubirC2x: (entityId: string) => Promise<ResultadoSubidaC2x>;
 }) {
   const imob = item.papel === "imobiliaria";
   const abrir = () => onAbrir(item);
@@ -1827,6 +2103,11 @@ function CardBoard({
           {item.corretores ? <MiniChip label={`${item.corretores} corretor(es)`} /> : null}
         </div>
       ) : null}
+
+      {/* Subir esta CAD para o C2X. Fica logo acima do rodapé, colado no selo que denuncia a
+          ausência: o operador vê o problema e a saída no mesmo lugar. Some sozinho quando a ficha
+          passa a estar confirmada lá. */}
+      <BotaoSubirC2x item={item} onSubir={onSubirC2x} />
 
       <div className="mt-2 flex items-center justify-between gap-2">
         <span className="truncate text-[11px] text-ink-muted tabular-nums">

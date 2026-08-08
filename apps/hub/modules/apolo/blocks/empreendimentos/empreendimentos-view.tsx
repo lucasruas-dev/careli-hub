@@ -15,6 +15,9 @@ import {
   LandPlot,
   Layers,
   Loader2,
+  // Alias pra não sombrear o `Map` global neste arquivo de 4 mil linhas (convenção já usada
+  // em squadops/address-catalog).
+  Map as MapIcon,
   MapPinned,
   Network,
   Search,
@@ -65,6 +68,7 @@ import type {
 import { toTitleCase } from "@/lib/format/name-case";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
+import { MapaTab } from "./masterplan-mapa";
 import { fileToBase64 } from "../../lib/document-capture";
 
 // O papel do player NESTE empreendimento (os demais papéis dele vivem na ficha da entidade).
@@ -111,6 +115,8 @@ const detailTabs = [
   { icon: Layers, id: "resumo", label: "Resumo" },
   { icon: ContactRound, id: "cadastro", label: "Cadastro" },
   { icon: MapPinned, id: "unidades", label: "Unidades" },
+  // Mapa entra logo depois de Unidades: é a MESMA informação de estoque, vista na planta.
+  { icon: MapIcon, id: "mapa", label: "Mapa" },
   { icon: TrendingUp, id: "vendas", label: "Vendas" },
   // "Carteira" com o ícone de carteira do Hades (WalletCards).
   { icon: WalletCards, id: "carteira", label: "Carteira" },
@@ -461,6 +467,7 @@ function EnterpriseDetail({
           <RelacionamentosTab onOpenEntity={onOpenEntity} row={row} />
         ) : null}
         {tab === "resumo" ? <ResumoTab row={row} /> : null}
+        {tab === "mapa" ? <MapaTab row={row} /> : null}
         {tab === "unidades" ? (
           <UnidadesTab onOpenEntity={onOpenEntity} row={row} />
         ) : null}

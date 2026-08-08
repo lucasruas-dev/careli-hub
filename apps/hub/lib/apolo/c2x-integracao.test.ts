@@ -15,8 +15,9 @@ import type { ApoloC2xCadastro } from "./types";
 
 const CAD_VAZIA: ApoloC2xCadastro = {
   age: null, birthday: null, city: null, civilState: null, cnpj: null,
-  complement: null, cpf: null, creciNumber: null, creciValidate: null,
-  district: null, fantasyName: null, isCompany: false, motherName: null,
+  companySize: null, complement: null, cpf: null, creciNumber: null, creciValidate: null,
+  district: null, fantasyName: null, isCompany: false, legalRepresentative: null,
+  motherName: null,
   municipalInscription: null, nacionality: null, naturalness: null, nire: null,
   number: null, openCompanyDate: null, profession: null, propertyRegime: null,
   rg: null, salaryRange: null, schooling: null, sex: null,
@@ -159,6 +160,47 @@ describe("payload do cliente (contrato oficial)", () => {
     expect(p).not.toHaveProperty("birthday");
     expect(p).not.toHaveProperty("phones");
     expect(p).not.toHaveProperty("address");
+  });
+});
+
+// O envelope oficial também precisa saber que existe cliente PJ: este módulo é o caminho
+// declarado como o certo, e sem isto o "cliente é sempre pessoa física" renasceria no dia em que
+// a integração dedicada for ligada.
+describe("payload do cliente PESSOA JURÍDICA (contrato oficial)", () => {
+  it("continua profile cliente, mas com person_type juridica e CNPJ", () => {
+    const p = montarClienteIntegracao({
+      cadastro: cad({
+        cnpj: "18.915.155/0001-13",
+        companySize: "ME",
+        fantasyName: "VOVO BRAGA PADARIA E MERCEARIA",
+        isCompany: true,
+        legalRepresentative: {
+          cpf: "086.167.966-06",
+          email: "renata@ex.com",
+          name: "RENATA BRAGA DA CRUZ",
+          profession: null,
+        },
+        openCompanyDate: "2013-09-19",
+        socialName: "VOVO BRAGA PADARIA E MERCEARIA LTDA",
+      }),
+      email: "contato@vovobraga.com",
+      nome: "VOVO BRAGA PADARIA E MERCEARIA LTDA",
+      telefone: "3732314565",
+      vinculedByDocument: "12.345.678/0001-99",
+    });
+
+    expect(p.profile).toBe("cliente"); // NÃO imobiliaria
+    expect(p.person_type).toBe("juridica"); // NÃO fisica
+    expect(p.cnpj).toBe("18915155000113");
+    expect(p.social_name).toBe("VOVO BRAGA PADARIA E MERCEARIA LTDA");
+    expect(p.company_size_id).toBe(2);
+    expect(p.open_company_date).toBe("2013-09-19");
+    expect(p.profession_id).toBe(25); // PROFISSÃO NÃO DECLARADA, o padrão dos clientes PJ
+    expect(p.vinculed_by_document).toBe("12345678000199");
+    expect(p).not.toHaveProperty("cpf");
+    expect(p).not.toHaveProperty("birthday");
+    expect(p).not.toHaveProperty("civil_state_id");
+    expect(p).not.toHaveProperty("mother_name");
   });
 });
 

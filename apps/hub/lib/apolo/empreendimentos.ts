@@ -21,6 +21,9 @@ const SALE_STATUS = {
   RESERVADO: 2,
   EM_NEGOCIACAO: 3,
   VENDIDO: 4,
+  // "Bloqueado para venda". Não entra na agregação por status (o resumo conta bloqueado pelo
+  // flag `sale_blocked`), mas é usado no balde da unidade: ver `mapUnitRow`.
+  BLOQUEADO: 5,
 } as const;
 
 // Abas da ficha do empreendimento. O estado vive no ApoloPage (e não na tela) pra o "voltar"
@@ -28,6 +31,7 @@ const SALE_STATUS = {
 export type ApoloEnterpriseTab =
   | "cadastro"
   | "carteira"
+  | "mapa"
   | "relacionamentos"
   | "resumo"
   | "setup"
@@ -579,7 +583,11 @@ function mapUnitRow(row: UnitQueryRow): ApoloEnterpriseUnit {
         ? "negociacao"
         : statusId === SALE_STATUS.RESERVADO
           ? "reservado"
-          : blocked
+          : // Status 5 ("Bloqueado para venda") vale por si só, sem depender do flag. Hoje os
+            // dois andam juntos no C2X, mas o legado é a fonte viva e nada garante isso numa
+            // edição manual: sem esta linha, limpar o flag e deixar o status pintaria a unidade
+            // de disponível enquanto o texto do status continua dizendo "Bloqueado para venda".
+            statusId === SALE_STATUS.BLOQUEADO || blocked
             ? "bloqueado"
             : "disponivel";
 

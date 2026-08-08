@@ -342,7 +342,10 @@ function sanitize(name: string): string {
   return name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 120) || "documento";
 }
 
-function guessMime(name: string): string {
+// Exportado porque o envio do contrato social ao C2X (c2x-write-server.ts) precisa do
+// content-type da parte de arquivo do multipart, e a linha do documento nem sempre guarda o mime.
+// Uma regra só para os dois: duas cópias divergiriam.
+export function guessMime(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase();
   const map: Record<string, string> = {
     jpeg: "image/jpeg",

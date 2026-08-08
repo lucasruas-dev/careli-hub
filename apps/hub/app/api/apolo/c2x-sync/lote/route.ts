@@ -24,6 +24,7 @@ export async function POST(request: NextRequest) {
   }
 
   const corpo = (await request.json().catch(() => ({}))) as {
+    apenasReconciliar?: boolean;
     dryRun?: boolean;
     limit?: number;
     maxEnvios?: number;
@@ -31,6 +32,18 @@ export async function POST(request: NextRequest) {
   };
 
   const resultado = await processarLoteC2x({
+    // 🔴 MODO CONSERTO: grava quem JÁ ESTÁ no C2X e não envia NINGUÉM.
+    //
+    // É o par de execução do ensaio para as fichas invisíveis — as que existem no legado sem uma
+    // linha sequer na nossa `apolo_c2x_sync` (entraram por importação antiga ou cadastro feito lá
+    // dentro), e por isso o card acusa "não subiu" para gente que está lá. Neste modo NÃO existe
+    // caminho até o POST, então rodá-lo não pode criar cadastro nenhum.
+    //
+    // ENSAIO:   { dryRun: true }                            -> conta quantas são, grava NADA.
+    // EXECUÇÃO: { dryRun: false, apenasReconciliar: true }   -> grava só a reconciliação, envia
+    //                                                          NINGUÉM.
+    // (`dryRun: false` sozinho continua sendo o envio real de sempre.)
+    apenasReconciliar: corpo.apenasReconciliar === true,
     // Envia de verdade SÓ quando dryRun é explicitamente false. Qualquer outra coisa = simulação.
     dryRun: corpo.dryRun !== false,
     limit: corpo.limit,

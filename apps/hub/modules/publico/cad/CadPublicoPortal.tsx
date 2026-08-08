@@ -20,7 +20,17 @@ export function CadPublicoPortal({ whatsappCentral }: { whatsappCentral: string 
   if (!entrada) {
     return (
       <PortaoCorretor
-        onValidado={(sessao, empreendimentoNome) => setEntrada({ empreendimentoNome, sessao })}
+        onValidado={(sessao, empreendimentoNome, vinculo) =>
+          // Imobiliária e corretor vêm do portão porque o wizard não tem como resolvê-los no modo
+          // público: a lista de imobiliárias só é carregada no cadastro interno. Sem isto, a
+          // revisão mostrava o vínculo em branco, como se a CAD não tivesse imobiliária.
+          setEntrada({
+            corretorNome: vinculo.corretorNome,
+            empreendimentoNome,
+            imobiliariaNome: vinculo.imobiliariaNome,
+            sessao,
+          })
+        }
         whatsappCentral={whatsappCentral}
       />
     );

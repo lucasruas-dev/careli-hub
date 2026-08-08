@@ -35,6 +35,12 @@ export async function subirParaC2xAoCredenciar(
 
     if (item.status === "enviada") return { detalhe: "criado no C2X", enviado: true };
     if (item.status === "duplicada") return { detalhe: "já existia no C2X", enviado: true };
+    // Já estava no C2X ANTES de qualquer envio nosso (importação antiga ou cadastro feito lá
+    // dentro): nada foi criado e o id foi reconciliado. `enviado: true` porque a pergunta que este
+    // retorno responde é "a ficha está no C2X?", e está — o mesmo critério do caso duplicado.
+    if (item.status === "ja_no_c2x") {
+      return { detalhe: "já estava no C2X (id reconciliado, nada criado)", enviado: true };
+    }
     if (item.status === "faltando") {
       return { detalhe: `falta ${item.faltantes.join(", ")}`, enviado: false };
     }

@@ -1608,6 +1608,9 @@ function mapC2xCadastroRow(row: C2xCadastroRow): ApoloC2xCadastro {
     city: null,
     civilState: clean(row.civil_state),
     cnpj: clean(row.cnpj),
+    // Esta ficha é a LEITURA ao vivo do C2X, usada para exibir — não alimenta envio. Porte e
+    // representante legal não são lidos aqui (a consulta acima não os traz).
+    companySize: null,
     complement: null,
     cpf: clean(row.cpf),
     creciNumber: clean(row.creci_number),
@@ -1615,6 +1618,7 @@ function mapC2xCadastroRow(row: C2xCadastroRow): ApoloC2xCadastro {
     district: null,
     fantasyName: clean(row.fantasy_name),
     isCompany: toNumber(row.person_type_id) === 2,
+    legalRepresentative: null,
     motherName: clean(row.mother_name),
     municipalInscription: clean(row.municipal_inscription),
     nacionality: clean(row.nacionality),
@@ -3236,6 +3240,7 @@ function cadastroFromApoloMetadata(
     city: end?.city ?? row.primary_city ?? null,
     civilState: labelDoLookup(C2X_ESTADO_CIVIL, c.estadoCivilId),
     cnpj: isCompany ? row.document_masked : null,
+    companySize: isCompany ? str(c.porte) : null,
     complement: end?.complement ?? null,
     cpf: isCompany ? null : row.document_masked,
     creciNumber: null,
@@ -3243,6 +3248,9 @@ function cadastroFromApoloMetadata(
     district: end?.district ?? null,
     fantasyName: row.trade_name ?? null,
     isCompany,
+    // Ficha de exibição: o representante legal do envio é montado no caminho de escrita
+    // (c2x-write-server), que também consulta o relacionamento 'representante_legal'.
+    legalRepresentative: null,
     // Prospect PJ não informa NIRE nem inscrição municipal: vão "Isento" (decisão do Lucas).
     motherName: str(c.nomeMae),
     municipalInscription: isCompany ? "Isento" : null,
@@ -3321,8 +3329,15 @@ function mapApoloEntityRow(
     profiles: uniqueProfiles(profiles.length ? profiles : profilesFromEntityKind(row.entity_kind)),
     // Stubs genéricos do sync ("Usuarios vinculados") saem: o grafo do C2X (clientes
     // vinculados, empreendimentos, cônjuge, representante, assinante) resolve de verdade.
+    //
+    // ⚠️ ARQUIVADO NÃO APARECE (achado do Lucas, 05/08: "botão de excluir não está funcionando").
+    // Excluir um vínculo ARQUIVA a linha (status 'archived') para preservar o histórico, mas a
+    // leitura trazia todos os status: o vínculo continuava na tela depois de excluído, e ao clicar
+    // de novo a rota respondia "não encontrado" (ela ignora arquivados) sem a tela avisar nada.
+    // O efeito era um botão que parecia morto, quando na verdade já tinha feito o trabalho.
     relationships: [
       ...related.relationships
+        .filter((rel) => rel.status !== "archived")
         .map(mapApoloRelationshipRow)
         .filter((rel) => rel.label !== "Usuarios vinculados"),
       ...(c2xRelationships ?? []),

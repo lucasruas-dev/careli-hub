@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
+import { alertaC2xDaCad } from "@/lib/apolo/c2x-alerta-board";
 import { maisRecentePorEntidade } from "@/lib/apolo/esteira-cad";
 import { imobiliariaEntityIdEmLote } from "@/lib/apolo/imobiliaria-do-cliente";
 import { normalizarNome } from "@/lib/apolo/imobiliaria-match";
@@ -42,6 +43,10 @@ type EntityRow = {
   legal_name: string | null;
   metadata: {
     bornRole?: string;
+    // Carimbos do envio ao C2X (c2x-write-server.ts). São a prova de que a ficha JÁ existe no
+    // legado: com qualquer um deles preenchido o alerta de "nunca enviado" não acende.
+    c2xSynced?: boolean;
+    c2xUserId?: number | null;
     cadastro?: { corretores?: unknown[]; empreendimentos?: unknown[]; socios?: unknown[] };
     // Onde o item está na esteira. Fica no metadata (jsonb livre) em vez de coluna própria.
     esteira?: {
@@ -54,6 +59,9 @@ type EntityRow = {
       imobiliaria?: string | null;
       origem?: string;
     };
+    // Onde a ficha nasceu. 'apolo' = veio do wizard/portal e PRECISA subir para o C2X; sem isso
+    // veio do sync do legado, ou seja já existe lá.
+    source?: string;
   } | null;
   primary_city: string | null;
   primary_state: string | null;
@@ -112,6 +120,17 @@ export async function GET(request: Request) {
       .select(CAMPOS)
       .eq("status", "review")
       .eq("metadata->>source", "apolo")
+      // CORRETOR NÃO É CAD (regra do Lucas, 05/08). Esta fila mostra o que precisa de VALIDAÇÃO de
+      // documento de comprador; o corretor cadastra, vincula na imobiliária e acabou.
+      //
+      // ⚠️ ESTE É O SEGUNDO PORTÃO. Já barramos a gravação na esteira (em
+      // /api/apolo/cadastro/salvar), mas o corretor CONTINUAVA aparecendo, porque esta consulta
+      // não olha a esteira: ela lista TODA entidade "review" nascida no Apolo. Corrigir só a
+      // esteira dava a impressão de resolvido e a tela seguia igual.
+      //
+      // `or` com is.null preserva quem não tem bornRole (entidades antigas, anteriores ao campo):
+      // um `neq` puro as descartaria, porque em SQL NULL não é "diferente de" nada.
+      .or("metadata->>bornRole.is.null,metadata->>bornRole.neq.corretor")
       .order("created_at", { ascending: true })
       // Teto alto (era 200): com ordem da mais ANTIGA pra mais nova, um teto baixo cortava as CADs
       // RECENTES da fila de validação — a partir da 201ª a CAD sumia do Board (incidente 22/jul:
@@ -152,20 +171,32 @@ export async function GET(request: Request) {
   //   'sem_confirmacao' -> a API respondeu sucesso MAS o cadastro não apareceu no banco do C2X.
   //                        É o mais perigoso, porque PARECE sucesso: foi o incidente de 28/jul e
   //                        01/08, com a env de escrita apontando para o ambiente de teste.
-  // Quem está resolvido/enviado/duplicado está no C2X e NÃO ganha ícone. Quem está 'pendente' ou
-  // sequer tem linha na tabela ainda não foi tentado: marcar como falha seria mentira.
+  // Quem está resolvido/enviado/duplicado está no C2X e NÃO ganha ícone. Quem está 'pendente'
+  // saiu do processo no meio do envio: sem prova de falha, segue sem marca de falha.
   //
   // ⚠️ Lido por STATUS, não por `.in()` com os ids do board: a fila tem centenas de ids e o `.in()`
   // com essa quantidade estoura o tamanho da URL do PostgREST (400 — foi o que derrubou a Iris).
   // Aqui voltam só as linhas com falha (dezenas), e o índice apolo_c2x_sync_status_idx cobre
   // exatamente esta consulta. Mesmo padrão do bloco de falha de envio acima.
-  const { data: falhasC2x } = await adminClient
-    .from("apolo_c2x_sync")
-    .select("entity_id, status, erro")
-    .in("status", ["erro", "sem_confirmacao"])
-    .limit(2000);
+  //
+  // A SEGUNDA CONSULTA cobre o outro lado do mesmo problema: quem NUNCA FOI TENTADO. A tabela só
+  // ganha linha no momento do envio, então quem parou antes disso (faltou campo, caiu em
+  // "conferir", ou o gancho de credenciar nem rodou) não gera linha nenhuma e ficava em silêncio
+  // total — em 05/08 eram 97 CADs credenciadas sem uma única linha de sync. Trazemos só os
+  // `entity_id` de TODAS as linhas (470 hoje, uma coluna) para saber quem já foi tentado; a
+  // decisão de acender fica em `alertaC2xDaCad`.
+  const TETO_SYNC = 5000;
+  const [falhasC2xRes, linhasC2xRes] = await Promise.all([
+    adminClient
+      .from("apolo_c2x_sync")
+      .select("entity_id, status, erro")
+      .in("status", ["erro", "sem_confirmacao"])
+      .limit(2000),
+    adminClient.from("apolo_c2x_sync").select("entity_id").limit(TETO_SYNC),
+  ]);
+
   const c2xFalhaPorEntidade = new Map<string, { erro: string | null; status: string }>();
-  for (const linha of (falhasC2x ?? []) as Array<{
+  for (const linha of (falhasC2xRes.data ?? []) as Array<{
     entity_id: string | null;
     erro: string | null;
     status: string;
@@ -174,6 +205,17 @@ export async function GET(request: Request) {
       c2xFalhaPorEntidade.set(linha.entity_id, { erro: linha.erro, status: linha.status });
     }
   }
+
+  // Quem tem QUALQUER linha na fila do C2X (inclusive 'resolvido' e 'pendente'): já foi tentado,
+  // então não é caso de "nunca enviado".
+  const linhasC2x = (linhasC2xRes.data ?? []) as Array<{ entity_id: string | null }>;
+  const tentadasNoC2x = new Set(
+    linhasC2x.map((linha) => linha.entity_id).filter((id): id is string => Boolean(id)),
+  );
+  // Consulta com erro ou no teto = lista incompleta, e aí NÃO dá para afirmar que alguém nunca foi
+  // tentado. Fail-safe: o aviso de "nunca enviado" some, o de falha continua. Melhor calar do que
+  // acusar em massa quem está certo.
+  const listaC2xCompleta = !linhasC2xRes.error && linhasC2x.length < TETO_SYNC;
 
   // Uma entidade pode cair nas duas consultas: dedup por id, preservando a ordem de chegada.
   const porId = new Map<string, EntityRow>();
@@ -269,10 +311,19 @@ export async function GET(request: Request) {
     const cadastro = row.metadata?.cadastro;
     const esteira = esteiraPorEntidade.get(row.id);
 
+    const falhaC2x = c2xFalhaPorEntidade.get(row.id) ?? null;
+    // Um aviso só, decidido em UM lugar (lib/apolo/c2x-alerta-board.ts): a falha do envio e o
+    // "credenciado que nunca subiu" são o mesmo assunto na tela e disputam o mesmo selo.
+    const alertaC2x = alertaC2xDaCad({
+      etapa: esteira?.etapa ?? null,
+      falhaSync: falhaC2x?.status ?? null,
+      listaSyncCompleta: listaC2xCompleta,
+      metadata: row.metadata,
+      temLinhaSync: tentadasNoC2x.has(row.id),
+    });
+
     // O empreendimento vem do cadastro (quem nasceu no wizard) OU da esteira (quem foi
     // importado do Asana, que é cadastro antigo e não tem metadata.cadastro).
-    const falhaC2x = c2xFalhaPorEntidade.get(row.id) ?? null;
-
     const doCadastro = nomesEmpreendimentos(cadastro?.empreendimentos);
     const empreendimentos =
       doCadastro.length > 0
@@ -286,9 +337,12 @@ export async function GET(request: Request) {
       analistaId: esteira?.analista_id ?? null,
       // Motivo da recusa do C2X, para o tooltip do ícone. Null quando não falhou.
       c2xErro: falhaC2x?.erro ?? null,
-      // 'erro' | 'sem_confirmacao' quando a CAD não conseguiu subir; null = está no C2X ou ainda
-      // não foi tentada (nos dois casos o card não mostra alerta).
-      c2xFalha: falhaC2x?.status ?? null,
+      // O que o selo do card deve mostrar sobre o C2X:
+      //   'erro'            -> a API recusou (motivo em c2xErro);
+      //   'sem_confirmacao' -> respondeu sucesso mas o cadastro não apareceu no banco do C2X;
+      //   'nunca_enviado'   -> credenciado no Apolo e nunca chegou a ser enviado;
+      //   null              -> está no C2X, ou ainda não é hora de cobrar (não mostra nada).
+      c2xFalha: alertaC2x,
       corretor: esteira?.corretor ?? null,
       corretores: conta(cadastro?.corretores),
       // Quando a CAD chegou. Para o que veio do Asana é a data da própria CAD; o created_at
@@ -313,7 +367,12 @@ export async function GET(request: Request) {
       nome: row.legal_name || row.display_name,
       // PIX da pré-venda: alimenta o selo "PAGO" no card e o filtro de pagos.
       pagoEm: esteira?.pago_em ?? null,
-      papel: row.metadata?.bornRole ?? (row.entity_kind === "pj" ? "imobiliaria" : "prospect"),
+      // O papel é o `bornRole` da ficha. O fallback NÃO pode ser "PJ = imobiliária": esta lista
+      // é a esteira de CADs, e uma CAD de empresa é um CLIENTE PJ, não uma imobiliária. Com a
+      // regra antiga, FM SOLUCOES INDUSTRIAIS (credenciada, veio do sync do C2X e por isso não
+      // tem bornRole) aparecia na trilha de imobiliária, com as etapas erradas. Toda ficha
+      // nascida no Apolo tem bornRole, então o fallback só alcança o que veio do sync.
+      papel: row.metadata?.bornRole ?? "prospect",
       socios: conta(cadastro?.socios),
     };
   });

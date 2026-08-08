@@ -20,7 +20,14 @@ import { getApoloAccessToken } from "../../data/apolo-operations";
 // Lote de cadastros Apolo -> C2X. Duas ações: DIAGNOSTICAR (dry-run, só mostra o que sobe e o que
 // falta) e ENVIAR PRONTAS (manda ao C2X as que têm todos os campos). O que falta vira a lista de
 // trabalho do time — que completa pela edição no CRM e roda o diagnóstico de novo.
-type Filtro = "todas" | "pronta" | "faltando" | "conferir" | "enviada" | "erro";
+type Filtro =
+  | "todas"
+  | "pronta"
+  | "faltando"
+  | "conferir"
+  | "enviada"
+  | "ja_no_c2x"
+  | "erro";
 
 // O motivo de uma ficha ir para conferência vem em duas formas: o NOME DO CAMPO que discorda entre
 // a importação e a ficha, ou uma frase pronta (sinal de ficha costurada de duas pessoas). Aqui os
@@ -627,6 +634,10 @@ export function SyncC2xView() {
             <Kpi cor="amber" label="Faltando campo" valor={resultado.resumo.faltando} />
             <Kpi cor="rose" label="Conferir" valor={resultado.resumo.conferir ?? 0} />
             <Kpi cor="emerald" label="Enviadas" valor={resultado.resumo.enviadas} />
+            {/* Estavam no C2X antes de qualquer envio nosso (importação antiga ou cadastro feito
+                lá dentro). Nada foi enviado por elas — o número existe para o time parar de
+                caçar cadastro que já existe. */}
+            <Kpi cor="emerald" label="Já no C2X" valor={resultado.resumo.jaNoC2x ?? 0} />
             <Kpi cor="rose" label="Erros" valor={resultado.resumo.erros} />
           </div>
 
@@ -638,6 +649,7 @@ export function SyncC2xView() {
                 ["faltando", `Faltando (${resultado.resumo.faltando})`],
                 ["conferir", `Conferir (${resultado.resumo.conferir ?? 0})`],
                 ["enviada", `Enviadas (${resultado.resumo.enviadas})`],
+                ["ja_no_c2x", `Já no C2X (${resultado.resumo.jaNoC2x ?? 0})`],
                 ["erro", `Erros (${resultado.resumo.erros})`],
               ] as const
             ).map(([id, rotulo]) => (
@@ -698,11 +710,25 @@ function LinhaLote({ item }: { item: ItemLote }) {
             <CheckCircle2 aria-hidden="true" className="size-4" /> Pronta
           </span>
         ) : item.status === "enviada" ? (
-          <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
-            <CheckCircle2 aria-hidden="true" className="size-4" /> Enviada ao C2X
+          <span className="inline-flex flex-col gap-0.5">
+            <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+              <CheckCircle2 aria-hidden="true" className="size-4" /> Enviada ao C2X
+            </span>
+            {/* A ficha subiu, mas com pendência (hoje: o contrato social que não pôde ir junto).
+                Sem isto aqui, o aviso ficaria só no banco e a linha pareceria completa. */}
+            {item.erro ? (
+              <span className="text-xs text-amber-700 dark:text-amber-400">{item.erro}</span>
+            ) : null}
           </span>
         ) : item.status === "duplicada" ? (
           <span className="text-ink-muted">Já existia no C2X</span>
+        ) : /* JÁ ESTAVA LÁ ANTES DE QUALQUER ENVIO NOSSO. Diferente de "duplicada": ali a API
+              recusou depois do POST; aqui nem chegamos a bater na API. */
+        item.status === "ja_no_c2x" ? (
+          <span className="inline-flex items-center gap-1.5 text-emerald-700 dark:text-emerald-400">
+            <CheckCircle2 aria-hidden="true" className="size-4" />
+            Já estava no C2X — nada enviado, id reconciliado
+          </span>
         ) : item.status === "sem_confirmacao" ? (
           <span className="inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-400">
             <AlertTriangle aria-hidden="true" className="size-4" />

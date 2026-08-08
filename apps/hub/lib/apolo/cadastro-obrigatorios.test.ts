@@ -88,7 +88,7 @@ describe("validarDocumentosObrigatorios — PF", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.faltando).toContain("o documento de identificação");
-      expect(r.mensagem).toBe("Anexe o documento de identificação para enviar a CAD.");
+      expect(r.mensagem).toBe("Anexe o documento de identificação para enviar o cadastro.");
     }
   });
 
@@ -101,7 +101,7 @@ describe("validarDocumentosObrigatorios — PF", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.faltando).toContain("o comprovante de endereço");
-      expect(r.mensagem).toBe("Anexe o comprovante de endereço para enviar a CAD.");
+      expect(r.mensagem).toBe("Anexe o comprovante de endereço para enviar o cadastro.");
     }
   });
 
@@ -114,7 +114,7 @@ describe("validarDocumentosObrigatorios — PF", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.mensagem).toBe(
-        "Anexe o documento de identificação e o comprovante de endereço para enviar a CAD.",
+        "Anexe o documento de identificação e o comprovante de endereço para enviar o cadastro.",
       );
     }
   });
@@ -229,7 +229,7 @@ describe("validarCamposMinimos", () => {
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.mensagem).toBe(
-        "Informe a naturalidade (cidade de nascimento) para enviar a CAD.",
+        "Informe a naturalidade (a cidade de nascimento do cliente) para enviar o cadastro.",
       );
     }
   });

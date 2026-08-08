@@ -30,7 +30,7 @@ export async function POST(request: Request) {
       ? donoUploadPreImob(preImob.pre)
       : null;
 
-  if (!dono) return erro("Sua sessão expirou. Informe o CPF novamente.", 401);
+  if (!dono) return erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401);
 
   const preparo = await prepararRota(request, "upload");
   if (!preparo.ok) return preparo.response;

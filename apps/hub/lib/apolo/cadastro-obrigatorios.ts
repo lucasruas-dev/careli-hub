@@ -186,7 +186,7 @@ export function juntarPtBr(itens: string[]): string {
 
 // Mensagem acionável do 400 quando faltam documentos.
 export function mensagemDocumentosFaltando(faltando: string[]): string {
-  return `Anexe ${juntarPtBr(faltando)} para enviar a CAD.`;
+  return `Anexe ${juntarPtBr(faltando)} para enviar o cadastro.`;
 }
 
 export type ValidacaoObrigatorios =
@@ -239,26 +239,29 @@ export function validarCamposMinimos(payload: {
   if (payload.persona === "pj") {
     const nome = (payload.empresa?.razaoSocial ?? payload.empresa?.nomeFantasia ?? "").trim();
     if (!nome) {
-      return { mensagem: "Informe a razão social da empresa para enviar a CAD.", ok: false };
+      return { mensagem: "Informe a razão social da empresa para enviar o cadastro.", ok: false };
     }
     if (soDigitos(payload.empresa?.cnpj ?? "").length !== 14) {
-      return { mensagem: "Envie o cartão CNPJ com o CNPJ legível para enviar a CAD.", ok: false };
+      return {
+        mensagem: "Anexe o cartão CNPJ com o número legível para enviar o cadastro.",
+        ok: false,
+      };
     }
     return { ok: true };
   }
 
   const nome = (payload.identidade?.nome ?? "").trim();
   if (!nome) {
-    return { mensagem: "Informe o nome do cliente para enviar a CAD.", ok: false };
+    return { mensagem: "Informe o nome do cliente para enviar o cadastro.", ok: false };
   }
   if (!cpfValido(payload.identidade?.cpf ?? "")) {
-    return { mensagem: "Informe um CPF válido para enviar a CAD.", ok: false };
+    return { mensagem: "Informe um CPF válido do cliente para enviar o cadastro.", ok: false };
   }
   // Sem naturalidade o C2X recusa a CAD depois (e a nacionalidade, que dela deriva, nasce vazia
   // junto). Barrar aqui é mais barato que descobrir na recusa, dias depois do cliente ir embora.
   if (!(payload.identidade?.naturalidade ?? "").trim()) {
     return {
-      mensagem: "Informe a naturalidade (cidade de nascimento) para enviar a CAD.",
+      mensagem: "Informe a naturalidade (a cidade de nascimento do cliente) para enviar o cadastro.",
       ok: false,
     };
   }
