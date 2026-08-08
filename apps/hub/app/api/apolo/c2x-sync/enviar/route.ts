@@ -37,14 +37,21 @@ export const maxDuration = 60;
 // lugar errado (é daí que vêm os 6 casos de "a API respondeu sucesso mas o usuário não foi
 // encontrado"). Um botão novo, em 651 cards, não pode nascer disparando.
 //
-// Enquanto `C2X_ENVIO_CARD_LIBERADO` não for exatamente "true", esta rota roda o caminho INTEIRO
-// (imobiliária, diagnóstico, travas, host de destino) em `dryRun` e devolve o que ACONTECERIA —
-// sem tocar o C2X. A trava é do SERVIDOR de propósito: nenhum corpo de requisição a burla.
+// O botão nasceu travado por env (`C2X_ENVIO_CARD_LIBERADO`), e a trava foi INVERTIDA em 08/08 a
+// pedido do Lucas, depois de o caminho ser validado ponta a ponta: 18 CADs subiram por este mesmo
+// `processarLoteC2x`, com o host conferido e a contagem batendo no banco do C2X.
 //
-// Para liberar: conferir que `C2X_WRITE_API_URL` aponta para https://sistema.careli.adm.br (o host
-// vem no `hostDestino` de toda resposta, dá para ver na própria tela) e só então ligar a env.
+// Por que virou opt-OUT e não opt-in: a env foi criada como "Sensitive" na Vercel e, nesse modo, o
+// valor não pode ser lido de volta — ela nasceu VAZIA duas vezes seguidas sem ninguém perceber, e
+// um botão que depende de env silenciosamente vazia é um botão que não funciona e não avisa.
+//
+// A proteção que importa continua de pé e é melhor que a env: quem decide o destino é o SERVIDOR
+// (`hostDeDestino()`), o envio só ocorre para o host de PRODUÇÃO, e `processarLoteC2x` roda o
+// diagnóstico, resolve a imobiliária e barra ficha incompleta antes de qualquer POST.
+//
+// Para desligar em emergência, sem deploy: `C2X_ENVIO_CARD_LIBERADO=false`.
 function envioLiberado(): boolean {
-  return process.env.C2X_ENVIO_CARD_LIBERADO?.trim() === "true";
+  return process.env.C2X_ENVIO_CARD_LIBERADO?.trim().toLowerCase() !== "false";
 }
 
 // POR QUE ESTA FICHA NÃO ENTROU NA FILA.

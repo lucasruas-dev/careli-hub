@@ -1933,10 +1933,10 @@ function vereditoC2x(r: ResultadoSubidaC2x): {
 // Só aparece quando a CAD NÃO está confirmada no C2X — o mesmo critério do selo. O clique não pode
 // abrir a ficha (o card inteiro é um botão), daí o `stopPropagation` no mouse e no teclado.
 //
-// ⚠️ ENQUANTO O SERVIDOR ESTIVER EM ENSAIO o clique SIMULA: roda a mesma checagem do lote e diz o
-// que aconteceria, sem tocar o C2X. A resposta traz `ensaio: true` e a linha embaixo do botão
-// carimba isso, para "subiu" e "subiria" nunca se parecerem. Quem libera o envio de verdade é a env
-// `C2X_ENVIO_CARD_LIBERADO`, no servidor (ver app/api/apolo/c2x-sync/enviar/route.ts).
+// O clique ENVIA de verdade (liberado em 08/08, depois de 18 CADs subirem por este mesmo caminho).
+// Quem decide isso é o SERVIDOR, não este componente: se a rota responder `ensaio: true` — o que
+// acontece com `C2X_ENVIO_CARD_LIBERADO=false`, o desligamento de emergência — a linha embaixo do
+// botão carimba que foi simulação, para "subiu" e "subiria" nunca se parecerem na tela.
 function BotaoSubirC2x({
   item,
   onSubir,
