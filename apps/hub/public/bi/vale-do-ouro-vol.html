@@ -145,17 +145,18 @@
 
   <footer>
     <span>VALE DO OURO · Família Lino · Careli Empreendimentos</span>
-    <span id="rodape">Fonte: C2X ao vivo (pedidos de aquisição abertos) · Panteon</span>
+    <span id="rodape">Fonte: C2X ao vivo (situação das unidades) · Panteon</span>
   </footer>
 </div>
 
 <script>
 (function(){
   "use strict";
-  // Painel de UMA coordenação. Mesma rota do painel do lançamento inteiro, com o recorte na query:
-  // a camada de dados (lib/prometeu/bi-vale-do-ouro.ts) devolve só os lotes e as propostas desta
-  // coordenação — inclusive as propostas que ficaram no registro antigo do lote, atribuídas pelo
-  // lote gêmeo, para não sumirem dos dois painéis.
+  // Painel de UMA coordenação, que desde 10/08 é o único formato: o BI unificado foi apagado
+  // ("não tem mais esse BI junto, agora está separado"). O recorte vai na query da MESMA rota, e a
+  // camada de dados (lib/prometeu/bi-vale-do-ouro.ts) devolve só os lotes e as propostas desta
+  // coordenação. O registro antigo do lote (VLO, empreendimento 35) ficou de fora de vez: a
+  // proposta que sobrou aberta lá é a MESMA venda que já vive aqui, e contá-la inflava o ranking.
   var API = "/api/publico/bi/vale-do-ouro?carteira=vol";
   var COORD = "Família Lino";
   var $ = function(id){ return document.getElementById(id); };
@@ -191,9 +192,12 @@
   }
 
   function estoque(d){
-    var ordem = ["Em negociação","Reservado","Disponível","Bloqueado para venda"];
-    var cores = {"Em negociação":"var(--ouro)","Reservado":"var(--terra-claro)","Disponível":"var(--verde)","Bloqueado para venda":"#a49c8b"};
-    var rot   = {"Em negociação":"vendidas","Reservado":"reservadas","Disponível":"disponíveis","Bloqueado para venda":"bloqueadas"};
+    // A chave vem do painel e hoje é a SITUAÇÃO DO LOTE no C2X, com "Em negociação" e "Vendido"
+    // somados num status só (regra do Lucas, 09/08). "Em negociação" fica nos mapas como apelido
+    // do que já foi servido antes, para uma resposta em cache não cair no cinza sem rótulo.
+    var ordem = ["Vendido","Em negociação","Reservado","Disponível","Bloqueado para venda"];
+    var cores = {"Vendido":"var(--ouro)","Em negociação":"var(--ouro)","Reservado":"var(--terra-claro)","Disponível":"var(--verde)","Bloqueado para venda":"#a49c8b"};
+    var rot   = {"Vendido":"vendidas","Em negociação":"vendidas","Reservado":"reservadas","Disponível":"disponíveis","Bloqueado para venda":"bloqueadas"};
     var itens = (d.statusUnidades||[]).slice().sort(function(a,b){return ordem.indexOf(a.status)-ordem.indexOf(b.status)});
     var tot = itens.reduce(function(s,x){return s+n(x.qtd)},0) || 1;
     $("estoque").innerHTML = itens.map(function(x){
@@ -212,18 +216,20 @@
     if (n(un.naoLancadas) > 0) sub += " · outras "+pt(un.naoLancadas)+" unidades ainda não foram lançadas";
     $("estoque-sub").textContent = sub;
 
-    // A barra vem da situação cadastral do LOTE; os KPIs vêm das PROPOSTAS abertas. Enquanto
-    // houver proposta viva no registro antigo do lote, os dois números divergem — dizemos por quê
-    // em vez de deixar o leitor achar que um dos dois está errado.
-    var naBarra = {};
-    itens.forEach(function(x){ naBarra[x.status] = n(x.qtd); });
-    var faltaV = Math.max(0, n((d.vendas||{}).unidades) - n(naBarra["Em negociação"]));
-    var faltaR = Math.max(0, n((d.reservas||{}).unidades) - n(naBarra["Reservado"]));
+    // CONFERÊNCIA COM O C2X. Barra e KPIs saem da MESMA fonte agora (a situação do lote), então
+    // eles não divergem mais entre si. O que pode divergir é o lote e a proposta dele: proposta
+    // cancelada não libera o lote sozinha. O painel conta pelo lote e avisa quando o lote e a
+    // proposta discordam, em vez de mostrar um número calmo por cima de um cadastro atrasado.
+    var co = d.coerencia||{};
     var pend = [];
-    if (faltaV) pend.push("<b>"+pt(faltaV)+"</b> "+(faltaV===1?"venda":"vendas"));
-    if (faltaR) pend.push("<b>"+pt(faltaR)+"</b> "+(faltaR===1?"reserva":"reservas"));
+    if (n(co.carimboSemVenda))
+      pend.push("<b>"+pt(co.carimboSemVenda)+"</b> "+(n(co.carimboSemVenda)===1?"lote marcado como vendido sem proposta ativa":"lotes marcados como vendidos sem proposta ativa"));
+    if (n(co.vendaSemCarimbo))
+      pend.push("<b>"+pt(co.vendaSemCarimbo)+"</b> "+(n(co.vendaSemCarimbo)===1?"venda ativa em lote ainda não marcado":"vendas ativas em lotes ainda não marcados"));
+    if (n(co.reservaSemLastro))
+      pend.push("<b>"+pt(co.reservaSemLastro)+"</b> "+(n(co.reservaSemLastro)===1?"lote reservado sem proposta de reserva":"lotes reservados sem proposta de reserva"));
     $("estoque-nota").innerHTML = pend.length
-      ? '<span>Fora da barra: '+pend.join(" e ")+' que seguem no registro antigo do lote, ainda sem baixa na situação atual.</span>'
+      ? '<span>Conferindo com o C2X: '+pend.join(", ")+'. Vale revisar a situação desses lotes no cadastro.</span>'
       : "";
   }
 
@@ -275,7 +281,12 @@
   }
 
   function investidores(d){
-    var v = n((d.vendas||{}).unidades), vgv = n((d.vendas||{}).vgv), inv = d.investidores||{};
+    // ⚠️ DENOMINADOR DE PROPOSTA, não o card. Este bloco inteiro conta PROPOSTA (é lá que o
+    // comprador existe), e o card do topo conta LOTE. Hoje os dois dão o mesmo número, mas dividir
+    // um pelo outro imprimiria percentual acima de 100% no dia em que um lote atrasar o carimbo.
+    var inv = d.investidores||{};
+    var v = n(inv.propostas) || n((d.vendas||{}).unidades);
+    var vgv = n(inv.vgv_proposta) || n((d.vendas||{}).vgv);
     $("inv-sub").textContent = pt(v)+" lotes para "+pt(inv.titulares)+" compradores — a leitura fina da carteira";
     $("investidores").innerHTML =
       '<div class="card"><div class="mini-lb">Concentração</div>'
@@ -290,7 +301,9 @@
   }
 
   function perfil(d){
-    var v = n((d.vendas||{}).unidades) || 1;
+    // Mesmo motivo do bloco de investidores: o perfil sai da PROPOSTA (sexo, idade, renda e
+    // profissão são do comprador), então o 100% dele é o total de propostas, não o de lotes.
+    var v = n((d.investidores||{}).propostas) || n((d.vendas||{}).unidades) || 1;
     var sx = {}; (d.sexo||[]).forEach(function(s){ sx[s.k]=n(s.qtd); });
     var m = sx["Masculino"]||0, f = sx["Feminino"]||0;
     var linhasKv = function(itens, lim){ return (itens||[]).slice(0,lim).map(function(i){
@@ -317,7 +330,7 @@
     var quando = new Date(d.geradoEm);
     var hhmm = quando.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"});
     $("carimbo").textContent = "atualizado às "+hhmm+" · direto do C2X";
-    $("rodape").textContent = "Fonte: C2X ao vivo (pedidos de aquisição abertos) · lotes da "+COORD+" · atualizado às "+hhmm+" · Panteon";
+    $("rodape").textContent = "Fonte: C2X ao vivo (situação das unidades) · lotes da "+COORD+" · atualizado às "+hhmm+" · Panteon";
   }
 
   var falhas = 0;

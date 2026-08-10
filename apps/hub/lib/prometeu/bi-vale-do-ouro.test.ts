@@ -1,14 +1,17 @@
 import { describe, expect, it } from "vitest";
 
-import { normalizarCarteira, recorteDaCarteira } from "./bi-vale-do-ouro";
+import {
+  normalizarCarteira,
+  recorteDaCarteira,
+  sqlDaCoerencia,
+} from "./bi-vale-do-ouro";
 
 // O QUE ESTE TESTE PROTEGE: o recorte por carteira do BI do Vale do Ouro.
-// Dois erros aqui saem caros e silenciosos no painel público:
-//   1) filtrar a carteira por `eu.enterprise_id` puro faria as propostas ÓRFÃS do master (35)
-//      sumirem dos dois painéis — VOC + VOL passaria a dar MENOS que o lançamento inteiro;
-//   2) contar unidades do 35 junto com 36/37 dobraria o empreendimento (as unidades do master
-//      são as MESMAS, aposentadas).
-// O teste é de SQL montado (sem banco): é a peça que decide os dois pontos.
+// O erro que sai caro e silencioso no painel público é misturar o master (35) com as carteiras:
+// as unidades do 35 são as MESMAS de 36/37 (contá-las dobraria o empreendimento) e as propostas
+// do 35 são a SEGUNDA CÓPIA de vendas que já vivem nas carteiras. Enquanto elas entravam, o card
+// do topo dizia 84 vendas no VOC e o ranking de imobiliária somava 89.
+// O teste é de SQL montado (sem banco): é a peça que decide o universo das duas contagens.
 
 describe("normalizarCarteira", () => {
   it("aceita voc e vol", () => {
@@ -27,43 +30,63 @@ describe("normalizarCarteira", () => {
 });
 
 describe("recorteDaCarteira", () => {
-  it("no recorte inteiro não filtra proposta e conta as duas carteiras vivas", () => {
-    const r = recorteDaCarteira("todos");
-
-    expect(r.filtroCarteira).toBe("");
-    expect(r.listaUnidades).toBe("36, 37");
+  it("no recorte inteiro conta as duas carteiras vivas", () => {
+    expect(recorteDaCarteira("todos").listaUnidades).toBe("36, 37");
   });
 
-  it("no VOC conta só as unidades do 37", () => {
+  it("no VOC conta só o 37", () => {
     expect(recorteDaCarteira("voc").listaUnidades).toBe("37");
   });
 
-  it("no VOL conta só as unidades do 36", () => {
+  it("no VOL conta só o 36", () => {
     expect(recorteDaCarteira("vol").listaUnidades).toBe("36");
   });
 
-  it("nunca conta as unidades aposentadas do master (35)", () => {
+  it("nunca inclui o master (35), nem para unidade nem para proposta", () => {
     for (const carteira of ["todos", "voc", "vol"] as const) {
       expect(recorteDaCarteira(carteira).listaUnidades).not.toMatch(/\b35\b/);
     }
   });
 
-  it("filtra a proposta pela carteira do LOTE GÊMEO, não pelo empreendimento cru", () => {
-    const voc = recorteDaCarteira("voc").filtroCarteira;
+  it("devolve UMA lista só, a mesma para unidade e para proposta", () => {
+    // O card do topo conta unidade e o ranking conta proposta. Se cada um enxergasse um universo
+    // diferente, a mesma tela mostraria dois totais de venda, que é o defeito de 09/08.
+    expect(Object.keys(recorteDaCarteira("voc"))).toEqual(["listaUnidades"]);
+  });
+});
 
-    // A órfã do 35 entra pelo gêmeo (casamento por número do lote), então o filtro precisa
-    // passar pelo COALESCE/NULLIF — `AND eu.enterprise_id = 37` seco perderia as 9 vendas e as
-    // 31 reservas que ficaram no master.
-    expect(voc).toContain("gemeo.enterprise_id");
-    expect(voc).toContain("NULLIF(eu.enterprise_id, 35)");
-    expect(voc).toMatch(/=\s*37$/);
-    expect(voc).not.toMatch(/^AND eu\.enterprise_id/);
+// O VIGIA existe porque o painel passou a contar pela SITUAÇÃO DA UNIDADE (regra do Lucas, 09/08)
+// e a unidade não se desfaz sozinha quando a proposta cai: "proposta podem ser canceladas, temos
+// que ficar de olho nas atualizações". Estes testes protegem as duas coisas que fariam o vigia
+// mentir em silêncio — ele olhar o empreendimento errado, ou perder etapa de venda.
+describe("sqlDaCoerencia", () => {
+  it("nunca vigia o master (35): lá 'sem proposta' é o normal, não é erro", () => {
+    for (const carteira of ["todos", "voc", "vol"] as const) {
+      const sql = sqlDaCoerencia(recorteDaCarteira(carteira).listaUnidades);
+      expect(sql).not.toMatch(/\b35\b/);
+    }
   });
 
-  it("não usa o tipo da unidade (interna/externa) para decidir a carteira", () => {
-    for (const carteira of ["todos", "voc", "vol"] as const) {
-      const r = recorteDaCarteira(carteira);
-      expect(r.filtroCarteira).not.toMatch(/enterprise_unity_type|interna|externa/i);
-    }
+  it("conta os dois sentidos do erro e a ordem no tempo", () => {
+    const sql = sqlDaCoerencia("36, 37");
+
+    expect(sql).toContain("carimbo_sem_venda"); // lote vendido sem proposta viva
+    expect(sql).toContain("venda_sem_carimbo"); // proposta viva sem lote carimbado
+    expect(sql).toContain("reserva_sem_lastro");
+    expect(sql).toContain("p.morte > eu.updated_at"); // a proposta morreu DEPOIS do carimbo
+  });
+
+  it("enxerga a venda que andou para a frente, não só contrato gerado e proposta realizada", () => {
+    const sql = sqlDaCoerencia("37");
+
+    // Em 09/08 o VOC tinha 41 propostas em "Em assinatura" (5) fora da conta: com 3 e 9 apenas, o
+    // vigia acusaria 41 divergências falsas e o ranking mostraria 43 vendas onde havia 84.
+    expect(sql).toContain("acquisition_request_stage_id IN (3, 4, 5, 6, 9)");
+    // E as mortas (cancelado/reprovado/distrato) precisam continuar do lado de fora da venda.
+    expect(sql).toContain("acquisition_request_stage_id IN (7, 8, 10, 11)");
+  });
+
+  it("vigia só o lote comercial (o não lançado a R$ 1,00 nunca teve proposta)", () => {
+    expect(sqlDaCoerencia("36, 37")).toContain("eu.price > 1");
   });
 });

@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-10-bi-segue-a-situacao-do-lote-no-c2x",
+    deployedAt: "2026-08-10T08:30:00-03:00",
+    modules: [
+      {
+        module: "Prometeu",
+        screens: [
+          {
+            items: [
+              "O BI agora mostra a MESMA situação que aparece na tela do C2X: em negociação e vendido contam como vendido, reserva é reserva, disponível é disponível",
+              "Família Lino: 93 vendidos, 1 reserva e 6 disponíveis, batendo lote a lote com o C2X (antes o painel dizia 96, 4 e 2)",
+              "O ranking de imobiliária e o perfil do comprador voltaram a enxergar as vendas em assinatura: eram 41 vendas de Cecílio Rocha fora da conta",
+              "Oito vendas que estavam sendo contadas duas vezes no ranking saíram da conta: a mesma venda aparecia no registro antigo do lote e no atual",
+              "Nova conferência automática: se um lote ficar marcado como vendido depois da proposta ser cancelada, o painel avisa embaixo da barra de estoque",
+              "O BI único do lançamento saiu do ar: agora são só os dois painéis por coordenação, Cecílio Rocha e Família Lino",
+            ],
+            screen: "BI do Vale do Ouro",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Duas fontes discordavam: `statusUnidades` decidia o desfecho pela PROPOSTA e a tela do C2X mostra o `sale_status_id` da UNIDADE. Agora estoque, card do topo e reservas saem todos de `SITUACAO_DO_LOTE` (3+4 -> Vendido, 2 -> Reservado, 5 -> Bloqueado, resto -> Disponível), e `PROPOSTA_DO_LOTE` foi removido. Conferido: VOL 93+1+6=100, VOC 84+1+5=90, VLO 149+37+4=190. Achado no caminho: `VENDA` era `stage IN (3,9)` e perdia as 41 propostas do VOC em 'Em assinatura' (5), o que subcontava ranking, perfil, contratos e cobrança; virou `IN (3,4,5,6,9)` e agora propostas vivas = unidades vendidas nos três recortes (177/84/93). Como contar pela unidade cria o risco inverso (proposta cancelada não libera o lote sozinha), entrou `sqlDaCoerencia()`: quatro contadores de divergência lote x proposta no payload, exibidos como nota no painel. Medido hoje: 0, 0, 0, 0. Segundo achado: as \"órfãs do 35\" não eram órfãs. As 8 propostas vivas do master têm gêmeo na carteira com a MESMA venda e o MESMO cliente (VLO0104/4738 <-> VOC0104/4738), então o JOIN_GEMEO/CARTEIRA_DA_PROPOSTA fazia dupla contagem em ranking, perfil, planos, contratos e cobrança: ranking somava 89 no VOC contra 84 do card, e 185 contra 177 no lançamento inteiro. O master saiu de TODAS as consultas (LISTA_ENTERPRISES, JOIN_GEMEO e filtroCarteira removidos; `recorteDaCarteira` devolve só `listaUnidades`), e o duelo Cecílio x Lino passou a contar unidade. Agora todo agregado fecha com o card: VOC 84 em estoque/ranking/sexo/planos/idades/parcelas, VOL 93. Por ordem do Lucas (\"pode excluir esse BI unico\"), public/bi/vale-do-ouro.html foi apagado e o campo `porTipo` (duelo Cecílio x Lino) saiu do motor junto, que era a única tela que o consumia: uma consulta a menos por ciclo de 60s. A rota /api/publico/bi/vale-do-ouro continua liberada no proxy.ts, servindo os dois recortes por ?carteira=; a URL /bi/vale-do-ouro.html passa a responder 404.",
+      motivation:
+        "Lucas, 09/08, comparando o painel com a tela do C2X lado a lado: \"existe somente os status: Vendido - Reserva - Disponivel... teria que ser 93 vendido, 6 disponivel, 1 [reserva]\". E no minuto seguinte: \"proposta podem ser canceladas, temos que ficar de olho nas atualizações\" — daí o vigia, em vez de trocar um número silenciosamente errado por outro.",
+    },
+    title: "BI do Vale do Ouro passa a contar pela situação do lote no C2X",
+    type: "correcao",
+    version: "1.119.0",
+  },
+  {
     buildTag: "2026-08-07-estoque-conta-lote-nao-proposta",
     deployedAt: "2026-08-07T08:15:00-03:00",
     modules: [
