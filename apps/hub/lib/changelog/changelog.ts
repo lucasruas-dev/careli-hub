@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-10-iris-email-preso-e-janela-de-24h",
+    deployedAt: "2026-08-10T15:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "E-mail de cliente voltou a entrar: dois e-mails estavam presos desde ontem e falhavam a cada 5 minutos, 240 vezes por dia",
+              "O atendimento não mostra mais \"janela aberta\" quando o cliente ainda não respondeu, que era o que fazia a mensagem morrer depois de enviada",
+              "O erro de envio agora explica o que houve em português, no lugar de \"Re-engagement message\"",
+              "O botão de reabrir conversa parou de oferecer modelo que a Meta ainda não aprovou",
+            ],
+            screen: "Atendimento",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Portal do incorporador no ar: o dono do loteamento entra com a marca dele e vê os empreendimentos que tem com a Careli",
+            ],
+            screen: "Portal do incorporador",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "(1) GMAIL: `parseGmailMessage` mandava o header `Date` CRU (\"Sun, 9 Aug 2026 09:11:25 -0300 (BRT)\") para coluna timestamptz — 22007 em toda ingestão, 240/dia, duas mensagens presas desde 09/08 repetindo a cada ciclo do cron. Agora `internalDate` (epoch do Gmail, já ISO) é a fonte e o header passa por `paraIso()`; data inválida vira null e a mensagem ENTRA. As presas seguem unread, então voltam sozinhas. 7 testes novos. (2) JANELA DE 24h: `getIrisCustomerServiceWindow` priorizava `metadata.customerServiceWindowOpenedAt`, gravado por `lib/apolo/acao-atendimento.ts` no disparo do TEMPLATE de convite — só que template não abre janela pela regra da Meta (o próprio metadata dizia `awaiting_customer_reply`). Tela pintava verde, liberava o textarea, e a Meta recusava com 131047. Corrigido nas DUAS pontas: a origem parou de gravar e a leitura parou de aceitar, o que alcança os 246 tickets que já nasceram com o carimbo falso (245 sem inbound). (3) `META_DELIVERY_ERROR_LABELS` casava só por código e as 38 falhas de 30 dias têm `code: null` — entrou `META_DELIVERY_ERROR_BY_TITLE` com os 5 títulos reais medidos no banco. (4) `isMetaTemplateUnavailableStatus` passou a barrar PENDING/IN_REVIEW: 3 dos 6 modelos oferecidos no reabrir voltariam 132001.",
+      motivation:
+        "Lucas, 10/08: \"estamos varios erros na iris, analisa por favor\" e depois \"mas foca na mensagens que não estamos conseguindo enviar\", com print de 8 atendimentos em ERRO DE ENVIO. O diagnóstico separou o que é defeito nosso do que é conta a pagar: 9 das falhas são \"Business eligibility payment issue\", pendência financeira na conta do WhatsApp Business, que nenhum código resolve.",
+    },
+    title: "Iris: e-mail preso volta a entrar e a janela de 24h para de mentir",
+    type: "correcao",
+    version: "1.120.0",
+  },
+  {
     buildTag: "2026-08-10-bi-segue-a-situacao-do-lote-no-c2x",
     deployedAt: "2026-08-10T08:30:00-03:00",
     modules: [

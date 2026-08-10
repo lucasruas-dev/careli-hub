@@ -160,8 +160,16 @@ export async function abrirAtendimentoDaAcao(
             acaoOrigem: "apolo_acao",
             activeContactConsent: "awaiting_customer_reply",
             alvoId: input.alvoId,
-            customerServiceWindowExpiresAt: emMin(24 * 60),
-            customerServiceWindowOpenedAt: iso,
+            // 🔴 `customerServiceWindowOpenedAt` NÃO É GRAVADO AQUI, e a ausência é proposital.
+            //
+            // Este ponto é o disparo do TEMPLATE de convite: o cliente ainda não falou nada (o
+            // `activeContactConsent` logo acima diz isso com todas as letras). Pela regra da Meta
+            // quem abre a janela de 24h é a RESPOSTA do cliente, não a nossa mensagem.
+            //
+            // Gravar aqui fazia a tela do atendente acreditar em janela aberta, liberar o campo
+            // de texto e só descobrir no envio, com "Re-engagement message" vindo da Meta. Quem
+            // grava esse campo de verdade é o inbound (lib/iris/meta-inbound-processor.ts),
+            // quando a mensagem do cliente chega.
             initialTemplateName: NOME_TEMPLATE_CONVITE,
             source: "apolo_acao",
           },

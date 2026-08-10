@@ -7474,10 +7474,20 @@ function isMetaTemplateUnavailableStatus(status?: string | null) {
     normalized === "INACTIVE" ||
     normalized === "PAUSED" ||
     normalized === "REJECTED" ||
+    // 🔴 PENDING E IN_REVIEW ENTRARAM EM 10/08. Template que a Meta ainda não aprovou aparecia no
+    // seletor de "Reabrir conversa" e voltava 132001 ("template não existe ou não está aprovado")
+    // no meio do atendimento. Conferido no banco naquele dia: dos 6 modelos oferecidos ao
+    // operador, 3 estavam PENDING — metade das opções era armadilha.
+    // A rota de abertura de ticket já exigia APPROVED (app/api/iris/tickets/route.ts); a de
+    // reabrir não exigia, e a tela oferecia. Agora os dois lados combinam.
+    normalized === "PENDING" ||
+    normalized === "IN_REVIEW" ||
+    normalized === "PENDING_DELETION" ||
     Boolean(normalized?.startsWith("DISABLED_")) ||
     Boolean(normalized?.startsWith("INACTIVE_")) ||
     Boolean(normalized?.startsWith("PAUSED_")) ||
-    Boolean(normalized?.startsWith("REJECTED_"))
+    Boolean(normalized?.startsWith("REJECTED_")) ||
+    Boolean(normalized?.startsWith("PENDING_"))
   );
 }
 
@@ -8216,17 +8226,27 @@ function getIrisCustomerServiceWindow(
           currentTicket.metadata,
           "lastCustomerMessageAt",
         );
-        const metadataOpenedAt = readTicketRecordString(
-          currentTicket.metadata,
-          "customerServiceWindowOpenedAt",
-        );
         const inboundMessages =
           sortedTicketMessages(currentTicket).filter(isCustomerMessage);
         const lastInbound = inboundMessages[inboundMessages.length - 1];
 
+        // 🔴 `customerServiceWindowOpenedAt` SAIU DAQUI, e é a correção de 10/08.
+        //
+        // Quem grava esse campo é a ação em massa do Apolo (lib/apolo/acao-atendimento.ts) NO
+        // MOMENTO EM QUE NÓS DISPARAMOS O TEMPLATE de convite — o cliente ainda não respondeu, e
+        // o próprio registro admite isso gravando `activeContactConsent: "awaiting_customer_reply"`.
+        // Pela regra da Meta, disparar template NÃO abre janela: só a resposta do cliente abre.
+        //
+        // Como ele vinha antes do inbound real nesta lista, a tela pintava a pílula verde,
+        // liberava o campo de texto, e o atendente só descobria depois do envio, com a Meta
+        // devolvendo "Re-engagement message" (medido em produção: 7 mensagens, 5 atendimentos).
+        //
+        // Fica só o `lastCustomerMessageAt`, que é gravado quando o cliente FALA de verdade
+        // (lib/iris/meta-inbound-processor.ts), e o último inbound como prova direta. É a mesma
+        // conta que o servidor já faz em /api/iris/meta/messages, e é por isso que os dois
+        // discordavam: agora olham a mesma coisa.
         return (
           metadataLastMessageAt ??
-          metadataOpenedAt ??
           lastInbound?.sentAt ??
           lastInbound?.createdAt ??
           null

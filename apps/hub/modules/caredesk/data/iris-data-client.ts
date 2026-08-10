@@ -1036,6 +1036,26 @@ const META_DELIVERY_ERROR_LABELS: Record<string, string> = {
   "132001": "Template nao existe ou nao esta aprovado.",
 };
 
+// 🔴 O MAPA POR CÓDIGO SOZINHO NUNCA DISPARAVA. Conferido no banco de produção em 10/08: as 38
+// falhas dos últimos 30 dias têm `deliveryError.code = null` e só o `title` em inglês. Ou seja, o
+// dicionário acima existia desde sempre e o atendente continuava lendo "Re-engagement message" na
+// tela, sem entender o que fazer. A Meta manda o código em parte dos eventos, não em todos.
+//
+// Este segundo mapa casa pelo TÍTULO, que é o que de fato chega. Os cinco de baixo são
+// exatamente os que apareceram em produção, com a contagem do dia:
+//   Business eligibility payment issue (9) · Media upload error (9) · Re-engagement message (7)
+//   User's number is part of an experiment (4) · Message undeliverable (1)
+const META_DELIVERY_ERROR_BY_TITLE: Record<string, string> = {
+  "business eligibility payment issue":
+    "Pendencia de pagamento na conta do WhatsApp (Meta) — o envio de template fica bloqueado ate regularizar.",
+  "media upload error": "A Meta nao aceitou o arquivo anexado. Tente reenviar ou use outro formato.",
+  "message undeliverable": "Mensagem nao entregue (numero invalido ou sem WhatsApp).",
+  "re-engagement message":
+    "Fora da janela de 24h — o cliente precisa responder, ou use um template aprovado para reabrir.",
+  "user's number is part of an experiment":
+    "Numero em experimento da Meta (entrega limitada). Tente outro canal.",
+};
+
 function readMessageFailureReason(row: any): string | null {
   const payload = row?.provider_payload;
 
@@ -1064,6 +1084,16 @@ function readMessageFailureReason(row: any): string | null {
       : typeof record.title === "string" && record.title.trim()
         ? record.title.trim()
         : null;
+
+  // Sem código, tenta pelo título — que é como a Meta manda na prática. Sem isso o atendente
+  // recebe o texto em inglês, que não diz o que ele deve fazer a seguir.
+  if (message) {
+    const porTitulo = META_DELIVERY_ERROR_BY_TITLE[message.trim().toLowerCase()];
+
+    if (porTitulo) {
+      return porTitulo;
+    }
+  }
 
   return message;
 }

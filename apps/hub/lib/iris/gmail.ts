@@ -209,7 +209,7 @@ export async function getGmailMessage(id: string): Promise<ParsedGmailMessage> {
   return parseGmailMessage(message);
 }
 
-function parseGmailMessage(message: GmailApiMessage): ParsedGmailMessage {
+export function parseGmailMessage(message: GmailApiMessage): ParsedGmailMessage {
   const headers = message.payload?.headers ?? [];
   const from = getHeader(headers, "From");
   const parsedFrom = parseAddress(from);
@@ -226,7 +226,14 @@ function parseGmailMessage(message: GmailApiMessage): ParsedGmailMessage {
     attachments,
     bodyHtml: bodies.html,
     bodyText: bodies.text,
-    date: getHeader(headers, "Date") ?? internalDate,
+    // 🔴 A ORDEM AQUI JÁ ESTEVE INVERTIDA E CUSTOU 240 FALHAS POR DIA (achado em 10/08 nos logs
+    // de produção). O cabeçalho `Date` do e-mail vem no formato do protocolo, tipo
+    // "Sun, 9 Aug 2026 09:11:25 -0300 (BRT)", e ia CRU para uma coluna timestamptz: o Postgres
+    // recusava com 22007 e a mensagem nunca entrava. Duas mensagens presas desde 09/08 tentavam
+    // de novo a cada ciclo do cron, para sempre.
+    // `internalDate` é o carimbo do próprio Gmail, em epoch, e já sai daqui em ISO — é a fonte
+    // confiável. O cabeçalho vira só o segundo recurso, e ainda assim normalizado.
+    date: internalDate ?? paraIso(getHeader(headers, "Date")),
     deliveredTo: getHeader(headers, "Delivered-To") ?? getHeader(headers, "To"),
     fromEmail: parsedFrom.email,
     fromName: parsedFrom.name,
@@ -445,6 +452,27 @@ function getHeader(
   const found = headers.find((header) => header.name?.toLowerCase() === target);
 
   return found?.value?.trim() || null;
+}
+
+/**
+ * Converte a data do cabeçalho do e-mail para ISO, ou devolve null.
+ *
+ * O cabeçalho `Date` é do protocolo de e-mail, não do banco: vem como
+ * "Sun, 9 Aug 2026 09:11:25 -0300 (BRT)", com dia da semana e o fuso repetido por extenso entre
+ * parênteses. O `Date` do JavaScript engole a maioria desses formatos, mas nem todos, e o que
+ * NUNCA pode acontecer é o texto cru seguir para uma coluna de data — foi assim que duas
+ * mensagens ficaram presas repetindo erro a cada ciclo do cron.
+ *
+ * Data inválida vira null de propósito: sem carimbo o resto do fluxo cai no horário de
+ * processamento, e a mensagem ENTRA. Melhor um minuto de diferença no horário do que um e-mail
+ * de cliente que nunca aparece para o atendente.
+ */
+export function paraIso(valor: string | null | undefined): string | null {
+  if (!valor) return null;
+
+  const quando = new Date(valor.trim());
+
+  return Number.isNaN(quando.getTime()) ? null : quando.toISOString();
 }
 
 function parseAddress(value: string | null): {
