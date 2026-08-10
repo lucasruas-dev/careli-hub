@@ -1,0 +1,2656 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="robots" content="noindex,nofollow">
+<title>Garden Resort Residence · Masterplan de lotes</title>
+<style>
+/* ==========================================================================
+   GARDEN RESORT RESIDENCE — MASTERPLAN PÚBLICO (vitrine do cliente final)
+   Cores e superfícies: design system do Panteon (@repo/uix / styles.css).
+   Nenhuma cor inventada. Nenhum dado de operação viaja para esta página:
+   o lote é "disponível" ou "indisponível", e só.
+   ========================================================================== */
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  /* --- superfícies claras do Panteon --- */
+  --canvas:#f7f8fa;
+  --base:#ffffff;
+  --raised:#ffffff;
+  --subtle:#eef1f4;
+  --inverse:#121722;
+  --tx:#121722;
+  --tx2:#485466;
+  --tx3:#667085;
+  --bd:#dce2ea;
+  --bd2:#c5ceda;
+  /* --- semânticas --- */
+  --ok:#14804a;
+  --warn:#b7791f;
+  --dan:#c24135;
+  --focus:#2563eb;
+  --brand:#a07c3b;
+
+  /* Camada de cor sobre a planta: preenchimento chapado, SEM borda.
+     Opacidade calibrada no teste concreto: o número do lote, a metragem e as
+     cotas impressas na planta continuam legíveis DENTRO do lote pintado.
+     Os dois estados usam a MESMA opacidade: é o que garante que o verde do
+     disponível e o vermelho do indisponível se separem à distância sem que
+     nenhum dos dois seja lido errado. */
+  --op-disp:.44;
+  --op-res:.44;
+  --op-vend:.44;
+  --op-hover:.60;
+  --op-sel:.66;
+  --op-filtro:.52;
+
+  --fonte:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+  --som1:0 1px 2px rgba(18,23,34,.06);
+  --som2:0 2px 6px rgba(18,23,34,.08),0 1px 2px rgba(18,23,34,.05);
+  --som3:0 10px 34px rgba(18,23,34,.14),0 2px 8px rgba(18,23,34,.07);
+  --som4:0 24px 70px rgba(18,23,34,.22),0 4px 14px rgba(18,23,34,.10);
+}
+
+html,body{height:100%}
+body{
+  background:var(--canvas);
+  color:var(--tx);
+  font-family:var(--fonte);
+  font-size:13px;
+  line-height:1.5;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+}
+button,input,select,textarea{font:inherit;color:inherit;background:none;border:none;outline:none}
+button{cursor:pointer}
+img{display:block;max-width:100%}
+.n{font-variant-numeric:tabular-nums}
+
+/* ESQUERDA = o empreendimento · CENTRO = o mapa · DIREITA = a unidade.
+   Mesmo eixo da tela interna, que o dono aprovou. */
+.app{height:100%;display:grid;grid-template-columns:238px minmax(0,1fr) 296px;min-height:0}
+
+/* ====================== MOLDURA DE MARCA (esquerda) ====================== */
+.moldura{
+  background:var(--base);
+  border-right:1px solid var(--bd);
+  display:flex;flex-direction:column;
+  padding:26px 22px 18px;
+  overflow:hidden;
+}
+.m-topo{display:flex;justify-content:center;padding-bottom:22px}
+.m-topo img{width:70px}
+.regua{height:1px;background:var(--bd)}
+.m-marca{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 0 16px}
+.m-marca img{width:166px}
+.m-marca .sel{
+  font-size:11px;font-weight:600;letter-spacing:.03em;
+  text-transform:uppercase;color:var(--tx3);
+}
+.ouro{height:2px;width:44px;margin:0 auto;background:var(--brand);border-radius:2px}
+
+.numeros{display:flex;flex-direction:column;gap:18px;padding:24px 0 0}
+.num .v{
+  font-size:26px;font-weight:600;letter-spacing:-.022em;line-height:1.12;
+  font-variant-numeric:tabular-nums;
+}
+.num .v.moeda{font-size:22px}
+.num .v.verde{color:var(--ok)}
+.num .r{font-size:11.5px;color:var(--tx3);margin-top:2px;line-height:1.35}
+.num .v sup{font-size:.55em;vertical-align:super;letter-spacing:0}
+
+.espaco{flex:1;min-height:14px}
+
+.m-quadras{
+  font-size:11.5px;color:var(--tx3);
+  border-top:1px solid var(--bd);
+  padding-top:12px;margin-bottom:18px;line-height:1.45;
+}
+.m-quadras b{color:var(--tx2);font-weight:600;font-variant-numeric:tabular-nums}
+
+.m-rodape{display:flex;flex-direction:column;align-items:center;gap:14px}
+.m-rodape .mm{width:126px}
+.m-tec{display:flex;flex-direction:column;align-items:center;gap:5px}
+.m-tec span{font-size:10px;letter-spacing:.03em;text-transform:uppercase;color:var(--tx3)}
+.m-tec img{width:56px;opacity:.9}
+
+/* ============================== PALCO ============================== */
+.palco{display:flex;flex-direction:column;min-width:0;min-height:0;background:var(--canvas)}
+
+.topo{
+  height:56px;flex:none;display:flex;align-items:center;gap:12px;
+  padding:0 18px;border-bottom:1px solid var(--bd);background:var(--base);
+}
+.tt{font-size:14px;font-weight:600;letter-spacing:-.01em;white-space:nowrap}
+.tt span{font-weight:400;color:var(--tx3);margin-left:7px}
+.acoes{margin-left:auto;display:flex;align-items:center;gap:8px}
+
+.bt{
+  display:inline-flex;align-items:center;gap:7px;height:34px;padding:0 13px;
+  border:1px solid var(--bd);border-radius:6px;background:var(--base);
+  font-size:12.5px;font-weight:500;color:var(--tx2);white-space:nowrap;
+  transition:background .12s,border-color .12s,color .12s;
+}
+.bt:hover{background:var(--subtle);border-color:var(--bd2);color:var(--tx)}
+.bt:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+.bt svg{flex:none;opacity:.8}
+.bt.primaria{background:var(--inverse);border-color:var(--inverse);color:#fff}
+.bt.primaria:hover{background:#1f2633;border-color:#1f2633;color:#fff}
+.bt.primaria svg{opacity:1}
+.bt.icone{width:34px;padding:0;justify-content:center}
+.chip{
+  display:inline-flex;align-items:center;height:18px;padding:0 6px;border-radius:9px;
+  background:var(--focus);color:#fff;font-size:10.5px;font-weight:600;
+  font-variant-numeric:tabular-nums;
+}
+.bt.ativo{border-color:var(--focus);color:var(--focus);background:rgba(37,99,235,.06)}
+
+/* ------------------------------- MAPA ------------------------------- */
+.mapa{
+  /* min-height:0 e obrigatorio: sem ele a altura da placa vira piso do proprio
+     container e o mapa cresce sozinho a cada redimensionamento. */
+  flex:1;min-height:0;min-width:0;position:relative;overflow:hidden;
+  display:flex;align-items:center;justify-content:center;
+  padding:18px;
+  touch-action:none;
+}
+/* o visor é a placa: fica sempre do mesmo tamanho, o mapa inteiro cabe nele.
+   o zoom acontece DENTRO dela, então o enquadramento nunca se perde. */
+.visor{
+  position:relative;overflow:hidden;flex:none;
+  background:var(--base);border-radius:8px;box-shadow:var(--som3);
+  opacity:0;transition:opacity .35s ease;
+}
+.visor.pronta{opacity:1}
+.cena{position:absolute;left:0;top:0;transform-origin:0 0;will-change:transform}
+.cena img{width:100%;height:100%;display:block;image-rendering:auto;user-select:none;-webkit-user-drag:none}
+.cena svg{position:absolute;inset:0;width:100%;height:100%}
+.cena polygon{transition:fill-opacity .12s ease}
+.visor.arrastando{cursor:grabbing}
+.visor.arrastavel{cursor:grab}
+
+/* legenda */
+/* A legenda VIVE NA COLUNA DA ESQUERDA, não sobre o mapa. Flutuando no canto inferior ela
+   cobria os lotes da quadra de baixo, e o cliente nem via nem clicava no que estava embaixo
+   dela. Aqui em cima ela ainda fica ao lado do mapa, e o mapa fica inteiro. */
+.legenda{
+  display:flex;flex-wrap:wrap;align-items:center;gap:11px 16px;
+  margin-top:20px;padding-top:18px;border-top:1px solid var(--bd);
+}
+.legenda .lg-sep{display:none}
+.legenda .bt-so{flex:1 0 100%}
+.lg{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--tx2)}
+.lg i{width:11px;height:11px;border-radius:3px;display:block}
+.lg b{font-weight:600;color:var(--tx);font-variant-numeric:tabular-nums}
+.lg-sep{width:1px;height:16px;background:var(--bd)}
+.dica b{font-weight:600;color:var(--ok)}
+.dica .d2{display:block;margin-top:3px;font-size:11px;opacity:.72;font-weight:400}
+.bt-so{
+  height:26px;padding:0 10px;border-radius:5px;border:1px solid var(--bd);
+  font-size:11.5px;font-weight:500;color:var(--tx2);background:var(--base);
+}
+.bt-so:hover{background:var(--subtle);color:var(--tx)}
+.bt-so.on{background:var(--ok);border-color:var(--ok);color:#fff}
+
+/* zoom */
+.zoombox{
+  position:absolute;right:16px;bottom:16px;z-index:5;
+  display:flex;align-items:center;gap:2px;height:38px;padding:0 5px;
+  background:rgba(255,255,255,.94);backdrop-filter:blur(8px);
+  border:1px solid var(--bd);border-radius:8px;box-shadow:var(--som2);
+}
+.zb{width:28px;height:28px;border-radius:5px;display:grid;place-items:center;color:var(--tx2)}
+.zb:hover{background:var(--subtle);color:var(--tx)}
+.zb:disabled{opacity:.34;cursor:default;background:none}
+.zval{min-width:46px;text-align:center;font-size:11.5px;color:var(--tx2);font-variant-numeric:tabular-nums}
+
+/* aviso de filtro sobre o mapa */
+.avisof{
+  position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:6;
+  display:none;align-items:center;gap:10px;height:36px;padding:0 6px 0 14px;
+  background:var(--inverse);color:#fff;border-radius:8px;box-shadow:var(--som3);
+  font-size:12.5px;
+}
+.avisof.on{display:flex}
+.avisof b{font-variant-numeric:tabular-nums}
+.avisof .x{
+  height:24px;padding:0 9px;border-radius:5px;color:#c5ceda;font-size:11.5px;
+  background:rgba(255,255,255,.10);
+}
+.avisof .x:hover{background:rgba(255,255,255,.20);color:#fff}
+
+/* ================= DIREITA · A UNIDADE =================
+   A ficha do lote saiu de cima do mapa e virou coluna. O cliente lê os
+   números sem perder de vista o lote que acabou de clicar. */
+.unidade{
+  background:var(--base);border-left:1px solid var(--bd);
+  display:flex;flex-direction:column;min-height:0;overflow:hidden;
+}
+.uCab{position:relative;padding:12px 16px;border-bottom:1px solid var(--bd);flex:0 0 auto}
+.uCab .r{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--tx3);font-weight:600}
+.uCab .v{font-size:13.5px;font-weight:600;margin-top:1px;letter-spacing:-.01em}
+.uFechar{
+  position:absolute;top:12px;right:12px;width:22px;height:22px;border-radius:5px;
+  display:none;place-items:center;color:var(--tx3);
+}
+.uFechar:hover{background:var(--subtle);color:var(--tx)}
+body.temSel .uFechar{display:grid}
+.uRolo{flex:1;min-height:0;overflow-y:auto}
+
+.uVazio{
+  height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:11px;padding:30px 24px;text-align:center;
+}
+.uVazio .ic{
+  width:46px;height:46px;border-radius:11px;background:var(--canvas);
+  border:1px solid var(--bd);display:grid;place-items:center;color:var(--tx3);
+}
+.uVazio h4{font-size:13.5px;font-weight:600}
+.uVazio p{font-size:12px;color:var(--tx3);line-height:1.55;max-width:220px}
+.uVazio .dic{
+  font-size:11.5px;color:var(--tx3);border-top:1px solid var(--bd);
+  padding-top:11px;margin-top:2px;
+}
+.uVazio .dic b{color:var(--ok);font-weight:600}
+
+.ficha{padding:16px;display:none}
+.ficha.on{display:block;animation:sobe .18s ease}
+@keyframes sobe{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+/* o titulo do lote (.fh/.qq) mudou de lugar: agora e o .uCab .v da coluna,
+   e o fechar e o .uFechar. Nao ha mais cabecalho dentro do cartao. */
+.selo{
+  display:inline-flex;align-items:center;gap:5px;height:20px;padding:0 8px;border-radius:10px;
+  font-size:10.5px;font-weight:600;letter-spacing:.02em;
+}
+/* VITRINE: dois estados, e so. "Reservado" e "Vendido" sao leitura de
+   operacao e nao existem nesta tela. */
+.selo.d{background:rgba(20,128,74,.10);color:var(--ok)}
+.selo.i{background:rgba(194,65,53,.10);color:var(--dan)}
+.selo i{width:6px;height:6px;border-radius:50%;background:currentColor}
+.fgrid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:13px}
+.fg .r{font-size:10.5px;color:var(--tx3);letter-spacing:.01em}
+.fg .v{font-size:15px;font-weight:600;letter-spacing:-.01em;font-variant-numeric:tabular-nums;margin-top:1px}
+.fg .v.g{font-size:19px;color:var(--tx)}
+.ficha .cta{
+  width:100%;height:34px;margin-top:14px;border-radius:6px;
+  background:var(--inverse);color:#fff;font-size:12.5px;font-weight:600;
+  display:flex;align-items:center;justify-content:center;gap:7px;
+}
+.ficha .cta:hover{background:#1f2633}
+.ficha .cta.sec{background:var(--base);border:1px solid var(--bd);color:var(--tx2);font-weight:500}
+.ficha .cta.sec:hover{background:var(--subtle);color:var(--tx)}
+.ficha .nota{font-size:11.5px;color:var(--tx3);margin-top:11px;line-height:1.45}
+
+.dica{
+  position:absolute;left:50%;top:16px;transform:translateX(-50%);z-index:4;
+  font-size:12px;color:var(--tx3);background:rgba(255,255,255,.9);
+  border:1px solid var(--bd);border-radius:7px;padding:6px 13px;box-shadow:var(--som1);
+  pointer-events:none;transition:opacity .2s;
+}
+
+/* tooltip */
+.tip{
+  position:fixed;z-index:60;pointer-events:none;display:none;
+  background:var(--inverse);color:#fff;border-radius:7px;padding:7px 10px;
+  box-shadow:var(--som3);font-size:12px;line-height:1.35;white-space:nowrap;
+}
+.tip.on{display:block}
+.tip .t1{font-weight:600}
+.tip .t2{color:#c5ceda;font-size:11.5px;font-variant-numeric:tabular-nums;margin-top:1px}
+
+/* ============================== MODAIS ============================== */
+.veu{
+  position:fixed;inset:0;z-index:70;background:rgba(18,23,34,.42);
+  display:none;align-items:center;justify-content:center;padding:26px;
+  backdrop-filter:blur(2px);
+}
+.veu.on{display:flex;animation:fade .16s ease}
+@keyframes fade{from{opacity:0}to{opacity:1}}
+.caixa{
+  background:var(--base);border-radius:12px;box-shadow:var(--som4);
+  width:100%;display:flex;flex-direction:column;max-height:100%;
+  animation:pop .18s cubic-bezier(.2,.7,.4,1);
+}
+@keyframes pop{from{opacity:0;transform:translateY(10px) scale(.99)}to{opacity:1;transform:none}}
+.caixa.p{max-width:430px}
+.caixa.m{max-width:820px}
+.caixa.g{max-width:1010px}
+.cab{display:flex;align-items:flex-start;gap:14px;padding:19px 22px 16px;border-bottom:1px solid var(--bd)}
+.cab h2{font-size:16px;font-weight:600;letter-spacing:-.012em}
+.cab p{font-size:12px;color:var(--tx3);margin-top:2px}
+.cab .fim{margin-left:auto;display:flex;align-items:center;gap:9px}
+.fechar{width:30px;height:30px;border-radius:6px;display:grid;place-items:center;color:var(--tx3);flex:none}
+.fechar:hover{background:var(--subtle);color:var(--tx)}
+.corpo{padding:20px 22px;overflow:auto}
+.corpo.sem{padding:0;overflow:hidden;display:flex;flex-direction:column;min-height:0}
+.rodape{
+  display:flex;align-items:center;gap:12px;padding:14px 22px;
+  border-top:1px solid var(--bd);background:var(--canvas);
+  border-radius:0 0 12px 12px;font-size:12px;color:var(--tx3);
+}
+.rodape .fim{margin-left:auto;display:flex;gap:9px}
+
+/* ------------------------------ TABELA ------------------------------ */
+.busca{
+  display:flex;align-items:center;gap:8px;height:36px;width:290px;
+  padding:0 11px;border:1px solid var(--bd);border-radius:7px;background:var(--base);
+}
+.busca:focus-within{border-color:var(--focus);box-shadow:0 0 0 3px rgba(37,99,235,.13)}
+.busca svg{flex:none;color:var(--tx3)}
+.busca input{flex:1;font-size:12.5px;min-width:0}
+.busca input::placeholder{color:#98a2b3}
+
+.tw{overflow:auto;flex:1;min-height:0}
+table.lt{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+table.lt thead th{
+  position:sticky;top:0;z-index:2;background:var(--canvas);
+  font-size:11px;font-weight:600;color:var(--tx2);letter-spacing:.02em;
+  text-align:left;padding:9px 22px;border-bottom:1px solid var(--bd);
+  white-space:nowrap;cursor:pointer;user-select:none;
+}
+table.lt thead th.r{text-align:right}
+table.lt thead th:hover{color:var(--tx)}
+table.lt thead th .seta{opacity:0;margin-left:5px;font-size:9px;vertical-align:1px}
+table.lt thead th.on{color:var(--tx)}
+table.lt thead th.on .seta{opacity:1}
+table.lt tbody td{
+  padding:0 22px;height:34px;border-bottom:1px solid var(--bd);
+  color:var(--tx2);white-space:nowrap;
+}
+table.lt tbody td.r{text-align:right;font-variant-numeric:tabular-nums}
+table.lt tbody td.q{font-weight:600;color:var(--tx);font-variant-numeric:tabular-nums}
+table.lt tbody td.p{font-weight:600;color:var(--tx);font-variant-numeric:tabular-nums}
+table.lt tbody tr{cursor:pointer}
+table.lt tbody tr:hover td{background:var(--subtle)}
+table.lt tbody tr.sel td{background:rgba(37,99,235,.07)}
+table.lt tbody tr:hover td.q{color:var(--focus)}
+.vazio{padding:44px 22px;text-align:center;color:var(--tx3);font-size:12.5px}
+
+/* ------------------------------ FILTRO ------------------------------ */
+.gr{margin-bottom:20px}
+.gr:last-child{margin-bottom:0}
+.gr .rot{
+  display:flex;align-items:baseline;gap:8px;margin-bottom:9px;
+  font-size:11px;font-weight:600;color:var(--tx2);letter-spacing:.02em;
+}
+.gr .rot .val{margin-left:auto;font-size:12.5px;font-weight:600;color:var(--tx);font-variant-numeric:tabular-nums}
+.quadras{display:flex;flex-wrap:wrap;gap:6px}
+.qb{
+  min-width:38px;height:30px;padding:0 8px;border:1px solid var(--bd);border-radius:6px;
+  background:var(--base);font-size:12px;font-weight:500;color:var(--tx2);
+  font-variant-numeric:tabular-nums;display:inline-flex;align-items:center;justify-content:center;gap:5px;
+}
+.qb:hover{border-color:var(--bd2);background:var(--subtle)}
+.qb small{font-size:10px;color:var(--tx3);font-weight:400}
+.qb.on{background:var(--focus);border-color:var(--focus);color:#fff}
+.qb.on small{color:rgba(255,255,255,.78)}
+
+input[type=range]{
+  -webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;
+  background:var(--subtle);outline:none;
+}
+input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--base);border:2px solid var(--focus);cursor:pointer;
+  box-shadow:var(--som1);
+}
+input[type=range]::-moz-range-thumb{
+  width:16px;height:16px;border-radius:50%;background:var(--base);
+  border:2px solid var(--focus);cursor:pointer;
+}
+.pontas{display:flex;justify-content:space-between;font-size:10.5px;color:var(--tx3);margin-top:6px;font-variant-numeric:tabular-nums}
+.res{
+  margin-top:18px;padding:12px 14px;border-radius:8px;background:var(--canvas);
+  border:1px solid var(--bd);font-size:12.5px;color:var(--tx2);
+}
+.res b{font-size:15px;color:var(--tx);font-variant-numeric:tabular-nums}
+
+/* ---------------------------- SIMULADOR ---------------------------- */
+.seg{display:inline-flex;padding:3px;background:var(--subtle);border-radius:8px;gap:3px}
+.seg button{
+  height:30px;padding:0 14px;border-radius:6px;font-size:12.5px;font-weight:500;
+  color:var(--tx2);white-space:nowrap;
+}
+.seg button.on{background:var(--base);color:var(--tx);font-weight:600;box-shadow:var(--som1)}
+
+.mesa{display:grid;grid-template-columns:340px 1fr;gap:0;min-height:0}
+.controles{padding:20px 22px;border-right:1px solid var(--bd);overflow:auto}
+.saida{padding:20px 22px;overflow:auto;background:var(--canvas)}
+
+.campo{margin-bottom:17px}
+.campo:last-child{margin-bottom:0}
+.campo .lb{font-size:11px;font-weight:600;color:var(--tx2);letter-spacing:.02em;display:flex;align-items:baseline;gap:6px;margin-bottom:7px}
+.campo .lb .aj{margin-left:auto;font-size:11px;font-weight:400;color:var(--tx3);font-variant-numeric:tabular-nums}
+.inp{
+  display:flex;align-items:center;height:38px;border:1px solid var(--bd);border-radius:7px;
+  background:var(--base);padding:0 12px;gap:8px;
+}
+.inp:focus-within{border-color:var(--focus);box-shadow:0 0 0 3px rgba(37,99,235,.13)}
+.inp .pre{color:var(--tx3);font-size:12.5px}
+.inp input{flex:1;min-width:0;text-align:right;font-size:15px;font-weight:600;font-variant-numeric:tabular-nums}
+.inp .pos{color:var(--tx3);font-size:12.5px}
+.inp.pq{height:34px}
+.inp.pq input{font-size:13.5px}
+/* campo travado da vitrine: a taxa de juros é a cadastrada, não se edita aqui */
+.inp.fixo{background:var(--subtle);border-style:dashed;cursor:default}
+.inp.fixo:focus-within{border-color:var(--bd);box-shadow:none}
+.inp.fixo input{color:var(--tx2);cursor:default}
+
+/* três planos oficiais, três cartões: prazo, nome do plano e desconto */
+.prazos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.pz{
+  height:58px;border:1px solid var(--bd);border-radius:7px;background:var(--base);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
+}
+.pz b{font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums}
+.pz small{font-size:10px;color:var(--tx3);line-height:1.35}
+.pz:hover{border-color:var(--bd2);background:var(--subtle)}
+.pz.on{border-color:var(--focus);background:rgba(37,99,235,.06);color:var(--focus)}
+.pz.on small{color:var(--focus)}
+.pz.on b{color:var(--focus)}
+
+.duplo{display:grid;grid-template-columns:96px 1fr;gap:8px}
+
+.destaque{
+  background:var(--base);border:1px solid var(--bd);border-radius:10px;
+  padding:17px 18px;box-shadow:var(--som1);
+}
+.destaque .r{font-size:11px;font-weight:600;color:var(--tx3);letter-spacing:.05em;text-transform:uppercase}
+.destaque .v{font-size:38px;font-weight:600;letter-spacing:-.03em;line-height:1.05;margin-top:5px;font-variant-numeric:tabular-nums}
+.destaque .sub{font-size:12.5px;color:var(--tx2);margin-top:5px}
+.destaque .sub b{font-weight:600;color:var(--tx);font-variant-numeric:tabular-nums}
+
+.linhas{margin-top:16px;background:var(--base);border:1px solid var(--bd);border-radius:10px;overflow:hidden}
+.li{display:flex;align-items:center;gap:10px;padding:9px 15px;border-bottom:1px solid var(--bd);font-size:12.5px}
+.li:last-child{border-bottom:0}
+.li .a{color:var(--tx2)}
+.li .a small{display:block;font-size:10.5px;color:var(--tx3)}
+.li .b{margin-left:auto;text-align:right;font-weight:600;font-variant-numeric:tabular-nums}
+.li .b small{display:block;font-size:10.5px;color:var(--tx3);font-weight:400}
+.li.total{background:var(--canvas)}
+.li.total .b{font-size:14px}
+/* cabeçalho da tabela oficial e as três linhas clicáveis (levam o plano
+   escolhido para os controles) */
+.linhas .tit{
+  padding:9px 15px;border-bottom:1px solid var(--bd);background:var(--canvas);
+  font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--tx3);
+}
+.li.clique{cursor:pointer;transition:background .12s}
+.li.clique:hover{background:var(--subtle)}
+.li.on{background:rgba(37,99,235,.06);box-shadow:inset 2px 0 0 var(--focus)}
+
+.alerta{
+  margin-top:14px;padding:11px 13px;border-radius:8px;font-size:12px;line-height:1.5;
+  background:rgba(183,121,31,.08);color:#8a5c14;border:1px solid rgba(183,121,31,.22);
+}
+.alerta b{font-weight:600}
+
+/* propostas do otimizador */
+.propostas{display:flex;flex-direction:column;gap:11px}
+.pp{
+  background:var(--base);border:1px solid var(--bd);border-radius:10px;padding:15px 16px;
+  transition:border-color .12s,box-shadow .12s;
+}
+.pp.top{border-color:var(--ok);box-shadow:0 0 0 3px rgba(20,128,74,.09)}
+.pp .ph{display:flex;align-items:center;gap:9px}
+.pp .badge{
+  display:inline-flex;align-items:center;height:19px;padding:0 8px;border-radius:10px;
+  font-size:10px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  background:var(--subtle);color:var(--tx2);
+}
+.pp.top .badge{background:var(--ok);color:#fff}
+.pp .pv{margin-left:auto;text-align:right}
+.pp .pv .r{font-size:10px;color:var(--tx3);letter-spacing:.04em;text-transform:uppercase}
+.pp .pv .v{font-size:22px;font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1}
+.pp .comp{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:14px;padding-top:13px;border-top:1px solid var(--bd)}
+.pp .cc .r{font-size:10px;color:var(--tx3);letter-spacing:.02em}
+.pp .cc .v{font-size:13.5px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:1px}
+.pp .cc .v small{display:block;font-size:10px;color:var(--tx3);font-weight:400}
+.pp .pq{
+  margin-top:12px;font-size:12px;color:var(--tx2);line-height:1.5;
+  display:flex;gap:8px;
+}
+.pp .pq svg{flex:none;margin-top:2px;color:var(--ok)}
+.pp .usar{
+  margin-top:12px;height:32px;width:100%;border:1px solid var(--bd);border-radius:6px;
+  font-size:12px;font-weight:500;color:var(--tx2);background:var(--base);
+}
+.pp .usar:hover{background:var(--subtle);color:var(--tx);border-color:var(--bd2)}
+.pp.top .usar{background:var(--inverse);border-color:var(--inverse);color:#fff;font-weight:600}
+.pp.top .usar:hover{background:#1f2633;color:#fff}
+
+.legal{font-size:11.5px;color:var(--tx3);line-height:1.55}
+.legal b{color:var(--tx2);font-weight:600}
+
+/* --------- alavancas rapidas: chips de valor ao lado de cada campo --------- */
+.chipsv{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px}
+.cv{
+  height:25px;padding:0 9px;border:1px solid var(--bd);border-radius:13px;
+  background:var(--base);font-size:11.5px;color:var(--tx2);
+  font-variant-numeric:tabular-nums;white-space:nowrap;
+}
+.cv:hover{background:var(--subtle);border-color:var(--bd2);color:var(--tx)}
+.cv.on{background:var(--focus);border-color:var(--focus);color:#fff}
+
+/* --------------------- modo livre: a flag e a sinalizacao --------------------- */
+.flag{
+  display:flex;align-items:center;gap:10px;margin:0 0 17px;
+  padding:10px 12px;border:1px solid var(--bd);border-radius:8px;background:var(--base);
+  cursor:pointer;user-select:none;text-align:left;width:100%;
+}
+.flag:hover{border-color:var(--bd2)}
+.flag.on{border-color:var(--focus);background:rgba(37,99,235,.05)}
+.flag .txt{flex:1;min-width:0}
+.flag .txt b{display:block;font-size:12.5px;font-weight:600;color:var(--tx)}
+.flag .txt small{display:block;font-size:11px;color:var(--tx3);line-height:1.4;margin-top:1px}
+.sw{
+  flex:none;width:34px;height:20px;border-radius:10px;background:var(--bd2);
+  position:relative;transition:background .15s;
+}
+.sw::after{
+  content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:#fff;box-shadow:var(--som1);transition:transform .15s;
+}
+.flag.on .sw{background:var(--focus)}
+.flag.on .sw::after{transform:translateX(14px)}
+
+.faixa-livre{
+  display:flex;align-items:center;gap:9px;margin:0 0 15px;
+  padding:9px 13px;border-radius:8px;
+  background:rgba(37,99,235,.07);border:1px solid rgba(37,99,235,.22);
+  font-size:12px;color:#1d4ed8;line-height:1.45;
+}
+.faixa-livre svg{flex:none}
+.faixa-livre b{font-weight:600}
+
+/* ------------- qual variavel o sistema recalcula para a conta fechar ------------- */
+.ajusta{display:flex;gap:4px;padding:3px;background:var(--subtle);border-radius:7px}
+.ajusta button{
+  flex:1;height:28px;border-radius:5px;font-size:11.5px;font-weight:500;color:var(--tx2);
+}
+.ajusta button.on{background:var(--base);color:var(--tx);font-weight:600;box-shadow:var(--som1)}
+
+.inp.calc{background:var(--subtle);border-style:dashed}
+.inp.calc input{color:var(--focus)}
+.selo-calc{
+  display:inline-flex;align-items:center;height:15px;padding:0 6px;border-radius:8px;
+  background:rgba(37,99,235,.10);color:var(--focus);
+  font-size:9.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+}
+
+.stepper{display:flex;align-items:center;border:1px solid var(--bd);border-radius:7px;height:34px;background:var(--base)}
+.stepper button{width:30px;height:100%;color:var(--tx2);display:grid;place-items:center;flex:none}
+.stepper button:hover{background:var(--subtle);color:var(--tx)}
+.stepper button:disabled{opacity:.3;cursor:default;background:none}
+.stepper .v{flex:1;text-align:center;font-size:13px;font-weight:600;font-variant-numeric:tabular-nums}
+
+/* --------------------------- o balanco da conta --------------------------- */
+.balanco{
+  display:flex;align-items:center;gap:9px;margin-top:14px;padding:11px 14px;
+  border-radius:8px;font-size:12.5px;line-height:1.45;
+  background:rgba(20,128,74,.07);border:1px solid rgba(20,128,74,.22);color:#0f6b3e;
+}
+.balanco.erro{background:rgba(194,65,53,.07);border-color:rgba(194,65,53,.22);color:#9c342b}
+.balanco svg{flex:none}
+.balanco b{font-weight:600;font-variant-numeric:tabular-nums}
+
+.comparativo{
+  margin-top:11px;display:flex;align-items:baseline;gap:7px;font-size:12px;color:var(--tx3);
+  padding:0 2px;line-height:1.45;
+}
+.comparativo b{color:var(--tx2);font-weight:600;font-variant-numeric:tabular-nums}
+.comparativo .abaixo{color:#8a5c14;font-weight:600}
+
+/* ------------------------------ responsivo ------------------------------ */
+/* Coluna da direita fixa (296px) espreme o mapa em telas medias. Antes de
+   sumir com ela, encolhe. */
+@media (max-width:1360px){
+  .app{grid-template-columns:216px minmax(0,1fr) 262px}
+}
+@media (max-width:1080px){
+  .app{grid-template-columns:1fr;grid-template-rows:auto 1fr}
+  .app{grid-template-rows:auto minmax(0,1fr)}
+  /* nao ha largura para tres colunas: a unidade sai do fluxo e vira gaveta,
+     e so aparece quando ha lote escolhido — o mapa continua inteiro. */
+  .unidade{
+    position:fixed;top:0;right:0;bottom:0;z-index:50;
+    width:min(320px,86vw);box-shadow:var(--som4);
+    transform:translateX(101%);transition:transform .2s ease;
+  }
+  body.temSel .unidade{transform:none}
+  .moldura{
+    flex:none;flex-direction:row;align-items:center;gap:18px;
+    border-right:0;border-bottom:1px solid var(--bd);padding:12px 16px;
+    overflow:visible;
+  }
+  .m-topo{padding:0}
+  .m-topo img{width:40px}
+  .regua,.ouro,.m-quadras,.espaco{display:none}
+  .m-marca{padding:0;gap:2px}
+  .m-marca img{width:118px}
+  .m-marca .sel{display:none}
+  .numeros{flex-direction:row;gap:24px;padding:0;margin-left:auto}
+  .num .v{font-size:19px}
+  .num .v.moeda{font-size:17px}
+  .num .r{font-size:10.5px}
+  .m-rodape{flex-direction:row;gap:14px}
+  .m-rodape .mm{width:74px}
+  .m-tec{display:none}
+  .dica{display:none}          /* na placa pequena a dica cobre lote demais */
+  .mesa{grid-template-columns:1fr}
+  .controles{border-right:0;border-bottom:1px solid var(--bd)}
+}
+@media (max-width:760px){
+  .numeros{display:none}
+  .tt span{display:none}
+  .bt .rot{display:none}
+  .bt{padding:0 10px}
+  .zoombox{right:14px;bottom:14px}
+  .pp .comp{grid-template-columns:1fr 1fr}
+  .prazos{grid-template-columns:1fr}
+}
+</style>
+</head>
+<body>
+
+<div class="app">
+
+  <!-- =================== MOLDURA DE MARCA =================== -->
+  <aside class="moldura">
+    <div class="m-topo"><img src="logo-cecilio-rocha.png" alt="Cecílio Rocha Construtora"></div>
+    <div class="regua"></div>
+    <div class="m-marca">
+      <img src="logo-garden.png" alt="Garden Resort Residence">
+      <span class="sel">Masterplan de lotes</span>
+    </div>
+    <div class="ouro"></div>
+
+    <div class="numeros">
+      <div class="num">
+        <div class="v verde n" id="kDisp">—</div>
+        <div class="r">lotes disponíveis para venda</div>
+      </div>
+      <div class="num">
+        <div class="v moeda n" id="kPreco">—</div>
+        <div class="r">a partir de · valor de tabela</div>
+      </div>
+      <div class="num">
+        <div class="v n" id="kArea">—</div>
+        <div class="r">área dos lotes disponíveis</div>
+      </div>
+    </div>
+
+    <div class="legenda">
+      <button class="bt-so" id="btSo">Ver só os disponíveis</button>
+    </div>
+
+    <div class="espaco"></div>
+
+    <div class="m-quadras" id="kQuadras"></div>
+
+    <div class="m-rodape">
+      <img class="mm" src="logo-mmendes.png" alt="MMendes Empreendimentos">
+      <div class="m-tec">
+        <span>Tecnologia</span>
+        <img src="logo-c2x.png" alt="C2X">
+      </div>
+    </div>
+  </aside>
+
+  <!-- =================== PALCO =================== -->
+  <main class="palco">
+    <header class="topo">
+      <div class="tt">Masterplan <span>Garden Resort Residence</span></div>
+      <div class="acoes">
+        <button class="bt" id="btLista" title="Lista dos lotes disponíveis">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M5.5 4h9M5.5 8h9M5.5 12h9M2 4h.01M2 8h.01M2 12h.01"/></svg>
+          <span class="rot">Lotes disponíveis</span>
+        </button>
+        <button class="bt" id="btFiltro" title="Filtrar os lotes">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M2.5 4h11M4.5 8h7M6.5 12h3"/></svg>
+          <span class="rot">Filtrar</span>
+          <span class="chip n" id="chipFiltro" style="display:none">0</span>
+        </button>
+        <button class="bt primaria" id="btSim" title="Simular o pagamento">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="1.75" width="10" height="12.5" rx="1.6"/><path d="M5.6 5.1h4.8M5.6 8.2h1.4M5.6 11h1.4M9 8.2h1.4M9 11h1.4"/></svg>
+          <span class="rot">Simular pagamento</span>
+        </button>
+        <button class="bt icone" id="btFull" title="Tela cheia" aria-label="Tela cheia">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M2 6V2.6h3.4M14 6V2.6h-3.4M2 10v3.4h3.4M14 10v3.4h-3.4"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="mapa" id="mapa">
+     <div class="visor" id="visor">
+      <div class="cena" id="cena">
+        <img src="garden-planta.jpg" alt="Planta do Garden Resort Residence" id="planta" draggable="false">
+        <svg id="svg" viewBox="0 0 2396 2160" preserveAspectRatio="none" aria-label="Lotes"></svg>
+      </div>
+
+      <div class="avisof" id="avisoF">
+        <span id="avisoTxt"></span>
+        <button class="x" id="avisoX">limpar filtro</button>
+      </div>
+
+      <div class="dica" id="dica">Clique em um lote <b>verde</b> para ver área, preço e simular o pagamento<span class="d2">Vale a cor do lote. Os círculos numerados são da planta original e seguem outra legenda.</span></div>
+
+      <!-- a ficha do lote NAO mora mais aqui: ela tapava justamente o mapa que o
+           cliente quer ver. Foi para a lateral direita (aside.unidade), no mesmo
+           eixo da tela interna: ESQUERDA = empreendimento · DIREITA = a unidade. -->
+
+      <div class="zoombox">
+        <button class="zb" id="zOut" title="Diminuir" aria-label="Diminuir">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M3.5 8h9"/></svg>
+        </button>
+        <span class="zval" id="zVal">100%</span>
+        <button class="zb" id="zIn" title="Ampliar" aria-label="Ampliar">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg>
+        </button>
+        <button class="zb" id="zReset" title="Ver o mapa inteiro" aria-label="Ver o mapa inteiro">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2.5" y="3" width="11" height="10" rx="1.5"/><path d="M6 6.5h4v3H6z"/></svg>
+        </button>
+      </div>
+     </div>
+    </div>
+  </main>
+
+  <!-- =================== DIREITA · A UNIDADE ===================
+       Mesmo eixo da tela interna do corretor: a ESQUERDA fala do
+       empreendimento, a DIREITA fala do lote escolhido. Nada aqui
+       flutua sobre o mapa. -->
+  <aside class="unidade">
+    <div class="uCab">
+      <div class="r">Unidade</div>
+      <div class="v" id="uTit">Nenhum lote selecionado</div>
+      <button class="uFechar" id="uFechar" type="button" title="Fechar a ficha (Esc)" aria-label="Fechar a ficha do lote">
+        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+      </button>
+    </div>
+    <div class="uRolo">
+      <div class="uVazio" id="uVazio">
+        <div class="ic">
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7.5 9 5l6 2.5L21 5v11.5L15 19l-6-2.5L3 19z"/><path d="M9 5v11.5M15 7.5V19"/></svg>
+        </div>
+        <h4>Escolha um lote no mapa</h4>
+        <p>Aqui aparecem a área, o valor de tabela e o valor do m² do lote que você clicar.</p>
+        <div class="dic">Os lotes em <b>verde</b> estão disponíveis</div>
+      </div>
+      <div class="ficha" id="ficha"></div>
+    </div>
+  </aside>
+</div>
+
+<div class="tip" id="tip"></div>
+
+<!-- ===================== MODAL: LISTA ===================== -->
+<div class="veu" id="telaLista">
+  <div class="caixa m" style="height:min(680px,100%)">
+    <div class="cab">
+      <div>
+        <h2>Lotes disponíveis</h2>
+        <p id="listaSub">—</p>
+      </div>
+      <div class="fim">
+        <label class="busca">
+          <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.4"/><path d="M10.4 10.4 14 14" stroke-linecap="round"/></svg>
+          <input id="buscaLista" type="search" placeholder="quadra, lote, área ou preço" autocomplete="off">
+        </label>
+        <button class="fechar" data-fecha aria-label="Fechar">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="corpo sem">
+      <div class="tw"><table class="lt" id="tabela"><thead></thead><tbody></tbody></table></div>
+    </div>
+    <div class="rodape">
+      <span id="listaPe"></span>
+      <div class="fim"><button class="bt" data-fecha>Fechar</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL: FILTRO ===================== -->
+<div class="veu" id="telaFiltro">
+  <div class="caixa p">
+    <div class="cab">
+      <div>
+        <h2>Filtrar lotes</h2>
+        <p>o mapa mostra só o que atende</p>
+      </div>
+      <div class="fim">
+        <button class="fechar" data-fecha aria-label="Fechar">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+    </div>
+    <div class="corpo">
+      <div class="gr">
+        <div class="rot">QUADRA</div>
+        <div class="quadras" id="fQuadras"></div>
+      </div>
+      <div class="gr">
+        <div class="rot">PREÇO ATÉ <span class="val" id="rotPreco">qualquer valor</span></div>
+        <input type="range" id="rgPreco">
+        <div class="pontas"><span id="peP1"></span><span id="peP2"></span></div>
+      </div>
+      <div class="gr">
+        <div class="rot">ÁREA A PARTIR DE <span class="val" id="rotArea">qualquer área</span></div>
+        <input type="range" id="rgArea">
+        <div class="pontas"><span id="peA1"></span><span id="peA2"></span></div>
+      </div>
+      <div class="res" id="filtroRes"></div>
+    </div>
+    <div class="rodape">
+      <button class="bt" id="btLimpa">Limpar</button>
+      <div class="fim"><button class="bt primaria" data-fecha>Ver no mapa</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- ===================== MODAL: SIMULADOR ===================== -->
+<div class="veu" id="telaSim">
+  <div class="caixa g" style="height:min(700px,100%)">
+    <div class="cab">
+      <div>
+        <h2>Monte o seu plano de pagamento</h2>
+        <p id="simSub">Garden Resort Residence</p>
+      </div>
+      <div class="fim">
+        <div class="seg" id="segModo">
+          <button class="on" data-m="parcela">Parto da parcela que cabe</button>
+          <button data-m="montar">Eu escolho as condições</button>
+        </div>
+        <button class="fechar" data-fecha aria-label="Fechar">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><path d="M4 4l8 8M12 4l-8 8"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="corpo sem">
+      <div class="mesa" style="flex:1;min-height:0">
+        <!-- controles -->
+        <div class="controles" id="controles">
+
+          <!-- A FLAG: sai das condições fixas e monta a proposta do zero -->
+          <button class="flag" id="btLivre" aria-pressed="false">
+            <span class="txt">
+              <b>Proposta livre</b>
+              <small>eu defino entrada, anuais, prazo e parcela</small>
+            </span>
+            <span class="sw"></span>
+          </button>
+
+          <div class="campo">
+            <div class="lb">VALOR DO LOTE <span class="aj" id="ajPreco"></span></div>
+            <div class="inp"><span class="pre">R$</span><input id="cPreco" inputmode="numeric"></div>
+          </div>
+
+          <!-- ============ modo 1: parto da parcela que cabe ============ -->
+          <div id="blocoParcela">
+            <div class="campo">
+              <div class="lb">QUANTO CABE POR MÊS</div>
+              <div class="inp"><span class="pre">R$</span><input id="cAlvo" inputmode="numeric"></div>
+              <div class="chipsv" id="chipsAlvo"></div>
+            </div>
+            <div class="campo">
+              <div class="lb">ENTRADA DISPONÍVEL <span class="aj">opcional</span></div>
+              <div class="inp pq"><span class="pre">R$</span><input id="cEntMax" inputmode="numeric" placeholder="sem limite"></div>
+            </div>
+            <div class="campo">
+              <div class="lb">ANUAL QUE CABE <span class="aj">opcional</span></div>
+              <div class="inp pq"><span class="pre">R$</span><input id="cAnMax" inputmode="numeric" placeholder="sem limite"></div>
+              <p style="font-size:11.5px;color:var(--tx3);line-height:1.5;margin-top:9px">
+                Diga o que cabe no seu mês. O sistema procura, entre todas as combinações
+                possíveis de prazo, entrada e parcelas anuais, as que fecham nesse valor.
+              </p>
+            </div>
+          </div>
+
+          <!-- ============ modo 2: eu escolho as condições ============ -->
+          <div id="blocoMontar" style="display:none">
+            <div class="campo">
+              <div class="lb">PLANO E PRAZO</div>
+              <div class="prazos" id="cPrazos"></div>
+            </div>
+            <div class="campo">
+              <div class="lb">ENTRADA <span class="aj" id="ajEntrada"></span></div>
+              <div class="inp pq"><span class="pre">R$</span><input id="cEntrada" inputmode="numeric"></div>
+              <input type="range" id="rgEntrada" min="0" max="60" step="1" style="margin-top:11px">
+              <div class="pontas"><span>0%</span><span>60% do valor</span></div>
+            </div>
+            <div class="campo">
+              <div class="lb">PARCELAS ANUAIS <span class="aj" id="ajAnuais"></span></div>
+              <div class="duplo">
+                <div class="stepper" id="stAn">
+                  <button data-d="-1" aria-label="Menos uma anual"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3.5 8h9"/></svg></button>
+                  <span class="v" id="vAnQtd">0</span>
+                  <button data-d="1" aria-label="Mais uma anual"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></button>
+                </div>
+                <div class="inp pq"><span class="pre">R$</span><input id="cAnVal" inputmode="numeric" placeholder="valor da anual"></div>
+              </div>
+              <div class="chipsv" id="chipsAnual"></div>
+            </div>
+          </div>
+
+          <!-- ============ modo livre: a conta fecha no valor do lote ============ -->
+          <div id="blocoLivre" style="display:none">
+            <div class="campo">
+              <div class="lb">O SISTEMA AJUSTA <span class="aj">para a conta fechar</span></div>
+              <div class="ajusta" id="cAjusta">
+                <button class="on" data-a="parcela">A parcela</button>
+                <button data-a="entrada">A entrada</button>
+                <button data-a="prazo">O prazo</button>
+              </div>
+            </div>
+            <div class="campo">
+              <div class="lb">ENTRADA <span class="aj" id="ajLEnt"></span></div>
+              <div class="inp pq" id="wLEnt"><span class="pre">R$</span><input id="lEntrada" inputmode="numeric"></div>
+            </div>
+            <div class="campo">
+              <div class="lb">PARCELAS ANUAIS <span class="aj" id="ajLAn"></span></div>
+              <div class="duplo">
+                <div class="stepper" id="stLAn">
+                  <button data-d="-1" aria-label="Menos uma anual"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3.5 8h9"/></svg></button>
+                  <span class="v" id="vLAnQtd">0</span>
+                  <button data-d="1" aria-label="Mais uma anual"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></button>
+                </div>
+                <div class="inp pq"><span class="pre">R$</span><input id="lAnVal" inputmode="numeric" placeholder="valor da anual"></div>
+              </div>
+            </div>
+            <div class="campo">
+              <div class="lb">PRAZO <span class="aj" id="ajLPz"></span></div>
+              <div class="inp pq" id="wLPz"><input id="lPrazo" inputmode="numeric" style="text-align:right"><span class="pos">meses</span></div>
+            </div>
+            <div class="campo">
+              <div class="lb">PARCELA MENSAL <span class="aj" id="ajLPa"></span></div>
+              <div class="inp" id="wLPa"><span class="pre">R$</span><input id="lParcela" inputmode="numeric"></div>
+            </div>
+          </div>
+
+          <div class="campo" style="margin-top:19px;padding-top:17px;border-top:1px solid var(--bd)">
+            <div class="lb">JUROS AO MÊS <span class="aj">taxa cadastrada</span></div>
+            <!-- VITRINE: a taxa NÃO é editável aqui. Se o cliente pudesse mexer,
+                 montaria uma simulação com juros que não existem e cobraria isso
+                 do corretor depois. Editável só na tela interna. -->
+            <div class="inp pq fixo"><input id="cJuros" readonly tabindex="-1" aria-readonly="true" style="text-align:right"><span class="pos">% a.m.</span></div>
+            <p style="font-size:11px;color:var(--tx3);line-height:1.45;margin-top:7px" id="jurosNota"></p>
+          </div>
+        </div>
+
+        <!-- saida -->
+        <div class="saida" id="saida"></div>
+      </div>
+    </div>
+
+    <div class="rodape">
+      <span class="legal" style="flex:1">
+        Simulação de referência: <b>não constitui proposta comercial</b> nem reserva do lote.
+        Condições finais confirmadas pela equipe de vendas.
+      </span>
+      <div class="fim">
+        <button class="bt" id="btCopiar">Copiar resumo</button>
+        <button class="bt primaria" data-fecha>Fechar</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ==========================================================================
+   DADOS — só o que a vitrine usa.
+   D = lotes disponíveis    [quadra, lote, área m², preço R$, polígono]
+   I = lotes fora de venda  [quadra, lote, polígono]
+   O lote fora de venda chega aqui só como geometria: sem situação detalhada, sem preço e
+   sem nome de pessoa, nem visível nem escondido no código.
+   ========================================================================== */
+/* lotes disponiveis: quadra, lote, area(m2), preco(R$), poligono */
+const D=[
+[1,1,425.71,410000,"1009,2004 1081,2004 1081,2116 1009,2116"],
+[1,2,371.0,410000,"950,2004 1009,2004 1009,2116 950,2116"],
+[1,3,371.0,410000,"891,2004 950,2004 950,2116 891,2116"],
+[1,4,371.0,410000,"831,2004 891,2004 891,2116 831,2116"],
+[1,5,371.0,410000,"772,2004 831,2004 831,2116 772,2116"],
+[1,10,371.0,410000,"476,2004 536,2004 536,2116 476,2116"],
+[1,11,371.0,410000,"417,2004 476,2004 476,2116 417,2116"],
+[1,12,371.0,410000,"358,2004 417,2004 417,2116 358,2116"],
+[1,13,371.0,410000,"299,2004 358,2004 358,2116 299,2116"],
+[2,1,363.73,410000,"2187,2004 2252.5,2004 2238.2,2116 2187,2116"],
+[2,2,371.0,410000,"2128,2004 2187,2004 2187,2116 2128,2116"],
+[2,3,371.0,410000,"2069,2004 2128,2004 2128,2116 2069,2116"],
+[2,4,371.0,410000,"2010,2004 2069,2004 2069,2116 2010,2116"],
+[2,9,371.0,410000,"1714,2004 1773,2004 1773,2116 1714,2116"],
+[2,10,371.0,410000,"1655,2004 1714,2004 1714,2116 1655,2116"],
+[2,11,371.0,410000,"1596,2004 1655,2004 1655,2116 1596,2116"],
+[2,12,371.0,410000,"1537,2004 1596,2004 1596,2116 1537,2116"],
+[2,18,265.0,0,"1199,2004 1241,2004 1241,2116 1199,2116"],
+[3,4,449.45,420000,"2133,1728 2288.8,1728 2281.5,1781 2133,1781"],
+[3,5,471.96,440000,"2133,1675 2296.1,1675 2288.8,1728 2133,1728"],
+[3,6,492.46,460000,"2133,1622 2303.5,1622 2296.1,1675 2133,1675"],
+[3,7,513.97,470000,"2133,1569 2310.8,1569 2303.5,1622 2133,1622"],
+[3,8,535.48,470000,"2133,1516 2318.1,1516 2310.8,1569 2133,1569"],
+[3,9,556.99,480000,"2133,1464 2325.3,1464 2318.1,1516 2133,1516"],
+[3,10,578.5,490000,"2133,1411 2332.7,1411 2325.3,1464 2133,1464"],
+[3,11,600.01,510000,"2133,1358 2340,1358 2332.7,1411 2133,1411"],
+[3,12,621.72,530000,"2133,1305 2347.4,1305 2340,1358 2133,1358"],
+[3,13,520.53,470000,"2133,1252 2308,1252 2308,1305 2133,1305"],
+[3,14,420.0,430000,"2133,1124 2191,1124 2191,1252 2133,1252"],
+[3,15,420.0,430000,"2191,1124 2250,1124 2250,1252 2191,1252"],
+[4,1,420.0,421500,"2008,1851.5 2082,1851.5 2082,1953 2008,1953"],
+[4,2,420.0,416000,"1934,1851.5 2008,1851.5 2008,1953 1934,1953"],
+[4,11,420.0,416000,"1786,1496.4 1934,1496.4 1934,1547.1 1786,1547.1"],
+[4,12,420.0,416000,"1786,1445.6 1934,1445.6 1934,1496.4 1786,1496.4"],
+[4,16,420.0,416000,"1786,1242.7 1934,1242.7 1934,1293.4 1786,1293.4"],
+[4,27,420.0,416000,"1934,1547.1 2082,1547.1 2082,1597.9 1934,1597.9"],
+[4,28,420.0,416000,"1934,1597.9 2082,1597.9 2082,1648.6 1934,1648.6"],
+[4,29,420.0,416000,"1934,1648.6 2082,1648.6 2082,1699.3 1934,1699.3"],
+[4,30,420.0,416000,"1934,1699.3 2082,1699.3 2082,1750.1 1934,1750.1"],
+[4,31,420.0,416000,"1934,1750.1 2082,1750.1 2082,1800.8 1934,1800.8"],
+[4,32,420.0,416000,"1934,1800.8 2082,1800.8 2082,1851.5 1934,1851.5"],
+[5,3,420.0,416000,"1545.2,1834.3 1608.7,1834.3 1608.7,1952.7 1545.2,1952.7"],
+[5,4,420.0,416000,"1481.7,1834.3 1545.2,1834.3 1545.2,1952.7 1481.7,1952.7"],
+[5,5,420.0,416000,"1481.7,1775.2 1608.4,1775.2 1608.4,1834.3 1481.7,1834.3"],
+[6,11,420.0,416000,"1177.5,1420.2 1304.3,1420.2 1304.3,1479.4 1177.5,1479.4"],
+[6,26,420.0,416000,"1304.3,1656.9 1431.5,1656.9 1431.5,1716 1304.3,1716"],
+[6,27,420.0,416000,"1304.3,1716 1431.5,1716 1431.5,1775.2 1304.3,1775.2"],
+[6,28,420.0,416000,"1304.3,1775.2 1431.5,1775.2 1431.5,1834.3 1304.3,1834.3"],
+[7,1,420.0,416000,"1038,1834.5 1101.2,1834.5 1101.2,1952.8 1038,1952.8"],
+[7,2,420.0,416000,"974.8,1834.5 1038,1834.5 1038,1952.8 974.8,1952.8"],
+[7,7,420.0,421500,"848.3,1657 974.8,1657 974.8,1716 848.3,1716"],
+[7,8,420.0,421500,"848.3,1598 974.8,1598 974.8,1657 848.3,1657"],
+[8,3,420.0,421500,"607,1834.5 670.5,1834.5 670.5,1952.8 607,1952.8"],
+[8,27,420.0,421500,"670.5,1716 797.5,1716 797.5,1775 670.5,1775"],
+[10,2,420.0,421500,"63.1,1775 190,1775 190,1834.5 63.1,1834.5"],
+[10,3,420.0,421500,"63.1,1716 190,1716 190,1775 63.1,1775"],
+[10,4,420.0,421500,"63.1,1657 190,1657 190,1716 63.1,1716"],
+[10,5,420.0,421500,"63.1,1598 190,1598 190,1657 63.1,1657"],
+[10,6,420.0,421500,"63.1,1538.5 190,1538.5 190,1598 63.1,1598"],
+[10,12,420.0,421500,"64.9,1183 190,1183 190,1243 63.1,1243"],
+[11,8,420.0,430000,"83.2,543 190,543 190,613 81.2,613"],
+[11,9,420.0,430000,"85.3,471 190,471 190,543 83.2,543"],
+[11,10,420.0,435000,"87.3,398.5 190,398.5 190,471 85.3,471"],
+[11,11,420.0,435000,"89.5,325 190,325 190,398.5 87.3,398.5"],
+[12,23,420.0,435000,"366.2,422.5 493.3,422.5 493.3,481.7 366.2,481.7"],
+[12,24,420.0,435000,"366.2,481.7 493.3,481.7 493.3,540.9 366.2,540.9"],
+[12,25,420.0,430000,"366.2,540.9 493.3,540.9 493.3,600 366.2,600"],
+[13,11,420.0,435000,"543.5,541 670.5,541 670.5,600 543.5,600"],
+[13,12,420.0,435000,"543.5,481.5 670.5,481.5 670.5,541 543.5,541"],
+[13,13,420.0,435000,"543.5,422.5 670.5,422.5 670.5,481.5 543.5,481.5"],
+[13,24,420.0,430000,"670.5,659 797.5,659 797.5,718.4 670.5,718.4"],
+[13,25,420.0,430000,"670.5,718.4 797.5,718.4 797.5,777.6 670.5,777.6"],
+[14,7,420.0,430000,"848.3,777.5 975.2,777.5 975.2,837 848.3,837"],
+[14,8,420.0,430000,"848.3,718.5 975.2,718.5 975.2,777.5 848.3,777.5"],
+[14,9,420.0,435000,"848.3,659 975.2,659 975.2,718.5 848.3,718.5"],
+[14,10,420.0,435000,"848.3,600 975.2,600 975.2,659 848.3,659"],
+[14,11,420.0,435000,"848.3,541 975.2,541 975.2,600 848.3,600"],
+[16,16,420.0,430000,"1608,718 1736,718 1736,778 1608,778"],
+[16,17,420.0,430000,"1608,778 1736,778 1736,837 1608,837"],
+[16,18,420.0,430000,"1608,837 1736,837 1736,896 1608,896"],
+[17,6,420.0,430000,"1786,854 1934,854 1934,904 1786,904"],
+[17,7,420.0,430000,"1786,803 1934,803 1934,854 1786,854"],
+[18,1,439.63,421500,"2323,955 2395,955 2381.5,1074 2323,1074"],
+[18,2,420.0,421500,"2259,955 2323,955 2323,1074 2259,1074"],
+[18,3,420.0,430000,"2196,955 2259,955 2259,1074 2196,1074"],
+[18,4,420.0,430000,"2133,955 2196,955 2196,1074 2133,1074"],
+[18,5,763.53,570000,"2133,905 2395,905 2395,955 2133,955"],
+[18,6,784.6,580000,"2133,854 2395,854 2395,905 2133,905"],
+];
+/* lotes fora de venda: quadra, lote, situacao (1=Reservado, 2=Vendido), poligono.
+   O dono pediu os TRES estados marcados. Continua sem preco e sem nome de
+   comprador: a vitrine publica nao carrega dado comercial nem de pessoa. */
+const I=[
+[1,6,1,"713,2004 772,2004 772,2116 713,2116"],
+[1,7,1,"654,2004 713,2004 713,2116 654,2116"],
+[1,8,1,"595,2004 654,2004 654,2116 595,2116"],
+[1,9,1,"536,2004 595,2004 595,2116 536,2116"],
+[1,14,1,"240,2004 299,2004 299,2116 240,2116"],
+[1,15,1,"181,2004 240,2004 240,2116 181,2116"],
+[1,16,1,"122,2004 181,2004 181,2116 122,2116"],
+[1,17,1,"63,2004 122,2004 122,2116 63,2116"],
+[2,5,1,"1951,2004 2010,2004 2010,2116 1951,2116"],
+[2,6,1,"1891,2004 1951,2004 1951,2116 1891,2116"],
+[2,7,1,"1832,2004 1891,2004 1891,2116 1832,2116"],
+[2,8,1,"1773,2004 1832,2004 1832,2116 1773,2116"],
+[2,13,1,"1477,2004 1537,2004 1537,2116 1477,2116"],
+[2,14,1,"1418,2004 1477,2004 1477,2116 1418,2116"],
+[2,15,1,"1359,2004 1418,2004 1418,2116 1359,2116"],
+[2,16,1,"1300,2004 1359,2004 1359,2116 1300,2116"],
+[2,17,1,"1241,2004 1300,2004 1300,2116 1241,2116"],
+[3,1,1,"2201,1834 2274.1,1834 2257.5,1954 2201,1954"],
+[3,2,1,"2133,1834 2201,1834 2201,1954 2133,1954"],
+[3,3,1,"2133,1781 2281.5,1781 2274.1,1834 2133,1834"],
+[3,16,1,"2250,1124 2308,1124 2308,1252 2250,1252"],
+[3,17,1,"2308,1124 2372.4,1124 2347.4,1305 2308,1305"],
+[4,3,1,"1860,1851.5 1934,1851.5 1934,1953 1860,1953"],
+[4,4,1,"1786,1851.5 1860,1851.5 1860,1953 1786,1953"],
+[4,5,1,"1786,1800.8 1934,1800.8 1934,1851.5 1786,1851.5"],
+[4,6,1,"1786,1750.1 1934,1750.1 1934,1800.8 1786,1800.8"],
+[4,7,1,"1786,1699.3 1934,1699.3 1934,1750.1 1786,1750.1"],
+[4,8,1,"1786,1648.6 1934,1648.6 1934,1699.3 1786,1699.3"],
+[4,9,1,"1786,1597.9 1934,1597.9 1934,1648.6 1786,1648.6"],
+[4,10,1,"1786,1547.1 1934,1547.1 1934,1597.9 1786,1597.9"],
+[4,13,2,"1786,1394.9 1934,1394.9 1934,1445.6 1786,1445.6"],
+[4,14,2,"1786,1344.2 1934,1344.2 1934,1394.9 1786,1394.9"],
+[4,15,2,"1786,1293.4 1934,1293.4 1934,1344.2 1786,1344.2"],
+[4,17,2,"1786,1124.3 1860,1124.3 1860,1242.7 1786,1242.7"],
+[4,18,2,"1860,1124.3 1934,1124.3 1934,1242.7 1860,1242.7"],
+[4,19,2,"1934,1124.3 2008,1124.3 2008,1242.7 1934,1242.7"],
+[4,20,2,"2008,1124.3 2082,1124.3 2082,1242.7 2008,1242.7"],
+[4,21,1,"1934,1242.7 2082,1242.7 2082,1293.4 1934,1293.4"],
+[4,22,1,"1934,1293.4 2082,1293.4 2082,1344.2 1934,1344.2"],
+[4,23,1,"1934,1344.2 2082,1344.2 2082,1394.9 1934,1394.9"],
+[4,24,1,"1934,1394.9 2082,1394.9 2082,1445.6 1934,1445.6"],
+[4,25,1,"1934,1445.6 2082,1445.6 2082,1496.4 1934,1496.4"],
+[4,26,1,"1934,1496.4 2082,1496.4 2082,1547.1 1934,1547.1"],
+[5,1,1,"1672.2,1834.3 1735.7,1834.3 1735.7,1952.7 1672.2,1952.7"],
+[5,2,1,"1608.7,1834.3 1672.2,1834.3 1672.2,1952.7 1608.7,1952.7"],
+[5,6,2,"1481.7,1716 1608.4,1716 1608.4,1775.2 1481.7,1775.2"],
+[5,7,2,"1481.7,1656.9 1608.4,1656.9 1608.4,1716 1481.7,1716"],
+[5,8,2,"1481.7,1597.7 1608.4,1597.7 1608.4,1656.9 1481.7,1656.9"],
+[5,9,1,"1481.7,1538.5 1608.4,1538.5 1608.4,1597.7 1481.7,1597.7"],
+[5,10,1,"1481.7,1479.4 1608.4,1479.4 1608.4,1538.5 1481.7,1538.5"],
+[5,11,1,"1481.7,1420.2 1608.4,1420.2 1608.4,1479.4 1481.7,1479.4"],
+[5,12,1,"1481.7,1361.1 1608.4,1361.1 1608.4,1420.2 1481.7,1420.2"],
+[5,13,1,"1481.7,1301.9 1608.4,1301.9 1608.4,1361.1 1481.7,1361.1"],
+[5,14,2,"1481.7,1242.8 1608.4,1242.8 1608.4,1301.9 1481.7,1301.9"],
+[5,15,2,"1481.7,1124.4 1545.2,1124.4 1545.2,1242.8 1481.7,1242.8"],
+[5,16,2,"1545.2,1124.4 1608.7,1124.4 1608.7,1242.8 1545.2,1242.8"],
+[5,17,2,"1608.7,1124.4 1672.2,1124.4 1672.2,1242.8 1608.7,1242.8"],
+[5,18,2,"1672.2,1124.4 1735.7,1124.4 1735.7,1242.8 1672.2,1242.8"],
+[5,19,2,"1608.4,1242.8 1735.7,1242.8 1735.7,1301.9 1608.4,1301.9"],
+[5,20,2,"1608.4,1301.9 1735.7,1301.9 1735.7,1361.1 1608.4,1361.1"],
+[5,21,2,"1608.4,1361.1 1735.7,1361.1 1735.7,1420.2 1608.4,1420.2"],
+[5,22,2,"1608.4,1420.2 1735.7,1420.2 1735.7,1479.4 1608.4,1479.4"],
+[5,23,2,"1608.4,1479.4 1735.7,1479.4 1735.7,1538.5 1608.4,1538.5"],
+[5,24,2,"1608.4,1538.5 1735.7,1538.5 1735.7,1597.7 1608.4,1597.7"],
+[5,25,1,"1608.4,1597.7 1735.7,1597.7 1735.7,1656.9 1608.4,1656.9"],
+[5,26,1,"1608.4,1656.9 1735.7,1656.9 1735.7,1716 1608.4,1716"],
+[5,27,1,"1608.4,1716 1735.7,1716 1735.7,1775.2 1608.4,1775.2"],
+[5,28,1,"1608.4,1775.2 1735.7,1775.2 1735.7,1834.3 1608.4,1834.3"],
+[6,1,2,"1368,1834.3 1431.5,1834.3 1431.5,1952.6 1368,1952.6"],
+[6,2,2,"1304.5,1834.3 1368,1834.3 1368,1952.6 1304.5,1952.6"],
+[6,3,1,"1241,1834.3 1304.5,1834.3 1304.5,1952.6 1241,1952.6"],
+[6,4,1,"1177.5,1834.3 1241,1834.3 1241,1952.6 1177.5,1952.6"],
+[6,5,1,"1177.5,1775.2 1304.3,1775.2 1304.3,1834.3 1177.5,1834.3"],
+[6,6,1,"1177.5,1716 1304.3,1716 1304.3,1775.2 1177.5,1775.2"],
+[6,7,1,"1177.5,1656.9 1304.3,1656.9 1304.3,1716 1177.5,1716"],
+[6,8,1,"1177.5,1597.7 1304.3,1597.7 1304.3,1656.9 1177.5,1656.9"],
+[6,9,2,"1177.5,1538.5 1304.3,1538.5 1304.3,1597.7 1177.5,1597.7"],
+[6,10,1,"1177.5,1479.4 1304.3,1479.4 1304.3,1538.5 1177.5,1538.5"],
+[6,12,2,"1177.5,1361.1 1304.3,1361.1 1304.3,1420.2 1177.5,1420.2"],
+[6,13,2,"1177.5,1301.9 1304.3,1301.9 1304.3,1361.1 1177.5,1361.1"],
+[6,14,2,"1177.5,1242.8 1304.3,1242.8 1304.3,1301.9 1177.5,1301.9"],
+[6,15,2,"1177.5,1165 1211.2,1124.4 1241,1124.4 1241,1242.8 1177.5,1242.8"],
+[6,16,2,"1241,1124.4 1304.5,1124.4 1304.5,1242.8 1241,1242.8"],
+[6,17,2,"1304.5,1124.4 1368,1124.4 1368,1242.8 1304.5,1242.8"],
+[6,18,2,"1368,1124.4 1431.5,1124.4 1431.5,1242.8 1368,1242.8"],
+[6,19,1,"1304.3,1242.8 1431.5,1242.8 1431.5,1301.9 1304.3,1301.9"],
+[6,20,1,"1304.3,1301.9 1431.5,1301.9 1431.5,1361.1 1304.3,1361.1"],
+[6,21,1,"1304.3,1361.1 1431.5,1361.1 1431.5,1420.2 1304.3,1420.2"],
+[6,22,1,"1304.3,1420.2 1431.5,1420.2 1431.5,1479.4 1304.3,1479.4"],
+[6,23,1,"1304.3,1479.4 1431.5,1479.4 1431.5,1538.5 1304.3,1538.5"],
+[6,24,1,"1304.3,1538.5 1431.5,1538.5 1431.5,1597.7 1304.3,1597.7"],
+[6,25,2,"1304.3,1597.7 1431.5,1597.7 1431.5,1656.9 1304.3,1656.9"],
+[7,3,1,"911.6,1834.5 974.8,1834.5 974.8,1952.8 911.6,1952.8"],
+[7,4,1,"848.3,1834.5 911.6,1834.5 911.6,1952.8 848.3,1952.8"],
+[7,5,1,"848.3,1775 974.8,1775 974.8,1834.5 848.3,1834.5"],
+[7,6,1,"848.3,1716 974.8,1716 974.8,1775 848.3,1775"],
+[7,9,2,"848.3,1538.5 974.8,1538.5 974.8,1598 848.3,1598"],
+[7,10,2,"848.3,1479 974.8,1479 974.8,1538.5 848.3,1538.5"],
+[7,11,2,"848.3,1420 974.8,1420 974.8,1479 848.3,1479"],
+[7,12,2,"848.3,1361 974.8,1361 974.8,1420 848.3,1420"],
+[7,13,2,"848.3,1302 974.8,1302 974.8,1361 848.3,1361"],
+[7,14,2,"848.3,1243 974.8,1243 974.8,1302 848.3,1302"],
+[7,15,2,"848.3,1124.7 911.6,1124.7 911.6,1243 848.3,1243"],
+[7,16,2,"911.6,1124.7 974.8,1124.7 974.8,1243 911.6,1243"],
+[7,17,1,"974.8,1124.7 1038,1124.7 1038,1243 974.8,1243"],
+[7,18,1,"1038,1124.7 1067.7,1124.7 1101.2,1165.2 1101.2,1243 1038,1243"],
+[7,19,1,"974.8,1243 1101.2,1243 1101.2,1302 974.8,1302"],
+[7,20,1,"974.8,1302 1101.2,1302 1101.2,1361 974.8,1361"],
+[7,21,1,"974.8,1361 1101.2,1361 1101.2,1420 974.8,1420"],
+[7,22,1,"974.8,1420 1101.2,1420 1101.2,1479 974.8,1479"],
+[7,23,2,"974.8,1479 1101.2,1479 1101.2,1538.5 974.8,1538.5"],
+[7,24,2,"974.8,1538.5 1101.2,1538.5 1101.2,1598 974.8,1598"],
+[7,25,2,"974.8,1598 1101.2,1598 1101.2,1657 974.8,1657"],
+[7,26,2,"974.8,1657 1101.2,1657 1101.2,1716 974.8,1716"],
+[7,27,2,"974.8,1716 1101.2,1716 1101.2,1775 974.8,1775"],
+[7,28,2,"974.8,1775 1101.2,1775 1101.2,1834.5 974.8,1834.5"],
+[8,1,2,"734,1834.5 797.5,1834.5 797.5,1952.8 734,1952.8"],
+[8,2,1,"670.5,1834.5 734,1834.5 734,1952.8 670.5,1952.8"],
+[8,4,2,"543.5,1834.5 607,1834.5 607,1952.8 543.5,1952.8"],
+[8,5,2,"543.5,1775 670.5,1775 670.5,1834.5 543.5,1834.5"],
+[8,6,2,"543.5,1716 670.5,1716 670.5,1775 543.5,1775"],
+[8,7,2,"543.5,1657 670.5,1657 670.5,1716 543.5,1716"],
+[8,8,2,"543.5,1598 670.5,1598 670.5,1657 543.5,1657"],
+[8,9,2,"543.5,1538.5 670.5,1538.5 670.5,1598 543.5,1598"],
+[8,10,2,"543.5,1479 670.5,1479 670.5,1538.5 543.5,1538.5"],
+[8,11,2,"543.5,1420 670.5,1420 670.5,1479 543.5,1479"],
+[8,12,2,"543.5,1361 670.5,1361 670.5,1420 543.5,1420"],
+[8,13,2,"543.5,1302 670.5,1302 670.5,1361 543.5,1361"],
+[8,14,2,"543.5,1243 670.5,1243 670.5,1302 543.5,1302"],
+[8,15,2,"543.5,1124.7 607,1124.7 607,1243 543.5,1243"],
+[8,16,2,"607,1124.7 670.5,1124.7 670.5,1243 607,1243"],
+[8,17,2,"670.5,1124.7 734,1124.7 734,1243 670.5,1243"],
+[8,18,2,"734,1124.7 797.5,1124.7 797.5,1243 734,1243"],
+[8,19,2,"670.5,1243 797.5,1243 797.5,1302 670.5,1302"],
+[8,20,2,"670.5,1302 797.5,1302 797.5,1361 670.5,1361"],
+[8,21,2,"670.5,1361 797.5,1361 797.5,1420 670.5,1420"],
+[8,22,2,"670.5,1420 797.5,1420 797.5,1479 670.5,1479"],
+[8,23,2,"670.5,1479 797.5,1479 797.5,1538.5 670.5,1538.5"],
+[8,24,2,"670.5,1538.5 797.5,1538.5 797.5,1598 670.5,1598"],
+[8,25,2,"670.5,1598 797.5,1598 797.5,1657 670.5,1657"],
+[8,26,2,"670.5,1657 797.5,1657 797.5,1716 670.5,1716"],
+[8,28,1,"670.5,1775 797.5,1775 797.5,1834.5 670.5,1834.5"],
+[9,1,2,"430,1834.5 493.5,1834.5 493.5,1952.8 430,1952.8"],
+[9,2,2,"366.5,1834.5 430,1834.5 430,1952.8 366.5,1952.8"],
+[9,3,1,"303,1834.5 366.5,1834.5 366.5,1952.8 303,1952.8"],
+[9,4,1,"239.5,1834.5 303,1834.5 303,1952.8 239.5,1952.8"],
+[9,5,1,"239.5,1775 366.5,1775 366.5,1834.5 239.5,1834.5"],
+[9,6,2,"239.5,1716 366.5,1716 366.5,1775 239.5,1775"],
+[9,7,2,"239.5,1657 366.5,1657 366.5,1716 239.5,1716"],
+[9,8,2,"239.5,1598 366.5,1598 366.5,1657 239.5,1657"],
+[9,9,2,"239.5,1538.5 366.5,1538.5 366.5,1598 239.5,1598"],
+[9,10,2,"239.5,1479 366.5,1479 366.5,1538.5 239.5,1538.5"],
+[9,11,2,"239.5,1420 366.5,1420 366.5,1479 239.5,1479"],
+[9,12,2,"239.5,1361 366.5,1361 366.5,1420 239.5,1420"],
+[9,13,2,"239.5,1302 366.5,1302 366.5,1361 239.5,1361"],
+[9,14,2,"239.5,1243 366.5,1243 366.5,1302 239.5,1302"],
+[9,15,2,"239.5,1124.7 303,1124.7 303,1243 239.5,1243"],
+[9,16,2,"303,1124.7 366.5,1124.7 366.5,1243 303,1243"],
+[9,17,2,"366.5,1124.7 430,1124.7 430,1243 366.5,1243"],
+[9,18,2,"430,1124.7 493.5,1124.7 493.5,1243 430,1243"],
+[9,19,2,"366.5,1243 493.5,1243 493.5,1302 366.5,1302"],
+[9,20,2,"366.5,1302 493.5,1302 493.5,1361 366.5,1361"],
+[9,21,2,"366.5,1361 493.5,1361 493.5,1420 366.5,1420"],
+[9,22,2,"366.5,1420 493.5,1420 493.5,1479 366.5,1479"],
+[9,23,2,"366.5,1479 493.5,1479 493.5,1538.5 366.5,1538.5"],
+[9,24,2,"366.5,1538.5 493.5,1538.5 493.5,1598 366.5,1598"],
+[9,25,2,"366.5,1598 493.5,1598 493.5,1657 366.5,1657"],
+[9,26,2,"366.5,1657 493.5,1657 493.5,1716 366.5,1716"],
+[9,27,2,"366.5,1716 493.5,1716 493.5,1775 366.5,1775"],
+[9,28,2,"366.5,1775 493.5,1775 493.5,1834.5 366.5,1834.5"],
+[10,0,2,"63.1,1834.5 190,1834.5 190,1893.5 63.1,1893.5"],
+[10,1,2,"63.1,1893.5 190,1893.5 190,1954 63.1,1954"],
+[10,7,1,"63.1,1479 190,1479 190,1538.5 63.1,1538.5"],
+[10,8,1,"63.1,1420 190,1420 190,1479 63.1,1479"],
+[10,9,1,"63.1,1361 190,1361 190,1420 63.1,1420"],
+[10,10,1,"63.1,1302 190,1302 190,1361 63.1,1361"],
+[10,11,1,"63.1,1243 190,1243 190,1302 63.1,1302"],
+[10,13,2,"66.6,1123 190,1123 190,1183 64.9,1183"],
+[11,1,2,"69.7,1011.5 190,1011.5 190,1075 67.9,1075"],
+[11,2,2,"71.5,948 190,948 190,1011.5 69.7,1011.5"],
+[11,3,2,"73.4,884 190,884 190,948 71.5,948"],
+[11,4,2,"75.3,818 190,818 190,884 73.4,884"],
+[11,5,2,"77.2,751 190,751 190,818 75.3,818"],
+[11,6,2,"79.2,683 190,683 190,751 77.2,751"],
+[11,7,2,"81.2,613 190,613 190,683 79.2,683"],
+[11,12,2,"91.6,250.5 190,250.5 190,325 89.5,325"],
+[11,13,1,"93.8,173.5 190,173.5 190,250.5 91.6,250.5"],
+[11,14,1,"108.8,60.7 190,84.3 190,173.5 93.8,173.5"],
+[12,1,2,"429.8,955.1 493.3,955.1 493.3,1073.5 429.8,1073.5"],
+[12,2,2,"366.3,955.1 429.8,955.1 429.8,1073.5 366.3,1073.5"],
+[12,3,2,"302.8,955.1 366.3,955.1 366.3,1073.5 302.8,1073.5"],
+[12,4,2,"239.3,955.1 302.8,955.1 302.8,1073.5 239.3,1073.5"],
+[12,5,2,"239.3,896 366.2,896 366.2,955.1 239.3,955.1"],
+[12,6,2,"239.3,836.8 366.2,836.8 366.2,896 239.3,896"],
+[12,7,2,"239.3,777.6 366.2,777.6 366.2,836.8 239.3,836.8"],
+[12,8,2,"239.3,718.4 366.2,718.4 366.2,777.6 239.3,777.6"],
+[12,9,2,"239.3,659.2 366.2,659.2 366.2,718.4 239.3,718.4"],
+[12,10,2,"239.3,600 366.2,600 366.2,659.2 239.3,659.2"],
+[12,11,2,"239.3,540.9 366.2,540.9 366.2,600 239.3,600"],
+[12,12,2,"239.3,481.7 366.2,481.7 366.2,540.9 239.3,540.9"],
+[12,13,2,"239.3,422.5 366.2,422.5 366.2,481.7 239.3,481.7"],
+[12,14,2,"239.3,363.3 366.2,363.3 366.2,422.5 239.3,422.5"],
+[12,15,2,"239.3,304.1 366.2,304.1 366.2,363.3 239.3,363.3"],
+[12,16,2,"239.3,244.9 366.2,244.9 366.2,304.1 239.3,304.1"],
+[12,17,2,"239.3,99 306.9,118.8 306.9,244.9 239.3,244.9"],
+[12,18,1,"306.9,118.8 387.6,142.4 387.6,244.9 306.9,244.9"],
+[12,19,1,"387.6,142.4 493.3,173.3 493.3,244.9 387.6,244.9"],
+[12,20,1,"366.2,244.9 493.3,244.9 493.3,304.1 366.2,304.1"],
+[12,21,2,"366.2,304.1 493.3,304.1 493.3,363.3 366.2,363.3"],
+[12,22,2,"366.2,363.3 493.3,363.3 493.3,422.5 366.2,422.5"],
+[12,26,2,"366.2,600 493.3,600 493.3,659.2 366.2,659.2"],
+[12,27,2,"366.2,659.2 493.3,659.2 493.3,718.4 366.2,718.4"],
+[12,28,2,"366.2,718.4 493.3,718.4 493.3,777.6 366.2,777.6"],
+[12,29,2,"366.2,777.6 493.3,777.6 493.3,836.8 366.2,836.8"],
+[12,30,2,"366.2,836.8 493.3,836.8 493.3,896 366.2,896"],
+[12,31,2,"366.2,896 493.3,896 493.3,955.1 366.2,955.1"],
+[13,1,2,"734,955 797.5,955 797.5,1073.3 734,1073.3"],
+[13,2,2,"670.5,955 734,955 734,1073.3 670.5,1073.3"],
+[13,3,2,"607,955 670.5,955 670.5,1073.3 607,1073.3"],
+[13,4,2,"543.5,955 607,955 607,1073.3 543.5,1073.3"],
+[13,5,2,"543.5,896 670.5,896 670.5,955 543.5,955"],
+[13,6,2,"543.5,837 670.5,837 670.5,896 543.5,896"],
+[13,7,2,"543.5,777.6 670.5,777.6 670.5,837 543.5,837"],
+[13,8,2,"543.5,718.4 670.5,718.4 670.5,777.6 543.5,777.6"],
+[13,9,2,"543.5,659 670.5,659 670.5,718.4 543.5,718.4"],
+[13,10,2,"543.5,600 670.5,600 670.5,659 543.5,659"],
+[13,14,1,"543.5,363.5 670.5,363.5 670.5,422.5 543.5,422.5"],
+[13,15,1,"543.5,188.5 607,207 607,363.5 543.5,363.5"],
+[13,16,1,"607,207 670.5,225.6 670.5,363.5 607,363.5"],
+[13,17,2,"670.5,225.6 734,244.1 734,363.5 670.5,363.5"],
+[13,18,2,"734,244.1 797.5,262.7 797.5,363.5 734,363.5"],
+[13,19,2,"670.5,363.5 797.5,363.5 797.5,422.5 670.5,422.5"],
+[13,20,2,"670.5,422.5 797.5,422.5 797.5,481.5 670.5,481.5"],
+[13,21,2,"670.5,481.5 797.5,481.5 797.5,541 670.5,541"],
+[13,22,2,"670.5,541 797.5,541 797.5,600 670.5,600"],
+[13,23,2,"670.5,600 797.5,600 797.5,659 670.5,659"],
+[13,26,2,"670.5,777.6 797.5,777.6 797.5,837 670.5,837"],
+[13,27,2,"670.5,837 797.5,837 797.5,896 670.5,896"],
+[13,28,2,"670.5,896 797.5,896 797.5,955 670.5,955"],
+[14,1,2,"1038.6,955 1102.1,955 1102.1,1032.9 1038.6,1073.4"],
+[14,2,2,"975.2,955 1038.6,955 1038.6,1073.4 975.2,1073.4"],
+[14,3,2,"911.8,955 975.2,955 975.2,1073.4 911.8,1073.4"],
+[14,4,2,"848.3,955 911.8,955 911.8,1073.4 848.3,1073.4"],
+[14,5,2,"848.3,896 975.2,896 975.2,955 848.3,955"],
+[14,6,2,"848.3,837 975.2,837 975.2,896 848.3,896"],
+[14,12,2,"848.3,481.5 975.2,481.5 975.2,541 848.3,541"],
+[14,13,2,"848.3,422.5 975.2,422.5 975.2,481.5 848.3,481.5"],
+[14,14,2,"848.3,277.2 912.1,295.9 912.1,422.5 848.3,422.5"],
+[14,15,1,"912.1,295.9 987.2,317.9 987.2,422.5 912.1,422.5"],
+[14,16,1,"987.2,317.9 1064.1,340.5 1102.1,422.5 987.2,422.5"],
+[14,17,1,"975.2,422.5 1102.1,422.5 1102.1,481.5 975.2,481.5"],
+[14,18,1,"975.2,481.5 1102.1,481.5 1102.1,541 975.2,541"],
+[14,19,1,"975.2,541 1102.1,541 1102.1,600 975.2,600"],
+[14,20,1,"975.2,600 1102.1,600 1102.1,659 975.2,659"],
+[14,21,2,"975.2,659 1102.1,659 1102.1,718.5 975.2,718.5"],
+[14,22,2,"975.2,718.5 1102.1,718.5 1102.1,777.5 975.2,777.5"],
+[14,23,2,"975.2,777.5 1102.1,777.5 1102.1,837 975.2,837"],
+[14,24,2,"975.2,837 1102.1,837 1102.1,896 975.2,896"],
+[14,25,2,"975.2,896 1102.1,896 1102.1,955 975.2,955"],
+[15,1,2,"1368.2,955 1431.6,955 1431.6,1073.4 1368.2,1073.4"],
+[15,2,2,"1304.7,955 1368.2,955 1368.2,1073.4 1304.7,1073.4"],
+[15,3,1,"1241.2,955 1304.7,955 1304.7,1073.4 1241.2,1073.4"],
+[15,4,1,"1177.8,955 1241.2,955 1241.2,1073.4 1177.8,1032.9"],
+[15,5,1,"1177.8,896 1304.7,896 1304.7,955 1177.8,955"],
+[15,6,1,"1177.8,837 1304.7,837 1304.7,896 1177.8,896"],
+[15,7,1,"1177.8,777.5 1304.7,777.5 1304.7,837 1177.8,837"],
+[15,8,1,"1177.8,718.5 1304.7,718.5 1304.7,777.5 1177.8,777.5"],
+[15,9,2,"1177.8,659 1304.7,659 1304.7,718.5 1177.8,718.5"],
+[15,10,2,"1177.8,600 1304.7,600 1304.7,659 1177.8,659"],
+[15,11,2,"1177.8,541 1304.7,541 1304.7,600 1177.8,600"],
+[15,12,2,"1177.8,402.2 1236.9,391.2 1236.9,541 1177.8,541"],
+[15,13,2,"1236.9,391.2 1296.3,408.6 1296.3,541 1236.9,541"],
+[15,14,2,"1296.3,408.6 1359.7,427.6 1359.7,541 1296.3,541"],
+[15,15,2,"1359.7,427.6 1431.6,448.3 1431.6,541 1359.7,541"],
+[15,16,2,"1304.7,541 1431.6,541 1431.6,600 1304.7,600"],
+[15,17,2,"1304.7,600 1431.6,600 1431.6,659 1304.7,659"],
+[15,18,2,"1304.7,659 1431.6,659 1431.6,718.5 1304.7,718.5"],
+[15,19,2,"1304.7,718.5 1431.6,718.5 1431.6,777.5 1304.7,777.5"],
+[15,20,2,"1304.7,777.5 1431.6,777.5 1431.6,837 1304.7,837"],
+[15,21,2,"1304.7,837 1431.6,837 1431.6,896 1304.7,896"],
+[15,22,2,"1304.7,896 1431.6,896 1431.6,955 1304.7,955"],
+[16,1,2,"1672,955 1736,955 1736,1074 1672,1074"],
+[16,2,2,"1608,955 1672,955 1672,1074 1608,1074"],
+[16,3,2,"1545,955 1608,955 1608,1074 1545,1074"],
+[16,4,2,"1482,955 1545,955 1545,1074 1482,1074"],
+[16,5,2,"1482,896 1608,896 1608,955 1482,955"],
+[16,6,2,"1482,837 1608,837 1608,896 1482,896"],
+[16,7,2,"1482,778 1608,778 1608,837 1482,837"],
+[16,8,1,"1482,718 1608,718 1608,778 1482,778"],
+[16,9,1,"1482,659 1608,659 1608,718 1482,718"],
+[16,10,1,"1482,600 1608,600 1608,659 1482,659"],
+[16,11,1,"1482,463 1548,482 1548,600 1482,600"],
+[16,12,1,"1548,482 1628,506 1628,600 1548,600"],
+[16,13,2,"1628,506 1736,537 1736,600 1628,600"],
+[16,14,2,"1608,600 1736,600 1736,659 1608,659"],
+[16,15,2,"1608,659 1736,659 1736,718 1608,718"],
+[16,19,2,"1608,896 1736,896 1736,955 1608,955"],
+[17,1,2,"2008,955 2082,955 2082,1074 2008,1074"],
+[17,2,2,"1934,955 2008,955 2008,1074 1934,1074"],
+[17,3,2,"1860,955 1934,955 1934,1074 1860,1074"],
+[17,4,2,"1786,955 1860,955 1860,1074 1786,1074"],
+[17,5,2,"1786,904 1934,904 1934,955 1786,955"],
+[17,8,2,"1786,752 1934,752 1934,803 1786,803"],
+[17,9,2,"1786,702 1934,702 1934,752 1786,752"],
+[17,10,2,"1786,552 1843,569 1843,702 1786,702"],
+[17,11,2,"1843,569 1904,586 1904,702 1843,702"],
+[17,12,1,"1904,586 1974,607 1974,702 1904,702"],
+[17,13,1,"1974,607 2082,639 2082,702 1974,702"],
+[17,14,1,"1934,702 2082,702 2082,752 1934,752"],
+[17,15,1,"1934,752 2082,752 2082,803 1934,803"],
+[17,16,2,"1934,803 2082,803 2082,854 1934,854"],
+[17,17,2,"1934,854 2082,854 2082,904 1934,904"],
+[17,18,2,"1934,904 2082,904 2082,955 1934,955"],
+[18,7,2,"2133,803 2395,803 2395,854 2133,854"],
+[18,8,2,"2133,653.7 2187,669.5 2187,803 2133,803"],
+[18,9,2,"2187,669.5 2250,688 2250,803 2187,803"],
+[18,10,1,"2250,688 2325,710 2325,803 2250,803"],
+[18,11,1,"2325,710 2395,730.5 2395,803 2325,803"],
+];
+
+/* ==========================================================================
+   TABELA COMERCIAL OFICIAL — fonte: "Plano comercial - Garden.xlsx".
+   São TRÊS planos, e só três. Nada nesta tela é arbitrado: toda condição que
+   o cliente final enxerga tem que sair da planilha do empreendimento.
+
+     Plano       Desconto  Entrada  Anual     Parcelamento
+     Normal      0%        8%       6 × 20k   84
+     Curto       5%        20%      4 × 25k   48
+     Investidor  10%       40%      3 × 30k   36
+   ========================================================================== */
+const PLANOS = [
+  {nome:'Normal',     desc:0.00, ent:0.08, anQtd:6, anVal:20000, prazo:84},
+  {nome:'Curto',      desc:0.05, ent:0.20, anQtd:4, anVal:25000, prazo:48},
+  {nome:'Investidor', desc:0.10, ent:0.40, anQtd:3, anVal:30000, prazo:36}
+];
+/* a política de busca do simulador SAI dos planos oficiais. entradaTeto é só
+   uma trava de busca (entrada fora da realidade), não uma promessa comercial. */
+const POLITICA = {
+  jurosAM: 0,                    /* 0% enquanto a taxa não for cadastrada */
+  prazos: PLANOS.map(p => ({meses:p.prazo, desc:p.desc, entMin:p.ent,
+                            nome:p.nome, anQtd:p.anQtd, anVal:p.anVal}))
+                .sort((a,b) => a.meses - b.meses),
+  anuaisValores: [0,10000,15000,20000,25000,30000],
+  entradaTeto: 0.60
+};
+
+/* ============================== utilidades ============================== */
+const $ = id => document.getElementById(id);
+const fI   = new Intl.NumberFormat('pt-BR');
+const fA   = new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fA0  = new Intl.NumberFormat('pt-BR',{maximumFractionDigits:0});
+const f2   = new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const moeda = v => 'R$ ' + fI.format(Math.round(v));
+const moeda2 = v => 'R$ ' + f2.format(v);
+const zz = v => String(v).padStart(2,'0');
+const soNum = s => { const d=String(s).replace(/[^\d]/g,''); return d===''?null:parseInt(d,10); };
+
+/* ============================== modelo ============================== */
+const lotes = [];
+const NOME = ['Disponível','Reservado','Vendido'];
+const COR  = ['#14804a','#b7791f','#c24135'];
+function novo(sit,q,lo,area,val,pts){
+  const L = {
+    sit, disp: sit===0, q, lo, area, val, pts,
+    rot: 'Quadra ' + zz(q) + (lo ? ' · Lote ' + zz(lo) : ' · lote sem número'),
+    m2: (val && area) ? val/area : 0
+  };
+  lotes.push(L);
+  return L;
+}
+for(const r of D) novo(0, r[0], r[1], r[2], r[3], r[4]);
+for(const r of I) novo(r[2], r[0], r[1], 0, 0, r[3]);  /* 1=reservado · 2=vendido */
+
+const disp = lotes.filter(l => l.disp);
+const TOT = [0,0,0];
+for(const L of lotes) TOT[L.sit]++;
+const comPreco = disp.filter(l => l.val);
+const PMIN = Math.min(...comPreco.map(l=>l.val));
+const PMAX = Math.max(...comPreco.map(l=>l.val));
+const AMIN = Math.min(...disp.map(l=>l.area));
+const AMAX = Math.max(...disp.map(l=>l.area));
+const QUADRAS = [...new Set(disp.map(l=>l.q))].sort((a,b)=>a-b);
+
+/* ---- números da vitrine (só do que está à venda) ---- */
+$('kDisp').textContent  = fI.format(disp.length);
+$('kPreco').textContent = moeda(PMIN);
+$('kArea').innerHTML    = fA0.format(AMIN) + ' a ' + fA0.format(AMAX) + ' m<sup>2</sup>';
+/* as caixinhas de contagem saíram da legenda; a escrita nelas é opcional (ver abaixo) */
+/* 🔴 ERA AQUI QUE O MAPA MORRIA. A legenda pública tem duas caixinhas (Disponível e
+   Indisponível), mas o script continuava escrevendo em `lgRes` e `lgVend`, que saíram da tela
+   quando a legenda foi simplificada. `null.textContent` estourava nesta linha, ANTES do trecho
+   que desenha o mapa, e o cliente via a área central em branco. Escreve só se o elemento existir. */
+const contador = (id, v) => { const el = $(id); if (el) el.textContent = v; };
+contador('lgDisp', fI.format(TOT[0]));
+contador('lgRes',  fI.format(TOT[1]));
+contador('lgVend', fI.format(TOT[2]));
+$('kQuadras').innerHTML = '<b>' + QUADRAS.length + ' quadras</b> com lotes disponíveis: ' +
+  QUADRAS.map(zz).join(', ') + '.';
+
+/* ============================== MAPA ============================== */
+const VW = 2396, VH = 2160, RAZAO = VW/VH;
+const mapa = $('mapa'), visor = $('visor'), cena = $('cena'), svg = $('svg');
+const NS = 'http://www.w3.org/2000/svg';
+
+let baseW=0, baseH=0, z=1, tx=0, ty=0;
+const ZMIN = 1, ZMAX = 2.8;   /* teto de 280%: acima disso a foto não sustenta */
+
+/* polígonos */
+const frag = document.createDocumentFragment();
+lotes.forEach((L,i) => {
+  const p = document.createElementNS(NS,'polygon');
+  p.setAttribute('points', L.pts);
+  p.setAttribute('stroke','none');          /* sem borda — só a camada de cor */
+  p.setAttribute('fill', COR[L.sit]);
+  p.setAttribute('fill-opacity', getCss(['--op-disp','--op-res','--op-vend'][L.sit]));
+  p.dataset.i = i;
+  L.el = p;
+  frag.appendChild(p);
+});
+svg.appendChild(frag);
+function getCss(v){ return getComputedStyle(document.documentElement).getPropertyValue(v).trim(); }
+
+const OPB = [parseFloat(getCss('--op-disp')),
+             parseFloat(getCss('--op-res')),
+             parseFloat(getCss('--op-vend'))];
+const OPD = OPB[0],
+      OPH = parseFloat(getCss('--op-hover')),
+      OPS = parseFloat(getCss('--op-sel')),
+      OPF = parseFloat(getCss('--op-filtro'));
+
+/* anel de seleção: um único lote por vez, marcador de interface */
+const anel = document.createElementNS(NS,'polygon');
+anel.setAttribute('fill','#ffffff');     /* SEM borda: o lote escolhido clareia */
+anel.setAttribute('fill-opacity','0.26');
+anel.setAttribute('stroke','none');
+anel.style.pointerEvents='none';         /* nao pode roubar o clique/hover do lote */
+anel.style.display='none';
+svg.appendChild(anel);
+
+/* --------------------------- estado de filtro --------------------------- */
+const F = { q:null, precoMax:null, areaMin:null, so:false };
+const filtrando = () => F.q!==null || F.precoMax!==null || F.areaMin!==null || F.so;
+function atende(L){
+  if(!L.disp) return false;
+  if(F.q!==null && L.q!==F.q) return false;
+  if(F.precoMax!==null && (!L.val || L.val>F.precoMax)) return false;
+  if(F.areaMin!==null && L.area<F.areaMin) return false;
+  return true;
+}
+let visiveis = new Set();
+let sel = null, hov = null;
+
+function pintar(){
+  const f = filtrando();
+  visiveis = new Set();
+  for(const L of lotes){
+    const ok = f ? atende(L) : true;
+    if(f && atende(L)) visiveis.add(L);
+    if(!f && L.disp) visiveis.add(L);
+    let op;
+    if(f){
+      /* com filtro ligado, quem não atende PERDE a marcação: volta a ser só a foto */
+      op = ok ? OPF : 0;
+    }else{
+      op = OPB[L.sit];
+    }
+    if(L===sel && op>0) op = OPS;
+    else if(L===hov && op>0) op = OPH;
+    L.el.setAttribute('fill-opacity', op);
+    L.el.style.pointerEvents = op>0 ? 'auto' : 'none';
+  }
+  /* aviso sobre o mapa */
+  const n = visiveis.size;
+  $('avisoF').classList.toggle('on', f);
+  if(f) $('avisoTxt').innerHTML = '<b>' + fI.format(n) + '</b> ' +
+    (n===1 ? 'lote atende ao filtro' : 'lotes atendem ao filtro');
+  const q = (F.q!==null?1:0) + (F.precoMax!==null?1:0) + (F.areaMin!==null?1:0) + (F.so?1:0);
+  $('chipFiltro').style.display = q ? 'inline-flex' : 'none';
+  $('chipFiltro').textContent = q;
+  $('btFiltro').classList.toggle('ativo', f);
+  $('btSo').classList.toggle('on', f);
+  $('btSo').textContent = f ? 'Mostrar o mapa inteiro' : 'Ver só os disponíveis';
+  $('dica').style.opacity = (f || sel) ? 0 : 1;
+  pintarRes();
+}
+
+/* --------------------------- layout / zoom --------------------------- */
+function medir(){
+  const r = mapa.getBoundingClientRect();
+  const cw = Math.max(160, r.width - 38), ch = Math.max(120, r.height - 38);
+  if(cw/ch > RAZAO){ baseH = ch; baseW = ch*RAZAO; }
+  else { baseW = cw; baseH = cw/RAZAO; }
+  /* a placa tem o tamanho do mapa inteiro e nao muda: o zoom acontece DENTRO
+     dela, entao o enquadramento nunca se perde. */
+  visor.style.width  = Math.round(baseW) + 'px';
+  visor.style.height = Math.round(baseH) + 'px';
+  cena.style.width   = baseW + 'px';
+  cena.style.height  = baseH + 'px';
+  aplicar();
+}
+function limites(){
+  const mx = Math.max(0, (baseW*z - baseW)/2), my = Math.max(0, (baseH*z - baseH)/2);
+  tx = Math.min(mx, Math.max(-mx, tx));
+  ty = Math.min(my, Math.max(-my, ty));
+}
+function aplicar(){
+  limites();
+  const x = (baseW - baseW*z)/2 + tx;
+  const y = (baseH - baseH*z)/2 + ty;
+  cena.style.transform = 'translate3d(' + x.toFixed(1) + 'px,' + y.toFixed(1) + 'px,0) scale(' + z + ')';
+  $('zVal').textContent = Math.round(z*100) + '%';
+  $('zOut').disabled = z <= ZMIN + 1e-6;
+  $('zIn').disabled  = z >= ZMAX - 1e-6;
+  visor.classList.toggle('arrastavel', z > 1.001);
+}
+function zoomPara(nz, cx, cy){
+  nz = Math.min(ZMAX, Math.max(ZMIN, nz));
+  if(Math.abs(nz-z)<1e-6) return;
+  if(cx===undefined){ cx = baseW/2; cy = baseH/2; }   /* cx,cy sao relativos a PLACA */
+  const px = (baseW - baseW*z)/2 + tx, py = (baseH - baseH*z)/2 + ty;
+  /* ponto da cena que está sob o cursor, em unidades de base */
+  const ux = (cx - px)/z, uy = (cy - py)/z;
+  /* recolocar esse mesmo ponto sob o cursor depois do zoom */
+  tx = cx - (baseW - baseW*nz)/2 - ux*nz;
+  ty = cy - (baseH - baseH*nz)/2 - uy*nz;
+  z = nz;
+  aplicar();
+}
+$('zIn').onclick  = () => zoomPara(z*1.35);
+$('zOut').onclick = () => zoomPara(z/1.35);
+$('zReset').onclick = () => { z=1; tx=0; ty=0; aplicar(); };
+
+mapa.addEventListener('wheel', e => {
+  e.preventDefault();
+  const r = visor.getBoundingClientRect();
+  zoomPara(z * (e.deltaY<0 ? 1.13 : 1/1.13), e.clientX-r.left, e.clientY-r.top);
+}, {passive:false});
+
+let arr=null;
+mapa.addEventListener('pointerdown', e => {
+  if(z<=1.001) return;
+  arr = {x:e.clientX, y:e.clientY, tx, ty, mv:false};
+  mapa.setPointerCapture(e.pointerId);
+  visor.classList.add('arrastando');
+});
+mapa.addEventListener('pointermove', e => {
+  if(arr){
+    tx = arr.tx + (e.clientX-arr.x);
+    ty = arr.ty + (e.clientY-arr.y);
+    if(Math.abs(e.clientX-arr.x)+Math.abs(e.clientY-arr.y) > 4) arr.mv = true;
+    aplicar();
+  }
+});
+function soltar(e){
+  if(!arr) return;
+  visor.classList.remove('arrastando');
+  try{ mapa.releasePointerCapture(e.pointerId); }catch(_){}
+  setTimeout(()=>{ arr=null; }, 0);
+}
+mapa.addEventListener('pointerup', soltar);
+mapa.addEventListener('pointercancel', soltar);
+
+/* --------------------------- interação nos lotes --------------------------- */
+const tip = $('tip');
+svg.addEventListener('mousemove', e => {
+  const t = e.target;
+  if(t.tagName !== 'polygon' || t===anel){ esconderTip(); return; }
+  const L = lotes[+t.dataset.i];
+  if(hov !== L){ const a=hov; hov=L; repinta(a); repinta(L); }
+  tip.classList.add('on');
+  tip.innerHTML = '<div class="t1">' + L.rot + '</div>' +
+    '<div class="t2">' + (L.disp
+      ? fA.format(L.area) + ' m² · ' + (L.val ? moeda(L.val) : 'sob consulta')
+      : NOME[L.sit]) + '</div>';
+  const w = tip.offsetWidth, h = tip.offsetHeight;
+  let x = e.clientX + 14, y = e.clientY + 16;
+  if(x + w > innerWidth - 8) x = e.clientX - w - 14;
+  if(y + h > innerHeight - 8) y = e.clientY - h - 14;
+  tip.style.left = x + 'px'; tip.style.top = y + 'px';
+});
+svg.addEventListener('mouseleave', esconderTip);
+function esconderTip(){
+  tip.classList.remove('on');
+  if(hov){ const a=hov; hov=null; repinta(a); }
+}
+function repinta(L){
+  if(!L) return;
+  const f = filtrando();
+  let op;
+  if(f) op = visiveis.has(L) ? OPF : 0;
+  else  op = OPB[L.sit];
+  if(L===sel && op>0) op = OPS;
+  else if(L===hov && op>0) op = OPH;
+  L.el.setAttribute('fill-opacity', op);
+}
+
+svg.addEventListener('click', e => {
+  if(arr && arr.mv) return;
+  const t = e.target;
+  if(t.tagName !== 'polygon' || t===anel) return;
+  selecionar(lotes[+t.dataset.i]);
+});
+mapa.addEventListener('click', e => {
+  if(e.target === mapa || e.target === visor || e.target === cena || e.target.id === 'planta'){
+    if(!(arr && arr.mv)) selecionar(null);
+  }
+});
+
+function selecionar(L){
+  const a = sel; sel = L;
+  repinta(a); repinta(L);
+  if(L){
+    anel.setAttribute('points', L.pts);
+    anel.style.display = '';
+  }else anel.style.display='none';
+  desenharFicha();
+  $('dica').style.opacity = (filtrando() || sel) ? 0 : 1;
+  pintarTabelaSel();
+}
+
+function desenharFicha(){
+  const f = $('ficha');
+  document.body.classList.toggle('temSel', !!sel);
+  if(!sel){
+    f.classList.remove('on'); f.innerHTML='';
+    $('uVazio').style.display = '';
+    $('uTit').textContent = 'Nenhum lote selecionado';
+    return;
+  }
+  const L = sel;
+  $('uVazio').style.display = 'none';
+  $('uTit').textContent = L.rot;
+  let h = '';
+  if(L.disp){
+    h += '<span class="selo d"><i></i>Disponível</span>';
+    h += '<div class="fgrid">' +
+      '<div class="fg"><div class="r">Área</div><div class="v">' + fA.format(L.area) + ' m²</div></div>' +
+      '<div class="fg"><div class="r">Valor do m²</div><div class="v">' + (L.m2 ? moeda2(L.m2) : '—') + '</div></div>' +
+      '<div class="fg" style="grid-column:1/-1"><div class="r">Valor de tabela</div><div class="v g">' +
+        (L.val ? moeda(L.val) : 'sob consulta') + '</div></div>' +
+      '</div>';
+    h += '<button class="cta" id="fichaSim">' +
+      '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="1.75" width="10" height="12.5" rx="1.6"/><path d="M5.6 5.1h4.8M5.6 8.2h1.4M5.6 11h1.4M9 8.2h1.4M9 11h1.4"/></svg>' +
+      'Simular pagamento</button>';
+  }else{
+    h += '<span class="selo i"><i></i>Indisponível</span>';
+    h += '<div class="nota">Este lote não está à venda.' +
+      ' Veja os ' + fI.format(TOT[0]) + ' lotes disponíveis no mapa, em verde.</div>';
+    h += '<button class="cta sec" id="fichaLista">Ver lotes disponíveis</button>';
+  }
+  f.innerHTML = h;
+  f.classList.add('on');
+  if($('fichaSim'))  $('fichaSim').onclick  = () => abrirSim(L);
+  if($('fichaLista'))$('fichaLista').onclick= () => { selecionar(null); abre('telaLista'); };
+}
+$('uFechar').onclick = () => selecionar(null);
+
+/* posicionarFicha() saiu junto com o painel flutuante: a ficha agora mora na
+   coluna da direita e nunca cobre o mapa, entao nao ha canto para desviar. */
+
+/* centralizar um lote no mapa */
+function irPara(L, zAlvo){
+  const xs = L.pts.split(' ').map(p=>p.split(',').map(Number));
+  const cx = xs.reduce((s,p)=>s+p[0],0)/xs.length;
+  const cy = xs.reduce((s,p)=>s+p[1],0)/xs.length;
+  z = Math.min(ZMAX, zAlvo||2.1);
+  const px = (cx/VW)*baseW*z, py = (cy/VH)*baseH*z;
+  tx = (baseW*z)/2 - px;
+  ty = (baseH*z)/2 - py;
+  aplicar();
+}
+
+/* ============================== MODAIS ============================== */
+function abre(id){ $(id).classList.add('on'); }
+function fecha(id){ $(id).classList.remove('on'); }
+document.querySelectorAll('[data-fecha]').forEach(b=>{
+  b.onclick = () => b.closest('.veu').classList.remove('on');
+});
+document.querySelectorAll('.veu').forEach(v=>{
+  v.addEventListener('mousedown', e => { if(e.target===v) v.classList.remove('on'); });
+});
+addEventListener('keydown', e => {
+  if(e.key === 'Escape'){
+    const ab = document.querySelector('.veu.on');
+    if(ab) ab.classList.remove('on');
+    else if(sel) selecionar(null);
+  }
+  if(e.key === '+' || e.key === '=') zoomPara(z*1.35);
+  if(e.key === '-') zoomPara(z/1.35);
+  if(e.key === '0'){ z=1;tx=0;ty=0;aplicar(); }
+});
+
+$('btLista').onclick  = () => { montarTabela(); abre('telaLista'); setTimeout(()=>$('buscaLista').focus(),60); };
+$('btFiltro').onclick = () => { abre('telaFiltro'); };
+$('btSim').onclick    = () => abrirSim(sel && sel.disp ? sel : null);
+$('btFull').onclick   = () => {
+  if(document.fullscreenElement) document.exitFullscreen();
+  else document.documentElement.requestFullscreen().catch(()=>{});
+};
+
+/* ============================== TABELA ============================== */
+const COLS = [
+  {k:'q',    r:'Quadra', cls:'q'},
+  {k:'lo',   r:'Lote',   cls:''},
+  {k:'area', r:'Área (m²)', cls:'r'},
+  {k:'m2',   r:'Valor do m²', cls:'r'},
+  {k:'val',  r:'Preço',  cls:'r p'}
+];
+let ordK='q', ordA=true, busca='';
+function montarTabela(){
+  const th = document.querySelector('#tabela thead');
+  th.innerHTML = '<tr>' + COLS.map(c =>
+    '<th class="' + (c.cls.includes('r')?'r ':'') + (ordK===c.k?'on':'') + '" data-k="' + c.k + '">' +
+    c.r + '<span class="seta">' + (ordA?'▲':'▼') + '</span></th>').join('') + '</tr>';
+  th.querySelectorAll('th').forEach(h=>{
+    h.onclick = () => {
+      const k = h.dataset.k;
+      if(ordK===k) ordA=!ordA; else { ordK=k; ordA = (k==='q'||k==='lo'); }
+      montarTabela();
+    };
+  });
+
+  const t = busca.trim().toLowerCase();
+  let ls = disp.filter(L => !t || (
+    zz(L.q).includes(t) || zz(L.lo).includes(t) || L.rot.toLowerCase().includes(t) ||
+    String(Math.round(L.area)).includes(t) || String(L.val).includes(t) ||
+    fI.format(L.val).includes(t)
+  ));
+  ls = ls.slice().sort((a,b)=>{
+    let d;
+    if(ordK==='q') d = a.q-b.q || a.lo-b.lo;
+    else if(ordK==='lo') d = a.lo-b.lo || a.q-b.q;
+    else d = (a[ordK]||0) - (b[ordK]||0) || a.q-b.q || a.lo-b.lo;
+    return ordA ? d : -d;
+  });
+
+  const tb = document.querySelector('#tabela tbody');
+  tb.innerHTML = ls.length ? ls.map(L =>
+    '<tr data-q="' + L.q + '" data-l="' + L.lo + '"' + (L===sel?' class="sel"':'') + '>' +
+    '<td class="q">' + zz(L.q) + '</td>' +
+    '<td>' + zz(L.lo) + '</td>' +
+    '<td class="r">' + fA.format(L.area) + '</td>' +
+    '<td class="r">' + (L.m2 ? moeda2(L.m2) : '—') + '</td>' +
+    '<td class="r p">' + (L.val ? moeda(L.val) : 'sob consulta') + '</td>' +
+    '</tr>').join('') : '<tr><td colspan="5"><div class="vazio">Nenhum lote encontrado.</div></td></tr>';
+  tb.querySelectorAll('tr[data-q]').forEach(tr=>{
+    tr.onclick = () => {
+      const L = disp.find(x => x.q==tr.dataset.q && x.lo==tr.dataset.l);
+      fecha('telaLista'); selecionar(L); irPara(L, 2.1);
+    };
+  });
+
+  const vals = ls.filter(L=>L.val).map(L=>L.val);
+  $('listaSub').textContent = fI.format(disp.length) + ' lotes à venda';
+  $('listaPe').innerHTML = '<b class="n">' + fI.format(ls.length) + '</b> ' +
+    (ls.length===1?'lote':'lotes') +
+    (vals.length ? ' · de ' + moeda(Math.min(...vals)) + ' a ' + moeda(Math.max(...vals)) : '') +
+    ' &nbsp;·&nbsp; clique em uma linha para ver o lote no mapa';
+}
+function pintarTabelaSel(){
+  document.querySelectorAll('#tabela tbody tr').forEach(tr=>{
+    tr.classList.toggle('sel', !!sel && tr.dataset.q==sel.q && tr.dataset.l==sel.lo);
+  });
+}
+$('buscaLista').addEventListener('input', e => { busca = e.target.value; montarTabela(); });
+
+/* ============================== FILTRO ============================== */
+function montarFiltro(){
+  const cont = {};
+  for(const L of disp) cont[L.q] = (cont[L.q]||0)+1;
+  $('fQuadras').innerHTML = QUADRAS.map(q =>
+    '<button class="qb' + (F.q===q?' on':'') + '" data-q="' + q + '">' + zz(q) +
+    '<small>' + cont[q] + '</small></button>').join('');
+  $('fQuadras').querySelectorAll('.qb').forEach(b=>{
+    b.onclick = () => { const q=+b.dataset.q; F.q = (F.q===q?null:q); montarFiltro(); pintar(); };
+  });
+  const rp = $('rgPreco');
+  rp.min = PMIN; rp.max = PMAX; rp.step = 5000;
+  rp.value = F.precoMax===null ? PMAX : F.precoMax;
+  $('rotPreco').textContent = F.precoMax===null ? 'qualquer valor' : moeda(F.precoMax);
+  $('peP1').textContent = moeda(PMIN); $('peP2').textContent = moeda(PMAX);
+
+  const ra = $('rgArea');
+  ra.min = Math.floor(AMIN); ra.max = Math.ceil(AMAX); ra.step = 5;
+  ra.value = F.areaMin===null ? Math.floor(AMIN) : F.areaMin;
+  $('rotArea').textContent = F.areaMin===null ? 'qualquer área' : fA0.format(F.areaMin) + ' m²';
+  $('peA1').textContent = fA0.format(AMIN) + ' m²'; $('peA2').textContent = fA0.format(AMAX) + ' m²';
+  pintarRes();
+}
+function pintarRes(){
+  const el = $('filtroRes'); if(!el) return;
+  const n = visiveis.size;
+  el.innerHTML = filtrando()
+    ? '<b>' + fI.format(n) + '</b> ' + (n===1?'lote atende ao filtro':'lotes atendem ao filtro') +
+      ' &nbsp;·&nbsp; o mapa apaga a marcação dos demais'
+    : '<b>' + fI.format(disp.length) + '</b> lotes disponíveis · nenhum filtro ativo';
+}
+$('rgPreco').addEventListener('input', e => {
+  const v = +e.target.value;
+  F.precoMax = v >= PMAX ? null : v;
+  if(F.precoMax !== null) F.so = true;
+  $('rotPreco').textContent = F.precoMax===null ? 'qualquer valor' : moeda(F.precoMax);
+  pintar();
+});
+$('rgArea').addEventListener('input', e => {
+  const v = +e.target.value;
+  F.areaMin = v <= Math.floor(AMIN) ? null : v;
+  if(F.areaMin !== null) F.so = true;
+  $('rotArea').textContent = F.areaMin===null ? 'qualquer área' : fA0.format(F.areaMin) + ' m²';
+  pintar();
+});
+function limpar(){ F.q=null; F.precoMax=null; F.areaMin=null; F.so=false; montarFiltro(); pintar(); }
+$('btLimpa').onclick = limpar;
+$('avisoX').onclick  = limpar;
+$('btSo').onclick    = () => { if(filtrando()) limpar(); else { F.so=true; montarFiltro(); pintar(); } };
+
+/* ==========================================================================
+   SIMULADOR — três caminhos para a mesma conversa
+   1) "Parto da parcela que cabe"  : o cliente diz o que cabe por mês (e, se
+      quiser, entrada e anual). O sistema varre prazo × entrada × anuais e
+      PROPÕE as composições que fecham, em ordem de recomendação.
+   2) "Eu escolho as condições"    : prazo, entrada e o VALOR DA ANUAL na mão
+      do usuário; a parcela responde na hora.
+   3) FLAG "Proposta livre"        : sai das condições fixas. Define entrada,
+      anuais, prazo e parcela como quiser — o sistema recalcula UMA variável
+      (a que você escolher) para a conta fechar no valor do lote.
+   ========================================================================== */
+let modo  = 'parcela';     /* 'parcela' | 'montar' */
+let livre = false;         /* a flag */
+
+const S = {
+  preco:0, precoTabela:0, juros:POLITICA.jurosAM,
+  /* modo escolher */ prazo:POLITICA.prazos[POLITICA.prazos.length-1].meses, entrada:0, anQtd:0, anVal:20000,
+  /* modo parcela  */ alvo:3000, entMax:null, anMax:null,
+  /* modo livre    */ ajusta:'parcela', lEnt:0, lAnQtd:0, lAnVal:20000, lPz:60, lPa:0
+};
+
+/* --------- matemática financeira: já pronta para juros compostos --------- */
+const fatorAnuidade = (T,i) => i<=0 ? T : (1 - Math.pow(1+i,-T))/i;
+function fatorBaloes(n,i){
+  if(n<=0) return 0;
+  if(i<=0) return n;
+  let s=0; for(let k=1;k<=n;k++) s += Math.pow(1+i,-12*k);
+  return s;
+}
+function calcParcela(pd, ent, anQtd, anVal, T, i){
+  const liq = pd - ent - anVal*fatorBaloes(anQtd, i);
+  if(liq <= 0 || T <= 0) return 0;
+  return liq / fatorAnuidade(T, i);
+}
+function calcEntrada(pd, M, anQtd, anVal, T, i){
+  return pd - anVal*fatorBaloes(anQtd, i) - M*fatorAnuidade(T, i);
+}
+function calcPrazo(pd, ent, anQtd, anVal, M, i){
+  const liq = pd - ent - anVal*fatorBaloes(anQtd, i);
+  if(liq <= 0) return 0;
+  if(M <= 0) return null;
+  if(i <= 0) return Math.ceil(liq/M);
+  const x = 1 - i*liq/M;
+  if(x <= 0) return null;            /* a parcela não cobre nem o juro do saldo */
+  return Math.ceil(-Math.log(x)/Math.log(1+i));
+}
+/* valor presente do que foi montado — é isso que precisa bater com o preço */
+function vpDe(ent, anQtd, anVal, T, M, i){
+  return ent + anVal*fatorBaloes(anQtd,i) + M*fatorAnuidade(T,i);
+}
+const planoDe = m => POLITICA.prazos.find(p => p.meses===m);
+const PRAZO_MAX_LIVRE = 180;
+
+/* ============================== abrir ============================== */
+function abrirSim(L){
+  if(L && L.val){
+    S.preco = L.val; S.precoTabela = L.val;
+    $('ajPreco').textContent = 'valor de tabela';
+    $('simSub').textContent = L.rot + ' · ' + fA.format(L.area) + ' m² · ' + moeda(L.val);
+  }else{
+    if(!S.preco){ S.preco = PMIN; S.precoTabela = PMIN; }
+    $('ajPreco').textContent = 'editável';
+    $('simSub').textContent = 'selecione um lote no mapa para trazer o valor de tabela';
+  }
+  if(!S.entrada || S.entrada > S.preco) S.entrada = Math.round(S.preco*0.20/1000)*1000;
+  S.alvo = alvoSugerido();
+  semearLivre();
+  espelhar();
+  abre('telaSim');
+  calcular();
+}
+/* uma parcela alvo que com certeza tem resposta: o plano mais longo, com a
+   entrada de referência e as parcelas anuais de tabela DELE. */
+function alvoSugerido(){
+  const pr = POLITICA.prazos[POLITICA.prazos.length-1];
+  const pd = S.preco * (1 - pr.desc);
+  const m = calcParcela(pd, pd*pr.entMin, pr.anQtd, pr.anVal, pr.meses, S.juros);
+  return Math.max(500, Math.round(m/250)*250);
+}
+function semearLivre(){
+  S.lEnt   = S.entrada || Math.round(S.preco*0.20/1000)*1000;
+  S.lPz    = S.prazo;
+  S.lAnQtd = S.anQtd;
+  S.lAnVal = S.anVal || 20000;
+  recalcLivre();
+}
+
+/* ============================== controles ============================== */
+/* os cartões de prazo SÃO os planos oficiais: prazo, nome e desconto */
+$('cPrazos').innerHTML = POLITICA.prazos.map(p =>
+  '<button class="pz" data-m="' + p.meses + '"><b>' + p.meses + '×</b><small>' + p.nome + '</small><small>' +
+  (p.desc ? '−' + Math.round(p.desc*100) + '%' : 'tabela') + '</small></button>').join('');
+$('cPrazos').querySelectorAll('.pz').forEach(b=>{
+  b.onclick = () => {
+    S.prazo = +b.dataset.m;
+    const max = Math.floor(S.prazo/12);
+    if(S.anQtd > max) S.anQtd = max;
+    espelhar(); calcular();
+  };
+});
+
+const ALVOS = [2000,3000,4000,5000,6000];
+function chips(el, vals, atual, rot, set){
+  $(el).innerHTML = vals.map(v =>
+    '<button class="cv' + (v===atual?' on':'') + '" data-v="' + v + '">' + rot(v) + '</button>').join('');
+  $(el).querySelectorAll('.cv').forEach(b=>{
+    b.onclick = () => { set(+b.dataset.v); espelhar(); calcular(); };
+  });
+}
+
+/* stepper genérico da quantidade de anuais */
+function ligaStepper(id, get, set, max){
+  $(id).querySelectorAll('button').forEach(b=>{
+    b.onclick = () => {
+      const v = Math.min(max(), Math.max(0, get() + (+b.dataset.d)));
+      set(v); espelhar(); calcular();
+    };
+  });
+}
+ligaStepper('stAn',  ()=>S.anQtd,  v=>{ S.anQtd=v;  if(v && !S.anVal) S.anVal=20000; },
+            ()=>Math.floor(S.prazo/12));
+ligaStepper('stLAn', ()=>S.lAnQtd, v=>{ S.lAnQtd=v; if(v && !S.lAnVal) S.lAnVal=20000; recalcLivre(); },
+            ()=>Math.floor(PRAZO_MAX_LIVRE/12));
+
+function espelhar(){
+  $('cPreco').value = fI.format(S.preco);
+
+  /* modo 1 */
+  $('cAlvo').value   = fI.format(S.alvo);
+  $('cEntMax').value = S.entMax ? fI.format(S.entMax) : '';
+  $('cAnMax').value  = S.anMax  ? fI.format(S.anMax)  : '';
+  chips('chipsAlvo', ALVOS, S.alvo, v => moeda(v) + '/mês', v => { S.alvo = v; });
+
+  /* modo 2 */
+  $('cPrazos').querySelectorAll('.pz').forEach(b => b.classList.toggle('on', +b.dataset.m===S.prazo));
+  $('cEntrada').value = fI.format(S.entrada);
+  $('rgEntrada').value = S.preco ? Math.min(60, Math.round(S.entrada/S.preco*100)) : 0;
+  $('ajEntrada').textContent = S.preco ? Math.round(S.entrada/S.preco*100) + '% do valor' : '';
+  $('vAnQtd').textContent = S.anQtd ? S.anQtd + '×' : '—';
+  $('cAnVal').value = S.anQtd ? fI.format(S.anVal) : '';
+  $('cAnVal').disabled = S.anQtd===0;
+  $('ajAnuais').textContent = (S.anQtd && S.anVal) ? 'total ' + moeda(S.anQtd*S.anVal) : 'sem reforço anual';
+  chips('chipsAnual', POLITICA.anuaisValores.filter(v=>v), S.anQtd?S.anVal:-1,
+        v => fI.format(v), v => { S.anVal = v; if(!S.anQtd) S.anQtd = Math.min(3, Math.floor(S.prazo/12)); });
+
+  /* modo livre */
+  $('cAjusta').querySelectorAll('button').forEach(b => b.classList.toggle('on', b.dataset.a===S.ajusta));
+  $('lEntrada').value = fI.format(Math.round(S.lEnt));
+  $('vLAnQtd').textContent = S.lAnQtd ? S.lAnQtd + '×' : '—';
+  $('lAnVal').value = S.lAnQtd ? fI.format(S.lAnVal) : '';
+  $('lAnVal').disabled = S.lAnQtd===0;
+  $('lPrazo').value = S.lPz;
+  $('lParcela').value = fI.format(Math.round(S.lPa));
+  const cal = '<span class="selo-calc">calculado</span>';
+  $('ajLEnt').innerHTML = S.ajusta==='entrada' ? cal
+    : (S.preco ? Math.round(S.lEnt/S.preco*100) + '% do valor' : '');
+  $('ajLPz').innerHTML  = S.ajusta==='prazo'   ? cal : (S.lPz ? (S.lPz/12).toFixed(1).replace('.',',') + ' anos' : '');
+  $('ajLPa').innerHTML  = hintPa();
+  $('ajLAn').textContent = (S.lAnQtd && S.lAnVal) ? 'total ' + moeda(S.lAnQtd*S.lAnVal) : 'sem reforço anual';
+  travaLivre();
+
+  /* juros */
+  $('cJuros').value = f2.format(S.juros*100);
+  notaJuros();
+
+  /* a flag e os modos */
+  $('btLivre').classList.toggle('on', livre);
+  $('btLivre').setAttribute('aria-pressed', livre ? 'true' : 'false');
+  $('blocoParcela').style.display = (!livre && modo==='parcela') ? '' : 'none';
+  $('blocoMontar').style.display  = (!livre && modo==='montar')  ? '' : 'none';
+  $('blocoLivre').style.display   = livre ? '' : 'none';
+  $('segModo').querySelectorAll('button').forEach(b =>
+    b.classList.toggle('on', !livre && b.dataset.m===modo));
+}
+function travaLivre(){
+  const campos = {entrada:['wLEnt','lEntrada'], prazo:['wLPz','lPrazo'], parcela:['wLPa','lParcela']};
+  for(const k in campos){
+    const [w,inp] = campos[k], ehCalc = (S.ajusta===k);
+    $(w).classList.toggle('calc', ehCalc);
+    $(inp).readOnly = ehCalc;
+    $(inp).tabIndex = ehCalc ? -1 : 0;
+  }
+}
+function notaJuros(){
+  $('jurosNota').innerHTML = S.juros>0
+    ? 'Juros compostos de <b>' + f2.format(S.juros*100) + '% ao mês</b> sobre o saldo financiado, ' +
+      'conforme a taxa cadastrada para o empreendimento.'
+    : '<b>Sem juros</b> — é a condição cadastrada para o Garden Resort Residence.';
+}
+
+/* ------------------------------ eventos ------------------------------ */
+function ligaMoeda(id, set){
+  $(id).addEventListener('input', () => {
+    const el = $(id), v = soNum(el.value);
+    set(v===null?0:v);
+    el.value = v===null ? '' : fI.format(v);
+    espelharLeve(id); calcular();
+  });
+}
+/* redesenhar tudo a cada tecla rouba o cursor: só o que depende do campo */
+function espelharLeve(id){
+  if(id==='cEntrada'){
+    $('rgEntrada').value = S.preco ? Math.min(60, Math.round(S.entrada/S.preco*100)) : 0;
+    $('ajEntrada').textContent = S.preco ? Math.round(S.entrada/S.preco*100) + '% do valor' : '';
+  }
+  if(id==='cAnVal') $('ajAnuais').textContent = (S.anQtd && S.anVal) ? 'total ' + moeda(S.anQtd*S.anVal) : 'sem reforço anual';
+  if(id==='cAlvo') $('chipsAlvo').querySelectorAll('.cv').forEach(b => b.classList.toggle('on', +b.dataset.v===S.alvo));
+  if(id.charAt(0)==='l' || id==='cPreco'){
+    /* modo livre: o campo calculado precisa acompanhar */
+    if(livre){
+      recalcLivre();
+      if(S.ajusta==='entrada')  $('lEntrada').value = fI.format(Math.round(S.lEnt));
+      if(S.ajusta==='parcela')  $('lParcela').value = fI.format(Math.round(S.lPa));
+      /* no ajuste pelo prazo NAO se reescreve o campo da parcela: quem digita
+         e a pessoa. Só o prazo responde, e o rotulo diz onde a conta fecha. */
+      if(S.ajusta==='prazo'){ $('lPrazo').value = S.lPz; $('ajLPa').innerHTML = hintPa(); }
+      $('ajLEnt').innerHTML = S.ajusta==='entrada' ? '<span class="selo-calc">calculado</span>'
+        : (S.preco ? Math.round(S.lEnt/S.preco*100) + '% do valor' : '');
+    }
+  }
+}
+ligaMoeda('cPreco',   v => { S.preco = v; if(S.entrada > v) S.entrada = Math.round(v*0.2); });
+ligaMoeda('cEntrada', v => { S.entrada = v; });
+ligaMoeda('cAnVal',   v => { S.anVal = v; });
+ligaMoeda('cAlvo',    v => { S.alvo = v; });
+ligaMoeda('cEntMax',  v => { S.entMax = v || null; });
+ligaMoeda('cAnMax',   v => { S.anMax = v || null; });
+ligaMoeda('lEntrada', v => { S.lEnt = v; });
+ligaMoeda('lAnVal',   v => { S.lAnVal = v; });
+ligaMoeda('lParcela', v => { S.lPa = v; });
+$('lPrazo').addEventListener('input', e => {
+  const v = soNum(e.target.value);
+  S.lPz = Math.max(1, Math.min(PRAZO_MAX_LIVRE, v||1));
+  e.target.value = S.lPz;
+  espelharLeve('lPrazo'); calcular();
+});
+$('rgEntrada').addEventListener('input', e => {
+  S.entrada = Math.round(S.preco * (+e.target.value)/100 /1000)*1000;
+  $('cEntrada').value = fI.format(S.entrada);
+  $('ajEntrada').textContent = (+e.target.value) + '% do valor';
+  calcular();
+});
+/* sem listener no campo de juros: na vitrine a taxa é a cadastrada, ponto. */
+$('cAjusta').querySelectorAll('button').forEach(b=>{
+  b.onclick = () => { S.ajusta = b.dataset.a; recalcLivre(); espelhar(); calcular(); };
+});
+$('btLivre').onclick = () => {
+  livre = !livre;
+  if(livre) semearLivre();
+  espelhar(); calcular();
+};
+$('segModo').querySelectorAll('button').forEach(b=>{
+  b.onclick = () => { modo = b.dataset.m; livre = false; espelhar(); calcular(); };
+});
+
+/* ============================== cálculo ============================== */
+let ultimoResumo = '';
+function calcular(){
+  if(!S.preco){ $('saida').innerHTML = '<div class="vazio">Informe o valor do lote.</div>'; ultimoResumo=''; }
+  else if(livre) saidaLivre();
+  else if(modo==='montar') saidaMontar();
+  else saidaParcela();
+  ligarOficial();
+  /* nao se copia resumo de proposta que nao fecha */
+  const b = $('btCopiar');
+  b.disabled = !ultimoResumo;
+  b.style.opacity = ultimoResumo ? '' : '.45';
+  b.style.cursor = ultimoResumo ? '' : 'default';
+}
+function linha(a, b, sub){
+  return '<div class="li"><span class="a">' + a + '</span><span class="b">' + b +
+    (sub ? '<small>' + sub + '</small>' : '') + '</span></div>';
+}
+function cc(r,v,s){
+  return '<div class="cc"><div class="r">' + r + '</div><div class="v">' + v +
+    (s ? '<small>' + s + '</small>' : '') + '</div></div>';
+}
+/* conta direta: as condições do lote em UM plano oficial */
+function condicoes(preco, p, i){
+  const PD = preco * (1 - p.desc);
+  const ent = PD * p.ent;
+  const anuais = p.anQtd * p.anVal;
+  const saldo = PD - ent - anuais;
+  const parcela = (PD - ent - p.anVal*fatorBaloes(p.anQtd,i)) / fatorAnuidade(p.prazo,i);
+  return {PD, ent, anuais, saldo, parcela};
+}
+
+/* ---- a TABELA OFICIAL do empreendimento, aplicada a este lote ----
+   vive no pé da saída, com as três linhas clicáveis: clicar leva o plano
+   para os controles. O "À vista" NÃO tem desconto próprio: ele mostra o
+   melhor desconto QUE EXISTE na tabela, que é o do plano Investidor. */
+function blocoOficial(){
+  const i = S.juros, preco = S.precoTabela || S.preco;
+  if(!preco) return '';
+  const linhas = PLANOS.map((p,k) => {
+    const c = condicoes(preco, p, i);
+    const ativa = !livre && modo==='montar' && S.prazo===p.prazo;
+    return '<div class="li clique' + (ativa?' on':'') + '" data-pl="' + k + '" ' +
+      'title="usar o plano ' + p.nome + '">' +
+      '<span class="a">' + p.nome + '<small>' +
+        (p.desc ? Math.round(p.desc*100) + '% de desconto' : 'sem desconto') + ' · entrada ' +
+        Math.round(p.ent*100) + '% · ' + p.anQtd + ' × ' + moeda(p.anVal) + '</small></span>' +
+      '<span class="b">' + p.prazo + ' × ' + moeda(c.parcela) +
+        '<small>entrada ' + moeda(c.ent) + '</small></span></div>';
+  }).join('');
+  const melhor = PLANOS.reduce((a,b) => b.desc > a.desc ? b : a);
+  return '<div class="linhas">' +
+    '<div class="tit">Tabela oficial do empreendimento, aplicada a este lote</div>' + linhas +
+    '<div class="li"><span class="a">À vista<small>melhor desconto de tabela: ' +
+      Math.round(melhor.desc*100) + '% (plano ' + melhor.nome + ')</small></span>' +
+      '<span class="b">' + moeda(preco*(1-melhor.desc)) + '</span></div>' +
+  '</div>';
+}
+/* clicar numa linha da tabela oficial leva o plano para os controles */
+function ligarOficial(){
+  $('saida').querySelectorAll('.li[data-pl]').forEach(el => {
+    el.onclick = () => {
+      const p = PLANOS[+el.dataset.pl];
+      S.prazo = p.prazo; S.anQtd = p.anQtd; S.anVal = p.anVal;
+      S.entrada = Math.round(S.preco*(1-p.desc)*p.ent);
+      modo = 'montar'; livre = false;
+      espelhar(); calcular(); $('controles').scrollTop = 0;
+    };
+  });
+}
+
+/* ----------------------- 2) eu escolho as condições ---------------------- */
+function saidaMontar(){
+  const pl = planoDe(S.prazo) || POLITICA.prazos[POLITICA.prazos.length-1];
+  const pd = S.preco * (1 - pl.desc);
+  const anuais = S.anQtd * S.anVal;
+  const parcela = calcParcela(pd, S.entrada, S.anQtd, S.anVal, S.prazo, S.juros);
+  const total = S.entrada + anuais + parcela*S.prazo;
+  const entMin = pd * pl.entMin;
+
+  let alerta = '';
+  if(S.entrada < entMin - 0.5){
+    const p2 = calcParcela(pd, entMin, S.anQtd, S.anVal, S.prazo, S.juros);
+    alerta = '<div class="alerta">A entrada de referência do plano <b>' + pl.nome + '</b> (' +
+      S.prazo + ' meses) é <b>' + moeda(entMin) + '</b> (' + Math.round(pl.entMin*100) +
+      '% do valor). Com ela a parcela fica em <b>' + moeda(p2) + '</b>.</div>';
+  }else if(parcela===0){
+    alerta = '<div class="alerta">Com essa entrada e essas parcelas anuais o lote já estaria quitado antes do fim do prazo.</div>';
+  }
+
+  $('saida').innerHTML =
+    '<div class="destaque">' +
+      '<div class="r">Parcela mensal</div>' +
+      '<div class="v">' + (parcela ? moeda(parcela) : '—') + '</div>' +
+      '<div class="sub">' + S.prazo + ' parcelas · plano <b>' + pl.nome + '</b>' +
+        (pl.desc ? ' · <b>' + Math.round(pl.desc*100) + '% de desconto</b> no valor do lote' : ' · valor de tabela') +
+      '</div>' +
+    '</div>' +
+    alerta +
+    '<div class="linhas">' +
+      linha('Valor do lote', moeda(S.preco), pl.desc ? 'tabela' : '') +
+      (pl.desc ? linha('Desconto do plano', '− ' + moeda(S.preco - pd), Math.round(pl.desc*100) + '%') : '') +
+      linha('Valor negociado', moeda(pd)) +
+      linha('Entrada', moeda(S.entrada), Math.round(S.entrada/pd*100) + '% do valor negociado') +
+      (anuais ? linha('Parcelas anuais', moeda(anuais), S.anQtd + ' × ' + moeda(S.anVal))
+              : linha('Parcelas anuais', '—', 'sem reforço anual')) +
+      linha('Saldo em ' + S.prazo + ' parcelas', moeda(parcela*S.prazo)) +
+      '<div class="li total"><span class="a">Total pago</span><span class="b">' + moeda(total) +
+        (S.juros>0 ? '<small>com juros de ' + f2.format(S.juros*100) + '% a.m.</small>' : '<small>sem juros</small>') +
+      '</span></div>' +
+    '</div>' +
+    blocoOficial();
+
+  ultimoResumo = resumoTexto({prazo:S.prazo, desc:pl.desc, nome:pl.nome, ent:S.entrada, anQtd:S.anQtd,
+                              anVal:S.anVal, parcela, pd, total});
+}
+
+/* -------------------- 1) da parcela para o plano (o otimizador) ------------- */
+function propor(preco, alvo, entMax, anMax, i){
+  const out = [];
+  let anuaisPossiveis = POLITICA.anuaisValores.slice();
+  if(anMax){
+    anuaisPossiveis = anuaisPossiveis.filter(v => v <= anMax);
+    if(anuaisPossiveis.indexOf(anMax) < 0) anuaisPossiveis.push(anMax);
+  }
+  for(const pr of POLITICA.prazos){
+    const pd = preco * (1 - pr.desc);
+    const maxN = Math.floor(pr.meses/12);
+    const aT = fatorAnuidade(pr.meses, i);
+    for(const av of anuaisPossiveis){
+      const ns = av===0 ? [0] : Array.from({length:maxN},(_,k)=>k+1);
+      for(const n of ns){
+        const pvB = av * fatorBaloes(n, i);
+        /* a entrada que faz a parcela bater exatamente no alvo */
+        let E = pd - alvo*aT - pvB;
+        E = Math.ceil(E/1000)*1000;                  /* arredonda pra cima: parcela ≤ alvo */
+        if(E < 0) E = 0;
+        if(E < pd*pr.entMin - 1) continue;           /* respeita a entrada de referência */
+        if(E > pd*POLITICA.entradaTeto) continue;    /* entrada fora da realidade */
+        if(entMax && E > entMax) continue;
+        const M = calcParcela(pd, E, n, av, pr.meses, i);
+        if(M <= 0) continue;
+        if(M > alvo*1.005) continue;                 /* não pode passar do que cabe */
+        if(M < alvo*0.82) continue;                  /* sobra demais: não é o plano dele */
+        out.push({prazo:pr.meses, desc:pr.desc, nome:pr.nome, pd, ent:E, anQtd:n, anVal:av, parcela:M,
+                  total: E + n*av + M*pr.meses});
+      }
+    }
+  }
+  if(!out.length) return [];
+  /* mais vendável = menos dinheiro na mesa agora; empate desfeito pelo desconto */
+  out.sort((a,b) =>
+    (Math.round(a.ent/5000) - Math.round(b.ent/5000)) ||
+    (a.desc - b.desc) ||
+    (a.total - b.total) ||
+    (a.anQtd*a.anVal - b.anQtd*b.anVal)
+  );
+  const vistos = new Set(), top = [];
+  for(const o of out){
+    if(vistos.has(o.prazo)) continue;
+    vistos.add(o.prazo); top.push(o);
+    if(top.length===3) break;
+  }
+  return top;
+}
+
+/* nada fechou no valor pedido? então mostre a composição mais próxima.
+   A parcela de uma configuração é monotônica na entrada, então basta olhar as
+   duas pontas: entrada de referência (parcela mais alta) e teto (mais baixa). */
+function proximo(preco, entMax, anMax, i, alvo){
+  let anuaisPossiveis = POLITICA.anuaisValores.slice();
+  if(anMax){
+    anuaisPossiveis = anuaisPossiveis.filter(v => v <= anMax);
+    if(anuaisPossiveis.indexOf(anMax) < 0) anuaisPossiveis.push(anMax);
+  }
+  let best = null;
+  for(const pr of POLITICA.prazos){
+    const pd = preco * (1 - pr.desc), maxN = Math.floor(pr.meses/12);
+    for(const av of anuaisPossiveis){
+      const ns = av===0 ? [0] : Array.from({length:maxN},(_,k)=>k+1);
+      for(const n of ns){
+        const eMin = Math.round(pd*pr.entMin/1000)*1000;
+        let eMax = Math.round(pd*POLITICA.entradaTeto/1000)*1000;
+        if(entMax) eMax = Math.min(eMax, entMax);
+        if(eMax < eMin) continue;
+        for(const E of (eMin===eMax ? [eMin] : [eMin, eMax])){
+          const M = calcParcela(pd, E, n, av, pr.meses, i);
+          if(M <= 0) continue;
+          /* estourar o que cabe é pior que sobrar: penaliza */
+          const d = Math.abs(M - alvo) + (M > alvo ? alvo*0.03 : 0);
+          if(!best || d < best.d)
+            best = {d, prazo:pr.meses, desc:pr.desc, nome:pr.nome, pd, ent:E, anQtd:n, anVal:av,
+                    parcela:M, total:E + n*av + M*pr.meses};
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function saidaParcela(){
+  const alvo = S.alvo, i = S.juros;
+  if(!alvo){ $('saida').innerHTML = '<div class="vazio">Informe quanto cabe por mês.</div>'; return; }
+  const props = propor(S.preco, alvo, S.entMax, S.anMax, i);
+
+  if(!props.length){
+    const p = proximo(S.preco, S.entMax, S.anMax, i, alvo);
+    if(!p){
+      $('saida').innerHTML =
+        '<div class="destaque"><div class="r">Sem composição possível</div>' +
+        '<div class="v" style="font-size:24px">Reveja os limites</div>' +
+        '<div class="sub">a entrada informada fica abaixo da entrada de referência de todos os planos</div></div>' +
+        '<div class="linhas" style="margin-top:12px">' + linha('Valor do lote', moeda(S.preco)) + '</div>' +
+        blocoOficial();
+      ultimoResumo = '';
+      return;
+    }
+    const acima = p.parcela > alvo;
+    const dif = Math.abs(p.parcela - alvo);
+    $('saida').innerHTML =
+      '<div style="font-size:12px;color:var(--tx2);margin-bottom:12px;line-height:1.5">' +
+        'Nenhuma composição fecha exatamente em <b class="n">' + moeda(alvo) + '</b> por mês' +
+        (S.entMax ? ' com entrada de até <b class="n">' + moeda(S.entMax) + '</b>' : '') +
+        (S.anMax  ? (S.entMax ? ' e' : ' com') + ' anual de até <b class="n">' + moeda(S.anMax) + '</b>' : '') +
+        '. Esta é a mais próxima:' +
+      '</div>' +
+      '<div class="propostas"><div class="pp top">' +
+        '<div class="ph"><span class="badge">Mais próxima</span>' +
+          '<div class="pv"><div class="r">Parcela mensal</div><div class="v">' + moeda(p.parcela) + '</div></div></div>' +
+        '<div class="comp">' +
+          cc('Entrada', moeda(p.ent), Math.round(p.ent/p.pd*100) + '% do valor') +
+          cc('Anuais', p.anQtd ? p.anQtd + ' × ' + moeda(p.anVal) : '—',
+             p.anQtd ? 'total ' + moeda(p.anQtd*p.anVal) : 'sem reforço') +
+          cc('Prazo', p.prazo + ' meses', p.nome + (p.desc ? ' · ' + Math.round(p.desc*100) + '% desc.' : ' · tabela')) +
+          cc('Total pago', moeda(p.total), S.juros>0 ? 'com juros' : 'sem juros') +
+        '</div>' +
+        '<div class="pq">' +
+          '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3.2 3.2L13 4.8"/></svg>' +
+          '<span>' + (acima
+            ? 'Fica <b>' + moeda(dif) + '</b> acima do que você informou. Para chegar em ' + moeda(alvo) +
+              ' por mês seria preciso ' +
+              (S.entMax ? 'elevar a entrada acima de ' + moeda(S.entMax)
+                        : 'aumentar a entrada') +
+              (S.anMax ? ' ou o reforço anual acima de ' + moeda(S.anMax) : ' ou os reforços anuais') + '.'
+            : 'Fica <b>' + moeda(dif) + '</b> abaixo do que você informou — cabe com folga no seu mês.') +
+          '</span>' +
+        '</div>' +
+        '<button class="usar" data-k="0">Levar para a proposta e ajustar</button>' +
+      '</div></div>' +
+      blocoOficial();
+    $('saida').querySelector('.usar').onclick = () => {
+      S.prazo=p.prazo; S.entrada=Math.round(p.ent); S.anQtd=p.anQtd; S.anVal=p.anVal||20000;
+      modo='montar'; livre=false; espelhar(); calcular(); $('controles').scrollTop = 0;
+    };
+    ultimoResumo = resumoTexto({prazo:p.prazo, desc:p.desc, nome:p.nome, ent:p.ent, anQtd:p.anQtd,
+                                anVal:p.anVal, parcela:p.parcela, pd:p.pd, total:p.total});
+    return;
+  }
+
+  const rot = ['Mais recomendado','Alternativa','Outro caminho'];
+  $('saida').innerHTML =
+    '<div style="font-size:12px;color:var(--tx2);margin-bottom:12px;line-height:1.5">' +
+      'Com <b class="n">' + moeda(alvo) + '</b> por mês' +
+      (S.entMax ? ', até <b class="n">' + moeda(S.entMax) + '</b> de entrada' : '') +
+      (S.anMax  ? ' e anual de até <b class="n">' + moeda(S.anMax) + '</b>' : '') +
+      ', estas são as composições que fecham — na ordem que costuma fechar negócio:' +
+    '</div>' +
+    '<div class="propostas">' + props.map((o,k) =>
+      '<div class="pp' + (k===0?' top':'') + '">' +
+        '<div class="ph"><span class="badge">' + (rot[k]||'Alternativa') + '</span>' +
+          '<div class="pv"><div class="r">Parcela mensal</div><div class="v">' + moeda(o.parcela) + '</div></div></div>' +
+        '<div class="comp">' +
+          cc('Entrada', moeda(o.ent), Math.round(o.ent/o.pd*100) + '% do valor') +
+          cc('Anuais', o.anQtd ? o.anQtd + ' × ' + moeda(o.anVal) : '—',
+             o.anQtd ? 'total ' + moeda(o.anQtd*o.anVal) : 'sem reforço') +
+          cc('Prazo', o.prazo + ' meses', o.nome + (o.desc ? ' · ' + Math.round(o.desc*100) + '% desc.' : ' · tabela')) +
+          cc('Total pago', moeda(o.total), S.juros>0 ? 'com juros' : 'sem juros') +
+        '</div>' +
+        '<div class="pq">' +
+          '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3.2 3.2L13 4.8"/></svg>' +
+          '<span>' + porque(o, props, k) + '</span>' +
+        '</div>' +
+        '<button class="usar" data-k="' + k + '">Levar para a proposta e ajustar</button>' +
+      '</div>').join('') +
+    '</div>' +
+    blocoOficial();
+
+  $('saida').querySelectorAll('.usar').forEach(b=>{
+    b.onclick = () => {
+      const o = props[+b.dataset.k];
+      S.prazo=o.prazo; S.entrada=o.ent; S.anQtd=o.anQtd; S.anVal=o.anVal||20000;
+      modo='montar'; livre=false;
+      espelhar(); calcular();
+      $('controles').scrollTop = 0;
+    };
+  });
+
+  const o = props[0];
+  ultimoResumo = resumoTexto({prazo:o.prazo, desc:o.desc, nome:o.nome, ent:o.ent, anQtd:o.anQtd, anVal:o.anVal,
+                              parcela:o.parcela, pd:o.pd, total:o.total});
+}
+function porque(o, todos, k){
+  const menorEnt = Math.min(...todos.map(x=>x.ent));
+  const p = [];
+  if(k===0){
+    p.push(o.ent === menorEnt
+      ? 'plano <b>' + o.nome + '</b>: é a menor entrada entre as combinações que cabem em ' + moeda(S.alvo) + ' por mês'
+      : 'plano <b>' + o.nome + '</b>: é a combinação mais equilibrada entre entrada e desconto');
+  }else{
+    p.push('plano <b>' + o.nome + '</b>, ' + o.prazo + ' meses' +
+      (o.desc ? ', com ' + Math.round(o.desc*100) + '% de desconto no valor do lote' : ', sem desconto'));
+  }
+  if(o.anQtd) p.push(o.anQtd + ' ' + (o.anQtd===1?'reforço anual':'reforços anuais') + ' de ' + moeda(o.anVal) +
+    ' seguram a mensalidade em ' + moeda(o.parcela));
+  else p.push('sem reforço anual: só entrada e parcela fixa');
+  if(k>0 && o.desc) p.push('economia de ' + moeda(S.preco - o.pd) + ' no valor do lote');
+  const t = p.join('; ');
+  return t.charAt(0).toUpperCase() + t.slice(1) + '.';
+}
+
+/* --------------------------- 3) proposta livre --------------------------- */
+function recalcLivre(){
+  const pd = S.preco, i = S.juros;
+  S.lErro = null;
+  if(S.ajusta==='parcela'){
+    S.lPa = Math.max(0, calcParcela(pd, S.lEnt, S.lAnQtd, S.lAnVal, S.lPz, i));
+  }else if(S.ajusta==='entrada'){
+    S.lEnt = Math.max(0, calcEntrada(pd, S.lPa, S.lAnQtd, S.lAnVal, S.lPz, i));
+  }else{
+    /* o prazo e inteiro: guardamos o que a pessoa PEDIU em S.lPa e deixamos o
+       prazo responder. A parcela que de fato fecha sai em paEf(). */
+    const T = calcPrazo(pd, S.lEnt, S.lAnQtd, S.lAnVal, S.lPa, i);
+    if(T && T>0 && T<=PRAZO_MAX_LIVRE) S.lPz = T;
+    else S.lErro = 'prazo';
+  }
+}
+/* a parcela que realmente fecha a conta no prazo corrente */
+function paEf(){
+  return S.ajusta==='prazo'
+    ? Math.max(0, calcParcela(S.preco, S.lEnt, S.lAnQtd, S.lAnVal, S.lPz, S.juros))
+    : S.lPa;
+}
+/* o rotulo do campo da parcela conta a verdade */
+function hintPa(){
+  if(S.ajusta==='parcela') return '<span class="selo-calc">calculado</span>';
+  if(S.ajusta==='prazo'){
+    const e = paEf();
+    if(Math.abs(e - S.lPa) >= 1) return 'fecha em ' + moeda(e);
+  }
+  return 'você define';
+}
+function saidaLivre(){
+  const i = S.juros;
+  const anuais = S.lAnQtd * S.lAnVal;
+  const pa = paEf();
+  const vp = vpDe(S.lEnt, S.lAnQtd, S.lAnVal, S.lPz, pa, i);
+  const dif = S.preco - vp;                     /* >0 falta, <0 sobra */
+  const fecha = Math.abs(dif) < 1 && !S.lErro;
+  const total = S.lEnt + anuais + pa*S.lPz;
+
+  let bal;
+  if(S.lErro === 'prazo'){
+    bal = '<div class="balanco erro">' +
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4v5M8 11.4v.1"/><circle cx="8" cy="8" r="6.2"/></svg>' +
+      '<span>Com <b>' + moeda(S.lPa) + '</b> por mês a conta não fecha em até ' + PRAZO_MAX_LIVRE +
+      ' meses' + (i>0 ? ' (a parcela mal cobre o juro do saldo)' : '') +
+      '. Mantendo os ' + S.lPz + ' meses atuais, a parcela precisa ser de <b>' + moeda(pa) +
+      '</b>.</span></div>';
+  }else if(fecha){
+    bal = '<div class="balanco">' +
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3.2 3.2L13 4.8"/></svg>' +
+      '<span>A conta fecha: entrada + anuais + ' + S.lPz + ' parcelas equivalem a <b>' +
+      moeda(S.preco) + '</b>.</span></div>';
+  }else{
+    bal = '<div class="balanco erro">' +
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4v5M8 11.4v.1"/><circle cx="8" cy="8" r="6.2"/></svg>' +
+      '<span>' + (dif>0
+        ? 'Falta <b>' + moeda(dif) + '</b> para fechar no valor do lote.'
+        : 'Sobra <b>' + moeda(-dif) + '</b> em relação ao valor do lote.') +
+      ' ' + saida(dif) +
+      '</span></div>';
+  }
+
+  /* em vez de "ajuste algum campo", diga qual e a saida */
+  function saida(d){
+    if(d < 0){
+      const T = calcPrazo(S.preco, S.lEnt, S.lAnQtd, S.lAnVal, pa, i);
+      if(T && T > 0 && T <= PRAZO_MAX_LIVRE)
+        return 'Com ' + moeda(pa) + ' por mês' +
+               (S.lEnt ? ' e ' + moeda(S.lEnt) + ' de entrada' : ' e sem entrada') +
+               ', o lote se paga em <b>' + T + ' meses</b>.';
+      return 'Reduza o prazo ou a parcela.';
+    }
+    const need = S.lPz ? (S.preco - vpDe(0, S.lAnQtd, S.lAnVal, S.lPz, pa, i)) : 0;
+    if(need > 0) return 'Com esse prazo e essa parcela, a entrada precisa ser de <b>' +
+                        moeda(need) + '</b>.';
+    return 'Aumente a parcela, a entrada ou os reforços anuais.';
+  }
+
+  /* VITRINE: aqui NÃO entra desconto efetivo sobre a tabela, margem nem
+     "sujeito a aprovação" — isso é leitura de operação e mora só na tela do
+     corretor. O cliente vê o valor sobre o qual a conta foi montada, e só. */
+  const abaixo = S.precoTabela && S.preco < S.precoTabela;
+  const comp = (S.precoTabela && !abaixo)
+    ? '<div class="comparativo">' +
+        '<span>Proposta montada sobre o <b>valor de tabela</b> de ' + moeda(S.precoTabela) + '.</span>' +
+      '</div>'
+    : '';
+
+  $('saida').innerHTML =
+    '<div class="faixa-livre">' +
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14V3.2M4 3.2h7.4l-1.2 2.4 1.2 2.4H4"/></svg>' +
+      '<span><b>Proposta livre</b> — fora das condições fixas dos três planos. Você define as ' +
+      'condições e o sistema recalcula ' + ({parcela:'a parcela',entrada:'a entrada',prazo:'o prazo'}[S.ajusta]) +
+      ' para a conta fechar.</span>' +
+    '</div>' +
+    '<div class="destaque">' +
+      '<div class="r">Parcela mensal</div>' +
+      '<div class="v">' + (pa ? moeda(pa) : '—') + '</div>' +
+      '<div class="sub">' + S.lPz + ' parcelas' +
+        (anuais ? ' · <b>' + S.lAnQtd + ' × ' + moeda(S.lAnVal) + '</b> de reforço anual' : ' · sem reforço anual') +
+      '</div>' +
+    '</div>' +
+    bal +
+    '<div class="linhas" style="margin-top:14px">' +
+      linha('Valor da proposta', moeda(S.preco), S.precoTabela && !abaixo ? 'valor de tabela' : 'definido por você') +
+      linha('Entrada', moeda(S.lEnt), S.preco ? Math.round(S.lEnt/S.preco*100) + '% do valor' : '') +
+      (anuais ? linha('Parcelas anuais', moeda(anuais), S.lAnQtd + ' × ' + moeda(S.lAnVal))
+              : linha('Parcelas anuais', '—', 'sem reforço anual')) +
+      linha('Saldo em ' + S.lPz + ' parcelas', moeda(pa*S.lPz), moeda(pa) + ' por mês') +
+      '<div class="li total"><span class="a">Total pago</span><span class="b">' + moeda(total) +
+        (i>0 ? '<small>com juros de ' + f2.format(i*100) + '% a.m.</small>' : '<small>sem juros</small>') +
+      '</span></div>' +
+    '</div>' +
+    comp +
+    blocoOficial();
+
+  ultimoResumo = fecha
+    ? resumoTexto({prazo:S.lPz, desc:0, ent:S.lEnt, anQtd:S.lAnQtd, anVal:S.lAnVal,
+                   parcela:pa, pd:S.preco, total, livre:true})
+    : '';
+}
+
+/* ------------------------------ copiar ------------------------------ */
+function resumoTexto(o){
+  const cab = $('simSub').textContent;
+  return 'Garden Resort Residence — simulação' + (o.livre ? ' (proposta livre)' : '') + '\n' + cab + '\n' +
+    (o.livre ? '' : 'Plano: ' + o.nome + '\n') +
+    'Valor do lote: ' + moeda(S.preco) +
+      (o.desc ? ' (desconto de ' + Math.round(o.desc*100) + '%: ' + moeda(o.pd) + ')' : '') + '\n' +
+    'Entrada: ' + moeda(o.ent) + '\n' +
+    (o.anQtd ? 'Parcelas anuais: ' + o.anQtd + ' × ' + moeda(o.anVal) + '\n' : '') +
+    'Parcelas mensais: ' + o.prazo + ' × ' + moeda(o.parcela) + '\n' +
+    'Total: ' + moeda(o.total) + (S.juros>0 ? ' (juros de ' + f2.format(S.juros*100) + '% a.m.)' : ' (sem juros)') + '\n' +
+    'Simulação de referência, não constitui proposta comercial.';
+}
+$('btCopiar').onclick = () => {
+  if(!ultimoResumo) return;
+  const ok = () => { $('btCopiar').textContent='Copiado'; setTimeout(()=>$('btCopiar').textContent='Copiar resumo',1600); };
+  if(navigator.clipboard) navigator.clipboard.writeText(ultimoResumo).then(ok, fallback);
+  else fallback();
+  function fallback(){
+    const t=document.createElement('textarea'); t.value=ultimoResumo; document.body.appendChild(t);
+    t.select(); try{ document.execCommand('copy'); ok(); }catch(_){ }
+    t.remove();
+  }
+};
+
+/* ============================== boot ============================== */
+montarFiltro();
+pintar();
+medir();
+addEventListener('resize', medir);
+/* a opacidade de entrada mora na PLACA (.visor.pronta), nao na cena */
+$('planta').addEventListener('load', () => visor.classList.add('pronta'));
+if($('planta').complete) visor.classList.add('pronta');
+document.addEventListener('fullscreenchange', () => setTimeout(medir,60));
+</script>
+</body>
+</html>
