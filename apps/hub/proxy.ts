@@ -131,6 +131,26 @@ function guardApi(request: NextRequest, pathname: string) {
       return NextResponse.next();
     }
 
+    // INCORPORADOR (o dono do loteamento): mesmo alivio, mesmo racional. Conta propria, cookie
+    // httpOnly assinado ("apolo_inc", = INCORPORADOR_COOKIE de lib/apolo/incorporador/sessao).
+    // A rota valida o cookie por dentro e, o que mais importa, o ESCOPO (quais empreendimentos)
+    // sai de dentro do token assinado, nunca da query string. Literal de proposito: este arquivo
+    // roda no runtime de middleware e sessao.ts puxa node:crypto.
+    // ⚠️ So vale sob /api/incorporador/. Nenhuma rota do Apolo interno responde a este cookie.
+    const temCookieIncorporador = Boolean(
+      request.cookies.get("apolo_inc")?.value,
+    );
+    if (pathname.startsWith("/api/incorporador/") && temCookieIncorporador) {
+      return NextResponse.next();
+    }
+
+    // A porta de entrada em si (login/logout) nasce sem cookie nenhum: precisa ser publica, como
+    // a do operador do evento. Ela se protege por dentro (e-mail + senha em scrypt, resposta e
+    // tempo iguais para e-mail inexistente e senha errada).
+    if (pathname === "/api/incorporador/sessao") {
+      return NextResponse.next();
+    }
+
     return NextResponse.json({ error: "Sessao ausente." }, { status: 401 });
   }
 

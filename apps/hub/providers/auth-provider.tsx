@@ -118,8 +118,17 @@ export function AuthProvider({
   // há sessão. Sem dado do hub exposto: o /evento só fala com as rotas /api/prometeu/*.
   const isEventoRoute =
     pathname === "/evento" || (pathname?.startsWith("/evento/") ?? false);
+  // Portal do INCORPORADOR (/incorporador/<slug>): o dono do loteamento tem conta própria, não é
+  // usuário do hub (decisão do Lucas, 10/08 — ver lib/apolo/incorporador/sessao.ts). Mesmo caso do
+  // /evento: se cair no redirect para /login, o cliente vê a tela do Panteon em vez da porta com a
+  // marca dele. Quem valida a sessão é o servidor, pelo cookie assinado, dentro de cada rota.
+  const isIncorporadorRoute = pathname?.startsWith("/incorporador") ?? false;
   const isAuthBypassRoute =
-    isLoginRoute || isPublicChronosRoute || isPublicPageRoute || isEventoRoute;
+    isLoginRoute ||
+    isPublicChronosRoute ||
+    isPublicPageRoute ||
+    isEventoRoute ||
+    isIncorporadorRoute;
   const hubUser = useMemo(
     () =>
       authState.user ? mapAuthUserToHubUserContext(authState.user) : null,
