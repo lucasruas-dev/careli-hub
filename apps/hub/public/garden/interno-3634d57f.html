@@ -319,6 +319,14 @@ body.filtrando{--a-fill:.56}
 .etiq .e1 i{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
 .etiq .e2{font-size:11.5px;color:var(--txt3);margin-top:2px;white-space:nowrap}
 .etiq .e3{font-size:11.5px;color:var(--txt2);margin-top:1px;white-space:nowrap}
+/* comprador: só aparece quando o lote tem nome (é a tela interna). Fica atrás de um fio e em
+   caixa menor porque é dado de PESSOA, não do lote. */
+.etiq .e4{
+  display:none;font-size:11px;color:var(--txt3);white-space:nowrap;
+  margin-top:5px;padding-top:5px;border-top:1px solid var(--linha);
+}
+.etiq .e4.on{display:block}
+.etiq .e4 b{font-weight:600;color:var(--txt2)}
 
 .zoom{
   position:absolute;right:20px;bottom:20px;z-index:40;display:flex;flex-direction:column;
@@ -993,6 +1001,7 @@ body.macroOff{grid-template-columns:54px 34px minmax(0,1fr) 340px}
   <div class="e1"><i id="etI"></i><span id="etT">Quadra 00 · Lote 00</span></div>
   <div class="e2" id="etA"></div>
   <div class="e3" id="etV"></div>
+  <div class="e4" id="etC"></div>
 </div>
 <div class="perf" id="perf"></div>
 <div class="scrim" id="scrim"></div>
@@ -2005,6 +2014,11 @@ elSvgHit.addEventListener('pointermove',e=>{
   $('etT').textContent=L.rot;
   $('etA').textContent=fA.format(L.area)+' m² · '+NOME[L.sit];
   $('etV').textContent = L.valor ? moeda(L.valor)+'  ·  '+moeda2(L.m2)+'/m²' : 'preço não informado';
+  /* pedido do Lucas (10/08): no lote que já tem dono, a etiqueta diz QUEM é. Nem todo
+     reservado/vendido tem nome no C2X, então a linha só aparece quando existe. */
+  const dono = (L.cli||'').trim();
+  $('etC').innerHTML = dono ? 'Comprador <b>'+esc(dono)+'</b>' : '';
+  $('etC').classList.toggle('on', !!dono);
   const w=elEtiq.offsetWidth||150, h=elEtiq.offsetHeight||46;
   let x=e.clientX+16, y=e.clientY+16;
   if(x+w>innerWidth-8) x=e.clientX-w-14;
