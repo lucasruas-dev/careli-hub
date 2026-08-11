@@ -680,6 +680,161 @@ table.dados tbody tr.sel td{background:rgb(37 99 235 / .17)}
 .s-legal{font-size:11px;color:var(--txt4);line-height:1.5}
 .s-legal b{color:var(--txt3);font-weight:600}
 
+/* ==================================================================
+   VISTA OFICIAL — o que o popup mostra ao ABRIR (Lucas, 11/08).
+   Antes o corretor caia em "parto da parcela do cliente" e a tabela
+   oficial ficava no pe da saida, como referencia. Inverteu: a tabela
+   e a tela, e o resto virou "Proposta Personalizada".
+
+   O que manda aqui e o VALOR DA UNIDADE e a PARCELA MENSAL. Todo o
+   resto do cartao e coadjuvante, inclusive os campos editaveis.
+   ================================================================== */
+.of{padding:18px 20px 22px;overflow:auto;min-height:0;background:var(--canvas)}
+
+/* a faixa da unidade: o numero que o cliente pergunta primeiro */
+.of-unid{display:flex;align-items:flex-end;gap:18px;flex-wrap:wrap;
+  background:var(--base);border:1px solid var(--linha);border-radius:10px;padding:15px 18px}
+.of-unid .of-r{font-size:10px;font-weight:600;color:var(--txt4);letter-spacing:.05em;text-transform:uppercase}
+.of-unid .of-v{font-size:33px;font-weight:600;letter-spacing:-.03em;line-height:1.04;margin-top:3px;color:var(--txt)}
+.of-unid .of-meta{margin-left:auto;text-align:right;font-size:11.5px;color:var(--txt3);line-height:1.6}
+.of-unid .of-meta b{color:var(--txt2);font-weight:600}
+.of-unid .of-edit{margin-top:6px}
+.of-unid .s-inp{width:190px}
+
+.of-tit{margin:20px 0 11px;display:flex;align-items:baseline;gap:9px;flex-wrap:wrap}
+.of-tit h4{font-size:12.5px;font-weight:600;color:var(--txt)}
+.of-tit span{font-size:11.5px;color:var(--txt4);line-height:1.5}
+
+/* ---- o cartao de plano ---- */
+.of-planos{display:grid;gap:11px}
+.of-pl{background:var(--base);border:1px solid var(--linha);border-radius:10px;overflow:hidden;
+  transition:border-color .12s,box-shadow .12s}
+.of-pl.of-aberto{border-color:color-mix(in srgb,var(--foco) 50%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--foco) 12%,transparent)}
+.of-pl.of-quebrado{border-color:color-mix(in srgb,var(--dang) 45%,transparent)}
+
+.of-cab{display:flex;align-items:center;gap:18px;padding:13px 16px;cursor:pointer;width:100%;text-align:left}
+.of-cab:hover{background:rgb(255 255 255 / .022)}
+.of-nome{min-width:0;flex:1}
+.of-nome b{display:block;font-size:13.5px;font-weight:600;color:var(--txt)}
+.of-nome small{display:block;font-size:10.5px;color:var(--txt4);margin-top:2px;line-height:1.45}
+
+/* AS DUAS COLUNAS DE VALOR. Largura fixa, e nao "o que sobrar": e o que faz o
+   R$ de um cartao ficar exatamente embaixo do R$ do cartao de cima. Sem isso
+   cada linha alinha pelo tamanho do proprio texto e a coluna serpenteia.
+   Os rotulos sao BLOCO: como span inline eles grudavam no numero. */
+.of-col{flex:none;text-align:right}
+.of-col .of-r{display:block;font-size:9.5px;margin-bottom:2px}
+.of-col .of-v{display:block;font-variant-numeric:tabular-nums;letter-spacing:-.02em;color:var(--txt)}
+.of-lote{width:132px}
+.of-lote .of-v{font-size:16px;font-weight:600;line-height:1.2}
+.of-lote .of-de{display:block;font-size:10px;color:var(--txt4);margin-top:2px;line-height:1.3;
+  font-variant-numeric:tabular-nums}
+.of-pa{width:158px}
+.of-pa .of-v{font-size:23px;font-weight:600;line-height:1.14}
+.of-pa .of-v small{font-size:11px;font-weight:400;color:var(--txt4);letter-spacing:0}
+.of-seta{flex:none;color:var(--txt4);transition:transform .15s}
+.of-pl.of-aberto .of-seta{transform:rotate(180deg)}
+
+/* ---- o corpo editavel, so quando o plano esta aberto ---- */
+.of-corpo{display:none;padding:0 16px 15px;border-top:1px solid var(--linha)}
+.of-pl.of-aberto .of-corpo{display:block}
+.of-campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:11px;margin-top:14px}
+.of-campo .s-lb{margin-bottom:5px}
+
+/* ---- o placar: e ele que decide se a proposta pode sair ---- */
+.of-placar{display:flex;align-items:center;gap:11px;margin-top:14px;padding:11px 13px;border-radius:8px;
+  font-size:12px;line-height:1.45;
+  background:color-mix(in srgb,var(--ok) 12%,var(--base));color:var(--ok-t);
+  border:1px solid color-mix(in srgb,var(--ok) 30%,transparent)}
+.of-placar.of-falta{background:color-mix(in srgb,var(--dang) 12%,var(--base));color:var(--dang-t);
+  border-color:color-mix(in srgb,var(--dang) 30%,transparent)}
+.of-placar svg{flex:none}
+.of-placar b{font-weight:600;font-variant-numeric:tabular-nums}
+.of-placar .of-conta{margin-left:auto;text-align:right;font-size:10.5px;opacity:.82;
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+
+.of-acoes{display:flex;align-items:center;gap:9px;margin-top:13px;flex-wrap:wrap}
+.of-ger{height:36px;padding:0 17px;border-radius:7px;font-size:12.5px;font-weight:600;
+  background:var(--foco);color:#fff;border:1px solid var(--foco)}
+.of-ger:hover:not(:disabled){background:color-mix(in srgb,var(--foco) 86%,#fff)}
+.of-ger:disabled{background:var(--subtle);border-color:var(--linha);color:var(--txt4);cursor:default}
+.of-rest{height:36px;padding:0 13px;border-radius:7px;font-size:12px;color:var(--txt3);
+  background:var(--raised);border:1px solid var(--linha)}
+.of-rest:hover{color:var(--txt);border-color:var(--linha-forte)}
+.of-nota{font-size:11px;color:var(--txt4);line-height:1.5;flex:1;min-width:180px}
+
+/* ---- a linha do a vista, que nao tem o que editar ---- */
+.of-avista{display:flex;align-items:center;gap:18px;padding:13px 16px;
+  background:var(--base);border:1px solid var(--linha);border-radius:10px}
+/* o à vista nao tem seta: sem este vao ele desalinha das linhas de cima */
+.of-avista .of-vao{flex:none;width:15px}
+
+/* os campos editaveis usam separador de milhar, como todo valor da tela.
+   "34400" e "3281" pedem para alguem contar zero na hora de fechar negocio. */
+.of-campos .s-inp input{font-variant-numeric:tabular-nums}
+
+/* ---- estado sem preco: nada a mostrar ate alguem digitar o valor ---- */
+.of-semvalor{margin-top:20px;padding:26px 18px;text-align:center;border-radius:10px;
+  border:1px dashed var(--linha-forte);color:var(--txt4);font-size:12.5px;line-height:1.6}
+
+/* ==================================================================
+   PRE-VISUALIZACAO DA PROPOSTA (Lucas, 11/08: "ver antes de gerar")
+   Folha branca de propósito, mesmo na tela escura: e um documento, e e
+   assim que ele vai sair impresso e no PDF. Validar o layout aqui poupa
+   uma volta inteira depois, quando o PDF ja estiver montado.
+   ================================================================== */
+.pv-folha{max-width:820px;margin:0 auto;background:#fff;color:#1a1d21;border-radius:6px;
+  padding:44px 52px 34px;box-shadow:0 10px 34px rgb(0 0 0 / .4);
+  font-family:ui-sans-serif,system-ui,"Segoe UI",Roboto,sans-serif}
+.pv-topo{display:flex;align-items:center;gap:26px;padding-bottom:20px;border-bottom:2px solid #1a1d21}
+.pv-topo img{height:38px;width:auto;object-fit:contain}
+.pv-topo .pv-marcas{margin-left:auto;display:flex;align-items:center;gap:20px}
+.pv-tipo{font-size:10px;font-weight:700;letter-spacing:.18em;text-transform:uppercase;color:#6b7280}
+.pv-h1{font-size:23px;font-weight:700;letter-spacing:-.02em;margin-top:3px;color:#111}
+
+.pv-sec{margin-top:26px}
+.pv-sec h5{font-size:9.5px;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:#6b7280;
+  padding-bottom:6px;border-bottom:1px solid #e3e6ea;margin-bottom:11px}
+.pv-par{display:grid;grid-template-columns:190px minmax(0,1fr);gap:5px 16px;font-size:13px;line-height:1.65}
+.pv-par dt{color:#6b7280}
+.pv-par dd{color:#111;font-weight:600;font-variant-numeric:tabular-nums}
+
+.pv-tab{width:100%;border-collapse:collapse;font-size:13px}
+.pv-tab th{text-align:left;font-size:9.5px;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+  color:#6b7280;padding:0 0 7px;border-bottom:1px solid #e3e6ea}
+.pv-tab th:last-child,.pv-tab td:last-child{text-align:right}
+.pv-tab td{padding:9px 0;border-bottom:1px solid #eef0f3;color:#111;font-variant-numeric:tabular-nums}
+.pv-tab td:first-child{color:#4b5563;font-weight:400}
+.pv-tab tr.pv-somatorio td{border-bottom:0;border-top:2px solid #1a1d21;font-weight:700;font-size:15px;padding-top:11px}
+
+.pv-juri{margin-top:26px;padding:16px 18px;background:#f6f7f9;border-radius:6px;
+  font-size:11.5px;line-height:1.72;color:#374151}
+.pv-juri b{color:#111;font-weight:600}
+.pv-juri p{margin-bottom:9px}
+.pv-juri p:last-child{margin-bottom:0}
+.pv-pend{background:#fff6e5;border:1px solid #f0d9a8;border-radius:5px;padding:9px 11px;color:#7a5b12}
+
+/* ---- assinatura ----
+   A linha nasce preenchida com quem foi identificado: quem assina e quem foi
+   qualificado no topo do documento, e digitar o nome duas vezes e como um
+   documento arruma divergencia. Enquanto ninguem foi identificado, o campo
+   aparece pontilhado, para a pre-visualizacao nao parecer um papel pronto. */
+.pv-assina{margin-top:34px}
+.pv-data{font-size:13px;color:#111;margin-bottom:30px}
+.pv-linhas{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:34px}
+.pv-as{text-align:center}
+.pv-as .pv-risco{border-top:1px solid #1a1d21;margin-bottom:7px}
+.pv-as.pv-vazio .pv-risco{border-top-style:dotted;border-top-color:#9aa3ad}
+.pv-as b{display:block;font-size:12.5px;font-weight:600;color:#111;line-height:1.4}
+.pv-as span{display:block;font-size:10.5px;color:#6b7280;margin-top:2px;
+  font-variant-numeric:tabular-nums}
+.pv-as.pv-vazio b{color:#9aa3ad;font-weight:400;font-style:italic}
+
+.pv-pe{margin-top:24px;padding-top:14px;border-top:1px solid #e3e6ea;
+  display:flex;align-items:center;gap:14px;font-size:10.5px;color:#6b7280;line-height:1.6}
+.pv-pe img{height:19px;width:auto;opacity:.8;margin-left:auto}
+
 /* a mesa de duas colunas nao cabe em placa estreita: vira uma coluna so e
    o scroll volta para o corpo do popup. */
 @media (max-width:1240px){
@@ -1078,7 +1233,9 @@ body.macroOff{grid-template-columns:54px 34px minmax(0,1fr) 340px}
       <div class="sb" id="plSub">Garden Resort Residence</div>
     </div>
     <div class="phAcoes">
-      <div class="s-seg" id="segModo">
+      <!-- O segmento de modos saiu daqui (Lucas, 11/08): a tela abre na tabela
+           oficial e os modos passaram a viver dentro da Proposta Personalizada. -->
+      <div class="s-seg" id="segModo" style="display:none">
         <button class="on" data-m="parcela">Parto da parcela do cliente</button>
         <button data-m="montar">Eu escolho as condições</button>
       </div>
@@ -1087,7 +1244,11 @@ body.macroOff{grid-template-columns:54px 34px minmax(0,1fr) 340px}
   </div>
 
   <div class="pb">
-    <div class="s-mesa">
+    <!-- ============ VISTA 1 (padrão ao abrir): a tabela oficial ============ -->
+    <div class="of" id="ofMesa"></div>
+
+    <!-- ============ VISTA 2: a proposta personalizada ============ -->
+    <div class="s-mesa" id="persMesa" style="display:none">
 
       <!-- ================= COLUNA 1: os controles ================= -->
       <div class="s-ctrl" id="simCtrl">
@@ -1202,11 +1363,15 @@ body.macroOff{grid-template-columns:54px 34px minmax(0,1fr) 340px}
 
   <div class="pf">
     <span class="s-legal" style="flex:1">
-      Conta feita nesta tela, offline · fonte “Plano comercial - Garden.xlsx” ·
-      <b>não é proposta oficial</b>: confirme com a diretoria comercial antes de formalizar.
+      Conta feita nesta tela · fonte “Plano comercial - Garden.xlsx” ·
+      <b>a proposta só fecha somando o valor da unidade</b>.
     </span>
-    <button class="bt" id="btCopiar">Copiar resumo</button>
-    <button class="bt pri" id="btProposta">Gerar proposta com a CACÁ</button>
+    <!-- rodapé da VISTA OFICIAL: um botão só, como o Lucas pediu -->
+    <button class="bt pri" id="btPersonalizada">Proposta Personalizada</button>
+    <!-- rodapé da VISTA PERSONALIZADA -->
+    <button class="bt" id="btVoltarOficial" style="display:none">Voltar à tabela oficial</button>
+    <button class="bt" id="btCopiar" style="display:none">Copiar resumo</button>
+    <button class="bt pri" id="btProposta" style="display:none">Visualizar proposta</button>
   </div>
 </section>
 
@@ -2209,34 +2374,44 @@ $('tblwrap').addEventListener('click',e=>{
       anuais, prazo e parcela como quiser; a tela recalcula UMA variavel
       (a que o corretor escolher) para a conta fechar no valor do lote.
 
-   A TABELA COMERCIAL continua sendo a OFICIAL do "Plano comercial -
-   Garden.xlsx" — nao a politica de referencia da vitrine publica:
-     Plano       Desconto  Entrada  Anual     Parcelamento
-     Normal      0%        8%       6 x 20k   84
-     Curto       5%        20%      4 x 25k   48
-     Investidor  10%       40%      3 x 30k   36
+   TABELA COMERCIAL — revisada pelo Lucas em 11/08/2026, depois da reunião
+   com a Cecílio Rocha. O "Curto" virou "Investidor Parcelado":
+     Plano                 Desconto  Entrada  Anual     Parcelamento  Correção
+     Normal                0%        8%       6 x 20k   84            IPCA + 6%
+     Investidor Parcelado  8%        8% (mín) 4 x 25k   até 84        IPCA + 6%
+     Investidor            12%       40%      3 x 30k   36            só IPCA
+
+   ⚠️ POR QUE CADA PLANO TEM `id`. Antes o plano era identificado pelo PRAZO:
+   `planoDe(84)` devolvia o único plano de 84 meses. Com o Investidor Parcelado
+   indo para 84, passaram a existir DOIS planos com o mesmo prazo, e a busca por
+   meses devolveria sempre o primeiro — o corretor escolheria Investidor
+   Parcelado e levaria o desconto do Normal (zero). O prazo continua editável;
+   quem diz qual plano é, agora, o id.
 
    Matematica (juros compostos ja preparados; hoje a taxa e 0):
      PD  = preco x (1 - desconto)
      PD  = entrada + anual x fn(n,i) + parcela x fa(T,i)
    ============================================================ */
 const PLANOS=[
-  {nome:'Normal',     desc:0.00, ent:0.08, anQtd:6, anVal:20000, prazo:84},
-  {nome:'Curto',      desc:0.05, ent:0.20, anQtd:4, anVal:25000, prazo:48},
-  {nome:'Investidor', desc:0.10, ent:0.40, anQtd:3, anVal:30000, prazo:36}
+  {id:'normal',  nome:'Normal',               desc:0.00, ent:0.08, anQtd:6, anVal:20000, prazo:84, correcao:'ipca6'},
+  {id:'invparc', nome:'Investidor Parcelado', desc:0.08, ent:0.08, anQtd:4, anVal:25000, prazo:84, correcao:'ipca6'},
+  {id:'invest',  nome:'Investidor',           desc:0.12, ent:0.40, anQtd:3, anVal:30000, prazo:36, correcao:'ipca'}
 ];
 /* a politica de busca do simulador SAI dos planos oficiais: nada aqui e
    inventado. entradaTeto e so uma trava de busca (entrada fora da
    realidade), nao uma promessa comercial. */
 const POLITICA={
   jurosAM:0,
-  prazos:PLANOS.map(p=>({meses:p.prazo,desc:p.desc,entMin:p.ent,nome:p.nome,anQtd:p.anQtd,anVal:p.anVal}))
+  prazos:PLANOS.map(p=>({id:p.id,meses:p.prazo,desc:p.desc,entMin:p.ent,nome:p.nome,anQtd:p.anQtd,anVal:p.anVal}))
                .sort((a,b)=>a.meses-b.meses),
   anuaisValores:[0,10000,15000,20000,25000,30000],
   entradaTeto:0.60
 };
 const PRAZO_MAX_LIVRE=180;
-const planoDe=m=>POLITICA.prazos.find(p=>p.meses===m);
+/* por id (o certo) com queda para o prazo, que ainda chega de composicao vinda
+   do otimizador. Nunca devolve undefined: o chamador espera um plano. */
+const planoPorId=id=>POLITICA.prazos.find(p=>p.id===id);
+const planoDe=(id,m)=>planoPorId(id)||POLITICA.prazos.find(p=>p.meses===m)||POLITICA.prazos[0];
 
 let modo='parcela';   /* 'parcela' | 'montar' */
 let livre=false;      /* a flag */
@@ -2244,7 +2419,7 @@ let loteSim=null;     /* o lote que abriu o simulador */
 
 const SIM={
   preco:0, precoTabela:0, juros:POLITICA.jurosAM,
-  /* modo escolher */ prazo:POLITICA.prazos[POLITICA.prazos.length-1].meses, entrada:0, anQtd:0, anVal:20000,
+  /* modo escolher */ planoId:'normal', prazo:84, entrada:0, anQtd:0, anVal:20000,
   /* modo parcela  */ alvo:3000, entMax:null, anMax:null,
   /* modo livre    */ ajusta:'parcela', lEnt:0, lAnQtd:0, lAnVal:20000, lPz:60, lPa:0, lErro:null
 };
@@ -2317,6 +2492,10 @@ function abrirPlano(){
   semearLivre();
   espelhar();
   calcular();
+  /* o popup SEMPRE abre na tabela oficial, e a edicao do lote anterior nao
+     acompanha o lote novo: cada unidade comeca do plano de tabela. */
+  EDIT=[]; ofAberto=null;
+  trocarVista('oficial');
 }
 /* uma parcela alvo que com certeza tem resposta: o plano mais longo, com a
    entrada de referencia e as anuais de tabela dele. */
@@ -2335,12 +2514,14 @@ function semearLivre(){
 }
 
 /* ============================== controles ============================== */
-/* os cartoes de prazo SAO os planos oficiais */
+/* os cartoes de prazo SAO os planos oficiais. Marcados por ID, nao por meses:
+   Normal e Investidor Parcelado tem os mesmos 84 e ficariam indistinguiveis. */
 $('cPrazos').innerHTML=POLITICA.prazos.map(p=>
-  '<button class="s-pz" data-m="'+p.meses+'"><b>'+p.meses+'×</b><small>'+p.nome+'</small><small>'+
+  '<button class="s-pz" data-id="'+p.id+'" data-m="'+p.meses+'"><b>'+p.meses+'×</b><small>'+p.nome+'</small><small>'+
   (p.desc ? '−'+Math.round(p.desc*100)+'%' : 'tabela')+'</small></button>').join('');
 $('cPrazos').querySelectorAll('.s-pz').forEach(b=>{
   b.onclick=()=>{
+    SIM.planoId=b.dataset.id;
     SIM.prazo=+b.dataset.m;
     const max=Math.floor(SIM.prazo/12);
     if(SIM.anQtd>max) SIM.anQtd=max;
@@ -2382,7 +2563,7 @@ function espelhar(){
   chips('chipsAlvo',ALVOS,SIM.alvo,v=>moeda(v)+'/mês',v=>{ SIM.alvo=v; });
 
   /* modo 2 */
-  $('cPrazos').querySelectorAll('.s-pz').forEach(b=>b.classList.toggle('on',+b.dataset.m===SIM.prazo));
+  $('cPrazos').querySelectorAll('.s-pz').forEach(b=>b.classList.toggle('on',b.dataset.id===SIM.planoId));
   $('cEntrada').value=fI.format(Math.round(SIM.entrada));
   $('rgEntrada').value=SIM.preco?Math.min(60,Math.round(SIM.entrada/SIM.preco*100)):0;
   $('ajEntrada').textContent=SIM.preco?Math.round(SIM.entrada/SIM.preco*100)+'% do valor':'';
@@ -2558,7 +2739,7 @@ function blocoOficial(){
   if(!preco) return '';
   const linhas=PLANOS.map((p,k)=>{
     const c=condicoes(preco,p,i);
-    const ativa=!livre&&modo==='montar'&&SIM.prazo===p.prazo;
+    const ativa=!livre&&modo==='montar'&&SIM.planoId===p.id;
     return '<div class="s-li s-clique'+(ativa?' s-on':'')+'" data-pl="'+k+'" '+
       'title="levar o plano '+p.nome+' para os controles">'+
       '<span class="s-a">'+p.nome+'<small>'+
@@ -2575,12 +2756,464 @@ function blocoOficial(){
       '<span class="s-b">'+moeda(preco*(1-melhor.desc))+'</span></div>'+
   '</div>';
 }
+/* ==================================================================
+   VISTA OFICIAL — a tela que o popup abre (Lucas, 11/08)
+   ==================================================================
+   REGRA QUE MANDA AQUI: a proposta so sai se a composicao FECHAR o valor
+   da unidade. O operador edita entrada, anuais, prazo e ate a parcela; o
+   placar mostra quanto falta e o botao de gerar so liga quando zera.
+
+   QUAL VALOR TEM QUE FECHAR. Nao e o preco de tabela cru: e o preco do
+   PLANO, ou seja tabela menos o desconto oficial dele (Investidor Parcelado
+   8%, Investidor 12%). Travar na tabela cheia tornaria impossivel vender pelo
+   proprio plano oficial da planilha. Os dois numeros aparecem no cartao
+   para ninguem confundir desconto de tabela com furo de conta.
+
+   POR QUE VALOR PRESENTE E NAO SOMA NOMINAL. Com juros, R$ 1 daqui a 84
+   meses nao paga R$ 1 de hoje. `vpDe` traz tudo para hoje, que e a unica
+   base em que "fechou" quer dizer alguma coisa. Hoje o Garden esta com
+   juros 0 e os dois numeros coincidem, mas no dia em que o dono cadastrar
+   a taxa a conta continua certa sozinha.
+
+   A edicao vive em EDIT e NAO altera PLANOS: o ajuste vale so nesta
+   proposta, e a tabela oficial do empreendimento fica intacta. */
+
+/* tolerancia de fechamento: um lote de R$ 510 mil dividido em 84 parcelas
+   deixa centavos de sobra em qualquer arredondamento. Exigir igualdade
+   exata reprovaria composicao correta. */
+const OF_TOL=1.00;
+let vista='oficial';            /* 'oficial' | 'personalizada' */
+let ofIdent=false;              /* a tela de identificacao esta no ar */
+let ofAberto=null;              /* indice do plano expandido, ou null */
+let EDIT=[];                    /* edicao por plano, so desta proposta */
+
+function ofAlvo(p){ return (SIM.precoTabela||SIM.preco)*(1-p.desc); }
+
+/* CORREÇÃO MONETÁRIA, por plano (Lucas, 11/08). O Investidor é só IPCA; os
+   demais levam IPCA mais 6% ao ano. Isto NÃO entra na conta do simulador: o
+   plano continua fechando o valor nominal da unidade. É cláusula do contrato,
+   e o que o sistema faz é dizer qual é, no cartão e na proposta. */
+const CORRECAO={
+  ipca:  {curto:'IPCA', longo:'reajuste anual pela variação acumulada do IPCA/IBGE'},
+  ipca6: {curto:'IPCA + 6% a.a.', longo:'reajuste anual pela variação acumulada do IPCA/IBGE, acrescida de juros de 6% ao ano'}
+};
+const correcaoDe=p=>CORRECAO[p&&p.correcao]||CORRECAO.ipca6;
+/* a composicao guarda o id do plano; a personalizada guarda o dela em SIM */
+const correcaoDaComp=c=>correcaoDe(PLANOS.find(p=>p.id===(c&&c.planoId)));
+
+/* devolve a edicao do plano k, semeada com as condicoes oficiais na
+   primeira vez que alguem abre aquele cartao. */
+function ofEdit(k){
+  if(!EDIT[k]){
+    const p=PLANOS[k], c=condicoes(ofAlvo(p)/(1-p.desc)||0,p,SIM.juros);
+    EDIT[k]={ent:Math.round(c.ent), anQtd:p.anQtd, anVal:p.anVal, prazo:p.prazo,
+             parcela:Math.round(c.parcela*100)/100, tocouParcela:false};
+  }
+  return EDIT[k];
+}
+function ofResetar(k){ EDIT[k]=null; ofEdit(k); }
+
+/* o balanco do cartao: o que a composicao paga, contra o que precisa pagar */
+function ofBalanco(k){
+  const p=PLANOS[k], e=ofEdit(k), alvo=ofAlvo(p);
+  /* enquanto ninguem mexe na parcela, ela e DERIVADA e a conta fecha por
+     construcao. Mexeu, passa a valer o que foi digitado e o placar acusa. */
+  const parcela=e.tocouParcela ? e.parcela
+    : calcParcela(alvo,e.ent,e.anQtd,e.anVal,e.prazo,SIM.juros);
+  const pago=vpDe(e.ent,e.anQtd,e.anVal,e.prazo,parcela,SIM.juros);
+  const nominal=e.ent+e.anQtd*e.anVal+parcela*e.prazo;
+  const dif=pago-alvo;
+  return {alvo,parcela,pago,nominal,dif,fecha:Math.abs(dif)<=OF_TOL};
+}
+
+const OF_OK='<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 4.5 6.5 12 2.5 8.2"/></svg>';
+const OF_NAO='<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M8 4v5M8 11.4v.2"/><circle cx="8" cy="8" r="6.3"/></svg>';
+const OF_SETA='<svg class="of-seta" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 6.5 8 10.5l4-4"/></svg>';
+
+/* `mil` liga o separador de milhar. Prazo e quantidade de anuais NAO levam:
+   "84" nao vira "84" com ponto, mas 180 meses viraria "180" e um prazo de
+   1.800 nunca existe. Numero pequeno com separador confunde mais que ajuda. */
+function ofCampo(rot,id,val,pre,pos,mil){
+  return '<div class="of-campo"><div class="s-lb">'+rot+'</div>'+
+    '<div class="s-inp s-pq">'+(pre?'<span class="s-pre">'+pre+'</span>':'')+
+    '<input id="'+id+'" inputmode="numeric" value="'+(mil?fI.format(val):val)+'">'+
+    (pos?'<span class="s-pos">'+pos+'</span>':'')+'</div></div>';
+}
+
+function renderOficial(){
+  const preco=SIM.precoTabela||SIM.preco;
+  const L=loteSim;
+
+  const cabUnidade=
+    '<div class="of-unid">'+
+      '<div><div class="of-r">Valor da unidade</div>'+
+        '<div class="of-v">'+(preco?moeda(preco):'a informar')+'</div>'+
+        (preco?'':'<div class="of-edit"><div class="s-inp s-pq"><span class="s-pre">R$</span>'+
+          '<input id="ofPreco" inputmode="numeric" placeholder="digite o valor"></div></div>')+
+      '</div>'+
+      '<div class="of-meta">'+
+        (L?'<b>'+esc(L.rot)+'</b><br>'+fA.format(L.area)+' m²<br>'+NOME[L.sit]:'nenhum lote selecionado')+
+      '</div>'+
+    '</div>';
+
+  if(!preco){
+    $('ofMesa').innerHTML=cabUnidade+
+      '<div class="of-semvalor">Este lote não tem preço na planilha.<br>'+
+      'Informe o valor da unidade acima para ver os planos.</div>';
+    const ip=$('ofPreco');
+    if(ip) ip.oninput=()=>{ const v=soNum(ip.value); if(v){ SIM.preco=v; SIM.precoTabela=v; EDIT=[]; renderOficial(); } };
+    ofRodape();
+    return;
+  }
+
+  const cartoes=PLANOS.map((p,k)=>{
+    const e=ofEdit(k), b=ofBalanco(k), aberto=ofAberto===k;
+    /* O VALOR DO LOTE JA COM O DESCONTO DO PLANO (Lucas, 11/08). Dizer so
+       "10% de desconto" obriga o corretor a fazer a conta de cabeca na frente
+       do cliente. Aqui ele le o numero pronto, e o preco cheio fica embaixo,
+       menor, para ninguem confundir os dois. */
+    const cab=
+      '<button class="of-cab" data-abre="'+k+'">'+
+        '<span class="of-nome"><b>'+p.nome+'</b><small>'+
+          'entrada '+moeda(e.ent)+' · '+e.anQtd+' × '+moeda(e.anVal)+' · '+e.prazo+' meses'+
+        '</small></span>'+
+        '<span class="of-col of-lote"><span class="of-r">Valor do lote</span>'+
+          '<span class="of-v">'+moeda(b.alvo)+'</span>'+
+          (p.desc?'<span class="of-de">de '+moeda(preco)+' · −'+Math.round(p.desc*100)+'%</span>'
+                 :'<span class="of-de">sem desconto</span>')+
+        '</span>'+
+        '<span class="of-col of-pa"><span class="of-r">Parcela mensal</span>'+
+          '<span class="of-v">'+moeda(b.parcela)+'<small> × '+e.prazo+'</small></span>'+
+          '<span class="of-de">correção: '+correcaoDe(p).curto+'</span></span>'+
+        OF_SETA+
+      '</button>';
+
+    const placar=b.fecha
+      ? '<div class="of-placar">'+OF_OK+'<span>A composição <b>fecha</b> o valor da unidade.</span>'+
+          '<span class="of-conta">'+moeda(b.nominal)+' no total</span></div>'
+      : '<div class="of-placar of-falta">'+OF_NAO+'<span>'+
+          (b.dif<0 ? 'Faltam <b>'+moeda(-b.dif)+'</b> para fechar o valor da unidade.'
+                   : 'A composição passa <b>'+moeda(b.dif)+'</b> do valor da unidade.')+
+          '</span><span class="of-conta">alvo '+moeda(b.alvo)+'</span></div>';
+
+    const corpo=
+      '<div class="of-corpo">'+
+        '<div class="of-campos">'+
+          ofCampo('Entrada','ofE'+k,Math.round(e.ent),'R$','',true)+
+          ofCampo('Qtd. anuais','ofQ'+k,e.anQtd,'','×',false)+
+          ofCampo('Valor da anual','ofA'+k,Math.round(e.anVal),'R$','',true)+
+          ofCampo('Prazo','ofP'+k,e.prazo,'','meses',false)+
+          ofCampo('Parcela mensal','ofM'+k,Math.round(b.parcela),'R$','',true)+
+        '</div>'+
+        placar+
+        '<div class="of-acoes">'+
+          '<button class="of-rest" data-ver="'+k+'"'+(b.fecha?'':' disabled')+'>Visualizar proposta</button>'+
+          '<button class="of-ger" data-ger="'+k+'"'+(b.fecha?'':' disabled')+'>Gerar proposta</button>'+
+          (e.tocouParcela?'<button class="of-rest" data-recalc="'+k+'">Recalcular a parcela</button>':'')+
+          '<button class="of-rest" data-reset="'+k+'">Voltar ao plano oficial</button>'+
+          '<span class="of-nota">Alvo do plano <b>'+moeda(b.alvo)+'</b>'+
+            (p.desc?' (tabela '+moeda(preco)+' menos '+Math.round(p.desc*100)+'%)':'')+
+            '. O ajuste vale só nesta proposta: a tabela do empreendimento não muda.</span>'+
+        '</div>'+
+      '</div>';
+
+    return '<div class="of-pl'+(aberto?' of-aberto':'')+(b.fecha?'':' of-quebrado')+'">'+cab+corpo+'</div>';
+  }).join('');
+
+  const melhor=PLANOS.reduce((a,b)=>b.desc>a.desc?b:a);
+  const avista=
+    '<div class="of-avista">'+
+      '<span class="of-nome"><b>À vista</b><small>melhor desconto de tabela: '+
+        Math.round(melhor.desc*100)+'% (plano '+melhor.nome+')</small></span>'+
+      '<span class="of-col of-lote"><span class="of-r">Valor do lote</span>'+
+        '<span class="of-v">'+moeda(preco*(1-melhor.desc))+'</span>'+
+        '<span class="of-de">de '+moeda(preco)+' · −'+Math.round(melhor.desc*100)+'%</span></span>'+
+      '<span class="of-col of-pa"><span class="of-r">Pagamento</span>'+
+        '<span class="of-v" style="font-size:16px;line-height:1.2">em uma parcela</span></span>'+
+      '<span class="of-vao"></span>'+
+    '</div>';
+
+  $('ofMesa').innerHTML=cabUnidade+
+    '<div class="of-tit"><h4>Tabela oficial do empreendimento, aplicada a este lote</h4>'+
+      '<span>clique num plano para ajustar; a proposta só é liberada quando a conta fecha</span></div>'+
+    '<div class="of-planos">'+cartoes+avista+'</div>';
+
+  ofLigar();
+  ofRodape();
+}
+
+/* ligacoes do cartao: abrir, editar, recalcular, resetar, gerar */
+function ofLigar(){
+  const M=$('ofMesa');
+  M.querySelectorAll('[data-abre]').forEach(b=>{
+    b.onclick=()=>{ const k=+b.dataset.abre; ofAberto = ofAberto===k ? null : k; renderOficial(); };
+  });
+  M.querySelectorAll('[data-reset]').forEach(b=>{
+    b.onclick=()=>{ ofResetar(+b.dataset.reset); renderOficial(); };
+  });
+  M.querySelectorAll('[data-recalc]').forEach(b=>{
+    b.onclick=()=>{ ofEdit(+b.dataset.recalc).tocouParcela=false; renderOficial(); };
+  });
+  M.querySelectorAll('[data-ver]').forEach(b=>{
+    b.onclick=()=>ofVer(ofCompDoCartao(+b.dataset.ver));
+  });
+  M.querySelectorAll('[data-ger]').forEach(b=>{
+    b.onclick=()=>ofGerar(ofCompDoCartao(+b.dataset.ger));
+  });
+
+  if(ofAberto===null) return;
+  const k=ofAberto, e=ofEdit(k);
+  /* O campo so GRAVA ao sair (change): redesenhar o cartao a cada tecla faria o
+     input perder o foco no meio do numero. Mas o separador de milhar entra a
+     cada tecla (input), senao o corretor digita 34400 e so ve "34.400" depois
+     de sair do campo, que e tarde para conferir. */
+  const liga=(id,set,mil)=>{
+    const el=$(id); if(!el) return;
+    if(mil) el.oninput=()=>{ const v=soNum(el.value); el.value = v===null?'':fI.format(v); };
+    el.onchange=()=>{ set(soNum(el.value)||0); renderOficial(); };
+    el.onkeydown=ev=>{ if(ev.key==='Enter') el.blur(); };
+  };
+  liga('ofE'+k, v=>{ e.ent=v; }, true);
+  liga('ofQ'+k, v=>{ e.anQtd=Math.max(0,Math.min(v,Math.floor(e.prazo/12))); }, false);
+  liga('ofA'+k, v=>{ e.anVal=v; }, true);
+  liga('ofP'+k, v=>{ e.prazo=Math.max(1,Math.min(v,PRAZO_MAX_LIVRE));
+                     if(e.anQtd>Math.floor(e.prazo/12)) e.anQtd=Math.floor(e.prazo/12); }, false);
+  liga('ofM'+k, v=>{ e.parcela=v; e.tocouParcela=true; }, true);
+}
+
+/* o rodape muda conforme a vista. Na identificacao ele some inteiro: as ações
+   estão dentro do painel, e um "Proposta Personalizada" ali embaixo convidaria
+   a abandonar a proposta no meio do preenchimento. */
+function ofRodape(){
+  const oficial=vista==='oficial';
+  $('btPersonalizada').style.display = (!ofIdent&&oficial)?'':'none';
+  $('btVoltarOficial').style.display = (!ofIdent&&!oficial)?'':'none';
+  $('btCopiar').style.display        = (!ofIdent&&!oficial)?'':'none';
+  $('btProposta').style.display      = (!ofIdent&&!oficial)?'':'none';
+}
+
+/* ---------------- identificacao: para quem e esta proposta ----------------
+   O Lucas pediu nome e CPF antes de emitir. O CPF nao e enfeite: e ele que
+   liga a proposta a uma pessoa, reserva a unidade e evita duas propostas do
+   mesmo lote para gente diferente. Por isso e conferido de verdade aqui,
+   com digito verificador, e nao so pelo tamanho. */
+function cpfValido(s){
+  const d=String(s).replace(/\D/g,'');
+  if(d.length!==11) return false;
+  if(/^(\d)\1{10}$/.test(d)) return false;        /* 111.111.111-11 e afins */
+  for(let t=9;t<11;t++){
+    let s2=0;
+    for(let i=0;i<t;i++) s2+=parseInt(d[i],10)*((t+1)-i);
+    const dv=((s2*10)%11)%10;
+    if(dv!==parseInt(d[t],10)) return false;
+  }
+  return true;
+}
+function cpfMascara(s){
+  const d=String(s).replace(/\D/g,'').slice(0,11);
+  return d.replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d)/,'$1.$2').replace(/(\d{3})(\d{1,2})$/,'$1-$2');
+}
+
+let propostaDe={nome:'',cpf:''};
+
+/* a composicao que vai virar proposta, no formato que o passo de identificacao
+   entende. Nasce de um cartao da tabela oficial OU da proposta personalizada. */
+function ofCompDoCartao(k){
+  const p=PLANOS[k], e=ofEdit(k), b=ofBalanco(k);
+  return {alvo:b.alvo, anQtd:e.anQtd, anVal:e.anVal, desc:p.desc, ent:e.ent,
+          fecha:b.fecha, nominal:b.nominal, parcela:b.parcela, plano:p.nome,
+          planoId:p.id, prazo:e.prazo};
+}
+
+/* ------------------ pre-visualizacao: a proposta como documento ------------------
+   O Lucas pediu ver antes de gerar. Vale mais do que conferencia: e aqui que o
+   layout do PDF e aprovado, antes de existir PDF nenhum. O que estiver nesta
+   folha e o que sai impresso. */
+const PV_LOGOS='<img src="/garden/logo-cecilio-rocha.png" alt="Cecílio Rocha">'+
+               '<img src="/garden/logo-mmendes.png" alt="M Mendes">';
+
+function pvLinha(a,b){ return '<tr><td>'+a+'</td><td>'+b+'</td></tr>'; }
+
+function ofVer(comp){
+  if(!comp||!comp.fecha) return;
+  const L=loteSim, hoje=new Date();
+  const dia=hoje.toLocaleDateString('pt-BR',{day:'2-digit',month:'long',year:'numeric'});
+
+  ofIdent=true;
+  $('ofMesa').style.display=''; $('persMesa').style.display='none';
+
+  $('ofMesa').innerHTML=
+    '<div class="pv-folha">'+
+      '<div class="pv-topo"><img src="/garden/logo-garden.png" alt="Garden Resort Residence">'+
+        '<div class="pv-marcas">'+PV_LOGOS+'</div></div>'+
+
+      '<div style="margin-top:22px"><div class="pv-tipo">Documento comercial</div>'+
+        '<div class="pv-h1">Proposta de aquisição de unidade</div></div>'+
+
+      '<div class="pv-sec"><h5>Proponente</h5><dl class="pv-par">'+
+        '<dt>Nome</dt><dd>'+(propostaDe.nome?esc(propostaDe.nome):'a identificar na emissão')+'</dd>'+
+        '<dt>CPF</dt><dd>'+(propostaDe.cpf?esc(propostaDe.cpf):'a identificar na emissão')+'</dd>'+
+      '</dl></div>'+
+
+      '<div class="pv-sec"><h5>Unidade</h5><dl class="pv-par">'+
+        '<dt>Empreendimento</dt><dd>Garden Resort Residence</dd>'+
+        '<dt>Quadra e lote</dt><dd>'+(L?esc(L.rot):'não selecionada')+'</dd>'+
+        '<dt>Área</dt><dd>'+(L?fA.format(L.area)+' m²':'—')+'</dd>'+
+        '<dt>Valor de tabela</dt><dd>'+moeda(SIM.precoTabela||SIM.preco)+'</dd>'+
+        (comp.desc?'<dt>Desconto do plano</dt><dd>'+Math.round(comp.desc*100)+'%</dd>':'')+
+        '<dt>Valor desta proposta</dt><dd>'+moeda(comp.alvo)+'</dd>'+
+        '<dt>Correção das parcelas</dt><dd>'+esc(correcaoDaComp(comp).curto)+'</dd>'+
+      '</dl></div>'+
+
+      '<div class="pv-sec"><h5>Condições de pagamento · plano '+esc(comp.plano)+'</h5>'+
+        '<table class="pv-tab"><thead><tr><th>Composição</th><th>Valor</th></tr></thead><tbody>'+
+          pvLinha('Entrada', moeda(comp.ent))+
+          (comp.anQtd?pvLinha(comp.anQtd+' parcelas anuais de '+moeda(comp.anVal),
+                              moeda(comp.anQtd*comp.anVal)):'')+
+          pvLinha(comp.prazo+' parcelas mensais de '+moeda(comp.parcela), moeda(comp.parcela*comp.prazo))+
+          '<tr class="pv-somatorio"><td>Total</td><td>'+moeda(comp.nominal)+'</td></tr>'+
+        '</tbody></table></div>'+
+
+      '<div class="pv-juri">'+
+        '<p>Este documento constitui <b>proposta comercial</b> e não configura contrato de compra e '+
+        'venda, promessa de venda ou reserva definitiva da unidade. A aceitação depende de análise e '+
+        'aprovação da incorporadora, e a formalização se dará exclusivamente por instrumento '+
+        'contratual próprio, firmado entre as partes.</p>'+
+        '<p><b>Correção monetária.</b> As parcelas previstas nesta proposta estarão sujeitas a '+
+        esc(correcaoDaComp(comp).longo)+', na menor periodicidade admitida em lei, na forma do '+
+        'instrumento contratual a ser firmado.</p>'+
+        '<p>Proposta emitida em '+dia+', com validade de 48 horas. Durante esse prazo a unidade '+
+        'permanece reservada em nome do proponente. Vencido o prazo sem a formalização, a unidade '+
+        'retorna automaticamente à condição de disponível.</p>'+
+      '</div>'+
+
+      '<div class="pv-assina">'+
+        '<div class="pv-data">'+dia+'.</div>'+
+        '<div class="pv-linhas">'+
+          '<div class="pv-as'+(propostaDe.nome?'':' pv-vazio')+'"><div class="pv-risco"></div>'+
+            '<b>'+(propostaDe.nome?esc(propostaDe.nome):'nome do proponente')+'</b>'+
+            '<span>'+(propostaDe.cpf?'CPF '+esc(propostaDe.cpf):'CPF a informar')+'</span>'+
+            '<span>Proponente</span></div>'+
+          '<div class="pv-as"><div class="pv-risco"></div>'+
+            '<b>Cecílio Rocha e M Mendes</b>'+
+            '<span>Garden Resort Residence</span>'+
+            '<span>Pela incorporadora</span></div>'+
+        '</div>'+
+      '</div>'+
+
+      '<div class="pv-pe"><span>Garden Resort Residence · Cecílio Rocha e M Mendes<br>'+
+        'Emitido em '+dia+'</span>'+
+        '<img src="/garden/logo-c2x.png" alt="C2X"></div>'+
+    '</div>'+
+
+    '<div class="of-acoes" style="max-width:820px;margin:16px auto 0">'+
+      '<button class="of-ger" id="pvGerar">Gerar proposta</button>'+
+      '<button class="of-rest" id="pvVoltar">Voltar e ajustar</button>'+
+      '<span class="of-nota">Esta é a cara do documento. O PDF sai com este mesmo conteúdo.</span>'+
+    '</div>';
+
+  $('pvGerar').onclick=()=>ofGerar(comp);
+  $('pvVoltar').onclick=()=>{ ofIdent=false; if(vista==='oficial') renderOficial(); else trocarVista('personalizada'); };
+  ofRodape();
+}
+
+function ofGerar(comp){
+  if(!comp||!comp.fecha) return;                  /* o botao ja vem desligado, mas nao custa */
+  const p={desc:comp.desc,nome:comp.plano}, e=comp, b=comp, L=loteSim;
+
+  /* a identificacao usa o painel da vista oficial mesmo quando a composicao
+     veio da personalizada: e uma etapa do fluxo, nao uma terceira vista. */
+  ofIdent=true;
+  $('ofMesa').style.display='';
+  $('persMesa').style.display='none';
+
+  $('ofMesa').innerHTML=
+    '<div class="of-unid">'+
+      '<div><div class="of-r">Proposta de</div><div class="of-v" id="ofQuem">a identificar</div></div>'+
+      '<div class="of-meta">'+(L?'<b>'+esc(L.rot)+'</b><br>'+fA.format(L.area)+' m²':'')+
+        '<br>plano <b>'+p.nome+'</b></div>'+
+    '</div>'+
+    '<div class="of-tit"><h4>Para quem é esta proposta</h4>'+
+      '<span>a unidade fica reservada em nome desta pessoa</span></div>'+
+    '<div class="of-pl of-aberto"><div class="of-corpo" style="border-top:0;padding-top:14px">'+
+      '<div class="of-campos">'+
+        '<div class="of-campo" style="grid-column:1/-1"><div class="s-lb">Nome completo</div>'+
+          '<div class="s-inp s-pq"><input id="ofNome" style="text-align:left" value="'+esc(propostaDe.nome)+'"></div></div>'+
+        '<div class="of-campo"><div class="s-lb">CPF</div>'+
+          '<div class="s-inp s-pq"><input id="ofCpf" inputmode="numeric" value="'+esc(propostaDe.cpf)+'"></div></div>'+
+      '</div>'+
+      '<div class="of-placar of-falta" id="ofAviso">'+OF_NAO+'<span>Informe nome e CPF para emitir.</span></div>'+
+      '<div class="of-acoes">'+
+        '<button class="of-ger" id="ofEmitir" disabled>Emitir proposta</button>'+
+        '<button class="of-rest" id="ofRever">Rever a proposta</button>'+
+        '<button class="of-rest" id="ofVoltarPlanos">Voltar aos planos</button>'+
+      '</div>'+
+    '</div></div>'+
+    '<div class="of-tit"><h4>O que vai na proposta</h4></div>'+
+    '<div class="of-avista" style="display:block">'+
+      linha('Unidade', L?esc(L.rot)+' · '+fA.format(L.area)+' m²':'não selecionada')+
+      linha('Plano', p.nome+(p.desc?' · '+Math.round(p.desc*100)+'% de desconto':''))+
+      linha('Valor da unidade', moeda(b.alvo))+
+      linha('Entrada', moeda(e.ent))+
+      linha('Parcelas anuais', e.anQtd+' × '+moeda(e.anVal))+
+      linha('Parcelas mensais', e.prazo+' × '+moeda(b.parcela))+
+      linha('Total', moeda(b.nominal))+
+    '</div>';
+
+  const nome=$('ofNome'), cpf=$('ofCpf'), emitir=$('ofEmitir'), aviso=$('ofAviso');
+  const conferir=()=>{
+    propostaDe.nome=nome.value.trim();
+    propostaDe.cpf=cpf.value.trim();
+    const nomeOk=propostaDe.nome.length>=5 && propostaDe.nome.includes(' ');
+    const cpfOk=cpfValido(propostaDe.cpf);
+    const ok=nomeOk&&cpfOk;
+    emitir.disabled=!ok;
+    aviso.className='of-placar'+(ok?'':' of-falta');
+    aviso.innerHTML=(ok?OF_OK:OF_NAO)+'<span>'+
+      (ok ? 'Pronto para emitir em nome de <b>'+esc(propostaDe.nome)+'</b>.'
+          : !propostaDe.nome ? 'Informe nome e CPF para emitir.'
+          : !nomeOk ? 'Informe o nome completo, com sobrenome.'
+          : !propostaDe.cpf ? 'Informe o CPF.'
+          : 'Esse CPF não é válido: confira os números.')+'</span>';
+    $('ofQuem').textContent=propostaDe.nome||'a identificar';
+  };
+  nome.oninput=conferir;
+  cpf.oninput=()=>{ cpf.value=cpfMascara(cpf.value); conferir(); };
+  conferir();
+
+  /* volta para onde a proposta nasceu: o cartao oficial ou a personalizada */
+  $('ofVoltarPlanos').onclick=()=>{ ofIdent=false; if(vista==='oficial') renderOficial(); else trocarVista('personalizada'); };
+  /* rever ja mostra o nome digitado: e a ultima conferida antes de emitir */
+  $('ofRever').onclick=()=>ofVer(comp);
+  $('ofEmitir').onclick=()=>{
+    /* AINDA NAO EMITE. O PDF e a reserva de 48h dependem de rota no servidor e
+       de tabela no Supabase, que exigem autorizacao do Lucas. Ate la o botao
+       diz a verdade, em vez de repetir o alert que prometia proposta e nao
+       fazia nada. */
+    alert('Falta ligar a emissão no servidor.\n\n'+
+      'A composição está fechada e a identificação conferida:\n'+
+      propostaDe.nome+' · '+propostaDe.cpf+'\n'+
+      (L?L.rot:'lote não selecionado')+' · plano '+p.nome+'\n\n'+
+      'O PDF e a reserva de 48 horas entram assim que a rota for criada.');
+  };
+  ofRodape();
+}
+
+function trocarVista(v){
+  vista=v; ofIdent=false;
+  $('ofMesa').style.display   = v==='oficial'?'':'none';
+  $('persMesa').style.display = v==='oficial'?'none':'';
+  $('segModo').style.display  = v==='oficial'?'none':'';
+  if(v==='oficial') renderOficial(); else calcular();
+  ofRodape();
+}
+
 /* clicar numa linha da tabela oficial leva o plano para os controles */
 function ligarOficial(){
   $('simSaida').querySelectorAll('.s-li[data-pl]').forEach(el=>{
     el.onclick=()=>{
       const p=PLANOS[+el.dataset.pl];
-      SIM.prazo=p.prazo; SIM.anQtd=p.anQtd; SIM.anVal=p.anVal;
+      SIM.planoId=p.id; SIM.prazo=p.prazo; SIM.anQtd=p.anQtd; SIM.anVal=p.anVal;
       SIM.entrada=Math.round(SIM.preco*(1-p.desc)*p.ent);
       modo='montar'; livre=false;
       espelhar(); calcular(); $('simCtrl').scrollTop=0;
@@ -2590,7 +3223,7 @@ function ligarOficial(){
 
 /* ----------------------- 2) eu escolho as condicoes ---------------------- */
 function saidaMontar(){
-  const pl=planoDe(SIM.prazo)||POLITICA.prazos[POLITICA.prazos.length-1];
+  const pl=planoDe(SIM.planoId,SIM.prazo);
   const pd=SIM.preco*(1-pl.desc);
   const anuais=SIM.anQtd*SIM.anVal;
   const parcela=calcParcela(pd,SIM.entrada,SIM.anQtd,SIM.anVal,SIM.prazo,SIM.juros);
@@ -2662,7 +3295,7 @@ function propor(preco,alvo,entMax,anMax,i){
         if(M<=0) continue;
         if(M>alvo*1.005) continue;                   /* nao pode passar do que cabe */
         if(M<alvo*0.82) continue;                    /* sobra demais: nao e o plano dele */
-        out.push({prazo:pr.meses,desc:pr.desc,nome:pr.nome,pd,ent:E,anQtd:n,anVal:av,parcela:M,
+        out.push({id:pr.id,prazo:pr.meses,desc:pr.desc,nome:pr.nome,pd,ent:E,anQtd:n,anVal:av,parcela:M,
                   total:E+n*av+M*pr.meses});
       }
     }
@@ -2709,7 +3342,7 @@ function proximo(preco,entMax,anMax,i,alvo){
           /* estourar o que cabe e pior que sobrar: penaliza */
           const d=Math.abs(M-alvo)+(M>alvo?alvo*0.03:0);
           if(!best||d<best.d)
-            best={d,prazo:pr.meses,desc:pr.desc,nome:pr.nome,pd,ent:E,anQtd:n,anVal:av,
+            best={d,id:pr.id,prazo:pr.meses,desc:pr.desc,nome:pr.nome,pd,ent:E,anQtd:n,anVal:av,
                   parcela:M,total:E+n*av+M*pr.meses};
         }
       }
@@ -2769,7 +3402,7 @@ function saidaParcela(){
       blocoOperacao(p.total)+
       '';
     $('simSaida').querySelector('.s-usar').onclick=()=>{
-      SIM.prazo=p.prazo; SIM.entrada=Math.round(p.ent); SIM.anQtd=p.anQtd; SIM.anVal=p.anVal||20000;
+      SIM.planoId=p.id; SIM.prazo=p.prazo; SIM.entrada=Math.round(p.ent); SIM.anQtd=p.anQtd; SIM.anVal=p.anVal||20000;
       modo='montar'; livre=false; espelhar(); calcular(); $('simCtrl').scrollTop=0;
     };
     ultimoResumo=resumoTexto({prazo:p.prazo,desc:p.desc,nome:p.nome,ent:p.ent,anQtd:p.anQtd,
@@ -2809,7 +3442,7 @@ function saidaParcela(){
   $('simSaida').querySelectorAll('.s-usar').forEach(b=>{
     b.onclick=()=>{
       const o=props[+b.dataset.k];
-      SIM.prazo=o.prazo; SIM.entrada=o.ent; SIM.anQtd=o.anQtd; SIM.anVal=o.anVal||20000;
+      SIM.planoId=o.id; SIM.prazo=o.prazo; SIM.entrada=o.ent; SIM.anQtd=o.anQtd; SIM.anVal=o.anVal||20000;
       modo='montar'; livre=false;
       espelhar(); calcular();
       $('simCtrl').scrollTop=0;
@@ -2985,7 +3618,49 @@ $('btCopiar').onclick=()=>{
   if(navigator.clipboard) navigator.clipboard.writeText(ultimoResumo).then(ok,fallback);
   else fallback();
 };
-$('btProposta').onclick=()=>alert('Gancho para a CACÁ redigir a proposta em texto a partir da composição que está na tela.\n\nA conta continua sendo feita aqui: aritmética exata, offline e instantânea.');
+/* ---- as duas vistas ---- */
+$('btPersonalizada').onclick=()=>trocarVista('personalizada');
+$('btVoltarOficial').onclick=()=>trocarVista('oficial');
+
+/* Gerar proposta a partir da PERSONALIZADA. Aqui a composição não nasce de um
+   plano de tabela, então ela é lida da tela e passa pela mesma trava: só segue
+   se o valor presente do que foi montado fechar o valor da unidade. */
+function compDaPersonalizada(){
+  const preco=SIM.precoTabela||SIM.preco;
+  if(!preco) return null;
+  if(livre){
+    const pa=paEf();
+    const pago=vpDe(SIM.lEnt,SIM.lAnQtd,SIM.lAnVal,SIM.lPz,pa,SIM.juros);
+    /* proposta livre nao herda plano nenhum, entao vale a correcao mais
+       conservadora para o cliente: a mesma dos planos longos. */
+    return {alvo:preco, anQtd:SIM.lAnQtd, anVal:SIM.lAnVal, desc:0, ent:SIM.lEnt,
+            fecha:Math.abs(pago-preco)<=OF_TOL, nominal:SIM.lEnt+SIM.lAnQtd*SIM.lAnVal+pa*SIM.lPz,
+            pago, parcela:pa, plano:'personalizado', planoId:'normal', prazo:SIM.lPz};
+  }
+  /* modos "escolho as condições" e "parto da parcela": a parcela é derivada do
+     plano escolhido, então a conta fecha no valor daquele plano. */
+  const pl=planoDe(SIM.planoId,SIM.prazo);
+  const alvo=preco*(1-pl.desc);
+  const parcela=calcParcela(alvo,SIM.entrada,SIM.anQtd,SIM.anVal,SIM.prazo,SIM.juros);
+  const pago=vpDe(SIM.entrada,SIM.anQtd,SIM.anVal,SIM.prazo,parcela,SIM.juros);
+  return {alvo, anQtd:SIM.anQtd, anVal:SIM.anVal, desc:pl.desc, ent:SIM.entrada,
+          fecha:Math.abs(pago-alvo)<=OF_TOL, nominal:SIM.entrada+SIM.anQtd*SIM.anVal+parcela*SIM.prazo,
+          pago, parcela, plano:pl.nome+' (ajustado)', planoId:pl.id, prazo:SIM.prazo};
+}
+$('btProposta').onclick=()=>{
+  const c=compDaPersonalizada();
+  if(!c) { alert('Informe o valor da unidade antes de gerar a proposta.'); return; }
+  if(!c.fecha){
+    const dif=c.pago-c.alvo;
+    alert('A composição ainda não fecha o valor da unidade.\n\n'+
+      'Alvo: '+moeda(c.alvo)+'\nMontado: '+moeda(c.pago)+'\n'+
+      (dif<0?'Faltam '+moeda(-dif):'Passa '+moeda(dif))+
+      '\n\nAjuste entrada, anuais, prazo ou parcela até a conta fechar.');
+    return;
+  }
+  /* mesmo caminho da tabela oficial: ve o documento, depois identifica e emite */
+  ofVer(c);
+};
 
 /* ==================== DESEMPENHO ==================== */
 const amostras=new Float32Array(180); let ai=0, cheio=false, ultimo=performance.now();

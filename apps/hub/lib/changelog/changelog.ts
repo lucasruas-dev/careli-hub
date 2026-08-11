@@ -36,6 +36,40 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-11-simulador-tabela-oficial",
+    deployedAt: "2026-08-11T14:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O plano de pagamento abre na tabela oficial, com o valor da unidade e a parcela mensal em destaque. Saíram os dois modos do topo",
+              "Os planos com desconto mostram o valor do lote já com o desconto aplicado, e o preço de tabela logo abaixo",
+              "Cada plano é editável na hora: entrada, reforços anuais, prazo e parcela. O ajuste vale só naquela proposta e não altera a tabela do empreendimento",
+              "A proposta só é liberada quando a conta fecha o valor da unidade. Enquanto faltar, a tela diz quanto falta e o botão fica desligado",
+              "Tabela nova do Garden: Normal, Investidor Parcelado (8% de desconto, entrada de 8% e até 84 parcelas) e Investidor (12% de desconto)",
+              "A correção aparece por plano: Investidor é só IPCA, os demais são IPCA mais 6% ao ano",
+              "Botão Visualizar proposta: mostra o documento pronto, com as logos, antes de gerar",
+              "Gerar proposta pede nome e CPF do cliente, com o CPF conferido de verdade, e preenche o campo de assinatura",
+              "Os três modos antigos continuam existindo, agora dentro de Proposta Personalizada",
+            ],
+            screen: "Portal do incorporador · Produtos · Plano de pagamento",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "O modal do plano ganhou duas vistas: `ofMesa` (tabela oficial, o padrão ao abrir) e `persMesa` (a mesa de duas colunas que já existia). O motor financeiro NÃO foi tocado. A trava usa VALOR PRESENTE (`vpDe`), não soma nominal, com tolerância de R$ 1,00: com juros zero os dois coincidem, mas no dia em que o Garden cadastrar taxa a conta continua certa sozinha. O alvo é o preço do PLANO (tabela menos o desconto oficial), não a tabela cheia, senão o próprio plano da planilha seria invendável. Enquanto ninguém digita a parcela ela é derivada e fecha por construção; `tocouParcela` marca a edição manual e é aí que a trava morde. ⚠️ CADA PLANO GANHOU `id`: o Investidor Parcelado foi para 84 meses e passou a empatar com o Normal, e o código identificava plano pelo número de meses (`planoDe(84)`) — na Proposta Personalizada os dois viravam o mesmo botão, e escolher Investidor Parcelado traria o desconto do Normal (zero), R$ 34.400 a mais num lote de R$ 430.000, sem aviso nenhum. `planoDe(id, meses)` resolve por id com queda para o prazo, e as composições do otimizador passaram a carregar o id. A pré-visualização é uma folha branca com o layout do PDF, para o desenho ser aprovado antes de existir arquivo. O botão de emitir ainda NÃO emite e diz isso na tela, no lugar do `alert()` antigo que prometia proposta e não fazia nada.",
+      motivation:
+        'Lucas, 11/08, depois da reunião com a Cecílio Rocha: "vai aparecer primeiro a tabela oficial, dando destaque para o valor da unidade e a da parcela mensal", "não podemos deixar gerar nenhuma proposta quando esse não atingir o valor total da unidade" e "vamos substituir esses dois botões por um botão que vamos chamar Proposta Personalizada". A tabela nova e a correção por plano vieram na mesma conversa.',
+    },
+    title: "Simulador do Garden: a tabela oficial primeiro, e a proposta que só fecha somando a unidade",
+    type: "melhoria",
+    version: "1.125.0",
+  },
+  {
     buildTag: "2026-08-11-masterplan-sem-caixa",
     deployedAt: "2026-08-11T09:00:00-03:00",
     modules: [
