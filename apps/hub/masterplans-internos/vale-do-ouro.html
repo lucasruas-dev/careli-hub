@@ -209,6 +209,7 @@ body.tem-escopo .escopo button{display:block}
 .vsit .l+.l{border-top:1px solid color-mix(in srgb,var(--linha) 55%,transparent)}
 .vsit i{width:9px;height:9px;border-radius:2px;transform:translateY(1px)}
 .vsit .nm{font-size:12.5px;color:var(--txt2)}
+.vsit .nm .pc-sit{font-weight:700;color:var(--txt)}
 .vsit .nm em{display:block;font-style:normal;font-size:11px;color:#8894a5}
 .vsit .vl{text-align:right;font-size:13px;font-weight:600;white-space:nowrap}
 .vsit .vl em{display:block;font-style:normal;font-size:10.5px;font-weight:400;color:#8894a5}
@@ -1732,12 +1733,14 @@ function pintarMacro(){
   /* a) VALOR por situacao — a contagem mora aqui, e so aqui */
   $('vsit').innerHTML=[0,1,2,3].map(s=>{
     const g=porSit[s], cp=g.filter(L=>L.valor), soma=cp.reduce((a,L)=>a+L.valor,0);
+    const base = s===3 ? arr.length : arr.length - porSit[3].length;
+    const pct = base>0 ? Math.round(g.length/base*100) : 0;
     const cob = g.length===0 ? 'nenhum lote'
       : cp.length===0 ? 'nenhum com preço informado'
       : cp.length===g.length ? 'preço informado em todos'
       : 'preço informado em '+cp.length+' de '+g.length;
     return '<div class="l"><i style="background:'+COR[s]+'"></i>'+
-      '<span class="nm">'+NOME[s]+'<em>'+fI.format(g.length)+(g.length===1?' lote':' lotes')+'</em></span>'+
+      '<span class="nm">'+NOME[s]+' <b class="pc-sit">'+pct+'%</b><em>'+fI.format(g.length)+(g.length===1?' lote':' lotes')+'</em></span>'+
       '<span class="vl'+(cp.length?'':' sem')+'">'+(cp.length?moeda(soma):'sem valor')+'<em>'+cob+'</em></span></div>';
   }).join('');
 

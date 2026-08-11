@@ -98,10 +98,26 @@ input[type="search"], .busca, .busca input{
    ("ainda tem um fundo branco, no garden não tem esse fundo branco").
 
    SEM PALCO NENHUM (Lucas, 11/08: "não tem como subir sem o palco do mapa?"): o palco perde o
-   fundo e a área do mapa também, então a planta se apoia direto no fundo da tela. Não há retângulo,
-   não há segundo tom, não há moldura — é o desenho e mais nada, que é como o Garden aparece. */
+   fundo e a área do mapa também, então a planta se apoia direto no fundo da tela.
+
+   ⚠️ E A SOMBRA TAMBÉM SAI, que era o retângulo de verdade. O .palco carrega uma box-shadow de
+   0 10px 40px em preto a 55%, e ela é a sombra do RETÂNGULO do palco, não do desenho. No Garden
+   ninguém nota: a foto é retangular e preenche o palco, então a sombra parece ser da foto. Com a
+   planta transparente do Vale do Ouro, o desenho é um polígono e a sombra continua quadrada em
+   volta dele — vira uma caixa flutuando atrás do mapa. Era o que o Lucas estava vendo: "não dá
+   somente para ela existir sem esse retângulo? como se fosse um mapa?".
+
+   (Nada de crase neste comentário: ele vive dentro de um template literal, e uma crase solta aqui
+   encerra a string e quebra o arquivo inteiro. Já aconteceu.)
+
+   Sem fundo e sem sombra, sobra o desenho e mais nada. */
 .plano{ background:transparent; }
 .cena{ background:transparent; }
+.palco{ box-shadow:none; }
+
+/* ---- O PERCENTUAL POR SITUAÇÃO, ao lado do status. Herda a cor do rótulo e sobe um tom, para o
+       número saltar sem aumentar o corpo nem inventar cor. ---- */
+.vsit .nm .pc-sit{ font-weight:700; color:var(--txt); }
 `;
 
 /**
@@ -118,6 +134,42 @@ input[type="search"], .busca, .busca input{
  */
 const VENDIDO_DE = "#c24135";
 const VENDIDO_PARA = "#e14b3a";
+
+/**
+ * PERCENTUAL POR SITUAÇÃO — padrão dos dois masterplans (Lucas, 11/08: "isso pode ser feito nos
+ * dois, tá? deixa como padrão").
+ *
+ * A REGRA TEM DUAS BASES, e a razão é comercial: "disponivel, reservado e vendido é sobre os lotes
+ * sem os bloqueados, os bloqueados a % é sobre tudo". Bloqueado não está à venda, então incluí-lo
+ * no denominador do estoque faria "95% vendido" virar "61% vendido" e o loteamento pareceria ter
+ * muito mais lote na prateleira do que tem. Já o bloqueado se lê contra o loteamento INTEIRO,
+ * porque ali a pergunta é outra: quanto do empreendimento está fora de venda.
+ *
+ * ⚠️ SÓ APLICA EM QUEM AINDA NÃO TEM, e a checagem é explícita porque a alternativa esperta não
+ * funciona. O masterplan do Vale do Ouro é GERADO e já sai com este cálculo pronto (o gerador
+ * precisa dele também na versão escura, que não passa por aqui). Eu supus que bastaria procurar o
+ * texto ORIGINAL, já que uma tela transformada não o teria mais — errado: o gerador MANTÉM a linha
+ * original e acrescenta as novas logo abaixo. O `replace` achava a âncora, injetava de novo, e o
+ * arquivo terminava com duas declarações `const base` no mesmo escopo, que é SyntaxError. A tela
+ * inteira deixava de abrir.
+ *
+ * Por isso a marca é o PRÓPRIO cálculo injetado ("const pct = base>0"): existe, não mexe. Nada de
+ * usar a classe do elemento como marca — a classe "pc" já existe no molde, na coluna de percentual
+ * da tabela de quadras, e detectá-la faria o Garden ser pulado por engano.
+ */
+const PCT_DE_CONTAGEM =
+  "'<span class=\"nm\">'+NOME[s]+'<em>'+fI.format(g.length)+(g.length===1?' lote':' lotes')+'</em></span>'+";
+const PCT_PARA_CONTAGEM =
+  "'<span class=\"nm\">'+NOME[s]+' <b class=\"pc-sit\">'+pct+'%</b><em>'+fI.format(g.length)+(g.length===1?' lote':' lotes')+'</em></span>'+";
+
+const PCT_DE_BASE = "const g=porSit[s], cp=g.filter(L=>L.valor), soma=cp.reduce((a,L)=>a+L.valor,0);";
+const PCT_PARA_BASE =
+  "const g=porSit[s], cp=g.filter(L=>L.valor), soma=cp.reduce((a,L)=>a+L.valor,0);\n" +
+  // `porSit[3]` só existe onde há o quarto estado; onde não há, a base é o conjunto inteiro, que
+  // é o mesmo resultado — num mapa sem lote bloqueado não há o que descontar.
+  "    const bloqueados = (porSit[3] || []).length;\n" +
+  "    const base = s===3 ? arr.length : arr.length - bloqueados;\n" +
+  "    const pct = base>0 ? Math.round(g.length/base*100) : 0;";
 
 /**
  * Aplica o tema claro ao HTML do masterplan.
@@ -137,7 +189,12 @@ export function comTemaClaro(html: string): string {
     // que se alinha a ela, sem que o arquivo aprovado precise ser reescrito.
     .replaceAll(VENDIDO_DE, VENDIDO_PARA);
 
-  return claro.includes("</head>")
-    ? claro.replace("</head>", `<style>${CSS_TEMA_CLARO}</style></head>`)
-    : claro;
+  // O percentual por situação, para a tela que ainda não o tem.
+  const comPercentual = claro.includes("const pct = base>0")
+    ? claro
+    : claro.replace(PCT_DE_BASE, PCT_PARA_BASE).replace(PCT_DE_CONTAGEM, PCT_PARA_CONTAGEM);
+
+  return comPercentual.includes("</head>")
+    ? comPercentual.replace("</head>", `<style>${CSS_TEMA_CLARO}</style></head>`)
+    : comPercentual;
 }

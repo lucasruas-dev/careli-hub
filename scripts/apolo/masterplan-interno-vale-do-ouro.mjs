@@ -277,6 +277,43 @@ function principal(geometria, recorte, dadosC2x) {
   html = trocar(html, "const buf=['','',''];", "const buf=['','','',''];", "buffer de pintura");
   html = trocar(html, "for(let s=0;s<3;s++) pf[s]", "for(let s=0;s<4;s++) pf[s]", "laço da pintura");
   html = trocar(html, "$('vsit').innerHTML=[0,1,2].map", "$('vsit').innerHTML=[0,1,2,3].map", "valor por situação");
+
+  // PERCENTUAL POR SITUAÇÃO, com DUAS bases (regra do Lucas, 11/08): "disponivel, reservado e
+  // vendido é sobre os lotes sem os bloqueados, os bloqueados a % é sobre tudo".
+  //
+  // A razão é comercial, não aritmética: bloqueado não está à venda, então incluí-lo no
+  // denominador do estoque faria "95% vendido" virar "61% vendido" e o loteamento pareceria ter
+  // muito mais lote na prateleira do que tem. Já o bloqueado precisa ser lido contra o loteamento
+  // INTEIRO, porque a pergunta ali é outra: quanto do empreendimento está fora de venda.
+  //
+  // Assim os três primeiros fecham 100% entre si, e o quarto responde uma pergunta separada.
+  html = trocar(
+    html,
+    "const g=porSit[s], cp=g.filter(L=>L.valor), soma=cp.reduce((a,L)=>a+L.valor,0);",
+    "const g=porSit[s], cp=g.filter(L=>L.valor), soma=cp.reduce((a,L)=>a+L.valor,0);\n" +
+      "    const base = s===3 ? arr.length : arr.length - porSit[3].length;\n" +
+      "    const pct = base>0 ? Math.round(g.length/base*100) : 0;",
+    "base do percentual",
+  );
+  // O PERCENTUAL FICA NA FRENTE DO STATUS, em negrito (Lucas, 11/08: "coloca o resultado da % em
+  // negrito" e "acho que na frente do status é melhor"). Na linha de baixo, junto da contagem de
+  // lotes, ele competia com o valor em reais à direita; ao lado do nome ele é a primeira coisa que
+  // se lê, que é o comportamento certo — a pergunta ali é "quanto do estoque é isso".
+  html = trocar(
+    html,
+    "'<span class=\"nm\">'+NOME[s]+'<em>'+fI.format(g.length)+(g.length===1?' lote':' lotes')+'</em></span>'+",
+    "'<span class=\"nm\">'+NOME[s]+' <b class=\"pc-sit\">'+pct+'%</b><em>'+fI.format(g.length)+(g.length===1?' lote':' lotes')+'</em></span>'+",
+    "percentual no rótulo",
+  );
+
+  // O negrito herda a cor do texto do rótulo, que é `--txt2`. Um tom acima (o `--txt` cheio) faz o
+  // número saltar sem precisar aumentar o corpo nem inventar cor nova.
+  html = trocar(
+    html,
+    ".vsit .nm{font-size:12.5px;color:var(--txt2)}",
+    ".vsit .nm{font-size:12.5px;color:var(--txt2)}\n.vsit .nm .pc-sit{font-weight:700;color:var(--txt)}",
+    "estilo do percentual",
+  );
   html = trocar(html, "$('togSit').innerHTML=[0,1,2].map", "$('togSit').innerHTML=[0,1,2,3].map", "filtro de situação");
   html = trocar(html, "$('placaS').innerHTML=[0,1,2].map", "$('placaS').innerHTML=[0,1,2,3].map", "placa da quadra");
   html = trocar(html, "F.sit=[true,true,true]; F.p=", "F.sit=[true,true,true,true]; F.p=", "limpar filtros");

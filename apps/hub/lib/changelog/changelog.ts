@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-11-masterplan-sem-caixa",
+    deployedAt: "2026-08-11T09:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O masterplan do Vale do Ouro deixou de ficar dentro de uma caixa: agora é só o desenho na tela, como um mapa",
+              "Cada situação mostra o percentual: disponível, reservado e vendido sobre os lotes à venda (somam 100% entre si), e bloqueado sobre o loteamento inteiro",
+            ],
+            screen: "Portal do incorporador · Produtos",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "O retângulo que aparecia em volta da planta NÃO era cor de fundo, era a `box-shadow` do `.palco` (0 10px 40px em preto a 55%). Ela é a sombra do RETÂNGULO do palco, não do desenho: no Garden passa despercebida porque a foto é retangular e preenche o palco, mas com a planta transparente do Vale do Ouro o desenho é um polígono e a sombra segue quadrada em volta dele. Desligada junto com o fundo do `.palco`, do `.plano` e da `.cena`, no bloco do tema claro. Passei três rodadas oferecendo cor de fundo antes de achar a sombra.",
+      motivation:
+        "Lucas, 11/08: \"não dá somente para ela existir sem esse retângulo? como se fosse um mapa? tem que ter um jeito\" — e tinha.",
+    },
+    title: "Masterplan sem caixa: o mapa solto na tela",
+    type: "correcao",
+    version: "1.124.0",
+  },
+  {
     buildTag: "2026-08-11-vale-do-ouro-planta-oficial",
     deployedAt: "2026-08-11T08:35:00-03:00",
     modules: [
