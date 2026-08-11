@@ -65,9 +65,25 @@ const ENTERPRISES = [36, 37];
 // é o contrário. Misturar os dois oferecia 108 lotes que ninguém pode vender.
 const SITUACAO = { 1: 0, 2: 1, 3: 2, 4: 2, 5: 3 };
 
-// O quarto estado, com a cor e o rótulo. Cinza de propósito: verde, âmbar e vermelho já falam de
-// venda, e bloqueado não é etapa de venda — é ausência dela.
-const BLOQUEADO = { cor: "#6b7280", rotulo: "Bloqueado" };
+// O QUARTO ESTADO. Ele tem DUAS cores, e a separação não é capricho: elas vivem sobre fundos
+// opostos e uma cor só não serve para as duas.
+//
+//   • `cor`    — o marcador: chip da legenda, selo da ficha, pílula da tabela, placa da quadra.
+//                Fica sobre PAPEL BRANCO, então precisa ser escura para existir.
+//   • `veu`    — o preenchimento do lote no mapa. Fica sobre a planta, que dentro do lote é um
+//                verde-oliva médio (#a1aa25, medido). Aqui escurecer não separa: o fundo já é
+//                médio e os outros três estados também são tons médios. Clarear separa.
+//
+// Os números vêm de medição, não de gosto: compondo cada candidato sobre o fundo real e medindo a
+// distância até o fundo e até os outros três estados, o véu claro a 62% fica a 160 de distância do
+// fundo, contra 96 do cinza escuro que estava antes — que foi o "não dá para ver" do Lucas.
+const BLOQUEADO = { cor: "#64748b", rotulo: "Bloqueado", veu: "#e2e8f0", veuAlfa: 0.62 };
+
+// VENDIDO com o tom mais alto (Lucas, 11/08: "pode subir um pouco o tom do vermelho"). O molde usa
+// #c24135, que é o vermelho do sistema e foi calibrado sobre a foto ESCURA do Garden; sobre a
+// planta clara e dourada do Vale do Ouro ele apaga e puxa para o marrom. Este é o mesmo vermelho
+// com mais luz e saturação, para continuar sendo vermelho depois de 44% de transparência.
+const VENDIDO_COR = "#e14b3a";
 
 function env() {
   const valores = {};
@@ -213,7 +229,7 @@ function principal(geometria, recorte, dadosC2x) {
   html = trocar(
     html,
     '<img class="planta" src="garden-planta.jpg" alt="Planta aérea do loteamento Garden"',
-    '<img class="planta" src="/masterplans/planta-vale-do-ouro-limpa.jpg" alt="Planta do loteamento Vale do Ouro"',
+    '<img class="planta" src="/masterplans/planta-vale-do-ouro-limpa.webp" alt="Planta do loteamento Vale do Ouro"',
     "planta",
   );
 
@@ -271,6 +287,28 @@ function principal(geometria, recorte, dadosC2x) {
   // A camada nova entra POR BAIXO das outras: bloqueado é fundo, não destaque.
   html = trocar(html, '<path id="f2"/><path id="f1"/><path id="f0"/>', '<path id="f3"/><path id="f2"/><path id="f1"/><path id="f0"/>', "camada f3");
 
+  // ⚠️ A CAMADA PRECISA DE REGRA DE CSS, e a falta disso foi o defeito que o Lucas viu: sem
+  // `fill`, um <path> do SVG é PRETO SÓLIDO por especificação. Os 108 lotes bloqueados apareceram
+  // como manchas pretas chapadas em cima da planta ("tem esse preto ae que ficou horrivel").
+  //
+  // Mais transparente que os outros três, de propósito ("ou coloca mais transparencia nesse
+  // preto"): bloqueado não está à venda, então não disputa atenção com disponível, reservado e
+  // vendido. 70% da alfa dos demais, e acompanha o modo filtrado junto com eles.
+  html = trocar(
+    html,
+    "#f2{fill:var(--dang);fill-opacity:var(--a-fill);stroke:none}",
+    "#f2{fill:var(--dang);fill-opacity:var(--a-fill);stroke:none}\n" +
+      `#f3{fill:${BLOQUEADO.veu}; fill-opacity:${BLOQUEADO.veuAlfa};stroke:none}`,
+    "estilo do f3",
+  );
+  html = trocar(
+    html,
+    "#f0,#f1,#f2{transition:fill-opacity .22s}",
+    "#f0,#f1,#f2,#f3{transition:fill-opacity .22s}",
+    "transição do f3",
+  );
+
+
   // Legenda: o quarto chip, no mesmo formato dos outros três.
   html = trocar(
     html,
@@ -306,6 +344,12 @@ function principal(geometria, recorte, dadosC2x) {
     "  --dang-t:color-mix(in srgb,var(--dang) 58%,#f7f8fa);\n  --blq-t:color-mix(in srgb,var(--blq) 58%,#f7f8fa);",
     "token de texto",
   );
+
+  // ⚠️ O TOM DO VENDIDO POR ÚLTIMO. A linha `--dang:#c24135;    /* vendido */` é âncora das trocas
+  // acima (é ao lado dela que o token do bloqueado entra); trocar a cor antes apagaria a âncora e
+  // o gerador pararia sozinho — foi o que aconteceu na primeira tentativa.
+  html = trocar(html, "--dang:#c24135;", `--dang:${VENDIDO_COR};`, "tom do vendido");
+  html = trocar(html, "'#c24135'", `'${VENDIDO_COR}'`, "tom do vendido (JS)");
 
   // COMPRADOR: bloqueado não tem, igual ao disponível. Sem isto a ficha pediria "Reservado para"
   // num lote que nunca esteve à venda.

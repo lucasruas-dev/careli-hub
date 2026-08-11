@@ -89,7 +89,35 @@ input[type="search"], .busca, .busca input{
 
 /* ---- BARRA DE ROLAGEM ---- */
 ::-webkit-scrollbar-thumb{ background:var(--linha-strong,#c5ceda); }
+
+/* ---- O RETÂNGULO BRANCO ATRÁS DA PLANTA ----
+   O palco do mapa (.plano) tem fundo próprio (--base, branco), e a área do mapa (.cena) tem outro
+   (--canvas). No Garden isso nunca apareceu, porque a foto dele é retangular e cobre o palco
+   inteiro. A planta do Vale do Ouro é um polígono irregular e transparente, então o palco fica
+   à vista: um retângulo branco em volta do terreno, com borda e tudo — foi o que o Lucas viu
+   ("ainda tem um fundo branco, no garden não tem esse fundo branco").
+
+   SEM PALCO NENHUM (Lucas, 11/08: "não tem como subir sem o palco do mapa?"): o palco perde o
+   fundo e a área do mapa também, então a planta se apoia direto no fundo da tela. Não há retângulo,
+   não há segundo tom, não há moldura — é o desenho e mais nada, que é como o Garden aparece. */
+.plano{ background:transparent; }
+.cena{ background:transparent; }
 `;
+
+/**
+ * O VERMELHO DO "VENDIDO", subido de tom (Lucas, 11/08: "pode subir um pouco o tom do vermelho" e,
+ * depois, comparando as duas telas: "o tom de vermelho está diferente").
+ *
+ * O `#c24135` é o vermelho do sistema e foi calibrado sobre a foto ESCURA do Garden. Sobre planta
+ * clara, e depois de 44% de transparência, ele apaga e puxa para o marrom. `#e14b3a` é o mesmo
+ * vermelho com mais luz e saturação, para continuar sendo lido como vermelho.
+ *
+ * ⚠️ A TROCA PRECISA ACONTECER NOS DOIS LUGARES. O mapa pinta pelo token CSS (`--dang`), mas a
+ * legenda, os chips e as pílulas da tabela recebem a cor por estilo inline, montado em JS a partir
+ * do array `COR`. Trocando só o token, o mapa fica num vermelho e a legenda ao lado dele em outro.
+ */
+const VENDIDO_DE = "#c24135";
+const VENDIDO_PARA = "#e14b3a";
 
 /**
  * Aplica o tema claro ao HTML do masterplan.
@@ -102,7 +130,12 @@ input[type="search"], .busca, .busca input{
  * quebrada com o CSS solto no meio do corpo.
  */
 export function comTemaClaro(html: string): string {
-  const claro = html.replace('data-uix-theme="dark"', 'data-uix-theme="light"');
+  const claro = html
+    .replace('data-uix-theme="dark"', 'data-uix-theme="light"')
+    // `replaceAll` porque o vermelho aparece no token do `:root` e no array `COR` do JS, e as duas
+    // pontas têm que andar juntas. A tela do Vale do Ouro já nasce com o tom novo; aqui é o Garden
+    // que se alinha a ela, sem que o arquivo aprovado precise ser reescrito.
+    .replaceAll(VENDIDO_DE, VENDIDO_PARA);
 
   return claro.includes("</head>")
     ? claro.replace("</head>", `<style>${CSS_TEMA_CLARO}</style></head>`)

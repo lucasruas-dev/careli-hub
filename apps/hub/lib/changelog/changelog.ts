@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-11-vale-do-ouro-planta-oficial",
+    deployedAt: "2026-08-11T08:35:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Vale do Ouro com a planta oficial: sem moldura, sem fundo e sem as logos impressas. O desenho se apoia direto na tela, como acontece no Garden",
+              "Lote bloqueado voltou a ser visível no mapa. Antes ele quase sumia contra o verde da planta",
+              "Os 298 lotes conferidos um a um contra o desenho novo: todos caem sobre o lote certo",
+            ],
+            screen: "Portal do incorporador · Produtos",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "A planta passou a ser o PNG oficial entregue pelo Lucas (9999x6118, transparente, sem logos), no lugar da arte de venda que era limpa por script. Isso aposentou `masterplan-planta-limpa.mjs`, que apagava as quatro marcas por componente conexo e recortava a moldura azul: com a arte transparente na origem, nada disso é preciso. Entra `masterplan-planta-vale-do-ouro.mjs`, que faz trim do alfa, reduz para 4400px e grava WebP (3,3 MB). ⚠️ O ENQUADRAMENTO É OUTRO, e os 298 polígonos vivem em coordenadas da arte antiga: em vez de recalcular 1.880 vértices, o `viewBox` do SVG aponta para a janela equivalente na arte velha (81 28 3652 2369) e as duas viram a mesma janela. Só é válido porque a proporção interna do desenho bate (desvio 0,06%), e o script TRAVA acima de 1,5% e confere lote a lote no fim: 298/298 sobre o desenho, 0 na rua. O palco do mapa perdeu o fundo (`.plano` e `.cena` transparentes): com planta recortada, o fundo do palco virava um retângulo branco em volta do terreno. E o bloqueado ganhou DUAS cores, porque marcador e preenchimento vivem sobre fundos opostos: `#64748b` no chip e no selo (sobre papel branco) e um véu `#e2e8f0` a 62% no mapa (sobre o verde-oliva #a1aa25 da planta, medido). Escurecer não separava: o véu claro fica a 160 de distância do fundo, contra 96 do cinza anterior.",
+      motivation:
+        "Lucas, 11/08, em sequência: \"tem esse preto ae que ficou horrivel\", \"tem como tirar o fundo azul?\", \"ainda tem um fundo branco, no garden não tem esse fundo branco\", \"os bloqueados ficou ruim, não da para ver\" e \"não tem como subir sem o palco do mapa?\". O PNG oficial foi ele quem ofereceu: \"você quer o png do mapa para refazer?\".",
+    },
+    title: "Vale do Ouro: a planta oficial no masterplan, sem moldura e sem palco",
+    type: "melhoria",
+    version: "1.123.0",
+  },
+  {
     buildTag: "2026-08-11-masterplan-claro-em-tela-cheia",
     deployedAt: "2026-08-11T07:50:00-03:00",
     modules: [
