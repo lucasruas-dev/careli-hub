@@ -505,7 +505,16 @@ export function payloadParaFormData(payload: PayloadC2x): FormData {
 
 export type RespostaC2x =
   | { status: "success"; token: string | null }
-  | { duplicado: boolean; erros: Record<string, string[]>; mensagem: string; status: "failed" }
+  | {
+      // O CORPO CRU que a API devolveu. Guardado porque `errors_message`/`errors` podem vir os DOIS
+      // vazios (aconteceu: ver `motivoDaRecusaC2x`) e, sem o corpo, a recusa fica sem nenhuma prova
+      // do que o C2X respondeu — o rastro morria na interpretação.
+      corpo: unknown;
+      duplicado: boolean;
+      erros: Record<string, string[]>;
+      mensagem: string;
+      status: "failed";
+    }
   | { detalhe: string; status: "erro_transporte" };
 
 type ConfigC2x = { base: string; token: string };
@@ -546,7 +555,58 @@ export function interpretarResposta(corpo: unknown): RespostaC2x {
     /(cpf|cnpj)[^.]{0,40}j[aá] cadastrad/i.test(mensagem) ||
     (chaves.length > 0 && chaves.every((k) => k === "cpf" || k === "cnpj"));
   const duplicado = documentoDuplicado || soFalaDoDocumento;
-  return { duplicado, erros, mensagem, status: "failed" };
+  return { corpo: corpo ?? null, duplicado, erros, mensagem, status: "failed" };
+}
+
+// ── O MOTIVO QUE VAI PARA A FILA — NUNCA EM BRANCO ────────────────────────
+//
+// 🔴 O BURACO MEDIDO (08/08, três linhas em produção): `apolo_c2x_sync` tinha três CADs PJ com
+// `status = 'erro'` e `erro = ''` — os CNPJs 57846125000154, 66197606000177 e 67847245000120. A
+// `resposta` guardada era `{"status":"failed","mensagem":"","erros":{},"duplicado":false}`: a API
+// recusou e não disse por quê. No card isso vira, literalmente,
+// "Não subiu para o C2X: motivo não registrado." (SeloC2x, em board-view.tsx) — o MESMO silêncio
+// que fez o dono perguntar "por que não subiu?", só que vindo do outro lado do POST.
+//
+// COMO NASCIA: o servidor lia SÓ `errors_message`. String vazia entra em `erro` do mesmo jeito, e
+// `juntarMotivo` devolve null para ela (o filtro é `Boolean`), então o fallback `?? motivoApi`
+// também dava "". Uma recusa gravada em branco é um registro que não vira trabalho — igual a não
+// ter registro.
+//
+// TRÊS FONTES, NESTA ORDEM, E A ÚLTIMA É UMA CONFISSÃO:
+//   1. `errors_message` — o texto pronto do Rails, que é o que o time já sabe ler;
+//   2. `errors` campo a campo — quando o Rails manda os erros SEM a mensagem montada, os motivos
+//      reais estavam sendo jogados fora aqui (eles existiam, só não eram lidos);
+//   3. nada disso — então a linha DIZ que não veio motivo, em vez de ficar muda, e manda olhar a
+//      `resposta` (que agora carrega o corpo cru).
+export function motivoDaRecusaC2x(resposta: RespostaC2x): string {
+  if (resposta.status === "success") return "";
+  if (resposta.status === "erro_transporte") {
+    return (
+      resposta.detalhe.trim() ||
+      "Falha de transporte ao falar com a API do C2X, sem detalhe. NADA foi criado."
+    );
+  }
+
+  const mensagem = resposta.mensagem.trim();
+  if (mensagem) return mensagem;
+
+  // `errors` é `{ campo: ["motivo", ...] }`. Vira "campo: motivo; motivo" — o formato mais próximo
+  // do que o operador já lê no `errors_message`.
+  const porCampo = Object.entries(resposta.erros ?? {})
+    .map(([campo, motivos]) => {
+      const lista = (Array.isArray(motivos) ? motivos : [motivos])
+        .map((m) => String(m ?? "").trim())
+        .filter(Boolean);
+      return lista.length > 0 ? `${campo}: ${lista.join("; ")}` : "";
+    })
+    .filter(Boolean);
+  if (porCampo.length > 0) return porCampo.join(" | ");
+
+  return (
+    "A API do C2X RECUSOU o cadastro e NÃO disse o motivo (respondeu `status: failed` com " +
+    "`errors_message` e `errors` vazios). NADA foi criado no C2X. O corpo cru da resposta está " +
+    "gravado em `resposta.corpo` desta linha — é por ele que dá para reclamar com o time do C2X."
+  );
 }
 
 // `anexo` só é passado quando há arquivo (hoje: o contrato social da PJ). SEM anexo o corpo é

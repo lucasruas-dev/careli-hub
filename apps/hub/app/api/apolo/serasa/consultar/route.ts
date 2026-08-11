@@ -313,6 +313,36 @@ export async function POST(request: Request) {
     );
   }
 
+  // SEM CAD NA ESTEIRA A CONSULTA NÃO TEM PARA ONDE IR — e ela é PAGA (Lucas, 10/08: "cliente
+  // que já teve análise de crédito feito voltando para validação").
+  //
+  // `atualizarEtapa` recusa gravar quando não há empreendimento (esteira.ts:148), de propósito, para
+  // não criar CAD órfã. Só que a consulta já tinha sido feita e cobrada, e a resposta ainda dizia
+  // que a ficha avançou. Na recarga do Board o card volta para Validação, porque não existe linha na
+  // esteira para dizer onde ele está. Foi exatamente o que aconteceu com uma ficha do Vale do Ouro:
+  // QUATRO consultas cobradas (04/08, 06/08, 07/08 e 10/08), a tela dizendo "avançou" toda vez, e o
+  // card de volta em Validação toda vez.
+  //
+  // Barramos ANTES de gastar, com a saída escrita na mensagem: o empreendimento se informa no
+  // cadastro. A leitura é a mesma da esteira (CAD do empreendimento pedido, ou a mais recente).
+  const cadDoCredito = await lerCadDaEsteira<{ enterprise_id: null | string }>(
+    client,
+    entidade.id,
+    "enterprise_id",
+    { enterpriseId: corpo.enterpriseId },
+  );
+  if (!(cadDoCredito?.enterprise_id ?? "").trim()) {
+    return NextResponse.json(
+      {
+        error:
+          "Esta ficha não tem CAD com empreendimento na esteira, então o resultado do crédito não " +
+          "teria onde ser gravado (e a ficha voltaria para a Validação). Informe o empreendimento " +
+          "no cadastro antes de consultar.",
+      },
+      { status: 409 },
+    );
+  }
+
   // Dígito verificador do CPF: a MOST às vezes lê um dígito errado (ex.: 106… no lugar de 166…) e
   // a ficha nasce com CPF impossível. O Serasa rejeita com 412 "[X-Document-Id] inválido" e a
   // chamada pode ser COBRADA — barramos ANTES de gastar. (CNPJ tem regra própria; aqui é PF.)
@@ -347,6 +377,17 @@ export async function POST(request: Request) {
       motivo: "Análise de crédito desligada no empreendimento — avançou sem consulta.",
       nuncaRebaixar: true,
     });
+
+    // A ETAPA GRAVOU? Se não, a resposta NÃO pode dizer que avançou (ver o bloco do "sem CAD" mais
+    // acima). Devolver o alvo calculado como se fosse o gravado é o que fazia a tela mover o card e
+    // o reload trazer ele de volta.
+    if (transicao.error) {
+      return NextResponse.json(
+        { error: transicao.error },
+        { status: transicao.semCad || transicao.bloqueado ? 409 : 500 },
+      );
+    }
+
     return NextResponse.json({
       data: {
         analisePulada: true,
@@ -513,8 +554,17 @@ export async function POST(request: Request) {
   // coordenador que um cliente já aprovado — ou que já pagou — foi reprovado.
   // Cônjuge reprovado não avisa ninguém: `transicao` é null e a ficha não mudou de etapa —
   // avisar sem mudar seria alarme falso. Cônjuge aprovado também não cai aqui (é aprovação).
+  // A ETAPA GRAVOU? A consulta já foi feita e cobrada, então aqui não se devolve erro seco: o
+  // resultado do crédito vai na resposta de qualquer jeito. O que NÃO pode acontecer é a resposta
+  // afirmar uma etapa que o banco não tem — a tela move o card e o próximo reload desfaz. Quando
+  // não gravou, `etapa` volta null e o aviso vai junto, para a tela dizer o que resolver.
+  const etapaNaoGravada = transicao?.error ?? null;
+
   let disparo = null;
-  if (transicao && !veredito.aprovado && !transicao.mantida) {
+  // ⚠️ Não avisa ninguém sem gravação (era a task #38): dizer ao coordenador que o cliente foi para
+  // revisão, quando a esteira não registrou nada, é criar trabalho para uma ficha que a tela vai
+  // mostrar em Validação de novo no minuto seguinte.
+  if (transicao && !etapaNaoGravada && !veredito.aprovado && !transicao.mantida) {
     try {
       disparo = await dispararReprovacao({
         adminClient: client,
@@ -570,7 +620,10 @@ export async function POST(request: Request) {
       alvo: ehConjuge ? "conjuge" : "titular",
       consulta: gravada,
       disparo,
-      etapa: transicao?.etapa ?? null,
+      etapa: etapaNaoGravada ? null : (transicao?.etapa ?? null),
+      // Preenchido só quando a esteira RECUSOU a gravação. A tela mostra como aviso, e não move
+      // o card: melhor a consulta aparecer sem etapa do que a etapa aparecer sem existir.
+      etapaNaoGravada,
       reaproveitada: false,
       veredito,
     },

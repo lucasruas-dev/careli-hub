@@ -102,6 +102,14 @@ type ItemFila = {
   // não caiu. É o que separa, dentro de "Credenciado", quem pagou de quem só recebeu o PIX.
   pagoEm?: string | null;
   papel: string;
+  // A etapa Pré-venda EXISTE para esta CAD? Vem do empreendimento (`prevenda_habilitada` +
+  // `valor_pix`), decidido no servidor. Regra do Lucas (10/08): "pré-venda só existe se estiver
+  // habilitado" — onde ela está desligada, a etapa não aparece na trilha nem no kanban, em vez de
+  // aparecer e só ser barrada na hora de gravar.
+  prevendaHabilitada?: boolean;
+  // Não há linha em `apolo_esteira` para esta ficha: ela não tem etapa nem empreendimento. É por
+  // isso que ela reaparece em Validação a cada recarga, mesmo com a análise de crédito já feita.
+  semCad?: boolean;
   socios: number;
 };
 
@@ -111,16 +119,44 @@ type ItemFila = {
 // `credenciado` = 4 (e não 3) DE PROPÓSITO: é o último estágio da esteira, então a ficha entra
 // como CONCLUÍDA — todas as bolinhas ficam verdes, aparece o selo "Credenciado" e some o botão de
 // avançar (não há pra onde ir depois). Com 3 ela ficava como "etapa atual", cinza e pedindo ação.
-const INDICE_POR_ETAPA: Record<string, number> = {
-  cadastro: 0,
-  correcao: 0,
-  credenciado: 4,
-  credito: 1,
-  indeferido: 1,
-  prevenda: 2,
-  revisao: 1,
-  validacao: 0,
+// A etapa salva é texto; a trilha do item é uma LISTA (`etapasDoItem`) cujo tamanho MUDA por
+// empreendimento — onde a pré-venda está desligada ela tem um passo a menos. Por isso a ponte é
+// uma função que olha a lista do item, e não a tabela fixa de números que existia aqui: assim que a
+// lista encolheu, o número 2 ("Pré-venda") passaria a apontar para Credenciado.
+const PASSO_DA_ETAPA: Record<string, string> = {
+  cadastro: "cadastro",
+  correcao: "cadastro",
+  credenciado: "credenciado",
+  credito: "credito",
+  // Os DESVIOS do crédito (revisão, indeferido) abrem NA Análise de crédito: quem está em revisão
+  // precisa ver a análise que reprovou, não voltar para a Validação.
+  indeferido: "credito",
+  prevenda: "prevenda",
+  revisao: "credito",
+  validacao: "cadastro",
 };
+
+// Posição do item na trilha DELE. `undefined` = etapa desconhecida, e aí nada se move.
+//
+// `credenciado` vale `etapas.length` (e não a posição dele na lista) DE PROPÓSITO: é o último
+// estágio, então a ficha entra como CONCLUÍDA — bolinhas todas verdes, selo "Credenciado", sem
+// botão de avançar. Com a posição, ela ficaria como "etapa atual", cinza e pedindo ação.
+function indiceDaEtapa(item: ItemFila, etapa: null | string | undefined): number | undefined {
+  if (!etapa) return undefined;
+  const passo = PASSO_DA_ETAPA[etapa];
+  if (!passo) return undefined;
+
+  const etapas = etapasDoItem(item);
+  if (passo === "credenciado") return etapas.length;
+
+  const posicao = etapas.findIndex((e) => e.id === passo);
+  if (posicao >= 0) return posicao;
+
+  // Chegou aqui = resíduo em "prevenda" num empreendimento que não tem pré-venda. O servidor
+  // manda essa ficha para credenciado (esteira.ts); a tela mostra o mesmo, em vez de inventar
+  // uma posição para uma etapa que não existe mais.
+  return etapas.length;
+}
 
 // Data e hora de chegada: é o carimbo que ordena a fila de trabalho.
 function chegadaEm(iso: string): string {
@@ -191,8 +227,14 @@ const ETAPAS_IMOBILIARIA: Etapa[] = [
   },
 ];
 
-const etapasDoItem = (item: ItemFila): Etapa[] =>
-  item.papel === "imobiliaria" ? ETAPAS_IMOBILIARIA : ETAPAS_CAD;
+// ⚠️ A TRILHA DA CAD NÃO É FIXA: a Pré-venda é uma etapa DO EMPREENDIMENTO, não do processo.
+// Onde a cobrança de R$ 1.000 está desligada, ela não existe — e mostrar a bolinha assim mesmo é o
+// que faz o cliente "cair em pré-venda" na tela de um lançamento que não cobra nada (Lucas, 10/08).
+// O servidor decide (`prevendaHabilitada` do card, fail-closed); aqui só se obedece.
+const etapasDoItem = (item: ItemFila): Etapa[] => {
+  if (item.papel === "imobiliaria") return ETAPAS_IMOBILIARIA;
+  return item.prevendaHabilitada ? ETAPAS_CAD : ETAPAS_CAD.filter((e) => e.id !== "prevenda");
+};
 
 type Analista = { id: string; nome: string };
 
@@ -284,52 +326,128 @@ export function BoardView({
       ],
     }));
 
-  // Persiste a etapa no servidor (apolo_esteira) quando o operador decide no Board. Best-effort:
-  // o estado local já moveu a tela; falha de rede não pode desfazer o que ele acabou de ver.
-  const gravarEtapa = async (entityId: string, etapa: string, motivo?: string) => {
+  // Persiste a etapa no servidor (apolo_esteira) quando o operador decide no Board.
+  //
+  // ⚠️ DEIXOU DE SER BEST-EFFORT (Lucas, 10/08: "cliente não volta no fluxo"). Antes a tela movia o
+  // card primeiro e mandava o PATCH sem ler a resposta: se o servidor recusasse — ficha sem CAD,
+  // saída de revisão barrada, rede caída — o operador via o avanço acontecer, e no dia seguinte
+  // encontrava a mesma pessoa na etapa anterior. Agora a resposta é lida e devolvida; quem chama só
+  // mexe na tela depois do "ok", e mostra o motivo quando não é ok.
+  const gravarEtapa = async (
+    entityId: string,
+    etapa: string,
+    motivo?: string,
+  ): Promise<{ error?: string; etapa?: string; ok: boolean }> => {
     try {
       const token = await getApoloAccessToken();
       // `enterpriseId` do card: diz ao servidor QUAL CAD desta pessoa está sendo movida.
       const enterpriseId = itens.find((item) => item.id === entityId)?.enterpriseId ?? null;
-      await fetch(`/api/apolo/board/${encodeURIComponent(entityId)}/etapa`, {
+      const resposta = await fetch(`/api/apolo/board/${encodeURIComponent(entityId)}/etapa`, {
         body: JSON.stringify({ enterpriseId, etapa, motivo }),
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "PATCH",
       });
+      const corpo = (await resposta.json().catch(() => null)) as {
+        data?: { etapa?: string };
+        error?: string;
+      } | null;
+
+      if (!resposta.ok) {
+        return { error: corpo?.error ?? `Não foi possível gravar a etapa (${resposta.status}).`, ok: false };
+      }
+      // O destino REAL vem do servidor: ele pode redirecionar (pré-venda desligada -> credenciado).
+      return { etapa: corpo?.data?.etapa ?? etapa, ok: true };
     } catch {
-      // A ação local já aconteceu; não travar a UI por falha de rede.
+      return { error: "Falha de rede ao gravar a etapa. A ficha NÃO mudou de etapa.", ok: false };
     }
+  };
+
+  // O que o servidor recusou. Fica em cima do card, com o motivo que veio de lá — é o oposto do
+  // que acontecia antes, quando a recusa era engolida e a tela seguia mostrando o avanço.
+  const [erroEtapa, setErroEtapa] = useState<null | string>(null);
+
+  // TODA MUDANÇA DE ETAPA PASSA POR AQUI: grava primeiro, mexe na tela depois. `aplicar` só roda
+  // com o "ok" do servidor, e recebe a etapa REAL gravada (que pode não ser a pedida — pré-venda
+  // desligada vira credenciado).
+  const moverEtapa = async (
+    itemId: string,
+    etapa: string,
+    opts: { aplicar: (etapaGravada: string) => void; evento?: [EventoHistorico["tipo"], string]; motivo?: string },
+  ) => {
+    setErroEtapa(null);
+    const r = await gravarEtapa(itemId, etapa, opts.motivo);
+    if (!r.ok) {
+      setErroEtapa(r.error ?? "Não foi possível gravar a etapa.");
+      return;
+    }
+    opts.aplicar(r.etapa ?? etapa);
+    if (opts.evento) registrarEvento(itemId, opts.evento[0], opts.evento[1]);
+    void carregarFila();
   };
 
   // Recusa e correção SEMPRE com motivo (regra do Lucas): fica no histórico e é o que o
   // corretor/cliente recebe de volta.
   const indeferir = (itemId: string, motivo: string) => {
-    setIndeferidos((prev) => ({ ...prev, [itemId]: true }));
-    setEmRevisao((prev) => ({ ...prev, [itemId]: false }));
-    setEmCorrecao((prev) => ({ ...prev, [itemId]: false }));
-    registrarEvento(itemId, "sistema", `Reprovado — motivo: ${motivo}`);
-    void gravarEtapa(itemId, "indeferido", motivo);
+    void moverEtapa(itemId, "indeferido", {
+      aplicar: () => {
+        setIndeferidos((prev) => ({ ...prev, [itemId]: true }));
+        setEmRevisao((prev) => ({ ...prev, [itemId]: false }));
+        setEmCorrecao((prev) => ({ ...prev, [itemId]: false }));
+      },
+      evento: ["sistema", `Reprovado — motivo: ${motivo}`],
+      motivo,
+    });
   };
 
   const enviarParaCorrecao = (itemId: string, motivo: string) => {
-    setEmCorrecao((prev) => ({ ...prev, [itemId]: true }));
-    setEmRevisao((prev) => ({ ...prev, [itemId]: false }));
-    registrarEvento(itemId, "nota", `Enviado para correção — pendências: ${motivo}`);
-    void gravarEtapa(itemId, "correcao", motivo);
+    void moverEtapa(itemId, "correcao", {
+      aplicar: () => {
+        setEmCorrecao((prev) => ({ ...prev, [itemId]: true }));
+        setEmRevisao((prev) => ({ ...prev, [itemId]: false }));
+      },
+      evento: ["nota", `Enviado para correção — pendências: ${motivo}`],
+      motivo,
+    });
   };
 
   const reabrir = (itemId: string) => {
-    setIndeferidos((prev) => ({ ...prev, [itemId]: false }));
-    setEmCorrecao((prev) => ({ ...prev, [itemId]: false }));
-    registrarEvento(itemId, "etapa", "Análise reaberta");
-    void gravarEtapa(itemId, "credito");
+    void moverEtapa(itemId, "credito", {
+      aplicar: () => {
+        setIndeferidos((prev) => ({ ...prev, [itemId]: false }));
+        setEmCorrecao((prev) => ({ ...prev, [itemId]: false }));
+      },
+      evento: ["etapa", "Análise reaberta"],
+    });
   };
 
   // Analista escala pro coordenador decidir o crédito.
   const enviarParaRevisao = (itemId: string) => {
-    setEmRevisao((prev) => ({ ...prev, [itemId]: true }));
-    registrarEvento(itemId, "aprovacao", "Enviado ao coordenador para revisão do crédito");
-    void gravarEtapa(itemId, "revisao");
+    void moverEtapa(itemId, "revisao", {
+      aplicar: () => setEmRevisao((prev) => ({ ...prev, [itemId]: true })),
+      evento: ["aprovacao", "Enviado ao coordenador para revisão do crédito"],
+    });
+  };
+
+  // AVANÇAR ficou sendo uma gravação de verdade. Era `progresso++` puro: o card andava na tela, o
+  // banco não sabia de nada, e o próximo F5 devolvia a ficha para a etapa anterior — a queixa do
+  // Lucas em 10/08. O botão só existe onde a etapa NÃO tem ação própria no painel (a Análise de
+  // crédito é o Serasa; a Pré-venda é o PIX), então o único avanço genérico é sair da Validação.
+  const avancarEtapa = (item: ItemFila, etapaAtualId: string) => {
+    // A imobiliária não passa por crédito: validou o cadastro, está habilitada a enviar CADs — e
+    // "habilitada" não é etapa da esteira, o terminal dela também é `credenciado`.
+    const destino =
+      item.papel === "imobiliaria"
+        ? "credenciado"
+        : etapaAtualId === "cadastro"
+          ? "credito"
+          : "credenciado";
+    void moverEtapa(item.id, destino, {
+      aplicar: (etapaGravada) => {
+        const indice = indiceDaEtapa(item, etapaGravada);
+        if (indice !== undefined) setProgresso((prev) => ({ ...prev, [item.id]: indice }));
+      },
+      evento: ["etapa", etapaAtualId === "cadastro" ? "Validação aprovada" : "Credenciado"],
+    });
   };
 
   // APROVAR COM RESTRIÇÃO (COORDENAÇÃO) — PROBLEMA 3 (Lucas, 04/08). Substitui o antigo
@@ -363,7 +481,8 @@ export function BoardView({
       const etapaNova = corpo.data?.etapa;
       setEmRevisao((prev) => ({ ...prev, [itemId]: false }));
       setIndeferidos((prev) => ({ ...prev, [itemId]: false }));
-      const indice = etapaNova ? INDICE_POR_ETAPA[etapaNova] : undefined;
+      const item = itens.find((linha) => linha.id === itemId);
+      const indice = item ? indiceDaEtapa(item, etapaNova) : undefined;
       if (indice !== undefined) setProgresso((prev) => ({ ...prev, [itemId]: indice }));
       registrarEvento(itemId, "aprovacao", "Crédito aprovado com restrição pela coordenação");
       void carregarFila();
@@ -405,23 +524,35 @@ export function BoardView({
       setProgresso((atual) => {
         const semeado: Record<string, number> = {};
         for (const item of itensCarregados) {
-          const indice = item.etapa ? INDICE_POR_ETAPA[item.etapa] : undefined;
+          const indice = indiceDaEtapa(item, item.etapa);
           if (indice !== undefined) semeado[item.id] = indice;
         }
-        return { ...semeado, ...atual };
+        // ⚠️ O BANCO VENCE A SESSÃO — era ao contrário (`{...semeado, ...atual}`), e essa
+        // precedência é metade do "cliente voltando no fluxo": o operador clicava em avançar, a
+        // tela guardava a posição só na memória, e o refetch nunca a corrigia — nem quando o
+        // servidor tinha recusado a gravação. Agora o que está gravado manda, e a única posição
+        // que sobrevive é a de quem NÃO tem etapa no banco (ficha sem CAD).
+        const semEtapaNoBanco: Record<string, number> = {};
+        for (const [id, posicao] of Object.entries(atual)) {
+          if (semeado[id] === undefined) semEtapaNoBanco[id] = posicao;
+        }
+        return { ...semEtapaNoBanco, ...semeado };
       });
 
       // Semeia os DESVIOS (revisão/correção/indeferido) a partir da etapa persistida. Sem
       // isso eles se perdiam no reload: o item voltava para o caminho normal e a coluna
       // "Crédito em revisão" esvaziava sozinha. O que o operador mexeu na sessão prevalece.
+      // ⚠️ AQUI TAMBÉM O BANCO VENCE (mesma razão do `progresso` acima): quem tem etapa gravada é
+      // marcado ou desmarcado pelo que está gravado, não pelo que a sessão lembra. A ficha sem
+      // etapa no banco mantém o que a sessão tinha, porque para ela não há verdade melhor.
       const marcarPorEtapa = (alvo: string): Record<string, boolean> => {
         const marcas: Record<string, boolean> = {};
-        for (const item of itensCarregados) if (item.etapa === alvo) marcas[item.id] = true;
+        for (const item of itensCarregados) if (item.etapa) marcas[item.id] = item.etapa === alvo;
         return marcas;
       };
-      setEmRevisao((atual) => ({ ...marcarPorEtapa("revisao"), ...atual }));
-      setEmCorrecao((atual) => ({ ...marcarPorEtapa("correcao"), ...atual }));
-      setIndeferidos((atual) => ({ ...marcarPorEtapa("indeferido"), ...atual }));
+      setEmRevisao((atual) => ({ ...atual, ...marcarPorEtapa("revisao") }));
+      setEmCorrecao((atual) => ({ ...atual, ...marcarPorEtapa("correcao") }));
+      setIndeferidos((atual) => ({ ...atual, ...marcarPorEtapa("indeferido") }));
 
       setAnalistaPorItem((atual) => {
         const semeado: Record<string, string> = {};
@@ -551,7 +682,7 @@ export function BoardView({
         }
         if (colunaOrdem.campo === "etapa") {
           const posicao = (item: ItemFila) =>
-            colunasDoTipo(item.papel === "imobiliaria").findIndex(
+            colunasDoTipo(item.papel === "imobiliaria", itens).findIndex(
               (coluna) =>
                 coluna.id ===
                 colunaDoItem(
@@ -654,6 +785,18 @@ export function BoardView({
           </div>
         </header>
 
+        {/* O SERVIDOR RECUSOU. Antes essa recusa era engolida e a tela seguia mostrando o avanço;
+            é dela que nasce a sensação de "o cliente voltou sozinho". Fica em vermelho, com o
+            motivo que veio do servidor, até a próxima tentativa. */}
+        {erroEtapa ? (
+          <p className="m-0 flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
+            <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
+            <span>
+              <strong className="font-semibold">A etapa não foi gravada.</strong> {erroEtapa}
+            </span>
+          </p>
+        ) : null}
+
         <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-line bg-surface p-5">
           <DetalheBoard
             emCorrecao={Boolean(emCorrecao[selecionado.id])}
@@ -664,12 +807,7 @@ export function BoardView({
             mensagens={(mensagens[selecionado.id] ?? []).length}
             onAbrirChat={() => setPainelAberto(true)}
             onAprovarRestricao={() => setModalRestricao(true)}
-            onAvancar={() =>
-              setProgresso((prev) => ({
-                ...prev,
-                [selecionado.id]: (prev[selecionado.id] ?? 0) + 1,
-              }))
-            }
+            onAvancar={(etapaAtualId) => avancarEtapa(selecionado, etapaAtualId)}
             onCorrecao={() => setModalMotivo("correcao")}
             onIdentidadeSalva={() => void carregarFila()}
             onCreditoResultado={(r) => {
@@ -681,11 +819,11 @@ export function BoardView({
               // ⚠️ O caso "credenciado" faltava aqui e a barra travava na Análise de crédito mesmo
               // com o banco já em credenciado (achado do Lucas, 05/08, testando a Vovo Braga no
               // Vale do Ouro, que está com a pré-venda desligada).
-              // A posição sai do MESMO mapa que o reload da fila usa (INDICE_POR_ETAPA). Antes os
-              // números viviam soltos aqui, e bastava o servidor passar a devolver uma etapa nova
-              // para a barra parar de acompanhar. Assim a tela segue o servidor, seja qual for.
+              // A posição sai da MESMA ponte que o reload da fila usa (`indiceDaEtapa`), que lê a
+              // trilha DESTE item. Antes os números viviam soltos aqui, e bastava o servidor passar
+              // a devolver uma etapa nova para a barra parar de acompanhar.
               const alvo = selecionado.id;
-              const indice = r.etapa ? INDICE_POR_ETAPA[r.etapa] : undefined;
+              const indice = indiceDaEtapa(selecionado, r.etapa);
               if (indice !== undefined) {
                 setProgresso((prev) => ({ ...prev, [alvo]: indice }));
               }
@@ -709,12 +847,21 @@ export function BoardView({
             onEnviarGestao={() => enviarParaRevisao(selecionado.id)}
             onIndeferir={() => setModalMotivo("indeferir")}
             onReabrir={() => reabrir(selecionado.id)}
-            onVoltar={() =>
-              setProgresso((prev) => ({
-                ...prev,
-                [selecionado.id]: Math.max(0, (prev[selecionado.id] ?? 0) - 1),
-              }))
-            }
+            onVoltar={(etapaAtualId) => {
+              // Voltar é decisão humana e a esteira permite (só o AUTOMÁTICO é que não rebaixa).
+              // Mas grava, como tudo o mais: o "voltei o card e no dia seguinte ele estava lá na
+              // frente de novo" é a mesma queixa vista pelo avesso.
+              const destino = etapaAtualId === "credito" ? "validacao" : "credito";
+              void moverEtapa(selecionado.id, destino, {
+                aplicar: (etapaGravada) => {
+                  const indice = indiceDaEtapa(selecionado, etapaGravada);
+                  if (indice !== undefined) {
+                    setProgresso((prev) => ({ ...prev, [selecionado.id]: indice }));
+                  }
+                },
+                evento: ["etapa", "Etapa devolvida pelo operador"],
+              });
+            }}
           />
         </div>
 
@@ -878,7 +1025,7 @@ export function BoardView({
             value={etapaFiltro}
           >
             <option value="todas">Todas as etapas</option>
-            {colunasDoTipo(filtro === "imobiliaria").map((coluna) => {
+            {colunasDoTipo(filtro === "imobiliaria", itens).map((coluna) => {
               const quantos = itens.filter(
                 (item) =>
                   colunaDoItem(
@@ -1157,8 +1304,17 @@ const COLUNAS_IMOBILIARIA: Coluna[] = [
   { accent: "#DC2626", id: "indeferido", label: "Recusada" },
 ];
 
-const colunasDoTipo = (imob: boolean): Coluna[] =>
-  imob ? COLUNAS_IMOBILIARIA : COLUNAS_CAD;
+// A coluna Pré-venda só existe se ALGUM item visível tiver a pré-venda ligada no empreendimento
+// dele (regra do Lucas, 10/08). Numa operação onde a cobrança está desligada — o Vale do Ouro
+// depois do lançamento, por exemplo — uma coluna Pré-venda vazia e permanentemente inalcançável
+// só serve para o time achar que o cliente "caiu" nela.
+const colunasDoTipo = (imob: boolean, itens: ItemFila[] = []): Coluna[] => {
+  if (imob) return COLUNAS_IMOBILIARIA;
+  const temPrevenda = itens.some(
+    (item) => item.papel !== "imobiliaria" && item.prevendaHabilitada,
+  );
+  return temPrevenda ? COLUNAS_CAD : COLUNAS_CAD.filter((c) => c.id !== "prevenda");
+};
 
 // Desvios têm precedência sobre a etapa: o item sai do caminho normal.
 function colunaDoItem(
@@ -1174,10 +1330,13 @@ function colunaDoItem(
     return etapa <= 0 ? "validacao" : "habilitada";
   }
   if (emRevisao) return "revisao";
-  if (etapa <= 0) return "validacao";
-  if (etapa === 1) return "credito";
-  if (etapa === 2) return "prevenda";
-  return "credenciado";
+
+  // A coluna sai da TRILHA DO ITEM, não de números fixos. Onde a pré-venda está desligada a trilha
+  // tem um passo a menos, e o antigo `etapa === 2 -> "prevenda"` mandava para a coluna Pré-venda
+  // gente que na verdade estava em Credenciado.
+  const passo = etapasDoItem(item)[Math.max(0, etapa)]?.id;
+  if (!passo) return "credenciado";
+  return passo === "cadastro" ? "validacao" : passo;
 }
 
 type CampoOrdem = "chegada" | "documento" | "empreendimento" | "etapa" | "nome";
@@ -1218,7 +1377,10 @@ function ThOrdenavel(props: {
 
 // Onde o item está no workflow — o mesmo vocabulário visual do kanban, dentro da lista.
 function EtapaChip({ coluna, imob }: { coluna: string; imob: boolean }) {
-  const colunas = colunasDoTipo(imob);
+  // Rótulo e cor: usa o vocabulário COMPLETO de propósito. Se a coluna Pré-venda está escondida no
+  // kanban, uma ficha residual nela ainda precisa ser nomeada corretamente na lista — não cair no
+  // primeiro chip da lista, que seria "Validação".
+  const colunas = imob ? COLUNAS_IMOBILIARIA : COLUNAS_CAD;
   const etapa = colunas.find((item) => item.id === coluna) ?? colunas[0];
   if (!etapa) return null;
   return (
@@ -1266,7 +1428,7 @@ function KanbanBoard({
 
   return (
     <div className="flex min-h-0 flex-1 gap-3 overflow-x-auto pb-1 [scrollbar-color:#CBD5E1_transparent] [scrollbar-width:thin]">
-      {colunasDoTipo(filtro === "imobiliaria").map((coluna) => {
+      {colunasDoTipo(filtro === "imobiliaria", itens).map((coluna) => {
         const cards = itens.filter(
           (item) =>
             colunaDoItem(item, progresso[item.id] ?? 0, Boolean(indeferidos[item.id]), Boolean(emRevisao[item.id]), Boolean(emCorrecao[item.id])) ===
@@ -1622,8 +1784,20 @@ function ModalAprovarRestricao({
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
+  // O arquivo viaja em base64 (infla ~33%) e a plataforma corta o corpo em ~4,5 MB. Barrar aqui é o
+  // que separa "arquivo grande demais, mande a página do de-acordo" de um 413 mudo no meio do
+  // envio — ver [[reference_apolo_upload_413]].
+  const MAX_MB = 3;
+
   const confirmar = async () => {
     if (!arquivo || salvando) return;
+    if (arquivo.size > MAX_MB * 1024 * 1024) {
+      setErro(
+        `A evidência tem ${(arquivo.size / (1024 * 1024)).toFixed(1)} MB e o limite é ${MAX_MB} MB. ` +
+          "Mande só a página do de-acordo, ou um print da tela.",
+      );
+      return;
+    }
     setSalvando(true);
     setErro(null);
     let fileBase64: string;
@@ -1670,7 +1844,7 @@ function ModalAprovarRestricao({
             <span className="text-xs font-semibold text-ink">
               Evidência do de-acordo <span className="text-rose-600">*</span>
             </span>
-            <span className="text-[11px] text-ink-muted">PDF, PNG ou JPEG.</span>
+            <span className="text-[11px] text-ink-muted">PDF, PNG ou JPEG, até {MAX_MB} MB.</span>
             <div className="flex items-center gap-2 rounded-lg border border-dashed border-line bg-subtle/40 px-3 py-2">
               <Upload aria-hidden="true" className="size-4 shrink-0 text-ink-muted" />
               <input
@@ -1850,17 +2024,28 @@ function vereditoC2x(r: ResultadoSubidaC2x): {
       const faltam = r.faltantes.join(", ");
       return {
         texto: `Falta ${faltam}`,
-        titulo: `NADA foi enviado ao C2X: esta ficha ainda não tem ${faltam}. Complete na ficha e clique de novo.`,
+        // ⚠️ O MOTIVO DO SERVIDOR VEM PRIMEIRO. Montar a frase só com `faltantes` dá certo para
+        // campo em branco e ERRA no caso da imobiliária: "Falta Imobiliária. Complete na ficha e
+        // clique de novo." manda procurar, na ficha do CLIENTE, um campo que não existe lá — o
+        // conserto é no cadastro da imobiliária (ou no vínculo dela com a CAD). O servidor já
+        // manda a frase certa, a MESMA que fica gravada na fila; aqui era ignorada.
+        titulo:
+          motivo ||
+          `NADA foi enviado ao C2X: esta ficha ainda não tem ${faltam}. Complete na ficha e clique de novo.`,
         tom: "atencao",
       };
     }
     case "conferir":
       return {
         texto: "Ficha para conferir",
+        // ⚠️ A frase final é GENÉRICA de propósito: "conferir" cobre duas divergências diferentes —
+        // a importação e a ficha discordando sobre a pessoa (nome da mãe, nascimento) e, desde a
+        // trava anti-duplicado, o documento da ficha apontando para OUTRA pessoa no C2X. Citar só
+        // "nome da mãe e nascimento" mandava o operador conferir o campo errado no segundo caso.
         titulo: `NADA foi enviado: ${
           (r.divergencias ?? []).join("; ") ||
           "os dados de identidade divergem entre a importação e a ficha"
-        }. Nome da mãe e nascimento vão no contrato, então isto se resolve à mão antes de subir.`,
+        }. Estes dados vão no CONTRATO, então isto se resolve à mão antes de subir.`,
         tom: "atencao",
       };
     case "pronta":
@@ -2052,6 +2237,17 @@ function CardBoard({
             <AlertTriangle aria-hidden="true" className="size-2.5" /> envio
           </span>
         ) : null}
+        {/* SEM CAD: a ficha não tem linha na esteira, então não tem etapa nem empreendimento — ela
+            aparece em Validação e VOLTA para lá a cada recarga, por mais que a análise de crédito
+            já tenha sido feita. Marcar é o que transforma um fantasma numa pendência com dono. */}
+        {item.semCad ? (
+          <span
+            className="inline-flex items-center gap-0.5 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
+            title="Esta ficha não tem CAD na esteira: falta informar o empreendimento no cadastro. Enquanto faltar, ela não sai da Validação."
+          >
+            <AlertTriangle aria-hidden="true" className="size-2.5" /> sem CAD
+          </span>
+        ) : null}
         {/* Não conseguiu subir para o C2X: o motivo fica no tooltip. */}
         <SeloC2x erro={item.c2xErro} falha={item.c2xFalha} />
         {/* PIX confirmado: dentro de "Credenciado" é o que separa quem pagou de quem só
@@ -2166,7 +2362,9 @@ function DetalheBoard({
   onAbrirChat: () => void;
   // PROBLEMA 3: abre o modal do override da coordenação (evidência obrigatória).
   onAprovarRestricao: () => void;
-  onAvancar: () => void;
+  // Recebe o id da etapa em que o card está: é ele que diz para onde avançar (o Board não conta
+  // posições, ele nomeia a etapa — trilhas de tamanhos diferentes convivem).
+  onAvancar: (etapaAtualId: string) => void;
   onCorrecao: () => void;
   // Resultado do crédito: o servidor moveu a etapa (aprovado -> pré-venda, reprovado -> revisão)
   // e a tela reflete na hora.
@@ -2177,7 +2375,8 @@ function DetalheBoard({
   onIdentidadeSalva: () => void;
   onIndeferir: () => void;
   onReabrir: () => void;
-  onVoltar: () => void;
+  // Mesma ideia do `onAvancar`: o Board nomeia a etapa, não conta posições.
+  onVoltar: (etapaAtualId: string) => void;
 }) {
   const imob = item.papel === "imobiliaria";
   const etapas = etapasDoItem(item);
@@ -2300,7 +2499,7 @@ function DetalheBoard({
           <button
             className="inline-flex h-9 items-center rounded-lg border border-line px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle disabled:opacity-40"
             disabled={etapaAtual === 0}
-            onClick={onVoltar}
+            onClick={() => onVoltar(etapa?.id ?? "cadastro")}
             type="button"
           >
             Voltar
@@ -2392,10 +2591,16 @@ function DetalheBoard({
                   da etapa, com feedback de envio — como o crédito faz com o Serasa. Um botão
                   genérico "Gerar PIX" aqui no rodapé só faria progresso++ e pularia pra Credenciado
                   SEM gerar nada, que era o que estava enganando. Por isso ele não aparece aqui. */}
-              {etapa?.id === "prevenda" ? null : (
+              {/* ⚠️ NA ANÁLISE DE CRÉDITO O BOTÃO GENÉRICO TAMBÉM NÃO EXISTE MAIS. Ele dizia
+                  "Consultar Serasa" e só fazia progresso++: o card pulava para a Pré-venda sem
+                  consulta nenhuma, sem gravar nada, e o F5 desfazia — é o "cliente caindo em
+                  pré-venda" que o Lucas viu em 10/08. A consulta de verdade vive no painel da
+                  etapa, igual ao PIX. Sobra o avanço da Validação e a confirmação do Credenciado,
+                  e os dois GRAVAM antes de mover a tela. */}
+              {etapa && (etapa.id === "prevenda" || etapa.id === "credito") ? null : (
                 <button
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90"
-                  onClick={onAvancar}
+                  onClick={() => onAvancar(etapa?.id ?? "cadastro")}
                   type="button"
                 >
                   <Check aria-hidden="true" className="size-4" />

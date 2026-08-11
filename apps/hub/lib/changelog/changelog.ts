@@ -36,6 +36,63 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-10-esteira-nao-volta-e-prevenda-so-se-habilitada",
+    deployedAt: "2026-08-10T22:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "540 fichas voltaram a aparecer no Board: a fila estava servindo só 115 das 653 CADs, e 433 credenciados e 107 fichas em crédito reprovado tinham sumido da tela",
+              "Aprovar e avançar agora GRAVAM antes de mover o card. Antes o card andava só na tela e a recarga devolvia o cliente para a etapa anterior",
+              "Quando o servidor recusa a mudança de etapa, a tela diz o motivo em vermelho, em vez de mostrar o avanço que não aconteceu",
+              "A ficha sem CAD ganhou o selo \"sem CAD\": é ela que reaparece em Validação a cada recarga, e agora dá para ver quem é e o que falta (o empreendimento no cadastro)",
+              "A análise de crédito não roda mais numa ficha sem empreendimento: a consulta é paga e não teria onde gravar o resultado",
+            ],
+            screen: "Esteira de credenciamento (Board)",
+          },
+          {
+            items: [
+              "Crédito reprovado tem saída pela coordenação: no card em \"Crédito em revisão\", o botão roxo \"Aprovar com restrição (coordenação)\" libera a ficha anexando a evidência do de-acordo (PDF, PNG ou JPEG, até 3 MB, obrigatória)",
+              "Fica registrado quem aprovou, quando, por quê, e a evidência vai para a pasta do cliente",
+              "São 157 fichas paradas em crédito reprovado esperando essa decisão, a mais antiga desde 23/07",
+            ],
+            screen: "Análise de crédito",
+          },
+          {
+            items: [
+              "Pré-venda só existe onde ela está habilitada COM valor de PIX definido. Onde não está, a etapa some da trilha e da coluna do Board, em vez de aparecer e receber cliente",
+              "Vale do Ouro Lino, Vale do Ouro Cecílio e Garden estavam com a cobrança de R$ 1.000 ligada sem ninguém ter ligado: era o padrão do sistema, e o primeiro cliente aprovado cairia nela",
+              "Desligar a pré-venda de um empreendimento agora tira do ar as fichas que já estavam nela, na hora, e a tela diz quantas saíram e para onde",
+            ],
+            screen: "Empreendimentos",
+          },
+          {
+            items: [
+              "O card do empreendimento abre o masterplan DENTRO do portal, com a marca do cliente em volta: mapa, filtros, tabela de lotes e simulador, a mesma tela que o time da Careli usa",
+              "Vale do Ouro entrou no mapa: 298 lotes desenhados um a um, com situação e preço vindos do C2X",
+              "A planta do Vale do Ouro está limpa, só o desenho do loteamento, sem as logos impressas e sem a moldura",
+              "Lote bloqueado ganhou cor própria (cinza), separado de reservado: dos 110 que apareciam como reservados, só 2 eram reserva de verdade",
+              "As telas do masterplan saíram do endereço aberto e agora exigem login: quem não tem acesso ao empreendimento não abre o mapa dele",
+            ],
+            screen: "Portal do incorporador · Produtos",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "(1) BOARD, perna (b): `.in(\"id\", 653 uuids)` montava URL de 25.697 chars e o PostgREST devolvia 400 — medido em produção hoje com a service key. Como o código só desiste quando as DUAS pernas falham, a falha era muda: 115 de 653 CADs servidas (433 credenciados + 107 em revisão sem card). Passou a ler em LOTES DE 100, em paralelo. (2) SERASA: `consultar/route.ts` chamava `atualizarEtapa` em :343 e :489 e ignorava `semCad`/`error`, devolvendo `etapa` = o ALVO calculado. Sem linha em `apolo_esteira`, o Board monta o card com `etapa: null` e `colunaDoItem` o joga em Validação a cada carga — caso real: 4 consultas PAGAS na mesma ficha (04/08, 06/08, 07/08 e 10/08), tela dizendo \"avançou\" nas quatro. Agora barra ANTES de gastar (409 quando a CAD não tem empreendimento), devolve `etapaNaoGravada` quando a consulta já saiu, e não dispara mais o aviso ao coordenador sem gravação (fecha a task #38). (3) BOARD/tela: `onAvancar` era `progresso++` puro, e a semeadura era `{...semeado, ...atual}` (sessão vencia o servidor), então nada corrigia. Tudo passa por `moverEtapa`: grava, lê a resposta, e só então mexe na tela; o banco passou a vencer a sessão na semeadura de progresso E de desvios. O botão genérico sumiu da Análise de crédito (dizia \"Consultar Serasa\" e só empurrava o card para a Pré-venda). (4) PRÉ-VENDA: `resolverPrevendaHabilitada` era fail-open em três saídas (sem empreendimento, sem linha, erro) e o default da coluna na 0071 é TRUE — 36, 37 e 39 amanheceram ligados com `valor_pix` NULO. Agora é FAIL-CLOSED e exige flag + valor > 0, regra isolada em `prevendaLigadaNaSetting` e usada tanto por ficha (servidor) quanto em lote (Board). `plantarFichaPrevenda` (bancada) e `gerar-pix` passaram a respeitar o toggle — eram os dois caminhos que escapavam. (5) VARREDURA: desligar a pré-venda agora move as CADs que estavam nela (reprovado -> revisao, resto -> credenciado), em lotes de 100 e com rastro em `apolo_audit_events`; era feito na mão por SQL, duas vezes em 09/08, 146 CADs. (6) Override: `registrarOverrideCredito` deixou de engolir erro e devolve o resultado; teto do upload caiu de 8 MB (maior que o corte da Vercel) para 3 MB, com mensagem. (7) PORTAL DO INCORPORADOR: as telas do masterplan interno saíram de `public/` (estático não passa por gate: /garden/interno-3634d57f.html respondia 200 sem cookie, com preço de 406 lotes e 186 nomes de comprador dentro) para `apps/hub/masterplans-internos/`, servidas por `GET /api/incorporador/masterplan?code=` que confere a sessão assinada E traduz código -> id para validar o escopo (VOL devolve 404 para o Cecílio). `outputFileTracingIncludes` no next.config para o arquivo subir no bundle da função. A aba Produtos abre a tela num quadro, sem sair do portal. (8) MASTERPLAN DO VALE DO OURO: 298 polígonos extraídos de MASTERPLAN_VALE_DO_OURO.svg pelo `inkscape:label` (4 lotes têm id divergente do label; pelo id trocariam de lugar), conferidos 298/298 contra o C2X e 298/298 caindo sobre área de lote. Planta recortada por componente conexo (41 ilhas apagadas: as 4 logos impressas e a moldura), com o recorte indo para o `viewBox` do SVG — assim nenhum dos 1.880 vértices precisou ser recalculado. Quarto estado (Bloqueado) porque 108 dos 110 'reservados' eram lotes fora de venda. Planos comerciais lidos do C2X, com o juros do PLANO NORMAL (0,7207% a.m.) que a primeira leitura tinha zerado. ⚠️ O GARDEN NÃO É GERADO: os dados dele são da planilha do Lucas, não do C2X (o cadastro do Garden no legado é de pré-lançamento). 24 testes novos.",
+      motivation:
+        "Lucas, 10/08: \"cliente que já teve analise de credito feito voltando para validação... cliente não volta no fluxo. e outra, precisamos ter um campo para aprovar cadastro de cliente que tiveram analise de credito reprovado, nesse campo temos que colocar a evidência, eu já havia solicitado isso. e outra, cliente caindo de novo em pre-venda, pre-venda só existe se estiver habilitado\". A apuração no banco mostrou que a regressão NÃO está gravada (zero fichas com crédito em validação, zero `etapa_change` para validação): ela é de tela, produzida por ações que não gravavam e por uma fila que servia 18% das CADs. O campo do item (2) já existia em produção desde 05/08 e nunca foi usado uma vez — nem anunciado.",
+    },
+    title:
+      "Apolo: o cliente para de voltar no fluxo, pré-venda só existe se estiver habilitada, e o masterplan entra no portal do incorporador",
+    type: "correcao",
+    version: "1.121.0",
+  },
+  {
     buildTag: "2026-08-10-iris-email-preso-e-janela-de-24h",
     deployedAt: "2026-08-10T15:30:00-03:00",
     modules: [

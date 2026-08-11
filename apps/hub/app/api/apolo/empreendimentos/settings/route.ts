@@ -9,6 +9,7 @@ import {
   setEnterprisePrevenda,
   setEnterpriseValorPix,
 } from "@/lib/apolo/enterprise-settings";
+import { varrerPrevendaDesligada } from "@/lib/apolo/prevenda-varredura";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // Settings do empreendimento:
@@ -173,6 +174,10 @@ export async function PATCH(request: Request) {
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
   }
 
+  // A varredura roda DEPOIS do toggle e só quando ele desliga. Fora do `if` para o resultado poder
+  // ir na resposta.
+  let varredura: Awaited<ReturnType<typeof varrerPrevendaDesligada>> | null = null;
+
   if (mexeuPrevenda) {
     const r = await setEnterprisePrevenda({
       adminClient,
@@ -182,6 +187,13 @@ export async function PATCH(request: Request) {
       updatedBy: auth.userId,
     });
     if (!r.ok) return NextResponse.json({ error: r.error }, { status: 500 });
+
+    // DESLIGAR A PRÉ-VENDA ALCANÇA O PRESENTE, NÃO SÓ O FUTURO (Lucas, 10/08). Antes o toggle só
+    // valia para a próxima ficha: quem já estava na coluna Pré-venda ficava lá, num empreendimento
+    // que não cobra nada, até alguém varrer na mão por SQL — foram 146 CADs em 09/08.
+    if (!body.prevendaHabilitada) {
+      varredura = await varrerPrevendaDesligada(adminClient, body.enterpriseId, auth.userId);
+    }
   }
 
   if (mexeuValorPix) {
@@ -200,6 +212,9 @@ export async function PATCH(request: Request) {
       analiseCreditoHabilitada: body.analiseCreditoHabilitada,
       limiteCredito: limite,
       prevendaHabilitada: body.prevendaHabilitada,
+      // Null quando não houve desligamento. Preenchido, diz quantas CADs saíram da pré-venda e para
+      // onde — a tela mostra, senão o operador não fica sabendo que o clique dele mexeu na fila.
+      varredura,
       valorPix,
     },
   });

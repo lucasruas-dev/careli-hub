@@ -830,16 +830,29 @@ async function fetchEnterpriseSettings(enterpriseId: string): Promise<{
     };
     const setting = payload.data?.settings?.[enterpriseId];
     return {
-      // Sem setting salvo = habilitadas por padrão (bate com o default true da migration).
+      // Sem setting salvo, a análise de crédito segue habilitada por padrão (bate com o default da
+      // migration). A PRÉ-VENDA, NÃO: ela só existe configurada — flag ligada E valor do PIX
+      // definido, a mesma regra que o servidor aplica (`prevendaLigadaNaSetting`). Sem isso a tela
+      // mostrava "ligada" para todo empreendimento novo e o time só descobria a cobrança quando o
+      // primeiro cliente aprovado caía na coluna Pré-venda.
       analiseCredito: setting?.analiseCreditoHabilitada ?? true,
       ativo: Boolean(setting?.credenciamentoAtivo),
       limiteCredito:
         typeof setting?.limiteCredito === "number" ? setting.limiteCredito : null,
-      prevenda: setting?.prevendaHabilitada ?? true,
+      prevenda:
+        setting?.prevendaHabilitada === true &&
+        typeof setting?.valorPix === "number" &&
+        setting.valorPix > 0,
       valorPix: typeof setting?.valorPix === "number" ? setting.valorPix : null,
     };
   } catch {
-    return { analiseCredito: true, ativo: false, limiteCredito: null, prevenda: true, valorPix: null };
+    return {
+      analiseCredito: true,
+      ativo: false,
+      limiteCredito: null,
+      prevenda: false,
+      valorPix: null,
+    };
   }
 }
 
@@ -877,7 +890,12 @@ async function patchEnterpriseSettings(
     prevendaHabilitada?: boolean;
     valorPix?: number | null;
   },
-): Promise<{ error?: string; ok: boolean }> {
+): Promise<{
+  error?: string;
+  ok: boolean;
+  // Quantas CADs saíram da pré-venda quando o toggle foi desligado (null = não houve varredura).
+  varredura?: null | { credenciado: number; erro: null | string; revisao: number };
+}> {
   try {
     const accessToken = await getApoloAccessToken();
     const response = await fetch("/api/apolo/empreendimentos/settings", {
@@ -888,9 +906,12 @@ async function patchEnterpriseSettings(
       },
       method: "PATCH",
     });
-    const payload = (await response.json()) as { error?: string };
+    const payload = (await response.json()) as {
+      data?: { varredura?: null | { credenciado: number; erro: null | string; revisao: number } };
+      error?: string;
+    };
     if (!response.ok) return { error: payload.error ?? "Falha ao salvar.", ok: false };
-    return { ok: true };
+    return { ok: true, varredura: payload.data?.varredura ?? null };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "Falha ao salvar.", ok: false };
   }
@@ -941,11 +962,14 @@ function CredenciamentoCard({
   const [limite, setLimite] = useState("");
   const [salvandoAnalise, setSalvandoAnalise] = useState(false);
   const [erroAnalise, setErroAnalise] = useState<string | null>(null);
-  // Pré-venda: toggle + valor do PIX (texto de moeda). Vazio = padrão R$ 1.000.
-  const [prevendaOn, setPrevendaOn] = useState(true);
+  // Pré-venda: toggle + valor do PIX. Nasce DESLIGADA — "pré-venda só existe se estiver habilitado"
+  // (Lucas, 10/08), e sem valor de PIX não há o que cobrar.
+  const [prevendaOn, setPrevendaOn] = useState(false);
   const [valorPix, setValorPix] = useState("");
   const [salvandoPrevenda, setSalvandoPrevenda] = useState(false);
   const [erroPrevenda, setErroPrevenda] = useState<string | null>(null);
+  // Resultado da varredura ao DESLIGAR a pré-venda: quantas fichas saíram e para onde.
+  const [avisoPrevenda, setAvisoPrevenda] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -1022,6 +1046,21 @@ function CredenciamentoCard({
       return;
     }
     if (prevendaOn) setValorPix(numeroParaMoeda(valor));
+
+    // DESLIGAR A PRÉ-VENDA MEXE NA FILA, e o operador precisa ver o tamanho disso no ato. Antes o
+    // toggle valia só para a próxima ficha e quem já estava na coluna Pré-venda ficava lá, invisível
+    // para quem desligou.
+    const v = result.varredura;
+    if (v && v.credenciado + v.revisao > 0) {
+      const partes = [
+        v.credenciado > 0 ? `${v.credenciado} para Credenciado` : "",
+        v.revisao > 0 ? `${v.revisao} para Crédito em revisão` : "",
+      ].filter(Boolean);
+      setAvisoPrevenda(`Saíram da pré-venda: ${partes.join(" e ")}.`);
+    } else {
+      setAvisoPrevenda(null);
+    }
+    if (v?.erro) setErroPrevenda(`A varredura das fichas falhou em parte: ${v.erro}`);
   }
 
   async function handleFile(file: File | undefined) {
@@ -1104,9 +1143,9 @@ function CredenciamentoCard({
 
       <SubEtapaCredenciamento
         ativo={ativo}
-        descricao="Cobra o PIX de credenciamento na pré-venda para concluir o cadastro. Desligada, a esteira pula a cobrança."
+        descricao="Cobra o PIX de credenciamento na pré-venda para concluir o cadastro. Desligada, a esteira pula a cobrança e as fichas que estiverem nela saem no ato."
         erro={erroPrevenda}
-        fieldHelp="O que o cliente paga na pré-venda para concluir o cadastro. Vazio = padrão R$ 1.000."
+        fieldHelp="O que o cliente paga na pré-venda para concluir o cadastro. Sem valor, a pré-venda não existe: a ficha aprovada segue direto para Credenciado."
         fieldLabel="Valor do PIX"
         habilitada={prevendaOn}
         onSalvar={() => void salvarPrevenda()}
@@ -1116,6 +1155,13 @@ function CredenciamentoCard({
         titulo="Pré-venda"
         valor={valorPix}
       />
+
+      {/* O clique no toggle mexeu na fila: quantas fichas saíram da pré-venda e para onde. */}
+      {avisoPrevenda ? (
+        <p className="m-0 mt-2 rounded-lg border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-900 dark:border-emerald-500/30 dark:bg-emerald-500/10 dark:text-emerald-200">
+          {avisoPrevenda}
+        </p>
+      ) : null}
 
       <p className="m-0 mt-4 text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
         Logo do empreendimento

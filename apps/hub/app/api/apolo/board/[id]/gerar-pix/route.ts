@@ -9,6 +9,7 @@ import {
 import { authorizeApoloWrite } from "@/lib/apolo/auth";
 import { getValorPix } from "@/lib/apolo/enterprise-settings";
 import { lerCadDaEsteira, normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
+import { resolverPrevendaHabilitada } from "@/lib/apolo/limite-credito";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // GERAR PIX de UMA ficha, direto do Board (botão da etapa Pré-venda).
@@ -148,6 +149,22 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   const empreendimento = (esteira.empreendimento || "Vale do Ouro").trim();
+
+  // ⚠️ PRÉ-VENDA DESLIGADA NÃO COBRA (regra do Lucas, 10/08). Esta é a última porta antes do
+  // Asaas: mesmo que sobre uma ficha residual na coluna Pré-venda, ou que alguém chame a rota
+  // direto, não se emite cobrança de R$ 1.000 num empreendimento que não tem pré-venda. A regra é a
+  // mesma do resto do sistema (flag ligada + valor definido), lida de uma fonte só.
+  const prevendaHabilitada = await resolverPrevendaHabilitada(client, entityId, enterpriseId);
+  if (!prevendaHabilitada) {
+    return NextResponse.json(
+      {
+        error:
+          "A pré-venda está desligada neste empreendimento, então não há cobrança a gerar. " +
+          "Se ela deveria estar ativa, ligue o PIX em Empreendimentos (com o valor) antes.",
+      },
+      { status: 409 },
+    );
+  }
 
   // VALOR do PIX deste empreendimento (config no Board do empreendimento). Sem config, o padrão
   // da ação (R$ 1.000). É o que deixa o botão gerar o valor certo quando há mais de um

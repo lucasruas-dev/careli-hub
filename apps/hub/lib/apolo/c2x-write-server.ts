@@ -18,6 +18,7 @@ import {
   normalizeSearch,
   type C2xOption,
 } from "./c2x-fields";
+import { confereNomeC2x, semNomeNoC2x } from "./c2x-nome-confere";
 import { C2X_PROFISSOES } from "./c2x-professions";
 import {
   derivarNacionalidade,
@@ -33,6 +34,7 @@ import {
   documentoDoCadastro,
   enviarUsuarioC2x,
   montarPayload,
+  motivoDaRecusaC2x,
   payloadParaAuditoria,
   perfilPorPapel,
   soDigitos,
@@ -78,14 +80,36 @@ function texto(v: unknown): string | null {
 //                                             timeout).
 // Achatar o terceiro caso no segundo é exatamente como nasce cadastro duplicado num sistema de
 // CONTRATOS: "não consegui perguntar" viraria "pode criar".
+// UM cadastro do C2X que carrega este documento. Sempre em lista: no legado, "o usuário do CPF"
+// não é uma coisa só (ver o comentário de `candidatos`).
+export type CandidatoC2x = { id: number; nome: string };
+
 export type ConsultaC2xPorDocumento =
   | {
+      // 🔴 documento (só dígitos) -> TODOS os usuários do C2X com aquele documento, não só um.
+      //
+      // Guardar um só era a versão perigosa desta leitura, e a medição de 08/08 mostra por quê: no
+      // C2X existem 27 documentos com mais de um `users.id` (90 usuários no total), e o critério
+      // "vence o MAIOR id" acertava em 6 dos 12 grupos em que dá para saber qual é o certo —
+      // moeda ao ar, num sistema de CONTRATOS. Um caso já está gravado errado na fila hoje: RAFAEL
+      // GONCALVES LEITE (13261969601) foi ligado ao 4776, que tem ZERO acquisition_requests,
+      // enquanto o pedido dele está no 4068. E o nome não pega isso: os dois cadastros se chamam
+      // igual, então a conferência aprova o par errado com toda a razão do mundo.
+      //
+      // Com a lista inteira aqui, quem decide o que fazer com a ambiguidade é o chamador — e a
+      // resposta certa é NÃO DECIDIR SOZINHO (ver `situacaoNoC2x`).
+      candidatos: Map<string, CandidatoC2x[]>;
       // Os documentos que a consulta REALMENTE cobriu (só dígitos). Quem não está aqui não foi
       // perguntado, e "não perguntei" nunca pode ser lido como "não existe".
       consultados: Set<string>;
-      // documento (só dígitos) -> users.id no C2X. Havendo mais de um, vence o MAIOR id — o mesmo
-      // critério do `ORDER BY id DESC LIMIT 1` que esta leitura sempre usou.
+      // documento (só dígitos) -> users.id no C2X. Havendo mais de um, vence o MAIOR id. MANTIDO
+      // para quem só precisa de um número e não tem decisão de identidade a tomar (a resolução da
+      // imobiliária, `lerIdC2xPorDocumento`) — nunca para reconciliar cliente.
       ids: Map<string, number>;
+      // documento (só dígitos) -> users.name DO MESMO id que está em `ids`. É a segunda testemunha
+      // do casamento: o documento diz QUAL cadastro, o nome diz se é a MESMA PESSOA. Sem ele, um
+      // CPF digitado errado no Apolo ligaria a CAD ao cliente errado, calado (ver c2x-nome-confere).
+      nomes: Map<string, string>;
       ok: true;
     }
   | { motivo: string; ok: false };
@@ -100,7 +124,15 @@ export async function consultarDocumentosNoC2x(
   documentos: (string | null | undefined)[],
 ): Promise<ConsultaC2xPorDocumento> {
   const limpos = [...new Set(documentos.map((d) => soDigitos(d ?? "")).filter(Boolean))];
-  if (limpos.length === 0) return { consultados: new Set(), ids: new Map(), ok: true };
+  if (limpos.length === 0) {
+    return {
+      candidatos: new Map(),
+      consultados: new Set(),
+      ids: new Map(),
+      nomes: new Map(),
+      ok: true,
+    };
+  }
 
   const poolResult = getHadesDbPool();
   if (!poolResult.ok) {
@@ -110,16 +142,20 @@ export async function consultarDocumentosNoC2x(
   const semMascara = (coluna: string) =>
     `REPLACE(REPLACE(REPLACE(REPLACE(${coluna},'.',''),'-',''),'/',''),' ','')`;
 
+  const candidatos = new Map<string, CandidatoC2x[]>();
   const ids = new Map<string, number>();
+  const nomes = new Map<string, string>();
   try {
     for (let i = 0; i < limpos.length; i += BLOCO_DOCUMENTOS_C2X) {
       const bloco = limpos.slice(i, i + BLOCO_DOCUMENTOS_C2X);
       const marcadores = bloco.map(() => "?").join(",");
+      // `name` vem junto na MESMA consulta: perguntar o nome depois seria uma segunda ida ao MySQL
+      // de produção por pessoa — exatamente o N+1 que o bloco de 200 existe para evitar.
       const [rows] = await poolResult.pool.query<RowDataPacket[]>(
-        `SELECT id, ${semMascara("cpf")} AS doc FROM users
+        `SELECT id, name, ${semMascara("cpf")} AS doc FROM users
            WHERE ${semMascara("cpf")} IN (${marcadores})
          UNION ALL
-         SELECT id, ${semMascara("cnpj")} AS doc FROM users
+         SELECT id, name, ${semMascara("cnpj")} AS doc FROM users
            WHERE ${semMascara("cnpj")} IN (${marcadores})`,
         [...bloco, ...bloco],
       );
@@ -127,8 +163,22 @@ export async function consultarDocumentosNoC2x(
         const doc = String(linha.doc ?? "");
         const id = typeof linha.id === "number" ? linha.id : Number(linha.id);
         if (!doc || !Number.isFinite(id)) continue;
+        const nome = String(linha.name ?? "").trim();
+
+        // A LISTA INTEIRA, sempre. `UNION ALL` de cpf e cnpj pode trazer o mesmo `users.id` duas
+        // vezes (10 usuários do C2X têm os DOIS campos preenchidos), e um id repetido viraria
+        // "documento ambíguo" onde há um cadastro só — falso alarme na cara do operador.
+        const lista = candidatos.get(doc);
+        if (!lista) candidatos.set(doc, [{ id, nome }]);
+        else if (!lista.some((c) => c.id === id)) lista.push({ id, nome });
+
         const atual = ids.get(doc);
-        if (atual == null || id > atual) ids.set(doc, id);
+        if (atual != null && id <= atual) continue;
+        ids.set(doc, id);
+        // O nome ANDA COM O ID: trocou o id vencedor, troca o nome. Guardar o nome de um cadastro e
+        // o id de outro seria a pior versão possível desta leitura — a conferência aprovaria o par
+        // errado.
+        nomes.set(doc, String(linha.name ?? "").trim());
       }
     }
   } catch (erro) {
@@ -137,14 +187,24 @@ export async function consultarDocumentosNoC2x(
     return { motivo: erro instanceof Error ? erro.message : String(erro), ok: false };
   }
 
-  return { consultados: new Set(limpos), ids, ok: true };
+  return { candidatos, consultados: new Set(limpos), ids, nomes, ok: true };
 }
 
 // A situação de UM documento, reusando a consulta em bloco quando ela já cobriu este documento.
 // Sem cache (ou com um documento que o bloco não cobriu) faz a consulta unitária.
 export type SituacaoNoC2x =
-  | { c2xUserId: number; situacao: "existe" }
-  | { motivo: string; situacao: "indisponivel" }
+  // 🔴 O DOCUMENTO ACHOU MAIS DE UM CADASTRO NO C2X. Não é "existe": é "existem", e escolher um
+  // deles é apostar. Ver o comentário de `candidatos` em `ConsultaC2xPorDocumento` para a medição
+  // que trouxe este caso à tona (moeda ao ar em 6 de 12 grupos decidíveis, 1 já gravado errado).
+  | { candidatos: CandidatoC2x[]; situacao: "ambiguo" }
+  // `nomeNoC2x` = o `users.name` DESSE id. Vem junto porque quem recebe "existe" tem uma decisão a
+  // tomar (reconciliar) que não pode ser tomada só com o documento.
+  | { c2xUserId: number; nomeNoC2x: string | null; situacao: "existe" }
+  // ⚠️ DUAS COISAS DIFERENTES caem em "indisponivel", e quem grava a recusa precisa separá-las:
+  // `semDocumento` = a FICHA não tem CPF/CNPJ (o conserto é na ficha); sem ele, foi o C2X que não
+  // respondeu (o conserto é esperar e tentar de novo). Antes as duas viravam a mesma frase e o
+  // operador não sabia se tinha trabalho para fazer.
+  | { motivo: string; semDocumento: boolean; situacao: "indisponivel" }
   | { situacao: "nao_existe" };
 
 // ⚠️ NA DÚVIDA, NÃO ENVIA — e diz por quê.
@@ -170,22 +230,46 @@ export async function situacaoNoC2x(
   // Sem documento não há como perguntar — e sem pergunta não há envio. O C2X recusaria do mesmo
   // jeito (CPF/CNPJ é obrigatório lá), só que depois de criar a chance de duplicar.
   if (!doc) {
-    return { motivo: "a ficha não tem CPF/CNPJ para conferir", situacao: "indisponivel" };
+    return {
+      motivo: "a ficha não tem CPF/CNPJ para conferir",
+      semDocumento: true,
+      situacao: "indisponivel",
+    };
   }
 
   // A consulta em bloco veio quebrada. Não adianta reperguntar de um em um ao mesmo banco que
   // acabou de não responder: o desfecho seria o mesmo e o legado é de produção.
-  if (consulta && !consulta.ok) return { motivo: consulta.motivo, situacao: "indisponivel" };
-
-  if (consulta?.ok && consulta.consultados.has(doc)) {
-    const id = consulta.ids.get(doc);
-    return id != null ? { c2xUserId: id, situacao: "existe" } : { situacao: "nao_existe" };
+  if (consulta && !consulta.ok) {
+    return { motivo: consulta.motivo, semDocumento: false, situacao: "indisponivel" };
   }
 
+  if (consulta?.ok && consulta.consultados.has(doc)) return doDocumento(consulta, doc);
+
   const unitaria = await consultarDocumentosNoC2x([doc]);
-  if (!unitaria.ok) return { motivo: unitaria.motivo, situacao: "indisponivel" };
-  const id = unitaria.ids.get(doc);
-  return id != null ? { c2xUserId: id, situacao: "existe" } : { situacao: "nao_existe" };
+  if (!unitaria.ok) {
+    return { motivo: unitaria.motivo, semDocumento: false, situacao: "indisponivel" };
+  }
+  return doDocumento(unitaria, doc);
+}
+
+// A leitura de UM documento dentro de uma consulta que já deu certo. Um lugar só, porque os dois
+// caminhos (cache do lote e consulta unitária) precisam contar a MESMA história — inclusive sobre a
+// ambiguidade, que é justamente a parte que dá vontade de simplificar.
+function doDocumento(consulta: ConsultaC2xPorDocumento, doc: string): SituacaoNoC2x {
+  if (!consulta.ok) return { motivo: consulta.motivo, semDocumento: false, situacao: "indisponivel" };
+
+  const lista = consulta.candidatos.get(doc) ?? [];
+  if (lista.length === 0) return { situacao: "nao_existe" };
+  // ⚠️ A ORDEM É POR ID CRESCENTE e não é enfeite: a mensagem da recusa lista os cadastros nessa
+  // ordem, e no legado o id menor é o mais ANTIGO — que é onde os `acquisition_requests` costumam
+  // estar quando existe um gêmeo vazio mais novo.
+  if (lista.length > 1) {
+    return { candidatos: [...lista].sort((a, b) => a.id - b.id), situacao: "ambiguo" };
+  }
+
+  const unico = lista[0];
+  if (!unico) return { situacao: "nao_existe" };
+  return { c2xUserId: unico.id, nomeNoC2x: unico.nome || null, situacao: "existe" };
 }
 
 // A API devolve token, não id. Depois de criar, achamos o id do usuário no banco de produção pelo
@@ -725,6 +809,215 @@ export type ResultadoEnvio = {
   status: "resolvido" | "duplicado" | "erro" | "sem_confirmacao" | "ja_no_c2x";
 };
 
+// ── TODA RECUSA VIRA LINHA ────────────────────────────────────────────────
+//
+// O BURACO, medido em 08/08: no envio em massa, ~8 CADs foram recusadas com "Cliente sem
+// imobiliária vinculada no C2X (vinculed_by_id)" e, na `apolo_c2x_sync`, um
+// `where erro ilike '%imobili%'` devolvia ZERO linha. A frase existiu só na resposta HTTP e
+// evaporou com ela: o card dessas fichas não mostrava motivo nenhum, e foi esse silêncio que fez o
+// dono perguntar "por que não subiu?".
+//
+// A CLASSE DO PROBLEMA — e ela é maior que este caso: a linha da fila só nascia no upsert
+// 'pendente', que fica IMEDIATAMENTE ANTES do POST. A tabela era o livro-razão dos POSTs, não o
+// das TENTATIVAS. Toda decisão tomada antes dele (papel que não sobe, C2X que não deu para
+// consultar, imobiliária sem cadastro lá, campo obrigatório em branco, divergência de identidade)
+// existia só no VALOR DE RETORNO — e os quatro disparadores jogam esse retorno fora:
+//   • esteira.ts (chegou em credenciado) -> `await subirParaC2xAoCredenciar(...)`, resultado ignorado;
+//   • prevenda-fluxo.ts (PIX pago)       -> vira string no corpo da resposta do webhook do Asaas;
+//   • botão do card                      -> aparece na tela e some no primeiro reload;
+//   • lote                               -> aparece na lista e some ao sair da página.
+// Erro que não vira registro não vira trabalho.
+//
+// A REGRA AGORA: tentativa REAL que termina em recusa GRAVA linha, com o motivo real e com a
+// CLASSE (de quem é o conserto). O ENSAIO continua não gravando nada — diagnóstico que muda o
+// estado é a outra metade do mesmo problema, e quem roda o dry-run está só olhando.
+export type ClasseRecusaC2x =
+  // Falta dado NA FICHA do cliente (o caso dos 25 "campo em branco").
+  | "ficha"
+  // As duas fontes discordam sobre QUEM é a pessoa (nome da mãe, nascimento).
+  | "identidade"
+  // ⚠️ NÃO é a ficha do cliente: é o cadastro da IMOBILIÁRIA no C2X que não existe (ou está sem
+  // CNPJ no Apolo). Sem o `vinculed_by_id` dela, o cliente não pode ser criado lá.
+  | "imobiliaria"
+  // Não deu para falar com o C2X. Ninguém é culpado; é para tentar de novo.
+  | "indisponivel"
+  // O papel desta ficha não sobe para o C2X (corretor, fornecedor, parceiro, colaborador).
+  | "papel";
+
+// O PREFIXO QUE DIZ PARA ONDE IR. Quem lê o card precisa saber, na primeira linha, se o trabalho é
+// na ficha do cliente, no cadastro da imobiliária ou em lugar nenhum (esperar o C2X voltar).
+const PARA_ONDE_IR: Record<ClasseRecusaC2x, string> = {
+  ficha: "FICHA DO CLIENTE",
+  identidade: "CONFERIR A IDENTIDADE",
+  imobiliaria: "CADASTRO DA IMOBILIÁRIA",
+  indisponivel: "C2X NÃO RESPONDEU",
+  papel: "PAPEL DA FICHA",
+};
+
+export function mensagemDeRecusaC2x(classe: ClasseRecusaC2x, motivo: string): string {
+  return `${PARA_ONDE_IR[classe]}: ${motivo}`;
+}
+
+// Perfil de quem foi recusado ANTES de ter perfil definido. A coluna é NOT NULL (e sem default),
+// e o upsert do PostgREST falha em SILÊNCIO quando bate nisso: sem um valor aqui, a linha da
+// recusa por papel simplesmente não existiria — que é exatamente o bug que este bloco conserta.
+const PERFIL_INDEFINIDO = "indefinido";
+
+// Grava a recusa na fila e devolve a MESMA mensagem que vai para quem chamou — uma frase só, para
+// a tela e a tabela nunca contarem histórias diferentes sobre a mesma tentativa.
+//
+// ⚠️ NÃO gravam linha, de propósito (e cada um por um motivo diferente):
+//   • ENVIO EM VOO — a linha 'pendente' é do envio que está viajando AGORA; sobrescrevê-la com
+//     'erro' destruiria a trava anti-duplicado e o `requisicao` do envio de verdade;
+//   • ENTIDADE INEXISTENTE / SUPABASE FORA — `entity_id` é FK para `apolo_entities` e sem cliente
+//     não há como escrever; não é escolha, é impossibilidade;
+//   • ENSAIO (`dryRun`) e modo `apenasReconciliar` — ninguém tentou enviar nada.
+export async function registrarRecusaC2x(
+  client: AdminClient,
+  input: {
+    classe: ClasseRecusaC2x;
+    documento?: string | null;
+    entityId: string;
+    motivo: string;
+    // Null quando a recusa é justamente "esta ficha não tem perfil no C2X".
+    perfil: PerfilC2x | null;
+  },
+): Promise<string> {
+  const mensagem = mensagemDeRecusaC2x(input.classe, input.motivo);
+  const agora = new Date().toISOString();
+
+  // 🔴 A REGRA DE CIMA VALE PARA ESTE UPSERT TAMBÉM — E NÃO VALIA.
+  //
+  // O comentário acima promete que "envio em voo NÃO grava", mas quem cumpria essa promessa era só
+  // o `return` do `envioEmVooC2x` lá no funil — e ele fica DEPOIS de todas as recusas. Quer dizer:
+  // uma recusa disparada por OUTRO gatilho (o lote do PIX pago e o gancho de credenciar chamam
+  // `processarLoteC2x` direto, sem passar pela rota que tem o atalho) caía neste upsert e
+  // sobrescrevia com 'erro' a linha 'pendente' de um envio que estava viajando naquele instante.
+  //
+  // O ESTRAGO NÃO É O TEXTO, É A TRAVA: `envioEmVooC2x` reconhece envio em curso por
+  // `status = 'pendente'`. Apagado esse status, o próximo disparo passa livre e o
+  // `POST /api/v1/users` — genérico, que cria de novo a cada chamada e NÃO TEM DESFAZER — roda pela
+  // segunda vez para a mesma pessoa. Trocar um cadastro duplicado num sistema de CONTRATOS por uma
+  // linha de recusa é um péssimo negócio, ainda mais porque essa linha vem aí de qualquer jeito: o
+  // envio que está no ar grava o desfecho DELE quando voltar. Não gravar aqui não é silêncio, é
+  // esperar o dono da linha terminar de escrever.
+  if (await envioEmVooC2x(client, input.entityId)) {
+    console.warn(
+      `[c2x] recusa de ${input.entityId} NÃO gravada: há envio em voo (linha 'pendente'). Motivo: ${mensagem}`,
+    );
+    return mensagem;
+  }
+
+  // `documento` só entra quando existe: no upsert do PostgREST as colunas do corpo SOBRESCREVEM a
+  // linha antiga, e mandar null aqui apagaria o documento já reconciliado de uma tentativa anterior.
+  const linha: Record<string, unknown> = {
+    atualizado_em: agora,
+    entity_id: input.entityId,
+    erro: mensagem,
+    perfil: input.perfil ?? PERFIL_INDEFINIDO,
+    resposta: {
+      _classe: input.classe,
+      // Marca que NÃO houve POST: a recusa é NOSSA, antes de falar com o C2X. É o que separa esta
+      // linha de uma recusa da API do C2X (onde `resposta` é o corpo cru que ele devolveu).
+      _origem: "recusa_local",
+      motivo: input.motivo,
+      quando: agora,
+    },
+    status: "erro",
+  };
+  if (input.documento) linha.documento = input.documento;
+
+  // ⚠️ `error` conferido SEMPRE: upsert do PostgREST falha em silêncio quando bate em NOT NULL sem
+  // default. Uma gravação de recusa que falha calada recria o bug que este código conserta, então
+  // o fracasso vai para o log do servidor com o motivo original junto.
+  const { error } = await client
+    .from("apolo_c2x_sync")
+    .upsert(linha, { onConflict: "entity_id" });
+  if (error) {
+    console.error(
+      `[c2x] NÃO consegui gravar a recusa de ${input.entityId} (${error.message}). Motivo original: ${mensagem}`,
+    );
+  }
+  return mensagem;
+}
+
+// 🔴 O DOCUMENTO BATEU E O NOME NÃO — O PIOR DESFECHO DESTA FASE, E O ÚNICO SEM ALARME NATURAL.
+//
+// Reconciliar é ligar esta CAD a um `users.id` do C2X. Quando o documento casa com OUTRA pessoa (um
+// CPF digitado errado no Apolo é o caminho mais curto para isso), as duas saídas óbvias são ruins:
+//   • reconciliar -> a CAD de um vira o cliente de outro, num sistema de CONTRATOS, em silêncio;
+//   • enviar      -> nasce um segundo cadastro com um documento que já é de alguém no C2X.
+// Então a saída é a terceira: não faz nem uma nem outra, e vira TRABALHO — linha na fila, classe
+// "identidade", com os dois nomes escritos na mensagem para a conferência ser de olho, não de fé.
+//
+// A frase mora aqui, e não em cada chamador, porque são dois (o funil e o laço do lote) e eles
+// precisam contar a MESMA história sobre o mesmo par.
+export function msgDocumentoDeOutraPessoa(input: {
+  c2xUserId: number;
+  documento: string | null;
+  motivo: string;
+  nomeApolo: string | null;
+  nomeNoC2x: string | null;
+}): string {
+  // 🔴 SEM NOME NO C2X NÃO É "OUTRA PESSOA" — E MANDAR O OPERADOR CONFERIR O CPF É MANDÁ-LO CAÇAR
+  // UM ERRO QUE NÃO EXISTE.
+  //
+  // Medido em 08/08: 425 dos ~4.500 usuários do C2X estão com `name` vazio (as imobiliárias, em
+  // peso). Isso responde por 423 dos 471 vetos de nome — 90% deles. Com a frase genérica, cada um
+  // desses cards dizia "parece ser de OUTRA PESSOA... confira o CPF/CNPJ na ficha; se as duas
+  // pessoas forem a mesma, corrija o nome para eles baterem": um beco sem saída, porque o CPF está
+  // certo e não existe nome do outro lado para fazer bater. O bloqueio continua (sem nome não dá
+  // para confirmar identidade, e enviar duplicaria o documento), mas agora ele aponta para o
+  // conserto de verdade, que é do lado do C2X.
+  if (semNomeNoC2x(input.nomeNoC2x)) {
+    return (
+      `o documento desta ficha (${input.documento ?? "vazio"}) já existe no C2X, no usuário ` +
+      `${input.c2xUserId} — mas esse cadastro está SEM NOME lá, então não dá para confirmar que é ` +
+      `a mesma pessoa que esta ficha ("${input.nomeApolo ?? "(sem nome)"}"). NADA foi enviado e ` +
+      "NADA foi reconciliado. ⚠️ O CPF/CNPJ daqui provavelmente está CERTO: o conserto é preencher " +
+      `o nome do usuário ${input.c2xUserId} no C2X e mandar de novo.`
+    );
+  }
+  return (
+    `o documento desta ficha (${input.documento ?? "vazio"}) já pertence a um cadastro do C2X que ` +
+    `parece ser de OUTRA PESSOA: aqui a ficha é "${input.nomeApolo ?? "(sem nome)"}" e lá o ` +
+    `usuário ${input.c2xUserId} é "${input.nomeNoC2x ?? "(sem nome)"}" — ${input.motivo} ` +
+    "NADA foi enviado e NADA foi reconciliado: reconciliar ligaria esta CAD ao cliente errado e " +
+    "enviar criaria um segundo cadastro com o mesmo documento. Confira o CPF/CNPJ na ficha; se as " +
+    "duas pessoas forem a mesma, corrija o nome para eles baterem."
+  );
+}
+
+// 🔴 O MESMO DOCUMENTO EM VÁRIOS CADASTROS DO C2X — A ESCOLHA QUE NÃO PODE SER NOSSA.
+//
+// O nome não salva este caso, e é isso que o torna pior que a divergência: os gêmeos do legado se
+// chamam IGUAL (mesma pessoa cadastrada duas vezes), então a conferência aprova, e aí o critério
+// que decide qual `users.id` vai para a fila é "o maior id". Medido no banco de produção em 08/08:
+// dos 12 grupos em que dá para saber qual é o certo (um irmão tem `acquisition_requests` e o outro
+// não), o maior id acertou 6. Moeda ao ar. E já tem um erro gravado: RAFAEL GONCALVES LEITE
+// (13261969601) está ligado ao 4776, que tem ZERO pedidos, enquanto o pedido está no 4068 — o card
+// do Apolo mostra um cliente sem contrato nenhum e ninguém desconfia.
+//
+// Também não dá para enviar: o documento existe lá, então o POST criaria o TERCEIRO cadastro.
+// Sobra a única saída honesta — parar e mostrar a lista para uma pessoa escolher.
+export function msgDocumentoAmbiguoNoC2x(input: {
+  candidatos: CandidatoC2x[];
+  documento: string | null;
+  nomeApolo: string | null;
+}): string {
+  const lista = input.candidatos
+    .map((c) => `${c.id} ("${c.nome || "(sem nome)"}")`)
+    .join(", ");
+  return (
+    `o documento desta ficha (${input.documento ?? "vazio"}) aparece em ${input.candidatos.length} ` +
+    `cadastros do C2X ao mesmo tempo: ${lista}. NADA foi enviado e NADA foi reconciliado — enviar ` +
+    "criaria mais um cadastro com o mesmo documento, e escolher um deles por conta própria ligaria " +
+    `esta CAD ("${input.nomeApolo ?? "(sem nome)"}") ao cadastro errado, que costuma ser o gêmeo ` +
+    "VAZIO (sem pedidos). Alguém precisa dizer qual é o cadastro bom — normalmente é o de id MENOR, " +
+    "que é o mais antigo e o que carrega os pedidos, mas isso tem que ser conferido no C2X."
+  );
+}
+
 // JÁ ESTAVA LÁ: registra o achado, sem enviar nada.
 //
 // É o desfecho das 132 pessoas que estão no C2X e são invisíveis para a nossa fila (entraram por
@@ -890,7 +1183,15 @@ export async function enviarEntidadeParaC2x(input: {
   if (!perfil) {
     return {
       entityId: input.entityId,
-      erro: "Papel da entidade não sobe para o C2X (ou não foi possível determiná-lo).",
+      erro: await registrarRecusaC2x(client, {
+        classe: "papel",
+        documento,
+        entityId: input.entityId,
+        motivo:
+          "o papel desta ficha não sobe pela fila do C2X (corretor, fornecedor, parceiro, " +
+          "colaborador ou papel não identificado). NADA foi enviado.",
+        perfil: null,
+      }),
       status: "erro",
     };
   }
@@ -909,6 +1210,33 @@ export async function enviarEntidadeParaC2x(input: {
   // "Cliente sem imobiliária vinculada" para gente que está lá desde sempre.
   const situacao = await situacaoNoC2x(documento, input.consultaC2x);
   if (situacao.situacao === "existe") {
+    // ⚠️ O DOCUMENTO NÃO DECIDE SOZINHO. Antes de carimbar o `c2x_user_id` desta pessoa na nossa
+    // fila, o nome tem que sustentar o casamento — senão o CPF errado de hoje vira o contrato
+    // errado de amanhã. Ver `c2x-nome-confere.ts` para o que é tolerado (acento, caixa, nome do
+    // meio, um erro de digitação) e o que não é (troca de nome próprio ou de sobrenome).
+    const confere = confereNomeC2x(
+      [entity.display_name, entity.legal_name, entity.trade_name],
+      situacao.nomeNoC2x,
+    );
+    if (!confere.confere) {
+      return {
+        entityId: input.entityId,
+        erro: await registrarRecusaC2x(client, {
+          classe: "identidade",
+          documento,
+          entityId: input.entityId,
+          motivo: msgDocumentoDeOutraPessoa({
+            c2xUserId: situacao.c2xUserId,
+            documento,
+            motivo: confere.motivo,
+            nomeApolo: confere.nomeApolo,
+            nomeNoC2x: situacao.nomeNoC2x,
+          }),
+          perfil,
+        }),
+        status: "erro",
+      };
+    }
     return reconciliarJaNoC2x(client, {
       c2xUserId: situacao.c2xUserId,
       documento,
@@ -916,20 +1244,74 @@ export async function enviarEntidadeParaC2x(input: {
       perfil,
     });
   }
-  if (situacao.situacao === "indisponivel") {
-    const erro = msgC2xNaoConferido(situacao.motivo);
-    // Fica no log do servidor para o caso dos disparadores AUTOMÁTICOS (credenciar, PIX pago), em
-    // que ninguém está olhando uma tela. A fila NÃO é tocada: ela é o livro-razão dos ENVIOS, e
-    // aqui nenhum envio começou — carimbar 'erro' em quem nunca foi tentado apagaria o sinal de
-    // "nunca_enviado" do board por causa de uma queda de rede.
-    console.error(`[c2x] envio adiado (${input.entityId}): ${erro}`);
-    return { entityId: input.entityId, erro, status: "erro" };
+
+  // 🔴 VÁRIOS CADASTROS COM O MESMO DOCUMENTO: não reconcilia (escolheria por sorte) e não envia
+  // (criaria mais um). Fica no funil, e não só no lote, porque o funil é por onde passam TAMBÉM os
+  // disparadores automáticos — credenciar e PIX pago não olham a lista do lote.
+  if (situacao.situacao === "ambiguo") {
+    return {
+      entityId: input.entityId,
+      erro: await registrarRecusaC2x(client, {
+        classe: "identidade",
+        documento,
+        entityId: input.entityId,
+        motivo: msgDocumentoAmbiguoNoC2x({
+          candidatos: situacao.candidatos,
+          documento,
+          nomeApolo: entity.display_name ?? entity.legal_name ?? null,
+        }),
+        perfil,
+      }),
+      status: "erro",
+    };
   }
 
+  if (situacao.situacao === "indisponivel") {
+    // Continua no log do servidor por causa dos disparadores AUTOMÁTICOS (credenciar, PIX pago),
+    // em que ninguém está olhando uma tela...
+    console.error(`[c2x] envio adiado (${input.entityId}): ${situacao.motivo}`);
+    // ...mas AGORA TAMBÉM VIRA LINHA. O argumento antigo para não gravar era que carimbar 'erro'
+    // apagaria o sinal de "nunca_enviado" do board por causa de uma queda de rede. Só que o card
+    // fica igualmente vermelho nos dois casos (o alerta 'nunca_enviado' também acende), e a
+    // diferença é só que agora ele diz POR QUE — e a linha se corrige sozinha no primeiro envio
+    // que der certo, porque o upsert é pela entidade.
+    return {
+      entityId: input.entityId,
+      erro: await registrarRecusaC2x(client, {
+        // Ficha sem CPF/CNPJ é trabalho para o time; C2X mudo não é culpa de ninguém.
+        classe: situacao.semDocumento ? "ficha" : "indisponivel",
+        documento,
+        entityId: input.entityId,
+        motivo: msgC2xNaoConferido(situacao.motivo),
+        perfil,
+      }),
+      status: "erro",
+    };
+  }
+
+  // 🔴 SEM IMOBILIÁRIA NO C2X — A RECUSA QUE SUMIA (08/08).
+  //
+  // Esta era a recusa que a resposta HTTP mostrava e ninguém gravava: ~8 CADs no envio em massa,
+  // `erro ilike '%imobili%'` na fila devolvendo ZERO, e o card sem motivo nenhum. Agora vira linha,
+  // e vira linha DIZENDO DE QUEM É O CONSERTO: a ficha do cliente pode estar impecável, o que falta
+  // é o cadastro da IMOBILIÁRIA no C2X (ou o CNPJ dela no Apolo).
+  //
+  // Quem vem pelo lote já foi recusado antes daqui, com o NOME da imobiliária junto (o lote sabe
+  // qual é). Este gate é a rede de baixo: pega quem chamar o funil direto, e por isso a frase aqui
+  // é a genérica.
   if (perfil === "cliente" && !input.vinculedById) {
     return {
       entityId: input.entityId,
-      erro: "Cliente sem imobiliária vinculada no C2X (vinculed_by_id).",
+      erro: await registrarRecusaC2x(client, {
+        classe: "imobiliaria",
+        documento,
+        entityId: input.entityId,
+        motivo:
+          "a imobiliária vinculada a esta CAD não tem cadastro no C2X (ou está sem CNPJ no " +
+          "Apolo), então não existe `vinculed_by_id` e o cliente não pode ser criado lá. NADA foi " +
+          "enviado. O conserto é no cadastro da IMOBILIÁRIA, não na ficha do cliente.",
+        perfil,
+      }),
       status: "erro",
     };
   }
@@ -960,6 +1342,10 @@ export async function enviarEntidadeParaC2x(input: {
   // porque o que separa esta linha do upsert que reivindica a fila é um round-trip — enquanto na
   // entrada da rota o caminho até aqui inclui MySQL do C2X, `montarDados` e a leitura do contrato
   // social no Storage, tempo de sobra para um segundo disparo passar pela mesma checagem.
+  //
+  // ⚠️ ÚNICA RECUSA QUE NÃO VIRA LINHA, e o motivo é o oposto do descuido: a linha desta entidade
+  // JÁ EXISTE e está em 'pendente' porque tem um envio de verdade viajando agora. Carimbar 'erro'
+  // por cima destruiria a trava anti-duplicado e o `requisicao` do envio real.
   if (await envioEmVooC2x(client, input.entityId)) {
     return { entityId: input.entityId, erro: MSG_ENVIO_EM_VOO, status: "erro" };
   }
@@ -1001,12 +1387,12 @@ export async function enviarEntidadeParaC2x(input: {
     (resposta.status === "failed" && resposta.duplicado);
 
   if (!criouOuExiste) {
-    const motivoApi =
-      resposta.status === "failed"
-        ? resposta.mensagem
-        : resposta.status === "erro_transporte"
-          ? resposta.detalhe
-          : "Falha desconhecida.";
+    // ⚠️ NUNCA `resposta.mensagem` CRU AQUI. O C2X já recusou com `errors_message` E `errors` os
+    // dois vazios (três CADs PJ em 08/08), e a linha ia para a fila com `erro = ''` — o card
+    // acendia vermelho dizendo "motivo não registrado", que é o silêncio de novo, agora do lado de
+    // lá do POST. `motivoDaRecusaC2x` garante frase: mensagem, senão os erros campo a campo, senão
+    // a confissão de que a API não disse nada.
+    const motivoApi = motivoDaRecusaC2x(resposta);
     // Com o anexo faltando, o "não pode ficar em branco" do C2X passa a vir acompanhado do motivo
     // real — senão a recusa parece inexplicável e manda o time caçar env errada.
     const erro = juntarMotivo(motivoApi) ?? motivoApi;
@@ -1092,11 +1478,29 @@ export async function enviarEntidadeParaC2x(input: {
 // no C2X (users profile 6). As 24 imobiliárias das CADs JÁ existem no C2X, então isto só LÊ, não
 // cria. Nulo = sem imobiliária vinculada (a CAD não pode subir). `cache` evita reconsultar o C2X
 // pela mesma imobiliária no lote (são 24 distintas para centenas de clientes).
-export async function resolverVinculedById(
+export type ImobiliariaDaCad = {
+  // O `vinculed_by_id` do cliente. Null = a imobiliária não foi encontrada no C2X pelo documento.
+  c2xUserId: number | null;
+  // ⚠️ false = NÃO DEU PARA PERGUNTAR ao C2X (banco do legado fora). Sem este campo, o
+  // `c2xUserId: null` de uma queda de rede vira a frase "a imobiliária não tem cadastro no C2X" —
+  // e aí a recusa acusa a imobiliária (e manda o time consertar o que não está quebrado) por causa
+  // de um timeout. É a mesma armadilha que `ConsultaC2xPorDocumento` já evita do outro lado.
+  conferida: boolean;
+  documento: string | null;
+  // Null = a CAD não tem NENHUMA imobiliária vinculada no Apolo (é outro conserto, e outro time).
+  entityId: string | null;
+  nome: string | null;
+};
+
+// QUEM é a imobiliária desta CAD e qual o id dela no C2X. Devolve a identidade inteira, não só o
+// número, porque a recusa por falta de `vinculed_by_id` precisa dizer QUAL imobiliária resolver —
+// "sem imobiliária no C2X" manda o operador procurar no escuro; "a imobiliária RICAJ NEGOCIOS
+// IMOBILIARIOS LTDA está sem CNPJ" já é a tarefa pronta.
+export async function resolverImobiliariaDaCad(
   client: AdminClient,
   entityId: string,
-  cache?: Map<string, number | null>,
-): Promise<number | null> {
+  cache?: Map<string, ImobiliariaDaCad>,
+): Promise<ImobiliariaDaCad> {
   // Vínculo por ENTIDADE (qualquer tipo de imobiliária: "imobiliaria" novo, "Imobiliaria da CAD"
   // legado), o mais recente vence. Ver imobiliaria-do-cliente.ts.
   const { data: rel } = await client
@@ -1109,20 +1513,97 @@ export async function resolverVinculedById(
     .order("created_at", { ascending: false })
     .limit(1);
   const imobId = (rel ?? [])[0]?.related_entity_id as string | undefined;
-  if (!imobId) return null;
+  if (!imobId) {
+    // Nada a conferir no C2X: a pendência é o vínculo no Apolo, e disso a gente sabe sozinho.
+    return { c2xUserId: null, conferida: true, documento: null, entityId: null, nome: null };
+  }
 
-  if (cache?.has(imobId)) return cache.get(imobId) ?? null;
+  const emCache = cache?.get(imobId);
+  if (emCache) return emCache;
 
   const { data: imob } = await client
     .from("apolo_entities")
-    .select("document_masked")
+    .select("display_name, legal_name, document_masked")
     .eq("id", imobId)
     .single();
-  const id = imob?.document_masked
-    ? await lerIdC2xPorDocumento(imob.document_masked)
-    : null;
-  cache?.set(imobId, id);
-  return id;
+  const linha = imob as
+    | { display_name: string | null; document_masked: string | null; legal_name: string | null }
+    | null;
+
+  // A consulta CRUA (e não `lerIdC2xPorDocumento`) porque aqui a diferença entre "não achei" e
+  // "não consegui perguntar" é justamente o que precisa sobreviver até a mensagem da recusa.
+  const documento = linha?.document_masked ?? null;
+  const digitos = soDigitos(documento);
+  const consulta = digitos ? await consultarDocumentosNoC2x([digitos]) : null;
+
+  const achada: ImobiliariaDaCad = {
+    c2xUserId: consulta?.ok ? (consulta.ids.get(digitos) ?? null) : null,
+    // Sem dígitos nem chegamos a perguntar, e não precisamos: o CNPJ vazio já é a pendência.
+    conferida: consulta ? consulta.ok : true,
+    documento,
+    entityId: imobId,
+    nome: texto(linha?.display_name) ?? texto(linha?.legal_name),
+  };
+  cache?.set(imobId, achada);
+  return achada;
+}
+
+// O número puro, para quem só precisa dele. Continua exportada porque é o contrato antigo desta
+// casa: quem chama para montar o payload não tem por que saber o nome da imobiliária.
+export async function resolverVinculedById(
+  client: AdminClient,
+  entityId: string,
+  cache?: Map<string, ImobiliariaDaCad>,
+): Promise<number | null> {
+  return (await resolverImobiliariaDaCad(client, entityId, cache)).c2xUserId;
+}
+
+// A RECUSA POR FALTA DE `vinculed_by_id`, com nome e sobrenome do problema. São QUATRO desfechos
+// com quatro consertos diferentes, em lugares diferentes — e o pior deles seria achatá-los na
+// mesma frase ("Cliente sem imobiliária vinculada no C2X"), que foi o que se viu em 08/08 e não
+// dizia a ninguém o que fazer.
+//
+// A classe vem JUNTO com a frase de propósito: separar as duas coisas é como nasce uma linha que
+// diz "não é culpa da ficha" carimbada como culpa da ficha.
+export function recusaPorImobiliaria(imob: ImobiliariaDaCad): {
+  classe: ClasseRecusaC2x;
+  motivo: string;
+} {
+  if (!imob.entityId) {
+    return {
+      classe: "imobiliaria",
+      motivo:
+        "esta CAD não tem imobiliária vinculada no Apolo, e o C2X exige o `vinculed_by_id` para " +
+        "criar um cliente. NADA foi enviado. Vincule a imobiliária na CAD e mande de novo.",
+    };
+  }
+  const quem = imob.nome ?? "a imobiliária vinculada";
+  if (!soDigitos(imob.documento)) {
+    return {
+      classe: "imobiliaria",
+      motivo:
+        `${quem} está sem CNPJ utilizável no Apolo (\`${imob.documento ?? "vazio"}\`), então não ` +
+        "dá para achar o cadastro dela no C2X e o cliente fica sem `vinculed_by_id`. NADA foi " +
+        "enviado. O conserto é no cadastro da IMOBILIÁRIA, não na ficha do cliente.",
+    };
+  }
+  // NÃO DEU PARA PERGUNTAR. Não é da imobiliária nem da ficha: é para tentar de novo.
+  if (!imob.conferida) {
+    return {
+      classe: "indisponivel",
+      motivo:
+        `não deu para conferir no C2X o cadastro da imobiliária ${quem} (${imob.documento}), e ` +
+        "sem o `vinculed_by_id` dela o cliente não pode ser criado. NADA foi enviado. Tente de " +
+        "novo quando o C2X responder.",
+    };
+  }
+  return {
+    classe: "imobiliaria",
+    motivo:
+      `${quem} (${imob.documento}) não tem cadastro no C2X, então o cliente fica sem ` +
+      "`vinculed_by_id` e não pode ser criado lá. NADA foi enviado. O conserto é no cadastro da " +
+      "IMOBILIÁRIA, não na ficha do cliente.",
+  };
 }
 
 // Campos OBRIGATÓRIOS do C2X que podem faltar numa CAD de PESSOA FÍSICA. Devolve os que faltam
@@ -1191,12 +1672,23 @@ export function diagnosticarCadastro(
 }
 
 export type ItemLote = {
+  // O `users.id` do C2X encontrado pelo DOCUMENTO, quando a pessoa já está lá. Vem no ensaio também
+  // (onde nada é gravado): é o que o operador confere antes de autorizar a reconciliação.
+  // TODOS os `users.id` do C2X que carregam o documento desta ficha, quando são mais de um. Vem
+  // separado de `c2xUserId` porque significa o oposto: lá há uma escolha feita, aqui há uma escolha
+  // PENDENTE. Sem este campo o caso ambíguo sumiria do relatório de reconciliação, que separa os
+  // suspeitos justamente por terem um id do C2X — e o silêncio voltaria pela porta dos fundos.
+  c2xCandidatos?: number[];
+  c2xUserId?: number;
   // Campos em que `metadata.cadastro` e `apolo_esteira.ficha` discordam sobre QUEM é a pessoa.
   divergencias?: string[];
   entityId: string;
   erro?: string;
   faltantes: string[];
   nome: string;
+  // O `users.name` do cadastro achado no C2X, LADO A LADO com `nome` (o do Apolo). Sem os dois na
+  // mesma linha, conferir uma reconciliação exige abrir dois sistemas — e ninguém confere.
+  nomeNoC2x?: string | null;
   // "conferir" = a ficha tem dado de identidade divergente entre as duas fontes; fica fora do
   // envio automático porque nome da mãe e nascimento vão no contrato.
   // "sem_confirmacao" = foi enviada e a API aceitou, mas o cadastro não apareceu no banco do C2X.
@@ -1244,6 +1736,10 @@ export async function processarLoteC2x(input: {
   // mostra quantas seriam reconciliadas sem gravar nada.
   apenasReconciliar?: boolean;
   client?: AdminClient;
+  // "Quem destas já está no C2X", quando quem chama JÁ perguntou. Ausente (o normal) = o lote
+  // pergunta sozinho, em blocos. Mesmo contrato que `enviarEntidadeParaC2x` já tem, e pela mesma
+  // razão: a resposta é cara (MySQL de produção) e ninguém deve pedi-la duas vezes.
+  consultaC2x?: ConsultaC2xPorDocumento;
   dryRun: boolean;
   limit?: number;
   // Teto de ENVIOS REAIS nesta rodada (diferente de `limit`, que corta as candidatas lidas).
@@ -1297,7 +1793,11 @@ export async function processarLoteC2x(input: {
   // Os clientes PF (o fluxo principal) continuam entrando exatamente como antes.
   let consulta = client
     .from("apolo_entities")
-    .select("id, display_name, legal_name, document_masked, entity_kind, metadata")
+    // `trade_name` entra por causa da conferência de nome: o funil compara os TRÊS nomes da
+    // entidade e o lote comparava dois. Duas réguas para a mesma decisão divergem um dia — e a
+    // frouxa é sempre a que roda em lote, sem ninguém olhando (foi assim com as duas
+    // `matchFaixaRendaId`). Hoje a diferença de veredito é ZERO em produção; é para continuar.
+    .select("id, display_name, legal_name, trade_name, document_masked, entity_kind, metadata")
     .eq("metadata->>source", "apolo");
   if (input.apenasEntityId) consulta = consulta.eq("id", input.apenasEntityId);
   const { data: entidades } = await consulta.limit(input.limit ?? 1000);
@@ -1309,6 +1809,7 @@ export async function processarLoteC2x(input: {
     id: string;
     legal_name: string | null;
     metadata: Record<string, unknown> | null;
+    trade_name: string | null;
   }[]).filter((e) => {
     const meta = e.metadata ?? {};
     if (perfilDaFicha(meta, e.entity_kind) !== "cliente") return false;
@@ -1342,9 +1843,9 @@ export async function processarLoteC2x(input: {
   // O documento é o `document_masked` da entidade, que é EXATAMENTE o que vira `cpf`/`cnpj` no
   // payload (ver `montarDados`): a pergunta feita aqui e a que o funil refaz são sobre o mesmo
   // documento, então uma nunca diz o contrário da outra.
-  const consultaC2x = await consultarDocumentosNoC2x(
-    candidatas.map((ent) => ent.document_masked),
-  );
+  const consultaC2x =
+    input.consultaC2x ??
+    (await consultarDocumentosNoC2x(candidatas.map((ent) => ent.document_masked)));
 
   // Envio REAL só quando não é ensaio e não é o modo "só reconciliar".
   const podeEnviar = !input.dryRun && !input.apenasReconciliar;
@@ -1352,7 +1853,7 @@ export async function processarLoteC2x(input: {
   // todo lugar, senão o operador que roda o diagnóstico para olhar acaba mudando o estado.
   const podeGravarReconciliacao = !input.dryRun;
 
-  const cacheImob = new Map<string, number | null>();
+  const cacheImob = new Map<string, ImobiliariaDaCad>();
   const itens: ItemLote[] = [];
   let enviados = 0;
 
@@ -1366,11 +1867,94 @@ export async function processarLoteC2x(input: {
     // isso que prendia as fichas invisíveis em "faltando", onde o botão do card nunca chegaria à
     // reconciliação. O funil (`enviarEntidadeParaC2x`) refaz a checagem para quem passa daqui:
     // esta é a saída antecipada, aquela é a trava.
-    const jaNoC2xId = consultaC2x.ok
-      ? (consultaC2x.ids.get(soDigitos(ent.document_masked ?? "")) ?? null)
-      : null;
+    const docDaEntidade = soDigitos(ent.document_masked ?? "");
+    const candidatosNoC2x = consultaC2x.ok
+      ? (consultaC2x.candidatos.get(docDaEntidade) ?? [])
+      : [];
+
+    // 🔴 MAIS DE UM CADASTRO COM ESTE DOCUMENTO NO C2X. Sai ANTES da conferência de nome porque o
+    // nome não resolve isto: os gêmeos do legado têm o MESMO nome, a régua aprova, e o que decide
+    // vira "o maior id" — que a medição de 08/08 mostrou ser moeda ao ar (6 acertos em 12 grupos
+    // decidíveis). Nem reconcilia nem envia: vira "conferir", que é a gaveta de quem precisa de
+    // gente olhando.
+    if (candidatosNoC2x.length > 1) {
+      const ordenados = [...candidatosNoC2x].sort((a, b) => a.id - b.id);
+      const motivo = msgDocumentoAmbiguoNoC2x({
+        candidatos: ordenados,
+        documento: ent.document_masked,
+        nomeApolo: nome || ent.legal_name || null,
+      });
+      if (podeGravarReconciliacao) {
+        await registrarRecusaC2x(client, {
+          classe: "identidade",
+          documento: ent.document_masked,
+          entityId: ent.id,
+          motivo,
+          perfil: perfilDaFicha(ent.metadata ?? {}, ent.entity_kind) ?? "cliente",
+        });
+      }
+      itens.push({
+        c2xCandidatos: ordenados.map((c) => c.id),
+        divergencias: [`o documento aparece em ${ordenados.length} cadastros do C2X`],
+        entityId: ent.id,
+        erro: motivo,
+        faltantes: [],
+        nome,
+        status: "conferir",
+      });
+      continue;
+    }
+
+    const jaNoC2xId = candidatosNoC2x[0]?.id ?? null;
     if (jaNoC2xId != null) {
       const perfilDaEntidade = perfilDaFicha(ent.metadata ?? {}, ent.entity_kind);
+      const nomeNoC2x = candidatosNoC2x[0]?.nome || null;
+
+      // 🔴 O DOCUMENTO BATEU — MAS É A MESMA PESSOA? Aqui é onde o risco desta fase mora: um CPF
+      // digitado errado no Apolo casa com outra pessoa no C2X, e a reconciliação amarraria a CAD ao
+      // cliente errado sem barulho nenhum. Nome que não sustenta o casamento sai como "conferir",
+      // que é a MESMA gaveta das outras divergências de identidade — o operador já sabe o que fazer
+      // com ela — e NÃO vira envio: mandar criaria um segundo cadastro com o mesmo documento.
+      //
+      // ⚠️ `tentarTodas` NÃO passa por cima disto, de propósito. Aquela chave existe para os campos
+      // em que o nosso gate é um palpite sobre a regra da API; esta trava não é palpite nenhum, é
+      // uma checagem nossa contra o banco de produção do C2X, e a API não tem como refazê-la.
+      const confere = confereNomeC2x(
+        [ent.display_name, ent.legal_name, ent.trade_name],
+        nomeNoC2x,
+      );
+      if (!confere.confere) {
+        const motivo = msgDocumentoDeOutraPessoa({
+          c2xUserId: jaNoC2xId,
+          documento: ent.document_masked,
+          motivo: confere.motivo,
+          nomeApolo: confere.nomeApolo,
+          nomeNoC2x,
+        });
+        // Grava quando a rodada é de VERDADE (envio real ou modo reconciliação): nos dois casos
+        // houve uma tentativa de mexer nesta ficha, e ela foi recusada. O ensaio não grava nada.
+        if (podeGravarReconciliacao) {
+          await registrarRecusaC2x(client, {
+            classe: "identidade",
+            documento: ent.document_masked,
+            entityId: ent.id,
+            motivo,
+            perfil: perfilDaEntidade ?? "cliente",
+          });
+        }
+        itens.push({
+          c2xUserId: jaNoC2xId,
+          divergencias: [confere.motivo],
+          entityId: ent.id,
+          erro: motivo,
+          faltantes: [],
+          nome,
+          nomeNoC2x,
+          status: "conferir",
+        });
+        continue;
+      }
+
       if (podeGravarReconciliacao && perfilDaEntidade) {
         const r = await reconciliarJaNoC2x(client, {
           c2xUserId: jaNoC2xId,
@@ -1379,14 +1963,23 @@ export async function processarLoteC2x(input: {
           perfil: perfilDaEntidade,
         });
         itens.push({
+          c2xUserId: jaNoC2xId,
           entityId: ent.id,
           erro: r.erro,
           faltantes: [],
           nome,
+          nomeNoC2x,
           status: r.status === "ja_no_c2x" ? "ja_no_c2x" : "erro",
         });
       } else {
-        itens.push({ entityId: ent.id, faltantes: [], nome, status: "ja_no_c2x" });
+        itens.push({
+          c2xUserId: jaNoC2xId,
+          entityId: ent.id,
+          faltantes: [],
+          nome,
+          nomeNoC2x,
+          status: "ja_no_c2x",
+        });
       }
       continue;
     }
@@ -1407,7 +2000,8 @@ export async function processarLoteC2x(input: {
       if (derivada) cadMeta.nacionalidade = derivada;
     }
 
-    const vinculedById = await resolverVinculedById(client, ent.id, cacheImob);
+    const imob = await resolverImobiliariaDaCad(client, ent.id, cacheImob);
+    const vinculedById = imob.c2xUserId;
     // PJ tem lista de obrigatórios PRÓPRIA (CNPJ, razão social, porte, abertura, representante
     // legal). Sem isto ela cairia em "faltando Estado civil / Escolaridade / Renda...", campos
     // que não existem em ficha de empresa, e o silêncio de hoje só mudaria de lugar.
@@ -1426,8 +2020,43 @@ export async function processarLoteC2x(input: {
 
     // Com `tentarTodas`, o nosso diagnóstico vira aviso: quem decide é a API do C2X. Sem ele, a
     // ficha para aqui e nunca chega a ser testada contra a regra de verdade.
-    if (faltantes.length > 0 && !input.tentarTodas) {
-      itens.push({ entityId: ent.id, faltantes, nome, status: "faltando" });
+    //
+    // 🔴 EXCETO A IMOBILIÁRIA — ela é TRAVA LOCAL, não palpite nosso sobre a regra do C2X.
+    // `tentarTodas` existe para os campos em que o nosso gate é uma SUPOSIÇÃO do que a API exige;
+    // sem `vinculed_by_id` a API nem chega a ser chamada (o funil recusa antes), então deixar
+    // passar aqui só troca uma recusa COM NOME por uma recusa cega lá na frente. Foi exatamente
+    // assim que as ~8 de 08/08 viraram "Cliente sem imobiliária vinculada" sem dizer qual.
+    const semImobiliaria = vinculedById == null;
+    if (faltantes.length > 0 && (!input.tentarTodas || semImobiliaria)) {
+      const outros = faltantes.filter((f) => f !== "Imobiliária");
+      const daImobiliaria = semImobiliaria ? recusaPorImobiliaria(imob) : null;
+      // A FRASE É CALCULADA SEMPRE, mesmo no ensaio — o que o ensaio não faz é GRAVAR.
+      //
+      // ⚠️ Ela também sobe no `ItemLote`, e isso conserta uma divergência que a medição pegou: a
+      // linha da fila dizia "CADASTRO DA IMOBILIÁRIA: esta CAD não tem imobiliária vinculada no
+      // Apolo", enquanto a tela, montada só a partir de `faltantes`, dizia "esta ficha ainda não
+      // tem Imobiliária. Complete na ficha e clique de novo." — mandando o operador procurar, na
+      // ficha do CLIENTE, um campo que não existe lá. Duas versões da mesma recusa é como o
+      // trabalho vira volta perdida.
+      const motivo = daImobiliaria
+        ? daImobiliaria.motivo +
+          (outros.length > 0 ? ` Além disso, falta preencher na ficha: ${outros.join(", ")}.` : "")
+        : `falta preencher na ficha antes de subir: ${faltantes.join(", ")}. NADA foi enviado.`;
+      const classe = daImobiliaria?.classe ?? "ficha";
+
+      // Ensaio não grava: quem roda o diagnóstico está olhando, não tentando.
+      const mensagem = podeEnviar
+        ? await registrarRecusaC2x(client, {
+            classe,
+            documento: ent.document_masked,
+            entityId: ent.id,
+            // Com a imobiliária travando, o que falta NA FICHA vai junto: o operador resolve os
+            // dois de uma vez em vez de descobrir o segundo problema só na próxima tentativa.
+            motivo,
+            perfil: "cliente",
+          })
+        : mensagemDeRecusaC2x(classe, motivo);
+      itens.push({ entityId: ent.id, erro: mensagem, faltantes, nome, status: "faltando" });
       continue;
     }
     // Duas redes contra mandar a pessoa errada para o contrato: (1) as duas fontes discordando
@@ -1436,8 +2065,20 @@ export async function processarLoteC2x(input: {
     // a âncora de verdade — mas as duas custam nada e, quando disparam, disparam com razão.
     const costurada = sinaisDeFichaCosturada(ficha, ent.document_masked);
     if ((unido.divergenciasDeIdentidade.length > 0 || costurada.length > 0) && !input.tentarTodas) {
+      const divergencias = [...unido.divergenciasDeIdentidade, ...costurada];
+      if (podeEnviar) {
+        await registrarRecusaC2x(client, {
+          classe: "identidade",
+          documento: ent.document_masked,
+          entityId: ent.id,
+          motivo:
+            `as duas fontes da ficha discordam sobre quem é a pessoa (${divergencias.join("; ")}). ` +
+            "Esses campos vão no CONTRATO, então NADA foi enviado até alguém conferir.",
+          perfil: "cliente",
+        });
+      }
       itens.push({
-        divergencias: [...unido.divergenciasDeIdentidade, ...costurada],
+        divergencias,
         entityId: ent.id,
         faltantes: [],
         nome,
@@ -1458,7 +2099,16 @@ export async function processarLoteC2x(input: {
     if (!consultaC2x.ok) {
       itens.push({
         entityId: ent.id,
-        erro: msgC2xNaoConferido(consultaC2x.motivo),
+        // Aqui `podeEnviar` já é verdade (o gate acima passou), então isto é uma tentativa REAL
+        // que terminou em recusa: vira linha, com a classe que diz "não é trabalho de ninguém,
+        // é para tentar de novo quando o C2X voltar".
+        erro: await registrarRecusaC2x(client, {
+          classe: "indisponivel",
+          documento: ent.document_masked,
+          entityId: ent.id,
+          motivo: msgC2xNaoConferido(consultaC2x.motivo),
+          perfil: "cliente",
+        }),
         faltantes: [],
         nome,
         status: "erro",

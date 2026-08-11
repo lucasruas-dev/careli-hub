@@ -5,9 +5,13 @@
 // DOIS destinos, de propósito:
 //   • `apolo_audit_events` (tabela que JÁ existe) — o registro sempre acontece, mesmo antes da
 //     migration 0082 rodar. É o piso de auditoria.
-//   • `apolo_credito_overrides` (migration 0082, ainda NÃO aplicada) — o registro ESTRUTURADO, que
-//     casa com a chave (entity_id, enterprise_id) da CAD. Enquanto a tabela não existe, o insert
-//     falha com 42P01 e é engolido em silêncio: o piso de auditoria acima cobre o intervalo.
+//   • `apolo_credito_overrides` (migration 0082, APLICADA em produção em 05/08/2026) — o registro
+//     ESTRUTURADO, que casa com a chave (entity_id, enterprise_id) da CAD.
+//
+// ⚠️ NÃO É MAIS SILENCIOSO. A falha de gravação continua não derrubando a decisão (a esteira já
+// destravou), mas volta como resultado para quem chamou, e a rota devolve isso à tela. Um override
+// sem rastro é exatamente o que a coordenação está tentando evitar ao anexar a evidência — se o
+// registro não gravar, alguém precisa saber no ato, não no dia da auditoria.
 import type { EtapaEsteira } from "@/lib/apolo/esteira";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
 
@@ -26,13 +30,16 @@ export async function registrarOverrideCredito(input: {
   entityId: string;
   evidenciaDocId: string | null;
   motivo: string | null;
-}): Promise<void> {
+}): Promise<{ auditoria: boolean; erro: null | string; estruturado: boolean }> {
   const actor = ehUuid(input.aprovadoPor) ? input.aprovadoPor : null;
+  const falhas: string[] = [];
+  let auditoria = false;
+  let estruturado = false;
 
   // Piso de auditoria: sempre grava, tabela existente. `status='mapped'` é o único aceito pelo
   // CHECK de apolo_audit_events (0026). O metadata carrega o essencial da decisão.
   try {
-    await input.adminClient.from("apolo_audit_events").insert({
+    const { error } = await input.adminClient.from("apolo_audit_events").insert({
       action: "credito_override_aprovado",
       actor_user_id: actor,
       entity_id: input.entityId,
@@ -47,12 +54,13 @@ export async function registrarOverrideCredito(input: {
       },
       status: "mapped",
     });
+    if (error) falhas.push(`auditoria: ${error.message}`);
+    else auditoria = true;
   } catch (erro) {
-    console.warn("[apolo][credito-override] auditoria falhou", erro);
+    falhas.push(`auditoria: ${(erro as Error).message}`);
   }
 
-  // Registro estruturado. Best-effort: se a 0082 ainda não rodou, `.from` de tabela inexistente
-  // devolve error (não lança), e a gente só avisa no log — o piso de auditoria já cobriu.
+  // Registro estruturado, na tabela da 0082.
   try {
     const { error } = await input.adminClient.from("apolo_credito_overrides").insert({
       aprovado_por: actor,
@@ -63,10 +71,13 @@ export async function registrarOverrideCredito(input: {
       evidencia_doc_id: input.evidenciaDocId,
       motivo: input.motivo,
     });
-    if (error && error.code !== "42P01") {
-      console.warn("[apolo][credito-override] registro estruturado falhou", error.message);
-    }
+    if (error) falhas.push(`registro: ${error.message}`);
+    else estruturado = true;
   } catch (erro) {
-    console.warn("[apolo][credito-override] registro estruturado lançou", erro);
+    falhas.push(`registro: ${(erro as Error).message}`);
   }
+
+  if (falhas.length) console.warn("[apolo][credito-override]", falhas.join(" · "));
+
+  return { auditoria, erro: falhas.length ? falhas.join(" · ") : null, estruturado };
 }

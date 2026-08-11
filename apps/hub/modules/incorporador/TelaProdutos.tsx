@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Map as MapaIcone } from "lucide-react";
 
 import { fonte } from "@/modules/publico/ui/tokens";
 
 import { T } from "./tema";
+import { TelaMasterplan } from "./TelaMasterplan";
 
 // PRODUTOS: um card por empreendimento, com a logo dele. Pedido do Lucas (10/08): "Produtos (que
 // terá um card de cada produto com a logo do empreendimento e quando cliente abrir essa tela o
@@ -19,12 +21,18 @@ type Produto = {
   enterpriseIds: string[];
   id: string;
   logoUrl: string | null;
+  /** Código cujo masterplan interno abre aqui dentro. Nulo = não tem lotes desenhados. */
+  masterplanInterno: null | string;
+  masterplanUrl: string | null;
   nome: string;
 };
 
 export function TelaProdutos() {
   const [produtos, setProdutos] = useState<Produto[] | null>(null);
   const [erro, setErro] = useState<string | null>(null);
+  // Qual produto está com o masterplan aberto. Estado, e não rota: o portal é uma tela só, então
+  // o cliente volta para a lista sem recarregar nada e sem sair de dentro do perfil dele.
+  const [aberto, setAberto] = useState<Produto | null>(null);
 
   useEffect(() => {
     let vivo = true;
@@ -54,6 +62,16 @@ export function TelaProdutos() {
     };
   }, []);
 
+  if (aberto?.masterplanInterno) {
+    return (
+      <TelaMasterplan
+        code={aberto.masterplanInterno}
+        nome={aberto.nome}
+        onVoltar={() => setAberto(null)}
+      />
+    );
+  }
+
   if (erro) {
     return <Aviso texto={erro} />;
   }
@@ -82,14 +100,14 @@ export function TelaProdutos() {
         }}
       >
         {produtos.map((produto) => (
-          <CardProduto key={produto.id} produto={produto} />
+          <CardProduto key={produto.id} onAbrir={() => setAberto(produto)} produto={produto} />
         ))}
       </div>
     </>
   );
 }
 
-function CardProduto({ produto }: { produto: Produto }) {
+function CardProduto({ onAbrir, produto }: { onAbrir: () => void; produto: Produto }) {
   return (
     <article
       style={{
@@ -134,29 +152,74 @@ function CardProduto({ produto }: { produto: Produto }) {
           </div>
         </div>
 
-        <button
-          disabled
-          style={{
-            background: "transparent",
-            border: `1px solid ${T.border}`,
-            borderRadius: 10,
-            color: T.muted,
-            cursor: "default",
-            fontFamily: fonte,
-            fontSize: 13,
-            marginTop: "auto",
-            padding: "10px 12px",
-            width: "100%",
-          }}
-          title="O masterplan entra na próxima rodada"
-          type="button"
-        >
-          Ver masterplan
-        </button>
+        {produto.masterplanInterno ? (
+          // ABRE AQUI DENTRO, no perfil do incorporador (pedido do Lucas, 10/08). É a tela
+          // A-INTERNO, a mesma que o time da Careli usa, com a marca do cliente em volta.
+          <button
+            onClick={onAbrir}
+            style={{
+              ...estiloBotao,
+              alignItems: "center",
+              background: T.btnBg,
+              borderColor: "transparent",
+              color: T.btnFg,
+              display: "inline-flex",
+              fontWeight: 600,
+              gap: 7,
+              justifyContent: "center",
+            }}
+            type="button"
+          >
+            <MapaIcone aria-hidden="true" size={15} />
+            Ver masterplan
+          </button>
+        ) : produto.masterplanUrl ? (
+          // Empreendimento sem lotes desenhados, mas com uma página publicada à parte. Aí sim abre
+          // em aba nova, porque é material de fora.
+          <a
+            href={produto.masterplanUrl}
+            rel="noreferrer"
+            style={{
+              ...estiloBotao,
+              background: T.btnBg,
+              borderColor: "transparent",
+              color: T.btnFg,
+              display: "block",
+              fontWeight: 600,
+              textAlign: "center",
+              textDecoration: "none",
+            }}
+            target="_blank"
+          >
+            Ver masterplan
+          </a>
+        ) : (
+          <button
+            disabled
+            style={{ ...estiloBotao, cursor: "default", opacity: 0.6 }}
+            title="Este empreendimento ainda não tem masterplan publicado"
+            type="button"
+          >
+            Masterplan em breve
+          </button>
+        )}
       </div>
     </article>
   );
 }
+
+const estiloBotao = {
+  background: "transparent",
+  border: `1px solid ${T.border}`,
+  borderRadius: 10,
+  color: T.muted,
+  cursor: "pointer",
+  fontFamily: fonte,
+  fontSize: 13,
+  marginTop: "auto",
+  padding: "10px 12px",
+  width: "100%",
+} as const;
 
 function Aviso({ texto }: { texto: string }) {
   return (

@@ -218,12 +218,18 @@ export function CreditoSerasa({
         data?: {
           alvo?: string;
           etapa?: string | null;
+          etapaNaoGravada?: null | string;
           veredito?: { aprovado?: boolean; motivo?: string };
         };
         error?: string;
       };
       if (!resposta.ok) setErro(corpo.error ?? `Falha (${resposta.status}).`);
       else {
+        // A CONSULTA SAIU MAS A ETAPA NÃO GRAVOU. Aparece como erro na tela de propósito: o
+        // operador precisa saber que a ficha NÃO andou, senão ele fecha o card achando que andou e
+        // reencontra a pessoa em Validação amanhã (com outra consulta cobrada no caminho).
+        if (corpo.data?.etapaNaoGravada) setErro(corpo.data.etapaNaoGravada);
+
         // RESULTADO DO CÔNJUGE PRECISA APARECER. Ele não entra no painel de baixo, que é
         // montado a partir da última consulta DO TITULAR — sem esta linha o operador paga a
         // consulta, a tela fica idêntica, e ele clica de novo achando que não funcionou.

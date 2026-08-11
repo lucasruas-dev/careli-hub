@@ -23,8 +23,22 @@ export type ProdutoDoIncorporador = {
   enterpriseIds: string[];
   id: string;
   logoUrl: string | null;
+  /** Endereço do masterplan publicado. Nulo = o card mostra o botão desligado. */
+  masterplanUrl: string | null;
+  /**
+   * Código do C2X cujo masterplan INTERNO (a tela A-INTERNO) abre dentro da aba Produtos. Nulo
+   * quando o empreendimento ainda não tem os lotes desenhados, e aí o card cai no `masterplanUrl`.
+   */
+  masterplanInterno: null | string;
   nome: string;
 };
+
+/**
+ * Empreendimentos com a tela do masterplan interno pronta. A lista tem que casar com a de
+ * `app/api/incorporador/masterplan/route.ts`, que é quem serve o arquivo — aqui só decidimos o
+ * que o card oferece, e oferecer o que a outra rota não entrega daria um quadro vazio.
+ */
+const COM_TELA_INTERNA = new Set(["GDN", "VLO", "VOC", "VOL"]);
 
 /**
  * O Apolo consolida etapas do mesmo produto numa linha só (Lavra do Ouro = LOS + LOU, Lagoa
@@ -65,6 +79,30 @@ function recortar(
   return saida;
 }
 
+/**
+ * O C2X guarda o nome do empreendimento em CAIXA ALTA ("VALE DO OURO", "GARDEN"), que serve para
+ * tela de operação e fica agressivo no portal do cliente. Aqui vira "Vale do Ouro" e "Garden".
+ * Preposição fica minúscula, e nome que não é todo maiúsculo passa intacto — se alguém cadastrar
+ * "Garden Resort Residence" com a caixa certa, respeitamos.
+ */
+function nomeApresentavel(nome: string): string {
+  const limpo = nome.trim().replace(/\s+/g, " ");
+
+  if (limpo !== limpo.toUpperCase()) return limpo;
+
+  const minusculas = new Set(["a", "as", "da", "das", "de", "do", "dos", "e", "o", "os"]);
+
+  return limpo
+    .toLowerCase()
+    .split(" ")
+    .map((palavra, indice) =>
+      indice > 0 && minusculas.has(palavra)
+        ? palavra
+        : palavra.charAt(0).toUpperCase() + palavra.slice(1),
+    )
+    .join(" ");
+}
+
 function idsReais(linha: ApoloEnterpriseRow): string[] {
   const etapas = linha.stages ?? [];
 
@@ -99,9 +137,29 @@ export async function GET(request: Request) {
     ? await listEnterpriseLogos(admin).catch(() => ({}))
     : {};
 
+  // Masterplan de cada empreendimento (0085). Falha aqui não derruba a tela: o card aparece com
+  // o botão desligado, que é o mesmo estado de quem ainda não tem mapa publicado.
+  const masterplans: Record<string, string> = {};
+
+  if (admin) {
+    const { data } = await admin
+      .from("apolo_enterprise_settings")
+      .select("enterprise_id,masterplan_url")
+      .in("enterprise_id", [...permitidos])
+      .returns<Array<{ enterprise_id: string; masterplan_url: string | null }>>();
+
+    for (const linha of data ?? []) {
+      if (linha.masterplan_url) masterplans[String(linha.enterprise_id)] = linha.masterplan_url;
+    }
+  }
+
   const produtos: ProdutoDoIncorporador[] = recortar(c2x.data.rows, permitidos)
     .map((linha) => {
       const ids = idsReais(linha);
+      // Códigos reais desta linha (um na simples, N no produto consolidado).
+      const codes = (linha.codes?.length ? linha.codes : [linha.code])
+        .filter(Boolean)
+        .map((code) => String(code).toUpperCase());
 
       return {
         // Carteira do produto: basta UMA etapa administrada para a aba fazer sentido no card.
@@ -110,7 +168,9 @@ export async function GET(request: Request) {
         enterpriseIds: ids,
         id: String(linha.id),
         logoUrl: ids.map((id) => logos[id]).find(Boolean) ?? null,
-        nome: linha.name ?? linha.code ?? "Empreendimento",
+        masterplanInterno: codes.find((code) => COM_TELA_INTERNA.has(code)) ?? null,
+        masterplanUrl: ids.map((id) => masterplans[id]).find(Boolean) ?? null,
+        nome: nomeApresentavel(linha.name ?? linha.code ?? "Empreendimento"),
       };
     })
     .sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR"));

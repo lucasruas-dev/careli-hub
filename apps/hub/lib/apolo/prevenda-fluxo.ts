@@ -17,7 +17,7 @@ import { adicionarCredenciado, eventoOperavelId, registrarPagamento } from "@/li
 
 import { garantirNaFilaDoLancamento } from "./credenciado-para-fila";
 import { lerCadDaEsteira, normalizarEnterpriseId } from "./esteira-cad";
-import { resolverEnterpriseIdPorNome } from "./limite-credito";
+import { resolverEnterpriseIdPorNome, resolverPrevendaHabilitada } from "./limite-credito";
 
 // CONTATOS DA FICHA — a MESMA fonte para a cobrança e para o recibo. Antes cada um puxava de um
 // lugar (a cobrança da tela, o recibo do cadastro do Asaas, que nasce vazio) e o recibo não saía.
@@ -143,6 +143,22 @@ export async function plantarFichaPrevenda(
   if (!enterpriseId) {
     saida.esteira =
       "erro: sem empreendimento resolvido — a esteira exige o id do empreendimento (chave por CAD)";
+    return saida;
+  }
+
+  // ⚠️ NEM A BANCADA CRIA PRÉ-VENDA ONDE ELA NÃO EXISTE (Lucas, 10/08: "pré-venda só existe se
+  // estiver habilitado"). Este INSERT é a única escrita de `etapa` que não passa por
+  // `atualizarEtapa`, ou seja, o único lugar do produto que escapava do toggle. Um teste que
+  // plantasse ficha em pré-venda num empreendimento sem cobrança criaria, na tela do time, o
+  // mesmo fantasma que estamos consertando.
+  const prevendaHabilitada = await resolverPrevendaHabilitada(
+    client as never,
+    input.entityId,
+    enterpriseId,
+  );
+  if (!prevendaHabilitada) {
+    saida.esteira =
+      "recusada: a pré-venda está desligada neste empreendimento (ligue o PIX em Empreendimentos antes de testar)";
     return saida;
   }
 

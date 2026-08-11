@@ -1,0 +1,3150 @@
+<!doctype html>
+<html lang="pt-BR" data-uix-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex,nofollow">
+<title>Garden · Masterplan · Apolo</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23a07c3b'/%3E%3C/svg%3E">
+<style>
+/* ====================================================================
+   GARDEN / MASTERPLAN — TELA INTERNA (dentro do Apolo)
+
+   PALETA: copiada de packages/uix/styles.css, bloco
+   :root[data-uix-theme="dark"], e de apps/hub/styles/globals.css
+   (o rail do Panteon nao e cinza chapado: e o gradiente
+   sobre #121212, com o fio dourado no item ativo).
+
+   EIXO DA TELA:  ESQUERDA = MACRO (empreendimento)
+                  DIREITA  = UNIDADE (o lote)
+   O MAPA E O PROTAGONISTA. Filtro, tabela e plano comercial sao popup.
+
+   REGRA DO MAPA: cada lote recebe UM preenchimento chapado translucido
+   da cor do seu estado. Sem borda, sem cantoneira, sem efeito.
+   ==================================================================== */
+
+*{box-sizing:border-box;margin:0;padding:0}
+
+:root{
+  /* --- superficies: ESCALA NEUTRA aprovada pelo dono (07/08) (apps/hub/styles/globals.css,
+         classe .careli-hub-shell). NAO sao os tokens do uix: o shell
+         sobrescreve o dark com cores mais escuras e menos azuladas, e e
+         essa a tela que o dono ve todo dia.
+           #0a0a0a  base da tela (topbar, rail, icone do item ativo)
+           #171717  card sobre a superficie (item ativo do rail)
+           #121212  superficie do sidebar, sob o gradiente
+           rgb(12 12 12 / .28)  a divisa do sidebar
+           rgb(255 255 255 / .075)  a borda do shell e clara e translucida,
+                                    nunca um cinza opaco (era dai que vinha
+                                    o azul que o dono reprovou) --- */
+  --canvas:#0a0a0a;
+  --base:#171717;
+  --raised:#121212;
+  --subtle:#242424;
+  --linha:rgb(255 255 255 / .075);
+  --linha-forte:rgb(255 255 255 / .16);
+  --txt:#f7f8fa;
+  --txt2:#dce2ea;
+  --txt3:#a5afbd;
+  --txt4:#8894a5;
+
+  /* --- semanticas: uix --- */
+  --ok:#14804a;      /* disponivel */
+  --warn:#b7791f;    /* reservado  */
+  --dang:#c24135;    /* vendido    */
+  --foco:#2563eb;
+  --marca:#a07c3b;
+  --ouro:#d6b56f;    /* fio do item ativo no rail (globals.css do hub) */
+
+  /* tintas de TEXTO derivadas dos tokens por color-mix — mesma tecnica do
+     .uix-badge. Cor pura em texto pequeno sobre fundo escuro nao le. */
+  --ok-t:color-mix(in srgb,var(--ok) 58%,#f7f8fa);
+  --warn-t:color-mix(in srgb,var(--warn) 58%,#f7f8fa);
+  --dang-t:color-mix(in srgb,var(--dang) 58%,#f7f8fa);
+
+  /* rail e sidebars de modulo do Panteon: o MESMO gradiente warm-grey
+     (.careli-hub-shell .uix-sidebar e .panteon-module-sidebar) */
+  --rail:linear-gradient(180deg, rgb(26 26 26 / .98), rgb(18 18 18 / .98)),#121212;
+  --ouro-fio:#d6b56f;
+
+  /* alfa dos tres estados no mapa — calibrada medindo a distancia de cor
+     entre os tres estados sobre a propria foto (script alfaB3.py, recortes
+     em 0,34 / 0,38 / 0,44 / 0,50). Em 0,44 o reservado (ambar) e o vendido
+     (vermelho) ja se separam sobre o solo marrom da planta, e o numero do
+     lote, a metragem e as cotas impressos continuam legiveis por dentro.
+     Com filtro ativo sobe pra 0,56: sobram poucos lotes marcados no meio da
+     foto crua e eles precisam saltar. */
+  --a-fill:.44;
+
+  --fonte:system-ui,-apple-system,"Segoe UI",Roboto,Arial,Helvetica,sans-serif;
+}
+
+html,body{height:100%}
+body{
+  background:var(--canvas);
+  color:var(--txt);
+  font-family:var(--fonte);
+  font-size:13px;
+  line-height:1.5;
+  overflow:hidden;
+  -webkit-font-smoothing:antialiased;
+  font-variant-numeric:tabular-nums;
+  display:grid;
+  grid-template-columns:54px 318px minmax(0,1fr) 340px;
+  grid-template-rows:52px minmax(0,1fr) 26px;
+}
+button,input,select{font:inherit;color:inherit;background:none;border:none;outline:none}
+button{cursor:pointer}
+:focus-visible{outline:2px solid var(--foco);outline-offset:1px;border-radius:4px}
+::-webkit-scrollbar{width:9px;height:9px}
+::-webkit-scrollbar-thumb{background:var(--subtle);border-radius:5px}
+::-webkit-scrollbar-thumb:hover{background:var(--linha-forte)}
+::-webkit-scrollbar-track{background:transparent}
+.mut{color:var(--txt3)}
+
+/* ============================ RAIL ============================ */
+.rail{
+  grid-column:1;grid-row:1/4;
+  background:var(--rail);
+  border-right:1px solid rgb(12 12 12 / .28);
+  box-shadow:inset -1px 0 0 rgb(255 255 255 / .045);
+  display:flex;flex-direction:column;align-items:center;gap:4px;padding:9px 0;
+}
+.rail .logo{
+  width:32px;height:32px;border-radius:8px;background:#0a0a0a;color:#fff;
+  display:grid;place-items:center;font-weight:700;font-size:13px;
+  box-shadow:inset 0 0 0 1px rgb(255 255 255 / .075),0 8px 18px rgb(0 0 0 / .2);
+  margin-bottom:10px;
+}
+.rail .logo b{color:var(--ouro)}
+.rail a{
+  position:relative;width:38px;height:38px;border-radius:9px;display:grid;place-items:center;
+  color:#c9d1dc;transition:background-color .16s,color .16s;
+}
+.rail a:hover{background:rgb(255 255 255 / .075);color:#fff}
+.rail a.on{background:#171717;color:#fff;box-shadow:inset 0 0 0 1px rgb(160 124 59 / .35)}
+.rail a.on::before{content:"";position:absolute;left:-8px;top:6px;width:2px;height:26px;border-radius:9999px;background:var(--ouro)}
+.rail .fim{margin-top:auto}
+
+/* ============================ TOPO ============================ */
+.topo{
+  grid-column:2/5;grid-row:1;
+  background:var(--canvas);border-bottom:1px solid var(--linha);
+  display:flex;align-items:center;gap:10px;padding:0 14px;min-width:0;
+}
+.marca{display:flex;align-items:baseline;gap:7px;white-space:nowrap;padding-right:2px}
+.marca b{font-size:14px;font-weight:600;letter-spacing:-.1px}
+.marca span{font-size:11.5px;color:var(--txt3)}
+.sep{width:1px;height:20px;background:var(--linha);flex:0 0 auto}
+
+.busca{
+  display:flex;align-items:center;gap:7px;height:32px;padding:0 9px;min-width:0;
+  width:280px;background:rgb(255 255 255 / .05);border:1px solid var(--linha);border-radius:6px;color:var(--txt3);
+}
+.busca:focus-within{border-color:var(--foco);color:var(--txt2)}
+.busca input{flex:1;min-width:0;font-size:12.5px;color:var(--txt)}
+.busca input::placeholder{color:#8894a5}
+.busca .kbd{font-size:10px;color:var(--txt3);border:1px solid var(--linha);border-radius:3px;padding:0 4px;line-height:15px}
+.busca .lp{display:none;font-size:15px;color:var(--txt3);line-height:1;padding:0 2px}
+.busca.cheia .lp{display:block}
+.busca.cheia .kbd{display:none}
+.busca .lp:hover{color:var(--txt)}
+
+.bt{
+  display:inline-flex;align-items:center;gap:7px;height:32px;padding:0 11px;font-size:12.5px;
+  color:var(--txt2);border:1px solid var(--linha);border-radius:6px;background:var(--raised);
+  transition:background-color .15s,border-color .15s,color .15s;white-space:nowrap;
+}
+.bt:hover{background:var(--subtle);color:var(--txt)}
+.bt.on{border-color:var(--foco);color:var(--txt)}
+.bt.pri{background:var(--foco);border-color:var(--foco);color:#fff;font-weight:500}
+.bt.pri:hover{background:color-mix(in srgb,var(--foco) 86%,#fff)}
+.bt .cnt{
+  min-width:16px;height:16px;padding:0 4px;border-radius:9999px;background:var(--foco);color:#fff;
+  font-size:10.5px;font-weight:600;display:grid;place-items:center;line-height:1;
+}
+.espaco{flex:1}
+
+.legenda{display:flex;gap:6px}
+.legenda .chip{
+  display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:6px;
+  border:1px solid var(--linha);background:var(--raised);font-size:12px;color:var(--txt2);
+  transition:opacity .15s,border-color .15s;
+}
+.legenda .chip:hover{border-color:var(--linha-forte)}
+.legenda .chip b{font-weight:600;color:var(--txt)}
+.legenda .chip .pt{width:8px;height:8px;border-radius:2px}
+.legenda .s0 .pt{background:var(--ok)} .legenda .s1 .pt{background:var(--warn)} .legenda .s2 .pt{background:var(--dang)}
+.legenda .chip.off{opacity:.38}
+
+/* ====================== ESQUERDA · MACRO ====================== */
+.macro{
+  grid-column:2;grid-row:2;background:var(--rail);border-right:1px solid rgb(12 12 12 / .28);
+  box-shadow:inset -1px 0 0 rgb(255 255 255 / .045);
+  display:flex;flex-direction:column;min-height:0;min-width:0;
+}
+.escopo{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:11px 14px;border-bottom:1px solid var(--linha);flex:0 0 auto;
+}
+.escopo .r{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#8894a5;font-weight:600}
+.escopo .v{font-size:13.5px;font-weight:600;margin-top:1px}
+.escopo .v small{font-weight:400;color:var(--txt3);font-size:11.5px}
+.escopo button{
+  font-size:11.5px;color:var(--txt3);border:1px solid var(--linha);border-radius:5px;padding:3px 8px;
+  display:none;white-space:nowrap;
+}
+.escopo button:hover{color:var(--txt);border-color:var(--linha-forte)}
+body.tem-escopo .escopo button{display:block}
+
+.macro .rolo{overflow-y:auto;overflow-x:hidden;flex:1;min-height:0}
+.grupo{padding:13px 14px;border-bottom:1px solid var(--linha)}
+.rot{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#8894a5;font-weight:600;margin-bottom:9px}
+
+/* a) valor por situacao */
+.vsit{display:flex;flex-direction:column;gap:2px}
+.vsit .l{display:grid;grid-template-columns:9px 1fr auto;gap:9px;align-items:baseline;padding:5px 0}
+.vsit .l+.l{border-top:1px solid color-mix(in srgb,var(--linha) 55%,transparent)}
+.vsit i{width:9px;height:9px;border-radius:2px;transform:translateY(1px)}
+.vsit .nm{font-size:12.5px;color:var(--txt2)}
+.vsit .nm em{display:block;font-style:normal;font-size:11px;color:#8894a5}
+.vsit .vl{text-align:right;font-size:13px;font-weight:600;white-space:nowrap}
+.vsit .vl em{display:block;font-style:normal;font-size:10.5px;font-weight:400;color:#8894a5}
+.vsit .vl.sem{color:var(--txt3);font-weight:400}
+
+/* total do recorte — uma linha, sem card */
+.vgv{
+  display:flex;align-items:baseline;justify-content:space-between;gap:10px;
+  margin-top:7px;padding-top:8px;border-top:1px solid var(--linha);
+}
+.vgv .r{font-size:11.5px;color:var(--txt3)}
+.vgv .r em{display:block;font-style:normal;font-size:10.5px;color:var(--txt4)}
+.vgv .v{font-size:15px;font-weight:600;white-space:nowrap}
+
+/* indicadores financeiros — tres colunas, sem caixa: uma coluna calma */
+.fin{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.fin>div{min-width:0}
+.fin .r{font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:var(--txt4);font-weight:600}
+.fin .v{font-size:14px;font-weight:600;margin-top:2px;white-space:nowrap;letter-spacing:-.2px}
+.fin .a{font-size:10.5px;color:var(--txt4);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* b) tabela por quadra */
+.quadras{padding:13px 0 6px}
+.quadras .rot{padding:0 14px}
+table.tq{width:100%;border-collapse:collapse;font-size:12px}
+table.tq th{
+  font-size:10px;letter-spacing:.04em;text-transform:uppercase;color:#8894a5;font-weight:600;
+  padding:0 0 5px;text-align:right;cursor:pointer;user-select:none;white-space:nowrap;
+}
+table.tq th:first-child{text-align:left;padding-left:14px}
+table.tq th:last-child{padding-right:14px}
+table.tq th:hover{color:var(--txt2)}
+table.tq th.ord{color:var(--txt2)}
+table.tq th .st{opacity:.7;font-size:9px;margin-left:2px}
+table.tq td{padding:4px 0;text-align:right;white-space:nowrap;border-top:1px solid color-mix(in srgb,var(--linha) 55%,transparent)}
+table.tq td:first-child{text-align:left;padding-left:14px;font-weight:600;color:var(--txt2)}
+table.tq td:last-child{padding-right:14px}
+table.tq tr{cursor:pointer}
+table.tq tbody tr:hover td{background:rgb(255 255 255 / .055)}
+table.tq tr.on td{background:rgb(255 255 255 / .085)}
+table.tq tr.on td:first-child{box-shadow:inset 2px 0 0 var(--ouro-fio)}
+table.tq tr.fora{opacity:.34}
+.tq .qtd{color:var(--txt3)}
+/* Barra de vendidos: enche conforme o percentual. Discreta — o mapa e o protagonista. */
+.tq .pc{color:var(--txt4);font-size:11px;display:flex;align-items:center;justify-content:flex-end;gap:7px}
+.tq .pc b{font-weight:500;font-variant-numeric:tabular-nums;min-width:30px;text-align:right}
+.barq{display:inline-block;width:46px;height:5px;border-radius:3px;background:rgb(255 255 255 / .08);overflow:hidden;flex:none}
+.barq i{display:block;height:100%;border-radius:3px;background:var(--ok);opacity:.95}
+.tq .vlr{color:var(--txt2)}
+.tq .pt{display:inline-block;width:7px;height:7px;border-radius:2px;vertical-align:middle}
+
+/* ======================== MAPA (CENA) ======================== */
+.cena{
+  grid-column:3;grid-row:2;position:relative;overflow:hidden;
+  background:var(--canvas);display:flex;align-items:center;justify-content:center;padding:14px;
+  min-width:0;min-height:0;
+}
+.palco{
+  position:relative;aspect-ratio:2396/2160;max-width:100%;max-height:100%;height:100%;
+  will-change:transform;transform-origin:0 0;box-shadow:0 10px 40px rgba(0,0,0,.55);
+}
+.plano{position:absolute;inset:0;overflow:hidden;background:var(--base)}
+.planta{position:absolute;inset:0;width:100%;height:100%;display:block;object-fit:fill}
+.svg{position:absolute;inset:0;width:100%;height:100%;display:block}
+.svg-hit{z-index:20}
+.svg-hit polygon{fill:none;pointer-events:fill;cursor:pointer}
+.svg-cor{z-index:10;pointer-events:none}
+
+/* --- A CAMADA DE COR. Preenchimento chapado, translucido, SEM borda. --- */
+#f0{fill:var(--ok);  fill-opacity:var(--a-fill);stroke:none}
+#f1{fill:var(--warn);fill-opacity:var(--a-fill);stroke:none}
+#f2{fill:var(--dang);fill-opacity:var(--a-fill);stroke:none}
+#f0,#f1,#f2{transition:fill-opacity .22s}
+body.filtrando{--a-fill:.56}
+
+/* realce de interacao — NAO e marcacao de estado.
+   Selecao tambem e SO camada de cor: o lote escolhido CLAREIA, nao ganha borda.
+   (o dono reprovou duas vezes "as marcacoes dos lados do lote" e "o destaque
+   das bordas" — entao nem o estado nem a selecao usam contorno) */
+#hover{fill:#ffffff;fill-opacity:.13;stroke:none;pointer-events:none}
+#selSombra{fill:#ffffff;fill-opacity:.30;stroke:none}
+#selFio{fill:none;stroke:none}
+#gSel{opacity:0;transition:opacity .14s}
+#gSel.on{opacity:1}
+#gQuadra path{fill:none;stroke:var(--foco);stroke-width:1.6;stroke-dasharray:6 5;
+  vector-effect:non-scaling-stroke;opacity:0;transition:opacity .16s}
+#gQuadra path.on{opacity:1}
+
+/* placa da quadra: vive na CENA, nao no palco — o cromo nao estica no zoom */
+.placa{
+  position:absolute;z-index:30;pointer-events:none;transform:translate(-50%,-100%) translateY(-8px);
+  background:var(--base);border:1px solid var(--linha-forte);border-radius:6px;
+  padding:5px 9px;display:flex;align-items:center;gap:10px;white-space:nowrap;
+  opacity:0;transition:opacity .15s;box-shadow:0 6px 20px rgba(0,0,0,.5);
+}
+.placa.on{opacity:1}
+.placa.baixo{transform:translate(-50%,0) translateY(8px)}
+.placa b{font-size:11.5px;font-weight:600}
+.placa .t{display:flex;align-items:center;gap:5px;font-size:11.5px;color:var(--txt3)}
+.placa .t i{width:7px;height:7px;border-radius:2px;display:inline-block}
+
+/* etiqueta no cursor: TEXTO NITIDO — compensa a resolucao da foto */
+.etiq{
+  position:fixed;left:0;top:0;z-index:400;pointer-events:none;
+  background:var(--base);border:1px solid var(--linha-forte);border-radius:6px;
+  padding:6px 9px;opacity:0;transition:opacity .12s;box-shadow:0 8px 24px rgba(0,0,0,.6);min-width:136px;
+}
+.etiq.on{opacity:1}
+.etiq .e1{font-size:12px;font-weight:600;display:flex;align-items:center;gap:7px;white-space:nowrap}
+.etiq .e1 i{width:8px;height:8px;border-radius:2px;flex:0 0 auto}
+.etiq .e2{font-size:11.5px;color:var(--txt3);margin-top:2px;white-space:nowrap}
+.etiq .e3{font-size:11.5px;color:var(--txt2);margin-top:1px;white-space:nowrap}
+/* comprador: só aparece quando o lote tem nome (é a tela interna). Fica atrás de um fio e em
+   caixa menor porque é dado de PESSOA, não do lote. */
+.etiq .e4{
+  display:none;font-size:11px;color:var(--txt3);white-space:nowrap;
+  margin-top:5px;padding-top:5px;border-top:1px solid var(--linha);
+}
+.etiq .e4.on{display:block}
+.etiq .e4 b{font-weight:600;color:var(--txt2)}
+
+.zoom{
+  position:absolute;right:20px;bottom:20px;z-index:40;display:flex;flex-direction:column;
+  background:var(--base);border:1px solid var(--linha);border-radius:6px;overflow:hidden;
+}
+.zoom button{width:30px;height:28px;font-size:14px;color:var(--txt2);display:grid;place-items:center}
+.zoom button:hover{background:var(--raised);color:var(--txt)}
+.zoom button+button{border-top:1px solid var(--linha)}
+.zoom .lvl{font-size:10.5px;color:var(--txt3);text-align:center;padding:3px 0;border-top:1px solid var(--linha);cursor:default}
+
+.aviso{
+  position:absolute;left:50%;top:18px;transform:translateX(-50%);z-index:40;
+  background:var(--base);border:1px solid var(--foco);border-radius:6px;
+  padding:6px 12px;font-size:12px;display:none;align-items:center;gap:10px;white-space:nowrap;
+  box-shadow:0 6px 20px rgba(0,0,0,.5);
+}
+body.filtrando .aviso{display:flex}
+.aviso b{font-weight:600}
+.aviso button{font-size:11.5px;color:var(--txt3);border:1px solid var(--linha);border-radius:5px;padding:2px 8px}
+.aviso button:hover{color:var(--txt);border-color:var(--linha-forte)}
+
+/* ====================== DIREITA · UNIDADE ====================== */
+.unidade{
+  grid-column:4;grid-row:2;background:var(--rail);border-left:1px solid rgb(12 12 12 / .28);
+  box-shadow:inset 1px 0 0 rgb(255 255 255 / .045);
+  display:flex;flex-direction:column;min-height:0;overflow:hidden;
+}
+.uCab{padding:11px 15px;border-bottom:1px solid var(--linha);flex:0 0 auto}
+.uCab .r{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#8894a5;font-weight:600}
+.uCab .v{font-size:13.5px;font-weight:600;margin-top:1px}
+.uRolo{flex:1;min-height:0;overflow-y:auto}
+
+.vazio{height:100%;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:30px 26px;text-align:center}
+.vazio .ic{width:46px;height:46px;border-radius:11px;background:var(--base);border:1px solid var(--linha);display:grid;place-items:center;color:#8894a5}
+.vazio h4{font-size:13.5px;font-weight:600}
+.vazio p{font-size:12px;color:var(--txt3);line-height:1.6;max-width:230px}
+.vazio .dica{font-size:11.5px;color:#8894a5;border-top:1px solid var(--linha);padding-top:11px;margin-top:3px}
+
+.ficha{padding:15px}
+.ficha .id{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.ficha .ql{font-size:16px;font-weight:600;letter-spacing:-.2px}
+.ficha .gid{font-size:11px;color:#8894a5;margin-top:1px}
+.ficha .foraf{display:none;font-size:10.5px;color:var(--warn-t);margin-top:4px}
+body.filtrando .ficha.fora .foraf{display:block}
+.selo{
+  display:inline-flex;align-items:center;height:21px;padding:0 8px;border-radius:9999px;
+  font-size:11px;font-weight:600;white-space:nowrap;border:1px solid transparent;flex:0 0 auto;
+}
+.selo.s0{background:color-mix(in srgb,var(--ok) 20%,var(--base));color:var(--ok-t);border-color:color-mix(in srgb,var(--ok) 40%,transparent)}
+.selo.s1{background:color-mix(in srgb,var(--warn) 20%,var(--base));color:var(--warn-t);border-color:color-mix(in srgb,var(--warn) 40%,transparent)}
+.selo.s2{background:color-mix(in srgb,var(--dang) 20%,var(--base));color:var(--dang-t);border-color:color-mix(in srgb,var(--dang) 40%,transparent)}
+
+.preco{margin-top:13px;padding:11px 12px;background:var(--base);border:1px solid var(--linha);border-radius:7px}
+.preco .r{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#8894a5;font-weight:600}
+.preco .big{font-size:24px;font-weight:600;letter-spacing:-.4px;margin-top:1px}
+.preco .big.sem{font-size:14px;font-weight:400;color:var(--txt3);padding:5px 0}
+.preco .sub{font-size:11.5px;color:var(--txt3);margin-top:2px}
+
+.linhas{margin-top:11px}
+.lin2{display:flex;align-items:baseline;justify-content:space-between;gap:12px;padding:6px 0;border-top:1px solid color-mix(in srgb,var(--linha) 55%,transparent)}
+.lin2 .r{font-size:12px;color:var(--txt3)}
+.lin2 .v{font-size:12.5px;font-weight:500;text-align:right}
+.blococli{margin-top:13px;padding:10px 12px;background:var(--base);border:1px solid var(--linha);border-radius:7px}
+.blococli .r{font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#8894a5;font-weight:600;margin-bottom:3px}
+.comprador{font-size:13px;font-weight:500;line-height:1.45}
+.comprador.vaz{font-weight:400;color:var(--txt3);font-size:12px}
+.acoes{margin-top:14px;display:flex;flex-direction:column;gap:7px}
+.acoes .bt{justify-content:center;height:34px}
+
+/* ========================== RODAPE ========================== */
+.rodape{
+  grid-column:2/5;grid-row:3;background:var(--canvas);border-top:1px solid var(--linha);
+  display:flex;align-items:center;gap:12px;padding:0 14px;font-size:11px;color:#8894a5;
+}
+.rodape b{color:var(--txt3);font-weight:600}
+.rodape .alerta{color:var(--txt3)}
+.rodape .alerta b{color:var(--warn-t)}
+.rodape .dicas{display:flex;gap:11px;margin-left:auto}
+.rodape .kbd{border:1px solid var(--linha);border-radius:3px;padding:0 4px;font-size:9.5px;color:var(--txt3);margin-right:3px}
+
+/* ========================== POPUPS ========================== */
+.scrim{position:fixed;inset:0;background:rgba(10,10,10,.62);z-index:500;opacity:0;pointer-events:none;transition:opacity .16s}
+.scrim.on{opacity:1;pointer-events:auto}
+.pop{
+  position:fixed;z-index:600;background:var(--base);border:1px solid var(--linha-forte);border-radius:9px;
+  box-shadow:0 26px 70px rgba(0,0,0,.6);display:none;flex-direction:column;overflow:hidden;
+}
+.pop.on{display:flex}
+#popFiltro{top:56px;left:auto;width:318px;max-height:calc(100vh - 96px)}
+#popTabela{top:52px;left:50%;transform:translateX(-50%);width:min(1080px,calc(100vw - 120px));max-height:calc(100vh - 104px)}
+#popPlano {top:40px;left:50%;transform:translateX(-50%);width:min(1160px,calc(100vw - 100px));max-height:calc(100vh - 80px)}
+.ph{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:13px 16px;border-bottom:1px solid var(--linha);flex:0 0 auto}
+.ph h3{font-size:14px;font-weight:600}
+.ph .sb{font-size:11.5px;color:#8894a5;margin-top:1px}
+.ph .fechar{width:26px;height:26px;border-radius:5px;color:var(--txt3);font-size:17px;line-height:1;display:grid;place-items:center}
+.ph .fechar:hover{background:var(--raised);color:var(--txt)}
+.pb{overflow-y:auto;flex:1;min-height:0}
+.pf{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;border-top:1px solid var(--linha);font-size:11.5px;color:#8894a5;flex:0 0 auto}
+
+/* --- filtros --- */
+#popFiltro .pb{padding:2px 0}
+.fgrupo{padding:12px 16px;border-bottom:1px solid var(--linha)}
+.fgrupo:last-child{border-bottom:0}
+.tog{display:flex;flex-direction:column;gap:2px}
+.tog label{display:flex;align-items:center;gap:9px;padding:5px 6px;border-radius:5px;cursor:pointer;font-size:12.5px}
+.tog label:hover{background:var(--raised)}
+.tog input{width:14px;height:14px;accent-color:var(--foco);cursor:pointer}
+.tog .pt{width:9px;height:9px;border-radius:2px}
+.tog .txt{flex:1;color:var(--txt2)}
+.tog .qt{font-size:11.5px;color:#8894a5}
+.leitura{display:flex;align-items:center;gap:7px;margin-bottom:9px}
+.leitura input{
+  width:100%;min-width:0;height:28px;padding:0 8px;background:var(--canvas);border:1px solid var(--linha);
+  border-radius:5px;font-size:12px;text-align:right;
+}
+.leitura input:focus{border-color:var(--foco)}
+.leitura span{font-size:11px;color:#8894a5;flex:0 0 auto}
+.dual{position:relative;height:22px;margin-bottom:8px}
+.dual .trilha{position:absolute;top:9px;left:0;right:0;height:4px;border-radius:2px;background:var(--subtle)}
+.dual .ativa{position:absolute;top:9px;height:4px;border-radius:2px;background:var(--foco)}
+.dual input[type=range]{position:absolute;top:0;left:0;width:100%;height:22px;-webkit-appearance:none;background:none;pointer-events:none}
+.dual input[type=range]::-webkit-slider-thumb{
+  -webkit-appearance:none;pointer-events:auto;width:14px;height:14px;border-radius:50%;
+  background:var(--txt);border:2px solid var(--foco);cursor:grab;margin-top:0;
+}
+.presets{display:flex;flex-wrap:wrap;gap:5px}
+.presets button{font-size:11px;color:var(--txt3);border:1px solid var(--linha);border-radius:9999px;padding:3px 9px}
+.presets button:hover{color:var(--txt);border-color:var(--linha-forte);background:var(--raised)}
+
+/* --- tabela de dados (formato de verdade) --- */
+.tblwrap{overflow:auto;max-height:calc(100vh - 230px)}
+table.dados{width:100%;border-collapse:separate;border-spacing:0;font-size:12.5px}
+table.dados thead th{
+  position:sticky;top:0;z-index:2;background:var(--subtle);color:var(--txt3);
+  font-size:10px;letter-spacing:.05em;text-transform:uppercase;font-weight:600;
+  padding:7px 12px;text-align:left;white-space:nowrap;cursor:pointer;user-select:none;
+  border-bottom:1px solid var(--linha-forte);
+}
+table.dados thead th:hover{color:var(--txt)}
+table.dados thead th.dir{text-align:right}
+table.dados thead th .st{margin-left:4px;font-size:9px;opacity:.75}
+table.dados td{padding:5px 12px;border-bottom:1px solid color-mix(in srgb,var(--linha) 60%,transparent);white-space:nowrap}
+table.dados td.dir{text-align:right}
+table.dados tbody tr{cursor:pointer}
+table.dados tbody tr:hover td{background:rgb(255 255 255 / .045)}
+table.dados tbody tr.sel td{background:rgb(37 99 235 / .17)}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;color:var(--txt2)}
+.pill i{width:8px;height:8px;border-radius:2px}
+.vazioTbl{padding:40px;text-align:center;color:var(--txt3);font-size:12.5px}
+
+/* ====================================================================
+   SIMULADOR — o corretor monta o plano comercial junto com o cliente.
+
+   LAYOUT PORTADO da vitrine publica (B-PUBLICO.html), aprovado pelo dono:
+   duas colunas — CONTROLES a esquerda, SAIDA a direita — e tres caminhos
+   para a mesma conversa (parcela do cliente / condicoes escolhidas /
+   proposta livre).
+
+   AQUI as cores saem dos TOKENS desta tela (escala neutra aprovada), nao
+   do tema claro da vitrine: nenhum hex azulado novo entrou.
+   Toda classe leva o prefixo "s-" para nao encostar em nada que ja
+   existe no arquivo (.mesa, .hero, .conta, .linhas, .ph, .bt, .vazio...).
+   ==================================================================== */
+
+/* o popup do plano vira a mesa de duas colunas: sem respiro proprio, o
+   scroll mora DENTRO de cada coluna, igual ao modal da vitrine. */
+#popPlano{height:min(720px,calc(100vh - 80px))}
+#popPlano .ph{flex-wrap:wrap}
+#popPlano .pb{padding:0;overflow:hidden;display:flex;flex-direction:column}
+
+/* seletor de modo, no cabecalho (mesmo desenho do .segs que ja existia) */
+.s-seg{display:inline-flex;background:var(--canvas);border:1px solid var(--linha);border-radius:7px;padding:2px;gap:2px}
+.s-seg button{height:28px;padding:0 11px;font-size:12px;color:var(--txt3);border-radius:5px;white-space:nowrap}
+.s-seg button:hover{color:var(--txt)}
+.s-seg button.on{background:var(--raised);color:var(--txt);font-weight:600;box-shadow:inset 0 0 0 1px rgb(255 255 255 / .07)}
+
+.s-mesa{display:grid;grid-template-columns:344px minmax(0,1fr);flex:1;min-height:0}
+.s-ctrl{padding:16px 18px;border-right:1px solid var(--linha);overflow:auto;min-height:0}
+.s-saida{padding:16px 18px;overflow:auto;min-height:0;background:var(--canvas)}
+
+/* ---------------------------- controles ---------------------------- */
+.s-campo{margin-bottom:15px}
+.s-campo:last-child{margin-bottom:0}
+.s-lb{font-size:10px;font-weight:600;color:var(--txt4);letter-spacing:.05em;text-transform:uppercase;
+  display:flex;align-items:baseline;gap:6px;margin-bottom:6px}
+.s-aj{margin-left:auto;font-size:10.5px;font-weight:400;color:var(--txt4);text-transform:none;letter-spacing:0}
+
+.s-inp{display:flex;align-items:center;height:36px;border:1px solid var(--linha);border-radius:6px;
+  background:var(--canvas);padding:0 10px;gap:8px}
+/* foco igual ao que o arquivo ja fazia em .mini e .lev .cx: so a borda.
+   Nada de halo translucido — ele composita um azul escuro sobre o canvas. */
+.s-inp:focus-within{border-color:var(--foco)}
+.s-inp .s-pre{color:var(--txt4);font-size:11.5px;flex:0 0 auto}
+.s-inp .s-pos{color:var(--txt4);font-size:11.5px;flex:0 0 auto;white-space:nowrap}
+.s-inp input{flex:1;min-width:0;text-align:right;font-size:15px;font-weight:600;color:var(--txt)}
+.s-inp input::placeholder{color:var(--txt4);font-weight:400;font-size:12px}
+.s-inp input:disabled{color:var(--txt4)}
+.s-inp.s-pq{height:32px}
+.s-inp.s-pq input{font-size:13px}
+.s-inp.s-calc{background:var(--subtle);border-style:dashed}
+.s-inp.s-calc input{color:#cfe0ff}
+/* o selo "calculado" leva a cor no TEXTO, nao no fundo: fundo tingido de
+   --foco nesse tamanho vira mancha azul escura, e azul escuro e proibido. */
+.s-selo{display:inline-flex;align-items:center;height:15px;padding:0 6px;border-radius:8px;
+  background:var(--subtle);color:#cfe0ff;
+  font-size:9px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+
+/* os planos oficiais viram os cartoes de prazo */
+.s-prazos{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px}
+.s-pz{height:58px;border:1px solid var(--linha);border-radius:6px;background:var(--canvas);color:var(--txt2);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0}
+.s-pz b{font-size:13px;font-weight:600}
+.s-pz small{font-size:9.5px;color:var(--txt4);line-height:1.35}
+.s-pz:hover{border-color:var(--linha-forte);background:var(--subtle)}
+/* a tinta de "selecionado" e EXATAMENTE a que o arquivo ja usava em .opc.top:
+   color-mix(--foco 12%, --raised). Nao subir daqui. */
+.s-pz.on{border-color:color-mix(in srgb,var(--foco) 55%,transparent);
+  background:color-mix(in srgb,var(--foco) 12%,var(--raised));color:#cfe0ff}
+.s-pz.on b,.s-pz.on small{color:#cfe0ff}
+
+.s-duplo{display:grid;grid-template-columns:92px minmax(0,1fr);gap:8px}
+.s-stepper{display:flex;align-items:center;border:1px solid var(--linha);border-radius:6px;height:32px;background:var(--canvas)}
+.s-stepper button{width:28px;height:100%;color:var(--txt3);display:grid;place-items:center;flex:none}
+.s-stepper button:hover{background:var(--subtle);color:var(--txt)}
+.s-stepper .s-qt{flex:1;text-align:center;font-size:13px;font-weight:600;color:var(--txt)}
+
+.s-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px}
+.s-cv{height:24px;padding:0 9px;border:1px solid var(--linha);border-radius:12px;background:var(--canvas);
+  font-size:11px;color:var(--txt3);white-space:nowrap}
+.s-cv:hover{background:var(--subtle);border-color:var(--linha-forte);color:var(--txt)}
+.s-cv.on{background:var(--foco);border-color:var(--foco);color:#fff}
+
+/* a flag: sai das condicoes fixas e monta a proposta do zero */
+.s-flag{display:flex;align-items:center;gap:10px;margin:0 0 15px;padding:9px 11px;
+  border:1px solid var(--linha);border-radius:7px;background:var(--canvas);
+  cursor:pointer;user-select:none;text-align:left;width:100%}
+.s-flag:hover{border-color:var(--linha-forte)}
+.s-flag.on{border-color:color-mix(in srgb,var(--foco) 55%,transparent);
+  background:color-mix(in srgb,var(--foco) 12%,var(--raised))}
+.s-flag .s-ft{flex:1;min-width:0}
+.s-flag .s-ft b{display:block;font-size:12.5px;font-weight:600;color:var(--txt)}
+.s-flag .s-ft small{display:block;font-size:10.5px;color:var(--txt4);line-height:1.4;margin-top:1px}
+.s-sw{flex:none;width:32px;height:19px;border-radius:10px;background:var(--subtle);position:relative;transition:background .15s}
+.s-sw::after{content:"";position:absolute;top:2px;left:2px;width:15px;height:15px;border-radius:50%;
+  background:var(--txt3);transition:transform .15s,background .15s}
+.s-flag.on .s-sw{background:var(--foco)}
+.s-flag.on .s-sw::after{transform:translateX(13px);background:#fff}
+
+/* qual variavel o sistema recalcula para a conta fechar */
+.s-ajusta{display:flex;gap:4px;padding:3px;background:var(--canvas);border:1px solid var(--linha);border-radius:6px}
+.s-ajusta button{flex:1;height:26px;border-radius:4px;font-size:11.5px;font-weight:500;color:var(--txt3)}
+.s-ajusta button:hover{color:var(--txt)}
+.s-ajusta button.on{background:var(--raised);color:var(--txt);font-weight:600;box-shadow:inset 0 0 0 1px rgb(255 255 255 / .07)}
+
+.s-rg{-webkit-appearance:none;appearance:none;width:100%;height:4px;border-radius:2px;
+  background:var(--subtle);outline:none;margin-top:10px}
+.s-rg::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;border-radius:50%;
+  background:var(--txt);border:2px solid var(--foco);cursor:pointer}
+.s-rg::-moz-range-thumb{width:15px;height:15px;border-radius:50%;background:var(--txt);
+  border:2px solid var(--foco);cursor:pointer}
+.s-pontas{display:flex;justify-content:space-between;font-size:10px;color:var(--txt4);margin-top:5px}
+
+.s-nota{font-size:10.5px;color:var(--txt4);line-height:1.5;margin-top:7px}
+.s-nota b{color:var(--txt3);font-weight:600}
+.s-div{margin-top:17px;padding-top:15px;border-top:1px solid var(--linha)}
+
+/* ------------------------------ saida ------------------------------ */
+.s-vazio{padding:40px 18px;text-align:center;color:var(--txt4);font-size:12.5px}
+
+.s-destaque{background:var(--base);border:1px solid var(--linha);border-radius:9px;padding:15px 16px}
+.s-destaque .s-r{font-size:10px;font-weight:600;color:var(--txt4);letter-spacing:.05em;text-transform:uppercase}
+.s-destaque .s-v{font-size:34px;font-weight:600;letter-spacing:-.03em;line-height:1.06;margin-top:4px;color:var(--txt)}
+.s-destaque .s-sub{font-size:12px;color:var(--txt3);margin-top:5px}
+.s-destaque .s-sub b{font-weight:600;color:var(--txt2)}
+
+.s-linhas{margin-top:14px;background:var(--base);border:1px solid var(--linha);border-radius:9px;overflow:hidden}
+.s-tit{padding:8px 14px;border-bottom:1px solid var(--linha);background:rgb(255 255 255 / .022);
+  font-size:10px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--txt4)}
+.s-li{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--linha);font-size:12.5px}
+.s-li:last-child{border-bottom:0}
+.s-li .s-a{color:var(--txt3)}
+.s-li .s-a small{display:block;font-size:10.5px;color:var(--txt4)}
+.s-li .s-b{margin-left:auto;text-align:right;font-weight:600;color:var(--txt2);white-space:nowrap}
+.s-li .s-b small{display:block;font-size:10.5px;color:var(--txt4);font-weight:400}
+.s-li.s-total{background:rgb(255 255 255 / .04)}
+.s-li.s-total .s-b{font-size:14px;color:var(--txt)}
+.s-li.s-clique{cursor:pointer}
+.s-li.s-clique:hover{background:rgb(255 255 255 / .05)}
+.s-li.s-on{background:color-mix(in srgb,var(--foco) 12%,var(--raised));box-shadow:inset 2px 0 0 var(--foco)}
+
+.s-alerta{margin-top:12px;padding:10px 12px;border-radius:7px;font-size:11.5px;line-height:1.5;
+  background:color-mix(in srgb,var(--warn) 13%,var(--base));color:var(--warn-t);
+  border:1px solid color-mix(in srgb,var(--warn) 30%,transparent)}
+.s-alerta b{font-weight:600}
+
+.s-balanco{display:flex;align-items:flex-start;gap:8px;margin-top:12px;padding:10px 12px;border-radius:7px;
+  font-size:12px;line-height:1.45;
+  background:color-mix(in srgb,var(--ok) 13%,var(--base));color:var(--ok-t);
+  border:1px solid color-mix(in srgb,var(--ok) 30%,transparent)}
+.s-balanco.s-erro{background:color-mix(in srgb,var(--dang) 13%,var(--base));color:var(--dang-t);
+  border-color:color-mix(in srgb,var(--dang) 30%,transparent)}
+.s-balanco svg{flex:none;margin-top:1px}
+.s-balanco b{font-weight:600}
+
+/* cartoes de composicao do otimizador */
+.s-props{display:flex;flex-direction:column;gap:10px}
+.s-pp{background:var(--base);border:1px solid var(--linha);border-radius:9px;padding:13px 14px;transition:border-color .12s}
+.s-pp.s-top{border-color:color-mix(in srgb,var(--ok) 55%,transparent);
+  box-shadow:0 0 0 3px color-mix(in srgb,var(--ok) 14%,transparent)}
+.s-pp .s-cab{display:flex;align-items:center;gap:9px}
+.s-badge{display:inline-flex;align-items:center;height:19px;padding:0 8px;border-radius:10px;
+  font-size:9.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+  background:var(--subtle);color:var(--txt3)}
+.s-pp.s-top .s-badge{background:var(--ok);color:#fff}
+.s-pp .s-pv{margin-left:auto;text-align:right}
+.s-pp .s-pv .s-r{font-size:9.5px;color:var(--txt4);letter-spacing:.04em;text-transform:uppercase}
+.s-pp .s-pv .s-v{font-size:21px;font-weight:600;letter-spacing:-.02em;line-height:1.15;color:var(--txt)}
+.s-pp .s-comp{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:10px;
+  margin-top:12px;padding-top:11px;border-top:1px solid var(--linha)}
+.s-cc .s-r{font-size:9.5px;color:var(--txt4);letter-spacing:.02em}
+.s-cc .s-v{font-size:13px;font-weight:600;margin-top:1px;color:var(--txt2)}
+.s-cc .s-v small{display:block;font-size:10px;color:var(--txt4);font-weight:400}
+.s-porque{margin-top:11px;font-size:11.5px;color:var(--txt3);line-height:1.5;display:flex;gap:8px}
+.s-porque svg{flex:none;margin-top:2px;color:var(--ok-t)}
+.s-usar{margin-top:11px;height:30px;width:100%;border:1px solid var(--linha);border-radius:6px;
+  font-size:12px;font-weight:500;color:var(--txt2);background:var(--raised)}
+.s-usar:hover{background:var(--subtle);color:var(--txt);border-color:var(--linha-forte)}
+.s-pp.s-top .s-usar{background:var(--foco);border-color:var(--foco);color:#fff;font-weight:600}
+.s-pp.s-top .s-usar:hover{background:color-mix(in srgb,var(--foco) 86%,#fff)}
+
+.s-intro{font-size:12px;color:var(--txt3);margin-bottom:12px;line-height:1.5}
+.s-intro b{color:var(--txt2);font-weight:600}
+
+.s-faixa{display:flex;align-items:flex-start;gap:9px;margin:0 0 13px;padding:9px 12px;border-radius:7px;
+  background:color-mix(in srgb,var(--foco) 12%,var(--raised));
+  border:1px solid color-mix(in srgb,var(--foco) 30%,transparent);
+  font-size:11.5px;color:#cfe0ff;line-height:1.45}
+.s-faixa svg{flex:none;margin-top:1px}
+.s-faixa b{font-weight:600}
+
+/* dado de OPERACAO — so existe na tela interna (comprador, desconto efetivo) */
+.s-op{margin-top:12px;padding:9px 12px;border-radius:7px;background:rgb(255 255 255 / .04);
+  border:1px solid var(--linha);font-size:11.5px;color:var(--txt3);line-height:1.55}
+.s-op b{color:var(--txt2);font-weight:600}
+.s-abaixo{color:var(--warn-t);font-weight:600}
+
+.s-comparativo{margin-top:10px;display:flex;align-items:baseline;gap:7px;flex-wrap:wrap;
+  font-size:11.5px;color:var(--txt4);padding:0 2px;line-height:1.45}
+.s-comparativo b{color:var(--txt3);font-weight:600}
+
+.s-legal{font-size:11px;color:var(--txt4);line-height:1.5}
+.s-legal b{color:var(--txt3);font-weight:600}
+
+/* a mesa de duas colunas nao cabe em placa estreita: vira uma coluna so e
+   o scroll volta para o corpo do popup. */
+@media (max-width:1240px){
+  .s-mesa{display:block;overflow:visible}
+  .s-ctrl{border-right:0;border-bottom:1px solid var(--linha);overflow:visible}
+  /* empilhado, o campo nao pode atravessar a tela inteira: vira uma tira
+     ilegivel de 1000px com o numero solto la na ponta direita. */
+  .s-ctrl > *{max-width:560px}
+  .s-saida{overflow:visible}
+  #popPlano .pb{overflow:auto}
+  #popPlano{height:auto}
+}
+@media (max-width:760px){
+  .s-pp .s-comp{grid-template-columns:1fr 1fr}
+  .s-prazos{grid-template-columns:1fr}
+}
+
+.perf{
+  position:fixed;right:14px;top:64px;z-index:900;background:rgba(10,10,10,.96);border:1px solid var(--linha-forte);
+  border-radius:6px;padding:9px 11px;font:11px/1.65 Consolas,Monaco,monospace;color:var(--txt2);white-space:pre;display:none;
+}
+body.fps .perf{display:block}
+
+/* Recolher o painel macro: o corretor ganha mapa quando nao precisa dos numeros. */
+.btRec{position:absolute;top:9px;right:8px;width:22px;height:22px;display:grid;place-items:center;
+  border:1px solid var(--linha);border-radius:6px;background:transparent;color:var(--txt4);
+  cursor:pointer;font-size:12px;line-height:1;transition:color .14s,border-color .14s,background .14s}
+.btRec:hover{color:var(--txt1);border-color:var(--linha-forte);background:rgb(255 255 255 / .06)}
+.macro{position:relative;transition:width .18s ease,min-width .18s ease}
+body.macroOff .macro{width:34px;min-width:34px;overflow:hidden}
+body.macroOff .macro > *:not(.btRec){opacity:0;pointer-events:none}
+body.macroOff .btRec{right:6px}
+/* a coluna da grade tem que encolher junto: sem isto o painel some mas o
+   espaco dele continua reservado e o mapa nao ganha um pixel sequer. */
+body.macroOff{grid-template-columns:54px 34px minmax(0,1fr) 340px}
+
+
+/* Exportar a tabela para Excel. Sai o que esta na tela: mesma ordem, mesmo filtro. */
+.phAcoes{display:flex;align-items:center;gap:8px}
+.btExp{border:1px solid var(--linha-forte);background:transparent;color:var(--txt2);
+  font:inherit;font-size:11px;font-weight:500;padding:5px 10px;border-radius:6px;cursor:pointer;
+  white-space:nowrap;transition:color .14s,border-color .14s,background .14s}
+.btExp:hover{color:var(--txt1);border-color:var(--txt4);background:rgb(255 255 255 / .06)}
+.btExp:active{transform:translateY(1px)}
+
+
+/* botao que chama o painel macro: so existe quando o painel vira gaveta */
+.btMacro{display:none}
+
+/* ============================================================================
+   TELAS MENORES — o mapa e o protagonista, entao ele nao pode ser espremido.
+   Sem estas regras os dois paineis somam 712px fixos e o mapa fica com a
+   sobra: 626px num projetor de 1366, 284px num tablet deitado e 80px num
+   tablet em pe. Aqui os paineis encolhem primeiro e, quando isso nao basta,
+   saem do fluxo e viram gaveta SOBRE o mapa.
+   ========================================================================= */
+@media (max-width:1560px){
+  body{grid-template-columns:54px 292px minmax(0,1fr) 312px}
+  body.macroOff{grid-template-columns:54px 34px minmax(0,1fr) 312px}
+}
+@media (max-width:1400px){
+  body{grid-template-columns:48px 270px minmax(0,1fr) 292px}
+  body.macroOff{grid-template-columns:48px 34px minmax(0,1fr) 292px}
+  .cena{padding:10px}
+}
+/* ate 1240px a ficha da unidade vira gaveta: ela so tem conteudo com um lote
+   escolhido, e ate la nao deve tomar 300px do mapa. */
+@media (max-width:1240px){
+  body,body.macroOff{grid-template-columns:48px 264px minmax(0,1fr)}
+  body.macroOff{grid-template-columns:48px 34px minmax(0,1fr)}
+  .topo,.rodape{grid-column:2/4}
+  .unidade{
+    position:fixed;top:52px;right:0;bottom:26px;width:330px;z-index:420;
+    transform:translateX(101%);transition:transform .18s ease;
+    box-shadow:-20px 0 46px rgb(0 0 0 / .5);
+  }
+  body.comLote .unidade{transform:none}
+  .uFechar{display:grid}
+}
+/* ate 960px o painel macro tambem sai do fluxo. Ele NASCE FECHADO — o mapa e
+   a primeira coisa que a tela mostra — e abre pelo botao "Empreendimento" do
+   topo; o proprio ‹ do painel fecha de volta. */
+@media (max-width:960px){
+  body,body.macroOff{grid-template-columns:48px minmax(0,1fr)}
+  .topo,.rodape{grid-column:2/3}
+  .cena{grid-column:2}
+  .macro{
+    position:fixed;top:52px;left:48px;bottom:26px;width:288px;z-index:420;
+    transform:none;transition:transform .18s ease;
+    box-shadow:20px 0 46px rgb(0 0 0 / .5);
+  }
+  /* macroOff aqui quer dizer "gaveta recolhida", entao ela sai da tela
+     INTEIRA (o -100% sozinho deixa 42px aparecendo por causa do left:48px)
+     em vez de virar a tira de 34px do modo desktop */
+  body.macroOff .macro{
+    width:288px;min-width:288px;overflow:hidden;
+    transform:translateX(calc(-100% - 56px));
+  }
+  body.macroOff .macro > *:not(.btRec){opacity:1;pointer-events:auto}
+  body.macroOff .btRec{display:none}   /* fechada, quem abre e o botao do topo */
+  .btMacro{display:inline-flex}
+  .rodape .dicas{display:none}
+  /* a barra do topo pede 785px e so tem 720: sai a marca escrita (o rail ja
+     carrega a identidade) para a legenda das tres situacoes caber inteira */
+  .topo .marca,.topo .sep{display:none}
+}
+
+/* fechar a gaveta da unidade (so aparece quando ela e gaveta) */
+.uFechar{
+  display:none;position:absolute;top:8px;right:8px;width:26px;height:26px;
+  place-items:center;border-radius:6px;border:1px solid var(--linha);
+  background:rgb(255 255 255 / .04);color:var(--txt3);cursor:pointer;
+  font-size:15px;line-height:1;
+}
+.uFechar:hover{background:rgb(255 255 255 / .09);color:var(--txt)}
+
+/* quem pediu menos movimento no sistema nao leva transicao nenhuma */
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{
+    transition-duration:.001ms !important;
+    animation-duration:.001ms !important;
+    animation-iteration-count:1 !important;
+    scroll-behavior:auto !important;
+  }
+}
+
+
+</style>
+</head>
+<body>
+
+<!-- ============ RAIL DO PANTEON (moldura do Apolo) ============ -->
+<nav class="rail" aria-label="Módulos do Panteon">
+  <div class="logo" title="Panteon"><b>P</b></div>
+  <a class="on" title="Apolo · Masterplan do Garden" href="#" onclick="return false">
+    <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.6 5.4 7.4 3.2l5.2 2.2 4.8-2.2v11.4l-4.8 2.2-5.2-2.2-4.8 2.2z"/><path d="M7.4 3.2v11.4M12.6 5.4v11.4"/></svg>
+  </a>
+  <a title="Íris · atendimento" href="#" onclick="return false">
+    <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 6.2a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H8l-4 3v-3H5a2 2 0 0 1-2-2z"/></svg>
+  </a>
+  <a title="Hades · cobrança" href="#" onclick="return false">
+    <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 3v14M6 6.4h6a2.2 2.2 0 0 1 0 4.4H8.2a2.2 2.2 0 0 0 0 4.4H14"/></svg>
+  </a>
+  <a title="Prometeu · lançamento" href="#" onclick="return false">
+    <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 2.6c2.6 2 3.9 4.2 3.9 6.6 0 1.5-.6 2.7-1.7 3.6.3-1.6-.2-2.9-1.4-3.9.1 2.4-.9 3.9-3 4.6.5-1.4.3-2.6-.6-3.6-.9 1-1.3 2.1-1.3 3.3 0 2.8 1.9 4.4 4.1 4.4s4.1-1.6 4.1-4.4c0-4-1.7-7.3-4.1-10.6z"/></svg>
+  </a>
+  <a class="fim" title="Hermes · mensagens" href="#" onclick="return false">
+    <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M2.8 4.6h14.4v10.8H2.8z"/><path d="m2.8 5.4 7.2 5 7.2-5"/></svg>
+  </a>
+</nav>
+
+<!-- ============ TOPO ============ -->
+<header class="topo">
+  <div class="marca"><b>Garden</b><span>Masterplan</span></div>
+  <div class="sep"></div>
+  <label class="busca" id="caixaBusca">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4 14 14"/></svg>
+    <input id="busca" type="text" placeholder="quadra, lote, comprador ou valor" autocomplete="off" spellcheck="false">
+    <span class="kbd">/</span>
+    <button class="lp" id="limpaBusca" type="button" title="limpar (Esc)">&times;</button>
+  </label>
+  <button class="bt btMacro" id="btMacro" type="button" title="painel do empreendimento">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 3h12M2 8h12M2 13h7"/></svg>
+    Empreendimento
+  </button>
+  <button class="bt" id="btFiltro">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 4h12M4.5 8h7M7 12h2"/></svg>
+    Filtros <span class="cnt" id="cntFiltro" style="display:none">0</span>
+  </button>
+  <button class="bt" id="btTabela">
+    <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.8" y="2.8" width="12.4" height="10.4" rx="1.4"/><path d="M1.8 6.2h12.4M6.2 6.2v7"/></svg>
+    Tabela
+  </button>
+  <div class="espaco"></div>
+  <div class="legenda" title="Vale a camada de cor. Os círculos numerados são da planta original e seguem outra legenda: lá o verde marcava o lote reservado.">
+    <button class="chip s0" data-sit="0" title="mostrar só os disponíveis no mapa"><span class="pt"></span>Disponível</button>
+    <button class="chip s1" data-sit="1" title="mostrar só os reservados no mapa"><span class="pt"></span>Reservado</button>
+    <button class="chip s2" data-sit="2" title="mostrar só os vendidos no mapa"><span class="pt"></span>Vendido</button>
+  </div>
+</header>
+
+<!-- ============ ESQUERDA · MACRO ============ -->
+<aside class="macro">
+      <button class="btRec" id="btRec" title="Recolher o painel (o mapa ocupa a tela)" aria-label="Recolher painel">‹</button>
+  <div class="escopo">
+    <div>
+      <div class="r">Empreendimento</div>
+      <div class="v" id="escNome">Todo o Garden <small>· 406 lotes</small></div>
+    </div>
+    <button id="escVoltar" title="voltar para o empreendimento inteiro">Todo o Garden</button>
+  </div>
+
+  <div class="rolo">
+    <div class="grupo">
+      <div class="rot">Valor por situação</div>
+      <div class="vsit" id="vsit"></div>
+      <div class="vgv" id="vgv"></div>
+    </div>
+
+    <div class="grupo">
+      <div class="rot">Indicadores</div>
+      <div class="fin" id="fin"></div>
+    </div>
+
+    <div class="quadras">
+      <div class="rot">Quadras</div>
+      <table class="tq">
+        <thead><tr>
+          <th data-k="q">Quadra<span class="st"></span></th>
+          <th data-k="n" title="lotes da quadra">Lotes<span class="st"></span></th>
+          <th data-k="val" title="soma dos preços informados">Valor<span class="st"></span></th>
+          <th data-k="pc" title="percentual de lotes já vendidos">Vend.<span class="st"></span></th>
+        </tr></thead>
+        <tbody id="listaQ"></tbody>
+      </table>
+    </div>
+  </div>
+</aside>
+
+<!-- ============ MAPA ============ -->
+<main class="cena" id="cena">
+  <div class="palco" id="palco">
+    <div class="plano">
+      <img class="planta" src="garden-planta.jpg" alt="Planta aérea do loteamento Garden" draggable="false">
+    </div>
+    <svg class="svg svg-cor" viewBox="0 0 2396 2160" preserveAspectRatio="none">
+      <path id="f2"/><path id="f1"/><path id="f0"/>
+      <path id="hover"/>
+      <g id="gQuadra"></g>
+      <g id="gSel"><path id="selSombra"/><path id="selFio"/></g>
+    </svg>
+    <svg class="svg svg-hit" id="svgHit" viewBox="0 0 2396 2160" preserveAspectRatio="none"><g id="gHit"></g></svg>
+  </div>
+
+  <div class="placa" id="placa"><b id="placaT">Quadra</b><span class="t" id="placaS"></span></div>
+
+  <div class="aviso" id="aviso">
+    <span id="avisoT"></span>
+    <button id="avisoLimpa">limpar filtro</button>
+  </div>
+
+  <div class="zoom">
+    <button id="zMais" title="aproximar (+)">+</button>
+    <button id="zMenos" title="afastar (−)">&minus;</button>
+    <button id="zReset" title="enquadrar (0)">
+      <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M2 6V2.6h3.4M14 6V2.6h-3.4M2 10v3.4h3.4M14 10v3.4h-3.4"/></svg>
+    </button>
+    <div class="lvl" id="zLvl">100%</div>
+  </div>
+</main>
+
+<!-- ============ DIREITA · UNIDADE ============ -->
+<aside class="unidade">
+  <div class="uCab">
+    <div class="r">Unidade</div>
+    <div class="v" id="uTit">Nenhum lote selecionado</div>
+    <button class="uFechar" id="uFechar" type="button" title="fechar a ficha (Esc)" aria-label="Fechar a ficha do lote">&times;</button>
+  </div>
+  <div class="uRolo">
+
+    <div class="vazio" id="uVazio">
+      <div class="ic">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 7.5 9 5l6 2.5L21 5v11.5L15 19l-6-2.5L3 19z"/><path d="M9 5v11.5M15 7.5V19"/></svg>
+      </div>
+      <h4>Selecione um lote no mapa</h4>
+      <p>Aqui aparecem a metragem, o preço, o preço por m², a situação e o comprador daquele lote.</p>
+      <div class="dica">Passe o cursor para pré-visualizar · clique para fixar</div>
+    </div>
+
+    <div class="ficha" id="uFicha" style="display:none">
+      <div class="id">
+        <div>
+          <div class="ql" id="fQL">Quadra 00 · Lote 00</div>
+          <div class="gid" id="fId">GDN0000</div>
+          <div class="foraf" id="fFora">não atende ao filtro atual</div>
+        </div>
+        <span class="selo s0" id="fSelo">—</span>
+      </div>
+
+      <div class="preco">
+        <div class="r">Preço de tabela</div>
+        <div class="big" id="fPreco">—</div>
+        <div class="sub" id="fPrecoSub"></div>
+      </div>
+
+      <div class="linhas" id="fLinhas"></div>
+
+      <div class="blococli" id="fBlocoCli">
+        <div class="r" id="fRotCli">Comprador</div>
+        <div class="comprador" id="fCli">—</div>
+      </div>
+
+      <div class="acoes">
+        <button class="bt pri" id="btCond">Ver condições comerciais</button>
+      </div>
+    </div>
+
+  </div>
+</aside>
+
+<footer class="rodape">
+  <span>Planilha de vendas Garden · <b id="rTot">406</b> lotes</span>
+  <div class="sep" style="height:12px"></div>
+  <span class="alerta">A situação é a <b>camada de cor</b>. Os círculos numerados vêm impressos na planta original e usam outra legenda: lá o verde é o lote reservado.</span>
+  <div class="sep" style="height:12px"></div>
+  <span id="rId">—</span>
+  <span class="espaco"></span>
+  <span id="rFps"></span>
+  <div class="dicas">
+    <span><span class="kbd">/</span>buscar</span>
+    <span><span class="kbd">F</span>filtros</span>
+    <span><span class="kbd">T</span>tabela</span>
+    <span><span class="kbd">P</span>plano</span>
+    <span><span class="kbd">D</span>desempenho</span>
+  </div>
+</footer>
+
+<div class="etiq" id="etiq">
+  <div class="e1"><i id="etI"></i><span id="etT">Quadra 00 · Lote 00</span></div>
+  <div class="e2" id="etA"></div>
+  <div class="e3" id="etV"></div>
+  <div class="e4" id="etC"></div>
+</div>
+<div class="perf" id="perf"></div>
+<div class="scrim" id="scrim"></div>
+
+<!-- ============ POPUP: FILTROS ============ -->
+<aside class="pop" id="popFiltro" role="dialog" aria-label="Filtros">
+  <div class="ph">
+    <div><h3>Filtros</h3><div class="sb" id="fbResumo">406 de 406 lotes</div></div>
+    <button class="fechar" data-fecha="popFiltro">&times;</button>
+  </div>
+  <div class="pb">
+    <div class="fgrupo">
+      <div class="rot">Situação</div>
+      <div class="tog" id="togSit"></div>
+    </div>
+    <div class="fgrupo">
+      <div class="rot">Preço total</div>
+      <div class="leitura">
+        <input type="text" id="pMinTxt" inputmode="numeric"><span>até</span><input type="text" id="pMaxTxt" inputmode="numeric">
+      </div>
+      <div class="dual"><div class="trilha"></div><div class="ativa"></div>
+        <input type="range" id="pMin"><input type="range" id="pMax"></div>
+      <div class="presets" id="presetPreco"></div>
+    </div>
+    <div class="fgrupo">
+      <div class="rot">Preço por m²</div>
+      <div class="leitura">
+        <input type="text" id="mMinTxt" inputmode="numeric"><span>até</span><input type="text" id="mMaxTxt" inputmode="numeric">
+      </div>
+      <div class="dual"><div class="trilha"></div><div class="ativa"></div>
+        <input type="range" id="mMin"><input type="range" id="mMax"></div>
+    </div>
+    <div class="fgrupo">
+      <div class="rot">Área (m²)</div>
+      <div class="leitura">
+        <input type="text" id="aMinTxt" inputmode="numeric"><span>até</span><input type="text" id="aMaxTxt" inputmode="numeric">
+      </div>
+      <div class="dual"><div class="trilha"></div><div class="ativa"></div>
+        <input type="range" id="aMin"><input type="range" id="aMax"></div>
+    </div>
+    <div class="fgrupo">
+      <div class="tog">
+        <label><input type="checkbox" id="soPreco"><span class="txt">Só lotes com preço informado</span><span class="qt" id="qtPreco"></span></label>
+      </div>
+    </div>
+  </div>
+  <div class="pf">
+    <span id="fbConta">406 lotes atendem</span>
+    <button class="bt" id="btLimparF">Limpar tudo</button>
+  </div>
+</aside>
+
+<!-- ============ POPUP: TABELA ============ -->
+<section class="pop" id="popTabela" role="dialog" aria-label="Tabela de lotes">
+  <div class="ph">
+    <div><h3>Lotes</h3><div class="sb" id="tbSub">406 lotes</div></div>
+    <div class="phAcoes">
+      <button class="btExp" id="btExcel" title="Baixar a tabela como planilha (abre no Excel)">Exportar Excel</button>
+      <button class="fechar" data-fecha="popTabela">&times;</button>
+    </div>
+  </div>
+  <div class="pb"><div class="tblwrap" id="tblwrap"></div></div>
+  <div class="pf">
+    <span>Clique na linha para selecionar o lote no mapa · clique no cabeçalho para ordenar</span>
+    <span id="tbSoma"></span>
+  </div>
+</section>
+
+<!-- ============ POPUP: PLANO COMERCIAL ============ -->
+<section class="pop" id="popPlano" role="dialog" aria-label="Plano comercial">
+  <div class="ph">
+    <div>
+      <h3>Monte o plano de pagamento</h3>
+      <div class="sb" id="plSub">Garden Resort Residence</div>
+    </div>
+    <div class="phAcoes">
+      <div class="s-seg" id="segModo">
+        <button class="on" data-m="parcela">Parto da parcela do cliente</button>
+        <button data-m="montar">Eu escolho as condições</button>
+      </div>
+      <button class="fechar" data-fecha="popPlano">&times;</button>
+    </div>
+  </div>
+
+  <div class="pb">
+    <div class="s-mesa">
+
+      <!-- ================= COLUNA 1: os controles ================= -->
+      <div class="s-ctrl" id="simCtrl">
+
+        <!-- A FLAG: sai das condicoes fixas e monta a proposta do zero -->
+        <button class="s-flag" id="btLivre" aria-pressed="false">
+          <span class="s-ft">
+            <b>Proposta livre</b>
+            <small>o corretor define entrada, anuais, prazo e parcela</small>
+          </span>
+          <span class="s-sw"></span>
+        </button>
+
+        <div class="s-campo">
+          <div class="s-lb">VALOR DO LOTE <span class="s-aj" id="ajPreco"></span></div>
+          <div class="s-inp"><span class="s-pre">R$</span><input id="cPreco" inputmode="numeric"></div>
+        </div>
+
+        <!-- ============ modo 1: parto da parcela do cliente ============ -->
+        <div id="blocoParcela">
+          <div class="s-campo">
+            <div class="s-lb">QUANTO O CLIENTE PAGA POR MÊS</div>
+            <div class="s-inp"><span class="s-pre">R$</span><input id="cAlvo" inputmode="numeric"></div>
+            <div class="s-chips" id="chipsAlvo"></div>
+          </div>
+          <div class="s-campo">
+            <div class="s-lb">ENTRADA DISPONÍVEL <span class="s-aj">opcional</span></div>
+            <div class="s-inp s-pq"><span class="s-pre">R$</span><input id="cEntMax" inputmode="numeric" placeholder="sem limite"></div>
+          </div>
+          <div class="s-campo">
+            <div class="s-lb">ANUAL QUE CABE <span class="s-aj">opcional</span></div>
+            <div class="s-inp s-pq"><span class="s-pre">R$</span><input id="cAnMax" inputmode="numeric" placeholder="sem limite"></div>
+            <p class="s-nota">Diga o que cabe no mês do cliente. A tela varre prazo, entrada e
+              parcelas anuais dos três planos oficiais e devolve as composições que fecham nesse valor.</p>
+          </div>
+        </div>
+
+        <!-- ============ modo 2: eu escolho as condicoes ============ -->
+        <div id="blocoMontar" style="display:none">
+          <div class="s-campo">
+            <div class="s-lb">PLANO E PRAZO</div>
+            <div class="s-prazos" id="cPrazos"></div>
+          </div>
+          <div class="s-campo">
+            <div class="s-lb">ENTRADA <span class="s-aj" id="ajEntrada"></span></div>
+            <div class="s-inp s-pq"><span class="s-pre">R$</span><input id="cEntrada" inputmode="numeric"></div>
+            <input type="range" class="s-rg" id="rgEntrada" min="0" max="60" step="1">
+            <div class="s-pontas"><span>0%</span><span>60% do valor</span></div>
+          </div>
+          <div class="s-campo">
+            <div class="s-lb">PARCELAS ANUAIS <span class="s-aj" id="ajAnuais"></span></div>
+            <div class="s-duplo">
+              <div class="s-stepper" id="stAn">
+                <button data-d="-1" aria-label="Menos uma anual"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3.5 8h9"/></svg></button>
+                <span class="s-qt" id="vAnQtd">0</span>
+                <button data-d="1" aria-label="Mais uma anual"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></button>
+              </div>
+              <div class="s-inp s-pq"><span class="s-pre">R$</span><input id="cAnVal" inputmode="numeric" placeholder="valor da anual"></div>
+            </div>
+            <div class="s-chips" id="chipsAnual"></div>
+          </div>
+        </div>
+
+        <!-- ============ modo livre: a conta fecha no valor do lote ============ -->
+        <div id="blocoLivre" style="display:none">
+          <div class="s-campo">
+            <div class="s-lb">A TELA AJUSTA <span class="s-aj">para a conta fechar</span></div>
+            <div class="s-ajusta" id="cAjusta">
+              <button class="on" data-a="parcela">A parcela</button>
+              <button data-a="entrada">A entrada</button>
+              <button data-a="prazo">O prazo</button>
+            </div>
+          </div>
+          <div class="s-campo">
+            <div class="s-lb">ENTRADA <span class="s-aj" id="ajLEnt"></span></div>
+            <div class="s-inp s-pq" id="wLEnt"><span class="s-pre">R$</span><input id="lEntrada" inputmode="numeric"></div>
+          </div>
+          <div class="s-campo">
+            <div class="s-lb">PARCELAS ANUAIS <span class="s-aj" id="ajLAn"></span></div>
+            <div class="s-duplo">
+              <div class="s-stepper" id="stLAn">
+                <button data-d="-1" aria-label="Menos uma anual"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M3.5 8h9"/></svg></button>
+                <span class="s-qt" id="vLAnQtd">0</span>
+                <button data-d="1" aria-label="Mais uma anual"><svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="M8 3.5v9M3.5 8h9"/></svg></button>
+              </div>
+              <div class="s-inp s-pq"><span class="s-pre">R$</span><input id="lAnVal" inputmode="numeric" placeholder="valor da anual"></div>
+            </div>
+          </div>
+          <div class="s-campo">
+            <div class="s-lb">PRAZO <span class="s-aj" id="ajLPz"></span></div>
+            <div class="s-inp s-pq" id="wLPz"><input id="lPrazo" inputmode="numeric"><span class="s-pos">meses</span></div>
+          </div>
+          <div class="s-campo">
+            <div class="s-lb">PARCELA MENSAL <span class="s-aj" id="ajLPa"></span></div>
+            <div class="s-inp" id="wLPa"><span class="s-pre">R$</span><input id="lParcela" inputmode="numeric"></div>
+          </div>
+        </div>
+
+        <!-- juros do empreendimento: hoje 0%, o dono cadastra depois -->
+        <div class="s-campo s-div">
+          <div class="s-lb">JUROS AO MÊS</div>
+          <div class="s-inp s-pq"><input id="cJuros" inputmode="decimal"><span class="s-pos">% a.m.</span></div>
+          <p class="s-nota" id="jurosNota"></p>
+        </div>
+      </div>
+
+      <!-- ================= COLUNA 2: o resultado ================= -->
+      <div class="s-saida" id="simSaida"></div>
+
+    </div>
+  </div>
+
+  <div class="pf">
+    <span class="s-legal" style="flex:1">
+      Conta feita nesta tela, offline · fonte “Plano comercial - Garden.xlsx” ·
+      <b>não é proposta oficial</b>: confirme com a diretoria comercial antes de formalizar.
+    </span>
+    <button class="bt" id="btCopiar">Copiar resumo</button>
+    <button class="bt pri" id="btProposta">Gerar proposta com a CACÁ</button>
+  </div>
+</section>
+
+<script>
+"use strict";
+/* ====================================================================
+   DADOS — 406 lotes do Garden.
+   [quadra, lote, situacao(0 disponivel|1 reservado|2 vendido),
+    area m2, valor R$ (0 = nao informado na planilha),
+    comprador (vazio = nao informado), poligono]
+   O nome do comprador so existe NESTA tela (uso interno, dentro do
+   Apolo). A versao publica nao carrega este campo.
+   ==================================================================== */
+const DADOS=[
+[1,"01",0,425.71,410000,"","1009,2004 1081,2004 1081,2116 1009,2116"],
+[1,"02",0,371,410000,"","950,2004 1009,2004 1009,2116 950,2116"],
+[1,"03",0,371,410000,"","891,2004 950,2004 950,2116 891,2116"],
+[1,"04",0,371,410000,"","831,2004 891,2004 891,2116 831,2116"],
+[1,"05",0,371,410000,"","772,2004 831,2004 831,2116 772,2116"],
+[1,"06",1,371,0,"","713,2004 772,2004 772,2116 713,2116"],
+[1,"07",1,371,0,"","654,2004 713,2004 713,2116 654,2116"],
+[1,"08",1,371,0,"","595,2004 654,2004 654,2116 595,2116"],
+[1,"09",1,371,0,"","536,2004 595,2004 595,2116 536,2116"],
+[1,"10",0,371,410000,"","476,2004 536,2004 536,2116 476,2116"],
+[1,"11",0,371,410000,"","417,2004 476,2004 476,2116 417,2116"],
+[1,"12",0,371,410000,"","358,2004 417,2004 417,2116 358,2116"],
+[1,"13",0,371,410000,"","299,2004 358,2004 358,2116 299,2116"],
+[1,"14",1,371,0,"","240,2004 299,2004 299,2116 240,2116"],
+[1,"15",1,371,0,"","181,2004 240,2004 240,2116 181,2116"],
+[1,"16",1,371,0,"","122,2004 181,2004 181,2116 122,2116"],
+[1,"17",1,371,0,"","63,2004 122,2004 122,2116 63,2116"],
+[2,"01",0,363.73,410000,"","2187,2004 2252.5,2004 2238.2,2116 2187,2116"],
+[2,"02",0,371,410000,"","2128,2004 2187,2004 2187,2116 2128,2116"],
+[2,"03",0,371,410000,"","2069,2004 2128,2004 2128,2116 2069,2116"],
+[2,"04",0,371,410000,"","2010,2004 2069,2004 2069,2116 2010,2116"],
+[2,"05",1,371,0,"","1951,2004 2010,2004 2010,2116 1951,2116"],
+[2,"06",1,371,0,"","1891,2004 1951,2004 1951,2116 1891,2116"],
+[2,"07",1,371,0,"","1832,2004 1891,2004 1891,2116 1832,2116"],
+[2,"08",1,371,0,"","1773,2004 1832,2004 1832,2116 1773,2116"],
+[2,"09",0,371,410000,"","1714,2004 1773,2004 1773,2116 1714,2116"],
+[2,"10",0,371,410000,"","1655,2004 1714,2004 1714,2116 1655,2116"],
+[2,"11",0,371,410000,"","1596,2004 1655,2004 1655,2116 1596,2116"],
+[2,"12",0,371,410000,"","1537,2004 1596,2004 1596,2116 1537,2116"],
+[2,"13",1,371,0,"","1477,2004 1537,2004 1537,2116 1477,2116"],
+[2,"14",1,371,0,"","1418,2004 1477,2004 1477,2116 1418,2116"],
+[2,"15",1,371,0,"","1359,2004 1418,2004 1418,2116 1359,2116"],
+[2,"16",1,371,0,"","1300,2004 1359,2004 1359,2116 1300,2116"],
+[2,"17",1,420,0,"","1241,2004 1300,2004 1300,2116 1241,2116"],
+[2,"18",0,265,0,"","1199,2004 1241,2004 1241,2116 1199,2116"],
+[3,"01",1,446.96,0,"","2201,1834 2274.1,1834 2257.5,1954 2201,1954"],
+[3,"02",1,446.96,0,"","2133,1834 2201,1834 2201,1954 2133,1954"],
+[3,"03",1,428.4,0,"","2133,1781 2281.5,1781 2274.1,1834 2133,1834"],
+[3,"04",0,449.45,420000,"","2133,1728 2288.8,1728 2281.5,1781 2133,1781"],
+[3,"05",0,471.96,440000,"","2133,1675 2296.1,1675 2288.8,1728 2133,1728"],
+[3,"06",0,492.46,460000,"","2133,1622 2303.5,1622 2296.1,1675 2133,1675"],
+[3,"07",0,513.97,470000,"","2133,1569 2310.8,1569 2303.5,1622 2133,1622"],
+[3,"08",0,535.48,470000,"","2133,1516 2318.1,1516 2310.8,1569 2133,1569"],
+[3,"09",0,556.99,480000,"","2133,1464 2325.3,1464 2318.1,1516 2133,1516"],
+[3,"10",0,578.5,490000,"","2133,1411 2332.7,1411 2325.3,1464 2133,1464"],
+[3,"11",0,600.01,510000,"","2133,1358 2340,1358 2332.7,1411 2133,1411"],
+[3,"12",0,621.72,530000,"","2133,1305 2347.4,1305 2340,1358 2133,1358"],
+[3,"13",0,520.53,470000,"","2133,1252 2308,1252 2308,1305 2133,1305"],
+[3,"14",0,420,430000,"","2133,1124 2191,1124 2191,1252 2133,1252"],
+[3,"15",0,420,430000,"","2191,1124 2250,1124 2250,1252 2191,1252"],
+[3,"16",1,420,0,"","2250,1124 2308,1124 2308,1252 2250,1252"],
+[3,"17",1,517.48,0,"","2308,1124 2372.4,1124 2347.4,1305 2308,1305"],
+[4,"01",0,420,421500,"","2008,1851.5 2082,1851.5 2082,1953 2008,1953"],
+[4,"02",0,420,416000,"","1934,1851.5 2008,1851.5 2008,1953 1934,1953"],
+[4,"03",1,420,0,"","1860,1851.5 1934,1851.5 1934,1953 1860,1953"],
+[4,"04",1,420,0,"","1786,1851.5 1860,1851.5 1860,1953 1786,1953"],
+[4,"05",1,420,0,"","1786,1800.8 1934,1800.8 1934,1851.5 1786,1851.5"],
+[4,"06",1,420,0,"","1786,1750.1 1934,1750.1 1934,1800.8 1786,1800.8"],
+[4,"07",1,420,0,"","1786,1699.3 1934,1699.3 1934,1750.1 1786,1750.1"],
+[4,"08",1,420,0,"","1786,1648.6 1934,1648.6 1934,1699.3 1786,1699.3"],
+[4,"09",1,420,0,"","1786,1597.9 1934,1597.9 1934,1648.6 1786,1648.6"],
+[4,"10",1,420,0,"","1786,1547.1 1934,1547.1 1934,1597.9 1786,1597.9"],
+[4,"11",0,420,416000,"","1786,1496.4 1934,1496.4 1934,1547.1 1786,1547.1"],
+[4,"12",0,420,416000,"","1786,1445.6 1934,1445.6 1934,1496.4 1786,1496.4"],
+[4,"13",2,420,268000,"BRENO AUGUSTO MARINHO MARTINS","1786,1394.9 1934,1394.9 1934,1445.6 1786,1445.6"],
+[4,"14",2,420,268000,"BRENO AUGUSTO MARINHO MARTINS","1786,1344.2 1934,1344.2 1934,1394.9 1786,1394.9"],
+[4,"15",2,420,312000,"","1786,1293.4 1934,1293.4 1934,1344.2 1786,1344.2"],
+[4,"16",0,420,416000,"","1786,1242.7 1934,1242.7 1934,1293.4 1786,1293.4"],
+[4,"17",2,490,312000,"SERGIO AUGUSTO LEITÃO FRANÇA","1786,1124.3 1860,1124.3 1860,1242.7 1786,1242.7"],
+[4,"18",2,490,0,"","1860,1124.3 1934,1124.3 1934,1242.7 1860,1242.7"],
+[4,"19",2,490,0,"","1934,1124.3 2008,1124.3 2008,1242.7 1934,1242.7"],
+[4,"20",2,490,280000,"ATHOS FIORAVANTE BARROS BARBOSA","2008,1124.3 2082,1124.3 2082,1242.7 2008,1242.7"],
+[4,"21",1,420,0,"","1934,1242.7 2082,1242.7 2082,1293.4 1934,1293.4"],
+[4,"22",1,420,0,"","1934,1293.4 2082,1293.4 2082,1344.2 1934,1344.2"],
+[4,"23",1,420,0,"","1934,1344.2 2082,1344.2 2082,1394.9 1934,1394.9"],
+[4,"24",1,420,0,"","1934,1394.9 2082,1394.9 2082,1445.6 1934,1445.6"],
+[4,"25",1,420,0,"","1934,1445.6 2082,1445.6 2082,1496.4 1934,1496.4"],
+[4,"26",1,420,0,"","1934,1496.4 2082,1496.4 2082,1547.1 1934,1547.1"],
+[4,"27",0,420,416000,"","1934,1547.1 2082,1547.1 2082,1597.9 1934,1597.9"],
+[4,"28",0,420,416000,"","1934,1597.9 2082,1597.9 2082,1648.6 1934,1648.6"],
+[4,"29",0,420,416000,"","1934,1648.6 2082,1648.6 2082,1699.3 1934,1699.3"],
+[4,"30",0,420,416000,"","1934,1699.3 2082,1699.3 2082,1750.1 1934,1750.1"],
+[4,"31",0,420,416000,"","1934,1750.1 2082,1750.1 2082,1800.8 1934,1800.8"],
+[4,"32",0,420,416000,"","1934,1800.8 2082,1800.8 2082,1851.5 1934,1851.5"],
+[5,"01",1,420,0,"","1672.2,1834.3 1735.7,1834.3 1735.7,1952.7 1672.2,1952.7"],
+[5,"02",1,420,0,"","1608.7,1834.3 1672.2,1834.3 1672.2,1952.7 1608.7,1952.7"],
+[5,"03",0,420,416000,"","1545.2,1834.3 1608.7,1834.3 1608.7,1952.7 1545.2,1952.7"],
+[5,"04",0,420,416000,"","1481.7,1834.3 1545.2,1834.3 1545.2,1952.7 1481.7,1952.7"],
+[5,"05",0,420,416000,"","1481.7,1775.2 1608.4,1775.2 1608.4,1834.3 1481.7,1834.3"],
+[5,"06",2,420,0,"","1481.7,1716 1608.4,1716 1608.4,1775.2 1481.7,1775.2"],
+[5,"07",2,420,0,"","1481.7,1656.9 1608.4,1656.9 1608.4,1716 1481.7,1716"],
+[5,"08",2,420,268000,"DOUGLAS DUMONT PEREIRA CAMPOS","1481.7,1597.7 1608.4,1597.7 1608.4,1656.9 1481.7,1656.9"],
+[5,"09",1,420,0,"","1481.7,1538.5 1608.4,1538.5 1608.4,1597.7 1481.7,1597.7"],
+[5,"10",1,420,0,"","1481.7,1479.4 1608.4,1479.4 1608.4,1538.5 1481.7,1538.5"],
+[5,"11",1,420,0,"","1481.7,1420.2 1608.4,1420.2 1608.4,1479.4 1481.7,1479.4"],
+[5,"12",1,420,0,"","1481.7,1361.1 1608.4,1361.1 1608.4,1420.2 1481.7,1420.2"],
+[5,"13",1,420,0,"","1481.7,1301.9 1608.4,1301.9 1608.4,1361.1 1481.7,1361.1"],
+[5,"14",2,420,268000,"AMAURI DOS SANTOS OLIVEIRA","1481.7,1242.8 1608.4,1242.8 1608.4,1301.9 1481.7,1301.9"],
+[5,"15",2,420,0,"SAMUEL SOARES","1481.7,1124.4 1545.2,1124.4 1545.2,1242.8 1481.7,1242.8"],
+[5,"16",2,420,0,"SAMUEL SOARES","1545.2,1124.4 1608.7,1124.4 1608.7,1242.8 1545.2,1242.8"],
+[5,"17",2,420,0,"SIDMAR SOUSA SOARES","1608.7,1124.4 1672.2,1124.4 1672.2,1242.8 1608.7,1242.8"],
+[5,"18",2,420,0,"SIDMAR SOUSA SOARES","1672.2,1124.4 1735.7,1124.4 1735.7,1242.8 1672.2,1242.8"],
+[5,"19",2,420,890000,"SIDMAR SOUSA SOARES","1608.4,1242.8 1735.7,1242.8 1735.7,1301.9 1608.4,1301.9"],
+[5,"20",2,420,263000,"MAURO LÚCIO MENDONÇA","1608.4,1301.9 1735.7,1301.9 1735.7,1361.1 1608.4,1361.1"],
+[5,"21",2,420,268000,"BERNARDO AUGUSTO NEVES LEITE","1608.4,1361.1 1735.7,1361.1 1735.7,1420.2 1608.4,1420.2"],
+[5,"22",2,420,268000,"JULIANA LOPES CAMARGOS SOUZA LEITE","1608.4,1420.2 1735.7,1420.2 1735.7,1479.4 1608.4,1479.4"],
+[5,"23",2,420,268000,"LUCIO MARTINS DE SOUZA","1608.4,1479.4 1735.7,1479.4 1735.7,1538.5 1608.4,1538.5"],
+[5,"24",2,420,0,"","1608.4,1538.5 1735.7,1538.5 1735.7,1597.7 1608.4,1597.7"],
+[5,"25",1,420,0,"","1608.4,1597.7 1735.7,1597.7 1735.7,1656.9 1608.4,1656.9"],
+[5,"26",1,420,0,"","1608.4,1656.9 1735.7,1656.9 1735.7,1716 1608.4,1716"],
+[5,"27",1,420,0,"","1608.4,1716 1735.7,1716 1735.7,1775.2 1608.4,1775.2"],
+[5,"28",1,420,0,"","1608.4,1775.2 1735.7,1775.2 1735.7,1834.3 1608.4,1834.3"],
+[6,"01",2,420,0,"BRUNO ALEXANDRE ALMEIDA REZENDE","1368,1834.3 1431.5,1834.3 1431.5,1952.6 1368,1952.6"],
+[6,"02",2,420,536000,"BRUNO ALEXANDRE ALMEIDA REZENDE","1304.5,1834.3 1368,1834.3 1368,1952.6 1304.5,1952.6"],
+[6,"03",1,420,0,"","1241,1834.3 1304.5,1834.3 1304.5,1952.6 1241,1952.6"],
+[6,"04",1,420,0,"","1177.5,1834.3 1241,1834.3 1241,1952.6 1177.5,1952.6"],
+[6,"05",1,420,0,"","1177.5,1775.2 1304.3,1775.2 1304.3,1834.3 1177.5,1834.3"],
+[6,"06",1,420,0,"","1177.5,1716 1304.3,1716 1304.3,1775.2 1177.5,1775.2"],
+[6,"07",1,420,0,"","1177.5,1656.9 1304.3,1656.9 1304.3,1716 1177.5,1716"],
+[6,"08",1,420,0,"","1177.5,1597.7 1304.3,1597.7 1304.3,1656.9 1177.5,1656.9"],
+[6,"09",2,420,268000,"GABRIEL MOREIRA FERREIRA","1177.5,1538.5 1304.3,1538.5 1304.3,1597.7 1177.5,1597.7"],
+[6,"10",1,420,0,"","1177.5,1479.4 1304.3,1479.4 1304.3,1538.5 1177.5,1538.5"],
+[6,"11",0,420,450000,"BUILD PLAN CONSTRUÇÕES","1177.5,1420.2 1304.3,1420.2 1304.3,1479.4 1177.5,1479.4"],
+[6,"12",2,420,0,"DANIEL PINTO GUIMARAES","1177.5,1361.1 1304.3,1361.1 1304.3,1420.2 1177.5,1420.2"],
+[6,"13",2,420,536000,"DANIEL PINTO GUIMARAES","1177.5,1301.9 1304.3,1301.9 1304.3,1361.1 1177.5,1361.1"],
+[6,"14",2,420,268000,"ELISIO ROBERTO DE OLIVEIRA FILHO","1177.5,1242.8 1304.3,1242.8 1304.3,1301.9 1177.5,1301.9"],
+[6,"15",2,420,804000,"THIAGO BRUNO FARIA NASSER VILELA","1177.5,1165 1211.2,1124.4 1241,1124.4 1241,1242.8 1177.5,1242.8"],
+[6,"16",2,420,0,"THIAGO BRUNO FARIA NASSER VILELA","1241,1124.4 1304.5,1124.4 1304.5,1242.8 1241,1242.8"],
+[6,"17",2,420,0,"THIAGO NASSER","1304.5,1124.4 1368,1124.4 1368,1242.8 1304.5,1242.8"],
+[6,"18",2,420,268000,"WANDERLEY VIDAL","1368,1124.4 1431.5,1124.4 1431.5,1242.8 1368,1242.8"],
+[6,"19",1,420,0,"","1304.3,1242.8 1431.5,1242.8 1431.5,1301.9 1304.3,1301.9"],
+[6,"20",1,420,0,"","1304.3,1301.9 1431.5,1301.9 1431.5,1361.1 1304.3,1361.1"],
+[6,"21",1,420,0,"","1304.3,1361.1 1431.5,1361.1 1431.5,1420.2 1304.3,1420.2"],
+[6,"22",1,420,0,"","1304.3,1420.2 1431.5,1420.2 1431.5,1479.4 1304.3,1479.4"],
+[6,"23",1,420,0,"","1304.3,1479.4 1431.5,1479.4 1431.5,1538.5 1304.3,1538.5"],
+[6,"24",1,420,0,"","1304.3,1538.5 1431.5,1538.5 1431.5,1597.7 1304.3,1597.7"],
+[6,"25",2,420,268000,"CLEBER DE FARIA SILVA","1304.3,1597.7 1431.5,1597.7 1431.5,1656.9 1304.3,1656.9"],
+[6,"26",0,420,416000,"","1304.3,1656.9 1431.5,1656.9 1431.5,1716 1304.3,1716"],
+[6,"27",0,420,416000,"","1304.3,1716 1431.5,1716 1431.5,1775.2 1304.3,1775.2"],
+[6,"28",0,420,416000,"","1304.3,1775.2 1431.5,1775.2 1431.5,1834.3 1304.3,1834.3"],
+[7,"01",0,420,416000,"","1038,1834.5 1101.2,1834.5 1101.2,1952.8 1038,1952.8"],
+[7,"02",0,420,416000,"","974.8,1834.5 1038,1834.5 1038,1952.8 974.8,1952.8"],
+[7,"03",1,420,0,"","911.6,1834.5 974.8,1834.5 974.8,1952.8 911.6,1952.8"],
+[7,"04",1,420,0,"","848.3,1834.5 911.6,1834.5 911.6,1952.8 848.3,1952.8"],
+[7,"05",1,420,0,"","848.3,1775 974.8,1775 974.8,1834.5 848.3,1834.5"],
+[7,"06",1,420,0,"","848.3,1716 974.8,1716 974.8,1775 848.3,1775"],
+[7,"07",0,420,421500,"","848.3,1657 974.8,1657 974.8,1716 848.3,1716"],
+[7,"08",0,420,421500,"","848.3,1598 974.8,1598 974.8,1657 848.3,1657"],
+[7,"09",2,420,268000,"WESLEY CHRYSTIANO ESTRELA","848.3,1538.5 974.8,1538.5 974.8,1598 848.3,1598"],
+[7,"10",2,420,268000,"CEDA PARTICIPAÇÕES E EMPREENDIMENTOS","848.3,1479 974.8,1479 974.8,1538.5 848.3,1538.5"],
+[7,"11",2,420,268000,"GERALDO SANTOS DE SOUZA","848.3,1420 974.8,1420 974.8,1479 848.3,1479"],
+[7,"12",2,420,268000,"MOREIRA E GOMES EMPREENDIMENTOS","848.3,1361 974.8,1361 974.8,1420 848.3,1420"],
+[7,"13",2,420,268000,"LUCAS MOREIRA DE SOUZA MATOS","848.3,1302 974.8,1302 974.8,1361 848.3,1361"],
+[7,"14",2,420,268000,"PEDRO MOREIRA DE SOUZA MATOS","848.3,1243 974.8,1243 974.8,1302 848.3,1302"],
+[7,"15",2,420,268000,"LUIZ KELLEY QUIRINO BESSA","848.3,1124.7 911.6,1124.7 911.6,1243 848.3,1243"],
+[7,"16",2,420,268000,"THIAGO HENRIQUE OTTO QUARESMA","911.6,1124.7 974.8,1124.7 974.8,1243 911.6,1243"],
+[7,"17",1,420,0,"","974.8,1124.7 1038,1124.7 1038,1243 974.8,1243"],
+[7,"18",1,420,0,"","1038,1124.7 1067.7,1124.7 1101.2,1165.2 1101.2,1243 1038,1243"],
+[7,"19",1,420,0,"","974.8,1243 1101.2,1243 1101.2,1302 974.8,1302"],
+[7,"20",1,420,0,"","974.8,1302 1101.2,1302 1101.2,1361 974.8,1361"],
+[7,"21",1,420,0,"","974.8,1361 1101.2,1361 1101.2,1420 974.8,1420"],
+[7,"22",1,420,0,"","974.8,1420 1101.2,1420 1101.2,1479 974.8,1479"],
+[7,"23",2,420,263000,"JULIO CESAR FERREIRA BARBOSA","974.8,1479 1101.2,1479 1101.2,1538.5 974.8,1538.5"],
+[7,"24",2,420,268000,"AILTON ILARIO PINTO","974.8,1538.5 1101.2,1538.5 1101.2,1598 974.8,1598"],
+[7,"25",2,420,268000,"WAGNER LIBERIO DE SOUZA","974.8,1598 1101.2,1598 1101.2,1657 974.8,1657"],
+[7,"26",2,420,268000,"WARLLEY MACIEL DE MENDONÇA","974.8,1657 1101.2,1657 1101.2,1716 974.8,1716"],
+[7,"27",2,420,1340000,"SAMUEL SOARES MOREIRA","974.8,1716 1101.2,1716 1101.2,1775 974.8,1775"],
+[7,"28",2,420,0,"","974.8,1775 1101.2,1775 1101.2,1834.5 974.8,1834.5"],
+[8,"01",2,420,268000,"ALTAIR FREITAS MARTINS GIANI","734,1834.5 797.5,1834.5 797.5,1952.8 734,1952.8"],
+[8,"02",1,420,0,"","670.5,1834.5 734,1834.5 734,1952.8 670.5,1952.8"],
+[8,"03",0,420,421500,"","607,1834.5 670.5,1834.5 670.5,1952.8 607,1952.8"],
+[8,"04",2,420,268000,"MARCIO JOSE DE ALMEIDA","543.5,1834.5 607,1834.5 607,1952.8 543.5,1952.8"],
+[8,"05",2,420,268000,"ANA CECÍLIA E ELIETE SOARES","543.5,1775 670.5,1775 670.5,1834.5 543.5,1834.5"],
+[8,"06",2,420,268000,"TACITO PEREIRA MIRANDA","543.5,1716 670.5,1716 670.5,1775 543.5,1775"],
+[8,"07",2,420,268000,"CEDA PARTICIPAÇÕES E EMPREENDIMENTOS","543.5,1657 670.5,1657 670.5,1716 543.5,1716"],
+[8,"08",2,420,268000,"GUILHERME DINIZ DUARTE","543.5,1598 670.5,1598 670.5,1657 543.5,1657"],
+[8,"09",2,420,268000,"WELINGTON AMARAL RODRIGUES","543.5,1538.5 670.5,1538.5 670.5,1598 543.5,1598"],
+[8,"10",2,420,268000,"WELINGTON AMARAL RODRIGUES","543.5,1479 670.5,1479 670.5,1538.5 543.5,1538.5"],
+[8,"11",2,420,268000,"JAIRO APARECIDO SANCHES","543.5,1420 670.5,1420 670.5,1479 543.5,1479"],
+[8,"12",2,420,0,"TIAGO FELIPE MARIANO DOS SANTOS","543.5,1361 670.5,1361 670.5,1420 543.5,1420"],
+[8,"13",2,420,536000,"TIAGO FELIPE MARIANO DOS SANTOS","543.5,1302 670.5,1302 670.5,1361 543.5,1361"],
+[8,"14",2,420,268000,"JOSÉ LEONARDO DE OLIVEIRA","543.5,1243 670.5,1243 670.5,1302 543.5,1302"],
+[8,"15",2,420,268000,"ROMISNAYDER SANTOS","543.5,1124.7 607,1124.7 607,1243 543.5,1243"],
+[8,"16",2,420,268000,"ROMISNAYDER SANTOS","607,1124.7 670.5,1124.7 670.5,1243 607,1243"],
+[8,"17",2,420,536000,"VIRGINIA MENDONÇA CAPANEMA","670.5,1124.7 734,1124.7 734,1243 670.5,1243"],
+[8,"18",2,420,0,"VIRGINIA MENDONÇA CAPANEMA","734,1124.7 797.5,1124.7 797.5,1243 734,1243"],
+[8,"19",2,420,268000,"ANNA PAULA DELASCIO DE PAIVA","670.5,1243 797.5,1243 797.5,1302 670.5,1302"],
+[8,"20",2,420,268000,"HERBERTH AROLD FARIA JUNIOR","670.5,1302 797.5,1302 797.5,1361 670.5,1361"],
+[8,"21",2,420,268000,"JEFFERSON TELES DA FONSECA","670.5,1361 797.5,1361 797.5,1420 670.5,1420"],
+[8,"22",2,420,268000,"ALTAIR DA PAIXÃO CORRÊA SAMPAIO","670.5,1420 797.5,1420 797.5,1479 670.5,1479"],
+[8,"23",2,420,268000,"AFONSO DOMINGUES CORREA SAMPAIO","670.5,1479 797.5,1479 797.5,1538.5 670.5,1538.5"],
+[8,"24",2,420,0,"RODRIGO PIAZAROLO AZEVEDO","670.5,1538.5 797.5,1538.5 797.5,1598 670.5,1598"],
+[8,"25",2,420,536000,"RODRIGO PIAZAROLO AZEVEDO","670.5,1598 797.5,1598 797.5,1657 670.5,1657"],
+[8,"26",2,420,268000,"RAFAEL GENTIL DINIZ","670.5,1657 797.5,1657 797.5,1716 670.5,1716"],
+[8,"27",0,420,421500,"","670.5,1716 797.5,1716 797.5,1775 670.5,1775"],
+[8,"28",1,420,0,"","670.5,1775 797.5,1775 797.5,1834.5 670.5,1834.5"],
+[9,"01",2,420,0,"","430,1834.5 493.5,1834.5 493.5,1952.8 430,1952.8"],
+[9,"02",2,420,0,"","366.5,1834.5 430,1834.5 430,1952.8 366.5,1952.8"],
+[9,"03",1,420,0,"","303,1834.5 366.5,1834.5 366.5,1952.8 303,1952.8"],
+[9,"04",1,420,0,"","239.5,1834.5 303,1834.5 303,1952.8 239.5,1952.8"],
+[9,"05",1,420,0,"","239.5,1775 366.5,1775 366.5,1834.5 239.5,1834.5"],
+[9,"06",2,420,268000,"ANSELMO JULIO SIMOES MAIA","239.5,1716 366.5,1716 366.5,1775 239.5,1775"],
+[9,"07",2,420,268000,"ALINE CASSIA DOS SANTOS","239.5,1657 366.5,1657 366.5,1716 239.5,1716"],
+[9,"08",2,420,260000,"MEIRE JANE VILELA DE ALMEIDA","239.5,1598 366.5,1598 366.5,1657 239.5,1657"],
+[9,"09",2,420,268000,"IEDA HELENA REZENDE COSTA","239.5,1538.5 366.5,1538.5 366.5,1598 239.5,1598"],
+[9,"10",2,420,268000,"ÂNGELA MARIA DE OLIVEIRA","239.5,1479 366.5,1479 366.5,1538.5 239.5,1538.5"],
+[9,"11",2,420,268000,"LEANDRO TOMAZ","239.5,1420 366.5,1420 366.5,1479 239.5,1479"],
+[9,"12",2,420,268000,"CLÁUDIA APARECIDA LOPES MENDONÇA","239.5,1361 366.5,1361 366.5,1420 239.5,1420"],
+[9,"13",2,420,0,"KLEBER BARCELOS","239.5,1302 366.5,1302 366.5,1361 239.5,1361"],
+[9,"14",2,420,268000,"LUCAS AGUIAR SOARES","239.5,1243 366.5,1243 366.5,1302 239.5,1302"],
+[9,"15",2,420,268000,"ANA CLARA MACIEL RAMOS","239.5,1124.7 303,1124.7 303,1243 239.5,1243"],
+[9,"16",2,420,268000,"RICARDO RODRIGUES PETRUS","303,1124.7 366.5,1124.7 366.5,1243 303,1243"],
+[9,"17",2,420,268000,"ROGÉRIO PEREIRA PONTES JÚNIO","366.5,1124.7 430,1124.7 430,1243 366.5,1243"],
+[9,"18",2,420,268000,"JÚLIA LAGE RIBEIRO PALOTTI","430,1124.7 493.5,1124.7 493.5,1243 430,1243"],
+[9,"19",2,420,0,"VITOR FRAGOLA","366.5,1243 493.5,1243 493.5,1302 366.5,1302"],
+[9,"20",2,420,268000,"MATEUS VASCONCELOS DE OLIVEIRA","366.5,1302 493.5,1302 493.5,1361 366.5,1361"],
+[9,"21",2,420,268000,"MATEUS VASCONCELOS DE OLIVEIRA","366.5,1361 493.5,1361 493.5,1420 366.5,1420"],
+[9,"22",2,420,268000,"RAFAEL VASCONCELOS AMARAL","366.5,1420 493.5,1420 493.5,1479 366.5,1479"],
+[9,"23",2,420,268000,"HARISSON KENNPES CAIRES","366.5,1479 493.5,1479 493.5,1538.5 366.5,1538.5"],
+[9,"24",2,420,268000,"LEONARDO RIBEIRO CARMO","366.5,1538.5 493.5,1538.5 493.5,1598 366.5,1598"],
+[9,"25",2,420,268000,"ANDERSON PAULO RISA EMPREENDIMENTO","366.5,1598 493.5,1598 493.5,1657 366.5,1657"],
+[9,"26",2,420,268000,"ANDERSON PAULO RISA EMPREENDIMENTO","366.5,1657 493.5,1657 493.5,1716 366.5,1716"],
+[9,"27",2,420,268000,"GERALDO CECÍLIO DE ALMEIDA","366.5,1716 493.5,1716 493.5,1775 366.5,1775"],
+[9,"28",2,420,268000,"ALEX FRANCISCO VIANA MOTOCAR","366.5,1775 493.5,1775 493.5,1834.5 366.5,1834.5"],
+[10,"01",2,420,0,"","63.1,1893.5 190,1893.5 190,1954 63.1,1954"],
+[10,"02",0,420,421500,"","63.1,1775 190,1775 190,1834.5 63.1,1834.5"],
+[10,"01",2,420,0,"","63.1,1834.5 190,1834.5 190,1893.5 63.1,1893.5"],
+[10,"03",0,420,421500,"","63.1,1716 190,1716 190,1775 63.1,1775"],
+[10,"04",0,420,421500,"","63.1,1657 190,1657 190,1716 63.1,1716"],
+[10,"05",0,420,421500,"","63.1,1598 190,1598 190,1657 63.1,1657"],
+[10,"06",0,420,421500,"JÚLIO CÉSAR DUARTE AMARAL","63.1,1538.5 190,1538.5 190,1598 63.1,1598"],
+[10,"07",1,420,0,"","63.1,1479 190,1479 190,1538.5 63.1,1538.5"],
+[10,"08",1,420,0,"","63.1,1420 190,1420 190,1479 63.1,1479"],
+[10,"09",1,420,0,"","63.1,1361 190,1361 190,1420 63.1,1420"],
+[10,"10",1,420,0,"","63.1,1302 190,1302 190,1361 63.1,1361"],
+[10,"11",1,420,0,"","63.1,1243 190,1243 190,1302 63.1,1302"],
+[10,"12",0,420,421500,"","64.9,1183 190,1183 190,1243 63.1,1243"],
+[10,"13",2,420,526000,"VITOR FRAGOLA BARBOSA","66.6,1123 190,1123 190,1183 64.9,1183"],
+[11,"01",2,420,260000,"HENRIQUE GAUDÊNCIO DE OLIVEIRA","69.7,1011.5 190,1011.5 190,1075 67.9,1075"],
+[11,"02",2,420,268000,"GABRIEL DUTRA BURGARELLI PUNGIRUM","71.5,948 190,948 190,1011.5 69.7,1011.5"],
+[11,"03",2,420,268000,"JULIA COIMBRA MORAIS FERNANDES","73.4,884 190,884 190,948 71.5,948"],
+[11,"04",2,420,268000,"JOAO PAULO OLIVEIRA ARAUJO","75.3,818 190,818 190,884 73.4,884"],
+[11,"05",2,420,268000,"RONALDO DE FARIA MENDES","77.2,751 190,751 190,818 75.3,818"],
+[11,"06",2,420,268000,"LETICIA LOPES MARTINS","79.2,683 190,683 190,751 77.2,751"],
+[11,"07",2,420,268000,"CAIO MATOSO MENDES DE FARIA","81.2,613 190,613 190,683 79.2,683"],
+[11,"08",0,420,430000,"","83.2,543 190,543 190,613 81.2,613"],
+[11,"09",0,420,430000,"","85.3,471 190,471 190,543 83.2,543"],
+[11,"10",0,420,435000,"","87.3,398.5 190,398.5 190,471 85.3,471"],
+[11,"11",0,420,435000,"","89.5,325 190,325 190,398.5 87.3,398.5"],
+[11,"12",2,420,0,"SAMUEL SOARES","91.6,250.5 190,250.5 190,325 89.5,325"],
+[11,"13",1,420,0,"","93.8,173.5 190,173.5 190,250.5 91.6,250.5"],
+[11,"14",1,515.38,0,"","108.8,60.7 190,84.3 190,173.5 93.8,173.5"],
+[12,"01",2,420,0,"","429.8,955.1 493.3,955.1 493.3,1073.5 429.8,1073.5"],
+[12,"02",2,420,0,"","366.3,955.1 429.8,955.1 429.8,1073.5 366.3,1073.5"],
+[12,"03",2,420,536000,"ANDRÉ ALMEIDA COSTA","302.8,955.1 366.3,955.1 366.3,1073.5 302.8,1073.5"],
+[12,"04",2,420,0,"ANDRÉ ALMEIDA COSTA","239.3,955.1 302.8,955.1 302.8,1073.5 239.3,1073.5"],
+[12,"05",2,420,268000,"WELLERSON RENATO MOREIRA DE LIMA","239.3,896 366.2,896 366.2,955.1 239.3,955.1"],
+[12,"06",2,420,536000,"ROBERTA GRAZIELLE DE SOUZA LOPES","239.3,836.8 366.2,836.8 366.2,896 239.3,896"],
+[12,"07",2,420,0,"ROBERTA GRAZIELLE DE SOUZA LOPES","239.3,777.6 366.2,777.6 366.2,836.8 239.3,836.8"],
+[12,"08",2,420,268000,"BIANCA MEDINA FERREIRA ALMEIDA","239.3,718.4 366.2,718.4 366.2,777.6 239.3,777.6"],
+[12,"09",2,420,268000,"SIDMAR FERREIRA E NETIELI FERREIRA","239.3,659.2 366.2,659.2 366.2,718.4 239.3,718.4"],
+[12,"10",2,420,268000,"MARIA DE FÁTIMA PEREIRA MENDES","239.3,600 366.2,600 366.2,659.2 239.3,659.2"],
+[12,"11",2,420,268000,"VALDIR FRANÇA JUNIOR","239.3,540.9 366.2,540.9 366.2,600 239.3,600"],
+[12,"12",2,420,268000,"SÁVIO NOGUEIRA MEDEIRO","239.3,481.7 366.2,481.7 366.2,540.9 239.3,540.9"],
+[12,"13",2,420,268000,"CAROLINE MENDONÇA ARRUDA","239.3,422.5 366.2,422.5 366.2,481.7 239.3,481.7"],
+[12,"14",2,420,520000,"BEATRIZ DE CASSIA MAIA","239.3,363.3 366.2,363.3 366.2,422.5 239.3,422.5"],
+[12,"15",2,420,0,"BEATRIZ DE CASSIA MAIA","239.3,304.1 366.2,304.1 366.2,363.3 239.3,363.3"],
+[12,"16",2,420,268000,"VICTOR LIMA CAMPOS","239.3,244.9 366.2,244.9 366.2,304.1 239.3,304.1"],
+[12,"17",2,514.65,0,"","239.3,99 306.9,118.8 306.9,244.9 239.3,244.9"],
+[12,"18",1,514.65,0,"","306.9,118.8 387.6,142.4 387.6,244.9 306.9,244.9"],
+[12,"19",1,514.65,0,"","387.6,142.4 493.3,173.3 493.3,244.9 387.6,244.9"],
+[12,"20",1,420,0,"","366.2,244.9 493.3,244.9 493.3,304.1 366.2,304.1"],
+[12,"21",2,420,268000,"GABRIEL FARIA PEREIRA","366.2,304.1 493.3,304.1 493.3,363.3 366.2,363.3"],
+[12,"22",2,420,0,"","366.2,363.3 493.3,363.3 493.3,422.5 366.2,422.5"],
+[12,"23",0,420,435000,"MORATO VASC. EMPREENDIMENTOS","366.2,422.5 493.3,422.5 493.3,481.7 366.2,481.7"],
+[12,"24",0,420,435000,"","366.2,481.7 493.3,481.7 493.3,540.9 366.2,540.9"],
+[12,"25",0,420,430000,"","366.2,540.9 493.3,540.9 493.3,600 366.2,600"],
+[12,"26",2,420,268000,"SEBASTIÃO DALMO ALVES PALMEIRA","366.2,600 493.3,600 493.3,659.2 366.2,659.2"],
+[12,"27",2,420,268000,"JOSIANE MARIA DA SILVA","366.2,659.2 493.3,659.2 493.3,718.4 366.2,718.4"],
+[12,"28",2,420,268000,"JAYSON PEIXOTO MACHADO","366.2,718.4 493.3,718.4 493.3,777.6 366.2,777.6"],
+[12,"29",2,420,268000,"SEBASTIÃO DALMO ALVES PALMEIRA","366.2,777.6 493.3,777.6 493.3,836.8 366.2,836.8"],
+[12,"30",2,420,260000,"EDMARA MARTINS MATOSO FERREIRA","366.2,836.8 493.3,836.8 493.3,896 366.2,896"],
+[12,"31",2,420,268000,"WOLMERT MARCUS E ANA CAROLINA","366.2,896 493.3,896 493.3,955.1 366.2,955.1"],
+[13,"01",2,420,536000,"LEONARDO SANTOS DE SOUZA","734,955 797.5,955 797.5,1073.3 734,1073.3"],
+[13,"02",2,420,0,"LEONARDO SANTOS DE SOUZA","670.5,955 734,955 734,1073.3 670.5,1073.3"],
+[13,"03",2,420,268000,"ANA PAULA ALMADA MORAIS","607,955 670.5,955 670.5,1073.3 607,1073.3"],
+[13,"04",2,420,268000,"MARIA CAMPOS PIRES","543.5,955 607,955 607,1073.3 543.5,1073.3"],
+[13,"05",2,420,268000,"LEANDRO ALVES ALMEIDA FERREIRA","543.5,896 670.5,896 670.5,955 543.5,955"],
+[13,"06",2,420,268000,"RAMON MENDES DE CARVALHO","543.5,837 670.5,837 670.5,896 543.5,896"],
+[13,"07",2,420,268000,"PAULO SÉRGIO MAIA","543.5,777.6 670.5,777.6 670.5,837 543.5,837"],
+[13,"08",2,420,536000,"GABRIELA ANDRADE A RAMOS","543.5,718.4 670.5,718.4 670.5,777.6 543.5,777.6"],
+[13,"09",2,420,0,"GABRIELA ANDRADE A RAMOS","543.5,659 670.5,659 670.5,718.4 543.5,718.4"],
+[13,"10",2,420,268000,"DEBORA BENUNES ALMEIDA ASSIS COSTA","543.5,600 670.5,600 670.5,659 543.5,659"],
+[13,"11",0,420,435000,"","543.5,541 670.5,541 670.5,600 543.5,600"],
+[13,"12",0,420,435000,"","543.5,481.5 670.5,481.5 670.5,541 543.5,541"],
+[13,"13",0,420,435000,"","543.5,422.5 670.5,422.5 670.5,481.5 543.5,481.5"],
+[13,"14",1,420,0,"","543.5,363.5 670.5,363.5 670.5,422.5 543.5,422.5"],
+[13,"15",1,558.58,0,"","543.5,188.5 607,207 607,363.5 543.5,363.5"],
+[13,"16",1,522.66,0,"","607,207 670.5,225.6 670.5,363.5 607,363.5"],
+[13,"17",2,456.77,0,"","670.5,225.6 734,244.1 734,363.5 670.5,363.5"],
+[13,"18",2,390.88,0,"","734,244.1 797.5,262.7 797.5,363.5 734,363.5"],
+[13,"19",2,420,268000,"VAGNER HENRIQUE DAS MERCÊS","670.5,363.5 797.5,363.5 797.5,422.5 670.5,422.5"],
+[13,"20",2,420,268000,"SAMUEL SOARES MOREIRA","670.5,422.5 797.5,422.5 797.5,481.5 670.5,481.5"],
+[13,"21",2,420,260000,"URBANO MARÇAL REZENDE","670.5,481.5 797.5,481.5 797.5,541 670.5,541"],
+[13,"22",2,420,260000,"KLEBER BARCELOS","670.5,541 797.5,541 797.5,600 670.5,600"],
+[13,"23",2,420,263000,"AGNALDO PEREIRA DUARTE","670.5,600 797.5,600 797.5,659 670.5,659"],
+[13,"24",0,420,430000,"","670.5,659 797.5,659 797.5,718.4 670.5,718.4"],
+[13,"25",0,420,430000,"","670.5,718.4 797.5,718.4 797.5,777.6 670.5,777.6"],
+[13,"26",2,420,268000,"RAMON LUIS DA SILVA CEASA JORGE PANELINHA","670.5,777.6 797.5,777.6 797.5,837 670.5,837"],
+[13,"27",2,420,268000,"LUIZ GUSTAVO PEREIRA PEIXOTO","670.5,837 797.5,837 797.5,896 670.5,896"],
+[13,"28",2,420,268000,"JORGE LUIZ E RAFAEL GERALDO","670.5,896 797.5,896 797.5,955 670.5,955"],
+[14,"01",2,420,268000,"RAFAEL ASSUNÇÃO ABREU","1038.6,955 1102.1,955 1102.1,1032.9 1038.6,1073.4"],
+[14,"02",2,420,268000,"AMANDA CIRA DE OLIVEIRA GOUVEA ABREU","975.2,955 1038.6,955 1038.6,1073.4 975.2,1073.4"],
+[14,"03",2,420,0,"","911.8,955 975.2,955 975.2,1073.4 911.8,1073.4"],
+[14,"04",2,420,0,"","848.3,955 911.8,955 911.8,1073.4 848.3,1073.4"],
+[14,"05",2,420,536000,"FÁBIO HENRIQUE SILVA FARIA","848.3,896 975.2,896 975.2,955 848.3,955"],
+[14,"06",2,420,0,"FÁBIO HENRIQUE SILVA FARIA","848.3,837 975.2,837 975.2,896 848.3,896"],
+[14,"07",0,420,430000,"","848.3,777.5 975.2,777.5 975.2,837 848.3,837"],
+[14,"08",0,420,430000,"","848.3,718.5 975.2,718.5 975.2,777.5 848.3,777.5"],
+[14,"09",0,420,435000,"","848.3,659 975.2,659 975.2,718.5 848.3,718.5"],
+[14,"10",0,420,435000,"","848.3,600 975.2,600 975.2,659 848.3,659"],
+[14,"11",0,420,435000,"","848.3,541 975.2,541 975.2,600 848.3,600"],
+[14,"12",2,420,260000,"LEANDRO AUGUSTO DOS SANTOS","848.3,481.5 975.2,481.5 975.2,541 848.3,541"],
+[14,"13",2,420,0,"MARIO SANTOS","848.3,422.5 975.2,422.5 975.2,481.5 848.3,481.5"],
+[14,"14",2,484.98,0,"TESTA","848.3,277.2 912.1,295.9 912.1,422.5 848.3,422.5"],
+[14,"15",1,484.98,0,"","912.1,295.9 987.2,317.9 987.2,422.5 912.1,422.5"],
+[14,"16",1,484.98,0,"","987.2,317.9 1064.1,340.5 1102.1,422.5 987.2,422.5"],
+[14,"17",1,420,0,"","975.2,422.5 1102.1,422.5 1102.1,481.5 975.2,481.5"],
+[14,"18",1,420,0,"","975.2,481.5 1102.1,481.5 1102.1,541 975.2,541"],
+[14,"19",1,420,0,"","975.2,541 1102.1,541 1102.1,600 975.2,600"],
+[14,"20",1,420,0,"","975.2,600 1102.1,600 1102.1,659 975.2,659"],
+[14,"21",2,420,260000,"LEANDRO AUGUSTO DOS SANTOS","975.2,659 1102.1,659 1102.1,718.5 975.2,718.5"],
+[14,"22",2,420,268000,"MATHEUS HENRIQUE MEDEIROS SILVA","975.2,718.5 1102.1,718.5 1102.1,777.5 975.2,777.5"],
+[14,"23",2,420,780000,"LAESTE DE LIMA JÚNIOR","975.2,777.5 1102.1,777.5 1102.1,837 975.2,837"],
+[14,"24",2,420,0,"LAESTE DE LIMA JÚNIOR","975.2,837 1102.1,837 1102.1,896 975.2,896"],
+[14,"25",2,420,0,"LAESTE DE LIMA JÚNIOR","975.2,896 1102.1,896 1102.1,955 975.2,955"],
+[15,"01",2,420,536000,"FRANCISCO MOL SOARES NETO","1368.2,955 1431.6,955 1431.6,1073.4 1368.2,1073.4"],
+[15,"02",2,420,0,"FRANCISCO MOL SOARES NETO","1304.7,955 1368.2,955 1368.2,1073.4 1304.7,1073.4"],
+[15,"03",1,420,0,"","1241.2,955 1304.7,955 1304.7,1073.4 1241.2,1073.4"],
+[15,"04",1,420,0,"","1177.8,955 1241.2,955 1241.2,1073.4 1177.8,1032.9"],
+[15,"05",1,420,0,"","1177.8,896 1304.7,896 1304.7,955 1177.8,955"],
+[15,"06",1,420,0,"","1177.8,837 1304.7,837 1304.7,896 1177.8,896"],
+[15,"07",1,420,0,"","1177.8,777.5 1304.7,777.5 1304.7,837 1177.8,837"],
+[15,"08",1,420,0,"","1177.8,718.5 1304.7,718.5 1304.7,777.5 1177.8,777.5"],
+[15,"09",2,420,268000,"PGV HOLDING AS","1177.8,659 1304.7,659 1304.7,718.5 1177.8,718.5"],
+[15,"10",2,420,260000,"ANDRÉ LARA E CHADIA PAULINO","1177.8,600 1304.7,600 1304.7,659 1177.8,659"],
+[15,"11",2,420,0,"","1177.8,541 1304.7,541 1304.7,600 1177.8,600"],
+[15,"12",2,502.35,0,"","1177.8,402.2 1236.9,391.2 1236.9,541 1177.8,541"],
+[15,"13",2,468.39,0,"","1236.9,391.2 1296.3,408.6 1296.3,541 1236.9,541"],
+[15,"14",2,436.63,0,"MARIO SANTOS ROCHA","1296.3,408.6 1359.7,427.6 1359.7,541 1296.3,541"],
+[15,"15",2,415.08,780000,"MARIO SANTOS ROCHA","1359.7,427.6 1431.6,448.3 1431.6,541 1359.7,541"],
+[15,"16",2,420,268000,"INACIO SALES E SILVA","1304.7,541 1431.6,541 1431.6,600 1304.7,600"],
+[15,"17",2,420,268000,"DILSON SOUSA CHAVES","1304.7,600 1431.6,600 1431.6,659 1304.7,659"],
+[15,"18",2,420,0,"SAMUEL SOARES","1304.7,659 1431.6,659 1431.6,718.5 1304.7,718.5"],
+[15,"19",2,420,268000,"FÁBIO AUGUSTO ALMEIDA PINTO","1304.7,718.5 1431.6,718.5 1431.6,777.5 1304.7,777.5"],
+[15,"20",2,420,268000,"JULIANA FERREIRA TEIXEIRA ARANTES","1304.7,777.5 1431.6,777.5 1431.6,837 1304.7,837"],
+[15,"21",2,420,268000,"JULIANA FERREIRA TEIXEIRA ARANTES","1304.7,837 1431.6,837 1431.6,896 1304.7,896"],
+[15,"22",2,420,268000,"JULIANA FERREIRA E ANDRÉ LUIS","1304.7,896 1431.6,896 1431.6,955 1304.7,955"],
+[16,"01",2,420,0,"","1672,955 1736,955 1736,1074 1672,1074"],
+[16,"02",2,420,0,"","1608,955 1672,955 1672,1074 1608,1074"],
+[16,"03",2,420,536000,"MATEUS FERNANDO SANTOS LOBATO","1545,955 1608,955 1608,1074 1545,1074"],
+[16,"04",2,420,0,"MATEUS FERNANDO SANTOS LOBATO","1482,955 1545,955 1545,1074 1482,1074"],
+[16,"05",2,420,268000,"JOÃO PAULO PEREIRA ESTEVÃO","1482,896 1608,896 1608,955 1482,955"],
+[16,"06",2,420,268000,"VIRGINIA SILVA ROCHA","1482,837 1608,837 1608,896 1482,896"],
+[16,"07",2,420,268000,"BRENO PATRÍCIO BARBOSA","1482,778 1608,778 1608,837 1482,837"],
+[16,"08",1,420,0,"","1482,718 1608,718 1608,778 1482,778"],
+[16,"09",1,420,0,"","1482,659 1608,659 1608,718 1482,718"],
+[16,"10",1,420,0,"","1482,600 1608,600 1608,659 1482,659"],
+[16,"11",1,472.71,0,"","1482,463 1548,482 1548,600 1482,600"],
+[16,"12",1,472.71,0,"","1548,482 1628,506 1628,600 1548,600"],
+[16,"13",2,472.71,268000,"JOÃO ROBINSON LEITE DE MATTOS E MENDES","1628,506 1736,537 1736,600 1628,600"],
+[16,"14",2,420,260000,"MARCIO ANTÔNIO DE FARIA JUNIOR","1608,600 1736,600 1736,659 1608,659"],
+[16,"15",2,420,268000,"LUIS HENRIQUE SANTIAGO SANTOS RANGEL","1608,659 1736,659 1736,718 1608,718"],
+[16,"16",0,420,430000,"","1608,718 1736,718 1736,778 1608,778"],
+[16,"17",0,420,430000,"","1608,778 1736,778 1736,837 1608,837"],
+[16,"18",0,420,430000,"","1608,837 1736,837 1736,896 1608,896"],
+[16,"19",2,420,268000,"FÁBIO AUGUSTO ALMEIDA PINTO","1608,896 1736,896 1736,955 1608,955"],
+[17,"01",2,490,312700,"BRUNO APARECIDO XAVIER ALMEIDA","2008,955 2082,955 2082,1074 2008,1074"],
+[17,"02",2,490,268000,"MARIANA CRISTINA JACINTO","1934,955 2008,955 2008,1074 1934,1074"],
+[17,"03",2,490,893330,"EMBR PATRIMONIAL LTDA","1860,955 1934,955 1934,1074 1860,1074"],
+[17,"04",2,490,0,"EMBR PATRIMONIAL LTDA","1786,955 1860,955 1860,1074 1786,1074"],
+[17,"05",2,420,0,"EMBR PATRIMONIAL LTDA","1786,904 1934,904 1934,955 1786,955"],
+[17,"06",0,420,430000,"","1786,854 1934,854 1934,904 1786,904"],
+[17,"07",0,420,430000,"","1786,803 1934,803 1934,854 1786,854"],
+[17,"08",2,420,1102000,"GUSTAVO MENDES DUARTE","1786,752 1934,752 1934,803 1786,803"],
+[17,"09",2,420,0,"GUSTAVO MENDES DUARTE","1786,702 1934,702 1934,752 1786,752"],
+[17,"10",2,450.5,0,"GUSTAVO MENDES DUARTE","1786,552 1843,569 1843,702 1786,702"],
+[17,"11",2,423.28,0,"GUSTAVO MENDES DUARTE","1843,569 1904,586 1904,702 1843,702"],
+[17,"12",1,408.14,0,"","1904,586 1974,607 1974,702 1904,702"],
+[17,"13",1,474.12,0,"","1974,607 2082,639 2082,702 1974,702"],
+[17,"14",1,420,0,"","1934,702 2082,702 2082,752 1934,752"],
+[17,"15",1,420,0,"","1934,752 2082,752 2082,803 1934,803"],
+[17,"16",2,420,268000,"LEONARDO GUSTAVO DOS SANTOS","1934,803 2082,803 2082,854 1934,854"],
+[17,"17",2,420,268000,"VIVIANE CRISTINA DOS SANTOS","1934,854 2082,854 2082,904 1934,904"],
+[17,"18",2,420,268000,"GABRIELA CRISTINA JACINTO","1934,904 2082,904 2082,955 1934,955"],
+[18,"01",0,439.63,421500,"","2323,955 2395,955 2381.5,1074 2323,1074"],
+[18,"02",0,420,421500,"","2259,955 2323,955 2323,1074 2259,1074"],
+[18,"03",0,420,430000,"","2196,955 2259,955 2259,1074 2196,1074"],
+[18,"04",0,420,430000,"","2133,955 2196,955 2196,1074 2133,1074"],
+[18,"05",0,763.53,570000,"","2133,905 2395,905 2395,955 2133,955"],
+[18,"06",0,784.6,580000,"","2133,854 2395,854 2395,905 2133,905"],
+[18,"07",2,805.67,890000,"SERGIO ANTÔNIO DE SOUSA","2133,803 2395,803 2395,854 2133,854"],
+[18,"08",2,435.45,0,"SERGIO ANTÔNIO DE SOUSA","2133,653.7 2187,669.5 2187,803 2133,803"],
+[18,"09",2,435.45,0,"SERGIO ANTÔNIO DE SOUSA","2187,669.5 2250,688 2250,803 2187,803"],
+[18,"10",1,435.45,0,"","2250,688 2325,710 2325,803 2250,803"],
+[18,"11",1,435.45,0,"","2325,710 2395,730.5 2395,803 2325,803"]];
+
+
+const VW=2396, VH=2160;
+const NOME=['Disponível','Reservado','Vendido'];
+const COR =['#14804a','#b7791f','#c24135'];
+
+const lotes = DADOS.map((r,i)=>{
+  const pts = r[6].split(' ').map(p=>p.split(',').map(Number));
+  let x0=1e9,y0=1e9,x1=-1e9,y1=-1e9;
+  for(const p of pts){ if(p[0]<x0)x0=p[0]; if(p[0]>x1)x1=p[0]; if(p[1]<y0)y0=p[1]; if(p[1]>y1)y1=p[1]; }
+  const area=r[3], valor=r[4];
+  return {
+    i, q:r[0], lote:r[1], sit:r[2], area, valor,
+    cli: r[2]===0 ? '' : r[5],
+    m2: (valor && area) ? valor/area : 0,
+    pontos:r[6], d:'M'+r[6].replace(/ /g,'L')+'Z',
+    x0,y0,x1,y1,
+    id:'GDN'+String(r[0]).padStart(2,'0')+r[1],
+    rot:'Quadra '+String(r[0]).padStart(2,'0')+' · Lote '+r[1]
+  };
+});
+
+const TOT=[0,0,0];
+for(const L of lotes) TOT[L.sit]++;
+
+const quadras=new Map();
+for(const L of lotes){
+  let Q=quadras.get(L.q);
+  if(!Q){ Q={n:L.q,lotes:[],c:[0,0,0],x0:1e9,y0:1e9,x1:-1e9,y1:-1e9}; quadras.set(L.q,Q); }
+  Q.lotes.push(L); Q.c[L.sit]++;
+  if(L.x0<Q.x0)Q.x0=L.x0; if(L.x1>Q.x1)Q.x1=L.x1;
+  if(L.y0<Q.y0)Q.y0=L.y0; if(L.y1>Q.y1)Q.y1=L.y1;
+}
+const listaQ=[...quadras.values()].sort((a,b)=>a.n-b.n);
+
+/* ---------- formatadores ---------- */
+const fM  = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
+const fM2 = new Intl.NumberFormat('pt-BR',{style:'currency',currency:'BRL',minimumFractionDigits:2,maximumFractionDigits:2});
+const fA  = new Intl.NumberFormat('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2});
+const fI  = new Intl.NumberFormat('pt-BR');
+const f1  = new Intl.NumberFormat('pt-BR',{minimumFractionDigits:1,maximumFractionDigits:1});
+const moeda=v=>fM.format(v||0);
+const moeda2=v=>fM2.format(v||0);
+/* A PARCELA VIRA CONTRATO: se ela tem centavos, mostre os centavos. Arredondada,
+   o corretor le "R$ 2.990" onde a conta pede R$ 2.989,58 e a proposta fecha
+   R$ 20 fora do valor negociado. Parcela redonda continua redonda. */
+const moedaPa=v=>{const n=v||0;
+  return Math.abs(n-Math.round(n))<0.005 ? fM.format(n) : fM2.format(n);};
+function curto(v){
+  if(!v) return '—';
+  if(v>=1e6) return 'R$ '+f1.format(v/1e6)+' mi';
+  if(v>=1e3) return 'R$ '+Math.round(v/1e3)+' mil';
+  return moeda(v);
+}
+const $=id=>document.getElementById(id);
+const pc1=v=>v.toFixed(1).replace('.',',')+'%';   /* percentual em pt-BR */
+function soNum(s){ const d=String(s).replace(/[^\d]/g,''); return d?parseInt(d,10):null; }
+function soDec(s){ const t=String(s).replace(/[^\d,.]/g,'').replace(',','.'); const v=parseFloat(t); return isFinite(v)?v:0; }
+function mediana(v){ const n=v.length; if(!n) return 0; return n%2 ? v[(n-1)/2] : (v[n/2-1]+v[n/2])/2; }
+function esc(s){ return String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+/* ---------- limites globais (base dos sliders) ---------- */
+const comPreco = lotes.filter(L=>L.valor>0);
+const LIM = {
+  p:[Math.min(...comPreco.map(L=>L.valor)), Math.max(...comPreco.map(L=>L.valor))],
+  m:[Math.min(...comPreco.map(L=>L.m2)),    Math.max(...comPreco.map(L=>L.m2))],
+  a:[Math.min(...lotes.map(L=>L.area)),     Math.max(...lotes.map(L=>L.area))]
+};
+LIM.p=[Math.floor(LIM.p[0]/1000)*1000, Math.ceil(LIM.p[1]/1000)*1000];
+LIM.m=[Math.floor(LIM.m[0]/10)*10,     Math.ceil(LIM.m[1]/10)*10];
+LIM.a=[Math.floor(LIM.a[0]),           Math.ceil(LIM.a[1])];
+
+/* ==================== ESTADO ==================== */
+const F = { sit:[true,true,true], p:[...LIM.p], m:[...LIM.m], a:[...LIM.a], soPreco:false, busca:'' };
+let escopo=null;            /* null = todo o Garden | numero da quadra */
+let loteAtivo=null;         /* sob o cursor ou fixado */
+let fixado=null;
+let quadraFoco=null;
+let visiveis=new Set();
+
+function filtroAtivo(){
+  return !F.sit.every(Boolean) || F.p[0]>LIM.p[0] || F.p[1]<LIM.p[1] ||
+         F.m[0]>LIM.m[0] || F.m[1]<LIM.m[1] || F.a[0]>LIM.a[0] || F.a[1]<LIM.a[1] ||
+         F.soPreco || F.busca.trim()!=='';
+}
+function contaFiltros(){
+  let n=0;
+  if(!F.sit.every(Boolean)) n++;
+  if(F.p[0]>LIM.p[0]||F.p[1]<LIM.p[1]) n++;
+  if(F.m[0]>LIM.m[0]||F.m[1]<LIM.m[1]) n++;
+  if(F.a[0]>LIM.a[0]||F.a[1]<LIM.a[1]) n++;
+  if(F.soPreco) n++;
+  return n;
+}
+function passa(L){
+  if(!F.sit[L.sit]) return false;
+  if(F.soPreco && !L.valor) return false;
+  if(F.a[0]>LIM.a[0] && L.area<F.a[0]) return false;
+  if(F.a[1]<LIM.a[1] && L.area>F.a[1]) return false;
+  const limitaP = F.p[0]>LIM.p[0] || F.p[1]<LIM.p[1];
+  const limitaM = F.m[0]>LIM.m[0] || F.m[1]<LIM.m[1];
+  if(limitaP){ if(!L.valor) return false; if(L.valor<F.p[0]||L.valor>F.p[1]) return false; }
+  if(limitaM){ if(!L.m2)    return false; if(L.m2<F.m[0]||L.m2>F.m[1])       return false; }
+  const b=F.busca.trim().toLowerCase();
+  if(b){
+    const alvo=(L.rot+' '+L.id+' '+L.cli+' '+L.area+' '+L.valor+' '+NOME[L.sit]).toLowerCase();
+    if(!alvo.includes(b)) return false;
+  }
+  return true;
+}
+
+/* ==================== MAPA ==================== */
+const elPalco=$('palco'), elCena=$('cena'), elPlaca=$('placa'), elEtiq=$('etiq');
+
+$('gHit').innerHTML = lotes.map(L=>'<polygon data-i="'+L.i+'" points="'+L.pontos+'"/>').join('');
+$('gQuadra').innerHTML = listaQ.map(Q=>
+  '<path id="qf'+Q.n+'" d="M'+(Q.x0-6)+','+(Q.y0-6)+'H'+(Q.x1+6)+'V'+(Q.y1+6)+'H'+(Q.x0-6)+'Z"/>').join('');
+const qFoco=new Map(listaQ.map(Q=>[Q.n,$('qf'+Q.n)]));
+
+/* A camada de cor: 3 paths fundidos — 3 atributos por repintura, nada por lote. */
+const pf=[$('f0'),$('f1'),$('f2')];
+function pintar(){
+  const ativo=filtroAtivo();
+  document.body.classList.toggle('filtrando',ativo);
+  const buf=['','',''];
+  visiveis=new Set();
+  for(const L of lotes){
+    if(ativo && !passa(L)) continue;
+    visiveis.add(L.i);
+    buf[L.sit]+=L.d;
+  }
+  for(let s=0;s<3;s++) pf[s].setAttribute('d',buf[s]);
+  if(ativo){
+    const qs=[...new Set(lotes.filter(L=>visiveis.has(L.i)).map(L=>L.q))].sort((a,b)=>a-b);
+    const lista = qs.length===0 ? '' :
+      qs.length<=6 ? ' — em '+qs.map(n=>'Q'+String(n).padStart(2,'0')).join(', ')
+                   : ' — espalhados por '+qs.length+' quadras';
+    $('avisoT').innerHTML = visiveis.size===0
+      ? '<b>Nenhum lote</b> atende ao filtro'
+      : '<b>'+fI.format(visiveis.size)+'</b> '+(visiveis.size===1?'lote atende':'lotes atendem')+lista+
+        '. Os demais estão sem marcação.';
+  }
+}
+
+/* ==================== ZOOM / PAN ==================== */
+const ZMAX=3.0, ZMIN=1;   /* 300% e o teto: acima disso a foto nao se sustenta */
+let z=1, tx=0, ty=0;
+function aplicaZoom(){
+  const larg=elPalco.offsetWidth, alt=elPalco.offsetHeight;
+  const lx=(larg*z-larg)/2, ly=(alt*z-alt)/2;
+  tx=Math.max(-lx,Math.min(lx,tx)); ty=Math.max(-ly,Math.min(ly,ty));
+  elPalco.style.transformOrigin='50% 50%';
+  elPalco.style.transform='translate('+tx.toFixed(1)+'px,'+ty.toFixed(1)+'px) scale('+z.toFixed(3)+')';
+  $('zLvl').textContent=Math.round(z*100)+'%';
+  elPalco.style.cursor = z>1 ? 'grab' : '';
+  ctm=null;
+  if(quadraFoco!==null){ const q=quadraFoco; quadraFoco=null; acendeQuadra(q); }
+}
+function setZoom(nz,px,py){
+  nz=Math.max(ZMIN,Math.min(ZMAX,nz));
+  if(nz===z) return;
+  const k=nz/z;
+  if(px!==undefined){
+    const r=elPalco.getBoundingClientRect();
+    const cxp=px-(r.left+r.width/2), cyp=py-(r.top+r.height/2);
+    tx=tx-cxp*(k-1); ty=ty-cyp*(k-1);
+  }
+  z=nz; if(z===1){tx=0;ty=0;}
+  aplicaZoom();
+}
+elCena.addEventListener('wheel',e=>{
+  if(!e.ctrlKey && Math.abs(e.deltaY)<2) return;
+  e.preventDefault();
+  setZoom(z*(e.deltaY<0?1.16:1/1.16), e.clientX, e.clientY);
+},{passive:false});
+$('zMais').onclick=()=>setZoom(z*1.25);
+$('zMenos').onclick=()=>setZoom(z/1.25);
+$('zReset').onclick=()=>{z=1;tx=0;ty=0;aplicaZoom();};
+let arrasta=null;
+elCena.addEventListener('pointerdown',e=>{
+  if(z<=1) return;
+  arrasta={x:e.clientX,y:e.clientY,tx,ty}; elCena.setPointerCapture(e.pointerId);
+  elPalco.style.cursor='grabbing';
+});
+elCena.addEventListener('pointermove',e=>{
+  if(!arrasta) return;
+  tx=arrasta.tx+(e.clientX-arrasta.x); ty=arrasta.ty+(e.clientY-arrasta.y); aplicaZoom();
+});
+addEventListener('pointerup',()=>{ arrasta=null; elPalco.style.cursor=''; });
+
+/* ============ ESQUERDA: escopo, valores, indicadores ============ */
+function conjunto(){
+  let base = escopo===null ? lotes : quadras.get(escopo).lotes;
+  if(filtroAtivo()) base = base.filter(L=>visiveis.has(L.i));
+  return base;
+}
+function pintarMacro(){
+  const arr=conjunto();
+  const porSit=[[],[],[]];
+  let areaTot=0; const comP=[];
+  for(const L of arr){ porSit[L.sit].push(L); areaTot+=L.area; if(L.valor) comP.push(L); }
+
+  $('escNome').innerHTML = (escopo===null?'Todo o Garden':'Quadra '+String(escopo).padStart(2,'0'))+
+    ' <small>· '+fI.format(arr.length)+(arr.length===1?' lote':' lotes')+(filtroAtivo()?' no filtro':'')+'</small>';
+
+  /* a) VALOR por situacao — a contagem mora aqui, e so aqui */
+  $('vsit').innerHTML=[0,1,2].map(s=>{
+    const g=porSit[s], cp=g.filter(L=>L.valor), soma=cp.reduce((a,L)=>a+L.valor,0);
+    const cob = g.length===0 ? 'nenhum lote'
+      : cp.length===0 ? 'nenhum com preço informado'
+      : cp.length===g.length ? 'preço informado em todos'
+      : 'preço informado em '+cp.length+' de '+g.length;
+    return '<div class="l"><i style="background:'+COR[s]+'"></i>'+
+      '<span class="nm">'+NOME[s]+'<em>'+fI.format(g.length)+(g.length===1?' lote':' lotes')+'</em></span>'+
+      '<span class="vl'+(cp.length?'':' sem')+'">'+(cp.length?moeda(soma):'sem valor')+'<em>'+cob+'</em></span></div>';
+  }).join('');
+
+  /* o total do recorte fecha o bloco: e a soma das tres linhas acima, entao
+     mora aqui e nao vira card repetido embaixo */
+  const m2s=comP.map(L=>L.m2).sort((a,b)=>a-b);
+  const vgv=comP.reduce((a,L)=>a+L.valor,0);
+  $('vgv').innerHTML =
+    '<span class="r">VGV informado<em>'+fI.format(comP.length)+' de '+fI.format(arr.length)+
+      ' lotes têm preço na planilha</em></span>'+
+    '<span class="v">'+(comP.length?curto(vgv):'—')+'</span>';
+
+  /* indicadores financeiros do recorte */
+  const med=mediana(m2s);
+  const tic=comP.length?vgv/comP.length:0;
+  $('fin').innerHTML=
+    '<div><div class="r">Ticket médio</div><div class="v">'+(tic?curto(tic):'—')+'</div>'+
+      '<div class="a">'+(comP.length?'em '+comP.length+' lotes':'sem preço')+'</div></div>'+
+    '<div title="mediana '+(med?moeda2(med):'—')+' — a mediana ignora os extremos e é a referência mais honesta"><div class="r">R$/m² médio</div><div class="v">'+(m2s.length?moeda2(m2s.reduce((a,v)=>a+v,0)/m2s.length):'—')+'</div>'+
+      '<div class="a">'+(m2s.length?fI.format(Math.round(m2s[0]))+' a '+fI.format(Math.round(m2s[m2s.length-1]))+' /m²':'sem preço')+'</div></div>'+
+    '<div><div class="r">Área</div><div class="v">'+fI.format(Math.round(areaTot))+' m²</div>'+
+      '<div class="a">soma do recorte</div></div>';
+}
+
+/* b) tabela por quadra — so ela, sem repetir o de cima. % discreto, sem barra. */
+let ordQ='q', dirQ=1;
+function dadosQuadra(Q){
+  const ativo=filtroAtivo();
+  const arr = ativo ? Q.lotes.filter(L=>visiveis.has(L.i)) : Q.lotes;
+  const c=[0,0,0]; let val=0;
+  for(const L of arr){ c[L.sit]++; val+=L.valor||0; }
+  const pc = arr.length ? c[2]/arr.length*100 : 0;
+  return {Q,arr,c,val,pc};
+}
+function pintarQuadras(){
+  const ativo=filtroAtivo();
+  let linhas=listaQ.map(dadosQuadra);
+  const get={q:d=>d.Q.n, n:d=>d.arr.length, val:d=>d.val, pc:d=>d.pc}[ordQ];
+  linhas=linhas.slice().sort((a,b)=>{ const x=get(a),y=get(b); return x<y?-dirQ : x>y?dirQ : a.Q.n-b.Q.n; });
+  $('listaQ').innerHTML=linhas.map(d=>{
+    const cls=(ativo && d.arr.length===0)?' fora':'';
+    return '<tr data-q="'+d.Q.n+'" class="'+(escopo===d.Q.n?'on':'')+cls+'" title="Quadra '+String(d.Q.n).padStart(2,'0')+
+      ' · '+d.c[0]+' disponíveis, '+d.c[1]+' reservados, '+d.c[2]+' vendidos'+(ativo?' (no filtro)':'')+
+      ' — clique para ver os indicadores só desta quadra">'+
+      '<td>Q'+String(d.Q.n).padStart(2,'0')+'</td>'+
+      '<td class="qtd">'+d.arr.length+'</td>'+
+      '<td class="vlr">'+(d.val?curto(d.val):'—')+'</td>'+
+      '<td class="pc">'+(d.arr.length
+        ? '<span class="barq"><i style="width:'+(d.pc>0?Math.max(3,Math.round(d.pc)):0)+'%"></i></span><b>'+Math.round(d.pc)+'%</b>'
+        : '<span class="barq"></span><b class="mut">—</b>')+'</td></tr>';
+  }).join('');
+  document.querySelectorAll('.tq th').forEach(th=>{
+    const on=th.dataset.k===ordQ;
+    th.classList.toggle('ord',on);
+    th.querySelector('.st').textContent = on ? (dirQ>0?'▲':'▼') : '';
+  });
+}
+document.querySelector('.tq thead').addEventListener('click',e=>{
+  const th=e.target.closest('th'); if(!th) return;
+  if(ordQ===th.dataset.k) dirQ=-dirQ; else { ordQ=th.dataset.k; dirQ = th.dataset.k==='q'?1:-1; }
+  pintarQuadras();
+});
+$('listaQ').addEventListener('click',e=>{
+  const tr=e.target.closest('tr[data-q]'); if(!tr) return;
+  const n=+tr.dataset.q;
+  escopo = escopo===n ? null : n;
+  document.body.classList.toggle('tem-escopo',escopo!==null);
+  pintarQuadras(); pintarMacro();
+  acendeQuadra(escopo);
+});
+$('listaQ').addEventListener('pointerover',e=>{
+  const tr=e.target.closest('tr[data-q]'); if(!tr) return;
+  if(escopo===null) acendeQuadra(+tr.dataset.q);
+});
+$('listaQ').addEventListener('pointerleave',()=>{ if(escopo===null) acendeQuadra(null); });
+$('escVoltar').onclick=()=>{
+  escopo=null; document.body.classList.remove('tem-escopo');
+  acendeQuadra(null); pintarQuadras(); pintarMacro();
+};
+
+/* ==================== DIREITA: a unidade ==================== */
+function mostraLote(L){
+  loteAtivo=L;
+  /* em tela estreita a coluna da unidade e uma gaveta sobre o mapa: ela so
+     entra quando ha lote, e some quando nao ha. Em tela larga nao muda nada. */
+  document.body.classList.toggle('comLote', !!L);
+  $('uVazio').style.display = L?'none':'';
+  $('uFicha').style.display = L?'':'none';
+  /* o cabecalho so rotula a coluna; a identidade do lote aparece UMA vez,
+     no titulo da ficha logo abaixo ("nao precisa duplicar as informacoes") */
+  $('uTit').textContent = L ? '' : 'Nenhum lote selecionado';
+  $('uTit').style.display = L ? 'none' : '';
+  $('rId').textContent = L ? L.id+' · '+L.rot : '—';
+  if(!L) return;
+
+  $('fQL').textContent=L.rot;
+  $('fId').textContent=L.id;
+  $('uFicha').classList.toggle('fora', filtroAtivo() && !visiveis.has(L.i));
+  const s=$('fSelo'); s.className='selo s'+L.sit; s.textContent=NOME[L.sit];
+
+  const p=$('fPreco');
+  if(L.valor){ p.className='big'; p.textContent=moeda(L.valor); $('fPrecoSub').textContent='tabela do empreendimento'; }
+  else{ p.className='big sem'; p.textContent='não informado na planilha'; $('fPrecoSub').textContent=''; }
+
+  /* SO a unidade. Indicador e macro, e macro mora na esquerda. */
+  $('fLinhas').innerHTML=[
+    ['Área', fA.format(L.area)+' m²'],
+    ['Preço por m²', L.valor?moeda2(L.m2):'—']
+  ].map(a=>'<div class="lin2"><span class="r">'+a[0]+'</span><span class="v">'+a[1]+'</span></div>').join('');
+
+  const bc=$('fBlocoCli');
+  if(L.sit===0){ bc.style.display='none'; }
+  else{
+    bc.style.display='';
+    $('fRotCli').textContent = L.sit===2 ? 'Comprador' : 'Reservado para';
+    const c=$('fCli');
+    if(L.cli){ c.className='comprador'; c.textContent=L.cli; }
+    else{ c.className='comprador vaz'; c.textContent='comprador não informado na planilha'; }
+  }
+}
+
+/* ==================== SELECAO NO MAPA ==================== */
+function realce(L){
+  const h=$('hover');
+  h.setAttribute('d', L ? L.d : (fixado?fixado.d:''));
+}
+function selecionar(L){
+  fixado=L;
+  const g=$('gSel');
+  if(!L){ g.classList.remove('on'); $('hover').setAttribute('d',''); mostraLote(null); return; }
+  $('selSombra').setAttribute('d',L.d); $('selFio').setAttribute('d',L.d);
+  g.classList.add('on'); $('hover').setAttribute('d',L.d);
+  mostraLote(L);
+}
+function acendeQuadra(n){
+  if(quadraFoco===n) return;
+  if(quadraFoco!==null && qFoco.get(quadraFoco)) qFoco.get(quadraFoco).classList.remove('on');
+  quadraFoco=n;
+  if(n===null||n===undefined){ elPlaca.classList.remove('on'); quadraFoco=null; return; }
+  qFoco.get(n).classList.add('on');
+  const Q=quadras.get(n);
+  $('placaT').textContent='Quadra '+String(n).padStart(2,'0');
+  $('placaS').innerHTML=[0,1,2].map(s=>'<i style="background:'+COR[s]+'"></i>'+Q.c[s]).join(' ');
+  const r=elPalco.getBoundingClientRect(), c=elCena.getBoundingClientRect();
+  const px=r.left-c.left+((Q.x0+Q.x1)/2/VW)*r.width;
+  const topo=r.top-c.top+((Q.y0-6)/VH)*r.height;
+  const base=r.top-c.top+((Q.y1+6)/VH)*r.height;
+  const cabe=topo>44;
+  elPlaca.style.left=px+'px';
+  elPlaca.style.top=(cabe?topo:base)+'px';
+  elPlaca.classList.toggle('baixo',!cabe);
+  elPlaca.classList.add('on');
+}
+
+let ctm=null;
+addEventListener('resize',()=>{ctm=null;aplicaZoom();});
+
+const elSvgHit=$('svgHit');
+elSvgHit.addEventListener('pointermove',e=>{
+  if(arrasta) return;
+  const t=e.target;
+  if(t.tagName!=='polygon'){
+    if(!fixado){ realce(null); mostraLote(null); }
+    if(escopo===null) acendeQuadra(null);
+    elEtiq.classList.remove('on'); return;
+  }
+  const L=lotes[+t.dataset.i];
+  if(escopo===null) acendeQuadra(L.q);
+  if(!fixado){ realce(L); mostraLote(L); }
+  $('etI').style.background=COR[L.sit];
+  $('etT').textContent=L.rot;
+  $('etA').textContent=fA.format(L.area)+' m² · '+NOME[L.sit];
+  $('etV').textContent = L.valor ? moeda(L.valor)+'  ·  '+moeda2(L.m2)+'/m²' : 'preço não informado';
+  /* pedido do Lucas (10/08): no lote que já tem dono, a etiqueta diz QUEM é. Nem todo
+     reservado/vendido tem nome no C2X, então a linha só aparece quando existe. */
+  const dono = (L.cli||'').trim();
+  $('etC').innerHTML = dono ? 'Comprador <b>'+esc(dono)+'</b>' : '';
+  $('etC').classList.toggle('on', !!dono);
+  const w=elEtiq.offsetWidth||150, h=elEtiq.offsetHeight||46;
+  let x=e.clientX+16, y=e.clientY+16;
+  if(x+w>innerWidth-8) x=e.clientX-w-14;
+  if(y+h>innerHeight-8) y=e.clientY-h-14;
+  elEtiq.style.transform='translate('+x+'px,'+y+'px)';
+  elEtiq.classList.add('on');
+});
+elSvgHit.addEventListener('pointerleave',()=>{
+  elEtiq.classList.remove('on');
+  if(escopo===null) acendeQuadra(null);
+  if(!fixado){ realce(null); mostraLote(null); }
+});
+elSvgHit.addEventListener('click',e=>{
+  if(e.target.tagName!=='polygon') return;
+  const L=lotes[+e.target.dataset.i];
+  selecionar(fixado===L?null:L);
+});
+/* ==================== POPUPS ==================== */
+function abre(id){
+  const p=$(id); const modal = id!=='popFiltro';
+  document.querySelectorAll('.pop.on').forEach(o=>{ if(o!==p) o.classList.remove('on'); });
+  p.classList.add('on');
+  $('scrim').classList.toggle('on',modal);
+  if(id==='popFiltro'){
+    const r=$('btFiltro').getBoundingClientRect();
+    p.style.left=Math.min(r.left, innerWidth-330)+'px';
+  }
+  $('btFiltro').classList.toggle('on',id==='popFiltro');
+  if(id==='popTabela') pintarTabela();
+  if(id==='popPlano')  abrirPlano();
+}
+function fecha(id){
+  $(id).classList.remove('on');
+  if(!document.querySelector('.pop.on:not(#popFiltro)')) $('scrim').classList.remove('on');
+  if(id==='popFiltro') $('btFiltro').classList.toggle('on',contaFiltros()>0);
+}
+document.querySelectorAll('[data-fecha]').forEach(b=>b.onclick=()=>fecha(b.dataset.fecha));
+$('scrim').onclick=()=>{ document.querySelectorAll('.pop.on').forEach(p=>fecha(p.id)); };
+$('btFiltro').onclick=()=>{ $('popFiltro').classList.contains('on')?fecha('popFiltro'):abre('popFiltro'); };
+$('btTabela').onclick=()=>abre('popTabela');
+$('btCond').onclick=()=>abre('popPlano');
+document.addEventListener('pointerdown',e=>{
+  const p=$('popFiltro');
+  if(!p.classList.contains('on')) return;
+  if(p.contains(e.target)||$('btFiltro').contains(e.target)) return;
+  fecha('popFiltro');
+},true);
+
+/* ==================== FILTROS ==================== */
+$('togSit').innerHTML=[0,1,2].map(s=>
+  '<label><input type="checkbox" data-sit="'+s+'" checked><span class="pt" style="background:'+COR[s]+'"></span>'+
+  '<span class="txt">'+NOME[s]+'</span><span class="qt">'+TOT[s]+'</span></label>').join('');
+$('rTot').textContent=lotes.length;
+$('qtPreco').textContent=comPreco.length+' de '+lotes.length;
+
+function faixa(pref,chave,lim,fmt,passo){
+  const a=$(pref+'Min'), b=$(pref+'Max'), at=$(pref+'MinTxt'), bt=$(pref+'MaxTxt');
+  [a,b].forEach(el=>{ el.min=lim[0]; el.max=lim[1]; el.step=passo; });
+  const barra=a.closest('.dual').querySelector('.ativa');
+  function sincroniza(){
+    at.value=fmt(F[chave][0]); bt.value=fmt(F[chave][1]);
+    a.value=F[chave][0]; b.value=F[chave][1];
+    const w=lim[1]-lim[0];
+    barra.style.left=((F[chave][0]-lim[0])/w*100)+'%';
+    barra.style.width=((F[chave][1]-F[chave][0])/w*100)+'%';
+  }
+  a.oninput=()=>{ F[chave][0]=Math.min(+a.value,F[chave][1]); sincroniza(); atualizar(); };
+  b.oninput=()=>{ F[chave][1]=Math.max(+b.value,F[chave][0]); sincroniza(); atualizar(); };
+  [at,bt].forEach((el,k)=>{
+    el.onchange=()=>{
+      const v=soNum(el.value);
+      if(v===null){ sincroniza(); return; }
+      F[chave][k]=Math.max(lim[0],Math.min(lim[1],v));
+      if(F[chave][0]>F[chave][1]) F[chave][k===0?1:0]=F[chave][k];
+      sincroniza(); atualizar();
+    };
+  });
+  return sincroniza;
+}
+const syncP=faixa('p','p',LIM.p,v=>fI.format(v),1000);
+const syncM=faixa('m','m',LIM.m,v=>fI.format(Math.round(v)),10);
+const syncA=faixa('a','a',LIM.a,v=>fI.format(Math.round(v)),1);
+
+$('presetPreco').innerHTML=[
+  ['Até 400 mil',LIM.p[0],400000],['400 a 460 mil',400000,460000],
+  ['460 a 520 mil',460000,520000],['Acima de 520 mil',520000,LIM.p[1]]
+].map(a=>'<button data-a="'+a[1]+'" data-b="'+a[2]+'">'+a[0]+'</button>').join('');
+$('presetPreco').onclick=e=>{
+  const b=e.target.closest('button'); if(!b) return;
+  F.p=[Math.max(LIM.p[0],+b.dataset.a),Math.min(LIM.p[1],+b.dataset.b)];
+  syncP(); atualizar();
+};
+$('togSit').onclick=e=>{
+  const i=e.target.closest('input'); if(!i) return;
+  F.sit[+i.dataset.sit]=i.checked; atualizar();
+};
+$('soPreco').onchange=()=>{ F.soPreco=$('soPreco').checked; atualizar(); };
+$('btLimparF').onclick=()=>limparTudo();
+$('avisoLimpa').onclick=()=>limparTudo();
+function limparTudo(){
+  F.sit=[true,true,true]; F.p=[...LIM.p]; F.m=[...LIM.m]; F.a=[...LIM.a];
+  F.soPreco=false; F.busca='';
+  document.querySelectorAll('#togSit input').forEach(i=>i.checked=true);
+  $('soPreco').checked=false; $('busca').value=''; $('caixaBusca').classList.remove('cheia');
+  syncP(); syncM(); syncA(); atualizar();
+}
+document.querySelector('.legenda').onclick=e=>{
+  const c=e.target.closest('.chip'); if(!c) return;
+  const s=+c.dataset.sit;
+  const sozinho = F.sit[s] && F.sit.filter(Boolean).length===1;
+  if(sozinho){ F.sit=[true,true,true]; }
+  else { F.sit=[false,false,false]; F.sit[s]=true; }
+  document.querySelectorAll('#togSit input').forEach(i=>i.checked=F.sit[+i.dataset.sit]);
+  atualizar();
+};
+const elBusca=$('busca');
+elBusca.oninput=()=>{
+  F.busca=elBusca.value;
+  $('caixaBusca').classList.toggle('cheia',!!elBusca.value);
+  atualizar();
+};
+$('limpaBusca').onclick=e=>{ e.preventDefault(); elBusca.value=''; F.busca=''; $('caixaBusca').classList.remove('cheia'); atualizar(); };
+
+/* ==================== ATUALIZACAO GERAL ==================== */
+function atualizar(){
+  pintar();
+  const n=contaFiltros()+(F.busca.trim()?1:0);
+  $('cntFiltro').style.display=n?'':'none'; $('cntFiltro').textContent=n;
+  $('btFiltro').classList.toggle('on',n>0||$('popFiltro').classList.contains('on'));
+  document.querySelectorAll('.legenda .chip').forEach(c=>c.classList.toggle('off',!F.sit[+c.dataset.sit]));
+  $('fbConta').textContent=fI.format(visiveis.size)+(visiveis.size===1?' lote atende':' lotes atendem');
+  $('fbResumo').textContent=fI.format(visiveis.size)+' de '+fI.format(lotes.length)+' lotes';
+  pintarQuadras(); pintarMacro();
+  if(loteAtivo) mostraLote(loteAtivo);
+  if($('popTabela').classList.contains('on')) pintarTabela();
+}
+
+/* ==================== TABELA (popup) ==================== */
+const COLS=[
+  {k:'q',    t:'Quadra',    dir:false, get:L=>'Q'+String(L.q).padStart(2,'0'), ord:L=>L.q},
+  {k:'lote', t:'Lote',      dir:false, get:L=>L.lote,                          ord:L=>L.lote},
+  {k:'sit',  t:'Situação',  dir:false, get:L=>'<span class="pill"><i style="background:'+COR[L.sit]+'"></i>'+NOME[L.sit]+'</span>', ord:L=>L.sit},
+  {k:'area', t:'Área (m²)', dir:true,  get:L=>fA.format(L.area),               ord:L=>L.area},
+  {k:'val',  t:'Preço',     dir:true,  get:L=>L.valor?moeda(L.valor):'<span class="mut">não informado</span>', ord:L=>L.valor||-1},
+  {k:'m2',   t:'Preço/m²',  dir:true,  get:L=>L.m2?moeda2(L.m2):'<span class="mut">—</span>', ord:L=>L.m2||-1},
+  {k:'cli',  t:'Comprador', dir:false, get:L=>L.sit===0?'<span class="mut">—</span>':(esc(L.cli)||'<span class="mut">não informado</span>'), ord:L=>L.cli||'zzz'}
+];
+let ordK='q', ordDir=1;
+function pintarTabela(){
+  let arr=lotes.filter(L=>!filtroAtivo()||visiveis.has(L.i));
+  if(escopo!==null) arr=arr.filter(L=>L.q===escopo);
+  const c=COLS.find(c=>c.k===ordK);
+  arr=arr.slice().sort((a,b)=>{
+    const x=c.ord(a), y=c.ord(b);
+    if(x<y) return -ordDir; if(x>y) return ordDir;
+    return a.q-b.q || (a.lote<b.lote?-1:1);
+  });
+  $('tbSub').textContent = fI.format(arr.length)+' lotes'+
+    (escopo!==null?' · Quadra '+String(escopo).padStart(2,'0'):'')+
+    (filtroAtivo()?' · filtro ativo':'');
+  const cp=arr.filter(L=>L.valor);
+  $('tbSoma').textContent = cp.length
+    ? 'Soma dos preços informados: '+moeda(cp.reduce((a,L)=>a+L.valor,0))+' ('+cp.length+' de '+arr.length+' lotes)'
+    : 'Nenhum lote deste recorte tem preço informado';
+  if(!arr.length){ $('tblwrap').innerHTML='<div class="vazioTbl">Nenhum lote atende ao filtro atual.</div>'; return; }
+  const th=COLS.map(c=>'<th class="'+(c.dir?'dir':'')+'" data-k="'+c.k+'">'+c.t+
+    '<span class="st">'+(ordK===c.k?(ordDir>0?'▲':'▼'):'')+'</span></th>').join('');
+  const tb=arr.map(L=>'<tr data-i="'+L.i+'"'+(fixado===L?' class="sel"':'')+'>'+
+    COLS.map(c=>'<td class="'+(c.dir?'dir':'')+'">'+c.get(L)+'</td>').join('')+'</tr>').join('');
+  $('tblwrap').innerHTML='<table class="dados"><thead><tr>'+th+'</tr></thead><tbody>'+tb+'</tbody></table>';
+}
+$('tblwrap').addEventListener('click',e=>{
+  const th=e.target.closest('th');
+  if(th){ if(ordK===th.dataset.k) ordDir=-ordDir; else {ordK=th.dataset.k; ordDir=1;} pintarTabela(); return; }
+  const tr=e.target.closest('tr[data-i]');
+  if(tr){ const L=lotes[+tr.dataset.i]; selecionar(L); fecha('popTabela'); }
+});
+
+/* ============ PLANO COMERCIAL + SIMULADOR ============
+   Layout PORTADO da vitrine publica (B-PUBLICO.html), aprovado pelo dono.
+   Tres caminhos para a mesma conversa:
+   1) "Parto da parcela do cliente" — o corretor diz o que cabe por mes (e,
+      se quiser, entrada e anual). A tela varre prazo x entrada x anuais e
+      PROPOE as composicoes que fecham, em ordem de recomendacao.
+   2) "Eu escolho as condicoes"     — plano/prazo, entrada e valor da anual
+      na mao do corretor; a parcela responde na hora.
+   3) FLAG "Proposta livre"         — fora das condicoes fixas. Entrada,
+      anuais, prazo e parcela como quiser; a tela recalcula UMA variavel
+      (a que o corretor escolher) para a conta fechar no valor do lote.
+
+   A TABELA COMERCIAL continua sendo a OFICIAL do "Plano comercial -
+   Garden.xlsx" — nao a politica de referencia da vitrine publica:
+     Plano       Desconto  Entrada  Anual     Parcelamento
+     Normal      0%        8%       6 x 20k   84
+     Curto       5%        20%      4 x 25k   48
+     Investidor  10%       40%      3 x 30k   36
+
+   Matematica (juros compostos ja preparados; hoje a taxa e 0):
+     PD  = preco x (1 - desconto)
+     PD  = entrada + anual x fn(n,i) + parcela x fa(T,i)
+   ============================================================ */
+const PLANOS=[
+  {nome:'Normal',     desc:0.00, ent:0.08, anQtd:6, anVal:20000, prazo:84},
+  {nome:'Curto',      desc:0.05, ent:0.20, anQtd:4, anVal:25000, prazo:48},
+  {nome:'Investidor', desc:0.10, ent:0.40, anQtd:3, anVal:30000, prazo:36}
+];
+/* a politica de busca do simulador SAI dos planos oficiais: nada aqui e
+   inventado. entradaTeto e so uma trava de busca (entrada fora da
+   realidade), nao uma promessa comercial. */
+const POLITICA={
+  jurosAM:0,
+  prazos:PLANOS.map(p=>({meses:p.prazo,desc:p.desc,entMin:p.ent,nome:p.nome,anQtd:p.anQtd,anVal:p.anVal}))
+               .sort((a,b)=>a.meses-b.meses),
+  anuaisValores:[0,10000,15000,20000,25000,30000],
+  entradaTeto:0.60
+};
+const PRAZO_MAX_LIVRE=180;
+const planoDe=m=>POLITICA.prazos.find(p=>p.meses===m);
+
+let modo='parcela';   /* 'parcela' | 'montar' */
+let livre=false;      /* a flag */
+let loteSim=null;     /* o lote que abriu o simulador */
+
+const SIM={
+  preco:0, precoTabela:0, juros:POLITICA.jurosAM,
+  /* modo escolher */ prazo:POLITICA.prazos[POLITICA.prazos.length-1].meses, entrada:0, anQtd:0, anVal:20000,
+  /* modo parcela  */ alvo:3000, entMax:null, anMax:null,
+  /* modo livre    */ ajusta:'parcela', lEnt:0, lAnQtd:0, lAnVal:20000, lPz:60, lPa:0, lErro:null
+};
+
+/* --------- matematica financeira: ja pronta para juros compostos --------- */
+const fatorAnuidade=(T,i)=> i<=0 ? T : (1-Math.pow(1+i,-T))/i;
+function fatorBaloes(n,i){
+  if(n<=0) return 0;
+  if(i<=0) return n;
+  let s=0; for(let k=1;k<=n;k++) s+=Math.pow(1+i,-12*k);
+  return s;
+}
+function calcParcela(pd,ent,anQtd,anVal,T,i){
+  const liq=pd-ent-anVal*fatorBaloes(anQtd,i);
+  if(liq<=0||T<=0) return 0;
+  return liq/fatorAnuidade(T,i);
+}
+function calcEntrada(pd,M,anQtd,anVal,T,i){
+  return pd-anVal*fatorBaloes(anQtd,i)-M*fatorAnuidade(T,i);
+}
+function calcPrazo(pd,ent,anQtd,anVal,M,i){
+  const liq=pd-ent-anVal*fatorBaloes(anQtd,i);
+  if(liq<=0) return 0;
+  if(M<=0) return null;
+  if(i<=0) return Math.ceil(liq/M);
+  const x=1-i*liq/M;
+  if(x<=0) return null;            /* a parcela nao cobre nem o juro do saldo */
+  return Math.ceil(-Math.log(x)/Math.log(1+i));
+}
+/* valor presente do que foi montado — e isso que precisa bater com o preco */
+function vpDe(ent,anQtd,anVal,T,M,i){
+  return ent+anVal*fatorBaloes(anQtd,i)+M*fatorAnuidade(T,i);
+}
+/* conta direta: as condicoes do lote em UM plano oficial */
+function condicoes(preco,p,i){
+  const PD=preco*(1-p.desc);
+  const ent=PD*p.ent;
+  const anuais=p.anQtd*p.anVal;
+  const saldo=PD-ent-anuais;
+  const parcela=(PD-ent-p.anVal*fatorBaloes(p.anQtd,i))/fatorAnuidade(p.prazo,i);
+  return {PD,ent,anuais,saldo,parcela};
+}
+
+/* ============================== abrir ============================== */
+/* chamada por abre('popPlano') e pela tecla P. O lote JA VEM SELECIONADO:
+   o simulador abre com o preco de tabela daquele lote. */
+function abrirPlano(){
+  const L=fixado||loteAtivo;
+  loteSim=L||null;
+  if(L&&L.valor){
+    SIM.preco=L.valor; SIM.precoTabela=L.valor;
+    $('ajPreco').textContent='valor de tabela';
+    $('plSub').textContent=L.rot+' · '+fA.format(L.area)+' m² · '+moeda(L.valor)+' · '+NOME[L.sit];
+  }else if(L){
+    /* lote SEM preco na planilha (ex.: Quadra 02 · Lote 18): NAO pode herdar o
+       preco do lote aberto antes. Zerando, calcular() pede o valor e trava o
+       "Copiar resumo" — proposta montada sobre o preco de OUTRO lote e
+       desconto (ou acrescimo) acidental. */
+    SIM.preco=0; SIM.precoTabela=0;
+    $('ajPreco').textContent='sem preço na planilha: digite aqui';
+    $('plSub').textContent=L.rot+' · '+fA.format(L.area)+' m² · preço não informado · '+NOME[L.sit];
+  }else{
+    if(!SIM.preco){ SIM.preco=410000; }
+    SIM.precoTabela=0;
+    $('ajPreco').textContent='editável';
+    $('plSub').textContent='Nenhum lote selecionado: clique num lote no mapa para trazer o preço de tabela';
+  }
+  if(!SIM.entrada||SIM.entrada>SIM.preco) SIM.entrada=Math.round(SIM.preco*0.20/1000)*1000;
+  SIM.alvo=alvoSugerido();
+  semearLivre();
+  espelhar();
+  calcular();
+}
+/* uma parcela alvo que com certeza tem resposta: o plano mais longo, com a
+   entrada de referencia e as anuais de tabela dele. */
+function alvoSugerido(){
+  const pr=POLITICA.prazos[POLITICA.prazos.length-1];
+  const pd=SIM.preco*(1-pr.desc);
+  const m=calcParcela(pd,pd*pr.entMin,pr.anQtd,pr.anVal,pr.meses,SIM.juros);
+  return Math.max(500,Math.round(m/250)*250);
+}
+function semearLivre(){
+  SIM.lEnt   = SIM.entrada||Math.round(SIM.preco*0.20/1000)*1000;
+  SIM.lPz    = SIM.prazo;
+  SIM.lAnQtd = SIM.anQtd;
+  SIM.lAnVal = SIM.anVal||20000;
+  recalcLivre();
+}
+
+/* ============================== controles ============================== */
+/* os cartoes de prazo SAO os planos oficiais */
+$('cPrazos').innerHTML=POLITICA.prazos.map(p=>
+  '<button class="s-pz" data-m="'+p.meses+'"><b>'+p.meses+'×</b><small>'+p.nome+'</small><small>'+
+  (p.desc ? '−'+Math.round(p.desc*100)+'%' : 'tabela')+'</small></button>').join('');
+$('cPrazos').querySelectorAll('.s-pz').forEach(b=>{
+  b.onclick=()=>{
+    SIM.prazo=+b.dataset.m;
+    const max=Math.floor(SIM.prazo/12);
+    if(SIM.anQtd>max) SIM.anQtd=max;
+    espelhar(); calcular();
+  };
+});
+
+const ALVOS=[2000,3000,4000,5000,6000];
+function chips(el,vals,atual,rot,set){
+  $(el).innerHTML=vals.map(v=>
+    '<button class="s-cv'+(v===atual?' on':'')+'" data-v="'+v+'">'+rot(v)+'</button>').join('');
+  $(el).querySelectorAll('.s-cv').forEach(b=>{
+    b.onclick=()=>{ set(+b.dataset.v); espelhar(); calcular(); };
+  });
+}
+
+/* stepper generico da quantidade de anuais */
+function ligaStepper(id,get,set,max){
+  $(id).querySelectorAll('button').forEach(b=>{
+    b.onclick=()=>{
+      const v=Math.min(max(),Math.max(0,get()+(+b.dataset.d)));
+      set(v); espelhar(); calcular();
+    };
+  });
+}
+ligaStepper('stAn',  ()=>SIM.anQtd,  v=>{ SIM.anQtd=v;  if(v&&!SIM.anVal) SIM.anVal=20000; },
+            ()=>Math.floor(SIM.prazo/12));
+ligaStepper('stLAn', ()=>SIM.lAnQtd, v=>{ SIM.lAnQtd=v; if(v&&!SIM.lAnVal) SIM.lAnVal=20000; recalcLivre(); },
+            ()=>Math.floor(PRAZO_MAX_LIVRE/12));
+
+function espelhar(){
+  /* preco 0 = lote sem preco na planilha: campo VAZIO, para o corretor digitar */
+  $('cPreco').value=SIM.preco?fI.format(Math.round(SIM.preco)):'';
+
+  /* modo 1 */
+  $('cAlvo').value  =fI.format(SIM.alvo);
+  $('cEntMax').value=SIM.entMax?fI.format(SIM.entMax):'';
+  $('cAnMax').value =SIM.anMax ?fI.format(SIM.anMax) :'';
+  chips('chipsAlvo',ALVOS,SIM.alvo,v=>moeda(v)+'/mês',v=>{ SIM.alvo=v; });
+
+  /* modo 2 */
+  $('cPrazos').querySelectorAll('.s-pz').forEach(b=>b.classList.toggle('on',+b.dataset.m===SIM.prazo));
+  $('cEntrada').value=fI.format(Math.round(SIM.entrada));
+  $('rgEntrada').value=SIM.preco?Math.min(60,Math.round(SIM.entrada/SIM.preco*100)):0;
+  $('ajEntrada').textContent=SIM.preco?Math.round(SIM.entrada/SIM.preco*100)+'% do valor':'';
+  $('vAnQtd').textContent=SIM.anQtd?SIM.anQtd+'×':'—';
+  $('cAnVal').value=SIM.anQtd?fI.format(Math.round(SIM.anVal)):'';
+  $('cAnVal').disabled=SIM.anQtd===0;
+  $('ajAnuais').textContent=(SIM.anQtd&&SIM.anVal)?'total '+moeda(SIM.anQtd*SIM.anVal):'sem reforço anual';
+  chips('chipsAnual',POLITICA.anuaisValores.filter(v=>v),SIM.anQtd?SIM.anVal:-1,
+        v=>fI.format(v),v=>{ SIM.anVal=v; if(!SIM.anQtd) SIM.anQtd=Math.min(3,Math.floor(SIM.prazo/12)); });
+
+  /* modo livre */
+  $('cAjusta').querySelectorAll('button').forEach(b=>b.classList.toggle('on',b.dataset.a===SIM.ajusta));
+  $('lEntrada').value=fI.format(Math.round(SIM.lEnt));
+  $('vLAnQtd').textContent=SIM.lAnQtd?SIM.lAnQtd+'×':'—';
+  $('lAnVal').value=SIM.lAnQtd?fI.format(Math.round(SIM.lAnVal)):'';
+  $('lAnVal').disabled=SIM.lAnQtd===0;
+  $('lPrazo').value=SIM.lPz;
+  $('lParcela').value=fI.format(Math.round(SIM.lPa));
+  const cal='<span class="s-selo">calculado</span>';
+  $('ajLEnt').innerHTML=SIM.ajusta==='entrada'?cal
+    :(SIM.preco?Math.round(SIM.lEnt/SIM.preco*100)+'% do valor':'');
+  $('ajLPz').innerHTML =SIM.ajusta==='prazo'?cal:(SIM.lPz?(SIM.lPz/12).toFixed(1).replace('.',',')+' anos':'');
+  $('ajLPa').innerHTML =hintPa();
+  $('ajLAn').textContent=(SIM.lAnQtd&&SIM.lAnVal)?'total '+moeda(SIM.lAnQtd*SIM.lAnVal):'sem reforço anual';
+  travaLivre();
+
+  /* juros */
+  $('cJuros').value=fA.format(SIM.juros*100);
+  notaJuros();
+
+  /* a flag e os modos */
+  $('btLivre').classList.toggle('on',livre);
+  $('btLivre').setAttribute('aria-pressed',livre?'true':'false');
+  $('blocoParcela').style.display=(!livre&&modo==='parcela')?'':'none';
+  $('blocoMontar').style.display =(!livre&&modo==='montar') ?'':'none';
+  $('blocoLivre').style.display  = livre?'':'none';
+  $('segModo').querySelectorAll('button').forEach(b=>
+    b.classList.toggle('on',!livre&&b.dataset.m===modo));
+}
+function travaLivre(){
+  const campos={entrada:['wLEnt','lEntrada'],prazo:['wLPz','lPrazo'],parcela:['wLPa','lParcela']};
+  for(const k in campos){
+    const par=campos[k], w=par[0], inp=par[1], ehCalc=(SIM.ajusta===k);
+    $(w).classList.toggle('s-calc',ehCalc);
+    $(inp).readOnly=ehCalc;
+    $(inp).tabIndex=ehCalc?-1:0;
+  }
+}
+function notaJuros(){
+  $('jurosNota').innerHTML=SIM.juros>0
+    ? 'Juros compostos de <b>'+fA.format(SIM.juros*100)+'% ao mês</b> sobre o saldo financiado. '+
+      'As anuais abatem o saldo pelo valor de face, como na tabela do empreendimento.'
+    : '<b>Sem juros</b> — a taxa deste empreendimento ainda não foi cadastrada. Preencha aqui para simular com juros.';
+}
+
+/* ------------------------------ eventos ------------------------------ */
+function ligaMoeda(id,set){
+  $(id).addEventListener('input',()=>{
+    const el=$(id), v=soNum(el.value);
+    set(v===null?0:v);
+    el.value=v===null?'':fI.format(v);
+    espelharLeve(id); calcular();
+  });
+}
+/* redesenhar tudo a cada tecla rouba o cursor: so o que depende do campo */
+function espelharLeve(id){
+  if(id==='cEntrada'){
+    $('rgEntrada').value=SIM.preco?Math.min(60,Math.round(SIM.entrada/SIM.preco*100)):0;
+    $('ajEntrada').textContent=SIM.preco?Math.round(SIM.entrada/SIM.preco*100)+'% do valor':'';
+  }
+  if(id==='cAnVal') $('ajAnuais').textContent=(SIM.anQtd&&SIM.anVal)?'total '+moeda(SIM.anQtd*SIM.anVal):'sem reforço anual';
+  if(id==='cAlvo') $('chipsAlvo').querySelectorAll('.s-cv').forEach(b=>b.classList.toggle('on',+b.dataset.v===SIM.alvo));
+  if(id.charAt(0)==='l'||id==='cPreco'){
+    /* modo livre: o campo calculado precisa acompanhar */
+    if(livre){
+      recalcLivre();
+      if(SIM.ajusta==='entrada') $('lEntrada').value=fI.format(Math.round(SIM.lEnt));
+      if(SIM.ajusta==='parcela') $('lParcela').value=fI.format(Math.round(SIM.lPa));
+      /* no ajuste pelo prazo NAO se reescreve o campo da parcela: quem digita
+         e a pessoa. So o prazo responde, e o rotulo diz onde a conta fecha. */
+      if(SIM.ajusta==='prazo'){ $('lPrazo').value=SIM.lPz; $('ajLPa').innerHTML=hintPa(); }
+      $('ajLEnt').innerHTML=SIM.ajusta==='entrada'?'<span class="s-selo">calculado</span>'
+        :(SIM.preco?Math.round(SIM.lEnt/SIM.preco*100)+'% do valor':'');
+    }
+  }
+}
+ligaMoeda('cPreco',   v=>{ SIM.preco=v; if(SIM.entrada>v) SIM.entrada=Math.round(v*0.2); });
+ligaMoeda('cEntrada', v=>{ SIM.entrada=v; });
+ligaMoeda('cAnVal',   v=>{ SIM.anVal=v; });
+ligaMoeda('cAlvo',    v=>{ SIM.alvo=v; });
+ligaMoeda('cEntMax',  v=>{ SIM.entMax=v||null; });
+ligaMoeda('cAnMax',   v=>{ SIM.anMax=v||null; });
+ligaMoeda('lEntrada', v=>{ SIM.lEnt=v; });
+ligaMoeda('lAnVal',   v=>{ SIM.lAnVal=v; });
+ligaMoeda('lParcela', v=>{ SIM.lPa=v; });
+$('lPrazo').addEventListener('input',e=>{
+  const v=soNum(e.target.value);
+  SIM.lPz=Math.max(1,Math.min(PRAZO_MAX_LIVRE,v||1));
+  e.target.value=SIM.lPz;
+  espelharLeve('lPrazo'); calcular();
+});
+$('rgEntrada').addEventListener('input',e=>{
+  SIM.entrada=Math.round(SIM.preco*(+e.target.value)/100/1000)*1000;
+  $('cEntrada').value=fI.format(SIM.entrada);
+  $('ajEntrada').textContent=(+e.target.value)+'% do valor';
+  calcular();
+});
+$('cJuros').addEventListener('input',e=>{
+  SIM.juros=Math.max(0,Math.min(10,soDec(e.target.value)))/100;
+  notaJuros();
+  if(livre) recalcLivre();
+  calcular();
+});
+$('cAjusta').querySelectorAll('button').forEach(b=>{
+  b.onclick=()=>{ SIM.ajusta=b.dataset.a; recalcLivre(); espelhar(); calcular(); };
+});
+$('btLivre').onclick=()=>{
+  livre=!livre;
+  if(livre) semearLivre();
+  espelhar(); calcular();
+};
+$('segModo').querySelectorAll('button').forEach(b=>{
+  b.onclick=()=>{ modo=b.dataset.m; livre=false; espelhar(); calcular(); };
+});
+
+/* ============================== calculo ============================== */
+let ultimoResumo='';
+function calcular(){
+  if(!SIM.preco){ $('simSaida').innerHTML='<div class="s-vazio">Informe o valor do lote.</div>'; ultimoResumo=''; }
+  else if(livre) saidaLivre();
+  else if(modo==='montar') saidaMontar();
+  else saidaParcela();
+  ligarOficial();
+  /* nao se copia resumo de proposta que nao fecha */
+  const b=$('btCopiar');
+  b.disabled=!ultimoResumo;
+  b.style.opacity=ultimoResumo?'':'.45';
+  b.style.cursor=ultimoResumo?'':'default';
+}
+function linha(a,b,sub){
+  return '<div class="s-li"><span class="s-a">'+a+'</span><span class="s-b">'+b+
+    (sub?'<small>'+sub+'</small>':'')+'</span></div>';
+}
+function cc(r,v,s){
+  return '<div class="s-cc"><div class="s-r">'+r+'</div><div class="s-v">'+v+
+    (s?'<small>'+s+'</small>':'')+'</div></div>';
+}
+
+/* ---- dado de OPERACAO: so a tela interna mostra isto ----
+   desconto efetivo sobre a tabela e, quando o lote nao esta disponivel,
+   o comprador. A vitrine publica nao carrega nenhum dos dois. */
+function blocoOperacao(total){
+  const p=[];
+  const base=SIM.precoTabela||0;
+  if(base&&total>0){
+    const efet=(base-total)/base;
+    /* com juros o total passa da tabela: ai nao e desconto, e acrescimo */
+    p.push('Total pago <b>'+moeda(total)+'</b> contra a tabela de <b>'+moeda(base)+'</b>: '+
+      (efet>=0 ? 'desconto efetivo de <b class="s-abaixo">'+pc1(efet*100)+'</b>'
+               : 'acréscimo de <b class="s-abaixo">'+pc1(-efet*100)+'</b> (juros do parcelamento)'));
+    if(efet>0.10) p.push('desconto acima de 10% precisa de aprovação da diretoria comercial');
+  }
+  if(loteSim&&loteSim.sit!==0)
+    p.push(NOME[loteSim.sit]+' para <b>'+(loteSim.cli?esc(loteSim.cli):'comprador não informado')+'</b>');
+  return p.length?'<div class="s-op">'+p.join(' · ')+'.</div>':'';
+}
+
+/* ---- a TABELA OFICIAL do empreendimento, aplicada a este lote ----
+   ficava numa secao propria do popup antigo; agora vive no pe da saida,
+   com as tres linhas clicaveis: clicar leva o plano para os controles. */
+function blocoOficial(){
+  const i=SIM.juros, preco=SIM.precoTabela||SIM.preco;
+  if(!preco) return '';
+  const linhas=PLANOS.map((p,k)=>{
+    const c=condicoes(preco,p,i);
+    const ativa=!livre&&modo==='montar'&&SIM.prazo===p.prazo;
+    return '<div class="s-li s-clique'+(ativa?' s-on':'')+'" data-pl="'+k+'" '+
+      'title="levar o plano '+p.nome+' para os controles">'+
+      '<span class="s-a">'+p.nome+'<small>'+
+        (p.desc?Math.round(p.desc*100)+'% de desconto':'sem desconto')+' · entrada '+
+        Math.round(p.ent*100)+'% · '+p.anQtd+' × '+moeda(p.anVal)+'</small></span>'+
+      '<span class="s-b">'+p.prazo+' × '+moeda(c.parcela)+
+        '<small>entrada '+moeda(c.ent)+'</small></span></div>';
+  }).join('');
+  const melhor=PLANOS.reduce((a,b)=>b.desc>a.desc?b:a);
+  return '<div class="s-linhas">'+
+    '<div class="s-tit">Tabela oficial do empreendimento, aplicada a este lote</div>'+linhas+
+    '<div class="s-li"><span class="s-a">À vista<small>melhor desconto de tabela: '+
+      Math.round(melhor.desc*100)+'% (plano '+melhor.nome+')</small></span>'+
+      '<span class="s-b">'+moeda(preco*(1-melhor.desc))+'</span></div>'+
+  '</div>';
+}
+/* clicar numa linha da tabela oficial leva o plano para os controles */
+function ligarOficial(){
+  $('simSaida').querySelectorAll('.s-li[data-pl]').forEach(el=>{
+    el.onclick=()=>{
+      const p=PLANOS[+el.dataset.pl];
+      SIM.prazo=p.prazo; SIM.anQtd=p.anQtd; SIM.anVal=p.anVal;
+      SIM.entrada=Math.round(SIM.preco*(1-p.desc)*p.ent);
+      modo='montar'; livre=false;
+      espelhar(); calcular(); $('simCtrl').scrollTop=0;
+    };
+  });
+}
+
+/* ----------------------- 2) eu escolho as condicoes ---------------------- */
+function saidaMontar(){
+  const pl=planoDe(SIM.prazo)||POLITICA.prazos[POLITICA.prazos.length-1];
+  const pd=SIM.preco*(1-pl.desc);
+  const anuais=SIM.anQtd*SIM.anVal;
+  const parcela=calcParcela(pd,SIM.entrada,SIM.anQtd,SIM.anVal,SIM.prazo,SIM.juros);
+  const total=SIM.entrada+anuais+parcela*SIM.prazo;
+  const entMin=pd*pl.entMin;
+
+  let alerta='';
+  if(SIM.entrada<entMin-0.5){
+    const p2=calcParcela(pd,entMin,SIM.anQtd,SIM.anVal,SIM.prazo,SIM.juros);
+    alerta='<div class="s-alerta">A entrada de referência do plano <b>'+pl.nome+'</b> ('+SIM.prazo+
+      ' meses) é <b>'+moeda(entMin)+'</b> ('+Math.round(pl.entMin*100)+
+      '% do valor). Com ela a parcela fica em <b>'+moeda(p2)+'</b>.</div>';
+  }else if(parcela===0){
+    alerta='<div class="s-alerta">Com essa entrada e essas parcelas anuais o lote já estaria quitado antes do fim do prazo.</div>';
+  }
+
+  $('simSaida').innerHTML=blocoOficial()+
+    '<div class="s-destaque">'+
+      '<div class="s-r">Parcela mensal</div>'+
+      '<div class="s-v">'+(parcela?moedaPa(parcela):'—')+'</div>'+
+      '<div class="s-sub">'+SIM.prazo+' parcelas · plano <b>'+pl.nome+'</b>'+
+        (pl.desc?' · <b>'+Math.round(pl.desc*100)+'% de desconto</b> no valor do lote':' · valor de tabela')+
+      '</div>'+
+    '</div>'+
+    alerta+
+    '<div class="s-linhas">'+
+      linha('Valor do lote',moeda(SIM.preco),pl.desc?'tabela':'')+
+      (pl.desc?linha('Desconto do plano','− '+moeda(SIM.preco-pd),Math.round(pl.desc*100)+'%'):'')+
+      linha('Valor negociado',moeda(pd))+
+      linha('Entrada',moeda(SIM.entrada),Math.round(SIM.entrada/pd*100)+'% do valor negociado')+
+      (anuais?linha('Parcelas anuais',moeda(anuais),SIM.anQtd+' × '+moeda(SIM.anVal))
+             :linha('Parcelas anuais','—','sem reforço anual'))+
+      linha('Saldo em '+SIM.prazo+' parcelas',moeda(parcela*SIM.prazo))+
+      '<div class="s-li s-total"><span class="s-a">Total pago</span><span class="s-b">'+moeda(total)+
+        (SIM.juros>0?'<small>com juros de '+fA.format(SIM.juros*100)+'% a.m.</small>':'<small>sem juros</small>')+
+      '</span></div>'+
+    '</div>'+
+    blocoOperacao(total)+
+    '';
+
+  ultimoResumo=resumoTexto({prazo:SIM.prazo,desc:pl.desc,nome:pl.nome,ent:SIM.entrada,anQtd:SIM.anQtd,
+                            anVal:SIM.anVal,parcela,pd,total});
+}
+
+/* -------------------- 1) da parcela para o plano (o otimizador) ------------- */
+function propor(preco,alvo,entMax,anMax,i){
+  const out=[];
+  let anuaisPossiveis=POLITICA.anuaisValores.slice();
+  if(anMax){
+    anuaisPossiveis=anuaisPossiveis.filter(v=>v<=anMax);
+    if(anuaisPossiveis.indexOf(anMax)<0) anuaisPossiveis.push(anMax);
+  }
+  for(const pr of POLITICA.prazos){
+    const pd=preco*(1-pr.desc);
+    const maxN=Math.floor(pr.meses/12);
+    const aT=fatorAnuidade(pr.meses,i);
+    for(const av of anuaisPossiveis){
+      const ns=av===0?[0]:Array.from({length:maxN},(_,k)=>k+1);
+      for(const n of ns){
+        const pvB=av*fatorBaloes(n,i);
+        /* a entrada que faz a parcela bater exatamente no alvo */
+        let E=pd-alvo*aT-pvB;
+        E=Math.ceil(E/1000)*1000;                    /* arredonda pra cima: parcela <= alvo */
+        if(E<0) E=0;
+        if(E<pd*pr.entMin-1) continue;               /* respeita a entrada de referencia */
+        if(E>pd*POLITICA.entradaTeto) continue;      /* entrada fora da realidade */
+        if(entMax&&E>entMax) continue;
+        const M=calcParcela(pd,E,n,av,pr.meses,i);
+        if(M<=0) continue;
+        if(M>alvo*1.005) continue;                   /* nao pode passar do que cabe */
+        if(M<alvo*0.82) continue;                    /* sobra demais: nao e o plano dele */
+        out.push({prazo:pr.meses,desc:pr.desc,nome:pr.nome,pd,ent:E,anQtd:n,anVal:av,parcela:M,
+                  total:E+n*av+M*pr.meses});
+      }
+    }
+  }
+  if(!out.length) return [];
+  /* mais vendavel = menos dinheiro na mesa agora; empate desfeito pelo desconto */
+  out.sort((a,b)=>
+    (Math.round(a.ent/5000)-Math.round(b.ent/5000))||
+    (a.desc-b.desc)||
+    (a.total-b.total)||
+    (a.anQtd*a.anVal-b.anQtd*b.anVal)
+  );
+  const vistos=new Set(), top=[];
+  for(const o of out){
+    if(vistos.has(o.prazo)) continue;
+    vistos.add(o.prazo); top.push(o);
+    if(top.length===3) break;
+  }
+  return top;
+}
+
+/* nada fechou no valor pedido? entao mostre a composicao mais proxima.
+   A parcela de uma configuracao e monotonica na entrada, entao basta olhar as
+   duas pontas: entrada de referencia (parcela mais alta) e teto (mais baixa). */
+function proximo(preco,entMax,anMax,i,alvo){
+  let anuaisPossiveis=POLITICA.anuaisValores.slice();
+  if(anMax){
+    anuaisPossiveis=anuaisPossiveis.filter(v=>v<=anMax);
+    if(anuaisPossiveis.indexOf(anMax)<0) anuaisPossiveis.push(anMax);
+  }
+  let best=null;
+  for(const pr of POLITICA.prazos){
+    const pd=preco*(1-pr.desc), maxN=Math.floor(pr.meses/12);
+    for(const av of anuaisPossiveis){
+      const ns=av===0?[0]:Array.from({length:maxN},(_,k)=>k+1);
+      for(const n of ns){
+        const eMin=Math.round(pd*pr.entMin/1000)*1000;
+        let eMax=Math.round(pd*POLITICA.entradaTeto/1000)*1000;
+        if(entMax) eMax=Math.min(eMax,entMax);
+        if(eMax<eMin) continue;
+        for(const E of (eMin===eMax?[eMin]:[eMin,eMax])){
+          const M=calcParcela(pd,E,n,av,pr.meses,i);
+          if(M<=0) continue;
+          /* estourar o que cabe e pior que sobrar: penaliza */
+          const d=Math.abs(M-alvo)+(M>alvo?alvo*0.03:0);
+          if(!best||d<best.d)
+            best={d,prazo:pr.meses,desc:pr.desc,nome:pr.nome,pd,ent:E,anQtd:n,anVal:av,
+                  parcela:M,total:E+n*av+M*pr.meses};
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function saidaParcela(){
+  const alvo=SIM.alvo, i=SIM.juros;
+  if(!alvo){ $('simSaida').innerHTML='<div class="s-vazio">Informe quanto o cliente paga por mês.</div>'; ultimoResumo=''; return; }
+  const props=propor(SIM.preco,alvo,SIM.entMax,SIM.anMax,i);
+
+  if(!props.length){
+    const p=proximo(SIM.preco,SIM.entMax,SIM.anMax,i,alvo);
+    if(!p){
+      $('simSaida').innerHTML=blocoOficial()+
+        '<div class="s-destaque"><div class="s-r">Sem composição possível</div>'+
+        '<div class="s-v" style="font-size:24px">Reveja os limites</div>'+
+        '<div class="s-sub">a entrada informada fica abaixo da entrada de referência de todos os planos</div></div>'+
+        '<div class="s-linhas">'+linha('Valor do lote',moeda(SIM.preco))+'</div>'+
+        '';
+      ultimoResumo='';
+      return;
+    }
+    const acima=p.parcela>alvo;
+    const dif=Math.abs(p.parcela-alvo);
+    $('simSaida').innerHTML=blocoOficial()+
+      '<div class="s-intro">'+
+        'Nenhuma composição fecha exatamente em <b>'+moeda(alvo)+'</b> por mês'+
+        (SIM.entMax?' com entrada de até <b>'+moeda(SIM.entMax)+'</b>':'')+
+        (SIM.anMax ?(SIM.entMax?' e':' com')+' anual de até <b>'+moeda(SIM.anMax)+'</b>':'')+
+        '. Esta é a mais próxima:'+
+      '</div>'+
+      '<div class="s-props"><div class="s-pp s-top">'+
+        '<div class="s-cab"><span class="s-badge">Mais próxima</span>'+
+          '<div class="s-pv"><div class="s-r">Parcela mensal</div><div class="s-v">'+moedaPa(p.parcela)+'</div></div></div>'+
+        '<div class="s-comp">'+
+          cc('Entrada',moeda(p.ent),Math.round(p.ent/p.pd*100)+'% do valor')+
+          cc('Anuais',p.anQtd?p.anQtd+' × '+moeda(p.anVal):'—',
+             p.anQtd?'total '+moeda(p.anQtd*p.anVal):'sem reforço')+
+          cc('Prazo',p.prazo+' meses',p.nome+(p.desc?' · '+Math.round(p.desc*100)+'% desc.':' · tabela'))+
+          cc('Total pago',moeda(p.total),SIM.juros>0?'com juros':'sem juros')+
+        '</div>'+
+        '<div class="s-porque">'+
+          '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3.2 3.2L13 4.8"/></svg>'+
+          '<span>'+(acima
+            ? 'Fica <b>'+moeda(dif)+'</b> acima do que o cliente informou. Para chegar em '+moeda(alvo)+
+              ' por mês seria preciso '+
+              (SIM.entMax?'elevar a entrada acima de '+moeda(SIM.entMax):'aumentar a entrada')+
+              (SIM.anMax?' ou o reforço anual acima de '+moeda(SIM.anMax):' ou os reforços anuais')+'.'
+            : 'Fica <b>'+moeda(dif)+'</b> abaixo do que o cliente informou — cabe com folga no mês dele.')+
+          '</span>'+
+        '</div>'+
+        '<button class="s-usar" data-k="0">Levar para os controles e ajustar</button>'+
+      '</div></div>'+
+      blocoOperacao(p.total)+
+      '';
+    $('simSaida').querySelector('.s-usar').onclick=()=>{
+      SIM.prazo=p.prazo; SIM.entrada=Math.round(p.ent); SIM.anQtd=p.anQtd; SIM.anVal=p.anVal||20000;
+      modo='montar'; livre=false; espelhar(); calcular(); $('simCtrl').scrollTop=0;
+    };
+    ultimoResumo=resumoTexto({prazo:p.prazo,desc:p.desc,nome:p.nome,ent:p.ent,anQtd:p.anQtd,
+                              anVal:p.anVal,parcela:p.parcela,pd:p.pd,total:p.total});
+    return;
+  }
+
+  const rot=['Mais recomendada','Alternativa','Outro caminho'];
+  $('simSaida').innerHTML=blocoOficial()+
+    '<div class="s-intro">'+
+      'Com <b>'+moeda(alvo)+'</b> por mês'+
+      (SIM.entMax?', até <b>'+moeda(SIM.entMax)+'</b> de entrada':'')+
+      (SIM.anMax ?' e anual de até <b>'+moeda(SIM.anMax)+'</b>':'')+
+      ', estas são as composições que fecham — na ordem que costuma fechar negócio:'+
+    '</div>'+
+    '<div class="s-props">'+props.map((o,k)=>
+      '<div class="s-pp'+(k===0?' s-top':'')+'">'+
+        '<div class="s-cab"><span class="s-badge">'+(rot[k]||'Alternativa')+'</span>'+
+          '<div class="s-pv"><div class="s-r">Parcela mensal</div><div class="s-v">'+moedaPa(o.parcela)+'</div></div></div>'+
+        '<div class="s-comp">'+
+          cc('Entrada',moeda(o.ent),Math.round(o.ent/o.pd*100)+'% do valor')+
+          cc('Anuais',o.anQtd?o.anQtd+' × '+moeda(o.anVal):'—',
+             o.anQtd?'total '+moeda(o.anQtd*o.anVal):'sem reforço')+
+          cc('Prazo',o.prazo+' meses',o.nome+(o.desc?' · '+Math.round(o.desc*100)+'% desc.':' · tabela'))+
+          cc('Total pago',moeda(o.total),SIM.juros>0?'com juros':'sem juros')+
+        '</div>'+
+        '<div class="s-porque">'+
+          '<svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3.2 3.2L13 4.8"/></svg>'+
+          '<span>'+porque(o,props,k)+'</span>'+
+        '</div>'+
+        '<button class="s-usar" data-k="'+k+'">Levar para os controles e ajustar</button>'+
+      '</div>').join('')+
+    '</div>'+
+    blocoOperacao(props[0].total)+
+    '';
+
+  $('simSaida').querySelectorAll('.s-usar').forEach(b=>{
+    b.onclick=()=>{
+      const o=props[+b.dataset.k];
+      SIM.prazo=o.prazo; SIM.entrada=o.ent; SIM.anQtd=o.anQtd; SIM.anVal=o.anVal||20000;
+      modo='montar'; livre=false;
+      espelhar(); calcular();
+      $('simCtrl').scrollTop=0;
+    };
+  });
+
+  const o=props[0];
+  ultimoResumo=resumoTexto({prazo:o.prazo,desc:o.desc,nome:o.nome,ent:o.ent,anQtd:o.anQtd,anVal:o.anVal,
+                            parcela:o.parcela,pd:o.pd,total:o.total});
+}
+function porque(o,todos,k){
+  const menorEnt=Math.min.apply(null,todos.map(x=>x.ent));
+  const p=[];
+  if(k===0){
+    p.push(o.ent===menorEnt
+      ? 'plano <b>'+o.nome+'</b>: é a menor entrada entre as combinações que cabem em '+moeda(SIM.alvo)+' por mês'
+      : 'plano <b>'+o.nome+'</b>: é a combinação mais equilibrada entre entrada e desconto');
+  }else{
+    p.push('plano <b>'+o.nome+'</b>, '+o.prazo+' meses'+
+      (o.desc?', com '+Math.round(o.desc*100)+'% de desconto no valor do lote':', sem desconto'));
+  }
+  if(o.anQtd) p.push(o.anQtd+' '+(o.anQtd===1?'reforço anual':'reforços anuais')+' de '+moeda(o.anVal)+
+    ' seguram a mensalidade em '+moedaPa(o.parcela));
+  else p.push('sem reforço anual: só entrada e parcela fixa');
+  if(k>0&&o.desc) p.push('custa '+moeda(SIM.preco-o.pd)+' de desconto para a casa');
+  const t=p.join('; ');
+  return t.charAt(0).toUpperCase()+t.slice(1)+'.';
+}
+
+/* --------------------------- 3) proposta livre --------------------------- */
+function recalcLivre(){
+  const pd=SIM.preco, i=SIM.juros;
+  SIM.lErro=null;
+  if(SIM.ajusta==='parcela'){
+    SIM.lPa=Math.max(0,calcParcela(pd,SIM.lEnt,SIM.lAnQtd,SIM.lAnVal,SIM.lPz,i));
+  }else if(SIM.ajusta==='entrada'){
+    SIM.lEnt=Math.max(0,calcEntrada(pd,SIM.lPa,SIM.lAnQtd,SIM.lAnVal,SIM.lPz,i));
+  }else{
+    /* o prazo e inteiro: guardamos o que a pessoa PEDIU em SIM.lPa e deixamos o
+       prazo responder. A parcela que de fato fecha sai em paEf(). */
+    const T=calcPrazo(pd,SIM.lEnt,SIM.lAnQtd,SIM.lAnVal,SIM.lPa,i);
+    if(T&&T>0&&T<=PRAZO_MAX_LIVRE) SIM.lPz=T;
+    else SIM.lErro='prazo';
+  }
+}
+/* a parcela que realmente fecha a conta no prazo corrente */
+function paEf(){
+  return SIM.ajusta==='prazo'
+    ? Math.max(0,calcParcela(SIM.preco,SIM.lEnt,SIM.lAnQtd,SIM.lAnVal,SIM.lPz,SIM.juros))
+    : SIM.lPa;
+}
+/* o rotulo do campo da parcela conta a verdade */
+function hintPa(){
+  if(SIM.ajusta==='parcela') return '<span class="s-selo">calculado</span>';
+  if(SIM.ajusta==='prazo'){
+    const e=paEf();
+    if(Math.abs(e-SIM.lPa)>=1) return 'fecha em '+moeda(e);
+  }
+  return 'você define';
+}
+function saidaLivre(){
+  const i=SIM.juros;
+  const anuais=SIM.lAnQtd*SIM.lAnVal;
+  const pa=paEf();
+  const vp=vpDe(SIM.lEnt,SIM.lAnQtd,SIM.lAnVal,SIM.lPz,pa,i);
+  const dif=SIM.preco-vp;                      /* >0 falta, <0 sobra */
+  const fecha=Math.abs(dif)<1&&!SIM.lErro;
+  const total=SIM.lEnt+anuais+pa*SIM.lPz;
+
+  /* em vez de "ajuste algum campo", diga qual e a saida */
+  function comoFechar(d){
+    if(d<0){
+      const T=calcPrazo(SIM.preco,SIM.lEnt,SIM.lAnQtd,SIM.lAnVal,pa,i);
+      if(T&&T>0&&T<=PRAZO_MAX_LIVRE)
+        return 'Com '+moedaPa(pa)+' por mês'+
+               (SIM.lEnt?' e '+moeda(SIM.lEnt)+' de entrada':' e sem entrada')+
+               ', o lote se paga em <b>'+T+' meses</b>.';
+      return 'Reduza o prazo ou a parcela.';
+    }
+    const need=SIM.lPz?(SIM.preco-vpDe(0,SIM.lAnQtd,SIM.lAnVal,SIM.lPz,pa,i)):0;
+    if(need>0) return 'Com esse prazo e essa parcela, a entrada precisa ser de <b>'+moeda(need)+'</b>.';
+    return 'Aumente a parcela, a entrada ou os reforços anuais.';
+  }
+
+  let bal;
+  if(SIM.lErro==='prazo'){
+    bal='<div class="s-balanco s-erro">'+
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4v5M8 11.4v.1"/><circle cx="8" cy="8" r="6.2"/></svg>'+
+      '<span>Com <b>'+moeda(SIM.lPa)+'</b> por mês a conta não fecha em até '+PRAZO_MAX_LIVRE+
+      ' meses'+(i>0?' (a parcela mal cobre o juro do saldo)':'')+
+      '. Mantendo os '+SIM.lPz+' meses atuais, a parcela precisa ser de <b>'+moedaPa(pa)+'</b>.</span></div>';
+  }else if(fecha){
+    bal='<div class="s-balanco">'+
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8.4l3.2 3.2L13 4.8"/></svg>'+
+      '<span>A conta fecha: entrada + anuais + '+SIM.lPz+' parcelas equivalem a <b>'+
+      moeda(SIM.preco)+'</b>.</span></div>';
+  }else{
+    bal='<div class="s-balanco s-erro">'+
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M8 4v5M8 11.4v.1"/><circle cx="8" cy="8" r="6.2"/></svg>'+
+      '<span>'+(dif>0
+        ? 'Falta <b>'+moeda(dif)+'</b> para fechar no valor do lote.'
+        : 'Sobra <b>'+moeda(-dif)+'</b> em relação ao valor do lote.')+
+      ' '+comoFechar(dif)+
+      '</span></div>';
+  }
+
+  const abaixo=SIM.precoTabela&&SIM.preco<SIM.precoTabela;
+  const comp=SIM.precoTabela
+    ? '<div class="s-comparativo">'+
+        (abaixo
+          ? '<span class="s-abaixo">'+moeda(SIM.precoTabela-SIM.preco)+' abaixo do valor de tabela</span>'+
+            '<span>('+fA.format((1-SIM.preco/SIM.precoTabela)*100)+'% de desconto no preço) · sujeito a aprovação</span>'
+          : '<span>Proposta montada sobre o <b>valor de tabela</b> de '+moeda(SIM.precoTabela)+'.</span>')+
+      '</div>'
+    : '';
+
+  $('simSaida').innerHTML=blocoOficial()+
+    '<div class="s-faixa">'+
+      '<svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14V3.2M4 3.2h7.4l-1.2 2.4 1.2 2.4H4"/></svg>'+
+      '<span><b>Proposta livre</b> — fora das condições fixas dos três planos. O corretor define as '+
+      'condições e a tela recalcula '+({parcela:'a parcela',entrada:'a entrada',prazo:'o prazo'}[SIM.ajusta])+
+      ' para a conta fechar.</span>'+
+    '</div>'+
+    '<div class="s-destaque">'+
+      '<div class="s-r">Parcela mensal</div>'+
+      '<div class="s-v">'+(pa?moedaPa(pa):'—')+'</div>'+
+      '<div class="s-sub">'+SIM.lPz+' parcelas'+
+        (anuais?' · <b>'+SIM.lAnQtd+' × '+moeda(SIM.lAnVal)+'</b> de reforço anual':' · sem reforço anual')+
+      '</div>'+
+    '</div>'+
+    bal+
+    '<div class="s-linhas">'+
+      linha('Valor da proposta',moeda(SIM.preco),SIM.precoTabela&&!abaixo?'valor de tabela':'definido pelo corretor')+
+      linha('Entrada',moeda(SIM.lEnt),SIM.preco?Math.round(SIM.lEnt/SIM.preco*100)+'% do valor':'')+
+      (anuais?linha('Parcelas anuais',moeda(anuais),SIM.lAnQtd+' × '+moeda(SIM.lAnVal))
+             :linha('Parcelas anuais','—','sem reforço anual'))+
+      linha('Saldo em '+SIM.lPz+' parcelas',moeda(pa*SIM.lPz),moedaPa(pa)+' por mês')+
+      '<div class="s-li s-total"><span class="s-a">Total pago</span><span class="s-b">'+moeda(total)+
+        (i>0?'<small>com juros de '+fA.format(i*100)+'% a.m.</small>':'<small>sem juros</small>')+
+      '</span></div>'+
+    '</div>'+
+    comp+
+    blocoOperacao(total)+
+    '';
+
+  ultimoResumo=fecha
+    ? resumoTexto({prazo:SIM.lPz,desc:0,nome:'livre',ent:SIM.lEnt,anQtd:SIM.lAnQtd,anVal:SIM.lAnVal,
+                   parcela:pa,pd:SIM.preco,total,livre:true})
+    : '';
+}
+
+/* ------------------------------ copiar ------------------------------ */
+function resumoTexto(o){
+  const cab=$('plSub').textContent;
+  return 'Garden Resort Residence — simulação'+(o.livre?' (proposta livre)':'')+'\n'+cab+'\n'+
+    (o.livre?'':'Plano: '+o.nome+'\n')+
+    'Valor do lote: '+moeda(SIM.preco)+
+      (o.desc?' (desconto de '+Math.round(o.desc*100)+'%: '+moeda(o.pd)+')':'')+'\n'+
+    'Entrada: '+moeda(o.ent)+'\n'+
+    (o.anQtd?'Parcelas anuais: '+o.anQtd+' × '+moeda(o.anVal)+'\n':'')+
+    'Parcelas mensais: '+o.prazo+' × '+moedaPa(o.parcela)+'\n'+
+    'Total: '+moeda(o.total)+(SIM.juros>0?' (juros de '+fA.format(SIM.juros*100)+'% a.m.)':' (sem juros)')+'\n'+
+    'Conta feita no masterplan, offline. Não é proposta oficial.';
+}
+$('btCopiar').onclick=()=>{
+  if(!ultimoResumo) return;
+  const ok=()=>{ $('btCopiar').textContent='Copiado'; setTimeout(()=>$('btCopiar').textContent='Copiar resumo',1600); };
+  function fallback(){
+    const t=document.createElement('textarea'); t.value=ultimoResumo; document.body.appendChild(t);
+    t.select(); try{ document.execCommand('copy'); ok(); }catch(_){ }
+    t.remove();
+  }
+  if(navigator.clipboard) navigator.clipboard.writeText(ultimoResumo).then(ok,fallback);
+  else fallback();
+};
+$('btProposta').onclick=()=>alert('Gancho para a CACÁ redigir a proposta em texto a partir da composição que está na tela.\n\nA conta continua sendo feita aqui: aritmética exata, offline e instantânea.');
+
+/* ==================== DESEMPENHO ==================== */
+const amostras=new Float32Array(180); let ai=0, cheio=false, ultimo=performance.now();
+function quadro(agora){
+  const dt=agora-ultimo; ultimo=agora;
+  if(dt>0&&dt<400){ amostras[ai++%180]=dt; if(ai>=180) cheio=true; }
+  if(document.body.classList.contains('fps')) pintarPerf();
+  requestAnimationFrame(quadro);
+}
+requestAnimationFrame(quadro);
+function stats(){
+  const n=cheio?180:ai; if(!n) return null;
+  const v=Array.prototype.slice.call(amostras,0,n).sort((a,b)=>a-b);
+  const q=p=>v[Math.min(v.length-1,Math.floor(v.length*p))];
+  const media=v.reduce((a,b)=>a+b,0)/v.length;
+  return {n:v.length,fps:1000/media,p50:q(.5),p95:q(.95),pior:v[v.length-1]};
+}
+window.__perf=stats;
+function pintarPerf(){
+  const e=stats(); if(!e) return;
+  $('perf').innerHTML=
+    'lotes          <b>'+lotes.length+'</b>\n'+
+    'nós SVG        <b>'+document.querySelectorAll('.svg *').length+'</b>\n'+
+    'pintados       <b>'+visiveis.size+'</b>\n'+
+    'fps médio      <b>'+e.fps.toFixed(1)+'</b>\n'+
+    'frame p50      '+e.p50.toFixed(2)+' ms\n'+
+    'frame p95      '+e.p95.toFixed(2)+' ms\n'+
+    'pior frame     '+e.pior.toFixed(2)+' ms';
+  $('rFps').textContent=e.fps.toFixed(0)+' fps · p95 '+e.p95.toFixed(1)+' ms';
+}
+
+/* ==================== TECLADO ==================== */
+addEventListener('keydown',e=>{
+  const dig = /^(INPUT|SELECT|TEXTAREA)$/.test(document.activeElement.tagName);
+  if(e.key==='/' && !dig){ e.preventDefault(); elBusca.focus(); return; }
+  if(e.key==='Escape'){
+    const p=document.querySelector('.pop.on');
+    if(p){ fecha(p.id); return; }
+    if(dig){ document.activeElement.blur(); return; }
+    if(fixado){ selecionar(null); return; }
+    if(escopo!==null){ $('escVoltar').click(); return; }
+    limparTudo(); return;
+  }
+  if(dig) return;
+  const k=e.key.toLowerCase();
+  if(k==='f'){ e.preventDefault(); $('btFiltro').click(); }
+  if(k==='t'){ e.preventDefault(); abre('popTabela'); }
+  if(k==='p'){ e.preventDefault(); abre('popPlano'); }
+  if(k==='d'){ document.body.classList.toggle('fps'); }
+  if(k==='0'){ z=1;tx=0;ty=0;aplicaZoom(); }
+  if(k==='+'||k==='='){ setZoom(z*1.25); }
+  if(k==='-'){ setZoom(z/1.25); }
+});
+
+/* ==================== PARTIDA ==================== */
+syncP(); syncM(); syncA();
+atualizar();
+aplicaZoom();
+
+/* ==================== ENQUADRAMENTO DA PLANTA ====================
+   A planta e a camada de cor usam preserveAspectRatio="none" / object-fit:fill,
+   ou seja: as duas ESTICAM ate preencher a caixa do palco. Isso mantem foto e
+   poligonos sempre colados um no outro, mas so fica correto se a CAIXA tiver a
+   proporcao da planta. Deixar a caixa no CSS (aspect-ratio + height:100% +
+   max-width:100%) nao resolve: quando o max-width entra, a altura continua
+   valendo 100% e o desenho e achatado — 8% a 1600x950, 15% a 1366x768, 61% a
+   1024x768 e 93% num tablet em pe. Aqui a caixa e medida na mao, como no
+   masterplan publico, e a planta volta a ter a proporcao de verdade em
+   qualquer tela. */
+const RAZAO_PLANTA = 2396/2160;
+function enquadraPalco(){
+  const cs = getComputedStyle(elCena);
+  const px = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);
+  const py = parseFloat(cs.paddingTop)  + parseFloat(cs.paddingBottom);
+  const cw = Math.max(80, elCena.clientWidth  - px);
+  const ch = Math.max(72, elCena.clientHeight - py);
+  let w, h;
+  if(cw/ch > RAZAO_PLANTA){ h = ch; w = ch*RAZAO_PLANTA; }
+  else                    { w = cw; h = cw/RAZAO_PLANTA; }
+  elPalco.style.width  = Math.round(w)+'px';
+  elPalco.style.height = Math.round(h)+'px';
+  ctm = null;
+  aplicaZoom();
+}
+enquadraPalco();
+new ResizeObserver(enquadraPalco).observe(elCena);
+
+/* fechar a gaveta da unidade (o botao so aparece quando ela e gaveta) */
+(function(){
+  const b=$('uFechar'); if(!b) return;
+  b.addEventListener('click',()=>selecionar(null));
+})();
+
+/* Em tela estreita o painel macro e gaveta e comeca FECHADO, senao ele cobre
+   o mapa logo de cara. O botao "Empreendimento" do topo abre e fecha. */
+(function(){
+  const bt=$('btMacro'), bRec=$('btRec');
+  const estreito = () => matchMedia('(max-width:960px)').matches;
+  function sincroniza(){
+    if(estreito()) document.body.classList.add('macroOff');
+    else           document.body.classList.remove('macroOff');
+    if(bRec){ const off=document.body.classList.contains('macroOff');
+      bRec.textContent = off ? '›' : '‹'; }
+  }
+  sincroniza();
+  matchMedia('(max-width:960px)').addEventListener('change', sincroniza);
+  if(bt) bt.addEventListener('click',()=>{
+    const off=document.body.classList.toggle('macroOff');
+    if(bRec) bRec.textContent = off ? '›' : '‹';
+  });
+})();
+new ResizeObserver(()=>{ctm=null;}).observe(elPalco);
+
+// Recolher/expandir o painel macro. O estado fica no proprio botao, sem depender de nada.
+(function(){
+  const b=document.getElementById('btRec'); if(!b) return;
+  b.addEventListener('click',()=>{
+    const off=document.body.classList.toggle('macroOff');
+    b.textContent = off ? '›' : '‹';
+    b.title = off ? 'Mostrar o painel do empreendimento' : 'Recolher o painel (o mapa ocupa a tela)';
+    window.dispatchEvent(new Event('resize'));
+  });
+})();
+
+// EXPORTAR EXCEL — gera um .xls de verdade (tabela HTML com o namespace do Excel), sem biblioteca
+// e sem rede. Exporta EXATAMENTE o que esta na tela: mesma ordenacao e mesmo filtro, senao o
+// arquivo diverge do que o corretor acabou de ver e ninguem confia mais na tela.
+(function(){
+  const bt=document.getElementById('btExcel'); if(!bt) return;
+  const esc=(t)=>String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  bt.addEventListener('click',()=>{
+    const tab=document.querySelector('#tblwrap table');
+    if(!tab){ alert('A tabela ainda nao carregou.'); return; }
+    const cab=[...tab.querySelectorAll('thead th')].map(th=>esc(th.textContent.replace(/[▲▼]/g,'').trim()));
+    const linhas=[...tab.querySelectorAll('tbody tr')].map(tr=>
+      [...tr.children].map(td=>{
+        // numero vai como numero, para o Excel somar sem o usuario ter que converter
+        const bruto=td.dataset.v;
+        if(bruto!==undefined && bruto!=='' && !isNaN(bruto)) return '<td>'+bruto+'</td>';
+        return '<td style="mso-number-format:\@">'+esc(td.textContent.trim())+'</td>';
+      }).join('')
+    );
+    const escopo=(document.getElementById('tbSub')||{}).textContent||'';
+    const html='<html xmlns:x="urn:schemas-microsoft-com:office:excel"><head><meta charset="utf-8">'+
+      '<!--[if gte mso 9]><xml><x:ExcelWorkbook><x:ExcelWorksheets><x:ExcelWorksheet>'+
+      '<x:Name>Lotes</x:Name><x:WorksheetOptions><x:FreezePanes/><x:SplitHorizontal>1</x:SplitHorizontal>'+
+      '<x:TopRowBottomPane>1</x:TopRowBottomPane></x:WorksheetOptions></x:ExcelWorksheet>'+
+      '</x:ExcelWorksheets></x:ExcelWorkbook></xml><![endif]--></head><body>'+
+      '<table border="1"><thead><tr>'+cab.map(c=>'<th>'+c+'</th>').join('')+'</tr></thead>'+
+      '<tbody>'+linhas.map(l=>'<tr>'+l+'</tr>').join('')+'</tbody></table>'+
+      '<p>Garden · '+esc(escopo)+' · exportado do Masterplan do Apolo</p></body></html>';
+    const blob=new Blob(['﻿'+html],{type:'application/vnd.ms-excel;charset=utf-8'});
+    const a=document.createElement('a');
+    a.href=URL.createObjectURL(blob);
+    a.download='Garden - lotes.xls';
+    document.body.appendChild(a); a.click();
+    setTimeout(()=>{ URL.revokeObjectURL(a.href); a.remove(); },400);
+  });
+})();
+</script>
+</body>
+</html>

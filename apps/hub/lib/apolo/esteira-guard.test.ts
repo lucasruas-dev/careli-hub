@@ -18,6 +18,10 @@ function fakeClient(opts: {
   enterpriseId: string;
   etapaAtual: string;
   prevendaHabilitada: boolean;
+  /** Empreendimento sem nenhuma linha em `apolo_enterprise_settings`. */
+  semSettings?: boolean;
+  /** Sem valor explícito, acompanha a flag: ligada = R$ 1.000, desligada = nulo. */
+  valorPix?: null | number;
 }) {
   const upserts: Array<{ tabela: string; valores: Record<string, unknown> }> = [];
 
@@ -31,7 +35,18 @@ function fakeClient(opts: {
           return { enterprise_id: opts.enterpriseId, etapa: opts.etapaAtual };
         }
         if (tabela === "apolo_enterprise_settings") {
-          return { prevenda_habilitada: opts.prevendaHabilitada };
+          if (opts.semSettings) return null;
+          // ⚠️ O `valor_pix` faz parte da resposta DE PROPÓSITO: desde 10/08 a pré-venda só conta
+          // como ligada com a flag E o valor definido ("pré-venda só existe se estiver
+          // habilitado"). Um empreendimento com a flag em true e o valor nulo é o default da
+          // coluna que ninguém tocou, não configuração — e é o que fazia a cobrança nascer ligada.
+          return {
+            prevenda_habilitada: opts.prevendaHabilitada,
+            // `in` e não `??`: `valorPix: null` é um caso do teste (flag ligada, valor em branco),
+            // e o `??` o confundiria com "não informado".
+            valor_pix:
+              "valorPix" in opts ? opts.valorPix : opts.prevendaHabilitada ? 1000 : null,
+          };
         }
         return null;
       };
@@ -174,6 +189,63 @@ describe("atualizarEtapa — guard de crédito reprovado (PROBLEMA 2) e toggle d
     const r = await atualizarEtapa(client, "ent-1", "prevenda", {
       automatico: true,
       enterpriseId: "35",
+      nuncaRebaixar: true,
+    });
+
+    expect(r.etapa).toBe("credenciado");
+    expect(upserts[0]?.valores.etapa).toBe("credenciado");
+  });
+
+  // ⬇️ REGRA DO LUCAS, 10/08: "pré-venda só existe se estiver habilitado". Os três casos abaixo são
+  // os que faziam a cobrança NASCER LIGADA — e é por eles que VOL, VOC e Garden amanheceram com o
+  // PIX de R$ 1.000 ativo sem ninguém ter ligado.
+
+  it("flag LIGADA mas SEM valor de PIX não é pré-venda: vai para credenciado", async () => {
+    const { client, upserts } = fakeClient({
+      enterpriseId: "39",
+      etapaAtual: "credito",
+      prevendaHabilitada: true,
+      valorPix: null,
+    });
+
+    const r = await atualizarEtapa(client, "ent-1", "prevenda", {
+      automatico: true,
+      enterpriseId: "39",
+      nuncaRebaixar: true,
+    });
+
+    expect(r.etapa).toBe("credenciado");
+    expect(upserts[0]?.valores.etapa).toBe("credenciado");
+  });
+
+  it("valor de PIX ZERO também não é pré-venda", async () => {
+    const { client } = fakeClient({
+      enterpriseId: "39",
+      etapaAtual: "credito",
+      prevendaHabilitada: true,
+      valorPix: 0,
+    });
+
+    const r = await atualizarEtapa(client, "ent-1", "prevenda", {
+      automatico: true,
+      enterpriseId: "39",
+      nuncaRebaixar: true,
+    });
+
+    expect(r.etapa).toBe("credenciado");
+  });
+
+  it("empreendimento SEM linha de settings nasce com a pré-venda desligada (fail-closed)", async () => {
+    const { client, upserts } = fakeClient({
+      enterpriseId: "41",
+      etapaAtual: "credito",
+      prevendaHabilitada: true,
+      semSettings: true,
+    });
+
+    const r = await atualizarEtapa(client, "ent-1", "prevenda", {
+      automatico: true,
+      enterpriseId: "41",
       nuncaRebaixar: true,
     });
 

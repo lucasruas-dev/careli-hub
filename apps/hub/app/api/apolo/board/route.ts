@@ -5,6 +5,7 @@ import { alertaC2xDaCad } from "@/lib/apolo/c2x-alerta-board";
 import { maisRecentePorEntidade } from "@/lib/apolo/esteira-cad";
 import { imobiliariaEntityIdEmLote } from "@/lib/apolo/imobiliaria-do-cliente";
 import { normalizarNome } from "@/lib/apolo/imobiliaria-match";
+import { prevendaLigadaNaSetting, type SettingPrevenda } from "@/lib/apolo/limite-credito";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // Fila da ESTEIRA de credenciamento: tudo que nasceu pelos canais externos e aguarda o time.
@@ -114,6 +115,38 @@ export async function GET(request: Request) {
   const esteiraPorEntidade = maisRecentePorEntidade((esteiraRows ?? []) as EsteiraRow[]);
   const idsNaEsteira = [...esteiraPorEntidade.keys()];
 
+  // ⚠️ EM LOTES DE 100, NUNCA `.in()` COM A FILA INTEIRA.
+  //
+  // Esta consulta é feita por URL (PostgREST), e a lista de ids vai NELA. Com as 653 CADs de hoje a
+  // URL passava de 25 KB e voltava 400 Bad Request — medido em produção em 10/08. Como o código só
+  // desiste quando as DUAS pernas falham, a falha era silenciosa: o Board servia apenas as 115
+  // entidades da perna (a) e 540 CADs (433 credenciadas e 107 em revisão de crédito) simplesmente
+  // não tinham card. Some daí o "sumiu do Board" e a impressão de que a ficha voltou para trás.
+  //
+  // O lote de 100 é o teto que a memória do projeto já registra para o `.in()` do PostgREST. Os
+  // lotes vão em paralelo; um lote que falhe derruba só o próprio pedaço, e o `erroLotes` avisa.
+  const LOTE_IDS = 100;
+  const lotes: string[][] = [];
+  for (let i = 0; i < idsNaEsteira.length; i += LOTE_IDS) {
+    lotes.push(idsNaEsteira.slice(i, i + LOTE_IDS));
+  }
+
+  const lerEntidadesEmLotes = async () => {
+    const respostas = await Promise.all(
+      lotes.map((lote) =>
+        adminClient
+          .from("apolo_entities")
+          .select(CAMPOS)
+          .in("id", lote)
+          .limit(LOTE_IDS),
+      ),
+    );
+    return {
+      data: respostas.flatMap((r) => r.data ?? []),
+      error: respostas.find((r) => r.error)?.error ?? null,
+    };
+  };
+
   const [daFila, naEsteira] = await Promise.all([
     adminClient
       .from("apolo_entities")
@@ -136,14 +169,7 @@ export async function GET(request: Request) {
       // RECENTES da fila de validação — a partir da 201ª a CAD sumia do Board (incidente 22/jul:
       // "Poliana", a 272ª, não aparecia). 2000 = mesmo teto da esteira.
       .limit(2000),
-    idsNaEsteira.length > 0
-      ? adminClient
-          .from("apolo_entities")
-          .select(CAMPOS)
-          .in("id", idsNaEsteira.slice(0, 1000))
-          .order("created_at", { ascending: true })
-          .limit(1000)
-      : Promise.resolve({ data: [], error: null }),
+    lotes.length > 0 ? lerEntidadesEmLotes() : Promise.resolve({ data: [], error: null }),
   ]);
 
   if (daFila.error && naEsteira.error) {
@@ -307,6 +333,20 @@ export async function GET(request: Request) {
     }
   }
 
+  // PRÉ-VENDA POR EMPREENDIMENTO (regra do Lucas, 10/08: "pré-venda só existe se estiver
+  // habilitado"). A tela precisa saber CAD a CAD, porque a etapa Pré-venda não é do processo: é
+  // do empreendimento. Uma leitura só (são poucas linhas) e a MESMA regra do servidor, importada —
+  // não uma segunda cópia que amanhã diverge.
+  const { data: settingsRows } = await adminClient
+    .from("apolo_enterprise_settings")
+    .select("enterprise_id, prevenda_habilitada, valor_pix")
+    .limit(500);
+
+  const prevendaPorEmpreendimento = new Map<string, boolean>();
+  for (const linha of (settingsRows ?? []) as Array<SettingPrevenda & { enterprise_id: string }>) {
+    prevendaPorEmpreendimento.set(String(linha.enterprise_id), prevendaLigadaNaSetting(linha));
+  }
+
   const itens = data.map((row) => {
     const cadastro = row.metadata?.cadastro;
     const esteira = esteiraPorEntidade.get(row.id);
@@ -367,6 +407,16 @@ export async function GET(request: Request) {
       nome: row.legal_name || row.display_name,
       // PIX da pré-venda: alimenta o selo "PAGO" no card e o filtro de pagos.
       pagoEm: esteira?.pago_em ?? null,
+      // A etapa Pré-venda existe para ESTA CAD? Vem do empreendimento dela. Sem CAD não há
+      // empreendimento, e a resposta é não — mesma regra fail-closed do servidor.
+      prevendaHabilitada: esteira?.enterprise_id
+        ? (prevendaPorEmpreendimento.get(String(esteira.enterprise_id)) ?? false)
+        : false,
+      // SEM CAD NA ESTEIRA. O card existe (a entidade nasceu no wizard) mas não há linha em
+      // `apolo_esteira`, então ele não tem etapa nem empreendimento — e é por isso que ele reaparece
+      // em Validação a cada recarga, por mais que a análise de crédito já tenha sido feita. A tela
+      // marca em vez de fingir que está tudo certo; a saída é informar o empreendimento no cadastro.
+      semCad: !esteira,
       // O papel é o `bornRole` da ficha. O fallback NÃO pode ser "PJ = imobiliária": esta lista
       // é a esteira de CADs, e uma CAD de empresa é um CLIENTE PJ, não uma imobiliária. Com a
       // regra antiga, FM SOLUCOES INDUSTRIAIS (credenciada, veio do sync do C2X e por isso não

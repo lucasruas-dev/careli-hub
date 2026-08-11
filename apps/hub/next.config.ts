@@ -2,6 +2,13 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // As telas do masterplan interno vivem FORA de public/ de propósito (public/ é servido como
+  // estático, sem passar por gate nenhum, e essas telas carregam preço e nome de comprador). Como
+  // a rota as lê do disco, o rastreador precisa ser avisado — senão o arquivo não sobe no bundle
+  // da função e a tela some em produção, funcionando só na máquina de quem desenvolveu.
+  outputFileTracingIncludes: {
+    "/api/incorporador/masterplan": ["./masterplans-internos/**"],
+  },
   async headers() {
     return [
       // Plantas do masterplan (JPG de 2 MB + JSON dos poligonos). Sao arquivos gerados uma vez

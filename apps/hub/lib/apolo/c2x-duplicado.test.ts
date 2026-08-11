@@ -16,8 +16,12 @@ import {
 // exatamente o caminho que o lote usa.
 
 const consultaCom = (pares: [string, number][]): ConsultaC2xPorDocumento => ({
+  candidatos: new Map(pares.map(([doc, id]) => [doc, [{ id, nome: "" }]])),
   consultados: new Set(pares.map(([doc]) => doc)),
   ids: new Map(pares),
+  // Sem nome gravado: estes testes são sobre EXISTE/NÃO EXISTE/NÃO PERGUNTEI. Quem cuida de "é a
+  // mesma pessoa?" é o c2x-nome-confere.test.ts.
+  nomes: new Map(),
   ok: true,
 });
 
@@ -26,6 +30,7 @@ describe("situacaoNoC2x", () => {
     const consulta = consultaCom([["12345678901", 4321]]);
     await expect(situacaoNoC2x("12345678901", consulta)).resolves.toEqual({
       c2xUserId: 4321,
+      nomeNoC2x: null,
       situacao: "existe",
     });
   });
@@ -35,6 +40,7 @@ describe("situacaoNoC2x", () => {
     const consulta = consultaCom([["12345678901", 4321]]);
     await expect(situacaoNoC2x("123.456.789-01", consulta)).resolves.toEqual({
       c2xUserId: 4321,
+      nomeNoC2x: null,
       situacao: "existe",
     });
   });
@@ -42,8 +48,10 @@ describe("situacaoNoC2x", () => {
   it("diz NÃO EXISTE só para quem foi realmente perguntado", async () => {
     // Perguntado (está em `consultados`) e sem id: aí sim é ausência de verdade.
     const consultada: ConsultaC2xPorDocumento = {
+      candidatos: new Map(),
       consultados: new Set(["12345678901"]),
       ids: new Map(),
+      nomes: new Map(),
       ok: true,
     };
     await expect(situacaoNoC2x("12345678901", consultada)).resolves.toEqual({

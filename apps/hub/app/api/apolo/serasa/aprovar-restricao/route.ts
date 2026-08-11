@@ -34,9 +34,14 @@ const MIME_PERMITIDO: Record<string, string> = {
 };
 const MIMES_VALIDOS = new Set(Object.values(MIME_PERMITIDO));
 
-// Teto do upload base64. A evidência é um print/PDF pequeno; o teto real é da plataforma (a Vercel
-// corta o body ~4,5 MB, ver [[reference_apolo_upload_413]]) — este teto só evita processar lixo.
-const MAX_FILE_BYTES = 8 * 1024 * 1024;
+// Teto do upload. ⚠️ ELE PRECISA SER MENOR QUE O DA PLATAFORMA, não maior.
+//
+// O arquivo viaja em base64 dentro do JSON, o que INFLA ~33%, e a Vercel corta o body em ~4,5 MB
+// (ver [[reference_apolo_upload_413]]). Um teto de 8 MB aqui era uma promessa que a rota não podia
+// cumprir: a evidência de 5 MB morria com um 413 da plataforma, antes de chegar neste arquivo, e a
+// coordenação via um erro sem explicação. 3 MB de arquivo = ~4 MB de base64, com folga.
+const MAX_FILE_BYTES = 3 * 1024 * 1024;
+const MAX_FILE_MB = 3;
 
 // Resolve o tipo da evidência a partir do mimeType informado e/ou da extensão. Devolve o mime
 // normalizado quando é PDF/PNG/JPEG, senão null (recusa).
@@ -97,7 +102,14 @@ export async function POST(request: Request) {
       : fileBase64;
   const bytesAprox = Math.floor((corpoBase64.length * 3) / 4);
   if (bytesAprox > MAX_FILE_BYTES) {
-    return NextResponse.json({ error: "Evidência acima do limite de 8 MB." }, { status: 413 });
+    return NextResponse.json(
+      {
+        error:
+          `Evidência acima do limite de ${MAX_FILE_MB} MB. Se for um PDF grande, mande só a ` +
+          `página do de-acordo, ou um print da tela.`,
+      },
+      { status: 413 },
+    );
   }
 
   // SÓ FAZ SENTIDO SOBRE UM REPROVADO. Se a ficha não está em "revisao", não há crédito reprovado
@@ -181,8 +193,9 @@ export async function POST(request: Request) {
     );
   }
 
-  // 3) RASTRO da decisão (quem/quando/por quê + evidência). Best-effort: a esteira já destravou.
-  await registrarOverrideCredito({
+  // 3) RASTRO da decisão (quem/quando/por quê + evidência). A esteira já destravou, então uma falha
+  //    aqui não desfaz nada — mas VOLTA para a tela em vez de virar um log que ninguém lê.
+  const rastro = await registrarOverrideCredito({
     adminClient: client,
     aprovadoPor: auth.userId,
     aprovadoPorNome,
@@ -208,6 +221,13 @@ export async function POST(request: Request) {
   }
 
   return NextResponse.json({
-    data: { etapa: transicao.etapa, evidenciaDocId: upload.id ?? null, ok: true },
+    data: {
+      etapa: transicao.etapa,
+      evidenciaDocId: upload.id ?? null,
+      ok: true,
+      // Null quando o rastro gravou nos dois lugares. Preenchido = a ficha destravou mas a decisão
+      // ficou sem registro estruturado, e a tela avisa para alguém olhar.
+      rastroIncompleto: rastro.erro,
+    },
   });
 }
