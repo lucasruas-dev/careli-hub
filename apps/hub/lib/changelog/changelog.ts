@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-11-masterplan-claro-em-tela-cheia",
+    deployedAt: "2026-08-11T07:50:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O masterplan abre em TELA CHEIA: antes ele entrava espremido numa faixa no meio da página e ficava do tamanho de uma miniatura",
+              "Versão CLARA do mapa, na mesma paleta do portal. O desenho é o mesmo, o que mudou foi a cor",
+              "Botão \"Voltar aos produtos\" no alto da tela, porque ali não há menu lateral. A tecla Esc faz o mesmo",
+            ],
+            screen: "Portal do incorporador · Produtos",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "A tela do masterplan saiu do `<main>` do portal (maxWidth 1180) e virou camada `position: fixed; inset: 0`, com o body travado enquanto está aberta e Escape ligado — dentro de um iframe o voltar do navegador não sai, então sem botão o cliente fica preso. TEMA CLARO em `lib/apolo/masterplan-tema-claro.ts`, injetado pela rota que serve o arquivo: o A-INTERNO tem a paleta quase toda em tokens no `:root`, então redefinir os tokens vira a tela inteira sem tocar em uma medida sequer do desenho aprovado, e o arquivo original segue escuro para o Apolo interno. Os valores que estavam cravados assumindo fundo escuro foram tratados um a um: realce branco translúcido (some sobre branco) virou grafite translúcido, divisa quase preta virou a linha clara, o azul #cfe0ff do simulador virou azul escuro, e as tintas de texto de verde/âmbar/vermelho passaram a escurecer em vez de clarear. Medido na tela servida: data-uix-theme=light, --canvas #f7f8fa, --txt #121722, rail branco, 406 lotes intactos.",
+      motivation:
+        "Lucas, 11/08, vendo a primeira versão: \"ficou ruim, primeiro tem que seguir o esquema de cor do sistema. e outra está pequeno, não era assim que abrir o link, tem que usar a tela toda\", depois \"tem que fazer a versão claro dessa tela\" e \"essa tela não tem sidebar lateral, tem que ter um botão ou algo parecido para voltar a tela inicial do perfil\".",
+    },
+    title: "Portal do incorporador: masterplan em tela cheia e na versão clara",
+    type: "melhoria",
+    version: "1.122.0",
+  },
+  {
     buildTag: "2026-08-10-esteira-nao-volta-e-prevenda-so-se-habilitada",
     deployedAt: "2026-08-10T22:30:00-03:00",
     modules: [

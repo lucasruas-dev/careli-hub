@@ -1,22 +1,35 @@
 "use client";
 
+import { useEffect } from "react";
 import { ArrowLeft } from "lucide-react";
 
-import { T } from "./tema";
+// O MASTERPLAN INTERNO, EM TELA CHEIA, DENTRO DO PORTAL.
+//
+// Pedido do Lucas (11/08), depois de ver a primeira versão: "ficou ruim, primeiro tem que seguir o
+// esquema de cor do sistema. e outra está pequeno, não era assim que abrir o link, tem que usar a
+// tela toda".
+//
+// O QUE ESTAVA ERRADO: a tela entrava como um bloco dentro do `<main>` do portal, que é limitado a
+// 1180px e tem respiro nas laterais. O masterplan é uma tela de trabalho — mapa de um lado,
+// painéis do outro — e espremido em pouco mais de mil pixels ele vira uma miniatura com moldura
+// branca em volta. Aqui ele sai do fluxo do portal e ocupa a janela inteira.
+//
+// A COR: a barra de cima usa os MESMOS tokens do shell do Panteon que a tela do masterplan usa
+// (#0a0a0a de base, a borda branca translúcida de 7,5%, o texto #f7f8fa). Não é uma cor escolhida
+// aqui: é a paleta que o Lucas aprovou em 07/08 e que a tela lá dentro já usa. Com a moldura clara
+// do portal em volta, o conjunto ficava com dois esquemas de cor brigando na mesma imagem.
+//
+// ⚠️ A TELA LÁ DENTRO NÃO MUDA. Ela é o A-INTERNO, aprovado com nove prints de validação, servido
+// inteiro pela rota. Aqui só se decide QUANTO ESPAÇO ela ocupa e o que a emoldura.
 
-// O MASTERPLAN INTERNO DENTRO DA ABA PRODUTOS.
-//
-// Pedido do Lucas (10/08): "quando eu clicar no card garden, é para abrir essa tela, assim como no
-// vale do ouro" e "essas duas telas tem que está dentro do perfil do incorporador - produto".
-//
-// ⚠️ A TELA É O A-INTERNO, E ELE NÃO É REESCRITO AQUI. O quadro abaixo carrega o próprio arquivo
-// aprovado, com o CSS, o markup e o comportamento dele — zoom, filtros, tabela, plano comercial e
-// ficha do lote, tudo igual ao que foi validado nos nove prints. Já tentei trocar por outro mapa
-// que existia no Apolo e foi reprovado no mesmo dia; o desenho aprovado é a especificação.
-//
-// Por isso um quadro (iframe) e não uma porta para fora: assim a tela é a mesma, e mesmo assim o
-// cliente continua DENTRO do portal, com a marca dele em volta e sem perder a sessão de vista.
-// O endereço é uma rota, não um arquivo em public/, então quem não tem sessão não abre.
+// Tokens CLAROS do Panteon — os mesmos que a tela do masterplan passou a usar por dentro
+// (lib/apolo/masterplan-tema-claro.ts) e os mesmos do portal. Uma paleta só na tela inteira.
+const SHELL = {
+  base: "#ffffff",
+  borda: "#dce2ea",
+  texto: "#121722",
+  textoFraco: "#667085",
+} as const;
 
 export function TelaMasterplan({
   code,
@@ -27,45 +40,87 @@ export function TelaMasterplan({
   nome: string;
   onVoltar: () => void;
 }) {
+  // Enquanto o mapa está aberto, a página de trás não rola: o masterplan tem rolagem própria nos
+  // painéis, e duas barras de rolagem concorrendo é o tipo de coisa que o cliente sente sem saber
+  // nomear. `Escape` fecha, porque tela cheia sem saída de teclado prende quem usa teclado.
+  useEffect(() => {
+    const anterior = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    const aoTeclar = (evento: KeyboardEvent) => {
+      if (evento.key === "Escape") onVoltar();
+    };
+    window.addEventListener("keydown", aoTeclar);
+
+    return () => {
+      document.body.style.overflow = anterior;
+      window.removeEventListener("keydown", aoTeclar);
+    };
+  }, [onVoltar]);
+
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12, minHeight: 0 }}>
-      <div style={{ alignItems: "center", display: "flex", gap: 12 }}>
+    <div
+      style={{
+        background: SHELL.base,
+        display: "flex",
+        flexDirection: "column",
+        inset: 0,
+        position: "fixed",
+        // Acima do cabeçalho do portal, que é o único elemento com camada própria.
+        zIndex: 60,
+      }}
+    >
+      {/* A SAÍDA. O masterplan ocupa a janela inteira e NÃO tem a navegação do portal por perto —
+          nem a barra de abas, nem nada. Dentro de um quadro o botão voltar do navegador também não
+          sai. Sem este botão o cliente entra e fica preso (regra do Lucas, 11/08: "tem que ter um
+          botão ou algo parecido para voltar a tela inicial do perfil").
+
+          Por isso ele é um botão de verdade, com borda e contraste, e não um link discreto: é a
+          única porta da tela. A faixa toda tem 38px, contra os 52px do cabeçalho da própria tela;
+          o resto da janela é todo do mapa. `Esc` faz o mesmo. */}
+      <header
+        style={{
+          alignItems: "center",
+          background: SHELL.base,
+          borderBottom: `1px solid ${SHELL.borda}`,
+          display: "flex",
+          flexShrink: 0,
+          gap: 12,
+          height: 38,
+          padding: "0 12px",
+        }}
+      >
         <button
           onClick={onVoltar}
           style={{
             alignItems: "center",
-            background: "transparent",
-            border: `1px solid ${T.border}`,
-            borderRadius: 10,
-            color: T.sub,
+            background: SHELL.base,
+            border: `1px solid ${SHELL.borda}`,
+            borderRadius: 8,
+            color: SHELL.texto,
             cursor: "pointer",
             display: "inline-flex",
-            fontSize: 13,
+            fontFamily: "inherit",
+            fontSize: 12.5,
+            fontWeight: 600,
             gap: 6,
-            padding: "8px 12px",
+            padding: "5px 11px",
           }}
+          title="Voltar para os produtos (Esc)"
           type="button"
         >
-          <ArrowLeft aria-hidden="true" size={15} />
-          Produtos
+          <ArrowLeft aria-hidden="true" size={14} />
+          Voltar aos produtos
         </button>
-        <span style={{ color: T.text, fontSize: 15, fontWeight: 600 }}>{nome}</span>
-      </div>
+        <span style={{ color: SHELL.texto, fontSize: 12.5, fontWeight: 600 }}>{nome}</span>
+        <span style={{ color: SHELL.textoFraco, fontSize: 11.5, marginLeft: "auto" }}>
+          Masterplan
+        </span>
+      </header>
 
-      {/* A altura é do VIEWPORT, não do conteúdo: o masterplan é uma tela de trabalho (mapa à
-          esquerda, painéis à direita) e precisa de altura para não virar duas rolagens empilhadas.
-          `min-height` segura o caso do celular deitado, onde 100dvh fica muito baixo. */}
       <iframe
         src={`/api/incorporador/masterplan?code=${encodeURIComponent(code)}`}
-        style={{
-          background: T.card,
-          border: `1px solid ${T.border}`,
-          borderRadius: 14,
-          display: "block",
-          height: "calc(100dvh - 190px)",
-          minHeight: 520,
-          width: "100%",
-        }}
+        style={{ border: "none", display: "block", flex: 1, width: "100%" }}
         title={`Masterplan do ${nome}`}
       />
     </div>

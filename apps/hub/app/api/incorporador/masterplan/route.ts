@@ -5,6 +5,7 @@ import { NextResponse } from "next/server";
 
 import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
 import { sessaoDoRequest } from "@/lib/apolo/incorporador/sessao";
+import { comTemaClaro } from "@/lib/apolo/masterplan-tema-claro";
 
 // O MASTERPLAN INTERNO, servido para quem tem sessão.
 //
@@ -116,7 +117,10 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: "Masterplan indisponível." }, { status: 503 });
   }
 
-  return new NextResponse(comCaminhoAbsoluto(html), {
+  // TEMA CLARO no portal (Lucas, 11/08). O arquivo aprovado é escuro, feito para o shell do Apolo;
+  // o portal do incorporador é claro, e a tela escura dentro dele deixava dois esquemas de cor
+  // brigando na mesma imagem. O desenho não muda: só os tokens de cor.
+  return new NextResponse(comTemaClaro(comCaminhoAbsoluto(html)), {
     headers: {
       // `no-store` porque a tela carrega situação e preço: nada disso pode ficar em cache de proxy.
       "Cache-Control": "no-store",
