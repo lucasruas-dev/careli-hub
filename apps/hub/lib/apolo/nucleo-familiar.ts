@@ -18,7 +18,7 @@
 // e vive junto do `enterprise_id`, que é o recorte que interessa. A esteira é a fonte melhor e
 // mais direta; o relacionamento entra como reforço.
 import { normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
-import { createApoloAdminClient } from "@/lib/apolo/server";
+import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
@@ -90,6 +90,50 @@ export async function conflitoDeNucleoFamiliar(params: {
 
   if (error || !data) return null;
 
+  const linhas = data as {
+    empreendimento: null | string;
+    entity_id: string;
+    ficha: null | Record<string, unknown>;
+  }[];
+
+  // ⚠️ O CÔNJUGE VIVE EM DOIS LUGARES, e ler só um deixa passar exatamente o caso corrente.
+  //
+  // `ficha->>'conjugeCpf'` só é gravada pelo import do Asana (descontinuado em 04/08) e pela
+  // edição manual do board. NENHUM fluxo de criação de CAD escreve `ficha`: nem o portal público
+  // nem o wizard interno. Medido na base em 12/08: das 43 CADs vindas do portal, ZERO têm
+  // `conjugeCpf` na ficha, e 10 têm o cônjuge em `apolo_relationships`. Do Asana é o inverso:
+  // 89 pela ficha e 2 pelo relacionamento.
+  //
+  // Lendo só a ficha, a trava fechava o buraco histórico e deixava passar todo caso novo, que é
+  // o que mais importa, já que o portal virou o canal principal de entrada. As duas fontes juntas
+  // cobrem 100% de quem tem cônjuge cadastrado.
+  const donosNoEmpreendimento = [...new Set(linhas.map((l) => l.entity_id))];
+  const conjugePorEntidade = new Map<string, string>();
+
+  for (const l of linhas) {
+    const daFicha = digitos(l.ficha?.conjugeCpf);
+    if (cpfValidoParaNucleo(daFicha)) conjugePorEntidade.set(l.entity_id, daFicha);
+  }
+
+  if (donosNoEmpreendimento.length) {
+    // Em lotes de 100: a lista de ids vai na URL, e `.in()` com centenas estoura o limite do
+    // PostgREST e volta 400 mudo.
+    for (let i = 0; i < donosNoEmpreendimento.length; i += 100) {
+      const { data: vinculos } = await params.adminClient
+        .from("apolo_relationships")
+        .select("entity_id, metadata")
+        .eq("relationship_type", "conjuge")
+        .in("entity_id", donosNoEmpreendimento.slice(i, i + 100));
+
+      for (const v of (vinculos ?? []) as { entity_id: string; metadata: null | Record<string, unknown> }[]) {
+        // A ficha ganha quando as duas existem: ela é a que o operador revisou na tela.
+        if (conjugePorEntidade.has(v.entity_id)) continue;
+        const doVinculo = digitos(v.metadata?.cpf);
+        if (cpfValidoParaNucleo(doVinculo)) conjugePorEntidade.set(v.entity_id, doVinculo);
+      }
+    }
+  }
+
   const nomeDe = async (entityId: string): Promise<null | string> => {
     const { data: ficha } = await params.adminClient
       .from("apolo_entities")
@@ -99,14 +143,10 @@ export async function conflitoDeNucleoFamiliar(params: {
     return ficha?.legal_name ?? ficha?.display_name ?? null;
   };
 
-  for (const linha of data as {
-    empreendimento: null | string;
-    entity_id: string;
-    ficha: null | Record<string, unknown>;
-  }[]) {
+  for (const linha of linhas) {
     if (ignorar.has(linha.entity_id)) continue;
-    const conjugeDaCad = digitos(linha.ficha?.conjugeCpf);
-    if (!cpfValidoParaNucleo(conjugeDaCad)) continue;
+    const conjugeDaCad = conjugePorEntidade.get(linha.entity_id) ?? "";
+    if (!conjugeDaCad) continue;
 
     // (a) o cônjuge que estou informando agora JÁ É cônjuge de outra CAD: mesmo casal, dois
     //     cadastros. Foi o caso Alcimar e Sirlei visto pelo outro lado.
@@ -133,31 +173,39 @@ export async function conflitoDeNucleoFamiliar(params: {
 
   // (c) o cônjuge que estou informando já tem CAD PRÓPRIA neste empreendimento (ele é titular
   //     de uma, eu estou abrindo outra). O sentido inverso do caso do Lucas.
+  //
+  // ⚠️ A BUSCA VAI DO CPF PARA AS FICHAS, nunca o contrário. A primeira versão listava os donos
+  // de CAD do empreendimento e procurava o CPF entre eles com `.in('id', donos.slice(0, 100))`:
+  // num empreendimento com 600 CADs, QUAIS 100 entravam era decisão do planner do Postgres, sem
+  // `order by`. O mesmo casal passava numa tentativa e era barrado na outra, e o bug ficava
+  // irreproduzível para quem fosse investigar. Resolvendo o CPF por hash, a resposta é sempre a
+  // mesma e não há teto.
   if (conjugeOk) {
-    const donos = new Set(
-      (data as { entity_id: string }[]).map((l) => l.entity_id).filter((id) => !ignorar.has(id)),
+    const hash = hashIdentifier("cpf", conjuge);
+    const [{ data: porIdentificador }, { data: porDocumento }] = await Promise.all([
+      params.adminClient
+        .from("apolo_entity_identifiers")
+        .select("entity_id")
+        .eq("identifier_type", "cpf")
+        .eq("value_hash", hash),
+      params.adminClient.from("apolo_entities").select("id").eq("document_hash", hash),
+    ]);
+
+    const fichasDoConjuge = new Set([
+      ...((porIdentificador ?? []) as { entity_id: string }[]).map((l) => l.entity_id),
+      ...((porDocumento ?? []) as { id: string }[]).map((l) => l.id),
+    ]);
+
+    const linhaDele = linhas.find(
+      (l) => !ignorar.has(l.entity_id) && fichasDoConjuge.has(l.entity_id),
     );
-    if (donos.size) {
-      const { data: fichas } = await params.adminClient
-        .from("apolo_entities")
-        .select("id, display_name, legal_name, document_masked")
-        .in("id", [...donos].slice(0, 100));
-
-      const dono = (fichas ?? []).find(
-        (f: { document_masked: null | string }) => digitos(f.document_masked) === conjuge,
-      ) as undefined | { display_name: null | string; id: string; legal_name: null | string };
-
-      if (dono) {
-        const linha = (data as { empreendimento: null | string; entity_id: string }[]).find(
-          (l) => l.entity_id === dono.id,
-        );
-        return {
-          cpfParcial: parcial(conjuge),
-          empreendimento: linha?.empreendimento ?? null,
-          motivo: "conjuge-informado-ja-tem-cad",
-          nomeExistente: dono.legal_name ?? dono.display_name ?? null,
-        };
-      }
+    if (linhaDele) {
+      return {
+        cpfParcial: parcial(conjuge),
+        empreendimento: linhaDele.empreendimento,
+        motivo: "conjuge-informado-ja-tem-cad",
+        nomeExistente: await nomeDe(linhaDele.entity_id),
+      };
     }
   }
 

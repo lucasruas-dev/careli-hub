@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-12-cad-conjuge-portal",
+    deployedAt: "2026-08-12T20:45:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A trava de casal passou a enxergar também as CADs abertas pelo portal do corretor, que é por onde tudo nasce hoje",
+            ],
+            screen: "Apolo · Cadastro de CAD e portal público do corretor",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Correção da v1.127.0, publicada horas antes. A trava de núcleo familiar lia SÓ `apolo_esteira.ficha->>'conjugeCpf'`, e nenhum fluxo de criação de CAD escreve `ficha`: ela só é gravada pelo import do Asana (descontinuado em 04/08) e pela edição manual do board. Medido na base: das 43 CADs vindas do portal público, ZERO têm `conjugeCpf` na ficha e 10 têm o cônjuge em `apolo_relationships`; do Asana é o inverso, 89 pela ficha e 2 pelo relacionamento. Ou seja, a trava fechava o buraco histórico e deixava passar todo caso novo. Agora lê as DUAS fontes, com a ficha ganhando quando as duas existem (é a que o operador revisou). Simulado contra as 656 CADs: de 10 para 12 casais pegos, e os 2 novos são justamente de `cadastro-manual` e `publico-cad`. Segunda correção, no mesmo arquivo: o ramo que pergunta se o cônjuge informado já tem CAD própria listava os donos do empreendimento e procurava o CPF entre eles com `.in('id', donos.slice(0, 100))`, sem `order by`. Em empreendimento com centenas de CADs, quais 100 entravam era decisão do planner, então o mesmo casal passava numa tentativa e era barrado na outra. Invertido: resolve o CPF por `hashIdentifier` e pergunta se alguma dessas fichas tem CAD aqui. Determinístico e sem teto. Achado pela revisão adversarial, que só terminou depois do deploy.",
+      motivation:
+        "A revisão adversarial da própria trava, retomada após a interrupção da sessão anterior, apontou que a fonte escolhida estava congelada no passado. Confirmado na base antes de corrigir.",
+    },
+    title: "Trava de casal: passa a enxergar as CADs do portal do corretor",
+    type: "correcao",
+    version: "1.129.0",
+  },
+  {
     buildTag: "2026-08-12-garden-plano-normal",
     deployedAt: "2026-08-12T20:00:00-03:00",
     modules: [
