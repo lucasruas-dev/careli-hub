@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-12-cad-duplicidade-conjuge",
+    deployedAt: "2026-08-12T19:15:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Casal passa a contar como um cadastro só por empreendimento: se o CPF do titular ou o do cônjuge já tem CAD ali, o sistema avisa e não deixa abrir outra",
+              "O aviso aparece assim que o CPF é identificado, pelo MOST ou digitado, e não no fim do preenchimento",
+              "A mensagem diz de quem é a CAD que já existe, por exemplo: o CPF do cônjuge do ALCIMAR RODRIGO MAIA já possui CAD para o empreendimento VALE DO OURO",
+              "A quantidade de unidades continua livre: o casal pode comprar quantas quiser, com um cadastro só",
+              "Corrigida a trava de CPF repetido, que deixava passar quando a mesma pessoa tinha mais de uma ficha na base",
+            ],
+            screen: "Apolo · Cadastro de CAD e portal público do corretor",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Duas falhas independentes, achadas pelo caso Alcimar e Sirlei (ele entrou em 20/07 pelo Asana com o CPF dela no campo de cônjuge; ela entrou em 05/08 pelo portal público e foi aceita). PRIMEIRA: o dedup por documento fazia `.limit(1).maybeSingle()` e conferia as CADs de UMA ficha escolhida sem ordem nenhuma. Como a mesma pessoa tem mais de uma ficha em 516 casos (o import do Asana criava uma cópia COM `document_hash` e sem vínculo, enquanto a CAD ficava na outra, SEM hash: são 437 fichas soltas, todas com hash, contra 116 das 656 CADs reais), a busca caía na cópia vazia, não achava CAD e liberava. Foi assim que Lucélia, Ronaldo e Rafael entraram duas vezes no Vale do Ouro em agosto, cada um por uma imobiliária. Agora lê TODAS as fichas do documento e todas as CADs delas, e anexa na que já tem esteira. SEGUNDA: não existia regra de cônjuge em lugar nenhum. Entra `lib/apolo/nucleo-familiar.ts`: o núcleo de uma CAD é o par {CPF titular, CPF cônjuge} e duas CADs do mesmo empreendimento colidem se os pares cruzarem em qualquer CPF, o que cobre os quatro sentidos, inclusive o cônjuge tendo entrado primeiro (aconteceu em 4 dos 10 pares). A fonte é `apolo_esteira.ficha->>'conjugeCpf'` (94 preenchidos) e não `apolo_relationships` (só 16 com CPF, e `related_entity_id` nulo em todos). Dígito verificador conferido dos dois lados, senão CPF em branco casa com todo mundo. Simulada contra as 656 CADs: pega os 10 casais reais, zero falso positivo. Duas rotas novas de checagem na identificação (`/api/publico/cad/checar-cpf` e `/api/apolo/cadastro/checar-cpf`), a pública com teto de uso próprio porque responder se um CPF tem cadastro é um oráculo. A checagem da tela é conveniência e falha ABERTA; a autoridade é a trava do salvar, que é fail-closed. A mensagem não revela a imobiliária que cadastrou antes: isso é carteira de concorrente.",
+      motivation:
+        'Lucas, 12/08: "o Romulo subiu a cad do Alcimar, agora o Caio subiu a cad da Sirlei que é esposa do Alcimar para o mesmo empreendimento, deveria ter barrado essa CAD". E a regra: "o casal pode comprar quantas unidades quiser, o que não pode é ter cadastros distintos entre eles".',
+    },
+    title: "CAD: casal é um cadastro só por empreendimento",
+    type: "correcao",
+    version: "1.127.0",
+  },
+  {
     buildTag: "2026-08-12-garden-planilha-revisada",
     deployedAt: "2026-08-12T18:30:00-03:00",
     modules: [

@@ -4,6 +4,7 @@
 // apolo_* (via service role; RLS so libera SELECT), espelhando o que o sync do C2X ja faz.
 // Ver [[project_apolo_cadastro_prospect]], [[project_apolo_crm_grafo]].
 import { lerCadsDaEsteira, normalizarEnterpriseId } from "@/lib/apolo/esteira-cad";
+import { conflitoDeNucleoFamiliar, mensagemDeConflito } from "@/lib/apolo/nucleo-familiar";
 import { createApoloAdminClient, hashIdentifier } from "@/lib/apolo/server";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
@@ -185,22 +186,35 @@ export async function createApoloEntity(
   // apolo_entity_identifiers (quem veio do sync/import).
   if (input.dedupPorDocumento) {
     const docHash = hashIdentifier(docKind, digits);
+    // ⚠️ TODAS as fichas deste documento, nunca UMA.
+    //
+    // Até 12/08 aqui havia `.limit(1).maybeSingle()` nas duas pernas, e a trava conferia as CADs
+    // de UMA ficha escolhida sem ordem nenhuma. Só que a MESMA PESSOA tem mais de uma ficha em
+    // 516 casos na base: o import do Asana (paliativo, hoje descontinuado) criava uma cópia COM
+    // `document_hash` e sem vínculo nenhum, enquanto a CAD ficava na outra, SEM hash. São 437
+    // fichas soltas, todas com hash, contra 116 das 656 CADs reais.
+    //
+    // O efeito era perverso: a busca por hash caía justamente na cópia vazia, perguntava se ELA
+    // tinha CAD naquele empreendimento, ouvia que não, e LIBERAVA a duplicata. Foi assim que
+    // Lucélia, Ronaldo e Rafael entraram duas vezes no Vale do Ouro, cada um por uma imobiliária.
+    // Ler todas as fichas conserta o furo mesmo com as cópias ainda na base.
     const [{ data: porIdentificador }, { data: porDocumento }] = await Promise.all([
       adminClient
         .from("apolo_entity_identifiers")
         .select("entity_id")
         .eq("identifier_type", docKind)
-        .eq("value_hash", docHash)
-        .limit(1)
-        .maybeSingle<{ entity_id: string }>(),
-      adminClient
-        .from("apolo_entities")
-        .select("id")
-        .eq("document_hash", docHash)
-        .limit(1)
-        .maybeSingle<{ id: string }>(),
+        .eq("value_hash", docHash),
+      adminClient.from("apolo_entities").select("id").eq("document_hash", docHash),
     ]);
-    const entityIdExistente = porIdentificador?.entity_id ?? porDocumento?.id ?? null;
+
+    const idsDoDocumento = [
+      ...new Set([
+        ...(porIdentificador ?? []).map((l) => l.entity_id),
+        ...(porDocumento ?? []).map((l) => l.id),
+      ]),
+    ].filter(Boolean);
+
+    const entityIdExistente = idsDoDocumento[0] ?? null;
     if (entityIdExistente) {
       // FICHA EXISTIR não é CAD EXISTIR (achado da revisão de 03/08): 3.920 CPFs vivem na base
       // vindos do sync C2X/backfill do Asana SEM nenhuma CAD — e o corretor tomava um 409 falso
@@ -216,11 +230,18 @@ export async function createApoloEntity(
         entity_id: string;
       }[];
       try {
-        cadsExistentes = await lerCadsDaEsteira<{
-          empreendimento: null | string;
-          enterprise_id: null | string;
-          entity_id: string;
-        }>(adminClient, entityIdExistente, "empreendimento, enterprise_id, entity_id");
+        // As CADs de TODAS as fichas deste documento, juntas. Ler só as de uma delas é o mesmo
+        // furo de antes por outro caminho: a CAD viva pode estar na ficha que não foi lida.
+        const porFicha = await Promise.all(
+          idsDoDocumento.map((id) =>
+            lerCadsDaEsteira<{
+              empreendimento: null | string;
+              enterprise_id: null | string;
+              entity_id: string;
+            }>(adminClient, id, "empreendimento, enterprise_id, entity_id"),
+          ),
+        );
+        cadsExistentes = porFicha.flat();
       } catch {
         return {
           entityIdExistente,
@@ -256,7 +277,9 @@ export async function createApoloEntity(
       if (jaTemNesteEmpreendimento) {
         const onde = jaTemNesteEmpreendimento.empreendimento?.trim();
         return {
-          entityIdExistente,
+          // A ficha que REALMENTE tem a CAD, não a primeira da lista: é ela que a tela precisa
+          // abrir quando o operador for conferir a duplicata.
+          entityIdExistente: jaTemNesteEmpreendimento.entity_id,
           error:
             `Este ${docKind === "cnpj" ? "CNPJ" : "CPF"} já tem CAD cadastrada` +
             `${onde ? ` no empreendimento ${onde}` : ""}. ` +
@@ -267,7 +290,28 @@ export async function createApoloEntity(
 
       // Tem ficha e pode ter CAD em OUTRO empreendimento (ou nenhuma CAD): a CAD nova ANEXA na
       // ficha existente, em vez de nascer uma segunda entidade para o mesmo CPF.
-      anexarEm = entityIdExistente;
+      //
+      // Entre as cópias, anexa na que JÁ TEM esteira. Anexar na cópia vazia deixaria a pessoa com
+      // CAD em duas fichas diferentes, que é exatamente a bagunça que esta trava veio desfazer.
+      anexarEm = cadsExistentes[0]?.entity_id ?? entityIdExistente;
+    }
+
+    // NÚCLEO FAMILIAR: a trava acima é por documento e nunca ia pegar marido e mulher, que têm
+    // CPFs diferentes. Esta olha o par {titular, cônjuge} contra o par de toda CAD do
+    // empreendimento. Roda DEPOIS, porque a de documento é mais barata e mais específica.
+    if (!isPj) {
+      const conflito = await conflitoDeNucleoFamiliar({
+        adminClient,
+        cpfConjuge: input.conjuge?.cpf ?? null,
+        cpfTitular: digits,
+        enterpriseId: input.enterpriseId ?? null,
+        // As fichas do próprio titular não contam: a CAD dele mesmo já foi avaliada acima.
+        ignorarEntityIds: idsDoDocumento,
+      });
+
+      if (conflito) {
+        return { entityIdExistente, error: mensagemDeConflito(conflito), ok: false };
+      }
     }
   }
 

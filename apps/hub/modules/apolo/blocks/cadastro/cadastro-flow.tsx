@@ -817,7 +817,47 @@ export type ApiCadastro = {
   // Permissão de gravar UM documento grande direto no Storage. Mora no adapter porque interno e
   // público falam com rotas diferentes (Bearer x token de sessão).
   assinarUpload: (fileName: string) => Promise<AssinaturaUpload>;
+  // Duplicidade conferida NA IDENTIFICAÇÃO DO CPF, venha do MOST ou da digitação (Lucas, 12/08).
+  // A trava de verdade continua no salvar; esta aqui existe para o corretor não preencher a ficha
+  // inteira e só descobrir no fim que a CAD não pode ser aberta.
+  checarCpf: (dados: ChecagemCpfPedido) => Promise<ChecagemCpf>;
 };
+
+export type ChecagemCpfPedido = {
+  cpf: string;
+  cpfConjuge?: string;
+  /** Só o modo interno manda: no público o empreendimento sai do token assinado. */
+  enterpriseId?: null | string;
+};
+
+export type ChecagemCpf = {
+  /** false quando não deu para conferir (CPF incompleto, sem empreendimento, falha de rede). */
+  conferido: boolean;
+  conflito: null | { mensagem: string; tipo: string };
+};
+
+// Nunca deixa a checagem derrubar o wizard: a conferência é conveniência, e a autoridade é a
+// trava do servidor no salvar, que é fail-closed. Erro aqui vira "não conferido" e segue.
+const SEM_CHECAGEM: ChecagemCpf = { conferido: false, conflito: null };
+
+async function apiChecarCpfInterno(dados: ChecagemCpfPedido): Promise<ChecagemCpf> {
+  try {
+    const token = await accessToken();
+    const response = await fetch("/api/apolo/cadastro/checar-cpf", {
+      body: JSON.stringify(dados),
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      method: "POST",
+    });
+    const json = (await response.json().catch(() => null)) as null | { data?: ChecagemCpf };
+    return json?.data ?? SEM_CHECAGEM;
+  } catch {
+    return SEM_CHECAGEM;
+  }
+}
 
 // Pede a permissão de upload direto no modo INTERNO (operador logado, Bearer).
 async function apiAssinarUploadCadastro(fileName: string): Promise<AssinaturaUpload> {
@@ -917,6 +957,7 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
   if (!publico) {
     return {
       assinarUpload: apiAssinarUploadCadastro,
+      checarCpf: apiChecarCpfInterno,
       empreendimentos: apiGetEmpreendimentos,
       imobiliarias: apiGetImobiliarias,
       ocr: apiPost,
@@ -933,6 +974,19 @@ function criarApiCadastro(publico?: PublicoConfig): ApiCadastro {
     // A rota pública que assina o upload aceita os DOIS tokens (corretor e imobiliária), então
     // basta repassar o mesmo header que o resto do adapter usa.
     assinarUpload: (fileName: string) => assinarUploadPublico(headers(), fileName),
+    // No público o empreendimento sai do TOKEN, então o corpo não manda enterpriseId: mandar
+    // deixaria o corretor consultar a carteira de qualquer loteamento.
+    checarCpf: async (dados: ChecagemCpfPedido) => {
+      try {
+        return await postPublico<ChecagemCpf>(
+          "/api/publico/cad/checar-cpf",
+          { cpf: dados.cpf, cpfConjuge: dados.cpfConjuge ?? "" },
+          headers(),
+        );
+      } catch {
+        return SEM_CHECAGEM;
+      }
+    },
     // Imobiliária pública: a vitrine de ativos vem do token/prop, não de rede (não há rota que
     // liste). CAD do corretor: `[]` — imobiliária e empreendimento já vêm FIXOS do token.
     empreendimentos: async () => publico.empreendimentos ?? [],
@@ -951,6 +1005,7 @@ type CadastroCtx = { api: ApiCadastro; modoPublico: boolean };
 const ApiCadastroContext = createContext<CadastroCtx>({
   api: {
     assinarUpload: apiAssinarUploadCadastro,
+    checarCpf: apiChecarCpfInterno,
     empreendimentos: apiGetEmpreendimentos,
     imobiliarias: apiGetImobiliarias,
     ocr: apiPost,
@@ -2079,6 +2134,41 @@ function StepIdentificacao({
   // credito, vinculo com o C2X). Validamos aqui pra falhar na hora, e nao no fim do wizard.
   const cpfDaIdentidadeOk = Boolean(identidade && cpfValido(identidade.cpf));
 
+  // DUPLICIDADE CONFERIDA NA IDENTIFICAÇÃO (Lucas, 12/08: "prefiro na identificação do cpf, pode
+  // ser via most ou digitação"). Este ponto serve aos dois: o MOST escreve em `identidade.cpf`
+  // exatamente como a digitação, então basta observar o valor.
+  //
+  // A trava de verdade é a do servidor, no salvar. Esta existe para o corretor não montar a ficha
+  // inteira e só descobrir no fim, que foi como o caso Alcimar e Sirlei chegou até o final.
+  const cpfParaChecar = cpfDaIdentidadeOk ? soDigitos(identidade?.cpf ?? "") : "";
+  const cpfConjugeParaChecar = temConjuge && cpfValido(conjuge.cpf) ? soDigitos(conjuge.cpf) : "";
+  const [conflitoCpf, setConflitoCpf] = useState<null | { mensagem: string; tipo: string }>(null);
+
+  useEffect(() => {
+    // Sem CPF fechado não há o que perguntar. No modo interno, sem empreendimento também não:
+    // a duplicidade é POR empreendimento, e no público ele vem do token.
+    if (!cpfParaChecar || (!modoPublico && !empImobSel)) {
+      setConflitoCpf(null);
+      return;
+    }
+    // `vivo` evita que a resposta de um CPF antigo sobrescreva a de um CPF novo: o operador
+    // corrige um dígito e a resposta lenta da consulta anterior chegaria depois, acusando
+    // duplicidade de um número que nem está mais na tela.
+    let vivo = true;
+    void api
+      .checarCpf({
+        cpf: cpfParaChecar,
+        cpfConjuge: cpfConjugeParaChecar,
+        enterpriseId: empImobSel || null,
+      })
+      .then((resultado) => {
+        if (vivo) setConflitoCpf(resultado.conflito);
+      });
+    return () => {
+      vivo = false;
+    };
+  }, [api, cpfConjugeParaChecar, cpfParaChecar, empImobSel, modoPublico]);
+
   // O QUE FALTA PARA AVANÇAR, DITO NA TELA (pedido do Lucas, 05/08: "o botão não está habilitado,
   // seria ótimo colocar um aviso do que falta a ser preenchido"). Esta etapa exige ONZE coisas, e
   // antes o botão só ficava cinza: o operador não tinha como saber qual campo estava vazio, e
@@ -2108,7 +2198,7 @@ function StepIdentificacao({
       ].filter((item): item is string => item !== null)
     : ["o documento de identificação"];
 
-  const podeAvancarPf = faltamNaIdentidadePf.length === 0;
+  const podeAvancarPf = faltamNaIdentidadePf.length === 0 && !conflitoCpf;
   // Imobiliária: não se vincula a outra imobiliária (a Seção "Vínculo" some); em troca, exige ao
   // menos um empreendimento (vínculo de trabalho). CRECI é opcional.
   // Mesma ideia do PF: uma lista só, que habilita o botão e explica o que falta.
@@ -2547,10 +2637,19 @@ function StepIdentificacao({
 
       {enrich && enrich.source !== "mostqi" ? <EnrichWarn enrich={enrich} /> : null}
 
+      {/* DUPLICIDADE, DITA NA HORA EM QUE O CPF FICA CONHECIDO. Vem antes do aviso de campos
+          faltando porque não adianta terminar de preencher: esta CAD não vai poder ser aberta.
+          Vermelho, e não âmbar, porque não é "falta algo", é "não vai dar". */}
+      {conflitoCpf ? (
+        <p className="mt-4 rounded-lg border border-red-300 bg-red-50 px-3 py-2 text-xs text-red-800 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300">
+          <strong>{conflitoCpf.mensagem}</strong> Fale com a central.
+        </p>
+      ) : null}
+
       {/* O QUE FALTA, DITO NA CARA. Sem isto o botão só fica cinza e o operador procura o campo
           vazio na tela inteira, com o cliente esperando. A lista vem da MESMA fonte que habilita
           o botão, então nunca diz "falta X" com o avançar já liberado, nem o contrário. */}
-      {podeAvancar ? null : (
+      {podeAvancar || (conflitoCpf && !faltamParaAvancar.length) ? null : (
         <p className="mt-4 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
           Para avançar, ainda falta preencher: <strong>{juntarPtBr(faltamParaAvancar)}</strong>.
         </p>
