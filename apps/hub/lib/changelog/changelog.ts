@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-12-garden-planilha-revisada",
+    deployedAt: "2026-08-12T18:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Garden atualizado com a planilha revisada pela Cecílio Rocha: 40 preços, 19 situações e 145 compradores",
+              "Reservado e vendido passaram a ser a mesma coisa no mapa, com a mesma cor. O Garden fica com 88 disponíveis e 317 vendidos",
+              "O nome do comprador aparece agora em 315 dos 317 vendidos, contra 183 antes",
+              "Nenhum lote disponível está sem preço: os 88 têm valor de tabela",
+              "O filtro Reservado some da legenda enquanto não houver lote nessa situação, e volta sozinho quando existir de novo",
+            ],
+            screen: "Portal do incorporador · Produtos · Masterplan do Garden",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Os 406 lotes do Garden viviam colados à mão dentro do HTML, sem gerador (diferente do Vale do Ouro). Entra `scripts/apolo/garden-atualizar-lotes.mjs`: lê a planilha do cliente, confere o cabeçalho antes de qualquer linha (ler xlsx durante o salvamento do Excel devolve coluna deslocada SEM erro), preserva os polígonos — que não existem no Excel e sem os quais o lote some do mapa em silêncio — e recusa lote sem polígono conhecido em vez de gravá-lo mudo. A planilha repete Q10 L01 em duas linhas idênticas, então são 405 lotes e não 406; a repetida é descartada, senão o polígono é desenhado duas vezes e o percentual por situação sai inflado. `Reservado` passou a mapear para o mesmo código de `Vendido`: na planilha do Garden reservado nunca significou reserva de alguém (111 lotes, nenhum com comprador), era lote fora de venda, e unificar libera o status Reservado para o significado novo, a unidade com proposta emitida e 48h de validade. ⚠️ O CONVERSOR DE VALORES QUASE FOI PARA O AR ERRADO: a primeira versão só tratava um ponto de milhar, e `R$ 1.102.000` virou 1.102. Peguei na conferência; agora `testarConversor()` roda uma bateria antes de gravar e aborta sem tocar no arquivo se algum caso falhar.",
+      motivation:
+        'Lucas, 12/08: "eles acabaram de me encaminhar a tabela toda corrigida, vamos precisar de atualizar os dados e tudo" e, sobre a situação, "o reservado passa vendido também, então vendido e reservado fica como vendido e recebe a mesma coloração".',
+    },
+    title: "Garden com a planilha revisada, e reservado virando vendido no mapa",
+    type: "melhoria",
+    version: "1.126.0",
+  },
+  {
     buildTag: "2026-08-11-simulador-tabela-oficial",
     deployedAt: "2026-08-11T14:30:00-03:00",
     modules: [

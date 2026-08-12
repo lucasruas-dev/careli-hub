@@ -1,0 +1,740 @@
+openapi: 3.1.0
+
+# =====================================================================================
+# API DA CARTEIRA LAVRA DO OURO, PARA O GLOTES
+#
+# Este arquivo é o CONTRATO que vai para o cliente. Ele nasce do levantamento campo a campo
+# em docs/integrations/glotes-lavra-do-ouro.md, que foi feito contra a base real em 07/08/2026.
+#
+# TRÊS PRINCÍPIOS QUE EXPLICAM AS ESCOLHAS ABAIXO:
+#
+# 1. TODO CAMPO PEDIDO APARECE AQUI, inclusive os que a Careli não tem. Os que não temos vêm
+#    documentados como sempre nulos, com o motivo. Omitir seria empurrar a descoberta para a
+#    integração já em andamento, que é o pior momento para descobrir.
+#
+# 2. DINHEIRO É STRING DECIMAL, nunca número. `1234.56` em JSON vira ponto flutuante binário e
+#    68 mil parcelas somadas por float divergem do fechamento. String decimal atravessa sem perda.
+#
+# 3. DOCUMENTO E CEP SAEM SÓ COM DÍGITOS. Na origem eles vêm com máscara (`000.000.000-00`,
+#    `00.000-000`), e máscara é decisão de exibição, não de dado.
+# =====================================================================================
+
+info:
+  title: Careli · Carteira Lavra do Ouro
+  version: "1.0.0-rascunho"
+  summary: Leitura da carteira administrada pela Careli, para consumo pelo GLOTES.
+  description: |
+    API de LEITURA da carteira do loteamento Lavra do Ouro, administrada pela Careli.
+
+    ## O recorte
+
+    O recorte é **fixo no token** e não é parametrizável: esta API só enxerga o Lavra do Ouro.
+    Não existe parâmetro para pedir outro loteamento.
+
+    **Um loteamento só, com 493 unidades.** Cada unidade é identificada por `codigo_lote`, e o par
+    quadra e lote também identifica sem ambiguidade: foram conferidos 493 pares distintos para 493
+    unidades, com **zero colisão**.
+
+    As quadras em uso vão de 01 a 27, mas **com intervalos**: não existem as quadras 07 a 13, nem
+    22 e 23. Não deduza a quadra por sequência.
+
+    Volumes conferidos na base em 07/08/2026, para dimensionar a carga inicial:
+
+    | Conjunto | Linhas |
+    |---|---|
+    | loteamentos | 1 |
+    | clientes | 375 |
+    | lotes | 493 |
+    | vendas | 475 (abertas) |
+    | recebimentos | 68.356 |
+
+    ## Como consumir
+
+    1. Primeira carga: percorrer os cinco conjuntos até `proxima_pagina` vir nulo.
+    2. Depois: repetir só `vendas` e `recebimentos` com `alterado_desde`, que devolve apenas o
+       que mudou. Os outros três conjuntos mudam pouco e podem ser recarregados por inteiro.
+
+    ## Estado deste documento
+
+    **RASCUNHO PARA VALIDAÇÃO.** A API ainda não existe. Este arquivo serve para o GLOTES conferir
+    se o formato atende antes de qualquer linha ser escrita, e para registrar o que a Careli
+    consegue e o que não consegue entregar. Ver `x-pendencias` no fim do arquivo.
+  contact:
+    name: Careli
+    url: https://c2x.app.br
+
+servers:
+  - url: https://c2x.app.br/api/integrations/glotes
+    description: Produção
+
+security:
+  - TokenGlotes: []
+
+tags:
+  - name: Cadastros
+    description: Mudam pouco. Recarregar por inteiro quando quiser.
+  - name: Movimento
+    description: Mudam todo dia. Aceitam carga incremental por `alterado_desde`.
+
+paths:
+  /loteamentos:
+    get:
+      tags: [Cadastros]
+      summary: O loteamento do recorte
+      description: |
+        Devolve uma linha: o Lavra do Ouro.
+
+        O endpoint existe mesmo com um único registro porque o GLOTES pede o conjunto, e porque
+        amanhã a Careli pode administrar outro loteamento para a mesma loteadora sem que o
+        contrato mude.
+      operationId: listarLoteamentos
+      parameters:
+        - $ref: "#/components/parameters/Limite"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Página de loteamentos.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Pagina"
+                  - type: object
+                    properties:
+                      dados:
+                        type: array
+                        items: { $ref: "#/components/schemas/Loteamento" }
+              example:
+                dados:
+                  - codigo_loteamento: LAVRA
+                    nome: LAVRA DO OURO
+                total: 1
+                proxima_pagina: null
+        "400": { $ref: "#/components/responses/PedidoInvalido" }
+        "401": { $ref: "#/components/responses/NaoAutorizado" }
+        "429": { $ref: "#/components/responses/ExcedeuTeto" }
+
+  /clientes:
+    get:
+      tags: [Cadastros]
+      summary: Os compradores da carteira
+      description: |
+        375 clientes, sendo 369 pessoas físicas e 6 jurídicas.
+
+        **Pessoa jurídica:** `nome` traz o representante pessoa física, como está na origem. A
+        razão social vai em `razao_social` e o nome fantasia em `nome_fantasia`, ambos nulos para
+        pessoa física.
+
+        **Cônjuge:** 183 dos 375 clientes têm cônjuge cadastrado. Não é falha de cadastro: o
+        universo aplicável (casados e união estável) é 181, e todos os 181 têm cônjuge. Cobertura
+        de quem precisa: 100%.
+      operationId: listarClientes
+      parameters:
+        - $ref: "#/components/parameters/Limite"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Página de clientes.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Pagina"
+                  - type: object
+                    properties:
+                      dados:
+                        type: array
+                        items: { $ref: "#/components/schemas/Cliente" }
+              example:
+                dados:
+                  - codigo_cliente: CLI9001
+                    nome: MARIA APARECIDA DE SOUZA
+                    cpf_cnpj: "52998224725"
+                    tipo_pessoa: F
+                    razao_social: null
+                    nome_fantasia: null
+                    endereco: RUA DAS ACACIAS, 120, APTO 302
+                    bairro: CENTRO
+                    cidade: Mateus Leme
+                    uf: MG
+                    cep: "35670000"
+                    conjuge_nome: JOAO CARLOS DE SOUZA
+                    conjuge_cpf: "11122233396"
+                total: 375
+                proxima_pagina: "Y2xpOjE0Ng"
+        "400": { $ref: "#/components/responses/PedidoInvalido" }
+        "401": { $ref: "#/components/responses/NaoAutorizado" }
+        "429": { $ref: "#/components/responses/ExcedeuTeto" }
+
+  /lotes:
+    get:
+      tags: [Cadastros]
+      summary: As unidades do loteamento
+      description: |
+        493 unidades, todas do mesmo loteamento, distribuídas nas quadras 01 a 27.
+
+        ⚠️ **As medidas dos lados não serão entregues.** `frente`, `fundo`, `lado_direito`,
+        `lado_esquerdo`, `lado5` e `lado6` não existem na base da Careli, que guarda apenas a área
+        total. Elas vivem no memorial descritivo e na matrícula, que são documentos, não dados.
+        Os campos aparecem na resposta sempre nulos, para o contrato não quebrar. Se forem
+        necessários, é preciso decidir de onde extrair (ver pendência P1).
+
+        **Sobre `status`:** vem do cadastro comercial da unidade. Repare que o bloqueio de venda
+        NÃO aparece nele: são marcações separadas, entregues em `bloqueado_para_venda` e
+        `lote_caucionado`.
+      operationId: listarLotes
+      parameters:
+        - $ref: "#/components/parameters/Limite"
+        - $ref: "#/components/parameters/Cursor"
+      responses:
+        "200":
+          description: Página de lotes.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Pagina"
+                  - type: object
+                    properties:
+                      dados:
+                        type: array
+                        items: { $ref: "#/components/schemas/Lote" }
+              example:
+                dados:
+                  - codigo_lote: LOU0101
+                    codigo_loteamento: LAVRA
+                    quadra: "01"
+                    lote: "01"
+                    status: Vendido
+                    valor: "148500.00"
+                    area_total: "444.32"
+                    bloqueado_para_venda: false
+                    lote_caucionado: false
+                    frente: null
+                    fundo: null
+                    lado_direito: null
+                    lado_esquerdo: null
+                    lado5: null
+                    lado6: null
+                total: 493
+                proxima_pagina: "bG90OkxPVTAxMDE"
+        "400": { $ref: "#/components/responses/PedidoInvalido" }
+        "401": { $ref: "#/components/responses/NaoAutorizado" }
+        "429": { $ref: "#/components/responses/ExcedeuTeto" }
+
+  /vendas:
+    get:
+      tags: [Movimento]
+      summary: Os contratos de venda
+      description: |
+        475 vendas abertas. Vendas canceladas não entram por padrão (ver `incluir_canceladas`).
+
+        **Leia as três ressalvas antes de conciliar valores:**
+
+        - `valor_venda` é o **preço de tabela da unidade**. A base da Careli não guarda um valor
+          de venda separado, e a conferência contra os contratos assinados mostrou que o preço de
+          tabela é a base do contrato. Se o GLOTES espera um valor negociado diferente do de
+          tabela, ele não existe do nosso lado.
+        - `valor_parcela` é **nulo na maioria dos casos**, de propósito. Em 467 das 474 vendas com
+          parcelas o valor varia dentro do próprio contrato, porque o reajuste já vem embutido no
+          cronograma. Um número único ali seria mentira. O valor real de cada parcela está em
+          `/recebimentos`, que é a fonte correta para cobrança e conciliação.
+        - `qtd_parcelas` e `qtd_sinal` são **contados** a partir das parcelas reais, não lidos de
+          um campo declarado. Os dois divergem na origem em alguns contratos, e a contagem é a
+          que corresponde ao que o cliente efetivamente deve.
+      operationId: listarVendas
+      parameters:
+        - $ref: "#/components/parameters/Limite"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/AlteradoDesde"
+        - name: incluir_canceladas
+          in: query
+          description: |
+            Por padrão só vendas ativas. Ligando, entram também as canceladas, com
+            `situacao: "Cancelado"`. São 98 no recorte atual.
+          schema: { type: boolean, default: false }
+      responses:
+        "200":
+          description: Página de vendas.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Pagina"
+                  - type: object
+                    properties:
+                      dados:
+                        type: array
+                        items: { $ref: "#/components/schemas/Venda" }
+              example:
+                dados:
+                  - codigo_venda: VEN-45
+                    codigo_cliente: CLI9001
+                    codigo_lote: LOU0101
+                    data_venda: "2024-03-12"
+                    valor_venda: "148500.00"
+                    qtd_parcelas: 144
+                    valor_parcela: null
+                    data_1o_vencimento: "2024-05-10"
+                    qtd_sinal: 6
+                    valor_sinal: "12000.00"
+                    data_sinal: "2024-04-10"
+                    indice: IPCA ANUAL
+                    situacao: Faturado
+                    percentual_reajuste: "8.0000"
+                    observacao: null
+                total: 475
+                proxima_pagina: "dmVuOjQ1"
+        "400": { $ref: "#/components/responses/PedidoInvalido" }
+        "401": { $ref: "#/components/responses/NaoAutorizado" }
+        "429": { $ref: "#/components/responses/ExcedeuTeto" }
+
+  /recebimentos:
+    get:
+      tags: [Movimento]
+      summary: As parcelas, pagas e a vencer
+      description: |
+        68.356 parcelas, das quais 12.530 pagas. É o conjunto grande: use `alterado_desde` depois
+        da primeira carga.
+
+        **A chave única de uma parcela é `codigo_recebimento`.** O `numero_parcela` **se repete**
+        dentro do mesmo contrato e não serve como chave: use-o só para exibir.
+
+        **Encargos:** `valor_juros` vem preenchido em menos de 1% das linhas, `valor_multa` é
+        sempre nulo (a Careli não grava multa nessa base) e `valor_desconto` não existe. Quando um
+        pagamento inclui encargo, ele está embutido em `valor_pago` sem decomposição. Somar
+        `valor_juros` para chegar ao total de encargos vai dar errado.
+      operationId: listarRecebimentos
+      parameters:
+        - $ref: "#/components/parameters/Limite"
+        - $ref: "#/components/parameters/Cursor"
+        - $ref: "#/components/parameters/AlteradoDesde"
+        - name: codigo_venda
+          in: query
+          description: Todas as parcelas de um contrato.
+          schema: { type: string }
+        - name: status_parcela
+          in: query
+          schema:
+            type: string
+            enum: [Pago, Aguardando pagamento, Atrasado]
+        - name: vencimento_de
+          in: query
+          schema: { type: string, format: date }
+        - name: vencimento_ate
+          in: query
+          schema: { type: string, format: date }
+      responses:
+        "200":
+          description: Página de recebimentos.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/Pagina"
+                  - type: object
+                    properties:
+                      dados:
+                        type: array
+                        items: { $ref: "#/components/schemas/Recebimento" }
+              example:
+                dados:
+                  - codigo_recebimento: REC-882311
+                    codigo_venda: VEN-45
+                    codigo_cliente: CLI9001
+                    numero_parcela: 12
+                    tipo_parcela: Parcela
+                    data_vencimento: "2025-04-10"
+                    valor_parcela: "1187.34"
+                    valor_original: "1187.34"
+                    data_pagamento: "2025-04-09"
+                    valor_pago: "1187.34"
+                    valor_juros: null
+                    valor_multa: null
+                    valor_desconto: null
+                    forma_pagamento: Boleto
+                    status_parcela: Pago
+                    nosso_numero: null
+                    observacao: null
+                total: 68356
+                proxima_pagina: "cmVjOjg4MjMxMQ"
+        "400": { $ref: "#/components/responses/PedidoInvalido" }
+        "401": { $ref: "#/components/responses/NaoAutorizado" }
+        "429": { $ref: "#/components/responses/ExcedeuTeto" }
+
+components:
+  securitySchemes:
+    TokenGlotes:
+      type: apiKey
+      in: header
+      name: X-Glotes-Token
+      description: |
+        Token de máquina, exclusivo do GLOTES, entregue pela Careli por canal seguro.
+
+        **Sempre no header, nunca na query string.** Token em URL aparece em log de proxy, em
+        histórico de navegador e em referer, e aqui ele dá acesso a dado pessoal de 375 titulares.
+
+        O token carrega o escopo: ele só enxerga o Lavra do Ouro, e isso não é parametrizável.
+        Em caso de suspeita de vazamento, a Careli revoga na hora e emite outro.
+
+  parameters:
+    Limite:
+      name: limite
+      in: query
+      description: Linhas por página. Máximo 1000.
+      schema: { type: integer, default: 500, minimum: 1, maximum: 1000 }
+    Cursor:
+      name: cursor
+      in: query
+      description: |
+        Repasse aqui o `proxima_pagina` da resposta anterior. O conteúdo é opaco: não interprete
+        nem construa cursor à mão, o formato pode mudar sem aviso.
+      schema: { type: string }
+    AlteradoDesde:
+      name: alterado_desde
+      in: query
+      description: |
+        Só o que mudou a partir deste instante (ISO 8601 com fuso). Sem o parâmetro, carga completa.
+
+        ⚠️ **Ainda não garantido.** Depende de a base de origem marcar toda alteração de forma
+        confiável, o que a Careli precisa validar antes de prometer (pendência P3). Até lá o
+        parâmetro é aceito mas pode devolver mais linhas do que o estritamente alterado, nunca
+        menos. Ou seja: seguro para sincronizar, ineficiente no volume.
+      schema: { type: string, format: date-time }
+      example: "2026-08-01T00:00:00-03:00"
+
+  responses:
+    PedidoInvalido:
+      description: |
+        Parâmetro malformado: data sem fuso em `alterado_desde`, `limite` fora da faixa, ou cursor
+        ilegível. A mensagem diz qual parâmetro recusou. Não repita a chamada sem corrigir.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+          example:
+            erro: parametro_invalido
+            mensagem: "O parâmetro alterado_desde precisa incluir o fuso horário."
+    NaoAutorizado:
+      description: Token ausente, inválido ou revogado.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+          example: { erro: nao_autorizado, mensagem: Token inválido ou revogado. }
+    ExcedeuTeto:
+      description: |
+        Teto de requisições excedido. O header `Retry-After` diz quantos segundos esperar.
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Erro" }
+          example: { erro: teto_excedido, mensagem: Aguarde antes de tentar de novo. }
+
+  schemas:
+    Pagina:
+      type: object
+      required: [dados, total, proxima_pagina]
+      properties:
+        dados:
+          type: array
+          items: { type: object }
+        total:
+          type: integer
+          description: Total de linhas do conjunto inteiro, não da página.
+        proxima_pagina:
+          type: [string, "null"]
+          description: Cursor da próxima página. `null` quando acabou.
+
+    Erro:
+      type: object
+      required: [erro, mensagem]
+      properties:
+        erro: { type: string }
+        mensagem: { type: string }
+
+    Dinheiro:
+      type: [string, "null"]
+      description: |
+        Decimal com duas casas, como texto (`"1187.34"`). Ponto como separador decimal, sem
+        separador de milhar e sem símbolo de moeda. É texto para não perder precisão: somar 68 mil
+        parcelas em ponto flutuante diverge do fechamento em centavos.
+      pattern: '^-?\d+\.\d{2}$'
+      examples: ["148500.00", "1187.34"]
+
+    Loteamento:
+      type: object
+      required: [codigo_loteamento, nome]
+      properties:
+        codigo_loteamento:
+          type: string
+          description: Código curto e estável. É a chave usada nos outros conjuntos.
+          examples: [LAVRA]
+        nome:
+          type: string
+          description: Nome do loteamento.
+          examples: [LAVRA DO OURO]
+
+    Cliente:
+      type: object
+      required: [codigo_cliente, nome, cpf_cnpj, tipo_pessoa]
+      properties:
+        codigo_cliente:
+          type: string
+          description: Chave do cliente. Único em toda a base, sem duplicata.
+          examples: [CLI9001]
+        nome:
+          type: string
+          description: |
+            Pessoa física: o nome do cliente. Pessoa jurídica: o nome do representante, como está
+            na origem. A razão social vai em `razao_social`.
+        cpf_cnpj:
+          type: string
+          description: Só dígitos, sem máscara. 11 para CPF, 14 para CNPJ.
+          pattern: '^\d{11}$|^\d{14}$'
+        tipo_pessoa:
+          type: string
+          enum: [F, J]
+        razao_social: { type: [string, "null"], description: Só para pessoa jurídica. }
+        nome_fantasia: { type: [string, "null"], description: Só para pessoa jurídica. }
+        endereco:
+          type: [string, "null"]
+          description: Logradouro, número e complemento juntos. Complemento presente em 33% dos casos.
+        bairro: { type: [string, "null"] }
+        cidade: { type: [string, "null"], description: Com acentuação. }
+        uf: { type: [string, "null"], pattern: '^[A-Z]{2}$' }
+        cep: { type: [string, "null"], description: Oito dígitos, sem máscara., pattern: '^\d{8}$' }
+        conjuge_nome:
+          type: [string, "null"]
+          description: Nulo para quem não tem cônjuge cadastrado (192 dos 375).
+        conjuge_cpf: { type: [string, "null"], pattern: '^\d{11}$' }
+
+    Lote:
+      type: object
+      required: [codigo_lote, codigo_loteamento, quadra, lote, status, valor]
+      properties:
+        codigo_lote:
+          type: string
+          description: |
+            Código da unidade como está no cadastro. Único em todas as 493 unidades.
+
+            ⚠️ O prefixo do código (`LOU`, `LOS`) é **histórico** e NÃO corresponde ao campo
+            `codigo_loteamento`, que é sempre `LAVRA`. Trate este código como texto opaco: não
+            extraia o prefixo para casar com o loteamento, porque não casa em nenhuma linha.
+          examples: [LOU0101]
+        codigo_loteamento: { type: string, examples: [LAVRA] }
+        quadra:
+          type: string
+          description: Texto com zero à esquerda, como no cadastro.
+          examples: ["01"]
+        lote: { type: string, examples: ["01"] }
+        status:
+          type: string
+          enum: [Disponível, Reservado, Em negociação, Vendido, Bloqueado para venda]
+          description: |
+            No recorte atual só ocorrem `Vendido` (475) e `Disponível` (18). Os outros três valores
+            existem no cadastro e estão listados para o GLOTES não quebrar se aparecerem.
+        valor:
+          type: [string, "null"]
+          pattern: '^-?\d+\.\d{2}$'
+          description: Preço de tabela da unidade. Preenchido em todas as 493.
+        area_total:
+          type: [string, "null"]
+          description: |
+            Área em metros quadrados, decimal como texto. Preenchida em todas as 493.
+            **Não é dinheiro:** não segue o padrão de duas casas.
+          pattern: '^\d+\.\d{1,4}$'
+          examples: ["444.32"]
+        bloqueado_para_venda:
+          type: boolean
+          description: |
+            Marcação separada do `status`. São 7 unidades. Um lote pode estar `Disponível` e
+            bloqueado ao mesmo tempo.
+        lote_caucionado:
+          type: boolean
+          description: Unidade dada em garantia. São 51 unidades.
+        frente:
+          type: "null"
+          description: |
+            ⚠️ SEMPRE NULO. A Careli guarda apenas a área total da unidade; as medidas dos lados
+            estão no memorial descritivo e na matrícula, que são documentos e não campos. Ver
+            pendência P1.
+        fundo: { type: "null", description: "⚠️ SEMPRE NULO. Ver `frente`." }
+        lado_direito: { type: "null", description: "⚠️ SEMPRE NULO. Ver `frente`." }
+        lado_esquerdo: { type: "null", description: "⚠️ SEMPRE NULO. Ver `frente`." }
+        lado5: { type: "null", description: "⚠️ SEMPRE NULO. Ver `frente`." }
+        lado6: { type: "null", description: "⚠️ SEMPRE NULO. Ver `frente`." }
+
+    Venda:
+      type: object
+      required:
+        [codigo_venda, codigo_cliente, codigo_lote, data_venda, valor_venda,
+         qtd_parcelas, data_1o_vencimento, qtd_sinal, valor_sinal, data_sinal]
+      properties:
+        codigo_venda:
+          type: string
+          description: |
+            Chave do contrato, prefixada para não colidir com códigos de outros conjuntos.
+          examples: [VEN-45]
+        codigo_cliente: { type: string, examples: [CLI9001] }
+        codigo_lote: { type: string, examples: [LOU0101] }
+        data_venda:
+          type: string
+          format: date
+          description: Data do ato. Preenchida em todas as 475 vendas.
+        valor_venda:
+          type: [string, "null"]
+          pattern: '^-?\d+\.\d{2}$'
+          description: |
+            Preço de tabela da unidade. Ver a ressalva na descrição do endpoint: não existe valor
+            de venda separado do preço de tabela nesta base.
+        qtd_parcelas:
+          type: integer
+          description: Contagem real das parcelas mensais do contrato.
+        valor_parcela:
+          type: [string, "null"]
+          pattern: '^-?\d+\.\d{2}$'
+          description: |
+            **Nulo na maioria dos contratos**, porque o valor varia ao longo do cronograma. Use
+            `/recebimentos` para o valor de cada parcela. Só vem preenchido quando todas as
+            parcelas do contrato têm o mesmo valor (7 dos 474 contratos).
+        data_1o_vencimento: { type: [string, "null"], format: date }
+        qtd_sinal:
+          type: integer
+          description: Contagem real das parcelas de sinal.
+        valor_sinal:
+          type: [string, "null"]
+          pattern: '^-?\d+\.\d{2}$'
+          description: Soma das parcelas de sinal.
+        data_sinal: { type: [string, "null"], format: date }
+        indice:
+          type: [string, "null"]
+          description: |
+            Índice de correção do contrato. 465 das 475 vendas resolvem para `IPCA ANUAL`; 10
+            contratos têm plano personalizado e ficam sem índice.
+          examples: [IPCA ANUAL]
+        situacao:
+          type: [string, "null"]
+          description: Estágio do contrato. Nas vendas ativas do recorte é sempre `Faturado`.
+          examples: [Faturado, Cancelado]
+        percentual_reajuste:
+          type: [string, "null"]
+          pattern: '^-?\d+\.\d{4}$'
+          description: |
+            Percentual de juros contratuais do plano comercial, com **quatro** casas decimais.
+            **Não é dinheiro:** não segue o padrão de duas casas. ⚠️ Confirme com a Careli qual dos
+            dois percentuais do contrato o GLOTES espera aqui: existe também uma taxa de correção
+            distinta, e os dois são chamados de reajuste em contextos diferentes (pendência P2).
+        observacao:
+          type: "null"
+          description: ⚠️ SEMPRE NULO. O campo existe na origem e está vazio em todas as 475 vendas.
+
+    Recebimento:
+      type: object
+      required:
+        [codigo_recebimento, codigo_venda, codigo_cliente, numero_parcela, tipo_parcela,
+         data_vencimento, valor_parcela, status_parcela]
+      properties:
+        codigo_recebimento:
+          type: string
+          description: |
+            **A chave única da parcela.** Use este campo para idempotência e para casar
+            atualizações. Não use `numero_parcela`.
+          examples: [REC-882311]
+        codigo_venda: { type: string, examples: [VEN-45] }
+        codigo_cliente: { type: string, examples: [CLI9001] }
+        numero_parcela:
+          type: integer
+          description: |
+            Número de exibição da parcela dentro do contrato. ⚠️ **Se repete**: há contratos com
+            duas linhas de mesmo número. Serve para mostrar, nunca para identificar.
+        tipo_parcela:
+          type: string
+          enum: [Ato, Sinal, Parcela, Avulso]
+        data_vencimento: { type: string, format: date }
+        valor_parcela:
+          type: [string, "null"]
+          pattern: '^-?\d+\.\d{2}$'
+          description: Valor devido da parcela, já com o reajuste embutido pelo cronograma.
+        valor_original:
+          type: [string, "null"]
+          pattern: '^-?\d+\.\d{2}$'
+          description: |
+            Mesmo valor de `valor_parcela`. A origem não guarda um valor original separado: o
+            cronograma já nasce reajustado. Entregue para o GLOTES não precisar tratar ausência.
+        data_pagamento:
+          type: [string, "null"]
+          format: date
+          description: |
+            Nula enquanto não paga. ⚠️ Existem 344 parcelas com valor pago e **sem** data, todas
+            em atraso com pagamento parcial. Não conclua "não pago" só pela data ausente: olhe
+            `valor_pago`.
+        valor_pago:
+          type: [string, "null"]
+          pattern: '^-?\d+\.\d{2}$'
+          description: |
+            Nulo quando não houve pagamento. ⚠️ Zero não é pagamento: há linhas com valor pago
+            igual a zero que significam ausência de pagamento, e elas vêm como nulo aqui.
+        valor_juros:
+          type: [string, "null"]
+          pattern: '^-?\d+\.\d{2}$'
+          description: |
+            ⚠️ Preenchido em menos de 1% das linhas. Quando há encargo cobrado, ele normalmente
+            está embutido em `valor_pago` sem decomposição. Não serve para totalizar encargos.
+        valor_multa:
+          type: "null"
+          description: ⚠️ SEMPRE NULO. A Careli não registra multa nesta base.
+        valor_desconto:
+          type: "null"
+          description: ⚠️ SEMPRE NULO. Não existe registro de desconto na origem.
+        forma_pagamento:
+          type: [string, "null"]
+          description: |
+            Constante `Boleto` em todas as linhas hoje. O campo existe, mas não distingue meio de
+            pagamento na prática.
+        status_parcela:
+          type: string
+          enum: [Pago, Aguardando pagamento, Atrasado]
+        nosso_numero:
+          type: "null"
+          description: ⚠️ SEMPRE NULO. Não há identificador bancário disponível nesta base.
+        observacao:
+          type: "null"
+          description: ⚠️ SEMPRE NULO. Preenchido em 1 linha de 68.356.
+
+# =====================================================================================
+# PENDÊNCIAS: o que precisa de decisão antes de esta API existir.
+# Ficam no arquivo de propósito, para o cliente ver o que está em aberto e responder.
+# =====================================================================================
+x-pendencias:
+  P1:
+    assunto: Medidas do lote (frente, fundo, lados)
+    situacao: Não existem na base da Careli.
+    decisao: |
+      O GLOTES precisa mesmo dessas medidas? Se precisar, elas terão que sair do memorial
+      descritivo ou da matrícula, o que é um projeto à parte, com extração documento a documento
+      das 493 unidades. Se não precisar, saem do contrato e ficam nulas.
+    de_quem: Cliente
+  P2:
+    assunto: Qual percentual é o reajuste
+    situacao: O plano comercial tem duas taxas distintas, e as duas são chamadas de reajuste.
+    decisao: Confirmar com o GLOTES qual dos dois números ele espera receber.
+    de_quem: Cliente
+  P3:
+    assunto: Confiabilidade da carga incremental
+    situacao: |
+      A entrega de `alterado_desde` depende de a base de origem marcar toda alteração de forma
+      confiável. Isso ainda não foi testado.
+    decisao: |
+      Testar antes de prometer. Enquanto não for validado, o parâmetro é aceito mas pode devolver
+      linhas a mais (seguro) e a Careli não garante que nunca devolva a menos.
+    de_quem: Careli
+  P4:
+    assunto: Base legal e minimização de dado pessoal
+    situacao: |
+      São 375 titulares, com nome, CPF, endereço completo e, em 183 casos, nome e CPF do cônjuge.
+    decisao: |
+      Antes de ligar: base legal definida pelo jurídico, acordo de tratamento entre as partes, e
+      decisão sobre minimização. Campo recomendado não é campo necessário: se o GLOTES não usa o
+      CPF do cônjuge, ele não deve ser enviado.
+    de_quem: Careli (jurídico) e cliente
