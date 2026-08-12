@@ -717,6 +717,12 @@ table.dados tbody tr.sel td{background:rgb(37 99 235 / .17)}
 .of-cab:hover{background:rgb(255 255 255 / .022)}
 .of-nome{min-width:0;flex:1}
 .of-nome b{display:block;font-size:13.5px;font-weight:600;color:var(--txt)}
+/* ressalva do plano: âmbar, ao lado do nome. Chama atenção sem gritar, porque é condição de
+   validade e não erro. */
+.of-res{display:inline-block;margin-left:8px;padding:1px 8px;border-radius:10px;font-style:normal;
+  font-size:10px;font-weight:600;letter-spacing:.01em;vertical-align:1px;
+  background:color-mix(in srgb,var(--warn) 16%,transparent);color:var(--warn-t);
+  border:1px solid color-mix(in srgb,var(--warn) 34%,transparent)}
 .of-nome small{display:block;font-size:10.5px;color:var(--txt4);margin-top:2px;line-height:1.45}
 
 /* AS DUAS COLUNAS DE VALOR. Largura fixa, e nao "o que sobrar": e o que faz o
@@ -2404,8 +2410,9 @@ $('tblwrap').addEventListener('click',e=>{
      PD  = entrada + anual x fn(n,i) + parcela x fa(T,i)
    ============================================================ */
 const PLANOS=[
-  {id:'normal',  nome:'Normal',               desc:0.00, ent:0.08, anQtd:6, anVal:20000, prazo:84, correcao:'ipca6'},
-  {id:'invparc', nome:'Investidor Parcelado', desc:0.08, ent:0.08, anQtd:4, anVal:25000, prazo:84, correcao:'ipca6'},
+  {id:'normal',  nome:'Normal',               desc:0.00, ent:0.10, anQtd:5, anVal:25000, prazo:60, correcao:'ipca6'},
+  {id:'invparc', nome:'Investidor Parcelado', desc:0.08, ent:0.08, anQtd:4, anVal:25000, prazo:84, correcao:'ipca6',
+   ressalva:'válido para as próximas 16 unidades'},
   {id:'invest',  nome:'Investidor',           desc:0.12, ent:0.40, anQtd:3, anVal:30000, prazo:36, correcao:'ipca'}
 ];
 /* a politica de busca do simulador SAI dos planos oficiais: nada aqui e
@@ -2885,7 +2892,11 @@ function renderOficial(){
        menor, para ninguem confundir os dois. */
     const cab=
       '<button class="of-cab" data-abre="'+k+'">'+
-        '<span class="of-nome"><b>'+p.nome+'</b><small>'+
+        '<span class="of-nome"><b>'+p.nome+
+          /* RESSALVA do plano, ao lado do nome (Lucas, 12/08). O Investidor Parcelado vale só
+             para as próximas 16 unidades, e isso precisa estar onde o corretor lê o nome do
+             plano, não escondido no rodapé: ele monta a proposta olhando para esta linha. */
+          (p.ressalva?'<i class="of-res">'+p.ressalva+'</i>':'')+'</b><small>'+
           'entrada '+moeda(e.ent)+' · '+e.anQtd+' × '+moeda(e.anVal)+' · '+e.prazo+' meses'+
         '</small></span>'+
         '<span class="of-col of-lote"><span class="of-r">Valor do lote</span>'+

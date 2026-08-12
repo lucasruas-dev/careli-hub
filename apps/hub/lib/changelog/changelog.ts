@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-12-garden-plano-normal",
+    deployedAt: "2026-08-12T20:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Plano Normal do Garden atualizado: entrada de 10%, 5 reforços anuais de R$ 25.000 e 60 meses",
+              "Num lote de R$ 435.000 isso dá entrada de R$ 43.500 e parcela de R$ 4.442",
+              "O plano Investidor Parcelado passou a mostrar, ao lado do nome, que é válido para as próximas 16 unidades",
+            ],
+            screen: "Portal do incorporador · Produtos · Plano de pagamento do Garden",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "`PLANOS` do garden.html: o Normal foi de entrada 8%, 6 × 20.000 e 84 meses para entrada 10%, 5 × 25.000 e 60 meses. Conferido contra o print do Lucas: 435.000 menos 43.500 de entrada menos 125.000 de anuais dá 266.500, que em 60 meses é R$ 4.441,67, os R$ 4.442 que a tela dele mostrava. A ressalva do Investidor Parcelado entra como CAMPO do plano (`ressalva`), não como texto fixo no HTML, então qualquer plano ganha uma condição depois sem tocar no render. Renderizada como etiqueta âmbar ao lado do nome, que é onde o corretor lê ao escolher o plano, e não no rodapé. ⚠️ O número 16 é fixo: quando as 16 unidades forem vendidas, alguém precisa avisar. Amarrar na contagem de disponíveis faria o texto mudar sozinho conforme o mapa, e o que está prometido ao cliente deixaria de ser uma decisão.",
+      motivation:
+        'Lucas, 12/08, com print da tela: "para o garden muda o plano normal, tem que ficar assim" e "na frente do plano investidor parcelado coloca uma frase, válido para as próximas 16 unidades".',
+    },
+    title: "Garden: plano Normal novo e a validade do Investidor Parcelado na tela",
+    type: "melhoria",
+    version: "1.128.0",
+  },
+  {
     buildTag: "2026-08-12-cad-duplicidade-conjuge",
     deployedAt: "2026-08-12T19:15:00-03:00",
     modules: [
