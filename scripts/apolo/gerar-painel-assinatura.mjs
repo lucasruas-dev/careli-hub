@@ -122,6 +122,8 @@ const html = `<meta charset="utf-8" />
   .txt-ok { color:var(--ok); } .txt-espera { color:var(--espera); } .txt-tarde { color:var(--tarde); }
   .vazio { color:var(--tinta3); padding:26px 10px; text-align:center; }
   .contagem { color:var(--tinta3); font-size:12px; padding-top:8px; }
+  .aviso { color:var(--tinta3); font-size:11.5px; line-height:1.45; margin:10px 0 0; }
+  #quadro td i, #tabela-compradores td i { color:var(--tinta3); display:block; font-size:11px; font-style:normal; }
 
   footer { border-top:1px solid var(--linha); color:var(--tinta3); font-size:11.5px; margin-top:32px; padding-top:18px; }
   footer b { color:var(--tinta2); }
@@ -200,15 +202,32 @@ const html = `<meta charset="utf-8" />
         <div class="degraus" id="fila"></div>
       </div>
       <div class="cartao">
-        <h3>Quadro de assinaturas</h3>
+        <h3>Quadro de assinaturas · incorporador e Careli</h3>
         <div class="rolo" style="max-height:330px">
           <table>
             <thead><tr><th>Usuário</th><th>Perfil</th><th class="n">Assinado</th><th class="n">Assinar</th></tr></thead>
             <tbody id="quadro"></tbody>
           </table>
         </div>
+        <p class="aviso" id="fixos-fora"></p>
       </div>
     </div>
+  </section>
+
+  <section>
+    <h2>Unidades com o comprador assinado</h2>
+    <div class="cartao" style="padding:0">
+      <div class="rolo" style="max-height:420px">
+        <table>
+          <thead><tr>
+            <th>Unidade</th><th>Comprador</th><th class="n">Assinou em</th>
+            <th class="n">Dias</th><th>Agora espera</th>
+          </tr></thead>
+          <tbody id="tabela-compradores"></tbody>
+        </table>
+      </div>
+    </div>
+    <p class="contagem" id="contagem-compradores"></p>
   </section>
 
   <section>
@@ -286,6 +305,7 @@ const html = `<meta charset="utf-8" />
     // decisão do REMOVEFILTERS(Perfil) do modelo original.
     const fe = filtros.emp.value;
     const fu = semAcento(filtros.unidade.value.trim());
+    const fn = semAcento(filtros.usuario.value.trim());
     const baseUn = D.filter((d) => (!fe || d.emp === fe) && (!fu || semAcento(d.un).includes(fu)));
 
     const porUn = new Map();
@@ -360,25 +380,147 @@ const html = `<meta charset="utf-8" />
       fila.appendChild(el);
     }
 
-    // Quadro de assinaturas: quem assina muito contrato.
+    // Quadro de assinaturas: SÓ o incorporador e o time da Careli (Backoffice). É quem entra em
+    // todo contrato e por isso acumula fila; imobiliária, corretor e comprador vivem na tabela
+    // de baixo.
+    //
+    // ⚠️ Ignora os filtros de PERFIL e de STATUS de propósito: o quadro mostra assinado E a
+    // assinar lado a lado, então filtrar por um dos dois esvaziaria metade dele; e filtrar por
+    // perfil "Comprador" deixaria o quadro vazio. Empreendimento, unidade e usuário valem.
+    const doQuadro = D.filter((d) =>
+      (d.pf === "Incorporador" || d.pf === "Backoffice") &&
+      (!fe || d.emp === fe) &&
+      (!fu || semAcento(d.un).includes(fu)) &&
+      (!fn || semAcento(d.us).includes(fn)));
+
     const quadro = new Map();
-    for (const d of F) {
-      const k = d.us + "\\u0000" + d.pf;
-      if (!quadro.has(k)) quadro.set(k, { nome: d.us, perfil: d.pf, ok: 0, falta: 0 });
+    for (const d of doQuadro) {
+      // O e-mail entra na chave: a mesma razão social assina por três sócios diferentes, e
+      // juntá-los numa linha só esconderia que dois assinaram e um não.
+      const k = d.us + "\\u0000" + d.em;
+      if (!quadro.has(k)) quadro.set(k, { nome: d.us, perfil: d.pf, email: d.em, ok: 0, falta: 0 });
       quadro.get(k)[d.as ? "ok" : "falta"] += 1;
     }
     const tq = $("quadro");
     tq.textContent = "";
-    const lista = [...quadro.values()].sort((a, b) => (b.ok + b.falta) - (a.ok + a.falta)).slice(0, 40);
+    const lista = [...quadro.values()].sort((a, b) => (b.ok + b.falta) - (a.ok + a.falta) || a.ok - b.ok);
     for (const q of lista) {
       const tr = document.createElement("tr");
-      for (const [txt, cls] of [[q.nome, ""], [q.perfil, ""], [num(q.ok), "n"], [num(q.falta), "n"]]) {
+      const tdN = document.createElement("td");
+      tdN.appendChild(document.createTextNode(q.nome));
+      // O e-mail distingue os três sócios da mesma empresa.
+      const mail = document.createElement("i");
+      mail.textContent = q.email;
+      tdN.appendChild(mail);
+      tr.appendChild(tdN);
+      for (const [txt, cls] of [[q.perfil, ""], [num(q.ok), "n"], [num(q.falta), "n"]]) {
         const td = document.createElement("td");
         td.className = cls; td.textContent = txt;
         tr.appendChild(td);
       }
       tq.appendChild(tr);
     }
+    if (!lista.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.className = "vazio"; td.colSpan = 4; td.textContent = "Nada neste recorte.";
+      tr.appendChild(td); tq.appendChild(tr);
+    }
+
+    // Quem também assina todo contrato mas tem outro perfil no C2X. Sem este aviso o quadro
+    // pareceria completo e duas pessoas do grupo fixo sumiriam sem deixar rastro.
+    const totalUnidadesRecorte = new Set(D.filter((d) => (!fe || d.emp === fe)).map((d) => d.un)).size;
+    const outros = new Map();
+    for (const d of D) {
+      if (d.pf === "Incorporador" || d.pf === "Backoffice") continue;
+      if (fe && d.emp !== fe) continue;
+      const k = d.us + "\\u0000" + d.pf;
+      if (!outros.has(k)) outros.set(k, { nome: d.us, perfil: d.pf, n: 0 });
+      outros.get(k).n += 1;
+    }
+    const fixosFora = [...outros.values()].filter((o) => o.n >= totalUnidadesRecorte * 0.9);
+    $("fixos-fora").textContent = fixosFora.length
+      ? "Também assinam todos os contratos, mas com outro perfil no C2X: " +
+        fixosFora.map((o) => o.nome + " (" + o.perfil + ")").join(", ") + "."
+      : "";
+
+    // ── Quadro das unidades cujo COMPRADOR já assinou ─────────────────────────
+    // Responde "o cliente fez a parte dele; estamos esperando quem?". Respeita empreendimento e
+    // unidade; ignora perfil e status, porque a pergunta já é sobre um perfil e um status.
+    const baseComp = D.filter((d) =>
+      (!fe || d.emp === fe) && (!fu || semAcento(d.un).includes(fu)));
+    const mapaComp = new Map();
+    for (const d of baseComp) {
+      if (!mapaComp.has(d.un)) mapaComp.set(d.un, []);
+      mapaComp.get(d.un).push(d);
+    }
+    const prontas = [];
+    for (const [un, ls] of mapaComp) {
+      const compradores = ls.filter((x) => x.pf === "Comprador");
+      if (!compradores.length || !compradores.every((x) => x.as)) continue;
+      // A última assinatura do lado do comprador é a data que interessa: é quando ele terminou.
+      const datas = compradores.map((x) => x.da).filter(Boolean).sort();
+      const ultima = datas[datas.length - 1] || null;
+      const pendentes = ls.filter((x) => !x.as);
+      const degrau = pendentes.length ? Math.min(...pendentes.map((x) => x.po || 99)) : null;
+      const esperando = degrau === null ? [] :
+        [...new Set(pendentes.filter((x) => (x.po || 99) === degrau).map((x) => x.us))];
+      prontas.push({
+        un, emp: ls[0].emp,
+        nomes: [...new Set(compradores.map((x) => x.us))].join(", "),
+        ultima,
+        dias: ultima ? Math.round((new Date(ultima) - new Date(ls[0].env)) / 86400000) : null,
+        esperando, degrau,
+      });
+    }
+    prontas.sort((a, b) => (b.ultima || "").localeCompare(a.ultima || "") || a.un.localeCompare(b.un));
+
+    const tc = $("tabela-compradores");
+    tc.textContent = "";
+    for (const p of prontas) {
+      const tr = document.createElement("tr");
+      const cel = (txt, cls) => {
+        const td = document.createElement("td");
+        if (cls) td.className = cls;
+        td.textContent = txt;
+        return td;
+      };
+      tr.appendChild(cel(p.un, "un"));
+      tr.appendChild(cel(p.nomes));
+      tr.appendChild(cel(p.ultima ? p.ultima.split("-").reverse().join("/") : "—", "n"));
+      tr.appendChild(cel(p.dias === null ? "—" : String(p.dias), "n"));
+
+      const tdE = document.createElement("td");
+      if (!p.esperando.length) {
+        const s = document.createElement("span");
+        s.className = "pill";
+        const pt = document.createElement("span");
+        pt.className = "pt ok";
+        const r = document.createElement("span");
+        r.className = "txt-ok"; r.textContent = "contrato completo";
+        s.append(pt, r);
+        tdE.appendChild(s);
+      } else {
+        tdE.textContent = p.esperando.join(", ");
+        const i = document.createElement("i");
+        i.textContent = "degrau " + p.degrau;
+        tdE.appendChild(i);
+      }
+      tr.appendChild(tdE);
+      tc.appendChild(tr);
+    }
+    if (!prontas.length) {
+      const tr = document.createElement("tr");
+      const td = document.createElement("td");
+      td.className = "vazio"; td.colSpan = 5;
+      td.textContent = "Nenhuma unidade com o comprador assinado neste recorte.";
+      tr.appendChild(td); tc.appendChild(tr);
+    }
+    const comEspera = prontas.filter((p) => p.esperando.length).length;
+    $("contagem-compradores").textContent = prontas.length
+      ? prontas.length + " unidade" + (prontas.length === 1 ? "" : "s") +
+        " com o comprador assinado · " + comEspera + " ainda aguardam outra assinatura."
+      : "";
 
     // A tabela: pendentes e mais antigos primeiro, que é a ordem de quem vai cobrar.
     const tb = $("tabela");
