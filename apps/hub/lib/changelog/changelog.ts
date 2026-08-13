@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-13-painel-assinatura-vale-do-ouro",
+    deployedAt: "2026-08-13T18:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Painel de assinatura do Vale do Ouro, com o cenário do comprador, a fila de assinatura degrau a degrau e a lista de quem falta (c2x.app.br/apolo/assinaturas)",
+              "Mostra quantas unidades já têm o comprador assinado e de quem cada contrato está esperando agora",
+              "Atualiza sozinho, com o horário da última leitura na tela",
+            ],
+            screen: "Apolo · Painel de assinatura",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Tela nova em /apolo/assinaturas lendo o C2X, no lugar do Painel Assinatura do Power BI. As regras de leitura foram extraídas do .pbit do Lucas (Arquivo > Exportar > Modelo do Power BI, que traz o DataModelSchema em JSON legível; o .pbix não serve, o DataModel vem comprimido em VertiPaq) e estão em docs/operations/c2x-painel-assinatura-dax.md: só contrato com `send_document_signature` = 1 e status <> 6, \"Comprador\" é o perfil `Cliente` do C2X, quem tem e-mail @careli.adm.br vira \"Backoffice\", e o prazo do comprador é de 7 dias. Cache de 5 minutos no SERVIDOR (lib/apolo/painel-assinatura.ts), não por aba: medido na base, chegam ~7 assinaturas por hora nas horas úteis, então cada ciclo traz meia assinatura nova, e sem o cache dez pessoas com a tela aberta virariam 120 consultas/hora no legado, que tem pool de 5 conexões. A tela pede de 60 em 60s (quase sempre bate no cache) e pausa quando a aba sai de foco. Se o C2X cair, devolve o cache velho com o carimbo antigo em vez de sumir com o painel. Os números batem com o painel do Power BI: no Vista Alegre o card Comprador dá 39 de 39, igual.",
+      motivation:
+        "Lucas: \"quero só a visão do Vale do Ouro, quero um painel em html\" e depois \"vamos colocar um tempo para gente atualizar esse painel\". O Painel Assinatura do Power BI cobre o Vista Alegre e não o Vale do Ouro, que está em pleno lançamento com 179 contratos em assinatura e R$ 25,9 mi em unidades esperando.",
+    },
+    title: "Painel de assinatura do Vale do Ouro",
+    type: "novidade",
+    version: "1.131.0",
+  },
+  {
     buildTag: "2026-08-13-incorporador-gestao-portal",
     deployedAt: "2026-08-13T00:00:00-03:00",
     modules: [
