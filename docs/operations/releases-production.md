@@ -1733,6 +1733,44 @@ Atualizacao pos-deploy:
 - Validacoes finais: diff check OK; eslint escopado OK; check-types direto apps/hub OK; lint direto apps/hub OK; build hub OK; Vercel Production READY; healthchecks 200/401 esperado; logs error sem ocorrencia.
 - Observacao: producao foi publicada a partir do pacote limpo .codex-deploy/zeus-helpdesk-kanban-prod-20260526-1215/workspace, sem root misto e sem env/secret/migration/banco.
 
+## 2026-08-13 18:40:00 -03:00 - Zeus - Producao Apolo painel de assinatura + acessos de incorporador
+
+- Autorizacao: Lucas, explicita ("pode subir").
+- Commit: `9cbdb377` (push direto na `main`, deploy automatico).
+- Rollback: `4bc54ac0` (fix da trava de casal, que estava em producao antes).
+- Changelog: v1.130.0 (acessos de incorporador) e v1.131.0 (painel de assinatura).
+
+Recortes publicados:
+
+- `/apolo/assinaturas` - painel de assinatura do Vale do Ouro (VOC 37 + VOL 36), com o cenario
+  do comprador, a fila degrau a degrau, o quadro do incorporador e da Careli, as unidades com o
+  comprador assinado e a lista completa. Le o C2X read-only com cache de 5 minutos no servidor.
+- `/apolo/incorporadores` - criacao de incorporador, vinculo de empreendimentos e contas de
+  acesso, no lugar do INSERT manual no Supabase.
+- Portal do incorporador com menu lateral (CRM, Vendas, Carteira, Produtos); a marca do cliente
+  ficou so na tela de acesso.
+- Documentacao: `docs/operations/c2x-assinatura-contratos.md` e
+  `docs/operations/c2x-painel-assinatura-dax.md` (o DAX extraido do .pbit do Lucas).
+
+Healthcheck pos-deploy:
+
+- `https://c2x.app.br/` -> 200
+- `https://c2x.app.br/apolo/assinaturas` -> 200
+- `https://c2x.app.br/apolo/incorporadores` -> 200
+- `https://c2x.app.br/api/apolo/painel-assinatura` sem token -> 401 (gate ativo)
+
+Decisao de custo registrada: o cache dos 5 minutos e por SERVIDOR, nao por aba. Medido na base,
+chegam ~7 assinaturas por hora nas horas uteis; sem o cache, dez pessoas com a tela aberta
+virariam 120 consultas/hora no legado, que tem pool de 5 conexoes. A tela pausa o polling quando
+a aba sai de foco.
+
+Riscos residuais:
+
+- A tela de incorporadores cria conta de gente de fora; a lista de empreendimentos e a regra de
+  permissao. Nenhuma migration foi aplicada (as tabelas do 0083 ja existiam).
+- O painel ainda e so do Vale do Ouro. Generalizar por empreendimento fica para a tela de
+  inteligencia de dados que o Lucas pediu para organizar depois.
+
 ## 2026-05-27 16:05:00 -03:00 - Hefesto - Producao Hub notificacoes Windows
 
 - Assunto: [Hub] Notificacoes nativas Windows.
