@@ -40,6 +40,30 @@ export const TEMA_CSS = `
     .inc .marca-clara { display: none; }
     .inc .marca-escura { display: inline-block; }
   }
+
+  /* ── A CASCA DO PORTAL: menu à esquerda, conteúdo à direita ─────────────────
+     Lucas, 12/08: "no sidebar lateral queria ter poucas abas: CRM - Vendas - Carteira".
+     Está em CSS e não em estilo inline pelo mesmo motivo das cores: precisa virar barra
+     horizontal no celular, e media query não alcança estilo inline. */
+  .inc-shell { display: flex; min-height: 100dvh; }
+  .inc-side {
+    background: var(--inc-card); border-right: 1px solid var(--inc-border);
+    display: flex; flex: 0 0 224px; flex-direction: column;
+    height: 100dvh; position: sticky; top: 0; width: 224px;
+  }
+  .inc-nav { display: flex; flex-direction: column; gap: 2px; padding: 10px; }
+  .inc-main { flex: 1 1 auto; min-width: 0; }
+  @media (max-width: 860px) {
+    .inc-shell { display: block; }
+    .inc-side {
+      border-bottom: 1px solid var(--inc-border); border-right: none;
+      flex: none; height: auto; position: static; width: auto;
+    }
+    /* No celular o menu vira uma faixa que rola de lado; sem isso as abas espremem e o rótulo
+       quebra em duas linhas. */
+    .inc-nav { flex-direction: row; overflow-x: auto; }
+    .inc-nav > button { flex: 0 0 auto; }
+  }
 `;
 
 export const T = {

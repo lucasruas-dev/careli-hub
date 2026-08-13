@@ -36,6 +36,45 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-13-incorporador-gestao-portal",
+    deployedAt: "2026-08-13T00:00:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Tela nova para criar o incorporador, dizer quais empreendimentos ele enxerga e abrir as contas de acesso dele (c2x.app.br/apolo/incorporadores)",
+              "A senha do incorporador se define e se troca por aqui; deixar em branco na edição mantém a que já existe",
+            ],
+            screen: "Apolo · Acessos de incorporador",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O portal ganhou menu lateral com CRM, Vendas, Carteira e Produtos",
+              "A marca do incorporador agora recebe o cliente só na tela de acesso; dentro do portal a marca é o Panteon",
+            ],
+            screen: "Portal do incorporador",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Três peças. (1) `lib/apolo/incorporador/gestao.ts` + rotas `/api/apolo/incorporadores` e `/api/apolo/incorporadores/usuarios`, com `authorizeApoloWrite` nas duas pernas (inclusive no GET: a lista de empreendimentos por incorporador É a regra de permissão). A lista de empreendimentos é substituída inteira a cada gravação, porque merge deixaria empreendimento pendurado quando o operador desmarca; `carteira_administrada` é preservado pela tela ao remontar a lista. `senha_hash` nunca sai do servidor, e senha vazia na edição mantém a atual. (2) Tela `/apolo/incorporadores`. (3) Portal: header horizontal virou casca com menu lateral (`.inc-shell`/`.inc-side`/`.inc-nav` no TEMA_CSS, que vira faixa rolável abaixo de 860px, já que estilo inline não responde a media query), aba CRM entrou como esqueleto e a `<Marca>` do cabeçalho passou a ser o símbolo do Panteon; `logoUrl`/`logoEscuraUrl` saíram das props do Portal e ficaram só no login.",
+      motivation:
+        "Lucas, 12/08: \"eu preciso ter um local que eu crio o login e senha desses usuarios e vincula-los ao perfil correto\" e \"podemos usar a mesma estrutura para todos, somente a tela de login eu quero com a marca da cecilio, as demais pode ser o panteon mesmo\". Recanto do Pará, Vista Alegre e Lavra do Ouro entram agora, e o caminho até aqui era INSERT manual no Supabase, onde uma linha errada em `apolo_incorporador_empreendimentos` é um cliente vendo a carteira do outro.",
+    },
+    title: "Acessos de incorporador: tela de gestão e portal no padrão Panteon",
+    type: "novidade",
+    version: "1.130.0",
+  },
+  {
     buildTag: "2026-08-12-cad-conjuge-portal",
     deployedAt: "2026-08-12T20:45:00-03:00",
     internal: true,

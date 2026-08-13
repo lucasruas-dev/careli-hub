@@ -1,0 +1,40 @@
+{
+  "dados": [
+    {
+      "codigo_venda": "VEN-45",
+      "codigo_cliente": "CLI146",
+      "codigo_lote": "LOU0101",
+      "data_venda": "2024-03-12",
+      "valor_venda": "148500.00",
+      "qtd_parcelas": 144,
+      "valor_parcela": null,
+      "data_1o_vencimento": "2024-05-10",
+      "qtd_sinal": 6,
+      "valor_sinal": "12000.00",
+      "data_sinal": "2024-04-10",
+      "indice": "IPCA ANUAL",
+      "situacao": "Faturado",
+      "percentual_reajuste": "8.0000",
+      "observacao": null
+    },
+    {
+      "codigo_venda": "VEN-118",
+      "codigo_cliente": "CLI209",
+      "codigo_lote": "LOS0312",
+      "data_venda": "2024-07-05",
+      "valor_venda": "132000.00",
+      "qtd_parcelas": 24,
+      "valor_parcela": "4200.00",
+      "data_1o_vencimento": "2025-02-05",
+      "qtd_sinal": 6,
+      "valor_sinal": "31200.00",
+      "data_sinal": "2024-08-05",
+      "indice": "IPCA ANUAL",
+      "situacao": "Faturado",
+      "percentual_reajuste": "0.0000",
+      "observacao": null
+    }
+  ],
+  "total": 475,
+  "proxima_pagina": "dmVuOjExOA"
+}

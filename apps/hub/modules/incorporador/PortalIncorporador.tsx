@@ -25,7 +25,7 @@ type Sessao = {
   usuario: { nome: string };
 };
 
-type Aba = "carteira" | "produtos" | "vendas";
+type Aba = "carteira" | "crm" | "produtos" | "vendas";
 
 export function PortalIncorporador({
   logoEscuraUrl,
@@ -77,8 +77,6 @@ export function PortalIncorporador({
         await fetch("/api/incorporador/sessao", { method: "DELETE" });
         setSessao(null);
       }}
-      logoEscuraUrl={logoEscuraUrl}
-      logoUrl={logoUrl}
       onAba={setAba}
       sessao={sessao}
     />
@@ -281,24 +279,26 @@ function Porta({ aoEntrar, slug }: { aoEntrar: () => Promise<void>; slug: string
 
 // ── O PORTAL ────────────────────────────────────────────────────────────────
 
+// "no sidebar lateral queria ter poucas abas: CRM - Vendas - Carteira" (Lucas, 12/08). Produtos
+// continua na lista porque já está no ar e é por onde o Cecílio abre o masterplan; tirar seria
+// remover função de cliente ativo para cumprir uma contagem de abas.
 const ABAS: { chave: Aba; rotulo: string }[] = [
+  { chave: "crm", rotulo: "CRM" },
   { chave: "vendas", rotulo: "Vendas" },
   { chave: "carteira", rotulo: "Carteira" },
   { chave: "produtos", rotulo: "Produtos" },
 ];
 
+// A logo do incorporador NÃO entra aqui de propósito: ela recebe na porta (o login) e o portal
+// é Panteon para todo mundo. Por isso o Portal não recebe mais `logoUrl`/`logoEscuraUrl`.
 function Portal({
   aba,
   aoSair,
-  logoEscuraUrl,
-  logoUrl,
   onAba,
   sessao,
 }: {
   aba: Aba;
   aoSair: () => Promise<void>;
-  logoEscuraUrl: string | null;
-  logoUrl: string | null;
   onAba: (aba: Aba) => void;
   sessao: Sessao;
 }) {
@@ -308,91 +308,125 @@ function Portal({
   const abas = ABAS.filter((item) => item.chave !== "carteira" || temCarteira);
 
   return (
-    <div className="inc" style={{ background: T.page, fontFamily: fonte, minHeight: "100dvh" }}>
+    <div className="inc" style={{ background: T.page, fontFamily: fonte }}>
       <style>{TEMA_CSS}</style>
 
-      <header
-        style={{
-          alignItems: "center",
-          background: T.card,
-          borderBottom: `1px solid ${T.border}`,
-          display: "flex",
-          gap: 16,
-          padding: "12px 20px",
-          position: "sticky",
-          top: 0,
-          zIndex: 10,
-        }}
-      >
-        <Marca
-          altura={46}
-          escuraUrl={logoEscuraUrl}
-          largura={170}
-          nome={sessao.incorporador.nome}
-          url={logoUrl}
-        />
+      <div className="inc-shell">
+        <aside className="inc-side">
+          {/* DENTRO DO PORTAL A MARCA É O PANTEON (Lucas, 12/08): "somente a tela de login eu
+              quero com a marca da Cecílio, as demais pode ser o Panteon mesmo". O portal é o
+              nosso produto e serve a todos os incorporadores da carteira; a marca do cliente
+              recebe ele na porta e o Panteon conduz daí em diante. O nome do incorporador fica
+              logo abaixo, que é o que responde "estou vendo a carteira de quem?".
 
-        <nav style={{ display: "flex", gap: 4, marginLeft: 8 }}>
-          {abas.map((item) => (
-            <button
-              key={item.chave}
-              onClick={() => onAba(item.chave)}
+              O símbolo tem versão preta e branca; a logo horizontal do Panteon só existe em
+              branco (`panteon-logo-light.png`, feita para o fundo escuro do login do hub), e
+              sumiria no tema claro daqui. Por isso: símbolo + o nome escrito em texto, que
+              acompanha o tema sozinho pela variável de cor. */}
+          <div style={{ borderBottom: `1px solid ${T.border}`, padding: "16px 16px 14px" }}>
+            <span style={{ alignItems: "center", display: "flex", gap: 8 }}>
+              <Marca
+                altura={24}
+                escuraUrl="/panteon-mark-light.png"
+                largura={24}
+                nome="Panteon"
+                url="/panteon-mark.png"
+              />
+              <span style={{ color: T.text, fontSize: 16, fontWeight: 700, letterSpacing: 0.2 }}>
+                Panteon
+              </span>
+            </span>
+            <span
               style={{
-                background: aba === item.chave ? T.soft : "transparent",
-                border: "none",
+                color: T.sub,
+                display: "block",
+                fontSize: 13,
+                fontWeight: 600,
+                marginTop: 8,
+              }}
+            >
+              {sessao.incorporador.nome}
+            </span>
+          </div>
+
+          <nav className="inc-nav">
+            {abas.map((item) => (
+              <button
+                key={item.chave}
+                onClick={() => onAba(item.chave)}
+                style={{
+                  background: aba === item.chave ? T.soft : "transparent",
+                  border: "none",
+                  borderRadius: 8,
+                  color: aba === item.chave ? T.text : T.muted,
+                  cursor: "pointer",
+                  fontFamily: fonte,
+                  fontSize: 14,
+                  fontWeight: aba === item.chave ? 600 : 500,
+                  padding: "9px 12px",
+                  textAlign: "left",
+                  width: "100%",
+                }}
+                type="button"
+              >
+                {item.rotulo}
+              </button>
+            ))}
+          </nav>
+
+          {/* `marginTop:auto` prende o rodapé embaixo no desktop; no celular a casca vira bloco e
+              ele volta a ser uma linha normal logo depois do menu. */}
+          <div
+            style={{
+              borderTop: `1px solid ${T.border}`,
+              marginTop: "auto",
+              padding: "12px 16px 16px",
+            }}
+          >
+            <span style={{ color: T.muted, display: "block", fontSize: 12.5, marginBottom: 8 }}>
+              {sessao.usuario.nome}
+            </span>
+            <button
+              onClick={() => void aoSair()}
+              style={{
+                background: "transparent",
+                border: `1px solid ${T.border}`,
                 borderRadius: 8,
-                color: aba === item.chave ? T.text : T.muted,
+                color: T.sub,
                 cursor: "pointer",
                 fontFamily: fonte,
-                fontSize: 14,
-                fontWeight: aba === item.chave ? 600 : 500,
-                padding: "8px 14px",
+                fontSize: 12.5,
+                padding: "7px 12px",
+                width: "100%",
               }}
               type="button"
             >
-              {item.rotulo}
+              Sair
             </button>
-          ))}
-        </nav>
+          </div>
+        </aside>
 
-        <div style={{ alignItems: "center", display: "flex", gap: 14, marginLeft: "auto" }}>
-          <span style={{ color: T.muted, fontSize: 12.5 }}>{sessao.usuario.nome}</span>
-          <button
-            onClick={() => void aoSair()}
+        <div className="inc-main">
+          <main style={{ margin: "0 auto", maxWidth: 1180, padding: "26px 20px 40px" }}>
+            {aba === "crm" ? <EmBreve titulo="CRM" /> : null}
+            {aba === "produtos" ? <TelaProdutos /> : null}
+            {aba === "vendas" ? <EmBreve titulo="Vendas" /> : null}
+            {aba === "carteira" ? <EmBreve titulo="Carteira" /> : null}
+          </main>
+
+          <footer
             style={{
-              background: "transparent",
-              border: `1px solid ${T.border}`,
-              borderRadius: 8,
-              color: T.sub,
-              cursor: "pointer",
-              fontFamily: fonte,
-              fontSize: 12.5,
-              padding: "7px 12px",
+              borderTop: `1px solid ${T.border}`,
+              color: T.muted,
+              fontSize: 11.5,
+              padding: "16px 20px",
+              textAlign: "center",
             }}
-            type="button"
           >
-            Sair
-          </button>
+            <span style={{ color: T.gold }}>●</span> Tecnologia <b style={{ color: T.sub }}>C2X</b>
+          </footer>
         </div>
-      </header>
-
-      <main style={{ margin: "0 auto", maxWidth: 1180, padding: "26px 20px 60px" }}>
-        {aba === "produtos" ? <TelaProdutos /> : null}
-        {aba === "vendas" ? <EmBreve titulo="Vendas" /> : null}
-        {aba === "carteira" ? <EmBreve titulo="Carteira" /> : null}
-      </main>
-
-      <footer
-        style={{
-          borderTop: `1px solid ${T.border}`,
-          color: T.muted,
-          fontSize: 11.5,
-          padding: "16px 20px",
-          textAlign: "center",
-        }}
-      >
-        <span style={{ color: T.gold }}>●</span> Tecnologia <b style={{ color: T.sub }}>C2X</b>
-      </footer>
+      </div>
     </div>
   );
 }
