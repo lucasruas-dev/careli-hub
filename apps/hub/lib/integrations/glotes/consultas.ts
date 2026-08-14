@@ -323,9 +323,12 @@ export async function listarLotes(filtros: Filtros): Promise<Pagina<unknown>> {
     bloqueado_para_venda: Number(linha.sale_blocked) === 1,
     codigo_loteamento: LOTEAMENTO.codigo,
     codigo_lote: texto(linha.codigo_lote),
-    // As medidas dos lados NÃO EXISTEM no C2X: estão no memorial descritivo e na matrícula, que
-    // são documentos, não campos. Saem nulas e documentadas (pendência P1 do contrato) em vez de
-    // omitidas, para o cliente não descobrir isso no meio da integração.
+    // Decisão do Lucas (14/08), fechando a pendência P1: "vamos mandar somente o tamanho do lote
+    // como um todo, o que temos hoje". Ou seja, `area_total` e nada de medidas de lado.
+    //
+    // Elas não existem no C2X — estão no memorial descritivo e na matrícula, que são documentos e
+    // não campos, e extrair das 493 unidades seria um projeto à parte. Saem nulas e documentadas
+    // em vez de omitidas, para o cliente não descobrir isso no meio da integração.
     frente: null,
     fundo: null,
     lado_direito: null,
@@ -353,7 +356,6 @@ type VendaRow = RowDataPacket & {
   act_date: null | string;
   codigo_cliente: null | string;
   codigo_lote: null | string;
-  contractual_interest: null | number | string;
   data_1o_vencimento: null | string;
   data_sinal: null | string;
   id: number;
@@ -397,7 +399,6 @@ export async function listarVendas(filtros: Filtros): Promise<Pagina<unknown>> {
        date_format(ar.first_signal_payment, '%Y-%m-%d') as data_sinal,
        st.name as situacao,
        imc.name as indice,
-       cp.contractual_interest,
        (select count(*) from payments p
          where p.acquisition_request_id = ar.id and p.parcel_type_id = 3
            and coalesce(p.payment_to_delete, 0) = 0) as qtd_parcelas,
@@ -438,9 +439,14 @@ export async function listarVendas(filtros: Filtros): Promise<Pagina<unknown>> {
     data_venda: data(linha.act_date),
     indice: texto(linha.indice),
     observacao: null,
-    // Pendência P2 do contrato: o plano tem dois percentuais e os dois são chamados de reajuste.
-    // Entregamos o juro contratual e deixamos a escolha registrada para o cliente confirmar.
-    percentual_reajuste: decimal(linha.contractual_interest, 4),
+    // SEMPRE NULO por decisão do Lucas (14/08): "não vamos mandar nenhum reajuste".
+    //
+    // O plano comercial tem DOIS percentuais e os dois são chamados de reajuste em contextos
+    // diferentes (`contractual_interest` e `correction_rate`), o que era a pendência P2 do
+    // contrato. Mandar o número errado é pior que não mandar: o cliente recalcularia a carteira
+    // inteira em cima dele e a divergência só apareceria no fechamento. O campo continua na
+    // resposta, nulo, porque o contrato promete que todo campo pedido aparece.
+    percentual_reajuste: null,
     qtd_parcelas: Number(linha.qtd_parcelas ?? 0),
     qtd_sinal: Number(linha.qtd_sinal ?? 0),
     situacao: texto(linha.situacao),

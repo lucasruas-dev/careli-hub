@@ -621,13 +621,14 @@ components:
           description: Estágio do contrato. Nas vendas ativas do recorte é sempre `Faturado`.
           examples: [Faturado, Cancelado]
         percentual_reajuste:
-          type: [string, "null"]
-          pattern: '^-?\d+\.\d{4}$'
+          type: "null"
           description: |
-            Percentual de juros contratuais do plano comercial, com **quatro** casas decimais.
-            **Não é dinheiro:** não segue o padrão de duas casas. ⚠️ Confirme com a Careli qual dos
-            dois percentuais do contrato o GLOTES espera aqui: existe também uma taxa de correção
-            distinta, e os dois são chamados de reajuste em contextos diferentes (pendência P2).
+            ⚠️ SEMPRE NULO, por decisão da Careli (14/08/2026).
+
+            O plano comercial tem **dois** percentuais distintos, e ambos são chamados de reajuste
+            em contextos diferentes. Enviar um deles sem que os dois lados concordem sobre qual é
+            qual levaria o GLOTES a recalcular a carteira em cima do número errado, e a
+            divergência só apareceria no fechamento. A correção do contrato está em `indice`.
         observacao:
           type: "null"
           description: ⚠️ SEMPRE NULO. O campo existe na origem e está vazio em todas as 475 vendas.
@@ -712,17 +713,23 @@ components:
 x-pendencias:
   P1:
     assunto: Medidas do lote (frente, fundo, lados)
-    situacao: Não existem na base da Careli.
+    situacao: |
+      FECHADA em 14/08/2026. Não existem na base da Careli, e a decisão foi entregar apenas o
+      tamanho do lote como um todo: `area_total`, que está preenchida nas 493 unidades.
     decisao: |
-      O GLOTES precisa mesmo dessas medidas? Se precisar, elas terão que sair do memorial
-      descritivo ou da matrícula, o que é um projeto à parte, com extração documento a documento
-      das 493 unidades. Se não precisar, saem do contrato e ficam nulas.
-    de_quem: Cliente
+      `frente`, `fundo`, `lado_direito`, `lado_esquerdo`, `lado5` e `lado6` permanecem no contrato
+      e vêm sempre nulos. Se um dia forem necessários, saem do memorial descritivo ou da
+      matrícula, o que é um projeto à parte de extração documento a documento.
+    de_quem: Careli (decidido)
   P2:
     assunto: Qual percentual é o reajuste
-    situacao: O plano comercial tem duas taxas distintas, e as duas são chamadas de reajuste.
-    decisao: Confirmar com o GLOTES qual dos dois números ele espera receber.
-    de_quem: Cliente
+    situacao: |
+      FECHADA em 14/08/2026. O plano comercial tem duas taxas distintas e ambas são chamadas de
+      reajuste; a Careli decidiu não enviar nenhuma.
+    decisao: |
+      `percentual_reajuste` vem sempre nulo. A correção monetária do contrato continua sendo
+      informada em `indice` (IPCA ANUAL em 465 das 475 vendas).
+    de_quem: Careli (decidido)
   P3:
     assunto: Confiabilidade da carga incremental
     situacao: |
