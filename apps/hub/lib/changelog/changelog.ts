@@ -38,6 +38,10 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
     buildTag: "2026-08-14-iris-cadastro-apolo",
     deployedAt: "2026-08-14T19:40:00-03:00",
+    // Fora do painel de Novidades da Home (decisão do Lucas, 14/08). Continua entrando no bump de
+    // versão e na aba Deploy do Zeus — o registro técnico e o sinal de atualização da PWA não se
+    // perdem; o que não acontece é o anúncio para o time.
+    internal: true,
     modules: [
       {
         module: "Iris",
