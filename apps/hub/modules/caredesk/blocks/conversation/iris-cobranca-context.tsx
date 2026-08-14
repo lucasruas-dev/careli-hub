@@ -106,6 +106,7 @@ const TABS_ATENDIMENTO: { icon: LucideIcon; id: CobrancaTab; label: string }[] =
 
 export function IrisCobrancaContextSidebar({
   apoloEntity,
+  blocoIdentidade,
   clienteFields,
   clientId,
   collapsed,
@@ -120,6 +121,8 @@ export function IrisCobrancaContextSidebar({
   tickets,
 }: {
   apoloEntity?: IrisApoloContextEntity | null;
+  /** Bloco "Cadastro no Apolo" da aba Cliente (só o atendimento passa). */
+  blocoIdentidade?: ReactNode;
   clienteFields: { label: string; value: ReactNode }[];
   clientId: string | null;
   collapsed: boolean;
@@ -380,6 +383,7 @@ export function IrisCobrancaContextSidebar({
             atProtocol={
               tickets.find((item) => item.id === currentTicketId)?.protocol ?? ""
             }
+            blocoIdentidade={blocoIdentidade}
             client={client}
             clienteFields={clienteFields}
             clientId={clientId}
@@ -1008,11 +1012,15 @@ function groupOverdueByEmpreendimento(
 
 function ClienteTab({
   atProtocol,
+  blocoIdentidade,
   client,
   clienteFields,
   clientId,
 }: {
   atProtocol: string;
+  /** Bloco "Cadastro no Apolo", renderizado ACIMA dos campos: é a primeira coisa que o operador
+   *  precisa saber sobre quem está do outro lado. Opcional — a cobrança não usa. */
+  blocoIdentidade?: ReactNode;
   client: QueueClient | null;
   clienteFields: { label: string; value: ReactNode }[];
   clientId: string | null;
@@ -1030,6 +1038,7 @@ function ClienteTab({
   });
   return (
     <div className="space-y-2.5">
+      {blocoIdentidade}
       <div className="overflow-hidden rounded-xl border border-line/70 bg-surface">
         {fields.map((field, index) => (
           <div

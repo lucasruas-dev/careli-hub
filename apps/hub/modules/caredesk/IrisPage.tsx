@@ -109,6 +109,7 @@ import {
   IrisCobrancaContextSidebar,
   type CobrancaProposalRenderArgs,
 } from "./blocks/conversation/iris-cobranca-context";
+import { IrisIdentidadeApolo } from "./blocks/conversation/iris-identidade-apolo";
 import {
   IrisAthenaPanel,
   type AthenaAction,
@@ -4505,6 +4506,18 @@ function IrisConversationPanel({
       ) : (
         <IrisCobrancaContextSidebar
           apoloEntity={apoloContextEntity}
+          // "Quem é este contato no Apolo?" — vem ANTES dos campos porque é a pergunta que decide
+          // o resto do atendimento. Olha três fontes (identificador, contatos da ficha e vínculo
+          // de outra pessoa), então acha também o cônjuge e o corretor que o phone-match não vê.
+          blocoIdentidade={
+            ticketIsGroup ? null : (
+              <IrisIdentidadeApolo
+                getAccessToken={getIrisAccessToken}
+                nomeDoContato={ticket.contactLabel}
+                telefone={ticket.contactPhone}
+              />
+            )
+          }
           clienteFields={
             // Relacionamento nao tem cliente/CPF/operador: mostra o que e do grupo.
             ticketIsGroup
