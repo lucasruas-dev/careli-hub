@@ -1843,6 +1843,38 @@ Atualizacao pos-deploy:
 - Validacoes finais: diff check OK; eslint escopado OK; check-types direto apps/hub OK; lint direto apps/hub OK; build hub OK; Vercel Production READY; healthchecks 200/401 esperado; logs error sem ocorrencia.
 - Observacao: producao foi publicada a partir do pacote limpo .codex-deploy/zeus-helpdesk-kanban-prod-20260526-1215/workspace, sem root misto e sem env/secret/migration/banco.
 
+## 2026-08-14 20:35:00 -03:00 - Zeus - Producao credenciamento Lagoa Bonita unificado
+
+- Autorizacao: Lucas, explicita ("pode sim, mas analisa pois eu subi muita coisa hoje, cuidado
+  para nao sobreescrever").
+- Commit: `64df4b2f`. Rollback: `da11695b` (v1.134.0, cadastro do Apolo no cockpit da Iris).
+- Changelog: v1.135.0.
+
+⚠️ CUIDADO QUE VALEU: o trabalho era de 13/08 e ficou numa branch antiga; nesse meio-tempo a
+`origin/main` avancou para v1.134.0 por OUTRA sessao, e a branch local era outra
+(`release/painel-coordenador`, com um commit de terceiro que nao era meu para promover). Em vez
+de empurrar a branch, criei `fix/credenciamento-lagoa-bonita` A PARTIR de `origin/main` e fiz
+cherry-pick dos 4 commits meus. Conferido antes: os tres arquivos de codigo tocados nao haviam
+sido alterados na main desde 13/08, e `git merge-base --is-ancestor origin/main HEAD` confirmou
+fast-forward. Nada de terceiro foi sobrescrito.
+
+⚠️ ARMADILHA DE SHELL no caminho: `git cherry-pick -q ... | tail -1` faz o exit code ser o do
+`tail`, entao o `&&` mascarou 4 falhas seguidas e o log dizia "ok" com ZERO commits aplicados.
+Só apareceu ao conferir `git log origin/main..HEAD`. Nunca encadear cherry-pick com pipe.
+
+Recorte publicado (portal publico de credenciamento de imobiliaria):
+
+- logo do Lagoa Bonita volta a aparecer (a chave do storage troca `:` e espaco por `_`, e o
+  lookup usava o id cru);
+- nome em caixa alta como os demais;
+- credenciar em Lagoa Bonita passa a habilitar LBF, LBR e LBP.
+
+Healthcheck: `c2x.app.br` 200 · `/publico/imobiliaria` 200 · `/apolo/assinaturas` 200.
+
+Risco residual: NAO e retroativo. Imobiliaria credenciada em "Lagoa Bonita" antes disto tem o
+vinculo gravado em `metadata.enterpriseId = 'group:Lagoa Bonita'`. Varrer `apolo_relationships`
+por `group:` e reescrever para as etapas quando houver caso.
+
 ## 2026-08-13 18:40:00 -03:00 - Zeus - Producao Apolo painel de assinatura + acessos de incorporador
 
 - Autorizacao: Lucas, explicita ("pode subir").
