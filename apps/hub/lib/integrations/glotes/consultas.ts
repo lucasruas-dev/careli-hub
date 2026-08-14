@@ -35,6 +35,18 @@ const LOTEAMENTO = { codigo: "LAVRA", nome: "LAVRA DO OURO" };
 /** Status de parcela que contam como carteira: 5 Pago, 6 Aguardando pagamento, 7 Atrasado. */
 const STATUS_ATIVOS = [5, 6, 7];
 
+/**
+ * Recebimentos = SÓ O PARCELAMENTO (`parcel_type_id = 3`).
+ *
+ * Decisão do Lucas (14/08): "a parte financeira é somente do parcelamento, não entra o ato e nem
+ * o sinal". Ato e Sinal são a ENTRADA do contrato, e a entrada já é descrita no conjunto
+ * `vendas` (`qtd_sinal`, `valor_sinal`, `data_sinal`). Mandá-los também como recebimento faria o
+ * GLOTES contar a entrada duas vezes: uma no resumo da venda e outra na régua de parcelas.
+ *
+ * Efeito no volume: 66.805 linhas em vez de 68.356 (saem 1.076 de Sinal, 474 de Ato e 1 Avulso).
+ */
+const TIPO_PARCELAMENTO = 3;
+
 const LIMITE_PADRAO = 500;
 const LIMITE_MAXIMO = 1000;
 
@@ -520,6 +532,7 @@ export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unkno
      join enterprise_unities eu on eu.id = ar.enterprise_unity_id
      left join payment_statuses ps on ps.id = p.payment_status_id
     where eu.enterprise_id in (?) ${abertas}
+      and p.parcel_type_id = ${TIPO_PARCELAMENTO}
       and coalesce(p.payment_to_delete, 0) = 0
       and p.payment_status_id in (?)
       ${filtro}`;
@@ -553,6 +566,7 @@ export async function listarRecebimentos(filtros: Filtros): Promise<Pagina<unkno
      left join payment_types pay on pay.id = p.payment_type_id
      left join users cli on cli.id = ar.client_id
     where eu.enterprise_id in (?) ${abertas}
+      and p.parcel_type_id = ${TIPO_PARCELAMENTO}
       and coalesce(p.payment_to_delete, 0) = 0
       and p.payment_status_id in (?)
       ${filtro}

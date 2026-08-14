@@ -46,7 +46,7 @@ info:
     | clientes | 375 |
     | lotes | 493 |
     | vendas | 475 (abertas) |
-    | recebimentos | 68.356 |
+    | recebimentos | 66.805 (só as parcelas mensais) |
 
     ## Como consumir
 
@@ -58,7 +58,7 @@ info:
 
     **API IMPLEMENTADA em 14/08/2026.** Os cinco endpoints existem, autenticam pelo header
     `X-Glotes-Token` e devolvem os volumes conferidos no levantamento (375 clientes, 493 lotes,
-    475 vendas, 68.356 recebimentos). O token é entregue pela Careli por canal seguro.
+    475 vendas, 66.805 parcelas mensais). O token é entregue pela Careli por canal seguro.
 
     O que continua em aberto está em `x-pendencias`, e nada disso impede começar a integração: os
     campos sem origem já vêm nulos e documentados.
@@ -295,10 +295,15 @@ paths:
   /recebimentos:
     get:
       tags: [Movimento]
-      summary: As parcelas, pagas e a vencer
+      summary: As parcelas mensais, pagas e a vencer
       description: |
-        68.356 parcelas, das quais 12.530 pagas. É o conjunto grande: use `alterado_desde` depois
-        da primeira carga.
+        **Só o PARCELAMENTO.** Ato e Sinal não entram aqui (decisão da Careli, 14/08/2026): eles
+        são a ENTRADA do contrato, e a entrada já vem descrita no conjunto `vendas`, nos campos
+        `qtd_sinal`, `valor_sinal` e `data_sinal`. Trazê-los também como recebimento faria a
+        entrada ser contada duas vezes.
+
+        **66.805 parcelas mensais.** É o conjunto grande: use `alterado_desde` depois da primeira
+        carga.
 
         **A chave única de uma parcela é `codigo_recebimento`.** O `numero_parcela` **se repete**
         dentro do mesmo contrato e não serve como chave: use-o só para exibir.
@@ -654,7 +659,10 @@ components:
             duas linhas de mesmo número. Serve para mostrar, nunca para identificar.
         tipo_parcela:
           type: string
-          enum: [Ato, Sinal, Parcela, Avulso]
+          enum: [Parcela]
+          description: |
+            Sempre `Parcela`. O campo permanece no contrato por compatibilidade, mas este conjunto
+            traz apenas o parcelamento: Ato e Sinal ficam fora, e a entrada é descrita em `vendas`.
         data_vencimento: { type: string, format: date }
         valor_parcela:
           type: [string, "null"]
@@ -704,7 +712,7 @@ components:
           description: ⚠️ SEMPRE NULO. Não há identificador bancário disponível nesta base.
         observacao:
           type: "null"
-          description: ⚠️ SEMPRE NULO. Preenchido em 1 linha de 68.356.
+          description: ⚠️ SEMPRE NULO. Preenchido em 1 linha de toda a carteira.
 
 # =====================================================================================
 # PENDÊNCIAS: o que precisa de decisão antes de esta API existir.
