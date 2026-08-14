@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-14-glotes-api",
+    deployedAt: "2026-08-14T17:10:00-03:00",
+    modules: [
+      {
+        module: "Integrações",
+        screens: [
+          {
+            items: [
+              "A carteira do Lavra do Ouro passa a ser entregue ao GLOTES, o sistema do próprio cliente, por uma API de leitura",
+              "São cinco conjuntos: loteamentos, clientes, lotes, vendas e as parcelas mensais",
+              "O cliente puxa quando quiser, e depois da primeira carga só o que mudou",
+            ],
+            screen: "Integrações · GLOTES (Lavra do Ouro)",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Cinco endpoints GET sob /api/integrations/glotes (loteamentos, clientes, lotes, vendas, recebimentos), paginados por cursor opaco (base64 de id:<n>, não OFFSET: com OFFSET uma inserção concorrente faz a próxima página pular linha, e numa carga de 66 mil parcelas isso passa despercebido). Implementa o contrato já fechado com o cliente em docs/integrations/glotes-openapi.yaml. SEGURANÇA: a rota entra na allowlist do proxy.ts e se protege por dentro (lib/integrations/glotes/porta.ts) — token dedicado no header X-Glotes-Token comparado em tempo constante, NUNCA aceito em query string (URL vaza em log de proxy, histórico e Referer, e este token abre nome, CPF e endereço de 375 titulares); sem GLOTES_API_TOKEN a API responde 503, falha fechada; escopo travado NO SERVIDOR nos enterprises 1 e 4, sem parâmetro de loteamento; teto de 120 req/min por IP; log de acesso com filtros e contagem, sem o corpo da resposta; Cache-Control no-store. Convenções do contrato: dinheiro como string decimal de duas casas (somar 66 mil parcelas em float diverge do fechamento em centavos), documento e CEP só com dígitos, e todo campo pedido presente mesmo quando a Careli não tem o dado. Decisões do Lucas aplicadas: recebimentos traz SÓ o parcelamento (Ato e Sinal são a entrada, já descrita em vendas — mandá-los de novo contaria a entrada duas vezes), percentual_reajuste sempre nulo (o plano tem duas taxas ambíguas) e do lote sai só area_total. Conferido contra a base: 375 clientes, 493 lotes, 475 vendas, 66.805 parcelas. Pendência P3 do contrato resolvida com teste: payments.updated_at acompanha a alteração (13.303 linhas alteradas após criadas, zero pagamentos recentes com marca defasada), então alterado_desde é confiável.",
+      motivation:
+        "O cliente Lavra do Ouro administra a carteira dele no GLOTES e precisa dos dados que a Careli mantém. Lucas: \"preciso que eles já possam fazer a integração\". Até aqui existia só o levantamento e o contrato; faltava a API.",
+    },
+    title: "API da carteira Lavra do Ouro para o GLOTES",
+    type: "novidade",
+    version: "1.133.0",
+  },
+  {
     buildTag: "2026-08-14-painel-coordenador",
     deployedAt: "2026-08-14T12:30:00-03:00",
     modules: [
