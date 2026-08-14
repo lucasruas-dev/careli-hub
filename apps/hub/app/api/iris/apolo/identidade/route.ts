@@ -34,6 +34,23 @@ export async function GET(request: NextRequest) {
 
   const identidade = await identidadeDoContato(authorization.client, telefone);
 
+  // LOG DE ACESSO A DADO PESSOAL. Esta rota devolve o documento COMPLETO — `document_masked`
+  // guarda o CPF por extenso, apesar do nome (lib/apolo/cadastro-persist.ts, formatDocument). A
+  // escrita no Apolo já deixa rastro em `apolo_audit_events`; a leitura não deixava nenhum. Se o
+  // CPF integral aparece na tela do operador, o mínimo é saber quem olhou qual ficha e quando.
+  // Sem o corpo da resposta: registrar as linhas seria copiar o CPF para o log.
+  if (identidade.estado === "entidade") {
+    console.log(
+      "[iris][apolo][identidade][acesso]",
+      JSON.stringify({
+        em: new Date().toISOString(),
+        entidadeId: identidade.entidadeId,
+        operador: authorization.user?.id ?? "desconhecido",
+        via: identidade.via,
+      }),
+    );
+  }
+
   return NextResponse.json(
     { data: identidade },
     {

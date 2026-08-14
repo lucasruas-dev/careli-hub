@@ -2,7 +2,6 @@
 
 import {
   AlertTriangle,
-  Building2,
   Check,
   Link2,
   Loader2,
@@ -31,27 +30,17 @@ type Props = {
   getAccessToken: () => Promise<string>;
   /** Nome que veio do WhatsApp, para pré-preencher o cadastro rápido. */
   nomeDoContato?: null | string;
+  /**
+   * Avisa o painel de quem é este contato, para os campos Cliente, CPF/CNPJ e E-mail deixarem de
+   * mostrar "-" quando a ficha existe. Era o caso da Ilza: o bloco dizia "Cadastrado" e o campo
+   * Cliente logo abaixo continuava vazio, porque ele só olhava o phone-match.
+   */
+  onIdentidade?: (identidade: IdentidadeDoContato) => void;
   onCadastrar?: (dados: { nome: null | string; telefone: string }) => void;
   onEditar?: (entidadeId: string) => void;
   onVincular?: (dados: { nome: null | string; telefone: string }) => void;
   telefone: null | string;
 };
-
-const ROTULO_PAPEL: Record<string, string> = {
-  acesso_incorporador: "Acesso de incorporador",
-  colaborador: "Colaborador",
-  corretor: "Corretor",
-  imobiliaria: "Imobiliária",
-  incorporador: "Incorporador",
-  pessoa_fisica: "Pessoa física",
-  pessoa_juridica: "Pessoa jurídica",
-  prospect: "Prospect",
-  usuario: "Usuário",
-};
-
-/** Papéis que descrevem o CADASTRO, não o que a pessoa é para o negócio. Escondidos: dizer que
- *  alguém é "pessoa física" e "usuário" ocupa a linha e não informa nada ao operador. */
-const PAPEL_TECNICO = new Set(["pessoa_fisica", "pessoa_juridica", "usuario"]);
 
 const ROTULO_VINCULO: Record<string, string> = {
   conjuge: "cônjuge",
@@ -71,6 +60,7 @@ export function IrisIdentidadeApolo({
   nomeDoContato,
   onCadastrar,
   onEditar,
+  onIdentidade,
   onVincular,
   telefone,
 }: Props) {
@@ -95,19 +85,23 @@ export function IrisIdentidadeApolo({
       } | null;
 
       // Falha vira ESTADO, não um painel vazio: o operador precisa saber que ninguém olhou.
-      setIdentidade(
+      const resultado: IdentidadeDoContato =
         resposta.ok && corpo?.data
           ? corpo.data
-          : { estado: "indisponivel", motivo: "Não foi possível consultar o Apolo agora." },
-      );
+          : { estado: "indisponivel", motivo: "Não foi possível consultar o Apolo agora." };
+
+      setIdentidade(resultado);
+      onIdentidade?.(resultado);
     } catch {
-      setIdentidade({
+      const falha: IdentidadeDoContato = {
         estado: "indisponivel",
         motivo: "Não foi possível consultar o Apolo agora.",
-      });
+      };
+      setIdentidade(falha);
+      onIdentidade?.(falha);
     }
     setCarregando(false);
-  }, [getAccessToken, telefone]);
+  }, [getAccessToken, onIdentidade, telefone]);
 
   useEffect(() => {
     void carregar();
@@ -196,61 +190,20 @@ export function IrisIdentidadeApolo({
   }
 
   if (identidade.estado === "entidade") {
-    const papeis = identidade.papeis
-      .map((papel) => papel.profile)
-      .filter((papel) => !PAPEL_TECNICO.has(papel));
-
+    // UMA LINHA e o botão (pedido do Lucas, 14/08). Papel, perfil e vínculos saíram daqui e vão
+    // no FORMULÁRIO: no painel eles empurravam para baixo o que o operador lê o tempo todo
+    // (telefone, e-mail, assunto), e só interessam na hora de conferir ou corrigir o cadastro.
+    // Os dados em si não se perdem: o nome e o documento passam a preencher os campos Cliente e
+    // CPF/CNPJ logo abaixo, via onIdentidade.
     return moldura(
       <>
         {titulo}
-        <div className="px-4 pb-3 pt-1.5">
-          <p className="m-0 flex items-center gap-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
-            <Check aria-hidden="true" className="size-4" />
-            Cadastrado
+        <div className="flex items-center justify-between gap-3 px-4 pb-3 pt-1.5">
+          <p className="m-0 flex min-w-0 items-center gap-1.5 text-sm font-semibold text-emerald-700 dark:text-emerald-400">
+            <Check aria-hidden="true" className="size-4 shrink-0" />
+            Cadastrado no Apolo
           </p>
-          <p className="m-0 mt-1 text-sm font-semibold text-ink">{identidade.nome}</p>
-          {identidade.documentoMascarado ? (
-            <p className="m-0 text-xs text-ink-soft">{identidade.documentoMascarado}</p>
-          ) : null}
-
-          {papeis.length ? (
-            <div className="mt-2 flex flex-wrap gap-1">
-              {papeis.map((papel) => (
-                <span
-                  className="rounded-full border border-[#A07C3B]/30 bg-[#A07C3B]/10 px-2 py-0.5 text-[10.5px] font-semibold uppercase tracking-wide text-[#7A5E2C] dark:text-[#d9b877]"
-                  key={papel}
-                >
-                  {ROTULO_PAPEL[papel] ?? papel}
-                </span>
-              ))}
-            </div>
-          ) : null}
-
-          {identidade.vinculos.length ? (
-            <div className="mt-2.5 space-y-1">
-              {identidade.vinculos.slice(0, 4).map((vinculo, indice) => (
-                <p
-                  className="m-0 flex items-center gap-1.5 text-xs text-ink-soft"
-                  key={`${vinculo.tipo}-${vinculo.entidadeId ?? indice}`}
-                >
-                  <Building2 aria-hidden="true" className="size-3 shrink-0" />
-                  <span className="truncate">
-                    {rotuloDoVinculo(vinculo.tipo)}
-                    {vinculo.entidade ? ` · ${vinculo.entidade}` : ""}
-                  </span>
-                </p>
-              ))}
-              {identidade.vinculos.length > 4 ? (
-                <p className="m-0 text-[11px] text-ink-soft">
-                  e mais {identidade.vinculos.length - 4}
-                </p>
-              ) : null}
-            </div>
-          ) : null}
-
-          <div className="mt-3 flex flex-wrap gap-2">
-            {botao("Editar cadastro", Pencil, () => onEditar?.(identidade.entidadeId))}
-          </div>
+          {botao("Editar", Pencil, () => onEditar?.(identidade.entidadeId))}
         </div>
       </>,
       "border-emerald-300/70 bg-emerald-50/50 dark:border-emerald-500/25 dark:bg-emerald-500/[0.05]",

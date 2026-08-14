@@ -33,12 +33,18 @@ export type VinculoDoContato = {
   tipo: string;
 };
 
+export type ContatoDaFicha = { tipo: string; valor: string };
+
 export type IdentidadeDoContato =
   | {
       /** Achado como ENTIDADE própria: tem ficha no Apolo. */
       estado: "entidade";
+      /** E-mail e telefones da ficha — o painel usa para preencher os campos que hoje ficam "-". */
+      contatos: ContatoDaFicha[];
       documentoMascarado: null | string;
       entidadeId: string;
+      /** 'person' | 'company' — o formulário mostra CPF ou CNPJ conforme isto. */
+      tipo: null | string;
       nome: string;
       papeis: PapelDoContato[];
       /** Como o telefone foi encontrado: por identificador ou pela lista de contatos da ficha. */
@@ -211,28 +217,48 @@ export async function identidadeDoContato(
     }
 
     if (entidadeId) {
-      const [{ data: entidade }, extras] = await Promise.all([
+      const [{ data: entidade }, extras, { data: contatos }] = await Promise.all([
         client
           .from("apolo_entities")
-          .select("id, display_name, legal_name, document_masked")
+          .select("id, display_name, legal_name, document_masked, entity_kind")
           .eq("id", entidadeId)
           .maybeSingle(),
         papeisEVinculos(client, entidadeId),
+        client
+          .from("apolo_contacts")
+          .select("contact_type, value, is_primary")
+          .eq("entity_id", entidadeId)
+          .neq("status", "archived")
+          .limit(20),
       ]);
 
       const ficha = entidade as null | {
         display_name: null | string;
         document_masked: null | string;
+        entity_kind: null | string;
         id: string;
         legal_name: null | string;
       };
 
       return {
+        contatos: ((contatos ?? []) as Array<{
+          contact_type: null | string;
+          is_primary: boolean | null;
+          value: null | string;
+        }>)
+          // O principal primeiro: é o que o painel mostra quando só cabe um.
+          .sort((a, b) => Number(b.is_primary ?? false) - Number(a.is_primary ?? false))
+          .map((contato) => ({
+            tipo: (contato.contact_type ?? "").trim(),
+            valor: (contato.value ?? "").trim(),
+          }))
+          .filter((contato) => contato.tipo && contato.valor),
         documentoMascarado: ficha?.document_masked?.trim() || null,
         entidadeId,
         estado: "entidade",
         nome: (ficha?.legal_name || ficha?.display_name || "").trim() || "Sem nome",
         papeis: extras.papeis,
+        tipo: ficha?.entity_kind?.trim() || null,
         via,
         vinculos: extras.vinculos,
       };

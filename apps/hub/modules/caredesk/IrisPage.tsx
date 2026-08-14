@@ -109,6 +109,8 @@ import {
   IrisCobrancaContextSidebar,
   type CobrancaProposalRenderArgs,
 } from "./blocks/conversation/iris-cobranca-context";
+import type { IdentidadeDoContato } from "@/lib/iris/apolo/identidade-contato";
+
 import { IrisIdentidadeApolo } from "./blocks/conversation/iris-identidade-apolo";
 import {
   IrisAthenaPanel,
@@ -1779,6 +1781,11 @@ function IrisConversationPanel({
     useState<IrisContextModalMode>(null);
   const [apoloContextEntity, setApoloContextEntity] =
     useState<IrisApoloContextEntity | null>(null);
+  // Quem é o contato no Apolo, resolvido pelo bloco "Cadastro no Apolo" (três fontes, incluindo
+  // vínculo). Vira fonte dos campos Cliente/CPF/E-mail: o caminho antigo (phone-match ->
+  // documento -> read-model) tem dois saltos e, quando um falha, o painel mostra "-" mesmo com a
+  // ficha achada — foi o que aconteceu com a Ilza, "Cadastrado" em cima e Cliente vazio embaixo.
+  const [identidadeApolo, setIdentidadeApolo] = useState<IdentidadeDoContato | null>(null);
   const [apoloContextError, setApoloContextError] = useState<string | null>(
     null,
   );
@@ -4514,6 +4521,7 @@ function IrisConversationPanel({
               <IrisIdentidadeApolo
                 getAccessToken={getIrisAccessToken}
                 nomeDoContato={ticket.contactLabel}
+                onIdentidade={setIdentidadeApolo}
                 telefone={ticket.contactPhone}
               />
             )
@@ -4541,6 +4549,11 @@ function IrisConversationPanel({
               label: "Cliente",
               value:
                 capitalizeName(apoloContextEntity?.displayName) ||
+                // A identidade do bloco acima entra ANTES do rótulo do WhatsApp: ela vem da ficha
+                // do Apolo, o rótulo é o nome que a pessoa escolheu no aparelho dela.
+                capitalizeName(
+                  identidadeApolo?.estado === "entidade" ? identidadeApolo.nome : null,
+                ) ||
                 capitalizeName(ticket.crm360Registration?.label) ||
                 "-",
             },
@@ -4569,6 +4582,9 @@ function IrisConversationPanel({
               label: "CPF/CNPJ",
               value:
                 apoloContextEntity?.documentMasked?.trim() ||
+                (identidadeApolo?.estado === "entidade"
+                  ? identidadeApolo.documentoMascarado
+                  : null) ||
                 ticket.contactDocument ||
                 "-",
             },
@@ -4579,6 +4595,10 @@ function IrisConversationPanel({
                 apoloContextEntity?.contacts?.find(
                   (contact) => contact.type === "email" && contact.value,
                 )?.value ||
+                (identidadeApolo?.estado === "entidade"
+                  ? (identidadeApolo.contatos.find((contato) => contato.tipo === "email")?.valor ??
+                    null)
+                  : null) ||
                 "-",
             },
             { label: "Operador", value: ticket.assignedToLabel },
