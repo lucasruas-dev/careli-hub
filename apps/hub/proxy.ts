@@ -92,6 +92,14 @@ const PUBLIC_API_PREFIXES = [
   // Tela publica da ACAO de contato (freela sem conta do hub): entra por senha da campanha, que
   // vira o token de sessao (x-acao-sessao), validado DENTRO de cada rota. Ver [[project_apolo_acao_contato]].
   "/api/publico/acao",
+  // API DE LEITURA DA CARTEIRA LAVRA DO OURO, consumida pelo GLOTES (sistema do cliente).
+  // Maquina-a-maquina: nao ha sessao do hub do outro lado. Valida POR DENTRO, em
+  // lib/integrations/glotes/porta.ts: token dedicado no header X-Glotes-Token (nunca em query
+  // string), comparacao em tempo constante, teto de requisicoes, log de acesso sem corpo, e
+  // resposta no-store. O ESCOPO E DO SERVIDOR: so enxerga os enterprises 1 e 4 (as duas glebas do
+  // Lavra do Ouro), e nao ha parametro de loteamento. Sem GLOTES_API_TOKEN configurado a API
+  // responde 503, nunca abre. Ver docs/integrations/glotes-openapi.yaml.
+  "/api/integrations/glotes",
 ];
 
 function isPublicApi(pathname: string) {

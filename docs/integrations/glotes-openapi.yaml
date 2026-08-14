@@ -56,9 +56,12 @@ info:
 
     ## Estado deste documento
 
-    **RASCUNHO PARA VALIDAÇÃO.** A API ainda não existe. Este arquivo serve para o GLOTES conferir
-    se o formato atende antes de qualquer linha ser escrita, e para registrar o que a Careli
-    consegue e o que não consegue entregar. Ver `x-pendencias` no fim do arquivo.
+    **API IMPLEMENTADA em 14/08/2026.** Os cinco endpoints existem, autenticam pelo header
+    `X-Glotes-Token` e devolvem os volumes conferidos no levantamento (375 clientes, 493 lotes,
+    475 vendas, 68.356 recebimentos). O token é entregue pela Careli por canal seguro.
+
+    O que continua em aberto está em `x-pendencias`, e nada disso impede começar a integração: os
+    campos sem origem já vêm nulos e documentados.
   contact:
     name: Careli
     url: https://c2x.app.br
@@ -723,11 +726,14 @@ x-pendencias:
   P3:
     assunto: Confiabilidade da carga incremental
     situacao: |
-      A entrega de `alterado_desde` depende de a base de origem marcar toda alteração de forma
-      confiável. Isso ainda não foi testado.
+      RESOLVIDA em 14/08/2026, com teste contra a base. `payments.updated_at` acompanha a
+      alteração: das 68.481 parcelas do recorte, 13.303 têm `updated_at` posterior ao
+      `created_at`, o movimento diário aparece na coluna, e **zero** parcelas pagas nos últimos 30
+      dias ficaram com `updated_at` anterior à data de pagamento — que seria a prova de que a
+      coluna não acompanha.
     decisao: |
-      Testar antes de prometer. Enquanto não for validado, o parâmetro é aceito mas pode devolver
-      linhas a mais (seguro) e a Careli não garante que nunca devolva a menos.
+      `alterado_desde` está liberado para `vendas` e `recebimentos`. Os outros três conjuntos
+      mudam pouco e devem ser recarregados por inteiro, como já diz a seção "Como consumir".
     de_quem: Careli
   P4:
     assunto: Base legal e minimização de dado pessoal
