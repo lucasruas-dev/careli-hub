@@ -85,10 +85,16 @@ export async function POST(request: Request) {
         razaoSocial,
         telefone,
       },
-      empreendimentos: escolhidos.map((id) => ({
-        id,
-        label: ativos.find((emp) => String(emp.id) === id)?.name ?? "Empreendimento",
-      })),
+      // ⚠️ GRUPO VIRA AS ETAPAS. "Lagoa Bonita" é uma linha só na vitrine, mas no C2X são três
+      // empreendimentos (LBF, LBR, LBP). Gravar o id do grupo deixaria um vínculo que não casa
+      // com nada: a imobiliária apareceria credenciada e não venderia em nenhum dos três.
+      // Regra do Lucas (13/08): "ao cadastrar para lagoa bonita habilita os três".
+      empreendimentos: escolhidos.flatMap((id) => {
+        const emp = ativos.find((item) => String(item.id) === id);
+        const label = emp?.name ?? "Empreendimento";
+        const reais = emp?.stageIds.length ? emp.stageIds : [id];
+        return reais.map((real) => ({ id: real, label }));
+      }),
       origem: "publico-imobiliaria",
       ownerUserId: null,
       persona: "pj",

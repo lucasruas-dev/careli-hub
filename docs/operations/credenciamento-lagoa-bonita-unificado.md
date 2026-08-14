@@ -1,6 +1,7 @@
 # Portal de credenciamento: Lagoa Bonita unificado (pendente)
 
-> Pedido do Lucas em 13/08/2026, com print do portal. **Diagnosticado, não implementado.**
+> Pedido do Lucas em 13/08/2026, com print do portal. **✅ CORRIGIDO no mesmo dia** — o que
+> está abaixo é o registro do defeito e do conserto.
 
 ## O que ele pediu, nas palavras dele
 
@@ -45,3 +46,34 @@ O agrupamento acontece no C2X (`loadApoloEnterprises`), mas a **logo** e o
 
 ⚠️ Antes de implementar, medir: rodar a rota e ver o que ela devolve para Lagoa Bonita hoje
 (`id`, `code`, `logoUrl`). O diagnóstico acima é leitura de código, não medição.
+
+
+---
+
+## ✅ O que foi feito (13/08/2026)
+
+A causa raiz era uma só, e diferente do que este documento supunha: o Lucas já tinha gravado
+`enterprise_id = 'group:Lagoa Bonita'` em `apolo_enterprise_settings`, ou seja, o id sintético do
+grupo virou registro. Por isso o card já vinha unificado. O que quebrava era o resto:
+
+1. **Logo** — `uploadEnterpriseLogo` grava o arquivo com `safeId()`, que troca `:` e espaço por
+   `_`: `group_Lagoa_Bonita`. O consumidor procurava a chave crua `group:Lagoa Bonita` no mapa e
+   nunca achava, caindo no fallback que desenha o `code` ("LBF + LBR + LBP"). Os outros
+   empreendimentos têm id numérico e passavam ilesos, por isso só este aparecia quebrado.
+   **Fix:** `safeId` virou `chaveDaLogo`, exportada, e o lookup passou a usá-la.
+2. **Caixa alta** — o nome dos simples vem do C2X já em maiúsculas; só o do grupo vinha do
+   `display` do `ENTERPRISE_GROUPS` ("Lagoa Bonita"). **Fix:** uppercase em
+   `listEmpreendimentosAtivos`, que é local do portal. O `display` NÃO foi tocado porque o BI usa
+   o mesmo agrupamento.
+3. **Habilitar os três** — o credenciamento gravava o vínculo com o id do grupo, que não casa com
+   nenhum `enterprise_id` do C2X: a imobiliária ficaria "credenciada" sem poder vender em nenhum
+   dos três. **Fix:** `CredenciamentoEmpreendimento` ganhou `stageIds` (os ids reais das etapas,
+   de `row.stages`) e a rota `/api/publico/imobiliaria/credenciar` expande o grupo antes de
+   gravar, um vínculo por etapa.
+
+⚠️ **Vale para todo grupo, não só Lagoa Bonita.** `ENTERPRISE_GROUPS` também consolida Lavra do
+Ouro e outros; qualquer um deles marcado como ativo teria os mesmos três sintomas.
+
+⚠️ **Não retroativo:** imobiliária que já se credenciou em "Lagoa Bonita" antes deste conserto
+tem o vínculo gravado no id do grupo. Vale varrer `apolo_relationships` por
+`metadata.enterpriseId` começando com `group:` e reescrever para as etapas.

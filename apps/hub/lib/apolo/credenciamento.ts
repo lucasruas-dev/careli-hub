@@ -13,7 +13,7 @@
 import type { RowDataPacket } from "mysql2";
 
 import { loadApoloEnterprises } from "@/lib/apolo/empreendimentos";
-import { listEnterpriseLogos } from "@/lib/apolo/enterprise-logos";
+import { chaveDaLogo, listEnterpriseLogos } from "@/lib/apolo/enterprise-logos";
 import { listEnterprisesAtivos } from "@/lib/apolo/enterprise-settings";
 import { hashIdentifier } from "@/lib/apolo/server";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
@@ -24,6 +24,11 @@ type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
 export type CredenciamentoEmpreendimento = {
   code: string;
+  // Códigos reais de um grupo consolidado; vazio quando o empreendimento é simples.
+  codes: string[];
+  // Os enterprise_id REAIS por trás de um grupo. É o que o credenciamento precisa gravar:
+  // o id do grupo (`group:Lagoa Bonita`) não casa com nada no C2X.
+  stageIds: string[];
   id: string;
   // Incorporador do C2X (row.incorporador). Consumido pelo Setup do Prometeu.
   incorporador: string | null;
@@ -76,10 +81,19 @@ export async function listEmpreendimentosAtivos(
       const code = row?.code ?? codeById.get(id) ?? "";
       return {
         code,
+        // Os códigos reais por trás de um grupo consolidado (Lagoa Bonita = LBF, LBR, LBP).
+        // Vazio quando o empreendimento é simples.
+        codes: row?.codes ?? [],
         id,
+        stageIds: (row?.stages ?? []).map((stage) => String(stage.id)),
         incorporador: row?.incorporador ?? null,
-        logoUrl: logos[id] ?? null,
-        name: row?.name ?? code ?? "Empreendimento",
+        // ⚠️ `chaveDaLogo` e não `id` cru: o upload troca `:` e espaço por `_`, então a chave do
+        // mapa é `group_Lagoa_Bonita` enquanto o id é `group:Lagoa Bonita`.
+        logoUrl: logos[chaveDaLogo(id)] ?? null,
+        // Caixa alta para o card do portal, que é o pedido do Lucas: o nome dos empreendimentos
+        // simples vem do C2X já em caixa alta, e só o do grupo vinha "Lagoa Bonita", destoando
+        // da fileira. Normalizar aqui não mexe no `display` do ENTERPRISE_GROUPS, que o BI usa.
+        name: (row?.name ?? code ?? "Empreendimento").toLocaleUpperCase("pt-BR"),
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));

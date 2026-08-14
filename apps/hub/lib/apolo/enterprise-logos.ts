@@ -11,9 +11,20 @@ type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 const LOGO_PREFIX = "enterprise-logos";
 const SIGNED_URL_TTL = 60 * 60; // 1h — tempo de vida do link assinado da logo
 
-function safeId(id: string): string {
+/**
+ * O nome do arquivo no storage. Precisa ser exportado porque QUEM PROCURA a logo tem que usar
+ * a mesma transformação de quem gravou.
+ *
+ * ⚠️ Foi exatamente isso que quebrou a logo do Lagoa Bonita: o id dele é `group:Lagoa Bonita`
+ * (grupo consolidado do C2X), o upload gravou como `group_Lagoa_Bonita`, e o consumidor
+ * procurava a chave crua `group:Lagoa Bonita` no mapa. Nunca batia. Os outros empreendimentos
+ * têm id numérico e passavam ilesos, por isso o defeito só aparecia neste.
+ */
+export function chaveDaLogo(id: string): string {
   return id.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 80);
 }
+
+const safeId = chaveDaLogo;
 
 function decodeBase64(value: string): Uint8Array | null {
   try {
