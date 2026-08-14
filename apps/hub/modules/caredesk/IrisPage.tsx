@@ -2216,6 +2216,34 @@ function IrisConversationPanel({
       null)
     : null;
   const ticketIsEmail = isEmailTicket(ticket);
+
+  // PAPÉIS DE NEGÓCIO: os que dizem o que a pessoa É para a Careli (prospect, corretor,
+  // imobiliária, incorporador). Ficam de fora `pessoa_fisica`, `pessoa_juridica` e `usuario` —
+  // são rótulos do CADASTRO, não papéis: escrever "Papel: pessoa_fisica, usuario" no painel gasta
+  // uma linha para não informar nada. Quando sobra vazio, a linha inteira não aparece.
+  const papeisDeNegocio =
+    identidadeApolo?.estado === "entidade"
+      ? identidadeApolo.papeis
+          .map((papel) => papel.profile)
+          .filter(
+            (papel) => !["pessoa_fisica", "pessoa_juridica", "usuario"].includes(papel),
+          )
+      : [];
+
+  // O vínculo principal, em uma linha legível ("corretor de L&I"). Mais que isso vira parede de
+  // texto num painel que já é comprido; o resto está no popup.
+  const vinculoPrincipal = (() => {
+    const lista =
+      identidadeApolo?.estado === "entidade" || identidadeApolo?.estado === "vinculo"
+        ? identidadeApolo.vinculos
+        : [];
+    const primeiro = lista[0];
+    if (!primeiro) return null;
+
+    const rotulo = `${primeiro.tipo}${primeiro.entidade ? ` de ${primeiro.entidade}` : ""}`;
+    return lista.length > 1 ? `${rotulo} (+${lista.length - 1})` : rotulo;
+  })();
+
   // Grupo de WhatsApp: conversa de monitoramento (read-only), sem janela de 24h.
   const ticketIsGroup = ticket.isGroup === true;
   // Direct 1:1 do canal Relacionamento (6566, Evolution): atendimento normal, mas
@@ -4614,6 +4642,26 @@ function IrisConversationPanel({
                 ticket.contactDocument ||
                 "-",
             },
+            // PERFIL E PAPEL no painel, e não só dentro do popup (pedido do Lucas, 14/08): o
+            // operador precisa saber de relance se fala com uma ficha própria ou com o contato de
+            // outra pessoa. Só aparecem quando há resposta do Apolo — linha vazia em painel é
+            // ruído, e "-" aqui seria confundido com "não tem papel".
+            ...(identidadeApolo?.estado === "entidade" ||
+            identidadeApolo?.estado === "vinculo"
+              ? [
+                  {
+                    label: "Perfil",
+                    value:
+                      identidadeApolo.estado === "entidade"
+                        ? "Entidade"
+                        : "Contato de outra ficha",
+                  },
+                ]
+              : []),
+            ...(identidadeApolo?.estado === "entidade" && papeisDeNegocio.length
+              ? [{ label: "Papel", value: papeisDeNegocio.join(", ") }]
+              : []),
+            ...(vinculoPrincipal ? [{ label: "Vínculo", value: vinculoPrincipal }] : []),
             {
               label: "E-mail",
               value:

@@ -1,6 +1,6 @@
 "use client";
 
-import { Building2, ExternalLink, Loader2, Search, UserRound, X } from "lucide-react";
+import { Building2, ExternalLink, Loader2, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import type { IdentidadeDoContato } from "@/lib/iris/apolo/identidade-contato";
@@ -226,43 +226,29 @@ export function IrisCadastroModal({
   const rotulo = "mb-1 block text-[11px] font-bold uppercase tracking-wide text-ink-soft";
   const tipos = familia === "trabalho" ? VINCULOS_TRABALHO : VINCULOS_CONTATO;
 
-  // O PAPEL, que era o que faltava: o operador precisa saber se está falando com uma ficha
-  // própria ou com o contato de outra pessoa — muda o que ele pode prometer na conversa.
-  const papel = ehEntidade ? (
-    <div className="mb-4 rounded-xl border border-line bg-subtle/50 px-3 py-2.5">
-      <p className="m-0 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-        <UserRound aria-hidden="true" className="size-3.5 text-ink-soft" />
-        É uma entidade no Apolo
-      </p>
-      {identidade.papeis.length ? (
-        <p className="m-0 mt-1 text-[11.5px] text-ink-soft">
-          Papel: {identidade.papeis.map((item) => item.profile).join(", ")}
+  // Perfil, papel e vínculo agora vivem NO PAINEL (campos Perfil/Papel/Vínculo), onde o operador
+  // lê sem abrir nada — pedido do Lucas, 14/08. Aqui fica só a lista completa de vínculos quando
+  // há mais de um, porque o painel mostra o principal e some com o resto.
+  const papel =
+    (ehEntidade || identidade?.estado === "vinculo") && identidade.vinculos.length > 1 ? (
+      <div className="mb-4 rounded-xl border border-line bg-subtle/50 px-3 py-2.5">
+        <p className="m-0 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-wide text-ink-soft">
+          <Building2 aria-hidden="true" className="size-3.5" />
+          Vínculos
         </p>
-      ) : null}
-      {identidade.vinculos.length ? (
-        <p className="m-0 mt-0.5 text-[11.5px] text-ink-soft">
-          {identidade.vinculos
-            .slice(0, 3)
-            .map((item) => `${item.tipo}${item.entidade ? ` de ${item.entidade}` : ""}`)
-            .join(" · ")}
-        </p>
-      ) : (
-        <p className="m-0 mt-0.5 text-[11.5px] text-ink-soft">Sem vínculo registrado.</p>
-      )}
-    </div>
-  ) : identidade?.estado === "vinculo" ? (
-    <div className="mb-4 rounded-xl border border-blue-300/60 bg-blue-50/50 px-3 py-2.5 dark:border-blue-500/25 dark:bg-blue-500/[0.06]">
-      <p className="m-0 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
-        <Building2 aria-hidden="true" className="size-3.5 text-ink-soft" />
-        É contato de outra ficha, sem ficha própria
-      </p>
-      <p className="m-0 mt-1 text-[11.5px] text-ink-soft">
-        {identidade.vinculos
-          .map((item) => `${item.tipo}${item.entidade ? ` de ${item.entidade}` : ""}`)
-          .join(" · ")}
-      </p>
-    </div>
-  ) : null;
+        <div className="mt-1 space-y-0.5">
+          {identidade.vinculos.slice(0, 6).map((item, indice) => (
+            <p
+              className="m-0 text-[11.5px] text-ink-soft"
+              key={`${item.tipo}-${item.entidadeId ?? indice}`}
+            >
+              {item.tipo}
+              {item.entidade ? ` de ${item.entidade}` : ""}
+            </p>
+          ))}
+        </div>
+      </div>
+    ) : null;
 
   return (
     <div
