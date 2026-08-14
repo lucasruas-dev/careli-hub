@@ -95,6 +95,40 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Apolo/Zeus] Painel do coordenador publico (CAD, imobiliarias, assinatura, sinal)`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-08-14 12:47:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `preview dpl_252M3k9ZjntLWKaLyuVxFgN6wtZD validado; autorizacao explicita do Lucas ("pode subir o painel")`.
+- Escopo publicado:
+  - `rota nova /publico/painel com seletor de empreendimento e 4 abas (CAD, Imobiliarias, Assinatura, Sinal), com filtro, busca e ordenacao por coluna`;
+  - `fonte de CAD 100% Apolo: Asana cortado do painel publico, do resumo e da tool consultar_cad da CACA; /publico/cads/[emp] virou redirect`;
+  - `correcao do selo "sem CAD" no Board (aparecia em 100% dos cards de imobiliaria)`.
+- Commit publicado: `0a14ef62` (feat `af68fa97` + changelog `0a14ef62`).
+- Deployment anterior: `dpl_2rmBQ7tAvWwAN51jBGg9RaVQ4Wdq` (v1.131.0, painel de assinatura de 13/08).
+- Deployment novo: `deploy automatico do push na main` (v1.132.0, buildTag `2026-08-14-painel-coordenador`).
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `v1.132.0, READY`.
+- Arquivos/modulos incluidos: `app/publico/painel/`, `modules/publico/painel/`, `lib/apolo/painel-coordenador.ts`, `lib/apolo/painel-sinal.ts`, `lib/apolo/imobiliaria-grafia.ts`, `lib/analytics/cad-source.ts`, `app/api/apolo/board/route.ts`, `modules/apolo/blocks/board/board-view.tsx`, `lib/iris/caca/{executors,persona,tools}.ts`, `docs/operations/c2x-financiamento-racional.md`.
+- Arquivos/modulos excluidos: `os 4 commits da branch feat/apolo-documentos (credenciamento Lagoa Bonita e scripts de auditoria) NAO subiram — o recorte foi isolado por cherry-pick a partir da origin/main`.
+- Validacoes executadas:
+  - `tsc --noEmit sobre a main limpa: verde`;
+  - `preview navegado nas 4 abas, com filtro e ordenacao testados (ordenacao numerica confere: R$ 27.888 antes de R$ 15.430)`.
+- Healthchecks pos-deploy:
+  - `/api/version: v1.132.0 buildTag 2026-08-14-painel-coordenador`;
+  - `/publico/painel (4 abas): 200, com dado real (659 CADs, entrada de R$ 1.891.975,68)`;
+  - `/publico/cads/vale-do-ouro: 307 (redirect esperado)`;
+  - `/apolo/assinaturas: 200 (painel interno intacto)`.
+- Logs recentes: `sem erro critico`.
+- Rollback definido: `dpl_2rmBQ7tAvWwAN51jBGg9RaVQ4Wdq`.
+- Riscos conhecidos: `a tela e PUBLICA e mostra nome de cliente e de imobiliaria (noindex, mas quem tem o link ve) — arranjo temporario ate existir o perfil de acesso do time comercial, decisao do Lucas`.
+- Pendencias: `perfil de acesso do time comercial; remocao das telas de importacao do Asana (/api/apolo/asana/* e blocos de importacao), que continuam de pe; conferir com o financeiro as 184 parcelas de entrada sem boleto no Asaas`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas validar com os coordenadores`.
+
+Registro de producao:
+
 - Assunto: `[Apolo] PIX pago credencia o cliente mesmo quando o envio do link falhou (v1.62.46)`.
 - Squad/agente responsavel: `Zeus / Apolo`.
 - Data e hora local: `2026-07-24 14:10:00 -03:00`.
