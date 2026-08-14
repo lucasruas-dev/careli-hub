@@ -203,7 +203,14 @@ export function IrisIdentidadeApolo({
             <Check aria-hidden="true" className="size-4 shrink-0" />
             Cadastrado no Apolo
           </p>
-          {botao("Editar", Pencil, () => onEditar?.(identidade.entidadeId))}
+          {/* Só aparece quando REALMENTE edita. `() => onEditar?.(...)` seria uma função sempre
+              definida: o botão apareceria mesmo sem handler e não faria nada ao clicar, que é o
+              tipo de detalhe que faz o operador achar que o sistema travou. */}
+          {botao(
+            "Editar",
+            Pencil,
+            onEditar ? () => onEditar(identidade.entidadeId) : undefined,
+          )}
         </div>
       </>,
       "border-emerald-300/70 bg-emerald-50/50 dark:border-emerald-500/25 dark:bg-emerald-500/[0.05]",
@@ -242,11 +249,13 @@ export function IrisIdentidadeApolo({
             {botao(
               "Criar ficha própria",
               UserPlus,
-              () =>
-                onCadastrar?.({
-                  nome: identidade.nome ?? nomeDoContato ?? null,
-                  telefone: telefone ?? "",
-                }),
+              onCadastrar
+                ? () =>
+                    onCadastrar({
+                      nome: identidade.nome ?? nomeDoContato ?? null,
+                      telefone: telefone ?? "",
+                    })
+                : undefined,
               true,
             )}
           </div>
@@ -271,11 +280,17 @@ export function IrisIdentidadeApolo({
           {botao(
             "Cadastrar",
             UserPlus,
-            () => onCadastrar?.({ nome: nomeDoContato ?? null, telefone: telefone ?? "" }),
+            onCadastrar
+              ? () => onCadastrar({ nome: nomeDoContato ?? null, telefone: telefone ?? "" })
+              : undefined,
             true,
           )}
-          {botao("Vincular a alguém", Link2, () =>
-            onVincular?.({ nome: nomeDoContato ?? null, telefone: telefone ?? "" }),
+          {botao(
+            "Vincular a alguém",
+            Link2,
+            onVincular
+              ? () => onVincular({ nome: nomeDoContato ?? null, telefone: telefone ?? "" })
+              : undefined,
           )}
         </div>
       </div>
