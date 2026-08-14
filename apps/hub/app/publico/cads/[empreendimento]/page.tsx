@@ -1,43 +1,13 @@
-import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 
-import { loadCadRecords } from "@/lib/analytics/cad-source";
-import {
-  carregarListasCredenciamento,
-  carregarResumoApolo,
-} from "@/lib/apolo/cads-publico-resumo";
-import {
-  CadPublicDashboard,
-  type CadPublicItem,
-} from "@/modules/cads/CadPublicDashboard";
-
-// Página PÚBLICA (sem login, fora do menu do HUB) do dashboard de CADs de UM empreendimento.
-// Server component: lê o Asana Central de CAD server-side (ASANA_ACCESS_TOKEN), filtra pelo
-// empreendimento do slug e entrega os registros ao dashboard interativo. Genérica: qualquer
-// empreendimento pela URL (/publico/cads/<slug>). noindex — tem nome de prospect, não deve
-// ser indexada por busca. Ver [[reference-panteon-super-motor]] (fonte cad-source.ts).
+// ROTA ANTIGA do dashboard de CADs. Virou uma porta para o Painel do coordenador (14/08).
+//
+// Ela continua existindo porque o link já circula com os coordenadores e com as imobiliárias —
+// quebrar um link que está no WhatsApp de alguém é o jeito mais rápido de fazer a tela nova
+// parecer defeito. O slug do empreendimento é o mesmo, então `/publico/cads/vale-do-ouro` cai
+// direto na aba CAD do Vale do Ouro no painel novo.
 
 export const dynamic = "force-dynamic";
-
-export const metadata: Metadata = {
-  robots: { follow: false, index: false },
-  title: "Central de CADs | Careli",
-};
-
-function normalize(value: string | null | undefined): string {
-  return String(value ?? "")
-    .normalize("NFD")
-    .replace(/\p{Diacritic}/gu, "")
-    .toLowerCase()
-    .trim();
-}
-
-function slugToLabel(slug: string): string {
-  return slug
-    .split("-")
-    .filter(Boolean)
-    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
 
 export default async function CadPublicRoute({
   params,
@@ -45,43 +15,6 @@ export default async function CadPublicRoute({
   params: Promise<{ empreendimento: string }>;
 }) {
   const { empreendimento } = await params;
-  const slugLabel = slugToLabel(empreendimento);
-  const target = normalize(slugLabel);
 
-  const all = await loadCadRecords();
-  const disponivel = all !== null;
-
-  const matched = (all ?? []).filter((record) => {
-    const emp = normalize(record.empreendimento);
-
-    return emp.length > 0 && (emp.includes(target) || target.includes(emp));
-  });
-
-  const label = matched[0]?.empreendimento?.trim() || slugLabel;
-
-  const records: CadPublicItem[] = matched.map((record) => ({
-    cliente: record.cliente,
-    criadoEm: record.criadoEm,
-    etapa: record.etapa?.trim() || "Sem etapa",
-    imobiliaria: record.imobiliaria?.trim() || "Sem imobiliária",
-  }));
-
-  // Divisão das fontes do funil: o ASANA manda em Recebidas/Validação/Duplicados/Incorretas; o
-  // APOLO manda em Análise de Crédito/Crédito em Revisão/Pré-Venda/Credenciado/PIX Compensado. As
-  // listas do Apolo (por etapa) vêm junto para esses cards serem clicáveis e o número bater com a
-  // lista aberta.
-  const [apolo, apoloListas] = await Promise.all([
-    carregarResumoApolo(label),
-    carregarListasCredenciamento(label),
-  ]);
-
-  return (
-    <CadPublicDashboard
-      apolo={apolo}
-      apoloListas={apoloListas}
-      disponivel={disponivel}
-      empreendimento={label}
-      records={records}
-    />
-  );
+  redirect(`/publico/painel?emp=${encodeURIComponent(empreendimento)}&aba=cad`);
 }

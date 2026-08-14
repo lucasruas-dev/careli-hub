@@ -594,7 +594,7 @@ export const CACA_TOOL_DEFINITIONS: Anthropic.Tool[] = [
   {
     name: "consultar_cad",
     description:
-      "SÓ no modo assistente/gestão (direção). Lê a CENTRAL DE CAD (nosso projeto no Asana onde os corretores enviam os cadastros de PROSPECTS que querem comprar, antes de o time cadastrar no C2X). Cada CAD tem: o CLIENTE (nome), o EMPREENDIMENTO indicado, a IMOBILIÁRIA credenciada e a ETAPA (seção do processo). Use quando a direção perguntar sobre as CADs/cadastros recebidos: 'quantas CADs temos pra imobiliária X', 'quais/quantas CADs do Vale do Ouro', 'em qual imobiliária está o cliente Fulano', 'quantas CADs entraram esse mês', 'CADs por etapa'. Passe os filtros que quiser (empreendimento, imobiliaria, cliente, etapa, período) e, se for uma contagem quebrada, use agrupar_por. Pra achar a imobiliária de um cliente, informe o nome dele em 'cliente'. Responde no MESMO turno.",
+      "SÓ no modo assistente/gestão (direção). Lê a CENTRAL DE CAD (a esteira do Board do Apolo, onde entram os cadastros de PROSPECTS que os corretores enviam, antes de o time cadastrar no C2X). Cada CAD tem: o CLIENTE (nome), o EMPREENDIMENTO indicado, a IMOBILIÁRIA credenciada e a ETAPA. Use quando a direção perguntar sobre as CADs/cadastros recebidos: 'quantas CADs temos pra imobiliária X', 'quais/quantas CADs do Vale do Ouro', 'em qual imobiliária está o cliente Fulano', 'quantas CADs entraram esse mês', 'CADs por etapa'. Passe os filtros que quiser (empreendimento, imobiliaria, cliente, etapa, período) e, se for uma contagem quebrada, use agrupar_por. Pra achar a imobiliária de um cliente, informe o nome dele em 'cliente'. Responde no MESMO turno.",
     input_schema: {
       type: "object",
       properties: {

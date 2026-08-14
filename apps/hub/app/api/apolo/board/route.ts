@@ -3,8 +3,7 @@ import { NextResponse } from "next/server";
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import { alertaC2xDaCad } from "@/lib/apolo/c2x-alerta-board";
 import { maisRecentePorEntidade } from "@/lib/apolo/esteira-cad";
-import { imobiliariaEntityIdEmLote } from "@/lib/apolo/imobiliaria-do-cliente";
-import { normalizarNome } from "@/lib/apolo/imobiliaria-match";
+import { grafiaCanonicaPorCliente as grafiaCanonicaDaImobiliaria } from "@/lib/apolo/imobiliaria-grafia";
 import { prevendaLigadaNaSetting, type SettingPrevenda } from "@/lib/apolo/limite-credito";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
@@ -276,62 +275,12 @@ export async function GET(request: Request) {
   // (empate -> a mais curta). Preserva a grafia original (acentos e siglas como "J&F"), sem forçar
   // caixa. O "apelido curador" curto fica para um passo seguinte (decisão do Lucas: unificar já).
   // Sem entidade resolvida, cai no texto normalizado (junta ao menos as grafias idênticas).
-  const grafiaCanonicaPorCliente = new Map<string, string>();
-  {
-    const linhas = [...esteiraPorEntidade.values()].filter((r) => (r.imobiliaria ?? "").trim());
-    const imobPorVinculo = await imobiliariaEntityIdEmLote(
-      adminClient,
-      linhas.map((r) => r.entity_id),
-    );
-    const { data: matches } = await adminClient
-      .from("apolo_imobiliaria_match")
-      .select("nome_normalizado, entity_id")
-      .not("entity_id", "is", null);
-    const entidadePorTexto = new Map<string, string>();
-    for (const m of (matches ?? []) as Array<{ entity_id: string; nome_normalizado: string }>) {
-      entidadePorTexto.set(m.nome_normalizado, m.entity_id);
-    }
-
-    // Chave do grupo: a entidade da imobiliária, ou (na falta) o texto normalizado.
-    const chaveDe = (r: EsteiraRow): string => {
-      const texto = (r.imobiliaria ?? "").trim();
-      const ent = imobPorVinculo.get(r.entity_id) ?? entidadePorTexto.get(normalizarNome(texto));
-      return ent ? `ent:${ent}` : `txt:${normalizarNome(texto)}`;
-    };
-
-    // Conta a frequência de cada grafia dentro do grupo.
-    const contagem = new Map<string, Map<string, number>>();
-    for (const r of linhas) {
-      const texto = (r.imobiliaria ?? "").trim();
-      const porGrafia = contagem.get(chaveDe(r)) ?? new Map<string, number>();
-      porGrafia.set(texto, (porGrafia.get(texto) ?? 0) + 1);
-      contagem.set(chaveDe(r), porGrafia);
-    }
-
-    // Grafia canônica do grupo: mais frequente; empate -> mais curta -> alfabética.
-    const canonicaPorChave = new Map<string, string>();
-    for (const [chave, porGrafia] of contagem) {
-      let melhor = "";
-      let melhorN = -1;
-      for (const [grafia, n] of porGrafia) {
-        const vence =
-          n > melhorN ||
-          (n === melhorN &&
-            (grafia.length < melhor.length ||
-              (grafia.length === melhor.length && grafia.localeCompare(melhor) < 0)));
-        if (vence) {
-          melhor = grafia;
-          melhorN = n;
-        }
-      }
-      canonicaPorChave.set(chave, melhor);
-    }
-
-    for (const r of linhas) {
-      const canonica = canonicaPorChave.get(chaveDe(r));
-      if (canonica) grafiaCanonicaPorCliente.set(r.entity_id, canonica);
-    }
-  }
+  // A regra mora em `lib/apolo/imobiliaria-grafia.ts` desde 14/08 — o painel público do
+  // coordenador precisa da MESMA canonização, e duas cópias divergem no primeiro ajuste.
+  const grafiaCanonicaPorCliente = await grafiaCanonicaDaImobiliaria(
+    adminClient,
+    [...esteiraPorEntidade.values()],
+  );
 
   // PRÉ-VENDA POR EMPREENDIMENTO (regra do Lucas, 10/08: "pré-venda só existe se estiver
   // habilitado"). A tela precisa saber CAD a CAD, porque a etapa Pré-venda não é do processo: é

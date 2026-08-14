@@ -2239,8 +2239,14 @@ function CardBoard({
         ) : null}
         {/* SEM CAD: a ficha não tem linha na esteira, então não tem etapa nem empreendimento — ela
             aparece em Validação e VOLTA para lá a cada recarga, por mais que a análise de crédito
-            já tenha sido feita. Marcar é o que transforma um fantasma numa pendência com dono. */}
-        {item.semCad ? (
+            já tenha sido feita. Marcar é o que transforma um fantasma numa pendência com dono.
+
+            ⚠️ SÓ PARA CAD, NUNCA PARA IMOBILIÁRIA. Imobiliária não tem CAD — ela entra por
+            credenciamento, e a esteira é de cadastro de cliente. Sem este `!imob`, o selo
+            aparecia em 100% dos cards de imobiliária (conferido: 432 de 432 sem linha na
+            esteira), o que é o oposto de um alerta: alarme que toca sempre ninguém escuta, e
+            ainda mandava o operador procurar um empreendimento que não está faltando. */}
+        {item.semCad && !imob ? (
           <span
             className="inline-flex items-center gap-0.5 rounded-full border border-amber-300 bg-amber-50 px-1.5 py-0.5 text-[9px] font-semibold uppercase tracking-wide text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300"
             title="Esta ficha não tem CAD na esteira: falta informar o empreendimento no cadastro. Enquanto faltar, ela não sai da Validação."

@@ -1205,7 +1205,7 @@ async function consultarCad(input: unknown): Promise<string> {
   });
 
   if (!resultado) {
-    return "Não consegui ler a Central de CAD agora (Asana indisponível ou sem acesso).";
+    return "Não consegui ler a Central de CAD agora (Apolo indisponível ou sem acesso).";
   }
 
   const cab = [

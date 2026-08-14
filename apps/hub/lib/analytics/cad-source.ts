@@ -1,17 +1,18 @@
+// Fonte "Central de CAD" para o motor da CACÁ — hoje o BOARD DO APOLO (`apolo_esteira`).
+//
+// ⚠️ ERA O ASANA ATÉ 14/08/2026. O Asana deixou de ser a entrada de CAD quando o portal público
+// do corretor entrou no ar, e o Lucas mandou cortar o vínculo de vez. As 575 CADs que viveram lá
+// já foram importadas para a esteira, então nada se perdeu: elas contam aqui como qualquer
+// outra, e a CACÁ passou a ter UMA resposta para "quantas CADs" em vez de duas divergentes.
+//
+// Cada linha de `apolo_esteira` = uma CAD = uma pessoa NUM empreendimento (a chave é
+// `(entity_id, enterprise_id)` desde a migration 0080; a mesma pessoa pode ter CAD em dois
+// loteamentos, e são duas CADs). Ver [[project_esteira_credenciamento_venda]].
+import { carregarNomes } from "@/lib/apolo/painel-coordenador";
+import { createApoloAdminClient } from "@/lib/apolo/server";
 import { type C2xPeriodo, resolvePeriodoRange } from "@/lib/guardian/c2x-analytics";
 
-// Fonte "Central de CAD" (Asana) pro motor da CACÁ. Cada TASK do projeto = uma CAD (cadastro
-// de prospect enviado pelos corretores). O NOME da task = o nome do cliente. As SEÇÕES do
-// projeto = as ETAPAS do processo. Os campos custom trazem o empreendimento e a imobiliária
-// credenciada — a imobiliária fica num campo DIFERENTE por empreendimento (nomes
-// inconsistentes), então descobrimos dinamicamente: o 1º campo cujo nome contém "imobiliár" e
-// que está preenchido. Read-only, reusa o ASANA_ACCESS_TOKEN do "Meu dia". Cache curto.
-
-const ASANA_API_BASE_URL = "https://app.asana.com/api/1.0";
-const CAD_PROJECT_GID =
-  process.env.ASANA_CAD_PROJECT_GID?.trim() || "1209726796886414";
 const CACHE_TTL_MS = 120_000;
-const MAX_PAGES = 40;
 
 export type CadRecord = {
   cliente: string;
@@ -21,145 +22,80 @@ export type CadRecord = {
   criadoEm: string | null; // ISO
 };
 
-type AsanaCustomField = { name?: string | null; display_value?: string | null };
-type AsanaMembership = {
-  project?: { gid?: string | null } | null;
-  section?: { name?: string | null } | null;
-};
-type AsanaTask = {
-  name?: string | null;
-  created_at?: string | null;
-  custom_fields?: AsanaCustomField[] | null;
-  memberships?: AsanaMembership[] | null;
-};
-type AsanaEnvelope<T> = { data: T; next_page?: { offset?: string | null } | null };
-
 let cache: { at: number; records: CadRecord[] } | null = null;
 
 function normalize(value: string | null | undefined): string {
   return String(value ?? "")
     .normalize("NFD")
-    .replace(/[̀-ͯ]/g, "")
+    .replace(/\p{Diacritic}/gu, "")
     .toLowerCase()
     .trim();
 }
 
-async function fetchAsana<T>(
-  token: string,
-  path: string,
-  query: Record<string, string | undefined>,
-): Promise<AsanaEnvelope<T>> {
-  const url = new URL(`${ASANA_API_BASE_URL}${path}`);
-  for (const [key, value] of Object.entries(query)) {
-    if (value) {
-      url.searchParams.set(key, value);
-    }
-  }
-
-  const response = await fetch(url, {
-    cache: "no-store",
-    headers: { Accept: "application/json", Authorization: `Bearer ${token}` },
-  });
-
-  if (!response.ok) {
-    throw new Error(`Asana HTTP ${response.status}`);
-  }
-
-  return (await response.json()) as AsanaEnvelope<T>;
-}
-
-function extractEmpreendimento(fields: AsanaCustomField[]): string | null {
-  // Preferência exata pelo campo de indicação; senão qualquer campo com "empreendimento".
-  const exato = fields.find(
-    (field) =>
-      normalize(field.name).includes("empreendimento") &&
-      normalize(field.name).includes("indica") &&
-      field.display_value,
-  );
-
-  if (exato?.display_value) {
-    return exato.display_value.trim();
-  }
-
-  const qualquer = fields.find(
-    (field) =>
-      normalize(field.name).includes("empreendimento") && field.display_value,
-  );
-
-  return qualquer?.display_value?.trim() ?? null;
-}
-
-function extractImobiliaria(fields: AsanaCustomField[]): string | null {
-  // Imobiliária credenciada fica num campo por empreendimento (nome inconsistente): pega o
-  // 1º campo cujo nome contém "imobiliár" e está preenchido.
-  const campo = fields.find(
-    (field) =>
-      normalize(field.name).includes("imobiliar") && field.display_value,
-  );
-
-  return campo?.display_value?.trim() ?? null;
-}
-
-function extractEtapa(memberships: AsanaMembership[]): string | null {
-  const daqui = memberships.find(
-    (membership) => membership.project?.gid === CAD_PROJECT_GID,
-  );
-
-  return (
-    daqui?.section?.name?.trim() ??
-    memberships[0]?.section?.name?.trim() ??
-    null
-  );
-}
-
-// Carrega TODAS as CADs (tasks do projeto) com etapa + empreendimento + imobiliária. Cacheado.
-// null = token ausente ou falha (a tool degrada com elegância).
+// Carrega TODAS as CADs da esteira com etapa + empreendimento + imobiliária. Cacheado 2 min.
+// null = sem acesso ao Apolo (a tool degrada com elegância, como fazia com o token do Asana).
 export async function loadCadRecords(): Promise<CadRecord[] | null> {
-  const token = process.env.ASANA_ACCESS_TOKEN?.trim();
-
-  if (!token) {
-    return null;
-  }
-
   if (cache && cache.at > Date.now() - CACHE_TTL_MS) {
     return cache.records;
   }
 
+  const client = createApoloAdminClient();
+  if (!client) return null;
+
   try {
-    const records: CadRecord[] = [];
-    let offset: string | undefined;
+    const { data, error } = await client
+      .from("apolo_esteira")
+      .select("entity_id, etapa, imobiliaria, empreendimento, enterprise_id, chegou_em");
 
-    for (let page = 0; page < MAX_PAGES; page += 1) {
-      const query: Record<string, string | undefined> = {
-        limit: "100",
-        offset,
-        opt_fields:
-          "name,created_at,memberships.project.gid,memberships.section.name,custom_fields.name,custom_fields.display_value",
-      };
-      const envelope = await fetchAsana<AsanaTask[]>(
-        token,
-        `/projects/${CAD_PROJECT_GID}/tasks`,
-        query,
-      );
+    if (error || !data) return null;
 
-      for (const task of envelope.data ?? []) {
-        const fields = task.custom_fields ?? [];
+    const linhas = data as Array<{
+      chegou_em: string | null;
+      empreendimento: string | null;
+      enterprise_id: string | null;
+      entity_id: string;
+      etapa: string | null;
+      imobiliaria: string | null;
+    }>;
 
-        records.push({
-          cliente: task.name?.trim() || "(sem nome)",
-          criadoEm: task.created_at ?? null,
-          empreendimento: extractEmpreendimento(fields),
-          etapa: extractEtapa(task.memberships ?? []),
-          imobiliaria: extractImobiliaria(fields),
-        });
-      }
-
-      offset = envelope.next_page?.offset ?? undefined;
-
-      if (!offset) {
-        break;
+    // Nome do cliente vem de `apolo_entities` (a esteira guarda só o id). Em lotes de 300: a
+    // lista inteira num `.in()` estoura o tamanho da URL do PostgREST.
+    const ids = [...new Set(linhas.map((l) => l.entity_id))];
+    const nomePorId = new Map<string, string>();
+    for (let i = 0; i < ids.length; i += 300) {
+      const { data: entidades } = await client
+        .from("apolo_entities")
+        .select("id, display_name, legal_name")
+        .in("id", ids.slice(i, i + 300));
+      for (const entidade of (entidades ?? []) as Array<{
+        display_name: string | null;
+        id: string;
+        legal_name: string | null;
+      }>) {
+        nomePorId.set(
+          entidade.id,
+          (entidade.legal_name || entidade.display_name || "").trim() || "(sem nome)",
+        );
       }
     }
+
+    // Nome do empreendimento pelo id do C2X, com o texto da esteira como plano B. O texto varia
+    // ("VALE DO OURO" e "Vale do Ouro" convivem) e a CACÁ agrupa por ele — resolver pelo id é o
+    // que impede o mesmo loteamento de virar dois grupos na resposta.
+    const nomes = await carregarNomes();
+
+    const records: CadRecord[] = linhas.map((linha) => {
+      const id = Number(linha.enterprise_id);
+      const doC2x = Number.isFinite(id) ? nomes.get(id)?.name : undefined;
+
+      return {
+        cliente: nomePorId.get(linha.entity_id) ?? "(sem nome)",
+        criadoEm: linha.chegou_em,
+        empreendimento: doC2x ?? (linha.empreendimento?.trim() || null),
+        etapa: linha.etapa,
+        imobiliaria: linha.imobiliaria?.trim() || null,
+      };
+    });
 
     cache = { at: Date.now(), records };
 
