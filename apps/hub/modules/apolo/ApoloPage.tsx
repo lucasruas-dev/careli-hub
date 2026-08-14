@@ -34,7 +34,22 @@ import { useRefetchOnFocus } from "@/hooks/use-refetch-on-focus";
 // ManualHadesOperations + emptyManualHadesOperations movidos para ./data/apolo-operations
 // (tipo em ./types/apolo-local).
 
-export function ApoloPage() {
+export function ApoloPage({
+  buscaInicial,
+  entidadeInicial,
+}: {
+  /**
+   * Termo que traz a ficha para a lista (documento ou nome).
+   *
+   * É necessário junto do id: a lista do CRM é o RESULTADO DE UMA BUSCA, não a base inteira. Sem
+   * o termo, a ficha pedida pode simplesmente não estar entre os resultados e o id não teria em
+   * que casar. Quem manda o link (o cockpit da Iris) já tem o documento em mãos.
+   */
+  buscaInicial?: null | string;
+  /** Ficha para abrir direto, vinda de `?entidade=` — ex.: o cockpit da Iris mandando o operador
+   *  para o cadastro daquele contato específico, em vez de despejá-lo na lista. */
+  entidadeInicial?: null | string;
+} = {}) {
   // Persistidos: a tela/aba/filtro/busca e o registro aberto do Apolo "continuam
   // de onde estavam" ao navegar e voltar. Ver [[use-persisted-state]].
   const [activeScreen, setActiveScreen] = usePersistedState<ApoloScreen>(
@@ -95,6 +110,32 @@ export function ApoloPage() {
   // Entidade que o usuário pediu pra abrir (clique num player). Fica pendente até a busca
   // trazer o resultado, aí a seleção cai NELA em vez de na primeira da lista.
   const pendingEntityIdRef = useRef<string | null>(null);
+
+  // DEEP LINK (`/apolo?entidade=<id>&q=<documento>`): abre a ficha pedida em vez da lista.
+  //
+  // Roda UMA VEZ, no mount. Usa a mesma mecânica do clique num player: marca a ficha como
+  // pendente e deixa a busca trazê-la — o `q` é o que garante que ela esteja no resultado, já que
+  // a lista do CRM é busca, não a base inteira. Sem isto, o "Abrir no Apolo" do cockpit da Iris
+  // largava o operador na lista e ele tinha que procurar de novo a pessoa com quem já estava
+  // conversando.
+  const deepLinkAplicadoRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkAplicadoRef.current) return;
+    if (!entidadeInicial && !buscaInicial) return;
+
+    deepLinkAplicadoRef.current = true;
+    setActiveScreen("crm");
+
+    if (entidadeInicial) {
+      pendingEntityIdRef.current = entidadeInicial;
+      setSelectedEntityId(entidadeInicial);
+    }
+    if (buscaInicial) {
+      setQuery(buscaInicial);
+      setQueryInput(buscaInicial);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [buscaInicial, entidadeInicial]);
 
   // Carrega no mount (não só na tela de Empreendimentos): o CRM precisa da lista pra
   // resolver o clique num relacionamento de empreendimento -> abrir a tela dele.

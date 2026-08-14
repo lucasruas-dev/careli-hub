@@ -4,6 +4,8 @@ import { Building2, ExternalLink, Loader2, Search, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
 import type { IdentidadeDoContato } from "@/lib/iris/apolo/identidade-contato";
+
+import { linkDoApolo } from "./iris-identidade-apolo";
 // De `vinculos.ts`, NUNCA de `escrita-contato.ts`: aquele arquivo puxa o client do Apolo e o
 // driver MySQL, que não podem entrar no bundle do navegador.
 import {
@@ -428,7 +430,13 @@ export function IrisCadastroModal({
         <div className="mt-5 flex items-center justify-between gap-2">
           <a
             className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-soft hover:text-ink"
-            href="/apolo"
+            // Leva o id E o documento: o id escolhe a ficha, o documento garante que ela esteja
+            // no resultado da busca do CRM (a lista de lá é busca, não a base inteira).
+            href={linkDoApolo({
+              documento: ehEntidade ? identidade.documentoMascarado : null,
+              entidadeId,
+              telefone: contexto.telefone,
+            })}
             rel="noreferrer"
             target="_blank"
           >

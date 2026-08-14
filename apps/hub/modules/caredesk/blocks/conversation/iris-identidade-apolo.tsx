@@ -57,6 +57,29 @@ function rotuloDoVinculo(tipo: string): string {
   return ROTULO_VINCULO[chave] ?? tipo;
 }
 
+/**
+ * Link para o Apolo já na ficha certa.
+ *
+ * O `q` (documento, ou o telefone quando não há documento) vai junto porque a lista do CRM é o
+ * resultado de uma BUSCA: só o id não basta, a ficha precisa estar entre os resultados para a
+ * seleção casar. Sem ficha, leva para a tela limpa com o telefone na busca — o operador já chega
+ * com o que sabe digitado.
+ */
+export function linkDoApolo(entrada: {
+  documento?: null | string;
+  entidadeId?: null | string;
+  telefone?: null | string;
+}): string {
+  const params = new URLSearchParams();
+  if (entrada.entidadeId) params.set("entidade", entrada.entidadeId);
+
+  const busca = entrada.documento?.trim() || entrada.telefone?.trim();
+  if (busca) params.set("q", busca);
+
+  const query = params.toString();
+  return query ? `/apolo?${query}` : "/apolo";
+}
+
 export function IrisIdentidadeApolo({
   getAccessToken,
   nomeDoContato,
@@ -253,7 +276,7 @@ export function IrisIdentidadeApolo({
             {/* Sem ficha própria: quem cria é o Apolo. Daqui o operador só abre o cadastro lá. */}
             <a
               className="inline-flex items-center gap-1.5 rounded-lg border border-[#A07C3B] bg-[#A07C3B] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#8d6c33]"
-              href="/apolo"
+              href={linkDoApolo({ telefone })}
               rel="noreferrer"
               target="_blank"
             >
@@ -282,7 +305,7 @@ export function IrisIdentidadeApolo({
           {/* Ficha nova é no Apolo; aqui o operador só é levado até lá. */}
           <a
             className="inline-flex items-center gap-1.5 rounded-lg border border-[#A07C3B] bg-[#A07C3B] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#8d6c33]"
-            href="/apolo"
+            href={linkDoApolo({ telefone })}
             rel="noreferrer"
             target="_blank"
           >
