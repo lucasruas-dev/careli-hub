@@ -115,7 +115,10 @@ import {
   IrisCadastroModal,
   type ModoCadastro,
 } from "./blocks/conversation/iris-cadastro-modal";
-import { IrisIdentidadeApolo } from "./blocks/conversation/iris-identidade-apolo";
+import {
+  IrisIdentidadeApolo,
+  linkDoApolo,
+} from "./blocks/conversation/iris-identidade-apolo";
 import {
   IrisAthenaPanel,
   type AthenaAction,
@@ -2245,6 +2248,11 @@ function IrisConversationPanel({
         ? primeiro.papelDoOutro
         : `${primeiro.papelDoOutro} de`,
       com: primeiro.entidade ? capitalizeName(primeiro.entidade) : null,
+      // Link para a ficha da contraparte. Com id, abre direto; sem id (vínculo antigo, que aponta
+      // só por texto), abre o CRM buscando pelo nome — que é o que temos.
+      link: primeiro.entidade
+        ? linkDoApolo({ busca: primeiro.entidade, entidadeId: primeiro.entidadeId })
+        : null,
       restantes: lista.length - 1,
     };
   })();
@@ -4666,9 +4674,22 @@ function IrisConversationPanel({
                       <span className="block">
                         {vinculoPrincipal.cabecalho}
                         {vinculoPrincipal.com ? (
-                          <span className="mt-0.5 block font-normal text-ink-muted">
-                            {vinculoPrincipal.com}
-                          </span>
+                          vinculoPrincipal.link ? (
+                            // Abre a ficha da contraparte no Apolo, em aba nova: o operador está
+                            // no meio de um atendimento e não pode perder a conversa.
+                            <a
+                              className="mt-0.5 block font-normal text-[#A07C3B] underline decoration-[#A07C3B]/30 underline-offset-2 hover:decoration-[#A07C3B]"
+                              href={vinculoPrincipal.link}
+                              rel="noreferrer"
+                              target="_blank"
+                            >
+                              {vinculoPrincipal.com}
+                            </a>
+                          ) : (
+                            <span className="mt-0.5 block font-normal text-ink-muted">
+                              {vinculoPrincipal.com}
+                            </span>
+                          )
                         ) : null}
                         {vinculoPrincipal.restantes > 0 ? (
                           <span className="mt-0.5 block text-[11px] font-normal text-ink-muted">

@@ -66,6 +66,8 @@ function rotuloDoVinculo(tipo: string): string {
  * com o que sabe digitado.
  */
 export function linkDoApolo(entrada: {
+  /** Termo livre (nome da imobiliária, por exemplo) quando não há documento nem id. */
+  busca?: null | string;
   documento?: null | string;
   entidadeId?: null | string;
   telefone?: null | string;
@@ -73,8 +75,12 @@ export function linkDoApolo(entrada: {
   const params = new URLSearchParams();
   if (entrada.entidadeId) params.set("entidade", entrada.entidadeId);
 
-  const busca = entrada.documento?.trim() || entrada.telefone?.trim();
-  if (busca) params.set("q", busca);
+  // Ordem de preferência: documento (casa exato) > busca livre > telefone. Boa parte dos vínculos
+  // antigos aponta para a contraparte só por TEXTO (`related_entity_id` nulo — é o caso da
+  // Imparável na ficha da Ilza), e aí o nome é tudo o que temos para achá-la no CRM.
+  const termo =
+    entrada.documento?.trim() || entrada.busca?.trim() || entrada.telefone?.trim();
+  if (termo) params.set("q", termo);
 
   const query = params.toString();
   return query ? `/apolo?${query}` : "/apolo";

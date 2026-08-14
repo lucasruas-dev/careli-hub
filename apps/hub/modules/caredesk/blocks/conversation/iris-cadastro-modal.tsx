@@ -244,8 +244,19 @@ export function IrisCadastroModal({
               className="m-0 text-[11.5px] text-ink-soft"
               key={`${item.tipo}-${item.entidadeId ?? indice}`}
             >
-              {item.tipo}
-              {item.entidade ? ` de ${item.entidade}` : ""}
+              {item.souODono ? `${item.papelDoOutro}: ` : `${item.papelDoOutro} de `}
+              {item.entidade ? (
+                <a
+                  className="text-[#A07C3B] underline decoration-[#A07C3B]/30 underline-offset-2 hover:decoration-[#A07C3B]"
+                  href={linkDoApolo({ busca: item.entidade, entidadeId: item.entidadeId })}
+                  rel="noreferrer"
+                  target="_blank"
+                >
+                  {item.entidade}
+                </a>
+              ) : (
+                "?"
+              )}
             </p>
           ))}
         </div>
