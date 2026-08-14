@@ -29,9 +29,60 @@ export type VinculoDoContato = {
   /** Nome da entidade do outro lado (a imobiliária, o comprador). */
   entidade: null | string;
   entidadeId: null | string;
+  /**
+   * "trabalho" ou "contato" — as duas famílias do CRM.
+   *
+   * Vem de `metadata.kind`, que só existe nos vínculos criados pelo wizard novo. Nos antigos
+   * (4.107 linhas de "Imobiliaria ou responsavel comercial", por exemplo) é nulo, e aí a família
+   * é DEDUZIDA da lista de tipos pessoais abaixo. Deduzir é honesto aqui: "cônjuge" nunca é
+   * relação de trabalho, e o resto do que existe na base é comercial.
+   */
+  kind: "contato" | "trabalho";
   /** Rótulo do vínculo como está gravado ("corretor", "conjuge", "Imobiliaria da CAD"). */
   tipo: string;
 };
+
+/** Tipos que são relação PESSOAL. O que não está aqui é tratado como trabalho. */
+const TIPOS_DE_CONTATO = [
+  "conjuge",
+  "cônjuge",
+  "mae",
+  "mãe",
+  "pai",
+  "filho",
+  "filha",
+  "irmao",
+  "irmã",
+  "irmao(a)",
+  "socio",
+  "sócio",
+  "representante_legal",
+  "representante legal",
+  "amigo",
+  "avo",
+  "tio",
+];
+
+function familiaDoVinculo(
+  tipo: null | string,
+  kindGravado: null | string,
+): "contato" | "trabalho" {
+  if (kindGravado === "contato" || kindGravado === "trabalho") return kindGravado;
+
+  const normalizado = String(tipo ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+
+  return TIPOS_DE_CONTATO.some((item) =>
+    normalizado.includes(
+      item.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase(),
+    ),
+  )
+    ? "contato"
+    : "trabalho";
+}
 
 export type ContatoDaFicha = { tipo: string; valor: string };
 
@@ -118,7 +169,7 @@ async function papeisEVinculos(
     client.from("apolo_entity_profiles").select("profile, status").eq("entity_id", entidadeId),
     client
       .from("apolo_relationships")
-      .select("relationship_type, label, related_entity_id, entity_id")
+      .select("relationship_type, label, related_entity_id, entity_id, metadata")
       .or(`entity_id.eq.${entidadeId},related_entity_id.eq.${entidadeId}`)
       .neq("status", "archived")
       .limit(30),
@@ -127,6 +178,7 @@ async function papeisEVinculos(
   const linhas = (relacoes ?? []) as Array<{
     entity_id: string;
     label: null | string;
+    metadata: null | { kind?: string };
     related_entity_id: null | string;
     relationship_type: null | string;
   }>;
@@ -163,10 +215,13 @@ async function papeisEVinculos(
     vinculos: linhas.map((linha) => {
       const outroId =
         linha.entity_id === entidadeId ? linha.related_entity_id : linha.entity_id;
+      const tipo = (linha.relationship_type ?? "vínculo").trim();
+
       return {
         entidade: outroId ? (nomePorId.get(outroId) ?? null) : (linha.label?.trim() || null),
         entidadeId: outroId ?? null,
-        tipo: (linha.relationship_type ?? "vínculo").trim(),
+        kind: familiaDoVinculo(tipo, linha.metadata?.kind ?? null),
+        tipo,
       };
     }),
   };
@@ -302,11 +357,15 @@ export async function identidadeDoContato(
       return {
         estado: "vinculo",
         nome: casados[0]?.metadata?.nome?.trim() || null,
-        vinculos: casados.map((vinculo) => ({
-          entidade: nomePorId.get(vinculo.entity_id) ?? null,
-          entidadeId: vinculo.entity_id,
-          tipo: (vinculo.relationship_type ?? "vínculo").trim(),
-        })),
+        vinculos: casados.map((vinculo) => {
+          const tipo = (vinculo.relationship_type ?? "vínculo").trim();
+          return {
+            entidade: nomePorId.get(vinculo.entity_id) ?? null,
+            entidadeId: vinculo.entity_id,
+            kind: familiaDoVinculo(tipo, null),
+            tipo,
+          };
+        }),
       };
     }
 

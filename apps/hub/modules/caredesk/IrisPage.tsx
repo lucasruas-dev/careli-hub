@@ -2230,8 +2230,12 @@ function IrisConversationPanel({
           )
       : [];
 
-  // O vínculo principal, em uma linha legível ("corretor de L&I"). Mais que isso vira parede de
-  // texto num painel que já é comprido; o resto está no popup.
+  // O vínculo principal, QUEBRADO em duas linhas (pedido do Lucas, 14/08): a família
+  // ("Trabalho" ou "Contato") com o nome do vínculo, e embaixo com quem ele é. Numa linha só, o
+  // texto do legado ("Imobiliaria ou responsavel comercial de IMPARAVEL SOLUCOES IMOBILIARIAS")
+  // quebrava em três linhas tortas e não dizia se a relação era comercial ou pessoal.
+  //
+  // Tudo em Primeira Maiúscula: o legado grava em CAIXA ALTA, que no meio do painel parece grito.
   const vinculoPrincipal = (() => {
     const lista =
       identidadeApolo?.estado === "entidade" || identidadeApolo?.estado === "vinculo"
@@ -2240,8 +2244,15 @@ function IrisConversationPanel({
     const primeiro = lista[0];
     if (!primeiro) return null;
 
-    const rotulo = `${primeiro.tipo}${primeiro.entidade ? ` de ${primeiro.entidade}` : ""}`;
-    return lista.length > 1 ? `${rotulo} (+${lista.length - 1})` : rotulo;
+    const familia = primeiro.kind === "contato" ? "Contato" : "Trabalho";
+    const tipo = capitalizeName(primeiro.tipo) || primeiro.tipo;
+
+    return {
+      // "Trabalho · Imobiliaria Ou Responsavel Comercial"
+      cabecalho: `${familia} · ${tipo}`,
+      com: primeiro.entidade ? capitalizeName(primeiro.entidade) : null,
+      restantes: lista.length - 1,
+    };
   })();
 
   // Grupo de WhatsApp: conversa de monitoramento (read-only), sem janela de 24h.
@@ -4661,7 +4672,28 @@ function IrisConversationPanel({
             ...(identidadeApolo?.estado === "entidade" && papeisDeNegocio.length
               ? [{ label: "Papel", value: papeisDeNegocio.join(", ") }]
               : []),
-            ...(vinculoPrincipal ? [{ label: "Vínculo", value: vinculoPrincipal }] : []),
+            ...(vinculoPrincipal
+              ? [
+                  {
+                    label: "Vínculo",
+                    value: (
+                      <span className="block">
+                        {vinculoPrincipal.cabecalho}
+                        {vinculoPrincipal.com ? (
+                          <span className="mt-0.5 block font-normal text-ink-muted">
+                            {vinculoPrincipal.com}
+                          </span>
+                        ) : null}
+                        {vinculoPrincipal.restantes > 0 ? (
+                          <span className="mt-0.5 block text-[11px] font-normal text-ink-muted">
+                            e mais {vinculoPrincipal.restantes}
+                          </span>
+                        ) : null}
+                      </span>
+                    ),
+                  },
+                ]
+              : []),
             {
               label: "E-mail",
               value:
