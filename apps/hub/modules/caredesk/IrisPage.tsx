@@ -111,6 +111,10 @@ import {
 } from "./blocks/conversation/iris-cobranca-context";
 import type { IdentidadeDoContato } from "@/lib/iris/apolo/identidade-contato";
 
+import {
+  IrisCadastroModal,
+  type ModoCadastro,
+} from "./blocks/conversation/iris-cadastro-modal";
 import { IrisIdentidadeApolo } from "./blocks/conversation/iris-identidade-apolo";
 import {
   IrisAthenaPanel,
@@ -1786,6 +1790,11 @@ function IrisConversationPanel({
   // documento -> read-model) tem dois saltos e, quando um falha, o painel mostra "-" mesmo com a
   // ficha achada — foi o que aconteceu com a Ilza, "Cadastrado" em cima e Cliente vazio embaixo.
   const [identidadeApolo, setIdentidadeApolo] = useState<IdentidadeDoContato | null>(null);
+  // Modal de cadastro/correção/vínculo aberto pelo bloco. Null = fechado.
+  const [modalCadastro, setModalCadastro] = useState<ModoCadastro | null>(null);
+  // Contador que manda o bloco reconsultar a identidade depois de salvar: sem isto o operador
+  // grava o CPF e continua vendo "Sem cadastro" até trocar de atendimento.
+  const [recarregarIdentidade, setRecarregarIdentidade] = useState(0);
   const [apoloContextError, setApoloContextError] = useState<string | null>(
     null,
   );
@@ -4521,7 +4530,38 @@ function IrisConversationPanel({
               <IrisIdentidadeApolo
                 getAccessToken={getIrisAccessToken}
                 nomeDoContato={ticket.contactLabel}
+                onCadastrar={(dados) =>
+                  setModalCadastro({
+                    modo: "criar",
+                    nome: dados.nome,
+                    telefone: dados.telefone,
+                  })
+                }
+                onEditar={(entidadeId) =>
+                  setModalCadastro({
+                    documento:
+                      identidadeApolo?.estado === "entidade"
+                        ? identidadeApolo.documentoMascarado
+                        : null,
+                    entidadeId,
+                    modo: "editar",
+                    nome:
+                      identidadeApolo?.estado === "entidade" ? identidadeApolo.nome : "",
+                  })
+                }
                 onIdentidade={setIdentidadeApolo}
+                onVincular={(dados) =>
+                  setModalCadastro({
+                    entidadeId:
+                      identidadeApolo?.estado === "entidade"
+                        ? identidadeApolo.entidadeId
+                        : null,
+                    modo: "vincular",
+                    nome: dados.nome,
+                    telefone: dados.telefone,
+                  })
+                }
+                recarregar={recarregarIdentidade}
                 telefone={ticket.contactPhone}
               />
             )
@@ -4654,6 +4694,17 @@ function IrisConversationPanel({
           }))}
         />
       )}
+
+      {modalCadastro ? (
+        <IrisCadastroModal
+          contexto={modalCadastro}
+          getAccessToken={getIrisAccessToken}
+          onFechar={() => setModalCadastro(null)}
+          // Depois de gravar, o bloco reconsulta: o operador tem que ver o cadastro que acabou de
+          // fazer, não o estado de antes.
+          onSalvo={() => setRecarregarIdentidade((atual) => atual + 1)}
+        />
+      ) : null}
 
       {closeModalOpen ? (
         <IrisCobrancaCloseModal

@@ -16,6 +16,8 @@ import { createApoloEntity } from "@/lib/apolo/cadastro-persist";
 import { atualizarIdentidade } from "@/lib/apolo/identidade-persist";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
 
+import { VINCULOS_DO_COCKPIT } from "./vinculos";
+
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
 export type ResultadoEscrita =
@@ -269,15 +271,6 @@ export async function atualizarContatoDoContato(
 }
 
 // --- vincular ----------------------------------------------------------------------------------
-
-/** Tipos de vínculo que o operador pode criar do atendimento. Lista fechada: vínculo é estrutura
- *  do CRM, e texto livre aqui vira dez grafias para a mesma relação. */
-export const VINCULOS_DO_COCKPIT = [
-  { rotulo: "Cônjuge", valor: "conjuge" },
-  { rotulo: "Corretor", valor: "corretor" },
-  { rotulo: "Representante legal", valor: "representante_legal" },
-  { rotulo: "Sócio", valor: "socio" },
-] as const;
 
 export async function vincularContato(
   client: AdminClient,

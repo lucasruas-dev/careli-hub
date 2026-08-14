@@ -36,6 +36,9 @@ type Props = {
    * Cliente logo abaixo continuava vazio, porque ele só olhava o phone-match.
    */
   onIdentidade?: (identidade: IdentidadeDoContato) => void;
+  /** Muda de valor quando o cockpit grava algo: força reconsultar em vez de mostrar o estado
+   *  velho. Sem isto o operador cadastra e continua lendo "Sem cadastro". */
+  recarregar?: number;
   onCadastrar?: (dados: { nome: null | string; telefone: string }) => void;
   onEditar?: (entidadeId: string) => void;
   onVincular?: (dados: { nome: null | string; telefone: string }) => void;
@@ -62,6 +65,7 @@ export function IrisIdentidadeApolo({
   onEditar,
   onIdentidade,
   onVincular,
+  recarregar,
   telefone,
 }: Props) {
   const [identidade, setIdentidade] = useState<IdentidadeDoContato | null>(null);
@@ -105,7 +109,9 @@ export function IrisIdentidadeApolo({
 
   useEffect(() => {
     void carregar();
-  }, [carregar]);
+    // `recarregar` entra de propósito: é o sinal de que o cockpit acabou de gravar.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [carregar, recarregar]);
 
   const moldura = (conteudo: React.ReactNode, cor: string) => (
     <div className={`overflow-hidden rounded-xl border ${cor}`}>{conteudo}</div>
