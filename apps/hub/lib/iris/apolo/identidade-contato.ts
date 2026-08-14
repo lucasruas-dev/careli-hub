@@ -30,6 +30,34 @@ export type VinculoDoContato = {
   entidade: null | string;
   entidadeId: null | string;
   /**
+   * O que o OUTRO LADO é nesta relação — "Imobiliária", "Corretor", "Cônjuge".
+   *
+   * ⚠️ NÃO é o papel de quem está no atendimento, e confundir os dois foi um erro real: a Ilza
+   * é COMPRADORA e o vínculo dela é `Imobiliaria ou responsavel comercial → IMPARAVEL`. Exibir
+   * esse rótulo como se fosse dela dizia ao operador que ela é a responsável comercial da
+   * imobiliária, quando ela é a cliente que comprou um lote atendida por essa imobiliária.
+   */
+  papelDoOutro: string;
+  /**
+   * A frase pronta, já na direção certa. É o que a tela mostra.
+   *
+   * A DIREÇÃO depende de quem é o dono do vínculo, e ignorar isso inverte o sentido:
+   *   • o vínculo é DELA (`entity_id` = ela) → o tipo descreve a contraparte:
+   *     "Imobiliária: Imparável" (a imobiliária dela é a Imparável);
+   *   • o vínculo é de OUTRA ficha apontando para ela (`related_entity_id` = ela) → o tipo
+   *     descreve ELA: "Corretor de Ariel Barros" (ela é a corretora do Ariel).
+   * Sem essa distinção, a Ingrity — que é corretora de três clientes — apareceria como se o
+   * corretor dela fosse cada um deles.
+   */
+  descricao: string;
+  /**
+   * O vínculo é DESTA ficha (true) ou de outra apontando para ela (false)?
+   *
+   * É o que define a preposição na tela: dono → "Imobiliária: Imparável"; alvo → "Corretor de
+   * Ariel". A tela não deve deduzir isso quebrando a `descricao` em pedaços.
+   */
+  souODono: boolean;
+  /**
    * "trabalho" ou "contato" — as duas famílias do CRM.
    *
    * Vem de `metadata.kind`, que só existe nos vínculos criados pelo wizard novo. Nos antigos
@@ -41,6 +69,38 @@ export type VinculoDoContato = {
   /** Rótulo do vínculo como está gravado ("corretor", "conjuge", "Imobiliaria da CAD"). */
   tipo: string;
 };
+
+/**
+ * `relationship_type` → o que o OUTRO LADO é.
+ *
+ * Os rótulos do legado descrevem a contraparte, não o titular: "Imobiliaria ou responsavel
+ * comercial" (4.108 linhas, escrito pelo sync em `lib/apolo/server.ts:4222`) quer dizer "a
+ * imobiliária desta pessoa é X". Traduzir aqui é o que evita o painel dizer que o comprador é a
+ * imobiliária dele mesmo.
+ */
+const PAPEL_DO_OUTRO: Record<string, string> = {
+  "conjuge": "Cônjuge",
+  "corretagem": "Corretor",
+  "corretor": "Corretor",
+  "empreendimento": "Empreendimento",
+  "imobiliaria": "Imobiliária",
+  "imobiliaria da cad": "Imobiliária",
+  "imobiliaria ou responsavel comercial": "Imobiliária",
+  "origem comercial": "Origem comercial",
+  "representante_legal": "Representante legal",
+  "socio": "Sócio",
+  "vinculo comercial": "Vínculo comercial",
+};
+
+function papelDoOutroLado(tipo: null | string): string {
+  const normalizado = String(tipo ?? "")
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, "")
+    .toLowerCase()
+    .trim();
+
+  return PAPEL_DO_OUTRO[normalizado] ?? (tipo ?? "Vínculo").trim();
+}
 
 /** Tipos que são relação PESSOAL. O que não está aqui é tratado como trabalho. */
 const TIPOS_DE_CONTATO = [
@@ -98,6 +158,16 @@ export type IdentidadeDoContato =
       tipo: null | string;
       nome: string;
       papeis: PapelDoContato[];
+      /**
+       * O que a pessoa É para a Careli: "Comprador", "Imobiliária", "Corretor", "Incorporador",
+       * "Prospect". Null quando não dá para afirmar.
+       *
+       * ⚠️ NÃO SAI DE `apolo_entity_profiles` sozinho. Lá, comprador de verdade costuma ter só
+       * `pessoa_fisica` e `usuario` — rótulos do cadastro, não papel de negócio (a Ilza, que tem
+       * 47 registros de carteira, é exatamente esse caso). Quem manda é a CARTEIRA: tem unidade
+       * comprada, é Comprador. É a mesma régua do `isBuyer` do CRM (`lib/apolo/server.ts:1008`).
+       */
+      perfil: null | string;
       /** Como o telefone foi encontrado: por identificador ou pela lista de contatos da ficha. */
       via: "contato" | "identificador";
       vinculos: VinculoDoContato[];
@@ -161,11 +231,27 @@ export function variantesDeTelefone(telefone: null | string): string[] {
 /** Os 8 últimos dígitos: é o que sobrevive a DDI, DDD e nono dígito na comparação por texto. */
 const final8 = (telefone: null | string) => digitos(telefone).slice(-8);
 
+/** Papéis do cadastro que NÃO dizem o que a pessoa é para o negócio. */
+const PAPEL_TECNICO = new Set(["pessoa_fisica", "pessoa_juridica", "usuario"]);
+
+const ROTULO_PERFIL: Record<string, string> = {
+  colaborador: "Colaborador",
+  corretor: "Corretor",
+  imobiliaria: "Imobiliária",
+  incorporador: "Incorporador",
+  parceiro: "Parceiro",
+  prospect: "Prospect",
+};
+
 async function papeisEVinculos(
   client: AdminClient,
   entidadeId: string,
-): Promise<{ papeis: PapelDoContato[]; vinculos: VinculoDoContato[] }> {
-  const [{ data: perfis }, { data: relacoes }] = await Promise.all([
+): Promise<{
+  papeis: PapelDoContato[];
+  perfil: null | string;
+  vinculos: VinculoDoContato[];
+}> {
+  const [{ data: perfis }, { data: relacoes }, { count: temCarteira }] = await Promise.all([
     client.from("apolo_entity_profiles").select("profile, status").eq("entity_id", entidadeId),
     client
       .from("apolo_relationships")
@@ -173,6 +259,12 @@ async function papeisEVinculos(
       .or(`entity_id.eq.${entidadeId},related_entity_id.eq.${entidadeId}`)
       .neq("status", "archived")
       .limit(30),
+    // Tem carteira? Uma linha basta — `head: true` traz só a contagem, sem puxar as 47 parcelas
+    // da Ilza (a tabela tem 200 mil linhas no total).
+    client
+      .from("apolo_financial_snapshots")
+      .select("entity_id", { count: "exact", head: true })
+      .eq("entity_id", entidadeId),
   ]);
 
   const linhas = (relacoes ?? []) as Array<{
@@ -210,17 +302,47 @@ async function papeisEVinculos(
     }
   }
 
+  const papeis = ((perfis ?? []) as PapelDoContato[]).filter((perfil) => perfil.profile);
+
+  // A ORDEM importa: carteira ganha de tudo. Quem comprou é Comprador, mesmo que o cadastro só
+  // tenha `pessoa_fisica`. Depois vem o papel de negócio do cadastro (imobiliária, corretor,
+  // incorporador, prospect). Se nada disso existe, não inventamos: null, e a tela omite a linha.
+  const papelDeNegocio = papeis
+    .map((papel) => papel.profile)
+    .find((papel) => !PAPEL_TECNICO.has(papel));
+
+  const perfil =
+    (temCarteira ?? 0) > 0
+      ? "Comprador"
+      : papelDeNegocio
+        ? (ROTULO_PERFIL[papelDeNegocio] ?? papelDeNegocio)
+        : null;
+
   return {
-    papeis: ((perfis ?? []) as PapelDoContato[]).filter((perfil) => perfil.profile),
+    papeis,
+    perfil,
     vinculos: linhas.map((linha) => {
       const outroId =
         linha.entity_id === entidadeId ? linha.related_entity_id : linha.entity_id;
       const tipo = (linha.relationship_type ?? "vínculo").trim();
 
+      const outroNome = outroId
+        ? (nomePorId.get(outroId) ?? null)
+        : (linha.label?.trim() || null);
+      const papel = papelDoOutroLado(tipo);
+      // Dono do vínculo = esta ficha? Então o tipo fala do OUTRO. Se o vínculo é de outra ficha
+      // apontando para cá, o tipo fala DESTA pessoa.
+      const souODono = linha.entity_id === entidadeId;
+
       return {
-        entidade: outroId ? (nomePorId.get(outroId) ?? null) : (linha.label?.trim() || null),
+        souODono,
+        descricao: souODono
+          ? `${papel}${outroNome ? `: ${outroNome}` : ""}`
+          : `${papel}${outroNome ? ` de ${outroNome}` : ""}`,
+        entidade: outroNome,
         entidadeId: outroId ?? null,
         kind: familiaDoVinculo(tipo, linha.metadata?.kind ?? null),
+        papelDoOutro: papel,
         tipo,
       };
     }),
@@ -313,6 +435,7 @@ export async function identidadeDoContato(
         estado: "entidade",
         nome: (ficha?.legal_name || ficha?.display_name || "").trim() || "Sem nome",
         papeis: extras.papeis,
+        perfil: extras.perfil,
         tipo: ficha?.entity_kind?.trim() || null,
         via,
         vinculos: extras.vinculos,
@@ -359,10 +482,18 @@ export async function identidadeDoContato(
         nome: casados[0]?.metadata?.nome?.trim() || null,
         vinculos: casados.map((vinculo) => {
           const tipo = (vinculo.relationship_type ?? "vínculo").trim();
+          const dono = nomePorId.get(vinculo.entity_id) ?? null;
+          const papel = papelDoOutroLado(tipo);
+
           return {
-            entidade: nomePorId.get(vinculo.entity_id) ?? null,
+            // Aqui a direcao e sempre a mesma: o telefone foi achado DENTRO do vinculo de outra
+            // ficha, entao o tipo descreve esta pessoa ("Conjuge de Edi Carlos").
+            descricao: `${papel}${dono ? ` de ${dono}` : ""}`,
+            souODono: false,
+            entidade: dono,
             entidadeId: vinculo.entity_id,
             kind: familiaDoVinculo(tipo, null),
+            papelDoOutro: papel,
             tipo,
           };
         }),

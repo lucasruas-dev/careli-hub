@@ -2217,18 +2217,11 @@ function IrisConversationPanel({
     : null;
   const ticketIsEmail = isEmailTicket(ticket);
 
-  // PAPÉIS DE NEGÓCIO: os que dizem o que a pessoa É para a Careli (prospect, corretor,
-  // imobiliária, incorporador). Ficam de fora `pessoa_fisica`, `pessoa_juridica` e `usuario` —
-  // são rótulos do CADASTRO, não papéis: escrever "Papel: pessoa_fisica, usuario" no painel gasta
-  // uma linha para não informar nada. Quando sobra vazio, a linha inteira não aparece.
-  const papeisDeNegocio =
-    identidadeApolo?.estado === "entidade"
-      ? identidadeApolo.papeis
-          .map((papel) => papel.profile)
-          .filter(
-            (papel) => !["pessoa_fisica", "pessoa_juridica", "usuario"].includes(papel),
-          )
-      : [];
+  // O PERFIL vem resolvido do servidor: carteira manda (quem comprou é Comprador), depois o papel
+  // de negócio do cadastro. Não é lido de `apolo_entity_profiles` direto — lá o comprador aparece
+  // como "pessoa_fisica, usuario", que descreve o cadastro e não o negócio.
+  const perfilDoContato =
+    identidadeApolo?.estado === "entidade" ? identidadeApolo.perfil : null;
 
   // O vínculo principal, QUEBRADO em duas linhas (pedido do Lucas, 14/08): a família
   // ("Trabalho" ou "Contato") com o nome do vínculo, e embaixo com quem ele é. Numa linha só, o
@@ -2244,12 +2237,13 @@ function IrisConversationPanel({
     const primeiro = lista[0];
     if (!primeiro) return null;
 
-    const familia = primeiro.kind === "contato" ? "Contato" : "Trabalho";
-    const tipo = capitalizeName(primeiro.tipo) || primeiro.tipo;
-
+    // A DIREÇÃO vem do servidor (`souODono`), não é deduzida aqui: "Imobiliária: Imparável"
+    // quando a imobiliária é dela; "Corretor de Ariel" quando ela é a corretora dele. Foi essa
+    // direção que eu inverti antes, mostrando o papel do outro como se fosse o dela.
     return {
-      // "Trabalho · Imobiliaria Ou Responsavel Comercial"
-      cabecalho: `${familia} · ${tipo}`,
+      cabecalho: primeiro.souODono
+        ? primeiro.papelDoOutro
+        : `${primeiro.papelDoOutro} de`,
       com: primeiro.entidade ? capitalizeName(primeiro.entidade) : null,
       restantes: lista.length - 1,
     };
@@ -4657,21 +4651,13 @@ function IrisConversationPanel({
             // operador precisa saber de relance se fala com uma ficha própria ou com o contato de
             // outra pessoa. Só aparecem quando há resposta do Apolo — linha vazia em painel é
             // ruído, e "-" aqui seria confundido com "não tem papel".
-            ...(identidadeApolo?.estado === "entidade" ||
-            identidadeApolo?.estado === "vinculo"
-              ? [
-                  {
-                    label: "Perfil",
-                    value:
-                      identidadeApolo.estado === "entidade"
-                        ? "Entidade"
-                        : "Contato de outra ficha",
-                  },
-                ]
-              : []),
-            ...(identidadeApolo?.estado === "entidade" && papeisDeNegocio.length
-              ? [{ label: "Papel", value: papeisDeNegocio.join(", ") }]
-              : []),
+            // PERFIL = o que a pessoa é para a Careli (Comprador, Imobiliária, Corretor…). Quem
+            // não tem ficha própria aparece como contato de outra, que também é resposta útil.
+            ...(perfilDoContato
+              ? [{ label: "Perfil", value: perfilDoContato }]
+              : identidadeApolo?.estado === "vinculo"
+                ? [{ label: "Perfil", value: "Contato de outra ficha" }]
+                : []),
             ...(vinculoPrincipal
               ? [
                   {
