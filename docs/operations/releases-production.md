@@ -95,6 +95,47 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Iris/Zeus] Cadastro do Apolo no cockpit do atendimento`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-08-14 19:50:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `validado em localhost:3001; autorizacao explicita do Lucas ("temos que colocar no ar")`.
+- Escopo publicado:
+  - `bloco "Cadastro no Apolo" na aba Cliente: estado explicito (entidade | vinculo | nenhum | indisponivel), resolvendo o telefone em TRES fontes`;
+  - `campos Perfil, Papel e Vinculo no painel; perfil vem da CARTEIRA e o vinculo respeita a direcao (a contraparte, nao o titular)`;
+  - `formulario para corrigir identidade/contato e para vincular (trabalho ou contato); criar ficha continua no Apolo`;
+  - `deep link /apolo?entidade=&q= e nomes vinculados clicaveis`;
+  - `backfill: 4.746 vinculos de imobiliaria passaram a apontar para a FICHA (antes so texto)`.
+- Commit publicado: `ec36107a`.
+- Deployment anterior: `v1.133.0, buildTag 2026-08-14-glotes-api`.
+- Deployment novo: `deploy automatico do push na main` (v1.134.0, buildTag `2026-08-14-iris-cadastro-apolo`).
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `v1.134.0, READY`.
+- Arquivos/modulos incluidos: `lib/iris/apolo/{identidade-contato,escrita-contato,vinculos}.ts`, `app/api/iris/apolo/{identidade,contato}`, `modules/caredesk/blocks/conversation/{iris-identidade-apolo,iris-cadastro-modal,iris-cobranca-context}.tsx`, `modules/caredesk/IrisPage.tsx`, `app/apolo/page.tsx`, `modules/apolo/ApoloPage.tsx`, `scripts/{validar-identidade-contato,backfill-vinculo-imobiliaria}.ts`.
+- Arquivos/modulos excluidos: `campos pessoais da ficha (nascimento, estado civil, nome da mae) — ver riscos`.
+- Validacoes executadas:
+  - `tsc --noEmit: verde`;
+  - `resolucao de identidade conferida contra a base real (5 casos, incluindo dois conjuges hoje invisiveis e o casamento com/sem nono digito)`;
+  - `dev reiniciado do zero apos o bug de bundle: "No server errors found"`;
+  - `backfill com dry-run + prova de que o casamento por vinculed_by_id e exato por construcao (500/500 do mesmo registro)`.
+- Healthchecks pos-deploy:
+  - `/api/version: v1.134.0`;
+  - `/iris, /apolo, /publico/painel: 200`;
+  - `/apolo?entidade=&q=: 200`;
+  - `/api/iris/apolo/identidade e /contato sem token: 401`.
+- Logs recentes: `sem erro critico`.
+- Rollback definido: `v1.133.0 (buildTag 2026-08-14-glotes-api)`.
+- Riscos conhecidos:
+  - `⚠️ AS DUAS ACOES DE ESCRITA (corrigir e vincular) NAO FORAM EXERCITADAS POR CLIQUE — exigem login. O caminho do servidor foi validado (gate, validacao, auditoria), mas o primeiro "Salvar" real acontece em producao. Acompanhar os primeiros usos.`;
+  - `a familia do vinculo (trabalho/contato) e DEDUZIDA nos registros antigos, que nao tem metadata.kind; tipo pessoal fora da lista sai como "Trabalho"`;
+  - `a rota de identidade devolve o documento COMPLETO (document_masked guarda o CPF por extenso); ha log de acesso, mas nao ha mascaramento`.
+- Pendencias: `campos pessoais da ficha dependem de resolver a cascata metadata.cadastro < apolo_esteira.ficha — a tela do CRM grava na camada perdedora e isso ja afeta quem usa o Apolo hoje`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas validar Editar e Vincular com um caso real`.
+
+Registro de producao:
+
 - Assunto: `[Integracoes/Zeus] API da carteira Lavra do Ouro para o GLOTES`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-08-14 17:20:00 -03:00`.
