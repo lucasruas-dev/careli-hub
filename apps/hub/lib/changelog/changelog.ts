@@ -36,6 +36,45 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-14-painel-coordenador",
+    deployedAt: "2026-08-14T12:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Painel único do coordenador, sem login, com o empreendimento escolhido no topo e quatro abas: CAD, Imobiliárias, Assinatura e Sinal (c2x.app.br/publico/painel)",
+              "CAD: o funil de cadastros com busca por cliente, filtro por imobiliária e ranking, agora contando tudo o que está no Apolo",
+              "Imobiliárias: quem está credenciado no empreendimento, quantos corretores tem, quantas CADs mandou e quem ainda não mandou nenhuma",
+              "Assinatura: a mesma tela do painel interno, com o cenário do comprador, a fila por ordem de assinatura e quem falta assinar",
+              "Sinal: o que foi gerado de entrada (Ato + Sinal), o que foi quitado, o que vence, o que atrasou e o que vence nos próximos 7 dias",
+              "Filtro, busca e ordenação por coluna nas quatro abas",
+              "O link antigo da Central de CADs continua funcionando e abre direto na aba CAD",
+            ],
+            screen: "Apolo · Painel do coordenador",
+          },
+          {
+            items: [
+              "O aviso \"sem CAD\" não aparece mais nos cards de imobiliária, onde ele nunca fez sentido",
+            ],
+            screen: "Apolo · Board",
+          },
+        ],
+      },
+    ],
+    rollback: "dpl_2rmBQ7tAvWwAN51jBGg9RaVQ4Wdq",
+    technical: {
+      done:
+        "Rota nova /publico/painel (server component, navegação por link ?emp=&aba=, noindex): cada aba carrega só a sua fonte, então abrir CAD não paga a consulta do C2X. lib/apolo/painel-coordenador.ts lê o Apolo (esteira + credenciamento) e lib/apolo/painel-sinal.ts lê o C2X (payments, parcel_type 1 e 2 = Ato e Sinal, payment_to_delete = 0). Empreendimento é agrupado por enterprise_id, NUNCA pelo texto: 'VALE DO OURO' e 'Vale do Ouro' convivem no banco, e o Vale do Ouro são três enterprises (35 masterplan, 36 VOL, 37 VOC) com o mesmo nome. A aba Imobiliárias filtra por PAPEL (apolo_entity_profiles.profile = 'imobiliaria'): o vínculo 'empreendimento' também existe em ficha de prospect e de corretor, e sem o filtro a conta dava 76 no Vale do Ouro em vez de 30. A produção por imobiliária cruza pela ENTIDADE (imobiliariaEntityIdEmLote), não pelo nome, senão a J&F aparecia com zero CAD porque a esteira guarda o apelido que o corretor digitou. A canonização do nome da imobiliária saiu de app/api/apolo/board/route.ts para lib/apolo/imobiliaria-grafia.ts e agora serve o Board e o painel. Fonte de CAD 100% Apolo: o Asana saiu do painel público, do resumo e da tool consultar_cad da CACÁ (as 575 CADs que viveram lá já estão na esteira). /publico/cads/[emp] virou redirect. Estudo do racional financeiro do Power BI (aba Financiamento) em docs/operations/c2x-financiamento-racional.md, incluindo o achado de que a comissão de 7,5% chumbada lá é a política do Vista Alegre, e não uma constante (Vale do Ouro é 6%, em commercial_policies.total_value_commission).",
+      motivation:
+        "Lucas: \"queria juntar os painéis de CAD, assinatura e financeiro do sinal em um painel só, ele deve ser público para os coordenadores acessarem\", com todos os empreendimentos que estão recebendo CAD. Depois: \"pode cortar o vínculo com o Asana de uma vez\", \"nesse painel não quero valor líquido, quero o cenário de pagamentos\" e \"falta colocar os filtros, ordenação, para o coordenador procurar\". O perfil de acesso do time comercial vem depois e substitui o link aberto.",
+    },
+    title: "Painel do coordenador: CAD, imobiliárias, assinatura e sinal num lugar só",
+    type: "novidade",
+    version: "1.132.0",
+  },
+  {
     buildTag: "2026-08-13-painel-assinatura-vale-do-ouro",
     deployedAt: "2026-08-13T18:30:00-03:00",
     modules: [
