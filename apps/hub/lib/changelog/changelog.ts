@@ -36,6 +36,51 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-14-iris-cadastro-apolo",
+    deployedAt: "2026-08-14T19:40:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O painel do atendimento agora diz se quem está do outro lado tem cadastro no Apolo, e o que ele é: Comprador, Corretor, Imobiliária, Prospect",
+              "Mostra o vínculo separado em Trabalho ou Contato, com o nome de quem — \"Imobiliária: Imparável Soluções\" — e o nome abre a ficha no Apolo",
+              "Acha também quem não tem ficha própria e só existe como contato de outra pessoa (o cônjuge do comprador, o corretor da imobiliária)",
+              "Quando a consulta ao Apolo falha, avisa que não conseguiu verificar em vez de mostrar a tela de quem não tem cadastro",
+              "Botão para corrigir nome, documento, telefone e e-mail sem sair da conversa (mudar nome ou documento pede o motivo, que fica no histórico)",
+              "Botão para vincular o contato a uma pessoa ou empresa já cadastrada",
+              "Cadastro novo continua sendo no Apolo: o cockpit leva para lá com o telefone já preenchido na busca",
+            ],
+            screen: "Iris · Atendimento (aba Cliente)",
+          },
+        ],
+      },
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Link direto para uma ficha: /apolo?entidade=<id> abre o cadastro daquela pessoa em vez da lista",
+              "Os vínculos de imobiliária agora apontam para a FICHA da imobiliária, não só para o nome escrito — 4.746 vínculos corrigidos",
+            ],
+            screen: "Apolo · CRM 360",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.133.0 (buildTag 2026-08-14-glotes-api)",
+    technical: {
+      done:
+        "lib/iris/apolo/identidade-contato.ts resolve o telefone em TRÊS fontes (identificador por hash, apolo_contacts por texto e o telefone gravado no metadata do vínculo) e devolve ESTADO — entidade | vinculo | nenhum | indisponivel — em vez de booleano: 'não achei' e 'não consegui olhar' tinham o mesmo desenho e faziam o operador duplicar ficha. A terceira fonte é a que estava faltando: 204 vínculos guardam telefone no metadata e 101 desses números não pertencem a entidade nenhuma (80 são cônjuges). PERFIL vem da CARTEIRA (apolo_financial_snapshots), não de apolo_entity_profiles: comprador de verdade costuma ter só 'pessoa_fisica' e 'usuario' lá, que são rótulos de cadastro e não papel — mesma régua do isBuyer do CRM (server.ts:1008). VÍNCULO respeita a DIREÇÃO: 'Imobiliaria ou responsavel comercial' descreve a contraparte, não o titular, e exibi-lo como papel do titular dizia que a compradora era a responsável comercial da imobiliária. Escrita em app/api/iris/apolo/contato (POST com ação): corrigir identidade via atualizarIdentidade (valida DV, colisão em duas fontes, exige motivo, audita), contato gravando value E normalized_value juntos (o upsert do CRM deixa o normalized_value velho e a busca passa a devolver ficha errada), e vínculo com metadata.kind trabalho/contato, atualizando em vez de duplicar. Criar entidade NÃO entra: fica no Apolo. Campos pessoais da ficha também não, porque metadata.cadastro perde para apolo_esteira.ficha e a tela do CRM grava na camada perdedora — pendência do Apolo, registrada. Deep link: /apolo?entidade=&q= reusa o pendingEntityIdRef; o q é obrigatório junto porque a lista do CRM é busca, não a base inteira. Backfill (scripts/backfill-vinculo-imobiliaria.ts) casou por vinculed_by_id + uuid determinístico, não por nome: o próprio label foi gerado desse id (server.ts:2884), então o casamento é exato por construção. Bug pego no log do dev e não pelo typecheck: o modal importava a lista de vínculos de um arquivo que puxa mysql2, arrastando o driver de banco para o bundle do browser e quebrando a página da Iris.",
+      motivation:
+        "Lucas: \"não temos a informação que esse contato que está conversando com a gente está cadastrado no apolo, ou vinculado a alguma entidade\". Caso concreto: a Ingrity, corretora da L&I com CPF e telefone cadastrados, aparecia no cockpit como desconhecida; e a Ilza, compradora, aparecia como se fosse a responsável comercial da imobiliária dela.",
+    },
+    title: "Iris sabe quem está do outro lado: cadastro, papel e vínculo no atendimento",
+    type: "novidade",
+    version: "1.134.0",
+  },
+  {
     buildTag: "2026-08-14-glotes-api",
     deployedAt: "2026-08-14T17:10:00-03:00",
     modules: [
