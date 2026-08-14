@@ -1,27 +1,34 @@
 "use client";
 
-import { Loader2, Search, X } from "lucide-react";
+import { Building2, ExternalLink, Loader2, Search, UserRound, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 
+import type { IdentidadeDoContato } from "@/lib/iris/apolo/identidade-contato";
 // De `vinculos.ts`, NUNCA de `escrita-contato.ts`: aquele arquivo puxa o client do Apolo e o
 // driver MySQL, que não podem entrar no bundle do navegador.
-import { VINCULOS_DO_COCKPIT } from "@/lib/iris/apolo/vinculos";
+import {
+  VINCULOS_CONTATO,
+  VINCULOS_TRABALHO,
+  type TipoDeVinculo,
+} from "@/lib/iris/apolo/vinculos";
 
-// CADASTRAR / CORRIGIR / VINCULAR pelo cockpit, sem sair do atendimento.
+// CORRIGIR E VINCULAR pelo cockpit, sem sair do atendimento.
 //
-// Três modos no mesmo modal porque são a mesma conversa do operador: "quem é essa pessoa no nosso
-// cadastro?". Separar em três telas faria ele fechar o atendimento para resolver cadastro.
+// ⚠️ NÃO CRIA FICHA. Criar entidade é no Apolo (decisão do Lucas, 14/08): ficha nasce com papel,
+// empreendimento, documentos e uma trilha de validação que o wizard conduz. Um formulário de
+// quatro campos no meio do atendimento produziria meia-ficha, e meia-ficha é o que vira duplicata
+// depois. Quando não há cadastro, o cockpit manda o operador para o Apolo com o que já sabe.
 //
-// O QUE ESTE FORMULÁRIO NÃO EDITA: nascimento, estado civil, nome da mãe, naturalidade e os
-// demais campos pessoais da ficha. Não é esquecimento — a ficha do Apolo tem duas camadas e a
-// tela do CRM grava na que PERDE (ver lib/iris/apolo/escrita-contato.ts). Enquanto isso não for
-// resolvido, um campo desses digitado aqui sumiria em silêncio, e é melhor não oferecer do que
+// TAMBÉM NÃO EDITA os campos pessoais da ficha (nascimento, estado civil, nome da mãe): a ficha
+// do Apolo tem duas camadas e a tela do CRM grava na que PERDE. Melhor não oferecer do que
 // oferecer mentindo.
 
-export type ModoCadastro =
-  | { entidadeId: string; documento: null | string; modo: "editar"; nome: string }
-  | { modo: "criar"; nome: null | string; telefone: string }
-  | { entidadeId: null | string; modo: "vincular"; nome: null | string; telefone: string };
+export type ModoCadastro = {
+  identidade: IdentidadeDoContato | null;
+  modo: "editar" | "vincular";
+  nome: null | string;
+  telefone: string;
+};
 
 type Resultado = {
   displayName: string;
@@ -33,7 +40,6 @@ type Resultado = {
 
 const soDigitos = (valor: string) => valor.replace(/\D/g, "");
 
-/** Máscara de CPF/CNPJ enquanto digita. Só visual: o servidor recebe e valida os dígitos. */
 function mascararDocumento(valor: string): string {
   const d = soDigitos(valor).slice(0, 14);
   if (d.length <= 11) {
@@ -58,28 +64,29 @@ export function IrisCadastroModal({
   contexto: ModoCadastro;
   getAccessToken: () => Promise<string>;
   onFechar: () => void;
-  /** Avisa o cockpit para reconsultar a identidade: o bloco tem que refletir o que acabou de mudar. */
   onSalvo: () => void;
 }) {
-  const [nome, setNome] = useState(contexto.nome ?? "");
+  const identidade = contexto.identidade;
+  const ehEntidade = identidade?.estado === "entidade";
+  const entidadeId = ehEntidade ? identidade.entidadeId : null;
+
+  const [nome, setNome] = useState(ehEntidade ? identidade.nome : (contexto.nome ?? ""));
   const [documento, setDocumento] = useState(
-    contexto.modo === "editar" ? (contexto.documento ?? "") : "",
+    ehEntidade ? (identidade.documentoMascarado ?? "") : "",
   );
-  const [telefone, setTelefone] = useState(
-    contexto.modo === "criar" || contexto.modo === "vincular" ? contexto.telefone : "",
-  );
+  const [telefone, setTelefone] = useState("");
   const [email, setEmail] = useState("");
   const [motivo, setMotivo] = useState("");
 
+  const [familia, setFamilia] = useState<"contato" | "trabalho">("trabalho");
+  const [tipoVinculo, setTipoVinculo] = useState<null | TipoDeVinculo>(null);
   const [busca, setBusca] = useState("");
   const [resultados, setResultados] = useState<Resultado[]>([]);
   const [buscando, setBuscando] = useState(false);
   const [escolhida, setEscolhida] = useState<null | Resultado>(null);
-  const [tipoVinculo, setTipoVinculo] = useState<string>(VINCULOS_DO_COCKPIT[0].valor);
 
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
-  const [aviso, setAviso] = useState<null | string>(null);
 
   const chamar = useCallback(
     async (corpo: Record<string, unknown>) => {
@@ -89,25 +96,20 @@ export function IrisCadastroModal({
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         method: "POST",
       });
-      const payload = (await resposta.json().catch(() => null)) as {
-        data?: { entidadeId: string };
-        entidadeIdExistente?: string;
-        error?: string;
-      } | null;
-
-      return { ok: resposta.ok, payload, status: resposta.status };
+      const payload = (await resposta.json().catch(() => null)) as { error?: string } | null;
+      return { ok: resposta.ok, payload };
     },
     [getAccessToken],
   );
 
-  // Busca de entidade para vincular. Espera o operador parar de digitar: cada tecla batendo no
-  // banco não ajuda ninguém e a busca do Apolo lê várias tabelas.
   useEffect(() => {
-    if (contexto.modo !== "vincular" || busca.trim().length < 3) {
+    if (busca.trim().length < 3) {
       setResultados([]);
       return;
     }
 
+    // Espera o operador parar de digitar: cada tecla batendo no banco não ajuda ninguém, e a
+    // busca do Apolo lê várias tabelas.
     const timer = setTimeout(async () => {
       setBuscando(true);
       try {
@@ -127,42 +129,23 @@ export function IrisCadastroModal({
     }, 400);
 
     return () => clearTimeout(timer);
-  }, [busca, contexto.modo, getAccessToken]);
+  }, [busca, getAccessToken]);
 
   const salvar = async () => {
     setErro(null);
-    setAviso(null);
     setSalvando(true);
 
     try {
-      if (contexto.modo === "criar") {
-        const { ok, payload, status } = await chamar({
-          acao: "criar",
-          documento,
-          email,
-          nome,
-          telefone,
-        });
-
-        if (!ok) {
-          // 409 = documento já tem ficha. Não é erro do operador: é o dedup fazendo o trabalho.
-          setErro(
-            status === 409
-              ? "Este CPF/CNPJ já tem ficha no Apolo. Feche e recarregue: o cadastro existente vai aparecer aqui."
-              : (payload?.error ?? "Não foi possível cadastrar."),
-          );
+      if (contexto.modo === "editar") {
+        if (!entidadeId) {
+          setErro("Esta ficha não pode ser corrigida por aqui.");
           setSalvando(false);
           return;
         }
-      }
 
-      if (contexto.modo === "editar") {
-        // Identidade e contato são caminhos diferentes no servidor (um audita e valida documento,
-        // o outro mexe em telefone/e-mail). O operador não precisa saber disso: preenche o que
-        // quer corrigir e o modal chama o que for necessário.
         const mudouIdentidade =
-          nome.trim() !== contexto.nome.trim() ||
-          soDigitos(documento) !== soDigitos(contexto.documento ?? "");
+          nome.trim() !== (ehEntidade ? identidade.nome : "").trim() ||
+          soDigitos(documento) !== soDigitos(ehEntidade ? (identidade.documentoMascarado ?? "") : "");
 
         if (mudouIdentidade) {
           if (!motivo.trim()) {
@@ -174,7 +157,7 @@ export function IrisCadastroModal({
           const { ok, payload } = await chamar({
             acao: "corrigir",
             documento,
-            entidadeId: contexto.entidadeId,
+            entidadeId,
             motivo,
             nome,
           });
@@ -190,7 +173,7 @@ export function IrisCadastroModal({
           const { ok, payload } = await chamar({
             acao: "contato",
             email,
-            entidadeId: contexto.entidadeId,
+            entidadeId,
             telefone,
           });
 
@@ -203,28 +186,29 @@ export function IrisCadastroModal({
       }
 
       if (contexto.modo === "vincular") {
-        if (!escolhida) {
-          setErro("Escolha a pessoa ou empresa a quem este contato pertence.");
+        if (!entidadeId) {
+          setErro(
+            "Este contato ainda não tem ficha no Apolo. Cadastre lá primeiro e depois volte para vincular.",
+          );
           setSalvando(false);
           return;
         }
-        if (!contexto.entidadeId) {
-          setErro(
-            "Este contato ainda não tem ficha. Cadastre primeiro e depois faça o vínculo.",
-          );
+        if (!escolhida || !tipoVinculo) {
+          setErro("Escolha a pessoa ou empresa e o tipo de vínculo.");
           setSalvando(false);
           return;
         }
 
         const { ok, payload } = await chamar({
           acao: "vincular",
-          entidadeId: contexto.entidadeId,
+          entidadeId,
+          kind: tipoVinculo.kind,
           relacionadaId: escolhida.id,
-          tipo: tipoVinculo,
+          tipo: tipoVinculo.rotulo,
         });
 
         if (!ok) {
-          setErro(payload?.error ?? "Não foi possível criar o vínculo.");
+          setErro(payload?.error ?? "Não foi possível gravar o vínculo.");
           setSalvando(false);
           return;
         }
@@ -238,15 +222,47 @@ export function IrisCadastroModal({
     setSalvando(false);
   };
 
-  const titulo =
-    contexto.modo === "criar"
-      ? "Cadastrar no Apolo"
-      : contexto.modo === "editar"
-        ? "Editar cadastro"
-        : "Vincular a alguém";
-
   const campo = "h-10 w-full rounded-lg border border-line bg-canvas px-3 text-sm text-ink";
   const rotulo = "mb-1 block text-[11px] font-bold uppercase tracking-wide text-ink-soft";
+  const tipos = familia === "trabalho" ? VINCULOS_TRABALHO : VINCULOS_CONTATO;
+
+  // O PAPEL, que era o que faltava: o operador precisa saber se está falando com uma ficha
+  // própria ou com o contato de outra pessoa — muda o que ele pode prometer na conversa.
+  const papel = ehEntidade ? (
+    <div className="mb-4 rounded-xl border border-line bg-subtle/50 px-3 py-2.5">
+      <p className="m-0 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+        <UserRound aria-hidden="true" className="size-3.5 text-ink-soft" />
+        É uma entidade no Apolo
+      </p>
+      {identidade.papeis.length ? (
+        <p className="m-0 mt-1 text-[11.5px] text-ink-soft">
+          Papel: {identidade.papeis.map((item) => item.profile).join(", ")}
+        </p>
+      ) : null}
+      {identidade.vinculos.length ? (
+        <p className="m-0 mt-0.5 text-[11.5px] text-ink-soft">
+          {identidade.vinculos
+            .slice(0, 3)
+            .map((item) => `${item.tipo}${item.entidade ? ` de ${item.entidade}` : ""}`)
+            .join(" · ")}
+        </p>
+      ) : (
+        <p className="m-0 mt-0.5 text-[11.5px] text-ink-soft">Sem vínculo registrado.</p>
+      )}
+    </div>
+  ) : identidade?.estado === "vinculo" ? (
+    <div className="mb-4 rounded-xl border border-blue-300/60 bg-blue-50/50 px-3 py-2.5 dark:border-blue-500/25 dark:bg-blue-500/[0.06]">
+      <p className="m-0 flex items-center gap-1.5 text-[13px] font-semibold text-ink">
+        <Building2 aria-hidden="true" className="size-3.5 text-ink-soft" />
+        É contato de outra ficha, sem ficha própria
+      </p>
+      <p className="m-0 mt-1 text-[11.5px] text-ink-soft">
+        {identidade.vinculos
+          .map((item) => `${item.tipo}${item.entidade ? ` de ${item.entidade}` : ""}`)
+          .join(" · ")}
+      </p>
+    </div>
+  ) : null;
 
   return (
     <div
@@ -258,84 +274,117 @@ export function IrisCadastroModal({
         onClick={(evento) => evento.stopPropagation()}
       >
         <div className="mb-4 flex items-center justify-between">
-          <h2 className="m-0 text-base font-bold text-ink">{titulo}</h2>
+          <h2 className="m-0 text-base font-bold text-ink">
+            {contexto.modo === "editar" ? "Editar cadastro" : "Vincular contato"}
+          </h2>
           <button aria-label="Fechar" onClick={onFechar} type="button">
             <X aria-hidden="true" className="size-4 text-ink-soft" />
           </button>
         </div>
 
-        {contexto.modo !== "vincular" ? (
+        {papel}
+
+        {contexto.modo === "editar" ? (
           <div className="space-y-3">
             <div>
               <span className={rotulo}>Nome completo</span>
               <input
                 className={campo}
                 onChange={(evento) => setNome(evento.target.value)}
-                placeholder="Como está no documento"
                 value={nome}
               />
             </div>
-
             <div>
-              <span className={rotulo}>
-                CPF ou CNPJ <span className="text-red-600">*</span>
-              </span>
+              <span className={rotulo}>CPF ou CNPJ</span>
               <input
                 className={campo}
                 inputMode="numeric"
                 onChange={(evento) => setDocumento(mascararDocumento(evento.target.value))}
-                placeholder="000.000.000-00"
                 value={documento}
               />
-              {contexto.modo === "criar" ? (
-                <p className="m-0 mt-1 text-[11px] leading-snug text-ink-soft">
-                  Pergunte ao cliente. É o documento que liga a ficha ao sistema de vendas e o que
-                  impede a mesma pessoa virar dois cadastros.
-                </p>
-              ) : null}
             </div>
-
             <div>
               <span className={rotulo}>Telefone</span>
               <input
                 className={campo}
                 inputMode="numeric"
                 onChange={(evento) => setTelefone(evento.target.value)}
-                placeholder="(31) 99999-9999"
+                placeholder="deixe em branco para manter"
                 value={telefone}
               />
             </div>
-
             <div>
               <span className={rotulo}>E-mail</span>
               <input
                 className={campo}
                 onChange={(evento) => setEmail(evento.target.value)}
-                placeholder="cliente@email.com"
+                placeholder="deixe em branco para manter"
                 type="email"
                 value={email}
               />
             </div>
-
-            {contexto.modo === "editar" ? (
-              <div>
-                <span className={rotulo}>Motivo da correção</span>
-                <input
-                  className={campo}
-                  onChange={(evento) => setMotivo(evento.target.value)}
-                  placeholder="ex.: cliente informou o CPF correto"
-                  value={motivo}
-                />
-                <p className="m-0 mt-1 text-[11px] leading-snug text-ink-soft">
-                  Obrigatório só quando mudar nome ou documento. Fica no histórico da ficha.
-                </p>
-              </div>
-            ) : null}
+            <div>
+              <span className={rotulo}>Motivo da correção</span>
+              <input
+                className={campo}
+                onChange={(evento) => setMotivo(evento.target.value)}
+                placeholder="ex.: cliente informou o CPF correto"
+                value={motivo}
+              />
+              <p className="m-0 mt-1 text-[11px] leading-snug text-ink-soft">
+                Obrigatório só ao mudar nome ou documento. Fica no histórico da ficha.
+              </p>
+            </div>
           </div>
         ) : (
           <div className="space-y-3">
+            {/* Trabalho ou contato: é a mesma divisão do CRM, então o vínculo criado aqui aparece
+                lá no lugar certo. */}
             <div>
-              <span className={rotulo}>De quem este contato é?</span>
+              <span className={rotulo}>Que tipo de vínculo?</span>
+              <div className="flex gap-2">
+                {(["trabalho", "contato"] as const).map((opcao) => (
+                  <button
+                    className={`flex-1 rounded-lg border px-3 py-2 text-sm font-semibold capitalize transition-colors ${
+                      familia === opcao
+                        ? "border-[#A07C3B] bg-[#A07C3B]/10 text-ink"
+                        : "border-line text-ink-soft hover:bg-subtle"
+                    }`}
+                    key={opcao}
+                    onClick={() => {
+                      setFamilia(opcao);
+                      setTipoVinculo(null);
+                    }}
+                    type="button"
+                  >
+                    {opcao}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className={rotulo}>Este contato é o quê?</span>
+              <div className="flex flex-wrap gap-1.5">
+                {tipos.map((tipo) => (
+                  <button
+                    className={`rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors ${
+                      tipoVinculo?.rotulo === tipo.rotulo
+                        ? "border-[#A07C3B] bg-[#A07C3B] text-white"
+                        : "border-line text-ink-soft hover:bg-subtle"
+                    }`}
+                    key={tipo.rotulo}
+                    onClick={() => setTipoVinculo(tipo)}
+                    type="button"
+                  >
+                    {tipo.rotulo}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            <div>
+              <span className={rotulo}>De quem?</span>
               <div className="relative">
                 <Search
                   aria-hidden="true"
@@ -358,7 +407,7 @@ export function IrisCadastroModal({
             ) : null}
 
             {resultados.length ? (
-              <div className="max-h-52 space-y-1 overflow-auto">
+              <div className="max-h-48 space-y-1 overflow-auto">
                 {resultados.map((resultado) => (
                   <button
                     className={`w-full rounded-lg border px-3 py-2 text-left transition-colors ${
@@ -381,21 +430,6 @@ export function IrisCadastroModal({
                 ))}
               </div>
             ) : null}
-
-            <div>
-              <span className={rotulo}>Este contato é o quê dessa pessoa?</span>
-              <select
-                className={campo}
-                onChange={(evento) => setTipoVinculo(evento.target.value)}
-                value={tipoVinculo}
-              >
-                {VINCULOS_DO_COCKPIT.map((vinculo) => (
-                  <option key={vinculo.valor} value={vinculo.valor}>
-                    {vinculo.rotulo}
-                  </option>
-                ))}
-              </select>
-            </div>
           </div>
         )}
 
@@ -404,34 +438,40 @@ export function IrisCadastroModal({
             {erro}
           </p>
         ) : null}
-        {aviso ? (
-          <p className="m-0 mt-3 text-sm text-ink-soft">{aviso}</p>
-        ) : null}
 
-        <div className="mt-5 flex items-center justify-end gap-2">
-          <button
-            className="rounded-lg border border-line px-3 py-2 text-sm text-ink-soft hover:bg-subtle"
-            onClick={onFechar}
-            type="button"
+        <div className="mt-5 flex items-center justify-between gap-2">
+          <a
+            className="inline-flex items-center gap-1.5 text-xs font-semibold text-ink-soft hover:text-ink"
+            href="/apolo"
+            rel="noreferrer"
+            target="_blank"
           >
-            Cancelar
-          </button>
-          <button
-            className="inline-flex items-center gap-2 rounded-lg bg-[#A07C3B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8d6c33] disabled:opacity-50"
-            disabled={salvando}
-            onClick={() => void salvar()}
-            type="button"
-          >
-            {salvando ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
-            Salvar
-          </button>
+            <ExternalLink aria-hidden="true" className="size-3.5" />
+            Abrir no Apolo
+          </a>
+          <div className="flex items-center gap-2">
+            <button
+              className="rounded-lg border border-line px-3 py-2 text-sm text-ink-soft hover:bg-subtle"
+              onClick={onFechar}
+              type="button"
+            >
+              Cancelar
+            </button>
+            <button
+              className="inline-flex items-center gap-2 rounded-lg bg-[#A07C3B] px-4 py-2 text-sm font-semibold text-white hover:bg-[#8d6c33] disabled:opacity-50"
+              disabled={salvando}
+              onClick={() => void salvar()}
+              type="button"
+            >
+              {salvando ? <Loader2 aria-hidden="true" className="size-4 animate-spin" /> : null}
+              Salvar
+            </button>
+          </div>
         </div>
 
-        {contexto.modo !== "vincular" ? (
-          <p className="m-0 mt-3 text-[11px] leading-snug text-ink-soft">
-            Endereço, estado civil e os demais campos da ficha continuam no Apolo.
-          </p>
-        ) : null}
+        <p className="m-0 mt-3 text-[11px] leading-snug text-ink-soft">
+          Endereço, estado civil e os demais campos da ficha continuam no Apolo.
+        </p>
       </div>
     </div>
   );

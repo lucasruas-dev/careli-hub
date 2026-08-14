@@ -4530,32 +4530,18 @@ function IrisConversationPanel({
               <IrisIdentidadeApolo
                 getAccessToken={getIrisAccessToken}
                 nomeDoContato={ticket.contactLabel}
-                onCadastrar={(dados) =>
+                onEditar={() =>
                   setModalCadastro({
-                    modo: "criar",
-                    nome: dados.nome,
-                    telefone: dados.telefone,
-                  })
-                }
-                onEditar={(entidadeId) =>
-                  setModalCadastro({
-                    documento:
-                      identidadeApolo?.estado === "entidade"
-                        ? identidadeApolo.documentoMascarado
-                        : null,
-                    entidadeId,
+                    identidade: identidadeApolo,
                     modo: "editar",
-                    nome:
-                      identidadeApolo?.estado === "entidade" ? identidadeApolo.nome : "",
+                    nome: ticket.contactLabel,
+                    telefone: ticket.contactPhone ?? "",
                   })
                 }
                 onIdentidade={setIdentidadeApolo}
                 onVincular={(dados) =>
                   setModalCadastro({
-                    entidadeId:
-                      identidadeApolo?.estado === "entidade"
-                        ? identidadeApolo.entidadeId
-                        : null,
+                    identidade: identidadeApolo,
                     modo: "vincular",
                     nome: dados.nome,
                     telefone: dados.telefone,

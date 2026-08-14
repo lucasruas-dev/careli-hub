@@ -3,11 +3,11 @@
 import {
   AlertTriangle,
   Check,
+  ExternalLink,
   Link2,
   Loader2,
   Pencil,
   RefreshCw,
-  UserPlus,
   UserRound,
 } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
@@ -39,7 +39,6 @@ type Props = {
   /** Muda de valor quando o cockpit grava algo: força reconsultar em vez de mostrar o estado
    *  velho. Sem isto o operador cadastra e continua lendo "Sem cadastro". */
   recarregar?: number;
-  onCadastrar?: (dados: { nome: null | string; telefone: string }) => void;
   onEditar?: (entidadeId: string) => void;
   onVincular?: (dados: { nome: null | string; telefone: string }) => void;
   telefone: null | string;
@@ -61,7 +60,6 @@ function rotuloDoVinculo(tipo: string): string {
 export function IrisIdentidadeApolo({
   getAccessToken,
   nomeDoContato,
-  onCadastrar,
   onEditar,
   onIdentidade,
   onVincular,
@@ -140,7 +138,7 @@ export function IrisIdentidadeApolo({
 
   const botao = (
     rotulo: string,
-    Icone: typeof UserPlus,
+    Icone: typeof Link2,
     onClick: (() => void) | undefined,
     destaque?: boolean,
   ) =>
@@ -252,18 +250,16 @@ export function IrisIdentidadeApolo({
             ))}
           </div>
           <div className="mt-3 flex flex-wrap gap-2">
-            {botao(
-              "Criar ficha própria",
-              UserPlus,
-              onCadastrar
-                ? () =>
-                    onCadastrar({
-                      nome: identidade.nome ?? nomeDoContato ?? null,
-                      telefone: telefone ?? "",
-                    })
-                : undefined,
-              true,
-            )}
+            {/* Sem ficha própria: quem cria é o Apolo. Daqui o operador só abre o cadastro lá. */}
+            <a
+              className="inline-flex items-center gap-1.5 rounded-lg border border-[#A07C3B] bg-[#A07C3B] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#8d6c33]"
+              href="/apolo"
+              rel="noreferrer"
+              target="_blank"
+            >
+              <ExternalLink aria-hidden="true" className="size-3.5" />
+              Cadastrar no Apolo
+            </a>
           </div>
         </div>
       </>,
@@ -283,14 +279,16 @@ export function IrisIdentidadeApolo({
           Este telefone não aparece em nenhuma ficha nem como contato de alguém.
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
-          {botao(
-            "Cadastrar",
-            UserPlus,
-            onCadastrar
-              ? () => onCadastrar({ nome: nomeDoContato ?? null, telefone: telefone ?? "" })
-              : undefined,
-            true,
-          )}
+          {/* Ficha nova é no Apolo; aqui o operador só é levado até lá. */}
+          <a
+            className="inline-flex items-center gap-1.5 rounded-lg border border-[#A07C3B] bg-[#A07C3B] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-[#8d6c33]"
+            href="/apolo"
+            rel="noreferrer"
+            target="_blank"
+          >
+            <ExternalLink aria-hidden="true" className="size-3.5" />
+            Cadastrar no Apolo
+          </a>
           {botao(
             "Vincular a alguém",
             Link2,

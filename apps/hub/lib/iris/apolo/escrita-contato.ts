@@ -1,5 +1,5 @@
-// ESCRITA DO CADASTRO PELO COCKPIT DA IRIS — criar ficha, corrigir identidade, arrumar contato
-// e ligar o contato a alguém.
+// ESCRITA DO CADASTRO PELO COCKPIT DA IRIS — corrigir identidade, arrumar contato e ligar o
+// contato a alguém. Criar ficha NÃO é aqui: fica no Apolo (ver o bloco mais abaixo).
 //
 // Tudo aqui reusa o caminho que o Apolo já tem, em vez de abrir um segundo. A regra é essa
 // porque cada caminho novo de escrita neste módulo reimplementou a trava de duplicidade e errou
@@ -12,11 +12,10 @@
 // edição do CRM grava só na camada perdedora: o operador digita, salva, e o valor não aparece na
 // CAD em PDF nem no que sobe para o C2X, sem erro nenhum. Enquanto essa cascata não for
 // resolvida, o cockpit mexe apenas no que tem caminho seguro e auditado.
-import { createApoloEntity } from "@/lib/apolo/cadastro-persist";
 import { atualizarIdentidade } from "@/lib/apolo/identidade-persist";
 import type { createApoloAdminClient } from "@/lib/apolo/server";
 
-import { VINCULOS_DO_COCKPIT } from "./vinculos";
+import { vinculoPermitido } from "./vinculos";
 
 type AdminClient = NonNullable<ReturnType<typeof createApoloAdminClient>>;
 
@@ -72,77 +71,14 @@ export function documentoValido(documento: string): "cnpj" | "cpf" | null {
   return null;
 }
 
-// --- criar ficha -------------------------------------------------------------------------------
-
-/**
- * Cadastro rápido a partir do atendimento.
- *
- * CPF/CNPJ é OBRIGATÓRIO (decisão do Lucas, 14/08: "vira uma pergunta obrigatória para o
- * operador"). Não é burocracia: é o documento que liga a ficha ao C2X e o que faz a trava de
- * duplicidade funcionar. Sem ele, `createApoloEntity` recusaria de qualquer forma, e uma ficha
- * sem documento vira a segunda ficha da mesma pessoa na semana seguinte.
- *
- * `dedupPorDocumento` ligado: se o documento já tem ficha, NÃO cria outra — devolve o id da
- * existente para o cockpit abrir aquela.
- */
-export async function criarContatoDoAtendimento(
-  client: AdminClient,
-  entrada: {
-    autorUserId: null | string;
-    documento: string;
-    email?: null | string;
-    nome: string;
-    telefone?: null | string;
-  },
-): Promise<ResultadoEscrita> {
-  const nome = limpo(entrada.nome);
-  const documento = soDigitos(entrada.documento);
-  const tipo = documentoValido(documento);
-
-  if (!nome) return { erro: "Informe o nome do contato.", ok: false };
-  if (!tipo) {
-    return {
-      erro: "CPF ou CNPJ inválido. Confira o número com o cliente antes de cadastrar.",
-      ok: false,
-    };
-  }
-
-  const resultado = await createApoloEntity(client, {
-    dedupPorDocumento: true,
-    ...(tipo === "cpf"
-      ? {
-          identidade: { cpf: documento, nome },
-          perfil: { email: limpo(entrada.email), telefone: limpo(entrada.telefone) },
-          persona: "pf" as const,
-        }
-      : {
-          empresa: {
-            cnpj: documento,
-            email: limpo(entrada.email),
-            razaoSocial: nome,
-            telefone: limpo(entrada.telefone),
-          },
-          persona: "pj" as const,
-        }),
-    origem: "iris-cockpit",
-    ownerUserId: entrada.autorUserId,
-    // Nasce como PROSPECT: quem chega pelo atendimento ainda não é comprador nem corretor, e o
-    // papel de verdade é definido depois, no Apolo, por quem cuida do cadastro.
-    role: "prospect",
-  });
-
-  if (!resultado.ok) {
-    return {
-      entidadeIdExistente: resultado.entityIdExistente,
-      erro: resultado.entityIdExistente
-        ? "Este documento já tem ficha no Apolo."
-        : resultado.error,
-      ok: false,
-    };
-  }
-
-  return { entidadeId: resultado.entityId, ok: true };
-}
+// --- criar ficha: NÃO É AQUI ------------------------------------------------------------------
+//
+// A criação de entidade ficou **no Apolo**, por decisão do Lucas (14/08): o cockpit vincula e
+// corrige, mas não abre ficha nova. O motivo é bom — ficha nasce com papel, empreendimento,
+// documentos e uma trilha de validação que o wizard conduz; um formulário de quatro campos no
+// meio do atendimento criaria meia-ficha, e meia-ficha é o que vira duplicata depois.
+//
+// O cockpit leva o operador para lá com o telefone e o nome em mãos.
 
 // --- corrigir identidade -----------------------------------------------------------------------
 
@@ -272,57 +208,90 @@ export async function atualizarContatoDoContato(
 
 // --- vincular ----------------------------------------------------------------------------------
 
+/**
+ * Liga este contato a uma entidade que já existe — de trabalho ou de contato.
+ *
+ * É o que resolve os 101 telefones que hoje só existem dentro do metadata de um vínculo: o
+ * cônjuge que liga pelo comprador, o corretor que fala pela imobiliária. Depois de vinculado, o
+ * cockpit passa a saber quem é aquela pessoa na próxima mensagem.
+ *
+ * Grava com `metadata.kind` ("trabalho" ou "contato"), que é como o CRM separa as duas famílias
+ * na leitura. Vínculo igual não é duplicado: se já existe, ATUALIZA o rótulo em vez de criar
+ * outra linha — o operador que corrige "Sócio" para "Cônjuge" está corrigindo, não somando.
+ */
 export async function vincularContato(
   client: AdminClient,
   entrada: {
     autorUserId: null | string;
     entidadeId: string;
+    kind: string;
     relacionadaId: string;
     tipo: string;
   },
 ): Promise<ResultadoEscrita> {
   const tipo = limpo(entrada.tipo);
-  const permitido = VINCULOS_DO_COCKPIT.some((item) => item.valor === tipo);
+  const kind = limpo(entrada.kind);
 
-  if (!permitido) return { erro: "Tipo de vínculo inválido.", ok: false };
+  if (!vinculoPermitido(tipo, kind)) {
+    return { erro: "Tipo de vínculo inválido.", ok: false };
+  }
   if (entrada.entidadeId === entrada.relacionadaId) {
     return { erro: "Não dá para vincular uma ficha a ela mesma.", ok: false };
   }
 
-  // Não repete vínculo igual: o operador que clica duas vezes não deve criar dois.
+  // Já existe vínculo entre as duas fichas? Então é ATUALIZAÇÃO de rótulo, não vínculo novo.
+  // Sem isto, corrigir "Sócio" para "Cônjuge" deixaria os dois na ficha, e o painel mostraria a
+  // pessoa como as duas coisas.
   const { data: jaExiste } = await client
     .from("apolo_relationships")
-    .select("id")
+    .select("id, relationship_type")
     .eq("entity_id", entrada.relacionadaId)
     .eq("related_entity_id", entrada.entidadeId)
-    .eq("relationship_type", tipo)
     .neq("status", "archived")
+    .limit(1)
     .maybeSingle();
 
-  if (jaExiste) return { entidadeId: entrada.entidadeId, ok: true };
+  const anterior = (jaExiste as null | { id: string; relationship_type: null | string })
+    ?.relationship_type;
 
-  // A relação é gravada NA ENTIDADE DONA (o comprador tem um cônjuge; a imobiliária tem um
-  // corretor), com `related_entity_id` apontando para o contato — é a direção que o resto do
-  // Apolo lê.
-  const { error } = await client.from("apolo_relationships").insert({
-    entity_id: entrada.relacionadaId,
-    metadata: { origem: "iris-cockpit" },
-    related_entity_id: entrada.entidadeId,
-    relationship_type: tipo,
-    status: "active",
-  });
+  const { error } = jaExiste
+    ? await client
+        .from("apolo_relationships")
+        .update({
+          label: tipo,
+          metadata: { atualizadoPor: "iris-cockpit", kind, origem: "iris-cockpit" },
+          relationship_type: tipo,
+        })
+        .eq("id", (jaExiste as { id: string }).id)
+    : // A relação é gravada NA ENTIDADE DONA (o comprador tem um cônjuge; a imobiliária tem um
+      // corretor), com `related_entity_id` apontando para o contato — é a direção que o resto do
+      // Apolo lê.
+      await client.from("apolo_relationships").insert({
+        entity_id: entrada.relacionadaId,
+        label: tipo,
+        metadata: { kind, origem: "iris-cockpit" },
+        related_entity_id: entrada.entidadeId,
+        relationship_type: tipo,
+        status: "active",
+      });
 
-  if (error) return { erro: `Não foi possível criar o vínculo: ${error.message}`, ok: false };
+  if (error) return { erro: `Não foi possível gravar o vínculo: ${error.message}`, ok: false };
 
   // Colunas conferidas contra a tabela: `actor_user_id` (uuid), `metadata` (jsonb NOT NULL) e
   // `status` (NOT NULL). Nome errado aqui não estoura na cara — o insert falha e o vínculo fica
   // sem rastro, que é o pior dos dois mundos.
   await client.from("apolo_audit_events").insert({
-    action: "vinculo_criado",
+    action: jaExiste ? "vinculo_atualizado" : "vinculo_criado",
     actor_user_id: ehUuid(entrada.autorUserId) ? entrada.autorUserId : null,
     entity_id: entrada.relacionadaId,
     field_name: "vinculo",
-    metadata: { origem: "iris-cockpit", relacionada: entrada.entidadeId, tipo },
+    metadata: {
+      contato: entrada.entidadeId,
+      de: anterior ?? null,
+      kind,
+      origem: "iris-cockpit",
+      para: tipo,
+    },
     status: "mapped",
   });
 

@@ -4,7 +4,6 @@ import { createApoloAdminClient } from "@/lib/apolo/server";
 import {
   atualizarContatoDoContato,
   corrigirIdentidadeDoContato,
-  criarContatoDoAtendimento,
   vincularContato,
 } from "@/lib/iris/apolo/escrita-contato";
 import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
@@ -26,6 +25,8 @@ type Corpo = {
   documento?: string;
   email?: string;
   entidadeId?: string;
+  /** "trabalho" ou "contato" — as duas famílias de vínculo do CRM. */
+  kind?: string;
   motivo?: string;
   nome?: string;
   relacionadaId?: string;
@@ -63,31 +64,8 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    if (acao === "criar") {
-      const resultado = await criarContatoDoAtendimento(client, {
-        autorUserId,
-        documento: corpo.documento ?? "",
-        email: corpo.email,
-        nome: corpo.nome ?? "",
-        telefone: corpo.telefone,
-      });
-
-      if (!resultado.ok) {
-        // 409 quando o documento já tem ficha: o cockpit abre a existente em vez de insistir.
-        return NextResponse.json(
-          { entidadeIdExistente: resultado.entidadeIdExistente, error: resultado.erro },
-          { status: resultado.entidadeIdExistente ? 409 : 400 },
-        );
-      }
-
-      console.log(
-        "[iris][apolo][contato] criado",
-        JSON.stringify({ entidadeId: resultado.entidadeId, operador: autorUserId }),
-      );
-
-      return NextResponse.json({ data: { entidadeId: resultado.entidadeId } });
-    }
-
+    // ⚠️ NÃO EXISTE ação "criar" — ficha nova é no Apolo (decisão do Lucas, 14/08). Se alguém
+    // mandar `acao: "criar"` para esta rota, cai no "Ação desconhecida" lá embaixo, e é o certo.
     if (acao === "corrigir") {
       const entidadeId = exigeEntidade();
       if (!entidadeId) {
@@ -140,6 +118,7 @@ export async function POST(request: NextRequest) {
       const resultado = await vincularContato(client, {
         autorUserId,
         entidadeId,
+        kind: corpo.kind ?? "",
         relacionadaId,
         tipo: corpo.tipo ?? "",
       });
