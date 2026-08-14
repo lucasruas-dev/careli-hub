@@ -36,6 +36,33 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-14-credenciamento-lagoa-bonita",
+    deployedAt: "2026-08-14T20:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Lagoa Bonita agora mostra a logo do empreendimento e o nome em caixa alta, como os demais",
+              "Ao pedir credenciamento em Lagoa Bonita, a imobiliaria passa a ser habilitada nos tres empreendimentos (LBF, LBR e LBP)",
+            ],
+            screen: "Portal publico de credenciamento de imobiliaria",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Tres defeitos com a mesma origem: o Lagoa Bonita e um grupo consolidado do C2X (ENTERPRISE_GROUPS) e ja estava gravado em apolo_enterprise_settings com o id sintetico `group:Lagoa Bonita`, mas logo e credenciamento sao por enterprise_id individual. (1) LOGO: `uploadEnterpriseLogo` grava o arquivo com `safeId()`, que troca `:` e espaco por `_` (`group_Lagoa_Bonita`), e o consumidor procurava a chave crua no mapa, nunca achava, e caia no fallback que desenha o code (`LBF + LBR + LBP`); empreendimento de id numerico passava ileso, por isso so este aparecia quebrado. `safeId` virou `chaveDaLogo`, exportada, e o lookup usa a mesma transformacao. (2) CAIXA ALTA: o nome dos simples vem do C2X ja em maiusculas e o do grupo vinha do `display` do ENTERPRISE_GROUPS; uppercase aplicado em `listEmpreendimentosAtivos`, sem tocar no `display`, que o BI usa. (3) OS TRES: o credenciamento gravava o vinculo com o id do grupo, que nao casa com nenhum enterprise_id do C2X, e a imobiliaria ficaria credenciada sem poder vender em nenhum dos tres; `CredenciamentoEmpreendimento` ganhou `stageIds` e a rota expande o grupo antes de gravar, um vinculo por etapa. Vale para qualquer grupo do ENTERPRISE_GROUPS, nao so Lagoa Bonita. NAO e retroativo: quem se credenciou antes tem o vinculo no id do grupo.",
+      motivation:
+        "Lucas, com print do portal: \"aqui lagoa bonita tem que vim unificado, ao cadastrar para lagoa bonita habilita os tres\", mais a logo do empreendimento e o nome em caixa alta.",
+    },
+    title: "Credenciamento: Lagoa Bonita unificado, com logo e os tres empreendimentos",
+    type: "correcao",
+    version: "1.135.0",
+  },
+  {
     buildTag: "2026-08-14-iris-cadastro-apolo",
     deployedAt: "2026-08-14T19:40:00-03:00",
     // Fora do painel de Novidades da Home (decisão do Lucas, 14/08). Continua entrando no bump de
