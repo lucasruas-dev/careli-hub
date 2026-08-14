@@ -95,6 +95,41 @@ Novos registros devem ser adicionados abaixo, do mais recente para o mais antigo
 
 Registro de producao:
 
+- Assunto: `[Integracoes/Zeus] API da carteira Lavra do Ouro para o GLOTES`.
+- Squad/agente responsavel: `Zeus`.
+- Data e hora local: `2026-08-14 17:20:00 -03:00`.
+- Ambiente: `producao`.
+- Origem/homologacao de referencia: `preview dpl_41kxQSKSdAzRopYSomphWL4nMTjq; autorizacao explicita do Lucas ("pode subir")`.
+- Escopo publicado:
+  - `cinco endpoints GET em /api/integrations/glotes (loteamentos, clientes, lotes, vendas, recebimentos), paginados por cursor, implementando docs/integrations/glotes-openapi.yaml`;
+  - `token dedicado no header X-Glotes-Token, escopo travado no servidor nos enterprises 1 e 4, teto por IP, log de acesso sem corpo`;
+  - `decisoes do Lucas: recebimentos so com o parcelamento, percentual_reajuste sempre nulo, do lote so area_total`.
+- Commit publicado: `700e3143`.
+- Deployment anterior: `v1.132.0, buildTag 2026-08-14-painel-coordenador`.
+- Deployment novo: `deploy automatico do push na main` (v1.133.0, buildTag `2026-08-14-glotes-api`).
+- Dominio alvo autorizado: `https://c2x.app.br`.
+- Aliases/dominios afetados:
+  - `https://c2x.app.br`: `v1.133.0, READY`.
+- Arquivos/modulos incluidos: `lib/integrations/glotes/{consultas,porta,handler}.ts`, `app/api/integrations/glotes/*/route.ts` (5), `proxy.ts` (allowlist), `docs/integrations/glotes-openapi.yaml`, changelog.
+- Arquivos/modulos excluidos: `nada do fluxo interno foi tocado`.
+- Validacoes executadas:
+  - `tsc --noEmit: verde (rodado via PowerShell; o bash desta maquina segfaulta)`;
+  - `as 5 rotas testadas em local e em preview, com token, sem token, com token errado e com token em query string`;
+  - `volumes conferidos contra o levantamento de 07/08: 375 clientes, 493 lotes, 475 vendas, 66.805 parcelas mensais`.
+- Healthchecks pos-deploy:
+  - `/api/version: v1.133.0 buildTag 2026-08-14-glotes-api`;
+  - `/api/integrations/glotes/* com token: 200 e totais corretos`;
+  - `/api/integrations/glotes/clientes sem token: 401`;
+  - `/publico/painel: 200 (painel do coordenador intacto)`.
+- Logs recentes: `sem erro critico`.
+- Rollback definido: `dpl_2rmBQ7tAvWwAN51jBGg9RaVQ4Wdq` (v1.131.0) ou o deployment da v1.132.0.
+- Riscos conhecidos: `⚠️ A API esta NO AR e entrega dado pessoal de 375 titulares (nome, CPF, endereco; conjuge em 183 casos) a quem tiver o token. A pendencia P4 (base legal + acordo de tratamento + minimizacao) NAO esta resolvida — o controle hoje e a posse do token, que ainda nao foi entregue ao cliente. Se a decisao juridica demorar, considerar rotacionar o token ou remover a env ate la (sem GLOTES_API_TOKEN a API responde 503).`
+- Pendencias: `P4 LGPD (Lucas + juridico); confirmar com o cliente se o campo indice deve continuar sendo enviado`.
+- Status: `EM PRODUCAO`.
+- Proxima acao: `Lucas entregar credenciais ao GLOTES apos a definicao juridica`.
+
+Registro de producao:
+
 - Assunto: `[Apolo/Zeus] Painel do coordenador publico (CAD, imobiliarias, assinatura, sinal)`.
 - Squad/agente responsavel: `Zeus`.
 - Data e hora local: `2026-08-14 12:47:00 -03:00`.
