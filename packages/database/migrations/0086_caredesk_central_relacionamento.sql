@@ -23,8 +23,8 @@
 -- resolução de número da Meta) continua ignorando os dois, que é o comportamento correto.
 insert into public.caredesk_channels (name, slug, kind, provider, is_active, metadata)
 select
-  'Relacionamento · Direct',
-  'whatsapp-direct',
+  'Central de Relacionamento',
+  'whatsapp-relacionamento',
   c.kind,
   c.provider,
   true,
@@ -37,7 +37,7 @@ select
   )
 from public.caredesk_channels c
 where c.slug = 'whatsapp-grupo'
-  and not exists (select 1 from public.caredesk_channels x where x.slug = 'whatsapp-direct');
+  and not exists (select 1 from public.caredesk_channels x where x.slug = 'whatsapp-relacionamento');
 
 -- Carimba a instância no canal de grupo também, para o processador parar de depender de
 -- constante nos DOIS caminhos.
@@ -53,20 +53,29 @@ update public.caredesk_channels
 update public.caredesk_queues q
    set metadata = coalesce(q.metadata, '{}'::jsonb) || jsonb_build_object('channelId', c.id)
   from public.caredesk_channels c
- where c.slug = 'whatsapp-direct'
+ where c.slug = 'whatsapp-relacionamento'
    and q.slug = 'relacionamento-direct';
+
+-- ── O ROTULO DA FILA ─────────────────────────────────────────────────────────
+-- "Direct" e jargao de ferramenta; o negocio chama de Central de Relacionamento (Lucas, 15/08).
+-- ⚠️ So o NOME muda. O slug `relacionamento-direct` fica: ele e' lido pelo processador, pela
+-- resolucao de fila e pelo cockpit, e renomear slug para arrumar rotulo ja quebrou coisa antes
+-- (a v1.38.0 mudou so os names pelo mesmo motivo).
+update public.caredesk_queues
+   set name = 'Central de Relacionamento'
+ where slug = 'relacionamento-direct';
 
 -- ── BACKFILL: as mensagens 1:1 que estão no canal errado ─────────────────────
 -- Só as que pertencem a um TICKET (o Direct tem ticket; o grupo não tem, usa group_id).
 -- É por isso que este recorte é seguro: mensagem de grupo tem group_id preenchido.
 update public.caredesk_messages m
-   set channel_id = (select id from public.caredesk_channels where slug = 'whatsapp-direct')
+   set channel_id = (select id from public.caredesk_channels where slug = 'whatsapp-relacionamento')
  where m.channel_id = (select id from public.caredesk_channels where slug = 'whatsapp-grupo')
    and m.group_id is null
    and m.ticket_id is not null;
 
 update public.caredesk_tickets t
-   set channel_id = (select id from public.caredesk_channels where slug = 'whatsapp-direct')
+   set channel_id = (select id from public.caredesk_channels where slug = 'whatsapp-relacionamento')
   from public.caredesk_queues q
  where q.id = t.queue_id
    and q.slug = 'relacionamento-direct'

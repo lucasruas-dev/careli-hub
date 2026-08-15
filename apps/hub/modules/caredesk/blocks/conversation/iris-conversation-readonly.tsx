@@ -144,7 +144,7 @@ const IRIS_INBOX_CHANNEL_FILTERS: {
   },
   {
     key: "direct",
-    label: "Direct",
+    label: "Relacionamento",
     icon: User,
     active:
       "bg-cyan-50 text-cyan-700 ring-cyan-300 dark:bg-cyan-400/15 dark:text-cyan-300 dark:ring-cyan-400/40",
@@ -332,8 +332,8 @@ export function IrisConversationInboxSidebar({
                       ) : conversation.isDirect ? (
                         <span
                           className="flex size-4 shrink-0 items-center justify-center rounded-md bg-cyan-600 text-white dark:bg-cyan-500/90"
-                          title="Direct"
-                          aria-label="Direct"
+                          title="Central de Relacionamento"
+                          aria-label="Central de Relacionamento"
                         >
                           <User className="size-2.5" aria-hidden="true" />
                         </span>

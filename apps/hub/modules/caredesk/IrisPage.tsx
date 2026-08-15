@@ -4730,7 +4730,7 @@ function IrisConversationPanel({
                 : ticketIsGroup
                   ? "Relacionamento · Grupo"
                   : ticketIsDirect
-                    ? "Relacionamento · Direct"
+                    ? "Central de Relacionamento"
                     : "WhatsApp",
             },
             // Grupo e Direct (Evolution) não têm janela de 24h.

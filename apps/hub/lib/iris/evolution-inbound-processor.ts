@@ -12,7 +12,7 @@ import { uploadInboundMediaBuffer } from "@/lib/iris/meta-media-storage";
 //  • GRUPO (@g.us): NÃO é ticket. Entidade própria (GRP-xxxx), read-only, só
 //    organização. As mensagens penduram direto no grupo (group_id).
 //  • DIRECT (@s.whatsapp.net): atendimento 1:1 normal (ticket, SLA, encerramento)
-//    na fila "Direct", MAS sem template nem janela de 24h (é Evolution, não Meta).
+//    na Central de Relacionamento, MAS sem template nem janela de 24h (é Evolution, não Meta).
 //
 // `fromMe` (mensagem que sai pelo próprio 6566, seja pela Iris ou pelo celular do
 // time) NÃO é mais descartado: entra como SAÍDA. O eco dos envios feitos pela Iris
@@ -30,7 +30,7 @@ type EvolutionClient = SupabaseClient;
 //
 // O NÚMERO continua sendo o mesmo (a instância `caca-observadora`): o que separa é o canal.
 const GRUPO_CHANNEL_SLUG = "whatsapp-grupo";
-const DIRECT_CHANNEL_SLUG = "whatsapp-direct";
+const DIRECT_CHANNEL_SLUG = "whatsapp-relacionamento";
 const DIRECT_QUEUE_SLUG = "relacionamento-direct";
 const GROUP_JID_SUFFIX = "@g.us";
 const DIRECT_JID_SUFFIX = "@s.whatsapp.net";
