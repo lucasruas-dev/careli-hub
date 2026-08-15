@@ -21,6 +21,7 @@ import type {
   IrisTicket,
 } from "@/modules/caredesk/types/iris-types";
 import { getMobileAccessToken } from "@/modules/mobile/lib/access-token";
+import { useAuth } from "@/providers/auth-provider";
 
 type IrisMobileStatus = "error" | "loading" | "ready";
 
@@ -45,6 +46,12 @@ export function IrisMobileProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<IrisMobileStatus>("loading");
   const [error, setError] = useState<string | null>(null);
   const requestIdRef = useRef(0);
+  // 🔴 O mobile chamava `loadIrisData({})`, sem o usuário logado. Sem ele o `viewerScope` é
+  // nulo e o data-client devolve TODAS as filas (iris-data-client.ts:133), então quem abria
+  // /m/iris no celular via os atendimentos de Jurídico, RH e de toda fila que não é dele —
+  // a mesma tela que no desktop já respeitava a régua. Ver [[reference_iris_mobile_sem_regua]].
+  const { hubUser } = useAuth();
+  const viewerUserId = hubUser?.id ?? null;
 
   const refresh = useCallback(() => {
     const requestId = ++requestIdRef.current;
@@ -52,7 +59,7 @@ export function IrisMobileProvider({ children }: { children: ReactNode }) {
     setStatus((current) => (current === "ready" ? current : "loading"));
     setError(null);
 
-    loadIrisData({})
+    loadIrisData({ viewerUserId })
       .then((data) => {
         if (requestId !== requestIdRef.current) {
           return;
@@ -86,7 +93,10 @@ export function IrisMobileProvider({ children }: { children: ReactNode }) {
         setError("Nao foi possivel carregar os atendimentos.");
         setStatus("error");
       });
-  }, []);
+    // `viewerUserId` na lista: o hubUser chega DEPOIS da primeira renderização (o
+    // auth-provider resolve a sessão de forma assíncrona). Com a lista vazia, o refresh
+    // ficaria preso no `null` inicial e a régua não valeria — que é justamente o bug.
+  }, [viewerUserId]);
 
   useEffect(() => {
     refresh();
