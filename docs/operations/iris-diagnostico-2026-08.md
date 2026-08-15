@@ -227,3 +227,51 @@ especial. Cabe backfill nas 3.247 já gravadas, restrito ao Direct.
 
 Isso entra junto com o passo 5 (dar canal próprio ao Direct), e é o que faz aquele atendimento
 aparecer em SLA e produtividade pela primeira vez.
+
+
+---
+
+## ✅ DECISÃO (Lucas, 15/08): separar Grupo e Direct sistemicamente, com um número só
+
+> "eu acho que vou separar o grupo dos atendimentos a imobiliárias" → "vamos separar
+> sistemicamente então"
+
+Separação **lógica** (canal e fila próprios), mantendo o mesmo número 31 97250-6566. Números
+distintos ficam para depois, se a operação pedir: o custo daquilo é externo (readicionar o
+número em 17+ grupos, ou avisar todos os corretores), não de código.
+
+### Por que faz sentido: são duas operações diferentes
+
+| | Grupo | Direct |
+|---|---|---|
+| Natureza | monitoramento, sem ticket | atendimento 1:1 |
+| Quem responde | Nivea, Cinthia e Raiane | só a Raiane |
+| SLA e encerramento | não tem | tem |
+| Dono padrão | não pode ter | Raiane, já configurado |
+
+### O plano de execução
+
+**Estado de hoje que precisa mudar:** as 9.185 mensagens do Direct e as dos grupos estão todas
+no MESMO canal `whatsapp-grupo`, que não tem número nem fila. E o processador não lê config
+nenhuma: canal, fila e instância são **constantes no código**
+(`evolution-inbound-processor.ts:24-28, 88-91, 107, 310, 355, 775-782`).
+
+1. **Migration:** criar o canal do atendimento 1:1 (sugestão de slug: `relacionamento-direct`),
+   com o número e a instância Evolution na config. O canal `whatsapp-grupo` fica só para grupos.
+2. **Processador:** trocar as constantes por leitura da config do canal, e escolher o canal pelo
+   tipo do JID que chegou (`@g.us` → grupo; `@s.whatsapp.net` → direct). Hoje essa bifurcação já
+   existe para decidir a FILA; passa a decidir também o CANAL.
+3. **Autoria:** carimbar `sender_user_id` com o dono padrão da fila na saída sem autor, **só
+   quando a fila tiver dono padrão** — condição que exclui o Grupo sozinha, sem regra especial.
+4. **Backfill:** mover as mensagens já gravadas para o canal certo (pelo JID da conversa) e
+   atribuir a Raiane as saídas órfãs **do Direct apenas**. São ~3.247 candidatas; conferir o
+   recorte antes de escrever.
+5. **Setup:** a tela hoje deixa vincular a fila ao número Relacionamento e o servidor descarta em
+   silêncio (`iris-setup-view.tsx:786-802` vs `tickets/route.ts:1614-1625`). Com o canal novo,
+   isso passa a funcionar de verdade — e a fila Direct para de herdar o 4143.
+
+⚠️ **Ordem importa:** o passo 5 do plano geral (canal próprio ao Direct) é este mesmo trabalho.
+Fazer ANTES da separação das centrais, porque é ele que dá endereço à Central de Corretores.
+
+⚠️ **Não fazer junto:** publicar as tabelas no realtime sem antes fechar a policy de SELECT.
+São frentes independentes; misturar as duas num deploy só esconde qual quebrou o quê.
