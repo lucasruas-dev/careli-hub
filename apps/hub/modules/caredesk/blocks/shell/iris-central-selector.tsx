@@ -1,13 +1,16 @@
 "use client";
 
-// SELETOR DE CENTRAL — o recorte de topo da Iris, no alto da sidebar.
+// AS DUAS CENTRAIS, como subtelas do Board.
 //
-// Fica ACIMA da navegação de propósito: primeiro a pessoa escolhe de qual operação está
-// falando (Atendimento ou Relacionamento), depois escolhe a tela. Board, Histórico,
-// E-mail e Relatórios abaixo dele já vêm recortados.
+// Decisão do Lucas (15/08/2026): "board poderia ser a tela principal, ae teria duas subtelas,
+// atendimento e relacionamento". A primeira versão punha isto na sidebar, acima do menu, e ficava
+// confuso: a palavra "Atendimento" aparecia como central E como aba de dentro do board, e na
+// sidebar recolhida os dois blocos de ícone viravam uma coluna só.
+//
+// Aqui a hierarquia fica explícita e na ordem em que a pessoa pensa:
+//   Board  ->  [ Atendimento | Relacionamento ]  ->  [ Conversas · E-mail · Grupos · Ações ]
 
-import { Building2, Headphones, Layers, type LucideIcon } from "lucide-react";
-import { Tooltip } from "@repo/uix";
+import { Handshake, Headphones, Layers, type LucideIcon } from "lucide-react";
 
 import {
   IRIS_CENTRAL_DESCRICAO,
@@ -15,21 +18,24 @@ import {
   type IrisCentralSelecionada,
 } from "../../lib/centrais";
 
+// Headset x aperto de mão: quem ATENDE o cliente final x quem se RELACIONA com o parceiro.
+// O prédio (Building2) dizia "imobiliária" e não a natureza do trabalho.
 const ICONE: Record<IrisCentralSelecionada, LucideIcon> = {
   atendimento: Headphones,
-  relacionamento: Building2,
+  relacionamento: Handshake,
   todas: Layers,
 };
 
-export function IrisCentralSelector({
+export function IrisCentralTabs({
   central,
-  collapsed,
   disponiveis,
+  naoLidasPorCentral,
   onSelect,
 }: {
   central: IrisCentralSelecionada;
-  collapsed: boolean;
   disponiveis: IrisCentralSelecionada[];
+  // Não lidas de cada central, para ver movimento na outra sem precisar entrar.
+  naoLidasPorCentral: Partial<Record<IrisCentralSelecionada, number>>;
   onSelect: (central: IrisCentralSelecionada) => void;
 }) {
   // Uma central só (ou nenhuma) não vira controle: não há o que escolher.
@@ -37,86 +43,68 @@ export function IrisCentralSelector({
     return null;
   }
 
-  if (collapsed) {
-    return (
-      <div className="grid justify-items-center gap-1">
-        {disponiveis.map((item) => {
-          const Icon = ICONE[item];
-          const ativo = item === central;
-
-          return (
-            <Tooltip
-              key={item}
-              content={IRIS_CENTRAL_LABEL_CURTO[item]}
-              placement="right"
-            >
-              <button
-                type="button"
-                onClick={() => onSelect(item)}
-                aria-label={IRIS_CENTRAL_LABEL_CURTO[item]}
-                aria-pressed={ativo}
-                className={[
-                  "grid h-9 w-9 place-items-center rounded-lg border outline-none transition focus-visible:ring-2 focus-visible:ring-[#d0ad69]",
-                  ativo
-                    ? "border-[#A07C3B]/55 bg-[#A07C3B]/15 text-[#cba25a]"
-                    : "border-transparent text-ink-muted hover:bg-black/[0.05] hover:text-ink dark:hover:bg-white/[0.06]",
-                ].join(" ")}
-              >
-                <Icon aria-hidden="true" className="h-4 w-4" />
-              </button>
-            </Tooltip>
-          );
-        })}
-      </div>
-    );
-  }
-
   return (
-    <div className="grid gap-1.5">
-      <span className="px-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-ink-muted">
-        Central
-      </span>
+    <div
+      role="tablist"
+      aria-label="Central"
+      className="flex shrink-0 flex-wrap items-stretch gap-1.5"
+    >
+      {disponiveis.map((item) => {
+        const Icon = ICONE[item];
+        const ativa = item === central;
+        const naoLidas = naoLidasPorCentral[item] ?? 0;
 
-      <div className="grid gap-1 rounded-xl bg-black/[0.03] p-1 dark:bg-white/[0.035]">
-        {disponiveis.map((item) => {
-          const Icon = ICONE[item];
-          const ativo = item === central;
-
-          return (
-            <button
-              key={item}
-              type="button"
-              onClick={() => onSelect(item)}
-              aria-pressed={ativo}
+        return (
+          <button
+            key={item}
+            type="button"
+            role="tab"
+            aria-selected={ativa}
+            onClick={() => onSelect(item)}
+            className={[
+              "group inline-flex items-center gap-2.5 rounded-xl border px-3.5 py-2 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#d0ad69]",
+              ativa
+                ? "border-[#A07C3B]/55 bg-[#A07C3B]/[0.09] text-ink shadow-[0_1px_2px_rgba(15,23,42,0.05)]"
+                : "border-line/70 bg-surface text-ink-soft hover:border-line-strong hover:text-ink",
+            ].join(" ")}
+          >
+            <span
               className={[
-                "flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none transition focus-visible:ring-2 focus-visible:ring-[#d0ad69]",
-                ativo
-                  ? "bg-surface text-ink shadow-sm dark:bg-white/[0.07]"
-                  : "text-ink-soft hover:bg-black/[0.04] hover:text-ink dark:hover:bg-white/[0.05]",
+                "grid h-8 w-8 shrink-0 place-items-center rounded-lg",
+                ativa
+                  ? "bg-[#A07C3B]/15 text-[#A07C3B]"
+                  : "bg-black/[0.04] text-ink-muted dark:bg-white/[0.06]",
               ].join(" ")}
             >
-              <span
-                className={[
-                  "grid h-7 w-7 shrink-0 place-items-center rounded-md",
-                  ativo
-                    ? "bg-[#A07C3B]/15 text-[#cba25a]"
-                    : "text-ink-muted",
-                ].join(" ")}
-              >
-                <Icon aria-hidden="true" className="h-4 w-4" />
-              </span>
-              <span className="grid min-w-0 gap-0.5">
-                <span className="truncate text-[13px] font-semibold leading-tight">
+              <Icon aria-hidden="true" className="h-[18px] w-[18px]" />
+            </span>
+
+            <span className="grid min-w-0 gap-0.5">
+              <span className="flex items-center gap-1.5">
+                <span className="truncate text-sm font-semibold leading-tight">
                   {IRIS_CENTRAL_LABEL_CURTO[item]}
                 </span>
-                <span className="truncate text-[10px] leading-tight text-ink-muted">
-                  {IRIS_CENTRAL_DESCRICAO[item]}
-                </span>
+                {naoLidas > 0 ? (
+                  <span
+                    title={`${naoLidas} sem ler`}
+                    className={[
+                      "inline-flex min-w-[18px] items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold tabular-nums",
+                      ativa
+                        ? "bg-[#A07C3B] text-white"
+                        : "bg-[#A07C3B]/15 text-[#7A5E2C]",
+                    ].join(" ")}
+                  >
+                    {naoLidas}
+                  </span>
+                ) : null}
               </span>
-            </button>
-          );
-        })}
-      </div>
+              <span className="truncate text-[10px] leading-tight text-ink-muted">
+                {IRIS_CENTRAL_DESCRICAO[item]}
+              </span>
+            </span>
+          </button>
+        );
+      })}
     </div>
   );
 }

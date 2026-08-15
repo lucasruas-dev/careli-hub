@@ -28,6 +28,8 @@ import {
   readBoardTicketCrm,
 } from "./iris-ticket-queue";
 import { EmptyState, FilterSelect } from "../shared/iris-ui";
+import { IrisCentralTabs } from "../shell/iris-central-selector";
+import type { IrisCentralSelecionada } from "../../lib/centrais";
 import { usePersistedState } from "@/hooks/use-persisted-state";
 
 const SORT_OPTIONS = [
@@ -57,12 +59,33 @@ type GroupMode = "status" | "fila" | "canal" | "operador";
 // mostra a tela da campanha em vez do kanban. Ver [[project_apolo_acao_contato]].
 type AbaDoBoard = "atendimento" | "email" | "grupos" | "acoes";
 
+// "Atendimento" virou "Conversas" (Lucas, 15/08): com a central logo acima chamando-se
+// Atendimento, a aba de mesmo nome fazia a pessoa ler duas vezes a mesma palavra em dois
+// níveis diferentes. "Conversas" diz o que a aba tem, e serve para as duas centrais.
 const ABAS_DO_BOARD: { chave: AbaDoBoard; rotulo: string }[] = [
-  { chave: "atendimento", rotulo: "Atendimento" },
+  { chave: "atendimento", rotulo: "Conversas" },
   { chave: "email", rotulo: "E-mail" },
   { chave: "grupos", rotulo: "Grupos" },
   { chave: "acoes", rotulo: "Ações" },
 ];
+
+// Quais abas cada central mostra. Não é cosmético: aba vazia num lugar onde aquele conteúdo
+// nunca aparece faz a pessoa procurar o que não existe.
+// - Grupos vive só no Relacionamento (a fila "Grupo" é de lá desde a 0087).
+// - Ações fica nas duas: campanha de contato em massa é transversal, e hoje as 333 estão no
+//   Atendimento só porque foi para lá que dispararam.
+// Em "Todas" aparecem todas, que é o ponto daquela visão.
+function abasDaCentral(central: IrisCentralSelecionada): AbaDoBoard[] {
+  if (central === "atendimento") {
+    return ["atendimento", "email", "acoes"];
+  }
+
+  if (central === "relacionamento") {
+    return ["atendimento", "email", "grupos", "acoes"];
+  }
+
+  return ["atendimento", "email", "grupos", "acoes"];
+}
 
 const groupModes: { key: GroupMode; label: string }[] = [
   { key: "status", label: "Status" },
@@ -88,17 +111,25 @@ const STATUS_FLOW: { accent: string; key: string; label: string }[] = [
 ];
 
 export function IrisBoardKanban({
+  central,
+  centraisDisponiveis,
   helpers,
   metrics,
+  naoLidasPorCentral,
   onOpenAttendance,
+  onSelectCentral,
   onSelectTicket,
   onStartAttendance,
   renderers,
   tickets,
 }: {
+  central: IrisCentralSelecionada;
+  centraisDisponiveis: IrisCentralSelecionada[];
   helpers: IrisTicketQueueHelpers;
   metrics: IrisBoardMetrics;
+  naoLidasPorCentral: Partial<Record<IrisCentralSelecionada, number>>;
   onOpenAttendance: (ticketId: string) => void;
+  onSelectCentral: (central: IrisCentralSelecionada) => void;
   onSelectTicket: (ticketId: string) => void;
   onStartAttendance: (queueLabel?: string) => void;
   renderers: IrisTicketQueueRenderers;
@@ -133,6 +164,21 @@ export function IrisBoardKanban({
   );
   const [seletorAberto, setSeletorAberto] = useState<GroupMode | null>(null);
 
+  // As abas desta central, e qual está realmente ativa.
+  // ⚠️ `abaAtiva` é PERSISTIDA, então ela sobrevive à troca de central: quem estava em "Grupos"
+  // no Relacionamento e pula para o Atendimento (que não tem Grupos) veria a tela vazia com
+  // uma aba selecionada que não está na barra. `abaEfetiva` cai na primeira aba válida nesse
+  // caso, sem apagar a preferência de quem volta para a outra central.
+  const abasVisiveis = useMemo(() => {
+    const permitidas = new Set(abasDaCentral(central));
+
+    return ABAS_DO_BOARD.filter((aba) => permitidas.has(aba.chave));
+  }, [central]);
+  const abaEfetiva: AbaDoBoard =
+    abasVisiveis.find((aba) => aba.chave === abaAtiva)?.chave ??
+    abasVisiveis[0]?.chave ??
+    "atendimento";
+
   // ABAS DO BOARD (Atendimento · E-mail · Grupos). Decisão do Lucas em 26/07.
   //
   // Os grupos de WhatsApp NÃO são atendimento: são salas de trabalho interno ("Vale do Ouro
@@ -148,20 +194,20 @@ export function IrisBoardKanban({
       tickets.filter((ticket) => {
         // Atendimento de ação (contato em massa) só aparece na aba "Ações" — sai da fila geral.
         if (ticket.isAcao) {
-          return abaAtiva === "acoes";
+          return abaEfetiva === "acoes";
         }
 
         if (ticket.isGroup) {
-          return abaAtiva === "grupos";
+          return abaEfetiva === "grupos";
         }
 
         if (isEmailBoardTicket(ticket)) {
-          return abaAtiva === "email";
+          return abaEfetiva === "email";
         }
 
-        return abaAtiva === "atendimento";
+        return abaEfetiva === "atendimento";
       }),
-    [abaAtiva, tickets],
+    [abaEfetiva, tickets],
   );
 
   // Não lidas por aba, para a pessoa ver movimento sem precisar entrar.
@@ -297,10 +343,19 @@ export function IrisBoardKanban({
 
   return (
     <section className="flex h-full min-h-0 flex-col gap-3">
+      {/* Nível 1: a central. Só aparece para quem tem acesso às duas. */}
+      <IrisCentralTabs
+        central={central}
+        disponiveis={centraisDisponiveis}
+        naoLidasPorCentral={naoLidasPorCentral}
+        onSelect={onSelectCentral}
+      />
+
+      {/* Nível 2: o canal, dentro da central escolhida. */}
       <div className="flex shrink-0 items-center gap-1 border-b border-line/70">
-        {ABAS_DO_BOARD.map((aba) => {
+        {abasVisiveis.map((aba) => {
           const naoLidas = naoLidasPorAba[aba.chave];
-          const ativa = abaAtiva === aba.chave;
+          const ativa = abaEfetiva === aba.chave;
 
           return (
             <button

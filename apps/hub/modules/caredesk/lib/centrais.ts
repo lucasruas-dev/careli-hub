@@ -81,6 +81,32 @@ export function centralValida(
   return disponiveis.includes(escolhida) ? escolhida : disponiveis[0]!;
 }
 
+// Não lidas de CADA central, para a aba mostrar movimento do lado que a pessoa não está vendo.
+// ⚠️ Recebe o `IrisData` BRUTO de propósito: com o dado já recortado, a outra central seria
+// sempre 0 e a aba nunca acenderia.
+export function naoLidasPorCentral(
+  dataBruto: IrisData,
+  centrais: IrisCentralSelecionada[],
+): Partial<Record<IrisCentralSelecionada, number>> {
+  const contagem: Partial<Record<IrisCentralSelecionada, number>> = {};
+
+  for (const central of centrais) {
+    const slugs = new Set(
+      dataBruto.queues
+        .filter((fila) => filaEhDaCentral(fila, central))
+        .map((fila) => fila.slug),
+    );
+
+    contagem[central] = dataBruto.tickets.filter(
+      (ticket) =>
+        ticket.unread &&
+        (central === "todas" || !ticket.queueSlug || slugs.has(ticket.queueSlug)),
+    ).length;
+  }
+
+  return contagem;
+}
+
 // O RECORTE. Filtra filas e tickets; o resto de `IrisData` passa intacto de propósito:
 // canais, departamentos, setores, perfis e templates são catálogo, não fila de trabalho.
 // Broadcast fica inteiro porque disparo é por template e número, não por central.

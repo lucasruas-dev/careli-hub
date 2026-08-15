@@ -65,10 +65,10 @@ import {
   IrisModuleShell,
   type IrisShellNavigationItem,
 } from "./blocks/shell/iris-shell";
-import { IrisCentralSelector } from "./blocks/shell/iris-central-selector";
 import {
   centraisDisponiveis,
   centralValida,
+  naoLidasPorCentral,
   recortarDadosPorCentral,
   type IrisCentralSelecionada,
 } from "./lib/centrais";
@@ -1435,10 +1435,18 @@ export function IrisPage({
           ) : (
             <ManagementView
               canSeeCacaQueue={canSeeCacaQueue}
+              // Board EMBARCADO (cockpit de cobranca do Hades): sem seletor de central.
+              // Ali a tela ja vem recortada por `queueSlugFilter` e o assunto e cobranca, nao a
+              // operacao inteira. `todas` + lista vazia = as abas de central nao renderizam e as
+              // de canal aparecem como antes: o embed fica identico ao que era.
+              central="todas"
+              centraisDisponiveis={[]}
               data={irisData}
+              dataBruto={irisDataBruto}
               loading={loading}
               snapshot={snapshot}
               onOpenAttendance={openAttendance}
+              onSelectCentral={setCentralEscolhida}
               onSelectTicket={setSelectedTicketId}
               onStartAttendance={(queueLabel) => {
                 if (onStartAttendanceOverride) {
@@ -1456,21 +1464,6 @@ export function IrisPage({
       ) : (
         <IrisModuleShell
           activeView={activeView}
-          central={
-            <IrisCentralSelector
-              central={centralAtiva}
-              collapsed={sidebarCollapsed}
-              disponiveis={centraisDaPessoa}
-              onSelect={(proxima) => {
-                setCentralEscolhida(proxima);
-                // Trocar de central com um ticket aberto deixaria a conversa de uma
-                // central na tela da outra. Volta pro board.
-                if (activeView === "atendimento") {
-                  setActiveView("gestao");
-                }
-              }}
-            />
-          }
           collapsed={sidebarCollapsed}
           navigationItems={visibleNavigationItems}
           onSelectView={(itemId) => {
@@ -1488,10 +1481,16 @@ export function IrisPage({
           ) : activeView === "gestao" ? (
             <ManagementView
               canSeeCacaQueue={canSeeCacaQueue}
+              central={centralAtiva}
+              centraisDisponiveis={centraisDaPessoa}
               data={irisData}
+              // BRUTO: as abas de central precisam contar as nao lidas da central que a
+              // pessoa NAO esta vendo. Com o dado ja recortado o outro lado seria sempre 0.
+              dataBruto={irisDataBruto}
               loading={loading}
               snapshot={snapshot}
               onOpenAttendance={openAttendance}
+              onSelectCentral={setCentralEscolhida}
               onSelectTicket={setSelectedTicketId}
               onStartAttendance={(queueLabel) => {
                 setStartAttendanceQueueLabel(
@@ -1566,18 +1565,26 @@ export function IrisPage({
 
 function ManagementView({
   canSeeCacaQueue,
+  central,
+  centraisDisponiveis: centrais,
   data,
+  dataBruto,
   loading,
   snapshot,
   onOpenAttendance,
+  onSelectCentral,
   onSelectTicket,
   onStartAttendance,
 }: {
   canSeeCacaQueue: boolean;
+  central: IrisCentralSelecionada;
+  centraisDisponiveis: IrisCentralSelecionada[];
   data: IrisData;
+  dataBruto: IrisData;
   loading: boolean;
   snapshot: ReturnType<typeof buildIrisSnapshot>;
   onOpenAttendance: (ticketId: string) => void;
+  onSelectCentral: (central: IrisCentralSelecionada) => void;
   onSelectTicket: (ticketId: string) => void;
   onStartAttendance: (queueLabel?: string) => void;
 }) {
@@ -1611,13 +1618,22 @@ function ManagementView({
     ],
   );
 
+  const naoLidasCentral = useMemo(
+    () => naoLidasPorCentral(dataBruto, centrais),
+    [centrais, dataBruto],
+  );
+
   return loading ? (
     <IrisLoading />
   ) : (
     <IrisBoardKanban
+      central={central}
+      centraisDisponiveis={centrais}
       helpers={irisTicketQueueHelpers}
       metrics={boardMetrics}
+      naoLidasPorCentral={naoLidasCentral}
       onOpenAttendance={onOpenAttendance}
+      onSelectCentral={onSelectCentral}
       onSelectTicket={onSelectTicket}
       onStartAttendance={onStartAttendance}
       renderers={irisTicketQueueRenderers}

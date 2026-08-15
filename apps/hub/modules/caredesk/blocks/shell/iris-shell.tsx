@@ -19,7 +19,6 @@ export type IrisShellNavigationItem<TView extends string = string> = {
 
 export function IrisModuleShell<TView extends string>({
   activeView,
-  central,
   children,
   collapsed,
   navigationItems,
@@ -27,9 +26,6 @@ export function IrisModuleShell<TView extends string>({
   onToggleCollapsed,
 }: {
   activeView: TView;
-  // Seletor de central. Vem pronto do IrisPage e some sozinho quando a pessoa só tem
-  // acesso a uma central: controle de uma opção só é ruído.
-  central?: ReactNode;
   children: ReactNode;
   collapsed: boolean;
   navigationItems: Array<IrisShellNavigationItem<TView>>;
@@ -55,8 +51,6 @@ export function IrisModuleShell<TView extends string>({
           collapsed={collapsed}
           onToggleCollapsed={onToggleCollapsed}
         />
-
-        {central ? <div className="mb-3">{central}</div> : null}
 
         <nav className="space-y-1">
           {navigationItems.map((item) => (
