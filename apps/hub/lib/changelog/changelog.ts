@@ -36,6 +36,35 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-iris-envio-instantaneo",
+    deployedAt: "2026-08-15T17:20:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A mensagem que voce envia aparece na conversa na hora, sem esperar a confirmacao do WhatsApp",
+              "Antes ela so surgia depois que o WhatsApp respondia, o que levava 2 segundos na maioria das vezes e passava de 3 em uma a cada sete",
+              "Se o envio falhar, o texto volta para o campo de digitacao, do jeito que ja era, para voce corrigir e mandar de novo",
+            ],
+            screen: "Iris - conversa",
+          },
+        ],
+      },
+    ],
+    rollback: "de135c46 (v1.141.1 legenda das centrais)",
+    technical: {
+      done:
+        "A mensagem otimista JA EXISTIA em `sendMessage`, mas era usada so como plano B quando o servidor nao devolvia a linha, ou seja, nunca no caminho feliz: a tela esperava o round-trip inteiro (token + rota + Meta + gravacao). Medida de producao no 4143: 2,17s de mediana, 15% acima de 3s. Agora ela entra ANTES do fetch e `handleLocalMessageSettled` reconcilia depois, trocando a local (id `local-…`) pela real — a uniao historico+snapshot e por ID, entao sem essa troca a mensagem apareceria duas vezes. ⚠️ ARMADILHA QUE ISSO ABRIA: `shouldRepairOutboundMessage` reenvia toda outbound `queued` sem externalMessageId, e a otimista casa com o criterio exato; o id dela entra em `repairingOutboundMessageIds` para o reparo pular, senao o CLIENTE receberia a mensagem duas vezes. `sending` continua ligado de proposito, como trava de duplo clique. Em caso de falha o balao sai da tela e o texto volta ao composer, preservando o comportamento anterior.",
+      motivation:
+        "Relato do time de que a Iris demora. Esta e a metade do problema que nao depende de RLS; a recepcao (realtime) espera o ajuste dos vinculos de acesso.",
+    },
+    title: "A mensagem enviada aparece na hora",
+    type: "melhoria",
+    version: "1.142.0",
+  },
+  {
     buildTag: "2026-08-15-iris-rotulo-centrais",
     deployedAt: "2026-08-15T16:55:00-03:00",
     // Ajuste de rotulo no mesmo dia da entrega: quem le o painel ja viu as centrais na
