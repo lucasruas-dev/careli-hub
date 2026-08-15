@@ -36,6 +36,38 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-caca-motor-opus-5",
+    deployedAt: "2026-08-15T12:10:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Caca passou a usar o nosso modelo de IA mais capaz para atender o cliente",
+              "Ela enxerga o dobro da conversa (24 mensagens no lugar de 14), entao para de perder o comeco do atendimento",
+              "Volta a lembrar do comprovante e do audio que o cliente mandou nas mensagens anteriores",
+              "Respostas mais curtas e diretas, principalmente na hora de passar o atendimento para um analista",
+              "Quando ela nao consegue concluir a resposta, o atendimento vai para uma pessoa em vez de sair uma frase generica",
+              "Ao consultar uma CAD aprovada, ela deixou de afirmar que o PIX ja foi enviado sem conferir a ficha",
+            ],
+            screen: "Iris - atendimento da Caca",
+          },
+        ],
+      },
+    ],
+    rollback: "a71dd1c8 (v1.136.0 Central de Relacionamento)",
+    technical: {
+      done:
+        "A CACA passa a rodar em claude-opus-5, por um tier `frontier` proprio em lib/ai/claude.ts. O tier `heavy` FICA no Opus 4.8: os outros 6 consumidores dele (Athena, copiloto do Zeus, ata e pauta do Chronos, evidencia do HelpDesk, autor de template) pedem 900 a 2.200 tokens sem mandar `thinking`, e no modelo novo o max_tokens vira teto de raciocinio MAIS resposta, o que truncaria os seis. Se o modelo nao estiver liberado na conta, o turno e refeito no `heavy` (agent.ts), entao a troca nao vira falha tecnica pro cliente. HARNESS: maxTokens 1024->4000; a chamada final de fechamento passou a repassar thinking/effort (omitir deixou de significar desligado); thinking:false manda {type:'disabled'}; stop_reason `refusal`/`max_tokens` viram transferencia; `pause_turn` deixa de ser tratado como resposta final; iteracoes 6->8; historico 14->24 com desempate por id; client Anthropic com maxRetries 1 e timeout 90s (era 2 e 10 min). CACHE: persona dividida em estavel (cacheada, TTL 1h) e contexto do turno, subindo o prefixo reaproveitado para 96% no cliente e 95% na direcao, com persona-cache.test.ts travando a separacao. TELEMETRIA: usage por turno (tokens, cache, latencia, stop_reason) em metadata.cacaAutomation.lastUsage, sem migration. RISCO OPERACIONAL: envio recusado pela Meta deixava a linha outbound morta e a guarda de turno via 'ja respondido' PARA SEMPRE, calando o atendimento - agora vai pro humano; corte em 3.900 caracteres so no texto da CACA e antes de gravar; retry so em 429/5xx/rede E se nenhuma ferramenta com efeito colateral tiver rodado; maxDuration 300 no webhook; timeout no TTS; montarTurnoDeFalha lia o objeto errado e apagava o vinculo do cadastro. consultar_status_cad afirmava que o PIX 'ja foi emitido e enviado' na etapa prevenda, que so prova credito aprovado. Revisado por 37 agentes em quatro lentes com refutacao adversarial: 11 achados confirmados e tratados, 22 derrubados. Detalhe em docs/operations/caca-motor-opus-5.md. A parte do meio desta mudanca ja tinha subido por acidente na v1.136.0 (git add -A de outra sessao no mesmo working tree); este deploy completa e corrige.",
+      motivation:
+        "Lucas: \"eu quero para a Caca o melhor motor, quero um agente bem inteligente mesmo\". Medido antes (01 a 15/08): 484 tickets dela, 78,9% terminando em transferencia, e a taxa de resolucao sozinha caindo de 51,8% em junho para ~20% em agosto porque o mix virou boleto, que e o assunto em que ela nao tem ferramenta.",
+    },
+    title: "Caca: motor novo e conserto do harness",
+    type: "melhoria",
+    version: "1.137.0",
+  },
+  {
     buildTag: "2026-08-15-iris-central-relacionamento",
     deployedAt: "2026-08-15T11:30:00-03:00",
     modules: [

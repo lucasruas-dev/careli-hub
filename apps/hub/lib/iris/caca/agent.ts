@@ -23,9 +23,16 @@ import {
   describeApoloProfile,
   type CacaToolContext,
 } from "./executors";
-import { buildCacaSystemPrompt } from "./persona";
+import {
+  buildCacaContextoDoTurno,
+  buildCacaPersonaEstavel,
+} from "./persona";
 
-const HISTORY_LIMIT = 14;
+// Quantas mensagens do atendimento a Cacá enxerga. Em 14 ela perdia o começo em 24,9%
+// dos tickets (medido 01-15/08), justamente onde mora o pedido original e o momento em
+// que a identidade foi validada. Cada mensagem a mais é reprocessada em toda iteração de
+// ferramenta do turno, então isto é um trade-off de custo consciente, não um número solto.
+const HISTORY_LIMIT = 24;
 
 // Flag de migração: a Cacá-Claude só assume quando CACA_ENGINE=claude E a chave existe.
 // Qualquer falha aqui faz o inbound cair na Cacá determinística (rede de segurança).
@@ -267,7 +274,7 @@ export async function runCacaClaudeTurn({
   // Mural de avisos: o que a operação está vivendo agora (atraso de emissão, obra, manutenção).
   // Best-effort — se a leitura falhar, a Cacá responde sem esse contexto.
   const avisos = await carregarAvisosVigentes(client);
-  const system = buildCacaSystemPrompt({
+  const contextoDoPrompt = {
     avisosOperacionais: avisos.map((aviso) => ({
       texto: aviso.texto,
       titulo: aviso.titulo,
@@ -285,33 +292,96 @@ export async function runCacaClaudeTurn({
     assistantMode: admin.isAdmin,
     assistantIsOwner: admin.isOwner,
     assistantIsDoctor: admin.isDoctor,
-  });
+  };
+  // O prompt vai em DUAS partes: a persona (igual para todo atendimento, entra no cache) e
+  // o contexto de agora (nome de quem fala, horário, avisos do mural, modo voz/assistente).
+  // Junto num bloco só, como era antes, trocar de cliente invalidava o prefixo inteiro.
+  const system = buildCacaPersonaEstavel(contextoDoPrompt);
+  const contextoDoTurno = buildCacaContextoDoTurno(contextoDoPrompt);
   const messages = await buildConversation(client, ticket.id, messageDetail);
-  const model = resolveClaudeModel("heavy");
+  // No modo admin (direção), libera a BUSCA WEB nativa do Claude — pra ela responder
+  // qualquer coisa (placar de jogo, cotação, notícia). Cliente normal NÃO tem web.
+  // Versão 2026-02 traz filtragem dinâmica: o modelo filtra os resultados antes de
+  // eles entrarem no contexto. Não declarar `code_execution` junto, ela já roda por
+  // baixo e um segundo ambiente de execução confunde o modelo.
+  const serverTools: Anthropic.ToolUnion[] = admin.isAdmin
+    ? [{ max_uses: 4, name: "web_search", type: "web_search_20260209" }]
+    : [];
 
-  const result = await runClaudeAgent({
+  // Parâmetros do turno, isolados porque podem ser reexecutados no modelo reserva logo
+  // abaixo. `tools` é montado UMA vez de propósito: o toolContext é mutável.
+  const parametrosDoTurno = {
+    // 1h em vez dos 5 min padrão: os atendimentos chegam espaçados ao longo do dia, e com
+    // 5 minutos quase todo turno pagaria o prefixo cheio de novo.
+    cacheTtl: "1h" as const,
     client: anthropic,
-    effort: "high",
-    maxTokens: 1024,
-    maxToolIterations: 6,
+    effort: "high" as const,
+    // ATENÇÃO: no Opus 5 este teto cobre o RACIOCÍNIO MAIS a resposta. Com 1024 o
+    // pensamento comia o orçamento e o texto saía truncado ou vazio (e vazio cai no
+    // fallback genérico lá embaixo). A resposta dela tem 375 caracteres de média, então
+    // a folga aqui é toda pro raciocínio.
+    maxTokens: 4000,
+    // Conta TURNOS do modelo, não chamadas de ferramenta. Uma cadeia comum (validar CPF,
+    // achar cadastro, listar parcelas, gerar boleto, enviar, confirmar) já consome 6, e
+    // qualquer erro de ferramenta gasta mais um no retry.
+    maxToolIterations: 8,
     messages,
-    model,
-    // No modo admin (direção), libera a BUSCA WEB nativa do Claude — pra ela responder
-    // qualquer coisa (placar de jogo, cotação, notícia). Cliente normal NÃO tem web.
-    serverTools: admin.isAdmin
-      ? [{ max_uses: 4, name: "web_search", type: "web_search_20250305" }]
-      : [],
+    serverTools,
     system,
+    systemVolatile: contextoDoTurno,
     thinking: true,
     tools: buildCacaTools(toolContext),
-  });
+  };
 
-  const handoffRequired = toolContext.handoff.requested;
+  // Tier `frontier` = o melhor modelo disponível, reservado a quem fala com o CLIENTE.
+  let model = resolveClaudeModel("frontier");
+  const iniciadoEm = Date.now();
+  let result: Awaited<ReturnType<typeof runClaudeAgent>>;
+
+  try {
+    result = await runClaudeAgent({ ...parametrosDoTurno, model });
+  } catch (erro) {
+    if (!modeloIndisponivel(erro)) {
+      throw erro;
+    }
+
+    // REDE DE SEGURANÇA da troca de motor: "o modelo mais novo" às vezes quer dizer
+    // "ainda não liberado nesta conta". Sem isto, um id que a conta não enxerga viraria
+    // falha técnica em TODO atendimento, e o cliente receberia "tive um problema
+    // técnico" no lugar da resposta. Cai pro tier heavy, que é o que rodava antes.
+    console.error("[caca] modelo frontier indisponível, usando o heavy", {
+      frontier: model,
+      motivo: erro instanceof Error ? erro.message : String(erro),
+    });
+    model = resolveClaudeModel("heavy");
+    result = await runClaudeAgent({ ...parametrosDoTurno, model });
+  }
+
+  const latencyMs = Date.now() - iniciadoEm;
+
+  // O turno pode terminar sem texto utilizável de três jeitos: RECUSA dos classificadores
+  // de segurança (HTTP 200, conteúdo vazio, stop_reason "refusal"), estouro do teto de
+  // tokens no meio da frase, ou as duas chamadas falhando. Em todos, responder a frase
+  // genérica é PIOR que assumir o limite: a recusa é determinística, então o cliente
+  // responde, ela recusa de novo, e o ticket gira com a Cacá como dona e ninguém sabendo.
+  const textoUtil = result.text.trim();
+  const falhaDeGeracao =
+    result.stopReason === "refusal" ||
+    result.stopReason === "max_tokens" ||
+    !textoUtil;
+
+  if (falhaDeGeracao) {
+    console.error("[caca] turno sem resposta utilizável, transferindo", {
+      stopReason: result.stopReason,
+      ticket: ticket.protocol ?? ticket.id,
+      usage: result.usage,
+    });
+  }
+
+  const handoffRequired = toolContext.handoff.requested || falhaDeGeracao;
   const replyText =
-    result.text.trim() ||
-    (handoffRequired
-      ? "Já estou te encaminhando para o nosso time. Em instantes alguém te responde por aqui."
-      : "Me dá só mais um detalhe pra eu te ajudar direitinho?");
+    (falhaDeGeracao ? "" : textoUtil) ||
+    "Deixa eu chamar uma pessoa do nosso time pra te ajudar com isso. Já estou encaminhando o seu atendimento.";
 
   const nextState: CacaAutomationState = {
     ...state,
@@ -327,13 +397,29 @@ export async function runCacaClaudeTurn({
 
   return {
     agentVersion: CACA_AGENT_VERSION,
-    handoff: { reason: toolContext.handoff.reason, required: handoffRequired },
+    handoff: {
+      reason:
+        toolContext.handoff.reason ??
+        (falhaDeGeracao
+          ? `A assistente não conseguiu concluir a resposta (${result.stopReason ?? "sem texto"}).`
+          : null),
+      required: handoffRequired,
+    },
     model,
     nextState,
     nextStep: handoffRequired ? "handoff" : "general_reply",
     replyText,
     source: "claude",
     toolsUsed: Array.from(new Set(result.trace.map((step) => step.tool))),
+    usage: {
+      cacheCreationTokens: result.usage.cacheCreationTokens,
+      cacheReadTokens: result.usage.cacheReadTokens,
+      inputTokens: result.usage.inputTokens,
+      latencyMs,
+      outputTokens: result.usage.outputTokens,
+      requests: result.usage.requests,
+      stopReason: result.stopReason,
+    },
     trace: result.trace.map(
       (step): CacaAgentTraceStep => ({
         at: new Date().toISOString(),
@@ -349,8 +435,34 @@ export async function runCacaClaudeTurn({
 type CaredeskHistoryRow = {
   body: string | null;
   direction: string | null;
+  message_type: string | null;
+  provider_payload: {
+    cacaMediaAnalysis?: {
+      status?: string | null;
+      summary?: string | null;
+      transcript?: string | null;
+    } | null;
+  } | null;
   sender_type: string | null;
 };
+
+// A leitura da mídia (transcrição do áudio, texto do print, conteúdo do PDF) é feita uma
+// vez, na chegada, e guardada em provider_payload.cacaMediaAnalysis. Sem reidratar daqui,
+// ela só existia enquanto aquela era a ÚLTIMA mensagem: no turno seguinte a linha virava
+// "(mensagem sem texto)" e a Cacá esquecia o comprovante que tinha acabado de ler.
+function leituraDaMidiaGravada(row: CaredeskHistoryRow): string | null {
+  const analise = row.provider_payload?.cacaMediaAnalysis;
+
+  if (!analise || analise.status !== "ok") {
+    return null;
+  }
+
+  const resumo = typeof analise.summary === "string" ? analise.summary.trim() : "";
+  const transcricao =
+    typeof analise.transcript === "string" ? analise.transcript.trim() : "";
+
+  return resumo || transcricao || null;
+}
 
 async function buildConversation(
   client: SupabaseClient,
@@ -359,9 +471,13 @@ async function buildConversation(
 ): Promise<Anthropic.MessageParam[]> {
   const { data } = await client
     .from("caredesk_messages")
-    .select("body,direction,sender_type")
+    .select("body,direction,message_type,provider_payload,sender_type")
     .eq("ticket_id", ticketId)
+    // Desempate por id: rajada de WhatsApp cai no mesmo segundo, e sem critério estável
+    // a mesma conversa pode voltar em ordem diferente entre um turno e outro — o que
+    // muda a conversa por baixo do modelo e ainda estraga o cache de prefixo.
     .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
     .limit(HISTORY_LIMIT)
     .returns<CaredeskHistoryRow[]>();
 
@@ -374,8 +490,18 @@ async function buildConversation(
     const isCustomer =
       row.direction === "inbound" || row.sender_type === "customer";
     const role: "assistant" | "user" = isCustomer ? "user" : "assistant";
-    const text = (row.body ?? "").trim() || "(mensagem sem texto)";
+    const corpo = (row.body ?? "").trim();
+    // Mensagem antiga que era mídia: recupera a leitura já gravada, em vez de mandar
+    // "(mensagem sem texto)" e fazer a Cacá pedir de novo o que o cliente já mandou.
+    const leituraGravada = leituraDaMidiaGravada(row);
+    const text =
+      [corpo, leituraGravada ? `[conteúdo do anexo] ${leituraGravada}` : ""]
+        .filter(Boolean)
+        .join("\n\n") || "(mensagem sem texto)";
     const isLastCustomer = index === rows.length - 1 && isCustomer;
+
+    // Se a leitura já veio do banco, não anexa a mesma coisa de novo vinda do inbound.
+    const analiseDoTurno = leituraGravada ? null : mediaAnalysis;
 
     // Última mensagem do cliente com imagem: anexa a imagem nativa pra Cacá VER de fato.
     if (isLastCustomer && mediaUrl?.kind === "image") {
@@ -383,7 +509,7 @@ async function buildConversation(
         content: [
           { source: { type: "url", url: mediaUrl.url }, type: "image" },
           {
-            text: [text, mediaAnalysis].filter(Boolean).join("\n\n"),
+            text: [text, analiseDoTurno].filter(Boolean).join("\n\n"),
             type: "text",
           },
         ],
@@ -394,8 +520,8 @@ async function buildConversation(
 
     // Demais mídias (áudio/documento): usa a leitura textual já feita.
     const enriched =
-      isLastCustomer && mediaAnalysis
-        ? [text, mediaAnalysis].filter(Boolean).join("\n\n")
+      isLastCustomer && analiseDoTurno
+        ? [text, analiseDoTurno].filter(Boolean).join("\n\n")
         : text;
 
     messages.push({ content: enriched, role });
@@ -456,6 +582,24 @@ function readMediaSummary(messageDetail: CacaAgentMessageDetail): string | null 
     typeof analysis.transcript === "string" ? analysis.transcript.trim() : "";
 
   return summary || transcript || null;
+}
+
+// Erro que significa "este modelo não existe ou não está liberado para esta conta":
+// 404 do SDK, ou 400 reclamando do campo `model`. Qualquer outra falha (limite de taxa,
+// timeout, indisponibilidade momentânea) fica DE FORA de propósito: rebaixar o modelo por
+// causa de um soluço passageiro faria a Cacá atender no modelo pior sem ninguém notar.
+function modeloIndisponivel(erro: unknown): boolean {
+  const status = (erro as { status?: number } | null)?.status;
+
+  if (status === 404) {
+    return true;
+  }
+
+  const mensagem = (
+    erro instanceof Error ? erro.message : String(erro ?? "")
+  ).toLowerCase();
+
+  return status === 400 && mensagem.includes("model");
 }
 
 function greetingForNow(): string {

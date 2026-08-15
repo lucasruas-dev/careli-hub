@@ -713,7 +713,13 @@ async function consultarStatusCad(
   const etapa = esteira.etapa ?? "validacao";
 
   if (etapa === "prevenda" || etapa === "credenciado") {
-    return `A CAD de ${nome}${ondeEmp} teve o crédito APROVADO e o PIX do credenciamento já foi emitido e enviado, no WhatsApp e no e-mail, junto com a ficha de cadastro. Se ele não recebeu ou perdeu a mensagem, use a ferramenta enviar_pix_credenciamento com esse mesmo CPF que eu te passo o link de novo — é a mesma cobrança, não cobra duas vezes.`;
+    // NÃO afirme envio aqui. Esta ferramenta lê a ETAPA da esteira, e etapa 'prevenda' quer
+    // dizer "crédito aprovado, entrou na fila do PIX" — não que o PIX saiu: o disparo em
+    // lote busca justamente quem está em 'prevenda' sem pagamento_ref, e o envio pode ter
+    // falhado (número sem WhatsApp, e-mail errado). Quem sabe se saiu, para onde e se deu
+    // erro é a consultar_ficha_credenciamento. Dizer "já foi enviado" aqui fazia o corretor
+    // sair da conversa achando que o cliente recebeu, com a CAD parada.
+    return `A CAD de ${nome}${ondeEmp} teve o crédito APROVADO e está na etapa do PIX do credenciamento. Se a pergunta for se o PIX já saiu, para qual número ou e-mail foi, se foi entregue ou se deu erro, chame consultar_ficha_credenciamento com esse mesmo CPF antes de responder. Se ele quiser o link agora, use enviar_pix_credenciamento — é a mesma cobrança, não cobra duas vezes.`;
   }
   if (etapa === "revisao") {
     return `A CAD de ${nome}${ondeEmp} passou pela análise e não foi aprovada no crédito nesta etapa, ficou em revisão com o nosso time. Se quiser, eu te encaminho pra um analista da Careli olhar o caso.`;
@@ -726,13 +732,13 @@ async function consultarStatusCad(
 function rotuloEtapaCad(etapa: string | null): string {
   switch (etapa) {
     case "credenciado":
-      return "crédito aprovado, PIX do credenciamento já emitido";
+      return "crédito aprovado, na etapa do PIX do credenciamento";
     case "credito":
       return "em análise de crédito";
     case "indeferido":
       return "não aprovada nesta etapa";
     case "prevenda":
-      return "crédito aprovado, PIX do credenciamento já emitido";
+      return "crédito aprovado, na etapa do PIX do credenciamento";
     case "revisao":
       return "em revisão com o nosso time";
     default:

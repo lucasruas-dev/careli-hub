@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 
+import { ClaudeAgentTurnError } from "@/lib/ai/claude-agent";
 import { registrarRespostaDeAcao } from "@/lib/apolo/acao-resposta";
 import {
   CACA_AGENT_VERSION,
@@ -30,6 +31,7 @@ import {
   type MetaWhatsAppSendMessageResult,
   sendMetaWhatsAppAudioMessage,
   sendMetaWhatsAppTemplateMessage,
+  limitarTextoWhatsApp,
   sendMetaWhatsAppTextMessage,
   signWhatsAppBody,
 } from "@/lib/iris/meta-whatsapp";
@@ -2141,7 +2143,10 @@ function montarTurnoDeFalha({
   motivo: string;
   ticket: IrisTicketRow;
 }): CacaAutoReply {
-  const estado = readCacaAutomationState(ticket);
+  // `ticket`, não `ticket.metadata`, devolvia estado VAZIO: o turno de falha então gravava
+  // um metadata sem o vínculo do cadastro (c2x client id, nome, origem da validação), e o
+  // cliente que já tinha provado quem era precisava validar tudo de novo depois.
+  const estado = readCacaAutomationState(ticket.metadata);
   const razao = `Falha tecnica da assistente ao processar a mensagem: ${motivo}`;
 
   return {
@@ -2225,37 +2230,55 @@ async function maybeSendCacaAutoReply({
     } catch (primeiroErro) {
       // Uma segunda tentativa: a maioria das falhas do modelo e' transitoria (timeout, limite
       // de taxa, indisponibilidade momentanea).
-      console.error(
-        "[iris] Cacá-Claude falhou; tentando de novo",
-        errorMessage(primeiroErro),
-      );
+      //
+      // Mas repetir só faz sentido pra falha PASSAGEIRA. Erro de requisição (400 de
+      // parâmetro inválido, 401/403 de credencial, 413 de tamanho) vai falhar igualzinho
+      // na segunda vez, e a repetição custa: o turno recomeça do zero e REEXECUTA as
+      // ferramentas que já rodaram, inclusive as que ENVIAM coisa pro cliente (PIX, ficha,
+      // relatório). Nesses casos vai direto pro humano.
+      if (!valeTentarDeNovo(primeiroErro)) {
+        console.error(
+          "[iris] Cacá-Claude falhou de forma definitiva; transferindo",
+          errorMessage(primeiroErro),
+        );
 
-      try {
-        reply = await runCacaClaudeTurn({
-          client,
-          contact,
-          destination,
-          messageDetail,
-          outboundPhoneNumberId: event.phone_number_id ?? null,
+        reply = montarTurnoDeFalha({
+          motivo: errorMessage(primeiroErro),
           ticket,
-          voiceMode: voiceReply,
         });
-      } catch (segundoErro) {
+      } else {
+        console.error(
+          "[iris] Cacá-Claude falhou; tentando de novo",
+          errorMessage(primeiroErro),
+        );
+
+        try {
+          reply = await runCacaClaudeTurn({
+            client,
+            contact,
+            destination,
+            messageDetail,
+            outboundPhoneNumberId: event.phone_number_id ?? null,
+            ticket,
+            voiceMode: voiceReply,
+          });
+        } catch (segundoErro) {
         // Falhou duas vezes. Aqui ficava a Cacá deterministica, e ela DESTRUIA a conversa:
         // sem memoria, tratava o cliente pelo apelido cru do WhatsApp ("beteapa70") e pedia
         // pra ele explicar tudo de novo, ignorando o que ele acabara de dizer. Foram 26
         // respostas dessas em 14 atendimentos (a dona Elizabete levou 6 na mesma conversa,
         // AT-000923). Responder qualquer coisa e' PIOR que transferir: queima a confianca que
         // a Cacá boa acabou de construir. Agora ela assume o limite e passa pra uma pessoa.
-        console.error(
-          "[iris] Cacá-Claude falhou 2x; transferindo pra atendimento humano",
-          errorMessage(segundoErro),
-        );
+          console.error(
+            "[iris] Cacá-Claude falhou 2x; transferindo pra atendimento humano",
+            errorMessage(segundoErro),
+          );
 
-        reply = montarTurnoDeFalha({
-          motivo: errorMessage(segundoErro),
-          ticket,
-        });
+          reply = montarTurnoDeFalha({
+            motivo: errorMessage(segundoErro),
+            ticket,
+          });
+        }
       }
     }
   } else {
@@ -2263,6 +2286,12 @@ async function maybeSendCacaAutoReply({
     // comportamento esperado, nao um sintoma de falha.
     reply = await runCacaAgentTurn({ client, contact, messageDetail, ticket });
   }
+
+  // Corta ANTES de gravar, não na hora de enviar. O que fica no banco tem que ser
+  // exatamente o que o cliente recebeu: é esse histórico que a Cacá relê no turno
+  // seguinte, e se o banco guardar mais texto do que saiu, ela conclui que já explicou
+  // uma coisa que a pessoa nunca leu.
+  reply = { ...reply, replyText: limitarTextoWhatsApp(reply.replyText) };
 
   // GUARDA DE TURNO, segunda passada: gerar a resposta leva segundos, e e' nessa janela que a
   // corrida acontece de verdade (no AT-000923 as duas respostas sairam com 8s de diferenca).
@@ -2297,6 +2326,11 @@ async function maybeSendCacaAutoReply({
     voiceReply: sendAsVoice,
   });
 
+  // Vira true no instante em que a mensagem sai pro WhatsApp. Separa "falhou antes de
+  // falar com o cliente" (aí o atendimento precisa ir pro humano) de "falhou depois de
+  // já ter respondido" (aí é só registro nosso pendente, o cliente foi atendido).
+  let entregouAoCliente = false;
+
   try {
     const outboundConfig = event.phone_number_id
       ? {
@@ -2313,7 +2347,12 @@ async function maybeSendCacaAutoReply({
 
     if (sendAsVoice) {
       try {
-        const voice = await synthesizeCacaVoiceNote(reply.replyText);
+        // Timeout explícito: a função aceita `signal` desde sempre e ninguém passava, então
+        // um travamento do TTS segurava o atendimento inteiro sem limite. Se estourar, o
+        // catch abaixo já manda a mesma resposta em TEXTO.
+        const voice = await synthesizeCacaVoiceNote(reply.replyText, {
+          signal: AbortSignal.timeout(20_000),
+        });
 
         result = await sendMetaWhatsAppAudioMessage({
           audioBase64: voice.audioBase64,
@@ -2367,7 +2406,20 @@ async function maybeSendCacaAutoReply({
         contextMessageId: event.provider_message_id,
         to: destination,
       });
+
+      if (sendAsVoice) {
+        // A linha já tinha sido gravada como "audio" antes da síntese. O áudio não saiu,
+        // então o cockpit mostraria um player vazio em cima de uma mensagem de texto.
+        await client
+          .from("caredesk_messages")
+          .update({ message_type: "text" })
+          .eq("id", queuedMessage.id);
+      }
     }
+    // Daqui pra frente a mensagem JÁ está com o cliente. Se algo falhar depois desta
+    // linha, o catch não pode tratar como "não respondemos".
+    entregouAoCliente = true;
+
     const ticketUpdate = await updateTicketAfterCacaReply({
       client,
       reply,
@@ -2407,6 +2459,12 @@ async function maybeSendCacaAutoReply({
 
     return true;
   } catch (error) {
+    // O ENVIO FALHOU, mas a linha outbound já foi inserida lá em cima (queued). Isso
+    // sozinho TRAVA o atendimento: a guarda de turno pergunta "existe resposta nossa mais
+    // nova que a mensagem do cliente?", enxerga essa linha morta e responde que sim, PARA
+    // SEMPRE. O cliente escreve e ninguém responde, nem a Cacá nem o handoff, porque o
+    // handoff só era gravado depois do envio dar certo. Aqui a gente fecha esse buraco:
+    // o atendimento vai pro humano em vez de ficar mudo.
     await Promise.all([
       markCacaOutboundMessageFailed({
         client,
@@ -2418,10 +2476,73 @@ async function maybeSendCacaAutoReply({
         error,
         ticketId: ticket.id,
       }),
+      entregouAoCliente
+        ? Promise.resolve()
+        : updateTicketAfterCacaReply({
+            client,
+            reply: {
+              ...reply,
+              handoff: {
+                reason: `A resposta da assistente não chegou ao WhatsApp (${errorMessage(error)}).`,
+                required: true,
+              },
+              nextState: { ...reply.nextState, handoffRequired: true },
+              nextStep: "handoff",
+            },
+            ticket,
+          }).catch((falha) => {
+            console.error(
+              "[iris] falha ao marcar handoff depois de envio recusado",
+              errorMessage(falha),
+            );
+          }),
     ]);
 
     return false;
   }
+}
+
+// Ferramentas que MEXEM NO MUNDO: mandam mensagem, gravam ficha, registram chave. Repetir
+// um turno que já executou uma destas manda a mesma coisa duas vezes, porque a segunda
+// rodada começa do zero e não tem como saber o que a primeira fez.
+const FERRAMENTAS_COM_EFEITO = new Set([
+  "anotar_sobre_cliente",
+  "enviar_ficha_cad",
+  "enviar_pix_credenciamento",
+  "gerar_relatorio_visual",
+  "registrar_chave_pix",
+]);
+
+// Vale repetir o turno? Duas condições, e as duas precisam valer.
+//
+// 1) A falha tem que ser PASSAGEIRA: limite de taxa, indisponibilidade, queda de rede.
+//    Erro de requisição (400/401/403/404/413) sai igual na segunda tentativa.
+// 2) Nenhuma ferramenta com efeito colateral pode ter rodado antes da falha. Este é o
+//    caso que a classificação por status sozinha não pega: 429 e 5xx acontecem no MEIO do
+//    turno, depois de várias iterações, que é exatamente quando já houve envio.
+function valeTentarDeNovo(erro: unknown): boolean {
+  if (erro instanceof ClaudeAgentTurnError) {
+    const jaAgiu = erro.ferramentasExecutadas.filter((ferramenta) =>
+      FERRAMENTAS_COM_EFEITO.has(ferramenta),
+    );
+
+    if (jaAgiu.length) {
+      console.error(
+        "[iris] turno falhou depois de executar ferramenta com efeito; NÃO vou repetir",
+        jaAgiu.join(", "),
+      );
+      return false;
+    }
+  }
+
+  const status = (erro as { status?: number } | null)?.status;
+
+  if (typeof status !== "number") {
+    // Sem status: erro de rede, DNS, socket. Esses valem uma segunda chance.
+    return true;
+  }
+
+  return status === 429 || status >= 500;
 }
 
 function shouldCacaAutomationRun(ticket: IrisTicketRow) {
@@ -2692,6 +2813,10 @@ async function updateTicketAfterCacaReply({
       lastNextStep: reply.nextStep,
       lastSource: reply.source ?? "deterministic",
       lastTrace: reply.trace?.slice(-10) ?? [],
+      // Consumo do turno (tokens, cache, latência, stop_reason). É o único lugar onde
+      // dá pra medir custo por atendimento e comparar modelo com modelo sem depender do
+      // console da Anthropic. Fica no metadata que já é gravado, sem migration.
+      lastUsage: reply.usage ?? null,
       source: "iris_meta_inbound",
       toolsUsed: reply.toolsUsed ?? [],
     },

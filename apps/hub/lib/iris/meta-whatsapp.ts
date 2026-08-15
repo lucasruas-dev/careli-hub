@@ -445,6 +445,30 @@ export function toWhatsAppFormatting(input: string): string {
   );
 }
 
+// Teto de corpo de mensagem de texto da Meta: 4.096 caracteres. Passar disso não trunca,
+// a API RECUSA o envio inteiro — e uma recusa deixa a linha outbound morta no banco, o que
+// trava a guarda de turno e cala o atendimento pra sempre.
+//
+// ATENÇÃO: isto é SÓ para a resposta gerada pela CACÁ, e é chamado no caminho dela, não
+// aqui dentro do envio. Mensagem escrita por OPERADOR HUMANO não passa por aqui de
+// propósito: cortar o texto de uma pessoa no meio, e ainda emendar uma frase que ela não
+// escreveu logo abaixo do nome dela, é pior que a recusa da Meta (que pelo menos aparece
+// como erro no cockpit, e ela reescreve). Mensagem longa de humano é problema de UI.
+const LIMITE_TEXTO_WHATSAPP = 3900;
+
+export function limitarTextoWhatsApp(input: string): string {
+  if (input.length <= LIMITE_TEXTO_WHATSAPP) {
+    return input;
+  }
+
+  const aviso = "\n\n(continua: me chama que eu sigo daqui)";
+  const corte = input.slice(0, LIMITE_TEXTO_WHATSAPP - aviso.length);
+  // Corta na última quebra de parágrafo/linha pra não parar no meio da frase.
+  const quebra = Math.max(corte.lastIndexOf("\n\n"), corte.lastIndexOf("\n"));
+
+  return `${(quebra > LIMITE_TEXTO_WHATSAPP / 2 ? corte.slice(0, quebra) : corte).trimEnd()}${aviso}`;
+}
+
 export async function sendMetaWhatsAppTextMessage({
   body,
   config = getMetaWhatsAppOutboundConfig(),

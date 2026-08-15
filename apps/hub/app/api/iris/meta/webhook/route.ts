@@ -13,6 +13,11 @@ import { getServerSupabaseConfig } from "@/lib/supabase/server-config";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+// A CACÁ responde DENTRO desta requisição: o 200 pra Meta só sai depois que o turno
+// inteiro rodou (modelo + até 8 iterações de ferramenta + envio). Se a função for cortada
+// no meio, a linha outbound fica pendurada no banco e a Meta reentrega o evento, gerando
+// resposta dobrada. O teto declarado precisa caber o pior caso, não a mediana de 8,7s.
+export const maxDuration = 300;
 
 type Json =
   | boolean

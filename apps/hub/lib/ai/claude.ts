@@ -5,12 +5,20 @@ import Anthropic from "@anthropic-ai/sdk";
 // custo/qualidade. A transcrição de voz (Whisper) NÃO passa por aqui — segue na OpenAI.
 //
 // IDs exatos da Anthropic (família Claude 5 + Opus 4.8):
-//  - default = Sonnet 5    → workhorse dos atendimentos (alto volume, bom custo/latência)
-//  - heavy   = Opus 4.8    → turnos difíceis/escalados (gestão de crise, leitura de contrato)
-//  - fast    = Haiku 4.5   → triagem/classificação barata
+//  - default  = Sonnet 5    → workhorse dos atendimentos (alto volume, bom custo/latência)
+//  - heavy    = Opus 4.8    → turnos difíceis/escalados (gestão de crise, leitura de contrato)
+//  - fast     = Haiku 4.5   → triagem/classificação barata
+//  - frontier = Opus 5      → o agente que fala com o CLIENTE (hoje só a CACÁ)
+//
+// `frontier` existe separado de `heavy` de propósito. O Opus 5 liga o thinking por
+// padrão e o max_tokens passa a ser teto de raciocínio MAIS resposta: apontar o tier
+// `heavy` inteiro pra ele truncaria os 6 consumidores que hoje pedem 900 a 2.200 tokens
+// sem mandar `thinking`. Cada um sobe quando o max_tokens dele for revisto.
+// Mesmo preço do Opus 4.8 ($5/$25 por MTok), então subir a CACÁ não muda a fatura.
 export const CLAUDE_MODEL = {
   default: process.env.CLAUDE_MODEL_DEFAULT?.trim() || "claude-sonnet-5",
   fast: process.env.CLAUDE_MODEL_FAST?.trim() || "claude-haiku-4-5-20251001",
+  frontier: process.env.CLAUDE_MODEL_FRONTIER?.trim() || "claude-opus-5",
   heavy: process.env.CLAUDE_MODEL_HEAVY?.trim() || "claude-opus-4-8",
 } as const;
 
@@ -32,7 +40,15 @@ export function getAnthropicClient(): Anthropic | null {
   }
 
   if (!cachedClient) {
-    cachedClient = new Anthropic({ apiKey });
+    // Defaults do SDK são maxRetries 2 e timeout de 10 MINUTOS. Num webhook de WhatsApp
+    // isso é veneno: o retry do SDK multiplica pelo retry da Iris (2 × 3 = 6 chamadas
+    // num 429) e um timeout de 10 min segura a função serverless muito além do limite
+    // dela, deixando a mensagem do cliente pendurada.
+    //
+    // 90s por chamada: com 1 retry dá 180s de pior caso por chamada, o que cabe nos 300s
+    // de maxDuration do webhook com folga pro resto do turno. A mediana real de resposta
+    // da Cacá é 8,7s, então isto só morde em degradação da API.
+    cachedClient = new Anthropic({ apiKey, maxRetries: 1, timeout: 90_000 });
   }
 
   return cachedClient;
@@ -76,18 +92,19 @@ function normalizeClaudeMessages(
 // Completion de texto simples sobre a Messages API da Claude (system + historico
 // -> texto). Motor padrao das migracoes OpenAI->Claude dos agentes do hub que so
 // precisam de texto (sem tool-use). Retorna null se a chave nao estiver setada.
+// `temperature` NÃO existe aqui de propósito: nos modelos novos, mandar temperature (ou
+// top_p/top_k) fora do default é 400 na cara. Ninguém passava, e deixar o parâmetro na
+// assinatura era um convite pra alguém usar e derrubar um agente meses depois.
 export async function completeWithClaude({
   maxTokens = 2048,
   messages,
   model,
   system,
-  temperature,
 }: {
   maxTokens?: number;
   messages: ClaudeChatMessage[];
   model?: string;
   system?: string;
-  temperature?: number;
 }): Promise<{ model: string; text: string } | null> {
   const client = getAnthropicClient();
   if (!client) {
@@ -108,7 +125,6 @@ export async function completeWithClaude({
       messages: normalized,
       model: resolvedModel,
       ...(system ? { system } : {}),
-      ...(typeof temperature === "number" ? { temperature } : {}),
     });
   } catch (error) {
     console.error("[claude] completeWithClaude failed", {
