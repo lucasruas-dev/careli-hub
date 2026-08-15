@@ -24,8 +24,8 @@ import {
   type IrisCentralSelecionada,
 } from "../../lib/centrais";
 
-// Headset x aperto de mão: quem ATENDE o cliente final x quem se RELACIONA com o parceiro.
-// O prédio foi para a Gurgel, onde ele diz o que precisa dizer: a central é de UMA empresa.
+// Headset x aperto de mão: quem ATENDE o cliente final x quem se RELACIONA com corretor e
+// imobiliária. O prédio foi para a Gurgel, onde diz o que precisa: a central é de UMA empresa.
 const ICONE: Record<IrisCentralSelecionada, LucideIcon> = {
   atendimento: Headphones,
   gurgel: Building2,

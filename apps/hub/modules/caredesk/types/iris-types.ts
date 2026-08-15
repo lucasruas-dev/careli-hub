@@ -134,9 +134,9 @@ export type IrisCentral = "atendimento" | "relacionamento" | "gurgel";
 
 export type IrisQueueConfig = {
   assignmentStrategy: string;
-  // Central a que a fila pertence: 'atendimento' (cliente final) ou 'relacionamento'
-  // (corretor, imobiliária, parceiro). Vem de metadata.central, gravado pela migration
-  // 0087. null = fila que nasceu depois e ainda não foi mapeada: aparece nas duas
+  // Central a que a fila pertence: 'atendimento' (cliente final), 'relacionamento' (corretor
+  // e imobiliária) ou 'gurgel' (comercial). Vem de metadata.central, gravado pelas migrations
+  // 0087 e 0090. null = fila que nasceu depois e ainda não foi mapeada: aparece em TODAS as
   // visões de propósito, para nenhum ticket sumir da tela de todo mundo.
   central: IrisCentral | null;
   // Canal WhatsApp (número) ao qual a fila está vinculada. Define de qual número

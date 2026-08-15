@@ -36,6 +36,37 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-iris-rotulo-centrais",
+    deployedAt: "2026-08-15T16:55:00-03:00",
+    // Ajuste de rotulo no mesmo dia da entrega: quem le o painel ja viu as centrais na
+    // v1.141.0, e uma entrada nova so para trocar duas linhas de texto poluiria.
+    internal: true,
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "Relacionamento passou a dizer 'Corretor e imobiliaria', sem 'parceiro'",
+              "Gurgel passou a dizer 'Comercial'",
+            ],
+            screen: "Iris - Board",
+          },
+        ],
+      },
+    ],
+    rollback: "75eea601 (v1.141.0 Gurgel como terceira central)",
+    technical: {
+      done:
+        "So `IRIS_CENTRAL_DESCRICAO` em lib/centrais.ts, que alimenta a legenda das abas do Board e o texto entre parenteses do select do Setup. As duas trocas andam juntas: o 'parceiro' que morava no Relacionamento ERA a Gurgel, que virou central propria na 0090.",
+      motivation:
+        "Pedido do Lucas ao ver a tela: tirar 'parceiro' do Relacionamento e a Gurgel virar 'Comercial'.",
+    },
+    title: "Legenda das centrais",
+    type: "melhoria",
+    version: "1.141.1",
+  },
+  {
     buildTag: "2026-08-15-iris-central-gurgel",
     deployedAt: "2026-08-15T16:40:00-03:00",
     modules: [

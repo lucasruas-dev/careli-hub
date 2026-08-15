@@ -39,10 +39,12 @@ export const IRIS_CENTRAL_LABEL_CURTO: Record<IrisCentralSelecionada, string> = 
   todas: "Todas",
 };
 
+// "Parceiro" saiu do Relacionamento e a Gurgel virou "Comercial" (Lucas, 15/08). Faz sentido
+// junto: o parceiro que morava no Relacionamento ERA a Gurgel, e ela agora tem central própria.
 export const IRIS_CENTRAL_DESCRICAO: Record<IrisCentralSelecionada, string> = {
   atendimento: "O cliente final",
-  gurgel: "O numero do parceiro Gurgel",
-  relacionamento: "Corretor, imobiliaria e parceiro",
+  gurgel: "Comercial",
+  relacionamento: "Corretor e imobiliaria",
   todas: "Todas as centrais juntas",
 };
 
