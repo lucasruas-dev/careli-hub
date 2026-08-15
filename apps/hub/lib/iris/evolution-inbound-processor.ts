@@ -21,7 +21,16 @@ import { uploadInboundMediaBuffer } from "@/lib/iris/meta-media-storage";
 
 type EvolutionClient = SupabaseClient;
 
-const RELACIONAMENTO_CHANNEL_SLUG = "whatsapp-grupo";
+// ⚠️ DOIS CANAIS, e a separação é do Lucas (15/08): "vamos separar sistemicamente".
+//
+// Grupo e Direct dividiam o MESMO canal `whatsapp-grupo`, que não tem número nem fila — daí a
+// fila Direct herdar o 4143 ao abrir atendimento, e 9.185 mensagens do 1:1 ficarem gravadas
+// como se fossem de grupo. São duas operações diferentes: o grupo é monitoramento sem ticket,
+// com três pessoas respondendo; o Direct é atendimento 1:1 com SLA e uma responsável só.
+//
+// O NÚMERO continua sendo o mesmo (a instância `caca-observadora`): o que separa é o canal.
+const GRUPO_CHANNEL_SLUG = "whatsapp-grupo";
+const DIRECT_CHANNEL_SLUG = "whatsapp-direct";
 const DIRECT_QUEUE_SLUG = "relacionamento-direct";
 const GROUP_JID_SUFFIX = "@g.us";
 const DIRECT_JID_SUFFIX = "@s.whatsapp.net";
@@ -104,7 +113,16 @@ export async function processEvolutionWebhook({
     return result;
   }
 
-  const channel = await getChannelBySlug(client, RELACIONAMENTO_CHANNEL_SLUG);
+  // Os dois canais são resolvidos de uma vez, fora do laço: o lote costuma misturar grupo e
+  // 1:1, e buscar por mensagem seria uma ida ao banco a mais para cada uma.
+  //
+  // O canal do Direct pode não existir enquanto a migration 0086 não for aplicada; nesse caso
+  // ele cai no canal do grupo, que é exatamente o comportamento de antes. Assim o código novo
+  // sobe sem depender da ordem entre deploy e migration.
+  const [canalGrupo, canalDirect] = await Promise.all([
+    getChannelBySlug(client, GRUPO_CHANNEL_SLUG),
+    getChannelBySlug(client, DIRECT_CHANNEL_SLUG),
+  ]);
 
   for (const message of messages) {
     try {
@@ -119,13 +137,13 @@ export async function processEvolutionWebhook({
           client,
           message,
           instance,
-          channelId: channel?.id ?? null,
+          channelId: canalGrupo?.id ?? null,
         });
       } else {
         await ingestDirectMessage({
           client,
           message,
-          channelId: channel?.id ?? null,
+          channelId: (canalDirect ?? canalGrupo)?.id ?? null,
         });
       }
 
@@ -372,6 +390,21 @@ async function ingestDirectMessage({
     raw: message.raw as Json,
   };
 
+  // ⚠️ AUTORIA DA RESPOSTA QUE SAI DO CELULAR.
+  //
+  // 80% do que sai deste número é digitado no aparelho, não pela Iris: 3.247 mensagens em 30
+  // dias, contra 814 pela ferramenta. Todas chegavam sem `sender_user_id`, então o board não
+  // mostrava quem respondeu e aquele atendimento não entrava em nenhuma métrica.
+  //
+  // O WhatsApp não diz QUEM digitou (o aparelho é um só), mas aqui não precisa adivinhar: no
+  // 1:1 com corretor e imobiliária quem responde é sempre a coordenadora, e ela é o dono padrão
+  // da fila. Regra confirmada pelo Lucas em 15/08.
+  //
+  // O recorte é o dono padrão DA FILA, não um id fixo: fila sem dono padrão (o Grupo, onde três
+  // pessoas respondem) continua sem autor, que é o certo. Atribuir errado ali viraria métrica
+  // falsa e apagaria o trabalho de quem fez.
+  const autorDaSaida = outbound ? donoPadraoDaFila(queue?.metadata) : null;
+
   const { error } = await client.from("caredesk_messages").insert({
     body: message.body,
     channel_id: channelId,
@@ -382,6 +415,7 @@ async function ingestDirectMessage({
     provider_payload: providerPayload,
     sender_contact_id: outbound ? null : contactId,
     sender_type: outbound ? "operator" : "customer",
+    sender_user_id: autorDaSaida,
     sent_at: message.sentAt,
     ticket_id: ticketId,
   });
