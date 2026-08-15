@@ -189,3 +189,41 @@ de outra sessão em andamento; não foi tocado aqui.
    Resolve o nome no board e é a fundação do contexto da CACÁ.
 5. **Dar canal próprio à fila Direct** e fazer o processador ler a config em vez das constantes.
 6. **Só então** as duas centrais, com a CACÁ ganhando contexto por porta de entrada.
+
+
+---
+
+## Autoria no número do Relacionamento (definido com o Lucas em 15/08)
+
+**O registro do que sai do celular JÁ EXISTE.** Medido em 30 dias no canal `whatsapp-grupo`:
+3.247 mensagens de saída sem operador (celular, 537 conversas) contra 814 pela Iris (116
+conversas). A Evolution captura o que o time digita no aparelho desde a v1.39.0. **80% daquele
+atendimento existe no banco e é invisível para métrica**, só por falta de autor.
+
+**Quem responde o quê**, segundo o Lucas:
+
+| Pessoa | Onde atua | Pela Iris (30d) |
+|---|---|---|
+| **Raiane Oliveira** — coordenadora | grupos e, principalmente, 1:1 com corretor/imobiliária. **Única que responde pelo celular** | 124 |
+| Nivea Careli | só grupos | 439 |
+| Cinthia Cruz | só grupos | 248 |
+| Lucas Ruas | teste | 3 |
+
+**A regra é POR FILA, e isso importa:**
+
+- **Direct** (1:1 com corretor/imobiliária): saída órfã é da Raiane. Atribuir é seguro, porque só
+  ela atende ali pelo celular. O `defaultAssigneeUserId` da fila **já está configurado com o id
+  dela**.
+- **Grupo**: três pessoas respondem. **Não atribuir a ninguém.** Atribuição errada vira métrica
+  falsa e apaga o trabalho de quem fez.
+
+⚠️ **O mecanismo existe e está no lugar errado.** `donoPadraoDaFila`
+(`lib/iris/evolution-inbound-processor.ts:475`) grava o dono no TICKET (`assigned_to_user_id`,
+linha 522) e nunca na MENSAGEM (`sender_user_id`). Daí a conversa ter dono e as mensagens não.
+
+**Conserto:** carimbar o dono padrão também na mensagem de saída que chega pelo webhook sem
+autor, **só quando a fila tiver dono padrão** — condição que exclui o Grupo sozinha, sem regra
+especial. Cabe backfill nas 3.247 já gravadas, restrito ao Direct.
+
+Isso entra junto com o passo 5 (dar canal próprio ao Direct), e é o que faz aquele atendimento
+aparecer em SLA e produtividade pela primeira vez.
