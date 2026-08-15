@@ -105,3 +105,87 @@ metade dos atendimentos desde o primeiro dia.
 Com o cadastro agora vivendo inteiramente no Apolo (decisão do Lucas, 14/08), a resolução de
 identidade deve olhar para `apolo_entities` e parar de depender de `c2x_user_id`, que nunca foi
 preenchido nesses contatos.
+
+
+---
+
+# Parte 2: a leitura do código (12 agentes, 664 leituras)
+
+66 achados criticos ou altos, todos com arquivo e linha. O bruto esta em
+`iris-diagnostico-2026-08-bruto.json`. Aqui fica o que decide a ordem do trabalho.
+
+## As duas causas do "delay", e são diferentes uma da outra
+
+**Ao RECEBER — o realtime da Iris está morto.** Nenhuma tabela `caredesk_*` foi publicada em
+`supabase_realtime`; os 5 `postgres_changes` de `IrisPage.tsx:919-957` são código morto. A
+mensagem chega ao banco em ~1s e a tela só descobre no **polling de 90 segundos**
+(`IrisPage.tsx:996-998`). Quatro agentes confirmaram por conta própria em `pg_publication_rel`.
+
+⚠️ **Não basta publicar as tabelas.** As policies de SELECT são `USING (true)` para todo
+`authenticated`, e o cliente da Iris roda no navegador (`iris-data-client.ts:2`). Publicar sem
+fechar a leitura transforma um problema de UX em vazamento de dado. A ordem é: fechar a policy,
+depois publicar.
+
+**Ao ENVIAR — o caminho é síncrono e serial.** A UI monta uma `optimisticMessage` mas só a
+mostra DEPOIS da resposta (`IrisPage.tsx:2998-3057`), com o composer desabilitado no meio. Antes
+de a mensagem sair rodam **15 idas ao banco em série, 12 delas antes do envio**
+(`meta/messages/route.ts:180-533`), sendo que `hub_users` é lido duas vezes e cinco `await`
+independentes estão enfileirados. Mídia sobe **duas vezes em série** (Storage e depois Graph).
+E **nenhum fetch para a Graph API tem timeout** (`meta-whatsapp.ts:470,715,1895,...`), enquanto o
+cliente da Evolution já usa AbortController de 30s.
+
+O canal Relacionamento já faz o certo (envia primeiro, grava depois), e por isso aparece com
+`sent_at` negativo. A arquitetura rápida já existe dentro do produto.
+
+## O nome no board: a causa é outra do que parecia
+
+O nome do Apolo no board é um **overlay client-side que expira em 4s e não sobrevive ao F5**
+(`iris-data-client.ts:39-54,714-778`). Não é persistido em lugar nenhum. **205 das 364 conversas
+na tela** estão divergentes. Board e cockpit usam cascatas de prioridade diferentes, e uma delas
+chega a trocar o titular pelo cônjuge (`phone-match/route.ts:309-338`).
+
+## ⚠️ As duas centrais: quatro impedimentos que o plano não previa
+
+1. **A CACÁ é Meta-only por construção.** O único ponto de auto-reply está em
+   `meta-inbound-processor.ts:430-438`; o processador da Evolution não tem nenhuma chamada a ela.
+   **Separar a entrada não coloca a CACÁ no número das imobiliárias.**
+2. **A fila Direct não tem canal e herda o 4143.** Abrir atendimento na fila Direct dispara pelo
+   número errado (`tickets/route.ts:1572-1655`). O Setup até deixa vincular a fila ao número
+   Relacionamento, e o servidor descarta em silêncio (`iris-setup-view.tsx:786-802`).
+3. **89-91% do que sai do número do Direct não passa pela Iris** — é respondido do celular. A
+   Iris é espectadora do número que viraria a Central de Corretores.
+4. **9.185 mensagens do Direct estão gravadas no canal `whatsapp-grupo`**, que não tem número,
+   nem fila, nem flag da CACÁ. E o processador do Direct nem lê a config do canal: fila, canal e
+   instância são constantes no código (`evolution-inbound-processor.ts:24-28`).
+
+Some-se o dado da Parte 1: só 3 dos 248 contatos do Direct têm cadastro no Apolo.
+
+## Medida de assertividade, que era o objetivo do Lucas
+
+**43,6% dos turnos sob a CACÁ no 4143 ficam sem nenhuma resposta em 5 minutos**
+(`meta-inbound-processor.ts:2178-2213`, duas guardas que fazem `return false` sem registrar
+evento). E **~15% do uso de ferramentas no 4143 já é trilha de corretor/CAD**, dentro do prompt
+de cliente — a mistura que o Lucas quer separar já acontece e é mensurável.
+
+O webhook da Meta roda o turno da CACÁ **dentro da requisição HTTP**, sem `maxDuration`
+(`meta/webhook/route.ts:176-193`), e por isso a Meta desiste de esperar: **580 re-entregas em 30
+dias**, com a retry correndo em paralelo com o processamento original.
+
+## 🚨 Achado operacional urgente
+
+`git status` mostra **5 arquivos da CACÁ modificados e não commitados** no working tree
+(`meta/webhook/route.ts`, `caca/agent.ts`, `caca/persona.ts`, `meta-inbound-processor.ts`,
+`meta-whatsapp.ts`) mais um teste novo. **Produção roda código antigo da CACÁ.** Isso é trabalho
+de outra sessão em andamento; não foi tocado aqui.
+
+## A ordem que os achados impõem
+
+1. **Fechar a policy de SELECT das tabelas `caredesk_*`** — é pré-requisito de segurança do passo 2
+   e da separação das centrais (hoje a separação seria só visual).
+2. **Publicar as tabelas no realtime** e aposentar o polling de 90s. Resolve o delay de recepção.
+3. **Tornar o envio otimista e paralelizar as 12 consultas**, com timeout nos fetches da Meta.
+   Resolve o delay de envio.
+4. **Persistir a identidade do contato** (telefone → Apolo, em lote), em vez do overlay de 4s.
+   Resolve o nome no board e é a fundação do contexto da CACÁ.
+5. **Dar canal próprio à fila Direct** e fazer o processador ler a config em vez das constantes.
+6. **Só então** as duas centrais, com a CACÁ ganhando contexto por porta de entrada.
