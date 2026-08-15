@@ -1,6 +1,31 @@
 # CACÁ: troca de motor para Opus 5 + conserto do harness
 
-**Data:** 15/08/2026 · **Estado:** implementado no working tree, **não commitado, não deployado**
+**Data:** 15/08/2026 · **Estado: EM PRODUÇÃO** (v1.137.0)
+
+| Deploy | |
+|---|---|
+| Commit | `ee7fa0b4` |
+| Deployment | `dpl_DKGTKFsUUvN7YXvQgtJLWK4DS94k` (READY, 15/08 ~11:18 BRT) |
+| **Rollback** | `dpl_E8zJ6R6PLFnAUoBZmayt8YXdYBfb` (commit `8c923b31`, migration 0086) |
+| Verificado | `c2x.app.br` → 200 · webhook da Meta → 403 sem token (correto) |
+| Autorização | Lucas, 15/08: "pode subir de uma vez, não precisa de validação" |
+
+**Pendência de verificação:** a chamada real ao `claude-opus-5` só acontece no primeiro atendimento depois do deploy (o último turno anterior foi 09:36, ainda no Opus 4.8). Para confirmar que o modelo novo assumiu, e de quebra estrear a telemetria:
+
+```sql
+select left(id::text,8) as ticket,
+  metadata->'cacaAutomation'->>'lastModel' as modelo,
+  metadata->'cacaAutomation'->'lastUsage' as consumo
+from public.caredesk_tickets
+where (metadata->'cacaAutomation'->>'lastAutoReplyAt')::timestamptz >= now() - interval '2 hours'
+order by (metadata->'cacaAutomation'->>'lastAutoReplyAt')::timestamptz desc limit 5;
+```
+
+Se `modelo` vier `claude-opus-4-8` com o `lastUsage` preenchido, o fallback entrou em ação: o id não está liberado na conta, e o atendimento seguiu normal no modelo anterior. Nesse caso, procurar no log da Vercel por `modelo frontier indisponível`.
+
+---
+
+**Histórico:** implementado em 15/08, revisado por 37 agentes, subiu no mesmo dia.
 **Origem:** decisão do Lucas ("quero para a CACÁ o melhor motor, quero um agente bem inteligente mesmo")
 **Diagnóstico que motivou:** `docs/operations/caca-diagnostico-15-08.md`
 
