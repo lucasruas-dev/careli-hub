@@ -36,6 +36,52 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-iris-centrais-na-tela",
+    deployedAt: "2026-08-15T15:50:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Iris agora abre por central: Atendimento (o cliente final) ou Relacionamento (corretor, imobiliaria e parceiro)",
+              "O seletor fica no alto do menu, e todas as telas abaixo dele respeitam a escolha: Board, Historico, Disparos e Relatorios",
+              "Quem atende so uma das centrais nao ve seletor nenhum, ja entra direto na sua",
+              "A central escolhida fica guardada, entao a Iris reabre onde voce estava",
+            ],
+            screen: "Iris - Board e Fila",
+          },
+          {
+            items: [
+              "O e-mail passou a entrar pela caixa certa: cobranca, financeiro, juridico e antecipacao vao para o Atendimento; contato, RH e compras vao para o Relacionamento",
+              "A Caca responde nas caixas do Atendimento",
+              "E-mail de uma caixa sem area definida cai em 'E-mail (outros)' em vez de sumir",
+              "Vale para o e-mail que chegar de agora em diante; o que ja estava na caixa fica como esta",
+            ],
+            screen: "Iris - e-mail",
+          },
+          {
+            items: [
+              "A fila agora tem o campo Central, para dizer em qual das duas visoes ela aparece",
+              "Salvar uma fila de e-mail deixou de exigir um numero de WhatsApp, o que travava as filas novas",
+            ],
+            screen: "Iris - Setup",
+          },
+        ],
+      },
+    ],
+    rollback: "cac37213 (v1.138.0 as duas centrais no banco)",
+    technical: {
+      done:
+        "TELA: `lib/centrais.ts` recorta `IrisData` (filas + tickets, casando por queueSlug) e o IrisPage passou a derivar `irisData` desse recorte, entao as views nao souberam da mudanca: 'a mesma estrutura, somente a separacao'. As centrais que a pessoa ve sao DERIVADAS das filas que ela ja enxerga (`canSeeResource`), sem vinculo novo. O Setup recebe o dado BRUTO de proposito, senao nao daria para mapear fila da outra central. MIGRATION 0089, aplicada: conserta a 0088, que preencheu `config.ingestMailbox` quando o roteador casa por `external_account_id` (`gmail-inbound.ts:203`) — os 7 canais estavam inertes, 0 tickets, e todo e-mail seguia caindo na mesma porta. Cada canal ganhou o proprio endereco + `ingestSinceEpoch` de agora (sem esse corte, `gmail-inbound.ts:151` nao filtra por data e ~1 mes de e-mail nao lido viraria ticket de uma vez). O canal antigo virou a caixa robo (external = ingest = caca@) e cede prioridade ao canal do contato@. Conferido simulando o findEmailChannel nos 9 cenarios de destinatario. ⚠️ ACHADO: `IrisPage.tsx` e `iris-setup-view.tsx` tem `@ts-nocheck` (36 arquivos no repo tem), entao o typecheck NAO cobre os dois. As edicoes foram conferidas removendo o pragma temporariamente: nenhum dos 78 erros esta nas linhas tocadas.",
+      motivation:
+        "Pedido do Lucas: as duas centrais como visao de topo, com a mesma estrutura, e o e-mail dividido por caixa.",
+    },
+    title: "Iris abre por central, e o e-mail entra pela caixa certa",
+    type: "novidade",
+    version: "1.139.0",
+  },
+  {
     buildTag: "2026-08-15-iris-duas-centrais",
     deployedAt: "2026-08-15T14:20:00-03:00",
     modules: [
@@ -53,11 +99,10 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
           },
           {
             items: [
-              "Cada caixa de e-mail virou um canal: contato, RH, compras, cobranca, financeiro, juridico e antecipacao",
-              "O e-mail deixa de cair todo na mesma fila e vai direto para a area dona do assunto",
+              "Cada caixa de e-mail ganhou canal e fila proprios: contato, RH, compras, cobranca, financeiro, juridico e antecipacao",
               "Contato, RH e Compras ficam na Central de Relacionamento; o resto fica na Central de Atendimento",
-              "A Caca ficou ligada nas caixas da Central de Atendimento",
               "Filas novas comecam visiveis so para administrador ate serem vinculadas as pessoas no Setup",
+              "Nesta versao o e-mail que chega ainda caia todo na mesma porta; a separacao por caixa foi ligada na versao seguinte",
             ],
             screen: "Iris - e-mail",
           },
@@ -67,7 +112,7 @@ export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
     rollback: "33968bfc (v1.137.1 Caca sem travessao)",
     technical: {
       done:
-        "Migrations 0087 e 0088, as duas ja aplicadas em producao com autorizacao. A 0087 carimba `metadata.central` em 12 filas (8 atendimento, 4 relacionamento) e falha se sobrar fila orfa, porque fila sem central sumiria das duas visoes. A 0088 cria 7 canais de e-mail com `ingestMailbox` por caixa e 4 filas novas (Contato, RH, Compras, Antecipacao); o roteamento em si ja existia em `gmail-inbound.ts:127`, que cruza `Delivered-To` e `To`, faltavam os canais. O canal antigo `email-contato` (caixa robo caca@) continua ativo como rede de seguranca, renomeado para 'E-mail (outros)', para e-mail de caixa nao mapeada nao sumir. A central vive em `metadata` e nao em coluna nova, seguindo o padrao que as filas ja usam. A tela ainda nao tem o seletor de central nem a aba de e-mail: e o proximo passo.",
+        "Migrations 0087 e 0088, as duas ja aplicadas em producao com autorizacao. A 0087 carimba `metadata.central` em 12 filas (8 atendimento, 4 relacionamento) e falha se sobrar fila orfa, porque fila sem central sumiria das duas visoes. A 0088 cria 7 canais de e-mail e 4 filas novas (Contato, RH, Compras, Antecipacao). A central vive em `metadata` e nao em coluna nova, seguindo o padrao que as filas ja usam. ⚠️ CORRECAO DA PROPRIA 0088: os canais novos nasceram INERTES. O roteador (`gmail-inbound.ts:203`) casa o destinatario com `external_account_id`, e a 0088 preencheu `config.ingestMailbox`, que so serve de desempate entre grupo e caixa robo. Com `external_account_id` nulo os 7 canais nunca batem, e todo e-mail segue caindo no canal antigo. Corrigido pela 0089. A tela ainda nao tem o seletor de central: e o proximo passo.",
       motivation:
         "Pedido do Lucas: separar Atendimento de Relacionamento como visao de topo, com a mesma estrutura, e dividir o e-mail por caixa. Hoje 118 tickets de e-mail em 30 dias caiam todos na mesma porta.",
     },
