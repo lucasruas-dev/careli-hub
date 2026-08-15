@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-caca-sem-travessao",
+    deployedAt: "2026-08-15T12:45:00-03:00",
+    internal: true,
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A Caca parou de usar travessao no texto que vai para o cliente",
+            ],
+            screen: "Iris - atendimento da Caca",
+          },
+        ],
+      },
+    ],
+    rollback: "ee7fa0b4 (v1.137.0 Caca com motor novo)",
+    technical: {
+      done:
+        "A persona usava travessao em 50 linhas do proprio prompt, inclusive dentro dos exemplos de fala que a Caca imita. Exemplo em prompt e instrucao: no PRIMEIRO atendimento com o Opus 5 (ticket 5745c035, 11:30) ela escreveu 'R$ 689,33 — e nenhuma delas', contra a regra da casa. As 50 linhas foram trocadas por virgula/dois-pontos (comentario de codigo nao entra, nao vai pro modelo) e a proibicao virou regra explicita no bloco de formato, no texto e na voz. A revisao adversarial tinha apontado isto como higiene e eu tratei como baixa prioridade: errei a classificacao, porque saiu na primeira mensagem em producao.",
+      motivation:
+        "Regra do Lucas: sem travessao em texto que vai para cliente.",
+    },
+    title: "Caca sem travessao",
+    type: "correcao",
+    version: "1.137.1",
+  },
+  {
     buildTag: "2026-08-15-caca-motor-opus-5",
     deployedAt: "2026-08-15T12:10:00-03:00",
     modules: [
