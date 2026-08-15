@@ -16,23 +16,34 @@ import type { IrisCentral, IrisData, IrisQueueConfig } from "../types/iris-types
 
 export type IrisCentralSelecionada = IrisCentral | "todas";
 
+// A ORDEM das centrais na tela (pedido do Lucas: "Atendimento - Relacionamento - Gurgel").
+// Vive aqui e não espalhada pelos componentes, para a barra de abas e o Setup não divergirem.
+export const IRIS_CENTRAIS: IrisCentral[] = [
+  "atendimento",
+  "relacionamento",
+  "gurgel",
+];
+
 export const IRIS_CENTRAL_LABEL: Record<IrisCentralSelecionada, string> = {
   atendimento: "Central de Atendimento",
+  gurgel: "Central Gurgel",
   relacionamento: "Central de Relacionamento",
   todas: "Todas as centrais",
 };
 
-// Rótulo curto, para caber na sidebar sem quebrar linha.
+// Rótulo curto, para caber na barra de abas sem quebrar linha.
 export const IRIS_CENTRAL_LABEL_CURTO: Record<IrisCentralSelecionada, string> = {
   atendimento: "Atendimento",
+  gurgel: "Gurgel",
   relacionamento: "Relacionamento",
   todas: "Todas",
 };
 
 export const IRIS_CENTRAL_DESCRICAO: Record<IrisCentralSelecionada, string> = {
   atendimento: "O cliente final",
+  gurgel: "O numero do parceiro Gurgel",
   relacionamento: "Corretor, imobiliaria e parceiro",
-  todas: "As duas centrais juntas",
+  todas: "Todas as centrais juntas",
 };
 
 // Fila SEM central mapeada entra em qualquer recorte. É deliberado: uma fila criada
@@ -56,14 +67,11 @@ export function centraisDisponiveis(
   filas: IrisQueueConfig[],
 ): IrisCentralSelecionada[] {
   const tem = new Set(filas.map((fila) => fila.central).filter(Boolean));
-  const centrais: IrisCentralSelecionada[] = [];
-
-  if (tem.has("atendimento")) {
-    centrais.push("atendimento");
-  }
-  if (tem.has("relacionamento")) {
-    centrais.push("relacionamento");
-  }
+  // Percorre IRIS_CENTRAIS (e não o Set) para a ordem na tela ser sempre a mesma,
+  // independente da ordem em que as filas voltaram do banco.
+  const centrais: IrisCentralSelecionada[] = IRIS_CENTRAIS.filter((central) =>
+    tem.has(central),
+  );
 
   return centrais.length > 1 ? ["todas", ...centrais] : centrais;
 }

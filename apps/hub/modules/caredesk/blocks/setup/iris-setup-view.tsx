@@ -67,6 +67,11 @@ import type {
   IrisTicketProfileConfig,
   IrisTone,
 } from "../../types/iris-types";
+import {
+  IRIS_CENTRAIS,
+  IRIS_CENTRAL_DESCRICAO,
+  IRIS_CENTRAL_LABEL,
+} from "../../lib/centrais";
 
 let setupHelpers: any = {};
 let IRIS_TEMPLATE_AUTO_REFRESH_MS: number = 45_000;
@@ -786,10 +791,10 @@ function SetupView({
                     placeholder="Atendimento"
                   />
                 </SetupField>
-                {/* A central é o agrupamento de topo (migration 0087): define em qual das
-                    duas visões da Iris a fila aparece. Fica antes do canal de propósito,
-                    porque é a primeira pergunta: de qual operação esta fila é. */}
-                <SetupField label="Central — em qual das duas visões esta fila aparece">
+                {/* A central é o agrupamento de topo (migrations 0087/0090): define em qual
+                    subtela do Board a fila aparece. Fica antes do canal de propósito, porque
+                    é a primeira pergunta: de qual operação esta fila é. */}
+                <SetupField label="Central — em qual visão esta fila aparece">
                   <select
                     value={queueForm.central}
                     onChange={(event) =>
@@ -797,12 +802,14 @@ function SetupView({
                     }
                     className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                   >
-                    <option value="atendimento">
-                      Central de Atendimento (o cliente final)
-                    </option>
-                    <option value="relacionamento">
-                      Central de Relacionamento (corretor, imobiliaria e parceiro)
-                    </option>
+                    {/* Sai de IRIS_CENTRAIS, a mesma lista que ordena as abas do Board: central
+                        nova aparece aqui sozinha, sem alguém lembrar de editar dois lugares. */}
+                    {IRIS_CENTRAIS.map((central) => (
+                      <option key={central} value={central}>
+                        {IRIS_CENTRAL_LABEL[central]} (
+                        {IRIS_CENTRAL_DESCRICAO[central].toLowerCase()})
+                      </option>
+                    ))}
                   </select>
                 </SetupField>
                 <SetupField label="Canal — a fila fica vinculada a ele">

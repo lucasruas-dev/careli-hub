@@ -8,7 +8,9 @@ import {
 } from "@/lib/hub/access-scope";
 import { getHubSupabaseClient } from "@/lib/supabase/client";
 import { calcularEspera } from "../lib/espera";
+import { IRIS_CENTRAIS } from "../lib/centrais";
 import type {
+  IrisCentral,
   IrisCrm360Registration,
   IrisData,
   IrisMessage,
@@ -840,11 +842,14 @@ export function mapQueueRow(
 ): IrisQueueConfig {
   return {
     assignmentStrategy: row.assignment_strategy ?? "manual",
-    central:
-      row.metadata?.central === "atendimento" ||
-      row.metadata?.central === "relacionamento"
-        ? row.metadata.central
-        : null,
+    // Valida contra IRIS_CENTRAIS, não contra uma lista repetida aqui: central nova precisa
+    // funcionar sem lembrar deste ponto. Quando a Gurgel virou central (0090) esta linha ainda
+    // aceitava só duas, e a fila dela vinha com `central: null` — que por regra entra em TODAS
+    // as subtelas. O resultado seria a Gurgel aparecendo também no Atendimento e no
+    // Relacionamento, ou seja, o oposto de separar.
+    central: IRIS_CENTRAIS.includes(row.metadata?.central)
+      ? (row.metadata.central as IrisCentral)
+      : null,
     channelId:
       typeof row.metadata?.channelId === "string" ? row.metadata.channelId : null,
     color: row.color ?? "#A07C3B",

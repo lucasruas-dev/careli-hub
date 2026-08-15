@@ -10,7 +10,13 @@
 // Aqui a hierarquia fica explícita e na ordem em que a pessoa pensa:
 //   Board  ->  [ Atendimento | Relacionamento ]  ->  [ Conversas · E-mail · Grupos · Ações ]
 
-import { Handshake, Headphones, Layers, type LucideIcon } from "lucide-react";
+import {
+  Building2,
+  Handshake,
+  Headphones,
+  Layers,
+  type LucideIcon,
+} from "lucide-react";
 
 import {
   IRIS_CENTRAL_DESCRICAO,
@@ -19,9 +25,10 @@ import {
 } from "../../lib/centrais";
 
 // Headset x aperto de mão: quem ATENDE o cliente final x quem se RELACIONA com o parceiro.
-// O prédio (Building2) dizia "imobiliária" e não a natureza do trabalho.
+// O prédio foi para a Gurgel, onde ele diz o que precisa dizer: a central é de UMA empresa.
 const ICONE: Record<IrisCentralSelecionada, LucideIcon> = {
   atendimento: Headphones,
+  gurgel: Building2,
   relacionamento: Handshake,
   todas: Layers,
 };

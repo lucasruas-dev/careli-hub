@@ -126,9 +126,11 @@ export type IrisTicket = {
   unreadCount?: number;
 };
 
-// As duas centrais da Iris (migration 0087). É um agrupamento de FILAS, um nível acima
+// As centrais da Iris (migrations 0087 e 0090). É um agrupamento de FILAS, um nível acima
 // do que já existia: não substitui fila, canal nem o escopo por departamento/setor.
-export type IrisCentral = "atendimento" | "relacionamento";
+// Gurgel é o número de um parceiro e virou central própria em 15/08 (antes vivia dentro do
+// Relacionamento): operação separada, e o time dela não precisa ver o resto.
+export type IrisCentral = "atendimento" | "relacionamento" | "gurgel";
 
 export type IrisQueueConfig = {
   assignmentStrategy: string;

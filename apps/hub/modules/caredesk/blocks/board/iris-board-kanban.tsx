@@ -72,19 +72,17 @@ const ABAS_DO_BOARD: { chave: AbaDoBoard; rotulo: string }[] = [
 // Quais abas cada central mostra. Não é cosmético: aba vazia num lugar onde aquele conteúdo
 // nunca aparece faz a pessoa procurar o que não existe.
 // - Grupos vive só no Relacionamento (a fila "Grupo" é de lá desde a 0087).
-// - Ações fica nas duas: campanha de contato em massa é transversal, e hoje as 333 estão no
+// - Ações fica em todas: campanha de contato em massa é transversal, e as 333 de hoje estão no
 //   Atendimento só porque foi para lá que dispararam.
+// - Gurgel é um número de WhatsApp só (31 tickets, nenhum e-mail e nenhum grupo), mas E-mail
+//   fica visível porque basta criar a caixa no Setup para ela passar a receber.
 // Em "Todas" aparecem todas, que é o ponto daquela visão.
 function abasDaCentral(central: IrisCentralSelecionada): AbaDoBoard[] {
-  if (central === "atendimento") {
-    return ["atendimento", "email", "acoes"];
-  }
-
-  if (central === "relacionamento") {
+  if (central === "relacionamento" || central === "todas") {
     return ["atendimento", "email", "grupos", "acoes"];
   }
 
-  return ["atendimento", "email", "grupos", "acoes"];
+  return ["atendimento", "email", "acoes"];
 }
 
 const groupModes: { key: GroupMode; label: string }[] = [
