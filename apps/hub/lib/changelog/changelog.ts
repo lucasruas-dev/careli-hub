@@ -36,8 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-iris-centrais-subtelas",
+    deployedAt: "2026-08-15T16:15:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O Board virou a tela principal, com duas subtelas no topo: Atendimento e Relacionamento",
+              "Cada subtela mostra so as abas que fazem sentido nela: Grupos aparece no Relacionamento, e sumiu do Atendimento onde nunca teve nada",
+              "A aba 'Atendimento' de dentro do Board virou 'Conversas', para nao repetir o nome da central logo acima",
+              "A subtela que voce nao esta vendo mostra quantas conversas tem sem ler, entao da para perceber movimento do outro lado",
+              "O icone do Relacionamento virou um aperto de mao, que faz par com o fone do Atendimento",
+            ],
+            screen: "Iris - Board",
+          },
+        ],
+      },
+    ],
+    rollback: "0fe42143 (v1.139.0 seletor de central na barra lateral)",
+    technical: {
+      done:
+        "Decisao do Lucas ao ver a v1.139.0: 'board poderia ser a tela principal, ae teria duas subtelas, atendimento e relacionamento'. O seletor saiu da sidebar (`IrisModuleShell` voltou ao contrato antigo) e virou `IrisCentralTabs` no topo do kanban, acima das abas de canal, o que resolve dois problemas que a versao anterior criou: a palavra 'Atendimento' aparecia como central E como aba, e na sidebar recolhida os dois blocos de icone viravam uma coluna so. `abasDaCentral()` define quais abas cada central mostra, e `abaEfetiva` cai na primeira aba valida quando a aba persistida nao existe na central escolhida (senao quem estava em Grupos e trocasse para Atendimento veria tela vazia). A contagem de nao lidas por central le o `IrisData` BRUTO de proposito: com o dado ja recortado, o outro lado seria sempre 0. ⚠️ ACHADO PELO CONFERIDOR MANUAL: havia uma SEGUNDA chamada de `ManagementView` (o board embarcado no cockpit do Hades) que ficou sem as props novas. O `@ts-nocheck` do IrisPage escondeu o erro e isso teria quebrado o cockpit em producao; o embed agora recebe central='todas' e lista vazia, ficando identico ao que era. Ver [[reference_typecheck_nao_cobre_ts_nocheck]].",
+      motivation:
+        "Pedido do Lucas: o Board como tela principal, com Atendimento e Relacionamento como subtelas.",
+    },
+    title: "Board com as duas centrais como subtelas",
+    type: "melhoria",
+    version: "1.140.0",
+  },
+  {
     buildTag: "2026-08-15-iris-centrais-na-tela",
     deployedAt: "2026-08-15T15:50:00-03:00",
+    // Ficou ~20 min no ar e o layout do seletor mudou logo em seguida (virou subtela do
+    // Board, v1.140.0). Marcada como interna para o painel de Novidades nao contar a mesma
+    // entrega duas vezes, com a versao intermediaria descrevendo uma tela que nao existe mais.
+    internal: true,
     modules: [
       {
         module: "Iris",
