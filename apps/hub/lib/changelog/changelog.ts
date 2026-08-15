@@ -36,6 +36,36 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-iris-central-gurgel",
+    deployedAt: "2026-08-15T16:40:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O numero da Gurgel virou central propria: agora sao tres subtelas no Board, Atendimento, Relacionamento e Gurgel",
+              "O atendimento da Gurgel saiu de dentro do Relacionamento e passou a ter tela so dele",
+              "Quem trabalha na Gurgel ja enxerga a central, sem precisar de ajuste no Setup",
+              "No Setup, o campo Central da fila passou a listar as tres opcoes",
+            ],
+            screen: "Iris - Board",
+          },
+        ],
+      },
+    ],
+    rollback: "0938ec3d (v1.140.0 duas centrais)",
+    technical: {
+      done:
+        "Migration 0090, aplicada: `metadata.central = 'gurgel'` na fila `gurgel` (sai do Relacionamento, onde a 0087 a tinha posto) e no canal `whatsapp-gurgel`. A ordem das centrais virou uma lista unica, `IRIS_CENTRAIS` em lib/centrais.ts, que alimenta as abas do Board E o select do Setup: central nova aparece nos dois sem alguem lembrar de editar dois lugares. Icone: o predio (Building2) foi para a Gurgel, onde diz o que precisa dizer (a central e de UMA empresa). A 0090 acrescenta uma trava que faltava na 0087: alem de barrar fila sem central, agora barra fila com central INVALIDA — um typo ('gurguel') passava batido e fazia a fila sumir de todas as subtelas, porque a tela casa o valor exato. Estado: Atendimento 9 filas/89 abertos, Relacionamento 6/60, Gurgel 1/3.",
+      motivation:
+        "Pedido do Lucas: o telefone da Gurgel vira central propria, ficando Atendimento, Relacionamento e Gurgel.",
+    },
+    title: "Gurgel virou a terceira central",
+    type: "novidade",
+    version: "1.141.0",
+  },
+  {
     buildTag: "2026-08-15-iris-centrais-subtelas",
     deployedAt: "2026-08-15T16:15:00-03:00",
     modules: [
