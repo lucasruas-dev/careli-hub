@@ -36,6 +36,52 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-credenciamento-imobiliaria",
+    deployedAt: "2026-08-15T18:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Aprovar a imobiliaria no Board voltou a funcionar: o botao Habilitada dava erro e nao gravava nada",
+              "Ao validar, agora aparecem os empreendimentos que ela pediu, e voce marca quais libera",
+              "Recusar tambem funciona, com o motivo em caixinhas de selecao",
+              "16 imobiliarias estavam paradas desde 11/08 sem conseguir enviar CAD",
+            ],
+            screen: "Apolo - Board (validacao da imobiliaria)",
+          },
+          {
+            items: [
+              "Ao habilitar, o representante da imobiliaria recebe a confirmacao no WhatsApp, pelo numero do Relacionamento",
+              "Cada coordenador recebe o aviso dos empreendimentos que sao dele",
+              "A mensagem muda conforme o caso: quem chega agora recebe boas-vindas de credenciamento; quem ja trabalha com a gente recebe o aviso do empreendimento novo",
+              "Se o cadastro for recusado, a imobiliaria recebe os motivos e o caminho para retomar",
+            ],
+            screen: "Apolo - avisos do credenciamento",
+          },
+          {
+            items: [
+              "Imobiliaria que ja tem cadastro e so quer trabalhar um empreendimento novo nao passa mais pela fila de validacao: e liberada na hora",
+              "Um corretor nao pode trabalhar o mesmo empreendimento por duas imobiliarias diferentes",
+            ],
+            screen: "Apolo - credenciamento",
+          },
+        ],
+      },
+    ],
+    rollback: "df35c44d (v1.142.0 envio instantaneo da Iris)",
+    technical: {
+      done:
+        "CAUSA RAIZ: o Board desenha a trilha da imobiliaria como `cadastro -> habilitada`, mas `ETAPAS_ESTEIRA` so conhece as etapas da CAD — o clique devolvia **400 'Etapa invalida.'**. E indeferir devolvia **409** pedindo para 'informar o empreendimento no cadastro' de uma empresa que nao tem CAD, porque `atualizarEtapa` exige linha em `apolo_esteira`, cuja PK `(entity_id, enterprise_id)` nao aceita nulo. Imobiliaria NAO passa pela esteira: rota propria `/board/[id]/habilitar` (GET lista o pedido, POST habilita/indefere) mexendo onde o portal do corretor le — papel `active` (dados.ts:218) e vinculos `verified` (dados.ts:~265). Ordem das escritas: empreendimentos ANTES do papel, senao o CNPJ valeria com zero empreendimento liberado. DISPARO pelo EVOLUTION (numero do Relacionamento), nao pela Meta: `sendEvolutionDirectText` e novo, o gateway so tinha envio para grupo. Telefone e o do REPRESENTANTE LEGAL (`metadata.cadastro.socios[]` com flag `representanteLegal`), nao o da empresa — medido: 16/16 tem celular pelo representante contra 15/16 pela empresa, porque varios cadastraram FIXO. Coordenador sai de `players.coordenador_vendas` do C2X, AGRUPADO (quem cuida de 3 produtos recebe 1 mensagem, nao 3). Trava do corretor barra no momento da habilitacao com 409 nomeando os conflitos. Imobiliaria ja credenciada passou a ser habilitada direto pelo portal (vinculo nasce `verified`), com auditoria `automatico: true`. ⚠️ 4 bugs que o typecheck NAO pegaria e o banco pegou: `rejected` nao existe no CHECK do papel (era `blocked`); `apolo_disparos` nao tem coluna `canal` e `origem` e NOT NULL; `apolo_enterprise_settings` nao tem `name`; e o GET nasceu sem `authorizeApoloRead`. +25 testes (aprovacao, mensagens, trava).",
+      motivation:
+        "Relato do Lucas: 'mesmo aprovando o cadastro da imobiliaria nao esta indo para habilitacao e com isso a imobiliaria fica sem poder subir CAD'.",
+    },
+    title: "Credenciamento de imobiliaria: aprovar voltou a funcionar, e agora avisa",
+    type: "correcao",
+    version: "1.143.0",
+  },
+  {
     buildTag: "2026-08-15-iris-envio-instantaneo",
     deployedAt: "2026-08-15T17:20:00-03:00",
     modules: [
