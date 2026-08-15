@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-iris-duas-centrais",
+    deployedAt: "2026-08-15T14:20:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O atendimento passou a ter duas centrais: Central de Atendimento (o cliente final) e Central de Relacionamento (corretor, imobiliaria e parceiro)",
+              "Cada fila agora pertence a uma central, entao da para olhar so a sua operacao em vez da caixa inteira",
+              "As conversas do numero de Relacionamento sairam de dentro do canal de Grupo e ganharam canal proprio",
+              "As respostas que a coordenadora da Relacionamento manda pelo celular passaram a aparecer com o nome dela, e nao mais em branco",
+            ],
+            screen: "Iris - Board e Fila",
+          },
+          {
+            items: [
+              "Cada caixa de e-mail virou um canal: contato, RH, compras, cobranca, financeiro, juridico e antecipacao",
+              "O e-mail deixa de cair todo na mesma fila e vai direto para a area dona do assunto",
+              "Contato, RH e Compras ficam na Central de Relacionamento; o resto fica na Central de Atendimento",
+              "A Caca ficou ligada nas caixas da Central de Atendimento",
+              "Filas novas comecam visiveis so para administrador ate serem vinculadas as pessoas no Setup",
+            ],
+            screen: "Iris - e-mail",
+          },
+        ],
+      },
+    ],
+    rollback: "33968bfc (v1.137.1 Caca sem travessao)",
+    technical: {
+      done:
+        "Migrations 0087 e 0088, as duas ja aplicadas em producao com autorizacao. A 0087 carimba `metadata.central` em 12 filas (8 atendimento, 4 relacionamento) e falha se sobrar fila orfa, porque fila sem central sumiria das duas visoes. A 0088 cria 7 canais de e-mail com `ingestMailbox` por caixa e 4 filas novas (Contato, RH, Compras, Antecipacao); o roteamento em si ja existia em `gmail-inbound.ts:127`, que cruza `Delivered-To` e `To`, faltavam os canais. O canal antigo `email-contato` (caixa robo caca@) continua ativo como rede de seguranca, renomeado para 'E-mail (outros)', para e-mail de caixa nao mapeada nao sumir. A central vive em `metadata` e nao em coluna nova, seguindo o padrao que as filas ja usam. A tela ainda nao tem o seletor de central nem a aba de e-mail: e o proximo passo.",
+      motivation:
+        "Pedido do Lucas: separar Atendimento de Relacionamento como visao de topo, com a mesma estrutura, e dividir o e-mail por caixa. Hoje 118 tickets de e-mail em 30 dias caiam todos na mesma porta.",
+    },
+    title: "Iris dividida em duas centrais, e o e-mail por caixa",
+    type: "novidade",
+    version: "1.138.0",
+  },
+  {
     buildTag: "2026-08-15-caca-sem-travessao",
     deployedAt: "2026-08-15T12:45:00-03:00",
     internal: true,
