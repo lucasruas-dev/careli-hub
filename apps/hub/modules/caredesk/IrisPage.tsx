@@ -1282,6 +1282,61 @@ export function IrisPage({
     }));
   }
 
+  // ENVIO OTIMISTA: troca a mensagem local (id `local-…`) pela que o servidor devolveu.
+  //
+  // A tela mostra a mensagem NA HORA, antes de falar com a Meta, e esta função reconcilia
+  // quando a resposta chega. Sem ela a mensagem apareceria duas vezes: a união do histórico
+  // com o snapshot é por ID (linha ~1161), e a local e a real têm ids diferentes.
+  //
+  // `real = null` = o envio falhou: TIRA a mensagem local da tela. Quem chama devolve o texto
+  // ao composer, que era o comportamento antes do envio otimista — a pessoa corrige e manda de
+  // novo. Deixar um balão falhado na tela E o composer vazio seria pior: o texto ficaria preso
+  // num balão que ninguém consegue reenviar (o reparo automático só pega `queued`/`sent`).
+  function handleLocalMessageSettled(
+    ticketId: string,
+    localId: string,
+    real: IrisMessage | null,
+  ) {
+    knownMessageIdsRef.current.delete(localId);
+    if (real) {
+      knownMessageIdsRef.current.add(real.id);
+    }
+
+    setIrisData((current) => ({
+      ...current,
+      tickets: current.tickets.map((ticket) => {
+        if (ticket.id !== ticketId) {
+          return ticket;
+        }
+
+        const messages = ticket.messages
+          .flatMap((message) => {
+            if (message.id !== localId) {
+              return [message];
+            }
+
+            return real ? [real] : [];
+          })
+          // Se a real já tinha chegado por outro caminho (refresh, realtime), a troca criaria
+          // duplicata: mantém uma só.
+          .filter(
+            (message, index, todas) =>
+              todas.findIndex((outra) => outra.id === message.id) === index,
+          );
+        const latestMessage = messages[messages.length - 1];
+
+        return {
+          ...ticket,
+          lastMessageAt: latestMessage?.createdAt ?? ticket.lastMessageAt,
+          lastMessagePreview: latestMessage
+            ? irisMessagePreview(latestMessage)
+            : ticket.lastMessagePreview,
+          messages,
+        };
+      }),
+    }));
+  }
+
   function handleProfilesChanged(profiles: IrisTicketProfileConfig[]) {
     setIrisData((current) => ({
       ...current,
@@ -1428,6 +1483,7 @@ export function IrisPage({
               onClose={() => setActiveView("gestao")}
               onOpenHistoryForTicket={openHistoryForTicket}
               onMessageCreated={handleLocalMessage}
+              onMessageSettled={handleLocalMessageSettled}
               onMessageUpdated={handleMessageUpdated}
               onTicketClosed={handleTicketClosed}
               onTicketContextUpdated={handleTicketContextUpdated}
@@ -1525,6 +1581,7 @@ export function IrisPage({
               onClose={() => setActiveView("gestao")}
               onOpenHistoryForTicket={openHistoryForTicket}
               onMessageCreated={handleLocalMessage}
+              onMessageSettled={handleLocalMessageSettled}
               onMessageUpdated={handleMessageUpdated}
               onTicketClosed={handleTicketClosed}
               onTicketContextUpdated={handleTicketContextUpdated}
@@ -1647,6 +1704,7 @@ function AttendanceView({
   onClose,
   onOpenHistoryForTicket,
   onMessageCreated,
+  onMessageSettled,
   onMessageUpdated,
   onTicketClosed,
   onTicketContextUpdated,
@@ -1662,6 +1720,7 @@ function AttendanceView({
   onClose: () => void;
   onOpenHistoryForTicket: (ticket: IrisTicket) => void;
   onMessageCreated: (ticketId: string, message: IrisMessage) => void;
+  onMessageSettled: (ticketId: string, localId: string, real: IrisMessage | null) => void;
   onMessageUpdated: (ticketId: string, message: IrisMessage) => void;
   onTicketClosed: (input: {
     closedAt?: string | null;
@@ -1695,6 +1754,7 @@ function AttendanceView({
       onClose={onClose}
       onOpenHistoryForTicket={onOpenHistoryForTicket}
       onMessageCreated={onMessageCreated}
+      onMessageSettled={onMessageSettled}
       onMessageUpdated={onMessageUpdated}
       onTicketClosed={onTicketClosed}
       onTicketContextUpdated={onTicketContextUpdated}
@@ -1742,6 +1802,7 @@ function IrisConversationPanel({
   onClose,
   onOpenHistoryForTicket,
   onMessageCreated,
+  onMessageSettled,
   onMessageUpdated,
   onTicketClosed,
   onTicketContextUpdated,
@@ -1757,6 +1818,12 @@ function IrisConversationPanel({
   onClose: () => void;
   onOpenHistoryForTicket: (ticket: IrisTicket) => void;
   onMessageCreated: (ticketId: string, message: IrisMessage) => void;
+  // Fecha o ciclo do envio otimista: troca a mensagem local pela real, ou marca falha.
+  onMessageSettled: (
+    ticketId: string,
+    localId: string,
+    real: IrisMessage | null,
+  ) => void;
   onMessageUpdated: (ticketId: string, message: IrisMessage) => void;
   onTicketClosed: (input: {
     closedAt?: string | null;
@@ -3064,31 +3131,55 @@ function IrisConversationPanel({
       return;
     }
 
+    // `sending` continua ligado durante o envio, e de propósito: ele é a trava contra o duplo
+    // clique. Sem ela, dois cliques rápidos viram DUAS mensagens para o cliente — bem pior do
+    // que o botão ficar indisponível por um instante. O que o envio otimista resolve é a
+    // mensagem aparecer na hora, não o composer destravar.
     setSending(true);
     setFeedback("");
 
-    try {
-      const now = new Date().toISOString();
-      const optimisticMessage: IrisMessage = {
-        body,
-        createdAt: now,
-        deliveryStatus: "queued",
-        direction: "outbound",
-        id: `local-${now}`,
-        messageType: "text",
-        operatorAvatarUrl,
-        replyTo: replyToMessage,
-        senderLabel: operatorLabel,
-        senderType: "operator",
-      };
+    // ENVIO OTIMISTA. Antes o texto só aparecia DEPOIS do servidor falar com a Meta e
+    // responder: mediana de 2,17s medida em produção, e 15% acima de 3s. A mensagem
+    // "otimista" já existia aqui, mas era usada só como plano B quando o servidor não
+    // devolvia nada — ou seja, nunca no caminho feliz. Agora ela entra na hora e é
+    // reconciliada pelo `onMessageSettled` quando a resposta chega.
+    const now = new Date().toISOString();
+    const localId = `local-${now}`;
+    const optimisticMessage: IrisMessage = {
+      body,
+      createdAt: now,
+      deliveryStatus: "queued",
+      direction: "outbound",
+      id: localId,
+      messageType: "text",
+      operatorAvatarUrl,
+      replyTo: replyToMessage,
+      senderLabel: operatorLabel,
+      senderType: "operator",
+    };
 
+    // ⚠️ TRAVA O REPARO AUTOMÁTICO. `shouldRepairOutboundMessage` reenvia toda mensagem
+    // outbound `queued` sem externalMessageId, e a otimista casa com esse critério exato.
+    // Sem esta linha, destravar o composer antes da resposta faria o reparo disparar um
+    // SEGUNDO envio, e o cliente receberia a mesma mensagem duas vezes. O effect da linha
+    // ~2460 já pula os ids que estão neste Set.
+    repairingOutboundMessageIds.current.add(localId);
+    onMessageCreated(ticket.id, optimisticMessage);
+
+    // Composer limpo na hora: a pessoa já pode escrever a próxima.
+    const replyToAntes = replyToMessage;
+    setDraft("");
+    setReplyToMessage(null);
+    setEmojiPickerOpen(false);
+
+    try {
       const accessToken = await getIrisAccessToken();
       const response = await fetch("/api/iris/meta/messages", {
         body: JSON.stringify({
           body,
           channelId: ticket.channelId ?? null,
           contactId: ticket.contactId ?? null,
-          replyToMessageId: replyToMessage?.messageId ?? null,
+          replyToMessageId: replyToAntes?.messageId ?? null,
           ticketId: ticket.id,
           to: ticket.contactPhone ?? "",
         }),
@@ -3104,39 +3195,47 @@ function IrisConversationPanel({
         message?: Record<string, unknown> | null;
       } | null;
 
-      if (payload?.message) {
-        onMessageCreated(
-          ticket.id,
-          ensureOperatorIdentity(
-            mapMessageRow(payload.message),
-            operatorLabel,
-            operatorAvatarUrl,
-          ),
-        );
-      }
-
       if (!response.ok) {
         throw new Error(
           payload?.error ?? "Nao foi possivel enviar pelo WhatsApp.",
         );
       }
 
+      // Deu certo: a local vira a real. Se o servidor não devolveu a linha (caminho raro),
+      // a local FICA como está — a mensagem saiu, e apagá-la da tela seria mentir.
+      onMessageSettled(
+        ticket.id,
+        localId,
+        payload?.message
+          ? ensureOperatorIdentity(
+              mapMessageRow(payload.message),
+              operatorLabel,
+              operatorAvatarUrl,
+            )
+          : null,
+      );
+
       if (!payload?.message) {
-        onMessageCreated(ticket.id, optimisticMessage);
+        // Sem linha do servidor, a local continua sendo a única: devolve ela ao reparo,
+        // que sincroniza com o WhatsApp em segundo plano.
+        repairingOutboundMessageIds.current.delete(localId);
       }
 
-      setDraft("");
-      setReplyToMessage(null);
-      setEmojiPickerOpen(false);
       setFeedback("Mensagem enviada pelo WhatsApp.");
     } catch (error) {
       console.error("[caredesk] nao foi possivel enviar mensagem", error);
+      // Falhou: tira o balão da tela e DEVOLVE o texto ao composer, como era antes do envio
+      // otimista. A pessoa corrige e manda de novo sem ter que redigitar.
+      onMessageSettled(ticket.id, localId, null);
+      setDraft(body);
+      setReplyToMessage(replyToAntes);
       setFeedback(
         error instanceof Error
           ? error.message
           : "Nao foi possivel enviar a mensagem agora.",
       );
     } finally {
+      repairingOutboundMessageIds.current.delete(localId);
       setSending(false);
     }
   }
