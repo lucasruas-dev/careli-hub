@@ -217,6 +217,17 @@ export type CacaAgentTurn = {
   source: "claude" | "deterministic" | "openai";
   toolsUsed: string[];
   trace: CacaAgentTraceStep[];
+  // Consumo do turno, quando o motor souber informar. Fica no metadata do ticket pra
+  // dar pra responder quanto custa um atendimento sem abrir o console da Anthropic.
+  usage?: {
+    cacheCreationTokens: number;
+    cacheReadTokens: number;
+    inputTokens: number;
+    latencyMs: number;
+    outputTokens: number;
+    requests: number;
+    stopReason: string | null;
+  } | null;
 };
 
 export async function runCacaAgentTurn({

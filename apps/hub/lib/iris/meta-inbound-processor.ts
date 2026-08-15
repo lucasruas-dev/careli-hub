@@ -2692,6 +2692,10 @@ async function updateTicketAfterCacaReply({
       lastNextStep: reply.nextStep,
       lastSource: reply.source ?? "deterministic",
       lastTrace: reply.trace?.slice(-10) ?? [],
+      // Consumo do turno (tokens, cache, latência, stop_reason). É o único lugar onde
+      // dá pra medir custo por atendimento e comparar modelo com modelo sem depender do
+      // console da Anthropic. Fica no metadata que já é gravado, sem migration.
+      lastUsage: reply.usage ?? null,
       source: "iris_meta_inbound",
       toolsUsed: reply.toolsUsed ?? [],
     },

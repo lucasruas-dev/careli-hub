@@ -5,12 +5,20 @@ import Anthropic from "@anthropic-ai/sdk";
 // custo/qualidade. A transcrição de voz (Whisper) NÃO passa por aqui — segue na OpenAI.
 //
 // IDs exatos da Anthropic (família Claude 5 + Opus 4.8):
-//  - default = Sonnet 5    → workhorse dos atendimentos (alto volume, bom custo/latência)
-//  - heavy   = Opus 4.8    → turnos difíceis/escalados (gestão de crise, leitura de contrato)
-//  - fast    = Haiku 4.5   → triagem/classificação barata
+//  - default  = Sonnet 5    → workhorse dos atendimentos (alto volume, bom custo/latência)
+//  - heavy    = Opus 4.8    → turnos difíceis/escalados (gestão de crise, leitura de contrato)
+//  - fast     = Haiku 4.5   → triagem/classificação barata
+//  - frontier = Opus 5      → o agente que fala com o CLIENTE (hoje só a CACÁ)
+//
+// `frontier` existe separado de `heavy` de propósito. O Opus 5 liga o thinking por
+// padrão e o max_tokens passa a ser teto de raciocínio MAIS resposta: apontar o tier
+// `heavy` inteiro pra ele truncaria os 6 consumidores que hoje pedem 900 a 2.200 tokens
+// sem mandar `thinking`. Cada um sobe quando o max_tokens dele for revisto.
+// Mesmo preço do Opus 4.8 ($5/$25 por MTok), então subir a CACÁ não muda a fatura.
 export const CLAUDE_MODEL = {
   default: process.env.CLAUDE_MODEL_DEFAULT?.trim() || "claude-sonnet-5",
   fast: process.env.CLAUDE_MODEL_FAST?.trim() || "claude-haiku-4-5-20251001",
+  frontier: process.env.CLAUDE_MODEL_FRONTIER?.trim() || "claude-opus-5",
   heavy: process.env.CLAUDE_MODEL_HEAVY?.trim() || "claude-opus-4-8",
 } as const;
 
@@ -32,7 +40,11 @@ export function getAnthropicClient(): Anthropic | null {
   }
 
   if (!cachedClient) {
-    cachedClient = new Anthropic({ apiKey });
+    // Defaults do SDK são maxRetries 2 e timeout de 10 MINUTOS. Num webhook de WhatsApp
+    // isso é veneno: o retry do SDK multiplica pelo retry da Iris (2 × 3 = 6 chamadas
+    // num 429) e um timeout de 10 min segura a função serverless muito além do limite
+    // dela, deixando a mensagem do cliente pendurada.
+    cachedClient = new Anthropic({ apiKey, maxRetries: 1, timeout: 120_000 });
   }
 
   return cachedClient;
