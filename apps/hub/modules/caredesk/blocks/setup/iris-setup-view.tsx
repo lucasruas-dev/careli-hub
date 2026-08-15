@@ -461,8 +461,11 @@ function SetupView({
       return;
     }
 
+    // Canal, não "número": desde a 0088 existem filas de E-MAIL (Contato, RH, Compras,
+    // Antecipação), que não têm número de WhatsApp nenhum. Exigir número travava o
+    // salvamento delas nesta tela.
     if (!queueForm.channelId.trim()) {
-      setQueueFeedback("Selecione o número (WhatsApp) da fila.");
+      setQueueFeedback("Selecione o canal da fila (número de WhatsApp ou caixa de e-mail).");
       return;
     }
 
@@ -783,7 +786,26 @@ function SetupView({
                     placeholder="Atendimento"
                   />
                 </SetupField>
-                <SetupField label="Número (WhatsApp) — a fila fica vinculada a ele">
+                {/* A central é o agrupamento de topo (migration 0087): define em qual das
+                    duas visões da Iris a fila aparece. Fica antes do canal de propósito,
+                    porque é a primeira pergunta: de qual operação esta fila é. */}
+                <SetupField label="Central — em qual das duas visões esta fila aparece">
+                  <select
+                    value={queueForm.central}
+                    onChange={(event) =>
+                      updateQueueForm("central", event.target.value)
+                    }
+                    className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
+                  >
+                    <option value="atendimento">
+                      Central de Atendimento (o cliente final)
+                    </option>
+                    <option value="relacionamento">
+                      Central de Relacionamento (corretor, imobiliaria e parceiro)
+                    </option>
+                  </select>
+                </SetupField>
+                <SetupField label="Canal — a fila fica vinculada a ele">
                   <select
                     value={queueForm.channelId}
                     onChange={(event) =>
@@ -791,14 +813,25 @@ function SetupView({
                     }
                     className="h-10 w-full rounded-lg border border-line bg-surface px-3 text-sm font-semibold text-ink outline-none"
                   >
-                    <option value="">Selecione o número…</option>
-                    {data.channels
-                      .filter((channel) => channel.kind === "whatsapp")
-                      .map((channel) => (
-                        <option key={channel.id} value={channel.id}>
-                          {channel.name.replace(/^WhatsApp\s+/i, "")}
-                        </option>
-                      ))}
+                    <option value="">Selecione o canal…</option>
+                    <optgroup label="WhatsApp">
+                      {data.channels
+                        .filter((channel) => channel.kind === "whatsapp")
+                        .map((channel) => (
+                          <option key={channel.id} value={channel.id}>
+                            {channel.name.replace(/^WhatsApp\s+/i, "")}
+                          </option>
+                        ))}
+                    </optgroup>
+                    <optgroup label="E-mail">
+                      {data.channels
+                        .filter((channel) => channel.kind === "email")
+                        .map((channel) => (
+                          <option key={channel.id} value={channel.id}>
+                            {channel.name.replace(/^E-mail\s+/i, "")}
+                          </option>
+                        ))}
+                    </optgroup>
                   </select>
                 </SetupField>
                 {/* Níveis de acesso: quem enxerga a fila sai daqui.

@@ -126,8 +126,17 @@ export type IrisTicket = {
   unreadCount?: number;
 };
 
+// As duas centrais da Iris (migration 0087). É um agrupamento de FILAS, um nível acima
+// do que já existia: não substitui fila, canal nem o escopo por departamento/setor.
+export type IrisCentral = "atendimento" | "relacionamento";
+
 export type IrisQueueConfig = {
   assignmentStrategy: string;
+  // Central a que a fila pertence: 'atendimento' (cliente final) ou 'relacionamento'
+  // (corretor, imobiliária, parceiro). Vem de metadata.central, gravado pela migration
+  // 0087. null = fila que nasceu depois e ainda não foi mapeada: aparece nas duas
+  // visões de propósito, para nenhum ticket sumir da tela de todo mundo.
+  central: IrisCentral | null;
   // Canal WhatsApp (número) ao qual a fila está vinculada. Define de qual número
   // o atendimento sai e trava transferência entre filas de números diferentes.
   channelId: string | null;

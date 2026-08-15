@@ -840,6 +840,11 @@ export function mapQueueRow(
 ): IrisQueueConfig {
   return {
     assignmentStrategy: row.assignment_strategy ?? "manual",
+    central:
+      row.metadata?.central === "atendimento" ||
+      row.metadata?.central === "relacionamento"
+        ? row.metadata.central
+        : null,
     channelId:
       typeof row.metadata?.channelId === "string" ? row.metadata.channelId : null,
     color: row.color ?? "#A07C3B",

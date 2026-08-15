@@ -65,6 +65,13 @@ import {
   IrisModuleShell,
   type IrisShellNavigationItem,
 } from "./blocks/shell/iris-shell";
+import { IrisCentralSelector } from "./blocks/shell/iris-central-selector";
+import {
+  centraisDisponiveis,
+  centralValida,
+  recortarDadosPorCentral,
+  type IrisCentralSelecionada,
+} from "./lib/centrais";
 import { IrisBoardKanban } from "./blocks/board/iris-board-kanban";
 import { type IrisBoardMetrics } from "./blocks/board/iris-board-view";
 import {
@@ -166,6 +173,7 @@ import type {
   IrisAgendaTimelineEntry,
   IrisApoloClientOption,
   IrisApoloContextEntity,
+  IrisCentral,
   IrisContextModalMode,
   IrisCrm360Registration,
   IrisData,
@@ -590,7 +598,10 @@ export function IrisPage({
     hubUser?.role === "admin" || hubUser?.role === "leader";
   const operatorUserId = operatorScoped ? (hubUser?.id ?? null) : null;
   const scopedQueueSlug = normalizeOptionalIrisQueueSlug(queueSlugFilter);
-  const [irisData, setIrisData] = useState<IrisData>({
+  // Dado BRUTO, do jeito que veio do Supabase (já filtrado por `canSeeResource`).
+  // A tela operacional lê `irisData`, que é este recortado pela central escolhida;
+  // o Setup lê este aqui, porque quem configura precisa enxergar as duas centrais.
+  const [irisDataBruto, setIrisData] = useState<IrisData>({
     ...emptyIrisData,
     tickets: initialTickets,
   });
@@ -609,6 +620,14 @@ export function IrisPage({
     `${persistScope}.activeView`,
     "gestao",
   );
+  // Central escolhida. Durável (localStorage) porque é preferência de trabalho: quem
+  // atende Relacionamento abre a Iris nele todo dia, não quer reescolher.
+  const [centralEscolhida, setCentralEscolhida] =
+    usePersistedState<IrisCentralSelecionada>(
+      `${persistScope}.central`,
+      "todas",
+      { backend: "local" },
+    );
   const attendanceProtocolHandledRef = useRef<string | null>(null);
   const [historyFocus, setHistoryFocus] = useState<IrisHistoryFocus | null>(
     null,
@@ -1061,6 +1080,23 @@ export function IrisPage({
     };
   }, [loadFromSupabase]);
 
+  // ── AS DUAS CENTRAIS ────────────────────────────────────────────────────────
+  // A central que a pessoa pode ver é DERIVADA das filas que ela já enxerga, e as
+  // filas chegam aqui filtradas por `canSeeResource`. Quem tem fila só de uma central
+  // não vê seletor nenhum; quem tem das duas ganha o seletor com "Todas" junto.
+  const centraisDaPessoa = useMemo(
+    () => centraisDisponiveis(irisDataBruto.queues),
+    [irisDataBruto.queues],
+  );
+  const centralAtiva = centralValida(centralEscolhida, centraisDaPessoa);
+  // Daqui pra baixo `irisData` É o recorte da central. Todas as views leem dele e
+  // ficam separadas sem saber que a central existe: "a mesma estrutura, somente a
+  // separação" (Lucas, 15/08). O Setup é a exceção e recebe o bruto.
+  const irisData = useMemo(
+    () => recortarDadosPorCentral(irisDataBruto, centralAtiva),
+    [irisDataBruto, centralAtiva],
+  );
+
   // Ref espelho do ticket aberto: o handler do realtime le sem re-assinar o canal.
   const selectedTicketIdRef = useRef(selectedTicketId);
 
@@ -1420,6 +1456,21 @@ export function IrisPage({
       ) : (
         <IrisModuleShell
           activeView={activeView}
+          central={
+            <IrisCentralSelector
+              central={centralAtiva}
+              collapsed={sidebarCollapsed}
+              disponiveis={centraisDaPessoa}
+              onSelect={(proxima) => {
+                setCentralEscolhida(proxima);
+                // Trocar de central com um ticket aberto deixaria a conversa de uma
+                // central na tela da outra. Volta pro board.
+                if (activeView === "atendimento") {
+                  setActiveView("gestao");
+                }
+              }}
+            />
+          }
           collapsed={sidebarCollapsed}
           navigationItems={visibleNavigationItems}
           onSelectView={(itemId) => {
@@ -1489,7 +1540,9 @@ export function IrisPage({
           ) : activeView === "setup" && canManageHubSetup ? (
             <IrisSetupView
               constants={irisSetupViewConstants}
-              data={irisData}
+              // BRUTO de propósito: quem configura precisa enxergar as filas das duas
+              // centrais, senão não consegue mapear uma fila que caiu na outra.
+              data={irisDataBruto}
               helpers={irisSetupViewHelpers}
               snapshot={snapshot}
               onQueuesChanged={handleQueuesChanged}
@@ -7837,7 +7890,11 @@ async function saveIrisQueue(form: ReturnType<typeof createQueueForm>) {
     assignment_strategy: form.assignmentStrategy.trim() || "manual",
     color: /^#[0-9a-fA-F]{6}$/.test(form.color) ? form.color : "#A07C3B",
     default_priority: normalizePriority(form.defaultPriority),
-    metadata: { ...metadataAtual, channelId: form.channelId.trim() || null },
+    metadata: {
+      ...metadataAtual,
+      central: form.central,
+      channelId: form.channelId.trim() || null,
+    },
     name: form.name.trim(),
     routing_strategy: form.routingStrategy.trim() || "manual",
     sla_first_response_minutes: normalizePositiveInteger(
@@ -7943,6 +8000,9 @@ function sortIrisQueues(first: IrisQueueConfig, second: IrisQueueConfig) {
 function createQueueForm() {
   return {
     assignmentStrategy: "manual",
+    // Central da fila. Nasce em Atendimento porque é a operação maior: fila nova sem
+    // central escolhida iria para as duas visões e poluiria a do Relacionamento.
+    central: "atendimento" as IrisCentral,
     channelId: "",
     color: "#A07C3B",
     defaultPriority: "medium" as IrisPriority,
@@ -7961,6 +8021,7 @@ function createQueueForm() {
 function queueToForm(queue: IrisQueueConfig) {
   return {
     assignmentStrategy: queue.assignmentStrategy,
+    central: queue.central ?? "atendimento",
     channelId: queue.channelId ?? "",
     color: queue.color || "#A07C3B",
     defaultPriority: queue.defaultPriority,
