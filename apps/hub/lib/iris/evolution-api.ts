@@ -133,6 +133,32 @@ export async function sendEvolutionGroupReaction({
   });
 }
 
+// TEXTO 1:1 pelo número do RELACIONAMENTO (o celular, não a Meta).
+//
+// Regra do Lucas (15/08): comunicado para corretor, imobiliária e coordenador sai por aqui, e
+// só o do cliente final sai pelo 4143. **Não precisa de template nem respeita janela de 24h**,
+// porque o Evolution não é a API oficial — que é exatamente o que faz os avisos à imobiliária
+// pararem de falhar (medido: `imob_pix_enviado` falhava em 95% pela Meta).
+//
+// O `number` aceita telefone puro com DDI: a mesma rota que o grupo usa com o JID.
+export async function sendEvolutionDirectText({
+  telefone,
+  text,
+}: {
+  // só dígitos, com DDI (ex.: 5531997250000)
+  telefone: string;
+  text: string;
+}): Promise<EvolutionSendResult> {
+  const numero = telefone.replace(/\D/g, "");
+
+  if (numero.length < 12) {
+    // Sem DDI o gateway entrega para o número errado (ou para ninguém) em silêncio.
+    return { ok: false, error: "Telefone sem DDI: nao da para enviar." };
+  }
+
+  return postEvolutionMessage("sendText", { number: numero, text });
+}
+
 async function postEvolutionMessage(
   endpoint: "sendMedia" | "sendReaction" | "sendText" | "sendWhatsAppAudio",
   payload: Record<string, unknown>,

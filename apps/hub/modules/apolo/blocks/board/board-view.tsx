@@ -16,8 +16,10 @@ import {
   Loader2,
   MessageSquare,
   QrCode,
+  RefreshCw,
   Search,
   Send,
+  ShieldAlert,
   ShieldCheck,
   Upload,
   UserRound,
@@ -366,6 +368,44 @@ export function BoardView({
   // que acontecia antes, quando a recusa era engolida e a tela seguia mostrando o avanço.
   const [erroEtapa, setErroEtapa] = useState<null | string>(null);
 
+  // IMOBILIÁRIA NÃO PASSA PELA ESTEIRA, então não usa `gravarEtapa`.
+  //
+  // A trilha dela é `cadastro -> habilitada`, e nenhuma das duas existe em `ETAPAS_ESTEIRA`: o
+  // clique em "Habilitada" voltava **400 "Etapa invalida."**, e o indeferir voltava **409**
+  // pedindo para "informar o empreendimento no cadastro" de uma empresa que não tem CAD. As duas
+  // ações agora vão para `/habilitar`, que mexe onde o portal do corretor de fato lê (papel
+  // `active` + vínculos `verified`). Ver [[project_apolo_habilitacao_imobiliaria_quebrada]].
+  const decidirCredenciamento = async (
+    entityId: string,
+    corpoDaDecisao: Record<string, unknown>,
+  ): Promise<{ error?: string; ok: boolean; resumo?: string }> => {
+    try {
+      const token = await getApoloAccessToken();
+      const resposta = await fetch(
+        `/api/apolo/board/${encodeURIComponent(entityId)}/habilitar`,
+        {
+          body: JSON.stringify(corpoDaDecisao),
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          method: "POST",
+        },
+      );
+      const corpo = (await resposta.json().catch(() => null)) as {
+        data?: { resumo?: string };
+        error?: string;
+      } | null;
+
+      if (!resposta.ok) {
+        return {
+          error: corpo?.error ?? `Não foi possível concluir (${resposta.status}).`,
+          ok: false,
+        };
+      }
+      return { ok: true, resumo: corpo?.data?.resumo };
+    } catch {
+      return { error: "Falha de rede. O credenciamento NÃO mudou.", ok: false };
+    }
+  };
+
   // TODA MUDANÇA DE ETAPA PASSA POR AQUI: grava primeiro, mexe na tela depois. `aplicar` só roda
   // com o "ok" do servidor, e recebe a etapa REAL gravada (que pode não ser a pedida — pré-venda
   // desligada vira credenciado).
@@ -388,6 +428,26 @@ export function BoardView({
   // Recusa e correção SEMPRE com motivo (regra do Lucas): fica no histórico e é o que o
   // corretor/cliente recebe de volta.
   const indeferir = (itemId: string, motivo: string) => {
+    // Imobiliária vai por outro caminho: `moverEtapa` grava na esteira, onde ela não tem linha,
+    // e o operador levava 409 pedindo para "informar o empreendimento no cadastro".
+    if (itens.find((item) => item.id === itemId)?.papel === "imobiliaria") {
+      void (async () => {
+        setErroEtapa(null);
+        const r = await decidirCredenciamento(itemId, {
+          acao: "indeferir",
+          motivos: [motivo],
+        });
+        if (!r.ok) {
+          setErroEtapa(r.error ?? "Não foi possível indeferir.");
+          return;
+        }
+        setIndeferidos((prev) => ({ ...prev, [itemId]: true }));
+        registrarEvento(itemId, "sistema", `Credenciamento indeferido — motivo: ${motivo}`);
+        void carregarFila();
+      })();
+      return;
+    }
+
     void moverEtapa(itemId, "indeferido", {
       aplicar: () => {
         setIndeferidos((prev) => ({ ...prev, [itemId]: true }));
@@ -397,6 +457,21 @@ export function BoardView({
       evento: ["sistema", `Reprovado — motivo: ${motivo}`],
       motivo,
     });
+  };
+
+  // HABILITAR a imobiliária: a ação que faltava. `empreendimentos` são os enterpriseId que o
+  // operador marcou; sem nenhum o servidor recusa, porque papel ativo com zero empreendimento
+  // deixaria o CNPJ valendo no portal do corretor sem nada para ele escolher.
+  const habilitarImobiliaria = async (itemId: string, empreendimentos: string[]) => {
+    setErroEtapa(null);
+    const r = await decidirCredenciamento(itemId, { acao: "habilitar", empreendimentos });
+    if (!r.ok) {
+      setErroEtapa(r.error ?? "Não foi possível habilitar.");
+      return false;
+    }
+    registrarEvento(itemId, "sistema", `Credenciamento habilitado — ${r.resumo ?? "ok"}`);
+    void carregarFila();
+    return true;
   };
 
   const enviarParaCorrecao = (itemId: string, motivo: string) => {
@@ -809,6 +884,7 @@ export function BoardView({
             onAprovarRestricao={() => setModalRestricao(true)}
             onAvancar={(etapaAtualId) => avancarEtapa(selecionado, etapaAtualId)}
             onCorrecao={() => setModalMotivo("correcao")}
+            onHabilitar={habilitarImobiliaria}
             onIdentidadeSalva={() => void carregarFila()}
             onCreditoResultado={(r) => {
               // O crédito moveu a etapa NO SERVIDOR; aqui a tela só reflete o que ele decidiu, sem
@@ -1650,6 +1726,20 @@ const MOTIVOS_REPROVACAO = [
   "Não atende aos critérios do empreendimento",
 ];
 
+// Recusar CREDENCIAMENTO não é indeferir CRÉDITO: aqui se valida uma empresa (contrato social,
+// CRECI, sócios), não a capacidade de pagamento de um comprador. O modal já trocava o título
+// quando `imob`, mas seguia oferecendo "Score de crédito insuficiente" e "Negativações em
+// aberto" como sugestão — motivos que não existem nesta análise e que iriam, escritos, para a
+// imobiliária.
+const MOTIVOS_RECUSA_IMOBILIARIA = [
+  "Contrato social ilegível ou incompleto",
+  "Cartão CNPJ não confere com o contrato social",
+  "CRECI da imobiliária não localizado ou vencido",
+  "Documento do sócio ilegível ou faltando",
+  "Situação cadastral do CNPJ irregular na Receita",
+  "Dados do responsável não conferem",
+];
+
 function ModalMotivo({
   imob,
   onCancelar,
@@ -1661,89 +1751,127 @@ function ModalMotivo({
   onConfirmar: (motivo: string) => void;
   tipo: "correcao" | "indeferir";
 }) {
-  const [texto, setTexto] = useState("");
+  // CAIXINHAS, não chips que concatenam texto (Lucas, 15/08). Marcar e desmarcar é reversível e
+  // deixa à vista o que já foi apontado; o chip "+" empilhava tudo num textarea, e tirar um
+  // motivo virava edição de texto no meio da frase.
+  const [marcados, setMarcados] = useState<Record<string, boolean>>({});
+  const [observacao, setObservacao] = useState("");
   const correcao = tipo === "correcao";
-  const sugestoes = correcao ? MOTIVOS_CORRECAO : MOTIVOS_REPROVACAO;
+  const sugestoes = correcao
+    ? MOTIVOS_CORRECAO
+    : imob
+      ? MOTIVOS_RECUSA_IMOBILIARIA
+      : MOTIVOS_REPROVACAO;
 
-  const adicionar = (motivo: string) =>
-    setTexto((atual) => (atual.trim() ? `${atual.trim()}; ${motivo}` : motivo));
-
-  const confirmar = () => {
-    const limpo = texto.trim();
-    if (!limpo) return;
-    onConfirmar(limpo);
-  };
+  const escolhidos = sugestoes.filter((motivo) => marcados[motivo]);
+  // O contrato com quem chama continua sendo UMA string: os outros fluxos (correção, indeferir
+  // crédito) já gravam assim no histórico. A observação entra como um item a mais.
+  const motivoFinal = [...escolhidos, observacao.trim()].filter(Boolean).join("; ");
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         aria-label="Fechar"
-        className="absolute inset-0 cursor-default bg-black/40"
+        className="absolute inset-0 cursor-default bg-black/50 backdrop-blur-[2px]"
         onClick={onCancelar}
         type="button"
       />
 
       <div className="relative flex w-full max-w-lg flex-col overflow-hidden rounded-2xl border border-line bg-surface shadow-2xl">
-        <div className="border-b border-line px-5 py-4">
-          <h2 className="m-0 text-base font-semibold text-ink">
-            {correcao
-              ? "Enviar para correção"
-              : imob
-                ? "Recusar credenciamento"
-                : "Indeferir crédito"}
-          </h2>
-          <p className="m-0 mt-0.5 text-xs text-ink-muted">
-            {correcao
-              ? "Aponte o que precisa ser corrigido. O corretor recebe essa devolutiva."
-              : "Registre o motivo da reprovação. Fica no histórico do processo."}
-          </p>
-        </div>
-
-        <div className="grid gap-3 px-5 py-4">
-          <div className="flex flex-wrap gap-1.5">
-            {sugestoes.map((motivo) => (
-              <button
-                className="rounded-full border border-line bg-subtle px-2.5 py-1 text-xs font-medium text-ink-soft transition-colors hover:border-line-strong hover:text-ink"
-                key={motivo}
-                onClick={() => adicionar(motivo)}
-                type="button"
-              >
-                + {motivo}
-              </button>
-            ))}
-          </div>
-
-          <textarea
-            autoFocus
-            className="min-h-[110px] w-full resize-none rounded-lg border border-line bg-surface px-3 py-2 text-sm text-ink outline-none placeholder:text-ink-muted"
-            onChange={(event) => setTexto(event.target.value)}
-            placeholder={
-              correcao
-                ? "Descreva o que precisa ser corrigido…"
-                : "Descreva o motivo da reprovação…"
-            }
-            value={texto}
-          />
-        </div>
-
-        <div className="flex items-center justify-end gap-2 border-t border-line px-5 py-3">
-          <button
-            className="inline-flex h-9 items-center rounded-lg border border-line px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle"
-            onClick={onCancelar}
-            type="button"
-          >
-            Cancelar
-          </button>
-          <button
-            className={`inline-flex h-9 items-center gap-1.5 rounded-lg px-5 text-sm font-semibold text-white transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
-              correcao ? "bg-[#D97706] hover:bg-[#B45309]" : "bg-rose-600 hover:bg-rose-700"
+        <div className="flex items-start gap-3 border-b border-line px-5 py-4">
+          <span
+            className={`flex size-9 shrink-0 items-center justify-center rounded-xl ${
+              correcao ? "bg-[#D97706]/12 text-[#B45309]" : "bg-rose-500/12 text-rose-600"
             }`}
-            disabled={!texto.trim()}
-            onClick={confirmar}
-            type="button"
           >
-            {correcao ? "Enviar para correção" : "Confirmar reprovação"}
-          </button>
+            {correcao ? (
+              <RefreshCw aria-hidden="true" className="size-4" />
+            ) : (
+              <ShieldAlert aria-hidden="true" className="size-4" />
+            )}
+          </span>
+          <div className="min-w-0">
+            <h2 className="m-0 text-base font-semibold text-ink">
+              {correcao
+                ? "Enviar para correção"
+                : imob
+                  ? "Recusar credenciamento"
+                  : "Indeferir crédito"}
+            </h2>
+            <p className="m-0 mt-0.5 text-xs text-ink-muted">
+              {correcao
+                ? "Marque o que precisa ser corrigido. É isso que o corretor recebe de volta."
+                : imob
+                  ? "Marque o motivo. É isso que a imobiliária recebe, então seja específico."
+                  : "Marque o motivo da reprovação. Fica no histórico do processo."}
+            </p>
+          </div>
+        </div>
+
+        <div className="grid max-h-[60vh] gap-2 overflow-y-auto px-5 py-4">
+          {sugestoes.map((motivo) => {
+            const ativo = Boolean(marcados[motivo]);
+            return (
+              <label
+                className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-sm transition-colors ${
+                  ativo
+                    ? "border-ink/30 bg-black/[0.045] text-ink dark:bg-white/[0.07]"
+                    : "border-line bg-surface text-ink-soft hover:border-line-strong hover:text-ink"
+                }`}
+                key={motivo}
+              >
+                <input
+                  checked={ativo}
+                  className="size-4 shrink-0 accent-neutral-900 dark:accent-neutral-200"
+                  onChange={(event) =>
+                    setMarcados((atual) => ({ ...atual, [motivo]: event.target.checked }))
+                  }
+                  type="checkbox"
+                />
+                <span className="min-w-0">{motivo}</span>
+              </label>
+            );
+          })}
+
+          <label className="mt-1 grid gap-1.5">
+            <span className="text-[11px] font-semibold uppercase tracking-wide text-ink-muted">
+              Observação (opcional)
+            </span>
+            <textarea
+              className="min-h-[72px] w-full resize-none rounded-xl border border-line bg-surface px-3 py-2 text-sm text-ink outline-none transition-colors placeholder:text-ink-muted focus:border-ink/40"
+              onChange={(event) => setObservacao(event.target.value)}
+              placeholder="Algo específico deste caso…"
+              value={observacao}
+            />
+          </label>
+        </div>
+
+        <div className="flex items-center justify-between gap-2 border-t border-line px-5 py-3">
+          <span className="text-xs text-ink-muted">
+            {escolhidos.length === 0
+              ? "Nenhum motivo marcado"
+              : escolhidos.length === 1
+                ? "1 motivo marcado"
+                : `${escolhidos.length} motivos marcados`}
+          </span>
+
+          <div className="flex items-center gap-2">
+            <button
+              className="inline-flex h-9 items-center rounded-lg border border-line px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle"
+              onClick={onCancelar}
+              type="button"
+            >
+              Cancelar
+            </button>
+            <button
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
+              disabled={!motivoFinal}
+              onClick={() => onConfirmar(motivoFinal)}
+              type="button"
+            >
+              {correcao ? "Enviar para correção" : "Confirmar"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -2354,6 +2482,7 @@ function DetalheBoard({
   onCorrecao,
   onCreditoResultado,
   onEnviarGestao,
+  onHabilitar,
   onIdentidadeSalva,
   onIndeferir,
   onReabrir,
@@ -2377,6 +2506,8 @@ function DetalheBoard({
   onCreditoResultado: (r: { aprovado: boolean; etapa?: string }) => void;
   // Escalar pro coordenador: o analista pede o aval de quem aprova o crédito.
   onEnviarGestao: () => void;
+  // Habilita a imobiliária nos empreendimentos marcados. Só o card de imobiliária usa.
+  onHabilitar?: (entityId: string, empreendimentos: string[]) => Promise<boolean>;
   // Nome/documento corrigido na validação: a fila precisa recarregar, senão o card fica velho.
   onIdentidadeSalva: () => void;
   onIndeferir: () => void;
@@ -2494,6 +2625,7 @@ function DetalheBoard({
           etapa={etapaVista}
           imob={imob}
           onCreditoResultado={onCreditoResultado}
+          onHabilitar={onHabilitar}
           onIdentidadeSalva={onIdentidadeSalva}
         />
       ) : (
@@ -2632,15 +2764,19 @@ function acaoDaEtapa(id: string): string {
 function PainelEtapa({
   entityId,
   etapa,
+  imob,
   onCreditoResultado,
+  onHabilitar,
   onIdentidadeSalva,
 }: {
   entityId: string;
   etapa: Etapa;
-  // `imob` continua no contrato porque quem chama passa, mas o painel não distingue os dois
-  // fluxos hoje. Fica declarado e não desestruturado, em vez de sumir da assinatura.
+  // `imob` PASSOU A SER USADO: a etapa "cadastro" da imobiliária ganha as caixinhas de
+  // habilitação, que é a decisão que faltava. Antes ele chegava aqui e era ignorado, e o
+  // operador validava os documentos sem ter onde concluir.
   imob?: boolean;
   onCreditoResultado?: (r: { aprovado: boolean; etapa?: string }) => void;
+  onHabilitar?: (entityId: string, empreendimentos: string[]) => Promise<boolean>;
   onIdentidadeSalva?: () => void;
 }) {
   const Icon = etapa.icon;
@@ -2660,7 +2796,13 @@ function PainelEtapa({
           documento à vista o operador estaria conferindo no escuro. As demais etapas ficam vazias
           até a lógica ser ligada — nada de dado de mentira na tela. */}
       {etapa.id === "cadastro" ? (
-        <ValidacaoLadoALado entityId={entityId} onIdentidadeSalva={onIdentidadeSalva} />
+        <>
+          <ValidacaoLadoALado entityId={entityId} onIdentidadeSalva={onIdentidadeSalva} />
+          {/* Só a imobiliária conclui por aqui: a CAD de cliente avança pela trilha da esteira. */}
+          {imob ? (
+            <HabilitarEmpreendimentos entityId={entityId} onHabilitar={onHabilitar} />
+          ) : null}
+        </>
       ) : null}
       {etapa.id === "credito" ? (
         <CreditoSerasa entityId={entityId} onResultado={onCreditoResultado} />
@@ -3550,6 +3692,172 @@ function ValidacaoLadoALado({
   );
 }
 
+
+// AS CAIXINHAS DA HABILITAÇÃO. É aqui que a validação da imobiliária vira decisão: o operador
+// confere os documentos ao lado (ValidacaoLadoALado) e marca o que libera.
+//
+// Mostra o que ela PEDIU, não a lista de empreendimentos ativos: liberar algo que a imobiliária
+// não pediu seria decidir por ela, e o servidor recusa de qualquer forma.
+function HabilitarEmpreendimentos({
+  entityId,
+  onHabilitar,
+}: {
+  entityId: string;
+  onHabilitar?: (entityId: string, empreendimentos: string[]) => Promise<boolean>;
+}) {
+  const [lista, setLista] = useState<
+    { enterpriseId: string; habilitado: boolean; label: string }[] | null
+  >(null);
+  const [marcados, setMarcados] = useState<Record<string, boolean>>({});
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState<null | string>(null);
+
+  useEffect(() => {
+    let ativo = true;
+    void (async () => {
+      try {
+        const token = await getApoloAccessToken();
+        const resposta = await fetch(
+          `/api/apolo/board/${encodeURIComponent(entityId)}/habilitar`,
+          { headers: { Authorization: `Bearer ${token}` } },
+        );
+        const corpo = (await resposta.json().catch(() => null)) as {
+          data?: { empreendimentos?: { enterpriseId: string; habilitado: boolean; label: string }[] };
+        } | null;
+        if (!ativo) return;
+
+        const empreendimentos = corpo?.data?.empreendimentos ?? [];
+        setLista(empreendimentos);
+        // Já habilitado nasce marcado: o operador vê o estado real, e desmarcar não desabilita
+        // (o servidor nunca rebaixa por omissão).
+        setMarcados(
+          Object.fromEntries(
+            empreendimentos.filter((e) => e.habilitado).map((e) => [e.enterpriseId, true]),
+          ),
+        );
+      } catch {
+        if (ativo) setLista([]);
+      }
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [entityId]);
+
+  if (lista === null) {
+    return (
+      <div className="mt-4 flex items-center gap-2 rounded-2xl border border-line bg-subtle/40 px-4 py-3 text-xs text-ink-muted">
+        <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+        Carregando os empreendimentos pedidos…
+      </div>
+    );
+  }
+
+  if (lista.length === 0) {
+    return (
+      <div className="mt-4 rounded-2xl border border-line bg-subtle/40 px-4 py-3 text-xs text-ink-muted">
+        Esta imobiliária não pediu nenhum empreendimento.
+      </div>
+    );
+  }
+
+  const escolhidos = lista.map((item) => item.enterpriseId).filter((id) => marcados[id]);
+  const novos = lista.filter((item) => !item.habilitado && marcados[item.enterpriseId]).length;
+
+  return (
+    <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-surface">
+      <div className="flex items-start gap-3 border-b border-line bg-subtle/40 px-4 py-3">
+        <span className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-inverse text-brand-ink">
+          <ShieldCheck aria-hidden="true" className="size-4" />
+        </span>
+        <div className="min-w-0">
+          <h4 className="m-0 text-sm font-semibold text-ink">Empreendimentos a liberar</h4>
+          <p className="m-0 mt-0.5 text-xs text-ink-muted">
+            Marque onde esta imobiliária pode enviar CAD. O que ficar de fora continua aguardando.
+          </p>
+        </div>
+      </div>
+
+      <div className="grid gap-2 px-4 py-3">
+        {lista.map((item) => {
+          const ativo = Boolean(marcados[item.enterpriseId]);
+          return (
+            <label
+              className={`flex cursor-pointer items-center gap-3 rounded-xl border px-3 py-2.5 text-sm transition-colors ${
+                ativo
+                  ? "border-ink/30 bg-black/[0.045] text-ink dark:bg-white/[0.07]"
+                  : "border-line bg-surface text-ink-soft hover:border-line-strong hover:text-ink"
+              }`}
+              key={item.enterpriseId}
+            >
+              <input
+                checked={ativo}
+                className="size-4 shrink-0 accent-neutral-900 dark:accent-neutral-200"
+                onChange={(event) =>
+                  setMarcados((atual) => ({
+                    ...atual,
+                    [item.enterpriseId]: event.target.checked,
+                  }))
+                }
+                type="checkbox"
+              />
+              <span className="min-w-0 flex-1 truncate font-medium">{item.label}</span>
+              {item.habilitado ? (
+                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 dark:bg-emerald-500/15 dark:text-emerald-300">
+                  <Check aria-hidden="true" className="size-3" />
+                  habilitado
+                </span>
+              ) : null}
+            </label>
+          );
+        })}
+      </div>
+
+      {erro ? (
+        <p className="mx-4 mb-3 flex items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
+          <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
+          {erro}
+        </p>
+      ) : null}
+
+      <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
+        <span className="text-xs text-ink-muted">
+          {novos === 0
+            ? "Nenhum empreendimento novo marcado"
+            : novos === 1
+              ? "1 empreendimento será liberado"
+              : `${novos} empreendimentos serão liberados`}
+        </span>
+
+        <button
+          className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
+          disabled={salvando || escolhidos.length === 0 || !onHabilitar}
+          onClick={async () => {
+            if (!onHabilitar) return;
+            setSalvando(true);
+            setErro(null);
+            const ok = await onHabilitar(entityId, escolhidos);
+            setSalvando(false);
+            if (!ok) setErro("Não foi possível habilitar. Veja o aviso acima do card.");
+          }}
+          type="button"
+        >
+          {salvando ? (
+            <>
+              <Loader2 aria-hidden="true" className="size-3.5 animate-spin" />
+              Habilitando…
+            </>
+          ) : (
+            <>
+              <ShieldCheck aria-hidden="true" className="size-3.5" />
+              Habilitar imobiliária
+            </>
+          )}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function PainelConcluido({ imob }: { imob: boolean }) {
   return (
