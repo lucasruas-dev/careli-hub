@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-iris-central-relacionamento",
+    deployedAt: "2026-08-15T11:30:00-03:00",
+    modules: [
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "A fila Direct passou a se chamar Central de Relacionamento",
+              "O atendimento 1:1 com corretor e imobiliaria ganhou canal proprio, separado do monitoramento de grupos",
+              "As respostas que a coordenadora manda pelo celular passam a mostrar o autor no board",
+            ],
+            screen: "Iris - Central de Relacionamento",
+          },
+        ],
+      },
+    ],
+    technical: {
+      done:
+        "Primeiro passo da modernizacao da Iris, sobre o diagnostico em docs/operations/iris-diagnostico-2026-08.md (12 agentes, 66 achados criticos/altos, com medicao em producao). Grupo e Direct dividiam o MESMO canal `whatsapp-grupo`, que nao tem numero nem fila: dai a fila Direct herdar o 4143 ao abrir atendimento e 9.187 mensagens do 1:1 estarem gravadas como se fossem de grupo. O processador agora resolve os DOIS canais de uma vez, fora do laco, e escolhe pelo tipo do JID; enquanto a migration 0086 nao for aplicada ele cai no canal do grupo, entao o codigo sobe sem depender da ordem. A autoria da saida sem operador passa a ser o dono padrao DA FILA (nao um id fixo): no 1:1 quem responde pelo celular e sempre a coordenadora, e a fila do Grupo, que nao tem dono padrao porque la respondem tres pessoas, continua sem autor - atribuir ali viraria metrica falsa. Medido antes: 3.247 saidas em 30 dias sem autor (80% daquele atendimento) contra 814 pela Iris. O slug interno da fila (relacionamento-direct) NAO foi tocado de proposito: renomear slug para arrumar rotulo ja quebrou coisa aqui, e a v1.38.0 fez a mesma distincao. A migration 0086 NAO foi aplicada neste deploy.",
+      motivation:
+        "Lucas: \"vamos separar sistemicamente\" e \"nao quero esse nome direct, tratar com a central de relacionamento\". Sao duas operacoes diferentes dividindo um canal por acidente historico: o grupo e monitoramento sem ticket; o 1:1 e atendimento com SLA e uma responsavel.",
+    },
+    title: "Iris: Central de Relacionamento com canal proprio",
+    type: "novidade",
+    version: "1.136.0",
+  },
+  {
     buildTag: "2026-08-14-credenciamento-lagoa-bonita",
     deployedAt: "2026-08-14T20:30:00-03:00",
     modules: [
