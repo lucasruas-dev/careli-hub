@@ -16,40 +16,53 @@
 -- grupos, ou avisar todos os corretores. Fica para depois, se a operação pedir — e aí é só
 -- trocar a config deste canal.
 --
--- ⚠️ Não aplicar sem autorização expressa do Lucas (regra-mãe: migration = operação sensível).
+-- ✅ APLICADA EM PRODUCAO em 15/08/2026, com autorizacao do Lucas.
+--
+-- Conferido antes e depois: 9.190 mensagens 1:1 mudaram de canal, 641 tickets, 3.039 saidas
+-- ganharam a coordenadora como autora (ficou ZERO sem autor), e as 4.857 de grupo seguiram
+-- intactas. As 532 mensagens de grupo que TEM autor sao envios feitos pela Iris (Nivea 276,
+-- Cinthia 250) e nao foram tocadas.
 
 -- ── O CANAL DO ATENDIMENTO 1:1 ───────────────────────────────────────────────
 -- `kind` e `provider` iguais aos do canal de grupo: quem filtra por provider='meta' (a
 -- resolução de número da Meta) continua ignorando os dois, que é o comportamento correto.
-insert into public.caredesk_channels (name, slug, kind, provider, is_active, metadata)
+insert into public.caredesk_channels
+  (workspace_id, name, slug, kind, provider, phone_number, status, config, metadata)
 select
+  c.workspace_id,
   'Central de Relacionamento',
   'whatsapp-relacionamento',
   c.kind,
   c.provider,
-  true,
+  '553172506566',
+  c.status,
   jsonb_build_object(
+    'mode', 'direct',
+    'readOnly', false,
     'evolutionInstance', 'caca-observadora',
-    'phone', '553172506566',
-    'origem', 'migration 0086',
-    -- O processador lê isto em vez das constantes que estavam no código.
-    'jidSuffix', '@s.whatsapp.net'
+    'defaultQueueSlug', 'relacionamento-direct',
+    'jidSuffix', '@s.whatsapp.net',
+    'cacaEnabled', false,
+    'inbound_enabled', true,
+    'outbound_enabled', true
+  ),
+  jsonb_build_object(
+    'description', 'Atendimento 1:1 com corretor e imobiliaria pela Evolution API.',
+    'origem', 'migration 0086'
   )
 from public.caredesk_channels c
 where c.slug = 'whatsapp-grupo'
   and not exists (select 1 from public.caredesk_channels x where x.slug = 'whatsapp-relacionamento');
 
--- Carimba a instância no canal de grupo também, para o processador parar de depender de
--- constante nos DOIS caminhos.
+-- ⚠️ O QUE E FUNCIONAL VIVE EM `config`, nao em `metadata`: e o padrao do canal do 4143
+-- (`cacaEnabled`, `defaultQueueSlug`), e e de la que a tela e o processador leem.
+-- `cacaEnabled` nasce FALSE de proposito: ligar a CACA nesta central e decisao a parte, e no
+-- codigo de hoje ela so atende pelo caminho da Meta.
 update public.caredesk_channels
-   set metadata = coalesce(metadata, '{}'::jsonb) || jsonb_build_object(
-         'evolutionInstance', 'caca-observadora',
-         'phone', '553172506566',
-         'jidSuffix', '@g.us')
+   set phone_number = coalesce(phone_number, '553172506566'),
+       config = coalesce(config, '{}'::jsonb) || jsonb_build_object('jidSuffix', '@g.us')
  where slug = 'whatsapp-grupo';
 
--- ── A FILA DIRECT PASSA A APONTAR PARA O CANAL NOVO ──────────────────────────
--- Sem isto, abrir atendimento na fila Direct continua caindo no 4143.
 update public.caredesk_queues q
    set metadata = coalesce(q.metadata, '{}'::jsonb) || jsonb_build_object('channelId', c.id)
   from public.caredesk_channels c
