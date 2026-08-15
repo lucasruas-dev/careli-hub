@@ -2040,6 +2040,7 @@ export async function sendMetaWhatsAppMediaMessage({
   fileName,
   kind,
   mediaBase64,
+  mediaUrl,
   mimeType,
   to,
 }: {
@@ -2048,7 +2049,10 @@ export async function sendMetaWhatsAppMediaMessage({
   contextMessageId?: string | null;
   fileName: string;
   kind: "document" | "image" | "video";
-  mediaBase64: string;
+  // Uma das duas. `mediaUrl` é o caminho do arquivo GRANDE: a Meta baixa da URL sozinha, e a
+  // nossa função serverless não precisa carregar 60MB na memória para reenviar.
+  mediaBase64?: string;
+  mediaUrl?: string;
   mimeType: string;
   to: string;
 }): Promise<MetaWhatsAppSendMessageResult> {
@@ -2063,21 +2067,29 @@ export async function sendMetaWhatsAppMediaMessage({
     );
   }
 
-  const mediaId = await uploadMetaWhatsAppMediaFile({
-    accessToken,
-    base64: mediaBase64,
-    fileName,
-    graphVersion,
-    mimeType,
-    phoneNumberId,
-  });
+  // COM LINK: a Meta busca o arquivo na URL pública do nosso Storage. É o caminho do arquivo
+  // grande — o upload por `/media` exigiria carregar o arquivo inteiro aqui dentro, e uma função
+  // serverless não aguenta 60MB em memória mais o reenvio dentro do tempo dela.
+  // Sem link, segue o caminho antigo (upload para a Meta, que devolve um id).
+  const mediaId = mediaUrl
+    ? null
+    : await uploadMetaWhatsAppMediaFile({
+        accessToken,
+        base64: mediaBase64 ?? "",
+        fileName,
+        graphVersion,
+        mimeType,
+        phoneNumberId,
+      });
 
   const normalizedCaption =
     typeof caption === "string" && caption.trim()
       ? toWhatsAppFormatting(caption.trim())
       : null;
 
-  const mediaObject: Record<string, unknown> = { id: mediaId };
+  const mediaObject: Record<string, unknown> = mediaUrl
+    ? { link: mediaUrl }
+    : { id: mediaId };
 
   // Caption só vale pra imagem/vídeo/documento (o Meta ignora em outros tipos).
   if (normalizedCaption) {

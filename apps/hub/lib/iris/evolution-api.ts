@@ -80,19 +80,23 @@ export async function sendEvolutionGroupMedia({
   mediatype,
   mentions,
   mimeType,
+  url,
 }: {
-  base64: string;
+  // Uma das duas. `url` é o caminho do arquivo GRANDE: o campo `media` da Evolution aceita tanto
+  // base64 quanto URL, e mandar a URL evita carregar 60MB na memória da função serverless.
+  base64?: string;
   caption: string;
   fileName: string;
   groupJid: string;
   mediatype: "document" | "image" | "video";
   mentions?: EvolutionMentions | null;
   mimeType: string;
+  url?: string;
 }): Promise<EvolutionSendResult> {
   return postEvolutionMessage("sendMedia", {
     caption,
     fileName,
-    media: base64,
+    media: url ?? base64,
     mediatype,
     mimetype: mimeType,
     number: groupJid,

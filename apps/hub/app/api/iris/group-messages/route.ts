@@ -6,7 +6,7 @@ import {
   sendEvolutionGroupReaction,
   sendEvolutionGroupText,
 } from "@/lib/iris/evolution-api";
-import { uploadIrisMediaBuffer } from "@/lib/iris/meta-media-storage";
+import { IRIS_MEDIA_BUCKET, uploadIrisMediaBuffer } from "@/lib/iris/meta-media-storage";
 import { authorizeIrisMetaRequest } from "@/lib/iris/meta-server";
 import { signWhatsAppBody } from "@/lib/iris/meta-whatsapp";
 
@@ -27,11 +27,14 @@ const MESSAGE_SELECT =
 const DIRECT_JID_SUFFIX = "@s.whatsapp.net";
 
 type OutboundMedia = {
-  base64: string;
+  // Uma das duas: `base64` (arquivo pequeno, veio no corpo) ou `url` (arquivo grande, já subiu
+  // direto para o Storage). O campo `media` da Evolution aceita as duas formas.
+  base64?: string;
   durationMs: number | null;
   fileName: string;
   mimeType: string;
   type: "audio" | "document" | "image";
+  url?: string;
 };
 
 // Alvo resolvido: pra onde enviar (Evolution) e a quem pertence a mensagem.
@@ -225,7 +228,9 @@ async function sendToTarget({
   const sent = media
     ? media.type === "audio"
       ? await sendEvolutionGroupAudio({
-          base64: media.base64,
+          // Áudio nunca chega por URL (normalizeOutboundMedia recusa `url` para audio), então
+          // aqui o base64 sempre existe; o `?? """ é só para o tipo.
+          base64: media.base64 ?? '',
           groupJid: target.sendNumber,
         })
       : await sendEvolutionGroupMedia({
@@ -236,6 +241,7 @@ async function sendToTarget({
           mediatype: media.type,
           mentions: effectiveMentions,
           mimeType: media.mimeType,
+          url: media.url,
         })
     : await sendEvolutionGroupText({
         groupJid: target.sendNumber,
@@ -447,6 +453,15 @@ async function readRelacionamentoChannelId(client: any) {
 }
 
 async function uploadOutboundMedia(client: any, media: OutboundMedia) {
+  // Já está no Storage (upload direto): a URL para guardar no histórico é essa mesma.
+  if (media.url) {
+    return media.url;
+  }
+
+  if (!media.base64) {
+    return null;
+  }
+
   try {
     const persisted = await uploadIrisMediaBuffer({
       buffer: Buffer.from(media.base64, "base64"),
@@ -475,10 +490,31 @@ function normalizeOutboundMedia(value: unknown): OutboundMedia | null {
   const dataUrl = typeof record.dataUrl === "string" ? record.dataUrl : "";
   const type = record.type;
 
-  if (
-    !dataUrl ||
-    (type !== "audio" && type !== "document" && type !== "image")
-  ) {
+  if (type !== "audio" && type !== "document" && type !== "image") {
+    return null;
+  }
+
+  // Arquivo GRANDE: já está no Storage e veio só a referência. Só a URL do nosso bucket é
+  // aceita — URL livre faria o gateway buscar (e o grupo receber) arquivo de qualquer lugar.
+  const url = typeof record.url === "string" ? record.url.trim() : "";
+  if (url && type !== "audio") {
+    if (!url.includes(`/${IRIS_MEDIA_BUCKET}/`)) {
+      return null;
+    }
+
+    return {
+      durationMs: null,
+      fileName:
+        typeof record.fileName === "string" && record.fileName.trim()
+          ? record.fileName.trim().slice(0, 120)
+          : "documento",
+      mimeType: typeof record.mimeType === "string" ? record.mimeType : "",
+      type,
+      url,
+    };
+  }
+
+  if (!dataUrl) {
     return null;
   }
 

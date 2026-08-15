@@ -46,6 +46,7 @@ export function CredenciamentoFlow() {
   const [desejados, setDesejados] = useState<string[]>([]);
   const [cnpj, setCnpj] = useState("");
   const [consultando, setConsultando] = useState(false);
+  const [enviando, setEnviando] = useState(false);
   const [consulta, setConsulta] = useState<Consulta | null>(null);
   const [erro, setErro] = useState<string | null>(null);
   const [habilitar, setHabilitar] = useState<string[]>([]);
@@ -114,6 +115,54 @@ export function CredenciamentoFlow() {
       setErro(error instanceof Error ? error.message : "Falha na consulta.");
     } finally {
       setConsultando(false);
+    }
+  }
+
+  // 🔴 O BOTÃO SÓ TROCAVA A TELA. Era `onClick={() => setEtapa("enviado")}`: a tela de sucesso
+  // com o check verde aparecia e NADA era gravado. Foi o que o Lucas viu ao habilitar a RAIANE
+  // IMOBILIARIA no Jardim das Gerais em 15/08 — "mesmo aparecendo a mensagem não criou o
+  // vínculo". A memória de 18/jul já registrava isto como pendência ("a tela de sucesso é só
+  // visual") e ficou aberta.
+  //
+  // Reusa `/board/[id]/habilitar`, a mesma rota do Board: assim a trava do corretor, a auditoria
+  // e o disparo das mensagens valem aqui também, em vez de existirem em dois lugares diferentes.
+  async function solicitarHabilitacao() {
+    if (!consulta?.entityId || habilitar.length === 0 || enviando) {
+      return;
+    }
+
+    setErro(null);
+    setEnviando(true);
+
+    try {
+      const accessToken = await getApoloAccessToken();
+      const response = await fetch(
+        `/api/apolo/board/${encodeURIComponent(consulta.entityId)}/habilitar`,
+        {
+          body: JSON.stringify({ acao: "habilitar", empreendimentos: habilitar }),
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+            "Content-Type": "application/json",
+          },
+          method: "POST",
+        },
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        // Sem isto a tela dizia "enviado" mesmo quando o servidor recusava (conflito de corretor,
+        // empreendimento que ela não pediu, falha de rede).
+        setErro(payload?.error ?? "Não foi possível habilitar. Tente de novo.");
+        return;
+      }
+
+      setEtapa("enviado");
+    } catch (error) {
+      setErro(error instanceof Error ? error.message : "Falha ao habilitar.");
+    } finally {
+      setEnviando(false);
     }
   }
 
@@ -325,10 +374,10 @@ export function CredenciamentoFlow() {
                 <Rodape>
                   <BotaoVoltar onClick={() => setEtapa("identificacao")} />
                   <BotaoPrimario
-                    disabled={habilitar.length === 0}
-                    onClick={() => setEtapa("enviado")}
+                    disabled={habilitar.length === 0 || enviando}
+                    onClick={solicitarHabilitacao}
                   >
-                    Solicitar habilitação
+                    {enviando ? "Habilitando…" : "Solicitar habilitação"}
                   </BotaoPrimario>
                 </Rodape>
               </>

@@ -47,6 +47,7 @@ import {
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import { toTitleCase } from "@/lib/format/name-case";
 
+import { expandirCamposComCaminho } from "@/lib/apolo/campos-aninhados";
 import { formatarTelefoneBR } from "@/lib/format/phone-br";
 
 import { buscarEnderecoPorCep } from "../../lib/cep";
@@ -2884,6 +2885,16 @@ const opcao = (lista: { id: number | string; label: string }[], id: unknown): st
 // cadastro para que tudo que é DERIVADO acompanhe na hora: a idade recalcula ao trocar a data
 // de nascimento, e a seção Cônjuge aparece assim que ele marca "Casado" — em vez de só depois
 // de salvar e recarregar.
+// `<input type="date">` só aceita yyyy-mm-dd: com "15/08/2020" ele renderiza VAZIO, e o operador
+// vê um campo em branco onde havia data — e, se salvar sem perceber, apaga o que existia. As
+// fichas trazem os dois formatos (o C2X entrega BR, o cadastro do Apolo entrega ISO).
+function paraInputDate(valor: string): string {
+  const limpo = valor.trim();
+  const br = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(limpo);
+  if (br) return `${br[3]}-${br[2]}-${br[1]}`;
+  return limpo.slice(0, 10);
+}
+
 function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): SecaoFicha[] {
   const c = { ...ficha.cadastro, ...rascunho };
   const e = ficha.endereco;
@@ -2894,19 +2905,63 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
   const casado = ["2", "6"].includes(texto(c.estadoCivilId));
 
   if (pj) {
+    // ⚠️ TODO CAMPO PRECISA DE `chave`, SENÃO NASCE TRAVADO. A tela só oferece input quando o
+    // campo tem chave (`!editando || !campo.chave` → leitura). Estes campos vinham como
+    // `{ label, valor }` puro, então continuavam cinza mesmo depois de clicar em Editar — foi o
+    // que o Lucas encontrou ao tentar corrigir o telefone da imobiliária (15/08: "tudo tem que
+    // ser editável quando eu clico em Editar").
+    //
+    // Razão social e CNPJ usam as chaves "__nome" e "__documento", que a tela já conhece: elas
+    // viajam para a rota de IDENTIDADE (que valida dígito e colisão e audita), e não para o
+    // patch cru da ficha. Trocar o CNPJ de uma empresa é mudar quem ela é.
+    const empresaTexto = (chave: string, label: string, full = false): Campo => ({
+      chave,
+      full,
+      label,
+      tipo: "texto",
+      valor: texto(c[chave]),
+      valorCru: texto(c[chave]),
+    });
+
     secoes.push({
       campos: [
+        // ⚠️ RAZÃO SOCIAL E CNPJ FICAM SÓ DE LEITURA, e isso é decisão, não esquecimento.
+        // Eles viajariam pela rota de IDENTIDADE, que recusa com 409 toda ficha espelho do C2X
+        // ("a correção tem que ser feita no legado, senão o sync desfaz em até 6 horas") — e
+        // **417 das 435 imobiliárias são espelho**. Pior que não gravar: em `salvarTudo` a
+        // identidade vai PRIMEIRO e dá `throw`, então o 409 derrubaria a rodada inteira e o
+        // telefone que o operador acabou de corrigir também não seria salvo.
         { full: true, label: "Razão social", valor: titleCase(ficha.entidade.nome) },
-        { label: "Nome fantasia", valor: titleCase(ficha.entidade.nomeFantasia) },
+        {
+          chave: "nomeFantasia",
+          label: "Nome fantasia",
+          tipo: "texto",
+          valor: titleCase(texto(c.nomeFantasia) || ficha.entidade.nomeFantasia),
+          valorCru: texto(c.nomeFantasia) || ficha.entidade.nomeFantasia,
+        },
         { label: "CNPJ", valor: ficha.entidade.documento },
-        { label: "Porte", valor: texto(c.porte) },
-        { label: "Abertura", valor: formatDateBR(texto(c.dataAbertura)) },
-        { label: "Atualização cadastral", valor: formatDateBR(texto(c.dataAtualizacaoCadastral)) },
-        { label: "Situação cadastral", valor: texto(c.situacaoCadastral) },
-        { full: true, label: "Natureza jurídica", valor: texto(c.naturezaJuridica) },
-        { label: "CNAE", valor: texto(c.cnae) },
-        { full: true, label: "Atividade principal", valor: texto(c.atividade) },
-        ...(texto(c.creci) ? [{ label: "CRECI Jurídico", valor: texto(c.creci) }] : []),
+        empresaTexto("porte", "Porte"),
+        {
+          chave: "dataAbertura",
+          label: "Abertura",
+          tipo: "data",
+          valor: formatDateBR(texto(c.dataAbertura)),
+          valorCru: paraInputDate(texto(c.dataAbertura)),
+        },
+        {
+          chave: "dataAtualizacaoCadastral",
+          label: "Atualização cadastral",
+          tipo: "data",
+          valor: formatDateBR(texto(c.dataAtualizacaoCadastral)),
+          valorCru: paraInputDate(texto(c.dataAtualizacaoCadastral)),
+        },
+        empresaTexto("situacaoCadastral", "Situação cadastral"),
+        empresaTexto("naturezaJuridica", "Natureza jurídica", true),
+        empresaTexto("cnae", "CNAE"),
+        empresaTexto("atividade", "Atividade principal", true),
+        // CRECI aparece SEMPRE no modo PJ: antes só existia se já estivesse preenchido, então
+        // a imobiliária sem CRECI lido não tinha onde digitá-lo.
+        empresaTexto("creci", "CRECI Jurídico"),
       ],
       titulo: "Dados da empresa",
     });
@@ -3103,22 +3158,73 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
   const socios = Array.isArray(c.socios) ? (c.socios as Record<string, unknown>[]) : [];
   socios.forEach((s, i) => {
     const end = (s.endereco ?? {}) as Record<string, string>;
+
+    // Chave com CAMINHO (`socios.0.telefone`). O sócio mora dentro de um array, então não tem
+    // chave plana como o resto da ficha — e sem chave o campo nasce só de leitura. `salvarTudo`
+    // reagrupa esses caminhos e manda o array `socios` inteiro já corrigido.
+    //
+    // É por aqui que se corrige o TELEFONE DO REPRESENTANTE, que é justamente para onde saem as
+    // mensagens de credenciamento (a flag `representanteLegal` escolhe o destinatário). Errado
+    // ali, a imobiliária não recebe nada e ninguém descobre por quê.
+    const doSocio = (
+      campo: string,
+      label: string,
+      opts: { full?: boolean; opcoes?: { id: number | string; label: string }[]; tipo?: Campo["tipo"] } = {},
+    ): Campo => {
+      const bruto = texto(s[campo]);
+      const ehNome = /nome|bairro|cidade|logradouro/i.test(campo);
+      const ehTelefone = /telefone/i.test(campo);
+      return {
+        chave: `socios.${i}.${campo}`,
+        full: opts.full,
+        label,
+        opcoes: opts.opcoes,
+        tipo: opts.tipo ?? "texto",
+        valor: opts.opcoes
+          ? opcao(opts.opcoes, s[campo])
+          : opts.tipo === "data"
+            ? formatDateBR(bruto)
+            : ehTelefone
+              ? formatarTelefoneBR(bruto)
+              : ehNome
+                ? titleCase(bruto)
+                : bruto,
+        valorCru: opts.tipo === "data"
+          ? paraInputDate(bruto)
+          : ehTelefone
+            ? formatarTelefoneBR(bruto)
+            : bruto,
+      };
+    };
+    const doEndereco = (campo: string, label: string, full = false): Campo => {
+      const bruto = texto(end[campo]);
+      const ehNome = /bairro|cidade|logradouro/i.test(campo);
+      return {
+        chave: `socios.${i}.endereco.${campo}`,
+        full,
+        label,
+        tipo: "texto",
+        valor: ehNome ? titleCase(bruto) : bruto,
+        valorCru: bruto,
+      };
+    };
+
     secoes.push({
       campos: [
-        { full: true, label: "Nome", valor: titleCase(texto(s.nome)) },
-        { label: "CPF", valor: texto(s.cpf) },
-        { label: "Nascimento", valor: formatDateBR(texto(s.dataNascimento)) },
-        { label: "Sexo", valor: opcao(C2X_SEXO, s.sexoId) },
-        { label: "Estado civil", valor: opcao(C2X_ESTADO_CIVIL, s.estadoCivilId) },
-        { label: "Telefone", valor: texto(s.telefone) },
-        { full: true, label: "E-mail", valor: texto(s.email) },
-        {
-          full: true,
-          label: "Endereço",
-          valor: [titleCase(end.logradouro ?? ""), end.numero, titleCase(end.cidade ?? ""), end.uf]
-            .filter(Boolean)
-            .join(", "),
-        },
+        doSocio("nome", "Nome", { full: true }),
+        doSocio("cpf", "CPF"),
+        doSocio("dataNascimento", "Nascimento", { tipo: "data" }),
+        doSocio("sexoId", "Sexo", { opcoes: C2X_SEXO, tipo: "select" }),
+        doSocio("estadoCivilId", "Estado civil", { opcoes: C2X_ESTADO_CIVIL, tipo: "select" }),
+        doSocio("telefone", "Telefone"),
+        doSocio("email", "E-mail", { full: true }),
+        doEndereco("cep", "CEP"),
+        doEndereco("logradouro", "Logradouro", true),
+        doEndereco("numero", "Número"),
+        doEndereco("complemento", "Complemento"),
+        doEndereco("bairro", "Bairro"),
+        doEndereco("cidade", "Cidade"),
+        doEndereco("uf", "UF"),
       ],
       titulo: `Sócio ${i + 1}${s.representanteLegal ? " · representante legal" : ""}`,
     });
@@ -3143,13 +3249,33 @@ function montarSecoes(ficha: Ficha, rascunho: Record<string, string> = {}): Seca
     ? (c.corretores as Record<string, unknown>[])
     : [];
   corretores.forEach((k, i) => {
+    // Editável pelo mesmo caminho dos sócios. ⚠️ ESCOPO: corrige o que a imobiliária DECLAROU
+    // no cadastro. O corretor também existe como entidade própria com vínculo em
+    // `apolo_relationships`, e essa ficha tem tela própria — corrigir aqui não reescreve lá.
+    const doCorretor = (campo: string, label: string, full = false): Campo => {
+      const bruto = texto(k[campo]);
+      const ehTelefone = /telefone/i.test(campo);
+      return {
+        chave: `corretores.${i}.${campo}`,
+        full,
+        label,
+        tipo: "texto",
+        valor: /nome/i.test(campo)
+          ? titleCase(bruto)
+          : ehTelefone
+            ? formatarTelefoneBR(bruto)
+            : bruto,
+        valorCru: ehTelefone ? formatarTelefoneBR(bruto) : bruto,
+      };
+    };
+
     secoes.push({
       campos: [
-        { full: true, label: "Nome", valor: titleCase(texto(k.nome)) },
-        { label: "CPF", valor: texto(k.cpf) },
-        { label: "CRECI", valor: texto(k.creci) },
-        { label: "Telefone", valor: texto(k.telefone) },
-        { full: true, label: "E-mail", valor: texto(k.email) },
+        doCorretor("nome", "Nome", true),
+        doCorretor("cpf", "CPF"),
+        doCorretor("creci", "CRECI"),
+        doCorretor("telefone", "Telefone"),
+        doCorretor("email", "E-mail", true),
       ],
       titulo: `Corretor ${i + 1}`,
     });
@@ -3287,13 +3413,21 @@ function ValidacaoLadoALado({
       }
 
       // O resto vai para a ficha. As chaves com "__" são da identidade e não entram aqui.
-      const campos = Object.fromEntries(
+      const campos: Record<string, unknown> = Object.fromEntries(
         Object.entries(rascunho).filter(([chave]) => !chave.startsWith("__")),
       );
 
-      if (Object.keys(campos).length > 0) {
+      // CAMINHOS (`socios.0.telefone`) viram o array `socios` INTEIRO, já corrigido — é o que
+      // permite consertar o telefone do representante legal, que é justamente para onde saem as
+      // mensagens de credenciamento. Ver `expandirCamposComCaminho` (com testes).
+      const paraGravar = expandirCamposComCaminho(
+        campos,
+        (ficha.cadastro ?? {}) as Record<string, unknown>,
+      );
+
+      if (Object.keys(paraGravar).length > 0) {
         const resposta = await fetch(`/api/apolo/board/${entityId}`, {
-          body: JSON.stringify({ campos }),
+          body: JSON.stringify({ campos: paraGravar }),
           headers,
           method: "PATCH",
         });

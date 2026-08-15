@@ -117,3 +117,50 @@ describe("habilitação da imobiliária", () => {
     ).toBe("Nada a habilitar");
   });
 });
+
+// ── EMPREENDIMENTO NOVO (imobiliária que JÁ é credenciada) ──────────────────────────────────
+// O portal interno lista o que ela AINDA NÃO trabalha, então por construção nenhum escolhido
+// existe como pedido. Sem `ativos`, todos caíam em `desconhecidos` e a rota devolvia 400 sempre.
+describe("planejarHabilitacao com empreendimentos abertos (ativos)", () => {
+  it("aceita empreendimento sem vínculo quando ele está entre os abertos", () => {
+    const plano = planejarHabilitacao({
+      ativos: ["10", "20"],
+      escolhidos: ["20"],
+      pedidos: [],
+    });
+
+    expect(plano.novos).toEqual(["20"]);
+    expect(plano.desconhecidos).toEqual([]);
+    expect(plano.promoverPapel).toBe(true);
+  });
+
+  it("continua recusando o que não está aberto, mesmo com ativos informado", () => {
+    const plano = planejarHabilitacao({
+      ativos: ["10"],
+      escolhidos: ["99"],
+      pedidos: [],
+    });
+
+    expect(plano.novos).toEqual([]);
+    expect(plano.desconhecidos).toEqual(["99"]);
+    expect(plano.promoverPapel).toBe(false);
+  });
+
+  it("SEM ativos mantém a proteção do Board: escolhido sem pedido é desconhecido", () => {
+    const plano = planejarHabilitacao({ escolhidos: ["20"], pedidos: [] });
+
+    expect(plano.novos).toEqual([]);
+    expect(plano.desconhecidos).toEqual(["20"]);
+  });
+
+  it("separa o que promove do que cria, na mesma rodada", () => {
+    const plano = planejarHabilitacao({
+      ativos: ["10", "20"],
+      escolhidos: ["10", "20"],
+      pedidos: [{ enterpriseId: "10", id: "rel-1", label: "Vale do Ouro", status: "pending" }],
+    });
+
+    expect(plano.habilitar).toEqual(["rel-1"]);
+    expect(plano.novos).toEqual(["20"]);
+  });
+});

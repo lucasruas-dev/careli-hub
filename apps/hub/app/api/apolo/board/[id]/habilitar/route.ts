@@ -20,6 +20,7 @@ import {
   type VinculoDeCorretor,
 } from "@/lib/apolo/credenciamento-trava-corretor";
 import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
+import { listEmpreendimentosAtivos } from "@/lib/apolo/credenciamento";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // HABILITAR / INDEFERIR o credenciamento de uma imobiliária.
@@ -234,8 +235,43 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   // ── HABILITAR ──────────────────────────────────────────────────────────────
+  //
+  // ⚠️ QUEM JÁ É CREDENCIADA PODE RECEBER EMPREENDIMENTO NOVO, sem vínculo prévio. É a regra do
+  // Lucas ("imobiliária que já tem cadastro não precisa cair na fila de validação"), e é o que o
+  // portal interno de credenciamento faz: ele lista os empreendimentos que ela AINDA NÃO
+  // trabalha, ou seja, por construção nenhum deles existe como pedido. Sem `ativos`, todos
+  // caíam em `desconhecidos` e o botão devolvia 400 em 100% dos casos.
+  //
+  // Para quem ainda está em `review` nada muda: o operador só pode liberar o que ela pediu, que
+  // é a proteção contra habilitar um produto às escondidas na tela de validação.
+  const jaCredenciada = papel.status === "active";
+  let escolhidos = listaDeTexto(corpo.empreendimentos);
+  let ativos: string[] | undefined;
+  // Label de cada id REAL, para nomear o vínculo criado do zero.
+  const labelPorId = new Map<string, string>();
+
+  if (jaCredenciada) {
+    const lista = await listEmpreendimentosAtivos(adminClient);
+    const porId = new Map(lista.map((e) => [String(e.id), e]));
+
+    // GRUPO VIRA AS ETAPAS REAIS (Lagoa Bonita = LBF + LBR + LBP), mesma regra da rota pública.
+    // O vínculo guarda o enterprise_id real; o id do grupo não casa com nada no C2X.
+    const expandir = (emp: (typeof lista)[number]): string[] =>
+      emp.stageIds.length ? emp.stageIds.map(String) : [String(emp.id)];
+
+    escolhidos = escolhidos.flatMap((id) => {
+      const emp = porId.get(id);
+      if (!emp) return [id];
+      const reais = expandir(emp);
+      for (const real of reais) labelPorId.set(real, emp.name);
+      return reais;
+    });
+    ativos = lista.flatMap(expandir);
+  }
+
   const plano = planejarHabilitacao({
-    escolhidos: listaDeTexto(corpo.empreendimentos),
+    ativos,
+    escolhidos,
     pedidos,
   });
 
@@ -261,7 +297,17 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   // Um corretor não trabalha o mesmo empreendimento por duas imobiliárias (regra do Lucas). A
   // checagem é AQUI porque é aqui que o vínculo passa a valer: até a habilitação, o pedido é só
   // uma intenção. Barrar antes seria recusar um cadastro que talvez nem seja aprovado.
-  const escolhidosParaTrava = pedidos.filter((p) => plano.habilitar.includes(p.id));
+  // Os empreendimentos NOVOS entram na trava também: é neles que o conflito de corretor tem mais
+  // chance de existir, porque são justamente os que ela ainda não trabalhava.
+  const escolhidosParaTrava = [
+    ...pedidos.filter((p) => plano.habilitar.includes(p.id)),
+    ...plano.novos.map((enterpriseId) => ({
+      enterpriseId,
+      id: enterpriseId,
+      label: labelPorId.get(enterpriseId) ?? "Empreendimento",
+      status: "verified",
+    })),
+  ];
 
   if (escolhidosParaTrava.length > 0) {
     const { data: meusCorretores } = await adminClient
@@ -376,6 +422,33 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     }
   }
 
+  // Empreendimento que ela ainda não tinha pedido: o vínculo nasce JÁ habilitado. Só chega aqui
+  // quem já é credenciada e escolheu um empreendimento aberto (ver `ativos` acima).
+  if (plano.novos.length > 0) {
+    const { error } = await adminClient.from("apolo_relationships").insert(
+      plano.novos.map((enterpriseId) => ({
+        entity_id: id,
+        label: labelPorId.get(enterpriseId) ?? "Empreendimento",
+        metadata: {
+          enterpriseId,
+          kind: "trabalho",
+          role: "empreendimento",
+          source: "apolo-credenciamento",
+        },
+        related_entity_id: null,
+        relationship_type: "empreendimento",
+        status: "verified",
+      })),
+    );
+
+    if (error) {
+      return NextResponse.json(
+        { error: "Nao foi possivel habilitar os empreendimentos." },
+        { status: 500 },
+      );
+    }
+  }
+
   // PRIMEIRA VEZ ou só mais um empreendimento? Lido ANTES de promover, senão o papel já estaria
   // 'active' e toda habilitação pareceria rotina. É o que decide o texto que a imobiliária
   // recebe: "seu cadastro foi aprovado" para quem chega agora, "mais um empreendimento" para
@@ -405,7 +478,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     entity_id: id,
     field_name: "credenciamento",
     metadata: {
-      empreendimentos: plano.habilitar.length,
+      empreendimentos: plano.habilitar.length + plano.novos.length,
       jaHabilitados: plano.jaHabilitados.length,
       origem: "board",
       seguemPendentes: plano.seguemPendentes.length,
@@ -416,9 +489,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   // AVISA. Best-effort e DEPOIS da gravação: a habilitação é o que destrava a CAD, e uma falha
   // de WhatsApp não pode desfazê-la. O resultado do envio volta no resumo, para o operador saber
   // se precisa avisar à mão.
-  const habilitados = pedidos
-    .filter((p) => plano.habilitar.includes(p.id) || plano.jaHabilitados.includes(p.id))
-    .map((p) => ({ label: p.label }));
+  const habilitados = [
+    ...pedidos
+      .filter((p) => plano.habilitar.includes(p.id) || plano.jaHabilitados.includes(p.id))
+      .map((p) => ({ label: p.label })),
+    ...plano.novos.map((enterpriseId) => ({
+      label: labelPorId.get(enterpriseId) ?? "Empreendimento",
+    })),
+  ];
   const contato = await contatoDaEntidadeImobiliaria(adminClient, id);
   const rep = await representanteDaImobiliaria(adminClient, id);
   const corretores = await adminClient
@@ -431,9 +509,15 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   // de três produtos recebe UMA mensagem com os três, não três mensagens iguais.
   const coordenadores = await coordenadoresDosEmpreendimentos(
     adminClient,
-    pedidos
-      .filter((p) => plano.habilitar.includes(p.id))
-      .map((p) => ({ enterpriseId: p.enterpriseId, label: p.label })),
+    [
+      ...pedidos
+        .filter((p) => plano.habilitar.includes(p.id))
+        .map((p) => ({ enterpriseId: p.enterpriseId, label: p.label })),
+      ...plano.novos.map((enterpriseId) => ({
+        enterpriseId,
+        label: labelPorId.get(enterpriseId) ?? "Empreendimento",
+      })),
+    ],
     loadApoloEnterpriseCadastro,
   );
 
@@ -454,7 +538,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     data: {
       acao: "habilitar",
       avisou: envio.imobiliaria.ok,
-      habilitados: plano.habilitar.length,
+      habilitados: plano.habilitar.length + plano.novos.length,
       ok: true,
       resumo: resumoDaHabilitacao(plano),
       seguemPendentes: plano.seguemPendentes.length,

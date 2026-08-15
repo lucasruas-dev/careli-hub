@@ -30,6 +30,9 @@ export type PlanoDeHabilitacao = {
   promoverPapel: boolean;
   // enterpriseIds que o operador mandou e não estão entre os pedidos desta imobiliária
   desconhecidos: string[];
+  // enterpriseIds legítimos que ainda NÃO têm vínculo e precisam ser CRIADOS já habilitados.
+  // Só é preenchido quando quem chama informa a lista de empreendimentos abertos (`ativos`).
+  novos: string[];
   // vínculos que continuam pendentes (o operador liberou só uma parte)
   seguemPendentes: string[];
 };
@@ -38,7 +41,15 @@ export type PlanoDeHabilitacao = {
 //
 // Empreendimento não escolhido **continua `pending`**, não vira recusado: o operador pode
 // liberar hoje o Vale do Ouro e o Garden semana que vem, sem a imobiliária pedir de novo.
+//
+// `ativos` é OPCIONAL e muda o tratamento do que não tem vínculo. Sem ele (fluxo do Board), o
+// escolhido sem pedido é `desconhecido` e vira 400 — o operador não deve habilitar às escondidas
+// um empreendimento que a imobiliária não pediu. Com ele (habilitação de quem JÁ é credenciada,
+// que pela regra do Lucas não passa pela fila), o escolhido que consta na lista de
+// empreendimentos abertos entra em `novos` e o vínculo nasce já habilitado. O que não estiver
+// nem nos pedidos nem nos ativos continua sendo `desconhecido` nos dois casos.
 export function planejarHabilitacao(input: {
+  ativos?: string[];
   escolhidos: string[];
   pedidos: EmpreendimentoPedido[];
 }): PlanoDeHabilitacao {
@@ -73,14 +84,20 @@ export function planejarHabilitacao(input: {
     }
   }
 
+  const semVinculo = [...escolhidos].filter((id) => !encontrados.has(id));
+  const ativos = input.ativos ? new Set(input.ativos.map((id) => id.trim()).filter(Boolean)) : null;
+  const novos = ativos ? semVinculo.filter((id) => ativos.has(id)) : [];
+  const desconhecidos = ativos ? semVinculo.filter((id) => !ativos.has(id)) : semVinculo;
+
   return {
-    desconhecidos: [...escolhidos].filter((id) => !encontrados.has(id)),
+    desconhecidos,
     habilitar,
     jaHabilitados,
+    novos,
     // O papel sobe quando a imobiliária passa a trabalhar com PELO MENOS UM empreendimento.
     // Sem nenhum, ela ficaria "credenciada para nada": o CNPJ passaria a valer no formulário do
     // corretor e nenhum empreendimento apareceria para ele escolher.
-    promoverPapel: habilitar.length + jaHabilitados.length > 0,
+    promoverPapel: habilitar.length + jaHabilitados.length + novos.length > 0,
     seguemPendentes,
   };
 }

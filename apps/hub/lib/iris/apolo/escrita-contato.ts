@@ -162,7 +162,13 @@ export async function atualizarContatoDoContato(
       entity_id: entrada.entidadeId,
       is_primary: true,
       normalized_value: normalizado,
-      status: "active",
+      // ⚠️ NÃO É "active". O CHECK de `apolo_contacts` aceita só
+      // verified | pending | attention | blocked, e a coluna é `text` — o typecheck passa verde e
+      // o INSERT falha sempre. Pior: o `update({is_primary:false})` logo acima JÁ RODOU, então a
+      // entidade ficava sem contato principal nenhum e o disparo caía num número antigo.
+      // Mesmo bug já corrigido em `prevenda-fluxo.ts` (changelog v1.115.0); esta função nunca
+      // tinha sido exercitada porque a escrita do cockpit ficou pronta sem UI.
+      status: "pending",
       value: valorCru,
     });
 
@@ -272,7 +278,10 @@ export async function vincularContato(
         metadata: { kind, origem: "iris-cockpit" },
         related_entity_id: entrada.entidadeId,
         relationship_type: tipo,
-        status: "active",
+        // `apolo_relationships` tem o mesmo CHECK (+ 'archived') e também recusa "active".
+        // `verified` é o valor certo aqui: quem vinculou foi uma pessoa, e os leitores que
+        // filtram vínculo (empreendimentos credenciados, por exemplo) só enxergam verified.
+        status: "verified",
       });
 
   if (error) return { erro: `Não foi possível gravar o vínculo: ${error.message}`, ok: false };

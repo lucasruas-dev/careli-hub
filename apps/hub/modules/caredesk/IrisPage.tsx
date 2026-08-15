@@ -350,7 +350,23 @@ const IRIS_EMOJI_OPTIONS = [
 const IRIS_REACTION_OPTIONS = ["👍", "❤️", "😂", "🙏", "✅"];
 const IRIS_AUDIO_MAX_DATA_URL_LENGTH = 4_000_000;
 // Anexos de saída (foto/print/documento). Imagem é reduzida no cliente antes de subir.
-const IRIS_ATTACHMENT_MAX_BYTES = 3 * 1024 * 1024;
+//
+// 60MB (Lucas, 15/08: "hoje está 3, não da para nada"). O 3MB não era escolha: o anexo viajava
+// em base64 dentro do JSON e **a Vercel corta o corpo de qualquer requisição em 4,5MB** — com a
+// inflação de ~33% do base64, 3MB era o que cabia. Agora o arquivo que não cabe no corpo sobe
+// DIRETO para o Storage (`/api/iris/media/upload-url`) e só a referência viaja, mesmo padrão do
+// Hermes e do cadastro do Apolo. Ver [[reference_apolo_upload_413]].
+const IRIS_ATTACHMENT_MAX_BYTES = 60 * 1024 * 1024;
+// Acima disto NÃO cabe no corpo: usa o upload direto. Abaixo, segue o caminho antigo, que já
+// funciona e evita uma ida a mais ao Storage.
+//
+// ⚠️ 2,5MB E NÃO 3MB, POR CAUSA DA FAIXA MORTA. O caminho antigo transforma o arquivo em data
+// URL e recusa acima de `IRIS_AUDIO_MAX_DATA_URL_LENGTH` (4.000.000 caracteres). Base64 infla
+// 4/3, então 3MB vira ~4.194.304 caracteres: todo documento entre ~2,86MB e 3MB era grande
+// demais para o caminho inline E pequeno demais para o upload direto, e morria em "Arquivo
+// muito grande para enviar" — justo na faixa que o Lucas mais tentaria depois de pedir 60MB.
+// 2,5MB vira ~3,49M caracteres, com folga.
+const IRIS_ATTACHMENT_INLINE_MAX_BYTES = 2.5 * 1024 * 1024;
 const IRIS_ATTACHMENT_DOC_TYPES = new Set([
   "application/pdf",
   "application/msword",
@@ -4129,7 +4145,7 @@ function IrisConversationPanel({
     }
 
     if (!isImage && file.size > IRIS_ATTACHMENT_MAX_BYTES) {
-      setFeedback("Arquivo muito grande (maximo ~3MB).");
+      setFeedback("Arquivo muito grande (maximo 60MB).");
       return;
     }
 
@@ -4180,6 +4196,90 @@ function IrisConversationPanel({
     }
   }
 
+  // Sobe o arquivo DIRETO para o Storage e devolve a URL pública. O servidor só ASSINA o
+  // upload (não recebe bytes), então o teto de 4,5MB do corpo não se aplica ao arquivo.
+  async function subirAnexoDireto(file: File): Promise<null | string> {
+    const accessToken = await getIrisAccessToken();
+    const assinatura = await fetch("/api/iris/media/upload-url", {
+      body: JSON.stringify({ fileName: file.name }),
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const corpo = (await assinatura.json().catch(() => null)) as {
+      data?: { path?: string; token?: string; url?: string };
+    } | null;
+
+    const path = corpo?.data?.path;
+    const token = corpo?.data?.token;
+    const url = corpo?.data?.url;
+
+    if (!assinatura.ok || !path || !token || !url) {
+      return null;
+    }
+
+    const supabase = getHubSupabaseClient();
+    if (!supabase) {
+      return null;
+    }
+
+    const enviado = await supabase.storage
+      .from("iris-media")
+      .uploadToSignedUrl(path, token, file, { contentType: file.type });
+
+    return enviado.error ? null : url;
+  }
+
+  // Envia o anexo que JÁ está no Storage: manda a referência, não os bytes.
+  async function enviarAnexoPorUrl(input: {
+    caption: string;
+    fileName: string;
+    kind: "document" | "image";
+    mimeType: string;
+    url: string;
+  }): Promise<boolean> {
+    const accessToken = await getIrisAccessToken();
+    const response = await fetch("/api/iris/meta/messages", {
+      body: JSON.stringify({
+        body: input.caption,
+        channelId: ticket.channelId ?? null,
+        contactId: ticket.contactId ?? null,
+        media: {
+          fileName: input.fileName,
+          mimeType: input.mimeType,
+          type: input.kind,
+          url: input.url,
+        },
+        replyToMessageId: replyToMessage?.messageId ?? null,
+        ticketId: ticket.id,
+        to: ticket.contactPhone ?? "",
+      }),
+      cache: "no-store",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      method: "POST",
+    });
+    const payload = (await response.json().catch(() => null)) as {
+      error?: string;
+      message?: Record<string, unknown> | null;
+    } | null;
+
+    if (payload?.message) {
+      onMessageCreated(
+        ticket.id,
+        ensureOperatorIdentity(
+          mapMessageRow(payload.message),
+          operatorLabel,
+          operatorAvatarUrl,
+        ),
+      );
+    }
+
+    if (!response.ok) {
+      throw new Error(payload?.error ?? "Nao foi possivel enviar o anexo.");
+    }
+
+    return true;
+  }
+
   async function sendAttachmentDraft() {
     if (!attachmentDraft || sending) {
       return;
@@ -4211,6 +4311,34 @@ function IrisConversationPanel({
       let dataUrl: string;
       let mimeType = file.type;
       let fileName = file.name || (kind === "image" ? "imagem.jpg" : "documento");
+
+      // ── ARQUIVO GRANDE: sobe DIRETO para o Storage ─────────────────────────
+      // O corpo da requisição não passa de 4,5MB (limite da Vercel), então o documento pesado
+      // nunca poderia viajar por ali. Aqui ele vai direto e a rota recebe só a URL.
+      if (kind === "document" && file.size > IRIS_ATTACHMENT_INLINE_MAX_BYTES) {
+        const enviado = await subirAnexoDireto(file);
+
+        if (!enviado) {
+          throw new Error("Nao foi possivel preparar o envio do arquivo.");
+        }
+
+        const okDireto = ticketIsEvolution
+          ? await sendGroupRequest(
+              {
+                body: caption,
+                media: { fileName: file.name, mimeType: file.type, type: kind, url: enviado },
+              },
+              "Nao foi possivel enviar o anexo.",
+            )
+          : await enviarAnexoPorUrl({ caption, fileName: file.name, kind, url: enviado, mimeType: file.type });
+
+        if (okDireto) {
+          setReplyToMessage(null);
+          setFeedback("Documento enviado.");
+        }
+
+        return;
+      }
 
       if (kind === "image") {
         // Reduz imagem grande no cliente pra caber no body da requisição.

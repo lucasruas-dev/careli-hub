@@ -14,7 +14,7 @@ import {
   sendMetaWhatsAppTextMessage,
   signWhatsAppBody,
 } from "@/lib/iris/meta-whatsapp";
-import { uploadIrisMediaBuffer } from "@/lib/iris/meta-media-storage";
+import { IRIS_MEDIA_BUCKET, uploadIrisMediaBuffer } from "@/lib/iris/meta-media-storage";
 import {
   authorizeIrisMetaRequest,
   createIrisMetaAdminClient,
@@ -254,6 +254,11 @@ export async function POST(request: NextRequest) {
           fileName: attachmentMedia.fileName,
           mimeType: attachmentMedia.mimeType,
           type: attachmentMedia.kind,
+          // ⚠️ SEM ISTO O ANEXO GRANDE SOME DO HISTÓRICO. No caminho do upload direto o
+          // `attachmentMedia` tem só `url` (o `base64` é undefined de propósito): não copiar a
+          // URL fazia `uploadOutboundMedia` cair no `if (!media.base64) return null`, então o
+          // cliente recebia o arquivo pela Meta e a conversa ficava sem ele.
+          url: attachmentMedia.url,
         }
       : null;
   const outboundMessageType = outboundMedia?.type ?? "text";
@@ -446,6 +451,7 @@ export async function POST(request: NextRequest) {
               fileName: attachmentMedia.fileName,
               kind: attachmentMedia.kind,
               mediaBase64: attachmentMedia.base64,
+              mediaUrl: attachmentMedia.url,
               mimeType: attachmentMedia.mimeType,
               to: candidate,
             })
@@ -1042,18 +1048,24 @@ type NormalizedAudioMedia = {
 };
 
 type NormalizedAttachmentMedia = {
-  base64: string;
+  // Uma das duas: `base64` (arquivo pequeno, veio no corpo) ou `url` (arquivo grande, o
+  // navegador já subiu direto para o Storage e mandou só a referência).
+  base64?: string;
   fileName: string;
   kind: "document" | "image";
   mimeType: string;
+  url?: string;
 };
 
 type NormalizedOutboundMedia = {
-  base64: string;
+  base64?: string;
   durationMs: number | null;
   fileName: string;
   mimeType: string;
   type: "audio" | "document" | "image";
+  // Preenchida quando o arquivo já está no Storage (upload direto). Nesse caso não há o que
+  // subir: a URL que a Meta vai baixar é esta.
+  url?: string;
 };
 
 async function getReplyContext({
@@ -1457,6 +1469,15 @@ async function uploadOutboundMedia(
   client: NonNullable<ReturnType<typeof createIrisMetaAdminClient>>,
   media: NormalizedOutboundMedia,
 ): Promise<string | null> {
+  // Já está no Storage (upload direto do navegador): não há o que subir.
+  if (media.url) {
+    return media.url;
+  }
+
+  if (!media.base64) {
+    return null;
+  }
+
   try {
     const persisted = await uploadIrisMediaBuffer({
       buffer: Buffer.from(media.base64, "base64"),
@@ -1956,10 +1977,58 @@ function normalizeAttachmentMedia(
 
   const record = value as Record<string, unknown>;
 
-  if (
-    (record.type !== "image" && record.type !== "document") ||
-    typeof record.dataUrl !== "string"
-  ) {
+  if (record.type !== "image" && record.type !== "document") {
+    return null;
+  }
+
+  const kindPedido = record.type === "image" ? "image" : "document";
+
+  // Mesmo par de envs que o resto do Hub usa (ver lib/chronos/livekit.ts).
+  const hostDoNossoStorage = (): string =>
+    process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || process.env.SUPABASE_URL?.trim() || "";
+
+  // ── ARQUIVO GRANDE: já subiu direto para o Storage, veio só a referência ──
+  // Aceita apenas URL do NOSSO bucket público: com URL livre, a Meta buscaria (e entregaria ao
+  // cliente) um arquivo de qualquer lugar da internet apontado por quem chamasse a rota.
+  if (typeof record.url === "string" && record.url.trim()) {
+    const url = record.url.trim();
+    const mimeType = typeof record.mimeType === "string" ? record.mimeType : "";
+    const whitelistDireta =
+      kindPedido === "image" ? IRIS_IMAGE_MIME_WHITELIST : IRIS_DOCUMENT_MIME_WHITELIST;
+
+    // ⚠️ PRENDE O HOST, não só o trecho do caminho. `includes("/iris-media/")` deixava passar
+    // qualquer domínio da internet que tivesse esse pedaço na URL, e a Meta baixaria de lá para
+    // entregar ao cliente. O host tem que ser o do NOSSO Supabase.
+    let urlValida = false;
+    try {
+      const alvoUrl = new URL(url);
+      const nossoHost = new URL(hostDoNossoStorage()).host;
+      urlValida =
+        alvoUrl.protocol === "https:" &&
+        alvoUrl.host === nossoHost &&
+        alvoUrl.pathname.includes(`/${IRIS_MEDIA_BUCKET}/`);
+    } catch {
+      urlValida = false;
+    }
+
+    if (!urlValida || !whitelistDireta.has(mimeType)) {
+      return null;
+    }
+
+    return {
+      fileName:
+        typeof record.fileName === "string" && record.fileName.trim()
+          ? record.fileName.trim().replace(/[^a-z0-9._-]+/gi, "-").slice(0, 120)
+          : kindPedido === "image"
+            ? "imagem.jpg"
+            : "documento",
+      kind: kindPedido,
+      mimeType,
+      url,
+    };
+  }
+
+  if (typeof record.dataUrl !== "string") {
     return null;
   }
 

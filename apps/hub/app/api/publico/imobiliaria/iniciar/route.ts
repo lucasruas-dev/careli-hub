@@ -25,11 +25,29 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Já credenciada: não abre o cadastro (é para imobiliária NOVA). Resposta cordial, sem criar
-    // nada e sem revelar mais do que a pessoa acabou de digitar.
+    // ⚠️ JÁ CREDENCIADA NÃO É MAIS BECO SEM SAÍDA.
+    //
+    // Antes esta resposta encerrava o fluxo: a tela dizia "Imobiliária já credenciada, seus
+    // corretores já podem enviar CADs" e a imobiliária que queria trabalhar um empreendimento
+    // NOVO não tinha por onde seguir. Foi o que o Lucas viu ao testar a RAIANE IMOBILIARIA no
+    // Jardim das Gerais (15/08): o portal externo parou aqui.
+    //
+    // Regra dele: quem já tem cadastro NÃO passa pela validação — faz o vínculo e recebe a
+    // mensagem. Então a antessala emite a pré-sessão do mesmo jeito, e o portal segue para a
+    // habilitação em vez do wizard completo.
     const existente = await consultarImobiliariaCredenciada(adminClient, cnpj);
     if (existente.credenciada) {
-      return responder(inicio, json({ status: "ja-credenciada" }));
+      const preHab = assinarPreSessaoImob({ cnpj });
+      if (!preHab.ok) return responder(inicio, erro(preHab.error, 503));
+
+      return responder(
+        inicio,
+        json({
+          nome: existente.nome,
+          preSessao: preHab.token,
+          status: "ja-credenciada",
+        }),
+      );
     }
 
     // Emite a pré-sessão amarrada a ESTE CNPJ. O /cadastro rejeita se o cartão CNPJ divergir.

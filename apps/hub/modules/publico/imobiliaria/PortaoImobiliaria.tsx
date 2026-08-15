@@ -11,9 +11,12 @@ import { CascaPublica } from "@/modules/publico/ui/casca";
 // (torneiras PAGAS), então antes de abri-lo o servidor confere o CNPJ e emite a pré-sessão.
 export function PortaoImobiliaria({
   onCnpjConferido,
+  onJaCredenciada,
 }: {
   // Recebe o token de pré-sessão amarrado ao CNPJ. A partir daí o CadastroFlow assume.
   onCnpjConferido: (preSessao: string) => void;
+  // Já credenciada: em vez do wizard completo, o portal segue para a habilitação.
+  onJaCredenciada?: (preSessao: string, nome: null | string) => void;
 }) {
   const [cnpj, setCnpj] = useState("");
   const [carregando, setCarregando] = useState(false);
@@ -30,12 +33,20 @@ export function PortaoImobiliaria({
         method: "POST",
       });
       const dados = (await resposta.json().catch(() => ({}))) as {
+        nome?: string | null;
         error?: string;
         preSessao?: string;
         status?: string;
       };
       if (!resposta.ok) throw new Error(dados.error || "Não conseguimos concluir agora.");
 
+      // JÁ CREDENCIADA: segue para a HABILITAÇÃO (não para o cadastro completo). Antes parava
+      // aqui numa tela sem saída, e a imobiliária que só queria um empreendimento novo ficava
+      // sem caminho — foi o que o Lucas viu ao testar (15/08).
+      if (dados.status === "ja-credenciada" && dados.preSessao) {
+        onJaCredenciada?.(dados.preSessao, dados.nome ?? null);
+        return;
+      }
       if (dados.status === "ja-credenciada") {
         setJaCredenciada(true);
         return;

@@ -14,7 +14,9 @@ import {
 // Persistir a URL pública (path imprevisível, mesmo modelo do `hermes-attachments`) deixa o player
 // tocar sem mudar nada no frontend. Best-effort: falha aqui não pode derrubar o inbound.
 export const IRIS_MEDIA_BUCKET = "iris-media";
-const MAX_IRIS_MEDIA_BYTES = 50 * 1024 * 1024;
+// 64MB para caber com folga o limite de 60MB que o operador vê na tela (o Storage conta o byte
+// real; a folga cobre nome longo e metadados).
+const MAX_IRIS_MEDIA_BYTES = 64 * 1024 * 1024;
 
 let bucketEnsured = false;
 
@@ -30,9 +32,22 @@ async function ensureIrisMediaBucket(client: SupabaseClient) {
       fileSizeLimit: MAX_IRIS_MEDIA_BYTES,
       public: true,
     });
+  } else {
+    // ⚠️ O bucket JÁ EXISTE em produção, criado com 50MB. Sem este update, subir a constante não
+    // mudaria nada: o Storage recusaria o arquivo de 60MB pelo limite gravado no bucket, e o erro
+    // apareceria só na hora do upload. Mesmo cuidado que o Hermes tomou.
+    await client.storage.updateBucket(IRIS_MEDIA_BUCKET, {
+      fileSizeLimit: MAX_IRIS_MEDIA_BYTES,
+      public: true,
+    });
   }
 
   bucketEnsured = true;
+}
+
+// Exposto para a rota que assina o upload direto: ela precisa garantir o bucket antes de assinar.
+export async function garantirBucketIrisMedia(client: SupabaseClient): Promise<void> {
+  await ensureIrisMediaBucket(client);
 }
 
 export type PersistedInboundMedia = {

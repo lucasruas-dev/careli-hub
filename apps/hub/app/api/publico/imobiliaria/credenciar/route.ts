@@ -24,6 +24,7 @@ import {
   telefoneCompleto,
 } from "@/lib/publico/cad/regras";
 import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import { preSessaoImobDoRequest } from "@/lib/publico/cad/sessao";
 
 // Auto-cadastro PÚBLICO de imobiliária: "a imobiliária se cadastra e escolhe os
 // empreendimentos que quer trabalhar, restrito aos empreendimentos que o Lucas marcou como
@@ -64,17 +65,19 @@ export async function POST(request: Request) {
   const { adminClient, inicio } = preparo;
 
   const corpo = await lerCorpo<Corpo>(request);
-  const cnpj = normalizarCnpj(corpo?.cnpj);
+  // O CNPJ vem da PRÉ-SESSÃO quando ela existe (habilitação de quem já é credenciada, vinda do
+  // portal externo): a antessala já o conferiu e o token o carrega assinado, então o corpo não
+  // precisa repeti-lo — e não poderia trocá-lo por outro.
+  const pre = preSessaoImobDoRequest(request);
+  const cnpjDaSessao = pre.ok ? normalizarCnpj(pre.pre.cnpj) : "";
+  const cnpj = cnpjDaSessao || normalizarCnpj(corpo?.cnpj);
   const razaoSocial = normalizarNome(corpo?.razaoSocial);
   const email = normalizarEmail(corpo?.email);
   const telefone = normalizarTelefone(corpo?.telefone);
 
-  const erros: string[] = [];
-  if (!cnpjValido(cnpj)) erros.push("Confira o CNPJ: parece que faltou um dígito.");
-  if (razaoSocial.length < 3) erros.push("Informe a razão social da imobiliária.");
-  if (!emailValido(email)) erros.push("Confira o e-mail: ele precisa ter @ e domínio.");
-  if (!telefoneCompleto(telefone)) erros.push("Confira o telefone: informe DDD e número.");
-  if (erros.length) return responder(inicio, erro(erros.join(" ")));
+  if (!cnpjValido(cnpj)) {
+    return responder(inicio, erro("Confira o CNPJ: parece que faltou um dígito."));
+  }
 
   try {
     const existente = await consultarImobiliariaCredenciada(adminClient, cnpj);
@@ -82,6 +85,27 @@ export async function POST(request: Request) {
     // Só empreendimentos ATIVOS entram. O que o cliente mandar fora dessa lista é descartado
     // em silêncio: ele não escolhe o que não está aberto.
     const ativos = await listEmpreendimentosAtivos(adminClient);
+
+    // Razão social, e-mail e telefone só fazem sentido no CADASTRO NOVO. Para quem já é
+    // credenciada, a empresa já está cadastrada e exigir isso de novo travaria a habilitação.
+    const errosCadastro: string[] = [];
+    if (!existente.credenciada) {
+      if (razaoSocial.length < 3) errosCadastro.push("Informe a razão social da imobiliária.");
+      if (!emailValido(email)) errosCadastro.push("Confira o e-mail: ele precisa ter @ e domínio.");
+      if (!telefoneCompleto(telefone)) {
+        errosCadastro.push("Confira o telefone: informe DDD e número.");
+      }
+      if (errosCadastro.length) return responder(inicio, erro(errosCadastro.join(" ")));
+    }
+
+    // ⚠️ AUTO-APROVAÇÃO EXIGE A PRÉ-SESSÃO ASSINADA. Esta rota é pública, e este é o único
+    // caminho que grava vínculo JÁ habilitado: sem o token, bastaria conhecer o CNPJ de uma
+    // credenciada para habilitá-la em qualquer empreendimento. O token é emitido por
+    // `/iniciar`, que confere o CNPJ, e carrega o próprio CNPJ assinado — não dá para trocar
+    // pelo corpo. O cadastro NOVO (abaixo) segue aberto, porque ali nada nasce habilitado.
+    if (existente.credenciada && !cnpjDaSessao) {
+      return responder(inicio, erro("Sessao expirada. Comece de novo pelo CNPJ.", 401));
+    }
 
     // ── JÁ CREDENCIADA: HABILITA DIRETO, SEM FILA DE VALIDAÇÃO ────────────────
     // Regra do Lucas (15/08): *"imobiliária que já tem cadastro e está somente habilitando
@@ -207,22 +231,46 @@ async function habilitarJaCredenciada(
     return reais.map((real) => ({ id: String(real), label }));
   });
 
-  // O que ela JÁ tem, para não duplicar vínculo nem "habilitar" o que já vale.
+  // Só os dígitos do CPF, para comparar com o que a trava do corretor apura no banco.
+const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(/\D/g, "") : "");
+
+// O que ela JÁ tem, para não duplicar vínculo nem "habilitar" o que já vale.
   const { data: existentes } = await adminClient
     .from("apolo_relationships")
-    .select("metadata, status")
+    .select("id, metadata, status")
     .eq("entity_id", input.entityId)
     .eq("relationship_type", "empreendimento")
     .limit(500);
 
-  const jaTem = new Set(
-    ((existentes ?? []) as Array<{ metadata: { enterpriseId?: string } | null }>)
+  const linhas = (existentes ?? []) as Array<{
+    id: string;
+    metadata: { enterpriseId?: string } | null;
+    status: null | string;
+  }>;
+
+  // ⚠️ SÓ `verified` CONTA COMO JÁ HABILITADA. Antes este Set era montado ignorando o `status`,
+  // então um pedido ANTIGO que ficou em `pending` (as 16 que estavam paradas tinham exatamente
+  // isso) fazia a rota concluir "já habilitada", devolver tela de sucesso e DESCARTAR os
+  // corretores informados — sem nunca habilitar nada. O pendente agora é PROMOVIDO.
+  const jaVerified = new Set(
+    linhas
+      .filter((r) => r.status === "verified")
       .map((r) => String(r.metadata?.enterpriseId ?? ""))
       .filter(Boolean),
   );
-  const novos = alvos.filter((alvo) => !jaTem.has(alvo.id));
+  const pendentePorEnterprise = new Map(
+    linhas
+      .filter((r) => r.status !== "verified" && r.metadata?.enterpriseId)
+      .map((r) => [String(r.metadata?.enterpriseId), r.id] as const),
+  );
 
-  if (novos.length === 0) {
+  const pedidos = alvos.filter((alvo) => !jaVerified.has(alvo.id));
+  const promover = pedidos
+    .map((alvo) => pendentePorEnterprise.get(alvo.id))
+    .filter((id): id is string => Boolean(id));
+  const novos = pedidos.filter((alvo) => !pendentePorEnterprise.has(alvo.id));
+
+  if (pedidos.length === 0) {
     return json({ status: "ja-habilitada" });
   }
 
@@ -232,13 +280,24 @@ async function habilitarJaCredenciada(
     cpf?: string;
     nome?: string;
   }>)
-    .map((c) => ({ cpf: c?.cpf ?? null, nome: normalizarNome(c?.nome) }))
+    .map((c) => ({ cpf: soDigitosCpf(c?.cpf), nome: normalizarNome(c?.nome) }))
     .filter((c) => c.nome);
+
+  // ⚠️ CPF É OBRIGATÓRIO AQUI, e a razão é a trava: o conflito "esse corretor já trabalha este
+  // empreendimento por outra imobiliária" é apurado POR CPF. Aceitar corretor sem CPF deixava a
+  // trava contornável só deixando o campo em branco — e ainda gravava um vínculo que nunca
+  // casaria com o corretor de verdade.
+  const semCpf = corretoresInformados.filter((c) => c.cpf.length !== 11);
+  if (semCpf.length > 0) {
+    return erro(
+      `Informe o CPF de ${semCpf.map((c) => c.nome).join(", ")} para concluir a habilitacao.`,
+    );
+  }
 
   if (corretoresInformados.length > 0) {
     const conflitos = await conflitosNoBanco(adminClient, {
       corretores: corretoresInformados,
-      empreendimentos: novos.map((n) => ({ enterpriseId: n.id, label: n.label })),
+      empreendimentos: pedidos.map((n) => ({ enterpriseId: n.id, label: n.label })),
       imobiliariaId: input.entityId,
     });
 
@@ -247,7 +306,19 @@ async function habilitarJaCredenciada(
     }
   }
 
-  const { error: vinculoError } = await adminClient.from("apolo_relationships").insert(
+  // Pedido antigo que ficou pendente é PROMOVIDO em vez de duplicado — senão a imobiliária
+  // acumularia duas linhas do mesmo empreendimento, uma valendo e outra não.
+  if (promover.length > 0) {
+    const { error: promoverError } = await adminClient
+      .from("apolo_relationships")
+      .update({ status: "verified" })
+      .in("id", promover);
+    if (promoverError) return erro(undefined, 500);
+  }
+
+  const { error: vinculoError } = novos.length === 0
+    ? { error: null }
+    : await adminClient.from("apolo_relationships").insert(
     novos.map((alvo) => ({
       entity_id: input.entityId,
       label: alvo.label,
@@ -268,7 +339,7 @@ async function habilitarJaCredenciada(
   // Corretores informados agora entram junto (idempotente por nome+cpf seria melhor, mas o
   // cadastro simples de corretor não tem chave única — duplicata some no dedup da tela).
   if (corretoresInformados.length > 0) {
-    await adminClient.from("apolo_relationships").insert(
+    const { error: corretorError } = await adminClient.from("apolo_relationships").insert(
       corretoresInformados.map((c) => ({
         entity_id: input.entityId,
         label: c.nome,
@@ -278,6 +349,8 @@ async function habilitarJaCredenciada(
         status: "verified",
       })),
     );
+    // Sem esta checagem a equipe sumia em silêncio e a tela afirmava que tinha entrado.
+    if (corretorError) return erro(undefined, 500);
   }
 
   await adminClient.from("apolo_audit_events").insert({
@@ -287,7 +360,7 @@ async function habilitarJaCredenciada(
     field_name: "credenciamento",
     metadata: {
       automatico: true,
-      empreendimentos: novos.length,
+      empreendimentos: pedidos.length,
       motivo: "imobiliaria ja credenciada",
       origem: "publico-imobiliaria",
     },
@@ -299,14 +372,17 @@ async function habilitarJaCredenciada(
   const rep = await representanteDaImobiliaria(adminClient, input.entityId);
   const coordenadores = await coordenadoresDosEmpreendimentos(
     adminClient,
-    novos.map((n) => ({ enterpriseId: n.id, label: n.label })),
+    pedidos.map((n) => ({ enterpriseId: n.id, label: n.label })),
     loadApoloEnterpriseCadastro,
   );
 
   await avisarCredenciamentoAprovado(adminClient, {
     coordenadores,
     corretores: corretoresInformados.length,
-    empreendimentos: novos.map((n) => ({ label: n.label })),
+    // TODOS os habilitados nesta rodada, não só os recém-inseridos: um pedido antigo que
+    // estava pendente e foi PROMOVIDO agora também precisa aparecer na mensagem, senão a
+    // imobiliária receberia um aviso sem empreendimento nenhum listado.
+    empreendimentos: pedidos.map((n) => ({ label: n.label })),
     entityId: input.entityId,
     imobiliaria: input.nome,
     imobiliariaTelefone: rep.telefone ?? normalizarTelefone(input.corpo?.telefone),
@@ -314,7 +390,7 @@ async function habilitarJaCredenciada(
     representante: rep.nome,
   });
 
-  return json({ habilitados: novos.length, status: "habilitada" }, 201);
+  return json({ habilitados: pedidos.length, status: "habilitada" }, 201);
 }
 
 
@@ -331,11 +407,16 @@ async function conflitosNoBanco(
 ) {
   const ids = input.empreendimentos.map((e) => e.enterpriseId);
 
+  // ⚠️ FILTRA NO BANCO pelos empreendimentos alvo. Antes puxava as 2000 primeiras linhas
+  // `verified` e filtrava na memória: passando desse total, a trava simplesmente não enxergava
+  // o conflito e deixava passar. São poucos ids aqui (os escolhidos), então o `.in` não corre o
+  // risco de estourar a URL — o problema clássico é com centenas de ids.
   const { data: vinculos } = await adminClient
     .from("apolo_relationships")
     .select("entity_id, metadata")
     .eq("relationship_type", "empreendimento")
     .eq("status", "verified")
+    .in("metadata->>enterpriseId", ids)
     .limit(2000);
 
   const doEmpreendimento = ((vinculos ?? []) as Array<{

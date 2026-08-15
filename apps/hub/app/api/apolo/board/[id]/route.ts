@@ -31,7 +31,11 @@ type EntityRow = {
   entity_kind: string;
   id: string;
   legal_name: string | null;
-  metadata: { bornRole?: string; cadastro?: Record<string, unknown> } | null;
+  metadata: {
+    bornRole?: string;
+    cadastro?: Record<string, unknown>;
+    cadastroEditado?: Record<string, unknown>;
+  } | null;
   trade_name: string | null;
 };
 
@@ -264,6 +268,12 @@ export async function GET(
     ...(entity.metadata?.cadastro ?? {}),
     ...c2xMapeado,
     ...daEsteira,
+    // ⚠️ POR ÚLTIMO, DE PROPÓSITO: `cadastroEditado` é o que um operador DIGITOU nesta tela para
+    // uma ficha sem esteira (imobiliária). Se entrasse junto com `cadastro`, o C2X passaria por
+    // cima — e o C2X manda em `creci`, `dataAbertura`, `dataAtualizacaoCadastral` e no endereço
+    // inteiro. O operador corrigiria o CRECI, veria salvo, e no F5 o valor velho voltaria.
+    // Correção humana ganha de tudo; é a única camada que não tem de onde ser regenerada.
+    ...(entity.metadata?.cadastroEditado ?? {}),
   };
 
   return NextResponse.json(
@@ -334,6 +344,136 @@ export async function GET(
 // metadata inteiro a cada rodada e apagaria o trabalho dele — foi o que aconteceu com a
 // esteira em 20/jul. Aqui o prejuízo seria pior, porque é digitação humana.
 //
+// Grava a ficha de quem NÃO tem CAD na esteira (hoje: as imobiliárias e demais PJ) em
+// `apolo_entities.metadata.cadastro` — a mesma chave que o GET lê como base da ficha.
+//
+// ⚠️ O `metadata` é REESCRITO INTEIRO no update, então ele é lido antes e mesclado em dois
+// níveis: o objeto de fora (para não derrubar `bornRole` e o que mais viva ali) e o `cadastro`
+// de dentro (para não derrubar os campos que o operador não tocou). Escrever `{ cadastro }`
+// direto apagaria o resto do metadata — foi assim que o sync do C2X já apagou metadata antes.
+async function salvarNoCadastroDaEntidade(
+  adminClient: ReturnType<typeof createApoloAdminClient> & object,
+  entityId: string,
+  campos: Record<string, unknown>,
+  userId: string,
+): Promise<
+  | { auditoria: null | string; ok: true }
+  | { error: string; ok: false; status: number }
+> {
+  const { data: entidade, error: erroLeitura } = await adminClient
+    .from("apolo_entities")
+    .select("metadata")
+    .eq("id", entityId)
+    .maybeSingle();
+
+  if (erroLeitura) {
+    return { error: erroLeitura.message, ok: false, status: 500 };
+  }
+  if (!entidade) {
+    return { error: "Ficha não encontrada.", ok: false, status: 404 };
+  }
+
+  const metadata = (entidade.metadata ?? {}) as Record<string, unknown>;
+  // Grava numa camada PRÓPRIA (`cadastroEditado`), não em `cadastro`. Duas razões: o GET a
+  // aplica por último, então a correção não é encoberta pelo C2X ao vivo; e o que veio da
+  // importação continua intacto ao lado, para efeito de comparação e auditoria.
+  const cadastroAtual = (metadata.cadastroEditado ?? {}) as Record<string, unknown>;
+  const cadastro: Record<string, unknown> = { ...cadastroAtual };
+
+  // Mesma regra do caminho da esteira: vazio APAGA (deixa o operador limpar o que veio errado
+  // do OCR) e o que fica entra padronizado pelo servidor.
+  for (const [chave, valor] of Object.entries(campos)) {
+    if (valor === "" || valor === null) {
+      delete cadastro[chave];
+      continue;
+    }
+    cadastro[chave] = padronizar(chave, valor);
+  }
+
+  // NOME FANTASIA tem coluna própria (`apolo_entities.trade_name`) e é DELA que o CRM lê
+  // (server.ts:3249 `fantasyName`). Gravar só no cadastro deixaria a tela de validação certa e o
+  // resto do Apolo mostrando o nome antigo. O sync do C2X não desfaz: desde 04/08 ele usa
+  // ON CONFLICT DO NOTHING para as tabelas de identidade e não toca em quem já existe.
+  const patchEntidade: Record<string, unknown> = {
+    metadata: { ...metadata, cadastroEditado: cadastro },
+  };
+  if (typeof campos.nomeFantasia === "string") {
+    patchEntidade.trade_name = campos.nomeFantasia.trim() || null;
+  }
+
+  const { error } = await adminClient
+    .from("apolo_entities")
+    .update(patchEntidade)
+    .eq("id", entityId);
+
+  if (error) {
+    return { error: error.message, ok: false, status: 500 };
+  }
+
+  // TELEFONE E E-MAIL TAMBÉM VÃO PARA `apolo_contacts`. A tela mostra o cadastro por cima do
+  // contato, então gravar só no metadata deixaria a tela certa e o resto do sistema errado: o
+  // disparo de credenciamento, o phone-match do cockpit e a fila leem de `apolo_contacts`. O
+  // operador corrigiria o número, veria "salvo", e a mensagem continuaria indo para o antigo.
+  //
+  // `atualizarContatoDoContato` é reusada porque ela grava `value` E `normalized_value` juntos —
+  // o upsert do CRM deixa o normalizado velho e a busca passa a devolver a ficha errada.
+  const telefoneNovo = typeof campos.telefone === "string" ? campos.telefone : null;
+  const emailNovo = typeof campos.email === "string" ? campos.email : null;
+  if (telefoneNovo || emailNovo) {
+    const { atualizarContatoDoContato } = await import("@/lib/iris/apolo/escrita-contato");
+    const gravado = await atualizarContatoDoContato(adminClient, {
+      email: emailNovo,
+      entidadeId: entityId,
+      telefone: telefoneNovo,
+    });
+    // ⚠️ FALHA AQUI É FALHA DE SALVAMENTO, e devolve erro. A versão anterior devolvia
+    // `{ auditoria: erro, ok: true }` — a resposta saía 200, a tela lia só `resposta.ok` e dizia
+    // "salvo", enquanto o telefone continuava o antigo para todo o resto do sistema. Ninguém lê
+    // o campo `auditoria` na tela, então aquilo era engolir o erro com passos extras.
+    if (!gravado.ok) {
+      return {
+        error: `Cadastro salvo, mas o contato nao foi atualizado: ${gravado.erro}`,
+        ok: false,
+        status: 500,
+      };
+    }
+  }
+
+  // ⚠️ COMPARAÇÃO ESTÁVEL, não `String()`. Sócio e corretor chegam aqui como ARRAY, e
+  // `String([{...}])` devolve "[object Object]" para qualquer conteúdo: dois arrays diferentes
+  // pareciam iguais e a edição do telefone do representante nunca virava linha de auditoria.
+  const mesmoValor = (a: unknown, b: unknown): boolean => {
+    if (typeof a === "object" && a !== null) return JSON.stringify(a) === JSON.stringify(b);
+    if (typeof b === "object" && b !== null) return false;
+    return String(a ?? "") === String(b ?? "");
+  };
+
+  const trilha = Object.entries(campos)
+    .filter(([chave, valor]) => !mesmoValor(cadastroAtual[chave], valor))
+    .map(([chave, valor]) => ({
+      action: "edit_ficha",
+      actor_user_id: ehUuid(userId) ? userId : null,
+      entity_id: entityId,
+      field_name: chave,
+      metadata: {
+        de: cadastroAtual[chave] ?? null,
+        origem: "board-validacao-entidade",
+        para: valor === "" || valor === null ? null : valor,
+      },
+      status: "mapped",
+    }));
+
+  let auditoria: null | string = null;
+  if (trilha.length > 0) {
+    const { error: erroAuditoria } = await adminClient
+      .from("apolo_audit_events")
+      .insert(trilha);
+    if (erroAuditoria) auditoria = erroAuditoria.message;
+  }
+
+  return { auditoria, ok: true };
+}
+
 // Faz MERGE, nunca replace: o operador salva um campo por vez e não pode zerar o resto.
 export async function PATCH(
   request: Request,
@@ -371,14 +511,23 @@ export async function PATCH(
   const alvoEnterpriseId =
     normalizarEnterpriseId(body.enterpriseId) ?? normalizarEnterpriseId(atual?.enterprise_id);
 
+  // ⚠️ QUEM NÃO TEM ESTEIRA GRAVA NO CADASTRO DA ENTIDADE, NÃO DÁ 409.
+  //
+  // A esteira é CAD de PESSOA num empreendimento. **Imobiliária não tem linha lá — medido em
+  // 15/08: das 435 com papel `imobiliaria`, ZERO têm esteira.** Como este PATCH era o único
+  // caminho de gravação da tela, o "Salvar" do modo Editar respondia 409 para TODAS elas, e
+  // nem os campos que já tinham `chave` (telefone, e-mail) gravavam. Foi o que o Lucas
+  // encontrou ao tentar corrigir o telefone da imobiliária para seguir os testes.
+  //
+  // Sem conflito de fonte: o GET monta a ficha como `metadata.cadastro` < C2X < esteira, então
+  // gravar no metadata só é a resposta certa justamente quando não existe esteira para ganhar
+  // dele. Pessoa física com CAD segue exatamente no caminho de antes.
   if (!atual || !alvoEnterpriseId) {
-    return NextResponse.json(
-      {
-        error:
-          "Esta ficha não tem CAD na esteira (ou está sem empreendimento). Abra a CAD pelo Board antes de editar.",
-      },
-      { status: 409 },
-    );
+    const semEsteira = await salvarNoCadastroDaEntidade(adminClient, id, campos, auth.userId);
+    if (!semEsteira.ok) {
+      return NextResponse.json({ error: semEsteira.error }, { status: semEsteira.status });
+    }
+    return NextResponse.json({ data: { auditoria: semEsteira.auditoria, destino: "entidade" } });
   }
 
   const fichaAtual = (atual.ficha ?? {}) as Record<string, unknown>;

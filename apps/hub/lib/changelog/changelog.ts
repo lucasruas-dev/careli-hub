@@ -36,6 +36,57 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-cadastro-editavel-e-anexo-60mb",
+    deployedAt: "2026-08-15T19:40:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O botao Editar agora abre TODO o cadastro da imobiliaria: dados da empresa, socios e corretores",
+              "Da para corrigir o telefone do representante legal, que e justamente para onde saem os avisos do credenciamento",
+              "Antes nada disso salvava: o Salvar respondia erro e voltava sem gravar, mesmo nos campos que pareciam liberados",
+              "O telefone e o e-mail corrigidos passam a valer tambem para os disparos, nao so na tela",
+            ],
+            screen: "Apolo - Board (validacao da imobiliaria)",
+          },
+          {
+            items: [
+              "Imobiliaria que ja e credenciada consegue se habilitar num empreendimento novo pelo portal externo: antes a tela parava e nao criava o vinculo",
+              "Ela informa os corretores que vao trabalhar aquele empreendimento e ja sai habilitada, com a mensagem de boas-vindas",
+              "O portal interno passou a gravar de verdade: o botao trocava de tela sem registrar nada",
+              "As mensagens saem nos dois caminhos, externo e interno",
+            ],
+            screen: "Apolo - credenciamento de imobiliaria",
+          },
+        ],
+      },
+      {
+        module: "Iris",
+        screens: [
+          {
+            items: [
+              "O anexo subiu de 3MB para 60MB",
+              "Arquivo grande vai direto para o armazenamento, sem passar pela tela, entao nao trava mais no meio",
+            ],
+            screen: "Iris - conversa",
+          },
+        ],
+      },
+    ],
+    rollback: "2290ea55 (v1.143.0 credenciamento de imobiliaria)",
+    technical: {
+      done:
+        "⚠️ REVISAO ADVERSARIAL ANTES DO DEPLOY encontrou 12 defeitos que typecheck, 784 testes, lint e build passaram por cima; todos corrigidos e listados no fim. 1) EDITAR A FICHA DA IMOBILIARIA NAO SALVAVA NADA. Duas travas empilhadas: na tela, campo sem `chave` cai no ramo de leitura (`!editando || !campo.chave`) e o bloco inteiro de dados da empresa vinha como `{ label, valor }` puro; no servidor, o `PATCH /api/apolo/board/[id]` so sabia gravar em `apolo_esteira.ficha` e devolvia **409** sem achar a linha. **Medido: das 435 entidades com papel `imobiliaria`, ZERO tem linha em `apolo_esteira`** — esteira e CAD de PESSOA num empreendimento. Ou seja, nem telefone e e-mail (que ja tinham chave) gravavam, e consertar so a tela daria input habilitado que nao salva. Sem esteira, agora grava em `apolo_entities.metadata.cadastro`, que e a base que o GET ja le (`metadata.cadastro` < C2X < esteira) — so cai ai quando nao existe esteira para ganhar dele, entao PF com CAD segue igual. O `metadata` e reescrito INTEIRO no update: leitura e merge em dois niveis para nao derrubar `bornRole`. TELEFONE E E-MAIL VAO TAMBEM PARA `apolo_contacts` via `atualizarContatoDoContato` (que grava `value` e `normalized_value` juntos): a tela mostra o cadastro por cima do contato, entao gravar so no metadata deixaria a TELA certa e o DISPARO errado, mandando a mensagem para o numero velho. Socio e corretor moram em ARRAY e nao tem chave plana: usam chave com caminho (`socios.0.telefone`, `socios.0.endereco.cep`) e `expandirCamposComCaminho` (`lib/apolo/campos-aninhados.ts`, 9 testes) reagrupa no array inteiro antes de enviar — mandar a chave com ponto crua criaria um campo literal `\"socios.0.telefone\"` ao lado do array e a tela seguiria mostrando o valor velho. Indice inexistente e descartado, nao repassado. 2) O TESTE DO LUCAS (Raiane Oliveira / Jardim das Gerais) falhava nos DOIS portais: no externo, `/publico/imobiliaria/iniciar` respondia `ja-credenciada` e encerrava, sem chegar na rota que cria o vinculo (agora devolve uma pre-sessao assinada e segue para informar corretores); no interno, o botao era `onClick={() => setEtapa(\"enviado\")}`, so trocava de tela. O `credenciar` passou a aceitar o CNPJ da PRE-SESSAO (assinado, nao pode ser trocado pelo corpo) e a exigir razao social/e-mail/telefone so no cadastro NOVO. 3) ANEXO 60MB: o teto de 3MB nao era escolha — o arquivo viajava em base64 dentro do JSON e a **Vercel corta o corpo de qualquer requisicao serverless em 4,5MB** (base64 infla ~33%). Rota nova `/api/iris/media/upload-url` assina o upload direto para o Supabase Storage e so a referencia volta; o caminho e montado no servidor, nunca vem do cliente (com path livre daria para sobrescrever midia de outra conversa). Mesmo padrao ja em producao no Hermes, Prometeu e cadastro do Apolo. ── OS 12 DEFEITOS PEGOS NA REVISAO (nenhum aparecia no gate): (a) o passo dos corretores do portal EXTERNO era INALCANCAVEL — a guarda `if (!preSessao && !habilitacao)` devolvia o portao de novo, porque quem ja e credenciada so recebe `tokenHabilitacao`; o beco sem saida tinha andado uma tela, so isso. (b) o botao do portal INTERNO devolvia 400 em 100% dos casos: ele manda os empreendimentos que ela AINDA NAO trabalha, e a rota so promovia vinculo existente — `planejarHabilitacao` ganhou `ativos`/`novos` (+4 testes, 12 no total) e a rota passou a CRIAR o vinculo ja verified, expandindo grupo em stageIds; a trava do corretor, as mensagens e as contagens tambem passaram a cobrir os novos. (c) `escrita-contato.ts` gravava `status: 'active'`, que **nao existe no CHECK** de apolo_contacts (verified|pending|attention|blocked) nem no de apolo_relationships — o insert falhava SEMPRE, e o `update({is_primary:false})` que roda ANTES ja tinha zerado o contato principal: a entidade ficava sem telefone principal e o disparo caia no numero antigo. Mesmo bug ja corrigido em prevenda-fluxo.ts (v1.115.0); esta funcao nunca tinha sido exercitada porque a escrita do cockpit ficou pronta sem UI. (d) a falha do contato voltava como `{ auditoria, ok: true }`: resposta 200, tela dizendo 'salvo', ninguem lendo esse campo. (e) gravar em `metadata.cadastro` colocava a correcao ABAIXO do C2X no merge do GET, e o C2X manda em creci, dataAbertura, dataAtualizacaoCadastral e no endereco — o operador corrigiria o CRECI e o valor velho voltaria no F5; agora existe `metadata.cadastroEditado`, aplicado POR ULTIMO. (f) razao social e CNPJ editaveis derrubavam a rodada INTEIRA: viajam pela rota de identidade, que recusa com 409 toda ficha espelho do C2X (**medido: 417 das 435 imobiliarias sao espelho**), e em `salvarTudo` a identidade vai primeiro e da throw — voltaram a ser leitura. (g) nome fantasia so no metadata enquanto o CRM le `apolo_entities.trade_name`. (h) a trava do corretor era contornavel DEIXANDO O CPF EM BRANCO (o conflito e apurado por CPF) e ficava cega acima de 2000 vinculos verified — CPF virou obrigatorio e o filtro foi para o banco. (i) vinculo `pending` contava como 'ja habilitada': tela de sucesso falsa e corretores descartados — agora o pendente e PROMOVIDO. (j) insert dos corretores sem checar erro. (k) na Iris, o `url` nao era copiado para `outboundMedia`: o cliente recebia o anexo grande e a conversa ficava SEM ele; e havia uma faixa morta entre ~2,86MB e 3MB (base64 infla 4/3 e o teto do data URL e 4.000.000 de caracteres) onde o documento nao ia por nenhum dos dois caminhos — o limite inline caiu para 2,5MB. (l) a trava 'so URL do nosso bucket' era um `includes('/iris-media/')`, que aceita QUALQUER dominio com esse trecho no caminho; agora exige https + host do nosso Supabase. Ainda: auto-aprovacao publica passou a exigir a pre-sessao assinada, e a auditoria comparava com `String()`, que devolve '[object Object]' para todo array — edicao de socio nunca virava linha.",
+      motivation:
+        "Lucas, testando o credenciamento: 'fui testar a imobiliaria Raiane Oliveira, fiz habilitacao para trabalhar o Jardim das Gerais, mesmo aparecendo a mensagem nao criou o vinculo' e 'temos que poder editar os dados do cadastro todo das imobiliarias, tudo tem que ser editavel quando eu clico em Editar'. E: 'aumenta por favor para 60MB o limite de anexo dentro da iris, hoje esta 3, nao da para nada'.",
+    },
+    title: "Cadastro da imobiliaria editavel, credenciamento nos dois portais e anexo de 60MB",
+    type: "correcao",
+    version: "1.144.0",
+  },
+  {
     buildTag: "2026-08-15-credenciamento-imobiliaria",
     deployedAt: "2026-08-15T18:30:00-03:00",
     modules: [
