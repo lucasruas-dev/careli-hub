@@ -250,22 +250,31 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   // Label de cada id REAL, para nomear o vínculo criado do zero.
   const labelPorId = new Map<string, string>();
 
+  // ⚠️ A EXPANSÃO DE GRUPO VALE SEMPRE, o `ativos` é que é condicional.
+  //
+  // Um empreendimento pode ser um GRUPO (Lagoa Bonita = LBF + LBR + LBP): a tela manda o id do
+  // grupo e o vínculo guarda os enterprise_id REAIS. Sem expandir, o id do grupo não casa com
+  // nenhum pedido e vira `desconhecido` — ou seja, o botão devolveria 400 também para as 16
+  // imobiliárias que estão paradas em `review` esperando validação, que são justamente o motivo
+  // desta rota existir. Deixar a expansão dentro do `if (jaCredenciada)` consertava um caso e
+  // mantinha o outro quebrado.
+  //
+  // `ativos` continua só para quem já é credenciada: é ele que autoriza CRIAR vínculo novo sem
+  // pedido, e para quem está em review o operador só pode liberar o que ela pediu.
+  const lista = await listEmpreendimentosAtivos(adminClient);
+  const porId = new Map(lista.map((e) => [String(e.id), e]));
+  const expandir = (emp: (typeof lista)[number]): string[] =>
+    emp.stageIds.length ? emp.stageIds.map(String) : [String(emp.id)];
+
+  escolhidos = escolhidos.flatMap((id) => {
+    const emp = porId.get(id);
+    if (!emp) return [id];
+    const reais = expandir(emp);
+    for (const real of reais) labelPorId.set(real, emp.name);
+    return reais;
+  });
+
   if (jaCredenciada) {
-    const lista = await listEmpreendimentosAtivos(adminClient);
-    const porId = new Map(lista.map((e) => [String(e.id), e]));
-
-    // GRUPO VIRA AS ETAPAS REAIS (Lagoa Bonita = LBF + LBR + LBP), mesma regra da rota pública.
-    // O vínculo guarda o enterprise_id real; o id do grupo não casa com nada no C2X.
-    const expandir = (emp: (typeof lista)[number]): string[] =>
-      emp.stageIds.length ? emp.stageIds.map(String) : [String(emp.id)];
-
-    escolhidos = escolhidos.flatMap((id) => {
-      const emp = porId.get(id);
-      if (!emp) return [id];
-      const reais = expandir(emp);
-      for (const real of reais) labelPorId.set(real, emp.name);
-      return reais;
-    });
     ativos = lista.flatMap(expandir);
   }
 

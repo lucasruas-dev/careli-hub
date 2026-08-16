@@ -296,6 +296,26 @@ export async function GET(request: Request) {
     prevendaPorEmpreendimento.set(String(linha.enterprise_id), prevendaLigadaNaSetting(linha));
   }
 
+  // ⚠️ O STATUS DO PAPEL É A ETAPA DA IMOBILIÁRIA. Ela não tem linha em `apolo_esteira` (medido:
+  // 435 de 435), então a coluna do Board não pode sair de `esteira.etapa` — é por isso que a
+  // Beatriz Teodora voltava para "Validação" a cada F5, mesmo depois de indeferida: a decisão
+  // estava gravada em `apolo_entity_profiles.status` e a tela nunca lia esse campo.
+  //   blocked = Recusada · active = Habilitada · review = Validação
+  const idsDaLista = data.map((row) => row.id);
+  const papelStatusPorEntidade = new Map<string, string>();
+  for (let i = 0; i < idsDaLista.length; i += 100) {
+    // Em lotes de 100: `.in()` com centenas de ids estoura o tamanho da URL do PostgREST.
+    const { data: papeis } = await adminClient
+      .from("apolo_entity_profiles")
+      .select("entity_id, status")
+      .eq("profile", "imobiliaria")
+      .in("entity_id", idsDaLista.slice(i, i + 100));
+
+    for (const linha of (papeis ?? []) as Array<{ entity_id: string; status: null | string }>) {
+      if (linha.status) papelStatusPorEntidade.set(linha.entity_id, linha.status);
+    }
+  }
+
   const itens = data.map((row) => {
     const cadastro = row.metadata?.cadastro;
     const esteira = esteiraPorEntidade.get(row.id);
@@ -372,6 +392,8 @@ export async function GET(request: Request) {
       // tem bornRole) aparecia na trilha de imobiliária, com as etapas erradas. Toda ficha
       // nascida no Apolo tem bornRole, então o fallback só alcança o que veio do sync.
       papel: row.metadata?.bornRole ?? "prospect",
+      // Só faz sentido para imobiliária; para o resto fica null e a tela ignora.
+      papelStatus: papelStatusPorEntidade.get(row.id) ?? null,
       socios: conta(cadastro?.socios),
     };
   });

@@ -231,7 +231,34 @@ async function habilitarJaCredenciada(
     return reais.map((real) => ({ id: String(real), label }));
   });
 
-  // Só os dígitos do CPF, para comparar com o que a trava do corretor apura no banco.
+  // Corretores informados, normalizados. UMA definição só: a lista é usada tanto no caminho que
+// habilita quanto no atalho "já habilitada".
+function corretoresValidos(cru: unknown): { cpf: string; nome: string }[] {
+  return ((cru ?? []) as Array<{ cpf?: string; nome?: string }>)
+    .map((c) => ({ cpf: soDigitosCpf(c?.cpf), nome: normalizarNome(c?.nome) }))
+    .filter((c) => c.nome && c.cpf.length === 11);
+}
+
+async function gravarCorretores(
+  adminClient: Parameters<typeof listEmpreendimentosAtivos>[0],
+  entityId: string,
+  equipe: { cpf: string; nome: string }[],
+): Promise<boolean> {
+  const { error } = await adminClient.from("apolo_relationships").insert(
+    equipe.map((c) => ({
+      entity_id: entityId,
+      label: c.nome,
+      metadata: { cpf: c.cpf, kind: "contato", role: "corretor", source: "publico-imobiliaria" },
+      related_entity_id: null,
+      relationship_type: "corretor",
+      status: "verified",
+    })),
+  );
+
+  return !error;
+}
+
+// Só os dígitos do CPF, para comparar com o que a trava do corretor apura no banco.
 const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(/\D/g, "") : "");
 
 // O que ela JÁ tem, para não duplicar vínculo nem "habilitar" o que já vale.
@@ -258,30 +285,58 @@ const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(
       .map((r) => String(r.metadata?.enterpriseId ?? ""))
       .filter(Boolean),
   );
+  // ⚠️ SÓ `pending` É PROMOVIDO. `!== "verified"` varreria junto `blocked` e `archived`, e esta
+  // rota é PÚBLICA: quem soubesse o CNPJ ressuscitaria por conta própria um vínculo que alguém
+  // nossa equipe bloqueou de propósito. Vínculo bloqueado volta pela mão de um operador, no
+  // Board, nunca por auto-aprovação.
   const pendentePorEnterprise = new Map(
     linhas
-      .filter((r) => r.status !== "verified" && r.metadata?.enterpriseId)
+      .filter((r) => r.status === "pending" && r.metadata?.enterpriseId)
       .map((r) => [String(r.metadata?.enterpriseId), r.id] as const),
   );
+  // Bloqueado/arquivado não é "já habilitada" nem "pendente": não pode virar vínculo novo
+  // duplicado nem ser promovido. Fica de fora dos dois caminhos, de propósito.
+  const travados = new Set(
+    linhas
+      .filter((r) => r.status === "blocked" || r.status === "archived")
+      .map((r) => String(r.metadata?.enterpriseId ?? ""))
+      .filter(Boolean),
+  );
 
-  const pedidos = alvos.filter((alvo) => !jaVerified.has(alvo.id));
+  const pedidos = alvos.filter((alvo) => !jaVerified.has(alvo.id) && !travados.has(alvo.id));
+
+  const bloqueados = alvos.filter((alvo) => travados.has(alvo.id));
+  if (bloqueados.length > 0 && pedidos.length === 0) {
+    return erro(
+      `A habilitacao em ${bloqueados.map((b) => b.label).join(", ")} esta bloqueada. Fale com a nossa equipe.`,
+      409,
+    );
+  }
   const promover = pedidos
     .map((alvo) => pendentePorEnterprise.get(alvo.id))
     .filter((id): id is string => Boolean(id));
   const novos = pedidos.filter((alvo) => !pendentePorEnterprise.has(alvo.id));
 
+  // ⚠️ "JÁ HABILITADA" NÃO PODE ENGOLIR OS CORRETORES. Este atalho é comum, não excepcional: a
+  // vitrine do portal externo pede o empreendimento ANTES do CNPJ e não filtra o que a
+  // imobiliária já trabalha, então marcar um que ela já tem é o caso provável. Ela digitou a
+  // equipe, a tela disse "habilitada", e ninguém gravava os corretores nem descobria depois.
   if (pedidos.length === 0) {
-    return json({ status: "ja-habilitada" });
+    const equipe = corretoresValidos(input.corpo?.corretores);
+    if (equipe.length > 0) {
+      const gravou = await gravarCorretores(adminClient, input.entityId, equipe);
+      if (!gravou) return erro(undefined, 500);
+    }
+
+    return json({ corretores: equipe.length, status: "ja-habilitada" });
   }
 
   // ── TRAVA DO CORRETOR ──────────────────────────────────────────────────────
   // Vale aqui também: se aprovamos na hora, é aqui que o conflito precisa ser barrado.
-  const corretoresInformados = ((input.corpo?.corretores ?? []) as Array<{
-    cpf?: string;
-    nome?: string;
-  }>)
+  const comNome = ((input.corpo?.corretores ?? []) as Array<{ cpf?: string; nome?: string }>)
     .map((c) => ({ cpf: soDigitosCpf(c?.cpf), nome: normalizarNome(c?.nome) }))
     .filter((c) => c.nome);
+  const corretoresInformados = comNome;
 
   // ⚠️ CPF É OBRIGATÓRIO AQUI, e a razão é a trava: o conflito "esse corretor já trabalha este
   // empreendimento por outra imobiliária" é apurado POR CPF. Aceitar corretor sem CPF deixava a
@@ -338,19 +393,10 @@ const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(
 
   // Corretores informados agora entram junto (idempotente por nome+cpf seria melhor, mas o
   // cadastro simples de corretor não tem chave única — duplicata some no dedup da tela).
+  // Sem checar o erro, a equipe sumia em silêncio e a tela afirmava que tinha entrado.
   if (corretoresInformados.length > 0) {
-    const { error: corretorError } = await adminClient.from("apolo_relationships").insert(
-      corretoresInformados.map((c) => ({
-        entity_id: input.entityId,
-        label: c.nome,
-        metadata: { cpf: c.cpf, kind: "contato", role: "corretor", source: "publico-imobiliaria" },
-        related_entity_id: null,
-        relationship_type: "corretor",
-        status: "verified",
-      })),
-    );
-    // Sem esta checagem a equipe sumia em silêncio e a tela afirmava que tinha entrado.
-    if (corretorError) return erro(undefined, 500);
+    const gravou = await gravarCorretores(adminClient, input.entityId, corretoresInformados);
+    if (!gravou) return erro(undefined, 500);
   }
 
   await adminClient.from("apolo_audit_events").insert({

@@ -186,7 +186,16 @@ export async function atualizarContatoDoContato(
         value_masked: mascara,
       });
 
-    return erroIdentificador ? erroIdentificador.message : null;
+    // ⚠️ IDENTIFICADOR DUPLICADO NÃO É FALHA. `apolo_entity_identifiers` tem índice único por
+    // hash: reencaminhar o mesmo telefone (ou devolvê-lo a quem já o tinha) colide, e o contato
+    // ACIMA já gravou. Derrubar aqui reportaria "não salvou" para uma escrita que salvou — e o
+    // chamador do Board agora trata erro como falha de salvamento, então o operador veria erro
+    // vermelho com o dado correto no banco. O identificador é índice de busca, não a verdade.
+    if (erroIdentificador && !/duplicate key|unique constraint/i.test(erroIdentificador.message)) {
+      return erroIdentificador.message;
+    }
+
+    return null;
   };
 
   const telefone = soDigitos(entrada.telefone);

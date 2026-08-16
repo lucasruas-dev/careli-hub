@@ -105,6 +105,9 @@ type ItemFila = {
   // não caiu. É o que separa, dentro de "Credenciado", quem pagou de quem só recebeu o PIX.
   pagoEm?: string | null;
   papel: string;
+  // Status do papel `imobiliaria` (blocked | active | review). É a ETAPA dela: imobiliária não
+  // tem linha na esteira, então a coluna do Board sai daqui e não de `etapa`.
+  papelStatus?: null | string;
   // A etapa Pré-venda EXISTE para esta CAD? Vem do empreendimento (`prevenda_habilitada` +
   // `valor_pix`), decidido no servidor. Regra do Lucas (10/08): "pré-venda só existe se estiver
   // habilitado" — onde ela está desligada, a etapa não aparece na trilha nem no kanban, em vez de
@@ -624,6 +627,19 @@ export function BoardView({
       const marcarPorEtapa = (alvo: string): Record<string, boolean> => {
         const marcas: Record<string, boolean> = {};
         for (const item of itensCarregados) if (item.etapa) marcas[item.id] = item.etapa === alvo;
+
+        // ⚠️ IMOBILIÁRIA NÃO TEM ETAPA NA ESTEIRA: para ela a decisão está no STATUS DO PAPEL.
+        // Sem isto o card indeferido voltava para "Validação" a cada recarregamento — a recusa
+        // existia no banco e sumia da tela, e o operador reindeferia achando que não tinha
+        // gravado (a Beatriz Teodora foi indeferida três vezes por causa disso).
+        if (alvo === "indeferido") {
+          for (const item of itensCarregados) {
+            if (item.papel === "imobiliaria" && item.papelStatus) {
+              marcas[item.id] = item.papelStatus === "blocked";
+            }
+          }
+        }
+
         return marcas;
       };
       setEmRevisao((atual) => ({ ...atual, ...marcarPorEtapa("revisao") }));
@@ -1404,6 +1420,9 @@ function colunaDoItem(
   if (indeferido) return "indeferido";
   if (emCorrecao) return "correcao";
   if (item.papel === "imobiliaria") {
+    // O papel manda quando existe: `active` é habilitada, mesmo que ninguém tenha mexido na tela
+    // nesta sessão. `etapa` fica de reserva para as fichas antigas, sem papel gravado.
+    if (item.papelStatus === "active") return "habilitada";
     return etapa <= 0 ? "validacao" : "habilitada";
   }
   if (emRevisao) return "revisao";

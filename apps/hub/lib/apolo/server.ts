@@ -1,3 +1,4 @@
+import { cadastroEfetivo } from "@/lib/apolo/cadastro-efetivo";
 import { createHash } from "node:crypto";
 
 import { createClient } from "@supabase/supabase-js";
@@ -3226,10 +3227,17 @@ function cadastroFromApoloMetadata(
   row: ApoloEntityRow,
   enderecos: ApoloAddress[],
 ): ApoloC2xCadastro | undefined {
-  const meta = row.metadata as { cadastro?: Record<string, unknown>; source?: string } | null;
+  const meta = row.metadata as {
+    cadastro?: Record<string, unknown>;
+    cadastroEditado?: Record<string, unknown>;
+    source?: string;
+  } | null;
   if (meta?.source !== "apolo" || !meta.cadastro) return undefined;
 
-  const c = meta.cadastro;
+  // A correção que o operador faz no Board entra POR CIMA. Sem isto, o telefone (ou qualquer
+  // campo) corrigido na tela continuaria indo para o C2X com o valor antigo — o mesmo desenho
+  // que fez a mensagem da Beatriz Teodora sair duas vezes para um número que não existia.
+  const c = cadastroEfetivo(meta);
   const isCompany = row.entity_kind === "pj";
   const end = enderecos[0];
   const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : null);

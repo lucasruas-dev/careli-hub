@@ -106,11 +106,14 @@ export function planejarHabilitacao(input: {
 export function resumoDaHabilitacao(plano: PlanoDeHabilitacao): string {
   const partes: string[] = [];
 
-  if (plano.habilitar.length > 0) {
+  // Conta os CRIADOS junto com os promovidos: para quem pede resultado, "habilitado" é
+  // habilitado — a resposta dizia "nenhum empreendimento habilitado" logo depois de criar dois.
+  const habilitadosAgora = plano.habilitar.length + plano.novos.length;
+  if (habilitadosAgora > 0) {
     partes.push(
-      plano.habilitar.length === 1
+      habilitadosAgora === 1
         ? "1 empreendimento habilitado"
-        : `${plano.habilitar.length} empreendimentos habilitados`,
+        : `${habilitadosAgora} empreendimentos habilitados`,
     );
   }
 

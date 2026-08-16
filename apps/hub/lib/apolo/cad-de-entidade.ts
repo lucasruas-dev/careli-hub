@@ -287,11 +287,15 @@ export async function montarCadDeEntidade(
     console.error("[apolo] montarCadDeEntidade: c2xCadastro indisponivel", erro);
   }
 
-  // Prioridade idêntica ao GET: esteira > C2X > metadata cru.
+  // Prioridade idêntica ao GET: correção humana > esteira > C2X > metadata cru.
+  // A edição do Board entra POR ÚLTIMO — o C2X manda em creci, datas e endereço, e sem isso a
+  // correção do operador ficaria invisível aqui enquanto aparece certa na tela de validação.
   const c = {
     ...(entity.metadata?.cadastro ?? {}),
     ...c2xMapeado,
     ...daEsteira,
+    ...((entity.metadata as { cadastroEditado?: Record<string, unknown> } | null)
+      ?.cadastroEditado ?? {}),
   } as Record<string, unknown>;
 
   const contato = {

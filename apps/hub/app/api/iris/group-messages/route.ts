@@ -498,7 +498,21 @@ function normalizeOutboundMedia(value: unknown): OutboundMedia | null {
   // aceita — URL livre faria o gateway buscar (e o grupo receber) arquivo de qualquer lugar.
   const url = typeof record.url === "string" ? record.url.trim() : "";
   if (url && type !== "audio") {
-    if (!url.includes(`/${IRIS_MEDIA_BUCKET}/`)) {
+    // Mesma trava do caminho Meta: `includes` sozinho aceita qualquer domínio que tenha o nome
+    // do bucket no caminho, e o gateway baixaria de lá para entregar no grupo.
+    let doNossoStorage = false;
+    try {
+      const alvoUrl = new URL(url);
+      const nosso = process.env.NEXT_PUBLIC_SUPABASE_URL?.trim() || process.env.SUPABASE_URL?.trim() || "";
+      doNossoStorage =
+        alvoUrl.protocol === "https:" &&
+        alvoUrl.host === new URL(nosso).host &&
+        alvoUrl.pathname.includes(`/${IRIS_MEDIA_BUCKET}/`);
+    } catch {
+      doNossoStorage = false;
+    }
+
+    if (!doNossoStorage) {
       return null;
     }
 

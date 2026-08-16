@@ -1,3 +1,4 @@
+import { cadastroEfetivo } from "@/lib/apolo/cadastro-efetivo";
 import type { SupabaseClient } from "@supabase/supabase-js";
 
 import { sendEvolutionDirectText } from "@/lib/iris/evolution-api";
@@ -158,8 +159,13 @@ export async function representanteDaImobiliaria(
     .eq("id", entityId)
     .maybeSingle<{ metadata: Record<string, unknown> | null }>();
 
-  const cadastro = (data?.metadata as { cadastro?: { socios?: unknown } } | null)?.cadastro;
-  const socios = (Array.isArray(cadastro?.socios) ? cadastro.socios : []) as Array<{
+  // ⚠️ `cadastroEfetivo` E NÃO `metadata.cadastro` DIRETO. A correção que o operador faz na tela
+  // do Board grava em `metadata.cadastroEditado`; lendo só a camada de baixo, o disparo continua
+  // usando o telefone velho depois de alguém ter consertado o cadastro justamente para a
+  // mensagem chegar. Aconteceu em 15/08 com a Beatriz Teodora: telefone corrigido na tela, duas
+  // tentativas de envio para o número antigo, ambas recusadas pelo Evolution.
+  const cadastro = cadastroEfetivo(data?.metadata as Parameters<typeof cadastroEfetivo>[0]);
+  const socios = (Array.isArray(cadastro.socios) ? cadastro.socios : []) as Array<{
     nome?: unknown;
     representanteLegal?: unknown;
     telefone?: unknown;

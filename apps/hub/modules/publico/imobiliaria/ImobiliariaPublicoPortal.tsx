@@ -122,7 +122,21 @@ export function ImobiliariaPublicoPortal({
 
   if (habilitacao) {
     return (
-      <CascaPublica>
+      // ⚠️ ERRO PRECISA TER SAÍDA. Sem o rodapé, esta tela era um beco: `habilitacao` truthy faz a
+      // guarda do passo dos corretores (`tokenHabilitacao && !habilitacao`) nunca mais valer, e
+      // nada zerava o estado — a imobiliária perdia empreendimento, CNPJ e a lista de corretores,
+      // e só saía recarregando a página e refazendo tudo. Vale para todos os desfechos de recusa
+      // que são ESPERADOS, não excepcionais: CPF faltando (400), conflito de corretor (409),
+      // sessão expirada (401) e limite de tentativas (429).
+      <CascaPublica
+        rodape={
+          habilitacao.erro ? (
+            <BotaoPrimario onClick={() => setHabilitacao(null)}>
+              Corrigir e tentar de novo
+            </BotaoPrimario>
+          ) : null
+        }
+      >
         <Cabecalho
           subtitulo={
             habilitacao.salvando
@@ -277,17 +291,26 @@ function CorretoresDoEmpreendimento({
   ]);
 
   const preenchidos = linhas.filter((linha) => linha.nome.trim());
+  // O CPF é obrigatório para CADA corretor informado, porque é por CPF que apuramos se ele já
+  // trabalha aquele empreendimento por outra imobiliária. O servidor recusa sem ele; travar aqui
+  // evita mandar a pessoa para uma tela de erro por um campo que a própria tela podia cobrar.
+  const cpfIncompleto = preenchidos.some(
+    (linha) => linha.cpf.replace(/\D/g, "").length !== 11,
+  );
 
   return (
     <CascaPublica
       rodape={
-        <BotaoPrimario onClick={() => onConfirmar(preenchidos)}>
+        <BotaoPrimario
+          desabilitado={cpfIncompleto}
+          onClick={() => onConfirmar(preenchidos)}
+        >
           {preenchidos.length === 0 ? "Seguir sem corretores" : "Concluir habilitação"}
         </BotaoPrimario>
       }
     >
       <Cabecalho
-        subtitulo={`Quem vai trabalhar este empreendimento pela ${nome ?? "sua imobiliária"}? Você pode incluir depois, pela nossa central.`}
+        subtitulo={`Quem vai trabalhar este empreendimento pela ${nome ?? "sua imobiliária"}? Pode seguir sem informar ninguém agora, mas de cada corretor informado precisamos do nome E do CPF.`}
         titulo="Corretores"
       />
 

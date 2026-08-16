@@ -36,6 +36,43 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-15-correcoes-do-credenciamento",
+    deployedAt: "2026-08-15T20:15:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A imobiliaria recusada continua na coluna Recusada depois de atualizar a pagina; antes ela voltava para Validacao e parecia que a recusa nao tinha sido gravada",
+              "O telefone corrigido na ficha passa a valer para os avisos: antes a tela mostrava o numero novo e a mensagem saia para o antigo",
+            ],
+            screen: "Apolo - Board (validacao da imobiliaria)",
+          },
+          {
+            items: [
+              "No portal externo, quando algo impede a habilitacao (falta o CPF de um corretor, conflito de corretor, sessao expirada), agora tem o botao Corrigir e tentar de novo, mantendo o que ja foi preenchido",
+              "O CPF do corretor e cobrado na propria tela, em vez de so recusar depois de enviar",
+              "Os corretores informados sao gravados mesmo quando a imobiliaria ja trabalhava aquele empreendimento",
+              "Habilitar pelo Board voltou a funcionar para as imobiliarias que estao esperando validacao, nao so para as ja credenciadas",
+            ],
+            screen: "Apolo - credenciamento de imobiliaria",
+          },
+        ],
+      },
+    ],
+    rollback: "d1dfd057 (v1.144.0)",
+    technical: {
+      done:
+        "Patch dos 7 achados que a SEGUNDA revisao adversarial confirmou sobre as correcoes da v1.144.0, mais os 2 que apareceram em producao no mesmo dia (imobiliaria Beatriz Teodora). CAUSA COMUM DOS DOIS INCIDENTES: a v1.144.0 moveu a gravacao da ficha para `metadata.cadastroEditado` para a correcao humana nao ser encoberta pelo C2X, mas **so o GET do Board aprendeu a ler essa camada**. `representanteDaImobiliaria` (que escolhe o telefone do disparo), a cascata do CRM e o envio ao C2X seguiam lendo `metadata.cadastro`: o Lucas corrigiu o telefone do representante, a tela passou a mostrar o numero novo e a mensagem de indeferimento saiu DUAS VEZES para o numero antigo, recusada pelo Evolution com `exists:false`. Criado `lib/apolo/cadastro-efetivo.ts` (4 testes) e ligado nos tres leitores. A REVISAO TINHA PREVISTO ISSO — o achado estava na lista antes de o caso acontecer. SEGUNDO INCIDENTE: o card recusado voltava para Validacao a cada F5, porque a coluna da imobiliaria saia de `apolo_esteira.etapa` e ela **nao tem linha na esteira** (435 de 435); a decisao estava em `apolo_entity_profiles.status` e a tela nunca lia esse campo. A fila passou a devolver `papelStatus` (em lotes de 100, o `.in()` estoura a URL) e o Board usa: blocked=Recusada, active=Habilitada. A Beatriz foi indeferida TRES vezes por causa disso. OS OUTROS ACHADOS: (a) a tela de erro do portal EXTERNO era um beco sem saida — `habilitacao` truthy fazia a guarda do passo dos corretores nunca mais valer e nada zerava o estado, entao a imobiliaria perdia empreendimento, CNPJ e equipe e so saia recarregando; e o caminho ficou alcancavel justamente pela correcao da guarda. Vale para 400, 409, 401 e 429, que sao desfechos PROJETADOS. (b) `pendentePorEnterprise` filtrava `!== 'verified'`, o que varria junto `blocked` e `archived`: numa rota PUBLICA, quem soubesse o CNPJ ressuscitaria um vinculo bloqueado de proposito — agora so `pending` sobe, e bloqueado devolve 409 explicando. (c) a expansao de grupo em stageIds estava dentro do `if (jaCredenciada)`, entao o botao do Board seguia devolvendo 400 para as 16 paradas em review. (d) o atalho `ja-habilitada` respondia 200 e DESCARTAVA os corretores digitados — caso comum, porque a vitrine do portal externo pede o empreendimento antes do CNPJ e nao filtra o que ela ja trabalha. (e) insert duplicado em `apolo_entity_identifiers` (indice unico) derrubava o salvamento de uma ficha que JA tinha gravado. (f) a trava de host do anexo tinha sido aplicada so no caminho Meta; o de grupos seguia com `includes`. (g) `resumoDaHabilitacao` nao contava `novos` e respondia 'nenhum empreendimento habilitado' logo depois de criar dois.",
+      motivation:
+        "Relato do Lucas em producao: 'reprovamos a Beatriz Teodoro e ela nao recebeu mensagem nenhuma' e, depois, 'mesmo indeferindo ela nao foi para recusada'. Os dois viraram achados confirmados da revisao adversarial da v1.144.0.",
+    },
+    title: "Correcoes do credenciamento: recusa que fica, aviso no telefone certo e saida para o erro",
+    type: "correcao",
+    version: "1.144.1",
+  },
+  {
     buildTag: "2026-08-15-cadastro-editavel-e-anexo-60mb",
     deployedAt: "2026-08-15T19:40:00-03:00",
     modules: [
