@@ -265,3 +265,53 @@ export function mensagemCoordenadorIndeferimento(input: {
 // `MOTIVOS_REPROVACAO` como sugestões de um clique no `ModalMotivo`; a de credenciamento entrou
 // ao lado delas (`MOTIVOS_RECUSA_IMOBILIARIA`, board-view.tsx), e não num arquivo à parte.
 // Duas listas de motivo em lugares diferentes divergem na primeira vez que alguém edita uma.
+
+// ---------------------------------------------------------------------------
+// O CORRETOR também é avisado
+// ---------------------------------------------------------------------------
+
+/**
+ * "A imobiliária X credenciou você no empreendimento Y."
+ *
+ * Pedido do Lucas (17/08/2026). Até aqui o corretor era o ÚNICO que não sabia de nada: medido no
+ * banco, todo o credenciamento só disparava para `imobiliaria` e `coordenador`. Ele descobria que
+ * podia trabalhar o empreendimento quando alguém da imobiliária lembrava de contar.
+ *
+ * ⚠️ O TOM É DE AVISO, NÃO DE PARABÉNS. Quem credenciou foi a imobiliária dele; a Careli só
+ * liberou. Dizer "parabéns, você foi aprovado" daria a entender que ele passou por uma avaliação
+ * nossa, o que não aconteceu.
+ *
+ * Vocabulário do corretor (regra do Lucas): CAD e credenciado são palavras DELE, ficam. "Esteira"
+ * é nossa e não aparece.
+ */
+export function mensagemCorretorCredenciado(input: {
+  corretor?: null | string;
+  empreendimentos: EmpreendimentoHabilitado[];
+  imobiliaria: string;
+  linkCad?: null | string;
+}): string {
+  const um = input.empreendimentos.length === 1;
+  const saudacao = input.corretor ? `Olá, ${primeiroNome(input.corretor)}!` : "Olá!";
+
+  const linhas = [
+    saudacao,
+    "",
+    um
+      ? `A *${input.imobiliaria}* credenciou você no empreendimento:`
+      : `A *${input.imobiliaria}* credenciou você nos empreendimentos:`,
+    "",
+    listaDeEmpreendimentos(input.empreendimentos),
+    "",
+    um
+      ? "A partir de agora você já pode enviar CAD nele."
+      : "A partir de agora você já pode enviar CAD neles.",
+  ];
+
+  if (input.linkCad) {
+    linhas.push("", `É por aqui: ${input.linkCad}`);
+  }
+
+  linhas.push("", "Qualquer dúvida, fale com a nossa central.");
+
+  return linhas.join("\n");
+}

@@ -71,31 +71,41 @@ export function rotuloDoEvento(tipo: null | string): string {
   return EVENTOS[chave] ?? chave.replace(/_/g, " ");
 }
 
-// TELEFONE PARCIAL: o suficiente para conferir se o número está certo, sem despejar o cadastro
-// inteiro numa tela que fica aberta o dia todo.
-export function mascararTelefone(valor: null | string): null | string {
+/**
+ * Formata o telefone para leitura: `(31) 99496-2518`.
+ *
+ * ⚠️ SEM MÁSCARA, e é decisão do Lucas (17/08/2026): *"pode tirar esses *, não precisa esconder
+ * nada no Panteon"*. A tela é INTERNA e quem a usa está justamente tentando descobrir por que a
+ * mensagem não chegou — esconder o número obrigava a abrir a ficha em outra aba para conferir se
+ * era o certo, e o operador ainda precisa dele para ligar.
+ *
+ * Isto vale para o painel do Panteon. Rota PÚBLICA continua sendo outra história: lá o telefone
+ * do parceiro não sai, mascarado ou não.
+ */
+export function formatarTelefone(valor: null | string): null | string {
   const digitos = (valor ?? "").replace(/\D/g, "");
   if (digitos.length < 8) return null;
 
   // O cadastro guarda sem DDI; o disparo guarda com. Os dois viram o mesmo formato aqui.
   const nacional = digitos.startsWith("55") && digitos.length >= 12 ? digitos.slice(2) : digitos;
+  if (nacional.length < 10) return nacional;
+
   const ddd = nacional.slice(0, 2);
-  const fim = nacional.slice(-4);
-  return `(${ddd}) ${"*".repeat(Math.max(1, nacional.length - 6))}-${fim}`;
+  const corpo = nacional.slice(2);
+  const meio = corpo.slice(0, corpo.length - 4);
+  return `(${ddd}) ${meio}-${corpo.slice(-4)}`;
 }
 
-export function mascararEmail(valor: null | string): null | string {
+/** O e-mail sai inteiro, mesma razão do telefone: tela interna, operador precisa conferir. */
+export function formatarEmail(valor: null | string): null | string {
   const v = (valor ?? "").trim();
-  if (!v.includes("@")) return null;
-  const [usuario = "", dominio = ""] = v.split("@");
-  if (!dominio) return null;
-  return `${usuario.slice(0, 3)}${"*".repeat(Math.max(1, usuario.length - 3))}@${dominio}`;
+  return v.includes("@") ? v : null;
 }
 
 // QUEM RECEBEU. O campo `destinatario` guarda coisas diferentes conforme o fluxo: nos avisos de
 // credenciamento é o PAPEL ("imobiliaria", "coordenador:FULANO"); nos disparos da pré-venda é o
-// contato cru (telefone ou e-mail). Aqui os dois viram texto legível, e o contato cru sai
-// MASCARADO — não é para a tela expor um e-mail inteiro só porque a coluna guardou assim.
+// contato cru (telefone ou e-mail). Aqui os dois viram texto legível, e o contato sai INTEIRO:
+// tela interna, e quem está olhando precisa conferir se o número é o certo.
 export function rotuloDoDestinatario(destinatario: null | string): string {
   const v = (destinatario ?? "").trim();
   if (!v) return "Sem destinatário registrado";
@@ -108,10 +118,10 @@ export function rotuloDoDestinatario(destinatario: null | string): string {
   }
   if (v === "corretor") return "Corretor";
 
-  const email = mascararEmail(v);
+  const email = formatarEmail(v);
   if (email) return email;
 
-  const telefone = mascararTelefone(v);
+  const telefone = formatarTelefone(v);
   if (telefone) return telefone;
 
   return v;
@@ -166,7 +176,7 @@ export function descreverDisparo(linha: LinhaDeDisparo): DisparoNaTela {
 
   return {
     confirmaEntrega: Boolean(linha.wa_message_id),
-    contato: mascararTelefone(linha.telefone) ?? mascararEmail(linha.telefone),
+    contato: formatarTelefone(linha.telefone) ?? formatarEmail(linha.telefone),
     entregueEm: linha.delivered_at,
     evento: rotuloDoEvento(linha.tipo),
     id: linha.id,

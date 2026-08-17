@@ -5,8 +5,8 @@ import {
   descreverDisparo,
   ehPrimeiroAviso,
   explicarErroDoDisparo,
-  mascararEmail,
-  mascararTelefone,
+  formatarEmail,
+  formatarTelefone,
   rotuloDoDestinatario,
   rotuloDoEvento,
   type LinhaDeDisparo,
@@ -36,7 +36,7 @@ describe("descrição do disparo", () => {
     expect(d.resultado).toBe("enviado");
     expect(d.evento).toBe("Aviso de habilitação");
     expect(d.para).toBe("Imobiliária");
-    expect(d.contato).toBe("(31) *****-5775");
+    expect(d.contato).toBe("(31) 98726-5775");
   });
 
   it("com wa_message_id e devolutiva da Meta, mostra entregue e lido", () => {
@@ -89,14 +89,23 @@ describe("quem recebeu", () => {
     expect(rotuloDoDestinatario(null)).toBe("Sem destinatário registrado");
   });
 
-  it("contato cru (fluxo da pré-venda) sai MASCARADO", () => {
-    expect(rotuloDoDestinatario("fulano@empresa.com.br")).toBe("ful***@empresa.com.br");
-    expect(rotuloDoDestinatario("5531999998888")).toBe("(31) *****-8888");
+  it("contato cru (fluxo da pré-venda) sai INTEIRO: tela interna", () => {
+    // Decisão do Lucas (17/08): "pode tirar esses *, não precisa esconder nada no Panteon". Quem
+    // olha esta tela está tentando descobrir por que a mensagem não chegou, e precisa do número.
+    expect(rotuloDoDestinatario("fulano@empresa.com.br")).toBe("fulano@empresa.com.br");
+    expect(rotuloDoDestinatario("5531999998888")).toBe("(31) 99999-8888");
   });
 
-  it("máscaras aguentam o que não é contato", () => {
-    expect(mascararTelefone("123")).toBeNull();
-    expect(mascararEmail("sem arroba")).toBeNull();
+  it("o DDI some, mas o número fica inteiro", () => {
+    expect(formatarTelefone("5531994962518")).toBe("(31) 99496-2518");
+    expect(formatarTelefone("31994962518")).toBe("(31) 99496-2518");
+    // Fixo, 10 dígitos.
+    expect(formatarTelefone("553132362775")).toBe("(31) 3236-2775");
+  });
+
+  it("formatação aguenta o que não é contato", () => {
+    expect(formatarTelefone("123")).toBeNull();
+    expect(formatarEmail("sem arroba")).toBeNull();
   });
 });
 

@@ -36,6 +36,49 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-17-corretor-avisado-e-habilitar-sem-beco",
+    deployedAt: "2026-08-17T21:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O CORRETOR passou a ser avisado: quando a imobiliaria e habilitada, ele recebe no WhatsApp que a imobiliaria dele o credenciou, e em quais empreendimentos",
+              "Ate agora ele era o unico que nao sabia de nada: o aviso ia so para a imobiliaria e para o coordenador, e o corretor descobria quando alguem lembrava de contar",
+              "Sai UMA mensagem por corretor, com todos os empreendimentos juntos",
+            ],
+            screen: "Apolo - Board (habilitar imobiliaria)",
+          },
+          {
+            items: [
+              "Imobiliaria que voltou para correcao pode ser habilitada DIRETO da tela de validacao: confere a ficha, marca os empreendimentos e habilita",
+              "Antes, depois de reabrir a validacao o botao Habilitar nao acendia mais, porque ele so aceitava empreendimento NOVO. Nenhuma das 420 imobiliarias habilitadas conseguiria voltar por ali",
+              "Antes de habilitar quem veio de correcao, a tela MOSTRA os pontos que foram apontados e pede a confirmacao de que foram resolvidos",
+            ],
+            screen: "Apolo - Board (validacao da imobiliaria)",
+          },
+          {
+            items: [
+              "Telefone e e-mail aparecem inteiros no painel de mensagens, sem asteriscos: e tela interna e quem esta olhando precisa conferir o numero",
+            ],
+            screen: "Apolo - Board (mensagens da ficha)",
+          },
+        ],
+      },
+    ],
+    rollback: "41df2760 (v1.149.0)",
+    technical: {
+      done:
+        "AVISO AO CORRETOR (pedido do Lucas: *'pode mandar mensagem para ele também, falando que a imobiliária x credenciou ele no empreendimento x'*). MEDIDO ANTES: em todo o histórico de `apolo_disparos` os destinatários do credenciamento são só `imobiliaria` e `coordenador:` — o corretor NUNCA recebeu nada. E 58 de 58 corretores de imobiliária habilitada têm telefone em `apolo_contacts`, então o disparo tem para onde ir. Nova `corretoresDaImobiliaria` (lê o vínculo entre entidades: `entity_id` = imobiliária, `related_entity_id` = corretor; erro de leitura NÃO vira lista vazia em silêncio, senão 'ninguém avisado' seria indistinguível de 'imobiliária sem corretor') e `mensagemCorretorCredenciado` (6 testes). ⚠️ UMA MENSAGEM POR CORRETOR, com TODOS os empreendimentos juntos: uma por empreendimento faria a equipe receber três seguidas quase iguais. O disparo é gravado com o `entity_id` DO CORRETOR, não o da imobiliária — é na ficha dele que o operador vai procurar quando ele disser que não recebeu. Tom de AVISO, não de parabéns: quem credenciou foi a imobiliária, a Careli só liberou. O reenvio manual NÃO espalha para a equipe (`corretoresParaAvisar` vazio por padrão). ⚠️ DOIS DEFEITOS DA REVISÃO ADVERSARIAL SOBRE O QUE SUBIU HÁ MINUTOS (v1.149.0), os dois corrigidos aqui: (a) ALTA, e era regressão nossa: `podeHabilitar` só acendia com empreendimento NOVO, então depois de 'Reabrir validação' o botão morria — medido, das 420 imobiliárias com papel `active`, as 38 que têm vínculo têm 100% deles `verified`, ou seja NENHUMA voltaria pela tela, e o rodapé da imobiliária não tem outro caminho. A rota sempre aceitou (pedido `verified` cai em `jaHabilitados` e o papel volta a `active`); era só a tela que não deixava chegar lá. Agora o botão também acende quando o papel não é `active`, que é o fluxo que o Lucas descreveu: *'seria validar a partir dessa tela, habilita, se os erros foram corrigidos, e dali ela vai para habilitada'*. (b) MÉDIA: a rota disparava o WhatsApp mesmo sem alterar UMA LINHA — `promoverPapel` fica true só com `jaHabilitados`. Com a resposta perdida (rede, timeout), a tela dizia 'o credenciamento NÃO mudou' (falso) e mantinha o botão aceso; o segundo clique mandava a mensagem de novo, agora com o texto TROCADO, porque `primeiraVez` já era false: o parceiro receberia 'seu cadastro foi aprovado' e em seguida 'você está habilitada em mais um empreendimento'. Agora o aviso só sai se `plano.habilitar + plano.novos > 0` — a trava real é do servidor, a da tela virou conveniência. CONFERÊNCIA DA CORREÇÃO (pedido: *'perguntar se os erros xyz foram corrigidos'*): o GET de `/habilitar` passou a devolver as `pendencias` da última correção, lidas de `apolo_audit_events.metadata` — a MESMA fonte que o reenvio usa, para a pergunta e a mensagem nunca divergirem — e só quando a entidade está de fato em `attention`. A tela lista os pontos e trava o botão até o operador marcar que conferiu. MÁSCARAS REMOVIDAS (*'pode tirar esses *, não precisa esconder nada no Panteon'*): `mascararTelefone`/`mascararEmail` viraram `formatarTelefone`/`formatarEmail`, que formatam sem esconder. Vale para o painel INTERNO; rota pública continua não devolvendo telefone de parceiro.",
+      motivation:
+        "Sequência de pedidos do Lucas na ficha da imobiliária, mais dois defeitos que a revisão adversarial encontrou no código que tinha acabado de subir.",
+    },
+    title: "O corretor tambem e avisado, e habilitar deixou de ter beco sem saida",
+    type: "melhoria",
+    version: "1.150.0",
+  },
+  {
     buildTag: "2026-08-17-imobiliaria-habilitada-e-status-do-whatsapp",
     deployedAt: "2026-08-17T20:10:00-03:00",
     modules: [

@@ -10,6 +10,7 @@ import { contatoDaEntidadeImobiliaria } from "@/lib/apolo/disparo-imobiliaria";
 import { telefoneDaImobiliaria } from "@/lib/apolo/disparo-credenciamento";
 import {
   avisarCredenciamentoAprovado,
+  corretoresDaImobiliaria,
   avisarCredenciamentoCorrecao,
   avisarCredenciamentoIndeferido,
   coordenadoresDosEmpreendimentos,
@@ -108,7 +109,59 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
     }))
     .sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
 
-  return NextResponse.json({ data: { empreendimentos } });
+  // ⚠️ O QUE FOI APONTADO NA CORREÇÃO. Pedido do Lucas (17/08): antes de habilitar quem estava em
+  // correção, a tela precisa "perguntar se os erros xyz foram corrigidos" — com os erros na tela,
+  // não de memória. Sem isso o operador confere de cabeça, e o motivo da correção fica só na
+  // mensagem que a imobiliária recebeu dias atrás.
+  //
+  // Os motivos foram gravados na auditoria no momento da decisão; é a MESMA fonte que o reenvio
+  // usa, para a pergunta e a mensagem nunca divergirem.
+  const [papel, entidade] = await Promise.all([
+    adminClient
+      .from("apolo_entity_profiles")
+      .select("status")
+      .eq("entity_id", id)
+      .eq("profile", "imobiliaria")
+      .maybeSingle<{ status: null | string }>(),
+    adminClient
+      .from("apolo_entities")
+      .select("status")
+      .eq("id", id)
+      .maybeSingle<{ status: null | string }>(),
+  ]);
+
+  let pendencias: string[] = [];
+  // Só quando ela está DE FATO esperando correção. Mostrar o motivo de uma correção antiga, já
+  // resolvida, faria o operador conferir algo que não está mais em jogo.
+  if (entidade.data?.status === "attention") {
+    const { data: eventos } = await adminClient
+      .from("apolo_audit_events")
+      .select("metadata")
+      .eq("entity_id", id)
+      .eq("action", "credenciamento_correcao")
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    const metadata = ((eventos ?? [])[0] as { metadata?: Record<string, unknown> } | undefined)
+      ?.metadata;
+    const motivos = Array.isArray(metadata?.motivos)
+      ? (metadata.motivos as unknown[]).filter(
+          (m): m is string => typeof m === "string" && m.trim() !== "",
+        )
+      : [];
+    const observacao =
+      typeof metadata?.observacao === "string" ? metadata.observacao.trim() : "";
+
+    pendencias = observacao ? [...motivos, observacao] : motivos;
+  }
+
+  return NextResponse.json({
+    data: {
+      empreendimentos,
+      papelStatus: papel.data?.status ?? null,
+      pendencias,
+    },
+  });
 }
 
 export async function POST(request: Request, context: { params: Promise<{ id: string }> }) {
@@ -684,19 +737,42 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     loadApoloEnterpriseCadastro,
   );
 
-  const envio = await avisarCredenciamentoAprovado(adminClient, {
-    coordenadores,
-    corretores: corretores.count ?? 0,
-    empreendimentos: habilitados,
-    entityId: id,
-    imobiliaria: contato.nome,
-    // Telefone do REPRESENTANTE primeiro; o da empresa é plano B (costuma ser fixo, e o
-    // WhatsApp não entrega em fixo). `telefoneDaImobiliaria` também trata a string vazia, que o
-    // `??` deixava passar.
-    imobiliariaTelefone: telefoneDaImobiliaria([rep.telefone, contato.telefone]),
-    primeiraVez,
-    representante: rep.nome,
-  });
+  // ⚠️ SÓ AVISA SE ALGO MUDOU DE VERDADE, e esta é a trava que vale — a da tela é conveniência.
+  //
+  // `promoverPapel` fica true só com `jaHabilitados`, ou seja, sem UMA LINHA alterada no banco. E
+  // aí a mensagem saía assim mesmo. O caminho para o estrago é curto: o operador clica, a rota
+  // grava e dispara, a resposta se perde (rede, aba, timeout), a tela diz "o credenciamento NÃO
+  // mudou" — afirmação falsa — e mantém o botão aceso. O segundo clique não muda nada e manda a
+  // mensagem OUTRA VEZ, agora com o texto trocado: `primeiraVez` já é false, então o parceiro
+  // recebe "seu cadastro foi aprovado" e, em seguida, "você está habilitada em mais um
+  // empreendimento". Duas mensagens que se contradizem, e duas cobranças.
+  const mudouAlgo = plano.habilitar.length + plano.novos.length > 0;
+
+  // Os corretores DELA, para o aviso "a imobiliária X credenciou você no empreendimento Y".
+  // Pedido do Lucas (17/08): até aqui o corretor era o único que não sabia de nada.
+  const equipe = mudouAlgo ? await corretoresDaImobiliaria(adminClient, id) : [];
+
+  const envio = mudouAlgo
+    ? await avisarCredenciamentoAprovado(adminClient, {
+        coordenadores,
+        corretores: corretores.count ?? 0,
+        corretoresParaAvisar: equipe,
+        empreendimentos: habilitados,
+        entityId: id,
+        imobiliaria: contato.nome,
+        // Telefone do REPRESENTANTE primeiro; o da empresa é plano B (costuma ser fixo, e o
+        // WhatsApp não entrega em fixo). `telefoneDaImobiliaria` também trata a string vazia, que
+        // o `??` deixava passar.
+        imobiliariaTelefone: telefoneDaImobiliaria([rep.telefone, contato.telefone]),
+        primeiraVez,
+        representante: rep.nome,
+      })
+    : // Nada mudou: reativação de papel ou clique repetido. O parceiro não precisa saber de novo.
+      {
+        coordenador: { ok: true },
+        corretores: { avisados: 0, falharam: 0 },
+        imobiliaria: { ok: true },
+      };
 
   return NextResponse.json({
     data: {

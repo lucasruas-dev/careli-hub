@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  ehReativacao,
   empreendimentosNovos,
   podeHabilitar,
   posicaoDaImobiliaria,
@@ -90,5 +91,54 @@ describe("quando o botão Habilitar faz sentido", () => {
     expect(tudoLiberado([emp("35", true), emp("40", true)])).toBe(true);
     expect(tudoLiberado([emp("35", true), emp("40", false)])).toBe(false);
     expect(tudoLiberado([])).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// O BECO SEM SAÍDA (achado da revisão adversarial, 17/08/2026)
+// ---------------------------------------------------------------------------
+
+describe("habilitar depois que o credenciamento foi derrubado", () => {
+  // Medido em produção: das 420 imobiliárias com papel `active`, as 38 que têm vínculo de
+  // empreendimento têm 100% deles `verified`. Com a trava olhando só para "empreendimento novo",
+  // NENHUMA delas voltaria a ser habilitada pela tela depois de a validação ser reaberta — o
+  // botão exigia algo novo que não existia, e não há outro caminho no rodapé.
+  const lista = [
+    { enterpriseId: "35", habilitado: true },
+    { enterpriseId: "40", habilitado: true },
+  ];
+  const todosMarcados = { "35": true, "40": true };
+
+  it("papel derrubado + tudo já verified: o botão ACENDE para reativar", () => {
+    expect(podeHabilitar(lista, todosMarcados, "review")).toBe(true);
+    expect(ehReativacao(lista, todosMarcados, "review")).toBe(true);
+  });
+
+  it("recusada também consegue voltar", () => {
+    expect(podeHabilitar(lista, todosMarcados, "blocked")).toBe(true);
+  });
+
+  it("já habilitada e sem nada novo continua TRAVADA: é a regra do clique repetido", () => {
+    expect(podeHabilitar(lista, todosMarcados, "active")).toBe(false);
+    expect(ehReativacao(lista, todosMarcados, "active")).toBe(false);
+  });
+
+  it("empreendimento NOVO acende o botão em qualquer estado, e não é reativação", () => {
+    const comNovo = [...lista, { enterpriseId: "42", habilitado: false }];
+    const marcados = { ...todosMarcados, "42": true };
+
+    expect(podeHabilitar(comNovo, marcados, "active")).toBe(true);
+    expect(ehReativacao(comNovo, marcados, "review")).toBe(false);
+  });
+
+  it("sem marcar nada, nem a reativação acende", () => {
+    // Reativar sem escolher empreendimento nenhum gravaria uma habilitação vazia.
+    expect(podeHabilitar(lista, {}, "review")).toBe(false);
+  });
+
+  it("sem saber o papel, mantém o comportamento antigo", () => {
+    // Chamada sem o terceiro argumento (código que ainda não passa o papel) não pode virar
+    // botão aceso por engano.
+    expect(podeHabilitar(lista, todosMarcados)).toBe(false);
   });
 });

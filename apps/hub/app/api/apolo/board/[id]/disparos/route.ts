@@ -7,7 +7,7 @@ import {
   descricaoDoAviso,
   ehPrimeiroAviso,
   type LinhaDeDisparo,
-  mascararTelefone,
+  formatarTelefone,
 } from "@/lib/apolo/credenciamento-disparos";
 import { contatoDaEntidadeImobiliaria } from "@/lib/apolo/disparo-imobiliaria";
 import {
@@ -111,7 +111,7 @@ export async function GET(request: Request, context: { params: Promise<{ id: str
       representanteDaImobiliaria(adminClient, id),
     ]);
     destino = {
-      contato: mascararTelefone(
+      contato: formatarTelefone(
         telefoneDaImobiliaria([representante.telefone, contato.telefone]),
       ),
       nome: representante.nome ?? contato.nome,
@@ -331,7 +331,7 @@ async function responder(
       aviso: input.aviso,
       erro: input.ok ? null : (input.erro ?? null),
       origem: "board",
-      telefone: mascararTelefone(input.telefone),
+      telefone: formatarTelefone(input.telefone),
     },
     status: "mapped",
   });
@@ -340,7 +340,7 @@ async function responder(
     data: {
       erro: input.ok ? null : (input.erro ?? "Falha no envio."),
       ok: input.ok,
-      para: mascararTelefone(input.telefone),
+      para: formatarTelefone(input.telefone),
       resumo: input.ok ? "Mensagem reenviada." : "Nao consegui reenviar.",
     },
   });

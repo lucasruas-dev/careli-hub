@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   mensagemCoordenadorHabilitacao,
   mensagemImobiliariaCorrecao,
+  mensagemCorretorCredenciado,
   mensagemImobiliariaHabilitada,
   mensagemImobiliariaIndeferida,
 } from "./credenciamento-mensagens";
@@ -205,5 +206,82 @@ describe("mensagemImobiliariaCorrecao", () => {
     });
 
     expect(texto).toContain("Pode mandar em PDF");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// O AVISO AO CORRETOR (pedido do Lucas, 17/08/2026)
+// ---------------------------------------------------------------------------
+
+describe("mensagem para o corretor", () => {
+  it("diz QUEM credenciou e ONDE, que é o pedido", () => {
+    const texto = mensagemCorretorCredenciado({
+      corretor: "DANIELLE CASTRO BARBOZA BESSA",
+      empreendimentos: [{ label: "Vale do Ouro" }],
+      imobiliaria: "DANY CASTRO NEGOCIOS IMOBILIARIOS",
+    });
+
+    expect(texto).toContain("Olá, Danielle!");
+    expect(texto).toContain("*DANY CASTRO NEGOCIOS IMOBILIARIOS* credenciou você no empreendimento");
+    expect(texto).toContain("• Vale do Ouro");
+    expect(texto).toContain("já pode enviar CAD nele");
+  });
+
+  it("no plural, uma mensagem só com todos os empreendimentos", () => {
+    // Mandar uma mensagem por empreendimento faria o corretor receber três seguidas quase iguais.
+    const texto = mensagemCorretorCredenciado({
+      corretor: "João",
+      empreendimentos: [{ label: "Lagoa Bonita" }, { label: "Jardim das Gerais" }],
+      imobiliaria: "Imobiliária X",
+    });
+
+    expect(texto).toContain("credenciou você nos empreendimentos");
+    expect(texto).toContain("• Lagoa Bonita");
+    expect(texto).toContain("• Jardim das Gerais");
+    expect(texto).toContain("já pode enviar CAD neles");
+  });
+
+  it("sem nome do corretor, não escreve 'Olá, null'", () => {
+    const texto = mensagemCorretorCredenciado({
+      corretor: null,
+      empreendimentos: [{ label: "Garden" }],
+      imobiliaria: "Imobiliária X",
+    });
+
+    expect(texto.startsWith("Olá!")).toBe(true);
+    expect(texto).not.toContain("null");
+  });
+
+  it("nome em CAIXA ALTA vira só o primeiro nome, capitalizado", () => {
+    // O cadastro guarda em caixa alta; usar cru mandaria "Olá, MARIA!", que parece grito.
+    const texto = mensagemCorretorCredenciado({
+      corretor: "MARIA DAS DORES SILVA",
+      empreendimentos: [{ label: "Garden" }],
+      imobiliaria: "Imobiliária X",
+    });
+
+    expect(texto).toContain("Olá, Maria!");
+  });
+
+  it("negrito de WhatsApp é UM asterisco, não dois", () => {
+    const texto = mensagemCorretorCredenciado({
+      empreendimentos: [{ label: "Garden" }],
+      imobiliaria: "Imobiliária X",
+    });
+
+    expect(texto).toContain("*Imobiliária X*");
+    expect(texto).not.toContain("**");
+  });
+
+  it("não usa travessão em texto que o parceiro lê", () => {
+    const texto = mensagemCorretorCredenciado({
+      corretor: "João",
+      empreendimentos: [{ label: "Garden" }],
+      imobiliaria: "Imobiliária X",
+      linkCad: "https://c2x.app.br/publico/cad",
+    });
+
+    expect(texto).not.toContain("—");
+    expect(texto).toContain("https://c2x.app.br/publico/cad");
   });
 });

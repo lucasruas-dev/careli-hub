@@ -48,6 +48,7 @@ import {
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
 import {
   empreendimentosNovos,
+  ehReativacao,
   podeHabilitar,
   posicaoDaImobiliaria,
   tudoLiberado,
@@ -2819,7 +2820,13 @@ function DetalheBoard({
               de validação"). Por isso as caixinhas seguem aqui, na ficha concluída — o que sumiu
               foi o botão que habilitava DE NOVO sem nada novo a liberar. O botão de dentro só
               acende quando há empreendimento novo marcado (`podeHabilitar`). */}
-          {imob ? <HabilitarEmpreendimentos entityId={item.id} onHabilitar={onHabilitar} /> : null}
+          {imob ? (
+            <HabilitarEmpreendimentos
+              entityId={item.id}
+              onHabilitar={onHabilitar}
+              papelStatus={item.papelStatus}
+            />
+          ) : null}
         </div>
       ) : etapaVista ? (
         <PainelEtapa
@@ -2829,6 +2836,7 @@ function DetalheBoard({
           onCreditoResultado={onCreditoResultado}
           onHabilitar={onHabilitar}
           onIdentidadeSalva={onIdentidadeSalva}
+          papelStatus={item.papelStatus}
         />
       ) : (
         <PainelConcluido imob={imob} />
@@ -2997,6 +3005,7 @@ function PainelEtapa({
   onCreditoResultado,
   onHabilitar,
   onIdentidadeSalva,
+  papelStatus,
 }: {
   entityId: string;
   etapa: Etapa;
@@ -3007,6 +3016,9 @@ function PainelEtapa({
   onCreditoResultado?: (r: { aprovado: boolean; etapa?: string }) => void;
   onHabilitar?: (entityId: string, empreendimentos: string[]) => Promise<boolean>;
   onIdentidadeSalva?: () => void;
+  // Papel da imobiliaria, para o botao saber se esta liberando produto novo ou reativando um
+  // credenciamento derrubado. Ver `podeHabilitar`.
+  papelStatus?: null | string;
 }) {
   const Icon = etapa.icon;
   return (
@@ -3029,7 +3041,11 @@ function PainelEtapa({
           <ValidacaoLadoALado entityId={entityId} onIdentidadeSalva={onIdentidadeSalva} />
           {/* Só a imobiliária conclui por aqui: a CAD de cliente avança pela trilha da esteira. */}
           {imob ? (
-            <HabilitarEmpreendimentos entityId={entityId} onHabilitar={onHabilitar} />
+            <HabilitarEmpreendimentos
+              entityId={entityId}
+              onHabilitar={onHabilitar}
+              papelStatus={papelStatus}
+            />
           ) : null}
         </>
       ) : null}
@@ -4063,9 +4079,13 @@ function ValidacaoLadoALado({
 function HabilitarEmpreendimentos({
   entityId,
   onHabilitar,
+  papelStatus,
 }: {
   entityId: string;
   onHabilitar?: (entityId: string, empreendimentos: string[]) => Promise<boolean>;
+  // Papel da imobiliaria: 'active' = habilitada. Sem ele o botao nao sabe distinguir "liberar
+  // produto novo" de "reativar credenciamento derrubado", e a segunda vira beco sem saida.
+  papelStatus?: null | string;
 }) {
   const [lista, setLista] = useState<
     { enterpriseId: string; habilitado: boolean; label: string }[] | null
@@ -4073,6 +4093,10 @@ function HabilitarEmpreendimentos({
   const [marcados, setMarcados] = useState<Record<string, boolean>>({});
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<null | string>(null);
+  // O que foi apontado na correcao. Vazio quando ela nao esta esperando correcao.
+  const [pendencias, setPendencias] = useState<string[]>([]);
+  // O operador confirmou que os pontos foram resolvidos? So pesa quando ha pendencias.
+  const [conferido, setConferido] = useState(false);
 
   useEffect(() => {
     let ativo = true;
@@ -4084,12 +4108,16 @@ function HabilitarEmpreendimentos({
           { headers: { Authorization: `Bearer ${token}` } },
         );
         const corpo = (await resposta.json().catch(() => null)) as {
-          data?: { empreendimentos?: { enterpriseId: string; habilitado: boolean; label: string }[] };
+          data?: {
+            empreendimentos?: { enterpriseId: string; habilitado: boolean; label: string }[];
+            pendencias?: string[];
+          };
         } | null;
         if (!ativo) return;
 
         const empreendimentos = corpo?.data?.empreendimentos ?? [];
         setLista(empreendimentos);
+        setPendencias(corpo?.data?.pendencias ?? []);
         // Já habilitado nasce marcado: o operador vê o estado real, e desmarcar não desabilita
         // (o servidor nunca rebaixa por omissão).
         setMarcados(
@@ -4129,7 +4157,8 @@ function HabilitarEmpreendimentos({
   // aqui, e "pode habilitar?" é justamente a conta que não pode divergir entre a tela e o
   // servidor — errar para mais redispara o WhatsApp de boas-vindas sem liberar nada.
   const novos = empreendimentosNovos(lista, marcados).length;
-  const pode = podeHabilitar(lista, marcados);
+  const pode = podeHabilitar(lista, marcados, papelStatus);
+  const reativando = ehReativacao(lista, marcados, papelStatus);
   // Nada a liberar porque JÁ ESTÁ TUDO liberado é diferente de "você não marcou nada". A tela
   // dizia "Nenhum empreendimento novo marcado" nos dois casos e travava o botão, e o operador
   // ficava procurando o que tinha feito de errado numa imobiliária que já estava pronta.
@@ -4186,6 +4215,31 @@ function HabilitarEmpreendimentos({
         })}
       </div>
 
+      {/* ⚠️ O QUE FOI APONTADO NA CORRECAO, na tela, na hora de habilitar. Pedido do Lucas
+          (17/08): "perguntar se os erros xyz foram corrigidos". Sem isto o operador confere de
+          memoria, e o motivo ficou na mensagem que a imobiliaria recebeu dias atras. */}
+      {pendencias.length > 0 ? (
+        <div className="mx-4 mb-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2.5 dark:border-amber-500/30 dark:bg-amber-500/10">
+          <p className="m-0 text-xs font-semibold text-amber-900 dark:text-amber-200">
+            Esta imobiliaria foi para correcao. Antes de habilitar, confirme que foi resolvido:
+          </p>
+          <ul className="m-0 mt-1.5 grid list-disc gap-0.5 pl-4 text-xs text-amber-900 dark:text-amber-200">
+            {pendencias.map((p) => (
+              <li key={p}>{p}</li>
+            ))}
+          </ul>
+          <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs font-medium text-amber-900 dark:text-amber-200">
+            <input
+              checked={conferido}
+              className="size-3.5 accent-current"
+              onChange={(e) => setConferido(e.target.checked)}
+              type="checkbox"
+            />
+            Conferi a ficha e os documentos: os pontos acima foram corrigidos
+          </label>
+        </div>
+      ) : null}
+
       {erro ? (
         <p className="mx-4 mb-3 flex items-center gap-1.5 rounded-lg bg-rose-50 px-3 py-2 text-xs font-medium text-rose-700 dark:bg-rose-500/10 dark:text-rose-300">
           <AlertTriangle aria-hidden="true" className="size-3.5 shrink-0" />
@@ -4209,7 +4263,7 @@ function HabilitarEmpreendimentos({
           // `podeHabilitar` trava o botão: sem isto, marcar um empreendimento JÁ habilitado
           // deixava o botão ativo e cada clique disparava de novo o WhatsApp de boas-vindas para a
           // imobiliária e para o coordenador, sem liberar nada.
-          disabled={salvando || !pode || !onHabilitar}
+          disabled={salvando || !pode || !onHabilitar || (pendencias.length > 0 && !conferido)}
           onClick={async () => {
             if (!onHabilitar) return;
             setSalvando(true);

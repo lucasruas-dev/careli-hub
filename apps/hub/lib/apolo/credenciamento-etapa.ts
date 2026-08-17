@@ -59,19 +59,47 @@ export function empreendimentosNovos(
 /**
  * PODE HABILITAR?
  *
- * ⚠️ SÓ QUANDO HÁ EMPREENDIMENTO NOVO MARCADO. Habilitar de novo quem já está habilitada não
- * muda uma linha do banco, mas DISPARA OUTRA VEZ o WhatsApp de boas-vindas para a imobiliária e
- * para o coordenador do empreendimento (a rota avisa depois de gravar, sem olhar se algo mudou).
- * O clique repetido já aconteceu, e é por isso que a trava é da regra e não do capricho da tela.
+ * Duas situações acendem o botão, e confundi-las cria beco sem saída:
  *
- * O caminho legítimo continua aberto: imobiliária já credenciada que pede um empreendimento NOVO
- * ganha um vínculo pendente, ele aparece desmarcado na lista, e aí sim há algo a liberar.
+ * 1. **Empreendimento NOVO marcado** — há algo a liberar. Habilitar de novo quem já está
+ *    habilitada não muda uma linha do banco e só redispara o WhatsApp de boas-vindas; foi o clique
+ *    repetido que motivou esta trava.
+ *
+ * 2. **O PAPEL não está `active`** — a imobiliária foi recusada, reaberta ou está em correção, e
+ *    precisa ser (re)habilitada. Aqui os vínculos podem estar TODOS `verified`, porque reabrir a
+ *    validação derruba o papel e deixa os vínculos como estavam.
+ *
+ * ⚠️ SEM A SEGUNDA CONDIÇÃO O BOTÃO NUNCA MAIS ACENDIA. Medido em 17/08: das 420 imobiliárias com
+ * papel `active`, as 38 que têm vínculo de empreendimento têm 100% deles `verified`. Ou seja,
+ * depois de um clique em "Reabrir validação" NENHUMA delas voltaria a ser habilitada pela tela —
+ * o botão exigia um empreendimento novo que não existia, e o rodapé da imobiliária não tem outro
+ * caminho. A rota sempre aceitou (o pedido `verified` cai em `jaHabilitados` e o papel volta a
+ * `active`); era só a tela que não deixava chegar lá.
  */
 export function podeHabilitar(
   lista: EmpreendimentoDaTela[],
   marcados: Record<string, boolean>,
+  papelStatus?: null | string,
 ): boolean {
-  return empreendimentosNovos(lista, marcados).length > 0;
+  if (empreendimentosNovos(lista, marcados).length > 0) return true;
+
+  // Reativação: só faz sentido se ela tem algum empreendimento marcado para valer.
+  const temAlgumMarcado = lista.some((item) => marcados[item.enterpriseId] === true);
+  return papelStatus !== undefined && papelStatus !== "active" && temAlgumMarcado;
+}
+
+/** O botão está reativando um credenciamento derrubado, em vez de liberar produto novo? */
+export function ehReativacao(
+  lista: EmpreendimentoDaTela[],
+  marcados: Record<string, boolean>,
+  papelStatus?: null | string,
+): boolean {
+  return (
+    papelStatus !== undefined &&
+    papelStatus !== "active" &&
+    empreendimentosNovos(lista, marcados).length === 0 &&
+    lista.some((item) => marcados[item.enterpriseId] === true)
+  );
 }
 
 // Tudo o que ela pediu já está liberado. É diferente de "você não marcou nada", e a tela precisa

@@ -5,6 +5,7 @@ import { sendEvolutionDirectText } from "@/lib/iris/evolution-api";
 
 import {
   mensagemCoordenadorHabilitacao,
+  mensagemCorretorCredenciado,
   mensagemCoordenadorIndeferimento,
   mensagemImobiliariaHabilitada,
   mensagemImobiliariaCorrecao,
@@ -210,6 +211,77 @@ export async function representanteDaImobiliaria(
   return { nome: nome || null, telefone: telefone || null };
 }
 
+export type CorretorDaImobiliaria = {
+  entityId: string;
+  nome: string;
+  telefone: null | string;
+};
+
+/**
+ * Os corretores ligados a esta imobiliária, com telefone.
+ *
+ * O vínculo é ENTRE ENTIDADES: `entity_id` é a imobiliária, `related_entity_id` é o corretor.
+ * Medido em 17/08/2026: 58 corretores de imobiliária habilitada, TODOS com telefone em
+ * `apolo_contacts` — o disparo tem para onde ir.
+ */
+export async function corretoresDaImobiliaria(
+  client: SupabaseClient,
+  imobiliariaEntityId: string,
+): Promise<CorretorDaImobiliaria[]> {
+  const { data: vinculos, error } = await client
+    .from("apolo_relationships")
+    .select("related_entity_id")
+    .eq("entity_id", imobiliariaEntityId)
+    .eq("relationship_type", "corretor")
+    .limit(200);
+
+  // ⚠️ Erro NÃO vira lista vazia em silêncio: sem isto, uma falha de leitura significaria
+  // "imobiliária sem corretor" e ninguém seria avisado, sem deixar rastro.
+  if (error) {
+    console.error("[apolo][disparo] falha ao ler corretores da imobiliaria", error);
+    return [];
+  }
+
+  const ids = [
+    ...new Set(
+      ((vinculos ?? []) as Array<{ related_entity_id: null | string }>)
+        .map((linha) => linha.related_entity_id)
+        .filter((id): id is string => Boolean(id)),
+    ),
+  ];
+  if (ids.length === 0) return [];
+
+  const [{ data: entidades }, { data: contatos }] = await Promise.all([
+    client.from("apolo_entities").select("id, display_name").in("id", ids).limit(200),
+    client
+      .from("apolo_contacts")
+      .select("entity_id, value, is_primary")
+      .eq("contact_type", "phone")
+      .in("entity_id", ids)
+      .limit(400),
+  ]);
+
+  const telefonePorId = new Map<string, string>();
+  for (const linha of (contatos ?? []) as Array<{
+    entity_id: string;
+    is_primary: boolean | null;
+    value: null | string;
+  }>) {
+    const valor = (linha.value ?? "").trim();
+    if (!valor) continue;
+    // O primário ganha; sem primário, o primeiro que aparecer.
+    if (linha.is_primary === true || !telefonePorId.has(linha.entity_id)) {
+      telefonePorId.set(linha.entity_id, valor);
+    }
+  }
+
+  return ((entidades ?? []) as Array<{ display_name: null | string; id: string }>).map((linha) => ({
+    entityId: linha.id,
+    nome: (linha.display_name ?? "").trim() || "Corretor",
+    telefone: telefonePorId.get(linha.id) ?? null,
+  }));
+}
+
 async function enviar(
   client: SupabaseClient,
   input: {
@@ -285,6 +357,10 @@ export async function avisarCredenciamentoAprovado(
     // Um por coordenador, já com os empreendimentos DELE. Ver `coordenadoresDosEmpreendimentos`.
     coordenadores?: CoordenadorComEmpreendimentos[];
     corretores: number;
+    // Os corretores que recebem o aviso "a imobiliária X credenciou você". Lista VAZIA = ninguém
+    // avisado, que é o comportamento de quem chama sem passar (o reenvio manual, por exemplo:
+    // reenviar para a imobiliária não pode espalhar mensagem para a equipe inteira dela).
+    corretoresParaAvisar?: CorretorDaImobiliaria[];
     empreendimentos: EmpreendimentoHabilitado[];
     entityId: string;
     imobiliaria: string;
@@ -296,8 +372,13 @@ export async function avisarCredenciamentoAprovado(
     representante?: null | string;
     responsavel?: null | string;
   },
-): Promise<{ coordenador: ResultadoEnvio; imobiliaria: ResultadoEnvio }> {
-  const [imobiliaria, coordenadores] = await Promise.all([
+): Promise<{
+  coordenador: ResultadoEnvio;
+  // Quantos corretores foram avisados e quantos falharam. A tela usa para dizer ao operador.
+  corretores: { avisados: number; falharam: number };
+  imobiliaria: ResultadoEnvio;
+}> {
+  const [imobiliaria, coordenadores, corretores] = await Promise.all([
     enviar(client, {
       entityId: input.entityId,
       destinatario: "imobiliaria",
@@ -333,6 +414,28 @@ export async function avisarCredenciamentoAprovado(
         }),
       ),
     ),
+    // O CORRETOR, que até 17/08 era o único que não sabia de nada. Uma mensagem por corretor, com
+    // TODOS os empreendimentos liberados juntos: mandar uma por empreendimento faria a equipe
+    // receber três mensagens seguidas dizendo quase a mesma coisa.
+    Promise.all(
+      (input.corretoresParaAvisar ?? []).map((corretor) =>
+        enviar(client, {
+          destinatario: "corretor",
+          // O disparo fica pendurado na ficha DO CORRETOR, não na da imobiliária: é lá que o
+          // operador vai procurar quando ele disser que não recebeu.
+          entityId: corretor.entityId,
+          origem: input.origem,
+          telefone: corretor.telefone,
+          texto: mensagemCorretorCredenciado({
+            corretor: corretor.nome,
+            empreendimentos: input.empreendimentos,
+            imobiliaria: input.imobiliaria,
+            linkCad: input.linkCad ?? null,
+          }),
+          tipo: "credenciamento_corretor",
+        }),
+      ),
+    ),
   ]);
 
   return {
@@ -340,6 +443,10 @@ export async function avisarCredenciamentoAprovado(
     coordenador: coordenadores.find((r) => r.ok) ?? {
       erro: coordenadores.length === 0 ? "sem coordenador" : coordenadores[0]?.erro,
       ok: false,
+    },
+    corretores: {
+      avisados: corretores.filter((r) => r.ok).length,
+      falharam: corretores.filter((r) => !r.ok).length,
     },
     imobiliaria,
   };
