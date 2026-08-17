@@ -215,6 +215,10 @@ async function enviar(
   input: {
     destinatario: string;
     entityId: string;
+    // De ONDE partiu o envio. Default `relacionamento:whatsapp` (o disparo automático da
+    // decisão); o botão de reenviar do Board manda `reenvio:whatsapp`, e é só por essa coluna
+    // que dá para separar, na tela de status, o que o sistema mandou do que alguém remandou.
+    origem?: string;
     telefone: null | string;
     texto: string;
     tipo: string;
@@ -251,6 +255,7 @@ async function registrar(
     destinatario: string;
     entityId: string;
     erro?: string;
+    origem?: string;
     status: string;
     telefone?: null | string;
     tipo: string;
@@ -263,7 +268,7 @@ async function registrar(
       erro: input.erro ?? null,
       // `relacionamento:whatsapp` diz de QUAL número saiu, que é a informação nova: o
       // `imobiliaria:whatsapp` dos outros disparos é o 4143 (Meta).
-      origem: "relacionamento:whatsapp",
+      origem: input.origem ?? "relacionamento:whatsapp",
       status: input.status,
       telefone: input.telefone ?? null,
       tipo: input.tipo,
@@ -285,6 +290,7 @@ export async function avisarCredenciamentoAprovado(
     imobiliaria: string;
     imobiliariaTelefone?: null | string;
     linkCad?: null | string;
+    origem?: string;
     // true = primeira vez com a Careli; false = já era credenciada e só habilitou mais um
     primeiraVez: boolean;
     representante?: null | string;
@@ -295,6 +301,7 @@ export async function avisarCredenciamentoAprovado(
     enviar(client, {
       entityId: input.entityId,
       destinatario: "imobiliaria",
+      origem: input.origem,
       telefone: input.imobiliariaTelefone ?? null,
       texto: mensagemImobiliariaHabilitada({
         empreendimentos: input.empreendimentos,
@@ -310,6 +317,7 @@ export async function avisarCredenciamentoAprovado(
         enviar(client, {
           destinatario: `coordenador:${coord.nome}`,
           entityId: input.entityId,
+          origem: input.origem,
           telefone: coord.telefone,
           texto: mensagemCoordenadorHabilitacao({
             cnpj: input.cnpj ?? null,
@@ -352,12 +360,14 @@ export async function avisarCredenciamentoCorrecao(
     imobiliariaTelefone?: null | string;
     motivos: string[];
     observacao?: null | string;
+    origem?: string;
     representante?: null | string;
   },
 ): Promise<{ imobiliaria: ResultadoEnvio }> {
   const imobiliaria = await enviar(client, {
     destinatario: "imobiliaria",
     entityId: input.entityId,
+    origem: input.origem,
     telefone: input.imobiliariaTelefone ?? null,
     texto: mensagemImobiliariaCorrecao({
       imobiliaria: input.imobiliaria,
@@ -382,6 +392,7 @@ export async function avisarCredenciamentoIndeferido(
     imobiliariaTelefone?: null | string;
     motivos: string[];
     observacao?: null | string;
+    origem?: string;
     representante?: null | string;
     responsavel?: null | string;
   },
@@ -390,6 +401,7 @@ export async function avisarCredenciamentoIndeferido(
     enviar(client, {
       entityId: input.entityId,
       destinatario: "imobiliaria",
+      origem: input.origem,
       telefone: input.imobiliariaTelefone ?? null,
       texto: mensagemImobiliariaIndeferida({
         imobiliaria: input.imobiliaria,
@@ -403,6 +415,7 @@ export async function avisarCredenciamentoIndeferido(
       ? enviar(client, {
           entityId: input.entityId,
           destinatario: "coordenador",
+          origem: input.origem,
           telefone: input.coordenadorTelefone,
           texto: mensagemCoordenadorIndeferimento({
             cnpj: input.cnpj ?? null,

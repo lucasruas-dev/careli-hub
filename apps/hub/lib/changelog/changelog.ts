@@ -36,6 +36,47 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-17-imobiliaria-habilitada-e-status-do-whatsapp",
+    deployedAt: "2026-08-17T20:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Imobiliaria ja habilitada agora aparece como CONCLUIDA: as duas bolinhas verdes e o selo Apta, em vez de continuar marcada como se estivesse em validacao",
+              "Sumiu o botao Habilitar que ficava no rodape mesmo depois de habilitada, apontando para caixinhas que nao estavam na tela",
+              "A habilitacao de verdade continua no painel de empreendimentos, e o botao so acende quando ha empreendimento NOVO marcado: clique repetido nao redispara mais o WhatsApp de boas-vindas",
+              "Quem ja e credenciada e pede um empreendimento novo continua aparecendo aqui, com o pedido desmarcado esperando a liberacao",
+              "O botao Voltar virou REABRIR VALIDACAO, com o aviso do que ele faz: na imobiliaria ele nao volta etapa, ele desfaz a habilitacao e o portal para de aceitar o CNPJ dela",
+              "Recusar e Enviar para correcao agora aparecem depois de reabrir a validacao, para nao ficarem ao lado de uma ficha ja habilitada",
+            ],
+            screen: "Apolo - Board (imobiliaria)",
+          },
+          {
+            items: [
+              "Painel novo de MENSAGENS ENVIADAS na ficha: o que foi enviado, para quem, o telefone, a data e a hora, e se deu certo ou qual foi o erro",
+              "Quando o envio falha, a tela diz o motivo em portugues (numero que nao e WhatsApp, ficha sem telefone) em vez de deixar o operador no escuro",
+              "⚠️ Este canal NAO devolve confirmacao de entrega nem de leitura, e a tela diz isso: nao ha como saber se a pessoa leu. So as mensagens que saem pela Meta trazem entregue e lido",
+              "Botao de REENVIAR a mensagem da situacao atual da imobiliaria, mostrando antes para quem vai. O reenvio vai so para a imobiliaria, nunca para o coordenador",
+            ],
+            screen: "Apolo - Board (mensagens da ficha)",
+          },
+        ],
+      },
+    ],
+    rollback: "3d6aaeca (v1.148.0)",
+    technical: {
+      done:
+        "Quatro pedidos do Lucas sobre a ficha da imobiliária habilitada, feitos por agente e revisados aqui. ETAPA VERDE: `habilitada` passou a valer `etapas.length` e não a posição 1 — com 1 ela era a etapa ATUAL (bolinha cinza numerada), com `length` a ficha entra como concluída, mesmo tratamento que a CAD `credenciado` já tinha. BOTÃO DO RODAPÉ: o do print era o avanço genérico, que só sabia mostrar 'marque abaixo os empreendimentos' apontando para caixinhas ausentes naquele ponto da trilha; saiu para imobiliária. A habilitação real é a do painel, e a regra de quando ela pode acontecer virou função pura testada (`podeHabilitar`, `empreendimentosNovos`, `tudoLiberado` em `credenciamento-etapa.ts`, 11 testes) — antes o botão continuava ativo com tudo liberado e cada clique redisparava o WhatsApp para imobiliária e coordenador. Também saíram 'Enviar ao coordenador' (que só respondia 'validação de imobiliária não passa por análise de crédito') e o 'Aprovar' genérico; 'Voltar' virou 'Reabrir validação' porque na imobiliária ele DESFAZ a habilitação, e o nome antigo escondia isso. STATUS DOS DISPAROS: nova rota `board/[id]/disparos` (GET status, POST reenvio) e `credenciamento-disparos.ts` (18 testes). ⚠️ MEDIDO ANTES DE DESENHAR: `apolo_disparos` não tem coluna de canal nem de e-mail, e os 24 disparos `relacionamento:whatsapp` estão com `wa_message_id`, `delivered_at` e `read_at` TODOS NULOS — o Evolution não devolve recibo, só o webhook da Meta preenche (302 `prevenda_cobranca` lidos comprovam o outro caminho). A tela diz isso explicitamente em vez de exibir um 'entregue' que ninguém confirmou: inventar confirmação de leitura seria pior que não mostrar. Telefone e e-mail saem mascarados. REENVIO: reusa `avisarCredenciamento*` e `telefoneDaImobiliaria([representante, empresa])` — a regra do telefone NÃO foi duplicada (é a que já custou 3 imobiliárias sem aviso, porque `\"\" ?? x` continua `\"\"`). Manda o aviso da situação ATUAL (habilitada → habilitação; correção → pedido com os motivos; recusada → recusa), e os motivos saem de `apolo_audit_events.metadata`: quando não há motivo registrado o reenvio é RECUSADO, em vez de mandar uma recusa sem dizer o que houve — que é a queixa que criou a ação de correção. 'Cadastro aprovado' vs 'mais um empreendimento' sai do histórico de disparos, não de chute. Grava `origem = reenvio:whatsapp` e evento `credenciamento_reenvio` na auditoria. MEDIDO: 418 de 440 imobiliárias estão em papel `active` + entidade `review` (é a combinação NORMAL, não defeito), 440 papéis para 440 entidades (sem duplicado, `maybeSingle` seguro), e a EDSON LUIZ BARBOSA não tem NENHUMA linha em `apolo_disparos` — foi habilitada antes do disparo existir. FICA REGISTRADO, sem correção nesta entrega: a rota `/habilitar` ainda dispara o WhatsApp mesmo quando `plano.habilitar` e `plano.novos` estão vazios; hoje quem impede é o botão da tela. Fechar no servidor muda comportamento de escrita e ficou para uma próxima, com decisão do Lucas.",
+      motivation:
+        "Lucas, 17/08, com print: 'a imobiliária já está habilitada e ainda fica aparecendo o campo de habilitar. Outra, se ela já está habilitada a etapa de habilitada deveria estar verde. Aqui nessa tela seria ótimo trazer os status do envio das mensagens, se foi enviado, hora, se recebeu, quem recebeu, para a gente não ficar no escuro, e um botão de reenviar a mensagem'.",
+    },
+    title: "Imobiliaria habilitada, e o que aconteceu com o WhatsApp dela",
+    type: "melhoria",
+    version: "1.149.0",
+  },
+  {
     buildTag: "2026-08-17-assinatura-de-quem-e-a-vez",
     deployedAt: "2026-08-17T19:20:00-03:00",
     modules: [

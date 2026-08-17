@@ -46,6 +46,12 @@ import {
   titleCase,
 } from "@/lib/apolo/c2x-fields";
 import { C2X_PROFISSOES } from "@/lib/apolo/c2x-professions";
+import {
+  empreendimentosNovos,
+  podeHabilitar,
+  posicaoDaImobiliaria,
+  tudoLiberado,
+} from "@/lib/apolo/credenciamento-etapa";
 import { toTitleCase } from "@/lib/format/name-case";
 
 import { expandirCamposComCaminho } from "@/lib/apolo/campos-aninhados";
@@ -54,6 +60,7 @@ import { formatarTelefoneBR } from "@/lib/format/phone-br";
 import { buscarEnderecoPorCep } from "../../lib/cep";
 
 import { CreditoSerasa } from "./credito-serasa";
+import { StatusDisparos } from "./status-disparos";
 import { StatusPixPrevenda } from "./status-pix";
 
 import { getApoloAccessToken } from "../../data/apolo-operations";
@@ -689,14 +696,21 @@ export function BoardView({
       setProgresso((atual) => {
         const semeado: Record<string, number> = {};
         for (const item of itensCarregados) {
-          // ⚠️ IMOBILIÁRIA NÃO TEM `etapa` (não tem esteira), então `indiceDaEtapa` devolvia
-          // undefined e o progresso dela ficava em 0 PARA SEMPRE: a ficha da imobiliária já
-          // habilitada abria dizendo "Validação", sem o selo de apta, e o botão Voltar (que é
-          // `disabled={etapaAtual === 0}`) nunca ficava clicável. A trilha dela é
-          // cadastro -> habilitada, então `active` é o passo 1.
+          // ⚠️ IMOBILIÁRIA NÃO TEM `etapa` (não tem esteira), então `indiceDaEtapa` devolve
+          // undefined e o progresso dela ficaria em 0 para sempre. A regra de onde ela está mora
+          // em `posicaoDaImobiliaria` (papel `active` = CONCLUÍDA, o resto = Validação).
+          //
+          // ⚠️ HABILITADA VALE `etapas.length`, NÃO 1. Com 1 ela era a "etapa atual": bolinha
+          // cinza com o número 2 no passo Habilitada, painel pedindo decisão e botão "Habilitar
+          // imobiliária" numa ficha já habilitada — o print que o Lucas mandou em 17/08. Mesmo
+          // tratamento que a CAD credenciada recebe em `indiceDaEtapa`.
           if (item.papel === "imobiliaria") {
-            if (item.papelStatus === "active") semeado[item.id] = 1;
-            else if (item.papelStatus) semeado[item.id] = 0;
+            const posicao = posicaoDaImobiliaria({
+              entidadeStatus: item.entidadeStatus,
+              papelStatus: item.papelStatus,
+              totalEtapas: etapasDoItem(item).length,
+            });
+            if (posicao !== null) semeado[item.id] = posicao;
             continue;
           }
 
@@ -2798,7 +2812,15 @@ function DetalheBoard({
       </ol>
 
       {concluida && visualizando === null ? (
-        <PainelConcluido imob={imob} />
+        <div>
+          <PainelConcluido imob={imob} />
+          {/* ⚠️ LIBERAR EMPREENDIMENTO NOVO CONTINUA POSSÍVEL depois de habilitada, e é fluxo
+              legítimo (regra do Lucas: "imobiliária que já tem cadastro não precisa cair na fila
+              de validação"). Por isso as caixinhas seguem aqui, na ficha concluída — o que sumiu
+              foi o botão que habilitava DE NOVO sem nada novo a liberar. O botão de dentro só
+              acende quando há empreendimento novo marcado (`podeHabilitar`). */}
+          {imob ? <HabilitarEmpreendimentos entityId={item.id} onHabilitar={onHabilitar} /> : null}
+        </div>
       ) : etapaVista ? (
         <PainelEtapa
           entityId={item.id}
@@ -2812,15 +2834,29 @@ function DetalheBoard({
         <PainelConcluido imob={imob} />
       )}
 
+      {/* O QUE A GENTE MANDOU PARA ELA (Lucas, 17/08: "para a gente não ficar no escuro"). Fica
+          fora do painel da etapa de propósito: o operador precisa ver os envios em qualquer
+          ponto da trilha, inclusive depois de habilitada, que é justamente quando ele pergunta
+          "ela recebeu?". */}
+      {imob ? <StatusDisparos entityId={item.id} /> : null}
+
       <div className="flex items-center justify-between gap-2 border-t border-line pt-4">
         <div className="flex items-center gap-2">
           <button
             className="inline-flex h-9 items-center rounded-lg border border-line px-4 text-sm font-medium text-ink-soft transition-colors hover:bg-subtle disabled:opacity-40"
             disabled={etapaAtual === 0}
             onClick={() => onVoltar(etapa?.id ?? "cadastro")}
+            title={
+              imob
+                ? "Devolve o credenciamento para validação: enquanto isso ela NÃO envia CAD."
+                : undefined
+            }
             type="button"
           >
-            Voltar
+            {/* Na imobiliária este botão não "volta uma etapa": ele DESFAZ a habilitação (o papel
+                cai para `review` e o portal do corretor para de aceitar o CNPJ). Chamar isso de
+                "Voltar" numa ficha habilitada é convite a descredenciar sem querer. */}
+            {imob ? "Reabrir validação" : "Voltar"}
           </button>
 
           {/* Chat e histórico: compacto e destacado no dourado da marca, junto das ações. */}
@@ -2896,15 +2932,21 @@ function DetalheBoard({
                 <AlertTriangle aria-hidden="true" className="size-4" />
                 Enviar para correção
               </button>
-              {/* Escalar: quando o caso precisa do aval de quem aprova. */}
-              <button
-                className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#A07C3B]/40 px-4 text-sm font-medium text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10 dark:text-[#d9b877]"
-                onClick={onEnviarGestao}
-                type="button"
-              >
-                <ShieldCheck aria-hidden="true" className="size-4" />
-                Enviar ao coordenador
-              </button>
+              {/* Escalar: quando o caso precisa do aval de quem aprova.
+                  ⚠️ NÃO EXISTE PARA A IMOBILIÁRIA. Ele escala a ANÁLISE DE CRÉDITO, que não é
+                  etapa dela: o clique só sabia responder "validação de imobiliária não passa por
+                  análise de crédito". Um botão cuja única função é dizer que não serve é ruído no
+                  meio das três decisões que servem (habilitar, corrigir, recusar). */}
+              {imob ? null : (
+                <button
+                  className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-[#A07C3B]/40 px-4 text-sm font-medium text-[#7A5E2C] transition-colors hover:bg-[#A07C3B]/10 dark:text-[#d9b877]"
+                  onClick={onEnviarGestao}
+                  type="button"
+                >
+                  <ShieldCheck aria-hidden="true" className="size-4" />
+                  Enviar ao coordenador
+                </button>
+              )}
               {/* Na PRÉ-VENDA a ação de verdade (gerar o PIX e disparar a cobrança) vive no painel
                   da etapa, com feedback de envio — como o crédito faz com o Serasa. Um botão
                   genérico "Gerar PIX" aqui no rodapé só faria progresso++ e pularia pra Credenciado
@@ -2915,7 +2957,14 @@ function DetalheBoard({
                   pré-venda" que o Lucas viu em 10/08. A consulta de verdade vive no painel da
                   etapa, igual ao PIX. Sobra o avanço da Validação e a confirmação do Credenciado,
                   e os dois GRAVAM antes de mover a tela. */}
-              {etapa && (etapa.id === "prevenda" || etapa.id === "credito") ? null : (
+              {/* ⚠️ A IMOBILIÁRIA NÃO TEM AVANÇO GENÉRICO. Este botão saía como "Habilitar
+                  imobiliária" numa ficha JÁ habilitada e não habilitava nada: `avancarEtapa`
+                  devolve um aviso mandando marcar as caixinhas, que nem estavam na tela naquele
+                  ponto da trilha (print do Lucas, 17/08). A habilitação dela é o botão de dentro
+                  do painel de empreendimentos, e ele só acende quando há empreendimento novo
+                  marcado, porque clique repetido REDISPARA o WhatsApp de boas-vindas para a
+                  imobiliária e para o coordenador. */}
+              {imob || (etapa && (etapa.id === "prevenda" || etapa.id === "credito")) ? null : (
                 <button
                   className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-inverse px-5 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90"
                   onClick={() => onAvancar(etapa?.id ?? "cadastro")}
@@ -4075,11 +4124,16 @@ function HabilitarEmpreendimentos({
   }
 
   const escolhidos = lista.map((item) => item.enterpriseId).filter((id) => marcados[id]);
-  const novos = lista.filter((item) => !item.habilitado && marcados[item.enterpriseId]).length;
+  // ⚠️ AS TRÊS PERGUNTAS SAEM DA MESMA REGRA (lib/apolo/credenciamento-etapa.ts), testada: o que
+  // vai ser liberado de novo, se dá para habilitar, e se já está tudo liberado. Estavam soltas
+  // aqui, e "pode habilitar?" é justamente a conta que não pode divergir entre a tela e o
+  // servidor — errar para mais redispara o WhatsApp de boas-vindas sem liberar nada.
+  const novos = empreendimentosNovos(lista, marcados).length;
+  const pode = podeHabilitar(lista, marcados);
   // Nada a liberar porque JÁ ESTÁ TUDO liberado é diferente de "você não marcou nada". A tela
   // dizia "Nenhum empreendimento novo marcado" nos dois casos e travava o botão, e o operador
   // ficava procurando o que tinha feito de errado numa imobiliária que já estava pronta.
-  const tudoLiberado = lista.length > 0 && lista.every((item) => item.habilitado);
+  const jaLiberouTudo = tudoLiberado(lista);
 
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-surface">
@@ -4090,7 +4144,7 @@ function HabilitarEmpreendimentos({
         <div className="min-w-0">
           <h4 className="m-0 text-sm font-semibold text-ink">Empreendimentos a liberar</h4>
           <p className="m-0 mt-0.5 text-xs text-ink-muted">
-            {tudoLiberado
+            {jaLiberouTudo
               ? "Esta imobiliária já pode enviar CAD em todos os empreendimentos que pediu."
               : "Marque onde esta imobiliária pode enviar CAD. O que ficar de fora continua aguardando."}
           </p>
@@ -4141,7 +4195,7 @@ function HabilitarEmpreendimentos({
 
       <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
         <span className="text-xs text-ink-muted">
-          {tudoLiberado
+          {jaLiberouTudo
             ? "Tudo que ela pediu já está liberado"
             : novos === 0
               ? "Nenhum empreendimento novo marcado"
@@ -4152,10 +4206,10 @@ function HabilitarEmpreendimentos({
 
         <button
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
-          // `novos === 0` trava o botão: sem isto, marcar um empreendimento JÁ habilitado deixava o
-          // botão ativo e cada clique disparava de novo o WhatsApp de boas-vindas para a
+          // `podeHabilitar` trava o botão: sem isto, marcar um empreendimento JÁ habilitado
+          // deixava o botão ativo e cada clique disparava de novo o WhatsApp de boas-vindas para a
           // imobiliária e para o coordenador, sem liberar nada.
-          disabled={salvando || novos === 0 || !onHabilitar}
+          disabled={salvando || !pode || !onHabilitar}
           onClick={async () => {
             if (!onHabilitar) return;
             setSalvando(true);
