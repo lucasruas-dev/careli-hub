@@ -23,6 +23,7 @@ import {
 } from "@/lib/apolo/credenciamento-trava-corretor";
 import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
 import { listEmpreendimentosAtivos } from "@/lib/apolo/credenciamento";
+import { canonizador } from "@/lib/apolo/empreendimento-equivalencia";
 import { createApoloAdminClient } from "@/lib/apolo/server";
 
 // HABILITAR / INDEFERIR o credenciamento de uma imobiliária.
@@ -388,38 +389,50 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   // Label de cada id REAL, para nomear o vínculo criado do zero.
   const labelPorId = new Map<string, string>();
 
-  // ⚠️ A EXPANSÃO DE GRUPO VALE SEMPRE, o `ativos` é que é condicional.
+  // ⚠️ OS DOIS LADOS SÃO CANONIZADOS, e é este o conserto de 17/08.
   //
-  // Um empreendimento pode ser um GRUPO (Lagoa Bonita = LBF + LBR + LBP): a tela manda o id do
-  // grupo e o vínculo guarda os enterprise_id REAIS. Sem expandir, o id do grupo não casa com
-  // nenhum pedido e vira `desconhecido` — ou seja, o botão devolveria 400 também para as 16
-  // imobiliárias que estão paradas em `review` esperando validação, que são justamente o motivo
-  // desta rota existir. Deixar a expansão dentro do `if (jaCredenciada)` consertava um caso e
-  // mantinha o outro quebrado.
+  // O mesmo empreendimento tem DOIS formatos de id vivos no banco: o do GRUPO ("group:Lagoa
+  // Bonita"), que é o que o portal público grava porque lá fora não existe divisão, e o das
+  // DIVISÕES (33/LBF, 27/LBR, 32/LBP), que é como o C2X o conhece.
   //
-  // `ativos` continua só para quem já é credenciada: é ele que autoriza CRIAR vínculo novo sem
-  // pedido, e para quem está em review o operador só pode liberar o que ela pediu.
+  // Antes daqui só os ESCOLHIDOS eram expandidos, para as divisões; os PEDIDOS ficavam como
+  // estavam. Comparar [33, 27, 32] contra ["group:Lagoa Bonita"] não casa nada, e a imobiliária
+  // que tinha ACABADO de pedir o Lagoa Bonita recebia "Empreendimento que esta imobiliaria nao
+  // pediu: 33, 27, 32". Expansão de um lado só é o defeito.
+  //
+  // Agora os dois lados viram o id CANÔNICO (o do grupo, quando existe), então tanto faz em que
+  // formato o pedido foi gravado. Regra do Lucas: "quando clicar em Lagoa Bonita, tem que
+  // habilitar todos os Lagoa Bonita" — e é o que passa a acontecer, porque o vínculo do grupo
+  // cobre as três divisões.
   const lista = await listEmpreendimentosAtivos(adminClient);
   const porId = new Map(lista.map((e) => [String(e.id), e]));
-  const expandir = (emp: (typeof lista)[number]): string[] =>
-    emp.stageIds.length ? emp.stageIds.map(String) : [String(emp.id)];
+  const canon = canonizador(lista);
 
-  escolhidos = escolhidos.flatMap((id) => {
-    const emp = porId.get(id);
-    if (!emp) return [id];
-    const reais = expandir(emp);
-    for (const real of reais) labelPorId.set(real, emp.name);
-    return reais;
-  });
+  escolhidos = [
+    ...new Set(
+      escolhidos.map((id) => {
+        const canonico = canon(id);
+        const emp = porId.get(canonico);
+        if (emp) labelPorId.set(canonico, emp.name);
+        return canonico;
+      }),
+    ),
+  ];
+
+  // O pedido gravado como divisão passa a valer pelo grupo, e vice-versa.
+  const pedidosCanonicos = pedidos.map((pedido) => ({
+    ...pedido,
+    enterpriseId: canon(pedido.enterpriseId),
+  }));
 
   if (jaCredenciada) {
-    ativos = lista.flatMap(expandir);
+    ativos = lista.map((emp) => String(emp.id));
   }
 
   const plano = planejarHabilitacao({
     ativos,
     escolhidos,
-    pedidos,
+    pedidos: pedidosCanonicos,
   });
 
   if (plano.desconhecidos.length > 0) {

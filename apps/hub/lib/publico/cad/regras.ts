@@ -5,6 +5,7 @@
 // a rota pública é anônima, então um erro aqui não vira "tela feia", vira CAD nascendo no
 // vínculo errado. Ver [[project_esteira_credenciamento_venda]].
 import { cnpjValido, cpfValido, soDigitos } from "@/lib/apolo/documento";
+import { cobertoPor } from "@/lib/apolo/empreendimento-equivalencia";
 import { soDigitosTelefone, telefoneCompleto } from "@/lib/format/phone-br";
 
 // ---------------------------------------------------------------------------
@@ -147,11 +148,21 @@ export type EmpreendimentoPublico = {
 // para subir CAD em empreendimento onde ninguém habilitou ninguém.
 export function filtrarEmpreendimentosHabilitados(
   credenciados: string[],
-  ativos: EmpreendimentoPublico[],
+  ativos: (EmpreendimentoPublico & { stageIds?: string[] })[],
 ): EmpreendimentoPublico[] {
+  // ⚠️ O VÍNCULO PODE ESTAR NO ID DA DIVISÃO, e isso não é caso hipotético.
+  //
+  // Lagoa Bonita aparece aqui como UM item, de id "group:Lagoa Bonita" — é a regra do Lucas, "para
+  // eles não tem essa de divisão, isso é interno". Mas o vínculo da imobiliária pode ter sido
+  // gravado com o id de uma divisão (33/LBF, 27/LBR, 32/LBP), que é como o C2X a conhece.
+  //
+  // Comparar só `emp.id` fazia a DANY CASTRO — habilitada e `verified` nas TRÊS divisões — não
+  // enxergar o Lagoa Bonita no portal. Os corretores dela não conseguiam enviar CAD lá, e a
+  // habilitação existia no banco o tempo todo. Vale igual para Lavra do Ouro, Rio de Pedras e
+  // Portal dos Vales, que têm a mesma estrutura.
   const permitidos = new Set(credenciados.filter(Boolean).map(String));
   return ativos
-    .filter((emp) => permitidos.has(String(emp.id)))
+    .filter((emp) => cobertoPor(emp, permitidos))
     .sort((a, b) => a.name.localeCompare(b.name, "pt-BR"));
 }
 

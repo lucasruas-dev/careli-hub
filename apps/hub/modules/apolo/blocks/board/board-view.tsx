@@ -268,6 +268,8 @@ export function BoardView({
 } = {}) {
   const [itens, setItens] = useState<ItemFila[]>([]);
   const [analistas, setAnalistas] = useState<Analista[]>([]);
+  // Lista canônica de empreendimentos, vinda do servidor. Ver `empreendimentosDisponiveis`.
+  const [catalogoEmpreendimentos, setCatalogoEmpreendimentos] = useState<string[]>([]);
   const [usuarioAtual, setUsuarioAtual] = useState<Analista | null>(null);
   // Quem está analisando cada item. Local por enquanto (a atribuição real entra com a gravação).
   const [analistaPorItem, setAnalistaPorItem] = useState<Record<string, string>>({});
@@ -662,11 +664,17 @@ export function BoardView({
         headers: { Authorization: `Bearer ${accessToken}` },
       });
       const payload = (await response.json()) as {
-        data?: { analistas?: Analista[]; itens?: ItemFila[]; usuarioAtual?: Analista | null };
+        data?: {
+          analistas?: Analista[];
+          empreendimentos?: string[];
+          itens?: ItemFila[];
+          usuarioAtual?: Analista | null;
+        };
       };
       const itensCarregados = payload.data?.itens ?? [];
       setItens(itensCarregados);
       setAnalistas(payload.data?.analistas ?? []);
+      setCatalogoEmpreendimentos(payload.data?.empreendimentos ?? []);
       setUsuarioAtual(payload.data?.usuarioAtual ?? null);
 
       // O item ABERTO é um estado à parte de `itens` (não é derivado por id), e o título da
@@ -811,9 +819,18 @@ export function BoardView({
     [carregarFila],
   );
 
-  // Lista de empreendimentos pro seletor (só os que realmente aparecem na fila).
+  // Lista de empreendimentos pro seletor.
+  //
+  // ⚠️ SAI DO CATÁLOGO, não dos cards. Montar a partir de `itens` fazia o filtro oferecer só o que
+  // já estava na tela: empreendimento sem nenhuma CAD simplesmente não existia como opção, e não
+  // havia como perguntar "e o Lagoa Bonita?" — a resposta era a ausência da pergunta. Foi o que o
+  // Lucas viu em 17/08, com a DANY CASTRO habilitada nas três divisões do Lagoa Bonita.
+  //
+  // A união com o que está nos cards continua: se um card trouxer um nome que o catálogo não tem
+  // (grafia antiga da esteira, empreendimento desativado depois da venda), o filtro dele não pode
+  // sumir junto.
   const empreendimentosDisponiveis = Array.from(
-    new Set(itens.flatMap((item) => item.empreendimentos)),
+    new Set([...catalogoEmpreendimentos, ...itens.flatMap((item) => item.empreendimentos)]),
   ).sort((a, b) => a.localeCompare(b, "pt-BR"));
 
   const alvoBusca = busca.trim().toLowerCase();

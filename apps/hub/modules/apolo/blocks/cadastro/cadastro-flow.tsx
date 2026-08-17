@@ -101,6 +101,8 @@ type Enrichment = {
   creci: string;
   emails: string[];
   estadoCivil: string;
+  // Nome completo do titular (basic_data.name). É o que permite pedir SÓ o CPF e preencher o resto.
+  nome: string;
   nomeMae: string;
   nomePai: string;
   patrimonio: string;
@@ -114,7 +116,7 @@ type Enrichment = {
 };
 
 const ENRICH_VAZIO: Enrichment = {
-  available: false, conjuge: "", creci: "", emails: [], estadoCivil: "", nomeMae: "",
+  available: false, conjuge: "", creci: "", emails: [], estadoCivil: "", nome: "", nomeMae: "",
   nomePai: "", patrimonio: "", profissao: "", renda: "", sexo: "",
   source: "", telefones: [], warnings: [],
 };
@@ -3039,6 +3041,13 @@ function StepSocios({
 // enxuta só-conselho quando o MOST criar. Só dispara quando o operador clica "Buscar dados".
 const QUERY_ENRICH_CRECI = "CARELI_PF_04";
 
+// Cadastro básico: é dela que sai o NOME COMPLETO (dataset basic_data). A PF_04 não o traz.
+//
+// ⚠️ CUSTO: são DUAS consultas por corretor, não uma. É o mesmo custo que o portal público já
+// paga desde 20/07 pela mesma regra ("o corretor digita o CPF, a MOST traz o nome completo"), e
+// as duas rodam UMA VEZ por CPF — o `cpfBuscado` abaixo é o que garante isso.
+const QUERY_ENRICH_CADASTRO = "CARELI_PF_01";
+
 // Etapa Corretores (só imobiliária): cadastro SIMPLES e digitado. Cada corretor vira um
 // relacionamento de contato. Pode avançar sem nenhum (cadastra depois); os adicionados precisam
 // de nome + CPF. O CRECI tenta vir do enriquecimento por CPF; senão, é digitado. Nada além disso
@@ -3136,27 +3145,38 @@ function BlocoCorretor({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [corretor.cpf]);
 
-  // Enriquece pelo CPF: telefone, e-mail e o CRECI (conselho de classe). Best-effort — se não
-  // vier, os campos ficam manuais.
+  // Enriquece pelo CPF: NOME COMPLETO, telefone, e-mail e o CRECI. Best-effort — se não vier, os
+  // campos ficam manuais.
+  //
+  // Regra do Lucas (17/08): "é obrigatório informar o CPF, é válido iniciar por essa pergunta e
+  // usar a MOST para trazer o nome do corretor, pois é o CPF que valida o corretor na hora de
+  // subir CAD". É a mesma regra que o portal público segue desde 20/07; aqui dentro o nome ainda
+  // era digitado à mão, e digitar nome à mão é como nasce corretor com grafia diferente da base.
+  //
+  // ⚠️ AS DUAS QUERIES EM PARALELO, e não em sequência: se o CRECI demorar, o nome ainda chega
+  // (e vice-versa). Mesma escolha da rota pública /cad/creci.
   async function buscar() {
     setBuscando(true);
-    let enr: Enrichment = ENRICH_VAZIO;
-    try {
-      enr = await api.ocr<Enrichment>({
-        action: "enrich",
-        cpf: corretor.cpf,
-        query: QUERY_ENRICH_CRECI,
-      });
-    } catch {
-      // best-effort: sem enriquecimento, o operador digita CRECI/telefone/e-mail
-    } finally {
-      setBuscando(false);
-    }
+
+    const [doCadastro, doCreci] = await Promise.all([
+      api
+        .ocr<Enrichment>({ action: "enrich", cpf: corretor.cpf, query: QUERY_ENRICH_CADASTRO })
+        .catch(() => ENRICH_VAZIO),
+      api
+        .ocr<Enrichment>({ action: "enrich", cpf: corretor.cpf, query: QUERY_ENRICH_CRECI })
+        .catch(() => ENRICH_VAZIO),
+    ]);
+
+    setBuscando(false);
+
+    // ⚠️ O QUE O OPERADOR DIGITOU GANHA. A busca preenche o que está VAZIO; ela não corrige o
+    // que já foi escrito. Sobrescrever seria apagar a correção de quem tem o documento na mão.
     aoMudar({
-      creci: corretor.creci || enr.creci,
-      creciLido: Boolean(enr.creci) || corretor.creciLido,
-      email: corretor.email || enr.emails[0] || "",
-      telefone: corretor.telefone || enr.telefones[0] || "",
+      creci: corretor.creci || doCreci.creci,
+      creciLido: Boolean(doCreci.creci) || corretor.creciLido,
+      email: corretor.email || doCadastro.emails[0] || doCreci.emails[0] || "",
+      nome: corretor.nome || doCadastro.nome || "",
+      telefone: corretor.telefone || doCadastro.telefones[0] || doCreci.telefones[0] || "",
     });
   }
 
@@ -3180,20 +3200,24 @@ function BlocoCorretor({
       </div>
 
       <Secao title="Dados do corretor">
-        <div className="sm:col-span-2">
-          <TextField
-            label="Nome completo"
-            value={corretor.nome}
-            placeholder="Nome do corretor"
-            onChange={(v) => aoMudar({ nome: v })}
-          />
-        </div>
+        {/* ⚠️ O CPF VEM PRIMEIRO, e a ordem é a regra, não estética. É ele que identifica o
+            corretor na hora de subir a CAD, e é dele que a MOST traz o nome. Começar pelo nome
+            convidava a digitar tudo à mão e deixar o CPF para depois — e sem CPF o corretor não
+            valida no envio. */}
         <TextField
           label="CPF"
           value={corretor.cpf}
           placeholder="000.000.000-00"
           onChange={(v) => aoMudar({ cpf: v })}
         />
+        <div className="sm:col-span-2">
+          <TextField
+            label="Nome completo"
+            value={corretor.nome}
+            placeholder={cpfOk ? "Nome do corretor" : "Informe o CPF: buscamos o nome"}
+            onChange={(v) => aoMudar({ nome: v })}
+          />
+        </div>
         <PhoneField
           value={corretor.telefone}
           sugestoes={[]}

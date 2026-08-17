@@ -36,6 +36,61 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-17-lagoa-bonita-e-um-empreendimento-so",
+    deployedAt: "2026-08-17T18:05:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Habilitar imobiliaria no Lagoa Bonita volta a funcionar: marcar Lagoa Bonita agora libera as tres areas de uma vez, como sempre foi a intencao",
+              "Antes o botao recusava com 'Empreendimento que esta imobiliaria nao pediu', justamente sobre o empreendimento que ela tinha acabado de pedir",
+              "O mesmo vale para Lavra do Ouro, Rio de Pedras e Portal dos Vales, que tem a mesma estrutura",
+            ],
+            screen: "Apolo - Board (habilitar imobiliaria)",
+          },
+          {
+            items: [
+              "O filtro de empreendimento passa a listar TODOS os que estao abertos a credenciamento, e nao so os que ja aparecem em algum card: o Lagoa Bonita nao aparecia porque nao tinha nenhuma CAD",
+              "O card da imobiliaria agora mostra o empreendimento vindo da habilitacao dela, e nao so do texto do cadastro",
+            ],
+            screen: "Apolo - Board (filtro)",
+          },
+          {
+            items: [
+              "No cadastro do corretor, o CPF passou a ser a PRIMEIRA pergunta, e a consulta traz o nome completo a partir dele",
+              "Antes o nome vinha primeiro e era digitado a mao, o que abre espaco para grafia diferente da base e para deixar o CPF em branco",
+            ],
+            screen: "Apolo - cadastro (corretores)",
+          },
+        ],
+      },
+      {
+        module: "Portal do corretor",
+        screens: [
+          {
+            items: [
+              "Imobiliaria habilitada no Lagoa Bonita volta a enxergar o empreendimento na hora de enviar CAD",
+              "A DANY CASTRO estava habilitada nas tres areas desde sempre e o Lagoa Bonita nao aparecia para os corretores dela",
+            ],
+            screen: "Envio de CAD",
+          },
+        ],
+      },
+    ],
+    rollback: "24bea2e4 (v1.146.0)",
+    technical: {
+      done:
+        "UM EMPREENDIMENTO, DOIS FORMATOS DE ID, e cada ponta comparava só um deles. O id pode ser o do GRUPO (`group:Lagoa Bonita`, que é o que o portal público grava porque lá fora não existe divisão) ou o das DIVISÕES (33/LBF, 27/LBR, 32/LBP, como o C2X conhece). Os DOIS estão gravados em produção hoje. ⚠️ ISSO QUEBRAVA OS DOIS LADOS, e nenhum formato funcionava nos dois: (a) o POST de habilitar EXPANDIA os escolhidos para as divisões e comparava contra os pedidos, que estavam no formato do grupo — `[33,27,32]` contra `[group:Lagoa Bonita]` não casa nada, e a imobiliária recebia 'Empreendimento que esta imobiliaria nao pediu: 33, 27, 32' sobre o empreendimento que tinha ACABADO de pedir (visto ao vivo pela Nívea, com o Lucas na chamada); (b) o portal público cruzava o vínculo contra a lista de empreendimentos, onde Lagoa Bonita é UM item de id `group:Lagoa Bonita` — a DANY CASTRO, `verified` nas TRÊS divisões desde sempre, não via o Lagoa Bonita, e os corretores dela não conseguiam enviar CAD. Habilitação que existe no banco e não existe na prática é pior que habilitação ausente, porque ninguém vai procurar. Expansão de um lado só era o defeito, nas duas pontas. NOVO `lib/apolo/empreendimento-equivalencia.ts` (13 testes, com os dados REAIS do C2X): `canonizador(catalogo)` traduz qualquer id para o do grupo, e `cobertoPor(emp, vinculos)` aceita vínculo em qualquer formato. Ligado nos dois pontos: o POST canoniza escolhidos E pedidos antes de comparar, e `filtrarEmpreendimentosHabilitados` passa a casar por equivalência. Nenhuma migration: os vínculos que já existem seguem valendo nos dois formatos, e os NOVOS nascem canônicos. A trava continua de pé — empreendimento que a imobiliária realmente não pediu segue recusado (teste próprio). Regra do Lucas: 'quando clicar em Lagoa Bonita, tem que habilitar todos os Lagoa Bonita' · 'para eles não tem essa de divisão, isso é interno'. FILTRO DO BOARD: o seletor se montava a partir dos cards (`itens.flatMap(...)`), então empreendimento sem nenhuma CAD não existia como opção — não havia como perguntar 'e o Lagoa Bonita?', a resposta era a ausência da pergunta. Medido: dos 8 abertos a credenciamento, o Lagoa Bonita era o ÚNICO sem card, e o único que sumia. Agora sai do catálogo (`credenciamento_ativo`), unido ao que está nos cards para não perder grafia antiga da esteira. Junto: o card da imobiliária passa a ler o empreendimento do VÍNCULO (a fonte de verdade, e a única que existe para quem veio do C2X) antes do texto do cadastro — a DANY CASTRO aparecia sem empreendimento nenhum porque `metadata.cadastro` dela é nulo. Novo `lib/apolo/catalogo-empreendimentos.ts` (7 testes) com leitura ENXUTA (`select id, code, name`) e cache de 10 min: `loadApoloEnterprises` faz `left join enterprise_unities` com dez agregações de sale_status sobre TODAS as unidades, e pendurar isso no Board (que tem refetch-on-focus) sairia caro só para saber o nome. CADASTRO DE CORRETOR: o CPF virou a primeira pergunta e a MOST traz o nome (CARELI_PF_01, basic_data). É a mesma regra que o portal público segue desde 20/07 ('o corretor digita o CPF, a MOST traz o nome completo'); no wizard interno o nome ainda era digitado à mão e o CPF vinha depois. ⚠️ CUSTO: passa a rodar DUAS queries por corretor (PF_01 para o nome + PF_04 para o CRECI), uma vez por CPF — mesmo custo que o público já paga. O que o operador digitou sempre ganha: a busca preenche o que está vazio, nunca sobrescreve. MEDIDO: 24 dos 82 corretores estão sem CPF, todos criados em maio pelo sync do C2X — as duas telas de cadastro já exigiam CPF, então o resíduo é do legado e não da entrada.",
+      motivation:
+        "Bug visto ao vivo (17/08): a Nívea tentando habilitar uma imobiliária no Lagoa Bonita e o botão recusando. O diagnóstico encontrou o mesmo defeito do outro lado, afetando quem já estava habilitado.",
+    },
+    title: "Lagoa Bonita volta a ser um empreendimento so",
+    type: "correcao",
+    version: "1.147.0",
+  },
+  {
     buildTag: "2026-08-17-log-erros-e-politica-comercial",
     deployedAt: "2026-08-17T15:30:00-03:00",
     modules: [

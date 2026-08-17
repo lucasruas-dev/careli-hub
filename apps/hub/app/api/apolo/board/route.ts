@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 import { authorizeApoloRead } from "@/lib/apolo/auth";
 import { alertaC2xDaCad } from "@/lib/apolo/c2x-alerta-board";
+import { catalogoDeEmpreendimentos } from "@/lib/apolo/catalogo-empreendimentos";
 import { maisRecentePorEntidade } from "@/lib/apolo/esteira-cad";
 import { grafiaCanonicaPorCliente as grafiaCanonicaDaImobiliaria } from "@/lib/apolo/imobiliaria-grafia";
 import { prevendaLigadaNaSetting, type SettingPrevenda } from "@/lib/apolo/limite-credito";
@@ -317,8 +318,14 @@ export async function GET(request: Request) {
   // não uma segunda cópia que amanhã diverge.
   const { data: settingsRows } = await adminClient
     .from("apolo_enterprise_settings")
-    .select("enterprise_id, prevenda_habilitada, valor_pix")
+    .select("enterprise_id, prevenda_habilitada, valor_pix, credenciamento_ativo")
     .limit(500);
+
+  // Os que estão abertos a credenciamento: é essa a lista que o seletor da tela oferece.
+  const settingsAtivosRows = ((settingsRows ?? []) as Array<{
+    credenciamento_ativo: boolean | null;
+    enterprise_id: string;
+  }>).filter((linha) => linha.credenciamento_ativo === true);
 
   const prevendaPorEmpreendimento = new Map<string, boolean>();
   for (const linha of (settingsRows ?? []) as Array<SettingPrevenda & { enterprise_id: string }>) {
@@ -330,6 +337,38 @@ export async function GET(request: Request) {
   // Beatriz Teodora voltava para "Validação" a cada F5, mesmo depois de indeferida: a decisão
   // estava gravada em `apolo_entity_profiles.status` e a tela nunca lia esse campo.
   //   blocked = Recusada · active = Habilitada · review = Validação
+  // CATÁLOGO DE EMPREENDIMENTOS: a lista canônica, já AGRUPADA (LBF+LBR+LBP viram um "Lagoa
+  // Bonita"). Serve para duas coisas: traduzir o `enterpriseId` do vínculo em nome, e alimentar o
+  // seletor da tela — que antes se montava só com o que aparecia nos cards e, por isso, escondia
+  // todo empreendimento sem CAD.
+  //
+  // Falha na leitura NÃO derruba o Board: sem catálogo o card cai nas fontes antigas (cadastro e
+  // esteira) e o seletor volta a ser o derivado. Perder a fila inteira por causa do rótulo de um
+  // filtro seria trocar um problema pequeno por um grande.
+  const catalogo = await catalogoDeEmpreendimentos(Date.now());
+
+  // TRADUÇÃO id → nome, para TODO empreendimento do catálogo. Vale também para o que não está
+  // aberto a credenciamento: uma imobiliária pode ter vínculo antigo com empreendimento já
+  // encerrado, e mostrar o id cru no card seria pior do que mostrar o nome.
+  const nomeDoGrupo = new Map<string, string>();
+  for (const emp of catalogo) {
+    for (const real of emp.stageIds) nomeDoGrupo.set(String(real), emp.name);
+    nomeDoGrupo.set(emp.id, emp.name);
+  }
+
+  // ⚠️ O SELETOR mostra só o que está ABERTO A CREDENCIAMENTO, não o catálogo inteiro. São 8 hoje,
+  // contra 36 no C2X — a lista completa traria servidor de treinamento, teste de split e
+  // empreendimento encerrado, e o filtro viraria um índice do legado em vez de uma ferramenta de
+  // trabalho. Os `credenciamento_ativo` são exatamente os que podem receber CAD.
+  const idsAtivos = new Set(
+    ((settingsAtivosRows ?? []) as Array<{ enterprise_id: string }>).map((linha) =>
+      String(linha.enterprise_id),
+    ),
+  );
+  const nomesAtivos = catalogo
+    .filter((emp) => idsAtivos.has(emp.id) || emp.stageIds.some((id) => idsAtivos.has(id)))
+    .map((emp) => emp.name);
+
   const idsDaLista = data.map((row) => row.id);
   const papelStatusPorEntidade = new Map<string, string>();
   for (let i = 0; i < idsDaLista.length; i += 100) {
@@ -342,6 +381,46 @@ export async function GET(request: Request) {
 
     for (const linha of (papeis ?? []) as Array<{ entity_id: string; status: null | string }>) {
       if (linha.status) papelStatusPorEntidade.set(linha.entity_id, linha.status);
+    }
+  }
+
+  // ⚠️ O EMPREENDIMENTO DA IMOBILIÁRIA MORA NO VÍNCULO, não no texto do cadastro.
+  //
+  // Caso medido (17/08, apontado pelo Lucas: "não está aparecendo Lagoa Bonita"): a DANY CASTRO
+  // está habilitada nas TRÊS divisões do Lagoa Bonita (LBF, LBR e LBP, todas `verified`) e o
+  // `metadata.cadastro.empreendimentos` dela é NULO — ela veio do C2X, não do wizard. O card
+  // aparecia sem empreendimento nenhum, e como o seletor do Board se monta a partir do que está
+  // nos cards, o Lagoa Bonita simplesmente não existia na lista de opções.
+  //
+  // O vínculo guarda o `enterpriseId` do C2X e quase nunca o `label` (medido: 1 de 10 grupos tem),
+  // então o nome vem do CATÁLOGO — que já entrega o empreendimento AGRUPADO ("Lagoa Bonita" para
+  // LBF+LBR+LBP). É a regra do Lucas: as divisões existem para nós, o mercado vê um só.
+  const vinculosPorEntidade = new Map<string, Set<string>>();
+  for (let i = 0; i < idsDaLista.length; i += 100) {
+    // Lotes de 100: `.in()` com centenas de ids estoura o tamanho da URL do PostgREST.
+    const { data: vinculos } = await adminClient
+      .from("apolo_relationships")
+      .select("entity_id, metadata, status")
+      .eq("relationship_type", "empreendimento")
+      .in("entity_id", idsDaLista.slice(i, i + 100));
+
+    for (const linha of (vinculos ?? []) as Array<{
+      entity_id: string;
+      metadata: { enterpriseId?: string } | null;
+      status: null | string;
+    }>) {
+      // `pending` é pedido em análise e não habilita: mostrar como se fosse liberado faria o
+      // Board dizer que a imobiliária já trabalha um empreendimento que ela ainda não pode.
+      if (linha.status !== "verified") continue;
+      const id = linha.metadata?.enterpriseId;
+      if (!id) continue;
+
+      const nome = nomeDoGrupo.get(String(id));
+      if (!nome) continue;
+
+      const atual = vinculosPorEntidade.get(linha.entity_id) ?? new Set<string>();
+      atual.add(nome);
+      vinculosPorEntidade.set(linha.entity_id, atual);
     }
   }
 
@@ -360,15 +439,19 @@ export async function GET(request: Request) {
       temLinhaSync: tentadasNoC2x.has(row.id),
     });
 
-    // O empreendimento vem do cadastro (quem nasceu no wizard) OU da esteira (quem foi
-    // importado do Asana, que é cadastro antigo e não tem metadata.cadastro).
+    // O empreendimento vem, nesta ordem: do VÍNCULO habilitado (a fonte de verdade, e a única que
+    // existe para quem veio do C2X), do cadastro (quem nasceu no wizard) ou da esteira (importado
+    // do Asana, cadastro antigo sem `metadata.cadastro`).
+    const doVinculo = [...(vinculosPorEntidade.get(row.id) ?? [])];
     const doCadastro = nomesEmpreendimentos(cadastro?.empreendimentos);
     const empreendimentos =
-      doCadastro.length > 0
-        ? doCadastro
-        : esteira?.empreendimento
-          ? [esteira.empreendimento]
-          : [];
+      doVinculo.length > 0
+        ? doVinculo
+        : doCadastro.length > 0
+          ? doCadastro
+          : esteira?.empreendimento
+            ? [esteira.empreendimento]
+            : [];
 
     return {
       // Responsável salvo. Sem isto o Board volta a mostrar "Sem analista" a cada carga.
@@ -445,8 +528,15 @@ export async function GET(request: Request) {
   const usuarioAtual =
     analistas.find((pessoa) => pessoa.id === auth.userId) ?? null;
 
+  // A lista canônica para o seletor da tela. Vai ORDENADA e já agrupada: o seletor não pode mais
+  // ser derivado dos cards, senão empreendimento sem CAD nenhuma continua invisível — que foi
+  // exatamente o caso do Lagoa Bonita.
+  const empreendimentosDoCatalogo = [...new Set(nomesAtivos)].sort((a, b) =>
+    a.localeCompare(b, "pt-BR"),
+  );
+
   return NextResponse.json(
-    { data: { analistas, itens, usuarioAtual } },
+    { data: { analistas, empreendimentos: empreendimentosDoCatalogo, itens, usuarioAtual } },
     { headers: { "Cache-Control": "no-store" } },
   );
 }
