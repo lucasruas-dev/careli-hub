@@ -36,6 +36,46 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-17-validacao-imobiliaria-tres-acoes",
+    deployedAt: "2026-08-17T09:10:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A validacao da imobiliaria passou a ter TRES acoes: validar, enviar para correcao e indeferir",
+              "CORRECAO e a novidade: quando falta um documento ou veio o arquivo errado, a imobiliaria recebe o que precisa ajustar e o cadastro dela continua de pe, sem ser recusado",
+              "Ela fica na coluna Em correcao ate resolver, e quando voltar e so habilitar",
+              "Quem foi recusada e regularizou pode ser reaberta e volta para a fila de validacao",
+              "Os motivos sugeridos na correcao agora sao de documento de empresa, comecando pelo mais comum: enviou o Cartao de CNPJ no lugar do contrato social",
+            ],
+            screen: "Apolo - Board (validacao da imobiliaria)",
+          },
+          {
+            items: [
+              "O card da imobiliaria para de sumir da tela: habilitada, em correcao ou recusada, ela continua visivel na coluna certa, inclusive depois de atualizar a pagina",
+              "A ficha da imobiliaria ja habilitada abre mostrando que ela esta apta, e nao mais em Validacao",
+              "Sumiu a mensagem sobre CAD na esteira, que nao fazia sentido para imobiliaria: ela nao tem CAD, e ela quem cadastra os compradores",
+              "Quando todos os empreendimentos ja estao liberados, a tela diz isso, em vez de travar o botao sem explicar",
+            ],
+            screen: "Apolo - Board (imobiliarias)",
+          },
+        ],
+      },
+    ],
+    rollback: "911a946d (v1.144.2)",
+    technical: {
+      done:
+        "REGRA DO LUCAS (17/08): a validacao de imobiliaria tem TRES decisoes, nao duas. Faltava CORRECAO, e a falta dela tem custo medido: a Beatriz Teodora levou TRES indeferimentos por ter enviado o Cartao de CNPJ no lugar do contrato social — um caso de pendencia, tratado como recusa porque nao havia outra opcao. ONDE O ESTADO MORA: `apolo_entity_profiles.status` so aceita active|review|blocked|archived, entao nao ha valor para 'em correcao' la; `apolo_entities.status` aceita `attention`, que significa exatamente 'aguardando acao de fora'. Correcao grava entidade `attention` com o PAPEL AINDA EM `review` (ela nao foi aprovada nem recusada), sem migration. Nova `mensagemImobiliariaCorrecao` (6 testes) com tom de pedido, nao de recusa, e `MOTIVOS_CORRECAO_IMOBILIARIA` proprios — os de CAD (comprovante de endereco, documento do socio) sao de comprador. O COORDENADOR NAO recebe aviso de correcao, de proposito: ele precisa saber quem foi habilitado e quem foi recusado, mas pendencia de documento e assunto entre a Careli e o parceiro. Nova acao `reabrir` para quem regularizou. A IMOBILIARIA NAO VAI MAIS PARA A ESTEIRA em caminho nenhum: so `indeferir` tinha sido desviado, e reabrir/avancar/voltar/correcao/enviar-ao-coordenador continuavam chamando `moverEtapa`, que grava em `apolo_esteira` — onde ela nao tem linha (435 de 435) — e devolvia 409 pedindo 'informe o empreendimento no cadastro' a quem valida uma EMPRESA. ⚠️ A REVISAO ADVERSARIAL SOBRE A FRENTE INTEIRA pegou 6 defeitos, dois deles no codigo desta mesma rodada: (a) a perna nova da fila filtrava por `updated_at`, que NINGUEM carimbava — a tabela nao tem trigger e o default `now()` so vale no INSERT, entao o filtro significava 'cadastrada ha 30 dias' e a imobiliaria em correcao sumiria da tela ainda esperando resposta; carimbado nas tres transicoes. (b) `enviarParaRevisao` seguia sem desvio, e revisao e o desvio do credito reprovado da CAD, que imobiliaria nao tem. (c) na aba Todos o kanban nao tem coluna 'habilitada', entao o card era DESCARTADO sem entrar em lista nem badge; a coluna passa a entrar ao lado de Credenciado quando ha imobiliaria na lista. (d) `progresso` vinha da esteira e ficava 0 para sempre: a ficha habilitada abria em 'Validacao', sem selo de apta, e o botao Voltar (disabled quando etapa 0) nunca ficava clicavel. (e) o botao Habilitar continuava ativo com tudo ja liberado, e cada clique redisparava o WhatsApp de boas-vindas para imobiliaria e coordenador. (f) indeferir nao devolvia a entidade para `review`, entao indeferir depois de habilitar fazia o card sumir em vez de ir para Recusada. Ainda: orientacao deixou de sair na tarja vermelha de erro e virou aviso neutro. ✅ REGRA CONFIRMADA E DOCUMENTADA NO CODIGO: imobiliaria cadastrada pelo WIZARD INTERNO nasce credenciada de proposito — 'cadastro feito pelo operador vale ja como validacao'. Os portais PUBLICOS rebaixam (papel review, vinculos pending) porque la quem preenche e a propria imobiliaria. A diferenca entre os caminhos e QUEM preencheu; a revisao apontou isso como defeito e nao e.",
+      motivation:
+        "Lucas: 'temos que ter 3 acoes em validacao de imobiliaria: validar, correcao, indeferimento. Essa correcao e o status que deveria ter acontecido com a Beatriz: ela mandou um documento errado, eu preciso avisar ela sobre a pendencia, ela vai para correcao e quando corrigir eu habilito'.",
+    },
+    title: "Validacao de imobiliaria: validar, corrigir ou indeferir",
+    type: "novidade",
+    version: "1.145.0",
+  },
+  {
     buildTag: "2026-08-16-boas-vindas-no-telefone-certo",
     deployedAt: "2026-08-16T05:20:00-03:00",
     modules: [

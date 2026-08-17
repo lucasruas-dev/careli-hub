@@ -188,6 +188,47 @@ export function mensagemImobiliariaIndeferida(input: {
   return linhas.join("\n");
 }
 
+// 3.5) PARA A IMOBILIÁRIA — PENDÊNCIA A CORRIGIR. Não é recusa.
+//
+// ⚠️ POR QUE ESTA MENSAGEM EXISTE, separada do indeferimento (regra do Lucas, 17/08): "documento
+// errado" não é motivo para recusar, é pedido de ajuste. A Beatriz Teodora foi INDEFERIDA TRÊS
+// VEZES por ter enviado o Cartão de CNPJ no lugar do contrato social — um caso de correção, que
+// não tinha ação própria. Recusar quem só mandou o arquivo trocado passa a mensagem errada para o
+// parceiro e ainda esconde o caso na coluna de recusadas, como se estivesse encerrado.
+//
+// O tom é o de quem espera resposta: diz o que falta, diz que o cadastro CONTINUA de pé, e não
+// pede para começar de novo.
+export function mensagemImobiliariaCorrecao(input: {
+  imobiliaria: string;
+  motivos: string[];
+  observacao?: null | string;
+  representante?: null | string;
+}): string {
+  const saudacao = input.representante
+    ? `Olá, ${primeiroNome(input.representante)}!`
+    : "Olá!";
+
+  const linhas = [
+    saudacao,
+    "",
+    `Estamos finalizando o cadastro da *${input.imobiliaria}* e faltou um ajuste.`,
+    "",
+    input.motivos.length === 1 ? "O que precisamos:" : "O que precisamos:",
+    listaDeMotivos(input.motivos),
+  ];
+
+  if (input.observacao?.trim()) {
+    linhas.push("", input.observacao.trim());
+  }
+
+  linhas.push(
+    "",
+    "Seu cadastro está guardado, nada se perdeu. É só responder esta mensagem com o que falta que seguimos daqui, e assim que estiver certo liberamos o acesso.",
+  );
+
+  return linhas.join("\n");
+}
+
 // 4) PARA O COORDENADOR — a recusa também é informação de operação: ele precisa saber que
 // aquela imobiliária NÃO vai enviar CAD, para não ficar esperando.
 export function mensagemCoordenadorIndeferimento(input: {

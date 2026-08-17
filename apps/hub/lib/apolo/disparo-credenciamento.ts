@@ -7,6 +7,7 @@ import {
   mensagemCoordenadorHabilitacao,
   mensagemCoordenadorIndeferimento,
   mensagemImobiliariaHabilitada,
+  mensagemImobiliariaCorrecao,
   mensagemImobiliariaIndeferida,
   type EmpreendimentoHabilitado,
 } from "./credenciamento-mensagens";
@@ -334,6 +335,40 @@ export async function avisarCredenciamentoAprovado(
     },
     imobiliaria,
   };
+}
+
+// PENDÊNCIA A CORRIGIR — só para a IMOBILIÁRIA.
+//
+// ⚠️ O COORDENADOR NÃO ENTRA AQUI, de propósito. Ele precisa saber quem foi habilitado (vai
+// vender no produto dele) e quem foi recusado (não vai aparecer), mas "faltou o contrato social"
+// é conversa de documento entre a Careli e o parceiro. Avisar o coordenador de cada pendência
+// transformaria o WhatsApp dele num varal de burocracia e faria as mensagens que importam
+// passarem batido.
+export async function avisarCredenciamentoCorrecao(
+  client: SupabaseClient,
+  input: {
+    entityId: string;
+    imobiliaria: string;
+    imobiliariaTelefone?: null | string;
+    motivos: string[];
+    observacao?: null | string;
+    representante?: null | string;
+  },
+): Promise<{ imobiliaria: ResultadoEnvio }> {
+  const imobiliaria = await enviar(client, {
+    destinatario: "imobiliaria",
+    entityId: input.entityId,
+    telefone: input.imobiliariaTelefone ?? null,
+    texto: mensagemImobiliariaCorrecao({
+      imobiliaria: input.imobiliaria,
+      motivos: input.motivos,
+      observacao: input.observacao ?? null,
+      representante: input.representante ?? null,
+    }),
+    tipo: "credenciamento_correcao",
+  });
+
+  return { imobiliaria };
 }
 
 export async function avisarCredenciamentoIndeferido(

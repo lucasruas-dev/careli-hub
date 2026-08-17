@@ -41,6 +41,9 @@ type EntityRow = {
   entity_kind: string;
   id: string;
   legal_name: string | null;
+  // review | active | attention | blocked | archived. Para a imobiliária, `attention` é
+  // "esperando ela corrigir uma pendência" — o CHECK do papel não tem esse valor.
+  status?: null | string;
   metadata: {
     bornRole?: string;
     // Carimbos do envio ao C2X (c2x-write-server.ts). São a prova de que a ficha JÁ existe no
@@ -77,7 +80,7 @@ export async function GET(request: Request) {
   }
 
   const CAMPOS =
-    "id, display_name, legal_name, document_masked, entity_kind, metadata, created_at, primary_city, primary_state";
+    "id, display_name, legal_name, document_masked, entity_kind, metadata, created_at, primary_city, primary_state, status";
 
   // A fila tem DUAS origens e elas não se sobrepõem:
   //
@@ -146,7 +149,17 @@ export async function GET(request: Request) {
     };
   };
 
-  const [daFila, naEsteira] = await Promise.all([
+  // ⚠️ IMOBILIÁRIA DECIDIDA NÃO PODE SUMIR DA TELA. Habilitar move a entidade para `active`, e a
+  // consulta da fila só lista `review` — então o card DESAPARECIA no clique e a coluna
+  // "Habilitada" ficava permanentemente zerada, mesmo depois de habilitar. O operador não tinha
+  // como conferir o que acabou de fazer (Lucas, 17/08, olhando a coluna vazia).
+  //
+  // Janela de 30 dias: o Board é o que passou por aqui recentemente, não um arquivo histórico —
+  // sem o corte, toda imobiliária já credenciada voltaria para a tela para sempre. Quem foi
+  // INDEFERIDO continua com a entidade em `review` e já entra pela perna de cima.
+  const DESDE = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
+  const [daFila, decididas, naEsteira] = await Promise.all([
     adminClient
       .from("apolo_entities")
       .select(CAMPOS)
@@ -168,6 +181,18 @@ export async function GET(request: Request) {
       // RECENTES da fila de validação — a partir da 201ª a CAD sumia do Board (incidente 22/jul:
       // "Poliana", a 272ª, não aparecia). 2000 = mesmo teto da esteira.
       .limit(2000),
+    adminClient
+      .from("apolo_entities")
+      .select(CAMPOS)
+      // `active` = habilitada · `attention` = esperando a imobiliária corrigir uma pendência.
+      // As duas somem da perna de cima (que só lê `review`) e precisam continuar na tela: uma
+      // para o operador conferir o que acabou de liberar, a outra porque é trabalho EM ABERTO.
+      .in("status", ["active", "attention"])
+      .eq("metadata->>source", "apolo")
+      .eq("metadata->>bornRole", "imobiliaria")
+      .gte("updated_at", DESDE)
+      .order("updated_at", { ascending: false })
+      .limit(500),
     lotes.length > 0 ? lerEntidadesEmLotes() : Promise.resolve({ data: [], error: null }),
   ]);
 
@@ -244,7 +269,11 @@ export async function GET(request: Request) {
 
   // Uma entidade pode cair nas duas consultas: dedup por id, preservando a ordem de chegada.
   const porId = new Map<string, EntityRow>();
-  for (const row of [...(daFila.data ?? []), ...(naEsteira.data ?? [])] as EntityRow[]) {
+  for (const row of [
+    ...(daFila.data ?? []),
+    ...(decididas.data ?? []),
+    ...(naEsteira.data ?? []),
+  ] as EntityRow[]) {
     if (!porId.has(row.id)) porId.set(row.id, row);
   }
   const data = [...porId.values()].sort((a, b) =>
@@ -392,6 +421,9 @@ export async function GET(request: Request) {
       // tem bornRole) aparecia na trilha de imobiliária, com as etapas erradas. Toda ficha
       // nascida no Apolo tem bornRole, então o fallback só alcança o que veio do sync.
       papel: row.metadata?.bornRole ?? "prospect",
+      // `attention` = a imobiliária foi para correção. Fica na ENTIDADE porque o CHECK do papel
+      // não tem esse valor (só active|review|blocked|archived).
+      entidadeStatus: row.status ?? null,
       // Só faz sentido para imobiliária; para o resto fica null e a tela ignora.
       papelStatus: papelStatusPorEntidade.get(row.id) ?? null,
       socios: conta(cadastro?.socios),

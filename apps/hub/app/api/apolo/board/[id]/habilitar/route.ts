@@ -10,6 +10,7 @@ import { contatoDaEntidadeImobiliaria } from "@/lib/apolo/disparo-imobiliaria";
 import { telefoneDaImobiliaria } from "@/lib/apolo/disparo-credenciamento";
 import {
   avisarCredenciamentoAprovado,
+  avisarCredenciamentoCorrecao,
   avisarCredenciamentoIndeferido,
   coordenadoresDosEmpreendimentos,
   representanteDaImobiliaria,
@@ -124,7 +125,16 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
   }
 
   const corpo = (await request.json().catch(() => ({}))) as Corpo;
-  const acao = corpo.acao === "indeferir" ? "indeferir" : "habilitar";
+  // TRÊS DECISÕES NA VALIDAÇÃO (regra do Lucas, 17/08): habilitar, pedir CORREÇÃO ou indeferir.
+  // `reabrir` não é decisão, é o desfazer do indeferimento.
+  const acao =
+    corpo.acao === "indeferir"
+      ? "indeferir"
+      : corpo.acao === "reabrir"
+        ? "reabrir"
+        : corpo.acao === "correcao"
+          ? "correcao"
+          : "habilitar";
 
   // A entidade precisa ter MESMO o papel de imobiliária: sem esta checagem, um id de CAD de
   // cliente promoveria um papel que não existe e a resposta seria um "ok" mentiroso.
@@ -172,6 +182,125 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       status: linha.status ?? "pending",
     }));
 
+  // ── REABRIR ────────────────────────────────────────────────────────────────
+  //
+  // A imobiliária foi recusada, corrigiu o que faltava e volta para a fila de validação.
+  //
+  // ⚠️ EXISTE PORQUE A IMOBILIÁRIA NÃO TEM ESTEIRA. O botão de reabrir da tela chamava
+  // `moverEtapa`, que grava em `apolo_esteira`, e o operador levava o 409 "esta ficha ainda não
+  // tem CAD na esteira, informe o empreendimento no cadastro" — mensagem sem sentido para quem
+  // valida uma EMPRESA: imobiliária não tem CAD, ela é quem cadastra os compradores.
+  //
+  // Só devolve o PAPEL para `review`. Os vínculos de empreendimento ficam como estão: os que já
+  // valiam continuam valendo, e os pendentes seguem pendentes esperando a decisão.
+  if (acao === "reabrir") {
+    const { error } = await adminClient
+      .from("apolo_entity_profiles")
+      .update({ status: "review" })
+      .eq("entity_id", id)
+      .eq("profile", PERFIL);
+
+    if (error) {
+      return NextResponse.json(
+        { error: "Nao foi possivel reabrir o credenciamento." },
+        { status: 500 },
+      );
+    }
+
+    // A entidade volta a aparecer na fila do Board (a consulta lista `status = 'review'`).
+    // ⚠️ `updated_at` CARIMBADO À MÃO. A tabela não tem trigger e o default `now()` só vale no
+    // INSERT, então sem isto a coluna guarda a data de CADASTRO, não a da decisão — e a fila do
+    // Board, que corta por `updated_at` nos últimos 30 dias, passaria a esconder o card no clique
+    // para toda ficha criada há mais de um mês.
+    await adminClient
+      .from("apolo_entities")
+      .update({ status: "review", updated_at: new Date().toISOString() })
+      .eq("id", id);
+
+    await adminClient.from("apolo_audit_events").insert({
+      action: "credenciamento_reaberto",
+      actor_user_id: ehUuid(auth.userId) ? auth.userId : null,
+      entity_id: id,
+      field_name: "credenciamento",
+      metadata: { de: papel.status, origem: "board", para: "review" },
+      status: "mapped",
+    });
+
+    return NextResponse.json({
+      data: { acao: "reabrir", resumo: "Credenciamento reaberto para validacao." },
+    });
+  }
+
+  // ── CORREÇÃO ───────────────────────────────────────────────────────────────
+  //
+  // A imobiliária mandou algo errado ou incompleto e precisa ajustar. NÃO é recusa: o cadastro
+  // continua vivo, ela recebe o que falta e volta. Foi a ação que faltava quando a Beatriz
+  // Teodora enviou o Cartão de CNPJ no lugar do contrato social — sem ela, o operador indeferiu
+  // três vezes um caso que era de pendência.
+  //
+  // ⚠️ O ESTADO VAI PARA `apolo_entities.status = 'attention'`, e o PAPEL CONTINUA `review`.
+  // Duas razões: o CHECK de `apolo_entity_profiles.status` só aceita
+  // active | review | blocked | archived, então não há valor para "em correção" lá; e o papel em
+  // `review` é o que mantém a imobiliária como NÃO DECIDIDA, que é a verdade — ela não foi
+  // aprovada nem recusada, está esperando o parceiro. `attention` existe no CHECK de
+  // `apolo_entities` e significa exatamente isto: aguardando ação de fora.
+  if (acao === "correcao") {
+    const motivos = listaDeTexto(corpo.motivos);
+    const observacao = typeof corpo.observacao === "string" ? corpo.observacao.trim() : "";
+
+    if (motivos.length === 0 && !observacao) {
+      return NextResponse.json(
+        { error: "Diga o que precisa ser corrigido: e isso que a imobiliaria recebe." },
+        { status: 400 },
+      );
+    }
+
+    // `updated_at` junto: a janela de 30 dias da fila conta a partir da DECISÃO. Sem isto, a
+    // imobiliária mandada para correção sumiria do Board 30 dias depois de ter se cadastrado,
+    // ainda esperando resposta — o item de trabalho desapareceria em silêncio.
+    const { error } = await adminClient
+      .from("apolo_entities")
+      .update({ status: "attention", updated_at: new Date().toISOString() })
+      .eq("id", id);
+
+    if (error) {
+      return NextResponse.json(
+        { error: "Nao foi possivel enviar para correcao." },
+        { status: 500 },
+      );
+    }
+
+    await adminClient.from("apolo_audit_events").insert({
+      action: "credenciamento_correcao",
+      actor_user_id: ehUuid(auth.userId) ? auth.userId : null,
+      entity_id: id,
+      field_name: "credenciamento",
+      metadata: { motivos, observacao: observacao || null, origem: "board" },
+      status: "mapped",
+    });
+
+    const contatoCor = await contatoDaEntidadeImobiliaria(adminClient, id);
+    const repCor = await representanteDaImobiliaria(adminClient, id);
+    const envioCor = await avisarCredenciamentoCorrecao(adminClient, {
+      entityId: id,
+      imobiliaria: contatoCor.nome,
+      imobiliariaTelefone: telefoneDaImobiliaria([repCor.telefone, contatoCor.telefone]),
+      motivos,
+      observacao: observacao || null,
+      representante: repCor.nome,
+    });
+
+    return NextResponse.json({
+      data: {
+        acao: "correcao",
+        aviso: envioCor.imobiliaria.ok ? null : envioCor.imobiliaria.erro,
+        resumo: envioCor.imobiliaria.ok
+          ? "Pendencia enviada para a imobiliaria."
+          : "Pendencia registrada, mas o aviso nao saiu. Fale com a imobiliaria.",
+      },
+    });
+  }
+
   // ── INDEFERIR ──────────────────────────────────────────────────────────────
   // Motivo é OBRIGATÓRIO: recusa sem motivo é o que faz a imobiliária refazer o cadastro do
   // zero (a FN Consultoria pediu duas vezes por não receber resposta).
@@ -198,6 +327,14 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     if (error) {
       return NextResponse.json({ error: "Nao foi possivel indeferir." }, { status: 500 });
     }
+
+    // A ENTIDADE volta para `review` e ganha o carimbo da decisão. Se ela tivesse sido habilitada
+    // antes (entidade em `active`), indeferir depois a deixaria fora das duas pernas da fila e o
+    // card sumiria em vez de ir para a coluna Recusada.
+    await adminClient
+      .from("apolo_entities")
+      .update({ status: "review", updated_at: new Date().toISOString() })
+      .eq("id", id);
 
     await adminClient.from("apolo_audit_events").insert({
       action: "credenciamento_indeferido",
@@ -480,7 +617,10 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
 
   // A entidade também sobe: ela nasceu 'review' no auto-cadastro, e é esse status que a tira da
   // fila de validação do Board.
-  await adminClient.from("apolo_entities").update({ status: "active" }).eq("id", id);
+  await adminClient
+    .from("apolo_entities")
+    .update({ status: "active", updated_at: new Date().toISOString() })
+    .eq("id", id);
 
   await adminClient.from("apolo_audit_events").insert({
     action: "credenciamento_habilitado",

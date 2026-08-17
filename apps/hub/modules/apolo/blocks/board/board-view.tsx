@@ -12,6 +12,7 @@ import {
   LayoutGrid,
   List,
   AlertTriangle,
+  Info,
   ListOrdered,
   Loader2,
   MessageSquare,
@@ -108,6 +109,9 @@ type ItemFila = {
   // Status do papel `imobiliaria` (blocked | active | review). É a ETAPA dela: imobiliária não
   // tem linha na esteira, então a coluna do Board sai daqui e não de `etapa`.
   papelStatus?: null | string;
+  // Status da ENTIDADE. `attention` = imobiliária em correção — o CHECK do papel não tem esse
+  // valor, então essa metade do estado mora aqui.
+  entidadeStatus?: null | string;
   // A etapa Pré-venda EXISTE para esta CAD? Vem do empreendimento (`prevenda_habilitada` +
   // `valor_pix`), decidido no servidor. Regra do Lucas (10/08): "pré-venda só existe se estiver
   // habilitado" — onde ela está desligada, a etapa não aparece na trilha nem no kanban, em vez de
@@ -371,6 +375,17 @@ export function BoardView({
   // O que o servidor recusou. Fica em cima do card, com o motivo que veio de lá — é o oposto do
   // que acontecia antes, quando a recusa era engolida e a tela seguia mostrando o avanço.
   const [erroEtapa, setErroEtapa] = useState<null | string>(null);
+  // ORIENTAÇÃO não é ERRO. "Use o painel de empreendimentos" saindo na tarja vermelha de "A etapa
+  // não foi gravada" faz o operador procurar um defeito onde só há um caminho diferente.
+  const [avisoAcao, setAvisoAcao] = useState<null | string>(null);
+  // O aviso de erro é da FICHA que estava aberta, não da tela. Sem limpar ao navegar, a tarja
+  // vermelha de uma tentativa anterior seguia no topo da ficha seguinte, e o operador lia um erro
+  // que não era dele — foi o que fez o Lucas achar que a habilitação tinha falhado quando ela
+  // havia funcionado (17/08).
+  useEffect(() => {
+    setErroEtapa(null);
+    setAvisoAcao(null);
+  }, [selecionado?.id]);
 
   // IMOBILIÁRIA NÃO PASSA PELA ESTEIRA, então não usa `gravarEtapa`.
   //
@@ -479,6 +494,29 @@ export function BoardView({
   };
 
   const enviarParaCorrecao = (itemId: string, motivo: string) => {
+    // ⚠️ IMOBILIÁRIA VAI PELA ROTA PRÓPRIA. Esta é a TERCEIRA decisão da validação (habilitar,
+    // corrigir, indeferir) e faltava para o caso mais comum: documento errado ou incompleto. Sem
+    // ela, o operador só tinha "indeferir", que fecha a porta e esconde o caso na coluna de
+    // recusadas — a Beatriz Teodora levou três indeferimentos por ter mandado o Cartão de CNPJ no
+    // lugar do contrato social. `moverEtapa` aqui daria o 409 da esteira, que ela não tem.
+    if (ehImobiliaria(itemId)) {
+      void (async () => {
+        setErroEtapa(null);
+        const r = await decidirCredenciamento(itemId, {
+          acao: "correcao",
+          motivos: [motivo],
+        });
+        if (!r.ok) {
+          setErroEtapa(r.error ?? "Não foi possível enviar para correção.");
+          return;
+        }
+        setEmCorrecao((prev) => ({ ...prev, [itemId]: true }));
+        registrarEvento(itemId, "sistema", `Enviado para correção — pendências: ${motivo}`);
+        void carregarFila();
+      })();
+      return;
+    }
+
     void moverEtapa(itemId, "correcao", {
       aplicar: () => {
         setEmCorrecao((prev) => ({ ...prev, [itemId]: true }));
@@ -489,7 +527,31 @@ export function BoardView({
     });
   };
 
+  const ehImobiliaria = (itemId: string): boolean =>
+    itens.find((item) => item.id === itemId)?.papel === "imobiliaria";
+
   const reabrir = (itemId: string) => {
+    // ⚠️ IMOBILIÁRIA NÃO TEM ESTEIRA, e "crédito" não é etapa dela. Reabrir chamava
+    // `moverEtapa(itemId, "credito")` e o operador levava o 409 "esta ficha ainda não tem CAD na
+    // esteira, informe o empreendimento no cadastro" — mensagem sem sentido para quem valida uma
+    // EMPRESA: imobiliária não tem CAD, ela é quem cadastra os compradores. É o caminho de quem
+    // foi recusada, regularizou a documentação e volta para a fila (Lucas, 17/08).
+    if (ehImobiliaria(itemId)) {
+      void (async () => {
+        setErroEtapa(null);
+        const r = await decidirCredenciamento(itemId, { acao: "reabrir" });
+        if (!r.ok) {
+          setErroEtapa(r.error ?? "Não foi possível reabrir o credenciamento.");
+          return;
+        }
+        setIndeferidos((prev) => ({ ...prev, [itemId]: false }));
+        setEmCorrecao((prev) => ({ ...prev, [itemId]: false }));
+        registrarEvento(itemId, "sistema", "Credenciamento reaberto para validação");
+        void carregarFila();
+      })();
+      return;
+    }
+
     void moverEtapa(itemId, "credito", {
       aplicar: () => {
         setIndeferidos((prev) => ({ ...prev, [itemId]: false }));
@@ -501,6 +563,17 @@ export function BoardView({
 
   // Analista escala pro coordenador decidir o crédito.
   const enviarParaRevisao = (itemId: string) => {
+    // Imobiliária não passa por CRÉDITO, e `revisao` é o desvio do crédito reprovado da CAD.
+    // Além do 409 da esteira, o destino não existe no mundo dela: quem valida empresa decide
+    // entre habilitar, corrigir e indeferir.
+    if (ehImobiliaria(itemId)) {
+      setErroEtapa(null);
+      setAvisoAcao(
+        "Validação de imobiliária não passa por análise de crédito. As ações são habilitar, enviar para correção ou indeferir.",
+      );
+      return;
+    }
+
     void moverEtapa(itemId, "revisao", {
       aplicar: () => setEmRevisao((prev) => ({ ...prev, [itemId]: true })),
       evento: ["aprovacao", "Enviado ao coordenador para revisão do crédito"],
@@ -514,12 +587,17 @@ export function BoardView({
   const avancarEtapa = (item: ItemFila, etapaAtualId: string) => {
     // A imobiliária não passa por crédito: validou o cadastro, está habilitada a enviar CADs — e
     // "habilitada" não é etapa da esteira, o terminal dela também é `credenciado`.
-    const destino =
-      item.papel === "imobiliaria"
-        ? "credenciado"
-        : etapaAtualId === "cadastro"
-          ? "credito"
-          : "credenciado";
+    // A imobiliária não avança pela esteira: ela é habilitada marcando os empreendimentos no
+    // painel, que chama `/habilitar`. Mandar "credenciado" para cá dava o 409 da esteira.
+    if (item.papel === "imobiliaria") {
+      setErroEtapa(null);
+      setAvisoAcao(
+        "Para habilitar a imobiliária, marque abaixo os empreendimentos que ela pode trabalhar e use o botão Habilitar imobiliária.",
+      );
+      return;
+    }
+
+    const destino = etapaAtualId === "cadastro" ? "credito" : "credenciado";
     void moverEtapa(item.id, destino, {
       aplicar: (etapaGravada) => {
         const indice = indiceDaEtapa(item, etapaGravada);
@@ -603,6 +681,17 @@ export function BoardView({
       setProgresso((atual) => {
         const semeado: Record<string, number> = {};
         for (const item of itensCarregados) {
+          // ⚠️ IMOBILIÁRIA NÃO TEM `etapa` (não tem esteira), então `indiceDaEtapa` devolvia
+          // undefined e o progresso dela ficava em 0 PARA SEMPRE: a ficha da imobiliária já
+          // habilitada abria dizendo "Validação", sem o selo de apta, e o botão Voltar (que é
+          // `disabled={etapaAtual === 0}`) nunca ficava clicável. A trilha dela é
+          // cadastro -> habilitada, então `active` é o passo 1.
+          if (item.papel === "imobiliaria") {
+            if (item.papelStatus === "active") semeado[item.id] = 1;
+            else if (item.papelStatus) semeado[item.id] = 0;
+            continue;
+          }
+
           const indice = indiceDaEtapa(item, item.etapa);
           if (indice !== undefined) semeado[item.id] = indice;
         }
@@ -636,6 +725,15 @@ export function BoardView({
           for (const item of itensCarregados) {
             if (item.papel === "imobiliaria" && item.papelStatus) {
               marcas[item.id] = item.papelStatus === "blocked";
+            }
+          }
+        }
+
+        // Correção da imobiliária mora na ENTIDADE (`attention`), não no papel nem na esteira.
+        if (alvo === "correcao") {
+          for (const item of itensCarregados) {
+            if (item.papel === "imobiliaria" && item.entidadeStatus) {
+              marcas[item.id] = item.entidadeStatus === "attention";
             }
           }
         }
@@ -880,6 +978,13 @@ export function BoardView({
         {/* O SERVIDOR RECUSOU. Antes essa recusa era engolida e a tela seguia mostrando o avanço;
             é dela que nasce a sensação de "o cliente voltou sozinho". Fica em vermelho, com o
             motivo que veio do servidor, até a próxima tentativa. */}
+        {avisoAcao ? (
+          <p className="m-0 flex items-start gap-2 rounded-xl border border-line bg-subtle px-4 py-3 text-sm text-ink">
+            <Info aria-hidden="true" className="mt-0.5 size-4 shrink-0 text-ink-muted" />
+            <span>{avisoAcao}</span>
+          </p>
+        ) : null}
+
         {erroEtapa ? (
           <p className="m-0 flex items-start gap-2 rounded-xl border border-rose-300 bg-rose-50 px-4 py-3 text-sm text-rose-900 dark:border-rose-500/30 dark:bg-rose-500/10 dark:text-rose-200">
             <AlertTriangle aria-hidden="true" className="mt-0.5 size-4 shrink-0" />
@@ -941,6 +1046,13 @@ export function BoardView({
             onIndeferir={() => setModalMotivo("indeferir")}
             onReabrir={() => reabrir(selecionado.id)}
             onVoltar={(etapaAtualId) => {
+              // Voltar da imobiliária = reabrir o credenciamento (o papel volta para review).
+              // Ela não tem etapa de esteira para onde voltar.
+              if (selecionado.papel === "imobiliaria") {
+                reabrir(selecionado.id);
+                return;
+              }
+
               // Voltar é decisão humana e a esteira permite (só o AUTOMÁTICO é que não rebaixa).
               // Mas grava, como tudo o mais: o "voltei o card e no dia seguinte ele estava lá na
               // frente de novo" é a mesma queixa vista pelo avesso.
@@ -1403,10 +1515,26 @@ const COLUNAS_IMOBILIARIA: Coluna[] = [
 // só serve para o time achar que o cliente "caiu" nela.
 const colunasDoTipo = (imob: boolean, itens: ItemFila[] = []): Coluna[] => {
   if (imob) return COLUNAS_IMOBILIARIA;
+
+  // ⚠️ NA ABA "TODOS" A COLUNA "HABILITADA" PRECISA EXISTIR, senão o card da imobiliária
+  // habilitada é DESCARTADO: `colunaDoItem` o classifica como `habilitada`, o kanban filtra por
+  // coluna e nenhuma das COLUNAS_CAD casa — o item some da tela sem entrar em lista nenhuma nem
+  // contar em badge. Só entra quando há de fato imobiliária na lista, para a aba de CAD não
+  // ganhar uma coluna vazia permanente.
+  const temImobiliaria = itens.some((item) => item.papel === "imobiliaria");
   const temPrevenda = itens.some(
     (item) => item.papel !== "imobiliaria" && item.prevendaHabilitada,
   );
-  return temPrevenda ? COLUNAS_CAD : COLUNAS_CAD.filter((c) => c.id !== "prevenda");
+  const base = temPrevenda ? COLUNAS_CAD : COLUNAS_CAD.filter((c) => c.id !== "prevenda");
+
+  if (!temImobiliaria) return base;
+
+  // Entra ao lado de "Credenciado", que é o terminal equivalente da CAD.
+  const habilitada = COLUNAS_IMOBILIARIA.find((c) => c.id === "habilitada");
+  if (!habilitada) return base;
+  const posicao = base.findIndex((c) => c.id === "credenciado");
+  if (posicao < 0) return [...base, habilitada];
+  return [...base.slice(0, posicao + 1), habilitada, ...base.slice(posicao + 1)];
 };
 
 // Desvios têm precedência sobre a etapa: o item sai do caminho normal.
@@ -1760,6 +1888,19 @@ const MOTIVOS_RECUSA_IMOBILIARIA = [
   "Dados do responsável não conferem",
 ];
 
+// CORREÇÃO de imobiliária tem motivos PRÓPRIOS. Os de CAD ("falta comprovante de endereço",
+// "falta documento do sócio") são de comprador; aqui se pede ajuste de documento de EMPRESA. O
+// primeiro item é o caso real que originou esta ação: a Beatriz Teodora enviou o Cartão de CNPJ
+// no lugar do contrato social e foi indeferida três vezes por falta de uma opção de "corrigir".
+const MOTIVOS_CORRECAO_IMOBILIARIA = [
+  "Enviou o Cartão de CNPJ no lugar do contrato social",
+  "Contrato social ilegível ou incompleto",
+  "Falta a última alteração contratual",
+  "CRECI da imobiliária vencido ou ilegível",
+  "Documento do sócio ilegível ou faltando",
+  "Dados do responsável não conferem com o documento",
+];
+
 function ModalMotivo({
   imob,
   onCancelar,
@@ -1778,7 +1919,9 @@ function ModalMotivo({
   const [observacao, setObservacao] = useState("");
   const correcao = tipo === "correcao";
   const sugestoes = correcao
-    ? MOTIVOS_CORRECAO
+    ? imob
+      ? MOTIVOS_CORRECAO_IMOBILIARIA
+      : MOTIVOS_CORRECAO
     : imob
       ? MOTIVOS_RECUSA_IMOBILIARIA
       : MOTIVOS_REPROVACAO;
@@ -3916,6 +4059,10 @@ function HabilitarEmpreendimentos({
 
   const escolhidos = lista.map((item) => item.enterpriseId).filter((id) => marcados[id]);
   const novos = lista.filter((item) => !item.habilitado && marcados[item.enterpriseId]).length;
+  // Nada a liberar porque JÁ ESTÁ TUDO liberado é diferente de "você não marcou nada". A tela
+  // dizia "Nenhum empreendimento novo marcado" nos dois casos e travava o botão, e o operador
+  // ficava procurando o que tinha feito de errado numa imobiliária que já estava pronta.
+  const tudoLiberado = lista.length > 0 && lista.every((item) => item.habilitado);
 
   return (
     <div className="mt-4 overflow-hidden rounded-2xl border border-line bg-surface">
@@ -3926,7 +4073,9 @@ function HabilitarEmpreendimentos({
         <div className="min-w-0">
           <h4 className="m-0 text-sm font-semibold text-ink">Empreendimentos a liberar</h4>
           <p className="m-0 mt-0.5 text-xs text-ink-muted">
-            Marque onde esta imobiliária pode enviar CAD. O que ficar de fora continua aguardando.
+            {tudoLiberado
+              ? "Esta imobiliária já pode enviar CAD em todos os empreendimentos que pediu."
+              : "Marque onde esta imobiliária pode enviar CAD. O que ficar de fora continua aguardando."}
           </p>
         </div>
       </div>
@@ -3975,16 +4124,21 @@ function HabilitarEmpreendimentos({
 
       <div className="flex items-center justify-between gap-3 border-t border-line px-4 py-3">
         <span className="text-xs text-ink-muted">
-          {novos === 0
-            ? "Nenhum empreendimento novo marcado"
-            : novos === 1
-              ? "1 empreendimento será liberado"
-              : `${novos} empreendimentos serão liberados`}
+          {tudoLiberado
+            ? "Tudo que ela pediu já está liberado"
+            : novos === 0
+              ? "Nenhum empreendimento novo marcado"
+              : novos === 1
+                ? "1 empreendimento será liberado"
+                : `${novos} empreendimentos serão liberados`}
         </span>
 
         <button
           className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-inverse px-4 text-sm font-semibold text-brand-ink transition-colors hover:bg-inverse/90 disabled:cursor-not-allowed disabled:opacity-40"
-          disabled={salvando || escolhidos.length === 0 || !onHabilitar}
+          // `novos === 0` trava o botão: sem isto, marcar um empreendimento JÁ habilitado deixava o
+          // botão ativo e cada clique disparava de novo o WhatsApp de boas-vindas para a
+          // imobiliária e para o coordenador, sem liberar nada.
+          disabled={salvando || novos === 0 || !onHabilitar}
           onClick={async () => {
             if (!onHabilitar) return;
             setSalvando(true);

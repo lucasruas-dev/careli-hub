@@ -32,6 +32,19 @@ export const runtime = "nodejs";
 export const maxDuration = 120;
 
 // So o processo do PROSPECT esta ligado; os demais papeis entram quando cada processo existir.
+// ⚠️ A IMOBILIÁRIA CADASTRADA AQUI NASCE CREDENCIADA, e isso é REGRA, não esquecimento.
+//
+// Decisão do Lucas (17/08/2026): "cadastro feito pelo operador vale já como validação". Quem
+// preenche este wizard é gente da Careli, com os documentos na mão — mandá-la para a fila de
+// validação seria pedir que alguém revalide o que a própria casa acabou de conferir.
+//
+// Por isso este caminho NÃO rebaixa o papel, ao contrário dos dois portais PÚBLICOS
+// (/api/publico/imobiliaria/cadastro e /credenciar), onde quem preenche é a própria imobiliária:
+// lá o papel nasce `review` e os vínculos `pending` de propósito, e a liberação passa pela
+// validação humana no Board.
+//
+// Uma revisão automática já apontou isto como defeito ("nasce credenciada sem validação"). Não é:
+// a diferença entre os dois caminhos é QUEM preencheu.
 const ENABLED_ROLES: ApoloBirthRole[] = ["prospect", "imobiliaria"];
 
 // Um documento pode ter varios arquivos (RG frente+verso, contrato social com N paginas) e o PJ

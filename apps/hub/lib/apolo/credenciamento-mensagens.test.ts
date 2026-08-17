@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   mensagemCoordenadorHabilitacao,
+  mensagemImobiliariaCorrecao,
   mensagemImobiliariaHabilitada,
   mensagemImobiliariaIndeferida,
 } from "./credenciamento-mensagens";
@@ -155,5 +156,54 @@ describe("indeferimento", () => {
     expect(texto).toContain("• Contrato social ilegível ou incompleto");
     // Sem o caminho de volta, a imobiliária refaz o cadastro do zero (foi o que a FN fez).
     expect(texto).toContain("sem precisar preencher tudo de novo");
+  });
+});
+
+// ── CORREÇÃO: a terceira decisão da validação (Lucas, 17/08) ────────────────────────────────
+describe("mensagemImobiliariaCorrecao", () => {
+  const base = {
+    imobiliaria: "63.375.899 BEATRIZ TEODORA DE ARAUJO",
+    motivos: ["Enviou o Cartão de CNPJ no lugar do contrato social"],
+    representante: "BEATRIZ TEODORA DE ARAUJO",
+  };
+
+  it("NÃO diz que o cadastro foi recusado: é pedido de ajuste", () => {
+    const texto = mensagemImobiliariaCorrecao(base);
+
+    expect(texto).not.toMatch(/não pôde ser aprovado|recusad|indeferid/i);
+    expect(texto).toContain("faltou um ajuste");
+  });
+
+  it("tranquiliza sobre o que já foi enviado, para ela não recomeçar do zero", () => {
+    const texto = mensagemImobiliariaCorrecao(base);
+
+    expect(texto).toContain("Seu cadastro está guardado");
+  });
+
+  it("diz o que precisa ser corrigido", () => {
+    const texto = mensagemImobiliariaCorrecao(base);
+
+    expect(texto).toContain("Cartão de CNPJ no lugar do contrato social");
+  });
+
+  it("chama pelo primeiro nome, com a inicial maiúscula", () => {
+    // O cadastro grava em CAIXA ALTA e "Olá, BEATRIZ!" parece grito de robô.
+    expect(mensagemImobiliariaCorrecao(base)).toContain("Olá, Beatriz!");
+  });
+
+  it("sem representante, não inventa nome", () => {
+    const texto = mensagemImobiliariaCorrecao({ ...base, representante: null });
+
+    expect(texto).toContain("Olá!");
+    expect(texto).not.toContain("undefined");
+  });
+
+  it("acrescenta a observação livre do operador quando existe", () => {
+    const texto = mensagemImobiliariaCorrecao({
+      ...base,
+      observacao: "Pode mandar em PDF, foto do papel não dá para ler.",
+    });
+
+    expect(texto).toContain("Pode mandar em PDF");
   });
 });
