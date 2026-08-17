@@ -19,8 +19,9 @@ import {
   nomeDoEmpreendimento,
   registrarOrigemPublica,
 } from "@/lib/publico/cad/dados";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { protocoloDaAutenticacao } from "@/lib/publico/cad/regras";
-import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import { donoUploadSessao, sessaoDoRequest } from "@/lib/publico/cad/sessao";
 import { montarCadPdf, type CadDoc } from "@/modules/apolo/blocks/cadastro/cad-pdf";
 
@@ -51,13 +52,29 @@ type SalvarPayload = CreateApoloEntityInput & {
 export async function POST(request: Request) {
   const verificacao = sessaoDoRequest(request);
   if (!verificacao.ok) {
-    return erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401);
+    // ⚠️ ESTA É A RECUSA MAIS CARA DO SISTEMA INTEIRO, e por isso ela passa por `recusar()`. O
+    // corretor preencheu a CAD toda, fotografou RG, comprovante e certidão, e a sessão expirou no
+    // meio: o 401 devolve tudo isso para o vazio. O TTL já foi dobrado de 45 para 90 min por causa
+    // deste caso (ver sessao.ts). Se ele voltar a acontecer, tem que aparecer no Log Erros.
+    return recusar(
+      request,
+      erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401),
+    );
   }
   const sessao = verificacao.sessao;
 
+  // Quem está tentando, para o Log Erros. Esta é A rota que importa: perder a CAD no envio é o
+  // corretor que preencheu tudo e não conseguiu entregar.
+  anotarContexto(request, {
+    corretorNome: sessao.corretorNome,
+    empreendimentoId: sessao.enterpriseId,
+    imobiliariaEntityId: sessao.imobiliariaEntityId,
+    imobiliariaNome: sessao.imobiliariaNome,
+  });
+
   // Sem empreendimento escolhido não existe CAD (mesma regra da CHECK constraint da 0061).
   if (!sessao.enterpriseId) {
-    return erro("Escolha o empreendimento antes de enviar a CAD.", 400);
+    return recusar(request, erro("Escolha o empreendimento antes de enviar a CAD.", 400));
   }
 
   const preparo = await prepararRota(request, "enviar");
@@ -66,19 +83,19 @@ export async function POST(request: Request) {
 
   const payload = await lerCorpo<SalvarPayload>(request);
   if (!payload?.identidade && !payload?.empresa) {
-    return responder(inicio, erro("Preencha os dados do cliente."));
+    return responder(request, inicio, erro("Preencha os dados do cliente."));
   }
   // O papel é FORÇADO para prospect adiante; aqui só recusamos um corpo que peça outra coisa,
   // para a mensagem ser clara (o formulário público de CAD só cria prospect).
   if (payload.role && payload.role !== "prospect") {
-    return responder(inicio, erro("Este link serve só para CAD de cliente."));
+    return responder(request, inicio, erro("Este link serve só para CAD de cliente."));
   }
 
   // Documento anexado em QUALQUER uma das duas formas: base64 no corpo (documento pequeno, fluxo
   // de sempre) ou caminho de arquivo já gravado no bucket (documento grande, upload direto).
   const documentos = (payload.documentos ?? []).filter(documentoTemArquivo);
   if (documentos.length > MAX_FILES) {
-    return responder(inicio, erro(`Anexe no máximo ${MAX_FILES} arquivos por CAD.`, 413));
+    return responder(request, inicio, erro(`Anexe no máximo ${MAX_FILES} arquivos por CAD.`, 413));
   }
   for (const doc of documentos) {
     const caminho = (doc.storagePath ?? "").trim();
@@ -86,15 +103,15 @@ export async function POST(request: Request) {
       // O caminho tem que ser um que ESTA sessão recebeu para gravar (rota /upload-url). Sem isso,
       // um corpo forjado criaria a linha do documento apontando para o arquivo de outra pessoa.
       if (!caminhoUploadDiretoValido(caminho, donoUploadSessao(sessao))) {
-        return responder(inicio, erro("Arquivo enviado não confere com esta sessão.", 400));
+        return responder(request, inicio, erro("Arquivo enviado não confere com esta sessão.", 400));
       }
       if ((doc.sizeBytes ?? 0) > APOLO_DOC_MAX_BYTES) {
-        return responder(inicio, erro(MENSAGEM_DOCUMENTO_GRANDE, 413));
+        return responder(request, inicio, erro(MENSAGEM_DOCUMENTO_GRANDE, 413));
       }
       continue;
     }
     if ((doc.fileBase64?.length ?? 0) > MAX_BASE64) {
-      return responder(inicio, erro("Uma das fotos ficou grande demais. Tire outra com menos zoom.", 413));
+      return responder(request, inicio, erro("Uma das fotos ficou grande demais. Tire outra com menos zoom.", 413));
     }
   }
 
@@ -114,7 +131,7 @@ export async function POST(request: Request) {
     persona,
   });
   if (!campos.ok) {
-    return responder(inicio, erro(campos.mensagem, 400));
+    return responder(request, inicio, erro(campos.mensagem, 400));
   }
   const obrigatorios = validarDocumentosObrigatorios({
     documentos,
@@ -122,7 +139,7 @@ export async function POST(request: Request) {
     persona,
   });
   if (!obrigatorios.ok) {
-    return responder(inicio, erro(obrigatorios.mensagem, 400));
+    return responder(request, inicio, erro(obrigatorios.mensagem, 400));
   }
 
   try {
@@ -150,9 +167,17 @@ export async function POST(request: Request) {
       // Ficha com CAD JÁ NA ESTEIRA: recusa com a mensagem VERDADEIRA do persist (ficha sem
       // esteira não cai mais aqui — vira anexo na ficha existente, achado de 03/08). Não vaza id.
       if (criado.entityIdExistente) {
-        return responder(inicio, erro(criado.error, 409));
+        // ⚠️ O CORRETOR VÊ A FRASE COMPLETA, O LOG GUARDA SÓ A CATEGORIA. A mensagem do persist
+        // pode nomear TERCEIROS: no conflito de núcleo familiar ela sai como "o CPF do cônjuge do
+        // JOÃO DA SILVA já possui CAD para o empreendimento X", e esse JOÃO é outro cliente.
+        // Gravá-la colocaria nome de comprador na tabela que foi especificada como "sem dado do
+        // cliente" — e no card "o que mais barrou", que agrupa pela string inteira e viraria uma
+        // lista de nomes.
+        return responder(request, inicio, erro(criado.error, 409), {
+          motivo: "CAD duplicada neste empreendimento (documento ou núcleo familiar).",
+        });
       }
-      return responder(inicio, erro(undefined, 500));
+      return responder(request, inicio, erro(undefined, 500));
     }
 
     const nomeCliente =
@@ -174,7 +199,7 @@ export async function POST(request: Request) {
 
     // 2) O VÍNCULO na esteira. NÃO é best-effort: se falhar, a CAD não é aceita.
     const esteira = await gravarVinculoEsteira(adminClient, vinculo);
-    if (!esteira.ok) return responder(inicio, erro(undefined, 500));
+    if (!esteira.ok) return responder(request, inicio, erro(undefined, 500));
 
     // 3) O empreendimento no grafo (verified). Checa error.
     const { error: relError } = await adminClient.from("apolo_relationships").insert({
@@ -190,7 +215,7 @@ export async function POST(request: Request) {
       relationship_type: "empreendimento",
       status: "verified",
     });
-    if (relError) return responder(inicio, erro(undefined, 500));
+    if (relError) return responder(request, inicio, erro(undefined, 500));
 
     // 4) O corretor no grafo do prospect: quem trouxe este cliente (verified). Checa error.
     const { error: corretorError } = await adminClient.from("apolo_relationships").insert({
@@ -201,7 +226,7 @@ export async function POST(request: Request) {
       relationship_type: "corretor",
       status: "verified",
     });
-    if (corretorError) return responder(inicio, erro(undefined, 500));
+    if (corretorError) return responder(request, inicio, erro(undefined, 500));
 
     const warnings: string[] = [...criado.warnings];
     const protocolo = protocoloDaAutenticacao(criado.autenticacao) || criado.autenticacao;
@@ -254,6 +279,7 @@ export async function POST(request: Request) {
     if (warnings.length) console.warn("[publico-cad-salvar] avisos", warnings);
 
     return responder(
+      request,
       inicio,
       json(
         { autenticacao: criado.autenticacao, cadBase64, entityId: criado.entityId, savedDocs, warnings },
@@ -261,6 +287,6 @@ export async function POST(request: Request) {
       ),
     );
   } catch {
-    return responder(inicio, erro(undefined, 500));
+    return responder(request, inicio, erro(undefined, 500));
   }
 }

@@ -36,6 +36,63 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-17-log-erros-e-politica-comercial",
+    deployedAt: "2026-08-17T15:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "Tela nova: Log Erros mostra quem tentou enviar CAD ou se credenciar e NAO conseguiu, desde a tela do CPF ate o envio",
+              "Quem conseguiu continua aparecendo no Board, como CAD na fila de validacao: aqui so entra quem ficou pelo caminho",
+              "As linhas marcadas como SEM SAIDA sao as mais graves: a pessoa recebeu resposta cordial, nao viu erro nenhum, e o fluxo dela terminou ali. E o corretor cuja imobiliaria nao esta credenciada, a imobiliaria sem empreendimento liberado e o CNPJ que nao passou na portaria",
+              "Tres resumos no topo: o que mais barrou, quais imobiliarias mais travam e em que passo o corretor para",
+              "Filtro de 24 horas, 7 dias ou 30 dias",
+            ],
+            screen: "Apolo - Log Erros",
+          },
+          {
+            items: [
+              "Aba nova de Politicas Comerciais no empreendimento: mostra como o split de pagamento esta dividido no C2X, por tipo de parcela (ato, sinal da imobiliaria, sinal do corretor e mensal)",
+              "A % de gestao de carteira do empreendimento passa a ser cadastrada aqui, e vale para todas as divisoes de uma vez",
+              "Quando as divisoes do mesmo empreendimento tem split diferente, a tela avisa em vez de mostrar so uma: e o caso do Lagoa Bonita, onde a carteira e nossa apenas no LBF",
+              "Empreendimento sem % cadastrada significa que a Careli nao administra a carteira dele",
+            ],
+            screen: "Apolo - Empreendimento (Politicas Comerciais)",
+          },
+          {
+            items: [
+              "A tela Importar CADs saiu do menu: a CAD nasce no proprio Apolo, pelo portal do corretor, e trazer ficha do Asana nao faz mais sentido",
+            ],
+            screen: "Apolo - menu",
+          },
+        ],
+      },
+      {
+        module: "Portal do corretor",
+        screens: [
+          {
+            items: [
+              "A tela nao informa mais em qual imobiliaria concorrente um corretor ja esta: quando ha conflito, ela pede para falar com a central",
+            ],
+            screen: "Credenciamento de imobiliaria",
+          },
+        ],
+      },
+    ],
+    rollback: "01adf844 (v1.145.0)",
+    technical: {
+      done:
+        "LOG ERROS. Pedido do Lucas: 'uma imobiliaria tentou subir a CAD e deu erro, teria como ter essa visao? Tinha que pegar DESDE O INICIO, quando informa o CPF, imobiliaria'. Migration 0093 (`apolo_cad_log_erros`, RLS ligada sem policy de select: so a service role le). ⚠️ A DESCOBERTA QUE MUDOU O DESENHO: as paredes mais graves NAO sao erro HTTP. Corretor cuja imobiliaria nao esta credenciada recebe HTTP 200 com mensagem cordial; imobiliaria credenciada sem empreendimento habilitado, idem. Um log que olhasse so para status >=400 mostraria o funil saudavel enquanto a porta de entrada devolve gente todo dia. Por isso a tabela guarda DUAS naturezas, separadas por selo na tela: ERRO (>=400, a pessoa viu e pode tentar de novo) e BARREIRA (200, fluxo encerrado em silencio). Sucesso NAO entra: regra do Lucas, 'a tentativa de certo e a CAD que chega na validacao'. COMO O CONTEXTO CHEGA: sao 85 `return responder(...)` nas 14 rotas publicas, e passar o contexto em cada um seria 85 chances de esquecer — com o esquecimento SILENCIOSO (a coluna fica '—' e ninguem sabe se falta dado ou codigo). A rota chama `anotarContexto(request, {...})` assim que descobre quem e, um WeakMap por requisicao guarda, e o `responder()` le; anotar de novo ACUMULA e string vazia nao apaga o que ja se sabia. Registro via `after()` do Next, NUNCA `void promise`: na Vercel a funcao e congelada quando a resposta sai e a promessa solta nao termina — a tela mostraria 'nenhuma recusa' com o formulario quebrando na cara do corretor. ⚠️ REVISAO ADVERSARIAL (15 agentes, 5 lentes) PEGOU 7 DEFEITOS CONFIRMADOS, TODOS CORRIGIDOS: (a) VAZAMENTO DE DADO DE CLIENTE — a mensagem de conflito de nucleo familiar nomeia TERCEIRO ('o CPF do conjuge do JOAO DA SILVA ja possui CAD para o Vale do Ouro') e estava sendo gravada inteira numa tabela especificada como 'sem dado do cliente', ainda por cima no card 'o que mais barrou', que agrupa pela string e viraria lista de nomes de compradores; criado `ContextoDaTentativa.motivo`, o motivo canonico que ganha da mensagem quando ela vem de camada de negocio. (b) VAZAMENTO DE CARTEIRA DE CONCORRENTE, anterior a esta rodada: `/publico/imobiliaria/credenciar` devolvia `explicarConflitos` cru ('FULANO ja trabalha o Vale do Ouro pela Imobiliaria X') numa rota ANONIMA atras so do CNPJ — quem chutasse nomes e CPFs mapearia a rede dos concorrentes; a resposta publica virou generica e o detalhe foi para o log interno, que e onde ele ja deveria estar (a mesma regra ja estava escrita no /checar-cpf). (c) as DUAS recusas mais caras do /salvar (401 de sessao expirada e 400 sem empreendimento) saiam por `erro()` cru, fora do caminho do log — e o 401 e o corretor que preencheu a CAD toda e perdeu no envio, o caso que motivou dobrar o TTL de 45 para 90 min. (d) 429 e 503 escapavam nas 14 rotas, porque todas fazem `return preparo.response` direto: teto de uso batido e Supabase fora do ar ficavam invisiveis justo nos dois incidentes em que a tela mais precisaria falar; registro movido para dentro do `prepararRota`, um ponto so. (e) MASCARA DE CPF RECONSTRUIVEL: guardava o 9o digito e os dois verificadores, e como os DVs sao calculados dos 9 primeiros, validar os candidatos derruba o espaco de 100 mil para um punhado — era base de CPF disfarcada de mascara; agora so os 3 primeiros. (f) o insert engolia o `error` do PostgREST sem rastro, deixando 'tabela que parou de aceitar linha' indistinguivel de 'nao houve recusa'. (g) contador 'sem saida' contado sobre a pagina truncada e exibido na mesma frase que o total do periodo, dois denominadores lado a lado sugerindo uma proporcao que nao existia. Ainda: `imobiliaria_entity_id` validado como uuid antes do insert (um id fora de formato derrubaria a LINHA INTEIRA, nao so o campo), e o GET passou a selecionar o CNPJ mascarado — sem ele a coluna 'Quem' ficaria vazia no fluxo inteiro de credenciamento, que e onde o Lucas viu o problema. POLITICA COMERCIAL. Migration 0092 (`gestao_carteira_percentual`). Precedencia definida pelo Lucas: 'toda parte financeira, enquanto nao migramos tudo para o Apolo, o C2X tem prioridade; o que vai nascer ja no Apolo e a % da gestao de carteira'. A fonte da gestao mudou tres vezes ate assentar no `split_enterprises`: so ha gestao quando existe linha 'Gestora de recebiveis' no grupo Mensal (os `10+10` de `commercial_policies` eram campo morto). O PATCH grava todas as divisoes numa chamada e relata o que ja gravou se falhar no meio — a tela fazia um PATCH por divisao, e uma falha na segunda deixaria a Lagoa Bonita com uma gleba em 97% e outra em 96%, exatamente o que 'uma % por empreendimento' proibe. ⚠️ A ABA ELEGIA `politicas[0]` como referencia e apresentava o veredito como do empreendimento inteiro: se o banco devolvesse o LBR primeiro, a tela AFIRMARIA 'a Careli nao administra a carteira deste empreendimento' sobre um empreendimento onde administramos. Consolidado pela regra do negocio (se ALGUMA divisao tem gestao, o empreendimento tem) e com aviso explicito quando as divisoes divergem. NAO ENTRA NESTA ENTREGA, e fica registrado: `liquido-incorporador.ts` esta pronto e testado mas SEM NENHUM CHAMADOR, entao gravar a % ainda nao muda tela alguma — ela so ganha funcao quando a Carteira do portal do incorporador existir. ASANA: tela removida do menu e o bloco (6 arquivos) apagado, mas o BACKEND fica de pe de proposito — `lib/apolo/asana-import.ts` tambem alimenta o diagnostico de CAD, o backfill de empreendimento e o relatorio das imobiliarias. A tela ativa do Apolo e persistida no localStorage, entao quem estivesse em 'Importar CADs' abriria o Apolo EM BRANCO; `telaValida()` faz a tela salva que nao existe mais cair no CRM.",
+      motivation:
+        "Lucas, 17/08: 'queria registrar os erros de input de CAD... uma imobiliaria tentou subir a CAD e deu erro, teria como ter essa visao? Tinha que pegar desde o inicio, quando informa o CPF, imobiliaria. A tela pode ser Log Erros.' E, sobre a politica: 'no cadastro do empreendimento podemos trazer a aba politicas comerciais, e la registrar o valor de comissao, bem como o valor da gestao de carteira'.",
+    },
+    title: "Log Erros: quem tentou cadastrar e nao conseguiu",
+    type: "novidade",
+    version: "1.146.0",
+  },
+  {
     buildTag: "2026-08-17-validacao-imobiliaria-tres-acoes",
     deployedAt: "2026-08-17T09:10:00-03:00",
     modules: [

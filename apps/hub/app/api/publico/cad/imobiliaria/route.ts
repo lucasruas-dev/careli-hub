@@ -1,6 +1,14 @@
 import { consultarImobiliariaCredenciada } from "@/lib/publico/cad/dados";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { cnpjValido, normalizarCnpj } from "@/lib/publico/cad/regras";
-import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import {
+  erro,
+  json,
+  lerCorpo,
+  prepararRota,
+  registrarBarreira,
+  responder,
+} from "@/lib/publico/cad/rotas";
 import { emitirPreSessao } from "@/lib/publico/cad/sessao";
 
 // S1 — "se o CNPJ passar, isso quer dizer que a imobiliária está credenciada com a gente"
@@ -23,23 +31,32 @@ export async function POST(request: Request) {
   const corpo = await lerCorpo<{ cnpj?: string }>(request);
   const cnpj = normalizarCnpj(corpo?.cnpj);
 
+  // "Desde o início, quando informa o CPF, imobiliária" (Lucas). Entra MASCARADO.
+  anotarContexto(request, { imobiliariaCnpj: cnpj });
+
   if (!cnpjValido(cnpj)) {
-    return responder(inicio, erro("Confira o CNPJ: parece que faltou um dígito."));
+    return responder(request, inicio, erro("Confira o CNPJ: parece que faltou um dígito."));
   }
 
   try {
     const consulta = await consultarImobiliariaCredenciada(adminClient, cnpj);
+    anotarContexto(request, { imobiliariaNome: consulta.nome });
+
     if (!consulta.credenciada || !consulta.entityId) {
-      return responder(inicio, json({ credenciada: false }));
+      // Responde 200 e a tela segue cordial, mas para a imobiliária o fluxo ACABOU aqui. É o caso
+      // que o Lucas quer enxergar: quem bateu na porta e não entrou.
+      registrarBarreira(request, "CNPJ informado não está credenciado.");
+      return responder(request, inicio, json({ credenciada: false }));
     }
 
     const pre = emitirPreSessao({
       imobiliariaEntityId: consulta.entityId,
       imobiliariaNome: consulta.nome ?? "Imobiliária",
     });
-    if (!pre.ok) return responder(inicio, erro(pre.error, 503));
+    if (!pre.ok) return responder(request, inicio, erro(pre.error, 503));
 
     return responder(
+      request,
       inicio,
       json({ credenciada: true, nome: consulta.nome, preSessao: pre.token }),
     );
@@ -48,6 +65,6 @@ export async function POST(request: Request) {
     // NÓS precisamos saber o que quebrou: sem este log o 500 vira mistério, que foi exatamente
     // o que aconteceu no primeiro teste em preview (20/jul).
     console.error("[publico][cad][imobiliaria] falha", e);
-    return responder(inicio, erro(undefined, 500));
+    return responder(request, inicio, erro(undefined, 500));
   }
 }

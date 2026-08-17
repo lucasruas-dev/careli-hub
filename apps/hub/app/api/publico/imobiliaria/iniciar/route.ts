@@ -1,4 +1,5 @@
 import { consultarImobiliariaCredenciada } from "@/lib/publico/cad/dados";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { cnpjValido, normalizarCnpj } from "@/lib/publico/cad/regras";
 import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
 import { assinarPreSessaoImob } from "@/lib/publico/cad/sessao";
@@ -20,8 +21,12 @@ export async function POST(request: Request) {
 
   const corpo = await lerCorpo<{ cnpj?: string }>(request);
   const cnpj = normalizarCnpj(corpo?.cnpj);
+
+  // "Desde o início, quando informa o CPF, imobiliária" (Lucas). Entra MASCARADO.
+  anotarContexto(request, { imobiliariaCnpj: cnpj });
+
   if (!cnpjValido(cnpj)) {
-    return responder(inicio, erro("Confira o CNPJ: parece que faltou um dígito."));
+    return responder(request, inicio, erro("Confira o CNPJ: parece que faltou um dígito."));
   }
 
   try {
@@ -36,11 +41,17 @@ export async function POST(request: Request) {
     // mensagem. Então a antessala emite a pré-sessão do mesmo jeito, e o portal segue para a
     // habilitação em vez do wizard completo.
     const existente = await consultarImobiliariaCredenciada(adminClient, cnpj);
+    anotarContexto(request, {
+      imobiliariaEntityId: existente.entityId,
+      imobiliariaNome: existente.nome,
+    });
+
     if (existente.credenciada) {
       const preHab = assinarPreSessaoImob({ cnpj });
-      if (!preHab.ok) return responder(inicio, erro(preHab.error, 503));
+      if (!preHab.ok) return responder(request, inicio, erro(preHab.error, 503));
 
       return responder(
+        request,
         inicio,
         json({
           nome: existente.nome,
@@ -52,10 +63,10 @@ export async function POST(request: Request) {
 
     // Emite a pré-sessão amarrada a ESTE CNPJ. O /cadastro rejeita se o cartão CNPJ divergir.
     const pre = assinarPreSessaoImob({ cnpj });
-    if (!pre.ok) return responder(inicio, erro(pre.error, 503));
+    if (!pre.ok) return responder(request, inicio, erro(pre.error, 503));
 
-    return responder(inicio, json({ preSessao: pre.token, status: "ok" }));
+    return responder(request, inicio, json({ preSessao: pre.token, status: "ok" }));
   } catch {
-    return responder(inicio, erro(undefined, 500));
+    return responder(request, inicio, erro(undefined, 500));
   }
 }

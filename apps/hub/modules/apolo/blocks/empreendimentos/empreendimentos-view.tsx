@@ -1,5 +1,6 @@
 "use client";
 
+import { PoliticaComercialTab } from "@/modules/apolo/blocks/empreendimentos/politica-comercial-tab";
 import { useEffect, useRef, useState } from "react";
 import {
   ArrowLeft,
@@ -20,6 +21,7 @@ import {
   Map as MapIcon,
   MapPinned,
   Network,
+  Percent,
   Search,
   Settings,
   Tag,
@@ -121,6 +123,9 @@ const detailTabs = [
   // "Carteira" com o ícone de carteira do Hades (WalletCards).
   { icon: WalletCards, id: "carteira", label: "Carteira" },
   { icon: Network, id: "relacionamentos", label: "Relacionamentos" },
+  // Políticas comerciais fica ANTES do Setup: é regra de negócio do produto (comissão, entrada,
+  // gestão de carteira), e o Setup é a configuração operacional do Apolo.
+  { icon: Percent, id: "politica", label: "Políticas comerciais" },
   { icon: Settings, id: "setup", label: "Setup" },
 ] as const;
 
@@ -476,6 +481,9 @@ function EnterpriseDetail({
         ) : null}
         {tab === "vendas" ? (
           <VendasTab onOpenEntity={onOpenEntity} row={row} />
+        ) : null}
+        {tab === "politica" ? (
+          <PoliticaComercialTab code={row.code} codes={row.codes} name={row.name} />
         ) : null}
         {tab === "setup" ? (
           <CredenciamentoCard code={row.code} enterpriseId={row.id} name={row.name} />

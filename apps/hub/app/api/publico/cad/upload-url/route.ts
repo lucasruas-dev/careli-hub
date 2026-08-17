@@ -1,5 +1,6 @@
 import { criarUrlDeUploadApoloDocument } from "@/lib/apolo/documentos";
-import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
+import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import {
   donoUploadPreImob,
   donoUploadSessao,
@@ -30,7 +31,23 @@ export async function POST(request: Request) {
       ? donoUploadPreImob(preImob.pre)
       : null;
 
-  if (!dono) return erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401);
+  if (!dono) {
+    return recusar(
+      request,
+      erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401),
+    );
+  }
+
+  if (sessao.ok) {
+    anotarContexto(request, {
+      corretorNome: sessao.sessao.corretorNome,
+      empreendimentoId: sessao.sessao.enterpriseId,
+      imobiliariaEntityId: sessao.sessao.imobiliariaEntityId,
+      imobiliariaNome: sessao.sessao.imobiliariaNome,
+    });
+  } else if (preImob.ok) {
+    anotarContexto(request, { imobiliariaCnpj: preImob.pre.cnpj });
+  }
 
   const preparo = await prepararRota(request, "upload");
   if (!preparo.ok) return preparo.response;
@@ -44,8 +61,8 @@ export async function POST(request: Request) {
       dono,
       fileName: typeof body?.fileName === "string" ? body.fileName : "",
     });
-    return responder(inicio, json(assinada, 200));
+    return responder(request, inicio, json(assinada, 200));
   } catch {
-    return responder(inicio, erro(undefined, 500));
+    return responder(request, inicio, erro(undefined, 500));
   }
 }

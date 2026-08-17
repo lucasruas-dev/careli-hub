@@ -53,6 +53,14 @@ function normalizarLimite(v: number | string | null | undefined): number | null 
   return Math.round(n * 100) / 100;
 }
 
+// Percentual aceita vírgula (o operador digita 97,5) e preserva 3 casas, como a coluna.
+function normalizarPercentual(v: null | number | string | undefined): null | number {
+  if (v === null || v === undefined || v === "") return null;
+  const n = typeof v === "string" ? Number(v.replace(",", ".")) : Number(v);
+  if (!Number.isFinite(n)) return null;
+  return Math.round(n * 1000) / 1000;
+}
+
 // A tabela pode não existir ainda (migration pendente): trata como "sem settings".
 function tabelaAusente(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false;
@@ -339,6 +347,78 @@ export async function setEnterpriseCredenciamento(input: {
 // linha existente vira UPDATE (só o limite muda) e a inexistente vira INSERT com o flag no
 // default explícito (false) — empreendimento novo não nasce "na ativa". Cada escrita CHECA o
 // `error` (lição de 21/jul: upsert em NOT NULL sem default falhava em silêncio).
+/**
+ * A % de gestão de carteira do empreendimento: quanto das parcelas do financiamento fica com o
+ * INCORPORADOR.
+ *
+ * ⚠️ NULO NÃO É "FALTA CADASTRAR", É "NÃO FAZEMOS A GESTÃO". Decisão do Lucas (17/08/2026): "irei
+ * atualizar todas no Apolo; o que não tiver cadastrado é porque não fazemos a gestão de carteira
+ * desse empreendimento". Por isso o zero e o nulo são coisas diferentes aqui, e apagar o campo é
+ * uma ação com significado: some a carteira daquele empreendimento no portal do incorporador.
+ *
+ * É o único campo da política comercial que nasce no Apolo — o resto (comissão, entrada, parcelas
+ * do sinal) continua vindo do C2X, que tem prioridade no financeiro.
+ *
+ * Percentual de 0 a 100, do jeito que o Lucas fala e que a tela do C2X mostra: 97 no Recanto,
+ * 97,5 no Vista Alegre, 96 na Lavra do Ouro.
+ */
+export async function setEnterpriseGestaoCarteira(input: {
+  adminClient: AdminClient;
+  code?: null | string;
+  enterpriseId: string;
+  percentual: null | number;
+  updatedBy?: null | string;
+}): Promise<{ error?: string; ok: boolean }> {
+  const enterpriseId = (input.enterpriseId ?? "").trim();
+  if (!enterpriseId) return { error: "Empreendimento invalido.", ok: false };
+
+  const percentual = normalizarPercentual(input.percentual);
+
+  // Fora de 0..100 é digitação errada (98,5 e 985 são fáceis de confundir num campo). Barra aqui
+  // com mensagem em vez de deixar o CHECK do banco devolver erro cru.
+  if (percentual !== null && (percentual < 0 || percentual > 100)) {
+    return { error: "A gestao de carteira precisa estar entre 0 e 100%.", ok: false };
+  }
+
+  const { data: existente, error: erroLeitura } = await input.adminClient
+    .from(TABLE)
+    .select("enterprise_id")
+    .eq("enterprise_id", enterpriseId)
+    .maybeSingle<{ enterprise_id: string }>();
+
+  if (erroLeitura && !tabelaAusente(erroLeitura)) {
+    return { error: `Nao foi possivel salvar: ${erroLeitura.message}`, ok: false };
+  }
+
+  if (existente) {
+    const { error } = await input.adminClient
+      .from(TABLE)
+      .update({
+        gestao_carteira_percentual: percentual,
+        updated_at: new Date().toISOString(),
+        updated_by: input.updatedBy ?? null,
+      })
+      .eq("enterprise_id", enterpriseId);
+
+    if (error) return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
+    return { ok: true };
+  }
+
+  const { error } = await input.adminClient.from(TABLE).insert({
+    code: input.code ?? null,
+    // Mesmo cuidado do limite de crédito: cadastrar a gestão de carteira de um empreendimento sem
+    // settings NÃO pode ligar o credenciamento por acidente.
+    credenciamento_ativo: false,
+    enterprise_id: enterpriseId,
+    gestao_carteira_percentual: percentual,
+    updated_at: new Date().toISOString(),
+    updated_by: input.updatedBy ?? null,
+  });
+
+  if (error) return { error: `Nao foi possivel salvar: ${error.message}`, ok: false };
+  return { ok: true };
+}
+
 export async function setEnterpriseLimiteCredito(input: {
   adminClient: AdminClient;
   code?: string | null;

@@ -1,9 +1,9 @@
 import {
+  AlertTriangle,
   BarChart3,
   BriefcaseBusiness,
   Building2,
   ContactRound,
-  DownloadCloud,
   FileSpreadsheet,
   Handshake,
   IdCard,
@@ -25,8 +25,21 @@ export type ApoloScreen =
   | "dashboard"
   | "crm"
   | "empreendimentos"
-  | "importacao"
+  | "logErros"
   | "relatorios";
+
+/**
+ * A tela ativa é PERSISTIDA no localStorage, então o valor guardado sobrevive à remoção de uma
+ * tela do catálogo.
+ *
+ * ⚠️ SEM ESTE SANEAMENTO, QUEM ESTAVA NA TELA REMOVIDA ABRE O APOLO EM BRANCO: nenhum bloco casa
+ * com o id antigo, o sidebar não destaca nada, e não há como sair a não ser clicando em outra
+ * coisa. Foi o que aconteceria com quem tinha "importacao" salva quando a importação do Asana saiu
+ * (17/08/2026), que é justamente quem mais usava a tela.
+ */
+export function telaValida(bruto: unknown): ApoloScreen | null {
+  return apoloScreens.some((item) => item.id === bruto) ? (bruto as ApoloScreen) : null;
+}
 
 export type ApoloScreenItem = {
   description: string;
@@ -100,12 +113,21 @@ export const apoloScreens = [
     id: "empreendimentos",
     label: "Empreendimento",
   },
+  // A tela "Importar CADs" (Asana) saiu em 17/08/2026, a pedido do Lucas: "não faz mais sentido
+  // importação do Asana, pode tirar". A fonte da CAD passou a ser o próprio Apolo (portal público
+  // do corretor), então trazer ficha da central do Asana virou caminho morto.
+  //
+  // ⚠️ O BACKEND CONTINUA DE PÉ, e não é sobra esquecida: `lib/apolo/asana-import.ts` também
+  // alimenta o diagnóstico de CAD, o backfill de empreendimento e o relatório das imobiliárias.
+  // Arrancar as rotas junto com a tela quebraria os três.
   {
-    description: "Traz as CADs da central do Asana para o Board.",
+    // Quem tentou enviar CAD ou se credenciar e NÃO conseguiu. O sucesso não entra aqui: ele já é
+    // a CAD que aparece no Board (observação do Lucas, 17/08).
+    description: "Tentativas recusadas no cadastro publico: quem travou, onde e por que.",
     hidden: false,
-    icon: DownloadCloud,
-    id: "importacao",
-    label: "Importar CADs",
+    icon: AlertTriangle,
+    id: "logErros",
+    label: "Log Erros",
   },
   {
     description: "Insights executivos do cadastro mestre.",

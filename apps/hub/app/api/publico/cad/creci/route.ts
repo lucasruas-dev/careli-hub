@@ -1,6 +1,7 @@
 import { enrichPerson } from "@/lib/apolo/mostqi";
 import { cpfValido, normalizarCpf, normalizarCreci } from "@/lib/publico/cad/regras";
-import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
+import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import { preSessaoDoRequest } from "@/lib/publico/cad/sessao";
 
 // S3 — "buscamos o CRECI pela MOST ou deixamos ele inserir caso não seja retornado esse valor"
@@ -43,8 +44,13 @@ const TIMEOUT_MS = 6000;
 export async function POST(request: Request) {
   const pre = preSessaoDoRequest(request);
   if (!pre.ok) {
-    return erro("Confirme o CNPJ da imobiliária antes de continuar.", 403);
+    return recusar(request, erro("Confirme o CNPJ da imobiliária antes de continuar.", 403));
   }
+
+  anotarContexto(request, {
+    imobiliariaEntityId: pre.pre.imobiliariaEntityId,
+    imobiliariaNome: pre.pre.imobiliariaNome,
+  });
 
   const preparo = await prepararRota(request, "creci");
   if (!preparo.ok) return preparo.response;
@@ -52,8 +58,12 @@ export async function POST(request: Request) {
 
   const corpo = await lerCorpo<{ cpf?: string }>(request);
   const cpf = normalizarCpf(corpo?.cpf);
+
+  // CPF do CORRETOR (não do cliente): é quem está se cadastrando aqui. Entra mascarado.
+  anotarContexto(request, { corretorCpf: cpf });
+
   if (!cpfValido(cpf)) {
-    return responder(inicio, erro("Confira o CPF: parece que faltou um dígito."));
+    return responder(request, inicio, erro("Confira o CPF: parece que faltou um dígito."));
   }
 
   // Cada consulta tem seu próprio timeout: se o CRECI demorar, o nome ainda chega (e vice-versa).
@@ -74,6 +84,7 @@ export async function POST(request: Request) {
     // não distingue, porque para o corretor as três situações significam a mesma coisa: digite.
     // Nenhuma delas pode travar o cadastro — estamos adivinhando por cortesia.
     return responder(
+      request,
       inicio,
       json({
         creci: normalizarCreci(doCreci?.creci),
@@ -81,6 +92,6 @@ export async function POST(request: Request) {
       }),
     );
   } catch {
-    return responder(inicio, json({ creci: "", nome: "" }));
+    return responder(request, inicio, json({ creci: "", nome: "" }));
   }
 }

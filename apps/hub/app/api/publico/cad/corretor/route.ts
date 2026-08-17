@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 
 import { criarCorretor, empreendimentosHabilitados } from "@/lib/publico/cad/dados";
 import { validarCorretor, type DadosCorretor } from "@/lib/publico/cad/regras";
-import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
+import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import { emitirSessao, preSessaoDoRequest } from "@/lib/publico/cad/sessao";
 
 // S4 — cria o corretor e abre a sessão. "Pronto, cadastrado. Agora pode subir CAD."
@@ -15,8 +16,13 @@ export const runtime = "nodejs";
 export async function POST(request: Request) {
   const pre = preSessaoDoRequest(request);
   if (!pre.ok) {
-    return erro("Confirme o CNPJ da imobiliária antes de continuar.", 403);
+    return recusar(request, erro("Confirme o CNPJ da imobiliária antes de continuar.", 403));
   }
+
+  anotarContexto(request, {
+    imobiliariaEntityId: pre.pre.imobiliariaEntityId,
+    imobiliariaNome: pre.pre.imobiliariaNome,
+  });
 
   const preparo = await prepararRota(request, "identificacao");
   if (!preparo.ok) return preparo.response;
@@ -25,7 +31,7 @@ export async function POST(request: Request) {
   const corpo = await lerCorpo<Partial<DadosCorretor>>(request);
   const validacao = validarCorretor(corpo ?? {});
   if (!validacao.ok) {
-    return responder(inicio, erro(validacao.erros.join(" ")));
+    return responder(request, inicio, erro(validacao.erros.join(" ")));
   }
 
   try {
@@ -34,7 +40,7 @@ export async function POST(request: Request) {
       imobiliariaEntityId: pre.pre.imobiliariaEntityId,
       imobiliariaNome: pre.pre.imobiliariaNome,
     });
-    if (!criado.ok) return responder(inicio, erro(undefined, 500));
+    if (!criado.ok) return responder(request, inicio, erro(undefined, 500));
 
     const habilitados = await empreendimentosHabilitados(
       adminClient,
@@ -43,7 +49,7 @@ export async function POST(request: Request) {
     if (!habilitados.length) {
       // Cadastro FEITO, mas sem empreendimento aberto para envio. A tela diz isso com todas
       // as letras (é o único "não" do fluxo que tem motivo explicável sem vazar nada).
-      return responder(inicio, json({ status: "sem-empreendimento" }));
+      return responder(request, inicio, json({ status: "sem-empreendimento" }));
     }
 
     const sessao = emitirSessao({
@@ -56,9 +62,10 @@ export async function POST(request: Request) {
       imobiliariaNome: pre.pre.imobiliariaNome,
       sessaoId: randomUUID(),
     });
-    if (!sessao.ok) return responder(inicio, erro(sessao.error, 503));
+    if (!sessao.ok) return responder(request, inicio, erro(sessao.error, 503));
 
     return responder(
+      request,
       inicio,
       json({
         empreendimentos: habilitados,
@@ -69,6 +76,6 @@ export async function POST(request: Request) {
       }),
     );
   } catch {
-    return responder(inicio, erro(undefined, 500));
+    return responder(request, inicio, erro(undefined, 500));
   }
 }

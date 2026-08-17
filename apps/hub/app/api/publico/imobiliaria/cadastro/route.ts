@@ -12,7 +12,8 @@ import {
   uploadApoloDocument,
 } from "@/lib/apolo/documentos";
 import { normalizarCnpj } from "@/lib/publico/cad/regras";
-import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
+import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import { donoUploadPreImob, preSessaoImobDoRequest } from "@/lib/publico/cad/sessao";
 import { montarCadPdf, type CadDoc } from "@/modules/apolo/blocks/cadastro/cad-pdf";
 
@@ -41,7 +42,11 @@ type SalvarPayload = CreateApoloEntityInput & {
 
 export async function POST(request: Request) {
   const pre = preSessaoImobDoRequest(request);
-  if (!pre.ok) return erro("Confirme o CNPJ da imobiliária antes de continuar.", 401);
+  if (!pre.ok) {
+    return recusar(request, erro("Confirme o CNPJ da imobiliária antes de continuar.", 401));
+  }
+
+  anotarContexto(request, { imobiliariaCnpj: pre.pre.cnpj });
 
   const preparo = await prepararRota(request, "imobiliaria");
   if (!preparo.ok) return preparo.response;
@@ -49,41 +54,41 @@ export async function POST(request: Request) {
 
   const payload = await lerCorpo<SalvarPayload>(request);
   if (!payload?.empresa) {
-    return responder(inicio, erro("Preencha os dados da imobiliária."));
+    return responder(request, inicio, erro("Preencha os dados da imobiliária."));
   }
   if (payload.persona && payload.persona !== "pj") {
-    return responder(inicio, erro("A imobiliária é sempre pessoa jurídica."));
+    return responder(request, inicio, erro("A imobiliária é sempre pessoa jurídica."));
   }
   if (payload.role && payload.role !== "imobiliaria") {
-    return responder(inicio, erro("Este formulário só cria imobiliária."));
+    return responder(request, inicio, erro("Este formulário só cria imobiliária."));
   }
 
   // Anti-troca: o cartão CNPJ tem que ser o mesmo que passou pela antessala.
   const cnpjCorpo = normalizarCnpj(payload.empresa?.cnpj);
   if (cnpjCorpo !== pre.pre.cnpj) {
-    return responder(inicio, erro("O CNPJ do cartão não confere com o informado no início."));
+    return responder(request, inicio, erro("O CNPJ do cartão não confere com o informado no início."));
   }
 
   // Duas formas de anexo (ver /api/publico/cad/salvar): base64 no corpo para documento pequeno,
   // caminho de arquivo já gravado no bucket para documento grande.
   const documentos = (payload.documentos ?? []).filter(documentoTemArquivo);
   if (documentos.length > MAX_FILES) {
-    return responder(inicio, erro(`Envie no máximo ${MAX_FILES} arquivos por cadastro.`, 413));
+    return responder(request, inicio, erro(`Envie no máximo ${MAX_FILES} arquivos por cadastro.`, 413));
   }
   for (const doc of documentos) {
     const caminho = (doc.storagePath ?? "").trim();
     if (caminho) {
       // O caminho tem que ser um que ESTA pré-sessão recebeu para gravar (rota /upload-url).
       if (!caminhoUploadDiretoValido(caminho, donoUploadPreImob(pre.pre))) {
-        return responder(inicio, erro("Arquivo enviado não confere com esta sessão.", 400));
+        return responder(request, inicio, erro("Arquivo enviado não confere com esta sessão.", 400));
       }
       if ((doc.sizeBytes ?? 0) > APOLO_DOC_MAX_BYTES) {
-        return responder(inicio, erro(MENSAGEM_DOCUMENTO_GRANDE, 413));
+        return responder(request, inicio, erro(MENSAGEM_DOCUMENTO_GRANDE, 413));
       }
       continue;
     }
     if ((doc.fileBase64?.length ?? 0) > MAX_BASE64) {
-      return responder(inicio, erro("Um dos arquivos ficou grande demais. Envie um menor.", 413));
+      return responder(request, inicio, erro("Um dos arquivos ficou grande demais. Envie um menor.", 413));
     }
   }
 
@@ -107,7 +112,7 @@ export async function POST(request: Request) {
       persona: "pj",
       role: "imobiliaria",
     });
-    if (!criado.ok) return responder(inicio, erro(undefined, 500));
+    if (!criado.ok) return responder(request, inicio, erro(undefined, 500));
 
     const nomeCliente = payload.empresa?.razaoSocial?.trim() || "Imobiliária";
 
@@ -118,7 +123,7 @@ export async function POST(request: Request) {
       .update({ status: "review" })
       .eq("entity_id", criado.entityId)
       .eq("profile", "imobiliaria");
-    if (papelError) return responder(inicio, erro(undefined, 500));
+    if (papelError) return responder(request, inicio, erro(undefined, 500));
 
     // 3) Habilitações de empreendimento -> 'pending' ('verified' significaria auto-habilitação).
     const { error: empError } = await adminClient
@@ -126,7 +131,7 @@ export async function POST(request: Request) {
       .update({ status: "pending" })
       .eq("entity_id", criado.entityId)
       .eq("relationship_type", "empreendimento");
-    if (empError) return responder(inicio, erro(undefined, 500));
+    if (empError) return responder(request, inicio, erro(undefined, 500));
 
     // 4) Corretores (relacionamento de contato) -> 'pending' pela mesma razão: nada num
     //    formulário aberto nasce aprovado.
@@ -135,7 +140,7 @@ export async function POST(request: Request) {
       .update({ status: "pending" })
       .eq("entity_id", criado.entityId)
       .eq("relationship_type", "corretor");
-    if (corretorError) return responder(inicio, erro(undefined, 500));
+    if (corretorError) return responder(request, inicio, erro(undefined, 500));
 
     const warnings: string[] = [...criado.warnings];
 
@@ -177,6 +182,7 @@ export async function POST(request: Request) {
     if (warnings.length) console.warn("[publico-imobiliaria-cadastro] avisos", warnings);
 
     return responder(
+      request,
       inicio,
       json(
         { autenticacao: criado.autenticacao, cadBase64, entityId: criado.entityId, savedDocs, warnings },
@@ -184,6 +190,6 @@ export async function POST(request: Request) {
       ),
     );
   } catch {
-    return responder(inicio, erro(undefined, 500));
+    return responder(request, inicio, erro(undefined, 500));
   }
 }

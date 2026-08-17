@@ -1,5 +1,6 @@
 import { empreendimentosHabilitados } from "@/lib/publico/cad/dados";
-import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
+import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import { comEmpreendimento, sessaoDoRequest } from "@/lib/publico/cad/sessao";
 
 // S5 — "só vai aparecer para ele os empreendimentos que a imobiliária está habilitada a
@@ -15,7 +16,18 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   const sessao = sessaoDoRequest(request);
-  if (!sessao.ok) return erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401);
+  if (!sessao.ok) {
+    return recusar(
+      request,
+      erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401),
+    );
+  }
+
+  anotarContexto(request, {
+    corretorNome: sessao.sessao.corretorNome,
+    imobiliariaEntityId: sessao.sessao.imobiliariaEntityId,
+    imobiliariaNome: sessao.sessao.imobiliariaNome,
+  });
 
   const preparo = await prepararRota(request, "identificacao");
   if (!preparo.ok) return preparo.response;
@@ -26,25 +38,40 @@ export async function GET(request: Request) {
       adminClient,
       sessao.sessao.imobiliariaEntityId,
     );
-    return responder(inicio, json({ empreendimentos: habilitados }));
+    return responder(request, inicio, json({ empreendimentos: habilitados }));
   } catch {
-    return responder(inicio, erro(undefined, 500));
+    return responder(request, inicio, erro(undefined, 500));
   }
 }
 
 export async function POST(request: Request) {
   const sessao = sessaoDoRequest(request);
-  if (!sessao.ok) return erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401);
+  if (!sessao.ok) {
+    return recusar(
+      request,
+      erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401),
+    );
+  }
+
+  anotarContexto(request, {
+    corretorNome: sessao.sessao.corretorNome,
+    imobiliariaEntityId: sessao.sessao.imobiliariaEntityId,
+    imobiliariaNome: sessao.sessao.imobiliariaNome,
+  });
 
   const corpo = await lerCorpo<{ enterpriseId?: string }>(request);
   const escolhido = String(corpo?.enterpriseId ?? "").trim();
-  if (!escolhido) return erro("Escolha um empreendimento para continuar.");
+  if (!escolhido) return recusar(request, erro("Escolha um empreendimento para continuar."));
 
   // A validação real mora em `comEmpreendimento`: ele só aceita id que esteja na lista que o
   // SERVIDOR calculou e carimbou no token. Confiar no id que o cliente mandou seria deixar o
   // corretor subir CAD onde a imobiliária dele não está habilitada.
   const novo = comEmpreendimento(sessao.sessao, escolhido);
-  if (!novo.ok) return erro(novo.error, 403);
+  if (!novo.ok) {
+    // Vale a pena registrar QUAL empreendimento foi recusado: se a mesma imobiliária bate na porta
+    // do mesmo loteamento várias vezes, o problema é habilitação faltando, não corretor perdido.
+    return recusar(request, erro(novo.error, 403), { empreendimentoId: escolhido });
+  }
 
   return json({ ok: true, sessao: novo.token });
 }

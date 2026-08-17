@@ -16,10 +16,11 @@ export async function GET(request: Request) {
 
   try {
     return responder(
+      request,
       inicio,
       json({ empreendimentos: await listEmpreendimentosAtivos(adminClient) }),
     );
   } catch {
-    return responder(inicio, erro(undefined, 500));
+    return responder(request, inicio, erro(undefined, 500));
   }
 }

@@ -1,9 +1,9 @@
 "use client";
 
-import { type ApoloScreen } from "@/lib/apolo/catalog";
+import { type ApoloScreen, telaValida } from "@/lib/apolo/catalog";
 import { DashboardScreen } from "./blocks/dashboard/apolo-dashboard";
 import { BoardView } from "./blocks/board/board-view";
-import { ImportacaoView } from "./blocks/importacao/importacao-view";
+import { LogErrosView } from "./blocks/log-erros/log-erros-view";
 import { EmpreendimentosScreen } from "./blocks/empreendimentos/empreendimentos-view";
 import { ReportsScreen } from "./blocks/reports/apolo-reports";
 import type {
@@ -52,10 +52,17 @@ export function ApoloPage({
 } = {}) {
   // Persistidos: a tela/aba/filtro/busca e o registro aberto do Apolo "continuam
   // de onde estavam" ao navegar e voltar. Ver [[use-persisted-state]].
-  const [activeScreen, setActiveScreen] = usePersistedState<ApoloScreen>(
+  const [telaSalva, setActiveScreen] = usePersistedState<ApoloScreen>(
     "apolo.activeScreen",
     "crm",
   );
+
+  // ⚠️ A TELA SALVA PODE NÃO EXISTIR MAIS. O valor vem do localStorage do navegador, então ele
+  // sobrevive à remoção de uma tela do catálogo — e o TypeScript não alcança isso, porque em
+  // runtime é só uma string guardada meses atrás. Sem esta conferência, quem estava em "Importar
+  // CADs" quando ela saiu abriria o Apolo em BRANCO: nenhum bloco casa com o id antigo e o sidebar
+  // não destaca nada.
+  const activeScreen = telaValida(telaSalva) ?? "crm";
   const [sidebarCollapsed, setSidebarCollapsed] = usePersistedState<boolean>(
     "apolo.sidebarCollapsed",
     false,
@@ -494,7 +501,7 @@ export function ApoloPage({
         ) : null}
         {/* O "+ novo cadastro" e os KPIs ficam no cabeçalho do CRM (CrmCommandCenter). */}
         {activeScreen === "board" ? <BoardView onOpenEntity={openEntityInCrm} /> : null}
-        {activeScreen === "importacao" ? <ImportacaoView /> : null}
+        {activeScreen === "logErros" ? <LogErrosView /> : null}
         {activeScreen === "dashboard" ? (
           <DashboardScreen dashboard={dashboard} entities={entities} loading={loading} />
         ) : null}

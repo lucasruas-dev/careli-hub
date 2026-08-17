@@ -5,7 +5,16 @@ import {
   mensagemDeConflito,
 } from "@/lib/apolo/nucleo-familiar";
 import { hashIdentifier } from "@/lib/apolo/server";
-import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
+import {
+  erro,
+  json,
+  lerCorpo,
+  prepararRota,
+  recusar,
+  registrarBarreira,
+  responder,
+} from "@/lib/publico/cad/rotas";
 import { sessaoDoRequest } from "@/lib/publico/cad/sessao";
 
 // CHECAGEM DO CPF NA IDENTIFICAÇÃO, antes de preencher a CAD.
@@ -33,9 +42,20 @@ const digitos = (v: unknown) => String(v ?? "").replace(/\D/g, "");
 export async function POST(request: Request) {
   const verificacao = sessaoDoRequest(request);
   if (!verificacao.ok) {
-    return erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401);
+    return recusar(
+      request,
+      erro("Sua sessão expirou. Reabra o link e informe o seu CPF de corretor.", 401),
+    );
   }
   const { sessao } = verificacao;
+
+  // Quem está tentando, para o Log Erros. Anotado ANTES de qualquer recusa desta rota.
+  anotarContexto(request, {
+    corretorNome: sessao.corretorNome,
+    empreendimentoId: sessao.enterpriseId,
+    imobiliariaEntityId: sessao.imobiliariaEntityId,
+    imobiliariaNome: sessao.imobiliariaNome,
+  });
 
   // Sem empreendimento não há recorte para comparar: a CAD é duplicada POR EMPREENDIMENTO.
   if (!sessao.enterpriseId) {
@@ -55,12 +75,12 @@ export async function POST(request: Request) {
   // CPF incompleto não é erro: o corretor ainda está digitando, ou o MOST ainda não leu direito.
   // Responde "não conferido" e a tela pergunta de novo quando o número fechar.
   if (!cpfValidoParaNucleo(cpf)) {
-    return responder(inicio, json({ data: { conferido: false, conflito: null } }));
+    return responder(request, inicio, json({ data: { conferido: false, conflito: null } }));
   }
 
   const enterpriseId = normalizarEnterpriseId(sessao.enterpriseId);
   if (!enterpriseId) {
-    return responder(inicio, json({ data: { conferido: false, conflito: null } }));
+    return responder(request, inicio, json({ data: { conferido: false, conflito: null } }));
   }
 
   // 1) O próprio CPF já tem CAD aqui. Lê TODAS as fichas do documento, porque a mesma pessoa tem
@@ -93,13 +113,21 @@ export async function POST(request: Request) {
     } catch {
       // Não dá para afirmar que está livre. Esta rota é conveniência, não autoridade: deixa
       // seguir e a trava do salvar decide, que aquela é fail-closed.
-      return responder(inicio, json({ data: { conferido: false, conflito: null } }));
+      return responder(request, inicio, json({ data: { conferido: false, conflito: null } }));
     }
 
     const aqui = cads.find((c) => normalizarEnterpriseId(c.enterprise_id) === enterpriseId);
     if (aqui) {
       const onde = aqui.empreendimento?.trim();
+
+      // Parede de 200: o corretor descobre AQUI, na identificação, que a ficha já existe. Ele para
+      // e não preenche. Esta é a recusa mais comum do primeiro passo, e sem registrá-la a tela
+      // mostraria o funil saudável justamente onde ele mais vaza. Motivo canônico, sem nome nem
+      // empreendimento: o "quem" já vem do contexto anotado.
+      registrarBarreira(request, "CPF já possui CAD neste empreendimento.");
+
       return responder(
+        request,
         inicio,
         json({
           data: {
@@ -125,7 +153,15 @@ export async function POST(request: Request) {
     ignorarEntityIds: idsDoDocumento,
   });
 
+  if (conflito) {
+    // ⚠️ MOTIVO CANÔNICO, NUNCA `mensagemDeConflito`. Aquela frase nomeia TERCEIRO ("o CPF do
+    // cônjuge do JOÃO DA SILVA já possui CAD..."), e o JOÃO é outro cliente. O corretor precisa
+    // ver o nome para entender; o log, não.
+    registrarBarreira(request, "Núcleo familiar já possui CAD neste empreendimento.");
+  }
+
   return responder(
+    request,
     inicio,
     json({
       data: {

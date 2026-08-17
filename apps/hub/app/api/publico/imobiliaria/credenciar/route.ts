@@ -25,6 +25,7 @@ import {
   normalizarTelefone,
   telefoneCompleto,
 } from "@/lib/publico/cad/regras";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
 import { preSessaoImobDoRequest } from "@/lib/publico/cad/sessao";
 
@@ -77,8 +78,11 @@ export async function POST(request: Request) {
   const email = normalizarEmail(corpo?.email);
   const telefone = normalizarTelefone(corpo?.telefone);
 
+  // Quem está tentando se credenciar, para o Log Erros. O CNPJ entra mascarado.
+  anotarContexto(request, { imobiliariaCnpj: cnpj, imobiliariaNome: razaoSocial });
+
   if (!cnpjValido(cnpj)) {
-    return responder(inicio, erro("Confira o CNPJ: parece que faltou um dígito."));
+    return responder(request, inicio, erro("Confira o CNPJ: parece que faltou um dígito."));
   }
 
   try {
@@ -97,7 +101,7 @@ export async function POST(request: Request) {
       if (!telefoneCompleto(telefone)) {
         errosCadastro.push("Confira o telefone: informe DDD e número.");
       }
-      if (errosCadastro.length) return responder(inicio, erro(errosCadastro.join(" ")));
+      if (errosCadastro.length) return responder(request, inicio, erro(errosCadastro.join(" ")));
     }
 
     // ⚠️ AUTO-APROVAÇÃO EXIGE A PRÉ-SESSÃO ASSINADA. Esta rota é pública, e este é o único
@@ -106,7 +110,7 @@ export async function POST(request: Request) {
     // `/iniciar`, que confere o CNPJ, e carrega o próprio CNPJ assinado — não dá para trocar
     // pelo corpo. O cadastro NOVO (abaixo) segue aberto, porque ali nada nasce habilitado.
     if (existente.credenciada && !cnpjDaSessao) {
-      return responder(inicio, erro("Sessao expirada. Comece de novo pelo CNPJ.", 401));
+      return responder(request, inicio, erro("Sessao expirada. Comece de novo pelo CNPJ.", 401));
     }
 
     // ── JÁ CREDENCIADA: HABILITA DIRETO, SEM FILA DE VALIDAÇÃO ────────────────
@@ -121,12 +125,14 @@ export async function POST(request: Request) {
     // escondido num vínculo do banco. Registrado em auditoria com origem `publico-imobiliaria`.
     if (existente.credenciada && existente.entityId) {
       return responder(
+        request,
         inicio,
         await habilitarJaCredenciada(adminClient, {
           ativos,
           corpo,
           entityId: existente.entityId,
           nome: existente.nome ?? "Imobiliária",
+          request,
         }),
       );
     }
@@ -160,7 +166,7 @@ export async function POST(request: Request) {
       persona: "pj",
       role: "imobiliaria",
     });
-    if (!criado.ok) return responder(inicio, erro(undefined, 500));
+    if (!criado.ok) return responder(request, inicio, erro(undefined, 500));
 
     // ⚠️⚠️ REBAIXA O PAPEL PARA 'review'. `createApoloEntity` grava SEMPRE
     // `apolo_entity_profiles.status = 'active'` (cadastro-persist.ts:281), e é exatamente esse
@@ -172,7 +178,7 @@ export async function POST(request: Request) {
       .update({ status: "review" })
       .eq("entity_id", criado.entityId)
       .eq("profile", "imobiliaria");
-    if (papelError) return responder(inicio, erro(undefined, 500));
+    if (papelError) return responder(request, inicio, erro(undefined, 500));
 
     // Mesma lógica nas habilitações de empreendimento: `createApoloEntity` as cria 'verified',
     // e 'verified' aqui significaria "a imobiliária se auto-habilitou".
@@ -181,7 +187,7 @@ export async function POST(request: Request) {
       .update({ status: "pending" })
       .eq("entity_id", criado.entityId)
       .eq("relationship_type", "empreendimento");
-    if (pendenteError) return responder(inicio, erro(undefined, 500));
+    if (pendenteError) return responder(request, inicio, erro(undefined, 500));
 
     // O responsável que assinou o pedido, para a central saber com quem falar.
     const responsavel = normalizarNome(corpo?.responsavel);
@@ -196,9 +202,9 @@ export async function POST(request: Request) {
       });
     }
 
-    return responder(inicio, json({ protocolo: criado.autenticacao, status: "recebido" }, 201));
+    return responder(request, inicio, json({ protocolo: criado.autenticacao, status: "recebido" }, 201));
   } catch {
-    return responder(inicio, erro(undefined, 500));
+    return responder(request, inicio, erro(undefined, 500));
   }
 }
 
@@ -213,6 +219,8 @@ async function habilitarJaCredenciada(
     corpo: Corpo | null;
     entityId: string;
     nome: string;
+    // Só para o log: é por ele que o motivo detalhado chega ao Log Erros sem passar pela resposta.
+    request: Request;
   },
 ) {
   const permitidos = new Set(input.ativos.map((emp) => String(emp.id)));
@@ -359,7 +367,21 @@ const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(
     });
 
     if (conflitos.length > 0) {
-      return erro(explicarConflitos(conflitos), 409);
+      // ⚠️ A RESPOSTA PÚBLICA NÃO NOMEIA A CONCORRENTE. `explicarConflitos` monta "FULANO já
+      // trabalha o Vale do Ouro pela Imobiliária X" — e esta é uma rota ANÔNIMA, atrás só do CNPJ.
+      // Quem chutasse nomes e CPFs de corretores mapearia a carteira dos concorrentes um a um. O
+      // portal já segue essa regra no /checar-cpf ("não devolve nome de imobiliária"); aqui ela
+      // tinha escapado.
+      //
+      // O detalhe continua existindo: vai para o Log Erros, que é interno, e para a auditoria.
+      anotarContexto(input.request, { motivo: explicarConflitos(conflitos) });
+
+      return erro(
+        conflitos.length === 1
+          ? "Um dos corretores informados já está vinculado a outra imobiliária neste empreendimento. Fale com a nossa central."
+          : "Alguns dos corretores informados já estão vinculados a outra imobiliária nestes empreendimentos. Fale com a nossa central.",
+        409,
+      );
     }
   }
 

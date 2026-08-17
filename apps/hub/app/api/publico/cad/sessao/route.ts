@@ -1,8 +1,16 @@
 import { randomUUID } from "node:crypto";
 
 import { buscarCorretorPorCpf, empreendimentosHabilitados } from "@/lib/publico/cad/dados";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
 import { cpfValido, normalizarCpf, resolverVinculo } from "@/lib/publico/cad/regras";
-import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import {
+  erro,
+  json,
+  lerCorpo,
+  prepararRota,
+  registrarBarreira,
+  responder,
+} from "@/lib/publico/cad/rotas";
 import { emitirSessao } from "@/lib/publico/cad/sessao";
 
 // S0 — o corretor se identifica pelo CPF. É a porta do formulário público.
@@ -22,9 +30,13 @@ export async function POST(request: Request) {
   const corpo = await lerCorpo<{ cpf?: string }>(request);
   const cpf = normalizarCpf(corpo?.cpf);
 
+  // "Desde o início, quando informa o CPF" (Lucas). O CPF é do CORRETOR, nosso parceiro, e entra
+  // MASCARADO — serve para achar quem travou, não para virar base de CPF.
+  anotarContexto(request, { corretorCpf: cpf });
+
   // Validação de FORMA antes de qualquer I/O: é o que barra scanner burro de graça.
   if (!cpfValido(cpf)) {
-    return responder(inicio, erro("Confira o CPF: parece que faltou um dígito."));
+    return responder(request, inicio, erro("Confira o CPF: parece que faltou um dígito."));
   }
 
   try {
@@ -33,22 +45,37 @@ export async function POST(request: Request) {
     // Não cadastrado: segue para o auto-cadastro. A resposta é a MESMA forma do caminho
     // "conhecido mas sem imobiliária credenciada" — quem enumera não distingue os dois.
     if (!corretor) {
-      return responder(inicio, json({ status: "novo" }));
+      return responder(request, inicio, json({ status: "novo" }));
     }
+
+    anotarContexto(request, { corretorNome: corretor.nome });
 
     const vinculo = resolverVinculo(corretor.candidatos);
     if (!vinculo.ok) {
       // Corretor existe, mas a imobiliária dele não está credenciada (ou nunca esteve).
-      // Terminal cordial: a tela NÃO diz o motivo.
-      return responder(inicio, json({ status: "central" }));
+      // Terminal cordial: a tela NÃO diz o motivo — mas NÓS precisamos saber, porque este é o
+      // corretor que ficou de fora com a imobiliária esperando credenciamento.
+      registrarBarreira(request, "Corretor existe, mas a imobiliária dele não está credenciada.");
+      return responder(request, inicio, json({ status: "central" }));
     }
+
+    anotarContexto(request, {
+      imobiliariaEntityId: vinculo.vinculo.imobiliariaEntityId,
+      imobiliariaNome: vinculo.vinculo.imobiliariaNome,
+    });
 
     const habilitados = await empreendimentosHabilitados(
       adminClient,
       vinculo.vinculo.imobiliariaEntityId,
     );
     if (!habilitados.length) {
-      return responder(inicio, json({ status: "sem-empreendimento" }));
+      // Credenciada, mas sem nenhum empreendimento habilitado: é falha nossa de configuração, e o
+      // corretor não tem como resolver do lado dele.
+      registrarBarreira(
+        request,
+        "Imobiliária credenciada, mas sem nenhum empreendimento habilitado.",
+      );
+      return responder(request, inicio, json({ status: "sem-empreendimento" }));
     }
 
     const sessao = emitirSessao({
@@ -62,9 +89,10 @@ export async function POST(request: Request) {
       imobiliariaNome: vinculo.vinculo.imobiliariaNome,
       sessaoId: randomUUID(),
     });
-    if (!sessao.ok) return responder(inicio, erro(sessao.error, 503));
+    if (!sessao.ok) return responder(request, inicio, erro(sessao.error, 503));
 
     return responder(
+      request,
       inicio,
       json({
         // Só o que a TELA precisa mostrar. Nenhum entityId sai daqui: um id vazado vira
@@ -77,6 +105,6 @@ export async function POST(request: Request) {
       }),
     );
   } catch {
-    return responder(inicio, erro(undefined, 500));
+    return responder(request, inicio, erro(undefined, 500));
   }
 }

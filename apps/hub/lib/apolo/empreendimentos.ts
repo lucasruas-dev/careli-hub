@@ -32,6 +32,7 @@ export type ApoloEnterpriseTab =
   | "cadastro"
   | "carteira"
   | "mapa"
+  | "politica"
   | "relacionamentos"
   | "resumo"
   | "setup"

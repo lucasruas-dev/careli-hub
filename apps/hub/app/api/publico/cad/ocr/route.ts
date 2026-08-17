@@ -1,5 +1,6 @@
 import { enrichCompany, enrichPerson, extractDocument } from "@/lib/apolo/mostqi";
-import { erro, json, lerCorpo, prepararRota, responder } from "@/lib/publico/cad/rotas";
+import { anotarContexto } from "@/lib/publico/cad/log-erros";
+import { erro, json, lerCorpo, prepararRota, recusar, responder } from "@/lib/publico/cad/rotas";
 import { preSessaoImobDoRequest, sessaoDoRequest } from "@/lib/publico/cad/sessao";
 
 // S6 — leitura/enriquecimento pela MOST (iOCR). Espelho público de /api/apolo/mostqi.
@@ -36,10 +37,24 @@ type Corpo = {
 export async function POST(request: Request) {
   // Uma das duas sessões basta. Ambas provam que a antessala foi vencida NO SERVIDOR (CPF
   // cadastrado ou CNPJ conferido) — é a autorização que paga a consulta.
-  const temSessaoCorretor = sessaoDoRequest(request).ok;
-  const temPreSessaoImob = preSessaoImobDoRequest(request).ok;
-  if (!temSessaoCorretor && !temPreSessaoImob) {
-    return erro("Sua sessão expirou. Reabra o link e informe o seu CPF ou CNPJ de novo.", 401);
+  const sessaoCorretor = sessaoDoRequest(request);
+  const preImob = preSessaoImobDoRequest(request);
+  if (!sessaoCorretor.ok && !preImob.ok) {
+    return recusar(
+      request,
+      erro("Sua sessão expirou. Reabra o link e informe o seu CPF ou CNPJ de novo.", 401),
+    );
+  }
+
+  if (sessaoCorretor.ok) {
+    anotarContexto(request, {
+      corretorNome: sessaoCorretor.sessao.corretorNome,
+      empreendimentoId: sessaoCorretor.sessao.enterpriseId,
+      imobiliariaEntityId: sessaoCorretor.sessao.imobiliariaEntityId,
+      imobiliariaNome: sessaoCorretor.sessao.imobiliariaNome,
+    });
+  } else if (preImob.ok) {
+    anotarContexto(request, { imobiliariaCnpj: preImob.pre.cnpj });
   }
 
   const preparo = await prepararRota(request, "ocr");
@@ -51,9 +66,10 @@ export async function POST(request: Request) {
 
   if (action === "extract") {
     const fileBase64 = String(corpo?.fileBase64 ?? "");
-    if (!fileBase64) return responder(inicio, erro("Anexe a foto do documento para continuar."));
+    if (!fileBase64) return responder(request, inicio, erro("Anexe a foto do documento para continuar."));
     if (fileBase64.length > MAX_BASE64_PUBLICO) {
       return responder(
+        request,
         inicio,
         erro("A foto ficou grande demais. Tire outra com menos zoom ou anexe um arquivo menor.", 413),
       );
@@ -67,10 +83,11 @@ export async function POST(request: Request) {
         fileName: String(corpo?.fileName ?? "documento.jpg"),
         returnImage: true,
       });
-      return responder(inicio, json({ data: extraction }));
+      return responder(request, inicio, json({ data: extraction }));
     } catch {
       // Falha real de leitura vira erro HTTP (o wizard já trata: deixa preencher na mão).
       return responder(
+        request,
         inicio,
         erro("Não conseguimos ler a foto agora. O arquivo fica salvo: preencha os dados na mão.", 502),
       );
@@ -83,9 +100,10 @@ export async function POST(request: Request) {
         datasets: Array.isArray(corpo?.datasets) ? corpo?.datasets : undefined,
         query: typeof corpo?.query === "string" ? corpo?.query : undefined,
       });
-      return responder(inicio, json({ data: enr }));
+      return responder(request, inicio, json({ data: enr }));
     } catch {
       return responder(
+        request,
         inicio,
         erro("Não conseguimos completar os dados pelo CPF agora. Preencha os campos na mão.", 502),
       );
@@ -97,16 +115,17 @@ export async function POST(request: Request) {
       const enr = await enrichCompany(String(corpo?.cnpj ?? ""), {
         query: typeof corpo?.query === "string" ? corpo?.query : undefined,
       });
-      return responder(inicio, json({ data: enr }));
+      return responder(request, inicio, json({ data: enr }));
     } catch {
       return responder(
+        request,
         inicio,
         erro("Não conseguimos consultar o CNPJ agora. Preencha os campos na mão.", 502),
       );
     }
   }
 
-  return responder(inicio, erro(`Ação desconhecida: ${action}`));
+  return responder(request, inicio, erro(`Ação desconhecida: ${action}`));
 }
 
 // Aceita "data:image/...;base64,XXXX" ou o base64 puro (igual /api/apolo/mostqi).
