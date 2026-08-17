@@ -10,8 +10,10 @@ import {
   avisarCredenciamentoAprovado,
   coordenadoresDosEmpreendimentos,
   representanteDaImobiliaria,
+  telefoneDaImobiliaria,
 } from "@/lib/apolo/disparo-credenciamento";
 import { loadApoloEnterpriseCadastro } from "@/lib/apolo/empreendimentos";
+import { contatoDaEntidadeImobiliaria } from "@/lib/apolo/disparo-imobiliaria";
 import { consultarImobiliariaCredenciada } from "@/lib/publico/cad/dados";
 import {
   cnpjValido,
@@ -416,6 +418,7 @@ const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(
   // BOAS-VINDAS ao empreendimento novo + aviso a cada coordenador. `primeiraVez: false`: ela já
   // trabalha com a gente, e dizer "cadastro aprovado" soaria como se tivéssemos perdido o dela.
   const rep = await representanteDaImobiliaria(adminClient, input.entityId);
+  const contatoDaEmpresa = await contatoDaEntidadeImobiliaria(adminClient, input.entityId);
   const coordenadores = await coordenadoresDosEmpreendimentos(
     adminClient,
     pedidos.map((n) => ({ enterpriseId: n.id, label: n.label })),
@@ -431,7 +434,21 @@ const soDigitosCpf = (v: unknown): string => (typeof v === "string" ? v.replace(
     empreendimentos: pedidos.map((n) => ({ label: n.label })),
     entityId: input.entityId,
     imobiliaria: input.nome,
-    imobiliariaTelefone: rep.telefone ?? normalizarTelefone(input.corpo?.telefone),
+    // ⚠️ TRÊS FONTES, NESTA ORDEM, e nenhuma delas pode ser string vazia.
+    //
+    // MEDIDO EM 16/08: as 3 imobiliárias habilitadas pelo portal não receberam nada — erro
+    // "sem telefone" — enquanto o aviso ao coordenador, disparado no mesmo segundo, chegou. Duas
+    // causas somadas: (1) o plano B era `corpo.telefone`, que só existe no CADASTRO NOVO — no
+    // fluxo de habilitação o corpo traz apenas corretores e empreendimentos; e (2)
+    // `normalizarTelefone(undefined)` devolve "" e o `??` NÃO troca string vazia, só null.
+    //
+    // As três tinham celular em `apolo_contacts` o tempo todo. Agora esse é o plano B de
+    // verdade, igual ao que a rota do Board já fazia, e o `||` cobre o vazio.
+    imobiliariaTelefone: telefoneDaImobiliaria([
+      rep.telefone,
+      contatoDaEmpresa.telefone,
+      normalizarTelefone(input.corpo?.telefone),
+    ]),
     primeiraVez: false,
     representante: rep.nome,
   });

@@ -38,6 +38,30 @@ export function telefoneParaEnvio(bruto?: null | string): null | string {
   return digitos;
 }
 
+/**
+ * Escolhe PARA QUEM vai a mensagem da imobiliária, na ordem de preferência.
+ *
+ * ⚠️ USA `||`, NUNCA `??`. As funções que resolvem telefone devolvem string VAZIA quando não
+ * acham (`normalizarTelefone(undefined)` é ""), e `??` só troca null/undefined — então `"" ?? x`
+ * continua "". Foi assim que 3 imobiliárias habilitadas em 16/08 receberam "sem telefone" tendo
+ * celular cadastrado o tempo todo.
+ *
+ * A ordem existe por um motivo medido: o contato da EMPRESA é frequentemente FIXO (a LOCAR SP
+ * cadastrou (31) 3852-3113) e o WhatsApp não entrega em fixo, então o representante legal vem
+ * primeiro. Mas as fichas vindas do C2X não têm `socios[]`, e para elas o contato da empresa é
+ * a única fonte — deixá-lo de fora significa não avisar ninguém.
+ */
+export function telefoneDaImobiliaria(
+  fontes: (null | string | undefined)[],
+): null | string {
+  for (const fonte of fontes) {
+    const limpo = (fonte ?? "").trim();
+    if (limpo) return limpo;
+  }
+
+  return null;
+}
+
 type ResultadoEnvio = { erro?: string; ok: boolean; para?: string };
 
 // O COORDENADOR DE VENDAS DE CADA EMPREENDIMENTO.

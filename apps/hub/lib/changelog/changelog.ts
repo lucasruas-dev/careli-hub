@@ -36,6 +36,34 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-16-boas-vindas-no-telefone-certo",
+    deployedAt: "2026-08-16T05:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "A imobiliaria habilitada volta a receber a mensagem de boas-vindas: hoje tres foram liberadas e nenhuma foi avisada, mesmo tendo celular no cadastro",
+              "Quando a imobiliaria nao tem representante legal na ficha (as que vieram do sistema antigo), o aviso sai pelo telefone da empresa",
+            ],
+            screen: "Apolo - credenciamento de imobiliaria",
+          },
+        ],
+      },
+    ],
+    rollback: "cf6bde9e (v1.144.1)",
+    technical: {
+      done:
+        "MEDIDO EM 16/08: `credenciamento_aprovado` com 3 de 3 falhas e erro `sem telefone` (DANY CASTRO, F M S MACIEL, HRQ NEGOCIOS), enquanto `credenciamento_coordenador`, disparado no mesmo segundo, saiu 3 de 3. A habilitacao em si funcionou — papel `active` e vinculos `verified`, as tres ja podiam enviar CAD —, so o aviso nao saiu. **As tres tinham celular em `apolo_contacts` o tempo todo.** DUAS CAUSAS SOMADAS: (1) na rota publica o plano B do telefone era `corpo.telefone`, que so existe no CADASTRO NOVO — no fluxo de habilitacao o corpo traz apenas corretores e empreendimentos, entao nao havia plano B nenhum; e (2) `normalizarTelefone(undefined)` devolve STRING VAZIA e o `??` **nao troca string vazia**, so null/undefined, entao `\"\" ?? contato` continuava vazio e o codigo nem chegava a olhar o contato da empresa. Agrava que as fichas vindas do C2X nao tem `socios[]`, e para elas o representante legal simplesmente nao existe: o contato da empresa era a UNICA fonte. Criado `telefoneDaImobiliaria(fontes[])` em `disparo-credenciamento.ts`, que percorre as fontes na ordem (representante > empresa > corpo) e **pula vazio**, devolvendo null quando nao ha nenhuma — ligado nos tres pontos de disparo (habilitar, indeferir e a rota publica), que antes repetiam a regra com `??` cada um a seu modo. +7 testes, incluindo o caso exato desta falha. ⚠️ FICA REGISTRADO, sem correcao nesta entrega: `imob_pix_enviado`, `imob_pix_pago` e `prevenda_cobranca` estao em 100% de falha na medicao de 60 dias, mas pararam de rodar em 29-30/07 — ou foram desligados, ou quebraram e ninguem percebeu.",
+      motivation:
+        "Varredura dos disparos por central (pedido do Lucas: comunicado de imobiliaria, corretor e coordenador sai pelo Relacionamento) encontrou a falha acontecendo no mesmo dia.",
+    },
+    title: "Boas-vindas da imobiliaria saem no telefone certo",
+    type: "correcao",
+    version: "1.144.2",
+  },
+  {
     buildTag: "2026-08-15-correcoes-do-credenciamento",
     deployedAt: "2026-08-15T20:15:00-03:00",
     modules: [

@@ -7,6 +7,7 @@ import {
   type EmpreendimentoPedido,
 } from "@/lib/apolo/credenciamento-aprovacao";
 import { contatoDaEntidadeImobiliaria } from "@/lib/apolo/disparo-imobiliaria";
+import { telefoneDaImobiliaria } from "@/lib/apolo/disparo-credenciamento";
 import {
   avisarCredenciamentoAprovado,
   avisarCredenciamentoIndeferido,
@@ -216,7 +217,7 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
       entityId: id,
       imobiliaria: contatoInd.nome,
       // Telefone do REPRESENTANTE primeiro; o da empresa é plano B (costuma ser fixo).
-      imobiliariaTelefone: repInd.telefone ?? contatoInd.telefone,
+      imobiliariaTelefone: telefoneDaImobiliaria([repInd.telefone, contatoInd.telefone]),
       motivos: observacao ? [...motivos, observacao] : motivos,
       representante: repInd.nome,
     });
@@ -537,8 +538,9 @@ export async function POST(request: Request, context: { params: Promise<{ id: st
     entityId: id,
     imobiliaria: contato.nome,
     // Telefone do REPRESENTANTE primeiro; o da empresa é plano B (costuma ser fixo, e o
-    // WhatsApp não entrega em fixo).
-    imobiliariaTelefone: rep.telefone ?? contato.telefone,
+    // WhatsApp não entrega em fixo). `telefoneDaImobiliaria` também trata a string vazia, que o
+    // `??` deixava passar.
+    imobiliariaTelefone: telefoneDaImobiliaria([rep.telefone, contato.telefone]),
     primeiraVez,
     representante: rep.nome,
   });
