@@ -24,6 +24,11 @@ type Linha = {
   perfil: string;
   prazo: null | string;
   quadra: string;
+  /**
+   * Onde a assinatura está na fila DAQUELE contrato: já assinou, é a vez dela, ou ainda espera
+   * alguém antes. Calculado no servidor (`marcarSituacao`), porque depende do contrato inteiro.
+   */
+  situacao: "aguardando" | "assinado" | "vez";
   un: string;
   usuario: string;
   valor: number;
@@ -52,7 +57,12 @@ const pct = (a: number, b: number) => (b ? `${Math.round((100 * a) / b)}%` : "�
 const dataCurta = (iso: null | string) =>
   iso ? iso.split("-").reverse().join("/") : "—";
 
-export function PainelAssinatura() {
+/**
+ * @param fonte De onde os dados vêm. O padrão é a rota interna (exige sessão do Apolo); a versão
+ *   pública passa a rota liberada. O componente é o MESMO nos dois: painel que diverge entre
+ *   interno e público vira duas verdades sobre o mesmo contrato.
+ */
+export function PainelAssinatura({ fonte = "/api/apolo/painel-assinatura" }: { fonte?: string } = {}) {
   const [linhas, setLinhas] = useState<Linha[]>([]);
   const [atualizadoEm, setAtualizadoEm] = useState<null | string>(null);
   const [carregando, setCarregando] = useState(true);
@@ -68,13 +78,16 @@ export function PainelAssinatura() {
   // nada. Foi polling em aba oculta que rendeu a fatura alta do Hermes.
   const visivel = useRef(true);
 
+  const publico = !fonte.startsWith("/api/apolo/");
+
   const carregar = useCallback(async (comSpinner: boolean) => {
     if (comSpinner) setCarregando(true);
     try {
-      const token = await getApoloAccessToken();
-      const r = await fetch("/api/apolo/painel-assinatura", {
+      // A rota pública não tem sessão do Apolo, e pedir o token nela daria erro antes do fetch.
+      const token = publico ? "" : await getApoloAccessToken();
+      const r = await fetch(fonte, {
         cache: "no-store",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: token ? { Authorization: `Bearer ${token}` } : undefined,
       });
       const c = (await r.json()) as {
         data?: { atualizadoEm: string; linhas: Linha[] };
@@ -90,7 +103,7 @@ export function PainelAssinatura() {
       setErro((e as Error).message);
     }
     setCarregando(false);
-  }, []);
+  }, [fonte, publico]);
 
   useEffect(() => {
     void carregar(true);
@@ -126,6 +139,10 @@ export function PainelAssinatura() {
         if (status === "sim" && !l.assinou) return false;
         if (status === "nao" && l.assinou) return false;
         if (status === "atraso" && l.prazo !== "Pendente e em atraso") return false;
+        // A fila é ordenada: "é a vez dele" e "ainda espera alguém" são coisas diferentes, e
+        // misturá-las é o que fazia o painel cobrar quem não podia agir.
+        if (status === "vez" && l.situacao !== "vez") return false;
+        if (status === "aguardando" && l.situacao !== "aguardando") return false;
         if (fu && !semAcento(l.un).includes(fu)) return false;
         if (fn && !semAcento(l.usuario).includes(fn)) return false;
         return true;
@@ -205,18 +222,43 @@ export function PainelAssinatura() {
         (!emp || l.emp === emp) &&
         (!fu || semAcento(l.un).includes(fu)),
     );
-    const m = new Map<string, { email: string; falta: number; nome: string; ok: number; perfil: string }>();
+    const m = new Map<
+      string,
+      { aguardando: number; email: string; nome: string; ok: number; perfil: string; vez: number }
+    >();
     for (const l of base) {
       // O e-mail entra na chave: a mesma razão social assina por três sócios, e juntá-los
       // esconderia que dois assinaram e um não.
       const k = `${l.usuario}|${l.email}`;
-      const x = m.get(k) ?? { email: l.email, falta: 0, nome: l.usuario, ok: 0, perfil: l.perfil };
-      if (l.assinou) x.ok += 1;
-      else x.falta += 1;
+      const x = m.get(k) ?? {
+        aguardando: 0,
+        email: l.email,
+        nome: l.usuario,
+        ok: 0,
+        perfil: l.perfil,
+        vez: 0,
+      };
+
+      // ⚠️ "ASSINAR" AGORA SÓ CONTA O QUE ESTÁ COM ELE. A fila é ordenada, e somar tudo que a
+      // pessoa não assinou dava um número que ela não tem como resolver: o Northon aparecia com
+      // 181 pendências quando só 2 estavam de fato na vez dele, e a Nívea com 178 sem NENHUMA.
+      // Cobrar por esse número é cobrar a pessoa errada.
+      if (l.situacao === "assinado") x.ok += 1;
+      else if (l.situacao === "vez") x.vez += 1;
+      else x.aguardando += 1;
+
       m.set(k, x);
     }
-    return [...m.values()].sort((a, b) => b.falta - a.falta || b.ok - a.ok);
+    return [...m.values()].sort((a, b) => b.vez - a.vez || b.aguardando - a.aguardando || b.ok - a.ok);
   }, [linhas, emp, fu]);
+
+  /** Clicar num número do quadro leva o analítico para aquele recorte. */
+  const filtrarPor = useCallback((nome: string, alvo: "" | "aguardando" | "sim" | "vez") => {
+    setUsuario(nome);
+    setStatus(alvo);
+    // O analítico fica no fim da página; sem isto o clique parece não fazer nada.
+    document.getElementById("analitico-assinaturas")?.scrollIntoView({ behavior: "smooth" });
+  }, []);
 
   // Quem também assina todo contrato mas com outro perfil no C2X. Sem isso, some sem rastro.
   const fixosDeFora = useMemo(() => {
@@ -343,6 +385,8 @@ export function PainelAssinatura() {
               <option value="">Todos</option>
               <option value="sim">Assinado</option>
               <option value="nao">Pendente</option>
+              <option value="vez">Pendente · é a vez dele</option>
+              <option value="aguardando">Pendente · aguardando alguém antes</option>
               <option value="atraso">Pendente e em atraso</option>
             </select>
           </label>
@@ -429,8 +473,15 @@ export function PainelAssinatura() {
           </Cartao>
 
           <Cartao titulo="Quadro de assinaturas · incorporador e Careli">
+            <p className="m-0 mb-2 text-[11.5px] leading-snug text-ink-soft">
+              Clique num número para ver quais contratos ele representa. <b>Assinar</b> é o que está
+              com a pessoa agora; <b>aguardando</b> é o que ainda depende de quem assina antes dela.
+            </p>
             <div className="max-h-72 overflow-auto">
-              <Tabela cabecalho={["Usuário", "Perfil", "Assinado", "Assinar"]} numericas={[2, 3]}>
+              <Tabela
+                cabecalho={["Usuário", "Perfil", "Assinado", "Assinar", "Aguardando"]}
+                numericas={[2, 3, 4]}
+              >
                 {quadro.map((q) => (
                   <tr key={`${q.nome}-${q.email}`}>
                     <td className="px-2 py-1.5 text-ink">
@@ -438,8 +489,22 @@ export function PainelAssinatura() {
                       <span className="block text-[11px] text-ink-soft">{q.email}</span>
                     </td>
                     <td className="px-2 py-1.5 text-ink-soft">{q.perfil}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-ink">{num(q.ok)}</td>
-                    <td className="px-2 py-1.5 text-right tabular-nums text-ink">{num(q.falta)}</td>
+                    <NumeroClicavel
+                      aoClicar={() => filtrarPor(q.nome, "sim")}
+                      titulo={`Contratos que ${q.nome} já assinou`}
+                      valor={q.ok}
+                    />
+                    <NumeroClicavel
+                      aoClicar={() => filtrarPor(q.nome, "vez")}
+                      destaque={q.vez > 0}
+                      titulo={`Contratos esperando a assinatura de ${q.nome} agora`}
+                      valor={q.vez}
+                    />
+                    <NumeroClicavel
+                      aoClicar={() => filtrarPor(q.nome, "aguardando")}
+                      titulo={`Contratos em que ${q.nome} ainda depende de outra assinatura`}
+                      valor={q.aguardando}
+                    />
                   </tr>
                 ))}
               </Tabela>
@@ -493,8 +558,24 @@ export function PainelAssinatura() {
           assinatura.
         </p>
 
-        <h2 className="mb-2 mt-6 text-[11.5px] font-bold uppercase tracking-[0.13em] text-ink-soft">
+        {/* Âncora do clique vindo do Quadro de assinaturas. */}
+        <h2
+          className="mb-2 mt-6 text-[11.5px] font-bold uppercase tracking-[0.13em] text-ink-soft"
+          id="analitico-assinaturas"
+        >
           Assinaturas
+          {usuario || status ? (
+            <button
+              className="ml-3 rounded-full border border-line px-2 py-0.5 text-[10px] font-semibold normal-case tracking-normal text-ink-soft transition-colors hover:bg-subtle"
+              onClick={() => {
+                setUsuario("");
+                setStatus("");
+              }}
+              type="button"
+            >
+              limpar filtro
+            </button>
+          ) : null}
         </h2>
         <div className="max-h-[520px] overflow-auto rounded-xl border border-black/[0.07] dark:border-white/[0.08]">
           <Tabela
@@ -568,6 +649,43 @@ function Kpi({ cor, k, v }: { cor?: "ok" | "ouro" | "ruim"; k: string; v: string
       <span className={`block text-[28px] font-bold leading-none tabular-nums ${tom}`}>{v}</span>
       <span className="mt-1.5 block text-[11.5px] leading-tight text-ink-soft">{k}</span>
     </div>
+  );
+}
+
+/**
+ * Número do quadro que abre o analítico naquele recorte.
+ *
+ * Zero não vira botão: clicar num zero levaria a uma tabela vazia, e tabela vazia depois de um
+ * clique parece tela quebrada.
+ */
+function NumeroClicavel({
+  aoClicar,
+  destaque = false,
+  titulo,
+  valor,
+}: {
+  aoClicar: () => void;
+  destaque?: boolean;
+  titulo: string;
+  valor: number;
+}) {
+  if (valor === 0) {
+    return <td className="px-2 py-1.5 text-right tabular-nums text-ink-muted">0</td>;
+  }
+
+  return (
+    <td className="px-2 py-1.5 text-right tabular-nums">
+      <button
+        className={`rounded px-1.5 py-0.5 tabular-nums underline decoration-dotted underline-offset-2 transition-colors hover:bg-subtle ${
+          destaque ? "font-semibold text-ink" : "text-ink-soft"
+        }`}
+        onClick={aoClicar}
+        title={titulo}
+        type="button"
+      >
+        {num(valor)}
+      </button>
+    </td>
   );
 }
 

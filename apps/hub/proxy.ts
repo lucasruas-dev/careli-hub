@@ -89,6 +89,11 @@ const PUBLIC_API_PREFIXES = [
   // e parceiros FORA do hub. A rota devolve APENAS agregados (contagens, somas, ranking de
   // imobiliarias) — nenhum dado pessoal de comprador. CDN cacheia 60s (custo). Liberada UMA A UMA.
   "/api/publico/bi/vale-do-ouro",
+  // BI publico de ASSINATURA de contratos (pedido do Lucas, 17/08). ⚠️ AO CONTRARIO do BI acima,
+  // este NAO e' so' agregado: devolve nome e e-mail de quem assina (inclusive socios do
+  // incorporador) e a unidade de cada contrato. Levantei isso antes de liberar e a decisao dele
+  // foi "so' deixa publico, somente isso". A pagina e' noindex. Liberada UMA A UMA.
+  "/api/publico/bi/assinaturas",
   // Tela publica da ACAO de contato (freela sem conta do hub): entra por senha da campanha, que
   // vira o token de sessao (x-acao-sessao), validado DENTRO de cada rota. Ver [[project_apolo_acao_contato]].
   "/api/publico/acao",

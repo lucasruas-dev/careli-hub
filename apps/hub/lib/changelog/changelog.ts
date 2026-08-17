@@ -36,6 +36,47 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-17-assinatura-de-quem-e-a-vez",
+    deployedAt: "2026-08-17T19:20:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "O quadro de assinaturas passou a separar o que esta COM a pessoa do que ainda depende de quem assina antes dela: coluna Assinar e coluna Aguardando",
+              "A diferenca e grande: o Northon aparecia com 181 contratos a assinar e so 2 estao de fato com ele; a Nivea aparecia com 178 e nao tem nenhum",
+              "Clicar em qualquer numero do quadro abre a lista de assinaturas ja filtrada por aquela pessoa e situacao, com botao de limpar",
+              "O filtro de status ganhou duas opcoes: pendente e a vez dele, e pendente aguardando alguem antes",
+            ],
+            screen: "Apolo - Assinaturas",
+          },
+        ],
+      },
+      {
+        module: "Publico",
+        screens: [
+          {
+            items: [
+              "O painel de assinatura ganhou uma versao publica, em /publico/assinaturas: abre sem login, para circular com quem nao tem conta no Panteon",
+            ],
+            screen: "BI de assinatura",
+          },
+        ],
+      },
+    ],
+    rollback: "46a6baee (v1.147.0)",
+    technical: {
+      done:
+        "A FILA DE ASSINATURA E ORDENADA, e o painel contava como se não fosse. `contract_signature_signers.after_position` é o degrau, e ele já vinha para a tela como `degrau` — mas o quadro somava tudo que a pessoa não tinha assinado num campo só. MEDIDO NO C2X antes de mexer: os degraus do Vale do Ouro vão de 1 a 10 e a ordem é respeitada À RISCA (0 contratos com alguém de degrau maior assinando antes de um menor), e a cadeia real é corretor (1) → comprador (2) → testemunhas do Cecílio Rocha (3) → Lino e Cecílio (4 e 5) → Gurgel e imobiliária (6) → Northon (7) → Nívea (8). Com isso, o número que o painel mostrava era inacionável: o NORTHON aparecia com 181 pendências e só 2 estavam com ele; a NÍVEA com 178 e ZERO. Cobrar por esse número é cobrar quem não pode agir. Nova `marcarSituacao(linhas)` (6 testes, com a cadeia real): por CONTRATO, acha o menor degrau ainda pendente e marca cada assinatura como `assinado` | `vez` | `aguardando`. ⚠️ QUEM DIVIDE O DEGRAU ASSINA EM PARALELO: o contrato tem dois no degrau 3 e três no 5, e nenhum trava o outro — por isso a conta é `degrau <= frente`, não `degrau === frente`. ⚠️ A FRENTE É POR CONTRATO, nunca global: calcular globalmente deixaria o Northon 'aguardando' em tudo por causa de um contrato atrasado alheio (teste próprio para isso). O clique no número do quadro preenche os filtros que JÁ EXISTIAM (usuário + status) e rola até o analítico; zero não vira botão, porque clique que leva a tabela vazia parece tela quebrada. BI PÚBLICO: nova rota `/api/publico/bi/assinaturas` (liberada UMA A UMA no proxy) e página `/publico/assinaturas`, com o MESMO componente da tela interna — só a fonte muda, via prop. Painel duplicado viraria duas verdades sobre o mesmo contrato, e a que ninguém abre é a que desatualiza. O cache de 5 min mora na lib e vale para os dois: link que circula não pode virar uma consulta ao legado por pessoa que abre. Escopo fixo no servidor (Vale do Ouro), sem parâmetro na query — rota anônima que aceita `codes` deixa qualquer um pedir a carteira de qualquer loteamento. ⚠️ REGISTRADO NO CÓDIGO E NO PROXY: ao contrário do BI público de vendas, que é só agregado, este sai com NOME E E-MAIL de quem assina (inclusive sócios do incorporador) e a unidade de cada contrato. Levantei isso antes de liberar; a decisão do Lucas foi 'só deixa público, somente isso'. A página é `noindex`, mesmo padrão de /publico/painel.",
+      motivation:
+        "Lucas, 17/08: 'queria que ao clicar no nome do assinante no quadro de assinaturas o analítico filtrasse... e respeitando a ordem: se falta dois ainda para chegar no Northon, não devia contar no campo assinar, poderia ter um novo campo aguardando. E outra, deixa esse BI público também'.",
+    },
+    title: "Assinaturas: de quem e a vez, e de quem nao e",
+    type: "melhoria",
+    version: "1.148.0",
+  },
+  {
     buildTag: "2026-08-17-lagoa-bonita-e-um-empreendimento-so",
     deployedAt: "2026-08-17T18:05:00-03:00",
     modules: [

@@ -50,6 +50,18 @@ export type LinhaAssinatura = {
   degrau: number;
   /** Só para o Comprador: no prazo, fora do prazo, pendente, pendente e em atraso. */
   prazo: null | string;
+  /**
+   * Onde esta assinatura está na fila DAQUELE contrato:
+   *   • "assinado"   — já assinou;
+   *   • "vez"        — não assinou e TODOS os degraus anteriores já assinaram: a bola está com ele;
+   *   • "aguardando" — não assinou porque ainda falta alguém antes dele.
+   *
+   * ⚠️ É A DIFERENÇA ENTRE COBRAR A PESSOA CERTA E COBRAR A ERRADA. O painel contava tudo que a
+   * pessoa não tinha assinado como "assinar", e a fila é ordenada: o Northon aparecia com 181
+   * pendências quando só 2 estavam de fato com ele — as outras 179 estavam paradas em quem assina
+   * antes. A Nívea aparecia com 178 e não tinha NENHUMA na vez dela.
+   */
+  situacao: "aguardando" | "assinado" | "vez";
 };
 
 export type PainelAssinatura = {
@@ -117,6 +129,38 @@ function prazoDoComprador(perfil: string, assinou: boolean, dias: number): null 
   return dias <= PRAZO_COMPRADOR ? "Pendente dentro do prazo" : "Pendente e em atraso";
 }
 
+/**
+ * Marca cada assinatura como assinada, na vez, ou aguardando alguém antes.
+ *
+ * A fila é POR CONTRATO e por degrau (`after_position`). Alguém no degrau 7 só pode assinar quando
+ * todos os degraus 1..6 daquele contrato já assinaram — medido: em 0 contratos alguém de degrau
+ * maior assinou antes de um menor, ou seja, o C2X respeita a ordem à risca.
+ *
+ * Mais de uma pessoa pode dividir o mesmo degrau (o contrato tem dois no degrau 3 e três no 5):
+ * elas assinam em paralelo, e nenhuma segura a outra.
+ */
+export function marcarSituacao(linhas: LinhaAssinatura[]): LinhaAssinatura[] {
+  // Menor degrau ainda pendente em cada contrato: é a frente da fila.
+  const frentePorContrato = new Map<number, number>();
+  for (const linha of linhas) {
+    if (linha.assinou) continue;
+    const atual = frentePorContrato.get(linha.contrato);
+    if (atual === undefined || linha.degrau < atual) {
+      frentePorContrato.set(linha.contrato, linha.degrau);
+    }
+  }
+
+  return linhas.map((linha) => ({
+    ...linha,
+    situacao: linha.assinou
+      ? "assinado"
+      : // Está na vez quem divide a frente da fila. Quem está acima dela espera.
+        linha.degrau <= (frentePorContrato.get(linha.contrato) ?? linha.degrau)
+        ? "vez"
+        : "aguardando",
+  }));
+}
+
 const cache = new Map<string, { em: number; dados: PainelAssinatura }>();
 
 export type ResultadoPainel =
@@ -148,7 +192,7 @@ export async function carregarPainelAssinatura(
   try {
     const [linhasBrutas] = await pool.pool.query<Bruta[]>(CONSULTA, [enterpriseIds]);
 
-    const linhas: LinhaAssinatura[] = linhasBrutas.map((l) => {
+    const semSituacao: LinhaAssinatura[] = linhasBrutas.map((l) => {
       const email = String(l.email ?? "").trim().toLowerCase();
       const perfil = perfilDeTela(l.perfil_c2x, email);
       const assinou = Number(l.assinado) === 1;
@@ -171,12 +215,16 @@ export async function carregarPainelAssinatura(
         perfil,
         prazo: prazoDoComprador(perfil, assinou, dias),
         quadra: limpo(l.block),
+        // Preenchido logo abaixo por `marcarSituacao`, que precisa do contrato inteiro para
+        // saber de quem é a vez.
+        situacao: "aguardando",
         un: limpo(l.unidade),
         usuario: limpo(l.usuario),
         valor: Math.round(Number(l.price ?? 0)),
       };
     });
 
+    const linhas = marcarSituacao(semSituacao);
     const dados: PainelAssinatura = { atualizadoEm: new Date().toISOString(), linhas };
     cache.set(chave, { dados, em: Date.now() });
     return { dados, ok: true };
