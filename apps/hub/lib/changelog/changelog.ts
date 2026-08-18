@@ -36,6 +36,44 @@ export type ChangelogEntry = {
 
 export const PANTEON_CHANGELOG: readonly ChangelogEntry[] = [
   {
+    buildTag: "2026-08-18-ordem-de-assinatura",
+    deployedAt: "2026-08-18T18:30:00-03:00",
+    modules: [
+      {
+        module: "Apolo",
+        screens: [
+          {
+            items: [
+              "As barrinhas passam a seguir a ORDEM DE ASSINATURA: imobiliaria, comprador, incorporador, coordenacao e backoffice, que e como o contrato de fato anda. Antes vinham em ordem alfabetica, com o Backoffice (que assina por ultimo) na frente, e a barra nao mostrava a progressao",
+              "A ordem e a mesma em todas as linhas: contrato que foge do padrao nao desalinha as colunas das outras, entao a lista continua servindo para comparar unidade com unidade",
+              "O Huber aparece como Coordenadora de venda, nao mais como Imobiliaria",
+            ],
+            screen: "Contratos",
+          },
+        ],
+      },
+      {
+        module: "Portal do incorporador",
+        screens: [
+          {
+            items: ["As mesmas duas correcoes na visao Contratos"],
+            screen: "Vendas - Contratos",
+          },
+        ],
+      },
+    ],
+    rollback: "v1.159.0 (2026-08-18-contratos-sem-espera)",
+    technical: {
+      done:
+        "ORDEM: a posicao de cada perfil sai da MEDIA dos degraus dele no recorte, calculada uma vez depois de todas as linhas montadas (ordenarGruposPelaOrdemDeAssinatura). Ordenar cada linha pelo proprio degrau parece equivalente e nao e: contrato com um perfil a menos embaralha as colunas e a lista deixa de funcionar como tabela, que foi o defeito que a alfabetica tinha vindo consertar mais cedo no mesmo dia. A ordem sai do DADO e nao de uma constante com os cinco nomes de hoje: se o fluxo mudar, a tela acompanha em vez de mentir em silencio. Dois testes novos, um deles com um contrato fora do padrao provando que as colunas continuam alinhadas. HUBER: conferido no C2X (scripts/apolo/conferir-papel-huber.mjs) que ele NAO esta em coordenador_id, manager_id nem captivator_id de nenhum empreendimento — e Administrador no perfil e chega como Imobiliaria em cinco empreendimentos. Ou seja, a correcao anterior (papel pelo cadastro do empreendimento) nao tinha como alcanca-lo. Agora ha excecao declarada por users.id em PAPEL_FIXO_POR_USUARIO_C2X, e o papel do cadastro passou a ser lido nos TRES leitores (antes so no painel antigo: a tela de Contratos e o portal chamavam perfilDeTela sem o argumento).",
+      motivation:
+        "Lucas, com o print da tabela de assinatura: nao esta padrao isso nao? imobiliaria, comprador, incorporador, coordenacao e backoffice? E, no mesmo dia pela segunda vez: o huber e coordenacao.",
+    },
+    title: "Assinaturas na ordem em que o contrato anda",
+    type: "melhoria",
+    version: "1.160.0",
+  },
+  {
     buildTag: "2026-08-18-contratos-sem-espera",
     deployedAt: "2026-08-18T17:20:00-03:00",
     modules: [

@@ -110,7 +110,9 @@ type LinhaRow = RowDataPacket & {
   envio: null | string;
   id_ass: number;
   lot: null | string;
+  papel_no_empreendimento: null | string;
   perfil_c2x: null | string;
+  usuario_c2x_id: null | number;
   posicao: null | number;
   quadra: null | string;
   /** Nulo = envio sem NENHUM assinante (o LEFT JOIN devolve uma linha só, vazia). */
@@ -315,7 +317,12 @@ export async function carregarPainelDeContratos(
           emp: limpo(row.emp),
           envio: String(row.envio ?? ""),
           lote: limpo(row.lot),
-          perfil: perfilDeTela(row.perfil_c2x, email),
+          perfil: perfilDeTela(
+            row.perfil_c2x,
+            email,
+            row.papel_no_empreendimento,
+            row.usuario_c2x_id,
+          ),
           // Recalculado dentro de `montarQuadroDeAssinaturas`, com a régua importada.
           prazo: null,
           quadra: limpo(row.quadra),

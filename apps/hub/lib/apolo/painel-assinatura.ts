@@ -86,6 +86,7 @@ type Bruta = RowDataPacket & {
   lot: null | string;
   papel_no_empreendimento: null | string;
   perfil_c2x: null | string;
+  usuario_c2x_id: null | number;
   posicao: null | number;
   price: null | number;
   unidade: null | string;
@@ -103,6 +104,7 @@ const CONSULTA = `
     ss.user_name as usuario,
     ss.email,
     pf.name as perfil_c2x,
+    usr.id as usuario_c2x_id,
     -- O PAPEL DO ASSINANTE NO CADASTRO DO EMPREENDIMENTO, que vence o perfil generico do
     -- usuario (ver perfilDeTela): e o que resolve o gerente cadastrado como "Imobiliaria".
     -- Sem crase neste comentario: ele vive dentro de um template literal e uma crase solta
@@ -151,11 +153,36 @@ const limpo = (v: unknown) => String(v ?? "").trim().replace(/\s+/g, " ");
  *   2. papel no CADASTRO daquele empreendimento (coordenador / gerente / captador);
  *   3. o perfil do usuário no C2X, com "Cliente" traduzido para "Comprador".
  */
+/**
+ * Pessoas cujo papel na assinatura o C2X não sabe dizer, por `users.id` do legado.
+ *
+ * ⚠️ ISTO É EXCEÇÃO DECLARADA, NÃO REGRA GERAL, e existe porque a régua do cadastro não alcança o
+ * caso. O Huber (id 2544) assina em cinco empreendimentos (REP, VAL, VDP, VOC, VOL) como
+ * COORDENAÇÃO, mas no C2X ele é "Administrador" no perfil e **não está em `coordenador_id`,
+ * `manager_id` nem `captivator_id` de nenhum empreendimento** — conferido em 18/08/2026 com
+ * `scripts/apolo/conferir-papel-huber.mjs`. Sem esta linha ele volta a aparecer como Imobiliária,
+ * que foi o que o Lucas apontou DUAS vezes no mesmo dia.
+ *
+ * ⚠️ NÃO CRESÇA ESTA LISTA SEM PENSAR. Uma segunda ou terceira pessoa aqui é o sinal de que o
+ * papel do assinante precisa virar dado editável (uma tabela no Apolo, mantida na tela), não mais
+ * uma linha de código. A correção de raiz é o cadastro no C2X, que é READ-ONLY para nós: quem
+ * pode arrumar lá é o time, colocando a pessoa como coordenadora do empreendimento.
+ */
+const PAPEL_FIXO_POR_USUARIO_C2X: Record<number, string> = {
+  2544: "Coordenadora de venda",
+};
+
 export function perfilDeTela(
   perfilC2x: null | string,
   email: string,
   papelNoEmpreendimento?: null | string,
+  usuarioC2xId?: null | number,
 ): string {
+  // A exceção vem ANTES do e-mail e do cadastro: ela existe justamente porque as outras réguas
+  // erram esta pessoa.
+  const fixo = usuarioC2xId ? PAPEL_FIXO_POR_USUARIO_C2X[usuarioC2xId] : undefined;
+  if (fixo) return fixo;
+
   if (email.endsWith("@careli.adm.br")) return "Backoffice";
 
   // Os rótulos são os do próprio C2X (a lista de `profiles`), para a tela do cliente falar a
@@ -246,7 +273,12 @@ export async function carregarPainelAssinatura(
 
     const semSituacao: LinhaAssinatura[] = linhasBrutas.map((l) => {
       const email = String(l.email ?? "").trim().toLowerCase();
-      const perfil = perfilDeTela(l.perfil_c2x, email, l.papel_no_empreendimento);
+      const perfil = perfilDeTela(
+        l.perfil_c2x,
+        email,
+        l.papel_no_empreendimento,
+        l.usuario_c2x_id,
+      );
       const assinou = Number(l.assinado) === 1;
       // Para o prazo: quem assinou conta os dias até assinar; quem não, os dias desde o envio.
       const dias = assinou && l.data_assinatura

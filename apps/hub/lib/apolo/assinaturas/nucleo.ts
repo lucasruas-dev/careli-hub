@@ -100,6 +100,19 @@ export const SQL_LINHAS_POR_CODE = (placeholders: string): string => `
     ss.user_name as usuario,
     ss.email,
     pf.name as perfil_c2x,
+    usr.id as usuario_c2x_id,
+    -- O PAPEL DO ASSINANTE NO CADASTRO DO EMPREENDIMENTO, que vence o perfil generico do usuario.
+    -- E o que resolve o coordenador cadastrado como "Imobiliaria" (o caso do Huber, apontado pelo
+    -- Lucas duas vezes: em 18/08 no painel interno e de novo no portal, porque a primeira correcao
+    -- so alcancou UM dos tres leitores).
+    -- Sem crase neste comentario: ele vive dentro de um template literal e uma crase solta encerra
+    -- a string e quebra o arquivo inteiro.
+    case
+      when usr.id is not null and usr.id = e.coordenador_id then 'coordenador'
+      when usr.id is not null and usr.id = e.manager_id then 'gerente'
+      when usr.id is not null and usr.id = e.captivator_id then 'captador'
+      else null
+    end as papel_no_empreendimento,
     ss.signed as assinado,
     date_format(ss.date_signed, '%Y-%m-%d') as data_assinatura,
     ss.after_position as posicao

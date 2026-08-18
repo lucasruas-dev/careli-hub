@@ -118,6 +118,12 @@ export type GrupoDaUnidade = {
   /** Alguém deste perfil está na vez NESTE contrato: é o grupo que a linha precisa destacar. */
   naVez: boolean;
   perfil: string;
+  /**
+   * O degrau mais cedo em que este perfil assina NESTE contrato — a matéria-prima da ordem das
+   * barrinhas (ver `ordenarGruposPelaOrdemDeAssinatura`). Vai para a tela junto porque a ordem é
+   * calculada no recorte inteiro, depois de todas as linhas montadas.
+   */
+  primeiroDegrau: number;
   total: number;
 };
 
@@ -627,6 +633,10 @@ export function montarQuadroDeAssinaturas(
     assinantes.set(nome, atual);
   }
 
+  // ⚠️ AQUI, DEPOIS DE TODAS AS LINHAS MONTADAS, e não dentro do laço: a ordem das barrinhas é do
+  // RECORTE, não de cada contrato. Ver `ordenarGruposPelaOrdemDeAssinatura`.
+  ordenarGruposPelaOrdemDeAssinatura(lista);
+
   return {
     // Quem tem mais contrato NA VEZ primeiro: o quadro existe para achar o gargalo.
     assinantes: [...assinantes.values()].sort(
@@ -712,14 +722,56 @@ function agruparPorPerfil(esquema: AssinaturaDoEsquema[]): GrupoDaUnidade[] {
     mapa.set(item.perfil, atual);
   }
 
-  // ⚠️ ORDEM ALFABÉTICA, NÃO A DO FLUXO. Ordenar pelo degrau parece mais "certo", mas o degrau
-  // muda de contrato para contrato: o Lucas viu a lista e apontou (18/08/2026) que *"uma hora
-  // aparece o Backoffice, outra não"* — na verdade ele aparecia em posições diferentes a cada
-  // linha, e o olho não consegue comparar coluna com coluna assim. Alfabética é estável entre
-  // linhas, que é o que faz a lista virar tabela e o vazio de um grupo saltar.
-  return [...mapa.values()]
-    .sort((a, b) => a.perfil.localeCompare(b.perfil, "pt-BR"))
-    .map(({ assinadas, naVez, perfil, total }) => ({ assinadas, naVez, perfil, total }));
+  // A ordem SAI DAQUI PROVISÓRIA (pelo degrau desta unidade) e é refeita depois, no recorte
+  // inteiro, por `ordenarGruposPelaOrdemDeAssinatura`. Ver o porquê lá.
+  return [...mapa.values()].sort(
+    (a, b) => a.primeiroDegrau - b.primeiroDegrau || a.perfil.localeCompare(b.perfil, "pt-BR"),
+  );
+}
+
+/**
+ * Põe as barrinhas de TODAS as linhas na ORDEM DE ASSINATURA — e na MESMA ordem em todas elas.
+ *
+ * Pedido do Lucas em 18/08/2026, com o print da tabela de assinatura na mão: *"não está padrão
+ * isso não? imobiliária, comprador, incorporador, coordenação e backoffice?"*. Está: aquela é a
+ * sequência real do fluxo, e ler a barra na ordem do dicionário (Backoffice primeiro, que é quem
+ * assina por ÚLTIMO) escondia a progressão do contrato.
+ *
+ * ⚠️ A ORDEM É CANÔNICA, CALCULADA UMA VEZ PARA O RECORTE — e é isso que salva a ideia. Ordenar
+ * cada linha pelo próprio degrau parece equivalente e não é: contrato com um perfil a menos, ou
+ * com o Incorporador assinando antes, embaralha as colunas e a lista deixa de funcionar como
+ * tabela (foi o que gerou o *"uma hora aparece o Backoffice, outra não"* de mais cedo no mesmo
+ * dia). Aqui a posição de cada perfil sai da MÉDIA dos degraus dele no recorte, então uma linha
+ * excêntrica não desalinha as outras.
+ *
+ * ⚠️ E A ORDEM SAI DO DADO, não de uma lista fixa no código: se amanhã o fluxo mudar (um perfil
+ * novo, o Backoffice assinando antes), a tela acompanha sozinha. Uma constante com os cinco nomes
+ * de hoje seria mais simples de ler e estaria errada no dia da mudança, silenciosamente.
+ */
+function ordenarGruposPelaOrdemDeAssinatura(unidades: UnidadeDeAssinatura[]): void {
+  const soma = new Map<string, { degraus: number; vezes: number }>();
+  for (const unidade of unidades) {
+    for (const grupo of unidade.grupos) {
+      const atual = soma.get(grupo.perfil) ?? { degraus: 0, vezes: 0 };
+      atual.degraus += grupo.primeiroDegrau;
+      atual.vezes += 1;
+      soma.set(grupo.perfil, atual);
+    }
+  }
+
+  const posicao = new Map<string, number>();
+  for (const [perfil, { degraus, vezes }] of soma) {
+    posicao.set(perfil, vezes > 0 ? degraus / vezes : Number.MAX_SAFE_INTEGER);
+  }
+
+  for (const unidade of unidades) {
+    unidade.grupos.sort(
+      (a, b) =>
+        (posicao.get(a.perfil) ?? Number.MAX_SAFE_INTEGER) -
+          (posicao.get(b.perfil) ?? Number.MAX_SAFE_INTEGER) ||
+        a.perfil.localeCompare(b.perfil, "pt-BR"),
+    );
+  }
 }
 
 /** Assinado, depois quem está na vez, depois quem aguarda: a leitura do esquema de cima para baixo. */
@@ -759,7 +811,9 @@ type LinhaRow = RowDataPacket & {
   envio: null | string;
   id_ass: number;
   lot: null | string;
+  papel_no_empreendimento: null | string;
   perfil_c2x: null | string;
+  usuario_c2x_id: null | number;
   posicao: null | number;
   quadra: null | string;
   /** Nulo = envio sem NENHUM assinante (o LEFT JOIN devolve uma linha só, vazia). */
@@ -846,6 +900,19 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
          ss.user_name as usuario,
          ss.email,
          pf.name as perfil_c2x,
+         usr.id as usuario_c2x_id,
+       -- O PAPEL DO ASSINANTE NO CADASTRO DO EMPREENDIMENTO, que vence o perfil generico do usuario.
+       -- E o que resolve o coordenador cadastrado como "Imobiliaria" (o caso do Huber, apontado pelo
+       -- Lucas duas vezes: em 18/08 no painel interno e de novo no portal, porque a primeira correcao
+       -- so alcancou UM dos tres leitores).
+       -- Sem crase neste comentario: ele vive dentro de um template literal e uma crase solta encerra
+       -- a string e quebra o arquivo inteiro.
+       case
+         when usr.id is not null and usr.id = e.coordenador_id then 'coordenador'
+         when usr.id is not null and usr.id = e.manager_id then 'gerente'
+         when usr.id is not null and usr.id = e.captivator_id then 'captador'
+         else null
+       end as papel_no_empreendimento,
          ss.signed as assinado,
          date_format(ss.date_signed, '%Y-%m-%d') as data_assinatura,
          ss.after_position as posicao
@@ -938,7 +1005,12 @@ export async function lerAssinaturasDoPortal(codes: string[]): Promise<Resultado
           emp: String(row.emp ?? ""),
           envio: String(row.envio ?? ""),
           lote: limpo(row.lot),
-          perfil: perfilDeTela(row.perfil_c2x, email),
+          perfil: perfilDeTela(
+            row.perfil_c2x,
+            email,
+            row.papel_no_empreendimento,
+            row.usuario_c2x_id,
+          ),
           // O prazo de comprador é recalculado dentro de `montarQuadroDeAssinaturas`, com a régua
           // importada: assim os testes da montagem não dependem deste campo vir preenchido.
           prazo: null,

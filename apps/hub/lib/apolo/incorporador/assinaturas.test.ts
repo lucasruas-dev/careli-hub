@@ -445,6 +445,9 @@ describe("as barrinhas por GRUPO da unidade", () => {
       assinadas: 1,
       naVez: true,
       perfil: "Comprador",
+      // O degrau viaja junto porque a ORDEM das barrinhas é calculada no recorte inteiro, não
+      // aqui dentro — ver `ordenarGruposPelaOrdemDeAssinatura`.
+      primeiroDegrau: 1,
       total: 2,
     });
   });
@@ -627,5 +630,53 @@ describe("os KPIs de prazo do comprador (régua de 7 dias, importada do painel)"
 
     expect(quadro.kpis.compradorOk).toBe(1);
     expect(quadro.kpis.compradorPendente).toBe(1);
+  });
+});
+
+// ── A ORDEM DAS BARRINHAS É A DA ASSINATURA, E É A MESMA EM TODAS AS LINHAS ──
+//
+// O QUE ESTE BLOCO PROTEGE: as colunas alinham entre linhas MESMO quando um contrato foge do
+// padrão. Foi a condição para trocar a ordem alfabética pela do fluxo (pedido do Lucas em
+// 18/08/2026, com o print da tabela: "não está padrão isso não? imobiliária, comprador,
+// incorporador, coordenação e backoffice?"). Ordenar cada linha pelo próprio degrau parece
+// equivalente e não é: um contrato excêntrico embaralharia as colunas dele e a lista deixaria de
+// funcionar como tabela — que é o defeito que a alfabética tinha vindo consertar.
+describe("a ordem de assinatura das barrinhas", () => {
+  const linhaDe = (contrato: number, degrau: number, perfil: string, usuario: string) =>
+    linha({ contrato, degrau, perfil, usuario });
+
+  // Dois contratos: o primeiro no fluxo normal, o segundo com o Incorporador assinando ANTES do
+  // Comprador. A ordem das colunas tem que sair igual nos dois.
+  const quadro = montarQuadroDeAssinaturas(
+    [
+      linhaDe(10, 1, "Imobiliária", "Imob A"),
+      linhaDe(10, 2, "Comprador", "Comprador A"),
+      linhaDe(10, 3, "Incorporador", "Incorp A"),
+      linhaDe(10, 4, "Backoffice", "Careli A"),
+      linhaDe(20, 1, "Imobiliária", "Imob B"),
+      linhaDe(20, 2, "Incorporador", "Incorp B"),
+      linhaDe(20, 3, "Comprador", "Comprador B"),
+      linhaDe(20, 4, "Backoffice", "Careli B"),
+    ],
+    [],
+    new Map([
+      [10, 1],
+      [20, 2],
+    ]),
+  );
+
+  it("segue o fluxo, não o dicionário: o Backoffice assina por último e aparece por último", () => {
+    const primeira = quadro.unidades[0]?.grupos.map((grupo) => grupo.perfil);
+
+    expect(primeira?.[0]).toBe("Imobiliária");
+    expect(primeira?.at(-1)).toBe("Backoffice");
+  });
+
+  it("⚠️ a MESMA ordem nas duas linhas, mesmo com o contrato que foge do padrão", () => {
+    const [uma, outra] = quadro.unidades;
+
+    expect(uma?.grupos.map((grupo) => grupo.perfil)).toEqual(
+      outra?.grupos.map((grupo) => grupo.perfil),
+    );
   });
 });
