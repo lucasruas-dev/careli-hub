@@ -121,6 +121,28 @@ const LIMIAR_DO_CATALOGO = 8;
  * 20 × 1,5 s ÷ 6 em paralelo ≈ 5 s, que cabe no orçamento junto com os 3 s do catálogo. Cobre
  * Vista Alegre (1 em movimento) e Lagoa Bonita (13); não cobre o Vale do Ouro (185), que fica com
  * a situação do documento confirmada e a marcação de quem assinou vinda do C2X.
+ *
+ * ═════════════════════════════════════════════════════════════════════════════════════════════
+ * ⚠️ E ISSO TEM UM PREÇO QUE PRECISA ESTAR ESCRITO: NO VALE DO OURO A TROCA DE FONTE NÃO CORRIGE
+ * NENHUMA ASSINATURA. Medido em 18/08/2026 (scripts/apolo/medir-divergencia-d4sign.mjs), no
+ * recorte VOC+VOL, que é o padrão da tela:
+ *
+ *   • 195 envios, 185 com uuid, 2.420 linhas de assinatura;
+ *   • os 185 estão TODOS em movimento na D4Sign e TODOS presentes no catálogo (0 fora);
+ *   • logo `desisteDaLista` é sempre verdadeiro ali — 185 > 20 E todos conhecidos —, então o
+ *     `/list` não é chamado para NINGUÉM e toda linha do recorte volta como `d4sign-status`;
+ *   • e o `d4sign-status` do Vale do Ouro confirma um status que o C2X já tinha certo
+ *     ("aguardando assinaturas"), então na prática a tela mostra o mesmo que antes;
+ *   • enquanto as 120 assinaturas que a D4Sign diz COLHIDAS e o C2X diz pendentes seguem
+ *     aparecendo como pendência (medido assinante a assinante, 1.534 linhas conferidas).
+ *
+ * Ou seja: o pedido *"queria usar somente o D4Sign"* está cumprido no Vista Alegre e na Lagoa
+ * Bonita, e NÃO está no recorte que o dono mais olha. O que falta não é teto maior — 185 × 1,5 s
+ * ÷ 6 = 46 s, medido, não cabe em carga de tela nenhuma — é PERSISTIR a conciliação: uma tabela
+ * própria alimentada por cron incremental, com a tela lendo do banco. Isso é migration + cron, ou
+ * seja, operação sensível, e está esperando decisão do Lucas. Até lá o aviso da tela é o que
+ * impede a leitura errada, e é por isso que ele não pode ser removido "porque polui".
+ * ═════════════════════════════════════════════════════════════════════════════════════════════
  */
 const TETO_ASSINANTES_POR_CARGA = 20;
 

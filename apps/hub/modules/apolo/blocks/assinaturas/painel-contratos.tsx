@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  AlertTriangle,
   CheckCircle2,
   FileText,
+  Info,
   Loader2,
   RefreshCw,
   Search,
@@ -245,6 +247,10 @@ export function PainelContratos() {
           </p>
         ) : (
           <>
+            <FaixaDaFonte
+              assinantes={dados.avisoDosAssinantes}
+              fonte={dados.avisoDaFonte}
+            />
             <FaixaDeTaxas kpis={dados.kpis} taxas={dados.taxas} />
             <BlocosDoPainel kpis={dados.kpis} />
 
@@ -281,6 +287,50 @@ export function PainelContratos() {
 // ── A FAIXA DE CIMA: a taxa de cada elo da cadeia ───────────────────────────
 // O card responde uma pergunta só: em qual elo a assinatura emperra. O pior vem primeiro (a ordem
 // sai do servidor) e é o único que ganha cor — vermelho de alerta, porque dourado não é estado.
+
+/**
+ * A PROCEDÊNCIA DO QUE ESTÁ NA TELA, no topo — e por que são DUAS faixas e não uma.
+ *
+ * Os dois avisos dizem coisas diferentes e nenhum substitui o outro (a régua está em
+ * `AVISOS_DA_FONTE`, lib/apolo/d4sign-assinaturas):
+ *
+ *   • `fonte` é NOTÍCIA: a D4Sign não respondeu e o que está abaixo é o registro do C2X, que pode
+ *     mostrar como pendente uma assinatura já colhida. Âmbar, porque muda a decisão de cobrar.
+ *   • `assinantes` é PREÇO CONHECIDO: a situação foi confirmada, o que veio do sistema antigo é só
+ *     a marcação de quem já assinou dentro de contrato ainda andando. No Vale do Ouro isto fica
+ *     aceso quase todo dia (185 documentos em movimento contra um teto de 20 conferidos um a um
+ *     por carga), então é neutro, informativo: pintar de âmbar o que vive aceso ensina a ignorar a
+ *     cor, e aí o dia em que a API cair de verdade ninguém olha.
+ *
+ * Vem ANTES dos cards de propósito: as taxas e os KPIs saem das MESMAS linhas da lista, então o
+ * aviso vale para eles também. Aviso embaixo da lista deixaria o número de cima parecendo exato.
+ */
+function FaixaDaFonte({
+  assinantes,
+  fonte,
+}: {
+  assinantes: null | string;
+  fonte: null | string;
+}) {
+  if (!fonte && !assinantes) return null;
+
+  return (
+    <div className="grid gap-2">
+      {fonte ? (
+        <p className="m-0 flex items-start gap-2 rounded-lg border border-amber-500/30 bg-amber-500/[0.07] px-3 py-2 text-xs leading-snug text-amber-700 dark:text-amber-400">
+          <AlertTriangle aria-hidden="true" className="mt-px shrink-0" size={14} />
+          {fonte}
+        </p>
+      ) : null}
+      {assinantes ? (
+        <p className="m-0 flex items-start gap-2 rounded-lg border border-black/[0.08] bg-subtle px-3 py-2 text-xs leading-snug text-ink-soft dark:border-white/[0.08]">
+          <Info aria-hidden="true" className="mt-px shrink-0" size={14} />
+          {assinantes}
+        </p>
+      ) : null}
+    </div>
+  );
+}
 
 function FaixaDeTaxas({
   kpis,
@@ -766,6 +816,20 @@ function LinhaDoContrato({
                   : ""}
               </div>
             ) : null}
+            {/* ⚠️ SELO SÓ NO FALLBACK DE VERDADE (`c2x-legado`). O outro caso marcado,
+                `d4sign-status`, é a maioria das linhas no Vale do Ouro: carimbar todas viraria
+                ruído e mataria o sinal do que importa. Para elas, quem avisa é a faixa do topo,
+                que diz o número de uma vez; o detalhe pessoa a pessoa aparece no popup, que é
+                onde ele passa a ter consequência. */}
+            {contrato.fonte === "c2x-legado" && contrato.aviso ? (
+              <span
+                className="mt-1 inline-flex items-center gap-1 text-[10.5px] font-semibold text-amber-700 dark:text-amber-400"
+                title={contrato.aviso}
+              >
+                <AlertTriangle aria-hidden="true" size={11} />
+                sistema antigo
+              </span>
+            ) : null}
           </div>
 
           {semEnvio ? (
@@ -1006,6 +1070,28 @@ function ModalDoContrato({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
+          {/* ⚠️ AQUI O AVISO APARECE SEMPRE que a linha tiver um, inclusive no `d4sign-status` que
+              a lista não carimba. É neste popup que se decide cobrar uma pessoa pelo nome, e a
+              tabela abaixo mostra tique por tique — num documento ainda andando, esses tiques são
+              do sistema antigo. Âmbar só no fallback, que é o caso em que a SITUAÇÃO pode estar
+              errada; no resto, neutro. */}
+          {contrato.aviso ? (
+            <p
+              className={`m-0 flex items-start gap-2 border-b px-5 py-2.5 text-xs leading-snug ${
+                contrato.fonte === "c2x-legado"
+                  ? "border-amber-500/30 bg-amber-500/[0.07] text-amber-700 dark:text-amber-400"
+                  : "border-black/[0.07] bg-subtle text-ink-soft dark:border-white/[0.08]"
+              }`}
+            >
+              {contrato.fonte === "c2x-legado" ? (
+                <AlertTriangle aria-hidden="true" className="mt-px shrink-0" size={14} />
+              ) : (
+                <Info aria-hidden="true" className="mt-px shrink-0" size={14} />
+              )}
+              {contrato.aviso}
+            </p>
+          ) : null}
+
           {/* OS FATOS DO CONTRATO — o que a aba Contratos mostrava, sem se perder na fusão. */}
           <div className="grid grid-cols-2 gap-3 border-b border-black/[0.07] px-5 py-3.5 sm:grid-cols-4 dark:border-white/[0.08]">
             <Fato rotulo="Gerado em" valor={dataCurta(contrato.contrato?.geradoEm ?? null)} />

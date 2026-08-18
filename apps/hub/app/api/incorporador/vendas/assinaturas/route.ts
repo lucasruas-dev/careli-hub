@@ -51,10 +51,19 @@ export async function GET(request: Request) {
     return NextResponse.json({ error: quadro.error }, { status: 503 });
   }
 
+  // ⚠️ DOIS CAMPOS DO QUADRO NÃO ATRAVESSAM. `montarQuadroComD4Sign` devolve, junto com a tela,
+  // material de diagnóstico: `cancelados` são `contract_signatures.id` crus do legado e
+  // `resumoDaFonte` é a contabilidade interna da reconciliação. Nada disso é dado pessoal, mas é
+  // dado NOSSO, e este payload vai para o navegador de um cliente externo — o portal só entrega o
+  // que a tela desenha. A tela interna (/apolo/assinaturas) fica com eles, que é onde servem.
+  // Os avisos (`avisoDaFonte`, `avisoDosAssinantes` e o `aviso` de cada linha) PASSAM: são texto
+  // pronto e é deles que depende o incorporador não cobrar quem já assinou.
+  const { cancelados: _cancelados, resumoDaFonte: _resumoDaFonte, ...paraTela } = quadro.data;
+
   return NextResponse.json(
     {
       data: {
-        ...quadro.data,
+        ...paraTela,
         filtro: pedido?.trim() ? pedido.trim() : null,
       },
     },
